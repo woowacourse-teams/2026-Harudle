@@ -1,20 +1,43 @@
 ---
 name: Feature request
 about: Suggest an idea for this project
-title: ''
+title: "[feat]"
 labels: ''
 assignees: ''
 
 ---
 
-**Is your feature request related to a problem? Please describe.**
-A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+## ✨ Feature 요청
 
-**Describe the solution you'd like**
-A clear and concise description of what you want to happen.
+### 어떤 이슈인가요?
 
-**Describe alternatives you've considered**
-A clear and concise description of any alternative solutions or features you've considered.
+> 컨텍스트 / 배경을 설명한다. (이 기능이 왜 필요한지, 어떤 상황에서 파생되었는지 서술해주세요.)  
+> 예: 로그인 기능에서 인증 상태 유지 중 에러가 발생하여 세션 관리 기능이 필요해졌습니다.
 
-**Additional context**
-Add any other context or screenshots about the feature request here.
+### 🎯 왜 지금 이걸 하는가
+
+> 이 기능을 지금 구현해야 하는 이유를 적는다. (비즈니스 요구, 다른 기능의 사전 조건, ADR 결정 이행 등)
+> 예: ADR-0011 멀티모듈 전환의 사전 조건 / 다음 스프린트 기능 X의 의존성
+
+### ✅ 성공 기준
+
+> 기능이 완료되었음을 검증할 수 있는 조건을 체크리스트로 작성한다.
+
+- [ ]
+- [ ]
+
+---
+
+### 작업 마감일
+
+- YYYY-MM-DD (예: 2025-07-15까지 개발 완료 필요)
+
+---
+
+### PR 마감일 (코드 리뷰 및 머지)
+
+- YYYY-MM-DD (예: 2025-07-17까지 PR 머지 완료 예정)
+
+---
+
+### 🔧 TODO

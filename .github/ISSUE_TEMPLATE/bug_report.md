@@ -1,38 +1,43 @@
 ---
 name: Bug report
 about: Create a report to help us improve
-title: ''
+title: "[bug]"
 labels: ''
 assignees: ''
 
 ---
 
-**Describe the bug**
-A clear and concise description of what the bug is.
+## 🐞 Bug Report
 
-**To Reproduce**
-Steps to reproduce the behavior:
-1. Go to '...'
-2. Click on '....'
-3. Scroll down to '....'
-4. See error
+### 어떤 이슈인가요?
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
+> 컨텍스트 / 배경을 설명한다. (어떤 상황에서 생긴 버그인지)  
+> 예: 로그인 기능에서 인증 상태 유지 중 에러가 발생하여 핫픽스 합니다.
 
-**Screenshots**
-If applicable, add screenshots to help explain your problem.
+### 🎯 왜 지금 이걸 하는가
 
-**Desktop (please complete the following information):**
- - OS: [e.g. iOS]
- - Browser [e.g. chrome, safari]
- - Version [e.g. 22]
+> 이 버그를 지금 처리해야 하는 이유를 적는다. (사용자 이탈, 다른 기능의 사전 조건, SLA 위반 등)
+> 예: 세션 만료 버그로 DAU 5% 이탈 발생 중
 
-**Smartphone (please complete the following information):**
- - Device: [e.g. iPhone6]
- - OS: [e.g. iOS8.1]
- - Browser [e.g. stock browser, safari]
- - Version [e.g. 22]
+### ✅ 성공 기준
 
-**Additional context**
-Add any other context about the problem here.
+> 버그가 수정되었음을 검증할 수 있는 조건을 체크리스트로 작성한다.
+
+- [ ]
+- [ ]
+
+---
+
+### 작업 마감일
+
+- YYYY-MM-DD (예: 2025-07-15까지 개발 완료 필요)
+
+---
+
+### PR 마감일 (코드 리뷰 및 머지)
+
+- YYYY-MM-DD (예: 2025-07-17까지 PR 머지 완료 예정)
+
+---
+
+### 🔧 TODO
