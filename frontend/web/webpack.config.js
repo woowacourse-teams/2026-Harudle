@@ -5,17 +5,13 @@ import HtmlWebpackPlugin from "html-webpack-plugin";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const isDevelopment = process.env.NODE_ENV !== "production";
-
 export default {
   entry: "./src/main.tsx",
-  mode: isDevelopment ? "development" : "production",
   output: {
     filename: "bundle.js",
     path: path.resolve(__dirname, "dist"),
     clean: true,
   },
-  devtool: isDevelopment ? "eval-source-map" : false,
   module: {
     rules: [
       {
@@ -35,6 +31,15 @@ export default {
         ],
       },
     ],
+  },
+  devServer: {
+    port: 5173,
+    open: true,
+    hot: true,
+    historyApiFallback: true,
+    client: {
+      overlay: true,
+    },
   },
   resolve: {
     extensions: [".tsx", ".ts", ".js"],
