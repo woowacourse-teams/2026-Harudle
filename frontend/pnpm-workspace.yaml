@@ -2,3 +2,6 @@ packages:
   - "web"
   - "mobile"
   - "packages/*"
+allowBuilds:
+  msw: false
+  unrs-resolver: false
