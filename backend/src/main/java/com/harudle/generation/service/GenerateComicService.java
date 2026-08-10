@@ -110,7 +110,7 @@ public class GenerateComicService {
             ComicGeneration generation,
             String requestFingerprint
     ) {
-        if (!generation.getRequestFingerprint().equals(requestFingerprint)) {
+        if (!generation.hasSameRequestFingerprint(requestFingerprint)) {
             throw new IdempotencyKeyConflictException();
         }
 
