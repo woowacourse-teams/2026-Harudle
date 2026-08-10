@@ -101,7 +101,7 @@ public class Diary {
         this.deletedAt = deletedAt;
     }
 
-    private static String normalizeSourceText(String sourceText) {
+    public static String normalizeSourceText(String sourceText) {
         validateSourceText(sourceText);
         return sourceText.strip();
     }

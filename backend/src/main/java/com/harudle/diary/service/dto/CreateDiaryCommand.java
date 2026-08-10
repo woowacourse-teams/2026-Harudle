@@ -14,12 +14,8 @@ public record CreateDiaryCommand(
     public CreateDiaryCommand {
         validateUserId(userId);
         validateDiaryDate(diaryDate);
-        sourceText = normalizeSourceText(userId, diaryDate, sourceText);
+        sourceText = Diary.normalizeSourceText(sourceText);
         validateIdempotencyKey(idempotencyKey);
-    }
-
-    private static String normalizeSourceText(UUID userId, LocalDate diaryDate, String sourceText) {
-        return Diary.create(userId, diaryDate, sourceText).getSourceText();
     }
 
     private static void validateUserId(UUID userId) {
