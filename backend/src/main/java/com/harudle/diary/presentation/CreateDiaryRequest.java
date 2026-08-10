@@ -1,5 +1,6 @@
 package com.harudle.diary.presentation;
 
+import com.harudle.common.validation.CodePointLength;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.time.LocalDate;
@@ -9,6 +10,7 @@ public record CreateDiaryRequest(
         LocalDate diaryDate,
 
         @NotBlank(message = "일기 내용은 필수입니다.")
+        @CodePointLength(max = 300, message = "일기 내용은 300자 이하여야 합니다.")
         String sourceText
 ) {
 }

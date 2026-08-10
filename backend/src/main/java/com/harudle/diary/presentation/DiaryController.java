@@ -104,7 +104,11 @@ public class DiaryController {
             throw new InvalidIdempotencyKeyException();
         }
         try {
-            return UUID.fromString(idempotencyKey);
+            UUID parsedIdempotencyKey = UUID.fromString(idempotencyKey);
+            if (!parsedIdempotencyKey.toString().equalsIgnoreCase(idempotencyKey)) {
+                throw new InvalidIdempotencyKeyException();
+            }
+            return parsedIdempotencyKey;
         } catch (IllegalArgumentException exception) {
             throw new InvalidIdempotencyKeyException();
         }

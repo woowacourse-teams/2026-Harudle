@@ -9,8 +9,8 @@ import com.harudle.diary.service.dto.DiaryGenerationResult;
 import com.harudle.diary.service.dto.DiarySummaryResult;
 import com.harudle.diary.service.dto.DiaryTimelineResult;
 import com.harudle.generation.presentation.GenerationUsageResponse;
-import com.harudle.generation.service.exception.GenerationUnavailableException;
 import com.harudle.generation.service.port.ImageAccessUrl;
+import com.harudle.generation.service.port.ImageStorageException;
 import com.harudle.generation.service.port.ImageUrlProvider;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -96,7 +96,7 @@ public class DiaryResponseAssembler {
     private ImageAccessUrl createImageAccessUrl(String imageObjectKey) {
         ImageUrlProvider provider = imageUrlProvider.getIfAvailable();
         if (provider == null) {
-            throw new GenerationUnavailableException("이미지 URL 발급 어댑터가 구성되지 않았습니다.");
+            throw new ImageStorageException("이미지 URL 발급 어댑터가 구성되지 않았습니다.");
         }
         return provider.createAccessUrl(imageObjectKey);
     }

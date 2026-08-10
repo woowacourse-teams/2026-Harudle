@@ -23,7 +23,11 @@ public class ApiSecurityConfiguration {
                 .requestCache(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers("/api/v1/public/**")
+                        .requestMatchers(
+                                "/api/v1/public/**",
+                                "/api/v1/auth/refresh",
+                                "/api/v1/auth/logout"
+                        )
                         .permitAll()
                         .anyRequest()
                         .authenticated()

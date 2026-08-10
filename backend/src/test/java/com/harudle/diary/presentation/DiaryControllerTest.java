@@ -28,6 +28,7 @@ import com.harudle.generation.domain.GenerationStatus;
 import com.harudle.generation.domain.GenerationUsage;
 import com.harudle.generation.service.exception.DailyGenerationLimitExceededException;
 import com.harudle.generation.service.port.ImageAccessUrl;
+import com.harudle.generation.service.port.ImageStorageException;
 import com.harudle.generation.service.port.ImageUrlProvider;
 import io.restassured.http.ContentType;
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
@@ -245,7 +246,7 @@ class DiaryControllerTest {
     }
 
     @Test
-    @DisplayName("300자를 초과한 일기 내용은 도메인 검증 오류로 반환한다")
+    @DisplayName("300자를 초과한 일기 내용은 필드 검증 오류로 반환한다")
     void createDiaryRejectsSourceTextOverThreeHundredCharacters() {
         String sourceText = "🙂".repeat(301);
         String requestBody = """
@@ -263,6 +264,48 @@ class DiaryControllerTest {
 
         assertThat(response.statusCode()).isEqualTo(400);
         assertThat(response.jsonPath().getString("code")).isEqualTo("VALIDATION_ERROR");
+        assertThat(response.jsonPath().getString("errors[0].field")).isEqualTo("sourceText");
+    }
+
+    @Test
+    @DisplayName("이모지 300자는 하나의 코드 포인트 단위로 허용한다")
+    void createDiaryAcceptsThreeHundredEmojiCharacters() {
+        String sourceText = "🙂".repeat(300);
+        String requestBody = """
+                {
+                  "diaryDate": "2026-08-06",
+                  "sourceText": "%s"
+                }
+                """.formatted(sourceText);
+        when(diaryCreationService.create(any(CreateDiaryCommand.class)))
+                .thenReturn(createDiaryResult(true));
+        configureImageUrl();
+
+        MockMvcResponse response = authenticatedRequest()
+                .contentType(ContentType.JSON)
+                .header("Idempotency-Key", IDEMPOTENCY_KEY)
+                .body(requestBody)
+                .post("/api/v1/diaries");
+
+        assertThat(response.statusCode()).isEqualTo(201);
+    }
+
+    @Test
+    @DisplayName("축약 UUID 형식의 멱등성 키를 거부한다")
+    void createDiaryRejectsAbbreviatedIdempotencyKey() {
+        MockMvcResponse response = authenticatedRequest()
+                .contentType(ContentType.JSON)
+                .header("Idempotency-Key", "1-1-1-1-1")
+                .body("""
+                        {
+                          "diaryDate": "2026-08-06",
+                          "sourceText": "오늘 친구와 카페에 갔다."
+                        }
+                        """)
+                .post("/api/v1/diaries");
+
+        assertThat(response.statusCode()).isEqualTo(400);
+        assertThat(response.jsonPath().getString("code")).isEqualTo("INVALID_IDEMPOTENCY_KEY");
     }
 
     @Test
@@ -308,7 +351,73 @@ class DiaryControllerTest {
 
         assertThat(response.statusCode()).isEqualTo(401);
         assertThat(response.contentType()).startsWith("application/problem+json");
+        assertThat(response.header("WWW-Authenticate")).isEqualTo("Bearer");
         assertThat(response.jsonPath().getString("code")).isEqualTo("UNAUTHORIZED");
+    }
+
+    @Test
+    @DisplayName("지원하지 않는 HTTP 메서드는 Allow 헤더와 405를 반환한다")
+    void rejectUnsupportedHttpMethod() {
+        MockMvcResponse response = authenticatedRequest()
+                .post("/api/v1/diaries/{diaryId}", DIARY_ID);
+
+        assertThat(response.statusCode()).isEqualTo(405);
+        assertThat(response.header("Allow")).contains("GET", "DELETE");
+    }
+
+    @Test
+    @DisplayName("지원하지 않는 요청 미디어 타입은 415를 반환한다")
+    void rejectUnsupportedContentType() {
+        MockMvcResponse response = authenticatedRequest()
+                .contentType(ContentType.TEXT)
+                .header("Idempotency-Key", IDEMPOTENCY_KEY)
+                .body("diaryDate=2026-08-06&sourceText=오늘")
+                .post("/api/v1/diaries");
+
+        assertThat(response.statusCode()).isEqualTo(415);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 API는 404를 유지한다")
+    void returnNotFoundForUnknownApi() {
+        MockMvcResponse response = authenticatedRequest()
+                .get("/api/v1/unknown");
+
+        assertThat(response.statusCode()).isEqualTo(404);
+    }
+
+    @Test
+    @DisplayName("서버 내부 불변식 오류는 요청 검증 오류로 오분류하지 않는다")
+    void returnInternalServerErrorForIllegalState() {
+        when(diaryQueryService.getDetail(USER_ID, DIARY_ID))
+                .thenThrow(new IllegalArgumentException("서버 내부 불변식 오류"));
+
+        MockMvcResponse response = authenticatedRequest()
+                .get("/api/v1/diaries/{diaryId}", DIARY_ID);
+
+        assertThat(response.statusCode()).isEqualTo(500);
+        assertThat(response.jsonPath().getString("code")).isEqualTo("INTERNAL_SERVER_ERROR");
+    }
+
+    @Test
+    @DisplayName("이미지 URL 발급 실패는 이미지 저장소 오류로 반환한다")
+    void returnStorageErrorWhenImageUrlCreationFails() {
+        DiaryDetailResult result = new DiaryDetailResult(
+                DIARY_ID,
+                DIARY_DATE,
+                "오늘 친구와 카페에 갔다.",
+                CREATED_AT,
+                createGenerationResult()
+        );
+        when(diaryQueryService.getDetail(USER_ID, DIARY_ID)).thenReturn(result);
+        when(imageUrlProvider.createAccessUrl("generated/comic.png"))
+                .thenThrow(new ImageStorageException("이미지 URL 발급 실패"));
+
+        MockMvcResponse response = authenticatedRequest()
+                .get("/api/v1/diaries/{diaryId}", DIARY_ID);
+
+        assertThat(response.statusCode()).isEqualTo(503);
+        assertThat(response.jsonPath().getString("code")).isEqualTo("IMAGE_STORAGE_ERROR");
     }
 
     private io.restassured.module.mockmvc.specification.MockMvcRequestSpecification authenticatedRequest() {

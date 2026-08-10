@@ -21,6 +21,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -55,8 +56,7 @@ public class GlobalExceptionHandler {
             ConstraintViolationException.class,
             HttpMessageNotReadableException.class,
             MissingServletRequestParameterException.class,
-            MethodArgumentTypeMismatchException.class,
-            IllegalArgumentException.class
+            MethodArgumentTypeMismatchException.class
     })
     public ResponseEntity<ProblemDetail> handleValidation(
             Exception exception,
@@ -164,6 +164,13 @@ public class GlobalExceptionHandler {
             Exception exception,
             HttpServletRequest request
     ) {
+        if (exception instanceof ErrorResponse errorResponse) {
+            return new ResponseEntity<>(
+                    errorResponse.getBody(),
+                    errorResponse.getHeaders(),
+                    errorResponse.getStatusCode()
+            );
+        }
         LOGGER.error("예상하지 못한 API 오류가 발생했습니다.", exception);
         return createResponse(ErrorType.INTERNAL_SERVER_ERROR, request);
     }
