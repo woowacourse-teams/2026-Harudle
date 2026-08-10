@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.Optional;
 
 import com.harudle.generation.domain.ComicGeneration;
+import com.harudle.generation.domain.GenerationErrorCode;
 import com.harudle.generation.domain.GenerationPrompt;
 import com.harudle.generation.domain.Storyboard;
 import com.harudle.generation.repository.ComicGenerationRepository;
@@ -45,14 +46,22 @@ public class GenerateComicService {
         GenerationPrompt prompt = findLatestPrompt();
         ComicGeneration generation = startGeneration(command, prompt, requestFingerprint);
 
-        Storyboard storyboard = generateStoryboard(command, prompt);
-        ReferenceImage referenceImage = imageStorage.load(prompt.getImageAssetObjectKey());
-        GeneratedImage generatedImage = generateImage(storyboard, prompt, referenceImage);
-        String imageObjectKey = imageStorage.store(generatedImage);
+        try {
+            Storyboard storyboard = generateStoryboard(command, prompt);
+            ReferenceImage referenceImage = imageStorage.load(prompt.getImageAssetObjectKey());
+            GeneratedImage generatedImage = generateImage(storyboard, prompt, referenceImage);
+            String imageObjectKey = imageStorage.store(generatedImage);
 
-        generation.succeed(storyboard, imageObjectKey, Instant.now());
-        ComicGeneration completedGeneration = comicGenerationRepository.saveAndFlush(generation);
-        return createResult(completedGeneration, true);
+            generation.succeed(storyboard, imageObjectKey, Instant.now());
+            ComicGeneration completedGeneration = comicGenerationRepository.saveAndFlush(generation);
+            return createResult(completedGeneration, true);
+        } catch (AiGenerationException exception) {
+            failGeneration(generation, mapAiGenerationErrorCode(exception.getErrorType()));
+            throw exception;
+        } catch (ImageStorageException exception) {
+            failGeneration(generation, GenerationErrorCode.IMAGE_STORAGE_ERROR);
+            throw exception;
+        }
     }
 
     private ComicGenerationResult handleExistingGeneration(
@@ -117,5 +126,17 @@ public class GenerateComicService {
                 generation.getCompletedAt(),
                 newlyCreated
         );
+    }
+
+    private GenerationErrorCode mapAiGenerationErrorCode(AiGenerationErrorType errorType) {
+        return switch (errorType) {
+            case PROVIDER_ERROR -> GenerationErrorCode.AI_PROVIDER_ERROR;
+            case TIMEOUT -> GenerationErrorCode.AI_PROVIDER_TIMEOUT;
+        };
+    }
+
+    private void failGeneration(ComicGeneration generation, GenerationErrorCode errorCode) {
+        generation.fail(errorCode, Instant.now());
+        comicGenerationRepository.saveAndFlush(generation);
     }
 }

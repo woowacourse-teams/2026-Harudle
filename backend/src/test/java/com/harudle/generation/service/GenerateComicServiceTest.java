@@ -17,9 +17,14 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Stream;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.InOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ByteArrayResource;
@@ -121,6 +126,73 @@ class GenerateComicServiceTest {
         inOrder.verify(comicGenerationRepository).saveAndFlush(any(ComicGeneration.class));
     }
 
+    @ParameterizedTest
+    @MethodSource("aiGenerationErrorMappings")
+    @DisplayName("AI 생성에 실패하면 실패 상태와 오류 코드를 저장하고 예외를 다시 던진다")
+    void failGenerationWhenAiGenerationFails(
+            AiGenerationErrorType errorType,
+            GenerationErrorCode expectedErrorCode
+    ) {
+        GenerateComicCommand command = createCommand();
+        GenerationPrompt prompt = createPrompt();
+        AiGenerationException exception = new AiGenerationException(errorType, "AI 생성에 실패했습니다.");
+        AtomicInteger saveCount = new AtomicInteger();
+        AtomicReference<ComicGeneration> savedGeneration = new AtomicReference<>();
+
+        when(comicGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
+                .thenReturn(Optional.empty());
+        when(generationPromptRepository.findFirstByOrderByIdDesc()).thenReturn(Optional.of(prompt));
+        when(comicGenerationRepository.saveAndFlush(any(ComicGeneration.class)))
+                .thenAnswer(invocation -> {
+                    ComicGeneration generation = invocation.getArgument(0);
+                    saveCount.incrementAndGet();
+                    savedGeneration.set(generation);
+                    return generation;
+                });
+        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenThrow(exception);
+
+        assertThatThrownBy(() -> generateComicService.generate(command)).isSameAs(exception);
+        assertThat(saveCount).hasValue(2);
+        assertThat(savedGeneration.get().getStatus()).isEqualTo(GenerationStatus.FAILED);
+        assertThat(savedGeneration.get().getErrorCode()).isEqualTo(expectedErrorCode);
+        assertThat(savedGeneration.get().getCompletedAt()).isBeforeOrEqualTo(Instant.now());
+        verifyNoInteractions(comicImageGenerator, imageStorage);
+    }
+
+    @Test
+    @DisplayName("이미지 저장에 실패하면 실패 상태와 오류 코드를 저장하고 예외를 다시 던진다")
+    void failGenerationWhenImageStorageFails() {
+        GenerateComicCommand command = createCommand();
+        GenerationPrompt prompt = createPrompt();
+        Storyboard storyboard = createStoryboard();
+        ReferenceImage referenceImage = createReferenceImage();
+        GeneratedImage generatedImage = createGeneratedImage();
+        ImageStorageException exception = new ImageStorageException("이미지 저장에 실패했습니다.");
+        AtomicInteger saveCount = new AtomicInteger();
+        AtomicReference<ComicGeneration> savedGeneration = new AtomicReference<>();
+
+        when(comicGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
+                .thenReturn(Optional.empty());
+        when(generationPromptRepository.findFirstByOrderByIdDesc()).thenReturn(Optional.of(prompt));
+        when(comicGenerationRepository.saveAndFlush(any(ComicGeneration.class)))
+                .thenAnswer(invocation -> {
+                    ComicGeneration generation = invocation.getArgument(0);
+                    saveCount.incrementAndGet();
+                    savedGeneration.set(generation);
+                    return generation;
+                });
+        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenReturn(storyboard);
+        when(imageStorage.load(prompt.getImageAssetObjectKey())).thenReturn(referenceImage);
+        when(comicImageGenerator.generate(any(ComicImageGenerationRequest.class))).thenReturn(generatedImage);
+        when(imageStorage.store(generatedImage)).thenThrow(exception);
+
+        assertThatThrownBy(() -> generateComicService.generate(command)).isSameAs(exception);
+        assertThat(saveCount).hasValue(2);
+        assertThat(savedGeneration.get().getStatus()).isEqualTo(GenerationStatus.FAILED);
+        assertThat(savedGeneration.get().getErrorCode()).isEqualTo(GenerationErrorCode.IMAGE_STORAGE_ERROR);
+        assertThat(savedGeneration.get().getCompletedAt()).isBeforeOrEqualTo(Instant.now());
+    }
+
     @Test
     @DisplayName("동일한 요청이 이미 성공했다면 저장된 결과를 반환한다")
     void returnExistingSuccessfulGeneration() {
@@ -203,6 +275,13 @@ class GenerateComicServiceTest {
                 LocalDate.of(2026, 8, 10),
                 "오늘 친구와 카페에 갔다.",
                 UUID.randomUUID()
+        );
+    }
+
+    private static Stream<Arguments> aiGenerationErrorMappings() {
+        return Stream.of(
+                Arguments.of(AiGenerationErrorType.PROVIDER_ERROR, GenerationErrorCode.AI_PROVIDER_ERROR),
+                Arguments.of(AiGenerationErrorType.TIMEOUT, GenerationErrorCode.AI_PROVIDER_TIMEOUT)
         );
     }
 
