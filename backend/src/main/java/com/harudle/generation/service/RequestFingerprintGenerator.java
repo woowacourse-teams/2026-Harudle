@@ -1,5 +1,6 @@
 package com.harudle.generation.service;
 
+import com.harudle.generation.service.dto.GenerateComicCommand;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;

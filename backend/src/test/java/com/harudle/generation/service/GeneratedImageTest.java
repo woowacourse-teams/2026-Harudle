@@ -3,6 +3,7 @@ package com.harudle.generation.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.harudle.generation.service.port.GeneratedImage;
 import java.nio.charset.StandardCharsets;
 
 import org.junit.jupiter.api.DisplayName;

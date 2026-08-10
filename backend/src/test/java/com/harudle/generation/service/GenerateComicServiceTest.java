@@ -10,6 +10,21 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
+import com.harudle.generation.service.dto.ComicGenerationResult;
+import com.harudle.generation.service.dto.GenerateComicCommand;
+import com.harudle.generation.service.exception.AiGenerationErrorType;
+import com.harudle.generation.service.exception.AiGenerationException;
+import com.harudle.generation.service.exception.ComicGenerationFailedException;
+import com.harudle.generation.service.exception.GenerationInProgressException;
+import com.harudle.generation.service.exception.IdempotencyKeyConflictException;
+import com.harudle.generation.service.port.ComicImageGenerationRequest;
+import com.harudle.generation.service.port.ComicImageGenerator;
+import com.harudle.generation.service.port.GeneratedImage;
+import com.harudle.generation.service.port.ImageStorage;
+import com.harudle.generation.service.port.ImageStorageException;
+import com.harudle.generation.service.port.ReferenceImage;
+import com.harudle.generation.service.port.StoryboardGenerationRequest;
+import com.harudle.generation.service.port.StoryboardGenerator;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -394,8 +409,4 @@ class GenerateComicServiceTest {
         verifyNoInteractions(
                 generationPromptRepository,
                 storyboardGenerator,
-                comicImageGenerator,
-                imageStorage
-        );
-    }
-}
+              

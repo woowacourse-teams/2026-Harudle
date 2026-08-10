@@ -1,4 +1,4 @@
-package com.harudle.generation.service;
+package com.harudle.generation.service.dto;
 
 import java.time.LocalDate;
 import java.util.UUID;

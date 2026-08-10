@@ -3,6 +3,8 @@ package com.harudle.generation.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.harudle.generation.service.port.ComicImageGenerationRequest;
+import com.harudle.generation.service.port.ReferenceImage;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 

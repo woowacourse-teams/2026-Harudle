@@ -3,6 +3,7 @@ package com.harudle.generation.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.harudle.generation.service.dto.GenerateComicCommand;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
