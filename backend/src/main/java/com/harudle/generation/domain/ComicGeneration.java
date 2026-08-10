@@ -6,7 +6,7 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -19,8 +19,10 @@ import org.hibernate.type.SqlTypes;
 @Table(name = "comic_generations")
 public class ComicGeneration {
 
-    private static final int MAX_IMAGE_OBJECT_KEY_BYTES = 1024;
-    private static final Pattern REQUEST_FINGERPRINT_PATTERN = Pattern.compile("^[0-9a-f]{64}$");
+    private static final int REQUEST_FINGERPRINT_HEX_LENGTH = 64;
+    private static final Pattern REQUEST_FINGERPRINT_PATTERN = Pattern.compile(
+            "^[0-9a-f]{" + REQUEST_FINGERPRINT_HEX_LENGTH + "}$"
+    );
 
     @Id
     private UUID id;
@@ -35,7 +37,7 @@ public class ComicGeneration {
     private UUID idempotencyKey;
 
     @JdbcTypeCode(SqlTypes.CHAR)
-    @Column(name = "request_fingerprint", nullable = false, length = 64)
+    @Column(name = "request_fingerprint", nullable = false, length = REQUEST_FINGERPRINT_HEX_LENGTH)
     private String requestFingerprint;
 
     @Enumerated(EnumType.STRING)
@@ -46,10 +48,10 @@ public class ComicGeneration {
     @Column(name = "storyboard", columnDefinition = "jsonb")
     private Storyboard storyboard;
 
-    @Column(name = "title", length = 100)
+    @Column(name = "title", length = Storyboard.MAX_TITLE_LENGTH)
     private String title;
 
-    @Column(name = "image_object_key", length = 1024)
+    @Column(name = "image_object_key", length = ImageObjectKeyPolicy.MAX_UTF8_BYTES)
     private String imageObjectKey;
 
     @Enumerated(EnumType.STRING)
@@ -117,20 +119,8 @@ public class ComicGeneration {
         return generationPromptId;
     }
 
-    public UUID getIdempotencyKey() {
-        return idempotencyKey;
-    }
-
-    public String getRequestFingerprint() {
-        return requestFingerprint;
-    }
-
     public GenerationStatus getStatus() {
         return status;
-    }
-
-    public Storyboard getStoryboard() {
-        return storyboard;
     }
 
     public String getTitle() {
@@ -145,16 +135,25 @@ public class ComicGeneration {
         return errorCode;
     }
 
-    public Instant getCreatedAt() {
-        return createdAt;
-    }
-
-    public Instant getUpdatedAt() {
-        return updatedAt;
-    }
-
     public Instant getCompletedAt() {
         return completedAt;
+    }
+
+    public boolean hasSameRequestFingerprint(String requestFingerprint) {
+        return this.requestFingerprint.equals(normalizeRequestFingerprint(requestFingerprint));
+    }
+
+    public boolean matchesExecutableClaim(
+            UUID diaryId,
+            UUID idempotencyKey,
+            String requestFingerprint
+    ) {
+        validateDiaryId(diaryId);
+        validateIdempotencyKey(idempotencyKey);
+        return this.diaryId.equals(diaryId)
+                && this.idempotencyKey.equals(idempotencyKey)
+                && hasSameRequestFingerprint(requestFingerprint)
+                && status == GenerationStatus.PROCESSING;
     }
 
     public void succeed(Storyboard storyboard, String imageObjectKey, Instant completedAt) {
@@ -185,14 +184,24 @@ public class ComicGeneration {
         fail(GenerationErrorCode.GENERATION_INTERRUPTED, completedAt);
     }
 
+    public void interruptIfStale(Instant currentTime, Duration processingTimeout) {
+        validateCurrentTime(currentTime);
+        validateProcessingTimeout(processingTimeout);
+        if (status != GenerationStatus.PROCESSING || updatedAt == null) {
+            return;
+        }
+        if (updatedAt.isBefore(currentTime.minus(processingTimeout))) {
+            interrupt(currentTime);
+        }
+    }
+
     private static String normalizeRequestFingerprint(String requestFingerprint) {
         validateRequestFingerprint(requestFingerprint);
         return requestFingerprint.strip();
     }
 
     private static String normalizeImageObjectKey(String imageObjectKey) {
-        validateImageObjectKey(imageObjectKey);
-        return imageObjectKey.strip();
+        return ImageObjectKeyPolicy.normalizeRequired(imageObjectKey, "이미지 Object Key");
     }
 
     private static void validateId(UUID id) {
@@ -222,7 +231,9 @@ public class ComicGeneration {
     private static void validateRequestFingerprint(String requestFingerprint) {
         if (requestFingerprint == null
                 || !REQUEST_FINGERPRINT_PATTERN.matcher(requestFingerprint.strip()).matches()) {
-            throw new IllegalArgumentException("요청 지문은 소문자 SHA-256 64자리여야 합니다.");
+            String message = "요청 지문은 소문자 SHA-256 %d자리여야 합니다."
+                    .formatted(REQUEST_FINGERPRINT_HEX_LENGTH);
+            throw new IllegalArgumentException(message);
         }
     }
 
@@ -238,16 +249,6 @@ public class ComicGeneration {
         }
     }
 
-    private static void validateImageObjectKey(String imageObjectKey) {
-        if (imageObjectKey == null || imageObjectKey.isBlank()) {
-            throw new IllegalArgumentException("이미지 Object Key는 필수입니다.");
-        }
-        int byteLength = imageObjectKey.strip().getBytes(StandardCharsets.UTF_8).length;
-        if (byteLength > MAX_IMAGE_OBJECT_KEY_BYTES) {
-            throw new IllegalArgumentException("이미지 Object Key는 UTF-8 기준 1,024바이트 이하여야 합니다.");
-        }
-    }
-
     private static void validateErrorCode(GenerationErrorCode errorCode) {
         if (errorCode == null) {
             throw new IllegalArgumentException("생성 오류 코드는 필수입니다.");
@@ -257,6 +258,18 @@ public class ComicGeneration {
     private static void validateCompletedAt(Instant completedAt) {
         if (completedAt == null) {
             throw new IllegalArgumentException("완료 시각은 필수입니다.");
+        }
+    }
+
+    private static void validateCurrentTime(Instant currentTime) {
+        if (currentTime == null) {
+            throw new IllegalArgumentException("현재 시각은 필수입니다.");
+        }
+    }
+
+    private static void validateProcessingTimeout(Duration processingTimeout) {
+        if (processingTimeout == null || processingTimeout.isZero() || processingTimeout.isNegative()) {
+            throw new IllegalArgumentException("생성 처리 제한 시간은 양수여야 합니다.");
         }
     }
 }

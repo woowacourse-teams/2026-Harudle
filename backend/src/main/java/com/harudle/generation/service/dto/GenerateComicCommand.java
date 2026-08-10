@@ -1,5 +1,6 @@
 package com.harudle.generation.service.dto;
 
+import com.harudle.common.validation.TextValidator;
 import java.time.LocalDate;
 import java.util.UUID;
 
@@ -15,13 +16,8 @@ public record GenerateComicCommand(
         validateUserId(userId);
         validateDiaryId(diaryId);
         validateDiaryDate(diaryDate);
-        diaryText = normalizeDiaryText(diaryText);
+        diaryText = TextValidator.normalizeRequired(diaryText, "일기 내용은 필수입니다.");
         validateIdempotencyKey(idempotencyKey);
-    }
-
-    private static String normalizeDiaryText(String diaryText) {
-        validateDiaryText(diaryText);
-        return diaryText.strip();
     }
 
     private static void validateUserId(UUID userId) {
@@ -39,12 +35,6 @@ public record GenerateComicCommand(
     private static void validateDiaryDate(LocalDate diaryDate) {
         if (diaryDate == null) {
             throw new IllegalArgumentException("일기 날짜는 필수입니다.");
-        }
-    }
-
-    private static void validateDiaryText(String diaryText) {
-        if (diaryText == null || diaryText.isBlank()) {
-            throw new IllegalArgumentException("일기 내용은 필수입니다.");
         }
     }
 
