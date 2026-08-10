@@ -22,6 +22,10 @@ Java 21과 Spring Boot 4.1.0 기반의 하루들 백엔드 애플리케이션입
 
 Gradle은 별도로 설치할 필요가 없습니다. 저장소에 포함된 Gradle Wrapper를 사용합니다.
 
+## 문서
+
+- [API 명세](docs/api-spec.md)
+
 ## 로컬 실행
 
 PostgreSQL을 먼저 실행합니다.
