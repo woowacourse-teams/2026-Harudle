@@ -3,6 +3,8 @@ package com.harudle.generation.service;
 import java.time.Instant;
 import java.util.Optional;
 
+import org.springframework.dao.DataIntegrityViolationException;
+
 import com.harudle.generation.domain.ComicGeneration;
 import com.harudle.generation.domain.GenerationErrorCode;
 import com.harudle.generation.domain.GenerationPrompt;
@@ -44,7 +46,12 @@ public class GenerateComicService {
         }
 
         GenerationPrompt prompt = findLatestPrompt();
-        ComicGeneration generation = startGeneration(command, prompt, requestFingerprint);
+        ComicGeneration generation;
+        try {
+            generation = startGeneration(command, prompt, requestFingerprint);
+        } catch (DataIntegrityViolationException exception) {
+            return handleConcurrentGeneration(command, requestFingerprint, exception);
+        }
 
         try {
             Storyboard storyboard = generateStoryboard(command, prompt);
@@ -62,6 +69,17 @@ public class GenerateComicService {
             failGeneration(generation, GenerationErrorCode.IMAGE_STORAGE_ERROR);
             throw exception;
         }
+    }
+
+    private ComicGenerationResult handleConcurrentGeneration(
+            GenerateComicCommand command,
+            String requestFingerprint,
+            DataIntegrityViolationException exception
+    ) {
+        ComicGeneration generation = comicGenerationRepository
+                .findByIdempotencyKey(command.idempotencyKey())
+                .orElseThrow(() -> exception);
+        return handleExistingGeneration(generation, requestFingerprint);
     }
 
     private ComicGenerationResult handleExistingGeneration(

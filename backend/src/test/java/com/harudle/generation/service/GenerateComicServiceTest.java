@@ -28,6 +28,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.InOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ByteArrayResource;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
@@ -124,6 +125,47 @@ class GenerateComicServiceTest {
         ));
         inOrder.verify(imageStorage).store(generatedImage);
         inOrder.verify(comicGenerationRepository).saveAndFlush(any(ComicGeneration.class));
+    }
+
+    @Test
+    @DisplayName("동일한 요청을 다른 작업이 먼저 선점했다면 기존 처리 상태를 반환한다")
+    void handleGenerationClaimedByConcurrentRequest() {
+        GenerateComicCommand command = createCommand();
+        GenerationPrompt prompt = createPrompt();
+        ComicGeneration concurrentGeneration = createGeneration(command);
+        DataIntegrityViolationException exception = new DataIntegrityViolationException("중복 멱등성 키");
+
+        when(comicGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(concurrentGeneration));
+        when(generationPromptRepository.findFirstByOrderByIdDesc()).thenReturn(Optional.of(prompt));
+        when(comicGenerationRepository.saveAndFlush(any(ComicGeneration.class))).thenThrow(exception);
+
+        assertThatThrownBy(() -> generateComicService.generate(command))
+                .isInstanceOf(GenerationInProgressException.class);
+        verifyNoInteractions(storyboardGenerator, comicImageGenerator, imageStorage);
+
+        InOrder inOrder = inOrder(comicGenerationRepository, generationPromptRepository);
+        inOrder.verify(comicGenerationRepository).findByIdempotencyKey(command.idempotencyKey());
+        inOrder.verify(generationPromptRepository).findFirstByOrderByIdDesc();
+        inOrder.verify(comicGenerationRepository).saveAndFlush(any(ComicGeneration.class));
+        inOrder.verify(comicGenerationRepository).findByIdempotencyKey(command.idempotencyKey());
+    }
+
+    @Test
+    @DisplayName("멱등성 키 중복이 아닌 무결성 예외는 그대로 전달한다")
+    void propagateUnrelatedIntegrityViolation() {
+        GenerateComicCommand command = createCommand();
+        GenerationPrompt prompt = createPrompt();
+        DataIntegrityViolationException exception = new DataIntegrityViolationException("다른 제약 조건 위반");
+
+        when(comicGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
+                .thenReturn(Optional.empty());
+        when(generationPromptRepository.findFirstByOrderByIdDesc()).thenReturn(Optional.of(prompt));
+        when(comicGenerationRepository.saveAndFlush(any(ComicGeneration.class))).thenThrow(exception);
+
+        assertThatThrownBy(() -> generateComicService.generate(command)).isSameAs(exception);
+        verifyNoInteractions(storyboardGenerator, comicImageGenerator, imageStorage);
     }
 
     @ParameterizedTest
