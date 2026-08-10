@@ -89,16 +89,16 @@ CREATE TABLE daily_generation_usage (
 
 CREATE TABLE generation_prompts (
     id BIGINT GENERATED ALWAYS AS IDENTITY,
-    prompt_text TEXT NOT NULL,
-    image_asset_object_key VARCHAR(1024),
+    storyboard_prompt_text TEXT NOT NULL,
+    image_style_prompt_text TEXT NOT NULL,
+    image_asset_object_key VARCHAR(1024) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT pk_generation_prompts PRIMARY KEY (id),
     CONSTRAINT ck_generation_prompts_image_asset_key_length
         CHECK (
-            image_asset_object_key IS NULL
-            OR octet_length(image_asset_object_key) <= 1024
+            octet_length(image_asset_object_key) <= 1024
         )
 );
 
