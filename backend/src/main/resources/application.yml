@@ -1,0 +1,16 @@
+spring:
+  application:
+    name: harudle
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:harudle}
+    username: ${DB_USERNAME:harudle}
+    password: ${DB_PASSWORD:harudle}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          time_zone: UTC
