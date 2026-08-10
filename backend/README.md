@@ -8,6 +8,7 @@ Java 21과 Spring Boot 4.1.0 기반의 하루들 백엔드 애플리케이션입
 - Spring Boot 4.1.0
 - Spring Web MVC
 - Spring Data JPA
+- Flyway
 - Spring Security
 - Spring Security OAuth2 Client & Resource Server
 - PostgreSQL 18
