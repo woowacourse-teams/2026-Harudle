@@ -43,7 +43,7 @@ fix/reservation-time-validation
 
 ## 커밋 컨벤션
 
-[Conventional Commits 1.0.0-beta.4](https://www.conventionalcommits.org/en/v1.0.0-beta.4/)와 [AngularJS Git Commit Guidelines](https://github.com/angular/angular.js/blob/master/DEVELOPERS.md#git-commit-guidelines)를 따른다. AngularJS 원문에서는 `scope`가 선택 사항이지만, 하루들에서는 `BE`, `FE`, `AI` 중 하나를 반드시 사용한다.
+[Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)과 [AngularJS Git Commit Guidelines](https://github.com/angular/angular.js/blob/master/DEVELOPERS.md#git-commit-guidelines)를 따른다. AngularJS 원문에서는 `scope`가 선택 사항이지만, 하루들에서는 `BE`, `FE`, `AI` 중 하나를 반드시 사용한다.
 
 ### 커밋 메시지 형식
 
