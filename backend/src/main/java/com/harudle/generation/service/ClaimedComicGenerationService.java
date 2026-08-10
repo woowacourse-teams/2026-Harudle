@@ -11,6 +11,7 @@ import com.harudle.generation.service.dto.ComicGenerationResult;
 import com.harudle.generation.service.dto.GenerateComicCommand;
 import com.harudle.generation.service.exception.AiGenerationErrorType;
 import com.harudle.generation.service.exception.AiGenerationException;
+import com.harudle.generation.service.exception.ComicGenerationFailedException;
 import com.harudle.generation.service.exception.GenerationUnavailableException;
 import com.harudle.generation.service.port.ComicImageGenerationRequest;
 import com.harudle.generation.service.port.ComicImageGenerator;
@@ -22,50 +23,94 @@ import com.harudle.generation.service.port.StoryboardGenerationRequest;
 import com.harudle.generation.service.port.StoryboardGenerator;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 
 public class ClaimedComicGenerationService {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(ClaimedComicGenerationService.class);
     private static final int MAX_IMAGE_OBJECT_KEY_BYTES = 1024;
 
     private final RequestFingerprintGenerator requestFingerprintGenerator;
     private final GenerationPromptRepository generationPromptRepository;
     private final ComicGenerationRepository comicGenerationRepository;
-    private final StoryboardGenerator storyboardGenerator;
-    private final ComicImageGenerator comicImageGenerator;
-    private final ImageStorage imageStorage;
+    private final ObjectProvider<StoryboardGenerator> storyboardGeneratorProvider;
+    private final ObjectProvider<ComicImageGenerator> comicImageGeneratorProvider;
+    private final ObjectProvider<ImageStorage> imageStorageProvider;
     private final ComicGenerationCompletionService completionService;
 
     public ClaimedComicGenerationService(
             RequestFingerprintGenerator requestFingerprintGenerator,
             GenerationPromptRepository generationPromptRepository,
             ComicGenerationRepository comicGenerationRepository,
-            StoryboardGenerator storyboardGenerator,
-            ComicImageGenerator comicImageGenerator,
-            ImageStorage imageStorage,
+            ObjectProvider<StoryboardGenerator> storyboardGeneratorProvider,
+            ObjectProvider<ComicImageGenerator> comicImageGeneratorProvider,
+            ObjectProvider<ImageStorage> imageStorageProvider,
             ComicGenerationCompletionService completionService
     ) {
         this.requestFingerprintGenerator = requestFingerprintGenerator;
         this.generationPromptRepository = generationPromptRepository;
         this.comicGenerationRepository = comicGenerationRepository;
-        this.storyboardGenerator = storyboardGenerator;
-        this.comicImageGenerator = comicImageGenerator;
-        this.imageStorage = imageStorage;
+        this.storyboardGeneratorProvider = storyboardGeneratorProvider;
+        this.comicImageGeneratorProvider = comicImageGeneratorProvider;
+        this.imageStorageProvider = imageStorageProvider;
         this.completionService = completionService;
     }
 
+    public boolean isAvailable() {
+        return findAdapters() != null;
+    }
+
     public ComicGenerationResult generate(GenerateComicCommand command, UUID generationId) {
+        GenerationAdapters adapters = requireAdapters();
         ComicGeneration generation = findClaimedGeneration(command, generationId);
         GenerationPrompt prompt = generationPromptRepository.findById(generation.getGenerationPromptId())
                 .orElseThrow(() -> new GenerationUnavailableException(
                         "사용할 생성 프롬프트가 없습니다."
-                ));
-        GeneratedComic generatedComic = executeExternalGeneration(command, prompt, generationId);
-        ComicGeneration completedGeneration = completionService.succeed(
+        ));
+        GeneratedComic generatedComic = executeExternalGeneration(command, prompt, generationId, adapters);
+        ComicGeneration completedGeneration = completeGeneration(
                 generationId,
-                generatedComic.storyboard(),
-                generatedComic.imageObjectKey()
+                generatedComic,
+                adapters.imageStorage()
         );
         return createResult(completedGeneration);
+    }
+
+    private ComicGeneration completeGeneration(
+            UUID generationId,
+            GeneratedComic generatedComic,
+            ImageStorage imageStorage
+    ) {
+        try {
+            return completionService.succeed(
+                    generationId,
+                    generatedComic.storyboard(),
+                    generatedComic.imageObjectKey()
+            );
+        } catch (RuntimeException exception) {
+            deleteDiscardedImage(imageStorage, generatedComic.imageObjectKey());
+            throw exception;
+        }
+    }
+
+    private GenerationAdapters requireAdapters() {
+        GenerationAdapters adapters = findAdapters();
+        if (adapters == null) {
+            throw new GenerationUnavailableException("AI 생성 어댑터가 구성되지 않았습니다.");
+        }
+        return adapters;
+    }
+
+    private GenerationAdapters findAdapters() {
+        StoryboardGenerator storyboardGenerator = storyboardGeneratorProvider.getIfUnique();
+        ComicImageGenerator comicImageGenerator = comicImageGeneratorProvider.getIfUnique();
+        ImageStorage imageStorage = imageStorageProvider.getIfUnique();
+        if (storyboardGenerator == null || comicImageGenerator == null || imageStorage == null) {
+            return null;
+        }
+        return new GenerationAdapters(storyboardGenerator, comicImageGenerator, imageStorage);
     }
 
     private ComicGeneration findClaimedGeneration(GenerateComicCommand command, UUID generationId) {
@@ -91,33 +136,65 @@ public class ClaimedComicGenerationService {
     private GeneratedComic executeExternalGeneration(
             GenerateComicCommand command,
             GenerationPrompt prompt,
-            UUID generationId
+            UUID generationId,
+            GenerationAdapters adapters
     ) {
         try {
-            Storyboard storyboard = storyboardGenerator.generate(new StoryboardGenerationRequest(
+            Storyboard storyboard = adapters.storyboardGenerator().generate(new StoryboardGenerationRequest(
                     command.diaryText(),
                     prompt.getStoryboardPromptText()
             ));
-            ReferenceImage referenceImage = imageStorage.load(prompt.getImageAssetObjectKey());
-            GeneratedImage generatedImage = comicImageGenerator.generate(new ComicImageGenerationRequest(
+            ReferenceImage referenceImage = adapters.imageStorage().load(prompt.getImageAssetObjectKey());
+            GeneratedImage generatedImage = adapters.comicImageGenerator().generate(new ComicImageGenerationRequest(
                     storyboard,
                     prompt.getImageStylePromptText(),
                     referenceImage
             ));
-            String imageObjectKey = imageStorage.store(generatedImage);
-            validateImageObjectKey(imageObjectKey);
-            return new GeneratedComic(storyboard, imageObjectKey.strip());
+            String imageObjectKey = storeImage(adapters.imageStorage(), generatedImage);
+            return new GeneratedComic(storyboard, imageObjectKey);
         } catch (AiGenerationException exception) {
-            completionService.fail(generationId, mapAiGenerationErrorCode(exception.getErrorType()));
+            failGeneration(generationId, mapAiGenerationErrorCode(exception.getErrorType()));
             throw exception;
         } catch (ImageStorageException exception) {
-            completionService.fail(generationId, GenerationErrorCode.IMAGE_STORAGE_ERROR);
+            failGeneration(generationId, GenerationErrorCode.IMAGE_STORAGE_ERROR);
             throw exception;
         } catch (RuntimeException exception) {
-            completionService.fail(generationId, GenerationErrorCode.AI_PROVIDER_ERROR);
+            failGeneration(generationId, GenerationErrorCode.AI_PROVIDER_ERROR);
             throw new AiGenerationException(
                     AiGenerationErrorType.PROVIDER_ERROR,
                     "AI 생성 결과를 처리하지 못했습니다.",
+                    exception
+            );
+        }
+    }
+
+    private String storeImage(ImageStorage imageStorage, GeneratedImage generatedImage) {
+        String imageObjectKey = imageStorage.store(generatedImage);
+        try {
+            validateImageObjectKey(imageObjectKey);
+            return imageObjectKey.strip();
+        } catch (ImageStorageException exception) {
+            if (imageObjectKey != null && !imageObjectKey.isBlank()) {
+                deleteDiscardedImage(imageStorage, imageObjectKey);
+            }
+            throw exception;
+        }
+    }
+
+    private void failGeneration(UUID generationId, GenerationErrorCode requestedErrorCode) {
+        GenerationErrorCode effectiveErrorCode = completionService.fail(generationId, requestedErrorCode);
+        if (effectiveErrorCode != requestedErrorCode) {
+            throw new ComicGenerationFailedException(effectiveErrorCode);
+        }
+    }
+
+    private void deleteDiscardedImage(ImageStorage imageStorage, String imageObjectKey) {
+        try {
+            imageStorage.delete(imageObjectKey);
+        } catch (RuntimeException exception) {
+            LOGGER.warn(
+                    "완료되지 못한 생성 이미지 삭제에 실패했습니다. objectKey={}",
+                    imageObjectKey,
                     exception
             );
         }
@@ -157,5 +234,12 @@ public class ClaimedComicGenerationService {
     }
 
     private record GeneratedComic(Storyboard storyboard, String imageObjectKey) {
+    }
+
+    private record GenerationAdapters(
+            StoryboardGenerator storyboardGenerator,
+            ComicImageGenerator comicImageGenerator,
+            ImageStorage imageStorage
+    ) {
     }
 }

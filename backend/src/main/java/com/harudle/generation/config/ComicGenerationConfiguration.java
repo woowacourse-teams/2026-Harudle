@@ -8,7 +8,7 @@ import com.harudle.generation.service.RequestFingerprintGenerator;
 import com.harudle.generation.service.port.ComicImageGenerator;
 import com.harudle.generation.service.port.ImageStorage;
 import com.harudle.generation.service.port.StoryboardGenerator;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -16,23 +16,22 @@ import org.springframework.context.annotation.Configuration;
 public class ComicGenerationConfiguration {
 
     @Bean
-    @ConditionalOnBean({StoryboardGenerator.class, ComicImageGenerator.class, ImageStorage.class})
     ClaimedComicGenerationService claimedComicGenerationService(
             RequestFingerprintGenerator requestFingerprintGenerator,
             GenerationPromptRepository generationPromptRepository,
             ComicGenerationRepository comicGenerationRepository,
-            StoryboardGenerator storyboardGenerator,
-            ComicImageGenerator comicImageGenerator,
-            ImageStorage imageStorage,
+            ObjectProvider<StoryboardGenerator> storyboardGeneratorProvider,
+            ObjectProvider<ComicImageGenerator> comicImageGeneratorProvider,
+            ObjectProvider<ImageStorage> imageStorageProvider,
             ComicGenerationCompletionService completionService
     ) {
         return new ClaimedComicGenerationService(
                 requestFingerprintGenerator,
                 generationPromptRepository,
                 comicGenerationRepository,
-                storyboardGenerator,
-                comicImageGenerator,
-                imageStorage,
+                storyboardGeneratorProvider,
+                comicImageGeneratorProvider,
+                imageStorageProvider,
                 completionService
         );
     }

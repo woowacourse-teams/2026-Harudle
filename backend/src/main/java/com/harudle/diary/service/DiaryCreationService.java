@@ -10,7 +10,6 @@ import com.harudle.generation.service.dto.ComicGenerationResult;
 import com.harudle.generation.service.dto.GenerateComicCommand;
 import com.harudle.generation.service.exception.ComicGenerationFailedException;
 import com.harudle.generation.service.exception.GenerationInProgressException;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
@@ -18,23 +17,22 @@ import org.springframework.stereotype.Service;
 public class DiaryCreationService {
 
     private final DiaryCreationTransactionService transactionService;
-    private final ObjectProvider<ClaimedComicGenerationService> generationServiceProvider;
+    private final ClaimedComicGenerationService generationService;
 
     public DiaryCreationService(
             DiaryCreationTransactionService transactionService,
-            ObjectProvider<ClaimedComicGenerationService> generationServiceProvider
+            ClaimedComicGenerationService generationService
     ) {
         this.transactionService = transactionService;
-        this.generationServiceProvider = generationServiceProvider;
+        this.generationService = generationService;
     }
 
     public CreateDiaryResult create(CreateDiaryCommand command) {
-        ClaimedComicGenerationService generationService = generationServiceProvider.getIfAvailable();
-        DiaryCreationClaim claim = claim(command, generationService != null);
+        DiaryCreationClaim claim = claim(command, generationService.isAvailable());
         if (!claim.newlyCreated()) {
             return handleExistingClaim(claim);
         }
-        ComicGenerationResult generationResult = requireGenerationService(generationService).generate(
+        ComicGenerationResult generationResult = generationService.generate(
                 createGenerationCommand(command, claim),
                 claim.generationId()
         );
@@ -78,15 +76,6 @@ public class DiaryCreationService {
                 false
         );
         return createResult(claim, generationResult, false);
-    }
-
-    private ClaimedComicGenerationService requireGenerationService(
-            ClaimedComicGenerationService generationService
-    ) {
-        if (generationService == null) {
-            throw new IllegalStateException("신규 생성 선점 후 AI 생성 서비스를 찾을 수 없습니다.");
-        }
-        return generationService;
     }
 
     private GenerateComicCommand createGenerationCommand(

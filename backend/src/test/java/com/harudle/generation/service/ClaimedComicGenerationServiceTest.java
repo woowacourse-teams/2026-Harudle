@@ -19,10 +19,12 @@ import com.harudle.generation.service.dto.ComicGenerationResult;
 import com.harudle.generation.service.dto.GenerateComicCommand;
 import com.harudle.generation.service.exception.AiGenerationErrorType;
 import com.harudle.generation.service.exception.AiGenerationException;
+import com.harudle.generation.service.exception.ComicGenerationFailedException;
 import com.harudle.generation.service.port.ComicImageGenerationRequest;
 import com.harudle.generation.service.port.ComicImageGenerator;
 import com.harudle.generation.service.port.GeneratedImage;
 import com.harudle.generation.service.port.ImageStorage;
+import com.harudle.generation.service.port.ImageStorageException;
 import com.harudle.generation.service.port.ReferenceImage;
 import com.harudle.generation.service.port.StoryboardGenerationRequest;
 import com.harudle.generation.service.port.StoryboardGenerator;
@@ -38,6 +40,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
 
@@ -58,10 +61,19 @@ class ClaimedComicGenerationServiceTest {
     private StoryboardGenerator storyboardGenerator;
 
     @Mock
+    private ObjectProvider<StoryboardGenerator> storyboardGeneratorProvider;
+
+    @Mock
     private ComicImageGenerator comicImageGenerator;
 
     @Mock
+    private ObjectProvider<ComicImageGenerator> comicImageGeneratorProvider;
+
+    @Mock
     private ImageStorage imageStorage;
+
+    @Mock
+    private ObjectProvider<ImageStorage> imageStorageProvider;
 
     @Mock
     private ComicGenerationCompletionService completionService;
@@ -76,11 +88,14 @@ class ClaimedComicGenerationServiceTest {
                 requestFingerprintGenerator,
                 generationPromptRepository,
                 comicGenerationRepository,
-                storyboardGenerator,
-                comicImageGenerator,
-                imageStorage,
+                storyboardGeneratorProvider,
+                comicImageGeneratorProvider,
+                imageStorageProvider,
                 completionService
         );
+        when(storyboardGeneratorProvider.getIfUnique()).thenReturn(storyboardGenerator);
+        when(comicImageGeneratorProvider.getIfUnique()).thenReturn(comicImageGenerator);
+        when(imageStorageProvider.getIfUnique()).thenReturn(imageStorage);
     }
 
     @Test
@@ -124,10 +139,87 @@ class ClaimedComicGenerationServiceTest {
         when(comicGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
         when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
         when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenThrow(exception);
+        when(completionService.fail(generation.getId(), GenerationErrorCode.AI_PROVIDER_TIMEOUT))
+                .thenReturn(GenerationErrorCode.AI_PROVIDER_TIMEOUT);
 
         assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
                 .isSameAs(exception);
         verify(completionService).fail(generation.getId(), GenerationErrorCode.AI_PROVIDER_TIMEOUT);
+    }
+
+    @Test
+    @DisplayName("오래된 생성 복구와 AI 실패가 경합하면 저장된 오류를 반환한다")
+    void generateClaimedComicKeepsInterruptedError() {
+        GenerateComicCommand command = createCommand();
+        ComicGeneration generation = createGeneration(command);
+        GenerationPrompt prompt = mock(GenerationPrompt.class);
+        AiGenerationException exception = new AiGenerationException(
+                AiGenerationErrorType.TIMEOUT,
+                "AI 공급자 응답 시간이 초과되었습니다."
+        );
+        when(prompt.getStoryboardPromptText()).thenReturn("스토리보드 프롬프트");
+        when(comicGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenThrow(exception);
+        when(completionService.fail(generation.getId(), GenerationErrorCode.AI_PROVIDER_TIMEOUT))
+                .thenReturn(GenerationErrorCode.GENERATION_INTERRUPTED);
+
+        assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
+                .isInstanceOfSatisfying(
+                        ComicGenerationFailedException.class,
+                        failure -> assertThat(failure.getErrorCode())
+                                .isEqualTo(GenerationErrorCode.GENERATION_INTERRUPTED)
+                );
+    }
+
+    @Test
+    @DisplayName("오래된 생성 복구와 완료가 경합하면 저장 이미지를 삭제한다")
+    void generateClaimedComicDeletesImageAfterInterruptedCompletion() {
+        GenerateComicCommand command = createCommand();
+        ComicGeneration generation = createGeneration(command);
+        GenerationPrompt prompt = createPrompt();
+        Storyboard storyboard = createStoryboard();
+        ReferenceImage referenceImage = createReferenceImage();
+        GeneratedImage generatedImage = createGeneratedImage();
+        ComicGenerationFailedException exception = new ComicGenerationFailedException(
+                GenerationErrorCode.GENERATION_INTERRUPTED
+        );
+        when(comicGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenReturn(storyboard);
+        when(imageStorage.load("references/style.png")).thenReturn(referenceImage);
+        when(comicImageGenerator.generate(any(ComicImageGenerationRequest.class))).thenReturn(generatedImage);
+        when(imageStorage.store(generatedImage)).thenReturn("generated/comic.png");
+        when(completionService.succeed(generation.getId(), storyboard, "generated/comic.png"))
+                .thenThrow(exception);
+
+        assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
+                .isSameAs(exception);
+        verify(imageStorage).delete("generated/comic.png");
+    }
+
+    @Test
+    @DisplayName("저장소가 잘못된 이미지 키를 반환하면 생성 기록과 저장 이미지를 정리한다")
+    void generateClaimedComicDeletesImageWithInvalidObjectKey() {
+        GenerateComicCommand command = createCommand();
+        ComicGeneration generation = createGeneration(command);
+        GenerationPrompt prompt = createPrompt();
+        Storyboard storyboard = createStoryboard();
+        ReferenceImage referenceImage = createReferenceImage();
+        GeneratedImage generatedImage = createGeneratedImage();
+        String invalidObjectKey = "x".repeat(1_025);
+        when(comicGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenReturn(storyboard);
+        when(imageStorage.load("references/style.png")).thenReturn(referenceImage);
+        when(comicImageGenerator.generate(any(ComicImageGenerationRequest.class))).thenReturn(generatedImage);
+        when(imageStorage.store(generatedImage)).thenReturn(invalidObjectKey);
+        when(completionService.fail(generation.getId(), GenerationErrorCode.IMAGE_STORAGE_ERROR))
+                .thenReturn(GenerationErrorCode.IMAGE_STORAGE_ERROR);
+
+        assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
+                .isInstanceOf(ImageStorageException.class);
+        verify(imageStorage).delete(invalidObjectKey);
     }
 
     private GenerateComicCommand createCommand() {

@@ -4,7 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.harudle.diary.service.dto.CreateDiaryCommand;
@@ -25,7 +26,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.beans.factory.ObjectProvider;
 
 @ExtendWith(MockitoExtension.class)
 class DiaryCreationServiceTest {
@@ -42,16 +42,13 @@ class DiaryCreationServiceTest {
     private DiaryCreationTransactionService transactionService;
 
     @Mock
-    private ObjectProvider<ClaimedComicGenerationService> generationServiceProvider;
-
-    @Mock
     private ClaimedComicGenerationService generationService;
 
     private DiaryCreationService diaryCreationService;
 
     @BeforeEach
     void setUp() {
-        diaryCreationService = new DiaryCreationService(transactionService, generationServiceProvider);
+        diaryCreationService = new DiaryCreationService(transactionService, generationService);
     }
 
     @Test
@@ -61,7 +58,7 @@ class DiaryCreationServiceTest {
         GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
         DiaryCreationClaim claim = createClaim(GenerationStatus.PROCESSING, usage, true);
         ComicGenerationResult generationResult = createGenerationResult(true);
-        when(generationServiceProvider.getIfAvailable()).thenReturn(generationService);
+        when(generationService.isAvailable()).thenReturn(true);
         when(transactionService.claim(command, true)).thenReturn(claim);
         when(generationService.generate(any(GenerateComicCommand.class), eq(GENERATION_ID)))
                 .thenReturn(generationResult);
@@ -80,14 +77,14 @@ class DiaryCreationServiceTest {
         CreateDiaryCommand command = createCommand();
         GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
         DiaryCreationClaim claim = createClaim(GenerationStatus.SUCCEEDED, usage, false);
-        when(generationServiceProvider.getIfAvailable()).thenReturn(null);
+        when(generationService.isAvailable()).thenReturn(false);
         when(transactionService.claim(command, false)).thenReturn(claim);
 
         CreateDiaryResult result = diaryCreationService.create(command);
 
         assertThat(result.newlyCreated()).isFalse();
         assertThat(result.generation().status()).isEqualTo(GenerationStatus.SUCCEEDED);
-        verifyNoInteractions(generationService);
+        verify(generationService, never()).generate(any(GenerateComicCommand.class), any(UUID.class));
     }
 
     @Test
@@ -96,12 +93,12 @@ class DiaryCreationServiceTest {
         CreateDiaryCommand command = createCommand();
         GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
         DiaryCreationClaim claim = createClaim(GenerationStatus.PROCESSING, usage, false);
-        when(generationServiceProvider.getIfAvailable()).thenReturn(generationService);
+        when(generationService.isAvailable()).thenReturn(true);
         when(transactionService.claim(command, true)).thenReturn(claim);
 
         assertThatThrownBy(() -> diaryCreationService.create(command))
                 .isInstanceOf(GenerationInProgressException.class);
-        verifyNoInteractions(generationService);
+        verify(generationService, never()).generate(any(GenerateComicCommand.class), any(UUID.class));
     }
 
     private CreateDiaryCommand createCommand() {

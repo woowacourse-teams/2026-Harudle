@@ -5,6 +5,7 @@ import com.harudle.generation.domain.GenerationErrorCode;
 import com.harudle.generation.domain.GenerationStatus;
 import com.harudle.generation.domain.Storyboard;
 import com.harudle.generation.repository.ComicGenerationRepository;
+import com.harudle.generation.service.exception.ComicGenerationFailedException;
 import java.time.Clock;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -27,16 +28,26 @@ public class ComicGenerationCompletionService {
     @Transactional
     public ComicGeneration succeed(UUID generationId, Storyboard storyboard, String imageObjectKey) {
         ComicGeneration generation = findForUpdate(generationId);
+        if (generation.getStatus() == GenerationStatus.FAILED) {
+            throw new ComicGenerationFailedException(generation.getErrorCode());
+        }
+        if (generation.getStatus() == GenerationStatus.SUCCEEDED) {
+            return generation;
+        }
         generation.succeed(storyboard, imageObjectKey, clock.instant());
         return generation;
     }
 
     @Transactional
-    public void fail(UUID generationId, GenerationErrorCode errorCode) {
+    public GenerationErrorCode fail(UUID generationId, GenerationErrorCode errorCode) {
         ComicGeneration generation = findForUpdate(generationId);
         if (generation.getStatus() == GenerationStatus.PROCESSING) {
             generation.fail(errorCode, clock.instant());
         }
+        if (generation.getStatus() == GenerationStatus.FAILED) {
+            return generation.getErrorCode();
+        }
+        throw new IllegalStateException("성공한 만화 생성 기록을 실패 처리할 수 없습니다.");
     }
 
     private ComicGeneration findForUpdate(UUID generationId) {

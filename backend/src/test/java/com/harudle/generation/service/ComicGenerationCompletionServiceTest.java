@@ -10,6 +10,7 @@ import com.harudle.generation.domain.GenerationStatus;
 import com.harudle.generation.domain.StoryPanel;
 import com.harudle.generation.domain.Storyboard;
 import com.harudle.generation.repository.ComicGenerationRepository;
+import com.harudle.generation.service.exception.ComicGenerationFailedException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -69,8 +70,29 @@ class ComicGenerationCompletionServiceTest {
                 generation.getId(),
                 createStoryboard(),
                 "generated/comic.png"
-        )).isInstanceOf(IllegalStateException.class);
+        )).isInstanceOfSatisfying(
+                ComicGenerationFailedException.class,
+                exception -> assertThat(exception.getErrorCode())
+                        .isEqualTo(GenerationErrorCode.GENERATION_INTERRUPTED)
+        );
         assertThat(generation.getStatus()).isEqualTo(GenerationStatus.FAILED);
+    }
+
+    @Test
+    @DisplayName("이미 실패한 생성의 오류 코드를 유지한다")
+    void failKeepsExistingErrorCode() {
+        ComicGeneration generation = createGeneration();
+        generation.fail(GenerationErrorCode.GENERATION_INTERRUPTED, NOW.minusSeconds(1));
+        when(comicGenerationRepository.findByIdForUpdate(generation.getId()))
+                .thenReturn(Optional.of(generation));
+
+        GenerationErrorCode result = completionService.fail(
+                generation.getId(),
+                GenerationErrorCode.AI_PROVIDER_TIMEOUT
+        );
+
+        assertThat(result).isEqualTo(GenerationErrorCode.GENERATION_INTERRUPTED);
+        assertThat(generation.getErrorCode()).isEqualTo(GenerationErrorCode.GENERATION_INTERRUPTED);
     }
 
     private ComicGeneration createGeneration() {
