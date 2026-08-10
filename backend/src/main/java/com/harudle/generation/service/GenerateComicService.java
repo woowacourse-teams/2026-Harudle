@@ -8,6 +8,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import com.harudle.generation.domain.ComicGeneration;
 import com.harudle.generation.domain.GenerationErrorCode;
 import com.harudle.generation.domain.GenerationPrompt;
+import com.harudle.generation.domain.GenerationStatus;
 import com.harudle.generation.domain.Storyboard;
 import com.harudle.generation.repository.ComicGenerationRepository;
 import com.harudle.generation.repository.GenerationPromptRepository;
@@ -41,10 +42,15 @@ public class GenerateComicService {
         String requestFingerprint = requestFingerprintGenerator.generate(command);
         Optional<ComicGeneration> existingGeneration = comicGenerationRepository
                 .findByIdempotencyKey(command.idempotencyKey());
-        if (existingGeneration.isPresent()) {
-            return handleExistingGeneration(existingGeneration.get(), requestFingerprint);
-        }
+        return existingGeneration.map(comicGeneration -> handleExistingGeneration(comicGeneration, requestFingerprint))
+                .orElseGet(() -> generateNewComic(command, requestFingerprint));
 
+    }
+
+    private ComicGenerationResult generateNewComic(
+            GenerateComicCommand command,
+            String requestFingerprint
+    ) {
         GenerationPrompt prompt = findLatestPrompt();
         ComicGeneration generation;
         try {
@@ -53,15 +59,20 @@ public class GenerateComicService {
             return handleConcurrentGeneration(command, requestFingerprint, exception);
         }
 
+        return executeGeneration(command, prompt, generation);
+    }
+
+    private ComicGenerationResult executeGeneration(
+            GenerateComicCommand command,
+            GenerationPrompt prompt,
+            ComicGeneration generation
+    ) {
         try {
             Storyboard storyboard = generateStoryboard(command, prompt);
             ReferenceImage referenceImage = imageStorage.load(prompt.getImageAssetObjectKey());
             GeneratedImage generatedImage = generateImage(storyboard, prompt, referenceImage);
             String imageObjectKey = imageStorage.store(generatedImage);
-
-            generation.succeed(storyboard, imageObjectKey, Instant.now());
-            ComicGeneration completedGeneration = comicGenerationRepository.saveAndFlush(generation);
-            return createResult(completedGeneration, true);
+            return succeedGeneration(generation, storyboard, imageObjectKey);
         } catch (AiGenerationException exception) {
             failGeneration(generation, mapAiGenerationErrorCode(exception.getErrorType()));
             throw exception;
@@ -90,11 +101,17 @@ public class GenerateComicService {
             throw new IdempotencyKeyConflictException();
         }
 
-        return switch (generation.getStatus()) {
-            case SUCCEEDED -> createResult(generation, false);
-            case PROCESSING -> throw new GenerationInProgressException();
-            case FAILED -> throw new ComicGenerationFailedException(generation.getErrorCode());
-        };
+        GenerationStatus status = generation.getStatus();
+        if (status == GenerationStatus.SUCCEEDED) {
+            return createResult(generation, false);
+        }
+        if (status == GenerationStatus.PROCESSING) {
+            throw new GenerationInProgressException();
+        }
+        if (status == GenerationStatus.FAILED) {
+            throw new ComicGenerationFailedException(generation.getErrorCode());
+        }
+        throw new IllegalStateException("지원하지 않는 만화 생성 상태입니다.");
     }
 
     private GenerationPrompt findLatestPrompt() {
@@ -135,6 +152,16 @@ public class GenerateComicService {
         ));
     }
 
+    private ComicGenerationResult succeedGeneration(
+            ComicGeneration generation,
+            Storyboard storyboard,
+            String imageObjectKey
+    ) {
+        generation.succeed(storyboard, imageObjectKey, Instant.now());
+        ComicGeneration completedGeneration = comicGenerationRepository.saveAndFlush(generation);
+        return createResult(completedGeneration, true);
+    }
+
     private ComicGenerationResult createResult(ComicGeneration generation, boolean newlyCreated) {
         return new ComicGenerationResult(
                 generation.getId(),
@@ -147,10 +174,13 @@ public class GenerateComicService {
     }
 
     private GenerationErrorCode mapAiGenerationErrorCode(AiGenerationErrorType errorType) {
-        return switch (errorType) {
-            case PROVIDER_ERROR -> GenerationErrorCode.AI_PROVIDER_ERROR;
-            case TIMEOUT -> GenerationErrorCode.AI_PROVIDER_TIMEOUT;
-        };
+        if (errorType == AiGenerationErrorType.PROVIDER_ERROR) {
+            return GenerationErrorCode.AI_PROVIDER_ERROR;
+        }
+        if (errorType == AiGenerationErrorType.TIMEOUT) {
+            return GenerationErrorCode.AI_PROVIDER_TIMEOUT;
+        }
+        throw new IllegalArgumentException("지원하지 않는 AI 생성 오류 타입입니다.");
     }
 
     private void failGeneration(ComicGeneration generation, GenerationErrorCode errorCode) {
