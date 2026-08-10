@@ -174,7 +174,7 @@ public class ClaimedComicGenerationService {
             validateImageObjectKey(imageObjectKey);
             return imageObjectKey.strip();
         } catch (ImageStorageException exception) {
-            if (imageObjectKey != null && !imageObjectKey.isBlank()) {
+            if (imageObjectKey != null) {
                 deleteDiscardedImage(imageStorage, imageObjectKey);
             }
             throw exception;

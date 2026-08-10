@@ -45,6 +45,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -85,6 +87,9 @@ class DiaryControllerTest {
 
     @MockitoBean
     private ImageUrlProvider imageUrlProvider;
+
+    @MockitoBean
+    private JwtDecoder jwtDecoder;
 
     @BeforeEach
     void setUp() {
@@ -204,6 +209,19 @@ class DiaryControllerTest {
 
         assertThat(response.statusCode()).isEqualTo(204);
         assertThat(response.asString()).isEmpty();
+        verify(diaryDeletionService).delete(USER_ID, DIARY_ID);
+    }
+
+    @Test
+    @DisplayName("Bearer Access Token의 subject로 인증한 사용자가 일기를 삭제한다")
+    void deleteDiaryWithBearerToken() {
+        when(jwtDecoder.decode("valid-access-token")).thenReturn(createJwt());
+
+        MockMvcResponse response = RestAssuredMockMvc.given()
+                .header("Authorization", "Bearer valid-access-token")
+                .delete("/api/v1/diaries/{diaryId}", DIARY_ID);
+
+        assertThat(response.statusCode()).isEqualTo(204);
         verify(diaryDeletionService).delete(USER_ID, DIARY_ID);
     }
 
@@ -444,6 +462,15 @@ class DiaryControllerTest {
                 "generated/comic.png",
                 COMPLETED_AT
         );
+    }
+
+    private Jwt createJwt() {
+        return Jwt.withTokenValue("valid-access-token")
+                .header("alg", "RS256")
+                .subject(USER_ID.toString())
+                .issuedAt(CREATED_AT.minusSeconds(60))
+                .expiresAt(CREATED_AT.plusSeconds(600))
+                .build();
     }
 
     private void configureImageUrl() {

@@ -199,7 +199,7 @@ class ClaimedComicGenerationServiceTest {
     }
 
     @Test
-    @DisplayName("저장소가 잘못된 이미지 키를 반환하면 생성 기록과 저장 이미지를 정리한다")
+    @DisplayName("저장소가 공백 이미지 키를 반환하면 생성 기록과 저장 이미지를 정리한다")
     void generateClaimedComicDeletesImageWithInvalidObjectKey() {
         GenerateComicCommand command = createCommand();
         ComicGeneration generation = createGeneration(command);
@@ -207,7 +207,7 @@ class ClaimedComicGenerationServiceTest {
         Storyboard storyboard = createStoryboard();
         ReferenceImage referenceImage = createReferenceImage();
         GeneratedImage generatedImage = createGeneratedImage();
-        String invalidObjectKey = "x".repeat(1_025);
+        String invalidObjectKey = "   ";
         when(comicGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
         when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
         when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenReturn(storyboard);
