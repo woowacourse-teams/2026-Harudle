@@ -39,6 +39,7 @@ Authorization: Bearer {accessToken}
 - 원본 Refresh Token은 Secure, HttpOnly Cookie에 보관합니다.
 - 서버는 Refresh Token의 해시만 저장합니다.
 - OAuth Provider 토큰과 서비스 Access/Refresh Token은 구분합니다.
+- 로그아웃은 만료되지 않은 Access Token을 요구하지 않으며 Refresh Token Cookie로 현재 세션을 식별합니다.
 
 ### 2.3 Content Type
 
@@ -71,10 +72,19 @@ Idempotency-Key: 7e5cc251-fdde-4cc0-a54e-2c8142750609
 
 처리 규칙:
 
-- 같은 키와 같은 요청이 이미 완료됐다면 AI를 재호출하지 않고 기존 결과를 반환합니다.
-- 같은 키의 요청이 아직 처리 중이면 `409 GENERATION_IN_PROGRESS`를 반환합니다.
+- 서버는 `v1\n{userId}\n{diaryDate}\n{sourceText}` UTF-8 바이트를 SHA-256으로 해시한 소문자 64자리 요청 지문을
+  저장합니다.
+- 멱등성 키는 사용량을 차감하기 전에 원자적으로 선점하거나 기존 기록을 조회합니다.
+- 같은 키와 같은 요청이 `SUCCEEDED` 상태라면 AI를 재호출하지 않고 기존 결과를 반환합니다.
+- 같은 키와 같은 요청이 유효한 `PROCESSING` 상태라면 `409 GENERATION_IN_PROGRESS`를 반환합니다.
+- 같은 키와 같은 요청이 `FAILED` 상태라면 AI를 재호출하거나 사용량을 다시 차감하지 않고 저장된 실패를 반환합니다.
 - 같은 키를 다른 요청 본문에 사용하면 `409 IDEMPOTENCY_KEY_CONFLICT`를 반환합니다.
+- 실패한 생성을 다시 시도하려면 새로운 `Idempotency-Key`를 사용해야 하며 새 요청은 일일 생성 횟수에 포함됩니다.
 - 다른 키로 같은 일기 텍스트를 요청하는 것은 허용하며 일일 생성 횟수를 새로 차감합니다.
+- 사용량은 새 멱등성 키를 선점한 요청에만 원자적으로 차감합니다.
+
+`PROCESSING` 상태가 서버 설정의 처리 제한 시간을 초과하면 고아 작업으로 판단해 `FAILED`와
+`GENERATION_INTERRUPTED`로 원자적으로 전환합니다. 이후 같은 키의 요청에는 저장된 실패를 반환합니다.
 
 ### 2.6 이미지 URL
 
@@ -91,7 +101,7 @@ Idempotency-Key: 7e5cc251-fdde-4cc0-a54e-2c8142750609
 | `GET` | `/oauth2/authorization/kakao` | 불필요 | Kakao OAuth 로그인 시작 |
 | `GET` | `/login/oauth2/code/kakao` | 불필요 | Kakao OAuth 콜백 |
 | `POST` | `/api/v1/auth/refresh` | Refresh Token | Access Token 발급·재발급 |
-| `POST` | `/api/v1/auth/logout` | 필요 | 현재 로그인 세션 종료 |
+| `POST` | `/api/v1/auth/logout` | 불필요 | Refresh Token Cookie를 이용한 현재 로그인 세션 종료 |
 | `GET` | `/api/v1/me` | 필요 | 내 프로필 조회 |
 
 ### 3.2 일기 및 생성
@@ -162,10 +172,12 @@ Cache-Control: no-store
 
 ```http
 POST /api/v1/auth/logout
-Authorization: Bearer {accessToken}
+Cookie: refresh_token={refreshToken}
 ```
 
-현재 Refresh Token을 폐기하고 Cookie를 삭제합니다.
+만료되지 않은 Access Token은 요구하지 않습니다. Refresh Token Cookie가 있으면 서버에 저장된 토큰 해시를 찾아 현재
+세션을 폐기하고, Cookie는 설정할 때와 동일한 속성으로 삭제합니다. Cookie가 없거나 토큰이 만료·폐기·위조된 경우에도
+Cookie를 삭제하고 동일하게 성공 처리합니다.
 
 ```http
 HTTP/1.1 204 No Content
@@ -222,15 +234,20 @@ Content-Type: application/json
 동작:
 
 1. 요청 값과 Idempotency Key를 검증합니다.
-2. 일일 사용량 행을 잠그고 생성 가능 횟수를 확인합니다.
-3. 사용 횟수를 증가시킵니다.
-4. 일기와 `PROCESSING` 상태의 생성 기록을 저장합니다.
-5. DB 트랜잭션을 커밋합니다.
-6. LLM을 호출해 일기를 네 개 장면으로 분리합니다.
-7. 이미지 생성 API를 호출합니다.
-8. 완성된 하나의 4컷 이미지를 S3에 저장합니다.
-9. 생성 기록을 `SUCCEEDED`로 변경합니다.
-10. 완성 결과를 반환합니다.
+2. 정의된 정규 표현으로 인증 사용자 ID, `diaryDate`, `sourceText`의 SHA-256 요청 지문을 계산합니다.
+3. 트랜잭션에서 일기와 `PROCESSING` 생성 기록을 저장해 Idempotency Key를 먼저 선점합니다.
+4. 키가 이미 존재하면 트랜잭션을 롤백하고 요청 지문과 기존 생성 상태에 따라 기존 성공·실패를 반환하거나 `409`를 반환합니다.
+5. 새 키를 선점한 경우에만 일일 사용량 행을 원자적으로 생성 또는 증가시키고 생성 가능 횟수를 확인합니다.
+6. 한도를 초과하면 전체 트랜잭션을 롤백하고 `429 DAILY_GENERATION_LIMIT_EXCEEDED`를 반환합니다.
+7. DB 트랜잭션을 커밋합니다.
+8. LLM을 호출해 일기를 네 개 장면으로 분리합니다.
+9. 이미지 생성 API를 호출합니다.
+10. 완성된 하나의 4컷 이미지를 S3에 저장합니다.
+11. 생성 기록이 여전히 `PROCESSING`인 경우에만 `SUCCEEDED`로 변경합니다.
+12. 완성 결과를 반환합니다.
+
+일일 사용량 행은 PostgreSQL의 원자적 Upsert로 최초 행 생성과 증가를 함께 처리합니다. 존재하지 않는 행에 대한 잠금에
+의존하지 않으며, 사용 횟수가 제한보다 작은 경우에만 증가합니다.
 
 외부 AI API 호출 중에는 DB 트랜잭션이나 DB 커넥션을 점유하지 않습니다.
 
@@ -447,6 +464,13 @@ HTTP/1.1 200 OK
 
 대상 일기가 없거나 삭제된 경우 `404 DIARY_NOT_FOUND`를 반환합니다.
 
+처리 규칙:
+
+- 생성 상태가 `SUCCEEDED`인 경우에만 공유 링크를 생성하거나 기존 링크를 반환합니다.
+- 생성 상태가 `PROCESSING`이면 `409 GENERATION_IN_PROGRESS`를 반환합니다.
+- 생성 상태가 `FAILED`이면 `409 GENERATION_FAILED`를 반환합니다.
+- 기존 공유 링크가 있더라도 생성 상태를 확인한 뒤 반환합니다.
+
 ### 7.2 공개 공유 결과 조회
 
 ```http
@@ -542,9 +566,11 @@ Retry-After: 13800
 | `404` | `DIARY_NOT_FOUND` | 상세 조회·공유 링크 생성 대상 일기가 없거나 삭제됨 |
 | `404` | `SHARE_NOT_FOUND` | 공개 공유 링크가 없거나 연결된 일기가 삭제됨 |
 | `409` | `GENERATION_IN_PROGRESS` | 동일 멱등 요청이 아직 처리 중 |
+| `409` | `GENERATION_FAILED` | 공유할 생성 결과가 실패 상태임 |
 | `409` | `IDEMPOTENCY_KEY_CONFLICT` | 동일 키를 다른 요청 본문에 사용 |
 | `429` | `DAILY_GENERATION_LIMIT_EXCEEDED` | KST 기준 일일 생성 3회 초과 |
 | `502` | `AI_PROVIDER_ERROR` | LLM 또는 이미지 생성 Provider 호출 실패 |
+| `503` | `GENERATION_INTERRUPTED` | 서버 중단 등으로 생성 처리가 완료되지 못함 |
 | `503` | `IMAGE_STORAGE_ERROR` | 생성 이미지 S3 저장 실패 |
 | `504` | `AI_PROVIDER_TIMEOUT` | AI Provider 응답 시간 초과 |
 
@@ -553,8 +579,10 @@ DELETE API는 대상이 없거나 이미 삭제된 경우에도 `204 No Content`
 ## 9. 생성 실패 처리
 
 - 요청 검증 또는 멱등성 검증에서 실패하면 생성 횟수를 차감하지 않습니다.
-- 외부 AI API 호출이 시작된 요청은 성공 여부와 관계없이 생성 횟수에 포함합니다.
-- AI 또는 S3 처리에 실패하면 생성 기록을 `FAILED`로 변경하고 오류 코드를 저장합니다.
+- 멱등성 선점과 사용량 차감 트랜잭션이 커밋된 요청은 외부 처리의 성공·실패·중단 여부와 관계없이 생성 횟수에 포함합니다.
+- AI 또는 S3 처리에 실패하면 생성 기록을 `FAILED`로 변경하고 오류 코드와 완료 시간을 저장합니다.
+- 동일한 Idempotency Key로 실패 요청을 재전송하면 저장된 실패를 반환하며 AI 재호출과 추가 차감은 하지 않습니다.
+- 실패한 생성을 새 Idempotency Key로 재시도하면 새로운 요청으로 처리하고 생성 횟수를 차감합니다.
 - 실패 응답은 RFC 9457 Problem Details 형식으로 반환합니다.
 
 ## 10. 동기 생성 운영 조건
@@ -563,4 +591,7 @@ DELETE API는 대상이 없거나 이미 삭제된 경우에도 `204 No Content`
   길게 설정합니다.
 - AI API를 호출하는 동안 DB 트랜잭션이나 DB 커넥션을 점유하지 않습니다.
 - 클라이언트가 응답을 받지 못해 재요청하더라도 동일한 `Idempotency-Key`를 사용합니다.
+- `PROCESSING` 제한 시간은 외부 호출 전체 제한 시간보다 길게 설정합니다.
+- 같은 키의 재요청과 주기적인 복구 작업에서 제한 시간을 넘긴 `PROCESSING`을 `FAILED`로 원자적으로 전환합니다.
+- 외부 작업 완료 시 상태 변경은 `PROCESSING` 상태에만 허용해 복구 작업이 만든 `FAILED` 상태를 덮어쓰지 않습니다.
 - 동시 생성량이 증가하거나 외부 API의 `429`, 타임아웃이 자주 발생하면 비동기 큐 도입을 재검토합니다.

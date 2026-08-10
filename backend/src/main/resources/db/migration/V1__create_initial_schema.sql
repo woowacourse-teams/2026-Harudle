@@ -107,6 +107,7 @@ CREATE TABLE comic_generations (
     diary_id UUID NOT NULL,
     prompt_id BIGINT NOT NULL,
     idempotency_key UUID NOT NULL,
+    request_fingerprint CHAR(64) NOT NULL,
     status VARCHAR(20) NOT NULL,
     storyboard JSONB,
     title VARCHAR(100),
@@ -120,6 +121,8 @@ CREATE TABLE comic_generations (
     CONSTRAINT uq_comic_generations_diary UNIQUE (diary_id),
     CONSTRAINT uq_comic_generations_idempotency UNIQUE (idempotency_key),
     CONSTRAINT uq_comic_generations_image_key UNIQUE (image_object_key),
+    CONSTRAINT ck_comic_generations_request_fingerprint
+        CHECK (request_fingerprint ~ '^[0-9a-f]{64}$'),
     CONSTRAINT ck_comic_generations_image_key_length
         CHECK (
             image_object_key IS NULL

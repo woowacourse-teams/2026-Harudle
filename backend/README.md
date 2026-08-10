@@ -28,7 +28,20 @@ Gradle은 별도로 설치할 필요가 없습니다. 저장소에 포함된 Gra
 
 ## 로컬 실행
 
-PostgreSQL을 먼저 실행합니다.
+예시 환경 변수 파일을 복사하고 `DB_PASSWORD`에 추측하기 어려운 로컬 비밀번호를 설정합니다.
+
+```shell
+cp .env.example .env
+```
+
+Windows PowerShell에서는 다음 명령을 사용할 수 있습니다.
+
+```powershell
+Copy-Item .env.example .env
+```
+
+PostgreSQL을 실행합니다. Docker Compose는 `backend/.env`를 자동으로 읽으며 데이터베이스 포트는 로컬
+인터페이스에만 바인딩됩니다.
 
 ```shell
 docker compose up -d
@@ -54,9 +67,21 @@ Windows PowerShell에서는 다음 명령을 사용할 수 있습니다.
 | `DB_PORT` | `5432` |
 | `DB_NAME` | `harudle` |
 | `DB_USERNAME` | `harudle` |
-| `DB_PASSWORD` | `harudle` |
+| `DB_PASSWORD` | 기본값 없음, 필수 |
 
-실제 운영 환경에서는 모든 데이터베이스 접속 정보를 환경 변수로 주입합니다.
+애플리케이션은 실행 디렉터리의 `.env` 파일을 선택적으로 읽습니다. IntelliJ에서 애플리케이션을 직접 실행할 때는 Working
+directory를 `backend`로 지정하거나 Run Configuration에 환경 변수를 설정합니다. 운영 환경에서는 `.env` 파일 대신 배포
+환경의 Secret 또는 환경 변수로 모든 데이터베이스 접속 정보를 주입합니다.
+
+PostgreSQL 18부터 데이터 볼륨은 `/var/lib/postgresql`에 마운트됩니다. 이전 설정으로 만든 개발용 볼륨을 초기화해도 되는
+경우 다음 명령으로 삭제한 뒤 컨테이너를 다시 생성할 수 있습니다.
+
+```shell
+docker compose down -v
+docker compose up -d
+```
+
+이 명령은 기존 로컬 데이터베이스 데이터를 삭제하므로 필요한 데이터가 있다면 먼저 백업합니다.
 
 ## 테스트
 

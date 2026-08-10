@@ -71,4 +71,18 @@ class HarudleApplicationTests {
         assertThat(dataType).isEqualTo("text");
     }
 
+    @Test
+    @DisplayName("생성 요청 지문은 64자리 SHA-256 해시로 저장한다")
+    void generationRequestFingerprintUsesSha256HashColumn() {
+        String columnDefinition = jdbcTemplate.queryForObject("""
+                SELECT data_type || ':' || character_maximum_length || ':' || is_nullable
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'comic_generations'
+                  AND column_name = 'request_fingerprint'
+                """, String.class);
+
+        assertThat(columnDefinition).isEqualTo("character:64:NO");
+    }
+
 }
