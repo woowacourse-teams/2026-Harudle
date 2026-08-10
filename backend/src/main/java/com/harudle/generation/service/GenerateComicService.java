@@ -1,6 +1,7 @@
 package com.harudle.generation.service;
 
 import java.time.Instant;
+import java.util.Optional;
 
 import com.harudle.generation.domain.ComicGeneration;
 import com.harudle.generation.domain.GenerationPrompt;
@@ -35,6 +36,12 @@ public class GenerateComicService {
 
     public ComicGenerationResult generate(GenerateComicCommand command) {
         String requestFingerprint = requestFingerprintGenerator.generate(command);
+        Optional<ComicGeneration> existingGeneration = comicGenerationRepository
+                .findByIdempotencyKey(command.idempotencyKey());
+        if (existingGeneration.isPresent()) {
+            return handleExistingGeneration(existingGeneration.get(), requestFingerprint);
+        }
+
         GenerationPrompt prompt = findLatestPrompt();
         ComicGeneration generation = startGeneration(command, prompt, requestFingerprint);
 
@@ -45,7 +52,22 @@ public class GenerateComicService {
 
         generation.succeed(storyboard, imageObjectKey, Instant.now());
         ComicGeneration completedGeneration = comicGenerationRepository.saveAndFlush(generation);
-        return createResult(completedGeneration);
+        return createResult(completedGeneration, true);
+    }
+
+    private ComicGenerationResult handleExistingGeneration(
+            ComicGeneration generation,
+            String requestFingerprint
+    ) {
+        if (!generation.getRequestFingerprint().equals(requestFingerprint)) {
+            throw new IdempotencyKeyConflictException();
+        }
+
+        return switch (generation.getStatus()) {
+            case SUCCEEDED -> createResult(generation, false);
+            case PROCESSING -> throw new GenerationInProgressException();
+            case FAILED -> throw new ComicGenerationFailedException(generation.getErrorCode());
+        };
     }
 
     private GenerationPrompt findLatestPrompt() {
@@ -86,14 +108,14 @@ public class GenerateComicService {
         ));
     }
 
-    private ComicGenerationResult createResult(ComicGeneration generation) {
+    private ComicGenerationResult createResult(ComicGeneration generation, boolean newlyCreated) {
         return new ComicGenerationResult(
                 generation.getId(),
                 generation.getStatus(),
                 generation.getTitle(),
                 generation.getImageObjectKey(),
                 generation.getCompletedAt(),
-                true
+                newlyCreated
         );
     }
 }

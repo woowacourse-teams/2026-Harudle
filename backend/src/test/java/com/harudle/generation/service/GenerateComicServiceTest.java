@@ -1,9 +1,13 @@
 package com.harudle.generation.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import java.nio.charset.StandardCharsets;
@@ -24,6 +28,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 
 import com.harudle.generation.domain.ComicGeneration;
+import com.harudle.generation.domain.GenerationErrorCode;
 import com.harudle.generation.domain.GenerationPrompt;
 import com.harudle.generation.domain.GenerationStatus;
 import com.harudle.generation.domain.StoryPanel;
@@ -52,6 +57,9 @@ class GenerateComicServiceTest {
     @Autowired
     private GenerateComicService generateComicService;
 
+    @Autowired
+    private RequestFingerprintGenerator requestFingerprintGenerator;
+
     @Test
     @DisplayName("일기로 스토리보드와 이미지를 생성하고 성공 결과를 반환한다")
     void generateComic() {
@@ -62,6 +70,8 @@ class GenerateComicServiceTest {
         GeneratedImage generatedImage = createGeneratedImage();
         AtomicInteger saveCount = new AtomicInteger();
 
+        when(comicGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
+                .thenReturn(Optional.empty());
         when(generationPromptRepository.findFirstByOrderByIdDesc()).thenReturn(Optional.of(prompt));
         when(comicGenerationRepository.saveAndFlush(any(ComicGeneration.class)))
                 .thenAnswer(invocation -> {
@@ -94,6 +104,7 @@ class GenerateComicServiceTest {
                 imageStorage,
                 comicImageGenerator
         );
+        inOrder.verify(comicGenerationRepository).findByIdempotencyKey(command.idempotencyKey());
         inOrder.verify(generationPromptRepository).findFirstByOrderByIdDesc();
         inOrder.verify(comicGenerationRepository).saveAndFlush(any(ComicGeneration.class));
         inOrder.verify(storyboardGenerator).generate(new StoryboardGenerationRequest(
@@ -110,6 +121,81 @@ class GenerateComicServiceTest {
         inOrder.verify(comicGenerationRepository).saveAndFlush(any(ComicGeneration.class));
     }
 
+    @Test
+    @DisplayName("동일한 요청이 이미 성공했다면 저장된 결과를 반환한다")
+    void returnExistingSuccessfulGeneration() {
+        GenerateComicCommand command = createCommand();
+        Storyboard storyboard = createStoryboard();
+        Instant completedAt = Instant.parse("2026-08-10T10:00:00Z");
+        ComicGeneration generation = createGeneration(command);
+        generation.succeed(storyboard, "generated/existing.png", completedAt);
+        when(comicGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
+                .thenReturn(Optional.of(generation));
+
+        ComicGenerationResult result = generateComicService.generate(command);
+
+        assertThat(result.generationId()).isEqualTo(generation.getId());
+        assertThat(result.status()).isEqualTo(GenerationStatus.SUCCEEDED);
+        assertThat(result.title()).isEqualTo(storyboard.title());
+        assertThat(result.imageObjectKey()).isEqualTo("generated/existing.png");
+        assertThat(result.completedAt()).isEqualTo(completedAt);
+        assertThat(result.newlyCreated()).isFalse();
+        verifyOnlyIdempotencyLookup(command);
+    }
+
+    @Test
+    @DisplayName("동일한 멱등성 키를 다른 요청에 사용하면 예외가 발생한다")
+    void rejectReusedKeyForDifferentRequest() {
+        GenerateComicCommand command = createCommand();
+        String requestFingerprint = requestFingerprintGenerator.generate(command);
+        String differentFingerprint = createDifferentFingerprint(requestFingerprint);
+        ComicGeneration generation = ComicGeneration.start(
+                command.diaryId(),
+                1L,
+                command.idempotencyKey(),
+                differentFingerprint
+        );
+        when(comicGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
+                .thenReturn(Optional.of(generation));
+
+        assertThatThrownBy(() -> generateComicService.generate(command))
+                .isInstanceOf(IdempotencyKeyConflictException.class)
+                .hasMessageContaining("멱등성 키");
+        verifyOnlyIdempotencyLookup(command);
+    }
+
+    @Test
+    @DisplayName("동일한 요청이 처리 중이라면 예외가 발생한다")
+    void rejectProcessingGeneration() {
+        GenerateComicCommand command = createCommand();
+        ComicGeneration generation = createGeneration(command);
+        when(comicGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
+                .thenReturn(Optional.of(generation));
+
+        assertThatThrownBy(() -> generateComicService.generate(command))
+                .isInstanceOf(GenerationInProgressException.class)
+                .hasMessageContaining("처리 중");
+        verifyOnlyIdempotencyLookup(command);
+    }
+
+    @Test
+    @DisplayName("동일한 요청이 이미 실패했다면 저장된 오류 코드와 함께 예외가 발생한다")
+    void rejectFailedGeneration() {
+        GenerateComicCommand command = createCommand();
+        ComicGeneration generation = createGeneration(command);
+        generation.fail(GenerationErrorCode.AI_PROVIDER_TIMEOUT, Instant.now());
+        when(comicGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
+                .thenReturn(Optional.of(generation));
+
+        assertThatThrownBy(() -> generateComicService.generate(command))
+                .isInstanceOfSatisfying(
+                        ComicGenerationFailedException.class,
+                        exception -> assertThat(exception.getErrorCode())
+                                .isEqualTo(GenerationErrorCode.AI_PROVIDER_TIMEOUT)
+                );
+        verifyOnlyIdempotencyLookup(command);
+    }
+
     private GenerateComicCommand createCommand() {
         return new GenerateComicCommand(
                 UUID.randomUUID(),
@@ -118,6 +204,20 @@ class GenerateComicServiceTest {
                 "오늘 친구와 카페에 갔다.",
                 UUID.randomUUID()
         );
+    }
+
+    private ComicGeneration createGeneration(GenerateComicCommand command) {
+        return ComicGeneration.start(
+                command.diaryId(),
+                1L,
+                command.idempotencyKey(),
+                requestFingerprintGenerator.generate(command)
+        );
+    }
+
+    private String createDifferentFingerprint(String requestFingerprint) {
+        String firstCharacter = requestFingerprint.startsWith("0") ? "1" : "0";
+        return firstCharacter + requestFingerprint.substring(1);
     }
 
     private GenerationPrompt createPrompt() {
@@ -164,6 +264,17 @@ class GenerateComicServiceTest {
         return new GeneratedImage(
                 new ByteArrayResource("generated".getBytes(StandardCharsets.UTF_8)),
                 MediaType.IMAGE_PNG
+        );
+    }
+
+    private void verifyOnlyIdempotencyLookup(GenerateComicCommand command) {
+        verify(comicGenerationRepository).findByIdempotencyKey(command.idempotencyKey());
+        verifyNoMoreInteractions(comicGenerationRepository);
+        verifyNoInteractions(
+                generationPromptRepository,
+                storyboardGenerator,
+                comicImageGenerator,
+                imageStorage
         );
     }
 }
