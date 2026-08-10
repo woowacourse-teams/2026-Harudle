@@ -16,3 +16,12 @@ spring:
         format_sql: true
         jdbc:
           time_zone: UTC
+
+harudle:
+  generation:
+    processing-timeout: PT15M
+    prompt-bootstrap:
+      enabled: ${HARUDLE_GENERATION_PROMPT_BOOTSTRAP_ENABLED:false}
+      storyboard-prompt-text: ${HARUDLE_GENERATION_PROMPT_BOOTSTRAP_STORYBOARD_PROMPT_TEXT:}
+      image-style-prompt-text: ${HARUDLE_GENERATION_PROMPT_BOOTSTRAP_IMAGE_STYLE_PROMPT_TEXT:}
+      image-asset-object-key: ${HARUDLE_GENERATION_PROMPT_BOOTSTRAP_IMAGE_ASSET_OBJECT_KEY:}
