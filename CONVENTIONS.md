@@ -43,35 +43,22 @@ fix/reservation-time-validation
 
 ## 커밋 컨벤션
 
-[Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)과 [AngularJS Git Commit Guidelines](https://github.com/angular/angular.js/blob/master/DEVELOPERS.md#git-commit-guidelines)를 따른다. AngularJS 원문에서는 `scope`가 선택 사항이지만, 하루들에서는 `BE`, `FE`, `AI` 중 하나를 반드시 사용한다.
+[Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)과 [AngularJS Git Commit Guidelines](https://github.com/angular/angular.js/blob/master/DEVELOPERS.md#git-commit-guidelines)의 헤더 형식을 참고한다. 커밋 본문과 푸터는 작성하지 않는다.
 
 ### 커밋 메시지 형식
 
 ```text
 <type>(<scope>): <한글 제목>
-
-[본문: 변경 동기와 이전 동작 대비 변경 사항]
-
-[푸터: 호환성을 깨는 변경 또는 종료할 이슈]
 ```
 
-- 헤더는 반드시 작성하며 `<type>(<scope>): <한글 제목>` 형식을 지킨다.
+- 커밋 메시지는 `<type>(<scope>): <한글 제목>` 형식의 헤더 한 줄로 작성한다.
 - 커밋 메시지의 설명은 한글로 작성한다.
 - `scope`는 `BE`, `FE`, `AI` 중 하나를 사용한다.
 - `type`은 소문자로 작성한다.
 - 제목은 변경 내용을 간결하게 요약한다.
 - 제목은 `구현`, `추가`, `수정`, `변경`, `이동`처럼 현재의 변경 동작이 드러나게 작성한다.
 - 제목 끝에 마침표를 붙이지 않는다.
-- 제목만으로 충분히 설명되지 않는다면 본문에 변경 동기와 이전 동작 대비 변경 사항을 작성한다.
-- 본문과 푸터는 각각 앞에서 한 줄을 비우고 작성한다.
-- 커밋 메시지의 각 줄은 100자를 넘지 않는다.
-
-### 본문과 푸터
-
-- 본문에는 코드를 어떻게 작성했는지보다 변경한 이유와 변경 전후의 차이를 설명한다.
-- 호환성을 깨는 변경은 푸터에 `BREAKING CHANGE: <한글 설명>` 형식으로 작성한다.
-- 커밋으로 이슈를 종료할 때는 푸터에 `Closes #<이슈 번호>`를 작성한다.
-- 관련 이슈를 종료하지 않고 참조만 할 때는 `Refs #<이슈 번호>`를 작성한다.
+- 헤더는 100자를 넘지 않는다.
 
 ### 커밋 타입
 
@@ -89,15 +76,7 @@ fix/reservation-time-validation
 | `chore` | 그 밖의 유지보수 작업 |
 | `revert` | 이전 변경 사항 되돌리기 |
 
-`build`, `ci`, `revert`는 하루들에서 추가로 사용하는 확장 타입이다.
-
-이전 커밋을 되돌릴 때는 본문에 되돌린 커밋의 해시를 남긴다.
-
-```text
-revert(BE): 예약 생성 API 구현 되돌리기
-
-This reverts commit <commit-hash>.
-```
+Angular 커밋 컨벤션에서 사용하는 `build`, `ci`, `revert` 타입도 함께 사용한다.
 
 ### 예시
 
@@ -107,27 +86,7 @@ feat(BE): 예약 생성 API 구현
 refactor(BE): 예약 검증 책임을 도메인으로 이동
 test(BE): 예약 중복 검증 테스트 추가
 chore(AI): CodeRabbit 리뷰 설정 추가
-```
-
-상세 설명이 필요한 경우 다음과 같이 작성한다.
-
-```text
-fix(BE): 중복 예약이 생성되는 문제 수정
-
-동일한 시간대의 예약 여부를 저장 전에 확인하도록 변경한다.
-동시 요청에서도 중복 예약이 생성되지 않도록 제약 조건을 추가한다.
-```
-
-호환성을 깨는 변경이나 종료할 이슈가 있다면 푸터를 추가한다.
-
-```text
-feat(BE): 예약 생성 요청 형식 변경
-
-예약 시간대 표현을 시작 시각과 종료 시각으로 분리한다.
-기존 단일 시간대 문자열을 사용하던 요청 형식은 더 이상 지원하지 않는다.
-
-BREAKING CHANGE: 예약 생성 API의 요청 필드 형식을 변경한다.
-Closes #123
+revert(BE): 예약 생성 API 구현 되돌리기
 ```
 
 ## 코드 스타일
@@ -207,8 +166,6 @@ domain
 }
 ```
 
-개발 도구가 필요한 경우 [Zed Education](https://zed.dev/education)의 학생 혜택을 참고한다.
-
 ## 테스트 기준
 
 ### 테스트 범위
@@ -216,6 +173,7 @@ domain
 - 도메인의 핵심 규칙은 단위 테스트로 검증한다.
 - Service 계층은 슬라이스 테스트를 작성한다.
 - 인수 테스트(E2E)는 Controller 계층을 진입점으로 사용자 시나리오를 검증한다.
+- Controller 테스트는 RestAssured를 사용한다.
 - Spring Validation과 도메인 검증은 각각 테스트한다.
 - Repository 테스트는 다음 상황에 작성한다.
   - Repository에 비즈니스 로직이 포함된 경우
