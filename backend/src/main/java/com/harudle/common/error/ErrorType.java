@@ -26,6 +26,13 @@ public enum ErrorType {
             "Forbidden",
             "해당 리소스에 접근할 권한이 없습니다."
     ),
+    DIARY_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "DIARY_NOT_FOUND",
+            "diary-not-found",
+            "Diary not found",
+            "일기를 찾을 수 없습니다."
+    ),
     DAILY_GENERATION_LIMIT_EXCEEDED(
             HttpStatus.TOO_MANY_REQUESTS,
             "DAILY_GENERATION_LIMIT_EXCEEDED",
@@ -33,6 +40,13 @@ public enum ErrorType {
             "Daily generation limit exceeded",
             "하루 최대 %d번까지 생성할 수 있습니다."
                     .formatted(GenerationUsage.DEFAULT_LIMIT_COUNT)
+    ),
+    IMAGE_STORAGE_ERROR(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "IMAGE_STORAGE_ERROR",
+            "image-storage-error",
+            "Image storage error",
+            "생성 이미지를 저장하거나 불러오지 못했습니다."
     ),
     INTERNAL_SERVER_ERROR(
             HttpStatus.INTERNAL_SERVER_ERROR,

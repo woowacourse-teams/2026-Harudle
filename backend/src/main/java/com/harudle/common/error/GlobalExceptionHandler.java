@@ -1,7 +1,10 @@
 package com.harudle.common.error;
 
 import com.harudle.auth.presentation.AuthenticationRequiredException;
+import com.harudle.diary.service.exception.DiaryAccessDeniedException;
+import com.harudle.diary.service.exception.DiaryNotFoundException;
 import com.harudle.generation.service.exception.DailyGenerationLimitExceededException;
+import com.harudle.generation.service.port.ImageStorageException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.util.List;
@@ -64,6 +67,22 @@ public class GlobalExceptionHandler {
         return createResponse(ErrorType.UNAUTHORIZED, request);
     }
 
+    @ExceptionHandler(DiaryAccessDeniedException.class)
+    public ResponseEntity<ProblemDetail> handleDiaryAccessDenied(
+            DiaryAccessDeniedException exception,
+            HttpServletRequest request
+    ) {
+        return createResponse(ErrorType.FORBIDDEN, request);
+    }
+
+    @ExceptionHandler(DiaryNotFoundException.class)
+    public ResponseEntity<ProblemDetail> handleDiaryNotFound(
+            DiaryNotFoundException exception,
+            HttpServletRequest request
+    ) {
+        return createResponse(ErrorType.DIARY_NOT_FOUND, request);
+    }
+
     @ExceptionHandler(DailyGenerationLimitExceededException.class)
     public ResponseEntity<ProblemDetail> handleDailyGenerationLimitExceeded(
             DailyGenerationLimitExceededException exception,
@@ -76,6 +95,14 @@ public class GlobalExceptionHandler {
                 request
         );
         return new ResponseEntity<>(problemDetail, headers, HttpStatus.TOO_MANY_REQUESTS);
+    }
+
+    @ExceptionHandler(ImageStorageException.class)
+    public ResponseEntity<ProblemDetail> handleImageStorage(
+            ImageStorageException exception,
+            HttpServletRequest request
+    ) {
+        return createResponse(ErrorType.IMAGE_STORAGE_ERROR, request);
     }
 
     @ExceptionHandler(Exception.class)
