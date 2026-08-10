@@ -1,21 +1,19 @@
 package com.harudle.generation.domain;
 
-import java.nio.charset.StandardCharsets;
-import java.time.Instant;
-import java.util.UUID;
-import java.util.regex.Pattern;
-
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.annotations.UpdateTimestamp;
-import org.hibernate.type.SqlTypes;
-
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.UUID;
+import java.util.regex.Pattern;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "comic_generations")

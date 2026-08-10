@@ -1,5 +1,12 @@
 package com.harudle.generation.service;
 
+import com.harudle.generation.domain.ComicGeneration;
+import com.harudle.generation.domain.GenerationErrorCode;
+import com.harudle.generation.domain.GenerationPrompt;
+import com.harudle.generation.domain.GenerationStatus;
+import com.harudle.generation.domain.Storyboard;
+import com.harudle.generation.repository.ComicGenerationRepository;
+import com.harudle.generation.repository.GenerationPromptRepository;
 import com.harudle.generation.service.dto.ComicGenerationResult;
 import com.harudle.generation.service.dto.GenerateComicCommand;
 import com.harudle.generation.service.exception.AiGenerationErrorType;
@@ -17,16 +24,7 @@ import com.harudle.generation.service.port.StoryboardGenerationRequest;
 import com.harudle.generation.service.port.StoryboardGenerator;
 import java.time.Instant;
 import java.util.Optional;
-
 import org.springframework.dao.DataIntegrityViolationException;
-
-import com.harudle.generation.domain.ComicGeneration;
-import com.harudle.generation.domain.GenerationErrorCode;
-import com.harudle.generation.domain.GenerationPrompt;
-import com.harudle.generation.domain.GenerationStatus;
-import com.harudle.generation.domain.Storyboard;
-import com.harudle.generation.repository.ComicGenerationRepository;
-import com.harudle.generation.repository.GenerationPromptRepository;
 
 public class GenerateComicService {
 

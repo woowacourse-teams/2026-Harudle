@@ -1,10 +1,9 @@
 package com.harudle.generation.service.dto;
 
+import com.harudle.generation.domain.GenerationStatus;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.UUID;
-
-import com.harudle.generation.domain.GenerationStatus;
 
 public record ComicGenerationResult(
         UUID generationId,

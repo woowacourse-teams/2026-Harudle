@@ -3,18 +3,16 @@ package com.harudle.generation.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.harudle.generation.domain.StoryPanel;
+import com.harudle.generation.domain.Storyboard;
 import com.harudle.generation.service.port.ComicImageGenerationRequest;
 import com.harudle.generation.service.port.ReferenceImage;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
-
-import com.harudle.generation.domain.StoryPanel;
-import com.harudle.generation.domain.Storyboard;
 
 class ComicImageGenerationRequestTest {
 

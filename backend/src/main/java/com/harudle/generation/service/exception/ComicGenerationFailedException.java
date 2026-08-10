@@ -1,8 +1,7 @@
 package com.harudle.generation.service.exception;
 
-import java.io.Serial;
-
 import com.harudle.generation.domain.GenerationErrorCode;
+import java.io.Serial;
 
 public final class ComicGenerationFailedException extends RuntimeException {
 

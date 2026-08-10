@@ -3,14 +3,12 @@ package com.harudle.generation.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.harudle.generation.domain.GenerationStatus;
 import com.harudle.generation.service.dto.ComicGenerationResult;
 import java.time.Instant;
 import java.util.UUID;
-
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-
-import com.harudle.generation.domain.GenerationStatus;
 
 class ComicGenerationResultTest {
 
