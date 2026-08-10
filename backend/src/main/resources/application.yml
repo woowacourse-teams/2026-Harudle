@@ -16,3 +16,7 @@ spring:
         format_sql: true
         jdbc:
           time_zone: UTC
+
+harudle:
+  generation:
+    processing-timeout: PT15M
