@@ -1,5 +1,7 @@
 package com.harudle.generation.config;
 
+import com.harudle.generation.infrastructure.GenerationPromptBootstrapService;
+import com.harudle.generation.infrastructure.GenerationPromptInitializer;
 import com.harudle.generation.repository.ComicGenerationRepository;
 import com.harudle.generation.repository.GenerationPromptRepository;
 import com.harudle.generation.service.ClaimedComicGenerationService;
@@ -9,10 +11,13 @@ import com.harudle.generation.service.port.ComicImageGenerator;
 import com.harudle.generation.service.port.ImageStorage;
 import com.harudle.generation.service.port.StoryboardGenerator;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration(proxyBeanMethods = false)
+@EnableConfigurationProperties(GenerationPromptBootstrapProperties.class)
 public class ComicGenerationConfiguration {
 
     @Bean
@@ -33,6 +38,26 @@ public class ComicGenerationConfiguration {
                 comicImageGeneratorProvider,
                 imageStorageProvider,
                 completionService
+        );
+    }
+
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "harudle.generation.prompt-bootstrap",
+            name = "enabled",
+            havingValue = "true"
+    )
+    GenerationPromptInitializer generationPromptInitializer(
+            GenerationPromptBootstrapProperties properties,
+            GenerationPromptRepository generationPromptRepository,
+            ImageStorage imageStorage,
+            GenerationPromptBootstrapService bootstrapService
+    ) {
+        return new GenerationPromptInitializer(
+                properties,
+                generationPromptRepository,
+                imageStorage,
+                bootstrapService
         );
     }
 }
