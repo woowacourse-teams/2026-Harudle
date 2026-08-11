@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -15,7 +16,7 @@ import com.harudle.generation.domain.StoryPanel;
 import com.harudle.generation.domain.Storyboard;
 import com.harudle.generation.repository.ComicGenerationRepository;
 import com.harudle.generation.repository.GenerationPromptRepository;
-import com.harudle.generation.service.dto.ComicGenerationResult;
+import com.harudle.generation.service.dto.CompletedComicGeneration;
 import com.harudle.generation.service.dto.GenerateComicCommand;
 import com.harudle.generation.service.exception.AiGenerationErrorType;
 import com.harudle.generation.service.exception.AiGenerationException;
@@ -118,11 +119,40 @@ class ClaimedComicGenerationServiceTest {
         when(completionService.succeed(generation.getId(), storyboard, "generated/comic.png"))
                 .thenReturn(completedGeneration);
 
-        ComicGenerationResult result = generationService.generate(command, generation.getId());
+        CompletedComicGeneration result = generationService.generate(command, generation.getId());
 
-        assertThat(result.status()).isEqualTo(GenerationStatus.SUCCEEDED);
         assertThat(result.title()).isEqualTo("친구와 보낸 하루");
-        assertThat(result.newlyCreated()).isTrue();
+        verify(imageStorage, never()).delete(any(String.class));
+    }
+
+    @Test
+    @DisplayName("다른 실행이 먼저 완료했으면 이번 실행이 저장한 이미지만 폐기한다")
+    void deleteImageDiscardedByConcurrentCompletion() {
+        GenerateComicCommand command = createCommand();
+        ComicGeneration generation = createGeneration(command);
+        GenerationPrompt prompt = createPrompt();
+        Storyboard storyboard = createStoryboard();
+        ReferenceImage referenceImage = createReferenceImage();
+        GeneratedImage generatedImage = createGeneratedImage();
+        ComicGeneration winningGeneration = createGeneration(command);
+        winningGeneration.succeed(
+                storyboard,
+                "generated/winner.png",
+                Instant.parse("2026-08-06T12:00:00Z")
+        );
+        when(comicGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenReturn(storyboard);
+        when(imageStorage.load("references/style.png")).thenReturn(referenceImage);
+        when(comicImageGenerator.generate(any(ComicImageGenerationRequest.class))).thenReturn(generatedImage);
+        when(imageStorage.store(generatedImage)).thenReturn("generated/loser.png");
+        when(completionService.succeed(generation.getId(), storyboard, "generated/loser.png"))
+                .thenReturn(winningGeneration);
+
+        CompletedComicGeneration result = generationService.generate(command, generation.getId());
+
+        assertThat(result.imageObjectKey()).isEqualTo("generated/winner.png");
+        verify(imageStorage).delete("generated/loser.png");
     }
 
     @Test

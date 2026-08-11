@@ -1,4 +1,4 @@
-package com.harudle.diary.service.dto;
+package com.harudle.diary.service;
 
 import com.harudle.generation.domain.GenerationErrorCode;
 import com.harudle.generation.domain.GenerationStatus;
@@ -7,7 +7,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
 
-public record DiaryCreationClaim(
+record DiaryCreationClaim(
         UUID diaryId,
         LocalDate diaryDate,
         String sourceText,

@@ -10,7 +10,7 @@ import static org.mockito.Mockito.when;
 import com.harudle.diary.domain.Diary;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.diary.service.dto.CreateDiaryCommand;
-import com.harudle.diary.service.dto.DiaryCreationClaim;
+import com.harudle.diary.service.exception.DiaryNotFoundException;
 import com.harudle.generation.domain.ComicGeneration;
 import com.harudle.generation.domain.GenerationPrompt;
 import com.harudle.generation.domain.GenerationStatus;
@@ -109,7 +109,7 @@ class DiaryCreationTransactionServiceTest {
         GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
         when(comicGenerationRepository.findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY))
                 .thenReturn(Optional.of(generation));
-        when(diaryRepository.findById(diary.getId())).thenReturn(Optional.of(diary));
+        when(diaryRepository.findActiveById(diary.getId())).thenReturn(Optional.of(diary));
         when(generationUsageService.getTodayUsage(USER_ID)).thenReturn(usage);
 
         DiaryCreationClaim claim = transactionService.claim(command, false);
@@ -130,10 +130,41 @@ class DiaryCreationTransactionServiceTest {
         ComicGeneration generation = createGeneration(originalCommand, diary);
         when(comicGenerationRepository.findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY))
                 .thenReturn(Optional.of(generation));
-        when(diaryRepository.findById(diary.getId())).thenReturn(Optional.of(diary));
+        when(diaryRepository.findActiveById(diary.getId())).thenReturn(Optional.of(diary));
 
         assertThatThrownBy(() -> transactionService.claim(differentCommand, true))
                 .isInstanceOf(IdempotencyKeyConflictException.class);
+    }
+
+    @Test
+    @DisplayName("삭제된 일기의 멱등 재요청은 기존 내용을 다시 노출하지 않는다")
+    void rejectIdempotentReplayForDeletedDiary() {
+        CreateDiaryCommand command = createCommand("오늘 친구와 카페에 갔다.");
+        Diary diary = Diary.create(USER_ID, DIARY_DATE, command.sourceText());
+        ComicGeneration generation = createGeneration(command, diary);
+        when(comicGenerationRepository.findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY))
+                .thenReturn(Optional.of(generation));
+        when(diaryRepository.findActiveById(diary.getId())).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> transactionService.claim(command, true))
+                .isInstanceOf(DiaryNotFoundException.class);
+
+        verify(generationUsageService, never()).getTodayUsage(USER_ID);
+        verify(diaryRepository, never()).save(any(Diary.class));
+    }
+
+    @Test
+    @DisplayName("동시 선점 복구 시 기존 멱등 요청이 없으면 빈 결과를 반환한다")
+    void findNoConcurrentClaim() {
+        CreateDiaryCommand command = createCommand("오늘 친구와 카페에 갔다.");
+        when(comicGenerationRepository.findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY))
+                .thenReturn(Optional.empty());
+
+        Optional<DiaryCreationClaim> claim = transactionService.findExistingClaim(command);
+
+        assertThat(claim).isEmpty();
+        verify(diaryRepository, never()).save(any(Diary.class));
+        verify(generationUsageService, never()).incrementTodayUsage(USER_ID);
     }
 
     @Test

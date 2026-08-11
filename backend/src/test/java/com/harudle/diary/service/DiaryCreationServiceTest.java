@@ -10,15 +10,17 @@ import static org.mockito.Mockito.when;
 
 import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.dto.CreateDiaryResult;
-import com.harudle.diary.service.dto.DiaryCreationClaim;
+import com.harudle.generation.domain.GenerationErrorCode;
 import com.harudle.generation.domain.GenerationStatus;
 import com.harudle.generation.domain.GenerationUsage;
 import com.harudle.generation.service.ClaimedComicGenerationService;
-import com.harudle.generation.service.dto.ComicGenerationResult;
+import com.harudle.generation.service.dto.CompletedComicGeneration;
 import com.harudle.generation.service.dto.GenerateComicCommand;
+import com.harudle.generation.service.exception.ComicGenerationFailedException;
 import com.harudle.generation.service.exception.GenerationInProgressException;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -26,6 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 @ExtendWith(MockitoExtension.class)
 class DiaryCreationServiceTest {
@@ -57,7 +60,7 @@ class DiaryCreationServiceTest {
         CreateDiaryCommand command = createCommand();
         GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
         DiaryCreationClaim claim = createClaim(GenerationStatus.PROCESSING, usage, true);
-        ComicGenerationResult generationResult = createGenerationResult(true);
+        CompletedComicGeneration generationResult = createGenerationResult();
         when(generationService.isAvailable()).thenReturn(true);
         when(transactionService.claim(command, true)).thenReturn(claim);
         when(generationService.generate(any(GenerateComicCommand.class), eq(GENERATION_ID)))
@@ -101,6 +104,59 @@ class DiaryCreationServiceTest {
         verify(generationService, never()).generate(any(GenerateComicCommand.class), any(UUID.class));
     }
 
+    @Test
+    @DisplayName("멱등성 키 경합으로 선점에 실패하면 경합에서 이긴 기존 요청만 조회한다")
+    void recoverConcurrentClaim() {
+        CreateDiaryCommand command = createCommand();
+        GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
+        DiaryCreationClaim claim = createClaim(GenerationStatus.PROCESSING, usage, false);
+        DataIntegrityViolationException collision = new DataIntegrityViolationException("중복 멱등성 키");
+        when(generationService.isAvailable()).thenReturn(true);
+        when(transactionService.claim(command, true)).thenThrow(collision);
+        when(transactionService.findExistingClaim(command)).thenReturn(Optional.of(claim));
+
+        assertThatThrownBy(() -> diaryCreationService.create(command))
+                .isInstanceOf(GenerationInProgressException.class);
+
+        verify(transactionService).claim(command, true);
+        verify(transactionService).findExistingClaim(command);
+        verify(generationService, never()).generate(any(GenerateComicCommand.class), any(UUID.class));
+    }
+
+    @Test
+    @DisplayName("멱등성 키 경합이 아니면 원래 무결성 예외를 그대로 전달한다")
+    void propagateUnrelatedIntegrityViolation() {
+        CreateDiaryCommand command = createCommand();
+        DataIntegrityViolationException exception = new DataIntegrityViolationException("다른 제약 조건 위반");
+        when(generationService.isAvailable()).thenReturn(true);
+        when(transactionService.claim(command, true)).thenThrow(exception);
+        when(transactionService.findExistingClaim(command)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> diaryCreationService.create(command)).isSameAs(exception);
+
+        verify(transactionService).claim(command, true);
+        verify(transactionService).findExistingClaim(command);
+    }
+
+    @Test
+    @DisplayName("실패한 멱등 재요청은 저장된 생성 오류를 반환한다")
+    void rejectExistingFailedDiary() {
+        CreateDiaryCommand command = createCommand();
+        GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
+        DiaryCreationClaim claim = createClaim(GenerationStatus.FAILED, usage, false);
+        when(generationService.isAvailable()).thenReturn(true);
+        when(transactionService.claim(command, true)).thenReturn(claim);
+
+        assertThatThrownBy(() -> diaryCreationService.create(command))
+                .isInstanceOfSatisfying(
+                        ComicGenerationFailedException.class,
+                        exception -> assertThat(exception.getErrorCode())
+                                .isEqualTo(GenerationErrorCode.AI_PROVIDER_TIMEOUT)
+                );
+
+        verify(generationService, never()).generate(any(GenerateComicCommand.class), any(UUID.class));
+    }
+
     private CreateDiaryCommand createCommand() {
         return new CreateDiaryCommand(
                 USER_ID,
@@ -126,20 +182,20 @@ class DiaryCreationServiceTest {
                 succeeded ? "친구와 보낸 하루" : null,
                 succeeded ? "generated/comic.png" : null,
                 succeeded ? COMPLETED_AT : null,
-                null,
+                status == GenerationStatus.FAILED
+                        ? GenerationErrorCode.AI_PROVIDER_TIMEOUT
+                        : null,
                 usage,
                 newlyCreated
         );
     }
 
-    private ComicGenerationResult createGenerationResult(boolean newlyCreated) {
-        return new ComicGenerationResult(
+    private CompletedComicGeneration createGenerationResult() {
+        return new CompletedComicGeneration(
                 GENERATION_ID,
-                GenerationStatus.SUCCEEDED,
                 "친구와 보낸 하루",
                 "generated/comic.png",
-                COMPLETED_AT,
-                newlyCreated
+                COMPLETED_AT
         );
     }
 }

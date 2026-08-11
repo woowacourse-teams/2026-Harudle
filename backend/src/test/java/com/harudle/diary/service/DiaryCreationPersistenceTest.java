@@ -4,13 +4,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.harudle.diary.service.dto.CreateDiaryCommand;
-import com.harudle.diary.service.dto.DiaryCreationClaim;
 import com.harudle.generation.domain.GenerationStatus;
 import com.harudle.generation.service.exception.DailyGenerationLimitExceededException;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.UUID;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
@@ -19,7 +21,11 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -28,6 +34,7 @@ import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest
+@Import(DiaryCreationPersistenceTest.FixedClockConfiguration.class)
 class DiaryCreationPersistenceTest {
 
     private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:18-alpine");
@@ -132,5 +139,15 @@ class DiaryCreationPersistenceTest {
                     .forEach(index -> query.setParameter(index + 1, parameters[index]));
             query.executeUpdate();
         });
+    }
+
+    @TestConfiguration(proxyBeanMethods = false)
+    static class FixedClockConfiguration {
+
+        @Bean
+        @Primary
+        Clock fixedClock() {
+            return Clock.fixed(Instant.parse("2026-08-06T12:00:00Z"), ZoneOffset.UTC);
+        }
     }
 }

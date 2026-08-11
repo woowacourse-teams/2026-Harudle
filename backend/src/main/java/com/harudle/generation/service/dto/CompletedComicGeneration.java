@@ -2,22 +2,18 @@ package com.harudle.generation.service.dto;
 
 import com.harudle.common.validation.TextValidator;
 import com.harudle.generation.domain.ImageObjectKeyPolicy;
-import com.harudle.generation.domain.GenerationStatus;
 import java.time.Instant;
 import java.util.UUID;
 
-public record ComicGenerationResult(
+public record CompletedComicGeneration(
         UUID generationId,
-        GenerationStatus status,
         String title,
         String imageObjectKey,
-        Instant completedAt,
-        boolean newlyCreated
+        Instant completedAt
 ) {
 
-    public ComicGenerationResult {
+    public CompletedComicGeneration {
         validateGenerationId(generationId);
-        validateStatus(status);
         title = TextValidator.normalizeRequired(title, "생성 결과 제목은 필수입니다.");
         imageObjectKey = ImageObjectKeyPolicy.normalizeRequired(
                 imageObjectKey,
@@ -29,12 +25,6 @@ public record ComicGenerationResult(
     private static void validateGenerationId(UUID generationId) {
         if (generationId == null) {
             throw new IllegalArgumentException("생성 ID는 필수입니다.");
-        }
-    }
-
-    private static void validateStatus(GenerationStatus status) {
-        if (status != GenerationStatus.SUCCEEDED) {
-            throw new IllegalArgumentException("성공한 생성 작업만 결과로 반환할 수 있습니다.");
         }
     }
 

@@ -143,6 +143,10 @@ public class ComicGeneration {
         return this.requestFingerprint.equals(normalizeRequestFingerprint(requestFingerprint));
     }
 
+    public boolean usesImageObjectKey(String candidate) {
+        return imageObjectKey != null && imageObjectKey.equals(candidate);
+    }
+
     public boolean matchesExecutableClaim(
             UUID diaryId,
             UUID idempotencyKey,
@@ -180,7 +184,7 @@ public class ComicGeneration {
         this.status = GenerationStatus.FAILED;
     }
 
-    public void interrupt(Instant completedAt) {
+    void interrupt(Instant completedAt) {
         fail(GenerationErrorCode.GENERATION_INTERRUPTED, completedAt);
     }
 
@@ -190,7 +194,8 @@ public class ComicGeneration {
         if (status != GenerationStatus.PROCESSING || updatedAt == null) {
             return;
         }
-        if (updatedAt.isBefore(currentTime.minus(processingTimeout))) {
+        Instant staleCutoff = currentTime.minus(processingTimeout);
+        if (!updatedAt.isAfter(staleCutoff)) {
             interrupt(currentTime);
         }
     }

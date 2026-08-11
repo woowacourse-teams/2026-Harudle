@@ -3,7 +3,7 @@ package com.harudle.diary.service;
 import com.harudle.diary.domain.Diary;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.diary.service.dto.CreateDiaryCommand;
-import com.harudle.diary.service.dto.DiaryCreationClaim;
+import com.harudle.diary.service.exception.DiaryNotFoundException;
 import com.harudle.generation.domain.ComicGeneration;
 import com.harudle.generation.domain.GenerationUsage;
 import com.harudle.generation.repository.ComicGenerationRepository;
@@ -21,7 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-public class DiaryCreationTransactionService {
+class DiaryCreationTransactionService {
 
     private final DiaryRepository diaryRepository;
     private final GenerationPromptRepository generationPromptRepository;
@@ -31,7 +31,7 @@ public class DiaryCreationTransactionService {
     private final Clock clock;
     private final Duration processingTimeout;
 
-    public DiaryCreationTransactionService(
+    DiaryCreationTransactionService(
             DiaryRepository diaryRepository,
             GenerationPromptRepository generationPromptRepository,
             ComicGenerationRepository comicGenerationRepository,
@@ -51,24 +51,26 @@ public class DiaryCreationTransactionService {
     }
 
     @Transactional
-    public DiaryCreationClaim claim(CreateDiaryCommand command, boolean generationAvailable) {
-        Optional<ComicGeneration> existingGeneration = comicGenerationRepository
-                .findByIdempotencyKeyForUpdate(command.idempotencyKey());
-        if (existingGeneration.isPresent()) {
-            return createExistingClaim(command, existingGeneration.get());
-        }
-        if (!generationAvailable) {
-            throw new GenerationUnavailableException("AI 생성 어댑터가 구성되지 않았습니다.");
-        }
-        return createNewClaim(command);
+    DiaryCreationClaim claim(CreateDiaryCommand command, boolean generationAvailable) {
+        return comicGenerationRepository
+                .findByIdempotencyKeyForUpdate(command.idempotencyKey())
+                .map(generation -> createExistingClaim(command, generation))
+                .orElseGet(() -> createNewClaim(command, generationAvailable));
+    }
+
+    @Transactional
+    Optional<DiaryCreationClaim> findExistingClaim(CreateDiaryCommand command) {
+        return comicGenerationRepository
+                .findByIdempotencyKeyForUpdate(command.idempotencyKey())
+                .map(generation -> createExistingClaim(command, generation));
     }
 
     private DiaryCreationClaim createExistingClaim(
             CreateDiaryCommand command,
             ComicGeneration generation
     ) {
-        Diary diary = diaryRepository.findById(generation.getDiaryId())
-                .orElseThrow(() -> new IllegalStateException("멱등 요청의 일기를 찾을 수 없습니다."));
+        Diary diary = diaryRepository.findActiveById(generation.getDiaryId())
+                .orElseThrow(DiaryNotFoundException::new);
         GenerateComicCommand generationCommand = createGenerationCommand(command, diary);
         String requestFingerprint = requestFingerprintGenerator.generate(generationCommand);
         if (!generation.hasSameRequestFingerprint(requestFingerprint)) {
@@ -79,9 +81,15 @@ public class DiaryCreationTransactionService {
         return toClaim(diary, generation, usage, false);
     }
 
-    private DiaryCreationClaim createNewClaim(CreateDiaryCommand command) {
+    private DiaryCreationClaim createNewClaim(
+            CreateDiaryCommand command,
+            boolean generationAvailable
+    ) {
+        if (!generationAvailable) {
+            throw GenerationUnavailableException.adaptersNotConfigured();
+        }
         Long promptId = generationPromptRepository.findFirstByOrderByIdDesc()
-                .orElseThrow(() -> new GenerationUnavailableException("사용할 생성 프롬프트가 없습니다."))
+                .orElseThrow(GenerationUnavailableException::promptNotConfigured)
                 .getId();
         Diary diary = diaryRepository.save(Diary.create(
                 command.userId(),
