@@ -13,9 +13,12 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
-public class TraceIdFilter extends OncePerRequestFilter {
+class TraceIdFilter extends OncePerRequestFilter {
 
     private static final String TRACE_ID_MDC_KEY = "traceId";
+
+    TraceIdFilter() {
+    }
 
     @Override
     protected void doFilterInternal(

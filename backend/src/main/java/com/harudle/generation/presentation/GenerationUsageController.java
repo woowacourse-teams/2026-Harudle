@@ -11,12 +11,12 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1/me/generation-usage")
-public class GenerationUsageController {
+class GenerationUsageController {
 
     private final GenerationUsageService generationUsageService;
     private final AuthenticatedUserIdResolver authenticatedUserIdResolver;
 
-    public GenerationUsageController(
+    GenerationUsageController(
             GenerationUsageService generationUsageService,
             AuthenticatedUserIdResolver authenticatedUserIdResolver
     ) {
@@ -25,7 +25,7 @@ public class GenerationUsageController {
     }
 
     @GetMapping
-    public GenerationUsageResponse getTodayUsage(Authentication authentication) {
+    GenerationUsageResponse getTodayUsage(Authentication authentication) {
         UUID userId = authenticatedUserIdResolver.resolve(authentication);
         GenerationUsage usage = generationUsageService.getTodayUsage(userId);
         return GenerationUsageResponse.from(usage);

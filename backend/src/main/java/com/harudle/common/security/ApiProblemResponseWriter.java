@@ -7,16 +7,14 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
-import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
 
-@Component
-public class ApiProblemResponseWriter {
+class ApiProblemResponseWriter {
 
     private final ProblemDetailFactory problemDetailFactory;
     private final JsonMapper jsonMapper;
 
-    public ApiProblemResponseWriter(
+    ApiProblemResponseWriter(
             ProblemDetailFactory problemDetailFactory,
             JsonMapper jsonMapper
     ) {
@@ -24,7 +22,7 @@ public class ApiProblemResponseWriter {
         this.jsonMapper = jsonMapper;
     }
 
-    public void write(
+    void write(
             ErrorType errorType,
             HttpServletRequest request,
             HttpServletResponse response

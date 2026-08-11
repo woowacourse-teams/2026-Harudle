@@ -5,7 +5,7 @@ import java.util.UUID;
 
 final class RequestTraceId {
 
-    static final String ATTRIBUTE = RequestTraceId.class.getName() + ".value";
+    private static final String ATTRIBUTE = RequestTraceId.class.getName() + ".value";
 
     private RequestTraceId() {
     }

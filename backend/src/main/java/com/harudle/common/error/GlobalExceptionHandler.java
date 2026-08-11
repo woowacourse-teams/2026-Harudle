@@ -21,18 +21,18 @@ import org.springframework.web.method.annotation.HandlerMethodValidationExceptio
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 @RestControllerAdvice
-public class GlobalExceptionHandler {
+class GlobalExceptionHandler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     private final ProblemDetailFactory problemDetailFactory;
 
-    public GlobalExceptionHandler(ProblemDetailFactory problemDetailFactory) {
+    GlobalExceptionHandler(ProblemDetailFactory problemDetailFactory) {
         this.problemDetailFactory = problemDetailFactory;
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ProblemDetail> handleMethodArgumentNotValid(
+    ResponseEntity<ProblemDetail> handleMethodArgumentNotValid(
             MethodArgumentNotValidException exception,
             HttpServletRequest request
     ) {
@@ -50,19 +50,19 @@ public class GlobalExceptionHandler {
             MissingServletRequestParameterException.class,
             MethodArgumentTypeMismatchException.class
     })
-    public ResponseEntity<ProblemDetail> handleValidation(HttpServletRequest request) {
+    ResponseEntity<ProblemDetail> handleValidation(HttpServletRequest request) {
         return createResponse(ErrorType.VALIDATION_ERROR, request);
     }
 
     @ExceptionHandler(AuthenticationRequiredException.class)
-    public ResponseEntity<ProblemDetail> handleAuthenticationRequired(HttpServletRequest request) {
+    ResponseEntity<ProblemDetail> handleAuthenticationRequired(HttpServletRequest request) {
         HttpHeaders headers = new HttpHeaders();
         headers.set(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
         return createResponse(ErrorType.UNAUTHORIZED, request, headers);
     }
 
     @ExceptionHandler(DailyGenerationLimitExceededException.class)
-    public ResponseEntity<ProblemDetail> handleDailyGenerationLimitExceeded(
+    ResponseEntity<ProblemDetail> handleDailyGenerationLimitExceeded(
             DailyGenerationLimitExceededException exception,
             HttpServletRequest request
     ) {
@@ -76,7 +76,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ProblemDetail> handleUnexpected(
+    ResponseEntity<ProblemDetail> handleUnexpected(
             Exception exception,
             HttpServletRequest request
     ) {
