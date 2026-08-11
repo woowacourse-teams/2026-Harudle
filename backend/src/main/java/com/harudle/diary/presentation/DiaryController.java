@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 @RestController
 @RequestMapping(DiaryController.BASE_PATH)
-public class DiaryController {
+class DiaryController {
 
     static final String BASE_PATH = "/api/v1/diaries";
     private static final int MIN_API_YEAR = 1;
@@ -32,7 +32,7 @@ public class DiaryController {
     private final AuthenticatedUserIdResolver authenticatedUserIdResolver;
     private final DiaryResponseAssembler responseAssembler;
 
-    public DiaryController(
+    DiaryController(
             DiaryQueryService diaryQueryService,
             DiaryDeletionService diaryDeletionService,
             AuthenticatedUserIdResolver authenticatedUserIdResolver,

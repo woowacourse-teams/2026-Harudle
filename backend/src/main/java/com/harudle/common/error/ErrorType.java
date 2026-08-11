@@ -58,20 +58,20 @@ public enum ErrorType {
         return status;
     }
 
-    public String code() {
-        return name();
-    }
-
-    public URI problemType() {
-        String slug = name().toLowerCase(Locale.ROOT).replace('_', '-');
-        return URI.create(PROBLEM_TYPE_URN_PREFIX + slug);
-    }
-
-    public String title() {
+    String title() {
         return title;
     }
 
-    public String detail() {
+    String detail() {
         return detail;
+    }
+
+    String code() {
+        return name();
+    }
+
+    URI problemType() {
+        String slug = name().toLowerCase(Locale.ROOT).replace('_', '-');
+        return URI.create(PROBLEM_TYPE_URN_PREFIX + slug);
     }
 }

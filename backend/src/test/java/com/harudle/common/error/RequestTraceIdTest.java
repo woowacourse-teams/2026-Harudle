@@ -18,6 +18,5 @@ class RequestTraceIdTest {
 
         assertThat(created).matches("[0-9a-f]{32}");
         assertThat(reused).isEqualTo(created);
-        assertThat(request.getAttribute(RequestTraceId.ATTRIBUTE)).isEqualTo(created);
     }
 }

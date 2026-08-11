@@ -7,10 +7,6 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 
 import com.harudle.auth.presentation.AuthenticatedUserIdResolver;
 import com.harudle.common.error.ProblemDetailFactory;
-import com.harudle.common.error.TraceIdFilter;
-import com.harudle.common.security.ApiAccessDeniedHandler;
-import com.harudle.common.security.ApiAuthenticationEntryPoint;
-import com.harudle.common.security.ApiProblemResponseWriter;
 import com.harudle.common.security.ApiSecurityConfiguration;
 import com.harudle.generation.domain.GenerationUsage;
 import com.harudle.generation.service.GenerationUsageService;
@@ -35,11 +31,7 @@ import org.springframework.test.web.servlet.MockMvc;
 @Import({
         AuthenticatedUserIdResolver.class,
         ProblemDetailFactory.class,
-        TraceIdFilter.class,
-        ApiSecurityConfiguration.class,
-        ApiAuthenticationEntryPoint.class,
-        ApiAccessDeniedHandler.class,
-        ApiProblemResponseWriter.class
+        ApiSecurityConfiguration.class
 })
 class GenerationUsageControllerTest {
 

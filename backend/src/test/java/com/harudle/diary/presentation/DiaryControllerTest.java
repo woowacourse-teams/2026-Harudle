@@ -6,12 +6,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 
 import com.harudle.auth.presentation.AuthenticatedUserIdResolver;
-import com.harudle.common.error.GlobalExceptionHandler;
 import com.harudle.common.error.ProblemDetailFactory;
-import com.harudle.common.error.TraceIdFilter;
-import com.harudle.common.security.ApiAccessDeniedHandler;
-import com.harudle.common.security.ApiAuthenticationEntryPoint;
-import com.harudle.common.security.ApiProblemResponseWriter;
 import com.harudle.common.security.ApiSecurityConfiguration;
 import com.harudle.diary.service.DiaryDeletionService;
 import com.harudle.diary.service.DiaryQueryService;
@@ -49,13 +44,8 @@ import org.springframework.test.web.servlet.MockMvc;
 @Import({
         AuthenticatedUserIdResolver.class,
         DiaryResponseAssembler.class,
-        GlobalExceptionHandler.class,
         ProblemDetailFactory.class,
-        TraceIdFilter.class,
-        ApiSecurityConfiguration.class,
-        ApiAuthenticationEntryPoint.class,
-        ApiAccessDeniedHandler.class,
-        ApiProblemResponseWriter.class
+        ApiSecurityConfiguration.class
 })
 class DiaryControllerTest {
 

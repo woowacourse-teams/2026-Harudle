@@ -9,11 +9,14 @@ import org.springframework.stereotype.Component;
 @Component
 public class ProblemDetailFactory {
 
+    ProblemDetailFactory() {
+    }
+
     public ProblemDetail create(ErrorType errorType, HttpServletRequest request) {
         return create(errorType, request, List.of());
     }
 
-    public ProblemDetail create(
+    ProblemDetail create(
             ErrorType errorType,
             HttpServletRequest request,
             List<FieldValidationError> errors

@@ -2,6 +2,7 @@ package com.harudle.common.security;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.authentication.AuthenticationTrustResolver;
 import org.springframework.security.authentication.AuthenticationTrustResolverImpl;
@@ -12,7 +13,15 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration(proxyBeanMethods = false)
+@Import({
+        ApiAuthenticationEntryPoint.class,
+        ApiAccessDeniedHandler.class,
+        ApiProblemResponseWriter.class
+})
 public class ApiSecurityConfiguration {
+
+    ApiSecurityConfiguration() {
+    }
 
     @Bean
     AuthenticationTrustResolver authenticationTrustResolver() {

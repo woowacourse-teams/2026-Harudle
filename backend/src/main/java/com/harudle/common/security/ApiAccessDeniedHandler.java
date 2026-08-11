@@ -7,10 +7,8 @@ import java.io.IOException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.oauth2.server.resource.web.access.BearerTokenAccessDeniedHandler;
 import org.springframework.security.web.access.AccessDeniedHandler;
-import org.springframework.stereotype.Component;
 
-@Component
-public class ApiAccessDeniedHandler implements AccessDeniedHandler {
+class ApiAccessDeniedHandler implements AccessDeniedHandler {
 
     private final BearerTokenAccessDeniedHandler bearerTokenAccessDeniedHandler =
             new BearerTokenAccessDeniedHandler();

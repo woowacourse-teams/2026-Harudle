@@ -7,10 +7,8 @@ import java.io.IOException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.oauth2.server.resource.web.BearerTokenAuthenticationEntryPoint;
 import org.springframework.security.web.AuthenticationEntryPoint;
-import org.springframework.stereotype.Component;
 
-@Component
-public class ApiAuthenticationEntryPoint implements AuthenticationEntryPoint {
+class ApiAuthenticationEntryPoint implements AuthenticationEntryPoint {
 
     private final BearerTokenAuthenticationEntryPoint bearerTokenEntryPoint =
             new BearerTokenAuthenticationEntryPoint();
