@@ -99,26 +99,37 @@ const HomePage = () => {
     const getMonthlyDiaries = async ({
       year,
       month,
-    }: YearMonth): Promise<MonthlyDiary[]> => {
-      const response = await fetch(
-        `${API_BASE_URL}/diaries?year=${year}&month=${month}`,
-      );
-
-      if (!response.ok) {
-        throw new Error('네트워크 에러');
-      }
-      const data: unknown = await response.json();
-
-      if (!isMonthlyDiariesResponse(data)) {
-        throw new Error('MonthlyDiaries 응답 형식이 일치하지 않습니다.');
-      }
-
+    }: YearMonth): Promise<void> => {
       setMonthlyDiaries({
-        status: 'success',
-        data: data.days,
+        status: 'loading',
       });
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/diaries?year=${year}&month=${month}`,
+        );
 
-      return data.days;
+        if (!response.ok) {
+          throw new Error('네트워크 에러');
+        }
+        const data: unknown = await response.json();
+
+        if (!isMonthlyDiariesResponse(data)) {
+          throw new Error('MonthlyDiaries 응답 형식이 일치하지 않습니다.');
+        }
+
+        setMonthlyDiaries({
+          status: 'success',
+          data: data.days,
+        });
+      } catch (error: unknown) {
+        if (error instanceof Error) {
+          setMonthlyDiaries({
+            status: 'error',
+            error: error,
+          });
+          alert(error.message);
+        }
+      }
     };
 
     void getMonthlyDiaries({ ...selectedYearMonth });
@@ -199,24 +210,36 @@ const RemainingGenerationUsageCard = () => {
   });
 
   useEffect(() => {
-    const getRemainingGenerationUsageCard = async (): Promise<number> => {
-      const response = await fetch(`${API_BASE_URL}/me/generation-usage`);
-
-      if (!response.ok) {
-        throw new Error('네트워크 에러');
-      }
-      const data: unknown = await response.json();
-
-      if (!isGenerationUsageResponse(data)) {
-        throw new Error('GenerationUsage 응답 형식이 일치하지 않습니다.');
-      }
-
+    const getRemainingGenerationUsageCard = async (): Promise<void> => {
       setGenerationUsage({
-        status: 'success',
-        data: data.remainingCount,
+        status: 'loading',
       });
 
-      return data.remainingCount;
+      try {
+        const response = await fetch(`${API_BASE_URL}/me/generation-usage`);
+
+        if (!response.ok) {
+          throw new Error('네트워크 에러');
+        }
+        const data: unknown = await response.json();
+
+        if (!isGenerationUsageResponse(data)) {
+          throw new Error('GenerationUsage 응답 형식이 일치하지 않습니다.');
+        }
+
+        setGenerationUsage({
+          status: 'success',
+          data: data.remainingCount,
+        });
+      } catch (error: unknown) {
+        if (error instanceof Error) {
+          setGenerationUsage({
+            status: 'error',
+            error: error,
+          });
+          alert(error.message);
+        }
+      }
     };
 
     void getRemainingGenerationUsageCard();
@@ -233,5 +256,5 @@ const RemainingGenerationUsageCard = () => {
     return <div>에러가 발생했습니다.</div>;
   }
 
-  return <div>오늘 남은 생성{generationUsage.data}회</div>;
+  return <div>오늘 남은 생성 {generationUsage.data}회</div>;
 };
