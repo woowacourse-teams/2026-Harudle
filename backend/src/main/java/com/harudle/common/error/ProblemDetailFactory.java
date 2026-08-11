@@ -9,7 +9,10 @@ import org.springframework.stereotype.Component;
 @Component
 public class ProblemDetailFactory {
 
-    ProblemDetailFactory() {
+    private final RequestTraceId requestTraceId;
+
+    ProblemDetailFactory(RequestTraceId requestTraceId) {
+        this.requestTraceId = requestTraceId;
     }
 
     public ProblemDetail create(ErrorType errorType, HttpServletRequest request) {
@@ -29,7 +32,7 @@ public class ProblemDetailFactory {
         problemDetail.setTitle(errorType.title());
         problemDetail.setInstance(URI.create(request.getRequestURI()));
         problemDetail.setProperty("code", errorType.code());
-        problemDetail.setProperty("traceId", RequestTraceId.getOrCreate(request));
+        problemDetail.setProperty("traceId", requestTraceId.getOrCreate(request));
         if (!errors.isEmpty()) {
             problemDetail.setProperty("errors", errors);
         }

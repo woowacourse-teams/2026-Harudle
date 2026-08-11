@@ -8,13 +8,18 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class TimeConfiguration {
 
-    public static final ZoneId SERVICE_ZONE_ID = ZoneId.of("Asia/Seoul");
+    private static final ZoneId SERVICE_ZONE_ID = ZoneId.of("Asia/Seoul");
 
     TimeConfiguration() {
     }
 
     @Bean
-    Clock serviceClock() {
-        return Clock.system(SERVICE_ZONE_ID);
+    ZoneId serviceZoneId() {
+        return SERVICE_ZONE_ID;
+    }
+
+    @Bean
+    Clock serviceClock(ZoneId serviceZoneId) {
+        return Clock.system(serviceZoneId);
     }
 }
