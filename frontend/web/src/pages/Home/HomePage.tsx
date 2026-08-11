@@ -120,7 +120,7 @@ const HomePage = () => {
     };
 
     void getMonthlyDiaries({ ...selectedYearMonth });
-  }, [selectedYearMonth.year, selectedYearMonth.month]);
+  }, [selectedYearMonth]);
 
   const handleYearMonthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const stringYearMonth = e.target.value;
