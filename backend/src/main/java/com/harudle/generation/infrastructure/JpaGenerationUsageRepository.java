@@ -11,7 +11,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
-public class JpaGenerationUsageRepository implements GenerationUsageRepository {
+class JpaGenerationUsageRepository implements GenerationUsageRepository {
 
     private static final String INCREMENT_QUERY = """
             WITH incremented_usage AS (
@@ -48,7 +48,7 @@ public class JpaGenerationUsageRepository implements GenerationUsageRepository {
 
     private final EntityManager entityManager;
 
-    public JpaGenerationUsageRepository(EntityManager entityManager) {
+    JpaGenerationUsageRepository(EntityManager entityManager) {
         this.entityManager = entityManager;
     }
 
@@ -66,7 +66,7 @@ public class JpaGenerationUsageRepository implements GenerationUsageRepository {
     @Override
     @Transactional
     @SuppressWarnings("unchecked")
-    public Optional<GenerationUsage> incrementWithinLimit(UUID userId, LocalDate usageDate) {
+    public Optional<GenerationUsage> tryIncrementWithinLimit(UUID userId, LocalDate usageDate) {
         validateParameters(userId, usageDate);
         List<Object[]> usages = entityManager
                 .createNativeQuery(INCREMENT_QUERY)

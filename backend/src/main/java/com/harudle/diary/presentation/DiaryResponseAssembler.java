@@ -10,24 +10,22 @@ import com.harudle.diary.service.dto.DiarySummaryResult;
 import com.harudle.diary.service.dto.DiaryTimelineResult;
 import com.harudle.generation.presentation.GenerationUsageResponse;
 import com.harudle.generation.service.port.ImageAccessUrl;
-import com.harudle.generation.service.port.ImageStorageException;
 import com.harudle.generation.service.port.ImageUrlProvider;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 @Component
-public class DiaryResponseAssembler {
+final class DiaryResponseAssembler {
 
-    private final ObjectProvider<ImageUrlProvider> imageUrlProvider;
+    private final ImageUrlProvider imageUrlProvider;
 
-    public DiaryResponseAssembler(ObjectProvider<ImageUrlProvider> imageUrlProvider) {
+    DiaryResponseAssembler(ImageUrlProvider imageUrlProvider) {
         this.imageUrlProvider = imageUrlProvider;
     }
 
-    public CreateDiaryResponse toCreateResponse(CreateDiaryResult result) {
+    CreateDiaryResponse toCreateResponse(CreateDiaryResult result) {
         return new CreateDiaryResponse(
                 result.id(),
                 result.diaryDate(),
@@ -38,7 +36,7 @@ public class DiaryResponseAssembler {
         );
     }
 
-    public DiaryDetailResponse toDetailResponse(DiaryDetailResult result) {
+    DiaryDetailResponse toDetailResponse(DiaryDetailResult result) {
         return new DiaryDetailResponse(
                 result.id(),
                 result.diaryDate(),
@@ -48,7 +46,7 @@ public class DiaryResponseAssembler {
         );
     }
 
-    public DiaryTimelineResponse toTimelineResponse(DiaryTimelineResult result) {
+    DiaryTimelineResponse toTimelineResponse(DiaryTimelineResult result) {
         List<DiaryDayResponse> days = result.days().stream()
                 .map(this::toDayResponse)
                 .toList();
@@ -59,7 +57,7 @@ public class DiaryResponseAssembler {
         List<DiarySummaryResponse> items = result.items().stream()
                 .map(this::toSummaryResponse)
                 .toList();
-        return new DiaryDayResponse(result.date(), result.exist(), items);
+        return new DiaryDayResponse(result.date(), result.hasItems(), items);
     }
 
     private DiarySummaryResponse toSummaryResponse(DiarySummaryResult result) {
@@ -94,11 +92,7 @@ public class DiaryResponseAssembler {
     }
 
     private ImageAccessUrl createImageAccessUrl(String imageObjectKey) {
-        ImageUrlProvider provider = imageUrlProvider.getIfAvailable();
-        if (provider == null) {
-            throw new ImageStorageException("이미지 URL 발급 어댑터가 구성되지 않았습니다.");
-        }
-        return provider.createAccessUrl(imageObjectKey);
+        return imageUrlProvider.createAccessUrl(imageObjectKey);
     }
 
     private OffsetDateTime toServiceTime(Instant instant) {

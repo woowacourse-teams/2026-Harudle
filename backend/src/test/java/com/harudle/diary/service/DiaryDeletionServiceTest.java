@@ -48,34 +48,34 @@ class DiaryDeletionServiceTest {
     @DisplayName("본인 일기를 소프트 삭제하고 연결된 공유 링크를 삭제한다")
     void deleteOwnedDiary() {
         Diary diary = createDiary(USER_ID);
-        when(diaryRepository.findById(diary.getId())).thenReturn(Optional.of(diary));
+        when(diaryRepository.findActiveById(diary.getId())).thenReturn(Optional.of(diary));
 
         diaryDeletionService.delete(USER_ID, diary.getId());
 
         assertThat(diary.isDeleted()).isTrue();
-        verify(shareLinkRepository).deleteByDiaryId(diary.getId());
+        verify(shareLinkRepository).deleteAllByDiaryId(diary.getId());
     }
 
     @Test
     @DisplayName("존재하지 않는 일기 삭제는 성공으로 처리한다")
     void deleteMissingDiaryIsIdempotent() {
         UUID diaryId = UUID.randomUUID();
-        when(diaryRepository.findById(diaryId)).thenReturn(Optional.empty());
+        when(diaryRepository.findActiveById(diaryId)).thenReturn(Optional.empty());
 
         diaryDeletionService.delete(USER_ID, diaryId);
 
-        verify(shareLinkRepository, never()).deleteByDiaryId(diaryId);
+        verify(shareLinkRepository, never()).deleteAllByDiaryId(diaryId);
     }
 
     @Test
     @DisplayName("다른 사용자의 일기는 삭제할 수 없다")
     void deleteRejectsOtherUsersDiary() {
         Diary diary = createDiary(OTHER_USER_ID);
-        when(diaryRepository.findById(diary.getId())).thenReturn(Optional.of(diary));
+        when(diaryRepository.findActiveById(diary.getId())).thenReturn(Optional.of(diary));
 
         assertThatThrownBy(() -> diaryDeletionService.delete(USER_ID, diary.getId()))
                 .isInstanceOf(DiaryAccessDeniedException.class);
-        verify(shareLinkRepository, never()).deleteByDiaryId(diary.getId());
+        verify(shareLinkRepository, never()).deleteAllByDiaryId(diary.getId());
     }
 
     private Diary createDiary(UUID userId) {

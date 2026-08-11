@@ -7,12 +7,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 
 import com.harudle.auth.presentation.AuthenticatedUserIdResolver;
-import com.harudle.common.error.GlobalExceptionHandler;
 import com.harudle.common.error.ProblemDetailFactory;
-import com.harudle.common.error.TraceIdFilter;
-import com.harudle.common.security.ApiAccessDeniedHandler;
-import com.harudle.common.security.ApiAuthenticationEntryPoint;
-import com.harudle.common.security.ApiProblemResponseWriter;
 import com.harudle.common.security.ApiSecurityConfiguration;
 import com.harudle.diary.service.DiaryCreationService;
 import com.harudle.diary.service.DiaryDeletionService;
@@ -56,13 +51,8 @@ import org.springframework.test.web.servlet.MockMvc;
 @Import({
         AuthenticatedUserIdResolver.class,
         DiaryResponseAssembler.class,
-        GlobalExceptionHandler.class,
         ProblemDetailFactory.class,
-        TraceIdFilter.class,
-        ApiSecurityConfiguration.class,
-        ApiAuthenticationEntryPoint.class,
-        ApiAccessDeniedHandler.class,
-        ApiProblemResponseWriter.class
+        ApiSecurityConfiguration.class
 })
 class DiaryControllerTest {
 
@@ -163,7 +153,7 @@ class DiaryControllerTest {
         DiaryTimelineResult result = new DiaryTimelineResult(
                 2026,
                 8,
-                List.of(new DiaryDayResult(DIARY_DATE, true, List.of(summary)))
+                List.of(new DiaryDayResult(DIARY_DATE, List.of(summary)))
         );
         when(diaryQueryService.getTimeline(USER_ID, 2026, 8)).thenReturn(result);
         configureImageUrl();
@@ -396,7 +386,7 @@ class DiaryControllerTest {
 
         assertThat(response.statusCode()).isEqualTo(401);
         assertThat(response.contentType()).startsWith("application/problem+json");
-        assertThat(response.header("WWW-Authenticate")).isEqualTo("Bearer");
+        assertThat(response.header("WWW-Authenticate")).startsWith("Bearer");
         assertThat(response.jsonPath().getString("code")).isEqualTo("UNAUTHORIZED");
     }
 

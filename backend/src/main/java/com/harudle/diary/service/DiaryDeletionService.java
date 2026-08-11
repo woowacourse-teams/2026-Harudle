@@ -1,9 +1,9 @@
 package com.harudle.diary.service;
 
 import com.harudle.diary.domain.Diary;
-import com.harudle.diary.repository.DiaryRepository;
+import com.harudle.diary.repository.DiaryDeletionRepository;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
-import com.harudle.share.repository.ShareLinkRepository;
+import com.harudle.share.repository.ShareLinkDeletionRepository;
 import java.time.Clock;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -12,33 +12,32 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class DiaryDeletionService {
 
-    private final DiaryRepository diaryRepository;
-    private final ShareLinkRepository shareLinkRepository;
+    private final DiaryDeletionRepository diaryDeletionRepository;
+    private final ShareLinkDeletionRepository shareLinkDeletionRepository;
     private final Clock clock;
 
-    public DiaryDeletionService(
-            DiaryRepository diaryRepository,
-            ShareLinkRepository shareLinkRepository,
+    DiaryDeletionService(
+            DiaryDeletionRepository diaryDeletionRepository,
+            ShareLinkDeletionRepository shareLinkDeletionRepository,
             Clock clock
     ) {
-        this.diaryRepository = diaryRepository;
-        this.shareLinkRepository = shareLinkRepository;
+        this.diaryDeletionRepository = diaryDeletionRepository;
+        this.shareLinkDeletionRepository = shareLinkDeletionRepository;
         this.clock = clock;
     }
 
     @Transactional
     public void delete(UUID userId, UUID diaryId) {
         validateParameters(userId, diaryId);
-        diaryRepository.findById(diaryId)
-                .filter(diary -> !diary.isDeleted())
-                .ifPresent(diary -> deleteOwnedDiary(diary, userId));
+        diaryDeletionRepository.findActiveById(diaryId)
+                .ifPresent(diary -> deleteOwnedDiary(diary, userId, diaryId));
     }
 
-    private void deleteOwnedDiary(Diary diary, UUID userId) {
+    private void deleteOwnedDiary(Diary diary, UUID userId, UUID diaryId) {
         if (!diary.isOwnedBy(userId)) {
             throw new DiaryAccessDeniedException();
         }
-        shareLinkRepository.deleteByDiaryId(diary.getId());
+        shareLinkDeletionRepository.deleteAllByDiaryId(diaryId);
         diary.delete(clock.instant());
     }
 

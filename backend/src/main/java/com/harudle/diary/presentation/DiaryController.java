@@ -1,6 +1,7 @@
 package com.harudle.diary.presentation;
 
 import com.harudle.auth.presentation.AuthenticatedUserIdResolver;
+import com.harudle.common.validation.CanonicalUuidParser;
 import com.harudle.diary.service.DiaryCreationService;
 import com.harudle.diary.service.DiaryDeletionService;
 import com.harudle.diary.service.DiaryQueryService;
@@ -27,7 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 @RestController
 @RequestMapping(DiaryController.BASE_PATH)
-public class DiaryController {
+class DiaryController {
 
     static final String BASE_PATH = "/api/v1/diaries";
     private static final int MIN_API_YEAR = 1;
@@ -41,7 +42,7 @@ public class DiaryController {
     private final AuthenticatedUserIdResolver authenticatedUserIdResolver;
     private final DiaryResponseAssembler responseAssembler;
 
-    public DiaryController(
+    DiaryController(
             DiaryCreationService diaryCreationService,
             DiaryQueryService diaryQueryService,
             DiaryDeletionService diaryDeletionService,
@@ -106,17 +107,7 @@ public class DiaryController {
     }
 
     private static UUID parseIdempotencyKey(String idempotencyKey) {
-        if (idempotencyKey == null || idempotencyKey.isBlank()) {
-            throw new InvalidIdempotencyKeyException();
-        }
-        try {
-            UUID parsedIdempotencyKey = UUID.fromString(idempotencyKey);
-            if (!parsedIdempotencyKey.toString().equalsIgnoreCase(idempotencyKey)) {
-                throw new InvalidIdempotencyKeyException();
-            }
-            return parsedIdempotencyKey;
-        } catch (IllegalArgumentException exception) {
-            throw new InvalidIdempotencyKeyException();
-        }
+        return CanonicalUuidParser.parse(idempotencyKey)
+                .orElseThrow(InvalidIdempotencyKeyException::new);
     }
 }

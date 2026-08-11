@@ -7,7 +7,7 @@ public final class AuthenticationRequiredException extends RuntimeException {
     @Serial
     private static final long serialVersionUID = 1L;
 
-    public AuthenticationRequiredException() {
+    AuthenticationRequiredException() {
         super("인증 정보가 필요합니다.");
     }
 }

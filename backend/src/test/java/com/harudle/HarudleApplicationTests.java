@@ -9,6 +9,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -26,6 +28,9 @@ class HarudleApplicationTests {
 
     @PersistenceContext
     private EntityManager entityManager;
+
+    @MockitoBean
+    private JwtDecoder jwtDecoder;
 
     @Test
     @DisplayName("Spring 애플리케이션 컨텍스트를 로드한다")

@@ -1,6 +1,6 @@
 package com.harudle.common.error;
 
-public record FieldValidationError(
+record FieldValidationError(
         String field,
         String reason
 ) {

@@ -1,31 +1,30 @@
 package com.harudle.auth.presentation;
 
+import com.harudle.common.validation.CanonicalUuidParser;
+import java.util.Optional;
 import java.util.UUID;
-import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.authentication.AuthenticationTrustResolver;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 
 @Component
 public class AuthenticatedUserIdResolver {
 
-    public UUID resolve(Authentication authentication) {
-        validateAuthentication(authentication);
-        String principalName = authentication.getName();
-        if (principalName == null) {
-            throw new AuthenticationRequiredException();
-        }
-        try {
-            return UUID.fromString(principalName);
-        } catch (IllegalArgumentException exception) {
-            throw new AuthenticationRequiredException();
-        }
+    private final AuthenticationTrustResolver authenticationTrustResolver;
+
+    AuthenticatedUserIdResolver(AuthenticationTrustResolver authenticationTrustResolver) {
+        this.authenticationTrustResolver = authenticationTrustResolver;
     }
 
-    private static void validateAuthentication(Authentication authentication) {
-        if (authentication == null
-                || !authentication.isAuthenticated()
-                || authentication instanceof AnonymousAuthenticationToken) {
-            throw new AuthenticationRequiredException();
-        }
+    public UUID resolve(Authentication authentication) {
+        return authenticatedPrincipalName(authentication)
+                .flatMap(CanonicalUuidParser::parse)
+                .orElseThrow(AuthenticationRequiredException::new);
+    }
+
+    private Optional<String> authenticatedPrincipalName(Authentication authentication) {
+        return Optional.ofNullable(authentication)
+                .filter(authenticationTrustResolver::isAuthenticated)
+                .map(Authentication::getName);
     }
 }

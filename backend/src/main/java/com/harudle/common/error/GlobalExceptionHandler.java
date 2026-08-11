@@ -30,25 +30,26 @@ import org.springframework.web.method.annotation.HandlerMethodValidationExceptio
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 @RestControllerAdvice
-public class GlobalExceptionHandler {
+class GlobalExceptionHandler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     private final ProblemDetailFactory problemDetailFactory;
 
-    public GlobalExceptionHandler(ProblemDetailFactory problemDetailFactory) {
+    GlobalExceptionHandler(ProblemDetailFactory problemDetailFactory) {
         this.problemDetailFactory = problemDetailFactory;
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ProblemDetail> handleMethodArgumentNotValid(
+    ResponseEntity<ProblemDetail> handleMethodArgumentNotValid(
             MethodArgumentNotValidException exception,
             HttpServletRequest request
     ) {
-        List<FieldValidationError> errors = exception.getBindingResult().getFieldErrors().stream()
-                .map(error -> new FieldValidationError(error.getField(), error.getDefaultMessage()))
-                .toList();
-        return createResponse(ErrorType.VALIDATION_ERROR, request, errors);
+        return createResponse(
+                ErrorType.VALIDATION_ERROR,
+                request,
+                FieldValidationErrorMapper.from(exception.getBindingResult())
+        );
     }
 
     @ExceptionHandler({
@@ -58,10 +59,7 @@ public class GlobalExceptionHandler {
             MissingServletRequestParameterException.class,
             MethodArgumentTypeMismatchException.class
     })
-    public ResponseEntity<ProblemDetail> handleValidation(
-            Exception exception,
-            HttpServletRequest request
-    ) {
+    ResponseEntity<ProblemDetail> handleValidation(HttpServletRequest request) {
         return createResponse(ErrorType.VALIDATION_ERROR, request);
     }
 
@@ -74,26 +72,19 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(AuthenticationRequiredException.class)
-    public ResponseEntity<ProblemDetail> handleAuthenticationRequired(
-            AuthenticationRequiredException exception,
-            HttpServletRequest request
-    ) {
-        return createResponse(ErrorType.UNAUTHORIZED, request);
+    ResponseEntity<ProblemDetail> handleAuthenticationRequired(HttpServletRequest request) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
+        return createResponse(ErrorType.UNAUTHORIZED, request, headers);
     }
 
     @ExceptionHandler(DiaryAccessDeniedException.class)
-    public ResponseEntity<ProblemDetail> handleDiaryAccessDenied(
-            DiaryAccessDeniedException exception,
-            HttpServletRequest request
-    ) {
+    ResponseEntity<ProblemDetail> handleDiaryAccessDenied(HttpServletRequest request) {
         return createResponse(ErrorType.FORBIDDEN, request);
     }
 
     @ExceptionHandler(DiaryNotFoundException.class)
-    public ResponseEntity<ProblemDetail> handleDiaryNotFound(
-            DiaryNotFoundException exception,
-            HttpServletRequest request
-    ) {
+    ResponseEntity<ProblemDetail> handleDiaryNotFound(HttpServletRequest request) {
         return createResponse(ErrorType.DIARY_NOT_FOUND, request);
     }
 
@@ -114,12 +105,12 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(DailyGenerationLimitExceededException.class)
-    public ResponseEntity<ProblemDetail> handleDailyGenerationLimitExceeded(
+    ResponseEntity<ProblemDetail> handleDailyGenerationLimitExceeded(
             DailyGenerationLimitExceededException exception,
             HttpServletRequest request
     ) {
         HttpHeaders headers = new HttpHeaders();
-        headers.set(HttpHeaders.RETRY_AFTER, Long.toString(exception.getRetryAfterSeconds()));
+        headers.set(HttpHeaders.RETRY_AFTER, Long.toString(exception.retryAfterSeconds()));
         ProblemDetail problemDetail = problemDetailFactory.create(
                 ErrorType.DAILY_GENERATION_LIMIT_EXCEEDED,
                 request
@@ -144,10 +135,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(ImageStorageException.class)
-    public ResponseEntity<ProblemDetail> handleImageStorage(
-            ImageStorageException exception,
-            HttpServletRequest request
-    ) {
+    ResponseEntity<ProblemDetail> handleImageStorage(HttpServletRequest request) {
         return createResponse(ErrorType.IMAGE_STORAGE_ERROR, request);
     }
 
@@ -160,7 +148,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ProblemDetail> handleUnexpected(
+    ResponseEntity<ProblemDetail> handleUnexpected(
             Exception exception,
             HttpServletRequest request
     ) {
@@ -179,9 +167,7 @@ public class GlobalExceptionHandler {
             ErrorType errorType,
             HttpServletRequest request
     ) {
-        return ResponseEntity
-                .status(errorType.getStatus())
-                .body(problemDetailFactory.create(errorType, request));
+        return createResponse(errorType, request, List.of());
     }
 
     private ResponseEntity<ProblemDetail> createResponse(
@@ -190,7 +176,18 @@ public class GlobalExceptionHandler {
             List<FieldValidationError> errors
     ) {
         return ResponseEntity
-                .status(errorType.getStatus())
+                .status(errorType.status())
                 .body(problemDetailFactory.create(errorType, request, errors));
+    }
+
+    private ResponseEntity<ProblemDetail> createResponse(
+            ErrorType errorType,
+            HttpServletRequest request,
+            HttpHeaders headers
+    ) {
+        return ResponseEntity
+                .status(errorType.status())
+                .headers(headers)
+                .body(problemDetailFactory.create(errorType, request));
     }
 }

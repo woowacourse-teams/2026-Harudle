@@ -25,6 +25,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -53,6 +55,9 @@ class JpaGenerationUsageRepositoryTest {
 
     @Autowired
     private GenerationUsageRepository generationUsageRepository;
+
+    @MockitoBean
+    private JwtDecoder jwtDecoder;
 
     @BeforeEach
     void setUp() {
@@ -110,11 +115,11 @@ class JpaGenerationUsageRepositoryTest {
     @DisplayName("같은 트랜잭션에서 사용량을 연속 증가하고 최신 값을 조회한다")
     void incrementAndFindUsageWithinSameTransaction() {
         transactionTemplate.executeWithoutResult(status -> {
-            assertThat(generationUsageRepository.incrementWithinLimit(USER_ID, USAGE_DATE))
+            assertThat(generationUsageRepository.tryIncrementWithinLimit(USER_ID, USAGE_DATE))
                     .contains(new GenerationUsage(USAGE_DATE, 1, 3));
             assertThat(generationUsageRepository.find(USER_ID, USAGE_DATE))
                     .contains(new GenerationUsage(USAGE_DATE, 1, 3));
-            assertThat(generationUsageRepository.incrementWithinLimit(USER_ID, USAGE_DATE))
+            assertThat(generationUsageRepository.tryIncrementWithinLimit(USER_ID, USAGE_DATE))
                     .contains(new GenerationUsage(USAGE_DATE, 2, 3));
             assertThat(generationUsageRepository.find(USER_ID, USAGE_DATE))
                     .contains(new GenerationUsage(USAGE_DATE, 2, 3));
@@ -125,7 +130,7 @@ class JpaGenerationUsageRepositoryTest {
     @DisplayName("외부 트랜잭션이 롤백되면 사용량 증가도 함께 롤백한다")
     void rollbackUsageIncrementWithOuterTransaction() {
         assertThatThrownBy(() -> transactionTemplate.executeWithoutResult(status -> {
-            generationUsageRepository.incrementWithinLimit(USER_ID, USAGE_DATE);
+            generationUsageRepository.tryIncrementWithinLimit(USER_ID, USAGE_DATE);
             throw new IllegalStateException("트랜잭션 롤백 검증");
         })).isInstanceOf(IllegalStateException.class);
 
@@ -135,7 +140,7 @@ class JpaGenerationUsageRepositoryTest {
     private List<Callable<Optional<GenerationUsage>>> incrementTasks() {
         return IntStream.range(0, CONCURRENT_REQUEST_COUNT)
                 .mapToObj(index -> (Callable<Optional<GenerationUsage>>) () ->
-                        generationUsageRepository.incrementWithinLimit(USER_ID, USAGE_DATE))
+                        generationUsageRepository.tryIncrementWithinLimit(USER_ID, USAGE_DATE))
                 .toList();
     }
 

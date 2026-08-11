@@ -1,9 +1,11 @@
 package com.harudle.common.security;
 
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.core.annotation.Order;
+import org.springframework.security.authentication.AuthenticationTrustResolver;
+import org.springframework.security.authentication.AuthenticationTrustResolverImpl;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -11,7 +13,20 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration(proxyBeanMethods = false)
+@Import({
+        ApiAuthenticationEntryPoint.class,
+        ApiAccessDeniedHandler.class,
+        ApiProblemResponseWriter.class
+})
 public class ApiSecurityConfiguration {
+
+    ApiSecurityConfiguration() {
+    }
+
+    @Bean
+    AuthenticationTrustResolver authenticationTrustResolver() {
+        return new AuthenticationTrustResolverImpl();
+    }
 
     @Bean
     @Order(1)
@@ -19,7 +34,7 @@ public class ApiSecurityConfiguration {
             HttpSecurity http,
             ApiAuthenticationEntryPoint authenticationEntryPoint,
             ApiAccessDeniedHandler accessDeniedHandler,
-            ObjectProvider<JwtDecoder> jwtDecoderProvider
+            JwtDecoder jwtDecoder
     ) throws Exception {
         http.securityMatcher("/api/v1/**")
                 .csrf(AbstractHttpConfigurer::disable)
@@ -39,13 +54,18 @@ public class ApiSecurityConfiguration {
                         .authenticationEntryPoint(authenticationEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler)
                 );
-        JwtDecoder jwtDecoder = jwtDecoderProvider.getIfUnique();
-        if (jwtDecoder != null) {
-            http.oauth2ResourceServer(resourceServer -> resourceServer
-                    .jwt(jwt -> jwt.decoder(jwtDecoder))
-                    .authenticationEntryPoint(authenticationEntryPoint)
-            );
-        }
+        configureResourceServer(http, jwtDecoder, authenticationEntryPoint);
         return http.build();
+    }
+
+    private static void configureResourceServer(
+            HttpSecurity http,
+            JwtDecoder jwtDecoder,
+            ApiAuthenticationEntryPoint authenticationEntryPoint
+    ) {
+        http.oauth2ResourceServer(resourceServer -> resourceServer
+                .jwt(jwt -> jwt.decoder(jwtDecoder))
+                .authenticationEntryPoint(authenticationEntryPoint)
+        );
     }
 }
