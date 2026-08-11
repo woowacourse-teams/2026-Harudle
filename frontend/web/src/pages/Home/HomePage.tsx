@@ -146,7 +146,7 @@ const HomePage = () => {
         />
         <div>{monthlyDiaries.data.length}개의 기록</div>
       </div>
-      <div>오늘 남은 생성 횟수 3회</div>
+      <RemainingGenerationUsageCard />
       {monthlyDiaries.data.length > 0 ? (
         <>
           <DiaryItemList monthlyDiaries={monthlyDiaries.data} />
@@ -161,3 +161,71 @@ const HomePage = () => {
 };
 
 export default HomePage;
+
+interface GenerationUsageResponse {
+  usageDate: string;
+  usedCount: number;
+  limitCount: number;
+  remainingCount: number;
+}
+
+const isGenerationUsageResponse = (
+  value: unknown,
+): value is GenerationUsageResponse => {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'usageDate' in value &&
+    typeof value.usageDate === 'string' &&
+    'usedCount' in value &&
+    typeof value.usedCount === 'number' &&
+    'limitCount' in value &&
+    typeof value.limitCount === 'number' &&
+    'remainingCount' in value &&
+    typeof value.remainingCount === 'number'
+  );
+};
+
+const RemainingGenerationUsageCard = () => {
+  // 서버 상태
+  const [generationUsage, setGenerationUsage] = useState<ApiRequest<number>>({
+    status: 'idle',
+  });
+
+  useEffect(() => {
+    const getRemainingGenerationUsageCard = async (): Promise<number> => {
+      const response = await fetch(`${API_BASE_URL}/me/generation-usage`);
+
+      if (!response.ok) {
+        throw new Error('네트워크 에러');
+      }
+      const data: unknown = await response.json();
+
+      if (!isGenerationUsageResponse(data)) {
+        throw new Error('GenerationUsage 응답 형식이 일치하지 않습니다.');
+      }
+
+      setGenerationUsage({
+        status: 'success',
+        data: data.remainingCount,
+      });
+
+      return data.remainingCount;
+    };
+
+    void getRemainingGenerationUsageCard();
+  }, []);
+
+  if (
+    generationUsage.status === 'idle' ||
+    generationUsage.status === 'loading'
+  ) {
+    return <div>로딩중...</div>;
+  }
+
+  if (generationUsage.status === 'error') {
+    return <div>에러가 발생했습니다.</div>;
+  }
+
+  return <div>오늘 남은 생성{generationUsage.data}회</div>;
+};
