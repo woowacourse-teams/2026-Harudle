@@ -30,7 +30,7 @@ const formatYearMonthToObject = (yearMonth: string): YearMonth => {
 };
 
 // TODO: 이거 도메인 타입 만들고 나중에 MonthlyDiaries extends Monthly로 가자
-interface MonthlyDiary {
+export interface MonthlyDiary {
   date: string;
   exist: boolean;
   title: string;
@@ -147,7 +147,11 @@ const HomePage = () => {
         <div>{monthlyDiaries.data.length}개의 기록</div>
       </div>
       <div>오늘 남은 생성 횟수 3회</div>
-      {monthlyDiaries.data.length > 0 ? <DiaryItemList /> : <DiaryEmptyState />}
+      {monthlyDiaries.data.length > 0 ? (
+        <DiaryItemList monthlyDiaries={monthlyDiaries.data} />
+      ) : (
+        <DiaryEmptyState />
+      )}
       <ActionButton />
       <BottomNavigation />
     </div>
