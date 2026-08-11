@@ -5,11 +5,14 @@ import java.util.List;
 
 public record DiaryDayResult(
         LocalDate date,
-        boolean exist,
         List<DiarySummaryResult> items
 ) {
 
     public DiaryDayResult {
         items = List.copyOf(items);
+    }
+
+    public boolean hasItems() {
+        return !items.isEmpty();
     }
 }

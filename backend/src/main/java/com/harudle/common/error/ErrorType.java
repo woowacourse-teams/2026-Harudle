@@ -23,8 +23,6 @@ public enum ErrorType {
     ),
     DIARY_NOT_FOUND(
             HttpStatus.NOT_FOUND,
-            "DIARY_NOT_FOUND",
-            "diary-not-found",
             "Diary not found",
             "일기를 찾을 수 없습니다."
     ),
@@ -35,8 +33,6 @@ public enum ErrorType {
     ),
     IMAGE_STORAGE_ERROR(
             HttpStatus.SERVICE_UNAVAILABLE,
-            "IMAGE_STORAGE_ERROR",
-            "image-storage-error",
             "Image storage error",
             "생성 이미지를 저장하거나 불러오지 못했습니다."
     ),

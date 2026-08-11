@@ -1,7 +1,7 @@
 package com.harudle.diary.service;
 
-import com.harudle.diary.domain.Diary;
-import com.harudle.diary.repository.DiaryRepository;
+import com.harudle.diary.repository.DiaryQueryRepository;
+import com.harudle.diary.repository.DiarySnapshot;
 import com.harudle.diary.service.dto.DiaryDayResult;
 import com.harudle.diary.service.dto.DiaryDetailResult;
 import com.harudle.diary.service.dto.DiaryGenerationResult;
@@ -9,9 +9,9 @@ import com.harudle.diary.service.dto.DiarySummaryResult;
 import com.harudle.diary.service.dto.DiaryTimelineResult;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
-import com.harudle.generation.domain.ComicGeneration;
 import com.harudle.generation.domain.GenerationStatus;
-import com.harudle.generation.repository.ComicGenerationRepository;
+import com.harudle.generation.repository.ComicGenerationQueryRepository;
+import com.harudle.generation.repository.ComicGenerationSnapshot;
 import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -28,27 +28,27 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class DiaryQueryService {
 
-    private final DiaryRepository diaryRepository;
-    private final ComicGenerationRepository comicGenerationRepository;
+    private final DiaryQueryRepository diaryQueryRepository;
+    private final ComicGenerationQueryRepository comicGenerationQueryRepository;
 
-    public DiaryQueryService(
-            DiaryRepository diaryRepository,
-            ComicGenerationRepository comicGenerationRepository
+    DiaryQueryService(
+            DiaryQueryRepository diaryQueryRepository,
+            ComicGenerationQueryRepository comicGenerationQueryRepository
     ) {
-        this.diaryRepository = diaryRepository;
-        this.comicGenerationRepository = comicGenerationRepository;
+        this.diaryQueryRepository = diaryQueryRepository;
+        this.comicGenerationQueryRepository = comicGenerationQueryRepository;
     }
 
     public DiaryTimelineResult getTimeline(UUID userId, int year, int month) {
         validateUserId(userId);
         YearMonth yearMonth = createYearMonth(year, month);
-        List<Diary> diaries = diaryRepository
-                .findAllByUserIdAndDiaryDateBetweenAndDeletedAtIsNullOrderByDiaryDateAscCreatedAtAsc(
+        List<DiarySnapshot> diaries = diaryQueryRepository.findMonthlySnapshots(
                         userId,
                         yearMonth.atDay(1),
                         yearMonth.atEndOfMonth()
                 );
-        Map<UUID, ComicGeneration> generationsByDiaryId = findSuccessfulGenerationsByDiaryId(diaries);
+        Map<UUID, ComicGenerationSnapshot> generationsByDiaryId =
+                findSuccessfulGenerationsByDiaryId(diaries);
         Map<LocalDate, List<DiarySummaryResult>> itemsByDate = createItemsByDate(diaries, generationsByDiaryId);
         List<DiaryDayResult> days = createDays(yearMonth, itemsByDate);
         return new DiaryTimelineResult(year, month, days);
@@ -57,38 +57,42 @@ public class DiaryQueryService {
     public DiaryDetailResult getDetail(UUID userId, UUID diaryId) {
         validateUserId(userId);
         validateDiaryId(diaryId);
-        Diary diary = diaryRepository.findById(diaryId)
+        DiarySnapshot diary = diaryQueryRepository.findActiveSnapshotById(diaryId)
                 .orElseThrow(DiaryNotFoundException::new);
-        validateAccessibleDiary(diary, userId);
-        ComicGeneration generation = comicGenerationRepository.findByDiaryId(diaryId)
+        validateOwnership(diary, userId);
+        ComicGenerationSnapshot generation = comicGenerationQueryRepository
+                .findSnapshotByDiaryId(diaryId)
                 .orElseThrow(() -> new IllegalStateException(
                         "일기의 만화 생성 기록을 찾을 수 없습니다."
                 ));
         return toDetailResult(diary, generation);
     }
 
-    private Map<UUID, ComicGeneration> findSuccessfulGenerationsByDiaryId(List<Diary> diaries) {
+    private Map<UUID, ComicGenerationSnapshot> findSuccessfulGenerationsByDiaryId(
+            List<DiarySnapshot> diaries
+    ) {
         List<UUID> diaryIds = diaries.stream()
-                .map(Diary::getId)
+                .map(DiarySnapshot::id)
                 .toList();
         if (diaryIds.isEmpty()) {
             return Map.of();
         }
-        return comicGenerationRepository.findAllByDiaryIdIn(diaryIds).stream()
-                .filter(generation -> generation.getStatus() == GenerationStatus.SUCCEEDED)
-                .collect(Collectors.toMap(ComicGeneration::getDiaryId, Function.identity()));
+        return comicGenerationQueryRepository
+                .findSnapshotsByDiaryIdInAndStatus(diaryIds, GenerationStatus.SUCCEEDED)
+                .stream()
+                .collect(Collectors.toMap(ComicGenerationSnapshot::diaryId, Function.identity()));
     }
 
     private Map<LocalDate, List<DiarySummaryResult>> createItemsByDate(
-            List<Diary> diaries,
-            Map<UUID, ComicGeneration> generationsByDiaryId
+            List<DiarySnapshot> diaries,
+            Map<UUID, ComicGenerationSnapshot> generationsByDiaryId
     ) {
         return diaries.stream()
-                .filter(diary -> generationsByDiaryId.containsKey(diary.getId()))
+                .filter(diary -> generationsByDiaryId.containsKey(diary.id()))
                 .collect(Collectors.groupingBy(
-                        Diary::getDiaryDate,
+                        DiarySnapshot::diaryDate,
                         Collectors.mapping(
-                                diary -> toSummaryResult(diary, generationsByDiaryId.get(diary.getId())),
+                                diary -> toSummaryResult(diary, generationsByDiaryId.get(diary.id())),
                                 Collectors.toList()
                         )
                 ));
@@ -105,37 +109,40 @@ public class DiaryQueryService {
     }
 
     private DiaryDayResult createDay(LocalDate date, List<DiarySummaryResult> items) {
-        return new DiaryDayResult(date, !items.isEmpty(), items);
+        return new DiaryDayResult(date, items);
     }
 
-    private DiarySummaryResult toSummaryResult(Diary diary, ComicGeneration generation) {
+    private DiarySummaryResult toSummaryResult(
+            DiarySnapshot diary,
+            ComicGenerationSnapshot generation
+    ) {
         return new DiarySummaryResult(
-                diary.getId(),
-                generation.getTitle(),
-                generation.getImageObjectKey()
+                diary.id(),
+                generation.title(),
+                generation.imageObjectKey()
         );
     }
 
-    private DiaryDetailResult toDetailResult(Diary diary, ComicGeneration generation) {
+    private DiaryDetailResult toDetailResult(
+            DiarySnapshot diary,
+            ComicGenerationSnapshot generation
+    ) {
         return new DiaryDetailResult(
-                diary.getId(),
-                diary.getDiaryDate(),
-                diary.getSourceText(),
-                diary.getCreatedAt(),
+                diary.id(),
+                diary.diaryDate(),
+                diary.sourceText(),
+                diary.createdAt(),
                 new DiaryGenerationResult(
-                        generation.getId(),
-                        generation.getStatus(),
-                        generation.getTitle(),
-                        generation.getImageObjectKey(),
-                        generation.getCompletedAt()
+                        generation.id(),
+                        generation.status(),
+                        generation.title(),
+                        generation.imageObjectKey(),
+                        generation.completedAt()
                 )
         );
     }
 
-    private void validateAccessibleDiary(Diary diary, UUID userId) {
-        if (diary.isDeleted()) {
-            throw new DiaryNotFoundException();
-        }
+    private void validateOwnership(DiarySnapshot diary, UUID userId) {
         if (!diary.isOwnedBy(userId)) {
             throw new DiaryAccessDeniedException();
         }

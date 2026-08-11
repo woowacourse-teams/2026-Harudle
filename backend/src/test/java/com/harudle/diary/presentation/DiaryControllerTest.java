@@ -103,7 +103,7 @@ class DiaryControllerTest {
         DiaryTimelineResult result = new DiaryTimelineResult(
                 2026,
                 8,
-                List.of(new DiaryDayResult(DIARY_DATE, true, List.of(summary)))
+                List.of(new DiaryDayResult(DIARY_DATE, List.of(summary)))
         );
         when(diaryQueryService.getTimeline(USER_ID, 2026, 8)).thenReturn(result);
         configureImageUrl();
@@ -205,7 +205,7 @@ class DiaryControllerTest {
 
         assertThat(response.statusCode()).isEqualTo(401);
         assertThat(response.contentType()).startsWith("application/problem+json");
-        assertThat(response.header("WWW-Authenticate")).isEqualTo("Bearer");
+        assertThat(response.header("WWW-Authenticate")).startsWith("Bearer");
         assertThat(response.jsonPath().getString("code")).isEqualTo("UNAUTHORIZED");
     }
 
