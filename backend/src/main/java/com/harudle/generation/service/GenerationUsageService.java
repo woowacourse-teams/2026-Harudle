@@ -1,7 +1,5 @@
 package com.harudle.generation.service;
 
-import static com.harudle.common.config.TimeConfiguration.SERVICE_ZONE_ID;
-
 import com.harudle.generation.domain.GenerationUsage;
 import com.harudle.generation.repository.GenerationUsageRepository;
 import com.harudle.generation.service.exception.DailyGenerationLimitExceededException;
@@ -40,14 +38,14 @@ public class GenerationUsageService {
     }
 
     private LocalDate getUsageDate() {
-        return LocalDate.now(clock.withZone(SERVICE_ZONE_ID));
+        return LocalDate.now(clock);
     }
 
     private long secondsUntilNextUsageDate(LocalDate usageDate) {
         Instant now = clock.instant();
         Instant nextUsageDate = usageDate
                 .plusDays(1)
-                .atStartOfDay(SERVICE_ZONE_ID)
+                .atStartOfDay(clock.getZone())
                 .toInstant();
         return Math.max(MIN_RETRY_AFTER_SECONDS, Duration.between(now, nextUsageDate).toSeconds());
     }
