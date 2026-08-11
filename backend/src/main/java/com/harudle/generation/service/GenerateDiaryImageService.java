@@ -26,9 +26,13 @@ import com.harudle.generation.service.port.StoryboardGenerator;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 
 public class GenerateDiaryImageService {
+
+    private static final Logger log = LoggerFactory.getLogger(GenerateDiaryImageService.class);
 
     private final RequestFingerprintGenerator requestFingerprintGenerator;
     private final GenerationLifecycleProperties generationLifecycleProperties;
@@ -95,13 +99,13 @@ public class GenerateDiaryImageService {
             GeneratedImage generatedImage = generateImage(storyboard, prompt, referenceImage);
             imageObjectKey = imageStorage.store(generation.getId(), generatedImage);
         } catch (AiGenerationException exception) {
-            failGeneration(generation, mapAiGenerationErrorCode(exception.getErrorType()));
+            failGeneration(generation, mapAiGenerationErrorCode(exception.getErrorType()), exception);
             throw exception;
         } catch (ImageStorageException exception) {
-            failGeneration(generation, GenerationErrorCode.IMAGE_STORAGE_ERROR);
+            failGeneration(generation, GenerationErrorCode.IMAGE_STORAGE_ERROR, exception);
             throw exception;
         } catch (RuntimeException exception) {
-            failGeneration(generation, GenerationErrorCode.GENERATION_INTERRUPTED);
+            failGeneration(generation, GenerationErrorCode.GENERATION_INTERRUPTED, exception);
             throw exception;
         }
 
@@ -254,15 +258,30 @@ public class GenerateDiaryImageService {
         return GenerationErrorCode.GENERATION_INTERRUPTED;
     }
 
-    private void failGeneration(DiaryGeneration generation, GenerationErrorCode errorCode) {
-        Instant completedAt = clock.instant();
-        generation.fail(errorCode, completedAt);
-        diaryGenerationRepository.failProcessingGeneration(
-                generation.getId(),
-                errorCode,
-                completedAt,
-                GenerationStatus.PROCESSING,
-                GenerationStatus.FAILED
-        );
+    private void failGeneration(
+            DiaryGeneration generation,
+            GenerationErrorCode errorCode,
+            RuntimeException originalException
+    ) {
+        try {
+            Instant completedAt = clock.instant();
+            generation.fail(errorCode, completedAt);
+            diaryGenerationRepository.failProcessingGeneration(
+                    generation.getId(),
+                    errorCode,
+                    completedAt,
+                    GenerationStatus.PROCESSING,
+                    GenerationStatus.FAILED
+            );
+        } catch (RuntimeException failureTransitionException) {
+            if (failureTransitionException != originalException) {
+                originalException.addSuppressed(failureTransitionException);
+            }
+            log.error(
+                    "그림일기 생성 실패 상태 저장에 실패했습니다. generationId={}",
+                    generation.getId(),
+                    failureTransitionException
+            );
+        }
     }
 }

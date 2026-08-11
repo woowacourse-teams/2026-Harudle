@@ -10,6 +10,7 @@ import com.harudle.generation.adapter.out.gemini.GeminiStoryboardGenerator;
 import com.harudle.generation.adapter.out.s3.S3ImageStorage;
 import com.harudle.generation.repository.DiaryGenerationRepository;
 import com.harudle.generation.repository.GenerationPromptRepository;
+import com.harudle.generation.service.DiaryGenerationCleanupScheduler;
 import com.harudle.generation.service.GenerateDiaryImageService;
 import com.harudle.generation.service.RequestFingerprintGenerator;
 import com.harudle.generation.service.port.DiaryImageGenerator;
@@ -29,6 +30,10 @@ class GenerationAdapterConfigurationTest {
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
             .withUserConfiguration(GenerationAdapterConfiguration.class)
             .withBean(GeminiGenerationProperties.class, GenerationAdapterConfigurationTest::geminiProperties)
+            .withBean(
+                    GenerationLifecycleProperties.class,
+                    GenerationAdapterConfigurationTest::generationLifecycleProperties
+            )
             .withBean(S3StorageProperties.class, GenerationAdapterConfigurationTest::s3Properties)
             .withBean(ObjectMapper.class, ObjectMapper::new)
             .withBean(RequestFingerprintGenerator.class, RequestFingerprintGenerator::new)
@@ -53,6 +58,7 @@ class GenerationAdapterConfigurationTest {
             assertThat(context).hasSingleBean(DiaryImageGenerator.class);
             assertThat(context).hasSingleBean(ImageStorage.class);
             assertThat(context).hasSingleBean(GenerateDiaryImageService.class);
+            assertThat(context).hasSingleBean(DiaryGenerationCleanupScheduler.class);
 
             Client client = context.getBean(Client.class);
             assertThat(client.vertexAI()).isTrue();
@@ -87,6 +93,13 @@ class GenerationAdapterConfigurationTest {
                 "ap-northeast-2",
                 "generated/diary-images",
                 DataSize.ofMegabytes(20)
+        );
+    }
+
+    private static GenerationLifecycleProperties generationLifecycleProperties() {
+        return new GenerationLifecycleProperties(
+                Duration.ofMinutes(30),
+                Duration.ofMinutes(1)
         );
     }
 }

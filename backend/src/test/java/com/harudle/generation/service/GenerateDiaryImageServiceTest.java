@@ -55,6 +55,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.InOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ByteArrayResource;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -330,6 +331,38 @@ class GenerateDiaryImageServiceTest {
         assertThat(savedGeneration.get().getStatus()).isEqualTo(GenerationStatus.FAILED);
         assertThat(savedGeneration.get().getErrorCode()).isEqualTo(GenerationErrorCode.GENERATION_INTERRUPTED);
         assertThat(savedGeneration.get().getCompletedAt()).isBeforeOrEqualTo(Instant.now());
+        verifyNoInteractions(diaryImageGenerator, imageStorage);
+    }
+
+    @Test
+    @DisplayName("실패 상태 저장에 실패해도 원래 생성 예외를 유지한다")
+    void preserveGenerationExceptionWhenFailureStatusPersistenceFails() {
+        GenerateDiaryImageCommand command = createCommand();
+        GenerationPrompt prompt = createPrompt();
+        AiGenerationException generationException = new AiGenerationException(
+                AiGenerationErrorType.PROVIDER_ERROR,
+                "AI 생성에 실패했습니다."
+        );
+        DataAccessResourceFailureException persistenceException =
+                new DataAccessResourceFailureException("실패 상태 저장 실패");
+
+        when(diaryGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
+                .thenReturn(Optional.empty());
+        when(generationPromptRepository.findFirstByOrderByIdDesc()).thenReturn(Optional.of(prompt));
+        when(diaryGenerationRepository.saveAndFlush(any(DiaryGeneration.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class)))
+                .thenThrow(generationException);
+        when(diaryGenerationRepository.failProcessingGeneration(
+                any(UUID.class),
+                eq(GenerationErrorCode.AI_PROVIDER_ERROR),
+                eq(NOW),
+                eq(GenerationStatus.PROCESSING),
+                eq(GenerationStatus.FAILED)
+        )).thenThrow(persistenceException);
+
+        assertThatThrownBy(() -> generateDiaryImageService.generate(command)).isSameAs(generationException);
+        assertThat(generationException.getSuppressed()).containsExactly(persistenceException);
         verifyNoInteractions(diaryImageGenerator, imageStorage);
     }
 
