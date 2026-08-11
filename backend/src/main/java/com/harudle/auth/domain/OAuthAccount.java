@@ -69,7 +69,31 @@ public class OAuthAccount {
         this.updatedAt = now;
     }
 
+    public Long getId() {
+        return id;
+    }
+
     public User getUser() {
         return user;
+    }
+
+    public OAuthProvider getProvider() {
+        return provider;
+    }
+
+    public String getProviderSubject() {
+        return providerSubject;
+    }
+
+    public String getProviderEmail() {
+        return providerEmail;
+    }
+
+    public Instant getLastLoginAt() {
+        return lastLoginAt;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
     }
 }
