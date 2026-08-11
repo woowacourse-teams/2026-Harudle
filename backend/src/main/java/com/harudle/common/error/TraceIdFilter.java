@@ -17,7 +17,10 @@ class TraceIdFilter extends OncePerRequestFilter {
 
     private static final String TRACE_ID_MDC_KEY = "traceId";
 
-    TraceIdFilter() {
+    private final RequestTraceId requestTraceId;
+
+    TraceIdFilter(RequestTraceId requestTraceId) {
+        this.requestTraceId = requestTraceId;
     }
 
     @Override
@@ -26,7 +29,7 @@ class TraceIdFilter extends OncePerRequestFilter {
             HttpServletResponse response,
             FilterChain filterChain
     ) throws ServletException, IOException {
-        String traceId = RequestTraceId.getOrCreate(request);
+        String traceId = requestTraceId.getOrCreate(request);
         MDC.put(TRACE_ID_MDC_KEY, traceId);
         try {
             filterChain.doFilter(request, response);
