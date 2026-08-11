@@ -8,7 +8,7 @@ import com.harudle.generation.domain.ImageObjectKeyPolicy;
 import com.harudle.generation.domain.Storyboard;
 import com.harudle.generation.repository.ComicGenerationRepository;
 import com.harudle.generation.repository.GenerationPromptRepository;
-import com.harudle.generation.service.dto.ComicGenerationResult;
+import com.harudle.generation.service.dto.CompletedComicGeneration;
 import com.harudle.generation.service.dto.GenerateComicCommand;
 import com.harudle.generation.service.exception.AiGenerationErrorType;
 import com.harudle.generation.service.exception.AiGenerationException;
@@ -60,13 +60,11 @@ public class ClaimedComicGenerationService {
         return findAdapters() != null;
     }
 
-    public ComicGenerationResult generate(GenerateComicCommand command, UUID generationId) {
+    public CompletedComicGeneration generate(GenerateComicCommand command, UUID generationId) {
         GenerationAdapters adapters = requireAdapters();
         ComicGeneration generation = findClaimedGeneration(command, generationId);
         GenerationPrompt prompt = generationPromptRepository.findById(generation.getGenerationPromptId())
-                .orElseThrow(() -> new GenerationUnavailableException(
-                        "사용할 생성 프롬프트가 없습니다."
-        ));
+                .orElseThrow(GenerationUnavailableException::promptNotConfigured);
         GeneratedComic generatedComic = executeExternalGeneration(command, prompt, generationId, adapters);
         ComicGeneration completedGeneration = completeGeneration(
                 generationId,
@@ -82,11 +80,15 @@ public class ClaimedComicGenerationService {
             ImageStorage imageStorage
     ) {
         try {
-            return completionService.succeed(
+            ComicGeneration completedGeneration = completionService.succeed(
                     generationId,
                     generatedComic.storyboard(),
                     generatedComic.imageObjectKey()
             );
+            if (!completedGeneration.usesImageObjectKey(generatedComic.imageObjectKey())) {
+                deleteDiscardedImage(imageStorage, generatedComic.imageObjectKey());
+            }
+            return completedGeneration;
         } catch (RuntimeException exception) {
             deleteDiscardedImage(imageStorage, generatedComic.imageObjectKey());
             throw exception;
@@ -96,7 +98,7 @@ public class ClaimedComicGenerationService {
     private GenerationAdapters requireAdapters() {
         GenerationAdapters adapters = findAdapters();
         if (adapters == null) {
-            throw new GenerationUnavailableException("AI 생성 어댑터가 구성되지 않았습니다.");
+            throw GenerationUnavailableException.adaptersNotConfigured();
         }
         return adapters;
     }
@@ -198,25 +200,20 @@ public class ClaimedComicGenerationService {
         }
     }
 
-    private ComicGenerationResult createResult(ComicGeneration generation) {
-        return new ComicGenerationResult(
+    private CompletedComicGeneration createResult(ComicGeneration generation) {
+        return new CompletedComicGeneration(
                 generation.getId(),
-                generation.getStatus(),
                 generation.getTitle(),
                 generation.getImageObjectKey(),
-                generation.getCompletedAt(),
-                true
+                generation.getCompletedAt()
         );
     }
 
     private GenerationErrorCode mapAiGenerationErrorCode(AiGenerationErrorType errorType) {
-        if (errorType == AiGenerationErrorType.PROVIDER_ERROR) {
-            return GenerationErrorCode.AI_PROVIDER_ERROR;
-        }
-        if (errorType == AiGenerationErrorType.TIMEOUT) {
-            return GenerationErrorCode.AI_PROVIDER_TIMEOUT;
-        }
-        throw new IllegalArgumentException("지원하지 않는 AI 생성 오류 타입입니다.");
+        return switch (errorType) {
+            case PROVIDER_ERROR -> GenerationErrorCode.AI_PROVIDER_ERROR;
+            case TIMEOUT -> GenerationErrorCode.AI_PROVIDER_TIMEOUT;
+        };
     }
 
     private record GeneratedComic(Storyboard storyboard, String imageObjectKey) {

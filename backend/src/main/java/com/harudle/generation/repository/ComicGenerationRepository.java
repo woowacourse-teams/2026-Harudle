@@ -13,8 +13,6 @@ public interface ComicGenerationRepository extends
         JpaRepository<ComicGeneration, UUID>,
         ComicGenerationQueryRepository {
 
-    Optional<ComicGeneration> findByIdempotencyKey(UUID idempotencyKey);
-
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT generation FROM ComicGeneration generation WHERE generation.id = :id")
     Optional<ComicGeneration> findByIdForUpdate(@Param("id") UUID id);

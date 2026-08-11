@@ -79,6 +79,26 @@ class ComicGenerationCompletionServiceTest {
     }
 
     @Test
+    @DisplayName("이미 성공한 생성을 늦게 도착한 성공 결과가 덮어쓰지 않는다")
+    void succeedKeepsExistingSuccessfulGeneration() {
+        ComicGeneration generation = createGeneration();
+        Instant firstCompletedAt = NOW.minusSeconds(1);
+        generation.succeed(createStoryboard(), "generated/winner.png", firstCompletedAt);
+        when(comicGenerationRepository.findByIdForUpdate(generation.getId()))
+                .thenReturn(Optional.of(generation));
+
+        ComicGeneration result = completionService.succeed(
+                generation.getId(),
+                createStoryboard(),
+                "generated/loser.png"
+        );
+
+        assertThat(result).isSameAs(generation);
+        assertThat(result.getImageObjectKey()).isEqualTo("generated/winner.png");
+        assertThat(result.getCompletedAt()).isEqualTo(firstCompletedAt);
+    }
+
+    @Test
     @DisplayName("이미 실패한 생성의 오류 코드를 유지한다")
     void failKeepsExistingErrorCode() {
         ComicGeneration generation = createGeneration();

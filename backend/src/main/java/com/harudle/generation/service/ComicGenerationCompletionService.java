@@ -28,26 +28,29 @@ public class ComicGenerationCompletionService {
     @Transactional
     public ComicGeneration succeed(UUID generationId, Storyboard storyboard, String imageObjectKey) {
         ComicGeneration generation = findForUpdate(generationId);
-        if (generation.getStatus() == GenerationStatus.FAILED) {
-            throw new ComicGenerationFailedException(generation.getErrorCode());
-        }
-        if (generation.getStatus() == GenerationStatus.SUCCEEDED) {
-            return generation;
-        }
-        generation.succeed(storyboard, imageObjectKey, clock.instant());
-        return generation;
+        return switch (generation.getStatus()) {
+            case FAILED -> throw new ComicGenerationFailedException(generation.getErrorCode());
+            case SUCCEEDED -> generation;
+            case PROCESSING -> {
+                generation.succeed(storyboard, imageObjectKey, clock.instant());
+                yield generation;
+            }
+        };
     }
 
     @Transactional
     public GenerationErrorCode fail(UUID generationId, GenerationErrorCode errorCode) {
         ComicGeneration generation = findForUpdate(generationId);
-        if (generation.getStatus() == GenerationStatus.PROCESSING) {
-            generation.fail(errorCode, clock.instant());
-        }
-        if (generation.getStatus() == GenerationStatus.FAILED) {
-            return generation.getErrorCode();
-        }
-        throw new IllegalStateException("성공한 만화 생성 기록을 실패 처리할 수 없습니다.");
+        return switch (generation.getStatus()) {
+            case PROCESSING -> {
+                generation.fail(errorCode, clock.instant());
+                yield errorCode;
+            }
+            case FAILED -> generation.getErrorCode();
+            case SUCCEEDED -> throw new IllegalStateException(
+                    "성공한 만화 생성 기록을 실패 처리할 수 없습니다."
+            );
+        };
     }
 
     private ComicGeneration findForUpdate(UUID generationId) {

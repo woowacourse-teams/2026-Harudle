@@ -2,11 +2,10 @@ package com.harudle.diary.service;
 
 import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.dto.CreateDiaryResult;
-import com.harudle.diary.service.dto.DiaryCreationClaim;
 import com.harudle.diary.service.dto.DiaryGenerationResult;
 import com.harudle.generation.domain.GenerationStatus;
 import com.harudle.generation.service.ClaimedComicGenerationService;
-import com.harudle.generation.service.dto.ComicGenerationResult;
+import com.harudle.generation.service.dto.CompletedComicGeneration;
 import com.harudle.generation.service.dto.GenerateComicCommand;
 import com.harudle.generation.service.exception.ComicGenerationFailedException;
 import com.harudle.generation.service.exception.GenerationInProgressException;
@@ -19,7 +18,7 @@ public class DiaryCreationService {
     private final DiaryCreationTransactionService transactionService;
     private final ClaimedComicGenerationService generationService;
 
-    public DiaryCreationService(
+    DiaryCreationService(
             DiaryCreationTransactionService transactionService,
             ClaimedComicGenerationService generationService
     ) {
@@ -32,7 +31,7 @@ public class DiaryCreationService {
         if (!claim.newlyCreated()) {
             return handleExistingClaim(claim);
         }
-        ComicGenerationResult generationResult = generationService.generate(
+        CompletedComicGeneration generationResult = generationService.generate(
                 createGenerationCommand(command, claim),
                 claim.generationId()
         );
@@ -43,39 +42,26 @@ public class DiaryCreationService {
         try {
             return transactionService.claim(command, generationAvailable);
         } catch (DataIntegrityViolationException exception) {
-            return findConcurrentClaim(command, generationAvailable, exception);
-        }
-    }
-
-    private DiaryCreationClaim findConcurrentClaim(
-            CreateDiaryCommand command,
-            boolean generationAvailable,
-            DataIntegrityViolationException exception
-    ) {
-        try {
-            return transactionService.claim(command, generationAvailable);
-        } catch (DataIntegrityViolationException retryException) {
-            retryException.addSuppressed(exception);
-            throw retryException;
+            return transactionService.findExistingClaim(command)
+                    .orElseThrow(() -> exception);
         }
     }
 
     private CreateDiaryResult handleExistingClaim(DiaryCreationClaim claim) {
-        if (claim.generationStatus() == GenerationStatus.PROCESSING) {
-            throw new GenerationInProgressException();
-        }
-        if (claim.generationStatus() == GenerationStatus.FAILED) {
-            throw new ComicGenerationFailedException(claim.errorCode());
-        }
-        ComicGenerationResult generationResult = new ComicGenerationResult(
-                claim.generationId(),
-                claim.generationStatus(),
-                claim.title(),
-                claim.imageObjectKey(),
-                claim.completedAt(),
-                false
-        );
-        return createResult(claim, generationResult, false);
+        return switch (claim.generationStatus()) {
+            case PROCESSING -> throw new GenerationInProgressException();
+            case FAILED -> throw new ComicGenerationFailedException(claim.errorCode());
+            case SUCCEEDED -> createResult(
+                    claim,
+                    new CompletedComicGeneration(
+                            claim.generationId(),
+                            claim.title(),
+                            claim.imageObjectKey(),
+                            claim.completedAt()
+                    ),
+                    false
+            );
+        };
     }
 
     private GenerateComicCommand createGenerationCommand(
@@ -93,7 +79,7 @@ public class DiaryCreationService {
 
     private CreateDiaryResult createResult(
             DiaryCreationClaim claim,
-            ComicGenerationResult generationResult,
+            CompletedComicGeneration generationResult,
             boolean newlyCreated
     ) {
         return new CreateDiaryResult(
@@ -103,7 +89,7 @@ public class DiaryCreationService {
                 claim.createdAt(),
                 new DiaryGenerationResult(
                         generationResult.generationId(),
-                        generationResult.status(),
+                        GenerationStatus.SUCCEEDED,
                         generationResult.title(),
                         generationResult.imageObjectKey(),
                         generationResult.completedAt()
