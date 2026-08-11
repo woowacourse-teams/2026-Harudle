@@ -41,7 +41,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
 
@@ -62,19 +61,10 @@ class ClaimedComicGenerationServiceTest {
     private StoryboardGenerator storyboardGenerator;
 
     @Mock
-    private ObjectProvider<StoryboardGenerator> storyboardGeneratorProvider;
-
-    @Mock
     private ComicImageGenerator comicImageGenerator;
 
     @Mock
-    private ObjectProvider<ComicImageGenerator> comicImageGeneratorProvider;
-
-    @Mock
     private ImageStorage imageStorage;
-
-    @Mock
-    private ObjectProvider<ImageStorage> imageStorageProvider;
 
     @Mock
     private ComicGenerationCompletionService completionService;
@@ -89,14 +79,11 @@ class ClaimedComicGenerationServiceTest {
                 requestFingerprintGenerator,
                 generationPromptRepository,
                 comicGenerationRepository,
-                storyboardGeneratorProvider,
-                comicImageGeneratorProvider,
-                imageStorageProvider,
+                storyboardGenerator,
+                comicImageGenerator,
+                imageStorage,
                 completionService
         );
-        when(storyboardGeneratorProvider.getIfUnique()).thenReturn(storyboardGenerator);
-        when(comicImageGeneratorProvider.getIfUnique()).thenReturn(comicImageGenerator);
-        when(imageStorageProvider.getIfUnique()).thenReturn(imageStorage);
     }
 
     @Test

@@ -24,6 +24,7 @@ import com.harudle.diary.service.exception.DiaryNotFoundException;
 import com.harudle.generation.domain.GenerationStatus;
 import com.harudle.generation.domain.GenerationUsage;
 import com.harudle.generation.service.exception.DailyGenerationLimitExceededException;
+import com.harudle.generation.service.exception.GenerationUnavailableException;
 import com.harudle.generation.service.port.ImageAccessUrl;
 import com.harudle.generation.service.port.ImageStorageException;
 import com.harudle.generation.service.port.ImageUrlProvider;
@@ -339,6 +340,27 @@ class DiaryControllerTest {
         assertThat(response.header("Retry-After")).isEqualTo("13800");
         assertThat(response.jsonPath().getString("code"))
                 .isEqualTo("DAILY_GENERATION_LIMIT_EXCEEDED");
+    }
+
+    @Test
+    @DisplayName("생성 기능이 구성되지 않았으면 503 Problem Details를 반환한다")
+    void createDiaryRejectsUnavailableGeneration() {
+        when(diaryCreationService.create(any(CreateDiaryCommand.class)))
+                .thenThrow(GenerationUnavailableException.adaptersNotConfigured());
+
+        MockMvcResponse response = authenticatedRequest()
+                .contentType(ContentType.JSON)
+                .header("Idempotency-Key", IDEMPOTENCY_KEY)
+                .body("""
+                        {
+                          "diaryDate": "2026-08-06",
+                          "sourceText": "오늘 친구와 카페에 갔다."
+                        }
+                        """)
+                .post("/api/v1/diaries");
+
+        assertThat(response.statusCode()).isEqualTo(503);
+        assertThat(response.jsonPath().getString("code")).isEqualTo("GENERATION_UNAVAILABLE");
     }
 
     @Test

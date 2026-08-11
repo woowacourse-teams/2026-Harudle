@@ -25,59 +25,54 @@ import com.harudle.generation.service.port.StoryboardGenerator;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.ObjectProvider;
 
-public class ClaimedComicGenerationService {
+public final class ClaimedComicGenerationService implements ComicGenerationExecutor {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ClaimedComicGenerationService.class);
     private final RequestFingerprintGenerator requestFingerprintGenerator;
     private final GenerationPromptRepository generationPromptRepository;
     private final ComicGenerationRepository comicGenerationRepository;
-    private final ObjectProvider<StoryboardGenerator> storyboardGeneratorProvider;
-    private final ObjectProvider<ComicImageGenerator> comicImageGeneratorProvider;
-    private final ObjectProvider<ImageStorage> imageStorageProvider;
+    private final StoryboardGenerator storyboardGenerator;
+    private final ComicImageGenerator comicImageGenerator;
+    private final ImageStorage imageStorage;
     private final ComicGenerationCompletionService completionService;
 
     public ClaimedComicGenerationService(
             RequestFingerprintGenerator requestFingerprintGenerator,
             GenerationPromptRepository generationPromptRepository,
             ComicGenerationRepository comicGenerationRepository,
-            ObjectProvider<StoryboardGenerator> storyboardGeneratorProvider,
-            ObjectProvider<ComicImageGenerator> comicImageGeneratorProvider,
-            ObjectProvider<ImageStorage> imageStorageProvider,
+            StoryboardGenerator storyboardGenerator,
+            ComicImageGenerator comicImageGenerator,
+            ImageStorage imageStorage,
             ComicGenerationCompletionService completionService
     ) {
         this.requestFingerprintGenerator = requestFingerprintGenerator;
         this.generationPromptRepository = generationPromptRepository;
         this.comicGenerationRepository = comicGenerationRepository;
-        this.storyboardGeneratorProvider = storyboardGeneratorProvider;
-        this.comicImageGeneratorProvider = comicImageGeneratorProvider;
-        this.imageStorageProvider = imageStorageProvider;
+        this.storyboardGenerator = storyboardGenerator;
+        this.comicImageGenerator = comicImageGenerator;
+        this.imageStorage = imageStorage;
         this.completionService = completionService;
     }
 
-    public boolean isAvailable() {
-        return findAdapters() != null;
+    @Override
+    public boolean isConfigured() {
+        return true;
     }
 
+    @Override
     public CompletedComicGeneration generate(GenerateComicCommand command, UUID generationId) {
-        GenerationAdapters adapters = requireAdapters();
         ComicGeneration generation = findClaimedGeneration(command, generationId);
         GenerationPrompt prompt = generationPromptRepository.findById(generation.getGenerationPromptId())
                 .orElseThrow(GenerationUnavailableException::promptNotConfigured);
-        GeneratedComic generatedComic = executeExternalGeneration(command, prompt, generationId, adapters);
-        ComicGeneration completedGeneration = completeGeneration(
-                generationId,
-                generatedComic,
-                adapters.imageStorage()
-        );
+        GeneratedComic generatedComic = executeExternalGeneration(command, prompt, generationId);
+        ComicGeneration completedGeneration = completeGeneration(generationId, generatedComic);
         return createResult(completedGeneration);
     }
 
     private ComicGeneration completeGeneration(
             UUID generationId,
-            GeneratedComic generatedComic,
-            ImageStorage imageStorage
+            GeneratedComic generatedComic
     ) {
         try {
             ComicGeneration completedGeneration = completionService.succeed(
@@ -86,31 +81,13 @@ public class ClaimedComicGenerationService {
                     generatedComic.imageObjectKey()
             );
             if (!completedGeneration.usesImageObjectKey(generatedComic.imageObjectKey())) {
-                deleteDiscardedImage(imageStorage, generatedComic.imageObjectKey());
+                deleteDiscardedImage(generatedComic.imageObjectKey());
             }
             return completedGeneration;
         } catch (RuntimeException exception) {
-            deleteDiscardedImage(imageStorage, generatedComic.imageObjectKey());
+            deleteDiscardedImage(generatedComic.imageObjectKey());
             throw exception;
         }
-    }
-
-    private GenerationAdapters requireAdapters() {
-        GenerationAdapters adapters = findAdapters();
-        if (adapters == null) {
-            throw GenerationUnavailableException.adaptersNotConfigured();
-        }
-        return adapters;
-    }
-
-    private GenerationAdapters findAdapters() {
-        StoryboardGenerator storyboardGenerator = storyboardGeneratorProvider.getIfUnique();
-        ComicImageGenerator comicImageGenerator = comicImageGeneratorProvider.getIfUnique();
-        ImageStorage imageStorage = imageStorageProvider.getIfUnique();
-        if (storyboardGenerator == null || comicImageGenerator == null || imageStorage == null) {
-            return null;
-        }
-        return new GenerationAdapters(storyboardGenerator, comicImageGenerator, imageStorage);
     }
 
     private ComicGeneration findClaimedGeneration(GenerateComicCommand command, UUID generationId) {
@@ -137,21 +114,20 @@ public class ClaimedComicGenerationService {
     private GeneratedComic executeExternalGeneration(
             GenerateComicCommand command,
             GenerationPrompt prompt,
-            UUID generationId,
-            GenerationAdapters adapters
+            UUID generationId
     ) {
         try {
-            Storyboard storyboard = adapters.storyboardGenerator().generate(new StoryboardGenerationRequest(
+            Storyboard storyboard = storyboardGenerator.generate(new StoryboardGenerationRequest(
                     command.diaryText(),
                     prompt.getStoryboardPromptText()
             ));
-            ReferenceImage referenceImage = adapters.imageStorage().load(prompt.getImageAssetObjectKey());
-            GeneratedImage generatedImage = adapters.comicImageGenerator().generate(new ComicImageGenerationRequest(
+            ReferenceImage referenceImage = imageStorage.load(prompt.getImageAssetObjectKey());
+            GeneratedImage generatedImage = comicImageGenerator.generate(new ComicImageGenerationRequest(
                     storyboard,
                     prompt.getImageStylePromptText(),
                     referenceImage
             ));
-            String imageObjectKey = storeImage(adapters.imageStorage(), generatedImage);
+            String imageObjectKey = storeImage(generatedImage);
             return new GeneratedComic(storyboard, imageObjectKey);
         } catch (AiGenerationException exception) {
             failGeneration(generationId, mapAiGenerationErrorCode(exception.getErrorType()));
@@ -169,13 +145,13 @@ public class ClaimedComicGenerationService {
         }
     }
 
-    private String storeImage(ImageStorage imageStorage, GeneratedImage generatedImage) {
+    private String storeImage(GeneratedImage generatedImage) {
         String imageObjectKey = imageStorage.store(generatedImage);
         try {
             return ImageObjectKeyPolicy.normalizeRequired(imageObjectKey, "생성 이미지 Object Key");
         } catch (IllegalArgumentException exception) {
             if (imageObjectKey != null) {
-                deleteDiscardedImage(imageStorage, imageObjectKey);
+                deleteDiscardedImage(imageObjectKey);
             }
             throw new ImageStorageException(exception.getMessage(), exception);
         }
@@ -188,7 +164,7 @@ public class ClaimedComicGenerationService {
         }
     }
 
-    private void deleteDiscardedImage(ImageStorage imageStorage, String imageObjectKey) {
+    private void deleteDiscardedImage(String imageObjectKey) {
         try {
             imageStorage.delete(imageObjectKey);
         } catch (RuntimeException exception) {
@@ -217,12 +193,5 @@ public class ClaimedComicGenerationService {
     }
 
     private record GeneratedComic(Storyboard storyboard, String imageObjectKey) {
-    }
-
-    private record GenerationAdapters(
-            StoryboardGenerator storyboardGenerator,
-            ComicImageGenerator comicImageGenerator,
-            ImageStorage imageStorage
-    ) {
     }
 }
