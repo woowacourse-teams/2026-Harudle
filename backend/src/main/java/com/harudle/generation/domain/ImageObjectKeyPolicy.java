@@ -6,7 +6,7 @@ import java.util.Locale;
 
 public final class ImageObjectKeyPolicy {
 
-    public static final int MAX_UTF8_BYTES = 1024;
+    static final int MAX_UTF8_BYTES = 1024;
 
     private ImageObjectKeyPolicy() {
     }

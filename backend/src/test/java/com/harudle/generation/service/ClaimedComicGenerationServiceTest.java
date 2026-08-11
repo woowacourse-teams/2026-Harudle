@@ -184,7 +184,7 @@ class ClaimedComicGenerationServiceTest {
         assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
                 .isInstanceOfSatisfying(
                         ComicGenerationFailedException.class,
-                        failure -> assertThat(failure.getErrorCode())
+                        failure -> assertThat(failure.errorCode())
                                 .isEqualTo(GenerationErrorCode.GENERATION_INTERRUPTED)
                 );
     }

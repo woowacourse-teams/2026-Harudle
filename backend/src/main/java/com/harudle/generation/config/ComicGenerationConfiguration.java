@@ -49,6 +49,7 @@ class ComicGenerationConfiguration {
                 || imageStorage.isEmpty()) {
             throw new IllegalStateException("AI 생성 어댑터는 모두 함께 구성해야 합니다.");
         }
+
         return new ClaimedComicGenerationService(
                 requestFingerprintGenerator,
                 generationPromptRepository,

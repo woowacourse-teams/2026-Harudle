@@ -72,7 +72,7 @@ class ComicGenerationCompletionServiceTest {
                 "generated/comic.png"
         )).isInstanceOfSatisfying(
                 ComicGenerationFailedException.class,
-                exception -> assertThat(exception.getErrorCode())
+                exception -> assertThat(exception.errorCode())
                         .isEqualTo(GenerationErrorCode.GENERATION_INTERRUPTED)
         );
         assertThat(generation.getStatus()).isEqualTo(GenerationStatus.FAILED);

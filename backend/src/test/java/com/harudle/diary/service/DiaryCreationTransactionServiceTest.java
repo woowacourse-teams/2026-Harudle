@@ -3,6 +3,7 @@ package com.harudle.diary.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -42,6 +43,7 @@ class DiaryCreationTransactionServiceTest {
     private static final UUID USER_ID = UUID.fromString("08d69a34-6d70-4d42-a158-671bc67733c9");
     private static final UUID IDEMPOTENCY_KEY = UUID.fromString("7e5cc251-fdde-4cc0-a54e-2c8142750609");
     private static final LocalDate DIARY_DATE = LocalDate.of(2026, 8, 6);
+    private static final int REQUEST_FINGERPRINT_HEX_LENGTH = 64;
 
     @Mock
     private DiaryRepository diaryRepository;
@@ -55,12 +57,14 @@ class DiaryCreationTransactionServiceTest {
     @Mock
     private GenerationUsageService generationUsageService;
 
+    @Mock
     private RequestFingerprintGenerator requestFingerprintGenerator;
     private DiaryCreationTransactionService transactionService;
 
     @BeforeEach
     void setUp() {
-        requestFingerprintGenerator = new RequestFingerprintGenerator();
+        lenient().when(requestFingerprintGenerator.generate(any(GenerateComicCommand.class)))
+                .thenAnswer(invocation -> fingerprintFor(invocation.getArgument(0)));
         Clock clock = Clock.fixed(Instant.parse("2026-08-06T12:00:00Z"), ZoneOffset.UTC);
         transactionService = new DiaryCreationTransactionService(
                 diaryRepository,
@@ -204,5 +208,12 @@ class DiaryCreationTransactionServiceTest {
         GenerationPrompt prompt = org.mockito.Mockito.mock(GenerationPrompt.class);
         when(prompt.getId()).thenReturn(1L);
         return prompt;
+    }
+
+    private String fingerprintFor(GenerateComicCommand command) {
+        if (command.diaryText().equals("다른 일기")) {
+            return "b".repeat(REQUEST_FINGERPRINT_HEX_LENGTH);
+        }
+        return "a".repeat(REQUEST_FINGERPRINT_HEX_LENGTH);
     }
 }

@@ -130,7 +130,7 @@ public final class ClaimedComicGenerationService implements ComicGenerationExecu
             String imageObjectKey = storeImage(generatedImage);
             return new GeneratedComic(storyboard, imageObjectKey);
         } catch (AiGenerationException exception) {
-            failGeneration(generationId, mapAiGenerationErrorCode(exception.getErrorType()));
+            failGeneration(generationId, mapAiGenerationErrorCode(exception.errorType()));
             throw exception;
         } catch (ImageStorageException exception) {
             failGeneration(generationId, GenerationErrorCode.IMAGE_STORAGE_ERROR);
@@ -153,6 +153,7 @@ public final class ClaimedComicGenerationService implements ComicGenerationExecu
             if (imageObjectKey != null) {
                 deleteDiscardedImage(imageObjectKey);
             }
+
             throw new ImageStorageException(exception.getMessage(), exception);
         }
     }

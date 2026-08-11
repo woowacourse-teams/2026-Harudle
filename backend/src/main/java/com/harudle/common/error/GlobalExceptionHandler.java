@@ -114,7 +114,7 @@ class GlobalExceptionHandler {
             ComicGenerationFailedException exception,
             HttpServletRequest request
     ) {
-        return createResponse(ErrorType.from(exception.getErrorCode()), request);
+        return createResponse(ErrorType.from(exception.errorCode()), request);
     }
 
     @ExceptionHandler(AiGenerationException.class)
@@ -122,7 +122,7 @@ class GlobalExceptionHandler {
             AiGenerationException exception,
             HttpServletRequest request
     ) {
-        return createResponse(ErrorType.from(exception.getErrorType()), request);
+        return createResponse(ErrorType.from(exception.errorType()), request);
     }
 
     @ExceptionHandler(ImageStorageException.class)
