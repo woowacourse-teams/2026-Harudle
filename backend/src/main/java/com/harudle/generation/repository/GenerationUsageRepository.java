@@ -9,5 +9,5 @@ public interface GenerationUsageRepository {
 
     Optional<GenerationUsage> find(UUID userId, LocalDate usageDate);
 
-    Optional<GenerationUsage> incrementWithinLimit(UUID userId, LocalDate usageDate);
+    Optional<GenerationUsage> tryIncrementWithinLimit(UUID userId, LocalDate usageDate);
 }

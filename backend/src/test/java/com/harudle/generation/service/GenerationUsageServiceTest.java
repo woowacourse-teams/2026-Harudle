@@ -2,6 +2,7 @@ package com.harudle.generation.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.harudle.common.config.TimeConfiguration;
@@ -63,7 +64,7 @@ class GenerationUsageServiceTest {
     @DisplayName("일일 생성 한도 안에서 사용량을 원자적으로 증가시킨다")
     void incrementTodayUsage() {
         GenerationUsage expected = new GenerationUsage(USAGE_DATE, 3, 3);
-        when(generationUsageRepository.incrementWithinLimit(USER_ID, USAGE_DATE))
+        when(generationUsageRepository.tryIncrementWithinLimit(USER_ID, USAGE_DATE))
                 .thenReturn(Optional.of(expected));
 
         GenerationUsage actual = generationUsageService.incrementTodayUsage(USER_ID);
@@ -74,11 +75,38 @@ class GenerationUsageServiceTest {
     @Test
     @DisplayName("일일 생성 한도를 초과하면 다음 KST 자정까지 재시도할 수 없다")
     void incrementTodayUsageRejectsExceededLimit() {
-        when(generationUsageRepository.incrementWithinLimit(USER_ID, USAGE_DATE)).thenReturn(Optional.empty());
+        when(generationUsageRepository.tryIncrementWithinLimit(USER_ID, USAGE_DATE))
+                .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> generationUsageService.incrementTodayUsage(USER_ID))
-                .isInstanceOf(DailyGenerationLimitExceededException.class)
-                .extracting("retryAfterSeconds")
-                .isEqualTo(1L);
+                .isInstanceOfSatisfying(
+                        DailyGenerationLimitExceededException.class,
+                        exception -> assertThat(exception.retryAfterSeconds()).isEqualTo(1L)
+                );
+    }
+
+    @Test
+    @DisplayName("증가 시도 중 자정이 지나도 시도한 사용일의 다음 자정 기준으로 재시도 시간을 계산한다")
+    void calculateRetryAfterFromAttemptedUsageDate() {
+        Instant beforeMidnight = Instant.parse("2026-08-06T14:59:59Z");
+        Instant afterMidnight = Instant.parse("2026-08-06T15:00:00Z");
+        Clock crossingMidnightClock = mock(Clock.class);
+        when(crossingMidnightClock.withZone(TimeConfiguration.SERVICE_ZONE_ID))
+                .thenReturn(crossingMidnightClock);
+        when(crossingMidnightClock.getZone()).thenReturn(TimeConfiguration.SERVICE_ZONE_ID);
+        when(crossingMidnightClock.instant())
+                .thenReturn(beforeMidnight, afterMidnight, afterMidnight);
+        GenerationUsageService service = new GenerationUsageService(
+                generationUsageRepository,
+                crossingMidnightClock
+        );
+        when(generationUsageRepository.tryIncrementWithinLimit(USER_ID, USAGE_DATE))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.incrementTodayUsage(USER_ID))
+                .isInstanceOfSatisfying(
+                        DailyGenerationLimitExceededException.class,
+                        exception -> assertThat(exception.retryAfterSeconds()).isEqualTo(1L)
+                );
     }
 }

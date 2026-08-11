@@ -1,18 +1,19 @@
 package com.harudle.common.security;
 
 import com.harudle.common.error.ErrorType;
-import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import org.springframework.http.HttpHeaders;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenAuthenticationEntryPoint;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.stereotype.Component;
 
 @Component
 public class ApiAuthenticationEntryPoint implements AuthenticationEntryPoint {
 
+    private final BearerTokenAuthenticationEntryPoint bearerTokenEntryPoint =
+            new BearerTokenAuthenticationEntryPoint();
     private final ApiProblemResponseWriter problemResponseWriter;
 
     public ApiAuthenticationEntryPoint(ApiProblemResponseWriter problemResponseWriter) {
@@ -24,8 +25,8 @@ public class ApiAuthenticationEntryPoint implements AuthenticationEntryPoint {
             HttpServletRequest request,
             HttpServletResponse response,
             AuthenticationException authenticationException
-    ) throws IOException, ServletException {
-        response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
+    ) throws IOException {
+        bearerTokenEntryPoint.commence(request, response, authenticationException);
         problemResponseWriter.write(ErrorType.UNAUTHORIZED, request, response);
     }
 }

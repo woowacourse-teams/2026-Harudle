@@ -33,17 +33,19 @@ public class GenerationUsageService {
 
     public GenerationUsage incrementTodayUsage(UUID userId) {
         LocalDate usageDate = getUsageDate();
-        return generationUsageRepository.incrementWithinLimit(userId, usageDate)
-                .orElseThrow(() -> new DailyGenerationLimitExceededException(secondsUntilNextUsageDate()));
+        return generationUsageRepository.tryIncrementWithinLimit(userId, usageDate)
+                .orElseThrow(() -> new DailyGenerationLimitExceededException(
+                        secondsUntilNextUsageDate(usageDate)
+                ));
     }
 
     private LocalDate getUsageDate() {
         return LocalDate.now(clock.withZone(SERVICE_ZONE_ID));
     }
 
-    private long secondsUntilNextUsageDate() {
+    private long secondsUntilNextUsageDate(LocalDate usageDate) {
         Instant now = clock.instant();
-        Instant nextUsageDate = getUsageDate()
+        Instant nextUsageDate = usageDate
                 .plusDays(1)
                 .atStartOfDay(SERVICE_ZONE_ID)
                 .toInstant();
