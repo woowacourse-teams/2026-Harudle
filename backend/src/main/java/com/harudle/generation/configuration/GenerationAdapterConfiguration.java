@@ -4,19 +4,19 @@ import com.google.genai.Client;
 import com.google.genai.Models;
 import com.google.genai.types.HttpOptions;
 import com.google.genai.types.HttpRetryOptions;
-import com.harudle.generation.adapter.out.gemini.ComicImagePromptRenderer;
-import com.harudle.generation.adapter.out.gemini.GeminiComicImageGenerator;
+import com.harudle.generation.adapter.out.gemini.DiaryImagePromptRenderer;
+import com.harudle.generation.adapter.out.gemini.GeminiDiaryImageGenerator;
 import com.harudle.generation.adapter.out.gemini.GeminiExceptionTranslator;
 import com.harudle.generation.adapter.out.gemini.GeminiStoryboardGenerator;
 import com.harudle.generation.adapter.out.gemini.GeminiStoryboardResponseMapper;
 import com.harudle.generation.adapter.out.s3.ImageObjectKeyFactory;
 import com.harudle.generation.adapter.out.s3.S3ExceptionTranslator;
 import com.harudle.generation.adapter.out.s3.S3ImageStorage;
-import com.harudle.generation.repository.ComicGenerationRepository;
+import com.harudle.generation.repository.DiaryGenerationRepository;
 import com.harudle.generation.repository.GenerationPromptRepository;
-import com.harudle.generation.service.GenerateComicService;
+import com.harudle.generation.service.GenerateDiaryImageService;
 import com.harudle.generation.service.RequestFingerprintGenerator;
-import com.harudle.generation.service.port.ComicImageGenerator;
+import com.harudle.generation.service.port.DiaryImageGenerator;
 import com.harudle.generation.service.port.ImageStorage;
 import com.harudle.generation.service.port.StoryboardGenerator;
 import org.springframework.context.annotation.Bean;
@@ -69,8 +69,8 @@ public class GenerationAdapterConfiguration {
     }
 
     @Bean
-    public ComicImagePromptRenderer comicImagePromptRenderer() {
-        return new ComicImagePromptRenderer();
+    public DiaryImagePromptRenderer diaryImagePromptRenderer() {
+        return new DiaryImagePromptRenderer();
     }
 
     @Bean
@@ -91,13 +91,13 @@ public class GenerationAdapterConfiguration {
     }
 
     @Bean
-    public ComicImageGenerator comicImageGenerator(
+    public DiaryImageGenerator diaryImageGenerator(
             Models geminiModels,
             GeminiGenerationProperties properties,
-            ComicImagePromptRenderer promptRenderer,
+            DiaryImagePromptRenderer promptRenderer,
             GeminiExceptionTranslator exceptionTranslator
     ) {
-        return new GeminiComicImageGenerator(
+        return new GeminiDiaryImageGenerator(
                 geminiModels,
                 properties,
                 promptRenderer,
@@ -131,20 +131,20 @@ public class GenerationAdapterConfiguration {
     }
 
     @Bean
-    public GenerateComicService generateComicService(
+    public GenerateDiaryImageService generateDiaryImageService(
             RequestFingerprintGenerator requestFingerprintGenerator,
             GenerationPromptRepository generationPromptRepository,
-            ComicGenerationRepository comicGenerationRepository,
+            DiaryGenerationRepository diaryGenerationRepository,
             StoryboardGenerator storyboardGenerator,
-            ComicImageGenerator comicImageGenerator,
+            DiaryImageGenerator diaryImageGenerator,
             ImageStorage imageStorage
     ) {
-        return new GenerateComicService(
+        return new GenerateDiaryImageService(
                 requestFingerprintGenerator,
                 generationPromptRepository,
-                comicGenerationRepository,
+                diaryGenerationRepository,
                 storyboardGenerator,
-                comicImageGenerator,
+                diaryImageGenerator,
                 imageStorage
         );
     }

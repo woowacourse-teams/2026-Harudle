@@ -20,7 +20,7 @@ class S3StoragePropertiesTest {
         contextRunner.withPropertyValues(
                 "harudle.generation.storage.s3.bucket=test-bucket",
                 "harudle.generation.storage.s3.region=ap-northeast-2",
-                "harudle.generation.storage.s3.generated-prefix=generated/comics",
+                "harudle.generation.storage.s3.generated-prefix=generated/diary-images",
                 "harudle.generation.storage.s3.max-object-size=20MB"
         ).run(context -> {
             assertThat(context).hasNotFailed();
@@ -28,7 +28,7 @@ class S3StoragePropertiesTest {
             S3StorageProperties properties = context.getBean(S3StorageProperties.class);
             assertThat(properties.bucket()).isEqualTo("test-bucket");
             assertThat(properties.region()).isEqualTo("ap-northeast-2");
-            assertThat(properties.generatedPrefix()).isEqualTo("generated/comics");
+            assertThat(properties.generatedPrefix()).isEqualTo("generated/diary-images");
             assertThat(properties.maxObjectSize()).isEqualTo(DataSize.ofMegabytes(20));
         });
     }
@@ -39,7 +39,7 @@ class S3StoragePropertiesTest {
         contextRunner.withPropertyValues(
                 "harudle.generation.storage.s3.bucket= ",
                 "harudle.generation.storage.s3.region=ap-northeast-2",
-                "harudle.generation.storage.s3.generated-prefix=generated/comics",
+                "harudle.generation.storage.s3.generated-prefix=generated/diary-images",
                 "harudle.generation.storage.s3.max-object-size=20MB"
         ).run(context -> {
             assertThat(context).hasFailed();
@@ -54,7 +54,7 @@ class S3StoragePropertiesTest {
         contextRunner.withPropertyValues(
                 "harudle.generation.storage.s3.bucket=test-bucket",
                 "harudle.generation.storage.s3.region=ap-northeast-2",
-                "harudle.generation.storage.s3.generated-prefix=generated/comics",
+                "harudle.generation.storage.s3.generated-prefix=generated/diary-images",
                 "harudle.generation.storage.s3.max-object-size=0B"
         ).run(context -> assertThat(context).hasFailed());
     }

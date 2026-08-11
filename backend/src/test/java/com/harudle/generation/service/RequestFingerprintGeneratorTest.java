@@ -3,7 +3,7 @@ package com.harudle.generation.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.harudle.generation.service.dto.GenerateComicCommand;
+import com.harudle.generation.service.dto.GenerateDiaryImageCommand;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -32,8 +32,8 @@ class RequestFingerprintGeneratorTest {
     @Test
     @DisplayName("동일한 사용자와 날짜와 일기 내용은 동일한 요청 지문을 생성한다")
     void generateSameFingerprintForSameRequest() {
-        GenerateComicCommand firstCommand = createCommand(USER_ID, DIARY_DATE, DIARY_TEXT);
-        GenerateComicCommand secondCommand = createCommand(USER_ID, DIARY_DATE, DIARY_TEXT);
+        GenerateDiaryImageCommand firstCommand = createCommand(USER_ID, DIARY_DATE, DIARY_TEXT);
+        GenerateDiaryImageCommand secondCommand = createCommand(USER_ID, DIARY_DATE, DIARY_TEXT);
 
         assertThat(generator.generate(firstCommand)).isEqualTo(generator.generate(secondCommand));
     }
@@ -52,8 +52,8 @@ class RequestFingerprintGeneratorTest {
     @Test
     @DisplayName("일기 ID와 멱등성 키는 요청 지문에 포함하지 않는다")
     void ignoreDiaryIdAndIdempotencyKey() {
-        GenerateComicCommand firstCommand = createCommand(USER_ID, DIARY_DATE, DIARY_TEXT);
-        GenerateComicCommand secondCommand = createCommand(USER_ID, DIARY_DATE, DIARY_TEXT);
+        GenerateDiaryImageCommand firstCommand = createCommand(USER_ID, DIARY_DATE, DIARY_TEXT);
+        GenerateDiaryImageCommand secondCommand = createCommand(USER_ID, DIARY_DATE, DIARY_TEXT);
 
         assertThat(firstCommand.diaryId()).isNotEqualTo(secondCommand.diaryId());
         assertThat(firstCommand.idempotencyKey()).isNotEqualTo(secondCommand.idempotencyKey());
@@ -61,15 +61,15 @@ class RequestFingerprintGeneratorTest {
     }
 
     @Test
-    @DisplayName("만화 생성 명령이 없으면 요청 지문을 생성할 수 없다")
+    @DisplayName("그림일기 생성 명령이 없으면 요청 지문을 생성할 수 없다")
     void rejectNullCommand() {
         assertThatThrownBy(() -> generator.generate(null))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("만화 생성 명령");
+                .hasMessageContaining("그림일기 이미지 생성 명령");
     }
 
-    private GenerateComicCommand createCommand(UUID userId, LocalDate diaryDate, String diaryText) {
-        return new GenerateComicCommand(
+    private GenerateDiaryImageCommand createCommand(UUID userId, LocalDate diaryDate, String diaryText) {
+        return new GenerateDiaryImageCommand(
                 userId,
                 UUID.randomUUID(),
                 diaryDate,

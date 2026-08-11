@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.harudle.generation.domain.StoryPanel;
 import com.harudle.generation.domain.Storyboard;
-import com.harudle.generation.service.port.ComicImageGenerationRequest;
+import com.harudle.generation.service.port.DiaryImageGenerationRequest;
 import com.harudle.generation.service.port.ReferenceImage;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -14,15 +14,15 @@ import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
 
-class ComicImageGenerationRequestTest {
+class DiaryImageGenerationRequestTest {
 
     @Test
-    @DisplayName("만화 이미지 생성 요청의 이미지 스타일 프롬프트 앞뒤 공백을 제거한다")
-    void createComicImageGenerationRequest() {
+    @DisplayName("그림일기 이미지 생성 요청의 이미지 스타일 프롬프트 앞뒤 공백을 제거한다")
+    void createDiaryImageGenerationRequest() {
         Storyboard storyboard = createStoryboard();
         ReferenceImage referenceImage = createReferenceImage();
 
-        ComicImageGenerationRequest request = new ComicImageGenerationRequest(
+        DiaryImageGenerationRequest request = new DiaryImageGenerationRequest(
                 storyboard,
                 " 검은 배경과 흰색 마커 스타일 ",
                 referenceImage
@@ -34,9 +34,9 @@ class ComicImageGenerationRequestTest {
     }
 
     @Test
-    @DisplayName("스토리보드가 없으면 만화 이미지 생성을 요청할 수 없다")
+    @DisplayName("스토리보드가 없으면 그림일기 이미지 생성을 요청할 수 없다")
     void rejectNullStoryboard() {
-        assertThatThrownBy(() -> new ComicImageGenerationRequest(
+        assertThatThrownBy(() -> new DiaryImageGenerationRequest(
                 null,
                 "이미지 스타일 프롬프트",
                 createReferenceImage()
@@ -46,9 +46,9 @@ class ComicImageGenerationRequestTest {
     }
 
     @Test
-    @DisplayName("이미지 스타일 프롬프트가 비어 있으면 만화 이미지 생성을 요청할 수 없다")
+    @DisplayName("이미지 스타일 프롬프트가 비어 있으면 그림일기 이미지 생성을 요청할 수 없다")
     void rejectBlankImageStylePromptText() {
-        assertThatThrownBy(() -> new ComicImageGenerationRequest(
+        assertThatThrownBy(() -> new DiaryImageGenerationRequest(
                 createStoryboard(),
                 " ",
                 createReferenceImage()
@@ -58,9 +58,9 @@ class ComicImageGenerationRequestTest {
     }
 
     @Test
-    @DisplayName("참조 이미지가 없으면 만화 이미지 생성을 요청할 수 없다")
+    @DisplayName("참조 이미지가 없으면 그림일기 이미지 생성을 요청할 수 없다")
     void rejectNullReferenceImage() {
-        assertThatThrownBy(() -> new ComicImageGenerationRequest(
+        assertThatThrownBy(() -> new DiaryImageGenerationRequest(
                 createStoryboard(),
                 "이미지 스타일 프롬프트",
                 null

@@ -32,5 +32,5 @@ harudle:
       s3:
         bucket: ${S3_BUCKET:}
         region: ${AWS_REGION:ap-northeast-2}
-        generated-prefix: ${S3_GENERATED_PREFIX:generated/comics}
+        generated-prefix: ${S3_GENERATED_PREFIX:generated/diary-images}
         max-object-size: ${S3_MAX_OBJECT_SIZE:20MB}

@@ -39,7 +39,7 @@ class S3ImageStorageTest {
 
     private static final UUID GENERATION_ID = UUID.fromString("550e8400-e29b-41d4-a716-446655440000");
     private static final String OBJECT_KEY =
-            "generated/comics/550e8400-e29b-41d4-a716-446655440000/comic.png";
+            "generated/diary-images/550e8400-e29b-41d4-a716-446655440000/image.png";
     private static final int MAX_OBJECT_SIZE_BYTES = 10;
 
     @Mock
@@ -52,7 +52,7 @@ class S3ImageStorageTest {
         S3StorageProperties properties = new S3StorageProperties(
                 "test-bucket",
                 "ap-northeast-2",
-                "generated/comics",
+                "generated/diary-images",
                 DataSize.ofBytes(MAX_OBJECT_SIZE_BYTES)
         );
         imageStorage = new S3ImageStorage(

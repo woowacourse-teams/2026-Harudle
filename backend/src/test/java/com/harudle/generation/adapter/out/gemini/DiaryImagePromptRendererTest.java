@@ -12,13 +12,13 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
 
-class ComicImagePromptRendererTest {
+class DiaryImagePromptRendererTest {
 
-    private final ComicImagePromptRenderer renderer = new ComicImagePromptRenderer();
+    private final DiaryImagePromptRenderer renderer = new DiaryImagePromptRenderer();
 
     @Test
     @DisplayName("스토리보드를 Gemini 이미지용 이야기 프롬프트로 변환한다")
-    void renderComicImagePrompt() throws IOException {
+    void renderDiaryImagePrompt() throws IOException {
         Storyboard storyboard = createStoryboard();
 
         String renderedPrompt = renderer.render(storyboard);

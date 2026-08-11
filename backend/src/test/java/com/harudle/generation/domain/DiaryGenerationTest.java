@@ -9,18 +9,18 @@ import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-class ComicGenerationTest {
+class DiaryGenerationTest {
 
     private static final Long GENERATION_PROMPT_ID = 1L;
     private static final String REQUEST_FINGERPRINT = "a".repeat(64);
 
     @Test
-    @DisplayName("처리 중 상태의 만화 생성 작업을 시작한다")
-    void startComicGeneration() {
+    @DisplayName("처리 중 상태의 그림일기 생성 작업을 시작한다")
+    void startDiaryGeneration() {
         UUID diaryId = UUID.randomUUID();
         UUID idempotencyKey = UUID.randomUUID();
 
-        ComicGeneration generation = ComicGeneration.start(
+        DiaryGeneration generation = DiaryGeneration.start(
                 diaryId,
                 GENERATION_PROMPT_ID,
                 idempotencyKey,
@@ -49,25 +49,25 @@ class ComicGenerationTest {
 
     @Test
     @DisplayName("처리 중인 생성 작업을 성공 상태로 완료한다")
-    void succeedComicGeneration() {
-        ComicGeneration generation = startGeneration();
+    void succeedDiaryGeneration() {
+        DiaryGeneration generation = startGeneration();
         Storyboard storyboard = createStoryboard();
         Instant completedAt = Instant.parse("2026-08-10T10:00:00Z");
 
-        generation.succeed(storyboard, " generated/comic.png ", completedAt);
+        generation.succeed(storyboard, " generated/diary-image.png ", completedAt);
 
         assertThat(generation.getStatus()).isEqualTo(GenerationStatus.SUCCEEDED);
         assertThat(generation.getStoryboard()).isEqualTo(storyboard);
         assertThat(generation.getTitle()).isEqualTo(storyboard.title());
-        assertThat(generation.getImageObjectKey()).isEqualTo("generated/comic.png");
+        assertThat(generation.getImageObjectKey()).isEqualTo("generated/diary-image.png");
         assertThat(generation.getErrorCode()).isNull();
         assertThat(generation.getCompletedAt()).isEqualTo(completedAt);
     }
 
     @Test
     @DisplayName("처리 중인 생성 작업을 실패 상태로 완료한다")
-    void failComicGeneration() {
-        ComicGeneration generation = startGeneration();
+    void failDiaryGeneration() {
+        DiaryGeneration generation = startGeneration();
         Instant completedAt = Instant.parse("2026-08-10T10:00:00Z");
 
         generation.fail(GenerationErrorCode.AI_PROVIDER_ERROR, completedAt);
@@ -81,8 +81,8 @@ class ComicGenerationTest {
 
     @Test
     @DisplayName("중단된 생성 작업을 실패 상태로 완료한다")
-    void interruptComicGeneration() {
-        ComicGeneration generation = startGeneration();
+    void interruptDiaryGeneration() {
+        DiaryGeneration generation = startGeneration();
         Instant completedAt = Instant.parse("2026-08-10T10:00:00Z");
 
         generation.interrupt(completedAt);
@@ -95,10 +95,10 @@ class ComicGenerationTest {
     @Test
     @DisplayName("완료된 생성 작업을 다시 성공 처리할 수 없다")
     void rejectSucceedAfterFailure() {
-        ComicGeneration generation = startGeneration();
+        DiaryGeneration generation = startGeneration();
         generation.fail(GenerationErrorCode.AI_PROVIDER_ERROR, Instant.now());
 
-        assertThatThrownBy(() -> generation.succeed(createStoryboard(), "generated/comic.png", Instant.now()))
+        assertThatThrownBy(() -> generation.succeed(createStoryboard(), "generated/diary-image.png", Instant.now()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("처리 중");
     }
@@ -106,8 +106,8 @@ class ComicGenerationTest {
     @Test
     @DisplayName("완료된 생성 작업을 다시 실패 처리할 수 없다")
     void rejectFailAfterSuccess() {
-        ComicGeneration generation = startGeneration();
-        generation.succeed(createStoryboard(), "generated/comic.png", Instant.now());
+        DiaryGeneration generation = startGeneration();
+        generation.succeed(createStoryboard(), "generated/diary-image.png", Instant.now());
 
         assertThatThrownBy(() -> generation.fail(GenerationErrorCode.AI_PROVIDER_ERROR, Instant.now()))
                 .isInstanceOf(IllegalStateException.class)
@@ -117,9 +117,9 @@ class ComicGenerationTest {
     @Test
     @DisplayName("스토리보드가 없으면 생성 작업을 성공 처리할 수 없다")
     void rejectSucceedWithoutStoryboard() {
-        ComicGeneration generation = startGeneration();
+        DiaryGeneration generation = startGeneration();
 
-        assertThatThrownBy(() -> generation.succeed(null, "generated/comic.png", Instant.now()))
+        assertThatThrownBy(() -> generation.succeed(null, "generated/diary-image.png", Instant.now()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("스토리보드");
     }
@@ -127,7 +127,7 @@ class ComicGenerationTest {
     @Test
     @DisplayName("이미지 Object Key가 UTF-8 기준 1,024바이트를 초과하면 성공 처리할 수 없다")
     void rejectLongImageObjectKey() {
-        ComicGeneration generation = startGeneration();
+        DiaryGeneration generation = startGeneration();
 
         assertThatThrownBy(() -> generation.succeed(createStoryboard(), "가".repeat(342), Instant.now()))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -142,19 +142,19 @@ class ComicGenerationTest {
     @Test
     @DisplayName("오류 코드가 없으면 생성 작업을 실패 처리할 수 없다")
     void rejectFailureWithoutErrorCode() {
-        ComicGeneration generation = startGeneration();
+        DiaryGeneration generation = startGeneration();
 
         assertThatThrownBy(() -> generation.fail(null, Instant.now()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("오류 코드");
     }
 
-    private ComicGeneration startGeneration() {
+    private DiaryGeneration startGeneration() {
         return startGeneration(REQUEST_FINGERPRINT);
     }
 
-    private ComicGeneration startGeneration(String requestFingerprint) {
-        return ComicGeneration.start(
+    private DiaryGeneration startGeneration(String requestFingerprint) {
+        return DiaryGeneration.start(
                 UUID.randomUUID(),
                 GENERATION_PROMPT_ID,
                 UUID.randomUUID(),

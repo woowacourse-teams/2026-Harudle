@@ -17,7 +17,7 @@ import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "comic_generations")
-public class ComicGeneration {
+public class DiaryGeneration {
 
     private static final int MAX_IMAGE_OBJECT_KEY_BYTES = 1024;
     private static final Pattern REQUEST_FINGERPRINT_PATTERN = Pattern.compile("^[0-9a-f]{64}$");
@@ -67,10 +67,10 @@ public class ComicGeneration {
     @Column(name = "completed_at")
     private Instant completedAt;
 
-    protected ComicGeneration() {
+    protected DiaryGeneration() {
     }
 
-    private ComicGeneration(
+    private DiaryGeneration(
             UUID id,
             UUID diaryId,
             Long generationPromptId,
@@ -90,13 +90,13 @@ public class ComicGeneration {
         this.status = GenerationStatus.PROCESSING;
     }
 
-    public static ComicGeneration start(
+    public static DiaryGeneration start(
             UUID diaryId,
             Long generationPromptId,
             UUID idempotencyKey,
             String requestFingerprint
     ) {
-        return new ComicGeneration(
+        return new DiaryGeneration(
                 UUID.randomUUID(),
                 diaryId,
                 generationPromptId,

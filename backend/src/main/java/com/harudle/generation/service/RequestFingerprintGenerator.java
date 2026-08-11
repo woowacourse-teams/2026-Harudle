@@ -1,6 +1,6 @@
 package com.harudle.generation.service;
 
-import com.harudle.generation.service.dto.GenerateComicCommand;
+import com.harudle.generation.service.dto.GenerateDiaryImageCommand;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -13,13 +13,13 @@ public final class RequestFingerprintGenerator {
     private static final String FINGERPRINT_VERSION = "v1";
     private static final String HASH_ALGORITHM = "SHA-256";
 
-    public String generate(GenerateComicCommand command) {
+    public String generate(GenerateDiaryImageCommand command) {
         validateCommand(command);
         String canonicalRequest = createCanonicalRequest(command);
         return hash(canonicalRequest);
     }
 
-    private static String createCanonicalRequest(GenerateComicCommand command) {
+    private static String createCanonicalRequest(GenerateDiaryImageCommand command) {
         return String.join(
                 "\n",
                 FINGERPRINT_VERSION,
@@ -39,9 +39,9 @@ public final class RequestFingerprintGenerator {
         }
     }
 
-    private static void validateCommand(GenerateComicCommand command) {
+    private static void validateCommand(GenerateDiaryImageCommand command) {
         if (command == null) {
-            throw new IllegalArgumentException("만화 생성 명령은 필수입니다.");
+            throw new IllegalArgumentException("그림일기 이미지 생성 명령은 필수입니다.");
         }
     }
 }

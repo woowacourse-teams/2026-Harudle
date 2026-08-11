@@ -2,13 +2,13 @@ package com.harudle.generation.service.port;
 
 import com.harudle.generation.domain.Storyboard;
 
-public record ComicImageGenerationRequest(
+public record DiaryImageGenerationRequest(
         Storyboard storyboard,
         String imageStylePromptText,
         ReferenceImage referenceImage
 ) {
 
-    public ComicImageGenerationRequest {
+    public DiaryImageGenerationRequest {
         validateStoryboard(storyboard);
         imageStylePromptText = normalizeImageStylePromptText(imageStylePromptText);
         validateReferenceImage(referenceImage);

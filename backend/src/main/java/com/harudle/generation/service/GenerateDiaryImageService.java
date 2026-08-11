@@ -1,21 +1,21 @@
 package com.harudle.generation.service;
 
-import com.harudle.generation.domain.ComicGeneration;
+import com.harudle.generation.domain.DiaryGeneration;
 import com.harudle.generation.domain.GenerationErrorCode;
 import com.harudle.generation.domain.GenerationPrompt;
 import com.harudle.generation.domain.GenerationStatus;
 import com.harudle.generation.domain.Storyboard;
-import com.harudle.generation.repository.ComicGenerationRepository;
+import com.harudle.generation.repository.DiaryGenerationRepository;
 import com.harudle.generation.repository.GenerationPromptRepository;
-import com.harudle.generation.service.dto.ComicGenerationResult;
-import com.harudle.generation.service.dto.GenerateComicCommand;
+import com.harudle.generation.service.dto.DiaryGenerationResult;
+import com.harudle.generation.service.dto.GenerateDiaryImageCommand;
 import com.harudle.generation.service.exception.AiGenerationErrorType;
 import com.harudle.generation.service.exception.AiGenerationException;
-import com.harudle.generation.service.exception.ComicGenerationFailedException;
+import com.harudle.generation.service.exception.DiaryGenerationFailedException;
 import com.harudle.generation.service.exception.GenerationInProgressException;
 import com.harudle.generation.service.exception.IdempotencyKeyConflictException;
-import com.harudle.generation.service.port.ComicImageGenerationRequest;
-import com.harudle.generation.service.port.ComicImageGenerator;
+import com.harudle.generation.service.port.DiaryImageGenerationRequest;
+import com.harudle.generation.service.port.DiaryImageGenerator;
 import com.harudle.generation.service.port.GeneratedImage;
 import com.harudle.generation.service.port.ImageStorage;
 import com.harudle.generation.service.port.ImageStorageException;
@@ -26,46 +26,45 @@ import java.time.Instant;
 import java.util.Optional;
 import org.springframework.dao.DataIntegrityViolationException;
 
-public class GenerateComicService {
+public class GenerateDiaryImageService {
 
     private final RequestFingerprintGenerator requestFingerprintGenerator;
     private final GenerationPromptRepository generationPromptRepository;
-    private final ComicGenerationRepository comicGenerationRepository;
+    private final DiaryGenerationRepository diaryGenerationRepository;
     private final StoryboardGenerator storyboardGenerator;
-    private final ComicImageGenerator comicImageGenerator;
+    private final DiaryImageGenerator diaryImageGenerator;
     private final ImageStorage imageStorage;
 
-    public GenerateComicService(
+    public GenerateDiaryImageService(
             RequestFingerprintGenerator requestFingerprintGenerator,
             GenerationPromptRepository generationPromptRepository,
-            ComicGenerationRepository comicGenerationRepository,
+            DiaryGenerationRepository diaryGenerationRepository,
             StoryboardGenerator storyboardGenerator,
-            ComicImageGenerator comicImageGenerator,
+            DiaryImageGenerator diaryImageGenerator,
             ImageStorage imageStorage
     ) {
         this.requestFingerprintGenerator = requestFingerprintGenerator;
         this.generationPromptRepository = generationPromptRepository;
-        this.comicGenerationRepository = comicGenerationRepository;
+        this.diaryGenerationRepository = diaryGenerationRepository;
         this.storyboardGenerator = storyboardGenerator;
-        this.comicImageGenerator = comicImageGenerator;
+        this.diaryImageGenerator = diaryImageGenerator;
         this.imageStorage = imageStorage;
     }
 
-    public ComicGenerationResult generate(GenerateComicCommand command) {
+    public DiaryGenerationResult generate(GenerateDiaryImageCommand command) {
         String requestFingerprint = requestFingerprintGenerator.generate(command);
-        Optional<ComicGeneration> existingGeneration = comicGenerationRepository
+        Optional<DiaryGeneration> existingGeneration = diaryGenerationRepository
                 .findByIdempotencyKey(command.idempotencyKey());
-        return existingGeneration.map(comicGeneration -> handleExistingGeneration(comicGeneration, requestFingerprint))
-                .orElseGet(() -> generateNewComic(command, requestFingerprint));
-
+        return existingGeneration.map(diaryGeneration -> handleExistingGeneration(diaryGeneration, requestFingerprint))
+                .orElseGet(() -> generateNewDiaryImage(command, requestFingerprint));
     }
 
-    private ComicGenerationResult generateNewComic(
-            GenerateComicCommand command,
+    private DiaryGenerationResult generateNewDiaryImage(
+            GenerateDiaryImageCommand command,
             String requestFingerprint
     ) {
         GenerationPrompt prompt = findLatestPrompt();
-        ComicGeneration generation;
+        DiaryGeneration generation;
         try {
             generation = startGeneration(command, prompt, requestFingerprint);
         } catch (DataIntegrityViolationException exception) {
@@ -75,10 +74,10 @@ public class GenerateComicService {
         return executeGeneration(command, prompt, generation);
     }
 
-    private ComicGenerationResult executeGeneration(
-            GenerateComicCommand command,
+    private DiaryGenerationResult executeGeneration(
+            GenerateDiaryImageCommand command,
             GenerationPrompt prompt,
-            ComicGeneration generation
+            DiaryGeneration generation
     ) {
         try {
             Storyboard storyboard = generateStoryboard(command, prompt);
@@ -95,19 +94,19 @@ public class GenerateComicService {
         }
     }
 
-    private ComicGenerationResult handleConcurrentGeneration(
-            GenerateComicCommand command,
+    private DiaryGenerationResult handleConcurrentGeneration(
+            GenerateDiaryImageCommand command,
             String requestFingerprint,
             DataIntegrityViolationException exception
     ) {
-        ComicGeneration generation = comicGenerationRepository
+        DiaryGeneration generation = diaryGenerationRepository
                 .findByIdempotencyKey(command.idempotencyKey())
                 .orElseThrow(() -> exception);
         return handleExistingGeneration(generation, requestFingerprint);
     }
 
-    private ComicGenerationResult handleExistingGeneration(
-            ComicGeneration generation,
+    private DiaryGenerationResult handleExistingGeneration(
+            DiaryGeneration generation,
             String requestFingerprint
     ) {
         if (!generation.getRequestFingerprint().equals(requestFingerprint)) {
@@ -122,9 +121,9 @@ public class GenerateComicService {
             throw new GenerationInProgressException();
         }
         if (status == GenerationStatus.FAILED) {
-            throw new ComicGenerationFailedException(generation.getErrorCode());
+            throw new DiaryGenerationFailedException(generation.getErrorCode());
         }
-        throw new IllegalStateException("지원하지 않는 만화 생성 상태입니다.");
+        throw new IllegalStateException("지원하지 않는 그림일기 생성 상태입니다.");
     }
 
     private GenerationPrompt findLatestPrompt() {
@@ -132,21 +131,21 @@ public class GenerateComicService {
                 .orElseThrow(() -> new IllegalStateException("사용할 생성 프롬프트가 없습니다."));
     }
 
-    private ComicGeneration startGeneration(
-            GenerateComicCommand command,
+    private DiaryGeneration startGeneration(
+            GenerateDiaryImageCommand command,
             GenerationPrompt prompt,
             String requestFingerprint
     ) {
-        ComicGeneration generation = ComicGeneration.start(
+        DiaryGeneration generation = DiaryGeneration.start(
                 command.diaryId(),
                 prompt.getId(),
                 command.idempotencyKey(),
                 requestFingerprint
         );
-        return comicGenerationRepository.saveAndFlush(generation);
+        return diaryGenerationRepository.saveAndFlush(generation);
     }
 
-    private Storyboard generateStoryboard(GenerateComicCommand command, GenerationPrompt prompt) {
+    private Storyboard generateStoryboard(GenerateDiaryImageCommand command, GenerationPrompt prompt) {
         return storyboardGenerator.generate(new StoryboardGenerationRequest(
                 command.diaryText(),
                 prompt.getStoryboardPromptText()
@@ -158,25 +157,25 @@ public class GenerateComicService {
             GenerationPrompt prompt,
             ReferenceImage referenceImage
     ) {
-        return comicImageGenerator.generate(new ComicImageGenerationRequest(
+        return diaryImageGenerator.generate(new DiaryImageGenerationRequest(
                 storyboard,
                 prompt.getImageStylePromptText(),
                 referenceImage
         ));
     }
 
-    private ComicGenerationResult succeedGeneration(
-            ComicGeneration generation,
+    private DiaryGenerationResult succeedGeneration(
+            DiaryGeneration generation,
             Storyboard storyboard,
             String imageObjectKey
     ) {
         generation.succeed(storyboard, imageObjectKey, Instant.now());
-        ComicGeneration completedGeneration = comicGenerationRepository.saveAndFlush(generation);
+        DiaryGeneration completedGeneration = diaryGenerationRepository.saveAndFlush(generation);
         return createResult(completedGeneration, true);
     }
 
-    private ComicGenerationResult createResult(ComicGeneration generation, boolean newlyCreated) {
-        return new ComicGenerationResult(
+    private DiaryGenerationResult createResult(DiaryGeneration generation, boolean newlyCreated) {
+        return new DiaryGenerationResult(
                 generation.getId(),
                 generation.getStatus(),
                 generation.getTitle(),
@@ -196,8 +195,8 @@ public class GenerateComicService {
         throw new IllegalArgumentException("지원하지 않는 AI 생성 오류 타입입니다.");
     }
 
-    private void failGeneration(ComicGeneration generation, GenerationErrorCode errorCode) {
+    private void failGeneration(DiaryGeneration generation, GenerationErrorCode errorCode) {
         generation.fail(errorCode, Instant.now());
-        comicGenerationRepository.saveAndFlush(generation);
+        diaryGenerationRepository.saveAndFlush(generation);
     }
 }

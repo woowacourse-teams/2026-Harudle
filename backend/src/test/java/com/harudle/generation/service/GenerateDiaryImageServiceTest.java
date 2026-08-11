@@ -11,23 +11,23 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
-import com.harudle.generation.domain.ComicGeneration;
+import com.harudle.generation.domain.DiaryGeneration;
 import com.harudle.generation.domain.GenerationErrorCode;
 import com.harudle.generation.domain.GenerationPrompt;
 import com.harudle.generation.domain.GenerationStatus;
 import com.harudle.generation.domain.StoryPanel;
 import com.harudle.generation.domain.Storyboard;
-import com.harudle.generation.repository.ComicGenerationRepository;
+import com.harudle.generation.repository.DiaryGenerationRepository;
 import com.harudle.generation.repository.GenerationPromptRepository;
-import com.harudle.generation.service.dto.ComicGenerationResult;
-import com.harudle.generation.service.dto.GenerateComicCommand;
+import com.harudle.generation.service.dto.DiaryGenerationResult;
+import com.harudle.generation.service.dto.GenerateDiaryImageCommand;
 import com.harudle.generation.service.exception.AiGenerationErrorType;
 import com.harudle.generation.service.exception.AiGenerationException;
-import com.harudle.generation.service.exception.ComicGenerationFailedException;
+import com.harudle.generation.service.exception.DiaryGenerationFailedException;
 import com.harudle.generation.service.exception.GenerationInProgressException;
 import com.harudle.generation.service.exception.IdempotencyKeyConflictException;
-import com.harudle.generation.service.port.ComicImageGenerationRequest;
-import com.harudle.generation.service.port.ComicImageGenerator;
+import com.harudle.generation.service.port.DiaryImageGenerationRequest;
+import com.harudle.generation.service.port.DiaryImageGenerator;
 import com.harudle.generation.service.port.GeneratedImage;
 import com.harudle.generation.service.port.ImageStorage;
 import com.harudle.generation.service.port.ImageStorageException;
@@ -56,46 +56,46 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 
-@SpringJUnitConfig({GenerateComicService.class, RequestFingerprintGenerator.class})
-class GenerateComicServiceTest {
+@SpringJUnitConfig({GenerateDiaryImageService.class, RequestFingerprintGenerator.class})
+class GenerateDiaryImageServiceTest {
 
     @MockitoBean
     private GenerationPromptRepository generationPromptRepository;
 
     @MockitoBean
-    private ComicGenerationRepository comicGenerationRepository;
+    private DiaryGenerationRepository diaryGenerationRepository;
 
     @MockitoBean
     private StoryboardGenerator storyboardGenerator;
 
     @MockitoBean
-    private ComicImageGenerator comicImageGenerator;
+    private DiaryImageGenerator diaryImageGenerator;
 
     @MockitoBean
     private ImageStorage imageStorage;
 
     @Autowired
-    private GenerateComicService generateComicService;
+    private GenerateDiaryImageService generateDiaryImageService;
 
     @Autowired
     private RequestFingerprintGenerator requestFingerprintGenerator;
 
     @Test
     @DisplayName("일기로 스토리보드와 이미지를 생성하고 성공 결과를 반환한다")
-    void generateComic() {
-        GenerateComicCommand command = createCommand();
+    void generateDiaryImage() {
+        GenerateDiaryImageCommand command = createCommand();
         GenerationPrompt prompt = createPrompt();
         Storyboard storyboard = createStoryboard();
         ReferenceImage referenceImage = createReferenceImage();
         GeneratedImage generatedImage = createGeneratedImage();
         AtomicInteger saveCount = new AtomicInteger();
 
-        when(comicGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
+        when(diaryGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
                 .thenReturn(Optional.empty());
         when(generationPromptRepository.findFirstByOrderByIdDesc()).thenReturn(Optional.of(prompt));
-        when(comicGenerationRepository.saveAndFlush(any(ComicGeneration.class)))
+        when(diaryGenerationRepository.saveAndFlush(any(DiaryGeneration.class)))
                 .thenAnswer(invocation -> {
-                    ComicGeneration generation = invocation.getArgument(0);
+                    DiaryGeneration generation = invocation.getArgument(0);
                     if (saveCount.getAndIncrement() == 0) {
                         assertThat(generation.getStatus()).isEqualTo(GenerationStatus.PROCESSING);
                     } else {
@@ -105,81 +105,81 @@ class GenerateComicServiceTest {
                 });
         when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenReturn(storyboard);
         when(imageStorage.load(prompt.getImageAssetObjectKey())).thenReturn(referenceImage);
-        when(comicImageGenerator.generate(any(ComicImageGenerationRequest.class))).thenReturn(generatedImage);
-        when(imageStorage.store(any(UUID.class), eq(generatedImage))).thenReturn("generated/comic.png");
+        when(diaryImageGenerator.generate(any(DiaryImageGenerationRequest.class))).thenReturn(generatedImage);
+        when(imageStorage.store(any(UUID.class), eq(generatedImage))).thenReturn("generated/diary-image.png");
 
-        ComicGenerationResult result = generateComicService.generate(command);
+        DiaryGenerationResult result = generateDiaryImageService.generate(command);
 
         assertThat(result.status()).isEqualTo(GenerationStatus.SUCCEEDED);
         assertThat(result.title()).isEqualTo(storyboard.title());
-        assertThat(result.imageObjectKey()).isEqualTo("generated/comic.png");
+        assertThat(result.imageObjectKey()).isEqualTo("generated/diary-image.png");
         assertThat(result.completedAt()).isBeforeOrEqualTo(Instant.now());
         assertThat(result.newlyCreated()).isTrue();
         assertThat(saveCount).hasValue(2);
 
         InOrder inOrder = inOrder(
                 generationPromptRepository,
-                comicGenerationRepository,
+                diaryGenerationRepository,
                 storyboardGenerator,
                 imageStorage,
-                comicImageGenerator
+                diaryImageGenerator
         );
-        inOrder.verify(comicGenerationRepository).findByIdempotencyKey(command.idempotencyKey());
+        inOrder.verify(diaryGenerationRepository).findByIdempotencyKey(command.idempotencyKey());
         inOrder.verify(generationPromptRepository).findFirstByOrderByIdDesc();
-        inOrder.verify(comicGenerationRepository).saveAndFlush(any(ComicGeneration.class));
+        inOrder.verify(diaryGenerationRepository).saveAndFlush(any(DiaryGeneration.class));
         inOrder.verify(storyboardGenerator).generate(new StoryboardGenerationRequest(
                 command.diaryText(),
                 prompt.getStoryboardPromptText()
         ));
         inOrder.verify(imageStorage).load(prompt.getImageAssetObjectKey());
-        inOrder.verify(comicImageGenerator).generate(new ComicImageGenerationRequest(
+        inOrder.verify(diaryImageGenerator).generate(new DiaryImageGenerationRequest(
                 storyboard,
                 prompt.getImageStylePromptText(),
                 referenceImage
         ));
         inOrder.verify(imageStorage).store(result.generationId(), generatedImage);
-        inOrder.verify(comicGenerationRepository).saveAndFlush(any(ComicGeneration.class));
+        inOrder.verify(diaryGenerationRepository).saveAndFlush(any(DiaryGeneration.class));
     }
 
     @Test
     @DisplayName("동일한 요청을 다른 작업이 먼저 선점했다면 기존 처리 상태를 반환한다")
     void handleGenerationClaimedByConcurrentRequest() {
-        GenerateComicCommand command = createCommand();
+        GenerateDiaryImageCommand command = createCommand();
         GenerationPrompt prompt = createPrompt();
-        ComicGeneration concurrentGeneration = createGeneration(command);
+        DiaryGeneration concurrentGeneration = createGeneration(command);
         DataIntegrityViolationException exception = new DataIntegrityViolationException("중복 멱등성 키");
 
-        when(comicGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
+        when(diaryGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
                 .thenReturn(Optional.empty())
                 .thenReturn(Optional.of(concurrentGeneration));
         when(generationPromptRepository.findFirstByOrderByIdDesc()).thenReturn(Optional.of(prompt));
-        when(comicGenerationRepository.saveAndFlush(any(ComicGeneration.class))).thenThrow(exception);
+        when(diaryGenerationRepository.saveAndFlush(any(DiaryGeneration.class))).thenThrow(exception);
 
-        assertThatThrownBy(() -> generateComicService.generate(command))
+        assertThatThrownBy(() -> generateDiaryImageService.generate(command))
                 .isInstanceOf(GenerationInProgressException.class);
-        verifyNoInteractions(storyboardGenerator, comicImageGenerator, imageStorage);
+        verifyNoInteractions(storyboardGenerator, diaryImageGenerator, imageStorage);
 
-        InOrder inOrder = inOrder(comicGenerationRepository, generationPromptRepository);
-        inOrder.verify(comicGenerationRepository).findByIdempotencyKey(command.idempotencyKey());
+        InOrder inOrder = inOrder(diaryGenerationRepository, generationPromptRepository);
+        inOrder.verify(diaryGenerationRepository).findByIdempotencyKey(command.idempotencyKey());
         inOrder.verify(generationPromptRepository).findFirstByOrderByIdDesc();
-        inOrder.verify(comicGenerationRepository).saveAndFlush(any(ComicGeneration.class));
-        inOrder.verify(comicGenerationRepository).findByIdempotencyKey(command.idempotencyKey());
+        inOrder.verify(diaryGenerationRepository).saveAndFlush(any(DiaryGeneration.class));
+        inOrder.verify(diaryGenerationRepository).findByIdempotencyKey(command.idempotencyKey());
     }
 
     @Test
     @DisplayName("멱등성 키 중복이 아닌 무결성 예외는 그대로 전달한다")
     void propagateUnrelatedIntegrityViolation() {
-        GenerateComicCommand command = createCommand();
+        GenerateDiaryImageCommand command = createCommand();
         GenerationPrompt prompt = createPrompt();
         DataIntegrityViolationException exception = new DataIntegrityViolationException("다른 제약 조건 위반");
 
-        when(comicGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
+        when(diaryGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
                 .thenReturn(Optional.empty());
         when(generationPromptRepository.findFirstByOrderByIdDesc()).thenReturn(Optional.of(prompt));
-        when(comicGenerationRepository.saveAndFlush(any(ComicGeneration.class))).thenThrow(exception);
+        when(diaryGenerationRepository.saveAndFlush(any(DiaryGeneration.class))).thenThrow(exception);
 
-        assertThatThrownBy(() -> generateComicService.generate(command)).isSameAs(exception);
-        verifyNoInteractions(storyboardGenerator, comicImageGenerator, imageStorage);
+        assertThatThrownBy(() -> generateDiaryImageService.generate(command)).isSameAs(exception);
+        verifyNoInteractions(storyboardGenerator, diaryImageGenerator, imageStorage);
     }
 
     @ParameterizedTest
@@ -189,60 +189,60 @@ class GenerateComicServiceTest {
             AiGenerationErrorType errorType,
             GenerationErrorCode expectedErrorCode
     ) {
-        GenerateComicCommand command = createCommand();
+        GenerateDiaryImageCommand command = createCommand();
         GenerationPrompt prompt = createPrompt();
         AiGenerationException exception = new AiGenerationException(errorType, "AI 생성에 실패했습니다.");
         AtomicInteger saveCount = new AtomicInteger();
-        AtomicReference<ComicGeneration> savedGeneration = new AtomicReference<>();
+        AtomicReference<DiaryGeneration> savedGeneration = new AtomicReference<>();
 
-        when(comicGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
+        when(diaryGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
                 .thenReturn(Optional.empty());
         when(generationPromptRepository.findFirstByOrderByIdDesc()).thenReturn(Optional.of(prompt));
-        when(comicGenerationRepository.saveAndFlush(any(ComicGeneration.class)))
+        when(diaryGenerationRepository.saveAndFlush(any(DiaryGeneration.class)))
                 .thenAnswer(invocation -> {
-                    ComicGeneration generation = invocation.getArgument(0);
+                    DiaryGeneration generation = invocation.getArgument(0);
                     saveCount.incrementAndGet();
                     savedGeneration.set(generation);
                     return generation;
                 });
         when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenThrow(exception);
 
-        assertThatThrownBy(() -> generateComicService.generate(command)).isSameAs(exception);
+        assertThatThrownBy(() -> generateDiaryImageService.generate(command)).isSameAs(exception);
         assertThat(saveCount).hasValue(2);
         assertThat(savedGeneration.get().getStatus()).isEqualTo(GenerationStatus.FAILED);
         assertThat(savedGeneration.get().getErrorCode()).isEqualTo(expectedErrorCode);
         assertThat(savedGeneration.get().getCompletedAt()).isBeforeOrEqualTo(Instant.now());
-        verifyNoInteractions(comicImageGenerator, imageStorage);
+        verifyNoInteractions(diaryImageGenerator, imageStorage);
     }
 
     @Test
     @DisplayName("이미지 저장에 실패하면 실패 상태와 오류 코드를 저장하고 예외를 다시 던진다")
     void failGenerationWhenImageStorageFails() {
-        GenerateComicCommand command = createCommand();
+        GenerateDiaryImageCommand command = createCommand();
         GenerationPrompt prompt = createPrompt();
         Storyboard storyboard = createStoryboard();
         ReferenceImage referenceImage = createReferenceImage();
         GeneratedImage generatedImage = createGeneratedImage();
         ImageStorageException exception = new ImageStorageException("이미지 저장에 실패했습니다.");
         AtomicInteger saveCount = new AtomicInteger();
-        AtomicReference<ComicGeneration> savedGeneration = new AtomicReference<>();
+        AtomicReference<DiaryGeneration> savedGeneration = new AtomicReference<>();
 
-        when(comicGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
+        when(diaryGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
                 .thenReturn(Optional.empty());
         when(generationPromptRepository.findFirstByOrderByIdDesc()).thenReturn(Optional.of(prompt));
-        when(comicGenerationRepository.saveAndFlush(any(ComicGeneration.class)))
+        when(diaryGenerationRepository.saveAndFlush(any(DiaryGeneration.class)))
                 .thenAnswer(invocation -> {
-                    ComicGeneration generation = invocation.getArgument(0);
+                    DiaryGeneration generation = invocation.getArgument(0);
                     saveCount.incrementAndGet();
                     savedGeneration.set(generation);
                     return generation;
                 });
         when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenReturn(storyboard);
         when(imageStorage.load(prompt.getImageAssetObjectKey())).thenReturn(referenceImage);
-        when(comicImageGenerator.generate(any(ComicImageGenerationRequest.class))).thenReturn(generatedImage);
+        when(diaryImageGenerator.generate(any(DiaryImageGenerationRequest.class))).thenReturn(generatedImage);
         when(imageStorage.store(any(UUID.class), eq(generatedImage))).thenThrow(exception);
 
-        assertThatThrownBy(() -> generateComicService.generate(command)).isSameAs(exception);
+        assertThatThrownBy(() -> generateDiaryImageService.generate(command)).isSameAs(exception);
         assertThat(saveCount).hasValue(2);
         assertThat(savedGeneration.get().getStatus()).isEqualTo(GenerationStatus.FAILED);
         assertThat(savedGeneration.get().getErrorCode()).isEqualTo(GenerationErrorCode.IMAGE_STORAGE_ERROR);
@@ -252,15 +252,15 @@ class GenerateComicServiceTest {
     @Test
     @DisplayName("동일한 요청이 이미 성공했다면 저장된 결과를 반환한다")
     void returnExistingSuccessfulGeneration() {
-        GenerateComicCommand command = createCommand();
+        GenerateDiaryImageCommand command = createCommand();
         Storyboard storyboard = createStoryboard();
         Instant completedAt = Instant.parse("2026-08-10T10:00:00Z");
-        ComicGeneration generation = createGeneration(command);
+        DiaryGeneration generation = createGeneration(command);
         generation.succeed(storyboard, "generated/existing.png", completedAt);
-        when(comicGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
+        when(diaryGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
                 .thenReturn(Optional.of(generation));
 
-        ComicGenerationResult result = generateComicService.generate(command);
+        DiaryGenerationResult result = generateDiaryImageService.generate(command);
 
         assertThat(result.generationId()).isEqualTo(generation.getId());
         assertThat(result.status()).isEqualTo(GenerationStatus.SUCCEEDED);
@@ -274,19 +274,19 @@ class GenerateComicServiceTest {
     @Test
     @DisplayName("동일한 멱등성 키를 다른 요청에 사용하면 예외가 발생한다")
     void rejectReusedKeyForDifferentRequest() {
-        GenerateComicCommand command = createCommand();
+        GenerateDiaryImageCommand command = createCommand();
         String requestFingerprint = requestFingerprintGenerator.generate(command);
         String differentFingerprint = createDifferentFingerprint(requestFingerprint);
-        ComicGeneration generation = ComicGeneration.start(
+        DiaryGeneration generation = DiaryGeneration.start(
                 command.diaryId(),
                 1L,
                 command.idempotencyKey(),
                 differentFingerprint
         );
-        when(comicGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
+        when(diaryGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
                 .thenReturn(Optional.of(generation));
 
-        assertThatThrownBy(() -> generateComicService.generate(command))
+        assertThatThrownBy(() -> generateDiaryImageService.generate(command))
                 .isInstanceOf(IdempotencyKeyConflictException.class)
                 .hasMessageContaining("멱등성 키");
         verifyOnlyIdempotencyLookup(command);
@@ -295,12 +295,12 @@ class GenerateComicServiceTest {
     @Test
     @DisplayName("동일한 요청이 처리 중이라면 예외가 발생한다")
     void rejectProcessingGeneration() {
-        GenerateComicCommand command = createCommand();
-        ComicGeneration generation = createGeneration(command);
-        when(comicGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
+        GenerateDiaryImageCommand command = createCommand();
+        DiaryGeneration generation = createGeneration(command);
+        when(diaryGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
                 .thenReturn(Optional.of(generation));
 
-        assertThatThrownBy(() -> generateComicService.generate(command))
+        assertThatThrownBy(() -> generateDiaryImageService.generate(command))
                 .isInstanceOf(GenerationInProgressException.class)
                 .hasMessageContaining("처리 중");
         verifyOnlyIdempotencyLookup(command);
@@ -309,23 +309,23 @@ class GenerateComicServiceTest {
     @Test
     @DisplayName("동일한 요청이 이미 실패했다면 저장된 오류 코드와 함께 예외가 발생한다")
     void rejectFailedGeneration() {
-        GenerateComicCommand command = createCommand();
-        ComicGeneration generation = createGeneration(command);
+        GenerateDiaryImageCommand command = createCommand();
+        DiaryGeneration generation = createGeneration(command);
         generation.fail(GenerationErrorCode.AI_PROVIDER_TIMEOUT, Instant.now());
-        when(comicGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
+        when(diaryGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
                 .thenReturn(Optional.of(generation));
 
-        assertThatThrownBy(() -> generateComicService.generate(command))
+        assertThatThrownBy(() -> generateDiaryImageService.generate(command))
                 .isInstanceOfSatisfying(
-                        ComicGenerationFailedException.class,
+                        DiaryGenerationFailedException.class,
                         exception -> assertThat(exception.getErrorCode())
                                 .isEqualTo(GenerationErrorCode.AI_PROVIDER_TIMEOUT)
                 );
         verifyOnlyIdempotencyLookup(command);
     }
 
-    private GenerateComicCommand createCommand() {
-        return new GenerateComicCommand(
+    private GenerateDiaryImageCommand createCommand() {
+        return new GenerateDiaryImageCommand(
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 LocalDate.of(2026, 8, 10),
@@ -341,8 +341,8 @@ class GenerateComicServiceTest {
         );
     }
 
-    private ComicGeneration createGeneration(GenerateComicCommand command) {
-        return ComicGeneration.start(
+    private DiaryGeneration createGeneration(GenerateDiaryImageCommand command) {
+        return DiaryGeneration.start(
                 command.diaryId(),
                 1L,
                 command.idempotencyKey(),
@@ -402,13 +402,13 @@ class GenerateComicServiceTest {
         );
     }
 
-    private void verifyOnlyIdempotencyLookup(GenerateComicCommand command) {
-        verify(comicGenerationRepository).findByIdempotencyKey(command.idempotencyKey());
-        verifyNoMoreInteractions(comicGenerationRepository);
+    private void verifyOnlyIdempotencyLookup(GenerateDiaryImageCommand command) {
+        verify(diaryGenerationRepository).findByIdempotencyKey(command.idempotencyKey());
+        verifyNoMoreInteractions(diaryGenerationRepository);
         verifyNoInteractions(
                 generationPromptRepository,
                 storyboardGenerator,
-                comicImageGenerator,
+                diaryImageGenerator,
                 imageStorage
         );
     }

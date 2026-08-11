@@ -3,7 +3,7 @@ package com.harudle.generation.service.dto;
 import java.time.LocalDate;
 import java.util.UUID;
 
-public record GenerateComicCommand(
+public record GenerateDiaryImageCommand(
         UUID userId,
         UUID diaryId,
         LocalDate diaryDate,
@@ -11,7 +11,7 @@ public record GenerateComicCommand(
         UUID idempotencyKey
 ) {
 
-    public GenerateComicCommand {
+    public GenerateDiaryImageCommand {
         validateUserId(userId);
         validateDiaryId(diaryId);
         validateDiaryDate(diaryDate);

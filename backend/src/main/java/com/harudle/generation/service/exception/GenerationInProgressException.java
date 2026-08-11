@@ -8,6 +8,6 @@ public final class GenerationInProgressException extends RuntimeException {
     private static final long serialVersionUID = 1L;
 
     public GenerationInProgressException() {
-        super("동일한 만화 생성 요청이 처리 중입니다.");
+        super("동일한 그림일기 생성 요청이 처리 중입니다.");
     }
 }

@@ -21,7 +21,7 @@ import com.harudle.generation.domain.StoryPanel;
 import com.harudle.generation.domain.Storyboard;
 import com.harudle.generation.service.exception.AiGenerationErrorType;
 import com.harudle.generation.service.exception.AiGenerationException;
-import com.harudle.generation.service.port.ComicImageGenerationRequest;
+import com.harudle.generation.service.port.DiaryImageGenerationRequest;
 import com.harudle.generation.service.port.GeneratedImage;
 import com.harudle.generation.service.port.ReferenceImage;
 import java.io.IOException;
@@ -38,12 +38,12 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
 
-class GeminiComicImageGeneratorTest {
+class GeminiDiaryImageGeneratorTest {
 
     private final Models models = mock(Models.class);
     private final GenerateContentResponse response = mock(GenerateContentResponse.class);
-    private final ComicImagePromptRenderer promptRenderer = new ComicImagePromptRenderer();
-    private final GeminiComicImageGenerator generator = new GeminiComicImageGenerator(
+    private final DiaryImagePromptRenderer promptRenderer = new DiaryImagePromptRenderer();
+    private final GeminiDiaryImageGenerator generator = new GeminiDiaryImageGenerator(
             models,
             createProperties(),
             promptRenderer,
@@ -57,14 +57,14 @@ class GeminiComicImageGeneratorTest {
     }
 
     @Test
-    @DisplayName("스타일 프롬프트와 참조 이미지로 Gemini 만화 이미지를 생성한다")
-    void generateComicImage() throws IOException {
+    @DisplayName("스타일 프롬프트와 참조 이미지로 Gemini 그림일기 이미지를 생성한다")
+    void generateDiaryImage() throws IOException {
         byte[] generatedImageBytes = "generated-image".getBytes();
         when(response.parts()).thenReturn(ImmutableList.of(
                 Part.fromText("image generated"),
                 Part.fromBytes(generatedImageBytes, "image/png")
         ));
-        ComicImageGenerationRequest request = createRequest(createReferenceImage());
+        DiaryImageGenerationRequest request = createRequest(createReferenceImage());
 
         GeneratedImage generatedImage = generator.generate(request);
 
@@ -144,8 +144,8 @@ class GeminiComicImageGeneratorTest {
         verify(models, never()).generateContent(anyString(), any(Content.class), any(GenerateContentConfig.class));
     }
 
-    private ComicImageGenerationRequest createRequest(ReferenceImage referenceImage) {
-        return new ComicImageGenerationRequest(
+    private DiaryImageGenerationRequest createRequest(ReferenceImage referenceImage) {
+        return new DiaryImageGenerationRequest(
                 createStoryboard(),
                 "IMAGE STYLE PROMPT",
                 referenceImage

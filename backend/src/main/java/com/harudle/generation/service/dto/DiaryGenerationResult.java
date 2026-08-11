@@ -5,7 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.UUID;
 
-public record ComicGenerationResult(
+public record DiaryGenerationResult(
         UUID generationId,
         GenerationStatus status,
         String title,
@@ -16,7 +16,7 @@ public record ComicGenerationResult(
 
     private static final int MAX_IMAGE_OBJECT_KEY_BYTES = 1024;
 
-    public ComicGenerationResult {
+    public DiaryGenerationResult {
         validateGenerationId(generationId);
         validateStatus(status);
         title = normalizeTitle(title);

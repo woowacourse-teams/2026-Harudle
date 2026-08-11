@@ -5,14 +5,14 @@ import static org.mockito.Mockito.mock;
 
 import com.google.genai.Client;
 import com.google.genai.Models;
-import com.harudle.generation.adapter.out.gemini.GeminiComicImageGenerator;
+import com.harudle.generation.adapter.out.gemini.GeminiDiaryImageGenerator;
 import com.harudle.generation.adapter.out.gemini.GeminiStoryboardGenerator;
 import com.harudle.generation.adapter.out.s3.S3ImageStorage;
-import com.harudle.generation.repository.ComicGenerationRepository;
+import com.harudle.generation.repository.DiaryGenerationRepository;
 import com.harudle.generation.repository.GenerationPromptRepository;
-import com.harudle.generation.service.GenerateComicService;
+import com.harudle.generation.service.GenerateDiaryImageService;
 import com.harudle.generation.service.RequestFingerprintGenerator;
-import com.harudle.generation.service.port.ComicImageGenerator;
+import com.harudle.generation.service.port.DiaryImageGenerator;
 import com.harudle.generation.service.port.ImageStorage;
 import com.harudle.generation.service.port.StoryboardGenerator;
 import java.time.Duration;
@@ -37,8 +37,8 @@ class GenerationAdapterConfigurationTest {
                     () -> mock(GenerationPromptRepository.class)
             )
             .withBean(
-                    ComicGenerationRepository.class,
-                    () -> mock(ComicGenerationRepository.class)
+                    DiaryGenerationRepository.class,
+                    () -> mock(DiaryGenerationRepository.class)
             );
 
     @Test
@@ -50,9 +50,9 @@ class GenerationAdapterConfigurationTest {
             assertThat(context).hasSingleBean(Models.class);
             assertThat(context).hasSingleBean(S3Client.class);
             assertThat(context).hasSingleBean(StoryboardGenerator.class);
-            assertThat(context).hasSingleBean(ComicImageGenerator.class);
+            assertThat(context).hasSingleBean(DiaryImageGenerator.class);
             assertThat(context).hasSingleBean(ImageStorage.class);
-            assertThat(context).hasSingleBean(GenerateComicService.class);
+            assertThat(context).hasSingleBean(GenerateDiaryImageService.class);
 
             Client client = context.getBean(Client.class);
             assertThat(client.vertexAI()).isTrue();
@@ -61,8 +61,8 @@ class GenerationAdapterConfigurationTest {
                     .isEqualTo(Region.AP_NORTHEAST_2);
             assertThat(context.getBean(StoryboardGenerator.class))
                     .isInstanceOf(GeminiStoryboardGenerator.class);
-            assertThat(context.getBean(ComicImageGenerator.class))
-                    .isInstanceOf(GeminiComicImageGenerator.class);
+            assertThat(context.getBean(DiaryImageGenerator.class))
+                    .isInstanceOf(GeminiDiaryImageGenerator.class);
             assertThat(context.getBean(ImageStorage.class))
                     .isInstanceOf(S3ImageStorage.class);
         });
@@ -85,7 +85,7 @@ class GenerationAdapterConfigurationTest {
         return new S3StorageProperties(
                 "test-bucket",
                 "ap-northeast-2",
-                "generated/comics",
+                "generated/diary-images",
                 DataSize.ofMegabytes(20)
         );
     }

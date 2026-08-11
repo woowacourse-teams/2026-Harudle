@@ -10,8 +10,8 @@ import com.google.genai.types.GenerateContentResponse;
 import com.google.genai.types.ImageConfig;
 import com.google.genai.types.Part;
 import com.harudle.generation.configuration.GeminiGenerationProperties;
-import com.harudle.generation.service.port.ComicImageGenerationRequest;
-import com.harudle.generation.service.port.ComicImageGenerator;
+import com.harudle.generation.service.port.DiaryImageGenerationRequest;
+import com.harudle.generation.service.port.DiaryImageGenerator;
 import com.harudle.generation.service.port.GeneratedImage;
 import com.harudle.generation.service.port.ReferenceImage;
 import java.io.IOException;
@@ -21,9 +21,9 @@ import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
 
-public final class GeminiComicImageGenerator implements ComicImageGenerator {
+public final class GeminiDiaryImageGenerator implements DiaryImageGenerator {
 
-    private static final String OPERATION = "만화 이미지 생성";
+    private static final String OPERATION = "그림일기 이미지 생성";
     private static final String FINAL_TASK_HEADER = "[Final Task]";
     private static final String REFERENCE_IMAGE_INSTRUCTION = """
             [The Only Style Reference]
@@ -40,13 +40,13 @@ public final class GeminiComicImageGenerator implements ComicImageGenerator {
 
     private final Models models;
     private final GeminiGenerationProperties properties;
-    private final ComicImagePromptRenderer promptRenderer;
+    private final DiaryImagePromptRenderer promptRenderer;
     private final GeminiExceptionTranslator exceptionTranslator;
 
-    public GeminiComicImageGenerator(
+    public GeminiDiaryImageGenerator(
             Models models,
             GeminiGenerationProperties properties,
-            ComicImagePromptRenderer promptRenderer,
+            DiaryImagePromptRenderer promptRenderer,
             GeminiExceptionTranslator exceptionTranslator
     ) {
         this.models = models;
@@ -56,7 +56,7 @@ public final class GeminiComicImageGenerator implements ComicImageGenerator {
     }
 
     @Override
-    public GeneratedImage generate(ComicImageGenerationRequest request) {
+    public GeneratedImage generate(DiaryImageGenerationRequest request) {
         try {
             String finalTask = createFinalTask(request);
             byte[] referenceImageBytes = readReferenceImage(request.referenceImage(), finalTask);
@@ -73,7 +73,7 @@ public final class GeminiComicImageGenerator implements ComicImageGenerator {
         }
     }
 
-    private String createFinalTask(ComicImageGenerationRequest request) {
+    private String createFinalTask(DiaryImageGenerationRequest request) {
         String storyPrompt = promptRenderer.render(request.storyboard());
         return FINAL_TASK_HEADER
                 + "\n"

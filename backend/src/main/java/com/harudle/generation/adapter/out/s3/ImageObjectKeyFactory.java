@@ -19,7 +19,7 @@ public final class ImageObjectKeyFactory {
     public String create(UUID generationId, MediaType mediaType) {
         Objects.requireNonNull(generationId, "생성 작업 ID가 필요합니다.");
         String extension = resolveExtension(mediaType);
-        return "%s/%s/comic.%s".formatted(generatedPrefix, generationId, extension);
+        return "%s/%s/image.%s".formatted(generatedPrefix, generationId, extension);
     }
 
     private static String resolveExtension(MediaType mediaType) {

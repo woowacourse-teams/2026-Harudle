@@ -5,7 +5,7 @@ import com.harudle.generation.domain.Storyboard;
 import java.util.ArrayList;
 import java.util.List;
 
-public final class ComicImagePromptRenderer {
+public final class DiaryImagePromptRenderer {
 
     private static final String PANEL_HEADER_FORMAT = "Panel %d — %s — %s:";
     private static final List<String> PANEL_POSITIONS = List.of(

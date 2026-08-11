@@ -24,31 +24,31 @@ class ImageObjectKeyFactoryTest {
     })
     @DisplayName("이미지 MIME 타입에 맞는 확장자로 Object Key를 만든다")
     void createObjectKey(String mimeType, String extension) {
-        ImageObjectKeyFactory factory = createFactory("generated/comics");
+        ImageObjectKeyFactory factory = createFactory("generated/diary-images");
 
         String objectKey = factory.create(GENERATION_ID, MediaType.parseMediaType(mimeType));
 
         assertThat(objectKey).isEqualTo(
-                "generated/comics/550e8400-e29b-41d4-a716-446655440000/comic." + extension
+                "generated/diary-images/550e8400-e29b-41d4-a716-446655440000/image." + extension
         );
     }
 
     @Test
     @DisplayName("prefix의 구분자를 정규화한다")
     void normalizePrefix() {
-        ImageObjectKeyFactory factory = createFactory("/generated\\comics/");
+        ImageObjectKeyFactory factory = createFactory("/generated\\diary-images/");
 
         String objectKey = factory.create(GENERATION_ID, MediaType.IMAGE_PNG);
 
         assertThat(objectKey).isEqualTo(
-                "generated/comics/550e8400-e29b-41d4-a716-446655440000/comic.png"
+                "generated/diary-images/550e8400-e29b-41d4-a716-446655440000/image.png"
         );
     }
 
     @Test
     @DisplayName("지원하지 않는 이미지 MIME 타입이면 Object Key를 만들 수 없다")
     void rejectUnsupportedImageMediaType() {
-        ImageObjectKeyFactory factory = createFactory("generated/comics");
+        ImageObjectKeyFactory factory = createFactory("generated/diary-images");
 
         assertThatThrownBy(() -> factory.create(
                 GENERATION_ID,
