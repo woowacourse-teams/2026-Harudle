@@ -30,7 +30,7 @@ public class ApiProblemResponseWriter {
             HttpServletResponse response
     ) throws IOException {
         ProblemDetail problemDetail = problemDetailFactory.create(errorType, request);
-        response.setStatus(errorType.getStatus().value());
+        response.setStatus(errorType.status().value());
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
         jsonMapper.writeValue(response.getOutputStream(), problemDetail);
     }

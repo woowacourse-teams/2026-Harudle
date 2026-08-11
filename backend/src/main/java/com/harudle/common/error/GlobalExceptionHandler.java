@@ -36,10 +36,11 @@ public class GlobalExceptionHandler {
             MethodArgumentNotValidException exception,
             HttpServletRequest request
     ) {
-        List<FieldValidationError> errors = exception.getBindingResult().getFieldErrors().stream()
-                .map(error -> new FieldValidationError(error.getField(), error.getDefaultMessage()))
-                .toList();
-        return createResponse(ErrorType.VALIDATION_ERROR, request, errors);
+        return createResponse(
+                ErrorType.VALIDATION_ERROR,
+                request,
+                FieldValidationErrorMapper.from(exception.getBindingResult())
+        );
     }
 
     @ExceptionHandler({
@@ -49,19 +50,15 @@ public class GlobalExceptionHandler {
             MissingServletRequestParameterException.class,
             MethodArgumentTypeMismatchException.class
     })
-    public ResponseEntity<ProblemDetail> handleValidation(
-            Exception exception,
-            HttpServletRequest request
-    ) {
+    public ResponseEntity<ProblemDetail> handleValidation(HttpServletRequest request) {
         return createResponse(ErrorType.VALIDATION_ERROR, request);
     }
 
     @ExceptionHandler(AuthenticationRequiredException.class)
-    public ResponseEntity<ProblemDetail> handleAuthenticationRequired(
-            AuthenticationRequiredException exception,
-            HttpServletRequest request
-    ) {
-        return createResponse(ErrorType.UNAUTHORIZED, request);
+    public ResponseEntity<ProblemDetail> handleAuthenticationRequired(HttpServletRequest request) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
+        return createResponse(ErrorType.UNAUTHORIZED, request, headers);
     }
 
     @ExceptionHandler(DailyGenerationLimitExceededException.class)
@@ -70,7 +67,7 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         HttpHeaders headers = new HttpHeaders();
-        headers.set(HttpHeaders.RETRY_AFTER, Long.toString(exception.getRetryAfterSeconds()));
+        headers.set(HttpHeaders.RETRY_AFTER, Long.toString(exception.retryAfterSeconds()));
         ProblemDetail problemDetail = problemDetailFactory.create(
                 ErrorType.DAILY_GENERATION_LIMIT_EXCEEDED,
                 request
@@ -98,9 +95,7 @@ public class GlobalExceptionHandler {
             ErrorType errorType,
             HttpServletRequest request
     ) {
-        return ResponseEntity
-                .status(errorType.getStatus())
-                .body(problemDetailFactory.create(errorType, request));
+        return createResponse(errorType, request, List.of());
     }
 
     private ResponseEntity<ProblemDetail> createResponse(
@@ -109,7 +104,18 @@ public class GlobalExceptionHandler {
             List<FieldValidationError> errors
     ) {
         return ResponseEntity
-                .status(errorType.getStatus())
+                .status(errorType.status())
                 .body(problemDetailFactory.create(errorType, request, errors));
+    }
+
+    private ResponseEntity<ProblemDetail> createResponse(
+            ErrorType errorType,
+            HttpServletRequest request,
+            HttpHeaders headers
+    ) {
+        return ResponseEntity
+                .status(errorType.status())
+                .headers(headers)
+                .body(problemDetailFactory.create(errorType, request));
     }
 }
