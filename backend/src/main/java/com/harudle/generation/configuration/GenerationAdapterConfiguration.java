@@ -14,19 +14,28 @@ import com.harudle.generation.adapter.out.s3.S3ExceptionTranslator;
 import com.harudle.generation.adapter.out.s3.S3ImageStorage;
 import com.harudle.generation.repository.DiaryGenerationRepository;
 import com.harudle.generation.repository.GenerationPromptRepository;
+import com.harudle.generation.service.DiaryGenerationCleanupScheduler;
 import com.harudle.generation.service.GenerateDiaryImageService;
 import com.harudle.generation.service.RequestFingerprintGenerator;
 import com.harudle.generation.service.port.DiaryImageGenerator;
 import com.harudle.generation.service.port.ImageStorage;
 import com.harudle.generation.service.port.StoryboardGenerator;
+import java.time.Clock;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import tools.jackson.databind.ObjectMapper;
 
 @Configuration(proxyBeanMethods = false)
+@EnableScheduling
 public class GenerationAdapterConfiguration {
+
+    @Bean
+    public Clock generationClock() {
+        return Clock.systemUTC();
+    }
 
     @Bean(destroyMethod = "close")
     public Client geminiClient(GeminiGenerationProperties properties) {
@@ -133,6 +142,8 @@ public class GenerationAdapterConfiguration {
     @Bean
     public GenerateDiaryImageService generateDiaryImageService(
             RequestFingerprintGenerator requestFingerprintGenerator,
+            GenerationLifecycleProperties generationLifecycleProperties,
+            Clock generationClock,
             GenerationPromptRepository generationPromptRepository,
             DiaryGenerationRepository diaryGenerationRepository,
             StoryboardGenerator storyboardGenerator,
@@ -141,11 +152,26 @@ public class GenerationAdapterConfiguration {
     ) {
         return new GenerateDiaryImageService(
                 requestFingerprintGenerator,
+                generationLifecycleProperties,
+                generationClock,
                 generationPromptRepository,
                 diaryGenerationRepository,
                 storyboardGenerator,
                 diaryImageGenerator,
                 imageStorage
+        );
+    }
+
+    @Bean
+    public DiaryGenerationCleanupScheduler diaryGenerationCleanupScheduler(
+            DiaryGenerationRepository diaryGenerationRepository,
+            GenerationLifecycleProperties generationLifecycleProperties,
+            Clock generationClock
+    ) {
+        return new DiaryGenerationCleanupScheduler(
+                diaryGenerationRepository,
+                generationLifecycleProperties,
+                generationClock
         );
     }
 }

@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
+import com.harudle.generation.configuration.GenerationLifecycleProperties;
 import com.harudle.generation.domain.DiaryGeneration;
 import com.harudle.generation.domain.GenerationErrorCode;
 import com.harudle.generation.domain.GenerationPrompt;
@@ -35,6 +36,8 @@ import com.harudle.generation.service.port.ReferenceImage;
 import com.harudle.generation.service.port.StoryboardGenerationRequest;
 import com.harudle.generation.service.port.StoryboardGenerator;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -43,6 +46,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -55,9 +59,19 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @SpringJUnitConfig({GenerateDiaryImageService.class, RequestFingerprintGenerator.class})
 class GenerateDiaryImageServiceTest {
+
+    private static final Instant NOW = Instant.parse("2026-08-11T03:00:00Z");
+    private static final Duration PROCESSING_TIMEOUT = Duration.ofMinutes(30);
+
+    @MockitoBean
+    private GenerationLifecycleProperties generationLifecycleProperties;
+
+    @MockitoBean
+    private Clock clock;
 
     @MockitoBean
     private GenerationPromptRepository generationPromptRepository;
@@ -80,6 +94,12 @@ class GenerateDiaryImageServiceTest {
     @Autowired
     private RequestFingerprintGenerator requestFingerprintGenerator;
 
+    @BeforeEach
+    void setUp() {
+        when(clock.instant()).thenReturn(NOW);
+        when(generationLifecycleProperties.processingTimeout()).thenReturn(PROCESSING_TIMEOUT);
+    }
+
     @Test
     @DisplayName("일기로 스토리보드와 이미지를 생성하고 성공 결과를 반환한다")
     void generateDiaryImage() {
@@ -96,17 +116,23 @@ class GenerateDiaryImageServiceTest {
         when(diaryGenerationRepository.saveAndFlush(any(DiaryGeneration.class)))
                 .thenAnswer(invocation -> {
                     DiaryGeneration generation = invocation.getArgument(0);
-                    if (saveCount.getAndIncrement() == 0) {
-                        assertThat(generation.getStatus()).isEqualTo(GenerationStatus.PROCESSING);
-                    } else {
-                        assertThat(generation.getStatus()).isEqualTo(GenerationStatus.SUCCEEDED);
-                    }
+                    saveCount.incrementAndGet();
+                    assertThat(generation.getStatus()).isEqualTo(GenerationStatus.PROCESSING);
                     return generation;
                 });
         when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenReturn(storyboard);
         when(imageStorage.load(prompt.getImageAssetObjectKey())).thenReturn(referenceImage);
         when(diaryImageGenerator.generate(any(DiaryImageGenerationRequest.class))).thenReturn(generatedImage);
         when(imageStorage.store(any(UUID.class), eq(generatedImage))).thenReturn("generated/diary-image.png");
+        when(diaryGenerationRepository.succeedProcessingGeneration(
+                any(UUID.class),
+                eq(storyboard),
+                eq(storyboard.title()),
+                eq("generated/diary-image.png"),
+                eq(NOW),
+                eq(GenerationStatus.PROCESSING),
+                eq(GenerationStatus.SUCCEEDED)
+        )).thenReturn(1);
 
         DiaryGenerationResult result = generateDiaryImageService.generate(command);
 
@@ -115,7 +141,7 @@ class GenerateDiaryImageServiceTest {
         assertThat(result.imageObjectKey()).isEqualTo("generated/diary-image.png");
         assertThat(result.completedAt()).isBeforeOrEqualTo(Instant.now());
         assertThat(result.newlyCreated()).isTrue();
-        assertThat(saveCount).hasValue(2);
+        assertThat(saveCount).hasValue(1);
 
         InOrder inOrder = inOrder(
                 generationPromptRepository,
@@ -138,7 +164,15 @@ class GenerateDiaryImageServiceTest {
                 referenceImage
         ));
         inOrder.verify(imageStorage).store(result.generationId(), generatedImage);
-        inOrder.verify(diaryGenerationRepository).saveAndFlush(any(DiaryGeneration.class));
+        inOrder.verify(diaryGenerationRepository).succeedProcessingGeneration(
+                result.generationId(),
+                storyboard,
+                storyboard.title(),
+                "generated/diary-image.png",
+                NOW,
+                GenerationStatus.PROCESSING,
+                GenerationStatus.SUCCEEDED
+        );
     }
 
     @Test
@@ -205,10 +239,17 @@ class GenerateDiaryImageServiceTest {
                     savedGeneration.set(generation);
                     return generation;
                 });
+        when(diaryGenerationRepository.failProcessingGeneration(
+                any(UUID.class),
+                eq(expectedErrorCode),
+                eq(NOW),
+                eq(GenerationStatus.PROCESSING),
+                eq(GenerationStatus.FAILED)
+        )).thenReturn(1);
         when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenThrow(exception);
 
         assertThatThrownBy(() -> generateDiaryImageService.generate(command)).isSameAs(exception);
-        assertThat(saveCount).hasValue(2);
+        assertThat(saveCount).hasValue(1);
         assertThat(savedGeneration.get().getStatus()).isEqualTo(GenerationStatus.FAILED);
         assertThat(savedGeneration.get().getErrorCode()).isEqualTo(expectedErrorCode);
         assertThat(savedGeneration.get().getCompletedAt()).isBeforeOrEqualTo(Instant.now());
@@ -237,13 +278,20 @@ class GenerateDiaryImageServiceTest {
                     savedGeneration.set(generation);
                     return generation;
                 });
+        when(diaryGenerationRepository.failProcessingGeneration(
+                any(UUID.class),
+                eq(GenerationErrorCode.IMAGE_STORAGE_ERROR),
+                eq(NOW),
+                eq(GenerationStatus.PROCESSING),
+                eq(GenerationStatus.FAILED)
+        )).thenReturn(1);
         when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenReturn(storyboard);
         when(imageStorage.load(prompt.getImageAssetObjectKey())).thenReturn(referenceImage);
         when(diaryImageGenerator.generate(any(DiaryImageGenerationRequest.class))).thenReturn(generatedImage);
         when(imageStorage.store(any(UUID.class), eq(generatedImage))).thenThrow(exception);
 
         assertThatThrownBy(() -> generateDiaryImageService.generate(command)).isSameAs(exception);
-        assertThat(saveCount).hasValue(2);
+        assertThat(saveCount).hasValue(1);
         assertThat(savedGeneration.get().getStatus()).isEqualTo(GenerationStatus.FAILED);
         assertThat(savedGeneration.get().getErrorCode()).isEqualTo(GenerationErrorCode.IMAGE_STORAGE_ERROR);
         assertThat(savedGeneration.get().getCompletedAt()).isBeforeOrEqualTo(Instant.now());
@@ -268,10 +316,17 @@ class GenerateDiaryImageServiceTest {
                     savedGeneration.set(generation);
                     return generation;
                 });
+        when(diaryGenerationRepository.failProcessingGeneration(
+                any(UUID.class),
+                eq(GenerationErrorCode.GENERATION_INTERRUPTED),
+                eq(NOW),
+                eq(GenerationStatus.PROCESSING),
+                eq(GenerationStatus.FAILED)
+        )).thenReturn(1);
         when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenThrow(exception);
 
         assertThatThrownBy(() -> generateDiaryImageService.generate(command)).isSameAs(exception);
-        assertThat(saveCount).hasValue(2);
+        assertThat(saveCount).hasValue(1);
         assertThat(savedGeneration.get().getStatus()).isEqualTo(GenerationStatus.FAILED);
         assertThat(savedGeneration.get().getErrorCode()).isEqualTo(GenerationErrorCode.GENERATION_INTERRUPTED);
         assertThat(savedGeneration.get().getCompletedAt()).isBeforeOrEqualTo(Instant.now());
@@ -294,18 +349,25 @@ class GenerateDiaryImageServiceTest {
         when(generationPromptRepository.findFirstByOrderByIdDesc()).thenReturn(Optional.of(prompt));
         when(diaryGenerationRepository.saveAndFlush(any(DiaryGeneration.class)))
                 .thenAnswer(invocation -> {
-                    if (saveCount.getAndIncrement() == 0) {
-                        return invocation.getArgument(0);
-                    }
-                    throw exception;
+                    saveCount.incrementAndGet();
+                    return invocation.getArgument(0);
                 });
         when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenReturn(storyboard);
         when(imageStorage.load(prompt.getImageAssetObjectKey())).thenReturn(referenceImage);
         when(diaryImageGenerator.generate(any(DiaryImageGenerationRequest.class))).thenReturn(generatedImage);
         when(imageStorage.store(any(UUID.class), eq(generatedImage))).thenReturn("generated/diary-image.png");
+        when(diaryGenerationRepository.succeedProcessingGeneration(
+                any(UUID.class),
+                eq(storyboard),
+                eq(storyboard.title()),
+                eq("generated/diary-image.png"),
+                eq(NOW),
+                eq(GenerationStatus.PROCESSING),
+                eq(GenerationStatus.SUCCEEDED)
+        )).thenThrow(exception);
 
         assertThatThrownBy(() -> generateDiaryImageService.generate(command)).isSameAs(exception);
-        assertThat(saveCount).hasValue(2);
+        assertThat(saveCount).hasValue(1);
     }
 
     @Test
@@ -362,6 +424,98 @@ class GenerateDiaryImageServiceTest {
         assertThatThrownBy(() -> generateDiaryImageService.generate(command))
                 .isInstanceOf(GenerationInProgressException.class)
                 .hasMessageContaining("처리 중");
+        verifyOnlyIdempotencyLookup(command);
+    }
+
+    @Test
+    @DisplayName("동일한 요청의 처리 상태가 만료되었다면 중단 오류로 실패 처리한다")
+    void failExpiredProcessingGeneration() {
+        GenerateDiaryImageCommand command = createCommand();
+        DiaryGeneration generation = createGeneration(command);
+        Instant expiredUpdatedAt = NOW.minus(PROCESSING_TIMEOUT).minusNanos(1);
+        ReflectionTestUtils.setField(generation, "updatedAt", expiredUpdatedAt);
+        when(diaryGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
+                .thenReturn(Optional.of(generation));
+        when(diaryGenerationRepository.expireProcessingGeneration(
+                generation.getId(),
+                NOW.minus(PROCESSING_TIMEOUT),
+                NOW
+        )).thenReturn(1);
+
+        assertThatThrownBy(() -> generateDiaryImageService.generate(command))
+                .isInstanceOfSatisfying(
+                        DiaryGenerationFailedException.class,
+                        exception -> assertThat(exception.getErrorCode())
+                                .isEqualTo(GenerationErrorCode.GENERATION_INTERRUPTED)
+                );
+
+        verify(diaryGenerationRepository).expireProcessingGeneration(
+                generation.getId(),
+                NOW.minus(PROCESSING_TIMEOUT),
+                NOW
+        );
+        verifyNoInteractions(
+                generationPromptRepository,
+                storyboardGenerator,
+                diaryImageGenerator,
+                imageStorage
+        );
+    }
+
+    @Test
+    @DisplayName("만료 처리 중 다른 작업이 먼저 성공했다면 저장된 성공 결과를 반환한다")
+    void returnGenerationCompletedDuringExpiration() {
+        GenerateDiaryImageCommand command = createCommand();
+        String requestFingerprint = requestFingerprintGenerator.generate(command);
+        UUID generationId = UUID.randomUUID();
+        DiaryGeneration staleGeneration = mock(DiaryGeneration.class);
+        DiaryGeneration completedGeneration = mock(DiaryGeneration.class);
+
+        when(staleGeneration.getId()).thenReturn(generationId);
+        when(staleGeneration.getRequestFingerprint()).thenReturn(requestFingerprint);
+        when(staleGeneration.getStatus()).thenReturn(GenerationStatus.PROCESSING);
+        when(staleGeneration.getUpdatedAt())
+                .thenReturn(NOW.minus(PROCESSING_TIMEOUT).minusNanos(1));
+        when(completedGeneration.getId()).thenReturn(generationId);
+        when(completedGeneration.getStatus()).thenReturn(GenerationStatus.SUCCEEDED);
+        when(completedGeneration.getTitle()).thenReturn("완료된 그림일기");
+        when(completedGeneration.getImageObjectKey()).thenReturn("generated/completed.png");
+        when(completedGeneration.getCompletedAt()).thenReturn(NOW.minusSeconds(1));
+        when(diaryGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
+                .thenReturn(Optional.of(staleGeneration));
+        when(diaryGenerationRepository.expireProcessingGeneration(
+                generationId,
+                NOW.minus(PROCESSING_TIMEOUT),
+                NOW
+        )).thenReturn(0);
+        when(diaryGenerationRepository.findById(generationId))
+                .thenReturn(Optional.of(completedGeneration));
+
+        DiaryGenerationResult result = generateDiaryImageService.generate(command);
+
+        assertThat(result.generationId()).isEqualTo(generationId);
+        assertThat(result.status()).isEqualTo(GenerationStatus.SUCCEEDED);
+        assertThat(result.newlyCreated()).isFalse();
+        verifyNoInteractions(
+                generationPromptRepository,
+                storyboardGenerator,
+                diaryImageGenerator,
+                imageStorage
+        );
+    }
+
+    @Test
+    @DisplayName("처리 제한 시간의 경계에 있는 요청은 계속 처리 중으로 판단한다")
+    void keepProcessingGenerationAtExpirationBoundary() {
+        GenerateDiaryImageCommand command = createCommand();
+        DiaryGeneration generation = createGeneration(command);
+        ReflectionTestUtils.setField(generation, "updatedAt", NOW.minus(PROCESSING_TIMEOUT));
+        when(diaryGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
+                .thenReturn(Optional.of(generation));
+
+        assertThatThrownBy(() -> generateDiaryImageService.generate(command))
+                .isInstanceOf(GenerationInProgressException.class);
+
         verifyOnlyIdempotencyLookup(command);
     }
 

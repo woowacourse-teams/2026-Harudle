@@ -19,6 +19,9 @@ spring:
 
 harudle:
   generation:
+    lifecycle:
+      processing-timeout: ${GENERATION_PROCESSING_TIMEOUT:30m}
+      cleanup-interval: ${GENERATION_CLEANUP_INTERVAL:1m}
     gemini:
       api-key: ${GOOGLE_API_KEY:${GEMINI_API_KEY:}}
       storyboard-model: ${GEMINI_STORYBOARD_MODEL:gemini-3.5-flash-lite}

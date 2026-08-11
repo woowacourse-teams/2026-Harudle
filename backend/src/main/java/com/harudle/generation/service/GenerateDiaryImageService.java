@@ -1,5 +1,6 @@
 package com.harudle.generation.service;
 
+import com.harudle.generation.configuration.GenerationLifecycleProperties;
 import com.harudle.generation.domain.DiaryGeneration;
 import com.harudle.generation.domain.GenerationErrorCode;
 import com.harudle.generation.domain.GenerationPrompt;
@@ -22,6 +23,7 @@ import com.harudle.generation.service.port.ImageStorageException;
 import com.harudle.generation.service.port.ReferenceImage;
 import com.harudle.generation.service.port.StoryboardGenerationRequest;
 import com.harudle.generation.service.port.StoryboardGenerator;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -29,6 +31,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 public class GenerateDiaryImageService {
 
     private final RequestFingerprintGenerator requestFingerprintGenerator;
+    private final GenerationLifecycleProperties generationLifecycleProperties;
+    private final Clock clock;
     private final GenerationPromptRepository generationPromptRepository;
     private final DiaryGenerationRepository diaryGenerationRepository;
     private final StoryboardGenerator storyboardGenerator;
@@ -37,6 +41,8 @@ public class GenerateDiaryImageService {
 
     public GenerateDiaryImageService(
             RequestFingerprintGenerator requestFingerprintGenerator,
+            GenerationLifecycleProperties generationLifecycleProperties,
+            Clock clock,
             GenerationPromptRepository generationPromptRepository,
             DiaryGenerationRepository diaryGenerationRepository,
             StoryboardGenerator storyboardGenerator,
@@ -44,6 +50,8 @@ public class GenerateDiaryImageService {
             ImageStorage imageStorage
     ) {
         this.requestFingerprintGenerator = requestFingerprintGenerator;
+        this.generationLifecycleProperties = generationLifecycleProperties;
+        this.clock = clock;
         this.generationPromptRepository = generationPromptRepository;
         this.diaryGenerationRepository = diaryGenerationRepository;
         this.storyboardGenerator = storyboardGenerator;
@@ -120,6 +128,36 @@ public class GenerateDiaryImageService {
         }
 
         GenerationStatus status = generation.getStatus();
+        if (status == GenerationStatus.PROCESSING) {
+            return handleProcessingGeneration(generation);
+        }
+        return handleExistingGenerationStatus(generation);
+    }
+
+    private DiaryGenerationResult handleProcessingGeneration(DiaryGeneration generation) {
+        Instant completedAt = clock.instant();
+        Instant expiredBefore = completedAt.minus(generationLifecycleProperties.processingTimeout());
+        Instant updatedAt = generation.getUpdatedAt();
+        if (updatedAt == null || !updatedAt.isBefore(expiredBefore)) {
+            throw new GenerationInProgressException();
+        }
+
+        int expiredCount = diaryGenerationRepository.expireProcessingGeneration(
+                generation.getId(),
+                expiredBefore,
+                completedAt
+        );
+        if (expiredCount == 1) {
+            throw new DiaryGenerationFailedException(GenerationErrorCode.GENERATION_INTERRUPTED);
+        }
+
+        DiaryGeneration currentGeneration = diaryGenerationRepository.findById(generation.getId())
+                .orElseThrow(() -> new IllegalStateException("그림일기 생성 작업을 찾을 수 없습니다."));
+        return handleExistingGenerationStatus(currentGeneration);
+    }
+
+    private DiaryGenerationResult handleExistingGenerationStatus(DiaryGeneration generation) {
+        GenerationStatus status = generation.getStatus();
         if (status == GenerationStatus.SUCCEEDED) {
             return createResult(generation, false);
         }
@@ -175,9 +213,24 @@ public class GenerateDiaryImageService {
             Storyboard storyboard,
             String imageObjectKey
     ) {
-        generation.succeed(storyboard, imageObjectKey, Instant.now());
-        DiaryGeneration completedGeneration = diaryGenerationRepository.saveAndFlush(generation);
-        return createResult(completedGeneration, true);
+        Instant completedAt = clock.instant();
+        generation.succeed(storyboard, imageObjectKey, completedAt);
+        int succeededCount = diaryGenerationRepository.succeedProcessingGeneration(
+                generation.getId(),
+                storyboard,
+                storyboard.title(),
+                imageObjectKey,
+                completedAt,
+                GenerationStatus.PROCESSING,
+                GenerationStatus.SUCCEEDED
+        );
+        if (succeededCount == 1) {
+            return createResult(generation, true);
+        }
+
+        DiaryGeneration currentGeneration = diaryGenerationRepository.findById(generation.getId())
+                .orElseThrow(() -> new IllegalStateException("그림일기 생성 작업을 찾을 수 없습니다."));
+        return handleExistingGenerationStatus(currentGeneration);
     }
 
     private DiaryGenerationResult createResult(DiaryGeneration generation, boolean newlyCreated) {
@@ -202,7 +255,14 @@ public class GenerateDiaryImageService {
     }
 
     private void failGeneration(DiaryGeneration generation, GenerationErrorCode errorCode) {
-        generation.fail(errorCode, Instant.now());
-        diaryGenerationRepository.saveAndFlush(generation);
+        Instant completedAt = clock.instant();
+        generation.fail(errorCode, completedAt);
+        diaryGenerationRepository.failProcessingGeneration(
+                generation.getId(),
+                errorCode,
+                completedAt,
+                GenerationStatus.PROCESSING,
+                GenerationStatus.FAILED
+        );
     }
 }
