@@ -1,5 +1,6 @@
 package com.harudle.common.security;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
@@ -10,15 +11,19 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenAuthenticationEntryPoint;
+import org.springframework.security.oauth2.server.resource.web.access.BearerTokenAccessDeniedHandler;
+import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.AccessDeniedHandler;
 
 @Configuration(proxyBeanMethods = false)
-@Import({
-        ApiAuthenticationEntryPoint.class,
-        ApiAccessDeniedHandler.class,
-        ApiProblemResponseWriter.class
-})
+@Import(ApiProblemResponseWriter.class)
 public class ApiSecurityConfiguration {
+
+    private static final String BEARER_TOKEN_ENTRY_POINT = "bearerTokenEntryPoint";
+    private static final String BEARER_TOKEN_ACCESS_DENIED_HANDLER = "bearerTokenAccessDeniedHandler";
+    private static final int API_SECURITY_CHAIN_ORDER = 1;
 
     ApiSecurityConfiguration() {
     }
@@ -29,7 +34,33 @@ public class ApiSecurityConfiguration {
     }
 
     @Bean
-    @Order(1)
+    AuthenticationEntryPoint bearerTokenEntryPoint() {
+        return new BearerTokenAuthenticationEntryPoint();
+    }
+
+    @Bean
+    AccessDeniedHandler bearerTokenAccessDeniedHandler() {
+        return new BearerTokenAccessDeniedHandler();
+    }
+
+    @Bean
+    ApiAuthenticationEntryPoint apiAuthenticationEntryPoint(
+            @Qualifier(BEARER_TOKEN_ENTRY_POINT) AuthenticationEntryPoint bearerTokenEntryPoint,
+            ApiProblemResponseWriter problemResponseWriter
+    ) {
+        return new ApiAuthenticationEntryPoint(bearerTokenEntryPoint, problemResponseWriter);
+    }
+
+    @Bean
+    ApiAccessDeniedHandler apiAccessDeniedHandler(
+            @Qualifier(BEARER_TOKEN_ACCESS_DENIED_HANDLER) AccessDeniedHandler bearerTokenAccessDeniedHandler,
+            ApiProblemResponseWriter problemResponseWriter
+    ) {
+        return new ApiAccessDeniedHandler(bearerTokenAccessDeniedHandler, problemResponseWriter);
+    }
+
+    @Bean
+    @Order(API_SECURITY_CHAIN_ORDER)
     SecurityFilterChain apiSecurityFilterChain(
             HttpSecurity http,
             ApiAuthenticationEntryPoint authenticationEntryPoint,
