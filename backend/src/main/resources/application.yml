@@ -10,12 +10,15 @@ server:
 spring:
   application:
     name: harudle
+
   config:
     import: "optional:file:.env[.properties]"
+
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:harudle}
     username: ${DB_USERNAME:harudle}
     password: ${DB_PASSWORD}
+
   jpa:
     open-in-view: false
     hibernate:
@@ -25,3 +28,43 @@ spring:
         format_sql: true
         jdbc:
           time_zone: UTC
+
+  security:
+    oauth2:
+      client:
+        registration:
+          kakao:
+            client-id: ${KAKAO_REST_API_KEY}
+            client-secret: ${KAKAO_CLIENT_SECRET}
+            client-authentication-method: client_secret_post
+            authorization-grant-type: authorization_code
+            redirect-uri: "${BACKEND_BASE_URL:http://localhost:8080}/login/oauth2/code/{registrationId}"
+            scope:
+              - profile_nickname
+            client-name: Kakao
+
+        provider:
+          kakao:
+            authorization-uri: https://kauth.kakao.com/oauth/authorize
+            token-uri: https://kauth.kakao.com/oauth/token
+            user-info-uri: https://kapi.kakao.com/v2/user/me
+            user-name-attribute: id
+
+app:
+  auth:
+    frontend-origin: "${FRONTEND_ORIGIN:http://localhost:5173}"
+    success-redirect: "${FRONTEND_SUCCESS_REDIRECT:http://localhost:5173/auth/callback}"
+    failure-redirect: "${FRONTEND_FAILURE_REDIRECT:http://localhost:5173/auth/callback?error=oauth_failed}"
+
+    access-token:
+      issuer: "${JWT_ISSUER:harudle}"
+      audience: "${JWT_AUDIENCE:harudle-api}"
+      secret-base64: ${JWT_SECRET_BASE64}
+      ttl: 30m
+
+    refresh-token:
+      cookie-name: refresh_token
+      cookie-path: /api/v1/auth
+      secure: ${REFRESH_COOKIE_SECURE:false}
+      same-site: Lax
+      ttl: 14d
