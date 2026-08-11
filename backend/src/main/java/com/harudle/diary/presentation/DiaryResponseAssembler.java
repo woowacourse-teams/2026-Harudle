@@ -1,7 +1,5 @@
 package com.harudle.diary.presentation;
 
-import static com.harudle.common.config.TimeConfiguration.SERVICE_ZONE_ID;
-
 import com.harudle.diary.service.dto.CreateDiaryResult;
 import com.harudle.diary.service.dto.DiaryDayResult;
 import com.harudle.diary.service.dto.DiaryDetailResult;
@@ -13,6 +11,7 @@ import com.harudle.generation.service.port.ImageAccessUrl;
 import com.harudle.generation.service.port.ImageUrlProvider;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import org.springframework.stereotype.Component;
 
@@ -20,9 +19,11 @@ import org.springframework.stereotype.Component;
 final class DiaryResponseAssembler {
 
     private final ImageUrlProvider imageUrlProvider;
+    private final ZoneId serviceZoneId;
 
-    DiaryResponseAssembler(ImageUrlProvider imageUrlProvider) {
+    DiaryResponseAssembler(ImageUrlProvider imageUrlProvider, ZoneId serviceZoneId) {
         this.imageUrlProvider = imageUrlProvider;
+        this.serviceZoneId = serviceZoneId;
     }
 
     CreateDiaryResponse toCreateResponse(CreateDiaryResult result) {
@@ -99,6 +100,6 @@ final class DiaryResponseAssembler {
         if (instant == null) {
             return null;
         }
-        return instant.atZone(SERVICE_ZONE_ID).toOffsetDateTime();
+        return instant.atZone(serviceZoneId).toOffsetDateTime();
     }
 }

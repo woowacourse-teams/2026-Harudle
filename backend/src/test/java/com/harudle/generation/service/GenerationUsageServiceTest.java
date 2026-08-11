@@ -5,13 +5,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.harudle.common.config.TimeConfiguration;
 import com.harudle.generation.domain.GenerationUsage;
 import com.harudle.generation.repository.GenerationUsageRepository;
 import com.harudle.generation.service.exception.DailyGenerationLimitExceededException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,6 +25,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class GenerationUsageServiceTest {
 
     private static final UUID USER_ID = UUID.fromString("08d69a34-6d70-4d42-a158-671bc67733c9");
+    private static final ZoneId SERVICE_ZONE_ID = ZoneId.of("Asia/Seoul");
     private static final Instant NOW = Instant.parse("2026-08-06T14:59:59Z");
     private static final LocalDate USAGE_DATE = LocalDate.of(2026, 8, 6);
 
@@ -35,7 +36,7 @@ class GenerationUsageServiceTest {
 
     @BeforeEach
     void setUp() {
-        Clock clock = Clock.fixed(NOW, TimeConfiguration.SERVICE_ZONE_ID);
+        Clock clock = Clock.fixed(NOW, SERVICE_ZONE_ID);
         generationUsageService = new GenerationUsageService(generationUsageRepository, clock);
     }
 
@@ -91,9 +92,7 @@ class GenerationUsageServiceTest {
         Instant beforeMidnight = Instant.parse("2026-08-06T14:59:59Z");
         Instant afterMidnight = Instant.parse("2026-08-06T15:00:00Z");
         Clock crossingMidnightClock = mock(Clock.class);
-        when(crossingMidnightClock.withZone(TimeConfiguration.SERVICE_ZONE_ID))
-                .thenReturn(crossingMidnightClock);
-        when(crossingMidnightClock.getZone()).thenReturn(TimeConfiguration.SERVICE_ZONE_ID);
+        when(crossingMidnightClock.getZone()).thenReturn(SERVICE_ZONE_ID);
         when(crossingMidnightClock.instant())
                 .thenReturn(beforeMidnight, afterMidnight, afterMidnight);
         GenerationUsageService service = new GenerationUsageService(

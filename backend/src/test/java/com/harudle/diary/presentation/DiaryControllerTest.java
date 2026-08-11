@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 
 import com.harudle.auth.presentation.AuthenticatedUserIdResolver;
+import com.harudle.common.config.TimeConfiguration;
 import com.harudle.common.error.ProblemDetailFactory;
 import com.harudle.common.security.ApiSecurityConfiguration;
 import com.harudle.diary.service.DiaryCreationService;
@@ -53,7 +54,8 @@ import org.springframework.test.web.servlet.MockMvc;
         AuthenticatedUserIdResolver.class,
         DiaryResponseAssembler.class,
         ProblemDetailFactory.class,
-        ApiSecurityConfiguration.class
+        ApiSecurityConfiguration.class,
+        TimeConfiguration.class
 })
 class DiaryControllerTest {
 
@@ -190,7 +192,11 @@ class DiaryControllerTest {
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.jsonPath().getString("sourceText"))
                 .isEqualTo("오늘 친구와 카페에 갔다.");
+        assertThat(response.jsonPath().getString("createdAt"))
+                .isEqualTo("2026-08-06T20:10:23+09:00");
         assertThat(response.jsonPath().getString("generation.status")).isEqualTo("SUCCEEDED");
+        assertThat(response.jsonPath().getString("generation.completedAt"))
+                .isEqualTo("2026-08-06T20:11:42+09:00");
         assertThat(response.asString()).doesNotContain("generated/comic.png");
     }
 

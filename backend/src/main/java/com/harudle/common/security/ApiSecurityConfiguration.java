@@ -1,5 +1,6 @@
 package com.harudle.common.security;
 
+import com.harudle.common.error.TraceIdConfiguration;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -18,7 +19,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
 
 @Configuration(proxyBeanMethods = false)
-@Import(ApiProblemResponseWriter.class)
+@Import({ApiProblemResponseWriter.class, TraceIdConfiguration.class})
 public class ApiSecurityConfiguration {
 
     private static final String BEARER_TOKEN_ENTRY_POINT = "bearerTokenEntryPoint";
