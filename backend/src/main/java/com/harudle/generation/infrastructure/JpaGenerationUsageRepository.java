@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Repository
 class JpaGenerationUsageRepository implements GenerationUsageRepository {
 
+    private static final int USAGE_INCREMENT = 1;
     private static final String INCREMENT_QUERY = """
             WITH incremented_usage AS (
                 INSERT INTO daily_generation_usage (
@@ -23,15 +24,22 @@ class JpaGenerationUsageRepository implements GenerationUsageRepository {
                     created_at,
                     updated_at
                 )
-                VALUES (?1, ?2, 1, ?3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                VALUES (
+                    :userId,
+                    :usageDate,
+                    :usageIncrement,
+                    :limitCount,
+                    CURRENT_TIMESTAMP,
+                    CURRENT_TIMESTAMP
+                )
                 ON CONFLICT (user_id, usage_date)
                 DO UPDATE
-                   SET used_count = daily_generation_usage.used_count + 1,
+                   SET used_count = daily_generation_usage.used_count + EXCLUDED.used_count,
                        updated_at = CURRENT_TIMESTAMP
                  WHERE daily_generation_usage.used_count < daily_generation_usage.limit_count
-                RETURNING usage_date, used_count, limit_count
+                RETURNING used_count, limit_count
             )
-            SELECT usage_date, used_count, limit_count
+            SELECT used_count, limit_count
             FROM incremented_usage
             """;
 
@@ -70,31 +78,22 @@ class JpaGenerationUsageRepository implements GenerationUsageRepository {
         validateParameters(userId, usageDate);
         List<Object[]> usages = entityManager
                 .createNativeQuery(INCREMENT_QUERY)
-                .setParameter(1, userId)
-                .setParameter(2, usageDate)
-                .setParameter(3, GenerationUsage.DEFAULT_LIMIT_COUNT)
+                .setParameter("userId", userId)
+                .setParameter("usageDate", usageDate)
+                .setParameter("usageIncrement", USAGE_INCREMENT)
+                .setParameter("limitCount", GenerationUsage.DEFAULT_LIMIT_COUNT)
                 .getResultList();
         return usages.stream()
-                .map(JpaGenerationUsageRepository::mapUsage)
+                .map(columns -> mapUsage(usageDate, columns))
                 .findFirst();
     }
 
-    private static GenerationUsage mapUsage(Object[] columns) {
+    private static GenerationUsage mapUsage(LocalDate usageDate, Object[] columns) {
         return new GenerationUsage(
-                toLocalDate(columns[0]),
-                ((Number) columns[1]).intValue(),
-                ((Number) columns[2]).intValue()
+                usageDate,
+                ((Number) columns[0]).intValue(),
+                ((Number) columns[1]).intValue()
         );
-    }
-
-    private static LocalDate toLocalDate(Object value) {
-        if (value instanceof LocalDate localDate) {
-            return localDate;
-        }
-        if (value instanceof java.sql.Date date) {
-            return date.toLocalDate();
-        }
-        throw new IllegalStateException("생성 사용일 조회 결과 형식을 처리할 수 없습니다.");
     }
 
     private static void validateParameters(UUID userId, LocalDate usageDate) {
