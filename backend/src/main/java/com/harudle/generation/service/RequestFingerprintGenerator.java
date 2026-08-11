@@ -14,6 +14,9 @@ public final class RequestFingerprintGenerator {
     private static final String HASH_ALGORITHM = "SHA-256";
     private static final String CANONICAL_FIELD_SEPARATOR = "\n";
 
+    RequestFingerprintGenerator() {
+    }
+
     public String generate(GenerateComicCommand command) {
         validateCommand(command);
         String canonicalRequest = createCanonicalRequest(command);

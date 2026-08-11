@@ -15,6 +15,7 @@ public record GenerationPromptBootstrapProperties(
         if (!enabled) {
             throw new IllegalStateException("생성 프롬프트 초기화가 활성화되지 않았습니다.");
         }
+
         return new GenerationPrompt(
                 storyboardPromptText,
                 imageStylePromptText,

@@ -82,7 +82,10 @@ class ComicGenerationConfigurationTest {
 
     private AnnotationConfigApplicationContext createBaseContext() {
         AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext();
-        context.registerBean(RequestFingerprintGenerator.class, RequestFingerprintGenerator::new);
+        context.registerBean(
+                RequestFingerprintGenerator.class,
+                () -> mock(RequestFingerprintGenerator.class)
+        );
         context.registerBean(GenerationPromptRepository.class, () -> mock(GenerationPromptRepository.class));
         context.registerBean(ComicGenerationRepository.class, () -> mock(ComicGenerationRepository.class));
         context.registerBean(

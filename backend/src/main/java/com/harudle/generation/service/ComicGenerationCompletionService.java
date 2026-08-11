@@ -17,7 +17,7 @@ public class ComicGenerationCompletionService {
     private final ComicGenerationRepository comicGenerationRepository;
     private final Clock clock;
 
-    public ComicGenerationCompletionService(
+    ComicGenerationCompletionService(
             ComicGenerationRepository comicGenerationRepository,
             Clock clock
     ) {
@@ -26,7 +26,7 @@ public class ComicGenerationCompletionService {
     }
 
     @Transactional
-    public ComicGeneration succeed(UUID generationId, Storyboard storyboard, String imageObjectKey) {
+    ComicGeneration succeed(UUID generationId, Storyboard storyboard, String imageObjectKey) {
         ComicGeneration generation = findForUpdate(generationId);
         return switch (generation.getStatus()) {
             case FAILED -> throw new ComicGenerationFailedException(generation.getErrorCode());
@@ -39,7 +39,7 @@ public class ComicGenerationCompletionService {
     }
 
     @Transactional
-    public GenerationErrorCode fail(UUID generationId, GenerationErrorCode errorCode) {
+    GenerationErrorCode fail(UUID generationId, GenerationErrorCode errorCode) {
         ComicGeneration generation = findForUpdate(generationId);
         return switch (generation.getStatus()) {
             case PROCESSING -> {

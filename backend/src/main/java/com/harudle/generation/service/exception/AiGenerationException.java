@@ -24,7 +24,7 @@ public final class AiGenerationException extends RuntimeException {
         this.errorType = errorType;
     }
 
-    public AiGenerationErrorType getErrorType() {
+    public AiGenerationErrorType errorType() {
         return errorType;
     }
 

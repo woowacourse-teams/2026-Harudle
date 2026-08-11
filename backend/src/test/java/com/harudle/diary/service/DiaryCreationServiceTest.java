@@ -150,7 +150,7 @@ class DiaryCreationServiceTest {
         assertThatThrownBy(() -> diaryCreationService.create(command))
                 .isInstanceOfSatisfying(
                         ComicGenerationFailedException.class,
-                        exception -> assertThat(exception.getErrorCode())
+                        exception -> assertThat(exception.errorCode())
                                 .isEqualTo(GenerationErrorCode.AI_PROVIDER_TIMEOUT)
                 );
 
