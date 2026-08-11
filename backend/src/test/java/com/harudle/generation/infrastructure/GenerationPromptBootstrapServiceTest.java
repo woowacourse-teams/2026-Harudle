@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import com.harudle.generation.domain.GenerationPrompt;
 import com.harudle.generation.repository.GenerationPromptRepository;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -34,9 +35,9 @@ class GenerationPromptBootstrapServiceTest {
         when(generationPromptRepository.count()).thenReturn(0L);
         when(generationPromptRepository.saveAndFlush(prompt)).thenReturn(prompt);
 
-        GenerationPrompt result = bootstrapService.createIfEmpty(prompt);
+        Optional<GenerationPrompt> result = bootstrapService.createIfEmpty(prompt);
 
-        assertThat(result).isSameAs(prompt);
+        assertThat(result).containsSame(prompt);
         verify(generationPromptRepository).lockTableForBootstrap();
     }
 
@@ -46,9 +47,9 @@ class GenerationPromptBootstrapServiceTest {
         GenerationPrompt prompt = createPrompt();
         when(generationPromptRepository.count()).thenReturn(1L);
 
-        GenerationPrompt result = bootstrapService.createIfEmpty(prompt);
+        Optional<GenerationPrompt> result = bootstrapService.createIfEmpty(prompt);
 
-        assertThat(result).isNull();
+        assertThat(result).isEmpty();
         verify(generationPromptRepository).lockTableForBootstrap();
         verify(generationPromptRepository, never()).saveAndFlush(prompt);
     }

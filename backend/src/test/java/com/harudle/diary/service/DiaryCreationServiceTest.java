@@ -13,7 +13,7 @@ import com.harudle.diary.service.dto.CreateDiaryResult;
 import com.harudle.generation.domain.GenerationErrorCode;
 import com.harudle.generation.domain.GenerationStatus;
 import com.harudle.generation.domain.GenerationUsage;
-import com.harudle.generation.service.ClaimedComicGenerationService;
+import com.harudle.generation.service.ComicGenerationExecutor;
 import com.harudle.generation.service.dto.CompletedComicGeneration;
 import com.harudle.generation.service.dto.GenerateComicCommand;
 import com.harudle.generation.service.exception.ComicGenerationFailedException;
@@ -45,13 +45,13 @@ class DiaryCreationServiceTest {
     private DiaryCreationTransactionService transactionService;
 
     @Mock
-    private ClaimedComicGenerationService generationService;
+    private ComicGenerationExecutor generationExecutor;
 
     private DiaryCreationService diaryCreationService;
 
     @BeforeEach
     void setUp() {
-        diaryCreationService = new DiaryCreationService(transactionService, generationService);
+        diaryCreationService = new DiaryCreationService(transactionService, generationExecutor);
     }
 
     @Test
@@ -61,9 +61,9 @@ class DiaryCreationServiceTest {
         GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
         DiaryCreationClaim claim = createClaim(GenerationStatus.PROCESSING, usage, true);
         CompletedComicGeneration generationResult = createGenerationResult();
-        when(generationService.isAvailable()).thenReturn(true);
+        when(generationExecutor.isConfigured()).thenReturn(true);
         when(transactionService.claim(command, true)).thenReturn(claim);
-        when(generationService.generate(any(GenerateComicCommand.class), eq(GENERATION_ID)))
+        when(generationExecutor.generate(any(GenerateComicCommand.class), eq(GENERATION_ID)))
                 .thenReturn(generationResult);
 
         CreateDiaryResult result = diaryCreationService.create(command);
@@ -80,14 +80,14 @@ class DiaryCreationServiceTest {
         CreateDiaryCommand command = createCommand();
         GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
         DiaryCreationClaim claim = createClaim(GenerationStatus.SUCCEEDED, usage, false);
-        when(generationService.isAvailable()).thenReturn(false);
+        when(generationExecutor.isConfigured()).thenReturn(false);
         when(transactionService.claim(command, false)).thenReturn(claim);
 
         CreateDiaryResult result = diaryCreationService.create(command);
 
         assertThat(result.newlyCreated()).isFalse();
         assertThat(result.generation().status()).isEqualTo(GenerationStatus.SUCCEEDED);
-        verify(generationService, never()).generate(any(GenerateComicCommand.class), any(UUID.class));
+        verify(generationExecutor, never()).generate(any(GenerateComicCommand.class), any(UUID.class));
     }
 
     @Test
@@ -96,12 +96,12 @@ class DiaryCreationServiceTest {
         CreateDiaryCommand command = createCommand();
         GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
         DiaryCreationClaim claim = createClaim(GenerationStatus.PROCESSING, usage, false);
-        when(generationService.isAvailable()).thenReturn(true);
+        when(generationExecutor.isConfigured()).thenReturn(true);
         when(transactionService.claim(command, true)).thenReturn(claim);
 
         assertThatThrownBy(() -> diaryCreationService.create(command))
                 .isInstanceOf(GenerationInProgressException.class);
-        verify(generationService, never()).generate(any(GenerateComicCommand.class), any(UUID.class));
+        verify(generationExecutor, never()).generate(any(GenerateComicCommand.class), any(UUID.class));
     }
 
     @Test
@@ -111,7 +111,7 @@ class DiaryCreationServiceTest {
         GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
         DiaryCreationClaim claim = createClaim(GenerationStatus.PROCESSING, usage, false);
         DataIntegrityViolationException collision = new DataIntegrityViolationException("중복 멱등성 키");
-        when(generationService.isAvailable()).thenReturn(true);
+        when(generationExecutor.isConfigured()).thenReturn(true);
         when(transactionService.claim(command, true)).thenThrow(collision);
         when(transactionService.findExistingClaim(command)).thenReturn(Optional.of(claim));
 
@@ -120,7 +120,7 @@ class DiaryCreationServiceTest {
 
         verify(transactionService).claim(command, true);
         verify(transactionService).findExistingClaim(command);
-        verify(generationService, never()).generate(any(GenerateComicCommand.class), any(UUID.class));
+        verify(generationExecutor, never()).generate(any(GenerateComicCommand.class), any(UUID.class));
     }
 
     @Test
@@ -128,7 +128,7 @@ class DiaryCreationServiceTest {
     void propagateUnrelatedIntegrityViolation() {
         CreateDiaryCommand command = createCommand();
         DataIntegrityViolationException exception = new DataIntegrityViolationException("다른 제약 조건 위반");
-        when(generationService.isAvailable()).thenReturn(true);
+        when(generationExecutor.isConfigured()).thenReturn(true);
         when(transactionService.claim(command, true)).thenThrow(exception);
         when(transactionService.findExistingClaim(command)).thenReturn(Optional.empty());
 
@@ -144,7 +144,7 @@ class DiaryCreationServiceTest {
         CreateDiaryCommand command = createCommand();
         GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
         DiaryCreationClaim claim = createClaim(GenerationStatus.FAILED, usage, false);
-        when(generationService.isAvailable()).thenReturn(true);
+        when(generationExecutor.isConfigured()).thenReturn(true);
         when(transactionService.claim(command, true)).thenReturn(claim);
 
         assertThatThrownBy(() -> diaryCreationService.create(command))
@@ -154,7 +154,7 @@ class DiaryCreationServiceTest {
                                 .isEqualTo(GenerationErrorCode.AI_PROVIDER_TIMEOUT)
                 );
 
-        verify(generationService, never()).generate(any(GenerateComicCommand.class), any(UUID.class));
+        verify(generationExecutor, never()).generate(any(GenerateComicCommand.class), any(UUID.class));
     }
 
     private CreateDiaryCommand createCommand() {

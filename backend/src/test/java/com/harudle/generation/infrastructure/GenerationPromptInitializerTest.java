@@ -13,6 +13,7 @@ import com.harudle.generation.repository.GenerationPromptRepository;
 import com.harudle.generation.service.port.ImageStorage;
 import com.harudle.generation.service.port.ImageStorageException;
 import com.harudle.generation.service.port.ReferenceImage;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -57,6 +58,8 @@ class GenerationPromptInitializerTest {
         GenerationPromptInitializer initializer = createInitializer(properties);
         when(generationPromptRepository.count()).thenReturn(0L);
         when(imageStorage.load("references/style.png")).thenReturn(referenceImage);
+        when(bootstrapService.createIfEmpty(any(GenerationPrompt.class)))
+                .thenReturn(Optional.empty());
 
         initializer.run(applicationArguments);
 

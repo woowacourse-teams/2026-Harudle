@@ -4,7 +4,7 @@ import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.dto.CreateDiaryResult;
 import com.harudle.diary.service.dto.DiaryGenerationResult;
 import com.harudle.generation.domain.GenerationStatus;
-import com.harudle.generation.service.ClaimedComicGenerationService;
+import com.harudle.generation.service.ComicGenerationExecutor;
 import com.harudle.generation.service.dto.CompletedComicGeneration;
 import com.harudle.generation.service.dto.GenerateComicCommand;
 import com.harudle.generation.service.exception.ComicGenerationFailedException;
@@ -16,22 +16,22 @@ import org.springframework.stereotype.Service;
 public class DiaryCreationService {
 
     private final DiaryCreationTransactionService transactionService;
-    private final ClaimedComicGenerationService generationService;
+    private final ComicGenerationExecutor generationExecutor;
 
     DiaryCreationService(
             DiaryCreationTransactionService transactionService,
-            ClaimedComicGenerationService generationService
+            ComicGenerationExecutor generationExecutor
     ) {
         this.transactionService = transactionService;
-        this.generationService = generationService;
+        this.generationExecutor = generationExecutor;
     }
 
     public CreateDiaryResult create(CreateDiaryCommand command) {
-        DiaryCreationClaim claim = claim(command, generationService.isAvailable());
+        DiaryCreationClaim claim = claim(command, generationExecutor.isConfigured());
         if (!claim.newlyCreated()) {
             return handleExistingClaim(claim);
         }
-        CompletedComicGeneration generationResult = generationService.generate(
+        CompletedComicGeneration generationResult = generationExecutor.generate(
                 createGenerationCommand(command, claim),
                 claim.generationId()
         );

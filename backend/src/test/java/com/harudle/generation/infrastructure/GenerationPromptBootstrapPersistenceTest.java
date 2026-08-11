@@ -6,6 +6,7 @@ import com.harudle.generation.domain.GenerationPrompt;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -54,8 +55,9 @@ class GenerationPromptBootstrapPersistenceTest {
     @Test
     @DisplayName("동시 프롬프트 초기화 요청은 하나의 프롬프트만 저장한다")
     void initializePromptAtomicallyUnderConcurrency() throws InterruptedException {
-        List<Callable<GenerationPrompt>> initializations = IntStream.range(0, CONCURRENT_REQUEST_COUNT)
-                .mapToObj(index -> (Callable<GenerationPrompt>) () -> bootstrapService.createIfEmpty(
+        List<Callable<Optional<GenerationPrompt>>> initializations = IntStream
+                .range(0, CONCURRENT_REQUEST_COUNT)
+                .mapToObj(index -> (Callable<Optional<GenerationPrompt>>) () -> bootstrapService.createIfEmpty(
                         new GenerationPrompt(
                                 "스토리보드 프롬프트",
                                 "이미지 스타일 프롬프트",
@@ -64,9 +66,9 @@ class GenerationPromptBootstrapPersistenceTest {
                 ))
                 .toList();
 
-        List<GenerationPrompt> results = executeConcurrently(initializations);
+        List<Optional<GenerationPrompt>> results = executeConcurrently(initializations);
 
-        assertThat(results).filteredOn(result -> result != null).hasSize(1);
+        assertThat(results.stream().flatMap(Optional::stream)).hasSize(1);
         assertThat(countPrompts()).isEqualTo(1);
     }
 

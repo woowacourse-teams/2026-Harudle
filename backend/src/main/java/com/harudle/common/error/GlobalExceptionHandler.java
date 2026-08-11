@@ -64,10 +64,7 @@ class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(InvalidIdempotencyKeyException.class)
-    public ResponseEntity<ProblemDetail> handleInvalidIdempotencyKey(
-            InvalidIdempotencyKeyException exception,
-            HttpServletRequest request
-    ) {
+    ResponseEntity<ProblemDetail> handleInvalidIdempotencyKey(HttpServletRequest request) {
         return createResponse(ErrorType.INVALID_IDEMPOTENCY_KEY, request);
     }
 
@@ -89,18 +86,12 @@ class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(GenerationInProgressException.class)
-    public ResponseEntity<ProblemDetail> handleGenerationInProgress(
-            GenerationInProgressException exception,
-            HttpServletRequest request
-    ) {
+    ResponseEntity<ProblemDetail> handleGenerationInProgress(HttpServletRequest request) {
         return createResponse(ErrorType.GENERATION_IN_PROGRESS, request);
     }
 
     @ExceptionHandler(IdempotencyKeyConflictException.class)
-    public ResponseEntity<ProblemDetail> handleIdempotencyKeyConflict(
-            IdempotencyKeyConflictException exception,
-            HttpServletRequest request
-    ) {
+    ResponseEntity<ProblemDetail> handleIdempotencyKeyConflict(HttpServletRequest request) {
         return createResponse(ErrorType.IDEMPOTENCY_KEY_CONFLICT, request);
     }
 
@@ -119,7 +110,7 @@ class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(ComicGenerationFailedException.class)
-    public ResponseEntity<ProblemDetail> handleComicGenerationFailed(
+    ResponseEntity<ProblemDetail> handleComicGenerationFailed(
             ComicGenerationFailedException exception,
             HttpServletRequest request
     ) {
@@ -127,7 +118,7 @@ class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(AiGenerationException.class)
-    public ResponseEntity<ProblemDetail> handleAiGeneration(
+    ResponseEntity<ProblemDetail> handleAiGeneration(
             AiGenerationException exception,
             HttpServletRequest request
     ) {
@@ -140,11 +131,8 @@ class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(GenerationUnavailableException.class)
-    public ResponseEntity<ProblemDetail> handleGenerationUnavailable(
-            GenerationUnavailableException exception,
-            HttpServletRequest request
-    ) {
-        return createResponse(ErrorType.AI_PROVIDER_ERROR, request);
+    ResponseEntity<ProblemDetail> handleGenerationUnavailable(HttpServletRequest request) {
+        return createResponse(ErrorType.GENERATION_UNAVAILABLE, request);
     }
 
     @ExceptionHandler(Exception.class)
