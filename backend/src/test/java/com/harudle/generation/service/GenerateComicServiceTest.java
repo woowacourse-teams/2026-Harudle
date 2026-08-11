@@ -3,6 +3,7 @@ package com.harudle.generation.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -105,7 +106,7 @@ class GenerateComicServiceTest {
         when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenReturn(storyboard);
         when(imageStorage.load(prompt.getImageAssetObjectKey())).thenReturn(referenceImage);
         when(comicImageGenerator.generate(any(ComicImageGenerationRequest.class))).thenReturn(generatedImage);
-        when(imageStorage.store(generatedImage)).thenReturn("generated/comic.png");
+        when(imageStorage.store(any(UUID.class), eq(generatedImage))).thenReturn("generated/comic.png");
 
         ComicGenerationResult result = generateComicService.generate(command);
 
@@ -136,7 +137,7 @@ class GenerateComicServiceTest {
                 prompt.getImageStylePromptText(),
                 referenceImage
         ));
-        inOrder.verify(imageStorage).store(generatedImage);
+        inOrder.verify(imageStorage).store(result.generationId(), generatedImage);
         inOrder.verify(comicGenerationRepository).saveAndFlush(any(ComicGeneration.class));
     }
 
@@ -239,7 +240,7 @@ class GenerateComicServiceTest {
         when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenReturn(storyboard);
         when(imageStorage.load(prompt.getImageAssetObjectKey())).thenReturn(referenceImage);
         when(comicImageGenerator.generate(any(ComicImageGenerationRequest.class))).thenReturn(generatedImage);
-        when(imageStorage.store(generatedImage)).thenThrow(exception);
+        when(imageStorage.store(any(UUID.class), eq(generatedImage))).thenThrow(exception);
 
         assertThatThrownBy(() -> generateComicService.generate(command)).isSameAs(exception);
         assertThat(saveCount).hasValue(2);

@@ -84,7 +84,7 @@ public class GenerateComicService {
             Storyboard storyboard = generateStoryboard(command, prompt);
             ReferenceImage referenceImage = imageStorage.load(prompt.getImageAssetObjectKey());
             GeneratedImage generatedImage = generateImage(storyboard, prompt, referenceImage);
-            String imageObjectKey = imageStorage.store(generatedImage);
+            String imageObjectKey = imageStorage.store(generation.getId(), generatedImage);
             return succeedGeneration(generation, storyboard, imageObjectKey);
         } catch (AiGenerationException exception) {
             failGeneration(generation, mapAiGenerationErrorCode(exception.getErrorType()));
