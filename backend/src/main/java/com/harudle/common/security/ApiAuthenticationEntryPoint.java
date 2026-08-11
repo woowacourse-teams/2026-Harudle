@@ -16,7 +16,7 @@ public class ApiAuthenticationEntryPoint implements AuthenticationEntryPoint {
             new BearerTokenAuthenticationEntryPoint();
     private final ApiProblemResponseWriter problemResponseWriter;
 
-    public ApiAuthenticationEntryPoint(ApiProblemResponseWriter problemResponseWriter) {
+    ApiAuthenticationEntryPoint(ApiProblemResponseWriter problemResponseWriter) {
         this.problemResponseWriter = problemResponseWriter;
     }
 

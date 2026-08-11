@@ -12,7 +12,7 @@ public class AuthenticatedUserIdResolver {
 
     private final AuthenticationTrustResolver authenticationTrustResolver;
 
-    public AuthenticatedUserIdResolver(AuthenticationTrustResolver authenticationTrustResolver) {
+    AuthenticatedUserIdResolver(AuthenticationTrustResolver authenticationTrustResolver) {
         this.authenticationTrustResolver = authenticationTrustResolver;
     }
 

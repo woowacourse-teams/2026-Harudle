@@ -20,7 +20,7 @@ public class GenerationUsageService {
     private final GenerationUsageRepository generationUsageRepository;
     private final Clock clock;
 
-    public GenerationUsageService(GenerationUsageRepository generationUsageRepository, Clock clock) {
+    GenerationUsageService(GenerationUsageRepository generationUsageRepository, Clock clock) {
         this.generationUsageRepository = generationUsageRepository;
         this.clock = clock;
     }

@@ -16,7 +16,7 @@ public class ApiProblemResponseWriter {
     private final ProblemDetailFactory problemDetailFactory;
     private final JsonMapper jsonMapper;
 
-    public ApiProblemResponseWriter(
+    ApiProblemResponseWriter(
             ProblemDetailFactory problemDetailFactory,
             JsonMapper jsonMapper
     ) {

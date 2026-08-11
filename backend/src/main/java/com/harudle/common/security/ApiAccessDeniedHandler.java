@@ -16,7 +16,7 @@ public class ApiAccessDeniedHandler implements AccessDeniedHandler {
             new BearerTokenAccessDeniedHandler();
     private final ApiProblemResponseWriter problemResponseWriter;
 
-    public ApiAccessDeniedHandler(ApiProblemResponseWriter problemResponseWriter) {
+    ApiAccessDeniedHandler(ApiProblemResponseWriter problemResponseWriter) {
         this.problemResponseWriter = problemResponseWriter;
     }
 

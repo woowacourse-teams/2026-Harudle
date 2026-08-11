@@ -30,12 +30,12 @@ public class GlobalExceptionHandler {
 
     private final ProblemDetailFactory problemDetailFactory;
 
-    public GlobalExceptionHandler(ProblemDetailFactory problemDetailFactory) {
+    GlobalExceptionHandler(ProblemDetailFactory problemDetailFactory) {
         this.problemDetailFactory = problemDetailFactory;
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ProblemDetail> handleMethodArgumentNotValid(
+    ResponseEntity<ProblemDetail> handleMethodArgumentNotValid(
             MethodArgumentNotValidException exception,
             HttpServletRequest request
     ) {
@@ -53,35 +53,29 @@ public class GlobalExceptionHandler {
             MissingServletRequestParameterException.class,
             MethodArgumentTypeMismatchException.class
     })
-    public ResponseEntity<ProblemDetail> handleValidation(HttpServletRequest request) {
+    ResponseEntity<ProblemDetail> handleValidation(HttpServletRequest request) {
         return createResponse(ErrorType.VALIDATION_ERROR, request);
     }
 
     @ExceptionHandler(AuthenticationRequiredException.class)
-    public ResponseEntity<ProblemDetail> handleAuthenticationRequired(HttpServletRequest request) {
+    ResponseEntity<ProblemDetail> handleAuthenticationRequired(HttpServletRequest request) {
         HttpHeaders headers = new HttpHeaders();
         headers.set(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
         return createResponse(ErrorType.UNAUTHORIZED, request, headers);
     }
 
     @ExceptionHandler(DiaryAccessDeniedException.class)
-    public ResponseEntity<ProblemDetail> handleDiaryAccessDenied(
-            DiaryAccessDeniedException exception,
-            HttpServletRequest request
-    ) {
+    ResponseEntity<ProblemDetail> handleDiaryAccessDenied(HttpServletRequest request) {
         return createResponse(ErrorType.FORBIDDEN, request);
     }
 
     @ExceptionHandler(DiaryNotFoundException.class)
-    public ResponseEntity<ProblemDetail> handleDiaryNotFound(
-            DiaryNotFoundException exception,
-            HttpServletRequest request
-    ) {
+    ResponseEntity<ProblemDetail> handleDiaryNotFound(HttpServletRequest request) {
         return createResponse(ErrorType.DIARY_NOT_FOUND, request);
     }
 
     @ExceptionHandler(DailyGenerationLimitExceededException.class)
-    public ResponseEntity<ProblemDetail> handleDailyGenerationLimitExceeded(
+    ResponseEntity<ProblemDetail> handleDailyGenerationLimitExceeded(
             DailyGenerationLimitExceededException exception,
             HttpServletRequest request
     ) {
@@ -95,15 +89,12 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(ImageStorageException.class)
-    public ResponseEntity<ProblemDetail> handleImageStorage(
-            ImageStorageException exception,
-            HttpServletRequest request
-    ) {
+    ResponseEntity<ProblemDetail> handleImageStorage(HttpServletRequest request) {
         return createResponse(ErrorType.IMAGE_STORAGE_ERROR, request);
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ProblemDetail> handleUnexpected(
+    ResponseEntity<ProblemDetail> handleUnexpected(
             Exception exception,
             HttpServletRequest request
     ) {
