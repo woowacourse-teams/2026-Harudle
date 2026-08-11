@@ -16,3 +16,21 @@ spring:
         format_sql: true
         jdbc:
           time_zone: UTC
+
+harudle:
+  generation:
+    gemini:
+      api-key: ${GOOGLE_API_KEY:${GEMINI_API_KEY:}}
+      storyboard-model: ${GEMINI_STORYBOARD_MODEL:gemini-3.5-flash-lite}
+      image-model: ${GEMINI_IMAGE_MODEL:gemini-3.1-flash-image}
+      storyboard-thinking-level: ${GEMINI_STORYBOARD_THINKING_LEVEL:high}
+      image-aspect-ratio: "${GEMINI_IMAGE_ASPECT_RATIO:1:1}"
+      max-output-tokens: ${GEMINI_MAX_OUTPUT_TOKENS:4096}
+      retry-attempts: ${GEMINI_RETRY_ATTEMPTS:3}
+      request-timeout: ${GEMINI_REQUEST_TIMEOUT:180s}
+    storage:
+      s3:
+        bucket: ${S3_BUCKET:}
+        region: ${AWS_REGION:ap-northeast-2}
+        generated-prefix: ${S3_GENERATED_PREFIX:generated/comics}
+        max-object-size: ${S3_MAX_OBJECT_SIZE:20MB}
