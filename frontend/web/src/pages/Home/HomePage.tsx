@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import ActionButton from '../../shared/ActionButton';
 import BottomNavigation from '../../shared/BottomNavigation';
 import DiaryEmptyState from './DiaryEmptyState';
 import { API_BASE_URL, type ApiRequest } from '../../shared/api';
 import DiaryItemList from './DiaryItemList';
+import FloatingActionButton from '../../shared/FloatingActionButton';
 
 type Month = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 
@@ -148,11 +148,13 @@ const HomePage = () => {
       </div>
       <div>오늘 남은 생성 횟수 3회</div>
       {monthlyDiaries.data.length > 0 ? (
-        <DiaryItemList monthlyDiaries={monthlyDiaries.data} />
+        <>
+          <DiaryItemList monthlyDiaries={monthlyDiaries.data} />
+          <FloatingActionButton />
+        </>
       ) : (
         <DiaryEmptyState />
       )}
-      <ActionButton />
       <BottomNavigation />
     </div>
   );
