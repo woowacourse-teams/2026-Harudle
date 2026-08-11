@@ -66,7 +66,7 @@ public class JpaGenerationUsageRepository implements GenerationUsageRepository {
     @Override
     @Transactional
     @SuppressWarnings("unchecked")
-    public Optional<GenerationUsage> incrementWithinLimit(UUID userId, LocalDate usageDate) {
+    public Optional<GenerationUsage> tryIncrementWithinLimit(UUID userId, LocalDate usageDate) {
         validateParameters(userId, usageDate);
         List<Object[]> usages = entityManager
                 .createNativeQuery(INCREMENT_QUERY)
