@@ -36,13 +36,13 @@ public record GeminiGenerationProperties(
         return ("GeminiGenerationProperties[apiKey=***, storyboardModel=%s, imageModel=%s, "
                 + "storyboardThinkingLevel=%s, imageAspectRatio=%s, maxOutputTokens=%d, "
                 + "retryAttempts=%d, requestTimeout=%s]").formatted(
-                        storyboardModel,
-                        imageModel,
-                        storyboardThinkingLevel,
-                        imageAspectRatio,
-                        maxOutputTokens,
-                        retryAttempts,
-                        requestTimeout
-                );
+                storyboardModel,
+                imageModel,
+                storyboardThinkingLevel,
+                imageAspectRatio,
+                maxOutputTokens,
+                retryAttempts,
+                requestTimeout
+        );
     }
 }

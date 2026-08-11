@@ -69,7 +69,7 @@ class GeminiStoryboardGeneratorTest {
 
         assertThat(requestTextCaptor.getValue()).isEqualTo("""
                 스토리보드 생성 규칙
-
+                
                 [SOURCE DIARY — preserve its meaning]
                 오늘 친구와 카페에 갔다.""");
 
