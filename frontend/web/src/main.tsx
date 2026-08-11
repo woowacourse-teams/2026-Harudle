@@ -3,6 +3,7 @@ import './styles/global.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
+import { BrowserRouter } from 'react-router';
 
 const root = document.getElementById('root');
 
@@ -22,7 +23,9 @@ void enableMocking().then(() => {
 
   createRoot(root).render(
     <StrictMode>
-      <App />
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
     </StrictMode>,
   );
 });

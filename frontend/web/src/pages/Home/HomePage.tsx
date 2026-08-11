@@ -4,6 +4,7 @@ import DiaryEmptyState from './DiaryEmptyState';
 import { API_BASE_URL, type ApiRequest } from '../../shared/api';
 import DiaryItemList from './DiaryItemList';
 import FloatingActionButton from '../../shared/FloatingActionButton';
+import { useNavigate } from 'react-router';
 
 type Month = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 
@@ -80,6 +81,7 @@ const isMonthlyDiariesResponse = (
 };
 
 const HomePage = () => {
+  const navigate = useNavigate();
   // TODO: 클라이언트 상태 훅으로 분리하기
   const [selectedYearMonth, setSelectedYearMonth] = useState<YearMonth>({
     year: 2026,
@@ -150,7 +152,11 @@ const HomePage = () => {
       {monthlyDiaries.data.length > 0 ? (
         <>
           <DiaryItemList monthlyDiaries={monthlyDiaries.data} />
-          <FloatingActionButton />
+          <FloatingActionButton
+            onClick={() => {
+              navigate('/diary-write');
+            }}
+          />
         </>
       ) : (
         <DiaryEmptyState />

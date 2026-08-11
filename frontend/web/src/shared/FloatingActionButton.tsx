@@ -1,8 +1,12 @@
 import { css } from '@emotion/react';
 import { theme } from '../styles/theme';
 
-const FloatingActionButton = () => {
-  return <button css={buttonStyle}>+</button>;
+const FloatingActionButton = ({ onClick }: { onClick: () => void }) => {
+  return (
+    <button css={buttonStyle} onClick={onClick}>
+      +
+    </button>
+  );
 };
 
 export default FloatingActionButton;

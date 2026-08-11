@@ -1,8 +1,12 @@
 import { css } from '@emotion/react';
 import { theme } from '../styles/theme';
 
-const ActionButton = () => {
-  return <button css={actionButtonStyle}>새 일기 쓰기</button>;
+const ActionButton = ({ onClick }: { onClick: () => void }) => {
+  return (
+    <button css={actionButtonStyle} onClick={onClick}>
+      새 일기 쓰기
+    </button>
+  );
 };
 
 export default ActionButton;
