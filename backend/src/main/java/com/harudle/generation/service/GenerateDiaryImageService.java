@@ -79,19 +79,25 @@ public class GenerateDiaryImageService {
             GenerationPrompt prompt,
             DiaryGeneration generation
     ) {
+        Storyboard storyboard;
+        String imageObjectKey;
         try {
-            Storyboard storyboard = generateStoryboard(command, prompt);
+            storyboard = generateStoryboard(command, prompt);
             ReferenceImage referenceImage = imageStorage.load(prompt.getImageAssetObjectKey());
             GeneratedImage generatedImage = generateImage(storyboard, prompt, referenceImage);
-            String imageObjectKey = imageStorage.store(generation.getId(), generatedImage);
-            return succeedGeneration(generation, storyboard, imageObjectKey);
+            imageObjectKey = imageStorage.store(generation.getId(), generatedImage);
         } catch (AiGenerationException exception) {
             failGeneration(generation, mapAiGenerationErrorCode(exception.getErrorType()));
             throw exception;
         } catch (ImageStorageException exception) {
             failGeneration(generation, GenerationErrorCode.IMAGE_STORAGE_ERROR);
             throw exception;
+        } catch (RuntimeException exception) {
+            failGeneration(generation, GenerationErrorCode.GENERATION_INTERRUPTED);
+            throw exception;
         }
+
+        return succeedGeneration(generation, storyboard, imageObjectKey);
     }
 
     private DiaryGenerationResult handleConcurrentGeneration(
@@ -192,7 +198,7 @@ public class GenerateDiaryImageService {
         if (errorType == AiGenerationErrorType.TIMEOUT) {
             return GenerationErrorCode.AI_PROVIDER_TIMEOUT;
         }
-        throw new IllegalArgumentException("지원하지 않는 AI 생성 오류 타입입니다.");
+        return GenerationErrorCode.GENERATION_INTERRUPTED;
     }
 
     private void failGeneration(DiaryGeneration generation, GenerationErrorCode errorCode) {

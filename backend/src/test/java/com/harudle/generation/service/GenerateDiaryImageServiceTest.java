@@ -250,6 +250,65 @@ class GenerateDiaryImageServiceTest {
     }
 
     @Test
+    @DisplayName("예상하지 못한 런타임 예외가 발생하면 중단 오류로 실패 상태를 저장하고 예외를 다시 던진다")
+    void failGenerationWhenUnexpectedRuntimeExceptionOccurs() {
+        GenerateDiaryImageCommand command = createCommand();
+        GenerationPrompt prompt = createPrompt();
+        IllegalStateException exception = new IllegalStateException("예상하지 못한 오류");
+        AtomicInteger saveCount = new AtomicInteger();
+        AtomicReference<DiaryGeneration> savedGeneration = new AtomicReference<>();
+
+        when(diaryGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
+                .thenReturn(Optional.empty());
+        when(generationPromptRepository.findFirstByOrderByIdDesc()).thenReturn(Optional.of(prompt));
+        when(diaryGenerationRepository.saveAndFlush(any(DiaryGeneration.class)))
+                .thenAnswer(invocation -> {
+                    DiaryGeneration generation = invocation.getArgument(0);
+                    saveCount.incrementAndGet();
+                    savedGeneration.set(generation);
+                    return generation;
+                });
+        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenThrow(exception);
+
+        assertThatThrownBy(() -> generateDiaryImageService.generate(command)).isSameAs(exception);
+        assertThat(saveCount).hasValue(2);
+        assertThat(savedGeneration.get().getStatus()).isEqualTo(GenerationStatus.FAILED);
+        assertThat(savedGeneration.get().getErrorCode()).isEqualTo(GenerationErrorCode.GENERATION_INTERRUPTED);
+        assertThat(savedGeneration.get().getCompletedAt()).isBeforeOrEqualTo(Instant.now());
+        verifyNoInteractions(diaryImageGenerator, imageStorage);
+    }
+
+    @Test
+    @DisplayName("성공 상태 저장 중 런타임 예외가 발생하면 실패 전이 없이 원래 예외를 던진다")
+    void preserveExceptionWhenSavingSuccessfulGenerationFails() {
+        GenerateDiaryImageCommand command = createCommand();
+        GenerationPrompt prompt = createPrompt();
+        Storyboard storyboard = createStoryboard();
+        ReferenceImage referenceImage = createReferenceImage();
+        GeneratedImage generatedImage = createGeneratedImage();
+        IllegalStateException exception = new IllegalStateException("성공 상태 저장 실패");
+        AtomicInteger saveCount = new AtomicInteger();
+
+        when(diaryGenerationRepository.findByIdempotencyKey(command.idempotencyKey()))
+                .thenReturn(Optional.empty());
+        when(generationPromptRepository.findFirstByOrderByIdDesc()).thenReturn(Optional.of(prompt));
+        when(diaryGenerationRepository.saveAndFlush(any(DiaryGeneration.class)))
+                .thenAnswer(invocation -> {
+                    if (saveCount.getAndIncrement() == 0) {
+                        return invocation.getArgument(0);
+                    }
+                    throw exception;
+                });
+        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenReturn(storyboard);
+        when(imageStorage.load(prompt.getImageAssetObjectKey())).thenReturn(referenceImage);
+        when(diaryImageGenerator.generate(any(DiaryImageGenerationRequest.class))).thenReturn(generatedImage);
+        when(imageStorage.store(any(UUID.class), eq(generatedImage))).thenReturn("generated/diary-image.png");
+
+        assertThatThrownBy(() -> generateDiaryImageService.generate(command)).isSameAs(exception);
+        assertThat(saveCount).hasValue(2);
+    }
+
+    @Test
     @DisplayName("동일한 요청이 이미 성공했다면 저장된 결과를 반환한다")
     void returnExistingSuccessfulGeneration() {
         GenerateDiaryImageCommand command = createCommand();
