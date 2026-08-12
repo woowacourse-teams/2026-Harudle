@@ -5,9 +5,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
-import com.harudle.generation.service.exception.DiaryGenerationFailedException;
 import com.harudle.generation.service.exception.GenerationInProgressException;
 import com.harudle.share.repository.ShareLinkRepository;
+import com.harudle.share.service.exception.ShareGenerationFailedException;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
@@ -142,7 +142,7 @@ class ShareLinkServiceTest {
         changeGenerationStatus("FAILED", "AI_PROVIDER_ERROR", null);
 
         assertThatThrownBy(() -> shareLinkService.createOrGet(USER_ID, DIARY_ID))
-                .isInstanceOf(DiaryGenerationFailedException.class);
+                .isInstanceOf(ShareGenerationFailedException.class);
         assertThat(shareLinkRepository.count()).isZero();
     }
 

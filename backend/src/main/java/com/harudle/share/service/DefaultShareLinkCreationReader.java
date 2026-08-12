@@ -35,8 +35,7 @@ public class DefaultShareLinkCreationReader implements ShareLinkCreationReader {
                 .orElseThrow(DiaryNotFoundException::new);
         return new ShareLinkCreationInfo(
                 generation.getId(),
-                generation.getStatus(),
-                generation.getErrorCode()
+                generation.getStatus()
         );
     }
 }

@@ -1,10 +1,10 @@
 package com.harudle.share.service;
 
 import com.harudle.generation.domain.GenerationStatus;
-import com.harudle.generation.service.exception.DiaryGenerationFailedException;
 import com.harudle.generation.service.exception.GenerationInProgressException;
 import com.harudle.share.domain.ShareLink;
 import com.harudle.share.repository.ShareLinkRepository;
+import com.harudle.share.service.exception.ShareGenerationFailedException;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,7 +43,7 @@ public class ShareLinkService {
             throw new GenerationInProgressException();
         }
         if (creationInfo.generationStatus() == GenerationStatus.FAILED) {
-            throw new DiaryGenerationFailedException(creationInfo.generationErrorCode());
+            throw new ShareGenerationFailedException();
         }
     }
 

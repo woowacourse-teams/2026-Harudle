@@ -12,6 +12,7 @@ import com.harudle.common.security.ApiSecurityConfiguration;
 import com.harudle.share.configuration.ShareConfiguration;
 import com.harudle.share.service.ShareLinkCreationResult;
 import com.harudle.share.service.ShareLinkService;
+import com.harudle.share.service.exception.ShareGenerationFailedException;
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
 import io.restassured.module.mockmvc.response.MockMvcResponse;
 import java.time.Instant;
@@ -95,6 +96,20 @@ class ShareLinkControllerTest {
         assertThat(response.jsonPath().getString("shareId")).isEqualTo(SHARE_ID.toString());
         assertThat(response.jsonPath().getString("shareUrl"))
                 .isEqualTo("https://harudle.example/shares/" + SHARE_ID);
+    }
+
+    @Test
+    @DisplayName("그림일기 생성이 실패했으면 409 GENERATION_FAILED를 반환한다")
+    void rejectFailedGeneration() {
+        when(shareLinkService.createOrGet(USER_ID, DIARY_ID))
+                .thenThrow(new ShareGenerationFailedException());
+
+        MockMvcResponse response = authenticatedRequest()
+                .put("/api/v1/diaries/{diaryId}/share-link", DIARY_ID);
+
+        assertThat(response.statusCode()).isEqualTo(409);
+        assertThat(response.contentType()).startsWith("application/problem+json");
+        assertThat(response.jsonPath().getString("code")).isEqualTo("GENERATION_FAILED");
     }
 
     @Test
