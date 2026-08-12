@@ -106,4 +106,35 @@ class GenerationUsageControllerTest {
         assertThat(response.jsonPath().getString("code")).isEqualTo("UNAUTHORIZED");
         assertThat(response.jsonPath().getString("traceId")).matches("[0-9a-f]{32}");
     }
+
+    @Test
+    @DisplayName("존재하지 않는 API도 공통 Problem Details를 반환한다")
+    void rejectUnknownApi() {
+        MockMvcResponse response = RestAssuredMockMvc.given()
+                .postProcessors(user(USER_ID.toString()))
+                .get("/api/v1/unknown");
+
+        assertThat(response.statusCode()).isEqualTo(404);
+        assertThat(response.contentType()).startsWith("application/problem+json");
+        assertThat(response.jsonPath().getString("type"))
+                .isEqualTo("urn:harudle:problem:api-not-found");
+        assertThat(response.jsonPath().getString("code")).isEqualTo("API_NOT_FOUND");
+        assertThat(response.jsonPath().getString("traceId")).matches("[0-9a-f]{32}");
+    }
+
+    @Test
+    @DisplayName("지원하지 않는 HTTP 메서드도 표준 헤더와 공통 Problem Details를 반환한다")
+    void rejectUnsupportedMethod() {
+        MockMvcResponse response = RestAssuredMockMvc.given()
+                .postProcessors(user(USER_ID.toString()))
+                .post("/api/v1/me/generation-usage");
+
+        assertThat(response.statusCode()).isEqualTo(405);
+        assertThat(response.getHeader(HttpHeaders.ALLOW)).contains("GET");
+        assertThat(response.contentType()).startsWith("application/problem+json");
+        assertThat(response.jsonPath().getString("type"))
+                .isEqualTo("urn:harudle:problem:method-not-allowed");
+        assertThat(response.jsonPath().getString("code")).isEqualTo("METHOD_NOT_ALLOWED");
+        assertThat(response.jsonPath().getString("traceId")).matches("[0-9a-f]{32}");
+    }
 }

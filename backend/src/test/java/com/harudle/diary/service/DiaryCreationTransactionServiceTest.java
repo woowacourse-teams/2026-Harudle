@@ -13,6 +13,7 @@ import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
 import com.harudle.generation.domain.ComicGeneration;
+import com.harudle.generation.domain.GenerationErrorCode;
 import com.harudle.generation.domain.GenerationPrompt;
 import com.harudle.generation.domain.GenerationStatus;
 import com.harudle.generation.domain.GenerationUsage;
@@ -36,6 +37,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class DiaryCreationTransactionServiceTest {
@@ -43,6 +45,7 @@ class DiaryCreationTransactionServiceTest {
     private static final UUID USER_ID = UUID.fromString("08d69a34-6d70-4d42-a158-671bc67733c9");
     private static final UUID IDEMPOTENCY_KEY = UUID.fromString("7e5cc251-fdde-4cc0-a54e-2c8142750609");
     private static final LocalDate DIARY_DATE = LocalDate.of(2026, 8, 6);
+    private static final Instant NOW = Instant.parse("2026-08-06T12:00:00Z");
     private static final int REQUEST_FINGERPRINT_HEX_LENGTH = 64;
 
     @Mock
@@ -65,7 +68,7 @@ class DiaryCreationTransactionServiceTest {
     void setUp() {
         lenient().when(requestFingerprintGenerator.generate(any(GenerateComicCommand.class)))
                 .thenAnswer(invocation -> fingerprintFor(invocation.getArgument(0)));
-        Clock clock = Clock.fixed(Instant.parse("2026-08-06T12:00:00Z"), ZoneOffset.UTC);
+        Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
         transactionService = new DiaryCreationTransactionService(
                 diaryRepository,
                 generationPromptRepository,
@@ -113,7 +116,8 @@ class DiaryCreationTransactionServiceTest {
         GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
         when(comicGenerationRepository.findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY))
                 .thenReturn(Optional.of(generation));
-        when(diaryRepository.findActiveById(diary.getId())).thenReturn(Optional.of(diary));
+        when(diaryRepository.findByIdIncludingDeletedForUpdate(diary.getId()))
+                .thenReturn(Optional.of(diary));
         when(generationUsageService.getTodayUsage(USER_ID)).thenReturn(usage);
 
         DiaryCreationClaim claim = transactionService.claim(command, false);
@@ -134,7 +138,8 @@ class DiaryCreationTransactionServiceTest {
         ComicGeneration generation = createGeneration(originalCommand, diary);
         when(comicGenerationRepository.findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY))
                 .thenReturn(Optional.of(generation));
-        when(diaryRepository.findActiveById(diary.getId())).thenReturn(Optional.of(diary));
+        when(diaryRepository.findByIdIncludingDeletedForUpdate(diary.getId()))
+                .thenReturn(Optional.of(diary));
 
         assertThatThrownBy(() -> transactionService.claim(differentCommand, true))
                 .isInstanceOf(IdempotencyKeyConflictException.class);
@@ -146,15 +151,88 @@ class DiaryCreationTransactionServiceTest {
         CreateDiaryCommand command = createCommand("오늘 친구와 카페에 갔다.");
         Diary diary = Diary.create(USER_ID, DIARY_DATE, command.sourceText());
         ComicGeneration generation = createGeneration(command, diary);
+        generation.succeed(TestStoryboardFactory.create(), "generated/comic.png", NOW.minusSeconds(2));
+        diary.delete(NOW.minusSeconds(1));
         when(comicGenerationRepository.findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY))
                 .thenReturn(Optional.of(generation));
-        when(diaryRepository.findActiveById(diary.getId())).thenReturn(Optional.empty());
+        when(diaryRepository.findByIdIncludingDeletedForUpdate(diary.getId()))
+                .thenReturn(Optional.of(diary));
 
         assertThatThrownBy(() -> transactionService.claim(command, true))
                 .isInstanceOf(DiaryNotFoundException.class);
 
         verify(generationUsageService, never()).getTodayUsage(USER_ID);
         verify(diaryRepository, never()).save(any(Diary.class));
+    }
+
+    @Test
+    @DisplayName("실패로 폐기된 일기라도 같은 멱등성 키의 다른 요청은 충돌한다")
+    void rejectDifferentRequestForFailedDiscardedDiary() {
+        CreateDiaryCommand originalCommand = createCommand("원래 일기");
+        CreateDiaryCommand differentCommand = createCommand("다른 일기");
+        Diary diary = Diary.create(USER_ID, DIARY_DATE, originalCommand.sourceText());
+        ComicGeneration generation = createGeneration(originalCommand, diary);
+        generation.fail(GenerationErrorCode.AI_PROVIDER_TIMEOUT, NOW.minusSeconds(1));
+        diary.delete(NOW.minusSeconds(1));
+        when(comicGenerationRepository.findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY))
+                .thenReturn(Optional.of(generation));
+        when(diaryRepository.findByIdIncludingDeletedForUpdate(diary.getId()))
+                .thenReturn(Optional.of(diary));
+
+        assertThatThrownBy(() -> transactionService.claim(differentCommand, true))
+                .isInstanceOf(IdempotencyKeyConflictException.class);
+
+        verify(generationUsageService, never()).getTodayUsage(USER_ID);
+    }
+
+    @Test
+    @DisplayName("실패로 폐기된 일기의 멱등 재요청은 저장된 실패를 복원한다")
+    void claimExistingFailedDiscardedDiary() {
+        CreateDiaryCommand command = createCommand("오늘 친구와 카페에 갔다.");
+        Diary diary = Diary.create(USER_ID, DIARY_DATE, command.sourceText());
+        ComicGeneration generation = createGeneration(command, diary);
+        Instant failedAt = NOW.minusSeconds(1);
+        generation.fail(GenerationErrorCode.AI_PROVIDER_TIMEOUT, failedAt);
+        diary.delete(failedAt);
+        GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
+        when(comicGenerationRepository.findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY))
+                .thenReturn(Optional.of(generation));
+        when(diaryRepository.findByIdIncludingDeletedForUpdate(diary.getId()))
+                .thenReturn(Optional.of(diary));
+        when(generationUsageService.getTodayUsage(USER_ID)).thenReturn(usage);
+
+        DiaryCreationClaim claim = transactionService.claim(command, true);
+
+        assertThat(claim.generationStatus()).isEqualTo(GenerationStatus.FAILED);
+        assertThat(claim.errorCode()).isEqualTo(GenerationErrorCode.AI_PROVIDER_TIMEOUT);
+        assertThat(claim.newlyCreated()).isFalse();
+        verify(generationUsageService, never()).incrementTodayUsage(USER_ID);
+    }
+
+    @Test
+    @DisplayName("처리 시간이 지난 생성은 중단하고 일기를 함께 폐기한다")
+    void interruptStaleGenerationAndDiscardDiary() {
+        CreateDiaryCommand command = createCommand("오늘 친구와 카페에 갔다.");
+        Diary diary = Diary.create(USER_ID, DIARY_DATE, command.sourceText());
+        ComicGeneration generation = createGeneration(command, diary);
+        ReflectionTestUtils.setField(
+                generation,
+                "updatedAt",
+                NOW.minus(Duration.ofMinutes(16))
+        );
+        GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
+        when(comicGenerationRepository.findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY))
+                .thenReturn(Optional.of(generation));
+        when(diaryRepository.findByIdIncludingDeletedForUpdate(diary.getId()))
+                .thenReturn(Optional.of(diary));
+        when(generationUsageService.getTodayUsage(USER_ID)).thenReturn(usage);
+
+        DiaryCreationClaim claim = transactionService.claim(command, true);
+
+        assertThat(claim.generationStatus()).isEqualTo(GenerationStatus.FAILED);
+        assertThat(claim.errorCode()).isEqualTo(GenerationErrorCode.GENERATION_INTERRUPTED);
+        assertThat(diary.isDeleted()).isTrue();
+        assertThat(generation.getCompletedAt()).isEqualTo(NOW);
     }
 
     @Test

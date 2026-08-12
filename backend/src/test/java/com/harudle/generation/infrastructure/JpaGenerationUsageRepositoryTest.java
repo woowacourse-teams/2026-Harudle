@@ -71,6 +71,7 @@ class JpaGenerationUsageRepositoryTest {
 
     @AfterEach
     void tearDown() {
+        executeUpdate("DELETE FROM daily_generation_usage WHERE user_id = ?", USER_ID);
         executeUpdate("DELETE FROM users WHERE id = ?", USER_ID);
     }
 
