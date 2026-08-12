@@ -5,6 +5,7 @@ import harudleLogo from '../../assets/images/harudle-logo.png';
 import { useNavigate } from 'react-router';
 import { useEffect, useState } from 'react';
 import { API_BASE_URL, type ApiRequest } from '../../shared/api';
+import loadingAnimation from '../../assets/images/loading-animation.webp';
 
 interface ProfileResponse {
   id: string;
@@ -67,7 +68,11 @@ const SettingPage = () => {
   }, []);
 
   if (profile.status === 'idle' || profile.status === 'loading') {
-    return <div>로딩중...</div>;
+    return (
+      <div css={loadingStyle}>
+        <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
+      </div>
+    );
   }
 
   if (profile.status === 'error') {
@@ -230,4 +235,18 @@ const logoutButtonStyle = css`
   &:active {
     background-color: #fff7f7;
   }
+`;
+
+const loadingStyle = css`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background-color: ${theme.colors.background};
+`;
+
+const loadingImageStyle = css`
+  width: 160px;
+  height: 160px;
 `;
