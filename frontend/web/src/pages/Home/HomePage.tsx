@@ -9,6 +9,8 @@ import harudleLogo from '../../assets/images/harudle-logo.png';
 import eventAvailableIcon from '../../assets/icons/event-available.svg';
 import { css } from '@emotion/react';
 import { theme } from '../../styles/theme';
+import loadingAnimation from '../../assets/images/loading-animation.webp';
+import keyboardArrowDownIcon from '../../assets/icons/keyboard-arrow-down.svg';
 
 type Month = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 
@@ -163,7 +165,11 @@ const HomePage = () => {
   };
 
   if (monthlyDiaries.status === 'idle' || monthlyDiaries.status === 'loading') {
-    return <div>로딩중...</div>;
+    return (
+      <div css={pageLoadingStyle}>
+        <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
+      </div>
+    );
   }
 
   if (monthlyDiaries.status === 'error') {
@@ -185,12 +191,15 @@ const HomePage = () => {
 
       <main css={homeContentStyle}>
         <div css={monthHeaderStyle}>
-          <input
-            type="month"
-            value={formatYearMonthToString(selectedYearMonth)}
-            onChange={handleYearMonthChange}
-            css={monthInputStyle}
-          />
+          <div css={monthPickerStyle}>
+            <input
+              type="month"
+              value={formatYearMonthToString(selectedYearMonth)}
+              onChange={handleYearMonthChange}
+              css={monthInputStyle}
+            />
+            <img src={keyboardArrowDownIcon} alt="" css={monthArrowStyle} />
+          </div>
 
           {monthlyDiaryCount > 0 && (
             <div css={recordCountStyle}>{monthlyDiaryCount}개의 기록</div>
@@ -292,7 +301,15 @@ const RemainingGenerationUsageCard = () => {
     generationUsage.status === 'idle' ||
     generationUsage.status === 'loading'
   ) {
-    return <div>로딩중...</div>;
+    return (
+      <div css={generationUsageLoadingStyle}>
+        <img
+          src={loadingAnimation}
+          alt="로딩 중"
+          css={generationUsageLoadingImageStyle}
+        />
+      </div>
+    );
   }
 
   if (generationUsage.status === 'error') {
@@ -371,8 +388,9 @@ const monthHeaderStyle = css`
 
 const monthInputStyle = css`
   position: relative;
-  width: 130px;
-  padding: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0 28px 0 0;
   border: none;
   outline: none;
   background-color: transparent;
@@ -390,6 +408,21 @@ const monthInputStyle = css`
     opacity: 0;
     cursor: pointer;
   }
+`;
+
+const monthPickerStyle = css`
+  position: relative;
+  width: 130px;
+  height: 26px;
+`;
+
+const monthArrowStyle = css`
+  position: absolute;
+  top: 1px;
+  right: 0;
+  width: 24px;
+  height: 24px;
+  pointer-events: none;
 `;
 
 const recordCountStyle = css`
@@ -425,4 +458,31 @@ const generationUsageTextStyle = (remainingCount: number) => css`
     color: ${remainingCount > 0 ? theme.colors.accent : theme.colors.danger};
     font-weight: 500;
   }
+`;
+
+const pageLoadingStyle = css`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background-color: ${theme.colors.background};
+`;
+
+const loadingImageStyle = css`
+  width: 160px;
+  height: 160px;
+`;
+
+const generationUsageLoadingStyle = css`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 48px;
+`;
+
+const generationUsageLoadingImageStyle = css`
+  width: 40px;
+  height: 40px;
 `;

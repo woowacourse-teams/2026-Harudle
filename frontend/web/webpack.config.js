@@ -25,7 +25,7 @@ export default {
         ],
       },
       {
-        test: /\.(png|svg)$/i,
+        test: /\.(png|svg|webp)$/i,
         type: 'asset/resource',
       },
     ],
@@ -42,5 +42,10 @@ export default {
   resolve: {
     extensions: ['.tsx', '.ts', '.js'],
   },
-  plugins: [new HtmlWebpackPlugin({ template: './index.html' })],
+  plugins: [
+    new HtmlWebpackPlugin({
+      template: './index.html',
+      favicon: './src/assets/icons/favicon.png',
+    }),
+  ],
 };

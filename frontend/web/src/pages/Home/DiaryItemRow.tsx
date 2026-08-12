@@ -1,6 +1,7 @@
 import { css } from '@emotion/react';
 import type { MonthlyDiaryItem } from './HomePage';
 import { theme } from '../../styles/theme';
+import { useNavigate } from 'react-router';
 
 const WEEKDAYS = [
   '일요일',
@@ -33,11 +34,16 @@ const DiaryItemRow = ({
   isFirst: boolean;
   isLast: boolean;
 }) => {
-  const { title, thumbnailUrl } = diaryItem;
+  const navigate = useNavigate();
+  const { id, title, thumbnailUrl } = diaryItem;
   const formattedDate = formatDiaryDate(date);
 
   return (
-    <div css={diaryItemRowStyle}>
+    <button
+      type="button"
+      css={diaryItemRowStyle}
+      onClick={() => navigate(`/diaries/${id}`)}
+    >
       <div css={timelineNodeStyle(isFirst, isLast)} />
 
       <div css={dateStyle}>
@@ -48,7 +54,7 @@ const DiaryItemRow = ({
       <div css={titleStyle}>{title}</div>
 
       <img src={thumbnailUrl} alt={`그림일기 ${date}`} css={thumbnailStyle} />
-    </div>
+    </button>
   );
 };
 
@@ -62,6 +68,8 @@ const diaryItemRowStyle = css`
   column-gap: 12px;
   width: 100%;
   height: 82px;
+  border: none;
+  background: none;
 `;
 
 const timelineNodeStyle = (isFirst: boolean, isLast: boolean) => css`
