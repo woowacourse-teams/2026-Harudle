@@ -58,9 +58,15 @@ class ComicGenerationImageObjectKeyMigrationTest {
         try (
                 Connection connection = openConnection();
                 PreparedStatement statement = connection.prepareStatement("""
-                        SELECT status, image_object_key, error_code, completed_at
-                        FROM comic_generations
-                        WHERE id = ?
+                        SELECT
+                            generation.status,
+                            generation.image_object_key,
+                            generation.error_code,
+                            generation.completed_at,
+                            diary.deleted_at = generation.completed_at AS discarded_at_completion
+                        FROM comic_generations AS generation
+                        JOIN diaries AS diary ON diary.id = generation.diary_id
+                        WHERE generation.id = ?
                         """)
         ) {
             statement.setObject(1, GENERATION_ID);
@@ -71,6 +77,7 @@ class ComicGenerationImageObjectKeyMigrationTest {
                 assertThat(result.getString("image_object_key")).isNull();
                 assertThat(result.getString("error_code")).isEqualTo("IMAGE_STORAGE_ERROR");
                 assertThat(result.getObject("completed_at")).isNotNull();
+                assertThat(result.getBoolean("discarded_at_completion")).isTrue();
                 assertThat(result.next()).isFalse();
             }
         }
