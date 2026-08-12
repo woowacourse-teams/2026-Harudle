@@ -3,7 +3,6 @@ package com.harudle;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
-
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,7 +15,10 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest
+@SpringBootTest(properties = {
+        "harudle.generation.gemini.api-key=test-api-key",
+        "harudle.generation.storage.s3.bucket=test-bucket"
+})
 class HarudleApplicationTests {
 
     private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:18-alpine");
