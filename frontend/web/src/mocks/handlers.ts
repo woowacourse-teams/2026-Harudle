@@ -26,6 +26,22 @@ interface CreateDiaryResponse {
   };
 }
 
+type DiaryDetailResponse = Omit<CreateDiaryResponse, 'usage'>;
+
+interface DiaryShareLinkResponse {
+  shareId: string;
+  shareUrl: string;
+  createdAt: string;
+}
+
+interface PublicDiaryShareResponse {
+  title: string;
+  diaryDate: string;
+  imageUrl: string;
+  imageUrlExpiresAt: string;
+  createdAt: string;
+}
+
 interface ValidationError {
   field: string;
   reason: string;
@@ -36,13 +52,51 @@ const DAILY_GENERATION_LIMIT = 3;
 
 let usedGenerationCount = 0;
 let mockDiarySequence = 1;
+let mockShareSequence = 1;
 
 const createdDiaryFingerprints = new Set<string>();
+const mockDiaryShareLinks = new Map<string, DiaryShareLinkResponse>();
 
 const diaryThumbnailUrl = new URL(
   '../assets/images/diary-four-panel.png',
   import.meta.url,
 ).href;
+
+const sampleDiaryId = '6b66acba-0136-4822-8a59-f355dd7c977d';
+const sampleShareId = '06ed972e-0b79-4da0-9716-c9bd8faec85d';
+
+const mockDiaryDetails = new Map<string, DiaryDetailResponse>([
+  [
+    sampleDiaryId,
+    {
+      id: sampleDiaryId,
+      diaryDate: '2026-08-06',
+      sourceText: '오늘 친구와 카페에 가서 오래 이야기했다.',
+      createdAt: '2026-08-06T20:10:23+09:00',
+      diary: {
+        id: '17ac16ef-c45a-40bb-92ea-aed37659ef1c',
+        status: 'SUCCEEDED',
+        title: '친구와 보낸 카페 시간',
+        imageUrl: diaryThumbnailUrl,
+        imageUrlExpiresAt: '2026-08-06T20:20:23+09:00',
+        completedAt: '2026-08-06T20:11:42+09:00',
+      },
+    },
+  ],
+]);
+
+const mockPublicDiaryShares = new Map<string, PublicDiaryShareResponse>([
+  [
+    sampleShareId,
+    {
+      title: '친구와 보낸 카페 시간',
+      diaryDate: '2026-08-06',
+      imageUrl: diaryThumbnailUrl,
+      imageUrlExpiresAt: '2026-08-06T20:25:00+09:00',
+      createdAt: '2026-08-06T20:10:23+09:00',
+    },
+  ],
+]);
 
 const isRecord = (value: unknown): value is Record<string, unknown> => {
   return typeof value === 'object' && value !== null;
@@ -97,6 +151,8 @@ const getCreateDiaryValidationErrors = (value: unknown): ValidationError[] => {
 
 const problemTitleByCode: Record<string, string> = {
   VALIDATION_ERROR: 'Validation failed',
+  DIARY_NOT_FOUND: 'Diary not found',
+  SHARE_NOT_FOUND: 'Share not found',
   DUPLICATE_DIARY: 'Duplicate diary',
   DAILY_GENERATION_LIMIT_EXCEEDED: 'Daily generation limit exceeded',
 };
@@ -106,11 +162,13 @@ const createProblemDetails = ({
   code,
   detail,
   errors,
+  instance = '/api/v1/diaries',
 }: {
   status: number;
   code: string;
   detail: string;
   errors?: ValidationError[];
+  instance?: string;
 }) => {
   return HttpResponse.json(
     {
@@ -120,7 +178,7 @@ const createProblemDetails = ({
       title: problemTitleByCode[code] ?? code,
       status,
       detail,
-      instance: '/api/v1/diaries',
+      instance,
       code,
       traceId: '019d71beebed75b19e45f9c51863bcbd',
       ...(errors ? { errors } : {}),
@@ -186,6 +244,81 @@ export const handlers = [
       limitCount: DAILY_GENERATION_LIMIT,
       remainingCount: DAILY_GENERATION_LIMIT - usedGenerationCount,
     });
+  }),
+
+  http.get('/api/v1/diaries/:diaryId', ({ params }) => {
+    const diaryId = String(params.diaryId);
+    const diaryDetail = mockDiaryDetails.get(diaryId);
+
+    if (!diaryDetail) {
+      return createProblemDetails({
+        status: 404,
+        code: 'DIARY_NOT_FOUND',
+        detail: '일기를 찾을 수 없습니다.',
+        instance: `/api/v1/diaries/${diaryId}`,
+      });
+    }
+
+    return HttpResponse.json(diaryDetail);
+  }),
+
+  http.put('/api/v1/diaries/:diaryId/share-link', ({ params, request }) => {
+    const diaryId = String(params.diaryId);
+    const diaryDetail = mockDiaryDetails.get(diaryId);
+
+    if (!diaryDetail) {
+      return createProblemDetails({
+        status: 404,
+        code: 'DIARY_NOT_FOUND',
+        detail: '일기를 찾을 수 없습니다.',
+        instance: `/api/v1/diaries/${diaryId}/share-link`,
+      });
+    }
+
+    const existingShareLink = mockDiaryShareLinks.get(diaryId);
+
+    if (existingShareLink) {
+      return HttpResponse.json(existingShareLink);
+    }
+
+    const shareId =
+      diaryId === sampleDiaryId
+        ? sampleShareId
+        : createMockUuid(mockShareSequence, 3);
+    mockShareSequence += 1;
+
+    const response: DiaryShareLinkResponse = {
+      shareId,
+      shareUrl: `${new URL(request.url).origin}/shares/${shareId}`,
+      createdAt: '2026-08-12T20:15:00+09:00',
+    };
+
+    mockDiaryShareLinks.set(diaryId, response);
+    mockPublicDiaryShares.set(shareId, {
+      title: diaryDetail.diary.title,
+      diaryDate: diaryDetail.diaryDate,
+      imageUrl: diaryDetail.diary.imageUrl,
+      imageUrlExpiresAt: diaryDetail.diary.imageUrlExpiresAt,
+      createdAt: diaryDetail.createdAt,
+    });
+
+    return HttpResponse.json(response, { status: 201 });
+  }),
+
+  http.get('/api/v1/public/shares/:shareId', ({ params }) => {
+    const shareId = String(params.shareId);
+    const sharedDiary = mockPublicDiaryShares.get(shareId);
+
+    if (!sharedDiary) {
+      return createProblemDetails({
+        status: 404,
+        code: 'SHARE_NOT_FOUND',
+        detail: '공유 링크를 찾을 수 없습니다.',
+        instance: `/api/v1/public/shares/${shareId}`,
+      });
+    }
+
+    return HttpResponse.json(sharedDiary);
   }),
 
   http.post('/api/v1/diaries', async ({ request }) => {
@@ -263,6 +396,14 @@ export const handlers = [
     };
 
     await delay(1_000);
+
+    mockDiaryDetails.set(diaryId, {
+      id: response.id,
+      diaryDate: response.diaryDate,
+      sourceText: response.sourceText,
+      createdAt: response.createdAt,
+      diary: response.diary,
+    });
 
     return HttpResponse.json(response, {
       status: 201,
