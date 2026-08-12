@@ -107,8 +107,11 @@ class DiaryControllerTest {
 
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.jsonPath().getInt("year")).isEqualTo(2026);
+        assertThat(response.jsonPath().getString("days[0].items[0].diaryId"))
+                .isEqualTo(DIARY_ID.toString());
         assertThat(response.jsonPath().getString("days[0].items[0].thumbnailUrl"))
                 .isEqualTo("https://images.harudle.example/comic.png");
+        assertThat(response.jsonPath().getString("days[0].items[0].id")).isNull();
         assertThat(response.asString()).doesNotContain("generated/comic.png");
     }
 

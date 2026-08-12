@@ -363,12 +363,12 @@ HTTP/1.1 200 OK
       "exist": true,
       "items": [
         {
-          "id": "6b66acba-0136-4822-8a59-f355dd7c977d",
+          "diaryId": "6b66acba-0136-4822-8a59-f355dd7c977d",
           "title": "비가 와도 나는 괜찮았다.",
           "thumbnailUrl": "https://presigned-s3-url.example/..."
         },
         {
-          "id": "37d5b686-f260-42bd-a1bd-c82ae381c21c",
+          "diaryId": "37d5b686-f260-42bd-a1bd-c82ae381c21c",
           "title": "친구와 보낸 저녁",
           "thumbnailUrl": "https://presigned-s3-url.example/..."
         }
