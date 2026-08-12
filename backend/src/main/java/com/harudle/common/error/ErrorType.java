@@ -33,6 +33,11 @@ public enum ErrorType {
             "Diary not found",
             "일기를 찾을 수 없습니다."
     ),
+    SHARE_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "Share not found",
+            "공유 링크를 찾을 수 없습니다."
+    ),
     GENERATION_IN_PROGRESS(
             HttpStatus.CONFLICT,
             "Generation in progress",

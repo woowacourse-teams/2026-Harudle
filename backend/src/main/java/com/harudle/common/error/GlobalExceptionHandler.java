@@ -12,6 +12,7 @@ import com.harudle.generation.service.exception.GenerationUnavailableException;
 import com.harudle.generation.service.exception.IdempotencyKeyConflictException;
 import com.harudle.generation.service.port.ImageStorageException;
 import com.harudle.share.service.exception.ShareGenerationFailedException;
+import com.harudle.share.service.exception.ShareNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.util.List;
@@ -84,6 +85,11 @@ class GlobalExceptionHandler {
     @ExceptionHandler(DiaryNotFoundException.class)
     ResponseEntity<ProblemDetail> handleDiaryNotFound(HttpServletRequest request) {
         return createResponse(ErrorType.DIARY_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(ShareNotFoundException.class)
+    ResponseEntity<ProblemDetail> handleShareNotFound(HttpServletRequest request) {
+        return createResponse(ErrorType.SHARE_NOT_FOUND, request);
     }
 
     @ExceptionHandler(GenerationInProgressException.class)
