@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.net.URI;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Configuration;
@@ -41,6 +43,15 @@ class ShareUrlPropertiesTest {
     void rejectUnsupportedScheme() {
         contextRunner.withPropertyValues(
                 "harudle.share.public-base-url=ftp://harudle.example/shares"
+        ).run(context -> assertThat(context).hasFailed());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"https:shares", "https:/shares"})
+    @DisplayName("호스트가 없는 HTTP URL은 공유 URL 기준 주소로 사용할 수 없다")
+    void rejectHttpUrlWithoutHost(String publicBaseUrl) {
+        contextRunner.withPropertyValues(
+                "harudle.share.public-base-url=" + publicBaseUrl
         ).run(context -> assertThat(context).hasFailed());
     }
 
