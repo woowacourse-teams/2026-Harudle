@@ -3,7 +3,6 @@ package com.harudle.generation.service;
 import com.harudle.generation.domain.ComicGeneration;
 import com.harudle.generation.domain.GenerationErrorCode;
 import com.harudle.generation.domain.GenerationPrompt;
-import com.harudle.generation.domain.GenerationStatus;
 import com.harudle.generation.domain.ImageObjectKeyPolicy;
 import com.harudle.generation.domain.Storyboard;
 import com.harudle.generation.repository.ComicGenerationRepository;
@@ -85,9 +84,46 @@ public final class ClaimedComicGenerationService implements ComicGenerationExecu
             }
             return completedGeneration;
         } catch (RuntimeException exception) {
-            deleteDiscardedImage(generatedComic.imageObjectKey());
+            deleteImageIfSafelyDiscardable(
+                    generationId,
+                    generatedComic.imageObjectKey(),
+                    exception
+            );
             throw exception;
         }
+    }
+
+    private void deleteImageIfSafelyDiscardable(
+            UUID generationId,
+            String imageObjectKey,
+            RuntimeException completionException
+    ) {
+        try {
+            boolean deletable = comicGenerationRepository.findById(generationId)
+                    .map(generation -> canDeleteImage(generation, imageObjectKey))
+                    .orElse(true);
+            if (deletable) {
+                deleteDiscardedImage(imageObjectKey);
+            }
+        } catch (RuntimeException verificationException) {
+            if (verificationException != completionException) {
+                completionException.addSuppressed(verificationException);
+            }
+            LOGGER.warn(
+                    "생성 완료 상태를 확인하지 못해 이미지 삭제를 보류합니다. generationId={}, objectKey={}",
+                    generationId,
+                    imageObjectKey,
+                    verificationException
+            );
+        }
+    }
+
+    private static boolean canDeleteImage(ComicGeneration generation, String imageObjectKey) {
+        return switch (generation.getStatus()) {
+            case PROCESSING -> false;
+            case FAILED -> true;
+            case SUCCEEDED -> !generation.usesImageObjectKey(imageObjectKey);
+        };
     }
 
     private ComicGeneration findClaimedGeneration(GenerateComicCommand command, UUID generationId) {

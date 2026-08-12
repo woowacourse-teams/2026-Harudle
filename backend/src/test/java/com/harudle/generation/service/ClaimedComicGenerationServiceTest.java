@@ -201,7 +201,15 @@ class ClaimedComicGenerationServiceTest {
         ComicGenerationFailedException exception = new ComicGenerationFailedException(
                 GenerationErrorCode.GENERATION_INTERRUPTED
         );
-        when(comicGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
+        when(comicGenerationRepository.findById(generation.getId()))
+                .thenReturn(Optional.of(generation))
+                .thenAnswer(invocation -> {
+                    generation.fail(
+                            GenerationErrorCode.GENERATION_INTERRUPTED,
+                            Instant.parse("2026-08-06T12:00:00Z")
+                    );
+                    return Optional.of(generation);
+                });
         when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
         when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenReturn(storyboard);
         when(imageStorage.load("references/style.png")).thenReturn(referenceImage);
@@ -213,6 +221,93 @@ class ClaimedComicGenerationServiceTest {
         assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
                 .isSameAs(exception);
         verify(imageStorage).delete("generated/comic.png");
+    }
+
+    @Test
+    @DisplayName("다른 완료 트랜잭션이 처리 중이면 이미지 삭제를 보류한다")
+    void keepImageWhileConcurrentCompletionIsProcessing() {
+        GenerateComicCommand command = createCommand();
+        ComicGeneration generation = createGeneration(command);
+        GenerationPrompt prompt = createPrompt();
+        Storyboard storyboard = createStoryboard();
+        ReferenceImage referenceImage = createReferenceImage();
+        GeneratedImage generatedImage = createGeneratedImage();
+        IllegalStateException completionException = new IllegalStateException("완료 결과 확인 실패");
+        when(comicGenerationRepository.findById(generation.getId()))
+                .thenReturn(Optional.of(generation));
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenReturn(storyboard);
+        when(imageStorage.load("references/style.png")).thenReturn(referenceImage);
+        when(comicImageGenerator.generate(any(ComicImageGenerationRequest.class))).thenReturn(generatedImage);
+        when(imageStorage.store(generatedImage)).thenReturn("generated/comic.png");
+        when(completionService.succeed(generation.getId(), storyboard, "generated/comic.png"))
+                .thenThrow(completionException);
+
+        assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
+                .isSameAs(completionException);
+        verify(imageStorage, never()).delete(any(String.class));
+    }
+
+    @Test
+    @DisplayName("완료 결과가 불명확해도 DB가 참조하는 성공 이미지는 삭제하지 않는다")
+    void keepImageReferencedByCommittedGeneration() {
+        GenerateComicCommand command = createCommand();
+        ComicGeneration generation = createGeneration(command);
+        GenerationPrompt prompt = createPrompt();
+        Storyboard storyboard = createStoryboard();
+        ReferenceImage referenceImage = createReferenceImage();
+        GeneratedImage generatedImage = createGeneratedImage();
+        IllegalStateException completionException = new IllegalStateException("완료 결과 확인 실패");
+        when(comicGenerationRepository.findById(generation.getId()))
+                .thenReturn(Optional.of(generation))
+                .thenAnswer(invocation -> {
+                    generation.succeed(
+                            storyboard,
+                            "generated/comic.png",
+                            Instant.parse("2026-08-06T12:00:00Z")
+                    );
+                    return Optional.of(generation);
+                });
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenReturn(storyboard);
+        when(imageStorage.load("references/style.png")).thenReturn(referenceImage);
+        when(comicImageGenerator.generate(any(ComicImageGenerationRequest.class))).thenReturn(generatedImage);
+        when(imageStorage.store(generatedImage)).thenReturn("generated/comic.png");
+        when(completionService.succeed(generation.getId(), storyboard, "generated/comic.png"))
+                .thenThrow(completionException);
+
+        assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
+                .isSameAs(completionException);
+        verify(imageStorage, never()).delete(any(String.class));
+    }
+
+    @Test
+    @DisplayName("완료 상태를 재확인할 수 없으면 이미지 삭제를 보류한다")
+    void keepImageWhenCompletionStateCannotBeVerified() {
+        GenerateComicCommand command = createCommand();
+        ComicGeneration generation = createGeneration(command);
+        GenerationPrompt prompt = createPrompt();
+        Storyboard storyboard = createStoryboard();
+        ReferenceImage referenceImage = createReferenceImage();
+        GeneratedImage generatedImage = createGeneratedImage();
+        IllegalStateException completionException = new IllegalStateException("완료 결과 확인 실패");
+        IllegalStateException verificationException = new IllegalStateException("저장 상태 조회 실패");
+        when(comicGenerationRepository.findById(generation.getId()))
+                .thenReturn(Optional.of(generation))
+                .thenThrow(verificationException);
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenReturn(storyboard);
+        when(imageStorage.load("references/style.png")).thenReturn(referenceImage);
+        when(comicImageGenerator.generate(any(ComicImageGenerationRequest.class))).thenReturn(generatedImage);
+        when(imageStorage.store(generatedImage)).thenReturn("generated/comic.png");
+        when(completionService.succeed(generation.getId(), storyboard, "generated/comic.png"))
+                .thenThrow(completionException);
+
+        assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
+                .isSameAs(completionException)
+                .satisfies(exception -> assertThat(exception.getSuppressed())
+                        .containsExactly(verificationException));
+        verify(imageStorage, never()).delete(any(String.class));
     }
 
     @Test
