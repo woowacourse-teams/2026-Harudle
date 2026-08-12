@@ -1,10 +1,16 @@
 import { css } from '@emotion/react';
 import { theme } from '../styles/theme';
 
-const ActionButton = ({ onClick }: { onClick: () => void }) => {
+const ActionButton = ({
+  onClick,
+  label,
+}: {
+  onClick: () => void;
+  label: string;
+}) => {
   return (
     <button css={actionButtonStyle} onClick={onClick}>
-      새 일기 쓰기
+      {label}
     </button>
   );
 };
@@ -22,4 +28,5 @@ const actionButtonStyle = css`
   border-radius: 24px;
   background-color: ${theme.colors.primary};
   color: white;
+  cursor: pointer;
 `;
