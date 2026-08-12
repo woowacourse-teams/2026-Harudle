@@ -10,8 +10,8 @@ import org.junit.jupiter.api.Test;
 
 class ShareLinkTest {
 
-    @DisplayName("공유 링크를 생성하면 고유한 ID가 생성된다")
     @Test
+    @DisplayName("공유 링크를 생성하면 고유한 ID가 생성된다")
     void createWithId() {
         UUID generationId = UUID.randomUUID();
         Instant createdAt = Instant.parse("2026-08-11T03:00:00Z");
@@ -21,8 +21,8 @@ class ShareLinkTest {
         assertThat(shareLink.getId()).isNotNull();
     }
 
-    @DisplayName("그림일기 생성 ID로 공유 링크를 생성한다")
     @Test
+    @DisplayName("그림일기 생성 ID로 공유 링크를 생성한다")
     void createWithGenerationId() {
         UUID generationId = UUID.randomUUID();
         Instant createdAt = Instant.parse("2026-08-11T03:00:00Z");
@@ -32,8 +32,8 @@ class ShareLinkTest {
         assertThat(shareLink.getGenerationId()).isEqualTo(generationId);
     }
 
-    @DisplayName("공유 링크를 생성하면 생성 일시가 기록된다")
     @Test
+    @DisplayName("공유 링크를 생성하면 생성 일시가 기록된다")
     void recordCreatedAt() {
         UUID generationId = UUID.randomUUID();
         Instant createdAt = Instant.parse("2026-08-11T03:00:00Z");
@@ -43,8 +43,8 @@ class ShareLinkTest {
         assertThat(shareLink.getCreatedAt()).isEqualTo(createdAt);
     }
 
-    @DisplayName("그림일기 생성 ID가 없으면 공유 링크를 생성할 수 없다")
     @Test
+    @DisplayName("그림일기 생성 ID가 없으면 공유 링크를 생성할 수 없다")
     void failToCreateWithoutGenerationId() {
         Instant createdAt = Instant.parse("2026-08-11T03:00:00Z");
 
