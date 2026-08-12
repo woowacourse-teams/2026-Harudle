@@ -20,3 +20,5 @@ interface ApiRequestError {
 
 export type ApiRequest<T> =
   ApiRequestIdle | ApiRequestLoading | ApiRequestSuccess<T> | ApiRequestError;
+
+export type ApiRequestStatus = ApiRequest<void>['status'];
