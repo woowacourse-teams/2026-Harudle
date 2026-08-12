@@ -285,10 +285,12 @@ const augustDiaries = [
 ];
 
 export const handlers = [
-  http.get('/api/v1/diaries', ({ request }) => {
+  http.get('/api/v1/diaries', async ({ request }) => {
     const url = new URL(request.url);
     const year = Number(url.searchParams.get('year'));
     const month = Number(url.searchParams.get('month'));
+
+    await delay(1000);
 
     return HttpResponse.json({
       year,
