@@ -56,6 +56,7 @@ const DiaryDetailPage = () => {
   });
   const [isDeleteMenuOpen, setIsDeleteMenuOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
   const [diaryDeleteRequest, setDiaryDeleteRequest] = useState<
     ApiRequest<void>
   >({ status: 'idle' });
@@ -129,6 +130,52 @@ const DiaryDetailPage = () => {
     return <div css={feedbackStyle}>{diaryDetail.error.message}</div>;
   }
 
+  const handleDiaryShare = async () => {
+    if (isSharing) {
+      return;
+    }
+
+    setIsSharing(true);
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/diaries/${diaryId}/share-link`,
+        {
+          method: 'PUT',
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error('공유 링크를 만들지 못했습니다.');
+      }
+
+      const data: unknown = await response.json();
+
+      if (!isRecord(data) || typeof data.shareUrl !== 'string') {
+        throw new Error('공유 링크 응답 형식이 일치하지 않습니다.');
+      }
+
+      if (navigator.share) {
+        await navigator.share({
+          title: diaryDetail.data.diary.title,
+          url: data.shareUrl,
+        });
+        return;
+      }
+
+      await navigator.clipboard.writeText(data.shareUrl);
+      alert('공유 링크를 복사했습니다.');
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        return;
+      }
+
+      alert(error instanceof Error ? error.message : '공유에 실패했습니다.');
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
   return (
     <div css={diaryDetailPageStyle}>
       <PageHeader
@@ -180,13 +227,16 @@ const DiaryDetailPage = () => {
       <ActionButton
         icon={<img src={shareIcon} alt="공유하기 아이콘" />}
         label="공유하기"
-        onClick={() => {}}
+        onClick={handleDiaryShare}
+        disabled={isSharing}
       />
       <ActionButton
         icon={<img src={downloadIcon} alt="저장 아이콘" />}
         label="이미지 저장"
         variant="secondary"
-        onClick={() => {}}
+        onClick={() => {
+          window.open(diaryDetail.data.diary.imageUrl, '_blank');
+        }}
       />
 
       {isDeleteModalOpen && (
