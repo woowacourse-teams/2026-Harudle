@@ -167,6 +167,7 @@ const HomePage = () => {
             onClick={() => {
               navigate('/diary-write');
             }}
+            disabled={false}
           />
         </>
       ) : (
