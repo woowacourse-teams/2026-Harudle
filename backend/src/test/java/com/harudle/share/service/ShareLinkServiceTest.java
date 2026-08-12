@@ -12,7 +12,13 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -127,6 +133,39 @@ class ShareLinkServiceTest {
     }
 
     @Test
+    @DisplayName("동시에 공유 링크를 요청하면 하나는 생성하고 다른 하나는 기존 링크를 반환한다")
+    void serializeConcurrentShareLinkRequests() throws Exception {
+        ExecutorService executorService = Executors.newFixedThreadPool(2);
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+
+        try {
+            List<Future<ShareLinkCreationResult>> futures = IntStream.range(0, 2)
+                    .mapToObj(index -> executorService.submit(() -> {
+                        ready.countDown();
+                        start.await();
+                        return shareLinkService.createOrGet(USER_ID, DIARY_ID);
+                    }))
+                    .toList();
+
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+
+            List<ShareLinkCreationResult> results = futures.stream()
+                    .map(this::getResult)
+                    .toList();
+
+            assertThat(results).extracting(ShareLinkCreationResult::created)
+                    .containsExactlyInAnyOrder(true, false);
+            assertThat(results).extracting(ShareLinkCreationResult::shareId)
+                    .containsOnly(results.getFirst().shareId());
+            assertThat(shareLinkRepository.count()).isEqualTo(1);
+        } finally {
+            executorService.shutdownNow();
+        }
+    }
+
+    @Test
     @DisplayName("그림일기 생성이 처리 중이면 공유 링크를 생성할 수 없다")
     void failToCreateWhileGenerationIsProcessing() {
         changeGenerationStatus("PROCESSING", null, null);
@@ -217,5 +256,13 @@ class ShareLinkServiceTest {
                     .forEach(index -> query.setParameter(index + 1, parameters[index]));
             query.executeUpdate();
         });
+    }
+
+    private ShareLinkCreationResult getResult(Future<ShareLinkCreationResult> future) {
+        try {
+            return future.get(10, TimeUnit.SECONDS);
+        } catch (Exception exception) {
+            throw new AssertionError("동시 공유 링크 생성 요청이 정상적으로 완료되지 않았습니다.", exception);
+        }
     }
 }

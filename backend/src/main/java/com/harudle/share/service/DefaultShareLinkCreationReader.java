@@ -31,7 +31,7 @@ public class DefaultShareLinkCreationReader implements ShareLinkCreationReader {
             throw new DiaryAccessDeniedException();
         }
 
-        DiaryGeneration generation = diaryGenerationRepository.findByDiaryId(diaryId)
+        DiaryGeneration generation = diaryGenerationRepository.findByDiaryIdForUpdate(diaryId)
                 .orElseThrow(DiaryNotFoundException::new);
         return new ShareLinkCreationInfo(
                 generation.getId(),
