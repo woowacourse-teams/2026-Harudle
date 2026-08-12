@@ -84,6 +84,7 @@ class GeminiStoryboardGeneratorTest {
                 .isEqualTo(ThinkingLevel.Known.HIGH);
     }
 
+    @Test
     @DisplayName("Gemini 응답 본문이 비어 있으면 제공자 오류가 발생한다")
     void rejectEmptyResponse() {
         when(response.text()).thenReturn(" ");
