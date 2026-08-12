@@ -22,11 +22,14 @@ const actionButtonStyle = css`
   justify-content: center;
   align-items: center;
   width: 100%;
-  height: 20px;
-  padding: 20px 16px;
+  height: 56px;
+  padding: 16px 20px;
   border: none;
   border-radius: 24px;
   background-color: ${theme.colors.primary};
   color: white;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 24px;
   cursor: pointer;
 `;
