@@ -17,7 +17,9 @@ public interface DiaryGenerationRepository extends
         JpaRepository<DiaryGeneration, UUID>,
         DiaryGenerationQueryRepository {
 
-    Optional<DiaryGeneration> findByDiaryId(UUID diaryId);
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT generation FROM DiaryGeneration generation WHERE generation.diaryId = :diaryId")
+    Optional<DiaryGeneration> findByDiaryIdForUpdate(@Param("diaryId") UUID diaryId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT generation FROM DiaryGeneration generation WHERE generation.id = :id")
