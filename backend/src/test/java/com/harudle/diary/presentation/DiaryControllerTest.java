@@ -120,6 +120,8 @@ class DiaryControllerTest {
         assertThat(response.jsonPath().getInt("year")).isEqualTo(2026);
         assertThat(response.jsonPath().getList("days[0].items.id", String.class))
                 .containsExactly(DIARY_ID.toString(), SECOND_DIARY_ID.toString());
+        assertThat(response.jsonPath().getString("days[0].items[0].title"))
+                .isEqualTo("친구와 보낸 하루");
         assertThat(response.jsonPath().getString("days[0].items[0].thumbnailUrl"))
                 .isEqualTo("https://images.harudle.example/comic.png");
         assertThat(response.jsonPath().getString("days[0].items[1].title"))
@@ -127,6 +129,7 @@ class DiaryControllerTest {
         assertThat(response.jsonPath().getString("days[0].items[1].thumbnailUrl"))
                 .isEqualTo("https://images.harudle.example/second-comic.png");
         assertThat(response.asString()).doesNotContain("generated/comic.png");
+        assertThat(response.asString()).doesNotContain("generated/second-comic.png");
     }
 
     @Test
