@@ -24,7 +24,7 @@ class AiGenerationExceptionTest {
         }).isInstanceOfSatisfying(
                 AiGenerationException.class,
                 exception -> {
-                    assertThat(exception.getErrorType()).isEqualTo(AiGenerationErrorType.PROVIDER_ERROR);
+                    assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.PROVIDER_ERROR);
                     assertThat(exception).hasMessage("AI 제공자 호출에 실패했습니다.");
                     assertThat(exception).hasCause(cause);
                 }
@@ -42,7 +42,7 @@ class AiGenerationExceptionTest {
         }).isInstanceOfSatisfying(
                 AiGenerationException.class,
                 exception -> {
-                    assertThat(exception.getErrorType()).isEqualTo(AiGenerationErrorType.TIMEOUT);
+                    assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.TIMEOUT);
                     assertThat(exception).hasMessage("AI 생성 시간이 초과되었습니다.");
                     assertThat(exception.getCause()).isNull();
                 }
