@@ -27,6 +27,23 @@ class FieldValidationErrorMapperTest {
         ));
     }
 
+    @Test
+    @DisplayName("검증 메시지가 없으면 기본 사유로 변환한다")
+    void mapNullDefaultMessage() {
+        BindingResult bindingResult = new DirectFieldBindingResult(
+                new CreateDiaryRequest(),
+                "createDiaryRequest"
+        );
+        bindingResult.rejectValue("sourceText", "NotBlank", null);
+
+        List<FieldValidationError> errors = FieldValidationErrorMapper.from(bindingResult);
+
+        assertThat(errors).containsExactly(new FieldValidationError(
+                "sourceText",
+                "요청 값이 올바르지 않습니다."
+        ));
+    }
+
     private static final class CreateDiaryRequest {
 
         private String sourceText;
