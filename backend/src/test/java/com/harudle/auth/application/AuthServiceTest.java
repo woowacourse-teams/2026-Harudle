@@ -59,6 +59,17 @@ class AuthServiceTest {
     }
 
     @Test
+    @DisplayName("Refresh Token을 폐기한다")
+    void logsOut() {
+        String rawRefreshToken = "raw-refresh-token";
+
+        authService.logout(rawRefreshToken, REFRESHED_AT);
+
+        verify(refreshTokenService).revoke(rawRefreshToken, REFRESHED_AT);
+        verifyNoInteractions(accessTokenService);
+    }
+
+    @Test
     @DisplayName("Refresh Token이 없으면 갱신을 시작하지 않는다")
     void rejectsMissingRefreshToken() {
         assertThatThrownBy(() -> authService.refresh(null, REFRESHED_AT))
@@ -71,6 +82,15 @@ class AuthServiceTest {
     @DisplayName("기준 시간이 없으면 갱신을 시작하지 않는다")
     void rejectsMissingTime() {
         assertThatThrownBy(() -> authService.refresh("raw-refresh-token", null))
+                .isInstanceOf(NullPointerException.class);
+
+        verifyNoInteractions(refreshTokenService, accessTokenService);
+    }
+
+    @Test
+    @DisplayName("로그아웃 기준 시간이 없으면 토큰을 폐기하지 않는다")
+    void rejectsLogoutWithoutTime() {
+        assertThatThrownBy(() -> authService.logout("raw-refresh-token", null))
                 .isInstanceOf(NullPointerException.class);
 
         verifyNoInteractions(refreshTokenService, accessTokenService);

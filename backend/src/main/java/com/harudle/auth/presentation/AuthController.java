@@ -82,6 +82,21 @@ public class AuthController {
                 .body(RefreshTokenResponse.from(refreshedTokens.accessToken(), now));
     }
 
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(
+            HttpServletRequest request,
+            HttpServletResponse response
+    ) {
+        Instant now = Instant.now(clock).truncatedTo(ChronoUnit.SECONDS);
+        refreshTokenCookieReader.read(request)
+                .ifPresent(rawToken -> authService.logout(rawToken, now));
+        refreshTokenCookieWriter.clear(response);
+
+        return ResponseEntity.noContent()
+                .cacheControl(CacheControl.noStore())
+                .build();
+    }
+
     @ExceptionHandler({InvalidRefreshTokenException.class, InactiveUserException.class})
     public ResponseEntity<ProblemDetail> handleInvalidRefreshToken(
             HttpServletRequest request,

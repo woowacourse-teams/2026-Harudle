@@ -146,6 +146,60 @@ class AuthControllerTest {
     }
 
     @Test
+    @DisplayName("로그아웃하면 Refresh Token을 폐기하고 Cookie를 삭제한다")
+    void logsOut() throws Exception {
+        Cookie csrfCookie = issueCsrfCookie();
+        IssuedRefreshToken issuedRefreshToken = issueRefreshToken();
+
+        mockMvc.perform(post("/api/v1/auth/logout")
+                        .cookie(refreshTokenCookie(issuedRefreshToken), csrfCookie)
+                        .header("X-XSRF-TOKEN", csrfCookie.getValue()))
+                .andExpect(status().isNoContent())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(header().string(
+                        HttpHeaders.SET_COOKIE,
+                        containsString("refresh_token=;")
+                ));
+
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .cookie(refreshTokenCookie(issuedRefreshToken), csrfCookie)
+                        .header("X-XSRF-TOKEN", csrfCookie.getValue()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"));
+    }
+
+    @Test
+    @DisplayName("로그아웃 요청에 CSRF Header가 없으면 Refresh Token을 폐기하지 않는다")
+    void rejectsLogoutWithoutCsrfHeader() throws Exception {
+        Cookie csrfCookie = issueCsrfCookie();
+        IssuedRefreshToken issuedRefreshToken = issueRefreshToken();
+
+        mockMvc.perform(post("/api/v1/auth/logout")
+                        .cookie(refreshTokenCookie(issuedRefreshToken), csrfCookie))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/v1/auth/logout")
+                        .cookie(refreshTokenCookie(issuedRefreshToken), csrfCookie)
+                        .header("X-XSRF-TOKEN", csrfCookie.getValue()))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    @DisplayName("Refresh Token Cookie가 없어도 로그아웃할 수 있다")
+    void logsOutWithoutRefreshToken() throws Exception {
+        Cookie csrfCookie = issueCsrfCookie();
+
+        mockMvc.perform(post("/api/v1/auth/logout")
+                        .cookie(csrfCookie)
+                        .header("X-XSRF-TOKEN", csrfCookie.getValue()))
+                .andExpect(status().isNoContent())
+                .andExpect(header().string(
+                        HttpHeaders.SET_COOKIE,
+                        containsString("refresh_token=;")
+                ));
+    }
+
+    @Test
     @DisplayName("허용된 Frontend Origin의 CORS 사전 요청을 허용한다")
     void allowsFrontendCorsPreflight() throws Exception {
         mockMvc.perform(options("/api/v1/auth/refresh")

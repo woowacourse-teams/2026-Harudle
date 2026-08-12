@@ -38,4 +38,12 @@ public class AuthService {
                 rotatedRefreshToken.issuedRefreshToken()
         );
     }
+
+    @Transactional
+    public void logout(String rawRefreshToken, Instant now) {
+        Objects.requireNonNull(rawRefreshToken, "rawRefreshToken은 필수입니다.");
+        Objects.requireNonNull(now, "now는 필수입니다.");
+
+        refreshTokenService.revoke(rawRefreshToken, now);
+    }
 }
