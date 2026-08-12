@@ -71,7 +71,11 @@ public enum ErrorType {
     }
 
     URI problemType() {
-        String slug = name().toLowerCase(Locale.ROOT).replace('_', '-');
+        return problemType(code());
+    }
+
+    static URI problemType(String code) {
+        String slug = code.toLowerCase(Locale.ROOT).replace('_', '-');
         return URI.create(PROBLEM_TYPE_URN_PREFIX + slug);
     }
 }

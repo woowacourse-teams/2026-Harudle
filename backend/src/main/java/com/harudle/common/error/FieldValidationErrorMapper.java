@@ -6,6 +6,8 @@ import org.springframework.validation.FieldError;
 
 final class FieldValidationErrorMapper {
 
+    private static final String DEFAULT_REASON = "요청 값이 올바르지 않습니다.";
+
     private FieldValidationErrorMapper() {
     }
 
@@ -16,6 +18,10 @@ final class FieldValidationErrorMapper {
     }
 
     private static FieldValidationError from(FieldError error) {
-        return new FieldValidationError(error.getField(), error.getDefaultMessage());
+        String reason = error.getDefaultMessage();
+        if (reason == null) {
+            return new FieldValidationError(error.getField(), DEFAULT_REASON);
+        }
+        return new FieldValidationError(error.getField(), reason);
     }
 }

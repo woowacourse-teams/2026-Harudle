@@ -99,11 +99,10 @@ class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         if (exception instanceof ErrorResponse errorResponse) {
-            return new ResponseEntity<>(
-                    errorResponse.getBody(),
-                    errorResponse.getHeaders(),
-                    errorResponse.getStatusCode()
-            );
+            if (errorResponse.getStatusCode().is5xxServerError()) {
+                LOGGER.error("프레임워크 API 오류가 발생했습니다.", exception);
+            }
+            return createResponse(errorResponse, request);
         }
         LOGGER.error("예상하지 못한 API 오류가 발생했습니다.", exception);
         return createResponse(ErrorType.INTERNAL_SERVER_ERROR, request);
@@ -135,5 +134,16 @@ class GlobalExceptionHandler {
                 .status(errorType.status())
                 .headers(headers)
                 .body(problemDetailFactory.create(errorType, request));
+    }
+
+    private ResponseEntity<ProblemDetail> createResponse(
+            ErrorResponse errorResponse,
+            HttpServletRequest request
+    ) {
+        return new ResponseEntity<>(
+                problemDetailFactory.create(errorResponse, request),
+                errorResponse.getHeaders(),
+                errorResponse.getStatusCode()
+        );
     }
 }
