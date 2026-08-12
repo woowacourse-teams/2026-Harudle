@@ -12,7 +12,6 @@ public record OAuthLoginCommand(
     private static final int PROVIDER_SUBJECT_MAX_LENGTH = 255;
     private static final int EMAIL_MAX_LENGTH = 320;
     private static final int DISPLAY_NAME_MAX_LENGTH = 30;
-    private static final String DEFAULT_DISPLAY_NAME = "사용자";
 
     public OAuthLoginCommand {
         provider = Objects.requireNonNull(provider, "provider는 필수입니다.");
@@ -47,7 +46,7 @@ public record OAuthLoginCommand(
 
     private static String normalizeDisplayName(String value) {
         if (value == null || value.isBlank()) {
-            return DEFAULT_DISPLAY_NAME;
+            return null;
         }
 
         String normalized = value.trim();

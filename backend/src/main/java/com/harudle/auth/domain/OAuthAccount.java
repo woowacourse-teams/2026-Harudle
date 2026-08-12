@@ -64,9 +64,17 @@ public class OAuthAccount {
     }
 
     public void recordLogin(String providerEmail, Instant now) {
-        this.providerEmail = providerEmail;
+        updateProviderEmail(providerEmail);
         this.lastLoginAt = now;
         this.updatedAt = now;
+    }
+
+    private void updateProviderEmail(String providerEmail) {
+        if (providerEmail == null || providerEmail.isBlank()) {
+            return;
+        }
+
+        this.providerEmail = providerEmail;
     }
 
     public Long getId() {

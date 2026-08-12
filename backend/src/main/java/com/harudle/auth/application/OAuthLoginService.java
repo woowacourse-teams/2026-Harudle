@@ -51,24 +51,29 @@ public class OAuthLoginService {
     }
 
     private OAuthLoginResult createNewAccount(OAuthLoginCommand command, Instant now) {
-        User user = createUser(command, now);
-        createOAuthAccount(user, command, now);
+        RequiredOAuthProfile profile = new RequiredOAuthProfile(
+                command.providerEmail(),
+                command.displayName()
+        );
+        User user = createUser(profile, now);
+        
+        createOAuthAccount(user, command, profile.email(), now);
 
         return new OAuthLoginResult(user.getId());
     }
 
-    private User createUser(OAuthLoginCommand command, Instant now) {
-        User user = new User(command.providerEmail(), command.displayName(), now);
+    private User createUser(RequiredOAuthProfile profile, Instant now) {
+        User user = new User(profile.email(), profile.displayName(), now);
 
         return userRepository.save(user);
     }
 
-    private void createOAuthAccount(User user, OAuthLoginCommand command, Instant now) {
+    private void createOAuthAccount(User user, OAuthLoginCommand command, String providerEmail, Instant now) {
         OAuthAccount account = new OAuthAccount(
                 user,
                 command.provider(),
                 command.providerSubject(),
-                command.providerEmail(),
+                providerEmail,
                 now
         );
 
@@ -82,4 +87,5 @@ public class OAuthLoginService {
 
         throw new InactiveUserException();
     }
+
 }
