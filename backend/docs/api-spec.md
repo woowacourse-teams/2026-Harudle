@@ -510,10 +510,10 @@ Retry-After: 13800
 
 ```json
 {
-  "type": "https://api.harudle.example/problems/daily-generation-limit-exceeded",
+  "type": "urn:harudle:problem:daily-generation-limit-exceeded",
   "title": "Daily generation limit exceeded",
   "status": 429,
-  "detail": "하루 최대 3번까지 생성할 수 있습니다.",
+  "detail": "오늘 생성 가능한 횟수를 모두 사용했습니다.",
   "instance": "/api/v1/diaries",
   "code": "DAILY_GENERATION_LIMIT_EXCEEDED",
   "traceId": "019d71beebed75b19e45f9c51863bcbd"
@@ -526,7 +526,7 @@ Retry-After: 13800
 
 | 필드 | 필수 | 설명 |
 | --- | ---: | --- |
-| `type` | O | 오류 유형을 식별하는 URI |
+| `type` | O | `urn:harudle:problem:{오류 코드 slug}` 형식의 오류 식별자 |
 | `title` | O | 오류 유형의 짧은 제목 |
 | `status` | O | HTTP 상태 코드 |
 | `detail` | O | 사용자 또는 개발자가 확인할 상세 메시지 |
@@ -539,7 +539,7 @@ Retry-After: 13800
 
 ```json
 {
-  "type": "https://api.harudle.example/problems/validation-error",
+  "type": "urn:harudle:problem:validation-error",
   "title": "Validation failed",
   "status": 400,
   "detail": "요청 값이 올바르지 않습니다.",
@@ -549,7 +549,7 @@ Retry-After: 13800
   "errors": [
     {
       "field": "sourceText",
-      "reason": "일기 내용은 1자 이상 300자 이하여야 합니다."
+      "reason": "일기 내용은 필수입니다."
     }
   ]
 }
@@ -564,16 +564,26 @@ Retry-After: 13800
 | `401` | `UNAUTHORIZED` | 인증 정보 없음 또는 Access Token 만료 |
 | `401` | `INVALID_REFRESH_TOKEN` | Refresh Token 만료 또는 폐기 |
 | `403` | `FORBIDDEN` | 다른 사용자의 리소스 접근 |
+| `404` | `API_NOT_FOUND` | 존재하지 않는 API 경로 요청 |
 | `404` | `DIARY_NOT_FOUND` | 상세 조회·공유 링크 생성 대상 일기가 없거나 삭제됨 |
 | `404` | `SHARE_NOT_FOUND` | 공개 공유 링크가 없거나 연결된 일기가 삭제됨 |
+| `405` | `METHOD_NOT_ALLOWED` | 지원하지 않는 HTTP 메서드 요청 |
+| `406` | `NOT_ACCEPTABLE` | 생성할 수 없는 응답 미디어 타입 요청 |
 | `409` | `GENERATION_IN_PROGRESS` | 동일 멱등 요청이 아직 처리 중 |
 | `409` | `GENERATION_FAILED` | 공유할 생성 결과가 실패 상태임 |
 | `409` | `IDEMPOTENCY_KEY_CONFLICT` | 동일 키를 다른 요청 본문에 사용 |
+| `413` | `PAYLOAD_TOO_LARGE` | 허용 크기를 초과한 요청 본문 |
+| `415` | `UNSUPPORTED_MEDIA_TYPE` | 지원하지 않는 요청 미디어 타입 |
 | `429` | `DAILY_GENERATION_LIMIT_EXCEEDED` | KST 기준 일일 생성 3회 초과 |
+| `500` | `INTERNAL_SERVER_ERROR` | 서버 내부의 예기치 않은 오류 |
 | `502` | `AI_PROVIDER_ERROR` | LLM 또는 이미지 생성 Provider 호출 실패 |
+| `503` | `GENERATION_UNAVAILABLE` | 생성 어댑터 또는 생성 프롬프트를 사용할 수 없음 |
 | `503` | `GENERATION_INTERRUPTED` | 서버 중단 등으로 생성 처리가 완료되지 못함 |
 | `503` | `IMAGE_STORAGE_ERROR` | 생성 이미지 S3 저장 실패 |
 | `504` | `AI_PROVIDER_TIMEOUT` | AI Provider 응답 시간 초과 |
+
+표에 별도 코드가 없는 Spring 표준 오류는 HTTP 상태를 유지하고 `HTTP_{status}` 형식의 `code`를 반환합니다.
+모든 API 오류 응답에는 `code`와 `traceId`가 포함되며, FE는 `type`이나 `detail` 문자열 대신 `code`로 분기합니다.
 
 DELETE API는 대상이 없거나 이미 삭제된 경우에도 `204 No Content`를 반환하므로 `DIARY_NOT_FOUND`를 사용하지 않습니다.
 
