@@ -91,7 +91,7 @@ class DiaryCreationPersistenceTest {
         assertThat(claim.generationStatus()).isEqualTo(GenerationStatus.PROCESSING);
         assertThat(claim.usage().usedCount()).isEqualTo(1);
         assertThat(countRows("diaries")).isEqualTo(1);
-        assertThat(countRows("comic_generations")).isEqualTo(1);
+        assertThat(countRows("diary_generations")).isEqualTo(1);
         assertThat(countRows("daily_generation_usage")).isEqualTo(1);
     }
 
@@ -111,7 +111,7 @@ class DiaryCreationPersistenceTest {
         assertThatThrownBy(() -> transactionService.claim(createCommand(), true))
                 .isInstanceOf(DailyGenerationLimitExceededException.class);
         assertThat(countRows("diaries")).isZero();
-        assertThat(countRows("comic_generations")).isZero();
+        assertThat(countRows("diary_generations")).isZero();
         assertThat(countRows("daily_generation_usage")).isEqualTo(1);
     }
 

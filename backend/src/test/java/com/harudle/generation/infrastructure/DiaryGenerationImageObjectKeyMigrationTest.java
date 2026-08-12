@@ -56,7 +56,7 @@ class DiaryGenerationImageObjectKeyMigrationTest {
     @ValueSource(strings = {"   ", "\t\n"})
     @DisplayName("이미지 키가 null이거나 공백인 기존 성공 행을 저장소 실패로 보정한다")
     void migrateSucceededGenerationWithBlankImageObjectKey(String imageObjectKey) throws SQLException {
-        insertGeneration("SUCCEEDED", imageObjectKey);
+        insertGeneration("comic_generations", "SUCCEEDED", imageObjectKey);
 
         flyway().migrate();
 
@@ -69,7 +69,7 @@ class DiaryGenerationImageObjectKeyMigrationTest {
                             generation.error_code,
                             generation.completed_at,
                             diary.deleted_at = generation.completed_at AS discarded_at_completion
-                        FROM comic_generations AS generation
+                        FROM diary_generations AS generation
                         JOIN diaries AS diary ON diary.id = generation.diary_id
                         WHERE generation.id = ?
                         """)
@@ -97,11 +97,11 @@ class DiaryGenerationImageObjectKeyMigrationTest {
 
         SQLException exception = catchThrowableOfType(
                 SQLException.class,
-                () -> insertGeneration("SUCCEEDED", imageObjectKey)
+                () -> insertGeneration("diary_generations", "SUCCEEDED", imageObjectKey)
         );
 
         assertThat(exception.getSQLState()).isEqualTo(CHECK_VIOLATION_SQL_STATE);
-        assertThat(exception.getMessage()).contains("ck_comic_generations_succeeded_image_key");
+        assertThat(exception.getMessage()).contains("ck_diary_generations_succeeded_image_key");
     }
 
     @Test
@@ -109,13 +109,13 @@ class DiaryGenerationImageObjectKeyMigrationTest {
     void allowProcessingGenerationWithoutImageObjectKey() throws SQLException {
         flyway().migrate();
 
-        insertGeneration("PROCESSING", null);
+        insertGeneration("diary_generations", "PROCESSING", null);
 
         try (
                 Connection connection = openConnection();
                 PreparedStatement statement = connection.prepareStatement("""
                         SELECT COUNT(*)
-                        FROM comic_generations
+                        FROM diary_generations
                         WHERE id = ?
                         """)
         ) {
@@ -128,15 +128,15 @@ class DiaryGenerationImageObjectKeyMigrationTest {
         }
     }
 
-    private void insertGeneration(String status, String imageObjectKey) throws SQLException {
+    private void insertGeneration(String tableName, String status, String imageObjectKey) throws SQLException {
         try (Connection connection = openConnection()) {
             connection.setAutoCommit(false);
             insertUser(connection);
             insertDiary(connection);
             long promptId = insertPrompt(connection);
 
-            try (PreparedStatement statement = connection.prepareStatement("""
-                    INSERT INTO comic_generations (
+            String sql = """
+                    INSERT INTO %s (
                         id,
                         diary_id,
                         prompt_id,
@@ -146,7 +146,8 @@ class DiaryGenerationImageObjectKeyMigrationTest {
                         image_object_key
                     )
                     VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """)) {
+                    """.formatted(tableName);
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
                 statement.setObject(1, GENERATION_ID);
                 statement.setObject(2, DIARY_ID);
                 statement.setLong(3, promptId);
