@@ -16,7 +16,7 @@ import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.type.SqlTypes;
 
 @Entity
-@Table(name = "comic_generations")
+@Table(name = "diary_generations")
 public class DiaryGeneration {
 
     private static final int REQUEST_FINGERPRINT_HEX_LENGTH = 64;

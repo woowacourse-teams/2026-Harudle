@@ -36,6 +36,18 @@ public class ShareLink {
         return new ShareLink(UUID.randomUUID(), generationId);
     }
 
+    public UUID getId() {
+        return id;
+    }
+
+    public UUID getGenerationId() {
+        return generationId;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
     private static void validateId(UUID id) {
         if (id == null) {
             throw new IllegalArgumentException("공유 링크 ID는 필수입니다.");
@@ -44,7 +56,7 @@ public class ShareLink {
 
     private static void validateGenerationId(UUID generationId) {
         if (generationId == null) {
-            throw new IllegalArgumentException("만화 생성 ID는 필수입니다.");
+            throw new IllegalArgumentException("그림일기 생성 ID는 필수입니다.");
         }
     }
 }

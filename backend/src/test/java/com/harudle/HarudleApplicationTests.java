@@ -53,9 +53,9 @@ class HarudleApplicationTests {
                 .toList();
 
         assertThat(tableNames).containsExactly(
-                "comic_generations",
                 "daily_generation_usage",
                 "diaries",
+                "diary_generations",
                 "generation_prompts",
                 "oauth_accounts",
                 "refresh_tokens",

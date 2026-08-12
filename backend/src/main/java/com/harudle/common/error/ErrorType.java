@@ -38,6 +38,11 @@ public enum ErrorType {
             "Generation in progress",
             "동일한 만화 생성 요청이 처리 중입니다."
     ),
+    GENERATION_FAILED(
+            HttpStatus.CONFLICT,
+            "Generation failed",
+            "공유할 그림일기 생성 결과가 없습니다."
+    ),
     IDEMPOTENCY_KEY_CONFLICT(
             HttpStatus.CONFLICT,
             "Idempotency key conflict",

@@ -81,7 +81,7 @@ class DiaryQueryPersistenceTest {
 
     @AfterEach
     void tearDown() {
-        executeUpdate("DELETE FROM comic_generations");
+        executeUpdate("DELETE FROM diary_generations");
         executeUpdate("DELETE FROM diaries");
         executeUpdate("DELETE FROM users WHERE id IN (?, ?)", USER_ID, OTHER_USER_ID);
         generationPromptRepository.deleteAll();
@@ -145,7 +145,7 @@ class DiaryQueryPersistenceTest {
 
     private void insertSuccessfulGeneration(UUID diaryId, String title) {
         executeUpdate("""
-                INSERT INTO comic_generations (
+                INSERT INTO diary_generations (
                     id,
                     diary_id,
                     prompt_id,
@@ -176,7 +176,7 @@ class DiaryQueryPersistenceTest {
 
     private void insertFailedGeneration(UUID diaryId) {
         executeUpdate("""
-                INSERT INTO comic_generations (
+                INSERT INTO diary_generations (
                     id,
                     diary_id,
                     prompt_id,

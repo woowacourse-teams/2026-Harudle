@@ -18,6 +18,10 @@ public interface DiaryGenerationRepository extends
         DiaryGenerationQueryRepository {
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT generation FROM DiaryGeneration generation WHERE generation.diaryId = :diaryId")
+    Optional<DiaryGeneration> findByDiaryIdForUpdate(@Param("diaryId") UUID diaryId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT generation FROM DiaryGeneration generation WHERE generation.id = :id")
     Optional<DiaryGeneration> findByIdForUpdate(@Param("id") UUID id);
 

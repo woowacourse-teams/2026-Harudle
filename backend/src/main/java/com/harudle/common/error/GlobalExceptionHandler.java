@@ -11,6 +11,7 @@ import com.harudle.generation.service.exception.GenerationInProgressException;
 import com.harudle.generation.service.exception.GenerationUnavailableException;
 import com.harudle.generation.service.exception.IdempotencyKeyConflictException;
 import com.harudle.generation.service.port.ImageStorageException;
+import com.harudle.share.service.exception.ShareGenerationFailedException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.util.List;
@@ -88,6 +89,11 @@ class GlobalExceptionHandler {
     @ExceptionHandler(GenerationInProgressException.class)
     ResponseEntity<ProblemDetail> handleGenerationInProgress(HttpServletRequest request) {
         return createResponse(ErrorType.GENERATION_IN_PROGRESS, request);
+    }
+
+    @ExceptionHandler(ShareGenerationFailedException.class)
+    ResponseEntity<ProblemDetail> handleShareGenerationFailed(HttpServletRequest request) {
+        return createResponse(ErrorType.GENERATION_FAILED, request);
     }
 
     @ExceptionHandler(IdempotencyKeyConflictException.class)
