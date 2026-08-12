@@ -77,7 +77,8 @@ Object Key를 그대로 프론트엔드에 보내면 클라이언트가 bucket, 
 대안 3을 선택한다.
 
 DB의 `comic_generations.image_object_key`에는 안정적인 Object Key만 저장한다. 일기 애플리케이션 서비스도 Object Key를 결과로
-전달하고, 프레젠테이션의 `DiaryResponseAssembler`가 응답을 만들 때 `ImageUrlProvider`를 호출해 임시 접근 URL로 변환한다.
+전달하고, 프레젠테이션의 `DiaryResponseAssembler`가 응답을 만들 때 `ImageUrlProvider`를 호출해 임시 접근 URL로 변환하는
+포트 계약을 사용한다.
 
 ```text
 DB imageObjectKey
@@ -90,8 +91,9 @@ DB imageObjectKey
 상세 응답에는 `imageUrl`과 `imageUrlExpiresAt`을 함께 제공한다. 월간 응답에는 썸네일 URL을 제공하되 만료 후에는 월간 API를 다시
 조회해 새 URL을 받는다.
 
-`ImageUrlProvider`의 실제 구현 선택은 구성 경계에서 수행한다. 어댑터가 구성되지 않았을 때 Object Key나 가짜 URL을 대신 노출하지
-않고 명시적인 저장소 오류를 반환한다.
+`ImageUrlProvider`의 실제 구현 선택은 구성 경계에서 수행한다. 현재 브랜치에는 실제 URL 발급 어댑터가 없으며, fallback은
+Object Key나 가짜 URL을 노출하지 않고 명시적인 저장소 오류를 반환한다. 따라서 성공한 생성 결과를 실제로 조회하려면 S3 또는
+CDN 연동 브랜치에서 `ImageUrlProvider` 구현을 먼저 구성해야 한다.
 
 ## 긍정적 결과
 
@@ -99,7 +101,7 @@ DB imageObjectKey
 - S3 bucket, prefix와 서명 방식이 도메인 및 프론트엔드에 노출되지 않는다.
 - 이미지 접근 정책 변경을 URL 제공 어댑터 안에 제한할 수 있다.
 - 상세 응답 사용자는 URL의 유효 기간을 알 수 있다.
-- 비공개 객체에 필요한 일시적 접근 권한을 요청 시점에 발급한다.
+- 실제 어댑터가 구성되면 비공개 객체의 일시적 접근 권한을 응답 시점에 발급할 수 있다.
 
 ## 부정적 결과와 트레이드오프
 
