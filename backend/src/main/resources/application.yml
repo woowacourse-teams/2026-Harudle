@@ -18,6 +18,8 @@ spring:
           time_zone: UTC
 
 harudle:
+  share:
+    public-base-url: ${SHARE_PUBLIC_BASE_URL:http://localhost:3000/shares}
   generation:
     lifecycle:
       processing-timeout: ${GENERATION_PROCESSING_TIMEOUT:30m}
