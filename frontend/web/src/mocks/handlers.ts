@@ -334,6 +334,43 @@ export const handlers = [
     return HttpResponse.json(diaryDetail);
   }),
 
+  http.delete('/api/v1/diaries/:diaryId', ({ params }) => {
+    const diaryId = String(params.diaryId);
+
+    if (!mockDiaryDetails.has(diaryId)) {
+      return createProblemDetails({
+        status: 404,
+        code: 'DIARY_NOT_FOUND',
+        detail: '일기를 찾을 수 없습니다.',
+        instance: `/api/v1/diaries/${diaryId}`,
+      });
+    }
+
+    mockDiaryDetails.delete(diaryId);
+
+    for (const day of augustDiaries) {
+      const diaryIndex = day.items.findIndex((diary) => diary.id === diaryId);
+
+      if (diaryIndex !== -1) {
+        day.items.splice(diaryIndex, 1);
+        day.exist = day.items.length > 0;
+      }
+    }
+
+    const shareLink = mockDiaryShareLinks.get(diaryId);
+
+    if (shareLink) {
+      mockPublicDiaryShares.delete(shareLink.shareId);
+      mockDiaryShareLinks.delete(diaryId);
+    }
+
+    if (diaryId === sampleDiaryId) {
+      mockPublicDiaryShares.delete(sampleShareId);
+    }
+
+    return new HttpResponse(null, { status: 204 });
+  }),
+
   http.put('/api/v1/diaries/:diaryId/share-link', ({ params, request }) => {
     const diaryId = String(params.diaryId);
     const diaryDetail = mockDiaryDetails.get(diaryId);
