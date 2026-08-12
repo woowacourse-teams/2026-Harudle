@@ -25,7 +25,7 @@ export default {
         ],
       },
       {
-        test: /\.(png|svg)$/i,
+        test: /\.(png|svg|webp)$/i,
         type: 'asset/resource',
       },
     ],
