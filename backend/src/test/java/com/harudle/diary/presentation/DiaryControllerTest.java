@@ -53,6 +53,7 @@ class DiaryControllerTest {
 
     private static final UUID USER_ID = UUID.fromString("08d69a34-6d70-4d42-a158-671bc67733c9");
     private static final UUID DIARY_ID = UUID.fromString("6b66acba-0136-4822-8a59-f355dd7c977d");
+    private static final UUID SECOND_DIARY_ID = UUID.fromString("8c82a1c2-993f-41e9-8464-a8554b7620d7");
     private static final UUID GENERATION_ID = UUID.fromString("17ac16ef-c45a-40bb-92ea-aed37659ef1c");
     private static final LocalDate DIARY_DATE = LocalDate.of(2026, 8, 6);
     private static final Instant CREATED_AT = Instant.parse("2026-08-06T11:10:23Z");
@@ -92,13 +93,23 @@ class DiaryControllerTest {
                 "친구와 보낸 하루",
                 "generated/comic.png"
         );
+        DiarySummaryResult secondSummary = new DiarySummaryResult(
+                SECOND_DIARY_ID,
+                "산책으로 마무리한 하루",
+                "generated/second-comic.png"
+        );
         DiaryTimelineResult result = new DiaryTimelineResult(
                 2026,
                 8,
-                List.of(new DiaryDayResult(DIARY_DATE, List.of(summary)))
+                List.of(new DiaryDayResult(DIARY_DATE, List.of(summary, secondSummary)))
         );
         when(diaryQueryService.getTimeline(USER_ID, 2026, 8)).thenReturn(result);
         configureImageUrl();
+        when(imageUrlProvider.createAccessUrl("generated/second-comic.png"))
+                .thenReturn(new ImageAccessUrl(
+                        URI.create("https://images.harudle.example/second-comic.png"),
+                        IMAGE_EXPIRES_AT
+                ));
 
         MockMvcResponse response = authenticatedRequest()
                 .queryParam("year", 2026)
@@ -107,9 +118,18 @@ class DiaryControllerTest {
 
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.jsonPath().getInt("year")).isEqualTo(2026);
+        assertThat(response.jsonPath().getList("days[0].items.id", String.class))
+                .containsExactly(DIARY_ID.toString(), SECOND_DIARY_ID.toString());
+        assertThat(response.jsonPath().getString("days[0].items[0].title"))
+                .isEqualTo("친구와 보낸 하루");
         assertThat(response.jsonPath().getString("days[0].items[0].thumbnailUrl"))
                 .isEqualTo("https://images.harudle.example/comic.png");
+        assertThat(response.jsonPath().getString("days[0].items[1].title"))
+                .isEqualTo("산책으로 마무리한 하루");
+        assertThat(response.jsonPath().getString("days[0].items[1].thumbnailUrl"))
+                .isEqualTo("https://images.harudle.example/second-comic.png");
         assertThat(response.asString()).doesNotContain("generated/comic.png");
+        assertThat(response.asString()).doesNotContain("generated/second-comic.png");
     }
 
     @Test

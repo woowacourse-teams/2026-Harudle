@@ -2,6 +2,7 @@ package com.harudle.diary.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.groups.Tuple.tuple;
 import static org.mockito.Mockito.when;
 
 import com.harudle.diary.repository.DiaryRepository;
@@ -31,7 +32,9 @@ class DiaryQueryServiceTest {
     private static final UUID USER_ID = UUID.fromString("08d69a34-6d70-4d42-a158-671bc67733c9");
     private static final UUID OTHER_USER_ID = UUID.fromString("fcd41d4a-2cce-4f28-bdb7-524d00ef4da6");
     private static final UUID DIARY_ID = UUID.fromString("6b66acba-0136-4822-8a59-f355dd7c977d");
+    private static final UUID SECOND_DIARY_ID = UUID.fromString("8c82a1c2-993f-41e9-8464-a8554b7620d7");
     private static final UUID GENERATION_ID = UUID.fromString("17ac16ef-c45a-40bb-92ea-aed37659ef1c");
+    private static final UUID SECOND_GENERATION_ID = UUID.fromString("a8e8758d-493b-42be-9127-c5a457ee5f12");
     private static final LocalDate DIARY_DATE = LocalDate.of(2028, 2, 6);
     private static final Instant CREATED_AT = Instant.parse("2028-02-06T11:00:00Z");
     private static final Instant COMPLETED_AT = Instant.parse("2028-02-06T12:00:00Z");
@@ -52,28 +55,52 @@ class DiaryQueryServiceTest {
     @Test
     @DisplayName("윤년의 모든 날짜와 성공한 일기를 월간 타임라인으로 조회한다")
     void getTimelineIncludesEveryDayOfLeapMonth() {
-        DiarySnapshot diary = createDiarySnapshot(USER_ID);
-        ComicGenerationSnapshot generation = createSuccessfulGenerationSnapshot();
+        DiarySnapshot diary = createDiarySnapshot(DIARY_ID, USER_ID);
+        DiarySnapshot secondDiary = createDiarySnapshot(SECOND_DIARY_ID, USER_ID);
+        ComicGenerationSnapshot generation = createSuccessfulGenerationSnapshot(
+                GENERATION_ID,
+                DIARY_ID,
+                "친구와 보낸 하루",
+                "generated/comic.png"
+        );
+        ComicGenerationSnapshot secondGeneration = createSuccessfulGenerationSnapshot(
+                SECOND_GENERATION_ID,
+                SECOND_DIARY_ID,
+                "산책으로 마무리한 하루",
+                "generated/second-comic.png"
+        );
         when(diaryRepository.findMonthlySnapshots(
                 USER_ID,
                 LocalDate.of(2028, 2, 1),
                 LocalDate.of(2028, 2, 29)
-        )).thenReturn(List.of(diary));
+        )).thenReturn(List.of(diary, secondDiary));
         when(comicGenerationRepository.findSnapshotsByDiaryIdInAndStatus(
-                List.of(DIARY_ID),
+                List.of(DIARY_ID, SECOND_DIARY_ID),
                 GenerationStatus.SUCCEEDED
-        )).thenReturn(List.of(generation));
+        )).thenReturn(List.of(generation, secondGeneration));
 
         DiaryTimelineResult result = diaryQueryService.getTimeline(USER_ID, 2028, 2);
 
         assertThat(result.days()).hasSize(29);
         assertThat(result.days().get(5).hasItems()).isTrue();
-        assertThat(result.days().get(5).items()).singleElement()
-                .satisfies(item -> {
-                    assertThat(item.id()).isEqualTo(DIARY_ID);
-                    assertThat(item.title()).isEqualTo("친구와 보낸 하루");
-                    assertThat(item.imageObjectKey()).isEqualTo("generated/comic.png");
-                });
+        assertThat(result.days().get(5).items())
+                .extracting(
+                        item -> item.id(),
+                        item -> item.title(),
+                        item -> item.imageObjectKey()
+                )
+                .containsExactly(
+                        tuple(
+                                DIARY_ID,
+                                "친구와 보낸 하루",
+                                "generated/comic.png"
+                        ),
+                        tuple(
+                                SECOND_DIARY_ID,
+                                "산책으로 마무리한 하루",
+                                "generated/second-comic.png"
+                        )
+                );
         assertThat(result.days().getFirst().hasItems()).isFalse();
     }
 
@@ -81,9 +108,14 @@ class DiaryQueryServiceTest {
     @DisplayName("본인 소유의 삭제되지 않은 일기 상세를 조회한다")
     void getDetail() {
         when(diaryRepository.findActiveSnapshotById(DIARY_ID))
-                .thenReturn(Optional.of(createDiarySnapshot(USER_ID)));
+                .thenReturn(Optional.of(createDiarySnapshot(DIARY_ID, USER_ID)));
         when(comicGenerationRepository.findSnapshotByDiaryId(DIARY_ID))
-                .thenReturn(Optional.of(createSuccessfulGenerationSnapshot()));
+                .thenReturn(Optional.of(createSuccessfulGenerationSnapshot(
+                        GENERATION_ID,
+                        DIARY_ID,
+                        "친구와 보낸 하루",
+                        "generated/comic.png"
+                )));
 
         DiaryDetailResult result = diaryQueryService.getDetail(USER_ID, DIARY_ID);
 
@@ -105,15 +137,15 @@ class DiaryQueryServiceTest {
     @DisplayName("다른 사용자의 일기는 상세 조회할 수 없다")
     void getDetailRejectsOtherUsersDiary() {
         when(diaryRepository.findActiveSnapshotById(DIARY_ID))
-                .thenReturn(Optional.of(createDiarySnapshot(OTHER_USER_ID)));
+                .thenReturn(Optional.of(createDiarySnapshot(DIARY_ID, OTHER_USER_ID)));
 
         assertThatThrownBy(() -> diaryQueryService.getDetail(USER_ID, DIARY_ID))
                 .isInstanceOf(DiaryAccessDeniedException.class);
     }
 
-    private DiarySnapshot createDiarySnapshot(UUID userId) {
+    private DiarySnapshot createDiarySnapshot(UUID diaryId, UUID userId) {
         return new DiarySnapshot(
-                DIARY_ID,
+                diaryId,
                 userId,
                 DIARY_DATE,
                 "오늘의 일기",
@@ -121,13 +153,18 @@ class DiaryQueryServiceTest {
         );
     }
 
-    private ComicGenerationSnapshot createSuccessfulGenerationSnapshot() {
+    private ComicGenerationSnapshot createSuccessfulGenerationSnapshot(
+            UUID generationId,
+            UUID diaryId,
+            String title,
+            String imageObjectKey
+    ) {
         return new ComicGenerationSnapshot(
-                GENERATION_ID,
-                DIARY_ID,
+                generationId,
+                diaryId,
                 GenerationStatus.SUCCEEDED,
-                "친구와 보낸 하루",
-                "generated/comic.png",
+                title,
+                imageObjectKey,
                 COMPLETED_AT
         );
     }
