@@ -2,10 +2,14 @@ import { css } from '@emotion/react';
 import homeIcon from '../assets/icons/home.svg';
 import settingsIcon from '../assets/icons/settings.svg';
 import { theme } from '../styles/theme';
-import { useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 
 const BottomNavigation = () => {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const isHomeActive = pathname === '/';
+  const isSettingActive = pathname === '/setting';
+
   return (
     <nav css={bottomNavigationStyle}>
       <button
@@ -13,8 +17,8 @@ const BottomNavigation = () => {
         css={navigationItemStyle}
         onClick={() => navigate('/')}
       >
-        <img src={homeIcon} alt="홈 페이지 이동 버튼" css={homeIconStyle} />
-        <span css={activeLabelStyle}>홈</span>
+        <span css={navigationIconStyle(homeIcon, isHomeActive, 32)} />
+        <span css={navigationLabelStyle(isHomeActive)}>홈</span>
       </button>
 
       <button
@@ -22,12 +26,8 @@ const BottomNavigation = () => {
         css={navigationItemStyle}
         onClick={() => navigate('/setting')}
       >
-        <img
-          src={settingsIcon}
-          alt="설정 페이지 이동 버튼"
-          css={settingsIconStyle}
-        />
-        <span css={inactiveLabelStyle}>설정</span>
+        <span css={navigationIconStyle(settingsIcon, isSettingActive, 28)} />
+        <span css={navigationLabelStyle(isSettingActive)}>설정</span>
       </button>
     </nav>
   );
@@ -37,6 +37,7 @@ export default BottomNavigation;
 
 const bottomNavigationStyle = css`
   display: flex;
+  flex-shrink: 0;
   width: 100%;
   height: 88px;
   background-color: ${theme.colors.background};
@@ -59,26 +60,23 @@ const navigationItemStyle = css`
   }
 `;
 
-const homeIconStyle = css`
-  width: 32px;
-  height: 32px;
+const navigationIconStyle = (
+  icon: string,
+  isActive: boolean,
+  size: number,
+) => css`
+  width: ${size}px;
+  height: ${size}px;
+  background-color: ${
+    isActive ? theme.colors.primary : theme.colors.textSecondary
+  };
+  mask: url(${icon}) center / contain no-repeat;
 `;
 
-const settingsIconStyle = css`
-  width: 32px;
-  height: 32px;
-`;
-
-const activeLabelStyle = css`
-  color: ${theme.colors.accent};
+const navigationLabelStyle = (isActive: boolean) => css`
+  color: ${isActive ? theme.colors.accent : theme.colors.textSecondary};
+  font-family: 'Noto Sans KR', sans-serif;
   font-size: 12px;
-  font-weight: 700;
-  line-height: 18px;
-`;
-
-const inactiveLabelStyle = css`
-  color: ${theme.colors.textSecondary};
-  font-size: 12px;
-  font-weight: 400;
+  font-weight: ${isActive ? 700 : 400};
   line-height: 18px;
 `;
