@@ -1,17 +1,31 @@
 import { css } from '@emotion/react';
 import { theme } from '../styles/theme';
 import plusIcon from '../assets/icons/plus.svg';
+import arrowRightIcon from '../assets/icons/arrow-right.svg';
+
+type FloatingActionButtonIcon = 'plus' | 'arrow-right';
 
 const FloatingActionButton = ({
   onClick,
   disabled,
+  icon = 'plus',
+  type = 'button',
 }: {
   onClick: () => void;
   disabled: boolean;
+  icon?: FloatingActionButtonIcon;
+  type?: 'button' | 'submit';
 }) => {
+  const iconSrc = icon === 'arrow-right' ? arrowRightIcon : plusIcon;
+
   return (
-    <button css={buttonStyle(disabled)} onClick={onClick} disabled={disabled}>
-      <img src={plusIcon} alt="" css={plusIconStyle} />
+    <button
+      type={type}
+      css={buttonStyle(disabled)}
+      onClick={onClick}
+      disabled={disabled}
+    >
+      <img src={iconSrc} alt="" css={iconStyle} />
     </button>
   );
 };
@@ -44,7 +58,7 @@ const buttonStyle = (disabled: boolean) => css`
   }
 `;
 
-const plusIconStyle = css`
+const iconStyle = css`
   display: block;
   width: 24px;
   height: 24px;
