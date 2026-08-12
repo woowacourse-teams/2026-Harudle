@@ -11,6 +11,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -24,7 +25,7 @@ class AccessTokenServiceTest {
     private static final String ISSUER = "harudle";
     private static final String AUDIENCE = "harudle-api";
     private static final Duration ACCESS_TOKEN_TTL = Duration.ofMinutes(30);
-    private static final Instant ISSUED_AT = Instant.parse("2026-08-12T10:00:00Z");
+    private static final Instant ISSUED_AT = Instant.parse("2099-08-12T10:00:00Z");
     private static final String SECRET_BASE64 = createSecretBase64();
 
     private final AuthProperties authProperties = createAuthProperties(
@@ -68,8 +69,8 @@ class AccessTokenServiceTest {
     @DisplayName("JWT 초 정밀도에 맞춰 발급 시각을 정리한다")
     void truncatesIssuedAtToSeconds() {
         UUID userId = UUID.randomUUID();
-        Instant preciseTime = Instant.parse("2026-08-12T10:00:00.123456Z");
-        Instant normalizedTime = Instant.parse("2026-08-12T10:00:00Z");
+        Instant preciseTime = ISSUED_AT.plusNanos(123_456_000);
+        Instant normalizedTime = ISSUED_AT;
 
         IssuedAccessToken issuedToken = accessTokenService.issue(userId, preciseTime);
         Jwt jwt = jwtDecoder.decode(issuedToken.accessToken());

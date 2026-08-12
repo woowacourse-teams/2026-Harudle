@@ -113,6 +113,18 @@ class SecurityConfigTest {
         assertThat(result.getRequest().getSession(false)).isNotNull();
     }
 
+    @Test
+    @DisplayName("OAuth 콜백의 state가 없으면 실패 URL로 리다이렉트한다")
+    void redirectsOAuthCallbackFailure() throws Exception {
+        mockMvc.perform(get("/login/oauth2/code/kakao")
+                        .param("code", "authorization-code"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(header().string(
+                        HttpHeaders.LOCATION,
+                        "http://localhost:5173/auth/callback?error=oauth_failed"
+                ));
+    }
+
     private String issueAccessToken() {
         return accessTokenService.issue(
                 UUID.randomUUID(),

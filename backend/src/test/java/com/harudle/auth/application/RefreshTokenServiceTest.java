@@ -90,16 +90,18 @@ class RefreshTokenServiceTest {
         IssuedRefreshToken firstToken = refreshTokenService.issue(user, CREATED_AT);
         flushAndClear();
 
-        IssuedRefreshToken secondToken = refreshTokenService.rotate(
+        RotatedRefreshToken rotatedToken = refreshTokenService.rotate(
                 firstToken.rawToken(),
                 ROTATED_AT
         );
         flushAndClear();
 
         RefreshToken revokedToken = findToken(firstToken.rawToken());
+        IssuedRefreshToken secondToken = rotatedToken.issuedRefreshToken();
         RefreshToken newToken = findToken(secondToken.rawToken());
 
         assertThat(secondToken.rawToken()).isNotEqualTo(firstToken.rawToken());
+        assertThat(rotatedToken.userId()).isEqualTo(user.getId());
         assertThat(revokedToken.isRevoked()).isTrue();
         assertThat(revokedToken.getRevokedAt()).isEqualTo(ROTATED_AT);
         assertThat(newToken.isRevoked()).isFalse();

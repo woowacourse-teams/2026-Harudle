@@ -9,6 +9,7 @@ import com.harudle.common.security.AuthProperties;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,7 +43,7 @@ public class RefreshTokenService {
     }
 
     @Transactional
-    public IssuedRefreshToken rotate(String rawToken, Instant now) {
+    public RotatedRefreshToken rotate(String rawToken, Instant now) {
         Objects.requireNonNull(now, "now는 필수입니다.");
 
         String tokenHash = hashRawToken(rawToken);
@@ -50,9 +51,11 @@ public class RefreshTokenService {
         validateUsableToken(refreshToken, now);
         validateActiveUser(refreshToken.getUser());
 
+        UUID userId = refreshToken.getUser().getId();
         refreshToken.revoke(now);
+        IssuedRefreshToken issuedRefreshToken = issueNewToken(refreshToken.getUser(), now);
 
-        return issueNewToken(refreshToken.getUser(), now);
+        return new RotatedRefreshToken(userId, issuedRefreshToken);
     }
 
     @Transactional
