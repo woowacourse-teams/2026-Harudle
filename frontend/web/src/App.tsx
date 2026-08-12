@@ -4,6 +4,8 @@ import { Route, Routes } from 'react-router';
 import DiaryWritePage from './pages/diary-write/DiaryWritePage';
 import DiaryGeneratingPage from './pages/diary-generating/DiaryGeneratingPage';
 
+import SettingPage from './pages/setting/SettingPage';
+
 const App = () => {
   return (
     <div css={appStyle}>
@@ -11,6 +13,8 @@ const App = () => {
         <Route path="/" element={<HomePage />} />
         <Route path="/diary-write" element={<DiaryWritePage />} />
         <Route path="/diary-generating" element={<DiaryGeneratingPage />} />
+
+        <Route path="/setting" element={<SettingPage />} />
       </Routes>
     </div>
   );
