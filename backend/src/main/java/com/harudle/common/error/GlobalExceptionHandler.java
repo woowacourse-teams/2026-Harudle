@@ -1,9 +1,15 @@
 package com.harudle.common.error;
 
 import com.harudle.auth.presentation.AuthenticationRequiredException;
+import com.harudle.diary.presentation.InvalidIdempotencyKeyException;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
+import com.harudle.generation.service.exception.AiGenerationException;
+import com.harudle.generation.service.exception.ComicGenerationFailedException;
 import com.harudle.generation.service.exception.DailyGenerationLimitExceededException;
+import com.harudle.generation.service.exception.GenerationInProgressException;
+import com.harudle.generation.service.exception.GenerationUnavailableException;
+import com.harudle.generation.service.exception.IdempotencyKeyConflictException;
 import com.harudle.generation.service.port.ImageStorageException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
@@ -57,6 +63,11 @@ class GlobalExceptionHandler {
         return createResponse(ErrorType.VALIDATION_ERROR, request);
     }
 
+    @ExceptionHandler(InvalidIdempotencyKeyException.class)
+    ResponseEntity<ProblemDetail> handleInvalidIdempotencyKey(HttpServletRequest request) {
+        return createResponse(ErrorType.INVALID_IDEMPOTENCY_KEY, request);
+    }
+
     @ExceptionHandler(AuthenticationRequiredException.class)
     ResponseEntity<ProblemDetail> handleAuthenticationRequired(HttpServletRequest request) {
         HttpHeaders headers = new HttpHeaders();
@@ -74,6 +85,16 @@ class GlobalExceptionHandler {
         return createResponse(ErrorType.DIARY_NOT_FOUND, request);
     }
 
+    @ExceptionHandler(GenerationInProgressException.class)
+    ResponseEntity<ProblemDetail> handleGenerationInProgress(HttpServletRequest request) {
+        return createResponse(ErrorType.GENERATION_IN_PROGRESS, request);
+    }
+
+    @ExceptionHandler(IdempotencyKeyConflictException.class)
+    ResponseEntity<ProblemDetail> handleIdempotencyKeyConflict(HttpServletRequest request) {
+        return createResponse(ErrorType.IDEMPOTENCY_KEY_CONFLICT, request);
+    }
+
     @ExceptionHandler(DailyGenerationLimitExceededException.class)
     ResponseEntity<ProblemDetail> handleDailyGenerationLimitExceeded(
             DailyGenerationLimitExceededException exception,
@@ -88,9 +109,30 @@ class GlobalExceptionHandler {
         return new ResponseEntity<>(problemDetail, headers, HttpStatus.TOO_MANY_REQUESTS);
     }
 
+    @ExceptionHandler(ComicGenerationFailedException.class)
+    ResponseEntity<ProblemDetail> handleComicGenerationFailed(
+            ComicGenerationFailedException exception,
+            HttpServletRequest request
+    ) {
+        return createResponse(ErrorType.from(exception.errorCode()), request);
+    }
+
+    @ExceptionHandler(AiGenerationException.class)
+    ResponseEntity<ProblemDetail> handleAiGeneration(
+            AiGenerationException exception,
+            HttpServletRequest request
+    ) {
+        return createResponse(ErrorType.from(exception.errorType()), request);
+    }
+
     @ExceptionHandler(ImageStorageException.class)
     ResponseEntity<ProblemDetail> handleImageStorage(HttpServletRequest request) {
         return createResponse(ErrorType.IMAGE_STORAGE_ERROR, request);
+    }
+
+    @ExceptionHandler(GenerationUnavailableException.class)
+    ResponseEntity<ProblemDetail> handleGenerationUnavailable(HttpServletRequest request) {
+        return createResponse(ErrorType.GENERATION_UNAVAILABLE, request);
     }
 
     @ExceptionHandler(Exception.class)

@@ -9,19 +9,6 @@ public record ReferenceImage(
 ) {
 
     public ReferenceImage {
-        validateResource(resource);
-        validateMediaType(mediaType);
-    }
-
-    private static void validateResource(Resource resource) {
-        if (resource == null || !resource.isReadable()) {
-            throw new IllegalArgumentException("읽을 수 있는 참조 이미지 Resource가 필요합니다.");
-        }
-    }
-
-    private static void validateMediaType(MediaType mediaType) {
-        if (mediaType == null || !mediaType.getType().equals("image") || mediaType.isWildcardSubtype()) {
-            throw new IllegalArgumentException("참조 이미지의 구체적인 이미지 MediaType이 필요합니다.");
-        }
+        ImagePayloadValidator.validate(resource, mediaType, "참조 이미지");
     }
 }

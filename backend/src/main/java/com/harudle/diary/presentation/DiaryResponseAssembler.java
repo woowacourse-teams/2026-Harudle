@@ -1,10 +1,12 @@
 package com.harudle.diary.presentation;
 
+import com.harudle.diary.service.dto.CreateDiaryResult;
 import com.harudle.diary.service.dto.DiaryDayResult;
 import com.harudle.diary.service.dto.DiaryDetailResult;
 import com.harudle.diary.service.dto.DiaryGenerationResult;
 import com.harudle.diary.service.dto.DiarySummaryResult;
 import com.harudle.diary.service.dto.DiaryTimelineResult;
+import com.harudle.generation.presentation.GenerationUsageResponse;
 import com.harudle.generation.service.port.ImageAccessUrl;
 import com.harudle.generation.service.port.ImageUrlProvider;
 import java.time.Instant;
@@ -22,6 +24,17 @@ final class DiaryResponseAssembler {
     DiaryResponseAssembler(ImageUrlProvider imageUrlProvider, ZoneId serviceZoneId) {
         this.imageUrlProvider = imageUrlProvider;
         this.serviceZoneId = serviceZoneId;
+    }
+
+    CreateDiaryResponse toCreateResponse(CreateDiaryResult result) {
+        return new CreateDiaryResponse(
+                result.id(),
+                result.diaryDate(),
+                result.sourceText(),
+                toServiceTime(result.createdAt()),
+                toGenerationResponse(result.generation()),
+                GenerationUsageResponse.from(result.usage())
+        );
     }
 
     DiaryDetailResponse toDetailResponse(DiaryDetailResult result) {
