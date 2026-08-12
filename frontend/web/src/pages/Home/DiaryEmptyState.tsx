@@ -10,6 +10,7 @@ const DiaryEmptyState = () => {
         onClick={() => {
           navigate('/diary-write');
         }}
+        label="새 일기 쓰기"
       />
     </div>
   );
