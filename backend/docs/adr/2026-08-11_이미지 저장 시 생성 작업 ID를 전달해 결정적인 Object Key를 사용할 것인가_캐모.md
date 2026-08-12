@@ -17,17 +17,17 @@ String store(GeneratedImage generatedImage);
 이미지 내용의 해시처럼 생성 작업과 직접 연결되지 않은 값을 사용해 Object Key를 만들어야 한다.
 
 ```text
-generated/comics/{randomUuid}.png
+generated/diary-images/{randomUuid}.png
 ```
 
 이 방식은 저장소가 독립적으로 Key를 생성할 수 있지만 다음 문제가 있다.
 
-- DB의 `ComicGeneration`과 S3 객체의 관계를 Object Key만 보고 파악하기 어렵다.
+- DB의 `DiaryGeneration`과 S3 객체의 관계를 Object Key만 보고 파악하기 어렵다.
 - 동일한 생성 작업을 재실행할 때마다 서로 다른 객체가 만들어질 수 있다.
 - 장애 조사 시 어떤 생성 작업이 만든 객체인지 추가 조회가 필요하다.
 - S3 업로드 후 DB 저장에 실패한 고아 객체를 식별하고 정리하기 어렵다.
 
-현재 생성 흐름에서는 S3 저장 전에 `ComicGeneration`이 `PROCESSING` 상태로 저장되며 UUID 형식의
+현재 생성 흐름에서는 S3 저장 전에 `DiaryGeneration`이 `PROCESSING` 상태로 저장되며 UUID 형식의
 `generationId`가 이미 존재한다. 따라서 이 식별자를 이미지 저장 컨텍스트로 사용할 수 있겠다고 생각했다.
 
 ## 결정 요인
@@ -47,7 +47,7 @@ String store(GeneratedImage generatedImage);
 ```
 
 ```text
-generated/comics/{randomUuid}.png
+generated/diary-images/{randomUuid}.png
 ```
 
 장점은 다음과 같다.
@@ -75,7 +75,7 @@ String store(String imageObjectKey, GeneratedImage generatedImage);
 
 단점은 다음과 같다.
 
-- 서비스가 `generated/comics`와 같은 S3 prefix를 알게 된다.
+- 서비스가 `generated/diary-images`와 같은 S3 prefix를 알게 된다.
 - 파일명과 MIME type별 확장자 정책이 서비스 계층으로 유출된다.
 - 저장소 구조가 변경되면 서비스 코드도 함께 변경될 수 있다.
 
@@ -102,12 +102,12 @@ String store(UUID generationId, GeneratedImage generatedImage);
 
 대안 3을 선택한다.
 
-`ImageStorage`의 저장 계약에 `generationId`를 추가한다.   
+`ImageStorage`의 저장 계약에 `generationId`를 추가한다.
 
 이유는 다음과 같다.
 - `ImageStorage`를 사용하는 곳은 도메인 상 Generation밖에 없을 것이다.
 - 동일 Key를 다시 저장할 일은 거의 없을 것이다.
-- 동일 URL을 캐시하는 환경도 거의 없을 것이다.   
+- 동일 URL을 캐시하는 환경도 거의 없을 것이다.
 - 단점들이 현재 상황에서는 거의 발생하지 않을 것이라 대안 3을 선택하게 되었다.
 
 ```java
@@ -119,7 +119,7 @@ public interface ImageStorage {
 }
 ```
 
-`GenerateComicService`는 이미 생성된 작업 ID를 이미지와 함께 전달한다.
+`GenerateDiaryImageService`는 이미 생성된 작업 ID를 이미지와 함께 전달한다.
 
 ```java
 String imageObjectKey = imageStorage.store(
@@ -131,20 +131,20 @@ String imageObjectKey = imageStorage.store(
 S3 구현체가 최종 Object Key를 조립한다. 기본 형식은 다음과 같다.
 
 ```text
-generated/comics/{generationId}/comic.{extension}
+generated/diary-images/{generationId}/image.{extension}
 ```
 
 확장자는 `GeneratedImage`의 `MediaType`으로 결정한다. 이미지 생성 계약이 PNG로 고정되면 다음 경로를 사용한다.
 
 ```text
-generated/comics/{generationId}/comic.png
+generated/diary-images/{generationId}/image.png
 ```
 
 서비스는 `generationId`만 제공하며 bucket, prefix, 파일명, 확장자와 최종 Object Key 정책을 알지 않는다.
 
 ## 긍정적 결과
 
-- `ComicGeneration.id`만으로 관련 S3 객체 경로를 추론할 수 있다.
+- `DiaryGeneration.id`만으로 관련 S3 객체 경로를 추론할 수 있다.
 - 로그와 장애 조사에서 DB 작업과 S3 객체를 쉽게 연결할 수 있다.
 - 동일한 Generation ID를 재사용하는 재실행 정책이 추가되면 같은 경로를 재사용할 수 있다.
 - 랜덤 Key를 반복 생성해 논리적으로 같은 이미지가 여러 개 남는 문제를 줄일 수 있다.
@@ -162,4 +162,3 @@ generated/comics/{generationId}/comic.png
 
 이 포트는 Generation 패키지 내부에서만 사용하는 전용 출력 포트다. 따라서 범용성 감소보다 추적성, 장애 대응과
 경로 안정성이 더 중요하다고 판단한다.
-

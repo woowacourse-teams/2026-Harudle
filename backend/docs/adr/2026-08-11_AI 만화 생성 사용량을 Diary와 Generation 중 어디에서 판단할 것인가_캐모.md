@@ -30,7 +30,7 @@ Generation은 다른 도메인에서 요청받아 재사용될 수 있어야 하
 
 ```text
 Diary
-→ GenerateComicService
+→ GenerateDiaryImageService
 → 사용량 확인 및 차감
 → AI 생성 실행
 ```
@@ -55,7 +55,7 @@ Diary
 Diary 요청 처리
 → 일기와 사용량 정책 검증
 → 사용량 처리
-→ GenerateComicService 호출
+→ GenerateDiaryImageService 호출
 → AI 생성 실행
 ```
 
@@ -78,7 +78,7 @@ Diary 요청 처리
 ```text
 Diary
 → GenerationUsageService
-→ GenerateComicService
+→ GenerateDiaryImageService
 ```
 
 장점은 다음과 같다.
@@ -105,15 +105,15 @@ Diary
 - Generation은 요청받은 만화 생성 작업을 실행하고 성공·실패 상태를 저장하는 역할에 집중해야 한다.
 - 현재는 사용량 정책을 공유할 다른 생성 기능이 없으므로 별도 Usage 서비스를 도입하지 않는다.
 
-Diary의 요청 처리 흐름이 사용량을 확인하고 필요한 처리를 마친 후 `GenerateComicService`를 호출한다. Generation은
-`GenerateComicCommand`의 사용자 ID와 일기 날짜를 요청 지문 생성에 사용할 수 있지만, 사용량 한도를 조회하거나 생성 가능 여부를
+Diary의 요청 처리 흐름이 사용량을 확인하고 필요한 처리를 마친 후 `GenerateDiaryImageService`를 호출한다. Generation은
+`GenerateDiaryImageCommand`의 사용자 ID와 일기 날짜를 요청 지문 생성에 사용할 수 있지만, 사용량 한도를 조회하거나 생성 가능 여부를
 판단하지 않는다.
 
 ```text
 Diary API 또는 애플리케이션 서비스
 → 일기 조회 및 권한 확인
 → 일일 생성 사용량 판단
-→ GenerateComicService.generate(command)
+→ GenerateDiaryImageService.generate(command)
 ```
 
 Generation 패키지에는 사용량 Repository, 사용량 차감 로직과 Diary 요청 Controller를 추가하지 않는다.
@@ -128,7 +128,7 @@ Generation 패키지에는 사용량 Repository, 사용량 차감 로직과 Diar
 
 ## 부정적 결과와 트레이드오프
 
-- `GenerateComicService`를 직접 호출하는 코드가 생기면 사용량 검증을 우회할 수 있다.
+- `GenerateDiaryImageService`를 직접 호출하는 코드가 생기면 사용량 검증을 우회할 수 있다.
 - Diary 요청 흐름이 사용량 확인, 차감과 Generation 호출 순서를 책임져야 한다.
 - 사용량 차감 후 Generation의 원자적 선점이나 외부 호출이 실패하는 부분 실패를 별도로 처리해야 한다.
 - 생성 실패 시 사용량을 복구할지 유지할지에 대한 정책이 Diary에 필요하다.
