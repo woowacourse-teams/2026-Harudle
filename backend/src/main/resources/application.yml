@@ -22,6 +22,13 @@ harudle:
     lifecycle:
       processing-timeout: ${GENERATION_PROCESSING_TIMEOUT:30m}
       cleanup-interval: ${GENERATION_CLEANUP_INTERVAL:1m}
+    prompt-bootstrap:
+      enabled: ${HARUDLE_GENERATION_PROMPT_BOOTSTRAP_ENABLED:false}
+      storyboard-prompt-text: ${HARUDLE_GENERATION_PROMPT_BOOTSTRAP_STORYBOARD_PROMPT_TEXT:}
+      image-style-prompt-text: ${HARUDLE_GENERATION_PROMPT_BOOTSTRAP_IMAGE_STYLE_PROMPT_TEXT:}
+      image-asset-object-key: ${HARUDLE_GENERATION_PROMPT_BOOTSTRAP_IMAGE_ASSET_OBJECT_KEY:}
+    adapters:
+      enabled: ${HARUDLE_GENERATION_ADAPTERS_ENABLED:false}
     gemini:
       api-key: ${GOOGLE_API_KEY:${GEMINI_API_KEY:}}
       storyboard-model: ${GEMINI_STORYBOARD_MODEL:gemini-3.5-flash}
@@ -37,3 +44,4 @@ harudle:
         region: ${AWS_REGION:ap-northeast-2}
         generated-prefix: ${S3_GENERATED_PREFIX:generated/diary-images}
         max-object-size: ${S3_MAX_OBJECT_SIZE:20MB}
+        access-url-ttl: ${S3_ACCESS_URL_TTL:15m}

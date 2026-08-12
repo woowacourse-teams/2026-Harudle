@@ -2,23 +2,22 @@ package com.harudle;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest(properties = {
-        "harudle.generation.gemini.api-key=test-api-key",
-        "harudle.generation.storage.s3.bucket=test-bucket"
-})
+@SpringBootTest
 class HarudleApplicationTests {
 
     private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:18-alpine");
@@ -27,8 +26,11 @@ class HarudleApplicationTests {
     @ServiceConnection
     static final PostgreSQLContainer POSTGRESQL_CONTAINER = new PostgreSQLContainer(POSTGRES_IMAGE);
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @PersistenceContext
+    private EntityManager entityManager;
+
+    @MockitoBean
+    private JwtDecoder jwtDecoder;
 
     @Test
     @DisplayName("Spring 애플리케이션 컨텍스트를 로드한다")
@@ -38,14 +40,17 @@ class HarudleApplicationTests {
     @Test
     @DisplayName("Flyway가 초기 스키마를 생성한다")
     void schemaIsMigrated() {
-        List<String> tableNames = jdbcTemplate.queryForList("""
+        List<?> rows = entityManager.createNativeQuery("""
                 SELECT table_name
                 FROM information_schema.tables
                 WHERE table_schema = 'public'
                   AND table_type = 'BASE TABLE'
                   AND table_name <> 'flyway_schema_history'
                 ORDER BY table_name
-                """, String.class);
+                """).getResultList();
+        List<String> tableNames = rows.stream()
+                .map(String.class::cast)
+                .toList();
 
         assertThat(tableNames).containsExactly(
                 "comic_generations",
@@ -58,5 +63,4 @@ class HarudleApplicationTests {
                 "users"
         );
     }
-
 }

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.harudle.generation.configuration.S3StorageProperties;
+import java.time.Duration;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -63,7 +64,8 @@ class ImageObjectKeyFactoryTest {
                 "test-bucket",
                 "ap-northeast-2",
                 generatedPrefix,
-                DataSize.ofMegabytes(20)
+                DataSize.ofMegabytes(20),
+                Duration.ofMinutes(15)
         );
         return new ImageObjectKeyFactory(properties);
     }

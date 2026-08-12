@@ -2,6 +2,7 @@ package com.harudle.generation.configuration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Duration;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -21,7 +22,8 @@ class S3StoragePropertiesTest {
                 "harudle.generation.storage.s3.bucket=test-bucket",
                 "harudle.generation.storage.s3.region=ap-northeast-2",
                 "harudle.generation.storage.s3.generated-prefix=generated/diary-images",
-                "harudle.generation.storage.s3.max-object-size=20MB"
+                "harudle.generation.storage.s3.max-object-size=20MB",
+                "harudle.generation.storage.s3.access-url-ttl=15m"
         ).run(context -> {
             assertThat(context).hasNotFailed();
 
@@ -30,6 +32,7 @@ class S3StoragePropertiesTest {
             assertThat(properties.region()).isEqualTo("ap-northeast-2");
             assertThat(properties.generatedPrefix()).isEqualTo("generated/diary-images");
             assertThat(properties.maxObjectSize()).isEqualTo(DataSize.ofMegabytes(20));
+            assertThat(properties.accessUrlTtl()).isEqualTo(Duration.ofMinutes(15));
         });
     }
 
@@ -40,7 +43,8 @@ class S3StoragePropertiesTest {
                 "harudle.generation.storage.s3.bucket= ",
                 "harudle.generation.storage.s3.region=ap-northeast-2",
                 "harudle.generation.storage.s3.generated-prefix=generated/diary-images",
-                "harudle.generation.storage.s3.max-object-size=20MB"
+                "harudle.generation.storage.s3.max-object-size=20MB",
+                "harudle.generation.storage.s3.access-url-ttl=15m"
         ).run(context -> {
             assertThat(context).hasFailed();
             assertThat(context.getStartupFailure())
@@ -55,7 +59,20 @@ class S3StoragePropertiesTest {
                 "harudle.generation.storage.s3.bucket=test-bucket",
                 "harudle.generation.storage.s3.region=ap-northeast-2",
                 "harudle.generation.storage.s3.generated-prefix=generated/diary-images",
-                "harudle.generation.storage.s3.max-object-size=0B"
+                "harudle.generation.storage.s3.max-object-size=0B",
+                "harudle.generation.storage.s3.access-url-ttl=15m"
+        ).run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    @DisplayName("S3 접근 URL 유효 시간이 허용 범위를 벗어나면 설정 바인딩에 실패한다")
+    void rejectInvalidAccessUrlTtl() {
+        contextRunner.withPropertyValues(
+                "harudle.generation.storage.s3.bucket=test-bucket",
+                "harudle.generation.storage.s3.region=ap-northeast-2",
+                "harudle.generation.storage.s3.generated-prefix=generated/diary-images",
+                "harudle.generation.storage.s3.max-object-size=20MB",
+                "harudle.generation.storage.s3.access-url-ttl=8d"
         ).run(context -> assertThat(context).hasFailed());
     }
 

@@ -1,10 +1,9 @@
 package com.harudle.generation.adapter.out.s3;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
-
 import com.harudle.generation.configuration.S3StorageProperties;
 import com.harudle.generation.service.port.GeneratedImage;
 import com.harudle.generation.service.port.ImageStorage;
+import com.harudle.generation.service.port.ImageStorageException;
 import com.harudle.generation.service.port.ReferenceImage;
 import java.io.IOException;
 import java.io.InputStream;
@@ -16,13 +15,12 @@ import org.springframework.http.MediaType;
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 public final class S3ImageStorage implements ImageStorage {
-
-    private static final int MAX_OBJECT_KEY_BYTES = 1024;
 
     private final S3Client s3Client;
     private final String bucket;
@@ -47,7 +45,7 @@ public final class S3ImageStorage implements ImageStorage {
     @Override
     public ReferenceImage load(String imageObjectKey) {
         try {
-            validateObjectKey(imageObjectKey);
+            S3ObjectKeyValidator.validate(imageObjectKey);
             GetObjectRequest request = GetObjectRequest.builder()
                     .bucket(bucket)
                     .key(imageObjectKey)
@@ -67,12 +65,13 @@ public final class S3ImageStorage implements ImageStorage {
     @Override
     public String store(UUID generationId, GeneratedImage generatedImage) {
         String imageObjectKey = null;
+        boolean putAttempted = false;
         try {
             Objects.requireNonNull(generatedImage, "저장할 생성 이미지가 필요합니다.");
-            imageObjectKey = objectKeyFactory.create(generationId, generatedImage.mediaType());
             Resource resource = generatedImage.resource();
             long contentLength = resource.contentLength();
             validateObjectSize(contentLength);
+            imageObjectKey = objectKeyFactory.create(generationId, generatedImage.mediaType());
 
             PutObjectRequest request = PutObjectRequest.builder()
                     .bucket(bucket)
@@ -82,11 +81,30 @@ public final class S3ImageStorage implements ImageStorage {
                     .build();
 
             try (InputStream inputStream = resource.getInputStream()) {
-                s3Client.putObject(request, RequestBody.fromInputStream(inputStream, contentLength));
+                RequestBody requestBody = RequestBody.fromInputStream(inputStream, contentLength);
+                putAttempted = true;
+                s3Client.putObject(request, requestBody);
             }
             return imageObjectKey;
         } catch (Exception exception) {
-            throw exceptionTranslator.translate("저장", imageObjectKey, exception);
+            ImageStorageException storeException = exceptionTranslator.translate("저장", imageObjectKey, exception);
+            compensateStoreFailure(imageObjectKey, putAttempted, storeException);
+            throw storeException;
+        }
+    }
+
+    @Override
+    public void delete(String imageObjectKey) {
+        try {
+            S3ObjectKeyValidator.validate(imageObjectKey);
+            DeleteObjectRequest request = DeleteObjectRequest.builder()
+                    .bucket(bucket)
+                    .key(imageObjectKey)
+                    .build();
+
+            s3Client.deleteObject(request);
+        } catch (Exception exception) {
+            throw exceptionTranslator.translate("삭제", imageObjectKey, exception);
         }
     }
 
@@ -94,6 +112,22 @@ public final class S3ImageStorage implements ImageStorage {
         byte[] imageBytes = response.readNBytes(maxObjectSizeBytes + 1);
         validateObjectSize(imageBytes.length);
         return imageBytes;
+    }
+
+    private void compensateStoreFailure(
+            String imageObjectKey,
+            boolean putAttempted,
+            ImageStorageException storeException
+    ) {
+        if (!putAttempted) {
+            return;
+        }
+
+        try {
+            delete(imageObjectKey);
+        } catch (Exception deleteException) {
+            storeException.addSuppressed(deleteException);
+        }
     }
 
     private void validateObjectSize(Long contentLength) {
@@ -106,15 +140,6 @@ public final class S3ImageStorage implements ImageStorage {
     private void validateObjectSize(long contentLength) {
         if (contentLength <= 0 || contentLength > maxObjectSizeBytes) {
             throw new IllegalArgumentException("S3 이미지 객체 크기가 허용 범위를 벗어났습니다.");
-        }
-    }
-
-    private static void validateObjectKey(String imageObjectKey) {
-        if (imageObjectKey == null || imageObjectKey.isBlank()) {
-            throw new IllegalArgumentException("조회할 이미지 Object Key가 필요합니다.");
-        }
-        if (imageObjectKey.getBytes(UTF_8).length > MAX_OBJECT_KEY_BYTES) {
-            throw new IllegalArgumentException("이미지 Object Key는 UTF-8 기준 1,024바이트 이하여야 합니다.");
         }
     }
 

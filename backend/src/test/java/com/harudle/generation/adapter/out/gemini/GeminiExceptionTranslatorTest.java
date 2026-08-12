@@ -25,7 +25,7 @@ class GeminiExceptionTranslatorTest {
     void translateTimeoutException(RuntimeException cause) {
         AiGenerationException exception = translator.translate("스토리보드 생성", cause);
 
-        assertThat(exception.getErrorType()).isEqualTo(AiGenerationErrorType.TIMEOUT);
+        assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.TIMEOUT);
         assertThat(exception).hasMessage("Gemini 스토리보드 생성 요청 시간이 초과되었습니다.");
         assertThat(exception).hasCause(cause);
     }
@@ -37,7 +37,7 @@ class GeminiExceptionTranslatorTest {
 
         AiGenerationException exception = translator.translate("스토리보드 생성", cause);
 
-        assertThat(exception.getErrorType()).isEqualTo(AiGenerationErrorType.PROVIDER_ERROR);
+        assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.PROVIDER_ERROR);
         assertThat(exception).hasMessage("Gemini 스토리보드 생성 요청에 실패했습니다.");
         assertThat(exception).hasCause(cause);
     }
@@ -49,7 +49,7 @@ class GeminiExceptionTranslatorTest {
 
         AiGenerationException exception = translator.translate("스토리보드 생성", cause);
 
-        assertThat(exception.getErrorType()).isEqualTo(AiGenerationErrorType.PROVIDER_ERROR);
+        assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.PROVIDER_ERROR);
         assertThat(exception).hasCause(cause);
     }
 

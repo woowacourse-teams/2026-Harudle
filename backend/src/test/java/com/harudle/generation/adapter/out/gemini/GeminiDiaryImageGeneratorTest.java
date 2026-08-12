@@ -106,7 +106,7 @@ class GeminiDiaryImageGeneratorTest {
 
         assertThatThrownBy(() -> generator.generate(createRequest(createReferenceImage())))
                 .isInstanceOfSatisfying(AiGenerationException.class, exception -> {
-                    assertThat(exception.getErrorType()).isEqualTo(AiGenerationErrorType.PROVIDER_ERROR);
+                    assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.PROVIDER_ERROR);
                     assertThat(exception.getCause()).isInstanceOf(IllegalStateException.class);
                 });
     }
@@ -120,7 +120,7 @@ class GeminiDiaryImageGeneratorTest {
         assertThatThrownBy(() -> generator.generate(createRequest(createReferenceImage())))
                 .isInstanceOfSatisfying(
                         AiGenerationException.class,
-                        exception -> assertThat(exception.getErrorType())
+                        exception -> assertThat(exception.errorType())
                                 .isEqualTo(AiGenerationErrorType.PROVIDER_ERROR)
                 );
     }
@@ -138,7 +138,7 @@ class GeminiDiaryImageGeneratorTest {
 
         assertThatThrownBy(() -> generator.generate(createRequest(referenceImage)))
                 .isInstanceOfSatisfying(AiGenerationException.class, exception -> {
-                    assertThat(exception.getErrorType()).isEqualTo(AiGenerationErrorType.PROVIDER_ERROR);
+                    assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.PROVIDER_ERROR);
                     assertThat(exception.getCause()).isInstanceOf(IllegalArgumentException.class);
                 });
         verify(models, never()).generateContent(anyString(), any(Content.class), any(GenerateContentConfig.class));

@@ -16,7 +16,7 @@ public final class DiaryGenerationFailedException extends RuntimeException {
         this.errorCode = errorCode;
     }
 
-    public GenerationErrorCode getErrorCode() {
+    public GenerationErrorCode errorCode() {
         return errorCode;
     }
 

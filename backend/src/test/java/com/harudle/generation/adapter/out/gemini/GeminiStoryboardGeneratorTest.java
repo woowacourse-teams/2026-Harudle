@@ -91,7 +91,7 @@ class GeminiStoryboardGeneratorTest {
 
         assertThatThrownBy(() -> generator.generate(createRequest()))
                 .isInstanceOfSatisfying(AiGenerationException.class, exception -> {
-                    assertThat(exception.getErrorType()).isEqualTo(AiGenerationErrorType.PROVIDER_ERROR);
+                    assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.PROVIDER_ERROR);
                     assertThat(exception.getCause()).isInstanceOf(IllegalStateException.class);
                 });
     }
@@ -104,7 +104,7 @@ class GeminiStoryboardGeneratorTest {
         assertThatThrownBy(() -> generator.generate(createRequest()))
                 .isInstanceOfSatisfying(
                         AiGenerationException.class,
-                        exception -> assertThat(exception.getErrorType())
+                        exception -> assertThat(exception.errorType())
                                 .isEqualTo(AiGenerationErrorType.PROVIDER_ERROR)
                 );
     }
@@ -119,7 +119,7 @@ class GeminiStoryboardGeneratorTest {
 
         assertThatThrownBy(() -> generator.generate(createRequest()))
                 .isInstanceOfSatisfying(AiGenerationException.class, exception -> {
-                    assertThat(exception.getErrorType()).isEqualTo(AiGenerationErrorType.PROVIDER_ERROR);
+                    assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.PROVIDER_ERROR);
                     assertThat(exception.getCause()).isInstanceOf(IllegalArgumentException.class);
                 });
     }
@@ -133,7 +133,7 @@ class GeminiStoryboardGeneratorTest {
 
         assertThatThrownBy(() -> generator.generate(createRequest()))
                 .isInstanceOfSatisfying(AiGenerationException.class, exception -> {
-                    assertThat(exception.getErrorType()).isEqualTo(AiGenerationErrorType.TIMEOUT);
+                    assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.TIMEOUT);
                     assertThat(exception).hasCause(cause);
                 });
     }

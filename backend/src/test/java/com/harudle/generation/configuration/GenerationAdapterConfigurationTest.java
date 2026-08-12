@@ -1,64 +1,45 @@
 package com.harudle.generation.configuration;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
 
 import com.google.genai.Client;
 import com.google.genai.Models;
 import com.harudle.generation.adapter.out.gemini.GeminiDiaryImageGenerator;
 import com.harudle.generation.adapter.out.gemini.GeminiStoryboardGenerator;
 import com.harudle.generation.adapter.out.s3.S3ImageStorage;
-import com.harudle.generation.repository.DiaryGenerationRepository;
-import com.harudle.generation.repository.GenerationPromptRepository;
-import com.harudle.generation.service.DiaryGenerationCleanupScheduler;
-import com.harudle.generation.service.GenerateDiaryImageService;
-import com.harudle.generation.service.RequestFingerprintGenerator;
+import com.harudle.generation.adapter.out.s3.S3ImageUrlProvider;
 import com.harudle.generation.service.port.DiaryImageGenerator;
 import com.harudle.generation.service.port.ImageStorage;
+import com.harudle.generation.service.port.ImageUrlProvider;
 import com.harudle.generation.service.port.StoryboardGenerator;
-import java.time.Duration;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
-import org.springframework.util.unit.DataSize;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import tools.jackson.databind.ObjectMapper;
 
 class GenerationAdapterConfigurationTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
             .withUserConfiguration(GenerationAdapterConfiguration.class)
-            .withBean(GeminiGenerationProperties.class, GenerationAdapterConfigurationTest::geminiProperties)
-            .withBean(
-                    GenerationLifecycleProperties.class,
-                    GenerationAdapterConfigurationTest::generationLifecycleProperties
-            )
-            .withBean(S3StorageProperties.class, GenerationAdapterConfigurationTest::s3Properties)
-            .withBean(ObjectMapper.class, ObjectMapper::new)
-            .withBean(RequestFingerprintGenerator.class, RequestFingerprintGenerator::new)
-            .withBean(
-                    GenerationPromptRepository.class,
-                    () -> mock(GenerationPromptRepository.class)
-            )
-            .withBean(
-                    DiaryGenerationRepository.class,
-                    () -> mock(DiaryGenerationRepository.class)
-            );
+            .withBean(ObjectMapper.class, ObjectMapper::new);
 
     @Test
-    @DisplayName("Gemini와 S3 어댑터를 생성 서비스에 연결한다")
+    @DisplayName("명시적으로 활성화하면 Gemini와 S3 어댑터를 구성한다")
     void configureGenerationAdapters() {
-        contextRunner.run(context -> {
+        contextRunner.withPropertyValues(enabledAdapterProperties()).run(context -> {
             assertThat(context).hasNotFailed();
             assertThat(context).hasSingleBean(Client.class);
             assertThat(context).hasSingleBean(Models.class);
             assertThat(context).hasSingleBean(S3Client.class);
+            assertThat(context).hasSingleBean(S3Presigner.class);
             assertThat(context).hasSingleBean(StoryboardGenerator.class);
             assertThat(context).hasSingleBean(DiaryImageGenerator.class);
             assertThat(context).hasSingleBean(ImageStorage.class);
-            assertThat(context).hasSingleBean(GenerateDiaryImageService.class);
-            assertThat(context).hasSingleBean(DiaryGenerationCleanupScheduler.class);
+            assertThat(context).hasSingleBean(ImageUrlProvider.class);
+            assertThat(context).doesNotHaveBean("generateDiaryImageService");
 
             Client client = context.getBean(Client.class);
             assertThat(client.vertexAI()).isTrue();
@@ -71,35 +52,65 @@ class GenerationAdapterConfigurationTest {
                     .isInstanceOf(GeminiDiaryImageGenerator.class);
             assertThat(context.getBean(ImageStorage.class))
                     .isInstanceOf(S3ImageStorage.class);
+            assertThat(context.getBean(ImageUrlProvider.class))
+                    .isInstanceOf(S3ImageUrlProvider.class);
         });
     }
 
-    private static GeminiGenerationProperties geminiProperties() {
-        return new GeminiGenerationProperties(
-                "test-api-key",
-                "storyboard-model",
-                "image-model",
-                "high",
-                "1:1",
-                4096,
-                3,
-                Duration.ofSeconds(180)
-        );
+    @Test
+    @DisplayName("기본값에서는 비밀값 없이 외부 생성 어댑터를 등록하지 않는다")
+    void keepGenerationAdaptersDisabledByDefault() {
+        contextRunner.run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context).doesNotHaveBean(Client.class);
+            assertThat(context).doesNotHaveBean(S3Client.class);
+            assertThat(context).doesNotHaveBean(S3Presigner.class);
+            assertThat(context).doesNotHaveBean(StoryboardGenerator.class);
+            assertThat(context).doesNotHaveBean(DiaryImageGenerator.class);
+            assertThat(context).doesNotHaveBean(ImageStorage.class);
+            assertThat(context).doesNotHaveBean(ImageUrlProvider.class);
+            assertThat(context).doesNotHaveBean(GeminiGenerationProperties.class);
+            assertThat(context).doesNotHaveBean(S3StorageProperties.class);
+        });
     }
 
-    private static S3StorageProperties s3Properties() {
-        return new S3StorageProperties(
-                "test-bucket",
-                "ap-northeast-2",
-                "generated/diary-images",
-                DataSize.ofMegabytes(20)
-        );
+    @Test
+    @DisplayName("외부 생성 어댑터를 활성화하면 필수 비밀값을 검증한다")
+    void requireSecretsWhenGenerationAdaptersAreEnabled() {
+        contextRunner.withPropertyValues(
+                "harudle.generation.adapters.enabled=true",
+                "harudle.generation.gemini.api-key= ",
+                "harudle.generation.gemini.storyboard-model=storyboard-model",
+                "harudle.generation.gemini.image-model=image-model",
+                "harudle.generation.gemini.storyboard-thinking-level=high",
+                "harudle.generation.gemini.image-aspect-ratio=1:1",
+                "harudle.generation.gemini.max-output-tokens=4096",
+                "harudle.generation.gemini.retry-attempts=3",
+                "harudle.generation.gemini.request-timeout=180s",
+                "harudle.generation.storage.s3.bucket= ",
+                "harudle.generation.storage.s3.region=ap-northeast-2",
+                "harudle.generation.storage.s3.generated-prefix=generated/diary-images",
+                "harudle.generation.storage.s3.max-object-size=20MB",
+                "harudle.generation.storage.s3.access-url-ttl=15m"
+        ).run(context -> assertThat(context).hasFailed());
     }
 
-    private static GenerationLifecycleProperties generationLifecycleProperties() {
-        return new GenerationLifecycleProperties(
-                Duration.ofMinutes(30),
-                Duration.ofMinutes(1)
-        );
+    private static String[] enabledAdapterProperties() {
+        return new String[]{
+                "harudle.generation.adapters.enabled=true",
+                "harudle.generation.gemini.api-key=test-api-key",
+                "harudle.generation.gemini.storyboard-model=storyboard-model",
+                "harudle.generation.gemini.image-model=image-model",
+                "harudle.generation.gemini.storyboard-thinking-level=high",
+                "harudle.generation.gemini.image-aspect-ratio=1:1",
+                "harudle.generation.gemini.max-output-tokens=4096",
+                "harudle.generation.gemini.retry-attempts=3",
+                "harudle.generation.gemini.request-timeout=180s",
+                "harudle.generation.storage.s3.bucket=test-bucket",
+                "harudle.generation.storage.s3.region=ap-northeast-2",
+                "harudle.generation.storage.s3.generated-prefix=generated/diary-images",
+                "harudle.generation.storage.s3.max-object-size=20MB",
+                "harudle.generation.storage.s3.access-url-ttl=15m"
+        };
     }
 }

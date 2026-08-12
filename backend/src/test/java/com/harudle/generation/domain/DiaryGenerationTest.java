@@ -3,11 +3,13 @@ package com.harudle.generation.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 class DiaryGenerationTest {
 
@@ -30,10 +32,12 @@ class DiaryGenerationTest {
         assertThat(generation.getId()).isNotNull();
         assertThat(generation.getDiaryId()).isEqualTo(diaryId);
         assertThat(generation.getGenerationPromptId()).isEqualTo(GENERATION_PROMPT_ID);
-        assertThat(generation.getIdempotencyKey()).isEqualTo(idempotencyKey);
-        assertThat(generation.getRequestFingerprint()).isEqualTo(REQUEST_FINGERPRINT);
+        assertThat(generation.matchesExecutableClaim(
+                diaryId,
+                idempotencyKey,
+                REQUEST_FINGERPRINT
+        )).isTrue();
         assertThat(generation.getStatus()).isEqualTo(GenerationStatus.PROCESSING);
-        assertThat(generation.getStoryboard()).isNull();
         assertThat(generation.getImageObjectKey()).isNull();
         assertThat(generation.getErrorCode()).isNull();
         assertThat(generation.getCompletedAt()).isNull();
@@ -57,7 +61,6 @@ class DiaryGenerationTest {
         generation.succeed(storyboard, " generated/diary-image.png ", completedAt);
 
         assertThat(generation.getStatus()).isEqualTo(GenerationStatus.SUCCEEDED);
-        assertThat(generation.getStoryboard()).isEqualTo(storyboard);
         assertThat(generation.getTitle()).isEqualTo(storyboard.title());
         assertThat(generation.getImageObjectKey()).isEqualTo("generated/diary-image.png");
         assertThat(generation.getErrorCode()).isNull();
@@ -73,10 +76,27 @@ class DiaryGenerationTest {
         generation.fail(GenerationErrorCode.AI_PROVIDER_ERROR, completedAt);
 
         assertThat(generation.getStatus()).isEqualTo(GenerationStatus.FAILED);
-        assertThat(generation.getStoryboard()).isNull();
         assertThat(generation.getImageObjectKey()).isNull();
         assertThat(generation.getErrorCode()).isEqualTo(GenerationErrorCode.AI_PROVIDER_ERROR);
         assertThat(generation.getCompletedAt()).isEqualTo(completedAt);
+    }
+
+    @Test
+    @DisplayName("처리 제한 시간을 지난 생성 작업을 중단한다")
+    void interruptStaleGeneration() {
+        DiaryGeneration generation = startGeneration();
+        Instant currentTime = Instant.parse("2026-08-10T10:20:00Z");
+        ReflectionTestUtils.setField(
+                generation,
+                "updatedAt",
+                currentTime.minus(Duration.ofMinutes(16))
+        );
+
+        generation.interruptIfStale(currentTime, Duration.ofMinutes(15));
+
+        assertThat(generation.getStatus()).isEqualTo(GenerationStatus.FAILED);
+        assertThat(generation.getErrorCode()).isEqualTo(GenerationErrorCode.GENERATION_INTERRUPTED);
+        assertThat(generation.getCompletedAt()).isEqualTo(currentTime);
     }
 
     @Test
@@ -133,7 +153,6 @@ class DiaryGenerationTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("1,024바이트");
         assertThat(generation.getStatus()).isEqualTo(GenerationStatus.PROCESSING);
-        assertThat(generation.getStoryboard()).isNull();
         assertThat(generation.getTitle()).isNull();
         assertThat(generation.getImageObjectKey()).isNull();
         assertThat(generation.getCompletedAt()).isNull();

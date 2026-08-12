@@ -2,6 +2,7 @@ package com.harudle.generation.adapter.out.s3;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -14,6 +15,7 @@ import com.harudle.generation.service.port.ReferenceImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -23,12 +25,15 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
 import org.springframework.util.unit.DataSize;
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.DeleteObjectResponse;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
@@ -53,7 +58,8 @@ class S3ImageStorageTest {
                 "test-bucket",
                 "ap-northeast-2",
                 "generated/diary-images",
-                DataSize.ofBytes(MAX_OBJECT_SIZE_BYTES)
+                DataSize.ofBytes(MAX_OBJECT_SIZE_BYTES),
+                Duration.ofMinutes(10)
         );
         imageStorage = new S3ImageStorage(
                 s3Client,
@@ -92,6 +98,83 @@ class S3ImageStorageTest {
     }
 
     @Test
+    @DisplayName("S3 저장 결과를 확정할 수 없으면 결정된 Object Key를 보상 삭제한다")
+    void compensateUnknownStoreOutcome() {
+        GeneratedImage generatedImage = generatedImage();
+        SdkClientException storeCause = SdkClientException.builder()
+                .message("unknown store outcome")
+                .build();
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenThrow(storeCause);
+        when(s3Client.deleteObject(any(DeleteObjectRequest.class)))
+                .thenReturn(DeleteObjectResponse.builder().build());
+
+        ImageStorageException thrown = catchThrowableOfType(
+                () -> imageStorage.store(GENERATION_ID, generatedImage),
+                ImageStorageException.class
+        );
+
+        assertThat(thrown)
+                .hasMessageContaining("S3 이미지 저장")
+                .hasMessageContaining(OBJECT_KEY)
+                .hasCause(storeCause);
+        ArgumentCaptor<DeleteObjectRequest> requestCaptor = ArgumentCaptor.forClass(DeleteObjectRequest.class);
+        verify(s3Client).deleteObject(requestCaptor.capture());
+        assertThat(requestCaptor.getValue().bucket()).isEqualTo("test-bucket");
+        assertThat(requestCaptor.getValue().key()).isEqualTo(OBJECT_KEY);
+    }
+
+    @Test
+    @DisplayName("보상 삭제까지 실패해도 원래 S3 저장 예외를 유지한다")
+    void preserveStoreExceptionWhenCompensationFails() {
+        GeneratedImage generatedImage = generatedImage();
+        SdkClientException storeCause = SdkClientException.builder()
+                .message("unknown store outcome")
+                .build();
+        SdkClientException deleteCause = SdkClientException.builder()
+                .message("delete failure")
+                .build();
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenThrow(storeCause);
+        when(s3Client.deleteObject(any(DeleteObjectRequest.class)))
+                .thenThrow(deleteCause);
+
+        ImageStorageException thrown = catchThrowableOfType(
+                () -> imageStorage.store(GENERATION_ID, generatedImage),
+                ImageStorageException.class
+        );
+
+        assertThat(thrown)
+                .hasMessageContaining("S3 이미지 저장")
+                .hasCause(storeCause);
+        assertThat(thrown.getSuppressed()).hasSize(1);
+        assertThat(thrown.getSuppressed()[0])
+                .isInstanceOf(ImageStorageException.class)
+                .hasMessageContaining("S3 이미지 삭제")
+                .hasCause(deleteCause);
+        verify(s3Client).deleteObject(any(DeleteObjectRequest.class));
+    }
+
+    @Test
+    @DisplayName("S3 업로드 호출 전 실패에는 기존 Object Key를 삭제하지 않는다")
+    void doNotCompensateBeforePutAttempt() {
+        byte[] imageBytes = "generated".getBytes(StandardCharsets.UTF_8);
+        Resource unreadableOnOpenResource = new ByteArrayResource(imageBytes) {
+            @Override
+            public ByteArrayInputStream getInputStream() throws IOException {
+                throw new IOException("stream open failure");
+            }
+        };
+        GeneratedImage generatedImage = new GeneratedImage(unreadableOnOpenResource, MediaType.IMAGE_PNG);
+
+        assertThatThrownBy(() -> imageStorage.store(GENERATION_ID, generatedImage))
+                .isInstanceOf(ImageStorageException.class)
+                .hasMessageContaining("S3 이미지 저장")
+                .hasRootCauseMessage("stream open failure");
+        verifyNoInteractions(s3Client);
+    }
+
+    @Test
     @DisplayName("S3 이미지 객체를 메모리 Resource로 읽고 응답 스트림을 닫는다")
     void loadReferenceImage() throws IOException {
         byte[] imageBytes = "reference".getBytes(StandardCharsets.UTF_8);
@@ -108,6 +191,20 @@ class S3ImageStorageTest {
         assertThat(referenceImage.mediaType()).isEqualTo(MediaType.IMAGE_PNG);
         assertThat(referenceImage.resource().getContentAsByteArray()).isEqualTo(imageBytes);
         assertThat(inputStream.isClosed()).isTrue();
+    }
+
+    @Test
+    @DisplayName("S3 이미지 객체를 삭제한다")
+    void deleteImage() {
+        when(s3Client.deleteObject(any(DeleteObjectRequest.class)))
+                .thenReturn(DeleteObjectResponse.builder().build());
+
+        imageStorage.delete(OBJECT_KEY);
+
+        ArgumentCaptor<DeleteObjectRequest> requestCaptor = ArgumentCaptor.forClass(DeleteObjectRequest.class);
+        verify(s3Client).deleteObject(requestCaptor.capture());
+        assertThat(requestCaptor.getValue().bucket()).isEqualTo("test-bucket");
+        assertThat(requestCaptor.getValue().key()).isEqualTo(OBJECT_KEY);
     }
 
     @Test
@@ -172,6 +269,29 @@ class S3ImageStorageTest {
                 .hasMessageContaining("S3 이미지 조회")
                 .hasMessageContaining("prompt-assets/reference.png")
                 .hasCause(cause);
+    }
+
+    @Test
+    @DisplayName("S3 삭제 오류를 이미지 저장소 예외로 변환한다")
+    void translateDeleteException() {
+        SdkClientException cause = SdkClientException.builder()
+                .message("connection failure")
+                .build();
+        when(s3Client.deleteObject(any(DeleteObjectRequest.class))).thenThrow(cause);
+
+        assertThatThrownBy(() -> imageStorage.delete(OBJECT_KEY))
+                .isInstanceOf(ImageStorageException.class)
+                .hasMessageContaining("S3 이미지 삭제")
+                .hasMessageContaining(OBJECT_KEY)
+                .hasCause(cause);
+    }
+
+    private static GeneratedImage generatedImage() {
+        byte[] imageBytes = "generated".getBytes(StandardCharsets.UTF_8);
+        return new GeneratedImage(
+                new ByteArrayResource(imageBytes),
+                MediaType.IMAGE_PNG
+        );
     }
 
     private static ResponseInputStream<GetObjectResponse> responseStream(
