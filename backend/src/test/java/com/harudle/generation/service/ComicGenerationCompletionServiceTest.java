@@ -2,8 +2,12 @@ package com.harudle.generation.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.harudle.diary.domain.Diary;
+import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.generation.domain.ComicGeneration;
 import com.harudle.generation.domain.GenerationErrorCode;
 import com.harudle.generation.domain.GenerationStatus;
@@ -32,12 +36,19 @@ class ComicGenerationCompletionServiceTest {
     @Mock
     private ComicGenerationRepository comicGenerationRepository;
 
+    @Mock
+    private DiaryRepository diaryRepository;
+
     private ComicGenerationCompletionService completionService;
 
     @BeforeEach
     void setUp() {
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
-        completionService = new ComicGenerationCompletionService(comicGenerationRepository, clock);
+        completionService = new ComicGenerationCompletionService(
+                comicGenerationRepository,
+                diaryRepository,
+                clock
+        );
     }
 
     @Test
@@ -99,12 +110,37 @@ class ComicGenerationCompletionServiceTest {
     }
 
     @Test
+    @DisplayName("처리 중 생성을 실패 상태로 바꾸며 일기를 함께 폐기한다")
+    void failProcessingGenerationAndDiscardDiary() {
+        ComicGeneration generation = createGeneration();
+        Diary diary = mock(Diary.class);
+        when(comicGenerationRepository.findByIdForUpdate(generation.getId()))
+                .thenReturn(Optional.of(generation));
+        when(diaryRepository.findByIdIncludingDeletedForUpdate(generation.getDiaryId()))
+                .thenReturn(Optional.of(diary));
+
+        GenerationErrorCode result = completionService.fail(
+                generation.getId(),
+                GenerationErrorCode.AI_PROVIDER_TIMEOUT
+        );
+
+        assertThat(result).isEqualTo(GenerationErrorCode.AI_PROVIDER_TIMEOUT);
+        assertThat(generation.getStatus()).isEqualTo(GenerationStatus.FAILED);
+        assertThat(generation.getCompletedAt()).isEqualTo(NOW);
+        verify(diary).delete(NOW);
+    }
+
+    @Test
     @DisplayName("이미 실패한 생성의 오류 코드를 유지한다")
     void failKeepsExistingErrorCode() {
         ComicGeneration generation = createGeneration();
-        generation.fail(GenerationErrorCode.GENERATION_INTERRUPTED, NOW.minusSeconds(1));
+        Instant failedAt = NOW.minusSeconds(1);
+        generation.fail(GenerationErrorCode.GENERATION_INTERRUPTED, failedAt);
+        Diary diary = mock(Diary.class);
         when(comicGenerationRepository.findByIdForUpdate(generation.getId()))
                 .thenReturn(Optional.of(generation));
+        when(diaryRepository.findByIdIncludingDeletedForUpdate(generation.getDiaryId()))
+                .thenReturn(Optional.of(diary));
 
         GenerationErrorCode result = completionService.fail(
                 generation.getId(),
@@ -113,6 +149,7 @@ class ComicGenerationCompletionServiceTest {
 
         assertThat(result).isEqualTo(GenerationErrorCode.GENERATION_INTERRUPTED);
         assertThat(generation.getErrorCode()).isEqualTo(GenerationErrorCode.GENERATION_INTERRUPTED);
+        verify(diary).delete(failedAt);
     }
 
     private ComicGeneration createGeneration() {

@@ -5,6 +5,7 @@ import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
 import com.harudle.generation.domain.ComicGeneration;
+import com.harudle.generation.domain.GenerationStatus;
 import com.harudle.generation.domain.GenerationUsage;
 import com.harudle.generation.repository.ComicGenerationRepository;
 import com.harudle.generation.repository.GenerationPromptRepository;
@@ -15,6 +16,7 @@ import com.harudle.generation.service.exception.GenerationUnavailableException;
 import com.harudle.generation.service.exception.IdempotencyKeyConflictException;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -69,14 +71,15 @@ class DiaryCreationTransactionService {
             CreateDiaryCommand command,
             ComicGeneration generation
     ) {
-        Diary diary = diaryRepository.findActiveById(generation.getDiaryId())
+        Diary diary = diaryRepository.findByIdIncludingDeletedForUpdate(generation.getDiaryId())
                 .orElseThrow(DiaryNotFoundException::new);
+        validateDiaryAccess(diary, generation);
         GenerateComicCommand generationCommand = createGenerationCommand(command, diary);
         String requestFingerprint = requestFingerprintGenerator.generate(generationCommand);
         if (!generation.hasSameRequestFingerprint(requestFingerprint)) {
             throw new IdempotencyKeyConflictException();
         }
-        interruptIfStale(generation);
+        interruptIfStale(generation, diary);
         GenerationUsage usage = generationUsageService.getTodayUsage(command.userId());
         return toClaim(diary, generation, usage, false);
     }
@@ -108,8 +111,12 @@ class DiaryCreationTransactionService {
         return toClaim(diary, savedGeneration, usage, true);
     }
 
-    private void interruptIfStale(ComicGeneration generation) {
-        generation.interruptIfStale(clock.instant(), processingTimeout);
+    private void interruptIfStale(ComicGeneration generation, Diary diary) {
+        Instant currentTime = clock.instant();
+        generation.interruptIfStale(currentTime, processingTimeout);
+        if (generation.getStatus() == GenerationStatus.FAILED) {
+            diary.delete(generation.getCompletedAt());
+        }
     }
 
     private GenerateComicCommand createGenerationCommand(CreateDiaryCommand command, Diary diary) {
@@ -147,6 +154,12 @@ class DiaryCreationTransactionService {
     private static void validateProcessingTimeout(Duration processingTimeout) {
         if (processingTimeout == null || processingTimeout.isZero() || processingTimeout.isNegative()) {
             throw new IllegalArgumentException("생성 처리 제한 시간은 양수여야 합니다.");
+        }
+    }
+
+    private static void validateDiaryAccess(Diary diary, ComicGeneration generation) {
+        if (diary.isDeleted() && generation.getStatus() != GenerationStatus.FAILED) {
+            throw new DiaryNotFoundException();
         }
     }
 }
