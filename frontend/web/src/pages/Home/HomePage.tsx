@@ -5,6 +5,10 @@ import { API_BASE_URL, type ApiRequest } from '../../shared/api';
 import DiaryItemList from './DiaryItemList';
 import FloatingActionButton from '../../shared/FloatingActionButton';
 import { useNavigate } from 'react-router';
+import harudleLogo from '../../assets/images/harudle-logo.png';
+import eventAvailableIcon from '../../assets/icons/event-available.svg';
+import { css } from '@emotion/react';
+import { theme } from '../../styles/theme';
 
 type Month = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 
@@ -30,29 +34,30 @@ const formatYearMonthToObject = (yearMonth: string): YearMonth => {
   return { year, month };
 };
 
-// TODO: 이거 도메인 타입 만들고 나중에 MonthlyDiaries extends Monthly로 가자
-export interface MonthlyDiary {
-  date: string;
-  exist: boolean;
+export interface MonthlyDiaryItem {
+  id: string;
   title: string;
   thumbnailUrl: string;
+}
+
+export interface MonthlyDiaryDay {
+  date: string;
+  exist: boolean;
+  items: MonthlyDiaryItem[];
 }
 
 interface MonthlyDiariesResponse {
   year: number;
   month: Month;
-  days: MonthlyDiary[];
+  days: MonthlyDiaryDay[];
 }
 
-// 타입 가드 코드
-const isMonthlyDiary = (value: unknown): value is MonthlyDiary => {
+const isMonthlyDiaryItem = (value: unknown): value is MonthlyDiaryItem => {
   return (
     typeof value === 'object' &&
     value !== null &&
-    'date' in value &&
-    typeof value.date === 'string' &&
-    'exist' in value &&
-    typeof value.exist === 'boolean' &&
+    'id' in value &&
+    typeof value.id === 'string' &&
     'title' in value &&
     typeof value.title === 'string' &&
     'thumbnailUrl' in value &&
@@ -60,8 +65,25 @@ const isMonthlyDiary = (value: unknown): value is MonthlyDiary => {
   );
 };
 
-const isMonthlyDiaries = (value: unknown): value is MonthlyDiary[] => {
-  return Array.isArray(value) && value.every(isMonthlyDiary);
+const isMonthlyDiaryItems = (value: unknown): value is MonthlyDiaryItem[] => {
+  return Array.isArray(value) && value.every(isMonthlyDiaryItem);
+};
+
+const isMonthlyDiaryDay = (value: unknown): value is MonthlyDiaryDay => {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'date' in value &&
+    typeof value.date === 'string' &&
+    'exist' in value &&
+    typeof value.exist === 'boolean' &&
+    'items' in value &&
+    isMonthlyDiaryItems(value.items)
+  );
+};
+
+const isMonthlyDiaryDays = (value: unknown): value is MonthlyDiaryDay[] => {
+  return Array.isArray(value) && value.every(isMonthlyDiaryDay);
 };
 
 const isMonthlyDiariesResponse = (
@@ -76,7 +98,7 @@ const isMonthlyDiariesResponse = (
     typeof value.month === 'number' &&
     isMonth(value.month) &&
     'days' in value &&
-    isMonthlyDiaries(value.days)
+    isMonthlyDiaryDays(value.days)
   );
 };
 
@@ -90,7 +112,7 @@ const HomePage = () => {
 
   // TODO: 서버 상태 훅으로 분리
   const [monthlyDiaries, setMonthlyDiaries] = useState<
-    ApiRequest<MonthlyDiary[]>
+    ApiRequest<MonthlyDiaryDay[]>
   >({
     status: 'idle',
   });
@@ -148,31 +170,51 @@ const HomePage = () => {
     return <div>에러가 발생했습니다.</div>;
   }
 
+  const monthlyDiaryCount = monthlyDiaries.data.reduce(
+    (count, day) => count + day.items.length,
+    0,
+  );
+
   return (
-    <div>
-      <div>로고</div>
-      <div>
-        <input
-          type="month"
-          value={formatYearMonthToString(selectedYearMonth)}
-          onChange={handleYearMonthChange}
-        />
-        <div>{monthlyDiaries.data.length}개의 기록</div>
-      </div>
-      <RemainingGenerationUsageCard />
-      {monthlyDiaries.data.length > 0 ? (
-        <>
-          <DiaryItemList monthlyDiaries={monthlyDiaries.data} />
-          <FloatingActionButton
-            onClick={() => {
-              navigate('/diary-write');
-            }}
-            disabled={false}
+    <div css={homePageStyle}>
+      <header css={pageHeaderStyle}>
+        <button css={logoButtonStyle} onClick={() => navigate('/')}>
+          <img src={harudleLogo} alt="하루들" css={logoStyle} />
+        </button>
+      </header>
+
+      <main css={homeContentStyle}>
+        <div css={monthHeaderStyle}>
+          <input
+            type="month"
+            value={formatYearMonthToString(selectedYearMonth)}
+            onChange={handleYearMonthChange}
+            css={monthInputStyle}
           />
-        </>
-      ) : (
-        <DiaryEmptyState />
+
+          {monthlyDiaryCount > 0 && (
+            <div css={recordCountStyle}>{monthlyDiaryCount}개의 기록</div>
+          )}
+        </div>
+
+        <RemainingGenerationUsageCard />
+
+        {monthlyDiaryCount > 0 ? (
+          <DiaryItemList monthlyDiaryDays={monthlyDiaries.data} />
+        ) : (
+          <DiaryEmptyState />
+        )}
+      </main>
+
+      {monthlyDiaryCount > 0 && (
+        <FloatingActionButton
+          onClick={() => {
+            navigate('/diary-write');
+          }}
+          disabled={false}
+        />
       )}
+
       <BottomNavigation />
     </div>
   );
@@ -257,5 +299,130 @@ const RemainingGenerationUsageCard = () => {
     return <div>에러가 발생했습니다.</div>;
   }
 
-  return <div>오늘 남은 생성 {generationUsage.data}회</div>;
+  return (
+    <div css={generationUsageCardStyle}>
+      <img src={eventAvailableIcon} alt="" css={generationUsageIconStyle} />
+
+      <div css={generationUsageTextStyle(generationUsage.data)}>
+        <span>오늘 남은 생성 </span>
+        <strong>{generationUsage.data}회</strong>
+      </div>
+    </div>
+  );
 };
+
+const homePageStyle = css`
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: ${theme.colors.background};
+`;
+
+const pageHeaderStyle = css`
+  width: 100%;
+  height: 71px;
+  padding: 0 20px;
+  box-sizing: border-box;
+  overflow: hidden;
+`;
+
+const logoButtonStyle = css`
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 71px;
+  border: none;
+  background-color: transparent;
+  cursor: pointer;
+`;
+
+const logoStyle = css`
+  width: 106px;
+  height: 71px;
+`;
+
+const homeContentStyle = css`
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 0 20px 24px;
+  overflow-y: auto;
+  box-sizing: border-box;
+`;
+
+const monthHeaderStyle = css`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 46px;
+  padding: 10px 24px;
+  border-bottom: 1px solid ${theme.colors.border};
+  background-color: ${theme.colors.background};
+`;
+
+const monthInputStyle = css`
+  position: relative;
+  width: 130px;
+  padding: 0;
+  border: none;
+  outline: none;
+  background-color: transparent;
+  color: ${theme.colors.textPrimary};
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 26px;
+  cursor: pointer;
+
+  &::-webkit-calendar-picker-indicator {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+  }
+`;
+
+const recordCountStyle = css`
+  color: ${theme.colors.textSecondary};
+  font-size: 14px;
+  font-weight: 500;
+`;
+
+const generationUsageCardStyle = css`
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 48px;
+  padding: 0 16px;
+  border: 1px solid ${theme.colors.border};
+  border-radius: 16px;
+  background-color: ${theme.colors.generationCard};
+`;
+
+const generationUsageIconStyle = css`
+  width: 24px;
+  height: 24px;
+`;
+
+const generationUsageTextStyle = (remainingCount: number) => css`
+  color: ${theme.colors.textPrimary};
+  font-size: 14px;
+  font-weight: 500;
+
+  strong {
+    color: ${remainingCount > 0 ? theme.colors.accent : theme.colors.danger};
+    font-weight: 500;
+  }
+`;
