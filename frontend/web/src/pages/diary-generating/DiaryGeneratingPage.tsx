@@ -1,8 +1,39 @@
 import { useEffect, useState } from 'react';
+import { css } from '@emotion/react';
 import DiaryGenerateStepper from './DiaryGenerateStepper';
 import PageHeader from '../../shared/PageHeader';
 import { API_BASE_URL, type ApiRequestStatus } from '../../shared/api';
 import { useLocation, useNavigate } from 'react-router';
+import { theme } from '../../styles/theme';
+import backIcon from '../../assets/icons/back.svg';
+import generationStep1Image from '../../assets/images/generation-step-1-reading.png';
+import generationStep2Image from '../../assets/images/generation-step-2-writing.png';
+import generationStep3Image from '../../assets/images/generation-step-3-selecting-panels.png';
+import generationStep4Image from '../../assets/images/generation-step-4-painting.png';
+import generationCompleteImage from '../../assets/images/generation-step-5-complete.png';
+
+const generationSteps = [
+  {
+    message: '오늘의 이야기를 차근차근 읽고 있어요',
+    image: generationStep1Image,
+  },
+  {
+    message: '기억에 남는 장면을 한 장면씩 적어보고 있어요',
+    image: generationStep2Image,
+  },
+  {
+    message: '네 장면을 고르고 이야기의 흐름을 맞추고 있어요',
+    image: generationStep3Image,
+  },
+  {
+    message: '색을 더하고 다듬어 네컷 만화를 완성하고 있어요',
+    image: generationStep4Image,
+  },
+  {
+    message: '완성했어요! 1초 뒤에 앨범으로 이동해요',
+    image: generationCompleteImage,
+  },
+] as const;
 
 const DiaryGeneratingPage = () => {
   const [loadingStep, setLoadingStep] = useState<number>(1);
@@ -57,6 +88,8 @@ const DiaryGeneratingPage = () => {
     loadingStep === 4 && diaryGenerateRequest === 'success';
 
   const displayedStep = isGenerationComplete ? 5 : loadingStep;
+  const currentStep = generationSteps[displayedStep - 1];
+  const isCompleteStep = displayedStep === 5;
 
   useEffect(() => {
     if (!isGenerationComplete) {
@@ -71,28 +104,84 @@ const DiaryGeneratingPage = () => {
   }, [isGenerationComplete, navigate]);
 
   return (
-    <div>
+    <div css={pageStyle}>
       <PageHeader
-        leftButton={<button>뒤로가기</button>}
+        leftButton={
+          <button css={backButtonStyle} onClick={() => navigate(-1)}>
+            <img css={backIconStyle} src={backIcon} alt="뒤로가기" />
+          </button>
+        }
         title={null}
         rightButton={null}
       />
-      {displayedStep === 1 && <div>오늘의 이야기를 차근차근 읽고 있어요</div>}
 
-      {displayedStep === 2 && (
-        <div>기억에 남는 장면을 한 장면씩 적어보고 있어요</div>
-      )}
-      {displayedStep === 3 && (
-        <div>네 장면을 고르고 이야기의 흐름을 맞추고 있어요</div>
-      )}
-      {displayedStep === 4 && (
-        <div>색을 더하고 다듬어 네컷 만화를 완성하고 있어요</div>
-      )}
-      {displayedStep === 5 && <div>완성했어요! 1초 뒤에 앨범으로 이동해요</div>}
-
-      <DiaryGenerateStepper loadingStep={displayedStep} />
+      <main css={contentStyle}>
+        <img
+          css={illustrationStyle(isCompleteStep)}
+          src={currentStep.image}
+          alt="일기 생성 중"
+        />
+        <div css={messageStyle(isCompleteStep)}>{currentStep.message}</div>
+        <DiaryGenerateStepper loadingStep={displayedStep} />
+      </main>
     </div>
   );
 };
 
 export default DiaryGeneratingPage;
+
+const pageStyle = css`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 12px 20px 10px;
+  overflow: hidden;
+  background-color: ${theme.colors.background};
+  box-sizing: border-box;
+`;
+
+const backButtonStyle = css`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background-color: transparent;
+  cursor: pointer;
+`;
+
+const backIconStyle = css`
+  width: 24px;
+  height: 24px;
+`;
+
+const contentStyle = css`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+`;
+
+const illustrationStyle = (isCompleteStep: boolean) => css`
+  width: ${isCompleteStep ? '269px' : '220px'};
+  height: ${isCompleteStep ? '272px' : '220px'};
+  margin-top: -2px;
+  object-fit: cover;
+`;
+
+const messageStyle = (isCompleteStep: boolean) => css`
+  width: 300px;
+  min-height: 68px;
+  margin-top: ${isCompleteStep ? '-21px' : '12px'};
+  color: ${theme.colors.textPrimary};
+  font-family: 'Noto Sans KR', sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 34px;
+  text-align: center;
+  word-break: keep-all;
+`;
