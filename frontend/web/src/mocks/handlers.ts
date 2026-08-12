@@ -211,18 +211,78 @@ const createDiaryFingerprint = ({
 };
 
 const augustDiaries = [
-  { date: '2026-08-12', title: '비가 와도, 나는 괜찮았다.' },
-  { date: '2026-08-11', title: '회사에서 칭찬받은 날!' },
-  { date: '2026-08-10', title: '오랜만에 친구들을 만났다.' },
-  { date: '2026-08-09', title: '새로운 아이디어가 떠올랐다.' },
-  { date: '2026-08-08', title: '아무것도 하지 않은 행복' },
-  { date: '2026-08-07', title: '주말엔 영화와 팝콘!' },
-].map(({ date, title }) => ({
-  date,
-  exist: true,
-  title,
-  thumbnailUrl: diaryThumbnailUrl,
-}));
+  {
+    date: '2026-08-12',
+    exist: true,
+    items: [
+      {
+        id: createMockUuid(2, 1),
+        title: '비가 와도, 나는 괜찮았다.',
+        thumbnailUrl: diaryThumbnailUrl,
+      },
+    ],
+  },
+  {
+    date: '2026-08-11',
+    exist: true,
+    items: [
+      {
+        id: createMockUuid(3, 1),
+        title: '회사에서 칭찬받은 날!',
+        thumbnailUrl: diaryThumbnailUrl,
+      },
+    ],
+  },
+  {
+    date: '2026-08-10',
+    exist: true,
+    items: [
+      {
+        id: createMockUuid(4, 1),
+        title: '오랜만에 친구들을 만났다.',
+        thumbnailUrl: diaryThumbnailUrl,
+      },
+    ],
+  },
+  {
+    date: '2026-08-09',
+    exist: true,
+    items: [
+      {
+        id: createMockUuid(5, 1),
+        title: '새로운 아이디어가 떠올랐다.',
+        thumbnailUrl: diaryThumbnailUrl,
+      },
+    ],
+  },
+  {
+    date: '2026-08-08',
+    exist: true,
+    items: [
+      {
+        id: createMockUuid(6, 1),
+        title: '아무것도 하지 않은 행복',
+        thumbnailUrl: diaryThumbnailUrl,
+      },
+    ],
+  },
+  {
+    date: '2026-08-06',
+    exist: true,
+    items: [
+      {
+        id: sampleDiaryId,
+        title: '비가 와도 나는 괜찮았다.',
+        thumbnailUrl: diaryThumbnailUrl,
+      },
+    ],
+  },
+  {
+    date: '2026-08-05',
+    exist: false,
+    items: [],
+  },
+];
 
 export const handlers = [
   http.get('/api/v1/diaries', ({ request }) => {
