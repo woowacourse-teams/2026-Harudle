@@ -3,9 +3,76 @@ import { css } from '@emotion/react';
 import { theme } from '../../styles/theme';
 import harudleLogo from '../../assets/images/harudle-logo.png';
 import { useNavigate } from 'react-router';
+import { useEffect, useState } from 'react';
+import { API_BASE_URL, type ApiRequest } from '../../shared/api';
+
+interface ProfileResponse {
+  id: string;
+  name: string;
+  email: string;
+  oauthProviders: string[];
+  createdAt: string;
+}
+
+const isProfileResponse = (value: unknown): value is ProfileResponse => {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'id' in value &&
+    typeof value.id === 'string' &&
+    'name' in value &&
+    typeof value.name === 'string' &&
+    'email' in value &&
+    typeof value.email === 'string' &&
+    'oauthProviders' in value &&
+    Array.isArray(value.oauthProviders) &&
+    value.oauthProviders.every((provider) => typeof provider === 'string') &&
+    'createdAt' in value &&
+    typeof value.createdAt === 'string'
+  );
+};
 
 const SettingPage = () => {
   const navigate = useNavigate();
+  const [profile, setProfile] = useState<ApiRequest<ProfileResponse>>({
+    status: 'idle',
+  });
+
+  useEffect(() => {
+    const getProfile = async (): Promise<void> => {
+      setProfile({ status: 'loading' });
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/me`);
+
+        if (!response.ok) {
+          throw new Error('네트워크 에러');
+        }
+
+        const data: unknown = await response.json();
+
+        if (!isProfileResponse(data)) {
+          throw new Error('Profile 응답 형식이 일치하지 않습니다.');
+        }
+
+        setProfile({ status: 'success', data });
+      } catch (error: unknown) {
+        if (error instanceof Error) {
+          setProfile({ status: 'error', error });
+        }
+      }
+    };
+
+    void getProfile();
+  }, []);
+
+  if (profile.status === 'idle' || profile.status === 'loading') {
+    return <div>로딩중...</div>;
+  }
+
+  if (profile.status === 'error') {
+    return <div>에러가 발생했습니다.</div>;
+  }
 
   return (
     <div css={settingPageStyle}>
@@ -22,14 +89,14 @@ const SettingPage = () => {
           <div css={settingRowStyle}>
             <span css={settingLabelStyle}>이름</span>
             <span css={settingValueStyle}>
-              <span>정이현</span>
+              <span>{profile.data.name}</span>
             </span>
           </div>
 
           <div css={settingRowStyle}>
             <span css={settingLabelStyle}>소셜 계정</span>
             <span css={settingValueStyle}>
-              <span>Kakao</span>
+              <span>{profile.data.oauthProviders.join(', ')}</span>
             </span>
           </div>
         </div>
