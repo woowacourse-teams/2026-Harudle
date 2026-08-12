@@ -5,6 +5,7 @@ import DiaryWritePage from './pages/diary-write/DiaryWritePage';
 import DiaryGeneratingPage from './pages/diary-generating/DiaryGeneratingPage';
 import DiaryDetailPage from './pages/diary-detail/DiaryDetailPage';
 import DiarySharePage from './pages/diary-share/DiarySharePage';
+import SettingPage from './pages/setting/SettingPage';
 
 const App = () => {
   return (
@@ -15,6 +16,7 @@ const App = () => {
         <Route path="/diary-generating" element={<DiaryGeneratingPage />} />
         <Route path="/diaries/:diaryId" element={<DiaryDetailPage />} />
         <Route path="/shares/:shareId" element={<DiarySharePage />} />
+        <Route path="/setting" element={<SettingPage />} />
       </Routes>
     </div>
   );
