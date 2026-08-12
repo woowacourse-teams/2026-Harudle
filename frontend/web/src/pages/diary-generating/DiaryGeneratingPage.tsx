@@ -35,10 +35,15 @@ const generationSteps = [
   },
 ] as const;
 
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+  return typeof value === 'object' && value !== null;
+};
+
 const DiaryGeneratingPage = () => {
   const [loadingStep, setLoadingStep] = useState<number>(1);
   const [diaryGenerateRequest, setDiaryGenerateRequest] =
     useState<ApiRequestStatus>('idle');
+  const [createdDiaryId, setCreatedDiaryId] = useState<string | null>(null);
   const navigate = useNavigate();
   const { state } = useLocation();
 
@@ -59,6 +64,13 @@ const DiaryGeneratingPage = () => {
           throw new Error('일기 생성에 실패했습니다.');
         }
 
+        const data: unknown = await response.json();
+
+        if (!isRecord(data) || typeof data.id !== 'string') {
+          throw new Error('일기 생성 응답 형식이 일치하지 않습니다.');
+        }
+
+        setCreatedDiaryId(data.id);
         setDiaryGenerateRequest('success');
       } catch (error: unknown) {
         setDiaryGenerateRequest('error');
@@ -85,23 +97,25 @@ const DiaryGeneratingPage = () => {
   }, [loadingStep]);
 
   const isGenerationComplete =
-    loadingStep === 4 && diaryGenerateRequest === 'success';
+    loadingStep === 4 &&
+    diaryGenerateRequest === 'success' &&
+    createdDiaryId !== null;
 
   const displayedStep = isGenerationComplete ? 5 : loadingStep;
   const currentStep = generationSteps[displayedStep - 1];
   const isCompleteStep = displayedStep === 5;
 
   useEffect(() => {
-    if (!isGenerationComplete) {
+    if (!isGenerationComplete || createdDiaryId === null) {
       return;
     }
 
     const timeoutId = setTimeout(() => {
-      navigate('/');
+      navigate(`/diaries/${createdDiaryId}`, { replace: true });
     }, 1_000);
 
     return () => clearTimeout(timeoutId);
-  }, [isGenerationComplete, navigate]);
+  }, [createdDiaryId, isGenerationComplete, navigate]);
 
   return (
     <div css={pageStyle}>
