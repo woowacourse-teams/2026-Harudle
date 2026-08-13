@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import FloatingActionButton from '../../shared/FloatingActionButton';
 import PageHeader from '../../shared/PageHeader';
 import DiaryInputField from './DiaryInputField';
@@ -10,7 +10,10 @@ import { formatKoreanDate } from '../../shared/date';
 
 const DiaryWritePage = () => {
   const navigate = useNavigate();
-  const [diaryContent, setDiaryContent] = useState('');
+  const { state } = useLocation();
+  const [diaryContent, setDiaryContent] = useState<string>(
+    state?.sourceText ?? '',
+  );
   const [diaryContentError, setDiaryContentError] = useState<string | null>(
     null,
   );
