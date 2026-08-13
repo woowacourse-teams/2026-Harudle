@@ -12,6 +12,7 @@ import downloadIcon from '../../assets/icons/download.svg';
 import deleteIcon from '../../assets/icons/delete.svg';
 import loadingAnimation from '../../assets/images/loading-animation.webp';
 import { authFetch } from '../../shared/auth';
+import { downloadImage } from '../../shared/downloadImage';
 
 interface DiaryDetail {
   id: string;
@@ -58,6 +59,8 @@ const DiaryDetailPage = () => {
   const [isDeleteMenuOpen, setIsDeleteMenuOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const [diaryDeleteRequest, setDiaryDeleteRequest] = useState<
     ApiRequest<void>
   >({ status: 'idle' });
@@ -203,6 +206,42 @@ const DiaryDetailPage = () => {
     }
   };
 
+  const handleImageDownload = async () => {
+    if (isDownloading) {
+      return;
+    }
+
+    setIsDownloading(true);
+    setDownloadError(null);
+
+    try {
+      let imageUrl = diaryDetail.data.generation.imageUrl;
+      const expiresAt = Date.parse(
+        diaryDetail.data.generation.imageUrlExpiresAt,
+      );
+
+      if (!Number.isFinite(expiresAt) || expiresAt <= Date.now() + 30_000) {
+        const response = await authFetch(
+          `${API_BASE_URL}/diaries/${diaryDetail.data.id}`,
+        );
+        const data: unknown = await response.json();
+
+        if (!response.ok || !isDiaryDetail(data)) {
+          throw new Error('이미지 URL을 갱신하지 못했습니다.');
+        }
+
+        imageUrl = data.generation.imageUrl;
+        setDiaryDetail({ status: 'success', data });
+      }
+
+      await downloadImage(imageUrl, `harudle-${diaryDetail.data.diaryDate}`);
+    } catch {
+      setDownloadError('이미지를 저장하지 못했습니다. 다시 시도해주세요.');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
   return (
     <div css={diaryDetailPageStyle}>
       <PageHeader
@@ -261,10 +300,10 @@ const DiaryDetailPage = () => {
         icon={<img src={downloadIcon} alt="저장 아이콘" />}
         label="이미지 저장"
         variant="secondary"
-        onClick={() => {
-          window.open(diaryDetail.data.generation.imageUrl, '_blank');
-        }}
+        onClick={handleImageDownload}
+        disabled={isDownloading}
       />
+      {downloadError && <div css={downloadErrorStyle}>{downloadError}</div>}
 
       {isDeleteModalOpen && (
         <>
@@ -446,6 +485,15 @@ const feedbackStyle = css`
 const loadingImageStyle = css`
   width: 160px;
   height: 160px;
+`;
+
+const downloadErrorStyle = css`
+  ${contentWidthStyle};
+  margin-top: -4px;
+  color: ${theme.colors.danger};
+  font-size: 13px;
+  line-height: 20px;
+  text-align: center;
 `;
 
 const modalBackdropStyle = css`
