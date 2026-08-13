@@ -54,7 +54,10 @@ let usedGenerationCount = 0;
 let mockDiarySequence = 1;
 let mockShareSequence = 1;
 
-const createdDiaryFingerprints = new Set<string>();
+const createdDiaryRequests = new Map<
+  string,
+  { fingerprint: string; response: CreateDiaryResponse }
+>();
 const mockDiaryShareLinks = new Map<string, DiaryShareLinkResponse>();
 
 const diaryThumbnailUrl = new URL(
@@ -208,6 +211,15 @@ const createDiaryFingerprint = ({
   sourceText,
 }: CreateDiaryRequest) => {
   return `${diaryDate}:${normalizeDiaryText(sourceText)}`;
+};
+
+const isUuid = (value: string | null): value is string => {
+  return (
+    value !== null &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    )
+  );
 };
 
 const augustDiaries = [
@@ -457,6 +469,16 @@ export const handlers = [
   }),
 
   http.post('/api/v1/diaries', async ({ request }) => {
+    const idempotencyKey = request.headers.get('Idempotency-Key');
+
+    if (!isUuid(idempotencyKey)) {
+      return createProblemDetails({
+        status: 400,
+        code: 'INVALID_IDEMPOTENCY_KEY',
+        detail: 'Idempotency-Key는 UUID 형식의 필수 헤더입니다.',
+      });
+    }
+
     let requestBody: unknown;
 
     try {
@@ -479,12 +501,18 @@ export const handlers = [
     }
 
     const diaryFingerprint = createDiaryFingerprint(requestBody);
+    const existingRequest = createdDiaryRequests.get(idempotencyKey);
 
-    if (createdDiaryFingerprints.has(diaryFingerprint)) {
+    if (existingRequest?.fingerprint === diaryFingerprint) {
+      await delay(1_000);
+      return HttpResponse.json(existingRequest.response);
+    }
+
+    if (existingRequest) {
       return createProblemDetails({
         status: 409,
-        code: 'DUPLICATE_DIARY',
-        detail: '동일한 날짜에 같은 내용으로 생성된 일기가 이미 있습니다.',
+        code: 'IDEMPOTENCY_KEY_CONFLICT',
+        detail: '같은 Idempotency-Key를 다른 요청에 사용할 수 없습니다.',
       });
     }
 
@@ -497,8 +525,6 @@ export const handlers = [
       response.headers.set('Retry-After', '43200');
       return response;
     }
-
-    createdDiaryFingerprints.add(diaryFingerprint);
 
     const diarySequence = mockDiarySequence;
     mockDiarySequence += 1;
@@ -529,6 +555,11 @@ export const handlers = [
         remainingCount: DAILY_GENERATION_LIMIT - usedGenerationCount,
       },
     };
+
+    createdDiaryRequests.set(idempotencyKey, {
+      fingerprint: diaryFingerprint,
+      response,
+    });
 
     await delay(1_000);
 

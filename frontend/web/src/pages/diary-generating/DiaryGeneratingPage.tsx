@@ -58,8 +58,12 @@ const DiaryGeneratingPage = () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Idempotency-Key': state.idempotencyKey,
           },
-          body: JSON.stringify(state),
+          body: JSON.stringify({
+            diaryDate: state.diaryDate,
+            sourceText: state.sourceText,
+          }),
         });
 
         if (!response.ok) {
