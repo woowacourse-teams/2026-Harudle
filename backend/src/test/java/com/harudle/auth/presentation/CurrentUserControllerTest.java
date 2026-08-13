@@ -67,7 +67,9 @@ class CurrentUserControllerTest {
                 .andExpect(jsonPath("$.id").value(user.getId().toString()))
                 .andExpect(jsonPath("$.name").value("하루들"))
                 .andExpect(jsonPath("$.email").value("user@example.com"))
-                .andExpect(jsonPath("$.oauthProvider").value("KAKAO"))
+                .andExpect(jsonPath("$.oauthProviders").isArray())
+                .andExpect(jsonPath("$.oauthProviders[0]").value("kakao"))
+                .andExpect(jsonPath("$.oauthProvider").doesNotExist())
                 .andExpect(jsonPath("$.createdAt").value(CREATED_AT.toString()));
     }
 
