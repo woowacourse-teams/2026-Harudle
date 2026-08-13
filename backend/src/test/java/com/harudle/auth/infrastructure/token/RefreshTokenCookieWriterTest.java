@@ -10,6 +10,7 @@ import com.harudle.common.security.RefreshTokenProperties;
 import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -134,7 +135,7 @@ class RefreshTokenCookieWriterTest {
 
     private AuthProperties createAuthProperties(RefreshTokenProperties refreshTokenProperties) {
         return new AuthProperties(
-                "http://localhost:5173",
+                List.of("http://localhost:5173"),
                 URI.create("http://localhost:5173/auth/callback"),
                 URI.create("http://localhost:5173/auth/callback?error=oauth_failed"),
                 new AccessTokenProperties(

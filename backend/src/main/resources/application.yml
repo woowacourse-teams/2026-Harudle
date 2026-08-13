@@ -49,7 +49,7 @@ spring:
 
 app:
   auth:
-    frontend-origin: "${FRONTEND_ORIGIN:http://localhost:5173}"
+    frontend-origins: "${FRONTEND_ORIGINS:${FRONTEND_ORIGIN:http://localhost:5173}}"
     success-redirect: "${FRONTEND_SUCCESS_REDIRECT:http://localhost:5173/auth/callback}"
     failure-redirect: "${FRONTEND_FAILURE_REDIRECT:http://localhost:5173/auth/callback?error=oauth_failed}"
 

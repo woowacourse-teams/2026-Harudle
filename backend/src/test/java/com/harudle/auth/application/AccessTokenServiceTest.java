@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -115,7 +116,7 @@ class AccessTokenServiceTest {
             Duration accessTokenTtl
     ) {
         return new AuthProperties(
-                "http://localhost:5173",
+                List.of("http://localhost:5173"),
                 URI.create("http://localhost:5173/auth/callback"),
                 URI.create("http://localhost:5173/auth/callback?error=oauth_failed"),
                 new AccessTokenProperties(
