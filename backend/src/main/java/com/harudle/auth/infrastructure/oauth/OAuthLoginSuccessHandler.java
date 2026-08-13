@@ -18,6 +18,7 @@ import java.net.URI;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
@@ -51,6 +52,7 @@ public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
             CookieCsrfTokenRepository csrfTokenRepository,
             OAuthLoginFailureHandler oAuthLoginFailureHandler,
             AuthProperties authProperties,
+            @Qualifier("authClock")
             Clock authClock
     ) {
         this.oAuthLoginService = oAuthLoginService;

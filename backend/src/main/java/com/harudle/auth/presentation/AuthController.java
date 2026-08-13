@@ -13,6 +13,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Objects;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -41,6 +42,7 @@ public class AuthController {
             RefreshTokenCookieReader refreshTokenCookieReader,
             RefreshTokenCookieWriter refreshTokenCookieWriter,
             CookieCsrfTokenRepository csrfTokenRepository,
+            @Qualifier("authClock")
             Clock authClock
     ) {
         this.authService = authService;
