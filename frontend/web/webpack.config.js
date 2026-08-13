@@ -10,6 +10,7 @@ export default {
   output: {
     filename: 'bundle.js',
     path: path.resolve(__dirname, 'dist'),
+    publicPath: '/',
     clean: true,
   },
   module: {
@@ -22,6 +23,10 @@ export default {
             loader: 'babel-loader',
           },
         ],
+      },
+      {
+        test: /\.(png|svg|webp)$/i,
+        type: 'asset/resource',
       },
     ],
   },
@@ -37,5 +42,10 @@ export default {
   resolve: {
     extensions: ['.tsx', '.ts', '.js'],
   },
-  plugins: [new HtmlWebpackPlugin({ template: './index.html' })],
+  plugins: [
+    new HtmlWebpackPlugin({
+      template: './index.html',
+      favicon: './src/assets/icons/favicon.png',
+    }),
+  ],
 };
