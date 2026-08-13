@@ -11,7 +11,7 @@ import { authFetch, logout } from '../../shared/auth';
 interface ProfileResponse {
   id: string;
   name: string;
-  email: string;
+  email?: string;
   oauthProviders: string[];
   createdAt: string;
 }
