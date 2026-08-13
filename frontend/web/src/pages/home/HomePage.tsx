@@ -417,14 +417,12 @@ const monthInputStyle = css`
   font-weight: 700;
   line-height: 26px;
   cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
 
   &::-webkit-calendar-picker-indicator {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    opacity: 0;
-    cursor: pointer;
+    display: none;
+    -webkit-appearance: none;
   }
 `;
 
