@@ -18,7 +18,7 @@ interface DiaryDetail {
   diaryDate: string;
   sourceText: string;
   createdAt: string;
-  diary: {
+  generation: {
     id: string;
     status: 'SUCCEEDED';
     title: string;
@@ -39,13 +39,13 @@ const isDiaryDetail = (value: unknown): value is DiaryDetail => {
     typeof value.diaryDate === 'string' &&
     typeof value.sourceText === 'string' &&
     typeof value.createdAt === 'string' &&
-    isRecord(value.diary) &&
-    typeof value.diary.id === 'string' &&
-    value.diary.status === 'SUCCEEDED' &&
-    typeof value.diary.title === 'string' &&
-    typeof value.diary.imageUrl === 'string' &&
-    typeof value.diary.imageUrlExpiresAt === 'string' &&
-    typeof value.diary.completedAt === 'string'
+    isRecord(value.generation) &&
+    typeof value.generation.id === 'string' &&
+    value.generation.status === 'SUCCEEDED' &&
+    typeof value.generation.title === 'string' &&
+    typeof value.generation.imageUrl === 'string' &&
+    typeof value.generation.imageUrlExpiresAt === 'string' &&
+    typeof value.generation.completedAt === 'string'
   );
 };
 
@@ -184,7 +184,7 @@ const DiaryDetailPage = () => {
 
       if (navigator.share) {
         await navigator.share({
-          title: diaryDetail.data.diary.title,
+          title: diaryDetail.data.generation.title,
           url: data.shareUrl,
         });
         return;
@@ -243,11 +243,11 @@ const DiaryDetailPage = () => {
         </button>
       )}
 
-      <div css={diaryTitleStyle}>{diaryDetail.data.diary.title}</div>
+      <div css={diaryTitleStyle}>{diaryDetail.data.generation.title}</div>
       <img
         css={diaryImageStyle}
-        src={diaryDetail.data.diary.imageUrl}
-        alt={diaryDetail.data.diary.title}
+        src={diaryDetail.data.generation.imageUrl}
+        alt={diaryDetail.data.generation.title}
       />
       <div css={storyTitleStyle}>오늘의 이야기</div>
       <div css={storyTextStyle}>{diaryDetail.data.sourceText}</div>
@@ -262,7 +262,7 @@ const DiaryDetailPage = () => {
         label="이미지 저장"
         variant="secondary"
         onClick={() => {
-          window.open(diaryDetail.data.diary.imageUrl, '_blank');
+          window.open(diaryDetail.data.generation.imageUrl, '_blank');
         }}
       />
 
