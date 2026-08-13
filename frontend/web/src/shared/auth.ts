@@ -9,13 +9,6 @@ const isRecord = (value: unknown): value is Record<string, unknown> => {
 
 const requestAccessToken = async (): Promise<boolean> => {
   try {
-    if (
-      process.env.NODE_ENV === 'development' &&
-      sessionStorage.getItem('mockLoggedIn') !== 'true'
-    ) {
-      return false;
-    }
-
     const csrfResponse = await fetch(`${API_BASE_URL}/auth/csrf`, {
       credentials: 'include',
     });
@@ -93,8 +86,4 @@ export const logout = async (): Promise<void> => {
   }
 
   accessToken = null;
-
-  if (process.env.NODE_ENV === 'development') {
-    sessionStorage.removeItem('mockLoggedIn');
-  }
 };

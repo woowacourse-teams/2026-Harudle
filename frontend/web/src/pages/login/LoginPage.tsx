@@ -3,24 +3,11 @@ import harudleLogo from '../../assets/images/harudle-logo.png';
 import loginHero from '../../assets/images/login-hero.png';
 import kakaoIcon from '../../assets/icons/kakao.svg';
 import { theme } from '../../styles/theme';
+import { API_ORIGIN } from '../../shared/api';
 
 const LoginPage = () => {
-  const handleKakaoLogin = async () => {
-    const loginUrl = '/oauth2/authorization/kakao';
-
-    if (process.env.NODE_ENV !== 'development') {
-      window.location.assign(loginUrl);
-      return;
-    }
-
-    const response = await fetch(loginUrl);
-
-    if (!response.ok) {
-      throw new Error('로그인 요청에 실패했습니다.');
-    }
-
-    sessionStorage.setItem('mockLoggedIn', 'true');
-    window.location.assign(response.url);
+  const handleKakaoLogin = () => {
+    window.location.assign(`${API_ORIGIN}/oauth2/authorization/kakao`);
   };
 
   return (
@@ -37,11 +24,7 @@ const LoginPage = () => {
       </div>
 
       <div css={loginAreaStyle}>
-        <button
-          type="button"
-          css={kakaoButtonStyle}
-          onClick={() => void handleKakaoLogin()}
-        >
+        <button type="button" css={kakaoButtonStyle} onClick={handleKakaoLogin}>
           <img src={kakaoIcon} alt="" css={kakaoIconStyle} />
           카카오로 시작하기
         </button>
