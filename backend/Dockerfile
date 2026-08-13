@@ -15,7 +15,7 @@ RUN ./gradlew --no-daemon clean bootJar -x test \
     && test -n "$JAR_FILE" \
     && cp "$JAR_FILE" /workspace/app.jar
 
-FROM amazoncorretto:21-alpine3.22-jre AS runtime
+FROM amazoncorretto:21-alpine3.22 AS runtime
 
 RUN apk add --no-cache curl tini \
     && addgroup -S -g 10001 harudle \
