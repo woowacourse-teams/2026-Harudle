@@ -11,6 +11,7 @@ import generationStep2Image from '../../assets/images/generation-step-2-writing.
 import generationStep3Image from '../../assets/images/generation-step-3-selecting-panels.png';
 import generationStep4Image from '../../assets/images/generation-step-4-painting.png';
 import generationCompleteImage from '../../assets/images/generation-step-5-complete.png';
+import { authFetch } from '../../shared/auth';
 
 const generationSteps = [
   {
@@ -52,7 +53,7 @@ const DiaryGeneratingPage = () => {
       setDiaryGenerateRequest('loading');
 
       try {
-        const response = await fetch(`${API_BASE_URL}/diaries`, {
+        const response = await authFetch(`${API_BASE_URL}/diaries`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

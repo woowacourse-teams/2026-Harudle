@@ -11,6 +11,7 @@ import { css } from '@emotion/react';
 import { theme } from '../../styles/theme';
 import loadingAnimation from '../../assets/images/loading-animation.webp';
 import keyboardArrowDownIcon from '../../assets/icons/keyboard-arrow-down.svg';
+import { authFetch } from '../../shared/auth';
 
 type Month = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 
@@ -128,7 +129,7 @@ const HomePage = () => {
         status: 'loading',
       });
       try {
-        const response = await fetch(
+        const response = await authFetch(
           `${API_BASE_URL}/diaries?year=${year}&month=${month}`,
         );
 
@@ -268,7 +269,7 @@ const RemainingGenerationUsageCard = () => {
       });
 
       try {
-        const response = await fetch(`${API_BASE_URL}/me/generation-usage`);
+        const response = await authFetch(`${API_BASE_URL}/me/generation-usage`);
 
         if (!response.ok) {
           throw new Error('네트워크 에러');

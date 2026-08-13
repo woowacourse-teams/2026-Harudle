@@ -11,6 +11,7 @@ import shareIcon from '../../assets/icons/share.svg';
 import downloadIcon from '../../assets/icons/download.svg';
 import deleteIcon from '../../assets/icons/delete.svg';
 import loadingAnimation from '../../assets/images/loading-animation.webp';
+import { authFetch } from '../../shared/auth';
 
 interface DiaryDetail {
   id: string;
@@ -66,7 +67,7 @@ const DiaryDetailPage = () => {
       setDiaryDetail({ status: 'loading' });
 
       try {
-        const response = await fetch(`${API_BASE_URL}/diaries/${diaryId}`);
+        const response = await authFetch(`${API_BASE_URL}/diaries/${diaryId}`);
 
         if (!response.ok) {
           throw new Error('일기를 불러오지 못했습니다.');
@@ -97,7 +98,7 @@ const DiaryDetailPage = () => {
     setDiaryDeleteRequest({ status: 'loading' });
 
     try {
-      const response = await fetch(`${API_BASE_URL}/diaries/${diaryId}`, {
+      const response = await authFetch(`${API_BASE_URL}/diaries/${diaryId}`, {
         method: 'DELETE',
       });
 
