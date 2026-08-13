@@ -3,11 +3,10 @@ import harudleLogo from '../../assets/images/harudle-logo.png';
 import loginHero from '../../assets/images/login-hero.png';
 import kakaoIcon from '../../assets/icons/kakao.svg';
 import { theme } from '../../styles/theme';
-import { API_ORIGIN } from '../../shared/api';
 
 const LoginPage = () => {
   const handleKakaoLogin = () => {
-    window.location.assign(`${API_ORIGIN}/oauth2/authorization/kakao`);
+    window.location.assign('/oauth2/authorization/kakao');
   };
 
   return (

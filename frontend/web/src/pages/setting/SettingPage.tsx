@@ -25,7 +25,6 @@ const isProfileResponse = (value: unknown): value is ProfileResponse => {
     'name' in value &&
     typeof value.name === 'string' &&
     'email' in value &&
-    typeof value.email === 'string' &&
     'oauthProviders' in value &&
     Array.isArray(value.oauthProviders) &&
     value.oauthProviders.every((provider) => typeof provider === 'string') &&
