@@ -119,7 +119,7 @@ class OAuthLoginSuccessHandlerTest {
     @DisplayName("필수 OAuth 프로필이 없으면 Refresh Token을 발급하지 않고 실패 URL로 이동한다")
     void redirectsWhenRequiredProfileIsMissing() throws Exception {
         when(oAuthLoginService.login(any(OAuthLoginCommand.class), eq(LOGIN_AT)))
-                .thenThrow(new RequiredOAuthProfileException("이메일이 필요합니다."));
+                .thenThrow(new RequiredOAuthProfileException("닉네임이 필요합니다."));
 
         MockHttpServletResponse response = new MockHttpServletResponse();
 
