@@ -6,17 +6,23 @@ import DiaryGeneratingPage from './pages/diary-generating/DiaryGeneratingPage';
 import DiaryDetailPage from './pages/diary-detail/DiaryDetailPage';
 import DiarySharePage from './pages/diary-share/DiarySharePage';
 import SettingPage from './pages/setting/SettingPage';
+import LoginPage from './pages/login/LoginPage';
+import AuthGuard from './shared/AuthGuard';
 
 const App = () => {
   return (
     <div css={appStyle}>
       <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/diary-write" element={<DiaryWritePage />} />
-        <Route path="/diary-generating" element={<DiaryGeneratingPage />} />
-        <Route path="/diaries/:diaryId" element={<DiaryDetailPage />} />
+        <Route path="/login" element={<LoginPage />} />
         <Route path="/shares/:shareId" element={<DiarySharePage />} />
-        <Route path="/setting" element={<SettingPage />} />
+
+        <Route element={<AuthGuard />}>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/diary-write" element={<DiaryWritePage />} />
+          <Route path="/diary-generating" element={<DiaryGeneratingPage />} />
+          <Route path="/diaries/:diaryId" element={<DiaryDetailPage />} />
+          <Route path="/setting" element={<SettingPage />} />
+        </Route>
       </Routes>
     </div>
   );

@@ -11,6 +11,7 @@ import { css } from '@emotion/react';
 import { theme } from '../../styles/theme';
 import loadingAnimation from '../../assets/images/loading-animation.webp';
 import keyboardArrowDownIcon from '../../assets/icons/keyboard-arrow-down.svg';
+import { authFetch } from '../../shared/auth';
 
 type Month = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 
@@ -128,7 +129,7 @@ const HomePage = () => {
         status: 'loading',
       });
       try {
-        const response = await fetch(
+        const response = await authFetch(
           `${API_BASE_URL}/diaries?year=${year}&month=${month}`,
         );
 
@@ -164,22 +165,10 @@ const HomePage = () => {
     setSelectedYearMonth(formatYearMonthToObject(stringYearMonth));
   };
 
-  if (monthlyDiaries.status === 'idle' || monthlyDiaries.status === 'loading') {
-    return (
-      <div css={pageLoadingStyle}>
-        <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
-      </div>
-    );
-  }
-
-  if (monthlyDiaries.status === 'error') {
-    return <div>에러가 발생했습니다.</div>;
-  }
-
-  const monthlyDiaryCount = monthlyDiaries.data.reduce(
-    (count, day) => count + day.items.length,
-    0,
-  );
+  const monthlyDiaryCount =
+    monthlyDiaries.status === 'success'
+      ? monthlyDiaries.data.reduce((count, day) => count + day.items.length, 0)
+      : 0;
 
   return (
     <div css={homePageStyle}>
@@ -190,32 +179,45 @@ const HomePage = () => {
       </header>
 
       <main css={homeContentStyle}>
-        <div css={monthHeaderStyle}>
-          <div css={monthPickerStyle}>
-            <input
-              type="month"
-              value={formatYearMonthToString(selectedYearMonth)}
-              onChange={handleYearMonthChange}
-              css={monthInputStyle}
-            />
-            <img src={keyboardArrowDownIcon} alt="" css={monthArrowStyle} />
+        {monthlyDiaries.status === 'idle' ||
+        monthlyDiaries.status === 'loading' ? (
+          <div css={pageFeedbackStyle}>
+            <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
           </div>
-
-          {monthlyDiaryCount > 0 && (
-            <div css={recordCountStyle}>{monthlyDiaryCount}개의 기록</div>
-          )}
-        </div>
-
-        <RemainingGenerationUsageCard />
-
-        {monthlyDiaryCount > 0 ? (
-          <DiaryItemList monthlyDiaryDays={monthlyDiaries.data} />
+        ) : monthlyDiaries.status === 'error' ? (
+          <div css={pageFeedbackStyle}>{monthlyDiaries.error.message}</div>
         ) : (
-          <DiaryEmptyState />
+          <>
+            <div css={monthHeaderStyle}>
+              <div css={monthPickerStyle}>
+                <input
+                  type="month"
+                  value={formatYearMonthToString(selectedYearMonth)}
+                  onChange={handleYearMonthChange}
+                  css={monthInputStyle}
+                />
+                <img src={keyboardArrowDownIcon} alt="" css={monthArrowStyle} />
+              </div>
+
+              {monthlyDiaryCount > 0 && (
+                <div css={recordCountStyle}>{monthlyDiaryCount}개의 기록</div>
+              )}
+            </div>
+
+            <RemainingGenerationUsageCard />
+
+            {monthlyDiaryCount > 0 ? (
+              <div css={diaryListScrollStyle}>
+                <DiaryItemList monthlyDiaryDays={monthlyDiaries.data} />
+              </div>
+            ) : (
+              <DiaryEmptyState />
+            )}
+          </>
         )}
       </main>
 
-      {monthlyDiaryCount > 0 && (
+      {monthlyDiaries.status === 'success' && monthlyDiaryCount > 0 && (
         <FloatingActionButton
           onClick={() => {
             navigate('/diary-write');
@@ -268,7 +270,7 @@ const RemainingGenerationUsageCard = () => {
       });
 
       try {
-        const response = await fetch(`${API_BASE_URL}/me/generation-usage`);
+        const response = await authFetch(`${API_BASE_URL}/me/generation-usage`);
 
         if (!response.ok) {
           throw new Error('네트워크 에러');
@@ -371,12 +373,14 @@ const homeContentStyle = css`
   gap: 5px;
   width: 100%;
   padding: 0 20px 24px;
-  overflow-y: auto;
+  min-height: 0;
+  overflow: hidden;
   box-sizing: border-box;
 `;
 
 const monthHeaderStyle = css`
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   width: 100%;
@@ -384,6 +388,20 @@ const monthHeaderStyle = css`
   padding: 10px 24px;
   border-bottom: 1px solid ${theme.colors.border};
   background-color: ${theme.colors.background};
+`;
+
+const diaryListScrollStyle = css`
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  padding-bottom: 72px;
+  overflow-y: auto;
+  box-sizing: border-box;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
 `;
 
 const monthInputStyle = css`
@@ -460,12 +478,15 @@ const generationUsageTextStyle = (remainingCount: number) => css`
   }
 `;
 
-const pageLoadingStyle = css`
+const pageFeedbackStyle = css`
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 100%;
-  height: 100%;
+  color: ${theme.colors.textPrimary};
+  font-size: 16px;
+  line-height: 26px;
   background-color: ${theme.colors.background};
 `;
 

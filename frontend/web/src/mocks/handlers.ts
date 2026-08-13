@@ -285,6 +285,32 @@ const augustDiaries = [
 ];
 
 export const handlers = [
+  http.get('/oauth2/authorization/kakao', ({ request }) => {
+    return HttpResponse.redirect(new URL('/', request.url).toString());
+  }),
+
+  http.get('/api/v1/auth/csrf', () => {
+    return HttpResponse.json({ token: 'mock-csrf-token' });
+  }),
+
+  http.post('/api/v1/auth/refresh', ({ request }) => {
+    const csrfToken = request.headers.get('X-XSRF-TOKEN');
+
+    if (csrfToken !== 'mock-csrf-token') {
+      return new HttpResponse(null, { status: 401 });
+    }
+
+    return HttpResponse.json({
+      accessToken: 'mock-access-token',
+      tokenType: 'Bearer',
+      expiresIn: 1800,
+    });
+  }),
+
+  http.post('/api/v1/auth/logout', () => {
+    return new HttpResponse(null, { status: 204 });
+  }),
+
   http.get('/api/v1/diaries', async ({ request }) => {
     const url = new URL(request.url);
     const year = Number(url.searchParams.get('year'));
