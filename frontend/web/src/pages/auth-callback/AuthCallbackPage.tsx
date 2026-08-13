@@ -3,10 +3,12 @@ import { useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import loadingAnimation from '../../assets/images/loading-animation.webp';
 import { restoreLogin } from '../../shared/auth';
+import { useDelayedLoading } from '../../shared/useDelayedLoading';
 
 const AuthCallbackPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const showLoading = useDelayedLoading(true);
 
   useEffect(() => {
     if (searchParams.has('error')) {
@@ -21,7 +23,9 @@ const AuthCallbackPage = () => {
 
   return (
     <div css={loadingStyle}>
-      <img src={loadingAnimation} alt="로그인 처리 중" css={imageStyle} />
+      {showLoading && (
+        <img src={loadingAnimation} alt="로그인 처리 중" css={imageStyle} />
+      )}
     </div>
   );
 };

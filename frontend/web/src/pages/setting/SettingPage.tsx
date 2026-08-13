@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { API_BASE_URL, type ApiRequest } from '../../shared/api';
 import loadingAnimation from '../../assets/images/loading-animation.webp';
 import { authFetch, logout } from '../../shared/auth';
+import { useDelayedLoading } from '../../shared/useDelayedLoading';
 import { throwIfResponseFailed, toUserError } from '../../shared/apiError';
 
 interface ProfileResponse {
@@ -72,6 +73,10 @@ const SettingPage = () => {
     void getProfile();
   }, []);
 
+  const isProfileLoading =
+    profile.status === 'idle' || profile.status === 'loading';
+  const showProfileLoading = useDelayedLoading(isProfileLoading);
+
   const handleLogout = async () => {
     setIsLoggingOut(true);
     setLogoutError(null);
@@ -94,9 +99,15 @@ const SettingPage = () => {
       </header>
 
       <main css={settingContentStyle}>
-        {profile.status === 'idle' || profile.status === 'loading' ? (
+        {isProfileLoading ? (
           <div css={feedbackStyle}>
-            <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
+            {showProfileLoading && (
+              <img
+                src={loadingAnimation}
+                alt="로딩 중"
+                css={loadingImageStyle}
+              />
+            )}
           </div>
         ) : profile.status === 'error' ? (
           <div css={feedbackStyle}>{profile.error.message}</div>

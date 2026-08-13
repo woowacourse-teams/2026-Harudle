@@ -7,11 +7,12 @@ import FloatingActionButton from '../../shared/FloatingActionButton';
 import { useNavigate } from 'react-router';
 import harudleLogo from '../../assets/images/harudle-logo.png';
 import eventAvailableIcon from '../../assets/icons/event-available.svg';
-import { css } from '@emotion/react';
+import { css, keyframes } from '@emotion/react';
 import { theme } from '../../styles/theme';
 import loadingAnimation from '../../assets/images/loading-animation.webp';
 import keyboardArrowDownIcon from '../../assets/icons/keyboard-arrow-down.svg';
 import { authFetch } from '../../shared/auth';
+import { useDelayedLoading } from '../../shared/useDelayedLoading';
 import { throwIfResponseFailed, toUserError } from '../../shared/apiError';
 
 type Month = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
@@ -174,6 +175,9 @@ const HomePage = () => {
     monthlyDiaries.status === 'success'
       ? monthlyDiaries.data.reduce((count, day) => count + day.items.length, 0)
       : 0;
+  const isMonthlyDiariesLoading =
+    monthlyDiaries.status === 'idle' || monthlyDiaries.status === 'loading';
+  const showMonthlyDiariesLoading = useDelayedLoading(isMonthlyDiariesLoading);
 
   return (
     <div css={homePageStyle}>
@@ -184,10 +188,15 @@ const HomePage = () => {
       </header>
 
       <main css={homeContentStyle}>
-        {monthlyDiaries.status === 'idle' ||
-        monthlyDiaries.status === 'loading' ? (
+        {isMonthlyDiariesLoading ? (
           <div css={pageFeedbackStyle}>
-            <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
+            {showMonthlyDiariesLoading && (
+              <img
+                src={loadingAnimation}
+                alt="로딩 중"
+                css={loadingImageStyle}
+              />
+            )}
           </div>
         ) : monthlyDiaries.status === 'error' ? (
           <div css={pageFeedbackStyle}>{monthlyDiaries.error.message}</div>
@@ -304,17 +313,22 @@ const RemainingGenerationUsageCard = () => {
     void getRemainingGenerationUsageCard();
   }, []);
 
-  if (
-    generationUsage.status === 'idle' ||
-    generationUsage.status === 'loading'
-  ) {
+  const isLoading =
+    generationUsage.status === 'idle' || generationUsage.status === 'loading';
+  const showLoading = useDelayedLoading(isLoading);
+
+  if (isLoading) {
     return (
       <div css={generationUsageLoadingStyle}>
-        <img
-          src={loadingAnimation}
-          alt="로딩 중"
-          css={generationUsageLoadingImageStyle}
-        />
+        {showLoading && (
+          <div
+            css={generationUsageSkeletonStyle}
+            aria-label="남은 횟수 로딩 중"
+          >
+            <div css={skeletonIconStyle} />
+            <div css={skeletonTextStyle} />
+          </div>
+        )}
       </div>
     );
   }
@@ -501,11 +515,47 @@ const loadingImageStyle = css`
 `;
 
 const generationUsageLoadingStyle = css`
-  display: flex;
-  align-items: center;
-  justify-content: center;
   width: 100%;
   height: 48px;
+`;
+
+const skeletonPulse = keyframes`
+  0%, 100% {
+    opacity: 0.45;
+  }
+
+  50% {
+    opacity: 0.9;
+  }
+`;
+
+const generationUsageSkeletonStyle = css`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 48px;
+  padding: 0 16px;
+  border: 1px solid ${theme.colors.border};
+  border-radius: 16px;
+  background-color: ${theme.colors.generationCard};
+  box-sizing: border-box;
+`;
+
+const skeletonIconStyle = css`
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background-color: #e4dafa;
+  animation: ${skeletonPulse} 1.2s ease-in-out infinite;
+`;
+
+const skeletonTextStyle = css`
+  width: 112px;
+  height: 14px;
+  border-radius: 7px;
+  background-color: #e4dafa;
+  animation: ${skeletonPulse} 1.2s ease-in-out infinite;
 `;
 
 const generationUsageErrorStyle = css`
@@ -519,9 +569,4 @@ const generationUsageErrorStyle = css`
   color: ${theme.colors.danger};
   font-size: 13px;
   box-sizing: border-box;
-`;
-
-const generationUsageLoadingImageStyle = css`
-  width: 40px;
-  height: 40px;
 `;

@@ -12,6 +12,7 @@ import downloadIcon from '../../assets/icons/download.svg';
 import deleteIcon from '../../assets/icons/delete.svg';
 import loadingAnimation from '../../assets/images/loading-animation.webp';
 import { authFetch } from '../../shared/auth';
+import { useDelayedLoading } from '../../shared/useDelayedLoading';
 import { downloadImage } from '../../shared/downloadImage';
 import { throwIfResponseFailed, toUserError } from '../../shared/apiError';
 
@@ -94,6 +95,10 @@ const DiaryDetailPage = () => {
     void getDiaryDetail();
   }, [diaryId]);
 
+  const isDiaryDetailLoading =
+    diaryDetail.status === 'idle' || diaryDetail.status === 'loading';
+  const showDiaryDetailLoading = useDelayedLoading(isDiaryDetailLoading);
+
   const handleDiaryDelete = async (): Promise<void> => {
     setDiaryDeleteRequest({ status: 'loading' });
 
@@ -113,7 +118,7 @@ const DiaryDetailPage = () => {
     }
   };
 
-  if (diaryDetail.status === 'idle' || diaryDetail.status === 'loading') {
+  if (isDiaryDetailLoading) {
     return (
       <div css={diaryDetailPageStyle}>
         <PageHeader
@@ -126,7 +131,9 @@ const DiaryDetailPage = () => {
           rightButton={null}
         />
         <div css={feedbackStyle}>
-          <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
+          {showDiaryDetailLoading && (
+            <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
+          )}
         </div>
       </div>
     );
