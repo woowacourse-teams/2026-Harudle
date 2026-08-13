@@ -3,9 +3,11 @@ import { useEffect, useState } from 'react';
 import { Navigate, Outlet } from 'react-router';
 import loadingAnimation from '../assets/images/loading-animation.webp';
 import { restoreLogin } from './auth';
+import { useDelayedLoading } from './useDelayedLoading';
 
 const AuthGuard = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const showLoading = useDelayedLoading(isAuthenticated === null);
 
   useEffect(() => {
     let isMounted = true;
@@ -24,7 +26,9 @@ const AuthGuard = () => {
   if (isAuthenticated === null) {
     return (
       <div css={loadingStyle}>
-        <img src={loadingAnimation} alt="로그인 확인 중" css={imageStyle} />
+        {showLoading && (
+          <img src={loadingAnimation} alt="로그인 확인 중" css={imageStyle} />
+        )}
       </div>
     );
   }

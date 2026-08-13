@@ -5,6 +5,7 @@ import { css } from '@emotion/react';
 import { theme } from '../../styles/theme';
 import harudleLogo from '../../assets/images/harudle-logo.png';
 import loadingAnimation from '../../assets/images/loading-animation.webp';
+import { useDelayedLoading } from '../../shared/useDelayedLoading';
 
 interface SharedDiary {
   title: string;
@@ -80,6 +81,10 @@ const DiarySharePage = () => {
     void getSharedDiary();
   }, [shareId]);
 
+  const isSharedDiaryLoading =
+    sharedDiary.status === 'idle' || sharedDiary.status === 'loading';
+  const showSharedDiaryLoading = useDelayedLoading(isSharedDiaryLoading);
+
   return (
     <div css={diarySharePageStyle}>
       <button css={logoButtonStyle} onClick={() => navigate('/')}>
@@ -87,9 +92,15 @@ const DiarySharePage = () => {
       </button>
 
       <main css={sharedDiaryContentStyle}>
-        {sharedDiary.status === 'idle' || sharedDiary.status === 'loading' ? (
+        {isSharedDiaryLoading ? (
           <div css={feedbackStyle}>
-            <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
+            {showSharedDiaryLoading && (
+              <img
+                src={loadingAnimation}
+                alt="로딩 중"
+                css={loadingImageStyle}
+              />
+            )}
           </div>
         ) : sharedDiary.status === 'error' ? (
           <div css={feedbackStyle}>
