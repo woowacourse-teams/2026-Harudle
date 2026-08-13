@@ -13,6 +13,7 @@ import loadingAnimation from '../../assets/images/loading-animation.webp';
 import keyboardArrowDownIcon from '../../assets/icons/keyboard-arrow-down.svg';
 import { authFetch } from '../../shared/auth';
 import { useDelayedLoading } from '../../shared/useDelayedLoading';
+import { throwIfResponseFailed, toUserError } from '../../shared/apiError';
 
 type Month = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 
@@ -135,13 +136,11 @@ const HomePage = () => {
           `${API_BASE_URL}/diaries?year=${year}&month=${month}`,
         );
 
-        if (!response.ok) {
-          throw new Error('네트워크 에러');
-        }
+        await throwIfResponseFailed(response, '일기를 불러오지 못했습니다.');
         const data: unknown = await response.json();
 
         if (!isMonthlyDiariesResponse(data)) {
-          throw new Error('MonthlyDiaries 응답 형식이 일치하지 않습니다.');
+          throw new Error('일기를 불러오지 못했습니다.');
         }
 
         setMonthlyDiaries({
@@ -149,13 +148,10 @@ const HomePage = () => {
           data: data.days,
         });
       } catch (error: unknown) {
-        if (error instanceof Error) {
-          setMonthlyDiaries({
-            status: 'error',
-            error: error,
-          });
-          alert(error.message);
-        }
+        setMonthlyDiaries({
+          status: 'error',
+          error: toUserError(error, '일기를 불러오지 못했습니다.'),
+        });
       }
     };
 
@@ -292,13 +288,14 @@ const RemainingGenerationUsageCard = () => {
       try {
         const response = await authFetch(`${API_BASE_URL}/me/generation-usage`);
 
-        if (!response.ok) {
-          throw new Error('네트워크 에러');
-        }
+        await throwIfResponseFailed(
+          response,
+          '남은 생성 횟수를 불러오지 못했습니다.',
+        );
         const data: unknown = await response.json();
 
         if (!isGenerationUsageResponse(data)) {
-          throw new Error('GenerationUsage 응답 형식이 일치하지 않습니다.');
+          throw new Error('남은 생성 횟수를 불러오지 못했습니다.');
         }
 
         setGenerationUsage({
@@ -306,13 +303,10 @@ const RemainingGenerationUsageCard = () => {
           data: data.remainingCount,
         });
       } catch (error: unknown) {
-        if (error instanceof Error) {
-          setGenerationUsage({
-            status: 'error',
-            error: error,
-          });
-          alert(error.message);
-        }
+        setGenerationUsage({
+          status: 'error',
+          error: toUserError(error, '남은 생성 횟수를 불러오지 못했습니다.'),
+        });
       }
     };
 
@@ -340,7 +334,9 @@ const RemainingGenerationUsageCard = () => {
   }
 
   if (generationUsage.status === 'error') {
-    return <div>에러가 발생했습니다.</div>;
+    return (
+      <div css={generationUsageErrorStyle}>{generationUsage.error.message}</div>
+    );
   }
 
   return (
@@ -560,4 +556,17 @@ const skeletonTextStyle = css`
   border-radius: 7px;
   background-color: #e4dafa;
   animation: ${skeletonPulse} 1.2s ease-in-out infinite;
+`;
+
+const generationUsageErrorStyle = css`
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 16px;
+  border: 1px solid ${theme.colors.border};
+  border-radius: 16px;
+  color: ${theme.colors.danger};
+  font-size: 13px;
+  box-sizing: border-box;
 `;

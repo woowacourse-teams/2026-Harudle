@@ -13,6 +13,7 @@ import generationStep4Image from '../../assets/images/generation-step-4-painting
 import generationCompleteImage from '../../assets/images/generation-step-5-complete.png';
 import { authFetch } from '../../shared/auth';
 import ActionButton from '../../shared/ActionButton';
+import { throwIfResponseFailed, toUserError } from '../../shared/apiError';
 
 const generationSteps = [
   {
@@ -45,6 +46,7 @@ const DiaryGeneratingPage = () => {
   const [loadingStep, setLoadingStep] = useState<number>(1);
   const [diaryGenerateRequest, setDiaryGenerateRequest] =
     useState<ApiRequestStatus>('idle');
+  const [generationError, setGenerationError] = useState<string | null>(null);
   const [createdDiaryId, setCreatedDiaryId] = useState<string | null>(null);
   const navigate = useNavigate();
   const { state } = useLocation();
@@ -66,19 +68,20 @@ const DiaryGeneratingPage = () => {
           }),
         });
 
-        if (!response.ok) {
-          throw new Error('일기 생성에 실패했습니다.');
-        }
+        await throwIfResponseFailed(response, '일기 생성에 실패했습니다.');
 
         const data: unknown = await response.json();
 
         if (!isRecord(data) || typeof data.id !== 'string') {
-          throw new Error('일기 생성 응답 형식이 일치하지 않습니다.');
+          throw new Error('일기 생성에 실패했습니다.');
         }
 
         setCreatedDiaryId(data.id);
         setDiaryGenerateRequest('success');
-      } catch {
+      } catch (error: unknown) {
+        setGenerationError(
+          toUserError(error, '일기 생성에 실패했습니다.').message,
+        );
         setDiaryGenerateRequest('error');
       }
     };
@@ -133,7 +136,9 @@ const DiaryGeneratingPage = () => {
       <main css={contentStyle}>
         {diaryGenerateRequest === 'error' ? (
           <div css={errorStyle}>
-            <div css={errorMessageStyle}>일기 생성에 실패했습니다.</div>
+            <div css={errorMessageStyle}>
+              {generationError ?? '일기 생성에 실패했습니다.'}
+            </div>
             <ActionButton
               label="다시 작성하기"
               onClick={() =>
