@@ -24,9 +24,14 @@ const ActionButton = ({
       onClick={onClick}
       disabled={disabled}
     >
-      <span css={iconStyle} aria-hidden="true">
-        {icon}
-      </span>
+      {icon ? (
+        <span css={iconStyle} aria-hidden="true">
+          {icon}
+        </span>
+      ) : (
+        ''
+      )}
+
       {label}
     </button>
   );
@@ -51,9 +56,14 @@ const actionButtonStyle = (variant: ActionButtonVariant) => css`
   line-height: 24px;
   cursor: pointer;
 
+  &:active {
+    transform: scale(0.98);
+  }
+
   &:disabled {
     opacity: 0.5;
     cursor: default;
+    transform: none;
   }
 `;
 
