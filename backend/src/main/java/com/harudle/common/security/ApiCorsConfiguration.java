@@ -13,18 +13,18 @@ public class ApiCorsConfiguration {
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource(AuthProperties authProperties) {
-        String frontendOrigin = extractFrontendOrigin(authProperties);
-        CorsConfiguration configuration = createConfiguration(frontendOrigin);
+        List<String> frontendOrigins = extractFrontendOrigins(authProperties);
+        CorsConfiguration configuration = createConfiguration(frontendOrigins);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/api/**", configuration);
 
         return source;
     }
 
-    private CorsConfiguration createConfiguration(String frontendOrigin) {
+    private CorsConfiguration createConfiguration(List<String> frontendOrigins) {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of(frontendOrigin));
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedOrigins(frontendOrigins);
+        configuration.setAllowedMethods(List.of("GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of(
                 "Accept",
                 "Authorization",
@@ -36,14 +36,16 @@ public class ApiCorsConfiguration {
         return configuration;
     }
 
-    private String extractFrontendOrigin(AuthProperties authProperties) {
+    private List<String> extractFrontendOrigins(AuthProperties authProperties) {
         Objects.requireNonNull(authProperties, "authProperties는 필수입니다.");
 
-        String frontendOrigin = authProperties.frontendOrigin();
-        if (frontendOrigin != null && !frontendOrigin.isBlank()) {
-            return frontendOrigin;
+        List<String> frontendOrigins = authProperties.frontendOrigins();
+        if (frontendOrigins != null
+                && !frontendOrigins.isEmpty()
+                && frontendOrigins.stream().allMatch(origin -> origin != null && !origin.isBlank())) {
+            return List.copyOf(frontendOrigins);
         }
 
-        throw new IllegalArgumentException("frontendOrigin은 필수입니다.");
+        throw new IllegalArgumentException("frontendOrigins는 비어 있지 않아야 합니다.");
     }
 }

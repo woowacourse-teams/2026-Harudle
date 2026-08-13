@@ -7,6 +7,7 @@ import com.harudle.common.security.AuthProperties;
 import com.harudle.common.security.RefreshTokenProperties;
 import java.net.URI;
 import java.time.Duration;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -34,7 +35,7 @@ class OAuthLoginFailureHandlerTest {
 
     private AuthProperties createAuthProperties() {
         return new AuthProperties(
-                "http://localhost:5173",
+                List.of("http://localhost:5173"),
                 URI.create("http://localhost:5173/auth/callback"),
                 URI.create("http://localhost:5173/auth/callback?error=oauth_failed"),
                 new AccessTokenProperties(

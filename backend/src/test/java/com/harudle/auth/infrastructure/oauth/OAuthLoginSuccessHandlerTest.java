@@ -200,7 +200,7 @@ class OAuthLoginSuccessHandlerTest {
 
     private AuthProperties createAuthProperties() {
         return new AuthProperties(
-                "http://localhost:5173",
+                List.of("http://localhost:5173"),
                 URI.create("http://localhost:5173/auth/callback"),
                 URI.create("http://localhost:5173/auth/callback?error=oauth_failed"),
                 new AccessTokenProperties(
