@@ -1,8 +1,9 @@
 package com.harudle.auth.presentation;
 
 import com.harudle.auth.application.CurrentUserResult;
-import com.harudle.auth.domain.OAuthProvider;
 import java.time.Instant;
+import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -10,7 +11,7 @@ public record CurrentUserResponse(
         UUID id,
         String name,
         String email,
-        OAuthProvider oauthProvider,
+        List<String> oauthProviders,
         Instant createdAt
 ) {
 
@@ -21,7 +22,7 @@ public record CurrentUserResponse(
                 result.id(),
                 result.name(),
                 result.email(),
-                result.oauthProvider(),
+                List.of(result.oauthProvider().name().toLowerCase(Locale.ROOT)),
                 result.createdAt()
         );
     }

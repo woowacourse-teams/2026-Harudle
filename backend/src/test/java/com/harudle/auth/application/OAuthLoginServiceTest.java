@@ -150,20 +150,25 @@ class OAuthLoginServiceTest {
     }
 
     @Test
-    @DisplayName("신규 회원의 이메일이 없으면 회원을 생성하지 않는다")
-    void rejectsNewUserWithoutEmail() {
+    @DisplayName("신규 회원의 이메일이 없어도 닉네임으로 회원을 생성한다")
+    void createsNewUserWithoutEmail() {
         OAuthLoginCommand command = createCommand(
                 "12345",
                 null,
                 "하루들"
         );
 
-        assertThatThrownBy(() -> oAuthLoginService.login(command, LOGIN_AT))
-                .isInstanceOf(RequiredOAuthProfileException.class)
-                .hasMessage("이메일이 필요합니다.");
+        OAuthLoginResult result = oAuthLoginService.login(command, LOGIN_AT);
+        flushAndClear();
 
-        assertThat(userRepository.count()).isZero();
-        assertThat(oAuthAccountRepository.count()).isZero();
+        User savedUser = userRepository.findById(result.userId()).orElseThrow();
+        OAuthAccount savedAccount = findAccount("12345");
+
+        assertThat(userRepository.count()).isEqualTo(1);
+        assertThat(oAuthAccountRepository.count()).isEqualTo(1);
+        assertThat(savedUser.getPrimaryEmail()).isNull();
+        assertThat(savedUser.getName()).isEqualTo("하루들");
+        assertThat(savedAccount.getProviderEmail()).isNull();
     }
 
     @Test
