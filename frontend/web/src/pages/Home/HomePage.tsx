@@ -207,7 +207,9 @@ const HomePage = () => {
             <RemainingGenerationUsageCard />
 
             {monthlyDiaryCount > 0 ? (
-              <DiaryItemList monthlyDiaryDays={monthlyDiaries.data} />
+              <div css={diaryListScrollStyle}>
+                <DiaryItemList monthlyDiaryDays={monthlyDiaries.data} />
+              </div>
             ) : (
               <DiaryEmptyState />
             )}
@@ -371,12 +373,14 @@ const homeContentStyle = css`
   gap: 5px;
   width: 100%;
   padding: 0 20px 24px;
-  overflow-y: auto;
+  min-height: 0;
+  overflow: hidden;
   box-sizing: border-box;
 `;
 
 const monthHeaderStyle = css`
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   width: 100%;
@@ -384,6 +388,20 @@ const monthHeaderStyle = css`
   padding: 10px 24px;
   border-bottom: 1px solid ${theme.colors.border};
   background-color: ${theme.colors.background};
+`;
+
+const diaryListScrollStyle = css`
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  padding-bottom: 72px;
+  overflow-y: auto;
+  box-sizing: border-box;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
 `;
 
 const monthInputStyle = css`
