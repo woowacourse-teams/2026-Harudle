@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { css } from '@emotion/react';
 import backIcon from '../../assets/icons/back.svg';
 import { theme } from '../../styles/theme';
+import { formatKoreanDate } from '../../shared/date';
 
 const DiaryWritePage = () => {
   const navigate = useNavigate();
@@ -24,9 +25,7 @@ const DiaryWritePage = () => {
     // 데이터만 보내고, 실제 요청은 생성 페이지에서 하도록 한다.
     navigate('/diary-generating', {
       state: {
-        diaryDate: new Date().toLocaleDateString('sv-SE', {
-          timeZone: 'Asia/Seoul',
-        }),
+        diaryDate: formatKoreanDate(new Date()),
         sourceText: diaryContent,
       },
     });
