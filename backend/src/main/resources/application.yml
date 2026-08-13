@@ -1,3 +1,12 @@
+server:
+  servlet:
+    session:
+      timeout: 10m
+      cookie:
+        http-only: true
+        same-site: lax
+        secure: ${SESSION_COOKIE_SECURE:false}
+
 spring:
   application:
     name: harudle
@@ -16,3 +25,74 @@ spring:
         format_sql: true
         jdbc:
           time_zone: UTC
+
+  security:
+    oauth2:
+      client:
+        registration:
+          kakao:
+            client-id: ${KAKAO_REST_API_KEY}
+            client-secret: ${KAKAO_CLIENT_SECRET}
+            client-authentication-method: client_secret_post
+            authorization-grant-type: authorization_code
+            redirect-uri: "${BACKEND_BASE_URL:http://localhost:8080}/login/oauth2/code/{registrationId}"
+            scope:
+              - profile_nickname
+            client-name: Kakao
+
+        provider:
+          kakao:
+            authorization-uri: https://kauth.kakao.com/oauth/authorize
+            token-uri: https://kauth.kakao.com/oauth/token
+            user-info-uri: https://kapi.kakao.com/v2/user/me
+            user-name-attribute: id
+
+app:
+  auth:
+    frontend-origin: "${FRONTEND_ORIGIN:http://localhost:5173}"
+    success-redirect: "${FRONTEND_SUCCESS_REDIRECT:http://localhost:5173/auth/callback}"
+    failure-redirect: "${FRONTEND_FAILURE_REDIRECT:http://localhost:5173/auth/callback?error=oauth_failed}"
+
+    access-token:
+      issuer: "${JWT_ISSUER:harudle}"
+      audience: "${JWT_AUDIENCE:harudle-api}"
+      secret-base64: ${JWT_SECRET_BASE64}
+      ttl: 30m
+
+    refresh-token:
+      cookie-name: refresh_token
+      cookie-path: /api/v1/auth
+      secure: ${REFRESH_COOKIE_SECURE:false}
+      same-site: Lax
+      ttl: 14d
+
+harudle:
+  share:
+    public-base-url: ${SHARE_PUBLIC_BASE_URL:http://localhost:3000/shares}
+  generation:
+    lifecycle:
+      processing-timeout: ${GENERATION_PROCESSING_TIMEOUT:30m}
+      cleanup-interval: ${GENERATION_CLEANUP_INTERVAL:1m}
+    prompt-bootstrap:
+      enabled: ${HARUDLE_GENERATION_PROMPT_BOOTSTRAP_ENABLED:false}
+      storyboard-prompt-text: ${HARUDLE_GENERATION_PROMPT_BOOTSTRAP_STORYBOARD_PROMPT_TEXT:}
+      image-style-prompt-text: ${HARUDLE_GENERATION_PROMPT_BOOTSTRAP_IMAGE_STYLE_PROMPT_TEXT:}
+      image-asset-object-key: ${HARUDLE_GENERATION_PROMPT_BOOTSTRAP_IMAGE_ASSET_OBJECT_KEY:}
+    adapters:
+      enabled: ${HARUDLE_GENERATION_ADAPTERS_ENABLED:false}
+    gemini:
+      api-key: ${GOOGLE_API_KEY:${GEMINI_API_KEY:}}
+      storyboard-model: ${GEMINI_STORYBOARD_MODEL:gemini-3.5-flash}
+      image-model: ${GEMINI_IMAGE_MODEL:gemini-3.1-flash-image}
+      storyboard-thinking-level: ${GEMINI_STORYBOARD_THINKING_LEVEL:high}
+      image-aspect-ratio: "${GEMINI_IMAGE_ASPECT_RATIO:1:1}"
+      max-output-tokens: ${GEMINI_MAX_OUTPUT_TOKENS:4096}
+      retry-attempts: ${GEMINI_RETRY_ATTEMPTS:3}
+      request-timeout: ${GEMINI_REQUEST_TIMEOUT:180s}
+    storage:
+      s3:
+        bucket: ${S3_BUCKET:}
+        region: ${AWS_REGION:ap-northeast-2}
+        generated-prefix: ${S3_GENERATED_PREFIX:generated/diary-images}
+        max-object-size: ${S3_MAX_OBJECT_SIZE:20MB}
+        access-url-ttl: ${S3_ACCESS_URL_TTL:15m}

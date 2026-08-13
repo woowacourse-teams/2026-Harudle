@@ -1,0 +1,26 @@
+version: 0.0
+os: linux
+
+files:
+  - source: deploy/compose.prod.yaml
+    destination: /opt/harudle
+  - source: build-artifacts
+    destination: /opt/harudle/images
+
+hooks:
+  BeforeInstall:
+    - location: deploy/scripts/before_install.sh
+      timeout: 120
+      runas: root
+  AfterInstall:
+    - location: deploy/scripts/after_install.sh
+      timeout: 600
+      runas: root
+  ApplicationStart:
+    - location: deploy/scripts/application_start.sh
+      timeout: 300
+      runas: root
+  ValidateService:
+    - location: deploy/scripts/validate_service.sh
+      timeout: 360
+      runas: root

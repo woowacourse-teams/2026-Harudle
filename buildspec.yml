@@ -1,0 +1,48 @@
+version: 0.2
+
+env:
+  shell: bash
+  variables:
+    DOCKER_BUILDKIT: "1"
+
+phases:
+  install:
+    commands:
+      - set -euo pipefail
+      - docker version
+      - docker buildx version
+      - >-
+        if [[ "$(uname -m)" != "aarch64" && "$(uname -m)" != "arm64" ]]; then
+          docker run --privileged --rm tonistiigi/binfmt --install arm64;
+        fi
+      - docker buildx create --name harudle-builder --driver docker-container --use
+      - docker buildx inspect --bootstrap
+  pre_build:
+    commands:
+      - set -euo pipefail
+      - echo "Build host architecture is $(uname -m); target architecture is linux/arm64."
+  build:
+    commands:
+      - set -euo pipefail
+      - docker buildx build --platform linux/arm64 --pull --load --tag harudle-backend:local ./backend
+      - docker buildx build --platform linux/arm64 --pull --load --tag harudle-frontend:local ./frontend
+      - test "$(docker image inspect --format '{{.Architecture}}' harudle-backend:local)" = "arm64"
+      - test "$(docker image inspect --format '{{.Architecture}}' harudle-frontend:local)" = "arm64"
+  post_build:
+    commands:
+      - set -euo pipefail
+      - mkdir -p build-artifacts
+      - docker save harudle-backend:local | gzip -1 > build-artifacts/backend-image.tar.gz
+      - docker save harudle-frontend:local | gzip -1 > build-artifacts/frontend-image.tar.gz
+      - (cd build-artifacts && sha256sum backend-image.tar.gz frontend-image.tar.gz > image-checksums.sha256)
+      - chmod 0755 deploy/scripts/*.sh
+      - test -s build-artifacts/backend-image.tar.gz
+      - test -s build-artifacts/frontend-image.tar.gz
+
+artifacts:
+  files:
+    - appspec.yml
+    - deploy/compose.prod.yaml
+    - deploy/scripts/**/*
+    - build-artifacts/*
+  discard-paths: no

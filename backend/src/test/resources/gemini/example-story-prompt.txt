@@ -1,0 +1,49 @@
+SELECTED STORY: 인스타 맛집의 함정
+
+SOURCE AND ADAPTATION RULE:
+This four-panel story was adapted from one diary entry. Preserve this intentional reveal order, cast, causal logic, meaning, and ending. Do not add another event, character, brand, or subplot.
+
+CAST AND CONTINUITY:
+A young protagonist with short dark hair in casual clothes, appearing consistently across all panels.
+Use the same recognizable character designs in every panel where they recur.
+
+Panel 1 — TOP LEFT — SETUP:
+Scene: A person sitting on a sofa, eyes wide and sparkling, staring intently at a smartphone screen showing a glowing, vibrant food photo.
+Characters and action: Protagonist sitting comfortably on a couch, holding a smartphone with both hands.
+Visible emotion: Excitement, wide-eyed fascination, tiny open mouth.
+Sparse symbolic props: smartphone
+Do not place readable text, labels, logos, brands, model names, or UI words inside the scene.
+Caption reads exactly: "와, 침 고인다"
+
+Panel 2 — TOP RIGHT — ACTION:
+Scene: The same person sitting at a restaurant table, looking blankly at a very ordinary, underwhelming dish with chopsticks in hand.
+Characters and action: Protagonist sitting at a simple cafe table, holding chopsticks awkwardly above the plate.
+Visible emotion: Disappointment, flat expression, tiny straight line mouth.
+Sparse symbolic props: plate, chopsticks, table
+Do not place readable text, labels, logos, brands, model names, or UI words inside the scene.
+Caption reads exactly: "막상 먹어보면..."
+
+Panel 3 — BOTTOM LEFT — ESCALATION:
+Scene: The person sitting back with crossed arms, looking skeptical and determined while staring off to the side.
+Characters and action: Protagonist sitting with arms crossed, leaning back with a resolute expression.
+Visible emotion: Stubborn determination, tiny curved-down mouth.
+Sparse symbolic props: No additional prop
+Do not place readable text, labels, logos, brands, model names, or UI words inside the scene.
+Caption reads exactly: "다신 안 속아"
+
+Panel 4 — BOTTOM RIGHT — RESOLUTION:
+Scene: The person lying in bed at night, scrolling the smartphone again with a hopeful grin, illuminated by the screen glow.
+Characters and action: Protagonist lying under a blanket, holding the smartphone close with a soft smile.
+Visible emotion: Renewed anticipation, tiny hopeful smile.
+Sparse symbolic props: smartphone, blanket
+Do not place readable text, labels, logos, brands, model names, or UI words inside the scene.
+Caption reads exactly: "이번엔 다를지도?"
+
+FINAL STORY CHECK:
+Exactly four equal 2x2 panels in top-left to bottom-right reading order. Follow the storyboard's clear chronological cause-and-effect order.
+Render exactly these four Korean captions once each and no other readable text:
+- "와, 침 고인다"
+- "막상 먹어보면..."
+- "다신 안 속아"
+- "이번엔 다를지도?"
+Keep the ending faithful to the diary. Square 1:1 canvas.
