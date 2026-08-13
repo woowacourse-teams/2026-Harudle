@@ -18,5 +18,6 @@ declare module '*.webp' {
 declare const process: {
   readonly env: {
     readonly NODE_ENV: string;
+    readonly USE_MSW: string;
   };
 };

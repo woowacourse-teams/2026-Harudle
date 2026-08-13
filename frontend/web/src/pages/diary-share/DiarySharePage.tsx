@@ -80,18 +80,6 @@ const DiarySharePage = () => {
     void getSharedDiary();
   }, [shareId]);
 
-  if (sharedDiary.status === 'idle' || sharedDiary.status === 'loading') {
-    return (
-      <div css={feedbackStyle}>
-        <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
-      </div>
-    );
-  }
-
-  if (sharedDiary.status === 'error') {
-    return <div css={feedbackStyle}>{sharedDiary.error.message}</div>;
-  }
-
   return (
     <div css={diarySharePageStyle}>
       <button css={logoButtonStyle} onClick={() => navigate('/')}>
@@ -99,15 +87,30 @@ const DiarySharePage = () => {
       </button>
 
       <main css={sharedDiaryContentStyle}>
-        <div css={diaryTitleStyle}>{sharedDiary.data.title}</div>
-        <img
-          src={sharedDiary.data.imageUrl}
-          alt={sharedDiary.data.title}
-          css={diaryImageStyle}
-        />
-        <div css={diaryDateStyle}>
-          {formatDiaryDate(sharedDiary.data.diaryDate)}
-        </div>
+        {sharedDiary.status === 'idle' || sharedDiary.status === 'loading' ? (
+          <div css={feedbackStyle}>
+            <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
+          </div>
+        ) : sharedDiary.status === 'error' ? (
+          <div css={feedbackStyle}>
+            <div>{sharedDiary.error.message}</div>
+            <button css={errorButtonStyle} onClick={() => navigate('/')}>
+              홈으로 이동
+            </button>
+          </div>
+        ) : (
+          <>
+            <div css={diaryTitleStyle}>{sharedDiary.data.title}</div>
+            <img
+              src={sharedDiary.data.imageUrl}
+              alt={sharedDiary.data.title}
+              css={diaryImageStyle}
+            />
+            <div css={diaryDateStyle}>
+              {formatDiaryDate(sharedDiary.data.diaryDate)}
+            </div>
+          </>
+        )}
       </main>
     </div>
   );
@@ -146,6 +149,7 @@ const logoStyle = css`
 
 const sharedDiaryContentStyle = css`
   display: flex;
+  flex: 1;
   flex-direction: column;
   align-items: center;
   width: 390px;
@@ -188,14 +192,28 @@ const diaryDateStyle = css`
 `;
 
 const feedbackStyle = css`
+  flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 16px;
   width: 100%;
-  height: 100%;
   color: ${theme.colors.textPrimary};
   font-size: 16px;
   line-height: 26px;
+`;
+
+const errorButtonStyle = css`
+  width: 140px;
+  height: 48px;
+  border: none;
+  border-radius: 9999px;
+  background-color: ${theme.colors.primary};
+  color: ${theme.colors.background};
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
 `;
 
 const loadingImageStyle = css`

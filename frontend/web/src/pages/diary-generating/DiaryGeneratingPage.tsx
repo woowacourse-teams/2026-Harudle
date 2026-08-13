@@ -11,6 +11,8 @@ import generationStep2Image from '../../assets/images/generation-step-2-writing.
 import generationStep3Image from '../../assets/images/generation-step-3-selecting-panels.png';
 import generationStep4Image from '../../assets/images/generation-step-4-painting.png';
 import generationCompleteImage from '../../assets/images/generation-step-5-complete.png';
+import { authFetch } from '../../shared/auth';
+import ActionButton from '../../shared/ActionButton';
 
 const generationSteps = [
   {
@@ -52,7 +54,7 @@ const DiaryGeneratingPage = () => {
       setDiaryGenerateRequest('loading');
 
       try {
-        const response = await fetch(`${API_BASE_URL}/diaries`, {
+        const response = await authFetch(`${API_BASE_URL}/diaries`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -72,20 +74,15 @@ const DiaryGeneratingPage = () => {
 
         setCreatedDiaryId(data.id);
         setDiaryGenerateRequest('success');
-      } catch (error: unknown) {
+      } catch {
         setDiaryGenerateRequest('error');
-
-        if (error instanceof Error) {
-          alert(error.message);
-          navigate(-1);
-        }
       }
     };
 
     void postDiaryGenerate();
   }, [state, navigate]);
   useEffect(() => {
-    if (loadingStep >= 4) {
+    if (loadingStep >= 4 || diaryGenerateRequest === 'error') {
       return;
     }
 
@@ -94,7 +91,7 @@ const DiaryGeneratingPage = () => {
     }, 2_000);
 
     return () => clearTimeout(timeoutId);
-  }, [loadingStep]);
+  }, [diaryGenerateRequest, loadingStep]);
 
   const isGenerationComplete =
     loadingStep === 4 &&
@@ -130,13 +127,30 @@ const DiaryGeneratingPage = () => {
       />
 
       <main css={contentStyle}>
-        <img
-          css={illustrationStyle(isCompleteStep)}
-          src={currentStep.image}
-          alt="일기 생성 중"
-        />
-        <div css={messageStyle(isCompleteStep)}>{currentStep.message}</div>
-        <DiaryGenerateStepper loadingStep={displayedStep} />
+        {diaryGenerateRequest === 'error' ? (
+          <div css={errorStyle}>
+            <div css={errorMessageStyle}>일기 생성에 실패했습니다.</div>
+            <ActionButton
+              label="다시 작성하기"
+              onClick={() =>
+                navigate('/diary-write', {
+                  replace: true,
+                  state,
+                })
+              }
+            />
+          </div>
+        ) : (
+          <>
+            <img
+              css={illustrationStyle(isCompleteStep)}
+              src={currentStep.image}
+              alt="일기 생성 중"
+            />
+            <div css={messageStyle(isCompleteStep)}>{currentStep.message}</div>
+            <DiaryGenerateStepper loadingStep={displayedStep} />
+          </>
+        )}
       </main>
     </div>
   );
@@ -175,9 +189,27 @@ const backIconStyle = css`
 
 const contentStyle = css`
   display: flex;
+  flex: 1;
   flex-direction: column;
   align-items: center;
   width: 100%;
+`;
+
+const errorStyle = css`
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  width: 342px;
+`;
+
+const errorMessageStyle = css`
+  color: ${theme.colors.textPrimary};
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 28px;
 `;
 
 const illustrationStyle = (isCompleteStep: boolean) => css`

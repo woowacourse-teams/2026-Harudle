@@ -6,11 +6,12 @@ import { useNavigate } from 'react-router';
 import { useEffect, useState } from 'react';
 import { API_BASE_URL, type ApiRequest } from '../../shared/api';
 import loadingAnimation from '../../assets/images/loading-animation.webp';
+import { authFetch, logout } from '../../shared/auth';
 
 interface ProfileResponse {
   id: string;
   name: string;
-  email: string;
+  email?: string;
   oauthProviders: string[];
   createdAt: string;
 }
@@ -24,7 +25,6 @@ const isProfileResponse = (value: unknown): value is ProfileResponse => {
     'name' in value &&
     typeof value.name === 'string' &&
     'email' in value &&
-    typeof value.email === 'string' &&
     'oauthProviders' in value &&
     Array.isArray(value.oauthProviders) &&
     value.oauthProviders.every((provider) => typeof provider === 'string') &&
@@ -38,13 +38,14 @@ const SettingPage = () => {
   const [profile, setProfile] = useState<ApiRequest<ProfileResponse>>({
     status: 'idle',
   });
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   useEffect(() => {
     const getProfile = async (): Promise<void> => {
       setProfile({ status: 'loading' });
 
       try {
-        const response = await fetch(`${API_BASE_URL}/me`);
+        const response = await authFetch(`${API_BASE_URL}/me`);
 
         if (!response.ok) {
           throw new Error('네트워크 에러');
@@ -67,17 +68,21 @@ const SettingPage = () => {
     void getProfile();
   }, []);
 
-  if (profile.status === 'idle' || profile.status === 'loading') {
-    return (
-      <div css={loadingStyle}>
-        <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
-      </div>
-    );
-  }
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
 
-  if (profile.status === 'error') {
-    return <div>에러가 발생했습니다.</div>;
-  }
+    try {
+      await logout();
+      navigate('/login', { replace: true });
+    } catch (error: unknown) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : '로그아웃 중 에러가 발생했습니다.',
+      );
+      setIsLoggingOut(false);
+    }
+  };
 
   return (
     <div css={settingPageStyle}>
@@ -88,27 +93,42 @@ const SettingPage = () => {
       </header>
 
       <main css={settingContentStyle}>
-        <div css={pageTitleStyle}>설정</div>
-
-        <div css={accountCardStyle}>
-          <div css={settingRowStyle}>
-            <span css={settingLabelStyle}>이름</span>
-            <span css={settingValueStyle}>
-              <span>{profile.data.name}</span>
-            </span>
+        {profile.status === 'idle' || profile.status === 'loading' ? (
+          <div css={feedbackStyle}>
+            <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
           </div>
+        ) : profile.status === 'error' ? (
+          <div css={feedbackStyle}>{profile.error.message}</div>
+        ) : (
+          <>
+            <div css={pageTitleStyle}>설정</div>
 
-          <div css={settingRowStyle}>
-            <span css={settingLabelStyle}>소셜 계정</span>
-            <span css={settingValueStyle}>
-              <span>{profile.data.oauthProviders.join(', ')}</span>
-            </span>
-          </div>
-        </div>
+            <div css={accountCardStyle}>
+              <div css={settingRowStyle}>
+                <span css={settingLabelStyle}>이름</span>
+                <span css={settingValueStyle}>
+                  <span>{profile.data.name}</span>
+                </span>
+              </div>
 
-        <button type="button" css={logoutButtonStyle}>
-          로그아웃
-        </button>
+              <div css={settingRowStyle}>
+                <span css={settingLabelStyle}>소셜 계정</span>
+                <span css={settingValueStyle}>
+                  <span>{profile.data.oauthProviders.join(', ')}</span>
+                </span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              css={logoutButtonStyle}
+              disabled={isLoggingOut}
+              onClick={() => void handleLogout()}
+            >
+              로그아웃
+            </button>
+          </>
+        )}
       </main>
 
       <BottomNavigation />
@@ -235,14 +255,22 @@ const logoutButtonStyle = css`
   &:active {
     background-color: #fff7f7;
   }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
 `;
 
-const loadingStyle = css`
+const feedbackStyle = css`
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 100%;
-  height: 100%;
+  color: ${theme.colors.textPrimary};
+  font-size: 16px;
+  line-height: 26px;
   background-color: ${theme.colors.background};
 `;
 

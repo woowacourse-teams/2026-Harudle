@@ -70,6 +70,11 @@ const diaryItemRowStyle = css`
   height: 82px;
   border: none;
   background: none;
+  cursor: pointer;
+
+  &:active {
+    background-color: #fafafb;
+  }
 `;
 
 const timelineNodeStyle = (isFirst: boolean, isLast: boolean) => css`

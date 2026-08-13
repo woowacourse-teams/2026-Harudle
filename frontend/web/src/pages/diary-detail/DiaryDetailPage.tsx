@@ -11,6 +11,7 @@ import shareIcon from '../../assets/icons/share.svg';
 import downloadIcon from '../../assets/icons/download.svg';
 import deleteIcon from '../../assets/icons/delete.svg';
 import loadingAnimation from '../../assets/images/loading-animation.webp';
+import { authFetch } from '../../shared/auth';
 
 interface DiaryDetail {
   id: string;
@@ -66,7 +67,7 @@ const DiaryDetailPage = () => {
       setDiaryDetail({ status: 'loading' });
 
       try {
-        const response = await fetch(`${API_BASE_URL}/diaries/${diaryId}`);
+        const response = await authFetch(`${API_BASE_URL}/diaries/${diaryId}`);
 
         if (!response.ok) {
           throw new Error('일기를 불러오지 못했습니다.');
@@ -97,7 +98,7 @@ const DiaryDetailPage = () => {
     setDiaryDeleteRequest({ status: 'loading' });
 
     try {
-      const response = await fetch(`${API_BASE_URL}/diaries/${diaryId}`, {
+      const response = await authFetch(`${API_BASE_URL}/diaries/${diaryId}`, {
         method: 'DELETE',
       });
 
@@ -120,14 +121,40 @@ const DiaryDetailPage = () => {
 
   if (diaryDetail.status === 'idle' || diaryDetail.status === 'loading') {
     return (
-      <div css={feedbackStyle}>
-        <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
+      <div css={diaryDetailPageStyle}>
+        <PageHeader
+          leftButton={
+            <button css={backButtonStyle} onClick={() => navigate(-1)}>
+              <img src={backIcon} alt="뒤로가기" css={backIconStyle} />
+            </button>
+          }
+          title={null}
+          rightButton={null}
+        />
+        <div css={feedbackStyle}>
+          <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
+        </div>
       </div>
     );
   }
 
   if (diaryDetail.status === 'error') {
-    return <div css={feedbackStyle}>{diaryDetail.error.message}</div>;
+    return (
+      <div css={diaryDetailPageStyle}>
+        <PageHeader
+          leftButton={
+            <button css={backButtonStyle} onClick={() => navigate(-1)}>
+              <img src={backIcon} alt="뒤로가기" css={backIconStyle} />
+            </button>
+          }
+          title={null}
+          rightButton={null}
+        />
+        <div css={feedbackStyle}>
+          <div>{diaryDetail.error.message}</div>
+        </div>
+      </div>
+    );
   }
 
   const handleDiaryShare = async () => {
@@ -138,7 +165,7 @@ const DiaryDetailPage = () => {
     setIsSharing(true);
 
     try {
-      const response = await fetch(
+      const response = await authFetch(
         `${API_BASE_URL}/diaries/${diaryId}/share-link`,
         {
           method: 'PUT',
@@ -404,11 +431,13 @@ const storyTextStyle = css`
 `;
 
 const feedbackStyle = css`
+  flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 16px;
   width: 100%;
-  height: 100%;
   color: ${theme.colors.textPrimary};
   font-size: 16px;
   line-height: 26px;

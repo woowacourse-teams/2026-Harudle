@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import FloatingActionButton from '../../shared/FloatingActionButton';
 import PageHeader from '../../shared/PageHeader';
 import DiaryInputField from './DiaryInputField';
@@ -6,10 +6,14 @@ import { useState } from 'react';
 import { css } from '@emotion/react';
 import backIcon from '../../assets/icons/back.svg';
 import { theme } from '../../styles/theme';
+import { formatKoreanDate } from '../../shared/date';
 
 const DiaryWritePage = () => {
   const navigate = useNavigate();
-  const [diaryContent, setDiaryContent] = useState('');
+  const { state } = useLocation();
+  const [diaryContent, setDiaryContent] = useState<string>(
+    state?.sourceText ?? '',
+  );
   const [diaryContentError, setDiaryContentError] = useState<string | null>(
     null,
   );
@@ -24,9 +28,7 @@ const DiaryWritePage = () => {
     // 데이터만 보내고, 실제 요청은 생성 페이지에서 하도록 한다.
     navigate('/diary-generating', {
       state: {
-        diaryDate: new Date().toLocaleDateString('sv-SE', {
-          timeZone: 'Asia/Seoul',
-        }),
+        diaryDate: formatKoreanDate(new Date()),
         sourceText: diaryContent,
       },
     });
