@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import BottomNavigation from '../../shared/BottomNavigation';
 import DiaryEmptyState from './DiaryEmptyState';
 import { API_BASE_URL, type ApiRequest } from '../../shared/api';
@@ -107,6 +107,7 @@ const isMonthlyDiariesResponse = (
 
 const HomePage = () => {
   const navigate = useNavigate();
+  const monthInputRef = useRef<HTMLInputElement>(null);
   // TODO: 클라이언트 상태 훅으로 분리하기
   const [selectedYearMonth, setSelectedYearMonth] = useState<YearMonth>({
     year: 2026,
@@ -165,6 +166,14 @@ const HomePage = () => {
     setSelectedYearMonth(formatYearMonthToObject(stringYearMonth));
   };
 
+  const handleYearMonthPickerOpen = () => {
+    const monthInput = monthInputRef.current;
+
+    if (typeof monthInput?.showPicker === 'function') {
+      monthInput.showPicker();
+    }
+  };
+
   const monthlyDiaryCount =
     monthlyDiaries.status === 'success'
       ? monthlyDiaries.data.reduce((count, day) => count + day.items.length, 0)
@@ -191,9 +200,11 @@ const HomePage = () => {
             <div css={monthHeaderStyle}>
               <div css={monthPickerStyle}>
                 <input
+                  ref={monthInputRef}
                   type="month"
                   value={formatYearMonthToString(selectedYearMonth)}
                   onChange={handleYearMonthChange}
+                  onClick={handleYearMonthPickerOpen}
                   css={monthInputStyle}
                 />
                 <img src={keyboardArrowDownIcon} alt="" css={monthArrowStyle} />
@@ -206,13 +217,13 @@ const HomePage = () => {
 
             <RemainingGenerationUsageCard />
 
-            {monthlyDiaryCount > 0 ? (
-              <div css={diaryListScrollStyle}>
+            <div css={diaryContentScrollStyle}>
+              {monthlyDiaryCount > 0 ? (
                 <DiaryItemList monthlyDiaryDays={monthlyDiaries.data} />
-              </div>
-            ) : (
-              <DiaryEmptyState />
-            )}
+              ) : (
+                <DiaryEmptyState />
+              )}
+            </div>
           </>
         )}
       </main>
@@ -372,7 +383,7 @@ const homeContentStyle = css`
   align-items: center;
   gap: 5px;
   width: 100%;
-  padding: 0 20px 24px;
+  padding: 0 20px;
   min-height: 0;
   overflow: hidden;
   box-sizing: border-box;
@@ -390,14 +401,14 @@ const monthHeaderStyle = css`
   background-color: ${theme.colors.background};
 `;
 
-const diaryListScrollStyle = css`
+const diaryContentScrollStyle = css`
   flex: 1;
   width: 100%;
   min-height: 0;
-  padding-bottom: 72px;
   overflow-y: auto;
   box-sizing: border-box;
   scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
 
   &::-webkit-scrollbar {
     display: none;
