@@ -7,6 +7,7 @@ import DiaryDetailPage from './pages/diary-detail/DiaryDetailPage';
 import DiarySharePage from './pages/diary-share/DiarySharePage';
 import SettingPage from './pages/setting/SettingPage';
 import LoginPage from './pages/login/LoginPage';
+import AuthCallbackPage from './pages/auth-callback/AuthCallbackPage';
 import AuthGuard from './shared/AuthGuard';
 
 const App = () => {
@@ -14,6 +15,7 @@ const App = () => {
     <div css={appStyle}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/auth/callback" element={<AuthCallbackPage />} />
         <Route path="/shares/:shareId" element={<DiarySharePage />} />
 
         <Route element={<AuthGuard />}>
