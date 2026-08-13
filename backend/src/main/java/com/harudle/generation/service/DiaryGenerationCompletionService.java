@@ -11,6 +11,7 @@ import com.harudle.generation.service.exception.DiaryGenerationFailedException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +25,7 @@ public class DiaryGenerationCompletionService {
     DiaryGenerationCompletionService(
             DiaryGenerationRepository diaryGenerationRepository,
             DiaryRepository diaryRepository,
+            @Qualifier("serviceClock")
             Clock clock
     ) {
         this.diaryGenerationRepository = diaryGenerationRepository;

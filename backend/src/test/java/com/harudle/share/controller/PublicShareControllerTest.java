@@ -3,9 +3,13 @@ package com.harudle.share.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
+import com.harudle.auth.infrastructure.oauth.OAuthLoginFailureHandler;
+import com.harudle.auth.infrastructure.oauth.OAuthLoginSuccessHandler;
 import com.harudle.common.config.TimeConfiguration;
 import com.harudle.common.error.ProblemDetailFactory;
-import com.harudle.common.security.ApiSecurityConfiguration;
+import com.harudle.common.error.TraceIdConfiguration;
+import com.harudle.common.security.CsrfConfiguration;
+import com.harudle.common.security.SecurityConfig;
 import com.harudle.generation.service.port.ImageAccessUrl;
 import com.harudle.generation.service.port.ImageUrlProvider;
 import com.harudle.share.service.PublicShareResult;
@@ -24,6 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -32,7 +37,9 @@ import org.springframework.test.web.servlet.MockMvc;
 @Import({
         PublicShareResponseAssembler.class,
         ProblemDetailFactory.class,
-        ApiSecurityConfiguration.class,
+        TraceIdConfiguration.class,
+        CsrfConfiguration.class,
+        SecurityConfig.class,
         TimeConfiguration.class
 })
 class PublicShareControllerTest {
@@ -52,6 +59,15 @@ class PublicShareControllerTest {
 
     @MockitoBean
     private JwtDecoder jwtDecoder;
+
+    @MockitoBean
+    private OAuthLoginSuccessHandler oAuthLoginSuccessHandler;
+
+    @MockitoBean
+    private OAuthLoginFailureHandler oAuthLoginFailureHandler;
+
+    @MockitoBean
+    private ClientRegistrationRepository clientRegistrationRepository;
 
     @BeforeEach
     void setUp() {

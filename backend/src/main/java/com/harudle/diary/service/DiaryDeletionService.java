@@ -6,6 +6,7 @@ import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.share.repository.ShareLinkDeletionRepository;
 import java.time.Clock;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +20,7 @@ public class DiaryDeletionService {
     DiaryDeletionService(
             DiaryDeletionRepository diaryDeletionRepository,
             ShareLinkDeletionRepository shareLinkDeletionRepository,
+            @Qualifier("serviceClock")
             Clock clock
     ) {
         this.diaryDeletionRepository = diaryDeletionRepository;

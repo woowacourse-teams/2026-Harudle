@@ -19,6 +19,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,6 +40,7 @@ class DiaryCreationTransactionService {
             DiaryGenerationRepository diaryGenerationRepository,
             GenerationUsageService generationUsageService,
             RequestFingerprintGenerator requestFingerprintGenerator,
+            @Qualifier("serviceClock")
             Clock clock,
             GenerationLifecycleProperties generationLifecycleProperties
     ) {

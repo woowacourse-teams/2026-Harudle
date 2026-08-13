@@ -8,6 +8,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -18,7 +19,10 @@ public class GenerationUsageService {
     private final GenerationUsageRepository generationUsageRepository;
     private final Clock clock;
 
-    GenerationUsageService(GenerationUsageRepository generationUsageRepository, Clock clock) {
+    GenerationUsageService(
+            GenerationUsageRepository generationUsageRepository,
+            @Qualifier("serviceClock") Clock clock
+    ) {
         this.generationUsageRepository = generationUsageRepository;
         this.clock = clock;
     }

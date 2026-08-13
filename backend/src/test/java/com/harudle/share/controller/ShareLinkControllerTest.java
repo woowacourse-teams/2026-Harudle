@@ -3,12 +3,17 @@ package com.harudle.share.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 
+import com.harudle.auth.infrastructure.oauth.OAuthLoginFailureHandler;
+import com.harudle.auth.infrastructure.oauth.OAuthLoginSuccessHandler;
 import com.harudle.auth.presentation.AuthenticatedUserIdResolver;
 import com.harudle.common.config.TimeConfiguration;
 import com.harudle.common.error.ProblemDetailFactory;
-import com.harudle.common.security.ApiSecurityConfiguration;
+import com.harudle.common.error.TraceIdConfiguration;
+import com.harudle.common.security.CsrfConfiguration;
+import com.harudle.common.security.SecurityConfig;
 import com.harudle.share.configuration.ShareConfiguration;
 import com.harudle.share.service.ShareLinkCreationResult;
 import com.harudle.share.service.ShareLinkService;
@@ -24,6 +29,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -35,7 +41,9 @@ import org.springframework.test.web.servlet.MockMvc;
         ShareLinkResponseAssembler.class,
         ShareConfiguration.class,
         ProblemDetailFactory.class,
-        ApiSecurityConfiguration.class,
+        TraceIdConfiguration.class,
+        CsrfConfiguration.class,
+        SecurityConfig.class,
         TimeConfiguration.class
 })
 @TestPropertySource(properties = "harudle.share.public-base-url=https://harudle.example/shares")
@@ -54,6 +62,15 @@ class ShareLinkControllerTest {
 
     @MockitoBean
     private JwtDecoder jwtDecoder;
+
+    @MockitoBean
+    private OAuthLoginSuccessHandler oAuthLoginSuccessHandler;
+
+    @MockitoBean
+    private OAuthLoginFailureHandler oAuthLoginFailureHandler;
+
+    @MockitoBean
+    private ClientRegistrationRepository clientRegistrationRepository;
 
     @BeforeEach
     void setUp() {
@@ -116,11 +133,11 @@ class ShareLinkControllerTest {
     @DisplayName("인증하지 않은 사용자는 공유 링크를 생성할 수 없다")
     void rejectUnauthenticatedRequest() {
         MockMvcResponse response = RestAssuredMockMvc.given()
+                .postProcessors(csrf())
                 .put("/api/v1/diaries/{diaryId}/share-link", DIARY_ID);
 
         assertThat(response.statusCode()).isEqualTo(401);
-        assertThat(response.contentType()).startsWith("application/problem+json");
-        assertThat(response.jsonPath().getString("code")).isEqualTo("UNAUTHORIZED");
+        assertThat(response.header("WWW-Authenticate")).startsWith("Bearer");
     }
 
     @Test
@@ -134,6 +151,9 @@ class ShareLinkControllerTest {
     }
 
     private io.restassured.module.mockmvc.specification.MockMvcRequestSpecification authenticatedRequest() {
-        return RestAssuredMockMvc.given().postProcessors(user(USER_ID.toString()));
+        return RestAssuredMockMvc.given().postProcessors(
+                user(USER_ID.toString()),
+                csrf()
+        );
     }
 }

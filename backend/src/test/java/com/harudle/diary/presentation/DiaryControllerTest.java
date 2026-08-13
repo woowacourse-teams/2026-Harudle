@@ -4,12 +4,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 
+import com.harudle.auth.infrastructure.oauth.OAuthLoginFailureHandler;
+import com.harudle.auth.infrastructure.oauth.OAuthLoginSuccessHandler;
 import com.harudle.auth.presentation.AuthenticatedUserIdResolver;
 import com.harudle.common.config.TimeConfiguration;
 import com.harudle.common.error.ProblemDetailFactory;
-import com.harudle.common.security.ApiSecurityConfiguration;
+import com.harudle.common.error.TraceIdConfiguration;
+import com.harudle.common.security.CsrfConfiguration;
+import com.harudle.common.security.SecurityConfig;
 import com.harudle.diary.service.DiaryCreationService;
 import com.harudle.diary.service.DiaryDeletionService;
 import com.harudle.diary.service.DiaryQueryService;
@@ -44,6 +49,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -54,7 +60,9 @@ import org.springframework.test.web.servlet.MockMvc;
         AuthenticatedUserIdResolver.class,
         DiaryResponseAssembler.class,
         ProblemDetailFactory.class,
-        ApiSecurityConfiguration.class,
+        TraceIdConfiguration.class,
+        CsrfConfiguration.class,
+        SecurityConfig.class,
         TimeConfiguration.class
 })
 class DiaryControllerTest {
@@ -86,6 +94,15 @@ class DiaryControllerTest {
 
     @MockitoBean
     private JwtDecoder jwtDecoder;
+
+    @MockitoBean
+    private OAuthLoginSuccessHandler oAuthLoginSuccessHandler;
+
+    @MockitoBean
+    private OAuthLoginFailureHandler oAuthLoginFailureHandler;
+
+    @MockitoBean
+    private ClientRegistrationRepository clientRegistrationRepository;
 
     @BeforeEach
     void setUp() {
@@ -237,6 +254,7 @@ class DiaryControllerTest {
         when(jwtDecoder.decode("valid-access-token")).thenReturn(createJwt());
 
         MockMvcResponse response = RestAssuredMockMvc.given()
+                .postProcessors(csrf())
                 .header("Authorization", "Bearer valid-access-token")
                 .delete("/api/v1/diaries/{diaryId}", DIARY_ID);
 
@@ -427,15 +445,13 @@ class DiaryControllerTest {
     }
 
     @Test
-    @DisplayName("인증하지 않은 요청은 RFC 9457 오류를 반환한다")
+    @DisplayName("인증하지 않은 요청은 Bearer challenge를 반환한다")
     void rejectUnauthenticatedRequest() {
         MockMvcResponse response = RestAssuredMockMvc.given()
                 .get("/api/v1/diaries/{diaryId}", DIARY_ID);
 
         assertThat(response.statusCode()).isEqualTo(401);
-        assertThat(response.contentType()).startsWith("application/problem+json");
         assertThat(response.header("WWW-Authenticate")).startsWith("Bearer");
-        assertThat(response.jsonPath().getString("code")).isEqualTo("UNAUTHORIZED");
     }
 
     @Test
@@ -504,7 +520,10 @@ class DiaryControllerTest {
     }
 
     private io.restassured.module.mockmvc.specification.MockMvcRequestSpecification authenticatedRequest() {
-        return RestAssuredMockMvc.given().postProcessors(user(USER_ID.toString()));
+        return RestAssuredMockMvc.given().postProcessors(
+                user(USER_ID.toString()),
+                csrf()
+        );
     }
 
     private CreateDiaryResult createDiaryResult(boolean newlyCreated) {

@@ -6,6 +6,7 @@ import com.harudle.generation.repository.DiaryGenerationRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
@@ -27,6 +28,7 @@ public final class DiaryGenerationCleanupScheduler {
             DiaryGenerationRepository diaryGenerationRepository,
             DiaryGenerationCompletionService completionService,
             GenerationLifecycleProperties generationLifecycleProperties,
+            @Qualifier("serviceClock")
             Clock clock
     ) {
         this.diaryGenerationRepository = diaryGenerationRepository;

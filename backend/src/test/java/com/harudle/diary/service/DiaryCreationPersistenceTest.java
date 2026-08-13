@@ -26,6 +26,7 @@ import org.springframework.boot.testcontainers.service.connection.ServiceConnect
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -151,6 +152,7 @@ class DiaryCreationPersistenceTest {
 
         @Bean
         @Primary
+        @Qualifier("serviceClock")
         Clock fixedClock() {
             return Clock.fixed(Instant.parse("2026-08-06T12:00:00Z"), ZoneOffset.UTC);
         }

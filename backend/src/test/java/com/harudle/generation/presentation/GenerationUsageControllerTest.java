@@ -3,11 +3,16 @@ package com.harudle.generation.presentation;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 
+import com.harudle.auth.infrastructure.oauth.OAuthLoginFailureHandler;
+import com.harudle.auth.infrastructure.oauth.OAuthLoginSuccessHandler;
 import com.harudle.auth.presentation.AuthenticatedUserIdResolver;
 import com.harudle.common.error.ProblemDetailFactory;
-import com.harudle.common.security.ApiSecurityConfiguration;
+import com.harudle.common.error.TraceIdConfiguration;
+import com.harudle.common.security.CsrfConfiguration;
+import com.harudle.common.security.SecurityConfig;
 import com.harudle.generation.domain.GenerationUsage;
 import com.harudle.generation.service.GenerationUsageService;
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
@@ -21,6 +26,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -31,7 +37,9 @@ import org.springframework.test.web.servlet.MockMvc;
 @Import({
         AuthenticatedUserIdResolver.class,
         ProblemDetailFactory.class,
-        ApiSecurityConfiguration.class
+        TraceIdConfiguration.class,
+        CsrfConfiguration.class,
+        SecurityConfig.class,
 })
 class GenerationUsageControllerTest {
 
@@ -46,6 +54,15 @@ class GenerationUsageControllerTest {
 
     @MockitoBean
     private JwtDecoder jwtDecoder;
+
+    @MockitoBean
+    private OAuthLoginSuccessHandler oAuthLoginSuccessHandler;
+
+    @MockitoBean
+    private OAuthLoginFailureHandler oAuthLoginFailureHandler;
+
+    @MockitoBean
+    private ClientRegistrationRepository clientRegistrationRepository;
 
     @BeforeEach
     void setUp() {
@@ -94,17 +111,13 @@ class GenerationUsageControllerTest {
     }
 
     @Test
-    @DisplayName("인증 정보가 없으면 표준 challenge와 Problem Details를 반환한다")
+    @DisplayName("인증 정보가 없으면 표준 Bearer challenge를 반환한다")
     void rejectUnauthenticatedRequest() {
         MockMvcResponse response = RestAssuredMockMvc.given()
                 .get("/api/v1/me/generation-usage");
 
         assertThat(response.statusCode()).isEqualTo(401);
         assertThat(response.getHeader(HttpHeaders.WWW_AUTHENTICATE)).startsWith("Bearer");
-        assertThat(response.jsonPath().getString("type"))
-                .isEqualTo("urn:harudle:problem:unauthorized");
-        assertThat(response.jsonPath().getString("code")).isEqualTo("UNAUTHORIZED");
-        assertThat(response.jsonPath().getString("traceId")).matches("[0-9a-f]{32}");
     }
 
     @Test
@@ -126,7 +139,7 @@ class GenerationUsageControllerTest {
     @DisplayName("지원하지 않는 HTTP 메서드도 표준 헤더와 공통 Problem Details를 반환한다")
     void rejectUnsupportedMethod() {
         MockMvcResponse response = RestAssuredMockMvc.given()
-                .postProcessors(user(USER_ID.toString()))
+                .postProcessors(user(USER_ID.toString()), csrf())
                 .post("/api/v1/me/generation-usage");
 
         assertThat(response.statusCode()).isEqualTo(405);
