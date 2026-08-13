@@ -13,6 +13,7 @@ import deleteIcon from '../../assets/icons/delete.svg';
 import loadingAnimation from '../../assets/images/loading-animation.webp';
 import { authFetch } from '../../shared/auth';
 import { downloadImage } from '../../shared/downloadImage';
+import { throwIfResponseFailed, toUserError } from '../../shared/apiError';
 
 interface DiaryDetail {
   id: string;
@@ -61,6 +62,7 @@ const DiaryDetailPage = () => {
   const [isSharing, setIsSharing] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [shareError, setShareError] = useState<string | null>(null);
   const [diaryDeleteRequest, setDiaryDeleteRequest] = useState<
     ApiRequest<void>
   >({ status: 'idle' });
@@ -72,24 +74,19 @@ const DiaryDetailPage = () => {
       try {
         const response = await authFetch(`${API_BASE_URL}/diaries/${diaryId}`);
 
-        if (!response.ok) {
-          throw new Error('일기를 불러오지 못했습니다.');
-        }
+        await throwIfResponseFailed(response, '일기를 불러오지 못했습니다.');
 
         const data: unknown = await response.json();
 
         if (!isDiaryDetail(data)) {
-          throw new Error('일기 상세 응답 형식이 일치하지 않습니다.');
+          throw new Error('일기를 불러오지 못했습니다.');
         }
 
         setDiaryDetail({ status: 'success', data });
       } catch (error: unknown) {
         setDiaryDetail({
           status: 'error',
-          error:
-            error instanceof Error
-              ? error
-              : new Error('알 수 없는 에러가 발생했습니다.'),
+          error: toUserError(error, '일기를 불러오지 못했습니다.'),
         });
       }
     };
@@ -105,20 +102,14 @@ const DiaryDetailPage = () => {
         method: 'DELETE',
       });
 
-      if (!response.ok) {
-        throw new Error('일기를 삭제하지 못했습니다.');
-      }
+      await throwIfResponseFailed(response, '일기를 삭제하지 못했습니다.');
 
       setDiaryDeleteRequest({ status: 'success', data: undefined });
       navigate('/', { replace: true });
     } catch (error: unknown) {
-      const deleteError =
-        error instanceof Error
-          ? error
-          : new Error('알 수 없는 에러가 발생했습니다.');
+      const deleteError = toUserError(error, '일기를 삭제하지 못했습니다.');
 
       setDiaryDeleteRequest({ status: 'error', error: deleteError });
-      alert(deleteError.message);
     }
   };
 
@@ -166,6 +157,7 @@ const DiaryDetailPage = () => {
     }
 
     setIsSharing(true);
+    setShareError(null);
 
     try {
       const response = await authFetch(
@@ -175,14 +167,12 @@ const DiaryDetailPage = () => {
         },
       );
 
-      if (!response.ok) {
-        throw new Error('공유 링크를 만들지 못했습니다.');
-      }
+      await throwIfResponseFailed(response, '공유 링크를 만들지 못했습니다.');
 
       const data: unknown = await response.json();
 
       if (!isRecord(data) || typeof data.shareUrl !== 'string') {
-        throw new Error('공유 링크 응답 형식이 일치하지 않습니다.');
+        throw new Error('공유 링크를 만들지 못했습니다.');
       }
 
       if (navigator.share) {
@@ -200,7 +190,7 @@ const DiaryDetailPage = () => {
         return;
       }
 
-      alert(error instanceof Error ? error.message : '공유에 실패했습니다.');
+      setShareError(toUserError(error, '공유에 실패했습니다.').message);
     } finally {
       setIsSharing(false);
     }
@@ -296,6 +286,7 @@ const DiaryDetailPage = () => {
         onClick={handleDiaryShare}
         disabled={isSharing}
       />
+      {shareError && <div css={actionErrorStyle}>{shareError}</div>}
       <ActionButton
         icon={<img src={downloadIcon} alt="저장 아이콘" />}
         label="이미지 저장"
@@ -321,6 +312,11 @@ const DiaryDetailPage = () => {
             >
               삭제하기
             </button>
+            {diaryDeleteRequest.status === 'error' && (
+              <div css={deleteErrorStyle}>
+                {diaryDeleteRequest.error.message}
+              </div>
+            )}
             <button
               type="button"
               css={deleteCancelButtonStyle}
@@ -482,6 +478,15 @@ const feedbackStyle = css`
   line-height: 26px;
 `;
 
+const actionErrorStyle = css`
+  ${contentWidthStyle};
+  margin-top: -4px;
+  color: ${theme.colors.danger};
+  font-size: 13px;
+  line-height: 20px;
+  text-align: center;
+`;
+
 const loadingImageStyle = css`
   width: 160px;
   height: 160px;
@@ -517,7 +522,7 @@ const deleteModalStyle = css`
   gap: 12px;
   width: calc(100% - 40px);
   max-width: 390px;
-  height: 256px;
+  min-height: 256px;
   padding: 31px 20px 20px;
   border-radius: 24px;
   background-color: ${theme.colors.background};
@@ -537,6 +542,12 @@ const deleteModalDescriptionStyle = css`
   font-size: 14px;
   font-weight: 400;
   line-height: 22px;
+`;
+
+const deleteErrorStyle = css`
+  color: ${theme.colors.danger};
+  font-size: 13px;
+  line-height: 18px;
 `;
 
 const deleteConfirmButtonStyle = css`
