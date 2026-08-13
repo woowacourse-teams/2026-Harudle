@@ -165,22 +165,10 @@ const HomePage = () => {
     setSelectedYearMonth(formatYearMonthToObject(stringYearMonth));
   };
 
-  if (monthlyDiaries.status === 'idle' || monthlyDiaries.status === 'loading') {
-    return (
-      <div css={pageLoadingStyle}>
-        <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
-      </div>
-    );
-  }
-
-  if (monthlyDiaries.status === 'error') {
-    return <div>에러가 발생했습니다.</div>;
-  }
-
-  const monthlyDiaryCount = monthlyDiaries.data.reduce(
-    (count, day) => count + day.items.length,
-    0,
-  );
+  const monthlyDiaryCount =
+    monthlyDiaries.status === 'success'
+      ? monthlyDiaries.data.reduce((count, day) => count + day.items.length, 0)
+      : 0;
 
   return (
     <div css={homePageStyle}>
@@ -191,32 +179,43 @@ const HomePage = () => {
       </header>
 
       <main css={homeContentStyle}>
-        <div css={monthHeaderStyle}>
-          <div css={monthPickerStyle}>
-            <input
-              type="month"
-              value={formatYearMonthToString(selectedYearMonth)}
-              onChange={handleYearMonthChange}
-              css={monthInputStyle}
-            />
-            <img src={keyboardArrowDownIcon} alt="" css={monthArrowStyle} />
+        {monthlyDiaries.status === 'idle' ||
+        monthlyDiaries.status === 'loading' ? (
+          <div css={pageFeedbackStyle}>
+            <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
           </div>
-
-          {monthlyDiaryCount > 0 && (
-            <div css={recordCountStyle}>{monthlyDiaryCount}개의 기록</div>
-          )}
-        </div>
-
-        <RemainingGenerationUsageCard />
-
-        {monthlyDiaryCount > 0 ? (
-          <DiaryItemList monthlyDiaryDays={monthlyDiaries.data} />
+        ) : monthlyDiaries.status === 'error' ? (
+          <div css={pageFeedbackStyle}>{monthlyDiaries.error.message}</div>
         ) : (
-          <DiaryEmptyState />
+          <>
+            <div css={monthHeaderStyle}>
+              <div css={monthPickerStyle}>
+                <input
+                  type="month"
+                  value={formatYearMonthToString(selectedYearMonth)}
+                  onChange={handleYearMonthChange}
+                  css={monthInputStyle}
+                />
+                <img src={keyboardArrowDownIcon} alt="" css={monthArrowStyle} />
+              </div>
+
+              {monthlyDiaryCount > 0 && (
+                <div css={recordCountStyle}>{monthlyDiaryCount}개의 기록</div>
+              )}
+            </div>
+
+            <RemainingGenerationUsageCard />
+
+            {monthlyDiaryCount > 0 ? (
+              <DiaryItemList monthlyDiaryDays={monthlyDiaries.data} />
+            ) : (
+              <DiaryEmptyState />
+            )}
+          </>
         )}
       </main>
 
-      {monthlyDiaryCount > 0 && (
+      {monthlyDiaries.status === 'success' && monthlyDiaryCount > 0 && (
         <FloatingActionButton
           onClick={() => {
             navigate('/diary-write');
@@ -461,12 +460,15 @@ const generationUsageTextStyle = (remainingCount: number) => css`
   }
 `;
 
-const pageLoadingStyle = css`
+const pageFeedbackStyle = css`
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 100%;
-  height: 100%;
+  color: ${theme.colors.textPrimary};
+  font-size: 16px;
+  line-height: 26px;
   background-color: ${theme.colors.background};
 `;
 
