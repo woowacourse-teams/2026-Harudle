@@ -5,6 +5,8 @@ import { css } from '@emotion/react';
 import { theme } from '../../styles/theme';
 import harudleLogo from '../../assets/images/harudle-logo.png';
 import loadingAnimation from '../../assets/images/loading-animation.webp';
+import { useDelayedLoading } from '../../shared/useDelayedLoading';
+import { throwIfResponseFailed, toUserError } from '../../shared/apiError';
 
 interface SharedDiary {
   title: string;
@@ -55,30 +57,32 @@ const DiarySharePage = () => {
           `${API_BASE_URL}/public/shares/${shareId}`,
         );
 
-        if (!response.ok) {
-          throw new Error('공유된 일기를 불러오지 못했습니다.');
-        }
+        await throwIfResponseFailed(
+          response,
+          '공유된 일기를 불러오지 못했습니다.',
+        );
 
         const data: unknown = await response.json();
 
         if (!isSharedDiary(data)) {
-          throw new Error('공유 일기 응답 형식이 일치하지 않습니다.');
+          throw new Error('공유된 일기를 불러오지 못했습니다.');
         }
 
         setSharedDiary({ status: 'success', data });
       } catch (error: unknown) {
         setSharedDiary({
           status: 'error',
-          error:
-            error instanceof Error
-              ? error
-              : new Error('알 수 없는 에러가 발생했습니다.'),
+          error: toUserError(error, '공유된 일기를 불러오지 못했습니다.'),
         });
       }
     };
 
     void getSharedDiary();
   }, [shareId]);
+
+  const isSharedDiaryLoading =
+    sharedDiary.status === 'idle' || sharedDiary.status === 'loading';
+  const showSharedDiaryLoading = useDelayedLoading(isSharedDiaryLoading);
 
   return (
     <div css={diarySharePageStyle}>
@@ -87,9 +91,15 @@ const DiarySharePage = () => {
       </button>
 
       <main css={sharedDiaryContentStyle}>
-        {sharedDiary.status === 'idle' || sharedDiary.status === 'loading' ? (
+        {isSharedDiaryLoading ? (
           <div css={feedbackStyle}>
-            <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
+            {showSharedDiaryLoading && (
+              <img
+                src={loadingAnimation}
+                alt="로딩 중"
+                css={loadingImageStyle}
+              />
+            )}
           </div>
         ) : sharedDiary.status === 'error' ? (
           <div css={feedbackStyle}>

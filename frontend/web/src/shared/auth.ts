@@ -7,19 +7,25 @@ const isRecord = (value: unknown): value is Record<string, unknown> => {
   return typeof value === 'object' && value !== null;
 };
 
+const requestCsrfToken = async (): Promise<string | null> => {
+  const response = await fetch(`${API_BASE_URL}/auth/csrf`, {
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const data: unknown = await response.json();
+
+  return isRecord(data) && typeof data.token === 'string' ? data.token : null;
+};
+
 const requestAccessToken = async (): Promise<boolean> => {
   try {
-    const csrfResponse = await fetch(`${API_BASE_URL}/auth/csrf`, {
-      credentials: 'include',
-    });
+    const csrfToken = await requestCsrfToken();
 
-    if (!csrfResponse.ok) {
-      return false;
-    }
-
-    const csrfData: unknown = await csrfResponse.json();
-
-    if (!isRecord(csrfData) || typeof csrfData.token !== 'string') {
+    if (!csrfToken) {
       return false;
     }
 
@@ -27,7 +33,7 @@ const requestAccessToken = async (): Promise<boolean> => {
       method: 'POST',
       credentials: 'include',
       headers: {
-        'X-XSRF-TOKEN': csrfData.token,
+        'X-XSRF-TOKEN': csrfToken,
       },
     });
 
@@ -62,23 +68,51 @@ export const restoreLogin = (): Promise<boolean> => {
   return restoreLoginRequest;
 };
 
-export const authFetch = (
+export const authFetch = async (
   input: RequestInfo | URL,
   init: RequestInit = {},
 ): Promise<Response> => {
   const headers = new Headers(init.headers);
+  const sentAccessToken = accessToken;
 
-  if (accessToken) {
-    headers.set('Authorization', `Bearer ${accessToken}`);
+  if (sentAccessToken) {
+    headers.set('Authorization', `Bearer ${sentAccessToken}`);
   }
 
-  return fetch(input, { ...init, headers });
+  const response = await fetch(input, { ...init, headers });
+
+  if (response.status !== 401) {
+    return response;
+  }
+
+  if (accessToken === sentAccessToken) {
+    accessToken = null;
+  }
+
+  const isRestored = accessToken ? true : await restoreLogin();
+
+  if (!isRestored || !accessToken) {
+    return response;
+  }
+
+  const retryHeaders = new Headers(headers);
+  retryHeaders.set('Authorization', `Bearer ${accessToken}`);
+  return fetch(input, { ...init, headers: retryHeaders });
 };
 
 export const logout = async (): Promise<void> => {
-  const response = await authFetch(`${API_BASE_URL}/auth/logout`, {
+  const csrfToken = await requestCsrfToken();
+
+  if (!csrfToken) {
+    throw new Error('로그아웃에 실패했습니다.');
+  }
+
+  const response = await fetch(`${API_BASE_URL}/auth/logout`, {
     method: 'POST',
     credentials: 'include',
+    headers: {
+      'X-XSRF-TOKEN': csrfToken,
+    },
   });
 
   if (!response.ok) {

@@ -7,6 +7,8 @@ import { useEffect, useState } from 'react';
 import { API_BASE_URL, type ApiRequest } from '../../shared/api';
 import loadingAnimation from '../../assets/images/loading-animation.webp';
 import { authFetch, logout } from '../../shared/auth';
+import { useDelayedLoading } from '../../shared/useDelayedLoading';
+import { throwIfResponseFailed, toUserError } from '../../shared/apiError';
 
 interface ProfileResponse {
   id: string;
@@ -39,6 +41,7 @@ const SettingPage = () => {
     status: 'idle',
   });
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
 
   useEffect(() => {
     const getProfile = async (): Promise<void> => {
@@ -47,39 +50,42 @@ const SettingPage = () => {
       try {
         const response = await authFetch(`${API_BASE_URL}/me`);
 
-        if (!response.ok) {
-          throw new Error('네트워크 에러');
-        }
+        await throwIfResponseFailed(
+          response,
+          '사용자 정보를 불러오지 못했습니다.',
+        );
 
         const data: unknown = await response.json();
 
         if (!isProfileResponse(data)) {
-          throw new Error('Profile 응답 형식이 일치하지 않습니다.');
+          throw new Error('사용자 정보를 불러오지 못했습니다.');
         }
 
         setProfile({ status: 'success', data });
       } catch (error: unknown) {
-        if (error instanceof Error) {
-          setProfile({ status: 'error', error });
-        }
+        setProfile({
+          status: 'error',
+          error: toUserError(error, '사용자 정보를 불러오지 못했습니다.'),
+        });
       }
     };
 
     void getProfile();
   }, []);
 
+  const isProfileLoading =
+    profile.status === 'idle' || profile.status === 'loading';
+  const showProfileLoading = useDelayedLoading(isProfileLoading);
+
   const handleLogout = async () => {
     setIsLoggingOut(true);
+    setLogoutError(null);
 
     try {
       await logout();
       navigate('/login', { replace: true });
     } catch (error: unknown) {
-      alert(
-        error instanceof Error
-          ? error.message
-          : '로그아웃 중 에러가 발생했습니다.',
-      );
+      setLogoutError(toUserError(error, '로그아웃하지 못했습니다.').message);
       setIsLoggingOut(false);
     }
   };
@@ -93,9 +99,15 @@ const SettingPage = () => {
       </header>
 
       <main css={settingContentStyle}>
-        {profile.status === 'idle' || profile.status === 'loading' ? (
+        {isProfileLoading ? (
           <div css={feedbackStyle}>
-            <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
+            {showProfileLoading && (
+              <img
+                src={loadingAnimation}
+                alt="로딩 중"
+                css={loadingImageStyle}
+              />
+            )}
           </div>
         ) : profile.status === 'error' ? (
           <div css={feedbackStyle}>{profile.error.message}</div>
@@ -127,6 +139,7 @@ const SettingPage = () => {
             >
               로그아웃
             </button>
+            {logoutError && <div css={logoutErrorStyle}>{logoutError}</div>}
           </>
         )}
       </main>
@@ -260,6 +273,12 @@ const logoutButtonStyle = css`
     opacity: 0.5;
     cursor: default;
   }
+`;
+
+const logoutErrorStyle = css`
+  color: ${theme.colors.danger};
+  font-size: 13px;
+  line-height: 20px;
 `;
 
 const feedbackStyle = css`

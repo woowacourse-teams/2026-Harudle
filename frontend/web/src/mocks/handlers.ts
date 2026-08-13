@@ -10,7 +10,7 @@ interface CreateDiaryResponse {
   diaryDate: string;
   sourceText: string;
   createdAt: string;
-  diary: {
+  generation: {
     id: string;
     status: 'SUCCEEDED';
     title: string;
@@ -76,7 +76,7 @@ const mockDiaryDetails = new Map<string, DiaryDetailResponse>([
       diaryDate: '2026-08-06',
       sourceText: '오늘 친구와 카페에 가서 오래 이야기했다.',
       createdAt: '2026-08-06T20:10:23+09:00',
-      diary: {
+      generation: {
         id: '17ac16ef-c45a-40bb-92ea-aed37659ef1c',
         status: 'SUCCEEDED',
         title: '친구와 보낸 카페 시간',
@@ -442,10 +442,10 @@ export const handlers = [
 
     mockDiaryShareLinks.set(diaryId, response);
     mockPublicDiaryShares.set(shareId, {
-      title: diaryDetail.diary.title,
+      title: diaryDetail.generation.title,
       diaryDate: diaryDetail.diaryDate,
-      imageUrl: diaryDetail.diary.imageUrl,
-      imageUrlExpiresAt: diaryDetail.diary.imageUrlExpiresAt,
+      imageUrl: diaryDetail.generation.imageUrl,
+      imageUrlExpiresAt: diaryDetail.generation.imageUrlExpiresAt,
       createdAt: diaryDetail.createdAt,
     });
 
@@ -540,7 +540,7 @@ export const handlers = [
       diaryDate: requestBody.diaryDate,
       sourceText: requestBody.sourceText,
       createdAt,
-      diary: {
+      generation: {
         id: createMockUuid(diarySequence, 2),
         status: 'SUCCEEDED',
         title: '오늘 하루의 소중한 기록',
@@ -568,7 +568,7 @@ export const handlers = [
       diaryDate: response.diaryDate,
       sourceText: response.sourceText,
       createdAt: response.createdAt,
-      diary: response.diary,
+      generation: response.generation,
     });
 
     return HttpResponse.json(response, {
