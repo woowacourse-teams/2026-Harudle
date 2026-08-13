@@ -30,6 +30,7 @@ const DiaryWritePage = () => {
       state: {
         diaryDate: formatKoreanDate(new Date()),
         sourceText: diaryContent,
+        idempotencyKey: crypto.randomUUID(),
       },
     });
   };
