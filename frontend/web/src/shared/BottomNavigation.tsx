@@ -41,6 +41,7 @@ const bottomNavigationStyle = css`
   width: 100%;
   height: 88px;
   background-color: ${theme.colors.background};
+  box-shadow: 0 -1px 2px rgba(17, 17, 24, 0.04);
 `;
 
 const navigationItemStyle = css`
