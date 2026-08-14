@@ -1,7 +1,13 @@
-import type { MonthlyDiary } from './HomePage';
+import type { MonthlyDiaryDay, MonthlyDiaryItem } from './HomePage/HomePage';
 
-const DiaryItemRow = ({ monthlyDiary }: { monthlyDiary: MonthlyDiary }) => {
-  const { date, title, thumbnailUrl } = monthlyDiary;
+const DiaryItemRow = ({
+  monthlyDiary,
+  date,
+}: {
+  monthlyDiary: MonthlyDiaryItem;
+  date: MonthlyDiaryDay['date'];
+}) => {
+  const { title, thumbnailUrl } = monthlyDiary;
   return (
     <div>
       <div>{date}</div>

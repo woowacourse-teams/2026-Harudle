@@ -1,21 +1,22 @@
 import DiaryItemRow from './DiaryItemRow';
-import type { MonthlyDiary } from './HomePage';
-
-// TODO: 백엔드에서 uuid보내주면 그때 key값 uuid로 변경하기!
+import type { MonthlyDiaryDay } from './HomePage/HomePage';
 
 const DiaryItemList = ({
-  monthlyDiaries,
+  monthlyDiaryDays,
 }: {
-  monthlyDiaries: MonthlyDiary[];
+  monthlyDiaryDays: MonthlyDiaryDay[];
 }) => {
   return (
     <div>
-      {monthlyDiaries.map((diary) => (
-        <DiaryItemRow
-          key={`${diary.thumbnailUrl}-${diary.title}`}
-          monthlyDiary={diary}
-        />
-      ))}
+      {monthlyDiaryDays.map((day) => {
+        if (!day.exist) {
+          return null;
+        }
+
+        return day.items.map((diary) => (
+          <DiaryItemRow key={diary.id} monthlyDiary={diary} date={day.date} />
+        ));
+      })}
     </div>
   );
 };
