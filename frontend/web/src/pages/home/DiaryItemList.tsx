@@ -1,5 +1,5 @@
 import DiaryItemRow from './DiaryItemRow';
-import type { MonthlyDiaryDay } from './HomePage/HomePage';
+import type { MonthlyDiaryDay } from './HomePage/model';
 
 const DiaryItemList = ({
   monthlyDiaryDays,
