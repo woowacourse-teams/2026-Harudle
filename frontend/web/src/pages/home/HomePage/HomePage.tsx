@@ -73,18 +73,20 @@ const HomePage = () => {
 export default HomePage;
 
 const RemainingGenerationUsageCard = () => {
-  const { generationUsage } = useGenrationUsage();
+  const { generationUsageRequest } = useGenrationUsage();
 
   if (
-    generationUsage.status === 'idle' ||
-    generationUsage.status === 'loading'
+    generationUsageRequest.status === 'idle' ||
+    generationUsageRequest.status === 'loading'
   ) {
     return <div>로딩중...</div>;
   }
 
-  if (generationUsage.status === 'error') {
-    return <div>에러가 발생했습니다.</div>;
+  if (generationUsageRequest.status === 'error') {
+    return <div>{generationUsageRequest.error.message}</div>;
   }
 
-  return <div>오늘 남은 생성 {generationUsage.data}회</div>;
+  const generationUsage = generationUsageRequest.data;
+
+  return <div>오늘 남은 생성 {generationUsage}회</div>;
 };

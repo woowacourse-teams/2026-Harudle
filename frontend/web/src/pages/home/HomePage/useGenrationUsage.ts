@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react';
-import { API_BASE_URL, type ApiRequest } from '../../../shared/api';
+import {
+  API_BASE_URL,
+  isProblemDetails,
+  RequestError,
+  type ApiRequest,
+} from '../../../shared/api';
 
 interface GenerationUsageResponse {
   usageDate: string;
@@ -26,13 +31,15 @@ const isGenerationUsageResponse = (
 };
 
 const useGenrationUsage = () => {
-  const [generationUsage, setGenerationUsage] = useState<ApiRequest<number>>({
+  const [generationUsageRequest, setGenerationUsageRequest] = useState<
+    ApiRequest<number>
+  >({
     status: 'idle',
   });
 
   useEffect(() => {
     const getRemainingGenerationUsageCard = async (): Promise<void> => {
-      setGenerationUsage({
+      setGenerationUsageRequest({
         status: 'loading',
       });
 
@@ -40,25 +47,30 @@ const useGenrationUsage = () => {
         const response = await fetch(`${API_BASE_URL}/me/generation-usage`);
 
         if (!response.ok) {
-          throw new Error('네트워크 에러');
+          const errorData = await response.json();
+          if (isProblemDetails(errorData)) {
+            throw new RequestError(errorData);
+          }
+
+          throw new Error('알 수 없는 에러가 발생했습니다.');
         }
+
         const data: unknown = await response.json();
 
         if (!isGenerationUsageResponse(data)) {
           throw new Error('GenerationUsage 응답 형식이 일치하지 않습니다.');
         }
 
-        setGenerationUsage({
+        setGenerationUsageRequest({
           status: 'success',
           data: data.remainingCount,
         });
       } catch (error: unknown) {
         if (error instanceof Error) {
-          setGenerationUsage({
+          setGenerationUsageRequest({
             status: 'error',
             error: error,
           });
-          alert(error.message);
         }
       }
     };
@@ -66,7 +78,7 @@ const useGenrationUsage = () => {
     void getRemainingGenerationUsageCard();
   }, []);
 
-  return { generationUsage };
+  return { generationUsageRequest };
 };
 
 export default useGenrationUsage;

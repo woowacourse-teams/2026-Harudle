@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react';
-import { API_BASE_URL, type ApiRequest } from '../../../shared/api';
+import {
+  API_BASE_URL,
+  isProblemDetails,
+  RequestError,
+  type ApiRequest,
+} from '../../../shared/api';
 import type {
   MonthlyDiariesResponse,
   MonthlyDiaryDay,
@@ -26,8 +31,14 @@ const useMonthlyDiaries = ({ year, month }: YearMonth) => {
         );
 
         if (!response.ok) {
-          throw new Error('네트워크 에러');
+          const errorData = await response.json();
+          if (isProblemDetails(errorData)) {
+            throw new RequestError(errorData);
+          }
+
+          throw new Error('알 수 없는 에러가 발생했습니다.');
         }
+
         const data: unknown = await response.json();
 
         if (!isMonthlyDiariesResponse(data)) {
@@ -39,13 +50,11 @@ const useMonthlyDiaries = ({ year, month }: YearMonth) => {
           data: data,
         });
       } catch (error: unknown) {
-        // 에러 처리 정규화
         if (error instanceof Error) {
           setMonthlyDiariesRequest({
             status: 'error',
             error: error,
           });
-          alert(error.message);
         }
       }
     };
