@@ -22,6 +22,6 @@ const buttonStyle = (disabled: boolean) => css`
   height: 32px;
   border: none;
   border-radius: 50%;
-  background-color: ${theme.colors.primary};
+  background-color: ${theme.colors.bg.brand};
   opacity: ${disabled ? 0.4 : 1};
 `;

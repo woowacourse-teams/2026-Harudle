@@ -20,6 +20,6 @@ const actionButtonStyle = css`
   padding: 20px 16px;
   border: none;
   border-radius: 24px;
-  background-color: ${theme.colors.primary};
+  background-color: ${theme.colors.bg.brand};
   color: white;
 `;
