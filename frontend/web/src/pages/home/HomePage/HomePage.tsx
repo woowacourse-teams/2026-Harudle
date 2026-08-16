@@ -22,6 +22,14 @@ const HomePage = () => {
   );
   const { monthlyDiariesRequest } = useMonthlyDiaries({ ...selectedYearMonth });
 
+  const monthlyDiaryCount =
+    monthlyDiariesRequest.status === 'success'
+      ? monthlyDiariesRequest.data.days.reduce(
+          (count, day) => count + day.items.length,
+          0,
+        )
+      : 0;
+
   return (
     <div css={homePageStyle}>
       <header css={pageHeaderStyle}>
@@ -38,12 +46,7 @@ const HomePage = () => {
             value={formatYearMonthToString(selectedYearMonth)}
             onChange={handleYearMonthChange}
           />
-          <span>
-            {monthlyDiariesRequest.status === 'success'
-              ? monthlyDiariesRequest.data.days.length
-              : 0}
-            개의 기록
-          </span>
+          <span>{monthlyDiaryCount}개의 기록</span>
         </div>
 
         <RemainingGenerationUsageCard />
@@ -67,7 +70,7 @@ const RemainingGenerationUsageCard = () => {
     generationUsageRequest.status === 'idle' ||
     generationUsageRequest.status === 'loading'
   ) {
-    return <div>로딩중...</div>;
+    return <div>-</div>;
   }
 
   if (generationUsageRequest.status === 'error') {
