@@ -228,12 +228,30 @@ const augustDiaries = [
 
 // 홈 - 월간 일기 조회
 export const handlers = [
+  http.post('/api/v1/auth/logout', async () => {
+    await delay(1_500);
+
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  http.get('/api/v1/me', async () => {
+    await delay(1_500);
+
+    return HttpResponse.json({
+      id: '08d69a34-6d70-4d42-a158-671bc67733c9',
+      name: '하루들',
+      email: 'harudle.official@gmail.com',
+      oauthProviders: ['kakao'],
+      createdAt: '2026-08-06T10:30:00+09:00',
+    });
+  }),
+
   http.get('/api/v1/diaries', async ({ request }) => {
     const url = new URL(request.url);
     const year = Number(url.searchParams.get('year'));
     const month = Number(url.searchParams.get('month'));
 
-    await delay(1_000);
+    await delay(1_500);
 
     return HttpResponse.json({
       year,
@@ -242,7 +260,9 @@ export const handlers = [
     });
   }),
 
-  http.get('/api/v1/me/generation-usage', () => {
+  http.get('/api/v1/me/generation-usage', async () => {
+    await delay(1_500);
+
     return HttpResponse.json({
       usageDate: MOCK_USAGE_DATE,
       usedCount: usedGenerationCount,
@@ -252,6 +272,8 @@ export const handlers = [
   }),
 
   http.post('/api/v1/diaries', async ({ request }) => {
+    await delay(1_500);
+
     let requestBody: unknown;
 
     try {
@@ -324,8 +346,6 @@ export const handlers = [
         remainingCount: DAILY_GENERATION_LIMIT - usedGenerationCount,
       },
     };
-
-    await delay(1_000);
 
     return HttpResponse.json(response, {
       status: 201,

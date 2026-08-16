@@ -5,11 +5,13 @@ import DiaryWritePage from './pages/diary-write/DiaryWritePage';
 import DiaryGeneratingPage from './pages/diary-generating/DiaryGeneratingPage';
 
 import SettingPage from './pages/setting/SettingPage';
+import LoginPage from './pages/login/LoginPage';
 
 const App = () => {
   return (
     <div css={appStyle}>
       <Routes>
+        <Route path="/login" element={<LoginPage />} />
         <Route path="/" element={<HomePage />} />
         <Route path="/diary-write" element={<DiaryWritePage />} />
         <Route path="/diary-generating" element={<DiaryGeneratingPage />} />
