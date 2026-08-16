@@ -15,6 +15,10 @@ export default {
   module: {
     rules: [
       {
+        test: /\.(png|svg|jpg|jpeg|webp)$/i,
+        type: 'asset/resource',
+      },
+      {
         test: /\.(ts|tsx)$/,
         exclude: /node_modules/,
         use: [

@@ -1,5 +1,5 @@
 import { css } from '@emotion/react';
-import HomePage from './pages/home/HomePage';
+import HomePage from './pages/home/HomePage/HomePage';
 import { Route, Routes } from 'react-router';
 import DiaryWritePage from './pages/diary-write/DiaryWritePage';
 import DiaryGeneratingPage from './pages/diary-generating/DiaryGeneratingPage';
