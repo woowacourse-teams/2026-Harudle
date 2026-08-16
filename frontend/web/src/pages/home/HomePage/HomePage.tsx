@@ -1,9 +1,7 @@
 import BottomNavigation from '../../../shared/BottomNavigation';
-import DiaryEmptyState from '../DiaryEmptyState';
 import DiaryItemList from '../DiaryItemList';
-import FloatingActionButton from '../../../shared/FloatingActionButton';
 import { useNavigate } from 'react-router';
-import type { MonthlyDiaryDay, YearMonth } from './model';
+import type { YearMonth } from './model';
 import harudleLogo from '../../../assets/images/harudle-logo.png';
 import useSelectedYearMonth from './useSelectedYearMonth';
 import useMonthlyDiaries from './useMonthlyDiaries';
@@ -16,10 +14,6 @@ const formatYearMonthToString = ({ year, month }: YearMonth): string => {
   return `${year}-${month.toString().padStart(2, '0')}`;
 };
 
-const isMonthlyDiaryExist = (monthlyDiaryDays: MonthlyDiaryDay[]) => {
-  return monthlyDiaryDays.some((day) => day.exist);
-};
-
 const HomePage = () => {
   const navigate = useNavigate();
   const { selectedYearMonth, handleYearMonthChange } = useSelectedYearMonth(
@@ -27,19 +21,6 @@ const HomePage = () => {
     8,
   );
   const { monthlyDiariesRequest } = useMonthlyDiaries({ ...selectedYearMonth });
-
-  if (
-    monthlyDiariesRequest.status === 'idle' ||
-    monthlyDiariesRequest.status === 'loading'
-  ) {
-    return <div>로딩중...</div>;
-  }
-
-  if (monthlyDiariesRequest.status === 'error') {
-    return <div>에러가 발생했습니다.</div>;
-  }
-
-  const { days } = monthlyDiariesRequest.data;
 
   return (
     <div css={homePageStyle}>
@@ -57,25 +38,18 @@ const HomePage = () => {
             value={formatYearMonthToString(selectedYearMonth)}
             onChange={handleYearMonthChange}
           />
-          <span>{days.length}개의 기록</span>
+          <span>
+            {monthlyDiariesRequest.status === 'success'
+              ? monthlyDiariesRequest.data.days.length
+              : 0}
+            개의 기록
+          </span>
         </div>
 
         <RemainingGenerationUsageCard />
 
         <section css={diaryContentStyle}>
-          {isMonthlyDiaryExist(days) ? (
-            <>
-              <DiaryItemList monthlyDiaryDays={days} />
-              <FloatingActionButton
-                onClick={() => {
-                  navigate('/diary-write');
-                }}
-                disabled={false}
-              />
-            </>
-          ) : (
-            <DiaryEmptyState />
-          )}
+          <DiaryItemList monthlyDiariesRequest={monthlyDiariesRequest} />
         </section>
       </main>
 
