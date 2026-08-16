@@ -9,10 +9,6 @@ const DiaryItemList = ({
   return (
     <div>
       {monthlyDiaryDays.map((day) => {
-        if (!day.exist) {
-          return null;
-        }
-
         return day.items.map((diary) => (
           <DiaryItemRow key={diary.id} monthlyDiary={diary} date={day.date} />
         ));
