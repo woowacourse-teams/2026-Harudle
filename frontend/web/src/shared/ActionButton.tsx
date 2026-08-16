@@ -1,10 +1,16 @@
 import { css } from '@emotion/react';
 import { theme } from '../styles/theme';
 
-const ActionButton = ({ onClick }: { onClick: () => void }) => {
+const ActionButton = ({
+  onClick,
+  label,
+}: {
+  onClick: () => void;
+  label: string;
+}) => {
   return (
     <button css={actionButtonStyle} onClick={onClick}>
-      새 일기 쓰기
+      {label}
     </button>
   );
 };
@@ -16,10 +22,18 @@ const actionButtonStyle = css`
   justify-content: center;
   align-items: center;
   width: 100%;
-  height: 20px;
-  padding: 20px 16px;
+  height: 56px;
+  padding: 16px 20px;
   border: none;
   border-radius: 24px;
   background-color: ${theme.colors.bg.brand};
   color: white;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 24px;
+  cursor: pointer;
+
+  &:active {
+    transform: scale(0.98);
+  }
 `;
