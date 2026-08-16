@@ -45,6 +45,7 @@ const DiaryItemList = ({
                 key={diary.id}
                 monthlyDiary={diary}
                 date={day.date}
+                onClick={() => navigate(`/diary/${diary.id}`)}
               />
             ));
           })}
