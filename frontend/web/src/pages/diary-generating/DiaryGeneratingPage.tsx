@@ -41,7 +41,7 @@ const DiaryGeneratingPage = () => {
   const { diaryGenerateRequest } = useDiaryGenerate();
 
   useEffect(() => {
-    if (loadingStep >= FINAL_STEP) {
+    if (loadingStep >= FINAL_STEP - 1) {
       return;
     }
 
@@ -52,8 +52,7 @@ const DiaryGeneratingPage = () => {
     return () => clearTimeout(timeoutId);
   }, [loadingStep]);
 
-  const isGenerationComplete =
-    loadingStep === FINAL_STEP && diaryGenerateRequest.status === 'success';
+  const isGenerationComplete = diaryGenerateRequest.status === 'success';
 
   useEffect(() => {
     if (!isGenerationComplete) {
