@@ -6,6 +6,7 @@ import type { MonthlyDiariesResponse, MonthlyDiaryDay } from './HomePage/model';
 import DiaryEmptyState from './DiaryEmptyState';
 import loadingAnimation from '../../assets/images/loading-animation.webp';
 import { css } from '@emotion/react';
+import plusIcon from '../../assets/icons/plus.svg';
 
 const DiaryItemList = ({
   monthlyDiariesRequest,
@@ -54,6 +55,7 @@ const DiaryItemList = ({
             onClick={() => {
               navigate('/diary-write');
             }}
+            icon={<img css={plusIconStyle} src={plusIcon} />}
             disabled={false}
           />
         </div>
@@ -77,4 +79,9 @@ const loadingAnimationBoxStyle = css`
 const loadingImageStyle = css`
   width: 140px;
   height: 140px;
+`;
+
+const plusIconStyle = css`
+  width: 24px;
+  height: 24px;
 `;

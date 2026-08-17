@@ -1,17 +1,20 @@
 import { css } from '@emotion/react';
 import { theme } from '../styles/theme';
-import plusIcon from '../assets/icons/plus.svg';
+
+import type { ReactNode } from 'react';
 
 const FloatingActionButton = ({
   onClick,
+  icon,
   disabled,
 }: {
   onClick: () => void;
+  icon: ReactNode;
   disabled: boolean;
 }) => {
   return (
     <button css={buttonStyle(disabled)} onClick={onClick} disabled={disabled}>
-      <img src={plusIcon} css={iconStyle} />
+      {icon}
     </button>
   );
 };
@@ -36,9 +39,4 @@ const buttonStyle = (disabled: boolean) => css`
   &:active {
     transform: scale(0.98);
   }
-`;
-
-const iconStyle = css`
-  width: 24px;
-  height: 24px;
 `;
