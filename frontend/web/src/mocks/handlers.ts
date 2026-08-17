@@ -10,7 +10,7 @@ interface CreateDiaryResponse {
   diaryDate: string;
   sourceText: string;
   createdAt: string;
-  diary: {
+  generation: {
     id: string;
     status: 'SUCCEEDED';
     title: string;
@@ -59,7 +59,11 @@ let usedGenerationCount = 0;
 let mockDiarySequence = 1;
 let mockShareSequence = 1;
 
-const createdDiaryFingerprints = new Set<string>();
+const createdDiaryRequests = new Map<
+  string,
+  { fingerprint: string; response: CreateDiaryResponse }
+>();
+const createdDiaryDetails = new Map<string, DiaryDetailResponse>();
 const mockDiaryShareLinks = new Map<string, DiaryShareLinkResponse>();
 
 const diaryThumbnailUrl = new URL(
@@ -122,6 +126,8 @@ const getCreateDiaryValidationErrors = (value: unknown): ValidationError[] => {
 
 const problemTitleByCode: Record<string, string> = {
   VALIDATION_ERROR: 'Validation failed',
+  INVALID_IDEMPOTENCY_KEY: 'Invalid idempotency key',
+  IDEMPOTENCY_KEY_CONFLICT: 'Idempotency key conflict',
   DIARY_NOT_FOUND: 'Diary not found',
   DUPLICATE_DIARY: 'Duplicate diary',
   DAILY_GENERATION_LIMIT_EXCEEDED: 'Daily generation limit exceeded',
@@ -178,6 +184,15 @@ const createDiaryFingerprint = ({
   sourceText,
 }: CreateDiaryRequest) => {
   return `${diaryDate}:${normalizeDiaryText(sourceText)}`;
+};
+
+const isUuid = (value: string | null): value is string => {
+  return (
+    value !== null &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    )
+  );
 };
 
 const augustDiaries = [
@@ -301,12 +316,17 @@ export const handlers = [
 
   http.get('/api/v1/diaries/:diaryId', async ({ params }) => {
     const diaryId = String(params.diaryId);
+    const createdDiaryDetail = createdDiaryDetails.get(diaryId);
     const diaryDay = augustDiaries.find((day) =>
       day.items.some((diary) => diary.id === diaryId),
     );
     const diary = diaryDay?.items.find((item) => item.id === diaryId);
 
     await delay(1_500);
+
+    if (createdDiaryDetail) {
+      return HttpResponse.json(createdDiaryDetail);
+    }
 
     if (!diaryDay || !diary) {
       return createProblemDetails({
@@ -350,6 +370,7 @@ export const handlers = [
       }
     }
 
+    createdDiaryDetails.delete(diaryId);
     mockDiaryShareLinks.delete(diaryId);
 
     return new HttpResponse(null, { status: 204 });
@@ -359,9 +380,11 @@ export const handlers = [
     '/api/v1/diaries/:diaryId/share-link',
     async ({ params, request }) => {
       const diaryId = String(params.diaryId);
-      const diaryExists = augustDiaries.some((day) =>
-        day.items.some((diary) => diary.id === diaryId),
-      );
+      const diaryExists =
+        createdDiaryDetails.has(diaryId) ||
+        augustDiaries.some((day) =>
+          day.items.some((diary) => diary.id === diaryId),
+        );
 
       await delay(1_500);
 
@@ -398,6 +421,16 @@ export const handlers = [
   http.post('/api/v1/diaries', async ({ request }) => {
     await delay(1_500);
 
+    const idempotencyKey = request.headers.get('Idempotency-Key');
+
+    if (!isUuid(idempotencyKey)) {
+      return createProblemDetails({
+        status: 400,
+        code: 'INVALID_IDEMPOTENCY_KEY',
+        detail: 'Idempotency-Key는 UUID 형식의 필수 헤더입니다.',
+      });
+    }
+
     let requestBody: unknown;
 
     try {
@@ -420,12 +453,17 @@ export const handlers = [
     }
 
     const diaryFingerprint = createDiaryFingerprint(requestBody);
+    const existingRequest = createdDiaryRequests.get(idempotencyKey);
 
-    if (createdDiaryFingerprints.has(diaryFingerprint)) {
+    if (existingRequest?.fingerprint === diaryFingerprint) {
+      return HttpResponse.json(existingRequest.response);
+    }
+
+    if (existingRequest) {
       return createProblemDetails({
         status: 409,
-        code: 'DUPLICATE_DIARY',
-        detail: '동일한 날짜에 같은 내용으로 생성된 일기가 이미 있습니다.',
+        code: 'IDEMPOTENCY_KEY_CONFLICT',
+        detail: '같은 Idempotency-Key를 다른 요청에 사용할 수 없습니다.',
       });
     }
 
@@ -438,8 +476,6 @@ export const handlers = [
       response.headers.set('Retry-After', '43200');
       return response;
     }
-
-    createdDiaryFingerprints.add(diaryFingerprint);
 
     const diarySequence = mockDiarySequence;
     mockDiarySequence += 1;
@@ -455,7 +491,7 @@ export const handlers = [
       diaryDate: requestBody.diaryDate,
       sourceText: requestBody.sourceText,
       createdAt,
-      diary: {
+      generation: {
         id: createMockUuid(diarySequence, 2),
         status: 'SUCCEEDED',
         title: '오늘 하루의 소중한 기록',
@@ -470,6 +506,18 @@ export const handlers = [
         remainingCount: DAILY_GENERATION_LIMIT - usedGenerationCount,
       },
     };
+
+    createdDiaryRequests.set(idempotencyKey, {
+      fingerprint: diaryFingerprint,
+      response,
+    });
+    createdDiaryDetails.set(diaryId, {
+      id: response.id,
+      diaryDate: response.diaryDate,
+      sourceText: response.sourceText,
+      createdAt: response.createdAt,
+      generation: response.generation,
+    });
 
     return HttpResponse.json(response, {
       status: 201,
