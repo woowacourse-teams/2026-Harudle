@@ -26,6 +26,27 @@ interface CreateDiaryResponse {
   };
 }
 
+interface DiaryDetailResponse {
+  id: string;
+  diaryDate: string;
+  sourceText: string;
+  createdAt: string;
+  generation: {
+    id: string;
+    status: 'SUCCEEDED';
+    title: string;
+    imageUrl: string;
+    imageUrlExpiresAt: string;
+    completedAt: string;
+  };
+}
+
+interface DiaryShareLinkResponse {
+  shareId: string;
+  shareUrl: string;
+  createdAt: string;
+}
+
 interface ValidationError {
   field: string;
   reason: string;
@@ -36,13 +57,17 @@ const DAILY_GENERATION_LIMIT = 3;
 
 let usedGenerationCount = 0;
 let mockDiarySequence = 1;
+let mockShareSequence = 1;
 
 const createdDiaryFingerprints = new Set<string>();
+const mockDiaryShareLinks = new Map<string, DiaryShareLinkResponse>();
 
 const diaryThumbnailUrl = new URL(
   '../assets/images/diary-four-panel.png',
   import.meta.url,
 ).href;
+
+const SAMPLE_DIARY_ID = '00000000-0000-4000-8000-000000000001';
 
 const isRecord = (value: unknown): value is Record<string, unknown> => {
   return typeof value === 'object' && value !== null;
@@ -97,6 +122,7 @@ const getCreateDiaryValidationErrors = (value: unknown): ValidationError[] => {
 
 const problemTitleByCode: Record<string, string> = {
   VALIDATION_ERROR: 'Validation failed',
+  DIARY_NOT_FOUND: 'Diary not found',
   DUPLICATE_DIARY: 'Duplicate diary',
   DAILY_GENERATION_LIMIT_EXCEEDED: 'Daily generation limit exceeded',
 };
@@ -106,11 +132,13 @@ const createProblemDetails = ({
   code,
   detail,
   errors,
+  instance = '/api/v1/diaries',
 }: {
   status: number;
   code: string;
   detail: string;
   errors?: ValidationError[];
+  instance?: string;
 }) => {
   return HttpResponse.json(
     {
@@ -120,7 +148,7 @@ const createProblemDetails = ({
       title: problemTitleByCode[code] ?? code,
       status,
       detail,
-      instance: '/api/v1/diaries',
+      instance,
       code,
       traceId: '019d71beebed75b19e45f9c51863bcbd',
       ...(errors ? { errors } : {}),
@@ -158,7 +186,7 @@ const augustDiaries = [
     exist: true,
     items: [
       {
-        id: createMockUuid(2, 1),
+        id: SAMPLE_DIARY_ID,
         title: '비가 와도, 나는 괜찮았다.',
         thumbnailUrl: diaryThumbnailUrl,
       },
@@ -270,6 +298,102 @@ export const handlers = [
       remainingCount: DAILY_GENERATION_LIMIT - usedGenerationCount,
     });
   }),
+
+  http.get('/api/v1/diaries/:diaryId', async ({ params }) => {
+    const diaryId = String(params.diaryId);
+    const diaryDay = augustDiaries.find((day) =>
+      day.items.some((diary) => diary.id === diaryId),
+    );
+    const diary = diaryDay?.items.find((item) => item.id === diaryId);
+
+    await delay(1_500);
+
+    if (!diaryDay || !diary) {
+      return createProblemDetails({
+        status: 404,
+        code: 'DIARY_NOT_FOUND',
+        detail: '일기를 찾을 수 없습니다.',
+        instance: `/api/v1/diaries/${diaryId}`,
+      });
+    }
+
+    const response: DiaryDetailResponse = {
+      id: diaryId,
+      diaryDate: diaryDay.date,
+      sourceText: '오늘 친구와 카페에 가서 오래 이야기했다.',
+      createdAt: `${diaryDay.date}T20:10:23+09:00`,
+      generation: {
+        id: createMockUuid(100, 2),
+        status: 'SUCCEEDED',
+        title: diary.title,
+        imageUrl: diary.thumbnailUrl,
+        imageUrlExpiresAt: `${diaryDay.date}T20:20:23+09:00`,
+        completedAt: `${diaryDay.date}T20:11:42+09:00`,
+      },
+    };
+
+    return HttpResponse.json(response);
+  }),
+
+  http.delete('/api/v1/diaries/:diaryId', async ({ params }) => {
+    const diaryId = String(params.diaryId);
+
+    await delay(1_500);
+
+    for (const day of augustDiaries) {
+      const diaryIndex = day.items.findIndex((diary) => diary.id === diaryId);
+
+      if (diaryIndex !== -1) {
+        day.items.splice(diaryIndex, 1);
+        day.exist = day.items.length > 0;
+        break;
+      }
+    }
+
+    mockDiaryShareLinks.delete(diaryId);
+
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  http.put(
+    '/api/v1/diaries/:diaryId/share-link',
+    async ({ params, request }) => {
+      const diaryId = String(params.diaryId);
+      const diaryExists = augustDiaries.some((day) =>
+        day.items.some((diary) => diary.id === diaryId),
+      );
+
+      await delay(1_500);
+
+      if (!diaryExists) {
+        return createProblemDetails({
+          status: 404,
+          code: 'DIARY_NOT_FOUND',
+          detail: '일기를 찾을 수 없습니다.',
+          instance: `/api/v1/diaries/${diaryId}/share-link`,
+        });
+      }
+
+      const existingShareLink = mockDiaryShareLinks.get(diaryId);
+
+      if (existingShareLink) {
+        return HttpResponse.json(existingShareLink);
+      }
+
+      const shareId = createMockUuid(mockShareSequence, 3);
+      mockShareSequence += 1;
+
+      const response: DiaryShareLinkResponse = {
+        shareId,
+        shareUrl: `${new URL(request.url).origin}/shares/${shareId}`,
+        createdAt: '2026-08-12T20:15:00+09:00',
+      };
+
+      mockDiaryShareLinks.set(diaryId, response);
+
+      return HttpResponse.json(response, { status: 201 });
+    },
+  ),
 
   http.post('/api/v1/diaries', async ({ request }) => {
     await delay(1_500);

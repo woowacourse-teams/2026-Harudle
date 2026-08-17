@@ -6,6 +6,7 @@ import DiaryGeneratingPage from './pages/diary-generating/DiaryGeneratingPage';
 
 import SettingPage from './pages/setting/SettingPage';
 import LoginPage from './pages/login/LoginPage';
+import DiaryDetailPage from './pages/diary-detail/DiaryDetailPage';
 
 const App = () => {
   return (
@@ -15,6 +16,7 @@ const App = () => {
         <Route path="/" element={<HomePage />} />
         <Route path="/diary-write" element={<DiaryWritePage />} />
         <Route path="/diary-generating" element={<DiaryGeneratingPage />} />
+        <Route path="/diary/:diaryId" element={<DiaryDetailPage />} />
 
         <Route path="/setting" element={<SettingPage />} />
       </Routes>

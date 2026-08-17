@@ -25,14 +25,16 @@ const formatDiaryDate = (date: string) => {
 const DiaryItemRow = ({
   monthlyDiary,
   date,
+  onClick,
 }: {
   monthlyDiary: MonthlyDiaryItem;
   date: MonthlyDiaryDay['date'];
+  onClick: () => void;
 }) => {
   const { title, thumbnailUrl } = monthlyDiary;
   const { date: formattedDate, weekday } = formatDiaryDate(date);
   return (
-    <button css={diaryItemRowStyle}>
+    <button css={diaryItemRowStyle} onClick={onClick}>
       <div css={dateStyle}>
         <strong>{formattedDate}</strong>
         <span>{weekday}</span>

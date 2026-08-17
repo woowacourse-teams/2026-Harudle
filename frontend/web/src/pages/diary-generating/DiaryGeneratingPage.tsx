@@ -72,11 +72,7 @@ const DiaryGeneratingPage = () => {
 
   return (
     <div>
-      <PageHeader
-        leftButton={<button>뒤로가기</button>}
-        title={null}
-        rightButton={null}
-      />
+      <PageHeader left={<button>뒤로가기</button>} title={null} right={null} />
       {displayedStep === 1 && <div>오늘의 이야기를 차근차근 읽고 있어요</div>}
 
       {displayedStep === 2 && (
