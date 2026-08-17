@@ -31,9 +31,9 @@ const DiaryWritePage = () => {
   return (
     <div>
       <PageHeader
-        leftButton={<button>왼</button>}
+        left={<button>왼</button>}
         title={'새 일기 쓰기'}
-        rightButton={null}
+        right={null}
       />
 
       <div>오늘의 하루를 자유롭게 적어주세요!</div>
