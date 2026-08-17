@@ -13,9 +13,9 @@ const PageHeader = ({
 }) => {
   return (
     <header css={pageHeaderStyle}>
-      <div>{left}</div>
+      <div css={leftStyle}>{left}</div>
       <h1 css={titleStyle}>{title}</h1>
-      <div>{right}</div>
+      <div css={rightStyle}>{right}</div>
     </header>
   );
 };
@@ -28,7 +28,6 @@ const pageHeaderStyle = css`
   align-items: center;
   width: 100%;
   height: 56px;
-  padding: 0 8px;
   box-sizing: border-box;
 `;
 
@@ -38,4 +37,14 @@ const titleStyle = css`
   font-weight: 700;
   line-height: 32px;
   text-align: center;
+`;
+
+const leftStyle = css`
+  min-width: 24px;
+  min-height: 24px;
+`;
+
+const rightStyle = css`
+  min-width: 24px;
+  min-height: 24px;
 `;

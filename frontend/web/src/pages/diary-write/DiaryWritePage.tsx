@@ -3,6 +3,10 @@ import FloatingActionButton from '../../shared/FloatingActionButton';
 import PageHeader from '../../shared/PageHeader';
 import DiaryInputField from './DiaryInputField';
 import { useState } from 'react';
+import backIcon from '../../assets/icons/back.svg';
+import { css } from '@emotion/react';
+import { theme } from '../../styles/theme';
+import nextIcon from '../../assets/icons/arrow-right.svg';
 
 const DiaryWritePage = () => {
   const navigate = useNavigate();
@@ -18,7 +22,6 @@ const DiaryWritePage = () => {
       return;
     }
 
-    // 데이터만 보내고, 실제 요청은 생성 페이지에서 하도록 한다.
     navigate('/diary-generating', {
       state: {
         diaryDate: new Date().toLocaleDateString('sv-SE', {
@@ -29,28 +32,107 @@ const DiaryWritePage = () => {
     });
   };
   return (
-    <div>
+    <div css={pageStyle}>
       <PageHeader
-        left={<button>왼</button>}
+        left={
+          <button
+            type="button"
+            aria-label="뒤로 가기"
+            css={headerButtonStyle}
+            onClick={() => navigate(-1)}
+          >
+            <img
+              src={backIcon}
+              alt="뒤로가기 아이콘"
+              css={headerButtonIconStyle}
+            />
+          </button>
+        }
         title={'새 일기 쓰기'}
         right={null}
       />
 
-      <div>오늘의 하루를 자유롭게 적어주세요!</div>
+      <main css={contentStyle}>
+        <h2 css={promptTitleStyle}>
+          오늘의 하루를
+          <br />
+          자유롭게 적어주세요!
+        </h2>
 
-      <form onSubmit={handleDiarySubmit}>
-        <DiaryInputField
-          diaryContent={diaryContent}
-          onDiaryContentChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => {
-            setDiaryContent(e.target.value);
-          }}
-        />
-        {diaryContentError ?? diaryContentError}
+        <form css={formStyle} onSubmit={handleDiarySubmit}>
+          <DiaryInputField
+            diaryContent={diaryContent}
+            onDiaryContentChange={(e) => {
+              setDiaryContentError(null);
+              setDiaryContent(e.target.value);
+            }}
+            diaryContentError={diaryContentError}
+          />
 
-        <FloatingActionButton onClick={() => {}} disabled={false} />
-      </form>
+          <FloatingActionButton
+            onClick={() => {}}
+            icon={<img css={nextIconStyle} src={nextIcon} />}
+            disabled={false}
+          />
+        </form>
+      </main>
     </div>
   );
 };
 
 export default DiaryWritePage;
+
+const pageStyle = css`
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  height: 100%;
+  padding: 20px;
+  overflow: hidden;
+  background-color: #ffffff;
+`;
+
+const headerButtonStyle = css`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background-color: transparent;
+  cursor: pointer;
+`;
+
+const headerButtonIconStyle = css`
+  width: 24px;
+  height: 24px;
+`;
+
+const contentStyle = css`
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+`;
+
+const promptTitleStyle = css`
+  color: ${theme.colors.text.primary};
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 34px;
+  text-align: center;
+`;
+
+const formStyle = css`
+  width: 100%;
+`;
+
+const nextIconStyle = css`
+  width: 24px;
+  height: 24px;
+`;
