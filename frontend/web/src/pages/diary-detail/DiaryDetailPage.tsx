@@ -46,7 +46,7 @@ const DiaryDetailPage = () => {
             type="button"
             aria-label="뒤로 가기"
             css={headerButtonStyle}
-            onClick={() => navigate(-1)}
+            onClick={() => navigate('/')}
           >
             <img
               src={backIcon}
