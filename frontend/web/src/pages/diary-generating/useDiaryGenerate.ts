@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   API_BASE_URL,
   isProblemDetails,
@@ -78,6 +78,10 @@ const useDiaryGenerate = () => {
     status: 'idle',
   });
   const { state } = useLocation();
+  const idempotencyKeyRef = useRef<string | null>(null);
+
+  idempotencyKeyRef.current ??= crypto.randomUUID();
+  const idempotencyKey = idempotencyKeyRef.current;
 
   useEffect(() => {
     const getMonthlyDiaries = async (): Promise<void> => {
@@ -89,7 +93,7 @@ const useDiaryGenerate = () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Idempotency-Key': crypto.randomUUID(),
+            'Idempotency-Key': idempotencyKey,
           },
           body: JSON.stringify(state),
         });
@@ -124,7 +128,7 @@ const useDiaryGenerate = () => {
     };
 
     void getMonthlyDiaries();
-  }, []);
+  }, [idempotencyKey]);
 
   return { diaryGenerateRequest };
 };
