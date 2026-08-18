@@ -29,10 +29,11 @@ services:
     networks:
       - app
     logging:
-      driver: json-file
+      driver: awslogs
       options:
-        max-size: "10m"
-        max-file: "3"
+        awslogs-region: "${AWS_REGION:-ap-northeast-2}"
+        awslogs-group: "/harudle/prod/backend"
+        awslogs-create-group: "true"
 
   frontend:
     image: harudle-frontend:local
@@ -48,10 +49,11 @@ services:
     networks:
       - app
     logging:
-      driver: json-file
+      driver: awslogs
       options:
-        max-size: "10m"
-        max-file: "3"
+        awslogs-region: "${AWS_REGION:-ap-northeast-2}"
+        awslogs-group: "/harudle/prod/frontend-nginx"
+        awslogs-create-group: "true"
 
 networks:
   app:
