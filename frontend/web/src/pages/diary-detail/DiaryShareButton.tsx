@@ -8,10 +8,35 @@ import {
 } from '../../shared/api';
 import { useState } from 'react';
 
-const DiaryShareButton = ({ diaryId }: { diaryId: string | undefined }) => {
-  const [shareRequest, setShareRequest] = useState<ApiRequest<void>>({
-    status: 'idle',
-  });
+interface DiaryShareResponse {
+  shareId: string;
+  shareUrl: string;
+  createdAt: string;
+}
+
+const isDiaryShareResponse = (value: unknown): value is DiaryShareResponse => {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'shareId' in value &&
+    typeof value.shareId === 'string' &&
+    'shareUrl' in value &&
+    typeof value.shareUrl === 'string' &&
+    'createdAt' in value &&
+    typeof value.createdAt === 'string'
+  );
+};
+
+const DiaryShareButton = ({
+  diaryId,
+  diaryTitle,
+}: {
+  diaryId: string | undefined;
+  diaryTitle: string;
+}) => {
+  const [shareRequest, setShareRequest] = useState<
+    ApiRequest<DiaryShareResponse>
+  >({ status: 'idle' });
   const handleDiaryShare = async () => {
     setShareRequest({
       status: 'loading',
@@ -34,8 +59,25 @@ const DiaryShareButton = ({ diaryId }: { diaryId: string | undefined }) => {
         throw new Error('알 수 없는 에러가 발생했습니다.');
       }
 
-      setShareRequest({ status: 'success', data: undefined });
+      const data: unknown = await response.json();
+
+      if (!isDiaryShareResponse(data)) {
+        throw new Error('DiaryShare 응답 형식이 일치하지 않습니다.');
+      }
+      setShareRequest({ status: 'success', data });
+
+      if (navigator.share) {
+        await navigator.share({
+          title: diaryTitle,
+          url: data.shareUrl,
+        });
+      }
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        // 공유를 취소한 경우는 에러처리 범주가 아니므로 return
+        return;
+      }
+
       if (error instanceof Error) {
         setShareRequest({
           status: 'error',
@@ -43,6 +85,10 @@ const DiaryShareButton = ({ diaryId }: { diaryId: string | undefined }) => {
         });
         alert(error.message);
       }
+    } finally {
+      setShareRequest({
+        status: 'idle',
+      });
     }
   };
 
