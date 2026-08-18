@@ -47,6 +47,14 @@ interface DiaryShareLinkResponse {
   createdAt: string;
 }
 
+interface PublicDiaryShareResponse {
+  title: string;
+  diaryDate: string;
+  imageUrl: string;
+  imageUrlExpiresAt: string;
+  createdAt: string;
+}
+
 interface ValidationError {
   field: string;
   reason: string;
@@ -72,6 +80,20 @@ const diaryThumbnailUrl = new URL(
 ).href;
 
 const SAMPLE_DIARY_ID = '00000000-0000-4000-8000-000000000001';
+const SAMPLE_SHARE_ID = '06ed972e-0b79-4da0-9716-c9bd8faec85d';
+
+const mockPublicDiaryShares = new Map<string, PublicDiaryShareResponse>([
+  [
+    SAMPLE_SHARE_ID,
+    {
+      title: '비가 와도, 나는 괜찮았다.',
+      diaryDate: '2026-08-12',
+      imageUrl: diaryThumbnailUrl,
+      imageUrlExpiresAt: '2026-08-12T20:25:00+09:00',
+      createdAt: '2026-08-12T20:10:23+09:00',
+    },
+  ],
+]);
 
 const isRecord = (value: unknown): value is Record<string, unknown> => {
   return typeof value === 'object' && value !== null;
@@ -129,6 +151,7 @@ const problemTitleByCode: Record<string, string> = {
   INVALID_IDEMPOTENCY_KEY: 'Invalid idempotency key',
   IDEMPOTENCY_KEY_CONFLICT: 'Idempotency key conflict',
   DIARY_NOT_FOUND: 'Diary not found',
+  SHARE_NOT_FOUND: 'Share not found',
   DUPLICATE_DIARY: 'Duplicate diary',
   DAILY_GENERATION_LIMIT_EXCEEDED: 'Daily generation limit exceeded',
 };
@@ -370,8 +393,18 @@ export const handlers = [
       }
     }
 
+    const shareLink = mockDiaryShareLinks.get(diaryId);
+
     createdDiaryDetails.delete(diaryId);
     mockDiaryShareLinks.delete(diaryId);
+
+    if (shareLink) {
+      mockPublicDiaryShares.delete(shareLink.shareId);
+    }
+
+    if (diaryId === SAMPLE_DIARY_ID) {
+      mockPublicDiaryShares.delete(SAMPLE_SHARE_ID);
+    }
 
     return new HttpResponse(null, { status: 204 });
   }),
@@ -380,15 +413,34 @@ export const handlers = [
     '/api/v1/diaries/:diaryId/share-link',
     async ({ params, request }) => {
       const diaryId = String(params.diaryId);
-      const diaryExists =
-        createdDiaryDetails.has(diaryId) ||
-        augustDiaries.some((day) =>
-          day.items.some((diary) => diary.id === diaryId),
-        );
+      const createdDiaryDetail = createdDiaryDetails.get(diaryId);
+      const diaryDay = augustDiaries.find((day) =>
+        day.items.some((diary) => diary.id === diaryId),
+      );
+      const diary = diaryDay?.items.find((item) => item.id === diaryId);
+      const sharedDiary: PublicDiaryShareResponse | undefined =
+        createdDiaryDetail
+          ? {
+              title: createdDiaryDetail.generation.title,
+              diaryDate: createdDiaryDetail.diaryDate,
+              imageUrl: createdDiaryDetail.generation.imageUrl,
+              imageUrlExpiresAt:
+                createdDiaryDetail.generation.imageUrlExpiresAt,
+              createdAt: createdDiaryDetail.createdAt,
+            }
+          : diaryDay && diary
+            ? {
+                title: diary.title,
+                diaryDate: diaryDay.date,
+                imageUrl: diary.thumbnailUrl,
+                imageUrlExpiresAt: `${diaryDay.date}T20:25:00+09:00`,
+                createdAt: `${diaryDay.date}T20:10:23+09:00`,
+              }
+            : undefined;
 
       await delay(1_500);
 
-      if (!diaryExists) {
+      if (!sharedDiary) {
         return createProblemDetails({
           status: 404,
           code: 'DIARY_NOT_FOUND',
@@ -403,7 +455,10 @@ export const handlers = [
         return HttpResponse.json(existingShareLink);
       }
 
-      const shareId = createMockUuid(mockShareSequence, 3);
+      const shareId =
+        diaryId === SAMPLE_DIARY_ID
+          ? SAMPLE_SHARE_ID
+          : createMockUuid(mockShareSequence, 3);
       mockShareSequence += 1;
 
       const response: DiaryShareLinkResponse = {
@@ -413,13 +468,32 @@ export const handlers = [
       };
 
       mockDiaryShareLinks.set(diaryId, response);
+      mockPublicDiaryShares.set(shareId, sharedDiary);
 
       return HttpResponse.json(response, { status: 201 });
     },
   ),
 
-  http.post('/api/v1/diaries', async ({ request }) => {
+  http.get('/api/v1/public/shares/:shareId', async ({ params }) => {
+    const shareId = String(params.shareId);
+    const sharedDiary = mockPublicDiaryShares.get(shareId);
+
     await delay(1_500);
+
+    if (!sharedDiary) {
+      return createProblemDetails({
+        status: 404,
+        code: 'SHARE_NOT_FOUND',
+        detail: '공유 링크를 찾을 수 없습니다.',
+        instance: `/api/v1/public/shares/${shareId}`,
+      });
+    }
+
+    return HttpResponse.json(sharedDiary);
+  }),
+
+  http.post('/api/v1/diaries', async ({ request }) => {
+    await delay(12_000);
 
     const idempotencyKey = request.headers.get('Idempotency-Key');
 
