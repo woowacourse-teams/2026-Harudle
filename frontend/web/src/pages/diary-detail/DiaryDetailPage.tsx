@@ -87,7 +87,7 @@ const DiaryDetailPage = () => {
           <p css={storyTextStyle}>{diaryDetail.sourceText}</p>
         </div>
 
-        <DiaryShareButton diaryId={diaryId} />
+        <DiaryShareButton diaryId={diaryId} diaryTitle={title} />
         <DiaryImageDownloadButton imageUrl={imageUrl} />
       </main>
     </div>
