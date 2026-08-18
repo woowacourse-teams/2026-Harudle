@@ -80,10 +80,9 @@ const useDiaryGenerate = () => {
   const { state } = useLocation();
   const idempotencyKeyRef = useRef<string | null>(null);
 
-  idempotencyKeyRef.current ??= crypto.randomUUID();
-  const idempotencyKey = idempotencyKeyRef.current;
-
   useEffect(() => {
+    idempotencyKeyRef.current ??= crypto.randomUUID();
+    const idempotencyKey = idempotencyKeyRef.current;
     const getMonthlyDiaries = async (): Promise<void> => {
       setDiaryGenerateRequest({
         status: 'loading',
@@ -128,7 +127,7 @@ const useDiaryGenerate = () => {
     };
 
     void getMonthlyDiaries();
-  }, [idempotencyKey]);
+  }, [state]);
 
   return { diaryGenerateRequest };
 };
