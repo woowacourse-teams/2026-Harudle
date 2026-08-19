@@ -11,6 +11,7 @@ import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.auth.infrastructure.token.RefreshTokenCookieWriter;
 import com.harudle.common.security.AuthProperties;
+import com.harudle.common.security.LegacyCsrfCookieCleaner;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -39,6 +40,7 @@ public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
     private final RefreshTokenService refreshTokenService;
     private final RefreshTokenCookieWriter refreshTokenCookieWriter;
     private final CookieCsrfTokenRepository csrfTokenRepository;
+    private final LegacyCsrfCookieCleaner legacyCsrfCookieCleaner;
     private final OAuthLoginFailureHandler oAuthLoginFailureHandler;
     private final URI successRedirect;
     private final Clock clock;
@@ -50,6 +52,7 @@ public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
             RefreshTokenService refreshTokenService,
             RefreshTokenCookieWriter refreshTokenCookieWriter,
             CookieCsrfTokenRepository csrfTokenRepository,
+            LegacyCsrfCookieCleaner legacyCsrfCookieCleaner,
             OAuthLoginFailureHandler oAuthLoginFailureHandler,
             AuthProperties authProperties,
             @Qualifier("authClock")
@@ -61,6 +64,7 @@ public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
         this.refreshTokenService = refreshTokenService;
         this.refreshTokenCookieWriter = refreshTokenCookieWriter;
         this.csrfTokenRepository = csrfTokenRepository;
+        this.legacyCsrfCookieCleaner = legacyCsrfCookieCleaner;
         this.oAuthLoginFailureHandler = oAuthLoginFailureHandler;
         this.successRedirect = extractSuccessRedirect(authProperties);
         this.clock = Objects.requireNonNull(authClock, "authClock는 필수입니다.");
@@ -123,6 +127,7 @@ public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
             HttpServletResponse response
     ) {
         CsrfToken csrfToken = csrfTokenRepository.generateToken(request);
+        legacyCsrfCookieCleaner.clear(response);
         csrfTokenRepository.saveToken(csrfToken, request, response);
     }
 
