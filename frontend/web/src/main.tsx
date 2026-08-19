@@ -8,10 +8,7 @@ import { BrowserRouter } from 'react-router';
 const root = document.getElementById('root');
 
 const enableMocking = async () => {
-  if (
-    process.env.NODE_ENV !== 'development' ||
-    process.env.USE_MSW !== 'true'
-  ) {
+  if (process.env.NODE_ENV !== 'development') {
     return;
   }
 

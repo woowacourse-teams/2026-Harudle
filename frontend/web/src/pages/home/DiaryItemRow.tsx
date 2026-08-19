@@ -1,7 +1,6 @@
 import { css } from '@emotion/react';
-import type { MonthlyDiaryItem } from './HomePage';
+import type { MonthlyDiaryDay, MonthlyDiaryItem } from './HomePage/model';
 import { theme } from '../../styles/theme';
-import { useNavigate } from 'react-router';
 
 const WEEKDAYS = [
   '일요일',
@@ -24,34 +23,24 @@ const formatDiaryDate = (date: string) => {
 };
 
 const DiaryItemRow = ({
+  monthlyDiary,
   date,
-  diaryItem,
-  isFirst,
-  isLast,
+  onClick,
 }: {
-  date: string;
-  diaryItem: MonthlyDiaryItem;
-  isFirst: boolean;
-  isLast: boolean;
+  monthlyDiary: MonthlyDiaryItem;
+  date: MonthlyDiaryDay['date'];
+  onClick: () => void;
 }) => {
-  const navigate = useNavigate();
-  const { id, title, thumbnailUrl } = diaryItem;
-  const formattedDate = formatDiaryDate(date);
-
+  const { title, thumbnailUrl } = monthlyDiary;
+  const { date: formattedDate, weekday } = formatDiaryDate(date);
   return (
-    <button
-      type="button"
-      css={diaryItemRowStyle}
-      onClick={() => navigate(`/diaries/${id}`)}
-    >
-      <div css={timelineNodeStyle(isFirst, isLast)} />
-
+    <button css={diaryItemRowStyle} onClick={onClick}>
       <div css={dateStyle}>
-        <strong>{formattedDate.date}</strong>
-        <span>{formattedDate.weekday}</span>
+        <strong>{formattedDate}</strong>
+        <span>{weekday}</span>
       </div>
 
-      <div css={titleStyle}>{title}</div>
+      <span css={titleStyle}>{title}</span>
 
       <img src={thumbnailUrl} alt={`그림일기 ${date}`} css={thumbnailStyle} />
     </button>
@@ -62,51 +51,64 @@ export default DiaryItemRow;
 
 const diaryItemRowStyle = css`
   position: relative;
-  display: grid;
-  grid-template-columns: 58px minmax(0, 1fr) 130px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
   align-items: center;
-  column-gap: 12px;
   width: 100%;
   height: 82px;
+  padding-left: 45px;
   border: none;
   background: none;
   cursor: pointer;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 25px;
+    width: 2px;
+    background: #ded8ff;
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 32px;
+    left: 26px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #aaa8b2;
+    transform: translate(-50%, -50%);
+    z-index: 1;
+    pointer-events: none;
+  }
 
   &:active {
     background-color: #fafafb;
   }
 `;
 
-const timelineNodeStyle = (isFirst: boolean, isLast: boolean) => css`
-  position: absolute;
-  top: 18px;
-  left: -36px;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background-color: ${
-    isFirst ? theme.colors.accent : isLast ? '#FA8B55' : '#AAA6B2'
-  };
-  box-shadow: ${isFirst ? '0 0 0 8px #F0EBFF' : 'none'};
-`;
-
 const dateStyle = css`
   display: flex;
   flex-direction: column;
+  justify-content: center;
   align-self: center;
   gap: 2px;
   height: 64px;
   white-space: nowrap;
 
   strong {
-    color: ${theme.colors.textPrimary};
+    color: ${theme.colors.text.primary};
     font-size: 15px;
     font-weight: 700;
     line-height: 24px;
   }
 
   span {
-    color: ${theme.colors.textSecondary};
+    color: ${theme.colors.text.secondary};
     font-size: 12px;
     font-weight: 400;
     line-height: 18px;
@@ -114,23 +116,19 @@ const dateStyle = css`
 `;
 
 const titleStyle = css`
-  display: -webkit-box;
   max-height: 60px;
   overflow: hidden;
-  color: ${theme.colors.textPrimary};
+  color: ${theme.colors.text.primary};
   font-size: 15px;
   font-weight: 500;
   line-height: 24px;
   word-break: keep-all;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
 `;
 
 const thumbnailStyle = css`
-  width: 130px;
-  height: 80px;
-  border: 1px solid ${theme.colors.border};
+  width: 70px;
+  height: 70px;
   border-radius: 12px;
-  object-fit: cover;
+  object-fit: contain;
   box-sizing: border-box;
 `;

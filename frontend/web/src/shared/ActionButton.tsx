@@ -47,9 +47,9 @@ const actionButtonStyle = (variant: ActionButtonVariant) => css`
   width: 100%;
   height: 56px;
   padding: 16px 20px;
-  border: ${variant === 'primary' ? 'none' : `1px solid ${theme.colors.border}`};
+  border: ${variant === 'primary' ? 'none' : `1px solid ${theme.colors.border.primary}`};
   border-radius: 24px;
-  background-color: ${variant === 'primary' ? theme.colors.primary : theme.colors.background};
+  background-color: ${variant === 'primary' ? theme.colors.bg.brand : '#FFFFFF'};
   color: ${variant === 'primary' ? 'white' : 'black'};
   font-size: 16px;
   font-weight: 500;
@@ -64,6 +64,7 @@ const actionButtonStyle = (variant: ActionButtonVariant) => css`
     opacity: 0.5;
     cursor: default;
     transform: none;
+    cursor: not-allowed;
   }
 `;
 
@@ -73,11 +74,9 @@ const iconStyle = css`
   justify-content: center;
   width: 24px;
   height: 24px;
-  flex-shrink: 0;
 
   & > img,
   & > svg {
-    display: block;
     width: 100%;
     height: 100%;
   }

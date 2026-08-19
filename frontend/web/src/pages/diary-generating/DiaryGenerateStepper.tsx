@@ -1,24 +1,30 @@
 import { css } from '@emotion/react';
 import { theme } from '../../styles/theme';
 import checkIcon from '../../assets/icons/check.svg';
+import { FINAL_STEP } from './DiaryGeneratingPage';
 
 const stepLabels = [
   '이야기 분석 중',
   '장면 구성 중',
   '스케치 그리는 중',
   '채색하고 마무리 중',
+  '완료',
 ] as const;
 
 const DiaryGenerateStepper = ({ loadingStep }: { loadingStep: number }) => {
-  const progress = ((Math.min(loadingStep, 4) - 1) / 3) * 100;
+  const progress =
+    ((Math.min(loadingStep, FINAL_STEP) - 1) / (FINAL_STEP - 1)) * 100;
 
   return (
     <div css={stepperStyle}>
-      <div css={progressRailStyle(progress)} />
+      <div css={progressRailStyle}>
+        <div css={progressBarStyle(progress)} />
+      </div>
 
       {stepLabels.map((label, index) => {
         const step = index + 1;
-        const isComplete = step < loadingStep;
+        const isComplete =
+          step === FINAL_STEP ? step === loadingStep : step < loadingStep;
         const isActive = step === loadingStep;
 
         return (
@@ -46,24 +52,25 @@ export default DiaryGenerateStepper;
 const stepperStyle = css`
   position: relative;
   width: 300px;
-  height: 220px;
   padding: 14px 0 14px 38px;
-  overflow: hidden;
-  box-sizing: border-box;
 `;
 
-const progressRailStyle = (progress: number) => css`
+const progressRailStyle = css`
   position: absolute;
   top: 38px;
   left: 53px;
   width: 2px;
-  height: 144px;
+  height: 200px;
+  overflow: hidden;
   border-radius: 1px;
-  background: linear-gradient(
-    to bottom,
-    ${theme.colors.primary} ${progress}%,
-    #e3e3e8 ${progress}%
-  );
+  background-color: #e3e3e8;
+`;
+
+const progressBarStyle = (progress: number) => css`
+  width: 100%;
+  height: ${progress}%;
+  background-color: ${theme.colors.bg.brand};
+  transition: height 500ms ease-in-out;
 `;
 
 const stepStyle = css`
@@ -74,7 +81,6 @@ const stepStyle = css`
   width: 262px;
   height: 48px;
   padding-left: 48px;
-  box-sizing: border-box;
 `;
 
 const indicatorStyle = ({
@@ -92,20 +98,21 @@ const indicatorStyle = ({
   justify-content: center;
   width: 24px;
   height: 24px;
-  border: ${isComplete ? 'none' : `2px solid ${isActive ? theme.colors.primary : '#e3e3e8'}`};
+  border: 2px solid
+    ${isComplete || isActive ? theme.colors.bg.brand : '#e3e3e8'};
   border-radius: 50%;
-  color: ${theme.colors.background};
-  font-size: 16px;
-  line-height: 24px;
-  background-color: ${
-    isComplete ? theme.colors.primary : theme.colors.background
-  };
+  background-color: ${isComplete ? theme.colors.bg.brand : '#ffffff'};
   box-sizing: border-box;
+  transform: scale(${isActive ? 1.1 : 1});
+
+  transition:
+    border-color 400ms ease-in-out,
+    background-color 400ms ease-in-out,
+    transform 400ms ease-in-out;
 `;
 
 const labelStyle = css`
-  color: ${theme.colors.textPrimary};
-  font-family: 'Noto Sans KR', sans-serif;
+  color: ${theme.colors.text.primary};
   font-size: 16px;
   font-weight: 500;
   line-height: 24px;
