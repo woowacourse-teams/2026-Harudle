@@ -3,18 +3,17 @@
 set -Eeuo pipefail
 
 readonly APP_DIR="/opt/harudle"
-readonly COMPOSE_FILE="${APP_DIR}/compose.prod.yaml"
+readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly MAX_ATTEMPTS=60
 readonly RETRY_INTERVAL_SECONDS=5
+
+source "${SCRIPT_DIR}/compose_environment.sh"
+configure_compose "${APP_DIR}"
 
 cd "${APP_DIR}"
 
 compose() {
-  docker compose \
-    --project-name harudle \
-    --env-file "${APP_DIR}/.env" \
-    --file "${COMPOSE_FILE}" \
-    "$@"
+  docker compose "${COMPOSE_ARGS[@]}" "$@"
 }
 
 container_health() {

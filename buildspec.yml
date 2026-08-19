@@ -42,6 +42,7 @@ phases:
 artifacts:
   files:
     - appspec.yml
+    - deploy/compose.dev.yaml
     - deploy/compose.prod.yaml
     - deploy/scripts/**/*
     - build-artifacts/*

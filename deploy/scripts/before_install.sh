@@ -31,8 +31,9 @@ if [[ ! -s "${APP_DIR}/.env" ]]; then
 fi
 
 # Prevent collisions with files that may have been copied manually before
-# CodeDeploy started managing this directory. The production .env is retained.
+# CodeDeploy started managing this directory. The environment-specific .env is retained.
 rm -f \
+  "${APP_DIR}/compose.dev.yaml" \
   "${APP_DIR}/compose.prod.yaml" \
   "${IMAGE_DIR}/backend-image.tar.gz" \
   "${IMAGE_DIR}/frontend-image.tar.gz" \
