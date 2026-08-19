@@ -11,8 +11,11 @@ import org.junit.jupiter.api.Test;
 class GuestSessionTest {
 
     private static final UUID GUEST_USER_ID = UUID.fromString("a321bb09-816a-4941-906c-07b9c60db382");
+    private static final UUID DIARY_ID = UUID.fromString("593363cb-1dc3-46bc-a858-5926f7601ca9");
+    private static final UUID ANOTHER_DIARY_ID = UUID.fromString("5b751eed-6b64-4e86-b9a6-af9e90b9a03a");
     private static final String TOKEN_HASH = "a".repeat(64);
     private static final Instant CREATED_AT = Instant.parse("2026-08-19T00:00:00Z");
+    private static final Instant USED_AT = Instant.parse("2026-08-20T00:00:00Z");
     private static final Instant EXPIRES_AT = Instant.parse("2026-09-19T00:00:00Z");
 
     @Test
@@ -63,6 +66,82 @@ class GuestSessionTest {
         Instant afterExpiration = Instant.parse("2026-09-19T00:00:01Z");
 
         assertThat(session.isExpiredAt(afterExpiration)).isTrue();
+    }
+
+    @Test
+    @DisplayName("게스트 세션을 일기에 사용한다")
+    void usesGuestSessionForDiary() {
+        GuestSession session = createSession();
+
+        session.useForDiary(DIARY_ID, USED_AT);
+
+        assertThat(session.getDiaryId()).isEqualTo(DIARY_ID);
+        assertThat(session.getUsedAt()).isEqualTo(USED_AT);
+        assertThat(session.getUpdatedAt()).isEqualTo(USED_AT);
+        assertThat(session.isUsed()).isTrue();
+    }
+
+    @Test
+    @DisplayName("이미 사용한 게스트 세션은 다시 사용할 수 없다")
+    void rejectsReusingGuestSession() {
+        GuestSession session = createSession();
+        session.useForDiary(DIARY_ID, USED_AT);
+
+        assertThatThrownBy(() -> session.useForDiary(
+                ANOTHER_DIARY_ID,
+                USED_AT.plusSeconds(1)
+        ))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("이미 사용한 게스트 세션은 다시 사용할 수 없습니다.");
+
+        assertThat(session.getDiaryId()).isEqualTo(DIARY_ID);
+        assertThat(session.getUsedAt()).isEqualTo(USED_AT);
+        assertThat(session.getUpdatedAt()).isEqualTo(USED_AT);
+    }
+
+    @Test
+    @DisplayName("만료된 게스트 세션은 사용할 수 없다")
+    void rejectsUsingExpiredGuestSession() {
+        GuestSession session = createSession();
+
+        assertThatThrownBy(() -> session.useForDiary(DIARY_ID, EXPIRES_AT))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("만료된 게스트 세션은 사용할 수 없습니다.");
+
+        assertThat(session.isUsed()).isFalse();
+        assertThat(session.getDiaryId()).isNull();
+        assertThat(session.getUsedAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("게스트 세션 사용 시 일기 ID가 필요하다")
+    void rejectsUsingWithoutDiaryId() {
+        GuestSession session = createSession();
+
+        assertThatThrownBy(() -> session.useForDiary(null, USED_AT))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("일기 ID는 필수입니다.");
+    }
+
+    @Test
+    @DisplayName("게스트 세션 사용 시 사용 시각이 필요하다")
+    void rejectsUsingWithoutUsedAt() {
+        GuestSession session = createSession();
+
+        assertThatThrownBy(() -> session.useForDiary(DIARY_ID, null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("사용 시각은 필수입니다.");
+    }
+
+    @Test
+    @DisplayName("게스트 세션을 생성 시각 이전에 사용할 수 없다")
+    void rejectsUsageBeforeCreation() {
+        GuestSession session = createSession();
+        Instant beforeCreation = CREATED_AT.minusSeconds(1);
+
+        assertThatThrownBy(() -> session.useForDiary(DIARY_ID, beforeCreation))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("사용 시각은 생성 시각 이전일 수 없습니다.");
     }
 
     @Test

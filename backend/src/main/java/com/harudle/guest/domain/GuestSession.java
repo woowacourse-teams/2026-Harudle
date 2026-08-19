@@ -84,6 +84,23 @@ public class GuestSession {
         return !now.isBefore(expiresAt);
     }
 
+    public void useForDiary(UUID diaryId, Instant usedAt) {
+        Objects.requireNonNull(diaryId, "일기 ID는 필수입니다.");
+        Objects.requireNonNull(usedAt, "사용 시각은 필수입니다.");
+        validateUsageTime(usedAt);
+
+        if (isUsed()) {
+            throw new IllegalStateException("이미 사용한 게스트 세션은 다시 사용할 수 없습니다.");
+        }
+        if (isExpiredAt(usedAt)) {
+            throw new IllegalStateException("만료된 게스트 세션은 사용할 수 없습니다.");
+        }
+
+        this.diaryId = diaryId;
+        this.usedAt = usedAt;
+        this.updatedAt = usedAt;
+    }
+
     private String validateTokenHash(String tokenHash) {
         if (tokenHash == null || !tokenHash.matches("[0-9a-f]{64}")) {
             throw new IllegalArgumentException("토큰 해시는 64자리 소문자 16진수여야 합니다.");
@@ -95,6 +112,12 @@ public class GuestSession {
     private void validateExpiration() {
         if (!expiresAt.isAfter(createdAt)) {
             throw new IllegalArgumentException("만료 시각은 생성 시각 이후여야 합니다.");
+        }
+    }
+
+    private void validateUsageTime(Instant usedAt) {
+        if (usedAt.isBefore(createdAt)) {
+            throw new IllegalArgumentException("사용 시각은 생성 시각 이전일 수 없습니다.");
         }
     }
 
