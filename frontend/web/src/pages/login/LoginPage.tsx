@@ -5,14 +5,10 @@ import kakaoIcon from '../../assets/icons/kakao.svg';
 import { theme } from '../../styles/theme';
 
 const LoginPage = () => {
-  const handleKakaoLogin = () => {
-    window.location.assign('/oauth2/authorization/kakao');
-  };
-
   return (
-    <main css={loginPageStyle}>
+    <div css={pageStyle}>
       <div css={heroStyle}>
-        <img src={harudleLogo} alt="하루들" css={logoStyle} />
+        <img src={harudleLogo} alt="하루들 로고" css={logoStyle} />
         <img src={loginHero} alt="하루들 캐릭터" css={heroImageStyle} />
 
         <h1 css={titleStyle}>
@@ -23,7 +19,13 @@ const LoginPage = () => {
       </div>
 
       <div css={loginAreaStyle}>
-        <button type="button" css={kakaoButtonStyle} onClick={handleKakaoLogin}>
+        <button
+          type="button"
+          css={kakaoButtonStyle}
+          onClick={() => {
+            window.location.assign('/oauth2/authorization/kakao');
+          }}
+        >
           <img src={kakaoIcon} alt="" css={kakaoIconStyle} />
           카카오로 시작하기
         </button>
@@ -32,13 +34,13 @@ const LoginPage = () => {
           로그인하면 이용약관 및 개인정보처리방침에 동의한 것으로 간주됩니다.
         </p>
       </div>
-    </main>
+    </div>
   );
 };
 
 export default LoginPage;
 
-const loginPageStyle = css`
+const pageStyle = css`
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -46,8 +48,7 @@ const loginPageStyle = css`
   height: 100%;
   padding: 12px 20px 10px;
   overflow: hidden;
-  background-color: ${theme.colors.background};
-  box-sizing: border-box;
+  background-color: #ffffff;
 `;
 
 const heroStyle = css`
@@ -74,8 +75,7 @@ const heroImageStyle = css`
 `;
 
 const titleStyle = css`
-  color: ${theme.colors.textPrimary};
-  font-family: 'Noto Sans KR', sans-serif;
+  color: ${theme.colors.text.primary};
   font-size: 28px;
   font-weight: 700;
   line-height: 42px;
@@ -83,7 +83,7 @@ const titleStyle = css`
 `;
 
 const accentStyle = css`
-  color: ${theme.colors.accent};
+  color: ${theme.colors.text.brand};
 `;
 
 const loginAreaStyle = css`
@@ -107,13 +107,11 @@ const kakaoButtonStyle = css`
   border-radius: 16px;
   background-color: #ffd66b;
   box-shadow: 0 4px 16px rgb(26 20 41 / 6%);
-  color: ${theme.colors.textPrimary};
-  font-family: 'Noto Sans KR', sans-serif;
+  color: ${theme.colors.text.primary};
   font-size: 17px;
   font-weight: 700;
   line-height: 24px;
   cursor: pointer;
-  box-sizing: border-box;
 `;
 
 const kakaoIconStyle = css`
@@ -124,8 +122,7 @@ const kakaoIconStyle = css`
 const noticeStyle = css`
   width: 100%;
   max-width: 342px;
-  color: ${theme.colors.textSecondary};
-  font-family: 'Noto Sans KR', sans-serif;
+  color: ${theme.colors.text.secondary};
   font-size: 11px;
   font-weight: 400;
   line-height: 18px;

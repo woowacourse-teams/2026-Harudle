@@ -1,56 +1,87 @@
-import { css } from '@emotion/react';
+import { useNavigate } from 'react-router';
+import type { ApiRequest } from '../../shared/api';
+import FloatingActionButton from '../../shared/FloatingActionButton';
 import DiaryItemRow from './DiaryItemRow';
-import type { MonthlyDiaryDay } from './HomePage';
+import type { MonthlyDiariesResponse, MonthlyDiaryDay } from './HomePage/model';
+import DiaryEmptyState from './DiaryEmptyState';
+import loadingAnimation from '../../assets/images/loading-animation.webp';
+import { css } from '@emotion/react';
+import plusIcon from '../../assets/icons/plus.svg';
 
 const DiaryItemList = ({
-  monthlyDiaryDays,
+  monthlyDiariesRequest,
 }: {
-  monthlyDiaryDays: MonthlyDiaryDay[];
+  monthlyDiariesRequest: ApiRequest<MonthlyDiariesResponse>;
 }) => {
-  const diaries = monthlyDiaryDays.flatMap(({ date, items }) => {
-    return items.map((item) => ({ date, item }));
-  });
+  const navigate = useNavigate();
+
+  const isMonthlyDiaryExist = (monthlyDiaryDays: MonthlyDiaryDay[]) => {
+    return monthlyDiaryDays.some((day) => day.exist);
+  };
+
+  if (
+    monthlyDiariesRequest.status === 'idle' ||
+    monthlyDiariesRequest.status === 'loading'
+  ) {
+    return (
+      <div css={loadingAnimationBoxStyle}>
+        <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
+      </div>
+    );
+  }
+
+  if (monthlyDiariesRequest.status === 'error') {
+    return <div>{monthlyDiariesRequest.error.message}</div>;
+  }
+
+  const { days } = monthlyDiariesRequest.data;
 
   return (
-    <div css={diaryItemListStyle}>
-      {diaries.map(({ date, item }, index) => (
-        <DiaryItemRow
-          key={item.id}
-          date={date}
-          diaryItem={item}
-          isFirst={index === 0}
-          isLast={index === diaries.length - 1}
-        />
-      ))}
+    <div>
+      {isMonthlyDiaryExist(days) ? (
+        <div>
+          {days.map((day) => {
+            return day.items.map((diary) => (
+              <DiaryItemRow
+                key={diary.id}
+                monthlyDiary={diary}
+                date={day.date}
+                onClick={() => navigate(`/diary/${diary.id}`)}
+              />
+            ));
+          })}
+
+          <FloatingActionButton
+            onClick={() => {
+              navigate('/diary-write');
+            }}
+            icon={<img css={plusIconStyle} src={plusIcon} />}
+            disabled={false}
+          />
+        </div>
+      ) : (
+        <DiaryEmptyState />
+      )}
     </div>
   );
 };
 
 export default DiaryItemList;
 
-const diaryItemListStyle = css`
-  position: relative;
+const loadingAnimationBoxStyle = css`
   display: flex;
-  flex-shrink: 0;
-  flex-direction: column;
-  gap: 20px;
+  justify-content: center;
+  align-items: center;
   width: 100%;
-  padding-left: 56px;
-  box-sizing: border-box;
-  overflow: hidden;
+  height: 100%;
+`;
 
-  &::before {
-    position: absolute;
-    top: 24px;
-    bottom: 24px;
-    left: 25px;
-    width: 2px;
-    background: linear-gradient(
-      to bottom,
-      #bfb0f0 0%,
-      #dbd4f7 82%,
-      #fac2a3 100%
-    );
-    content: '';
-  }
+const loadingImageStyle = css`
+  width: 140px;
+  height: 140px;
+`;
+
+const plusIconStyle = css`
+  width: 24px;
+  height: 24px;
 `;

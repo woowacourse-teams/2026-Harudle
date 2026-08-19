@@ -1,12 +1,11 @@
-import { css } from '@emotion/react';
 import { useNavigate } from 'react-router';
 import ActionButton from '../../shared/ActionButton';
 import emptyPersonAndDog from '../../assets/images/empty-person-and-dog.png';
+import { css } from '@emotion/react';
 import { theme } from '../../styles/theme';
 
 const DiaryEmptyState = () => {
   const navigate = useNavigate();
-
   return (
     <div css={emptyStateStyle}>
       <div css={emptyStateContentStyle}>
@@ -25,10 +24,10 @@ const DiaryEmptyState = () => {
       </div>
 
       <ActionButton
+        label="새 일기 쓰기"
         onClick={() => {
           navigate('/diary-write');
         }}
-        label="새 일기 쓰기"
       />
     </div>
   );
@@ -40,8 +39,10 @@ const emptyStateStyle = css`
   display: flex;
   flex: 1;
   flex-direction: column;
+  justify-content: center;
   align-items: center;
   width: 100%;
+  height: 100%;
 `;
 
 const emptyStateContentStyle = css`
@@ -70,7 +71,7 @@ const emptyStateDescriptionContentStyle = css`
 
 const emptyStateTitleStyle = css`
   width: 100%;
-  color: ${theme.colors.accent};
+  color: ${theme.colors.text.primary};
   font-size: 22px;
   font-weight: 700;
   line-height: 32px;
@@ -78,7 +79,7 @@ const emptyStateTitleStyle = css`
 
 const emptyStateDescriptionStyle = css`
   width: 100%;
-  color: ${theme.colors.textSecondary};
+  color: ${theme.colors.text.secondary};
   font-size: 15px;
   font-weight: 400;
 `;

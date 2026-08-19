@@ -1,12 +1,16 @@
 export const theme = {
   colors: {
-    primary: '#8B6FE8',
-    accent: '#7355DA',
-    textPrimary: '#111118',
-    textSecondary: '#6F6B79',
-    border: '#E8E6EB',
-    background: '#FFFFFF',
-    generationCard: '#FAF6FE',
-    danger: '#F15B5B',
+    bg: {
+      brand: '#8B6FE8',
+    },
+    text: {
+      brand: '#7355DA',
+      primary: '#111118',
+      secondary: '#6F6B79',
+      danger: '#F15B5B',
+    },
+    border: {
+      primary: '#E8E6EB',
+    },
   },
 } as const;
