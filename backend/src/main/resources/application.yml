@@ -70,6 +70,11 @@ harudle:
   guest:
     session:
       ttl: ${GUEST_SESSION_TTL:30d}
+    cookie:
+      name: guest_session
+      path: /api/v1/guest
+      secure: ${GUEST_COOKIE_SECURE:false}
+      same-site: Lax
   share:
     public-base-url: ${SHARE_PUBLIC_BASE_URL:http://localhost:3000/shares}
   generation:

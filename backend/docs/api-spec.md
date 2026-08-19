@@ -101,8 +101,10 @@ Idempotency-Key: 7e5cc251-fdde-4cc0-a54e-2c8142750609
 | --- | --- | ---: | --- |
 | `GET` | `/oauth2/authorization/kakao` | 불필요 | Kakao OAuth 로그인 시작 |
 | `GET` | `/login/oauth2/code/kakao` | 불필요 | Kakao OAuth 콜백 |
+| `GET` | `/api/v1/auth/csrf` | 불필요 | Cookie 기반 요청에 사용할 CSRF Token 발급 |
 | `POST` | `/api/v1/auth/refresh` | Refresh Token | Access Token 발급·재발급 |
 | `POST` | `/api/v1/auth/logout` | 불필요 | Refresh Token Cookie를 이용한 현재 로그인 세션 종료 |
+| `POST` | `/api/v1/guest/session` | 불필요 | 로그인 전 체험용 게스트 세션 발급 또는 재사용 |
 | `GET` | `/api/v1/me` | 필요 | 내 프로필 조회 |
 
 ### 3.2 일기 및 생성
@@ -203,6 +205,35 @@ HTTP/1.1 200 OK
   "oauthProvider": "KAKAO",
   "createdAt": "2026-08-06T10:30:00+09:00"
 }
+```
+
+### 4.6 게스트 세션 발급
+
+먼저 CSRF Token을 발급받습니다.
+
+```http
+GET /api/v1/auth/csrf
+```
+
+응답 본문의 Token을 `X-XSRF-TOKEN` Header에 넣고, CSRF Cookie가 함께 전송되도록 요청합니다.
+
+```http
+POST /api/v1/guest/session
+Cookie: XSRF-TOKEN={csrfToken}
+X-XSRF-TOKEN: {csrfToken}
+```
+
+- Access Token은 요구하지 않습니다.
+- 유효한 `guest_session` Cookie가 있으면 기존 게스트 세션을 재사용합니다.
+- Cookie가 없거나 저장된 세션과 일치하지 않거나 만료되었으면 새 게스트 세션을 발급합니다.
+- 원문 게스트 Token은 HttpOnly Cookie로만 전달하고 DB에는 SHA-256 해시만 저장합니다.
+- 운영 환경에서는 `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/api/v1/guest` 속성을 사용합니다.
+- CSRF Header가 없거나 Cookie의 CSRF Token과 일치하지 않으면 `403 Forbidden`을 반환합니다.
+
+```http
+HTTP/1.1 204 No Content
+Cache-Control: no-store
+Set-Cookie: guest_session={guestToken}; Path=/api/v1/guest; Max-Age=2592000; Secure; HttpOnly; SameSite=Lax
 ```
 
 ## 5. 일기 및 생성 API

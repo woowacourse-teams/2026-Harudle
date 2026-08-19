@@ -4,6 +4,9 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Configuration;
 
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(GuestSessionProperties.class)
+@EnableConfigurationProperties({
+        GuestSessionProperties.class,
+        GuestSessionCookieProperties.class
+})
 public class GuestSessionConfiguration {
 }

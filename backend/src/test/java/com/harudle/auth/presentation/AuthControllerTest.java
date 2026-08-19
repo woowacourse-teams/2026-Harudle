@@ -67,7 +67,7 @@ class AuthControllerTest {
 
         org.assertj.core.api.Assertions.assertThat(csrfCookie).isNotNull();
         org.assertj.core.api.Assertions.assertThat(csrfCookie.isHttpOnly()).isFalse();
-        org.assertj.core.api.Assertions.assertThat(csrfCookie.getPath()).isEqualTo("/api/v1/auth");
+        org.assertj.core.api.Assertions.assertThat(csrfCookie.getPath()).isEqualTo("/api/v1");
         org.assertj.core.api.Assertions.assertThat(result.getResponse().getContentAsString())
                 .contains(csrfCookie.getValue());
     }
