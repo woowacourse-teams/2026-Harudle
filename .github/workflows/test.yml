@@ -5,6 +5,8 @@ on:
     branches:
       - dev
       - main
+      - develop-backend
+      - develop-frontend
   workflow_dispatch:
 
 permissions:
@@ -17,6 +19,7 @@ concurrency:
 jobs:
   backend-test:
     name: Backend Test
+    if: github.base_ref != 'develop-frontend'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -52,6 +55,7 @@ jobs:
 
   frontend-test:
     name: Frontend Test
+    if: github.base_ref != 'develop-backend'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
