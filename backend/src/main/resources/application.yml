@@ -67,6 +67,9 @@ app:
       ttl: 14d
 
 harudle:
+  guest:
+    session:
+      ttl: ${GUEST_SESSION_TTL:30d}
   share:
     public-base-url: ${SHARE_PUBLIC_BASE_URL:http://localhost:3000/shares}
   generation:
