@@ -6,6 +6,7 @@ import {
   type ApiRequest,
 } from '../../shared/api';
 import { useNavigate } from 'react-router';
+import { authFetch, requestCsrfToken, setAccessToken } from '../../shared/auth';
 
 const useLogout = () => {
   const navigate = useNavigate();
@@ -19,8 +20,12 @@ const useLogout = () => {
     });
 
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/logout`, {
+      const csrfToken = await requestCsrfToken();
+      const response = await authFetch(`${API_BASE_URL}/auth/logout`, {
         method: 'POST',
+        headers: {
+          'X-XSRF-TOKEN': csrfToken,
+        },
       });
 
       if (!response.ok) {
@@ -37,6 +42,7 @@ const useLogout = () => {
         data: undefined,
       });
 
+      setAccessToken(null);
       navigate('/login');
     } catch (error: unknown) {
       if (error instanceof Error) {

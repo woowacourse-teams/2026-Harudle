@@ -6,6 +6,7 @@ import {
   type ApiRequest,
 } from '../../shared/api';
 import { useLocation } from 'react-router';
+import { authFetch } from '../../shared/auth';
 
 export interface DiaryGenerateResponse {
   id: string;
@@ -88,7 +89,7 @@ const useDiaryGenerate = () => {
         status: 'loading',
       });
       try {
-        const response = await fetch(`${API_BASE_URL}/diaries`, {
+        const response = await authFetch(`${API_BASE_URL}/diaries`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

@@ -7,6 +7,7 @@ import {
   type ApiRequest,
 } from '../../shared/api';
 import { useState } from 'react';
+import { authFetch } from '../../shared/auth';
 
 interface DiaryShareResponse {
   shareId: string;
@@ -43,7 +44,7 @@ const DiaryShareButton = ({
     });
 
     try {
-      const response = await fetch(
+      const response = await authFetch(
         `${API_BASE_URL}/diaries/${diaryId}/share-link`,
         {
           method: 'PUT',
