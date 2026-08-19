@@ -40,7 +40,7 @@ export const authFetch = async (
     setAccessToken(null);
     await restoreAccessToken();
 
-    // // 5. 딱 한 번 재요청
+    // 5. 딱 한 번 재요청
     response = await fetchWithAccessToken(info, init, accessToken);
     return response;
   } catch (error: unknown) {
@@ -97,7 +97,26 @@ export const isRefreshTokenResponse = (
   );
 };
 
+let refreshRequest: Promise<void> | null = null; // Single-Flight 패턴
+
 const restoreAccessToken = async (): Promise<void> => {
+  if (refreshRequest) {
+    await refreshRequest;
+    return;
+  }
+
+  // 아무도 작업중이 아니라면 새토큰 발급 요청 실시
+  // 성공하든 실패하든 작업이 끝났기 때문에 finally에서 내 작업이 끝났음을 알린다.
+  refreshRequest = requestNewAccessToken().finally(
+    () => (refreshRequest = null),
+  );
+
+  // 리프레시 요청을 날린 본인도 해당 요청을 기다려야 한다.
+  // 기다리지 않으면 액세스 토큰이 오지도 않았는데 원래 API 재요청을 할 수 있기 때문이다.
+  await refreshRequest;
+};
+
+const requestNewAccessToken = async (): Promise<void> => {
   const csrfToken = await requestCsrfToken();
   const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
     method: 'POST',
