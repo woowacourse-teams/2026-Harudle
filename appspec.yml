@@ -2,6 +2,8 @@ version: 0.0
 os: linux
 
 files:
+  - source: deploy/compose.dev.yaml
+    destination: /opt/harudle
   - source: deploy/compose.prod.yaml
     destination: /opt/harudle
   - source: build-artifacts

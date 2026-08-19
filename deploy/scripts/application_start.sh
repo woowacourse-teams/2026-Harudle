@@ -3,12 +3,14 @@
 set -Eeuo pipefail
 
 readonly APP_DIR="/opt/harudle"
-readonly COMPOSE_FILE="${APP_DIR}/compose.prod.yaml"
+readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+source "${SCRIPT_DIR}/compose_environment.sh"
+configure_compose "${APP_DIR}"
 
 cd "${APP_DIR}"
 
-docker compose \
-  --project-name harudle \
-  --env-file "${APP_DIR}/.env" \
-  --file "${COMPOSE_FILE}" \
+echo "Starting the ${DEPLOY_ENV_VALUE} Compose deployment."
+docker compose "${COMPOSE_ARGS[@]}" config --quiet
+docker compose "${COMPOSE_ARGS[@]}" \
   up --detach --no-build --force-recreate --remove-orphans
