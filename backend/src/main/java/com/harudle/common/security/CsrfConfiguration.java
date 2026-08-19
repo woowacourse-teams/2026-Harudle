@@ -8,7 +8,7 @@ import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 public class CsrfConfiguration {
 
     private static final String CSRF_COOKIE_NAME = "XSRF-TOKEN";
-    private static final String CSRF_COOKIE_PATH = "/api/v1/auth";
+    private static final String CSRF_COOKIE_PATH = "/api/v1";
     private static final String CSRF_SAME_SITE = "Lax";
 
     @Bean
