@@ -14,7 +14,7 @@ COPY web ./web
 
 WORKDIR /workspace/web
 
-RUN pnpm build
+RUN pnpm check
 
 FROM nginx:1.29-alpine3.22 AS runtime
 
