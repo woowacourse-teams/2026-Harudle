@@ -6,6 +6,7 @@ import {
   type ApiRequest,
 } from '../../shared/api';
 import { useNavigate } from 'react-router';
+import { authFetch } from '../../shared/auth';
 
 const useDiaryDelete = ({ diaryId }: { diaryId: string | undefined }) => {
   const [diaryDeleteRequest, setDiaryDeleteRequest] = useState<
@@ -19,7 +20,7 @@ const useDiaryDelete = ({ diaryId }: { diaryId: string | undefined }) => {
     setDiaryDeleteRequest({ status: 'loading' });
 
     try {
-      const response = await fetch(`${API_BASE_URL}/diaries/${diaryId}`, {
+      const response = await authFetch(`${API_BASE_URL}/diaries/${diaryId}`, {
         method: 'DELETE',
       });
 

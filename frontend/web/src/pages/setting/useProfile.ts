@@ -5,6 +5,7 @@ import {
   RequestError,
   type ApiRequest,
 } from '../../shared/api';
+import { authFetch } from '../../shared/auth';
 
 interface ProfileResponse {
   id: string;
@@ -45,7 +46,7 @@ const useProfile = () => {
       });
 
       try {
-        const response = await fetch(`${API_BASE_URL}/me`);
+        const response = await authFetch(`${API_BASE_URL}/me`);
 
         if (!response.ok) {
           const errorData = await response.json();

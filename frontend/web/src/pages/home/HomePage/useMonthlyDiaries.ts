@@ -12,6 +12,7 @@ import type {
   YearMonth,
 } from './model';
 import { isMonth } from './useSelectedYearMonth';
+import { authFetch } from '../../../shared/auth';
 
 const useMonthlyDiaries = ({ year, month }: YearMonth) => {
   const [monthlyDiariesRequest, setMonthlyDiariesRequest] = useState<
@@ -26,7 +27,7 @@ const useMonthlyDiaries = ({ year, month }: YearMonth) => {
         status: 'loading',
       });
       try {
-        const response = await fetch(
+        const response = await authFetch(
           `${API_BASE_URL}/diaries?year=${year}&month=${month}`,
         );
 

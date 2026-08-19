@@ -5,6 +5,7 @@ import {
   RequestError,
   type ApiRequest,
 } from '../../shared/api';
+import { authFetch } from '../../shared/auth';
 
 interface DiaryDetail {
   id: string;
@@ -64,7 +65,7 @@ const useDiaryDetail = ({ diaryId }: { diaryId: string | undefined }) => {
         status: 'loading',
       });
       try {
-        const response = await fetch(`${API_BASE_URL}/diaries/${diaryId}`);
+        const response = await authFetch(`${API_BASE_URL}/diaries/${diaryId}`);
 
         if (!response.ok) {
           const errorData = await response.json();

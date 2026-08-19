@@ -8,12 +8,14 @@ import SettingPage from './pages/setting/SettingPage';
 import LoginPage from './pages/login/LoginPage';
 import DiaryDetailPage from './pages/diary-detail/DiaryDetailPage';
 import DiarySharePage from './pages/diary-share/DiarySharePage';
+import AuthCallbackPage from './pages/login/AuthCallbackPage';
 
 const App = () => {
   return (
     <div css={appStyle}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/auth/callback" element={<AuthCallbackPage />} />
         <Route path="/" element={<HomePage />} />
         <Route path="/diary-write" element={<DiaryWritePage />} />
         <Route path="/diary-generating" element={<DiaryGeneratingPage />} />

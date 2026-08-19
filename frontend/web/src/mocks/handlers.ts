@@ -62,10 +62,13 @@ interface ValidationError {
 
 const MOCK_USAGE_DATE = '2026-08-12';
 const DAILY_GENERATION_LIMIT = 3;
+const MOCK_ACCESS_TOKEN = 'mock-access-token';
+const MOCK_CSRF_TOKEN = 'mock-csrf-token';
 
 let usedGenerationCount = 0;
 let mockDiarySequence = 1;
 let mockShareSequence = 1;
+let isMockAuthenticated = false;
 
 const createdDiaryRequests = new Map<
   string,
@@ -154,6 +157,9 @@ const problemTitleByCode: Record<string, string> = {
   SHARE_NOT_FOUND: 'Share not found',
   DUPLICATE_DIARY: 'Duplicate diary',
   DAILY_GENERATION_LIMIT_EXCEEDED: 'Daily generation limit exceeded',
+  INVALID_REFRESH_TOKEN: 'Invalid refresh token',
+  INVALID_CURRENT_USER: 'Invalid current user',
+  UNAUTHORIZED: 'Unauthorized',
 };
 
 const createProblemDetails = ({
@@ -189,6 +195,22 @@ const createProblemDetails = ({
       },
     },
   );
+};
+
+const validateAccessToken = (request: Request) => {
+  if (request.headers.get('Authorization') === `Bearer ${MOCK_ACCESS_TOKEN}`) {
+    return null;
+  }
+
+  const response = createProblemDetails({
+    status: 401,
+    code: 'UNAUTHORIZED',
+    detail: '인증 정보가 필요합니다.',
+    instance: new URL(request.url).pathname,
+  });
+  response.headers.set('WWW-Authenticate', 'Bearer');
+
+  return response;
 };
 
 const createMockUuid = (sequence: number, suffix: number) => {
@@ -294,25 +316,106 @@ const augustDiaries = [
 
 // 홈 - 월간 일기 조회
 export const handlers = [
-  http.post('/api/v1/auth/logout', async () => {
-    await delay(1_500);
+  http.get('/oauth2/authorization/kakao', async ({ request }) => {
+    await delay(300);
 
-    return new HttpResponse(null, { status: 204 });
+    isMockAuthenticated = true;
+
+    return HttpResponse.redirect(new URL('/', request.url));
   }),
 
-  http.get('/api/v1/me', async () => {
-    await delay(1_500);
+  http.get('/api/v1/auth/csrf', async () => {
+    await delay(300);
 
-    return HttpResponse.json({
-      id: '08d69a34-6d70-4d42-a158-671bc67733c9',
-      name: '하루들',
-      email: 'harudle.official@gmail.com',
-      oauthProviders: ['kakao'],
-      createdAt: '2026-08-06T10:30:00+09:00',
+    return HttpResponse.json(
+      {
+        token: MOCK_CSRF_TOKEN,
+      },
+      {
+        headers: {
+          'Cache-Control': 'no-store',
+        },
+      },
+    );
+  }),
+
+  http.post('/api/v1/auth/refresh', async () => {
+    await delay(300);
+
+    if (!isMockAuthenticated) {
+      return createProblemDetails({
+        status: 401,
+        code: 'INVALID_REFRESH_TOKEN',
+        detail: 'Refresh Token이 유효하지 않습니다.',
+        instance: '/api/v1/auth/refresh',
+      });
+    }
+
+    return HttpResponse.json(
+      {
+        accessToken: MOCK_ACCESS_TOKEN,
+        tokenType: 'Bearer',
+        expiresIn: 1800,
+      },
+      {
+        headers: {
+          'Cache-Control': 'no-store',
+        },
+      },
+    );
+  }),
+
+  http.post('/api/v1/auth/logout', async ({ request }) => {
+    const unauthorizedResponse = validateAccessToken(request);
+
+    if (unauthorizedResponse) {
+      return unauthorizedResponse;
+    }
+
+    await delay(300);
+
+    isMockAuthenticated = false;
+
+    return new HttpResponse(null, {
+      status: 204,
+      headers: {
+        'Cache-Control': 'no-store',
+      },
     });
   }),
 
+  http.get('/api/v1/me', async ({ request }) => {
+    const unauthorizedResponse = validateAccessToken(request);
+
+    if (unauthorizedResponse) {
+      return unauthorizedResponse;
+    }
+
+    await delay(300);
+
+    return HttpResponse.json(
+      {
+        id: '08d69a34-6d70-4d42-a158-671bc67733c9',
+        name: '하루들',
+        email: 'harudle.official@gmail.com',
+        oauthProviders: ['kakao'],
+        createdAt: '2026-08-06T10:30:00+09:00',
+      },
+      {
+        headers: {
+          'Cache-Control': 'no-store',
+        },
+      },
+    );
+  }),
+
   http.get('/api/v1/diaries', async ({ request }) => {
+    const unauthorizedResponse = validateAccessToken(request);
+
+    if (unauthorizedResponse) {
+      return unauthorizedResponse;
+    }
+
     const url = new URL(request.url);
     const year = Number(url.searchParams.get('year'));
     const month = Number(url.searchParams.get('month'));
@@ -326,7 +429,13 @@ export const handlers = [
     });
   }),
 
-  http.get('/api/v1/me/generation-usage', async () => {
+  http.get('/api/v1/me/generation-usage', async ({ request }) => {
+    const unauthorizedResponse = validateAccessToken(request);
+
+    if (unauthorizedResponse) {
+      return unauthorizedResponse;
+    }
+
     await delay(1_500);
 
     return HttpResponse.json({
@@ -337,7 +446,13 @@ export const handlers = [
     });
   }),
 
-  http.get('/api/v1/diaries/:diaryId', async ({ params }) => {
+  http.get('/api/v1/diaries/:diaryId', async ({ params, request }) => {
+    const unauthorizedResponse = validateAccessToken(request);
+
+    if (unauthorizedResponse) {
+      return unauthorizedResponse;
+    }
+
     const diaryId = String(params.diaryId);
     const createdDiaryDetail = createdDiaryDetails.get(diaryId);
     const diaryDay = augustDiaries.find((day) =>
@@ -378,7 +493,13 @@ export const handlers = [
     return HttpResponse.json(response);
   }),
 
-  http.delete('/api/v1/diaries/:diaryId', async ({ params }) => {
+  http.delete('/api/v1/diaries/:diaryId', async ({ params, request }) => {
+    const unauthorizedResponse = validateAccessToken(request);
+
+    if (unauthorizedResponse) {
+      return unauthorizedResponse;
+    }
+
     const diaryId = String(params.diaryId);
 
     await delay(1_500);
@@ -412,6 +533,12 @@ export const handlers = [
   http.put(
     '/api/v1/diaries/:diaryId/share-link',
     async ({ params, request }) => {
+      const unauthorizedResponse = validateAccessToken(request);
+
+      if (unauthorizedResponse) {
+        return unauthorizedResponse;
+      }
+
       const diaryId = String(params.diaryId);
       const createdDiaryDetail = createdDiaryDetails.get(diaryId);
       const diaryDay = augustDiaries.find((day) =>
@@ -493,6 +620,12 @@ export const handlers = [
   }),
 
   http.post('/api/v1/diaries', async ({ request }) => {
+    const unauthorizedResponse = validateAccessToken(request);
+
+    if (unauthorizedResponse) {
+      return unauthorizedResponse;
+    }
+
     await delay(12_000);
 
     const idempotencyKey = request.headers.get('Idempotency-Key');

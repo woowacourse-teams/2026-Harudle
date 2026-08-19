@@ -5,6 +5,7 @@ import {
   RequestError,
   type ApiRequest,
 } from '../../../shared/api';
+import { authFetch } from '../../../shared/auth';
 
 interface GenerationUsageResponse {
   usageDate: string;
@@ -44,7 +45,7 @@ const useGenrationUsage = () => {
       });
 
       try {
-        const response = await fetch(`${API_BASE_URL}/me/generation-usage`);
+        const response = await authFetch(`${API_BASE_URL}/me/generation-usage`);
 
         if (!response.ok) {
           const errorData = await response.json();
