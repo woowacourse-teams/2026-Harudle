@@ -451,7 +451,11 @@ class DiaryControllerTest {
                 .get("/api/v1/diaries/{diaryId}", DIARY_ID);
 
         assertThat(response.statusCode()).isEqualTo(401);
+        assertThat(response.contentType()).startsWith("application/problem+json");
         assertThat(response.header("WWW-Authenticate")).startsWith("Bearer");
+        assertThat(response.jsonPath().getString("type")).isEqualTo("urn:harudle:problem:unauthorized");
+        assertThat(response.jsonPath().getString("code")).isEqualTo("UNAUTHORIZED");
+        assertThat(response.jsonPath().getString("traceId")).hasSize(32);
     }
 
     @Test

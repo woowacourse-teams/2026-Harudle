@@ -14,12 +14,16 @@ import com.harudle.auth.application.IssuedRefreshToken;
 import com.harudle.auth.application.RefreshTokenService;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.UserRepository;
+import io.restassured.module.mockmvc.RestAssuredMockMvc;
+import io.restassured.module.mockmvc.response.MockMvcResponse;
 import jakarta.servlet.http.Cookie;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -55,6 +59,16 @@ class AuthControllerTest {
 
     @Autowired
     private RefreshTokenService refreshTokenService;
+
+    @BeforeEach
+    void setUp() {
+        RestAssuredMockMvc.mockMvc(mockMvc);
+    }
+
+    @AfterEach
+    void tearDown() {
+        RestAssuredMockMvc.reset();
+    }
 
     @Test
     @DisplayName("CSRF Token을 발급하고 Cookie와 응답 본문으로 전달한다")
@@ -128,14 +142,30 @@ class AuthControllerTest {
         Cookie csrfCookie = issueCsrfCookie();
         IssuedRefreshToken issuedRefreshToken = issueRefreshToken();
 
-        mockMvc.perform(post("/api/v1/auth/refresh")
-                        .cookie(refreshTokenCookie(issuedRefreshToken), csrfCookie))
-                .andExpect(status().isForbidden());
+        MockMvcResponse errorResponse = RestAssuredMockMvc.given()
+                .cookie("refresh_token", issuedRefreshToken.rawToken())
+                .cookie("XSRF-TOKEN", csrfCookie.getValue())
+                .post("/api/v1/auth/refresh");
 
-        mockMvc.perform(post("/api/v1/auth/refresh")
-                        .cookie(refreshTokenCookie(issuedRefreshToken), csrfCookie)
-                        .header("X-XSRF-TOKEN", csrfCookie.getValue()))
-                .andExpect(status().isOk());
+        assertProblemDetails(
+                errorResponse,
+                403,
+                "invalid-csrf-token",
+                "Invalid CSRF token",
+                "CSRF Token이 유효하지 않습니다.",
+                "INVALID_CSRF_TOKEN",
+                "/api/v1/auth/refresh"
+        );
+        assertThat(errorResponse.header(HttpHeaders.WWW_AUTHENTICATE)).startsWith("Bearer");
+        assertThat(errorResponse.header(HttpHeaders.CACHE_CONTROL)).isEqualTo("no-store");
+
+        MockMvcResponse successResponse = RestAssuredMockMvc.given()
+                .cookie("refresh_token", issuedRefreshToken.rawToken())
+                .cookie("XSRF-TOKEN", csrfCookie.getValue())
+                .header("X-XSRF-TOKEN", csrfCookie.getValue())
+                .post("/api/v1/auth/refresh");
+
+        assertThat(successResponse.statusCode()).isEqualTo(200);
     }
 
     @Test
@@ -164,16 +194,23 @@ class AuthControllerTest {
     void rejectsMissingRefreshToken() throws Exception {
         Cookie csrfCookie = issueCsrfCookie();
 
-        mockMvc.perform(post("/api/v1/auth/refresh")
-                        .cookie(csrfCookie)
-                        .header("X-XSRF-TOKEN", csrfCookie.getValue()))
-                .andExpect(status().isUnauthorized())
-                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"))
-                .andExpect(header().string(
-                        HttpHeaders.SET_COOKIE,
-                        containsString("refresh_token=;")
-                ));
+        MockMvcResponse response = RestAssuredMockMvc.given()
+                .cookie("XSRF-TOKEN", csrfCookie.getValue())
+                .header("X-XSRF-TOKEN", csrfCookie.getValue())
+                .post("/api/v1/auth/refresh");
+
+        assertProblemDetails(
+                response,
+                401,
+                "invalid-refresh-token",
+                "Invalid refresh token",
+                "Refresh Token이 유효하지 않습니다.",
+                "INVALID_REFRESH_TOKEN",
+                "/api/v1/auth/refresh"
+        );
+        assertThat(response.header(HttpHeaders.CACHE_CONTROL)).isEqualTo("no-store");
+        assertThat(response.headers().getValues(HttpHeaders.SET_COOKIE))
+                .anySatisfy(cookie -> assertThat(cookie).contains("refresh_token=;"));
     }
 
     @Test
@@ -192,7 +229,8 @@ class AuthControllerTest {
                         .cookie(refreshTokenCookie(issuedRefreshToken), nextCsrfCookie)
                         .header("X-XSRF-TOKEN", nextCsrfCookie.getValue()))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"));
+                .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"))
+                .andExpect(jsonPath("$.traceId").isNotEmpty());
     }
 
     @Test
@@ -215,7 +253,8 @@ class AuthControllerTest {
                         .cookie(refreshTokenCookie(issuedRefreshToken), csrfCookie)
                         .header("X-XSRF-TOKEN", csrfCookie.getValue()))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"));
+                .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"))
+                .andExpect(jsonPath("$.traceId").isNotEmpty());
     }
 
     @Test
@@ -226,7 +265,10 @@ class AuthControllerTest {
 
         mockMvc.perform(post("/api/v1/auth/logout")
                         .cookie(refreshTokenCookie(issuedRefreshToken), csrfCookie))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.code").value("INVALID_CSRF_TOKEN"))
+                .andExpect(jsonPath("$.traceId").isNotEmpty());
 
         mockMvc.perform(post("/api/v1/auth/logout")
                         .cookie(refreshTokenCookie(issuedRefreshToken), csrfCookie)
@@ -304,5 +346,26 @@ class AuthControllerTest {
 
     private Cookie refreshTokenCookie(IssuedRefreshToken issuedRefreshToken) {
         return new Cookie("refresh_token", issuedRefreshToken.rawToken());
+    }
+
+    private void assertProblemDetails(
+            MockMvcResponse response,
+            int status,
+            String typeSlug,
+            String title,
+            String detail,
+            String code,
+            String instance
+    ) {
+        assertThat(response.statusCode()).isEqualTo(status);
+        assertThat(response.contentType()).startsWith(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
+        assertThat(response.jsonPath().getString("type"))
+                .isEqualTo("urn:harudle:problem:" + typeSlug);
+        assertThat(response.jsonPath().getString("title")).isEqualTo(title);
+        assertThat(response.jsonPath().getInt("status")).isEqualTo(status);
+        assertThat(response.jsonPath().getString("detail")).isEqualTo(detail);
+        assertThat(response.jsonPath().getString("instance")).isEqualTo(instance);
+        assertThat(response.jsonPath().getString("code")).isEqualTo(code);
+        assertThat(response.jsonPath().getString("traceId")).isNotBlank();
     }
 }
