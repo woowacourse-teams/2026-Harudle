@@ -51,9 +51,15 @@ class OAuthEventLoggerTest {
     }
 
     @Test
-    @DisplayName("OAuth 내부 오류는 안전한 provider와 스택트레이스를 포함해 ERROR로 기록한다")
+    @DisplayName("OAuth 내부 오류는 민감한 원인 메시지를 제거한 스택트레이스로 ERROR 기록한다")
     void logInternalFailureWithStackTrace(CapturedOutput output) {
-        IllegalStateException exception = new IllegalStateException("내부 정합성 오류");
+        IllegalArgumentException cause = new IllegalArgumentException(
+                "refresh_token=cause-must-not-be-logged"
+        );
+        IllegalStateException exception = new IllegalStateException(
+                "access_token=message-must-not-be-logged",
+                cause
+        );
 
         oAuthEventLogger.errorFailure(
                 "kakao\nforged=value",
@@ -67,7 +73,10 @@ class OAuthEventLoggerTest {
                 .contains("provider=unknown")
                 .contains("reason=INTERNAL_CONSISTENCY_ERROR")
                 .contains("exceptionType=IllegalStateException")
-                .contains("java.lang.IllegalStateException: 내부 정합성 오류")
+                .contains("java.lang.RuntimeException: OAuth 인증 처리 실패")
+                .doesNotContain("message-must-not-be-logged")
+                .doesNotContain("cause-must-not-be-logged")
+                .doesNotContain("Caused by:")
                 .doesNotContain("forged=value");
     }
 }

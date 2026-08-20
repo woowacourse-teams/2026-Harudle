@@ -45,8 +45,14 @@ final class OAuthEventLogger {
                 normalizeProvider(provider),
                 reason,
                 exception.getClass().getSimpleName(),
-                exception
+                sanitizedStackTrace(exception)
         );
+    }
+
+    private static Throwable sanitizedStackTrace(Throwable exception) {
+        RuntimeException sanitized = new RuntimeException("OAuth 인증 처리 실패");
+        sanitized.setStackTrace(exception.getStackTrace());
+        return sanitized;
     }
 
     private static String normalizeProvider(String provider) {
