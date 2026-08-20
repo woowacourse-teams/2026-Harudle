@@ -8,10 +8,10 @@ import {
 } from './guestEntry';
 import useGuestEntry from './useGuestEntry';
 
-const mockNavigate = jest.fn();
+const mockNavigate = { current: jest.fn() };
 
 jest.mock('react-router', () => ({
-  useNavigate: () => mockNavigate,
+  useNavigate: () => mockNavigate.current,
 }));
 
 const createResponse = (data: unknown, status: number): Response => {
@@ -36,7 +36,7 @@ const GuestEntryProbe = ({
 
 afterEach(() => {
   fetchMock.mockReset();
-  mockNavigate.mockReset();
+  mockNavigate.current = jest.fn();
 });
 
 describe('게스트 진입 초기화', () => {
@@ -139,8 +139,24 @@ describe('게스트 진입 초기화', () => {
     render(<GuestEntryProbe initialize={initialize} />);
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true });
+      expect(mockNavigate.current).toHaveBeenCalledWith('/', { replace: true });
     });
     expect(createGuestSession).not.toHaveBeenCalled();
+  });
+
+  it('하위 경로 이동으로 navigate 함수가 바뀌어도 초기화를 반복하지 않는다', async () => {
+    const initialize = jest.fn(async () => ({ status: 'guest' }) as const);
+    const { rerender } = render(<GuestEntryProbe initialize={initialize} />);
+
+    expect(await screen.findByText('success')).toBeInTheDocument();
+    expect(initialize).toHaveBeenCalledTimes(1);
+
+    mockNavigate.current = jest.fn();
+    rerender(<GuestEntryProbe initialize={initialize} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('success')).toBeInTheDocument();
+    });
+    expect(initialize).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import type { ApiRequest } from '../../shared/api';
 import { initializeGuestEntry, type GuestEntryResult } from './guestEntry';
@@ -9,9 +9,14 @@ const useGuestEntry = (
   initialize: GuestEntryInitializer = initializeGuestEntry,
 ) => {
   const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
   const [guestEntryRequest, setGuestEntryRequest] = useState<ApiRequest<void>>({
     status: 'loading',
   });
+
+  useEffect(() => {
+    navigateRef.current = navigate;
+  }, [navigate]);
 
   useEffect(() => {
     let isActive = true;
@@ -23,7 +28,7 @@ const useGuestEntry = (
         }
 
         if (result.status === 'authenticated') {
-          navigate('/', { replace: true });
+          navigateRef.current('/', { replace: true });
           return;
         }
 
@@ -38,7 +43,7 @@ const useGuestEntry = (
     return () => {
       isActive = false;
     };
-  }, [initialize, navigate]);
+  }, [initialize]);
 
   return { guestEntryRequest };
 };

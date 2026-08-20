@@ -1,20 +1,31 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { css } from '@emotion/react';
+import { useNavigate } from 'react-router';
 import loadingAnimation from '../../assets/images/loading-animation.webp';
 import { theme } from '../../styles/theme';
+import GuestLoginCta from './GuestLoginCta';
 import { getKoreanToday, validateGuestDiary } from './guestDiaryValidation';
+import { isGuestTrialAlreadyUsedError } from './guestTrialErrors';
+import { getGuestDiaryResultPath } from './guestTrialPaths';
 import useGuestDiaryCreation from './useGuestDiaryCreation';
-import useGuestEntry from './useGuestEntry';
 
 const GuestDiaryWritePage = () => {
-  const { guestEntryRequest } = useGuestEntry();
+  const navigate = useNavigate();
   const { creationState, submitDiary, retryDiary } = useGuestDiaryCreation({
-    enabled: guestEntryRequest.status === 'success',
+    enabled: true,
   });
   const [diaryDate, setDiaryDate] = useState(getKoreanToday);
   const [sourceText, setSourceText] = useState('');
   const [diaryDateError, setDiaryDateError] = useState<string | null>(null);
   const [sourceTextError, setSourceTextError] = useState<string | null>(null);
+  const completedDiaryId =
+    creationState.status === 'success' ? creationState.data.id : null;
+
+  useEffect(() => {
+    if (completedDiaryId) {
+      navigate(getGuestDiaryResultPath(completedDiaryId), { replace: true });
+    }
+  }, [completedDiaryId, navigate]);
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -31,31 +42,27 @@ const GuestDiaryWritePage = () => {
     void submitDiary(request);
   };
 
-  if (
-    guestEntryRequest.status === 'idle' ||
-    guestEntryRequest.status === 'loading'
-  ) {
-    return <LoadingView message="게스트 체험을 준비하고 있어요" />;
-  }
-
-  if (guestEntryRequest.status === 'error') {
-    return <ErrorView message={guestEntryRequest.error.message} />;
-  }
-
   if (creationState.status === 'generating') {
     return <LoadingView message="오늘의 이야기를 그림 일기로 만들고 있어요" />;
   }
 
   if (creationState.status === 'success') {
-    return (
-      <div css={feedbackPageStyle}>
-        <h1 css={feedbackTitleStyle}>그림 일기가 완성됐어요!</h1>
-        <p css={feedbackMessageStyle}>{creationState.data.generation.title}</p>
-      </div>
-    );
+    return <LoadingView message="완성된 그림 일기를 불러오고 있어요" />;
   }
 
   if (creationState.status === 'error') {
+    if (isGuestTrialAlreadyUsedError(creationState.error)) {
+      return (
+        <div css={feedbackPageStyle}>
+          <h1 css={feedbackTitleStyle}>게스트 체험을 이미 사용했어요</h1>
+          <p css={feedbackMessageStyle}>
+            로그인하면 하루들의 그림 일기를 계속 만들 수 있어요.
+          </p>
+          <GuestLoginCta label="카카오로 로그인하기" />
+        </div>
+      );
+    }
+
     return (
       <div css={feedbackPageStyle}>
         <h1 css={feedbackTitleStyle}>일기를 완성하지 못했어요</h1>
@@ -143,15 +150,6 @@ const LoadingView = ({ message }: { message: string }) => {
       <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
       <p css={feedbackTitleStyle}>{message}</p>
       <p css={feedbackMessageStyle}>완성될 때까지 잠시만 기다려주세요.</p>
-    </div>
-  );
-};
-
-const ErrorView = ({ message }: { message: string }) => {
-  return (
-    <div css={feedbackPageStyle}>
-      <h1 css={feedbackTitleStyle}>게스트 체험을 시작하지 못했어요</h1>
-      <p css={feedbackMessageStyle}>{message}</p>
     </div>
   );
 };
