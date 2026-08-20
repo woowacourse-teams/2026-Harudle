@@ -1,5 +1,6 @@
 package com.harudle.auth.presentation;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
@@ -16,6 +17,8 @@ import com.harudle.auth.infrastructure.UserRepository;
 import jakarta.servlet.http.Cookie;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -63,13 +66,60 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.token").isNotEmpty())
                 .andReturn();
 
-        Cookie csrfCookie = result.getResponse().getCookie("XSRF-TOKEN");
+        Cookie csrfCookie = findCurrentCsrfCookie(result);
+        List<String> setCookieHeaders = List.copyOf(
+                result.getResponse().getHeaders(HttpHeaders.SET_COOKIE)
+        );
 
-        org.assertj.core.api.Assertions.assertThat(csrfCookie).isNotNull();
-        org.assertj.core.api.Assertions.assertThat(csrfCookie.isHttpOnly()).isFalse();
-        org.assertj.core.api.Assertions.assertThat(csrfCookie.getPath()).isEqualTo("/api/v1");
-        org.assertj.core.api.Assertions.assertThat(result.getResponse().getContentAsString())
+        assertThat(csrfCookie.isHttpOnly()).isFalse();
+        assertThat(csrfCookie.getPath()).isEqualTo("/api/v1");
+        assertThat(setCookieHeaders).hasSize(2);
+        assertThat(setCookieHeaders.getFirst())
+                .startsWith("XSRF-TOKEN=;")
+                .contains("Path=/api/v1/auth")
+                .contains("Max-Age=0");
+        assertThat(setCookieHeaders.getLast())
+                .startsWith("XSRF-TOKEN=")
+                .contains("Path=/api/v1")
+                .doesNotContain("Max-Age=0");
+        assertThat(result.getResponse().getContentAsString())
                 .contains(csrfCookie.getValue());
+    }
+
+    @Test
+    @DisplayName("기존 경로와 신규 경로의 CSRF Cookie가 함께 있어도 기존 Cookie를 삭제하고 새 Token을 사용한다")
+    void migratesLegacyCsrfCookieWhenDuplicateNamesExist() throws Exception {
+        Cookie legacyCsrfCookie = csrfCookie("legacy-token", "/api/v1/auth");
+        Cookie currentCsrfCookie = csrfCookie("current-token", "/api/v1");
+
+        MvcResult result = mockMvc.perform(get("/api/v1/auth/csrf")
+                        .cookie(legacyCsrfCookie, currentCsrfCookie))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        List<String> setCookieHeaders = List.copyOf(
+                result.getResponse().getHeaders(HttpHeaders.SET_COOKIE)
+        );
+        Cookie migratedCsrfCookie = findCurrentCsrfCookie(result);
+
+        assertThat(setCookieHeaders).hasSize(2);
+        assertThat(setCookieHeaders.getFirst())
+                .startsWith("XSRF-TOKEN=;")
+                .contains("Path=/api/v1/auth")
+                .contains("Max-Age=0");
+        assertThat(setCookieHeaders.getLast())
+                .startsWith("XSRF-TOKEN=")
+                .contains("Path=/api/v1")
+                .doesNotContain("Max-Age=0");
+        assertThat(migratedCsrfCookie.getValue())
+                .isNotEqualTo(legacyCsrfCookie.getValue())
+                .isNotEqualTo(currentCsrfCookie.getValue());
+
+        IssuedRefreshToken issuedRefreshToken = issueRefreshToken();
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .cookie(refreshTokenCookie(issuedRefreshToken), migratedCsrfCookie)
+                        .header("X-XSRF-TOKEN", migratedCsrfCookie.getValue()))
+                .andExpect(status().isOk());
     }
 
     @Test
@@ -234,8 +284,20 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andReturn();
 
-        Cookie cookie = result.getResponse().getCookie("XSRF-TOKEN");
-        org.assertj.core.api.Assertions.assertThat(cookie).isNotNull();
+        return findCurrentCsrfCookie(result);
+    }
+
+    private Cookie findCurrentCsrfCookie(MvcResult result) {
+        return Arrays.stream(result.getResponse().getCookies())
+                .filter(cookie -> "XSRF-TOKEN".equals(cookie.getName()))
+                .filter(cookie -> "/api/v1".equals(cookie.getPath()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("신규 경로의 CSRF Cookie가 없습니다."));
+    }
+
+    private Cookie csrfCookie(String value, String path) {
+        Cookie cookie = new Cookie("XSRF-TOKEN", value);
+        cookie.setPath(path);
         return cookie;
     }
 

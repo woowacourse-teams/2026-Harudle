@@ -11,6 +11,9 @@ import com.harudle.generation.service.exception.GenerationInProgressException;
 import com.harudle.generation.service.exception.GenerationUnavailableException;
 import com.harudle.generation.service.exception.IdempotencyKeyConflictException;
 import com.harudle.generation.service.port.ImageStorageException;
+import com.harudle.guest.application.exception.GuestSessionExpiredException;
+import com.harudle.guest.application.exception.GuestSessionRequiredException;
+import com.harudle.guest.application.exception.GuestTrialAlreadyUsedException;
 import com.harudle.share.service.exception.ShareGenerationFailedException;
 import com.harudle.share.service.exception.ShareNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -77,6 +80,16 @@ class GlobalExceptionHandler {
         return createResponse(ErrorType.UNAUTHORIZED, request, headers);
     }
 
+    @ExceptionHandler(GuestSessionRequiredException.class)
+    ResponseEntity<ProblemDetail> handleGuestSessionRequired(HttpServletRequest request) {
+        return createResponse(ErrorType.GUEST_SESSION_REQUIRED, request);
+    }
+
+    @ExceptionHandler(GuestSessionExpiredException.class)
+    ResponseEntity<ProblemDetail> handleGuestSessionExpired(HttpServletRequest request) {
+        return createResponse(ErrorType.GUEST_SESSION_EXPIRED, request);
+    }
+
     @ExceptionHandler(DiaryAccessDeniedException.class)
     ResponseEntity<ProblemDetail> handleDiaryAccessDenied(HttpServletRequest request) {
         return createResponse(ErrorType.FORBIDDEN, request);
@@ -105,6 +118,11 @@ class GlobalExceptionHandler {
     @ExceptionHandler(IdempotencyKeyConflictException.class)
     ResponseEntity<ProblemDetail> handleIdempotencyKeyConflict(HttpServletRequest request) {
         return createResponse(ErrorType.IDEMPOTENCY_KEY_CONFLICT, request);
+    }
+
+    @ExceptionHandler(GuestTrialAlreadyUsedException.class)
+    ResponseEntity<ProblemDetail> handleGuestTrialAlreadyUsed(HttpServletRequest request) {
+        return createResponse(ErrorType.GUEST_TRIAL_ALREADY_USED, request);
     }
 
     @ExceptionHandler(DailyGenerationLimitExceededException.class)

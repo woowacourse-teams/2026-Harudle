@@ -29,6 +29,7 @@ public class ApiCorsConfiguration {
                 "Accept",
                 "Authorization",
                 "Content-Type",
+                "Idempotency-Key",
                 "X-XSRF-TOKEN"
         ));
         configuration.setAllowCredentials(true);

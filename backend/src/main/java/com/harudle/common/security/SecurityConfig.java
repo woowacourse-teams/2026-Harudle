@@ -96,7 +96,12 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
                                 HttpMethod.POST,
-                                "/api/v1/guest/session"
+                                "/api/v1/guest/session",
+                                "/api/v1/guest/diaries"
+                        ).permitAll()
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/v1/guest/diaries/*"
                         ).permitAll()
                         .requestMatchers(
                                 "/api/v1/auth/refresh",

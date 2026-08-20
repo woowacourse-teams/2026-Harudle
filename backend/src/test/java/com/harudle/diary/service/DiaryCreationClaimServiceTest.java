@@ -12,15 +12,13 @@ import com.harudle.diary.domain.Diary;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
-import com.harudle.generation.domain.DiaryGeneration;
 import com.harudle.generation.configuration.GenerationLifecycleProperties;
+import com.harudle.generation.domain.DiaryGeneration;
 import com.harudle.generation.domain.GenerationErrorCode;
 import com.harudle.generation.domain.GenerationPrompt;
 import com.harudle.generation.domain.GenerationStatus;
-import com.harudle.generation.domain.GenerationUsage;
 import com.harudle.generation.repository.DiaryGenerationRepository;
 import com.harudle.generation.repository.GenerationPromptRepository;
-import com.harudle.generation.service.GenerationUsageService;
 import com.harudle.generation.service.RequestFingerprintGenerator;
 import com.harudle.generation.service.dto.GenerateDiaryImageCommand;
 import com.harudle.generation.service.exception.GenerationUnavailableException;
@@ -41,7 +39,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
-class DiaryCreationTransactionServiceTest {
+class DiaryCreationClaimServiceTest {
 
     private static final UUID USER_ID = UUID.fromString("08d69a34-6d70-4d42-a158-671bc67733c9");
     private static final UUID IDEMPOTENCY_KEY = UUID.fromString("7e5cc251-fdde-4cc0-a54e-2c8142750609");
@@ -59,22 +57,19 @@ class DiaryCreationTransactionServiceTest {
     private DiaryGenerationRepository diaryGenerationRepository;
 
     @Mock
-    private GenerationUsageService generationUsageService;
-
-    @Mock
     private RequestFingerprintGenerator requestFingerprintGenerator;
-    private DiaryCreationTransactionService transactionService;
+
+    private DiaryCreationClaimService claimService;
 
     @BeforeEach
     void setUp() {
         lenient().when(requestFingerprintGenerator.generate(any(GenerateDiaryImageCommand.class)))
                 .thenAnswer(invocation -> fingerprintFor(invocation.getArgument(0)));
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
-        transactionService = new DiaryCreationTransactionService(
+        claimService = new DiaryCreationClaimService(
                 diaryRepository,
                 generationPromptRepository,
                 diaryGenerationRepository,
-                generationUsageService,
                 requestFingerprintGenerator,
                 clock,
                 new GenerationLifecycleProperties(
@@ -85,29 +80,26 @@ class DiaryCreationTransactionServiceTest {
     }
 
     @Test
-    @DisplayName("일기와 처리 중 생성 기록을 저장하고 오늘 사용량을 증가시켜 선점한다")
+    @DisplayName("일기와 처리 중 생성 기록을 저장해 신규 생성을 선점한다")
     void claimNewDiaryCreation() {
         CreateDiaryCommand command = createCommand("오늘 친구와 카페에 갔다.");
         GenerationPrompt prompt = createPrompt();
-        GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
         when(diaryGenerationRepository.findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY))
                 .thenReturn(Optional.empty());
         when(generationPromptRepository.findFirstByOrderByIdDesc()).thenReturn(Optional.of(prompt));
         when(diaryRepository.save(any(Diary.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(diaryGenerationRepository.saveAndFlush(any(DiaryGeneration.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        when(generationUsageService.incrementTodayUsage(USER_ID)).thenReturn(usage);
 
-        DiaryCreationClaim claim = transactionService.claim(command, true);
+        DiaryCreationClaim claim = claimService.claim(command, true);
 
         assertThat(claim.newlyCreated()).isTrue();
         assertThat(claim.sourceText()).isEqualTo(command.sourceText());
         assertThat(claim.generationStatus()).isEqualTo(GenerationStatus.PROCESSING);
-        assertThat(claim.usage()).isEqualTo(usage);
     }
 
     @Test
-    @DisplayName("성공한 멱등 요청은 일기와 사용량을 새로 만들지 않는다")
+    @DisplayName("성공한 멱등 요청은 일기와 생성 기록을 새로 만들지 않는다")
     void claimExistingSuccessfulCreation() {
         CreateDiaryCommand command = createCommand("오늘 친구와 카페에 갔다.");
         Diary diary = Diary.create(USER_ID, DIARY_DATE, command.sourceText());
@@ -117,20 +109,17 @@ class DiaryCreationTransactionServiceTest {
                 "generated/comic.png",
                 Instant.parse("2026-08-06T12:00:00Z")
         );
-        GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
         when(diaryGenerationRepository.findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY))
                 .thenReturn(Optional.of(generation));
         when(diaryRepository.findByIdIncludingDeletedForUpdate(diary.getId()))
                 .thenReturn(Optional.of(diary));
-        when(generationUsageService.getTodayUsage(USER_ID)).thenReturn(usage);
 
-        DiaryCreationClaim claim = transactionService.claim(command, false);
+        DiaryCreationClaim claim = claimService.claim(command, false);
 
         assertThat(claim.newlyCreated()).isFalse();
         assertThat(claim.diaryId()).isEqualTo(diary.getId());
         assertThat(claim.title()).isEqualTo("친구와 보낸 하루");
-        assertThat(claim.usage()).isEqualTo(usage);
-        verify(generationUsageService, never()).incrementTodayUsage(USER_ID);
+        verify(diaryRepository, never()).save(any(Diary.class));
     }
 
     @Test
@@ -145,7 +134,7 @@ class DiaryCreationTransactionServiceTest {
         when(diaryRepository.findByIdIncludingDeletedForUpdate(diary.getId()))
                 .thenReturn(Optional.of(diary));
 
-        assertThatThrownBy(() -> transactionService.claim(differentCommand, true))
+        assertThatThrownBy(() -> claimService.claim(differentCommand, true))
                 .isInstanceOf(IdempotencyKeyConflictException.class);
     }
 
@@ -162,10 +151,9 @@ class DiaryCreationTransactionServiceTest {
         when(diaryRepository.findByIdIncludingDeletedForUpdate(diary.getId()))
                 .thenReturn(Optional.of(diary));
 
-        assertThatThrownBy(() -> transactionService.claim(command, true))
+        assertThatThrownBy(() -> claimService.claim(command, true))
                 .isInstanceOf(DiaryNotFoundException.class);
 
-        verify(generationUsageService, never()).getTodayUsage(USER_ID);
         verify(diaryRepository, never()).save(any(Diary.class));
     }
 
@@ -183,10 +171,8 @@ class DiaryCreationTransactionServiceTest {
         when(diaryRepository.findByIdIncludingDeletedForUpdate(diary.getId()))
                 .thenReturn(Optional.of(diary));
 
-        assertThatThrownBy(() -> transactionService.claim(differentCommand, true))
+        assertThatThrownBy(() -> claimService.claim(differentCommand, true))
                 .isInstanceOf(IdempotencyKeyConflictException.class);
-
-        verify(generationUsageService, never()).getTodayUsage(USER_ID);
     }
 
     @Test
@@ -198,19 +184,16 @@ class DiaryCreationTransactionServiceTest {
         Instant failedAt = NOW.minusSeconds(1);
         generation.fail(GenerationErrorCode.AI_PROVIDER_TIMEOUT, failedAt);
         diary.delete(failedAt);
-        GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
         when(diaryGenerationRepository.findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY))
                 .thenReturn(Optional.of(generation));
         when(diaryRepository.findByIdIncludingDeletedForUpdate(diary.getId()))
                 .thenReturn(Optional.of(diary));
-        when(generationUsageService.getTodayUsage(USER_ID)).thenReturn(usage);
 
-        DiaryCreationClaim claim = transactionService.claim(command, true);
+        DiaryCreationClaim claim = claimService.claim(command, true);
 
         assertThat(claim.generationStatus()).isEqualTo(GenerationStatus.FAILED);
         assertThat(claim.errorCode()).isEqualTo(GenerationErrorCode.AI_PROVIDER_TIMEOUT);
         assertThat(claim.newlyCreated()).isFalse();
-        verify(generationUsageService, never()).incrementTodayUsage(USER_ID);
     }
 
     @Test
@@ -224,14 +207,12 @@ class DiaryCreationTransactionServiceTest {
                 "updatedAt",
                 NOW.minus(Duration.ofMinutes(16))
         );
-        GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
         when(diaryGenerationRepository.findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY))
                 .thenReturn(Optional.of(generation));
         when(diaryRepository.findByIdIncludingDeletedForUpdate(diary.getId()))
                 .thenReturn(Optional.of(diary));
-        when(generationUsageService.getTodayUsage(USER_ID)).thenReturn(usage);
 
-        DiaryCreationClaim claim = transactionService.claim(command, true);
+        DiaryCreationClaim claim = claimService.claim(command, true);
 
         assertThat(claim.generationStatus()).isEqualTo(GenerationStatus.FAILED);
         assertThat(claim.errorCode()).isEqualTo(GenerationErrorCode.GENERATION_INTERRUPTED);
@@ -246,11 +227,10 @@ class DiaryCreationTransactionServiceTest {
         when(diaryGenerationRepository.findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY))
                 .thenReturn(Optional.empty());
 
-        Optional<DiaryCreationClaim> claim = transactionService.findExistingClaim(command);
+        Optional<DiaryCreationClaim> claim = claimService.findExistingClaim(command);
 
         assertThat(claim).isEmpty();
         verify(diaryRepository, never()).save(any(Diary.class));
-        verify(generationUsageService, never()).incrementTodayUsage(USER_ID);
     }
 
     @Test
@@ -260,10 +240,9 @@ class DiaryCreationTransactionServiceTest {
         when(diaryGenerationRepository.findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY))
                 .thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> transactionService.claim(command, false))
+        assertThatThrownBy(() -> claimService.claim(command, false))
                 .isInstanceOf(GenerationUnavailableException.class);
         verify(diaryRepository, never()).save(any(Diary.class));
-        verify(generationUsageService, never()).incrementTodayUsage(USER_ID);
     }
 
     private CreateDiaryCommand createCommand(String sourceText) {

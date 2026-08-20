@@ -7,10 +7,8 @@ import com.harudle.diary.service.exception.DiaryNotFoundException;
 import com.harudle.generation.configuration.GenerationLifecycleProperties;
 import com.harudle.generation.domain.DiaryGeneration;
 import com.harudle.generation.domain.GenerationStatus;
-import com.harudle.generation.domain.GenerationUsage;
 import com.harudle.generation.repository.DiaryGenerationRepository;
 import com.harudle.generation.repository.GenerationPromptRepository;
-import com.harudle.generation.service.GenerationUsageService;
 import com.harudle.generation.service.RequestFingerprintGenerator;
 import com.harudle.generation.service.dto.GenerateDiaryImageCommand;
 import com.harudle.generation.service.exception.GenerationUnavailableException;
@@ -21,27 +19,25 @@ import java.time.Instant;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-class DiaryCreationTransactionService {
+class DiaryCreationClaimService {
 
     private final DiaryRepository diaryRepository;
     private final GenerationPromptRepository generationPromptRepository;
     private final DiaryGenerationRepository diaryGenerationRepository;
-    private final GenerationUsageService generationUsageService;
     private final RequestFingerprintGenerator requestFingerprintGenerator;
     private final Clock clock;
     private final Duration processingTimeout;
 
-    DiaryCreationTransactionService(
+    DiaryCreationClaimService(
             DiaryRepository diaryRepository,
             GenerationPromptRepository generationPromptRepository,
             DiaryGenerationRepository diaryGenerationRepository,
-            GenerationUsageService generationUsageService,
             RequestFingerprintGenerator requestFingerprintGenerator,
-            @Qualifier("serviceClock")
-            Clock clock,
+            @Qualifier("serviceClock") Clock clock,
             GenerationLifecycleProperties generationLifecycleProperties
     ) {
         Duration processingTimeout = generationLifecycleProperties.processingTimeout();
@@ -49,13 +45,12 @@ class DiaryCreationTransactionService {
         this.diaryRepository = diaryRepository;
         this.generationPromptRepository = generationPromptRepository;
         this.diaryGenerationRepository = diaryGenerationRepository;
-        this.generationUsageService = generationUsageService;
         this.requestFingerprintGenerator = requestFingerprintGenerator;
         this.clock = clock;
         this.processingTimeout = processingTimeout;
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.MANDATORY)
     DiaryCreationClaim claim(CreateDiaryCommand command, boolean generationAvailable) {
         return diaryGenerationRepository
                 .findByIdempotencyKeyForUpdate(command.idempotencyKey())
@@ -63,7 +58,7 @@ class DiaryCreationTransactionService {
                 .orElseGet(() -> createNewClaim(command, generationAvailable));
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.MANDATORY)
     Optional<DiaryCreationClaim> findExistingClaim(CreateDiaryCommand command) {
         return diaryGenerationRepository
                 .findByIdempotencyKeyForUpdate(command.idempotencyKey())
@@ -76,15 +71,14 @@ class DiaryCreationTransactionService {
     ) {
         Diary diary = diaryRepository.findByIdIncludingDeletedForUpdate(generation.getDiaryId())
                 .orElseThrow(DiaryNotFoundException::new);
-        validateDiaryAccess(diary, generation);
+        validateDiaryVisibility(diary, generation);
         GenerateDiaryImageCommand generationCommand = createGenerationCommand(command, diary);
         String requestFingerprint = requestFingerprintGenerator.generate(generationCommand);
         if (!generation.hasSameRequestFingerprint(requestFingerprint)) {
             throw new IdempotencyKeyConflictException();
         }
         interruptIfStale(generation, diary);
-        GenerationUsage usage = generationUsageService.getTodayUsage(command.userId());
-        return toClaim(diary, generation, usage, false);
+        return toClaim(diary, generation, false);
     }
 
     private DiaryCreationClaim createNewClaim(
@@ -110,8 +104,7 @@ class DiaryCreationTransactionService {
                 requestFingerprintGenerator.generate(generationCommand)
         );
         DiaryGeneration savedGeneration = diaryGenerationRepository.saveAndFlush(generation);
-        GenerationUsage usage = generationUsageService.incrementTodayUsage(command.userId());
-        return toClaim(diary, savedGeneration, usage, true);
+        return toClaim(diary, savedGeneration, true);
     }
 
     private void interruptIfStale(DiaryGeneration generation, Diary diary) {
@@ -135,7 +128,6 @@ class DiaryCreationTransactionService {
     private DiaryCreationClaim toClaim(
             Diary diary,
             DiaryGeneration generation,
-            GenerationUsage usage,
             boolean newlyCreated
     ) {
         return new DiaryCreationClaim(
@@ -149,7 +141,6 @@ class DiaryCreationTransactionService {
                 generation.getImageObjectKey(),
                 generation.getCompletedAt(),
                 generation.getErrorCode(),
-                usage,
                 newlyCreated
         );
     }
@@ -160,7 +151,7 @@ class DiaryCreationTransactionService {
         }
     }
 
-    private static void validateDiaryAccess(Diary diary, DiaryGeneration generation) {
+    private static void validateDiaryVisibility(Diary diary, DiaryGeneration generation) {
         if (diary.isDeleted() && generation.getStatus() != GenerationStatus.FAILED) {
             throw new DiaryNotFoundException();
         }

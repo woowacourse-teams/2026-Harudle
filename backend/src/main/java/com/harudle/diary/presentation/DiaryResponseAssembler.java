@@ -1,6 +1,7 @@
 package com.harudle.diary.presentation;
 
 import com.harudle.diary.service.dto.CreateDiaryResult;
+import com.harudle.diary.service.dto.CreateGuestDiaryResult;
 import com.harudle.diary.service.dto.DiaryDayResult;
 import com.harudle.diary.service.dto.DiaryDetailResult;
 import com.harudle.diary.service.dto.DiaryGenerationResult;
@@ -10,9 +11,11 @@ import com.harudle.generation.presentation.GenerationUsageResponse;
 import com.harudle.generation.service.port.ImageAccessUrl;
 import com.harudle.generation.service.port.ImageUrlProvider;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -47,6 +50,26 @@ final class DiaryResponseAssembler {
         );
     }
 
+    GuestDiaryResponse toGuestCreateResponse(CreateGuestDiaryResult result) {
+        return toGuestResponse(
+                result.id(),
+                result.diaryDate(),
+                result.sourceText(),
+                result.createdAt(),
+                result.generation()
+        );
+    }
+
+    GuestDiaryResponse toGuestDetailResponse(DiaryDetailResult result) {
+        return toGuestResponse(
+                result.id(),
+                result.diaryDate(),
+                result.sourceText(),
+                result.createdAt(),
+                result.generation()
+        );
+    }
+
     DiaryTimelineResponse toTimelineResponse(DiaryTimelineResult result) {
         List<DiaryDayResponse> days = result.days().stream()
                 .map(this::toDayResponse)
@@ -67,6 +90,22 @@ final class DiaryResponseAssembler {
                 result.id(),
                 result.title(),
                 imageAccessUrl.url().toString()
+        );
+    }
+
+    private GuestDiaryResponse toGuestResponse(
+            UUID id,
+            LocalDate diaryDate,
+            String sourceText,
+            Instant createdAt,
+            DiaryGenerationResult generation
+    ) {
+        return new GuestDiaryResponse(
+                id,
+                diaryDate,
+                sourceText,
+                toServiceTime(createdAt),
+                toGenerationResponse(generation)
         );
     }
 

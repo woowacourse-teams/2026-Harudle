@@ -15,6 +15,7 @@ import com.harudle.guest.infrastructure.token.GuestSessionTokenHasher;
 import com.harudle.guest.repository.GuestSessionRepository;
 import jakarta.servlet.http.Cookie;
 import java.time.Duration;
+import java.util.Arrays;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -151,8 +152,11 @@ class GuestSessionControllerTest {
                 .andExpect(status().isOk())
                 .andReturn();
 
-        Cookie csrfCookie = result.getResponse().getCookie("XSRF-TOKEN");
-        assertThat(csrfCookie).isNotNull();
+        Cookie csrfCookie = Arrays.stream(result.getResponse().getCookies())
+                .filter(cookie -> "XSRF-TOKEN".equals(cookie.getName()))
+                .filter(cookie -> "/api/v1".equals(cookie.getPath()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("신규 경로의 CSRF Cookie가 없습니다."));
         assertThat(csrfCookie.getPath()).isEqualTo("/api/v1");
         return csrfCookie;
     }

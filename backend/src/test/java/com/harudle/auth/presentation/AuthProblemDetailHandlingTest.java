@@ -11,6 +11,7 @@ import com.harudle.auth.infrastructure.token.RefreshTokenCookieReader;
 import com.harudle.auth.infrastructure.token.RefreshTokenCookieWriter;
 import com.harudle.common.error.ErrorType;
 import com.harudle.common.error.ProblemDetailFactory;
+import com.harudle.common.security.LegacyCsrfCookieCleaner;
 import java.time.Clock;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -34,6 +35,7 @@ class AuthProblemDetailHandlingTest {
                 cookieWriter,
                 mock(CookieCsrfTokenRepository.class),
                 problemDetailFactory,
+                new LegacyCsrfCookieCleaner(),
                 Clock.systemUTC()
         );
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/refresh");

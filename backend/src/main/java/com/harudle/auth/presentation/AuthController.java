@@ -8,6 +8,7 @@ import com.harudle.auth.infrastructure.token.RefreshTokenCookieReader;
 import com.harudle.auth.infrastructure.token.RefreshTokenCookieWriter;
 import com.harudle.common.error.ErrorType;
 import com.harudle.common.error.ProblemDetailFactory;
+import com.harudle.common.security.LegacyCsrfCookieCleaner;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.time.Clock;
@@ -36,6 +37,7 @@ public class AuthController {
     private final RefreshTokenCookieWriter refreshTokenCookieWriter;
     private final CookieCsrfTokenRepository csrfTokenRepository;
     private final ProblemDetailFactory problemDetailFactory;
+    private final LegacyCsrfCookieCleaner legacyCsrfCookieCleaner;
     private final Clock clock;
 
     public AuthController(
@@ -44,6 +46,7 @@ public class AuthController {
             RefreshTokenCookieWriter refreshTokenCookieWriter,
             CookieCsrfTokenRepository csrfTokenRepository,
             ProblemDetailFactory problemDetailFactory,
+            LegacyCsrfCookieCleaner legacyCsrfCookieCleaner,
             @Qualifier("authClock")
             Clock authClock
     ) {
@@ -52,6 +55,7 @@ public class AuthController {
         this.refreshTokenCookieWriter = refreshTokenCookieWriter;
         this.csrfTokenRepository = csrfTokenRepository;
         this.problemDetailFactory = problemDetailFactory;
+        this.legacyCsrfCookieCleaner = legacyCsrfCookieCleaner;
         this.clock = Objects.requireNonNull(authClock, "authClock는 필수입니다.");
     }
 
@@ -61,6 +65,7 @@ public class AuthController {
             HttpServletResponse response
     ) {
         CsrfToken csrfToken = csrfTokenRepository.generateToken(request);
+        legacyCsrfCookieCleaner.clear(response);
         csrfTokenRepository.saveToken(csrfToken, request, response);
 
         return ResponseEntity.ok()
