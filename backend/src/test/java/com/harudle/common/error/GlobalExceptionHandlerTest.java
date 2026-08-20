@@ -6,12 +6,14 @@ import java.lang.reflect.Method;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.ConversionNotSupportedException;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotWritableException;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.DirectFieldBindingResult;
@@ -98,6 +100,32 @@ class GlobalExceptionHandlerTest {
                                 "비어 있을 수 없습니다."
                         )))
         );
+    }
+
+    @Test
+    @DisplayName("응답 본문 작성 오류는 내부 서버 오류 코드로 반환한다")
+    void handleHttpMessageNotWritable() throws Exception {
+        HttpMessageNotWritableException exception = new HttpMessageNotWritableException(
+                "응답 본문을 작성할 수 없습니다."
+        );
+
+        ResponseEntity<Object> response = handleFrameworkException(exception);
+
+        assertFrameworkError(response, 500, "INTERNAL_SERVER_ERROR");
+    }
+
+    @Test
+    @DisplayName("서버 내부 타입 변환 오류는 내부 서버 오류 코드로 반환한다")
+    void handleConversionNotSupported() throws Exception {
+        ConversionNotSupportedException exception = new ConversionNotSupportedException(
+                "invalid-value",
+                Integer.class,
+                new IllegalStateException("지원하지 않는 타입 변환입니다.")
+        );
+
+        ResponseEntity<Object> response = handleFrameworkException(exception);
+
+        assertFrameworkError(response, 500, "INTERNAL_SERVER_ERROR");
     }
 
     @Test
