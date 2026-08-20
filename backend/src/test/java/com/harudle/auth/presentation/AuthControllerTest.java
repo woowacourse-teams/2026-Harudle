@@ -80,7 +80,12 @@ class AuthControllerTest {
 
         mockMvc.perform(post("/api/v1/auth/refresh")
                         .cookie(refreshTokenCookie(issuedRefreshToken), csrfCookie))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.type").value("urn:harudle:problem:invalid-csrf-token"))
+                .andExpect(jsonPath("$.code").value("INVALID_CSRF_TOKEN"))
+                .andExpect(jsonPath("$.traceId").isNotEmpty())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"));
 
         mockMvc.perform(post("/api/v1/auth/refresh")
                         .cookie(refreshTokenCookie(issuedRefreshToken), csrfCookie)
@@ -180,7 +185,10 @@ class AuthControllerTest {
 
         mockMvc.perform(post("/api/v1/auth/logout")
                         .cookie(refreshTokenCookie(issuedRefreshToken), csrfCookie))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.code").value("INVALID_CSRF_TOKEN"))
+                .andExpect(jsonPath("$.traceId").isNotEmpty());
 
         mockMvc.perform(post("/api/v1/auth/logout")
                         .cookie(refreshTokenCookie(issuedRefreshToken), csrfCookie)

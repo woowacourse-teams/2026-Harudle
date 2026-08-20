@@ -2,6 +2,8 @@ package com.harudle.common.security;
 
 import com.harudle.auth.infrastructure.oauth.OAuthLoginFailureHandler;
 import com.harudle.auth.infrastructure.oauth.OAuthLoginSuccessHandler;
+import com.harudle.common.error.ProblemDetailFactory;
+import com.harudle.common.error.ProblemDetailResponseWriter;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -15,6 +17,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
+import tools.jackson.databind.ObjectMapper;
 
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(AuthProperties.class)
@@ -34,6 +37,28 @@ public class SecurityConfig {
     @Bean
     public AuthenticationTrustResolver authenticationTrustResolver() {
         return new AuthenticationTrustResolverImpl();
+    }
+
+    @Bean
+    public ProblemDetailResponseWriter problemDetailResponseWriter(
+            ProblemDetailFactory problemDetailFactory,
+            ObjectMapper objectMapper
+    ) {
+        return new ProblemDetailResponseWriter(problemDetailFactory, objectMapper);
+    }
+
+    @Bean
+    public ApiAuthenticationEntryPoint apiAuthenticationEntryPoint(
+            ProblemDetailResponseWriter problemDetailResponseWriter
+    ) {
+        return new ApiAuthenticationEntryPoint(problemDetailResponseWriter);
+    }
+
+    @Bean
+    public ApiAccessDeniedHandler apiAccessDeniedHandler(
+            ProblemDetailResponseWriter problemDetailResponseWriter
+    ) {
+        return new ApiAccessDeniedHandler(problemDetailResponseWriter);
     }
 
     @Bean
@@ -59,7 +84,9 @@ public class SecurityConfig {
     @Order(2)
     public SecurityFilterChain apiSecurityFilterChain(
             HttpSecurity http,
-            CookieCsrfTokenRepository csrfTokenRepository
+            CookieCsrfTokenRepository csrfTokenRepository,
+            ApiAuthenticationEntryPoint apiAuthenticationEntryPoint,
+            ApiAccessDeniedHandler apiAccessDeniedHandler
     ) throws Exception {
         http
                 .sessionManagement(session -> session
@@ -85,8 +112,14 @@ public class SecurityConfig {
                         .csrfTokenRepository(csrfTokenRepository)
                         .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
                 )
+                .exceptionHandling(exception -> exception
+                        .authenticationEntryPoint(apiAuthenticationEntryPoint)
+                        .accessDeniedHandler(apiAccessDeniedHandler)
+                )
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(Customizer.withDefaults())
+                        .authenticationEntryPoint(apiAuthenticationEntryPoint)
+                        .accessDeniedHandler(apiAccessDeniedHandler)
                 );
 
         return http.build();

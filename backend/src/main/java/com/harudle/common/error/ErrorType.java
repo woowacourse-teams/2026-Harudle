@@ -38,6 +38,11 @@ public enum ErrorType {
             "Forbidden",
             "해당 리소스에 접근할 권한이 없습니다."
     ),
+    INVALID_CSRF_TOKEN(
+            HttpStatus.FORBIDDEN,
+            "Invalid CSRF token",
+            "CSRF Token이 유효하지 않습니다."
+    ),
     DIARY_NOT_FOUND(
             HttpStatus.NOT_FOUND,
             "Diary not found",
