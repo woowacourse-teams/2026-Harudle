@@ -23,7 +23,10 @@ import org.springframework.http.MediaType;
 
 public final class GeminiDiaryImageGenerator implements DiaryImageGenerator {
 
-    private static final String OPERATION = "그림일기 이미지 생성";
+    private static final String OPERATION = "image_generation";
+    private static final String TRANSLATION_OPERATION = "그림일기 이미지 생성";
+    private static final String REQUEST_PREPARATION_ERROR = "REQUEST_PREPARATION_ERROR";
+    private static final String RESPONSE_PROCESSING_ERROR = "RESPONSE_PROCESSING_ERROR";
     private static final String FINAL_TASK_HEADER = "[Final Task]";
     private static final String REFERENCE_IMAGE_INSTRUCTION = """
             [The Only Style Reference]
@@ -41,35 +44,58 @@ public final class GeminiDiaryImageGenerator implements DiaryImageGenerator {
     private final Models models;
     private final GeminiGenerationProperties properties;
     private final DiaryImagePromptRenderer promptRenderer;
-    private final GeminiExceptionTranslator exceptionTranslator;
+    private final GeminiFailureReporter failureReporter;
 
     public GeminiDiaryImageGenerator(
             Models models,
             GeminiGenerationProperties properties,
             DiaryImagePromptRenderer promptRenderer,
-            GeminiExceptionTranslator exceptionTranslator
+            GeminiFailureReporter failureReporter
     ) {
         this.models = models;
         this.properties = properties;
         this.promptRenderer = promptRenderer;
-        this.exceptionTranslator = exceptionTranslator;
+        this.failureReporter = failureReporter;
     }
 
     @Override
     public GeneratedImage generate(DiaryImageGenerationRequest request) {
+        Content content;
+        GenerateContentConfig config;
         try {
             String finalTask = createFinalTask(request);
             byte[] referenceImageBytes = readReferenceImage(request.referenceImage(), finalTask);
-            Content content = createContent(request.referenceImage(), referenceImageBytes, finalTask);
-            GenerateContentConfig config = createGenerateContentConfig();
-            GenerateContentResponse response = models.generateContent(
+            content = createContent(request.referenceImage(), referenceImageBytes, finalTask);
+            config = createGenerateContentConfig();
+        } catch (Exception exception) {
+            throw failureReporter.reportInternalFailure(
+                    OPERATION,
+                    TRANSLATION_OPERATION,
+                    REQUEST_PREPARATION_ERROR,
+                    exception
+            );
+        }
+
+        GenerateContentResponse response;
+        try {
+            response = models.generateContent(
                     properties.imageModel(),
                     content,
                     config
             );
+        } catch (Exception exception) {
+            throw failureReporter.reportProviderFailure(OPERATION, TRANSLATION_OPERATION, exception);
+        }
+
+        try {
             return extractGeneratedImage(response);
         } catch (Exception exception) {
-            throw exceptionTranslator.translate(OPERATION, exception);
+            throw failureReporter.reportInternalFailure(
+                    OPERATION,
+                    TRANSLATION_OPERATION,
+                    RESPONSE_PROCESSING_ERROR,
+                    exception
+            );
         }
     }
 

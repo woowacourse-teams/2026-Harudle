@@ -3,9 +3,10 @@ package com.harudle.common.error;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
 import java.util.List;
+import java.util.Objects;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.stereotype.Component;
-import org.springframework.web.ErrorResponse;
 
 @Component
 public class ProblemDetailFactory {
@@ -37,12 +38,16 @@ public class ProblemDetailFactory {
         return problemDetail;
     }
 
-    ProblemDetail create(ErrorResponse errorResponse, HttpServletRequest request) {
-        ProblemDetail problemDetail = errorResponse.getBody();
-        problemDetail.setStatus(errorResponse.getStatusCode().value());
+    ProblemDetail enrichFrameworkError(
+            ProblemDetail problemDetail,
+            HttpStatusCode statusCode,
+            HttpServletRequest request
+    ) {
+        Objects.requireNonNull(problemDetail, "Problem Details 본문은 필수입니다.");
+        problemDetail.setStatus(statusCode.value());
         setCommonProperties(
                 problemDetail,
-                FrameworkErrorType.codeFor(errorResponse.getStatusCode()),
+                FrameworkErrorType.codeFor(statusCode),
                 request
         );
         return problemDetail;

@@ -101,8 +101,10 @@ Idempotency-Key: 7e5cc251-fdde-4cc0-a54e-2c8142750609
 | --- | --- | ---: | --- |
 | `GET` | `/oauth2/authorization/kakao` | 불필요 | Kakao OAuth 로그인 시작 |
 | `GET` | `/login/oauth2/code/kakao` | 불필요 | Kakao OAuth 콜백 |
+| `GET` | `/api/v1/auth/csrf` | 불필요 | Cookie 기반 요청에 사용할 CSRF Token 발급 |
 | `POST` | `/api/v1/auth/refresh` | Refresh Token | Access Token 발급·재발급 |
 | `POST` | `/api/v1/auth/logout` | 불필요 | Refresh Token Cookie를 이용한 현재 로그인 세션 종료 |
+| `POST` | `/api/v1/guest/session` | 불필요 | 로그인 전 체험용 게스트 세션 발급 또는 재사용 |
 | `GET` | `/api/v1/me` | 필요 | 내 프로필 조회 |
 
 ### 3.2 일기 및 생성
@@ -110,6 +112,8 @@ Idempotency-Key: 7e5cc251-fdde-4cc0-a54e-2c8142750609
 | Method | Endpoint | 인증 | 설명 |
 | --- | --- | ---: | --- |
 | `POST` | `/api/v1/diaries` | 필요 | 일기 작성 및 4컷 이미지 동기 생성 |
+| `POST` | `/api/v1/guest/diaries` | 게스트 세션 | 로그인 전 1회 일기 작성 및 4컷 이미지 동기 생성 |
+| `GET` | `/api/v1/guest/diaries/{diaryId}` | 게스트 세션 | 게스트 세션에 연결된 일기 생성 결과 조회 |
 | `GET` | `/api/v1/me/generation-usage` | 필요 | 오늘 생성 사용량 조회 |
 | `GET` | `/api/v1/diaries` | 필요 | 연·월 기준 내 일기 조회 |
 | `GET` | `/api/v1/diaries/{diaryId}` | 필요 | 일기 및 생성 결과 상세 조회 |
@@ -205,6 +209,35 @@ HTTP/1.1 200 OK
 }
 ```
 
+### 4.6 게스트 세션 발급
+
+먼저 CSRF Token을 발급받습니다.
+
+```http
+GET /api/v1/auth/csrf
+```
+
+응답 본문의 Token을 `X-XSRF-TOKEN` Header에 넣고, CSRF Cookie가 함께 전송되도록 요청합니다.
+
+```http
+POST /api/v1/guest/session
+Cookie: XSRF-TOKEN={csrfToken}
+X-XSRF-TOKEN: {csrfToken}
+```
+
+- Access Token은 요구하지 않습니다.
+- 유효한 `guest_session` Cookie가 있으면 기존 게스트 세션을 재사용합니다.
+- Cookie가 없거나 저장된 세션과 일치하지 않거나 만료되었으면 새 게스트 세션을 발급합니다.
+- 원문 게스트 Token은 HttpOnly Cookie로만 전달하고 DB에는 SHA-256 해시만 저장합니다.
+- 운영 환경에서는 `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/api/v1/guest` 속성을 사용합니다.
+- CSRF Header가 없거나 Cookie의 CSRF Token과 일치하지 않으면 `403 Forbidden`을 반환합니다.
+
+```http
+HTTP/1.1 204 No Content
+Cache-Control: no-store
+Set-Cookie: guest_session={guestToken}; Path=/api/v1/guest; Max-Age=2592000; Secure; HttpOnly; SameSite=Lax
+```
+
 ## 5. 일기 및 생성 API
 
 ### 5.1 일기 작성 및 4컷 생성
@@ -295,7 +328,87 @@ FE 동작:
 - 성공 응답을 받으면 결과 화면으로 이동합니다.
 - 별도의 생성 진행 상태 조회 API는 제공하지 않습니다.
 
-### 5.2 오늘 생성 사용량 조회
+### 5.2 게스트 일기 작성 및 4컷 생성
+
+게스트 세션을 먼저 발급한 뒤 요청합니다.
+
+```http
+POST /api/v1/guest/diaries
+Cookie: guest_session={guestToken}; XSRF-TOKEN={csrfToken}
+X-XSRF-TOKEN: {csrfToken}
+Idempotency-Key: 7e5cc251-fdde-4cc0-a54e-2c8142750609
+Content-Type: application/json
+```
+
+```json
+{
+  "diaryDate": "2026-08-20",
+  "sourceText": "오늘 친구와 카페에 가서 오래 이야기했다."
+}
+```
+
+동작:
+
+1. 원문 게스트 Token을 SHA-256으로 해시해 게스트 세션을 쓰기 잠금으로 조회합니다.
+2. 만료된 세션은 `401 GUEST_SESSION_EXPIRED`로 거절합니다.
+3. 미사용 세션이면 게스트 사용자 ID로 일기와 `PROCESSING` 생성 기록을 선점합니다.
+4. 같은 트랜잭션에서 `guest_sessions.diary_id`와 `used_at`을 기록합니다.
+5. 게스트 생성은 회원의 `daily_generation_usage`를 조회하거나 변경하지 않습니다.
+6. 트랜잭션을 커밋한 뒤 신규 요청만 외부 AI 생성을 실행합니다.
+7. 사용한 세션의 동일한 키와 동일한 요청은 기존 결과를 반환하고 다시 생성하지 않습니다.
+8. 사용한 세션에서 새로운 키로 생성하면 `409 GUEST_TRIAL_ALREADY_USED`를 반환합니다.
+
+게스트 사용권은 AI 호출 완료 시점이 아니라 일기 생성을 선점한 시점에 사용됩니다. 외부 생성이 실패하더라도 다른 키로 두
+번째 일기를 만들 수 없으며, 동일한 키의 재요청은 저장된 실패 결과를 반환합니다.
+
+신규 생성 성공 응답:
+
+```http
+HTTP/1.1 201 Created
+Location: /api/v1/guest/diaries/593363cb-1dc3-46bc-a858-5926f7601ca9
+Cache-Control: no-store
+```
+
+```json
+{
+  "id": "593363cb-1dc3-46bc-a858-5926f7601ca9",
+  "diaryDate": "2026-08-20",
+  "sourceText": "오늘 친구와 카페에 가서 오래 이야기했다.",
+  "createdAt": "2026-08-20T09:00:00+09:00",
+  "generation": {
+    "id": "17ac16ef-c45a-40bb-92ea-aed37659ef1c",
+    "status": "SUCCEEDED",
+    "title": "친구와 보낸 카페 시간",
+    "imageUrl": "https://presigned-s3-url.example/...",
+    "imageUrlExpiresAt": "2026-08-20T09:10:00+09:00",
+    "completedAt": "2026-08-20T09:01:00+09:00"
+  }
+}
+```
+
+동일한 멱등 요청의 기존 성공 결과는 `200 OK`로 반환합니다. 게스트 응답에는 회원 일일 사용량을 포함하지 않습니다.
+
+### 5.3 게스트 일기 결과 조회
+
+```http
+GET /api/v1/guest/diaries/593363cb-1dc3-46bc-a858-5926f7601ca9
+Cookie: guest_session={guestToken}
+```
+
+- Access Token과 CSRF Header는 요구하지 않습니다.
+- 현재 게스트 세션의 `diary_id`와 요청한 `diaryId`가 같아야 합니다.
+- 일기의 실제 소유자가 세션의 게스트 사용자와 일치해야 합니다.
+- 다른 세션에 연결된 일기는 존재 여부를 노출하지 않고 `404 DIARY_NOT_FOUND`를 반환합니다.
+- 공개 공유 API가 아니며, 게스트 세션 Cookie를 가진 브라우저만 조회할 수 있습니다.
+
+```http
+HTTP/1.1 200 OK
+Cache-Control: no-store
+```
+
+응답 본문은 게스트 생성 응답과 동일합니다.
+
+### 5.4 오늘 생성 사용량 조회
 
 ```http
 GET /api/v1/me/generation-usage
@@ -562,8 +675,12 @@ Retry-After: 13800
 | `400` | `VALIDATION_ERROR` | 요청 형식 또는 필드 검증 실패 |
 | `400` | `INVALID_IDEMPOTENCY_KEY` | 멱등성 키 누락 또는 형식 오류 |
 | `401` | `UNAUTHORIZED` | 인증 정보 없음 또는 Access Token 만료 |
+| `401` | `GUEST_SESSION_REQUIRED` | 게스트 세션 Cookie가 없거나 저장된 세션과 일치하지 않음 |
+| `401` | `GUEST_SESSION_EXPIRED` | 게스트 세션이 만료됨 |
 | `401` | `INVALID_REFRESH_TOKEN` | Refresh Token 만료 또는 폐기 |
+| `401` | `INVALID_CURRENT_USER` | Access Token은 유효하지만 현재 사용자를 확인할 수 없음 |
 | `403` | `FORBIDDEN` | 다른 사용자의 리소스 접근 |
+| `403` | `INVALID_CSRF_TOKEN` | CSRF Token 누락 또는 불일치 |
 | `404` | `API_NOT_FOUND` | 존재하지 않는 API 경로 요청 |
 | `404` | `DIARY_NOT_FOUND` | 상세 조회·공유 링크 생성 대상 일기가 없거나 삭제됨 |
 | `404` | `SHARE_NOT_FOUND` | 공개 공유 링크가 없거나 연결된 일기가 삭제됨 |
@@ -572,6 +689,7 @@ Retry-After: 13800
 | `409` | `GENERATION_IN_PROGRESS` | 동일 멱등 요청이 아직 처리 중 |
 | `409` | `GENERATION_FAILED` | 공유할 생성 결과가 실패 상태임 |
 | `409` | `IDEMPOTENCY_KEY_CONFLICT` | 동일 키를 다른 요청 본문에 사용 |
+| `409` | `GUEST_TRIAL_ALREADY_USED` | 게스트 세션의 로그인 전 1회 사용권을 이미 사용함 |
 | `413` | `PAYLOAD_TOO_LARGE` | 허용 크기를 초과한 요청 본문 |
 | `415` | `UNSUPPORTED_MEDIA_TYPE` | 지원하지 않는 요청 미디어 타입 |
 | `429` | `DAILY_GENERATION_LIMIT_EXCEEDED` | KST 기준 일일 생성 3회 초과 |

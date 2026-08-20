@@ -145,7 +145,7 @@ class KakaoLoginCommandMapperTest {
     @DisplayName("카카오 사용자 정보가 null이면 로그인 명령을 생성할 수 없다")
     void rejectsNullAttributes() {
         assertThatThrownBy(() -> mapper.map(null))
-                .isInstanceOf(NullPointerException.class);
+                .isInstanceOf(InvalidOAuthProfileException.class);
     }
 
     @Test
@@ -156,7 +156,8 @@ class KakaoLoginCommandMapperTest {
         );
 
         assertThatThrownBy(() -> mapper.map(attributes))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(InvalidOAuthProfileException.class)
+                .hasRootCauseInstanceOf(IllegalArgumentException.class);
     }
 
     @ParameterizedTest
@@ -166,7 +167,8 @@ class KakaoLoginCommandMapperTest {
         Map<String, Object> attributes = Map.of("id", id);
 
         assertThatThrownBy(() -> mapper.map(attributes))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(InvalidOAuthProfileException.class)
+                .hasRootCauseInstanceOf(IllegalArgumentException.class);
     }
 
     @ParameterizedTest
@@ -189,7 +191,8 @@ class KakaoLoginCommandMapperTest {
         );
 
         assertThatThrownBy(() -> mapper.map(attributes))
-                .isInstanceOf(JacksonException.class);
+                .isInstanceOf(InvalidOAuthProfileException.class)
+                .hasRootCauseInstanceOf(JacksonException.class);
     }
 
 }
