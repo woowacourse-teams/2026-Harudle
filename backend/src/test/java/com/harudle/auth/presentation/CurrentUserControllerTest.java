@@ -1,6 +1,6 @@
 package com.harudle.auth.presentation;
 
-import static org.hamcrest.Matchers.containsString;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -13,8 +13,12 @@ import com.harudle.auth.domain.OAuthProvider;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.OAuthAccountRepository;
 import com.harudle.auth.infrastructure.UserRepository;
+import io.restassured.module.mockmvc.RestAssuredMockMvc;
+import io.restassured.module.mockmvc.response.MockMvcResponse;
 import java.time.Instant;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -53,6 +57,16 @@ class CurrentUserControllerTest {
     @Autowired
     private OAuthAccountRepository oauthAccountRepository;
 
+    @BeforeEach
+    void setUp() {
+        RestAssuredMockMvc.mockMvc(mockMvc);
+    }
+
+    @AfterEach
+    void tearDown() {
+        RestAssuredMockMvc.reset();
+    }
+
     @Test
     @DisplayName("유효한 Access Token으로 내 프로필을 조회한다")
     void findsCurrentUser() throws Exception {
@@ -82,19 +96,23 @@ class CurrentUserControllerTest {
 
     @Test
     @DisplayName("존재하지 않는 사용자 식별자의 Access Token으로 내 프로필을 조회할 수 없다")
-    void rejectsMissingCurrentUser() throws Exception {
-        mockMvc.perform(get("/api/v1/me")
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(UUID.randomUUID())))
-                .andExpect(status().isUnauthorized())
-                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(jsonPath("$.type").value("urn:harudle:problem:invalid-current-user"))
-                .andExpect(jsonPath("$.code").value("INVALID_CURRENT_USER"))
-                .andExpect(jsonPath("$.traceId").isNotEmpty())
-                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
-                .andExpect(header().string(
-                        HttpHeaders.CONTENT_TYPE,
-                        containsString(MediaType.APPLICATION_PROBLEM_JSON_VALUE)
-                ));
+    void rejectsMissingCurrentUser() {
+        MockMvcResponse response = RestAssuredMockMvc.given()
+                .header(HttpHeaders.AUTHORIZATION, bearerToken(UUID.randomUUID()))
+                .get("/api/v1/me");
+
+        assertThat(response.statusCode()).isEqualTo(401);
+        assertThat(response.contentType()).startsWith(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
+        assertThat(response.header(HttpHeaders.CACHE_CONTROL)).isEqualTo("no-store");
+        assertThat(response.jsonPath().getString("type"))
+                .isEqualTo("urn:harudle:problem:invalid-current-user");
+        assertThat(response.jsonPath().getString("title")).isEqualTo("Invalid current user");
+        assertThat(response.jsonPath().getInt("status")).isEqualTo(401);
+        assertThat(response.jsonPath().getString("detail"))
+                .isEqualTo("현재 로그인 사용자를 확인할 수 없습니다.");
+        assertThat(response.jsonPath().getString("instance")).isEqualTo("/api/v1/me");
+        assertThat(response.jsonPath().getString("code")).isEqualTo("INVALID_CURRENT_USER");
+        assertThat(response.jsonPath().getString("traceId")).isNotBlank();
     }
 
     @Test
