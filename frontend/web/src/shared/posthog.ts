@@ -1,7 +1,6 @@
 import type { PostHog } from 'posthog-js';
 
 import { API_BASE_URL } from './api';
-import { authFetch } from './auth';
 
 const localHostnames = new Set(['localhost', '127.0.0.1', '0.0.0.0', '[::1]']);
 
@@ -20,13 +19,18 @@ const hasUserId = (value: unknown): value is { id: string } => {
 
 export const identifyCurrentUserForPostHog = async (
   posthog: PostHog,
+  accessToken: string,
 ): Promise<void> => {
   if (!isPostHogEnabled) {
     return;
   }
 
   try {
-    const response = await authFetch(`${API_BASE_URL}/me`);
+    const response = await fetch(`${API_BASE_URL}/me`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
 
     if (!response.ok) {
       return;

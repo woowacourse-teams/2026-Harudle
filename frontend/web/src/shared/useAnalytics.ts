@@ -39,9 +39,12 @@ export const useAnalytics = () => {
     [posthog],
   );
 
-  const identifyCurrentUser = useCallback((): Promise<void> => {
-    return identifyCurrentUserForPostHog(posthog);
-  }, [posthog]);
+  const identifyCurrentUser = useCallback(
+    (accessToken: string): Promise<void> => {
+      return identifyCurrentUserForPostHog(posthog, accessToken);
+    },
+    [posthog],
+  );
 
   const resetUser = useCallback((): void => {
     if (!isPostHogEnabled) {

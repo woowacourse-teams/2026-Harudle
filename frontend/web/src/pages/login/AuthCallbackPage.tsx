@@ -36,7 +36,7 @@ const AuthCallbackPage = () => {
 
         setAccessToken(data.accessToken);
 
-        void identifyCurrentUser();
+        void identifyCurrentUser(data.accessToken);
         navigate('/');
       } catch (error: unknown) {
         if (error instanceof Error) {
