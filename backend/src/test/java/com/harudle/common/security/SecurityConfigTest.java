@@ -112,6 +112,8 @@ class SecurityConfigTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + issueAccessToken()))
                 .andExpect(status().isForbidden())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(header().string(HttpHeaders.WWW_AUTHENTICATE, startsWith("Bearer")))
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
                 .andExpect(jsonPath("$.type").value("urn:harudle:problem:forbidden"))
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"))
                 .andExpect(jsonPath("$.traceId").isNotEmpty());

@@ -156,6 +156,7 @@ class AuthControllerTest {
                 "INVALID_CSRF_TOKEN",
                 "/api/v1/auth/refresh"
         );
+        assertThat(errorResponse.header(HttpHeaders.WWW_AUTHENTICATE)).startsWith("Bearer");
         assertThat(errorResponse.header(HttpHeaders.CACHE_CONTROL)).isEqualTo("no-store");
 
         MockMvcResponse successResponse = RestAssuredMockMvc.given()
