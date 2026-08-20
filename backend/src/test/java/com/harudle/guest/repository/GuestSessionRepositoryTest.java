@@ -92,6 +92,29 @@ class GuestSessionRepositoryTest {
     }
 
     @Test
+    @DisplayName("토큰 해시로 게스트 세션을 잠금 조회한다")
+    void findsByTokenHashForUpdate() {
+        User guestUser = saveGuestUser("게스트1");
+        GuestSession savedSession = guestSessionRepository.saveAndFlush(
+                GuestSession.create(
+                        guestUser.getId(),
+                        TOKEN_HASH,
+                        EXPIRES_AT,
+                        CREATED_AT
+                )
+        );
+        UUID savedSessionId = savedSession.getId();
+        entityManager.clear();
+
+        GuestSession foundSession = guestSessionRepository
+                .findByTokenHashForUpdate(TOKEN_HASH)
+                .orElseThrow();
+
+        assertThat(foundSession.getId()).isEqualTo(savedSessionId);
+        assertThat(foundSession.getTokenHash()).isEqualTo(TOKEN_HASH);
+    }
+
+    @Test
     @DisplayName("같은 토큰 해시를 중복 저장할 수 없다")
     void rejectsDuplicateTokenHash() {
         User firstGuestUser = saveGuestUser("게스트1");

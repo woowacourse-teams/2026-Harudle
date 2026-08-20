@@ -21,6 +21,7 @@ import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.auth.infrastructure.token.RefreshTokenCookieWriter;
 import com.harudle.common.security.AccessTokenProperties;
 import com.harudle.common.security.AuthProperties;
+import com.harudle.common.security.LegacyCsrfCookieCleaner;
 import com.harudle.common.security.RefreshTokenProperties;
 import java.net.URI;
 import java.time.Clock;
@@ -68,6 +69,7 @@ class OAuthLoginSuccessHandlerTest {
                 refreshTokenService,
                 new RefreshTokenCookieWriter(authProperties),
                 createCsrfTokenRepository(),
+                new LegacyCsrfCookieCleaner(),
                 new OAuthLoginFailureHandler(authProperties),
                 authProperties,
                 FIXED_CLOCK
@@ -104,7 +106,15 @@ class OAuthLoginSuccessHandlerTest {
                 .contains("HttpOnly")
                 .contains("Path=/api/v1/auth");
         assertThat(response.getHeaders(HttpHeaders.SET_COOKIE))
-                .anyMatch(cookie -> cookie.startsWith("XSRF-TOKEN="));
+                .filteredOn(cookie -> cookie.startsWith("XSRF-TOKEN=;"))
+                .singleElement()
+                .satisfies(cookie -> assertThat(cookie)
+                        .contains("Path=/api/v1/auth")
+                        .contains("Max-Age=0"));
+        assertThat(response.getHeaders(HttpHeaders.SET_COOKIE))
+                .filteredOn(cookie -> cookie.startsWith("XSRF-TOKEN=") && !cookie.contains("Max-Age=0"))
+                .singleElement()
+                .satisfies(cookie -> assertThat(cookie).contains("Path=/api/v1"));
         ArgumentCaptor<OAuthLoginCommand> commandCaptor = ArgumentCaptor.forClass(OAuthLoginCommand.class);
         verify(oAuthLoginService).login(commandCaptor.capture(), eq(LOGIN_AT));
         assertThat(commandCaptor.getValue().provider()).isEqualTo(OAuthProvider.KAKAO);
@@ -222,7 +232,7 @@ class OAuthLoginSuccessHandlerTest {
     private CookieCsrfTokenRepository createCsrfTokenRepository() {
         CookieCsrfTokenRepository repository = CookieCsrfTokenRepository.withHttpOnlyFalse();
         repository.setCookieName("XSRF-TOKEN");
-        repository.setCookiePath("/api/v1/auth");
+        repository.setCookiePath("/api/v1");
         repository.setCookieCustomizer(builder -> builder.sameSite("Lax"));
 
         return repository;
