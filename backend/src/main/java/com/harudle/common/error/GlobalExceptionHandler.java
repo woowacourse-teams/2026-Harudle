@@ -20,6 +20,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.util.List;
 import java.util.Objects;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
@@ -35,6 +37,7 @@ import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 @RestControllerAdvice
+@NullMarked
 class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(GlobalExceptionHandler.class);
@@ -74,7 +77,10 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     ResponseEntity<ProblemDetail> handleAuthenticationRequired(HttpServletRequest request) {
         HttpHeaders headers = new HttpHeaders();
         headers.set(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
-        return createResponse(ErrorType.UNAUTHORIZED, request, headers);
+        return ResponseEntity
+                .status(ErrorType.UNAUTHORIZED.status())
+                .headers(headers)
+                .body(problemDetailFactory.create(ErrorType.UNAUTHORIZED, request));
     }
 
     @ExceptionHandler(GuestSessionRequiredException.class)
@@ -172,9 +178,9 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     @Override
-    protected ResponseEntity<Object> handleExceptionInternal(
+    protected @Nullable ResponseEntity<Object> handleExceptionInternal(
             Exception exception,
-            Object body,
+            @Nullable Object body,
             HttpHeaders headers,
             HttpStatusCode statusCode,
             WebRequest request
@@ -187,13 +193,14 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     @Override
     protected ResponseEntity<Object> createResponseEntity(
-            Object body,
+            @Nullable Object body,
             HttpHeaders headers,
             HttpStatusCode statusCode,
             WebRequest request
     ) {
-        ProblemDetail problemDetail = ProblemDetail.class.cast(
-                Objects.requireNonNull(body, "Spring MVC 오류 응답 본문은 필수입니다.")
+        ProblemDetail problemDetail = (ProblemDetail) Objects.requireNonNull(
+                body,
+                "Spring MVC 오류 응답 본문은 필수입니다."
         );
         return new ResponseEntity<>(
                 problemDetailFactory.enrichFrameworkError(
@@ -223,18 +230,7 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 .body(problemDetailFactory.create(errorType, request, errors));
     }
 
-    private ResponseEntity<ProblemDetail> createResponse(
-            ErrorType errorType,
-            HttpServletRequest request,
-            HttpHeaders headers
-    ) {
-        return ResponseEntity
-                .status(errorType.status())
-                .headers(headers)
-                .body(problemDetailFactory.create(errorType, request));
-    }
-
     private static HttpServletRequest extractRequest(WebRequest request) {
-        return ServletWebRequest.class.cast(request).getRequest();
+        return ((ServletWebRequest) request).getRequest();
     }
 }
