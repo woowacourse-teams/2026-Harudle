@@ -1,6 +1,7 @@
 import { API_BASE_URL, isProblemDetails, RequestError } from './api';
 
 let accessToken: string | null = null;
+let refreshRequest: Promise<void> | null = null; // Single-Flight 패턴
 
 export const setAccessToken = (token: string | null): void => {
   accessToken = token;
@@ -26,10 +27,12 @@ export const authFetch = async (
       throw new Error('Access Token 복구 실패');
     }
 
+    const usedToken = accessToken; // 액세스 토큰 race condition 문제 해결을 위해 복사
+
     // 여기부터는 액세스 토큰이 어떻게든 있는 상태이다.
 
     // 2. API 요청
-    let response = await fetchWithAccessToken(info, init, accessToken);
+    let response = await fetchWithAccessToken(info, init, usedToken);
 
     // 3. 401이 아니면 그대로 끝내고 외부로 성공 및 에러 처리 책임을 넘긴다.
     if (response.status !== 401) {
@@ -37,9 +40,19 @@ export const authFetch = async (
     }
 
     // 4. 401이면 기존 토큰 폐기 후 재발급한다.
-    setAccessToken(null);
-    await restoreAccessToken();
+    // usedToken과 accessToken이 다르다는 것은 다른 api 요청이 이미 액세스 토큰을 갱신한 상황이다.
 
+    // 내가 사용했던 토큰이 아직 현재 토큰이면
+    // 내가 처음 401을 발견한 것이므로 폐기한다.
+    if (accessToken === usedToken) {
+      setAccessToken(null);
+    }
+
+    // 현재 토큰이 없다면 누군가 refresh 중이거나,
+    // 내가 refresh를 해야 하는 상황이다.
+    if (!accessToken) {
+      await restoreAccessToken();
+    }
     // 5. 딱 한 번 재요청
     response = await fetchWithAccessToken(info, init, accessToken);
     return response;
@@ -96,8 +109,6 @@ export const isRefreshTokenResponse = (
     typeof value.expiresIn === 'number'
   );
 };
-
-let refreshRequest: Promise<void> | null = null; // Single-Flight 패턴
 
 const restoreAccessToken = async (): Promise<void> => {
   if (refreshRequest) {
