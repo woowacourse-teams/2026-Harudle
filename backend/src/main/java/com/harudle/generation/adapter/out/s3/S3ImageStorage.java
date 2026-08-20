@@ -13,6 +13,7 @@ import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
 import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
@@ -98,6 +99,14 @@ public final class S3ImageStorage implements ImageStorage {
             MediaType mediaType = parseImageMediaType(response.response().contentType());
             byte[] imageBytes = readImageBytes(response);
             return new ReferenceImage(new ByteArrayResource(imageBytes), mediaType);
+        } catch (IOException | SdkClientException exception) {
+            throw failureReporter.reportProviderFailure(
+                    GET_OBJECT,
+                    LOAD_TRANSLATION_OPERATION,
+                    imageObjectKey,
+                    false,
+                    exception
+            );
         } catch (Exception exception) {
             throw failureReporter.reportInternalFailure(
                     GET_OBJECT,

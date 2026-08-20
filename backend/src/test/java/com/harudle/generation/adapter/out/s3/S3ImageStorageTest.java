@@ -18,6 +18,7 @@ import com.harudle.generation.service.port.ImageStorageException;
 import com.harudle.generation.service.port.ReferenceImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.UUID;
@@ -220,6 +221,75 @@ class S3ImageStorageTest {
         assertThat(referenceImage.mediaType()).isEqualTo(MediaType.IMAGE_PNG);
         assertThat(referenceImage.resource().getContentAsByteArray()).isEqualTo(imageBytes);
         assertThat(inputStream.isClosed()).isTrue();
+    }
+
+    @Test
+    @DisplayName("S3 응답 스트림 읽기 실패는 일시적인 클라이언트 오류로 기록한다")
+    void logResponseStreamReadFailureAsWarn() {
+        IOException cause = new IOException("response stream read failure");
+        InputStream inputStream = new InputStream() {
+            @Override
+            public int read() throws IOException {
+                throw cause;
+            }
+        };
+        when(s3Client.getObject(any(GetObjectRequest.class)))
+                .thenReturn(responseStream(inputStream, 1, "image/png"));
+
+        assertThatThrownBy(() -> imageStorage.load("prompt-assets/reference.png"))
+                .isInstanceOf(ImageStorageException.class)
+                .hasCause(cause);
+        verify(externalApiLogger).warn(
+                eq(new ExternalApiFailure("s3", "get_object", "CLIENT_ERROR", null, null, null)),
+                eq(cause)
+        );
+    }
+
+    @Test
+    @DisplayName("S3 응답 스트림의 SDK 전송 실패는 일시적인 클라이언트 오류로 기록한다")
+    void logResponseStreamSdkFailureAsWarn() {
+        SdkClientException cause = SdkClientException.builder()
+                .message("response stream transfer failure")
+                .build();
+        InputStream inputStream = new InputStream() {
+            @Override
+            public int read() {
+                throw cause;
+            }
+        };
+        when(s3Client.getObject(any(GetObjectRequest.class)))
+                .thenReturn(responseStream(inputStream, 1, "image/png"));
+
+        assertThatThrownBy(() -> imageStorage.load("prompt-assets/reference.png"))
+                .isInstanceOf(ImageStorageException.class)
+                .hasCause(cause);
+        verify(externalApiLogger).warn(
+                eq(new ExternalApiFailure("s3", "get_object", "CLIENT_ERROR", null, null, null)),
+                eq(cause)
+        );
+    }
+
+    @Test
+    @DisplayName("S3 응답 스트림 닫기 실패는 일시적인 클라이언트 오류로 기록한다")
+    void logResponseStreamCloseFailureAsWarn() {
+        byte[] imageBytes = "reference".getBytes(StandardCharsets.UTF_8);
+        IOException cause = new IOException("response stream close failure");
+        InputStream inputStream = new ByteArrayInputStream(imageBytes) {
+            @Override
+            public void close() throws IOException {
+                throw cause;
+            }
+        };
+        when(s3Client.getObject(any(GetObjectRequest.class)))
+                .thenReturn(responseStream(inputStream, imageBytes.length, "image/png"));
+
+        assertThatThrownBy(() -> imageStorage.load("prompt-assets/reference.png"))
+                .isInstanceOf(ImageStorageException.class)
+                .hasCause(cause);
+        verify(externalApiLogger).warn(
+                eq(new ExternalApiFailure("s3", "get_object", "CLIENT_ERROR", null, null, null)),
+                eq(cause)
+        );
     }
 
     @Test
@@ -442,7 +512,7 @@ class S3ImageStorageTest {
     }
 
     private static ResponseInputStream<GetObjectResponse> responseStream(
-            CloseTrackingInputStream inputStream,
+            InputStream inputStream,
             long contentLength,
             String contentType
     ) {
