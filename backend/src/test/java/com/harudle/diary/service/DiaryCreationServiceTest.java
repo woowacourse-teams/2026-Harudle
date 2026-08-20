@@ -42,7 +42,7 @@ class DiaryCreationServiceTest {
     private static final Instant COMPLETED_AT = Instant.parse("2026-08-06T12:00:00Z");
 
     @Mock
-    private DiaryCreationTransactionService transactionService;
+    private MemberDiaryCreationTransactionService transactionService;
 
     @Mock
     private DiaryGenerationExecutor generationExecutor;
@@ -59,7 +59,7 @@ class DiaryCreationServiceTest {
     void createNewDiary() {
         CreateDiaryCommand command = createCommand();
         GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
-        DiaryCreationClaim claim = createClaim(GenerationStatus.PROCESSING, usage, true);
+        MemberDiaryCreationClaim claim = createClaim(GenerationStatus.PROCESSING, usage, true);
         CompletedDiaryGeneration generationResult = createGenerationResult();
         when(generationExecutor.isConfigured()).thenReturn(true);
         when(transactionService.claim(command, true)).thenReturn(claim);
@@ -79,7 +79,7 @@ class DiaryCreationServiceTest {
     void returnExistingDiaryWithoutGenerationAdapter() {
         CreateDiaryCommand command = createCommand();
         GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
-        DiaryCreationClaim claim = createClaim(GenerationStatus.SUCCEEDED, usage, false);
+        MemberDiaryCreationClaim claim = createClaim(GenerationStatus.SUCCEEDED, usage, false);
         when(generationExecutor.isConfigured()).thenReturn(false);
         when(transactionService.claim(command, false)).thenReturn(claim);
 
@@ -95,7 +95,7 @@ class DiaryCreationServiceTest {
     void rejectExistingProcessingDiary() {
         CreateDiaryCommand command = createCommand();
         GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
-        DiaryCreationClaim claim = createClaim(GenerationStatus.PROCESSING, usage, false);
+        MemberDiaryCreationClaim claim = createClaim(GenerationStatus.PROCESSING, usage, false);
         when(generationExecutor.isConfigured()).thenReturn(true);
         when(transactionService.claim(command, true)).thenReturn(claim);
 
@@ -109,7 +109,7 @@ class DiaryCreationServiceTest {
     void recoverConcurrentClaim() {
         CreateDiaryCommand command = createCommand();
         GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
-        DiaryCreationClaim claim = createClaim(GenerationStatus.PROCESSING, usage, false);
+        MemberDiaryCreationClaim claim = createClaim(GenerationStatus.PROCESSING, usage, false);
         DataIntegrityViolationException collision = new DataIntegrityViolationException("중복 멱등성 키");
         when(generationExecutor.isConfigured()).thenReturn(true);
         when(transactionService.claim(command, true)).thenThrow(collision);
@@ -143,7 +143,7 @@ class DiaryCreationServiceTest {
     void rejectExistingFailedDiary() {
         CreateDiaryCommand command = createCommand();
         GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
-        DiaryCreationClaim claim = createClaim(GenerationStatus.FAILED, usage, false);
+        MemberDiaryCreationClaim claim = createClaim(GenerationStatus.FAILED, usage, false);
         when(generationExecutor.isConfigured()).thenReturn(true);
         when(transactionService.claim(command, true)).thenReturn(claim);
 
@@ -166,28 +166,37 @@ class DiaryCreationServiceTest {
         );
     }
 
-    private DiaryCreationClaim createClaim(
+    private MemberDiaryCreationClaim createClaim(
             GenerationStatus status,
             GenerationUsage usage,
             boolean newlyCreated
     ) {
-        boolean succeeded = status == GenerationStatus.SUCCEEDED;
-        return new DiaryCreationClaim(
+        String title = null;
+        String imageObjectKey = null;
+        Instant completedAt = null;
+        GenerationErrorCode errorCode = null;
+        if (status == GenerationStatus.SUCCEEDED) {
+            title = "친구와 보낸 하루";
+            imageObjectKey = "generated/comic.png";
+            completedAt = COMPLETED_AT;
+        }
+        if (status == GenerationStatus.FAILED) {
+            errorCode = GenerationErrorCode.AI_PROVIDER_TIMEOUT;
+        }
+        DiaryCreationClaim claim = new DiaryCreationClaim(
                 DIARY_ID,
                 DIARY_DATE,
                 "오늘 친구와 카페에 갔다.",
                 CREATED_AT,
                 GENERATION_ID,
                 status,
-                succeeded ? "친구와 보낸 하루" : null,
-                succeeded ? "generated/comic.png" : null,
-                succeeded ? COMPLETED_AT : null,
-                status == GenerationStatus.FAILED
-                        ? GenerationErrorCode.AI_PROVIDER_TIMEOUT
-                        : null,
-                usage,
+                title,
+                imageObjectKey,
+                completedAt,
+                errorCode,
                 newlyCreated
         );
+        return new MemberDiaryCreationClaim(claim, usage);
     }
 
     private CompletedDiaryGeneration createGenerationResult() {

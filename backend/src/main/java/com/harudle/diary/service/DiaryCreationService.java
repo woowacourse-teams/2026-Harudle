@@ -4,6 +4,7 @@ import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.dto.CreateDiaryResult;
 import com.harudle.diary.service.dto.DiaryGenerationResult;
 import com.harudle.generation.domain.GenerationStatus;
+import com.harudle.generation.domain.GenerationUsage;
 import com.harudle.generation.service.DiaryGenerationExecutor;
 import com.harudle.generation.service.dto.CompletedDiaryGeneration;
 import com.harudle.generation.service.dto.GenerateDiaryImageCommand;
@@ -15,39 +16,43 @@ import org.springframework.stereotype.Service;
 @Service
 public class DiaryCreationService {
 
-    private final DiaryCreationTransactionService transactionService;
+    private final MemberDiaryCreationTransactionService memberTransactionService;
     private final DiaryGenerationExecutor generationExecutor;
 
     DiaryCreationService(
-            DiaryCreationTransactionService transactionService,
+            MemberDiaryCreationTransactionService memberTransactionService,
             DiaryGenerationExecutor generationExecutor
     ) {
-        this.transactionService = transactionService;
+        this.memberTransactionService = memberTransactionService;
         this.generationExecutor = generationExecutor;
     }
 
     public CreateDiaryResult create(CreateDiaryCommand command) {
-        DiaryCreationClaim claim = claim(command, generationExecutor.isConfigured());
+        MemberDiaryCreationClaim memberClaim = claim(command, generationExecutor.isConfigured());
+        DiaryCreationClaim claim = memberClaim.claim();
         if (!claim.newlyCreated()) {
-            return handleExistingClaim(claim);
+            return handleExistingClaim(claim, memberClaim.usage());
         }
         CompletedDiaryGeneration generationResult = generationExecutor.generate(
                 createGenerationCommand(command, claim),
                 claim.generationId()
         );
-        return createResult(claim, generationResult, true);
+        return createResult(claim, generationResult, memberClaim.usage(), true);
     }
 
-    private DiaryCreationClaim claim(CreateDiaryCommand command, boolean generationAvailable) {
+    private MemberDiaryCreationClaim claim(CreateDiaryCommand command, boolean generationAvailable) {
         try {
-            return transactionService.claim(command, generationAvailable);
+            return memberTransactionService.claim(command, generationAvailable);
         } catch (DataIntegrityViolationException exception) {
-            return transactionService.findExistingClaim(command)
+            return memberTransactionService.findExistingClaim(command)
                     .orElseThrow(() -> exception);
         }
     }
 
-    private CreateDiaryResult handleExistingClaim(DiaryCreationClaim claim) {
+    private CreateDiaryResult handleExistingClaim(
+            DiaryCreationClaim claim,
+            GenerationUsage usage
+    ) {
         return switch (claim.generationStatus()) {
             case PROCESSING -> throw new GenerationInProgressException();
             case FAILED -> throw new DiaryGenerationFailedException(claim.errorCode());
@@ -59,6 +64,7 @@ public class DiaryCreationService {
                             claim.imageObjectKey(),
                             claim.completedAt()
                     ),
+                    usage,
                     false
             );
         };
@@ -80,6 +86,7 @@ public class DiaryCreationService {
     private CreateDiaryResult createResult(
             DiaryCreationClaim claim,
             CompletedDiaryGeneration generationResult,
+            GenerationUsage usage,
             boolean newlyCreated
     ) {
         return new CreateDiaryResult(
@@ -94,7 +101,7 @@ public class DiaryCreationService {
                         generationResult.imageObjectKey(),
                         generationResult.completedAt()
                 ),
-                claim.usage(),
+                usage,
                 newlyCreated
         );
     }
