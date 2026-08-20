@@ -13,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.harudle.auth.infrastructure.oauth.OAuthLoginFailureHandler;
 import com.harudle.auth.infrastructure.oauth.OAuthLoginSuccessHandler;
 import com.harudle.common.config.TimeConfiguration;
+import com.harudle.common.error.ApiExceptionLoggerTestConfiguration;
 import com.harudle.common.error.ProblemDetailFactory;
 import com.harudle.common.error.TraceIdConfiguration;
 import com.harudle.common.security.ApiCorsConfiguration;
@@ -58,6 +59,7 @@ import org.springframework.test.web.servlet.MvcResult;
 @Import({
         ApiCorsConfiguration.class,
         DiaryResponseAssembler.class,
+        ApiExceptionLoggerTestConfiguration.class,
         ProblemDetailFactory.class,
         TraceIdConfiguration.class,
         CsrfConfiguration.class,
