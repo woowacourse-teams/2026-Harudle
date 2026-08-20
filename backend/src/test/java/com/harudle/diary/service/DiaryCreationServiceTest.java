@@ -2,22 +2,14 @@ package com.harudle.diary.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.dto.CreateDiaryResult;
-import com.harudle.generation.domain.GenerationErrorCode;
+import com.harudle.diary.service.dto.DiaryGenerationResult;
 import com.harudle.generation.domain.GenerationStatus;
 import com.harudle.generation.domain.GenerationUsage;
-import com.harudle.generation.service.DiaryGenerationExecutor;
-import com.harudle.generation.service.dto.CompletedDiaryGeneration;
-import com.harudle.generation.service.dto.GenerateDiaryImageCommand;
-import com.harudle.generation.service.exception.DiaryGenerationFailedException;
-import com.harudle.generation.service.exception.GenerationInProgressException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Optional;
@@ -45,116 +37,84 @@ class DiaryCreationServiceTest {
     private MemberDiaryCreationTransactionService transactionService;
 
     @Mock
-    private DiaryGenerationExecutor generationExecutor;
+    private DiaryCreationExecutionService executionService;
 
     private DiaryCreationService diaryCreationService;
 
     @BeforeEach
     void setUp() {
-        diaryCreationService = new DiaryCreationService(transactionService, generationExecutor);
+        diaryCreationService = new DiaryCreationService(transactionService, executionService);
     }
 
     @Test
-    @DisplayName("신규 요청을 선점한 뒤 외부 생성을 실행해 생성 결과를 반환한다")
-    void createNewDiary() {
+    @DisplayName("회원 생성 선점과 공통 실행 결과에 회원 사용량을 결합한다")
+    void createMemberDiary() {
         CreateDiaryCommand command = createCommand();
         GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
-        MemberDiaryCreationClaim claim = createClaim(GenerationStatus.PROCESSING, usage, true);
-        CompletedDiaryGeneration generationResult = createGenerationResult();
-        when(generationExecutor.isConfigured()).thenReturn(true);
-        when(transactionService.claim(command, true)).thenReturn(claim);
-        when(generationExecutor.generate(any(GenerateDiaryImageCommand.class), eq(GENERATION_ID)))
-                .thenReturn(generationResult);
+        DiaryCreationClaim claim = createClaim(true);
+        MemberDiaryCreationClaim memberClaim = new MemberDiaryCreationClaim(claim, usage);
+        DiaryCreationExecution execution = createExecution(true);
+        when(executionService.isGenerationAvailable()).thenReturn(true);
+        when(transactionService.claim(command, true)).thenReturn(memberClaim);
+        when(executionService.execute(command, claim)).thenReturn(execution);
 
         CreateDiaryResult result = diaryCreationService.create(command);
 
-        assertThat(result.newlyCreated()).isTrue();
         assertThat(result.id()).isEqualTo(DIARY_ID);
-        assertThat(result.generation().title()).isEqualTo("친구와 보낸 하루");
         assertThat(result.usage()).isEqualTo(usage);
+        assertThat(result.newlyCreated()).isTrue();
+        assertThat(result.generation().title()).isEqualTo("친구와 보낸 하루");
     }
 
     @Test
-    @DisplayName("성공한 멱등 재요청은 AI 생성 어댑터 없이 기존 결과를 반환한다")
-    void returnExistingDiaryWithoutGenerationAdapter() {
+    @DisplayName("성공한 회원 멱등 재요청은 기존 생성 결과와 사용량을 반환한다")
+    void returnExistingMemberDiary() {
         CreateDiaryCommand command = createCommand();
         GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
-        MemberDiaryCreationClaim claim = createClaim(GenerationStatus.SUCCEEDED, usage, false);
-        when(generationExecutor.isConfigured()).thenReturn(false);
-        when(transactionService.claim(command, false)).thenReturn(claim);
+        DiaryCreationClaim claim = createClaim(false);
+        MemberDiaryCreationClaim memberClaim = new MemberDiaryCreationClaim(claim, usage);
+        when(executionService.isGenerationAvailable()).thenReturn(false);
+        when(transactionService.claim(command, false)).thenReturn(memberClaim);
+        when(executionService.execute(command, claim)).thenReturn(createExecution(false));
 
         CreateDiaryResult result = diaryCreationService.create(command);
 
         assertThat(result.newlyCreated()).isFalse();
-        assertThat(result.generation().status()).isEqualTo(GenerationStatus.SUCCEEDED);
-        verify(generationExecutor, never()).generate(any(GenerateDiaryImageCommand.class), any(UUID.class));
+        assertThat(result.usage()).isEqualTo(usage);
+        verify(transactionService).claim(command, false);
     }
 
     @Test
-    @DisplayName("처리 중인 멱등 재요청은 외부 생성을 다시 호출하지 않는다")
-    void rejectExistingProcessingDiary() {
-        CreateDiaryCommand command = createCommand();
-        GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
-        MemberDiaryCreationClaim claim = createClaim(GenerationStatus.PROCESSING, usage, false);
-        when(generationExecutor.isConfigured()).thenReturn(true);
-        when(transactionService.claim(command, true)).thenReturn(claim);
-
-        assertThatThrownBy(() -> diaryCreationService.create(command))
-                .isInstanceOf(GenerationInProgressException.class);
-        verify(generationExecutor, never()).generate(any(GenerateDiaryImageCommand.class), any(UUID.class));
-    }
-
-    @Test
-    @DisplayName("멱등성 키 경합으로 선점에 실패하면 경합에서 이긴 기존 요청만 조회한다")
+    @DisplayName("멱등성 키 경합으로 선점에 실패하면 경합에서 이긴 회원 요청을 복구한다")
     void recoverConcurrentClaim() {
         CreateDiaryCommand command = createCommand();
         GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
-        MemberDiaryCreationClaim claim = createClaim(GenerationStatus.PROCESSING, usage, false);
+        DiaryCreationClaim claim = createClaim(false);
+        MemberDiaryCreationClaim recoveredClaim = new MemberDiaryCreationClaim(claim, usage);
         DataIntegrityViolationException collision = new DataIntegrityViolationException("중복 멱등성 키");
-        when(generationExecutor.isConfigured()).thenReturn(true);
+        when(executionService.isGenerationAvailable()).thenReturn(true);
         when(transactionService.claim(command, true)).thenThrow(collision);
-        when(transactionService.findExistingClaim(command)).thenReturn(Optional.of(claim));
+        when(transactionService.findExistingClaim(command)).thenReturn(Optional.of(recoveredClaim));
+        when(executionService.execute(command, claim)).thenReturn(createExecution(false));
 
-        assertThatThrownBy(() -> diaryCreationService.create(command))
-                .isInstanceOf(GenerationInProgressException.class);
+        CreateDiaryResult result = diaryCreationService.create(command);
 
-        verify(transactionService).claim(command, true);
+        assertThat(result.newlyCreated()).isFalse();
         verify(transactionService).findExistingClaim(command);
-        verify(generationExecutor, never()).generate(any(GenerateDiaryImageCommand.class), any(UUID.class));
     }
 
     @Test
-    @DisplayName("멱등성 키 경합이 아니면 원래 무결성 예외를 그대로 전달한다")
+    @DisplayName("복구할 회원 요청이 없으면 원래 무결성 예외를 전달한다")
     void propagateUnrelatedIntegrityViolation() {
         CreateDiaryCommand command = createCommand();
         DataIntegrityViolationException exception = new DataIntegrityViolationException("다른 제약 조건 위반");
-        when(generationExecutor.isConfigured()).thenReturn(true);
+        when(executionService.isGenerationAvailable()).thenReturn(true);
         when(transactionService.claim(command, true)).thenThrow(exception);
         when(transactionService.findExistingClaim(command)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> diaryCreationService.create(command)).isSameAs(exception);
 
-        verify(transactionService).claim(command, true);
         verify(transactionService).findExistingClaim(command);
-    }
-
-    @Test
-    @DisplayName("실패한 멱등 재요청은 저장된 생성 오류를 반환한다")
-    void rejectExistingFailedDiary() {
-        CreateDiaryCommand command = createCommand();
-        GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
-        MemberDiaryCreationClaim claim = createClaim(GenerationStatus.FAILED, usage, false);
-        when(generationExecutor.isConfigured()).thenReturn(true);
-        when(transactionService.claim(command, true)).thenReturn(claim);
-
-        assertThatThrownBy(() -> diaryCreationService.create(command))
-                .isInstanceOfSatisfying(
-                        DiaryGenerationFailedException.class,
-                        exception -> assertThat(exception.errorCode())
-                                .isEqualTo(GenerationErrorCode.AI_PROVIDER_TIMEOUT)
-                );
-
-        verify(generationExecutor, never()).generate(any(GenerateDiaryImageCommand.class), any(UUID.class));
     }
 
     private CreateDiaryCommand createCommand() {
@@ -166,45 +126,36 @@ class DiaryCreationServiceTest {
         );
     }
 
-    private MemberDiaryCreationClaim createClaim(
-            GenerationStatus status,
-            GenerationUsage usage,
-            boolean newlyCreated
-    ) {
-        String title = null;
-        String imageObjectKey = null;
-        Instant completedAt = null;
-        GenerationErrorCode errorCode = null;
-        if (status == GenerationStatus.SUCCEEDED) {
-            title = "친구와 보낸 하루";
-            imageObjectKey = "generated/comic.png";
-            completedAt = COMPLETED_AT;
-        }
-        if (status == GenerationStatus.FAILED) {
-            errorCode = GenerationErrorCode.AI_PROVIDER_TIMEOUT;
-        }
-        DiaryCreationClaim claim = new DiaryCreationClaim(
+    private DiaryCreationClaim createClaim(boolean newlyCreated) {
+        return new DiaryCreationClaim(
                 DIARY_ID,
                 DIARY_DATE,
                 "오늘 친구와 카페에 갔다.",
                 CREATED_AT,
                 GENERATION_ID,
-                status,
-                title,
-                imageObjectKey,
-                completedAt,
-                errorCode,
+                GenerationStatus.PROCESSING,
+                null,
+                null,
+                null,
+                null,
                 newlyCreated
         );
-        return new MemberDiaryCreationClaim(claim, usage);
     }
 
-    private CompletedDiaryGeneration createGenerationResult() {
-        return new CompletedDiaryGeneration(
-                GENERATION_ID,
-                "친구와 보낸 하루",
-                "generated/comic.png",
-                COMPLETED_AT
+    private DiaryCreationExecution createExecution(boolean newlyCreated) {
+        return new DiaryCreationExecution(
+                DIARY_ID,
+                DIARY_DATE,
+                "오늘 친구와 카페에 갔다.",
+                CREATED_AT,
+                new DiaryGenerationResult(
+                        GENERATION_ID,
+                        GenerationStatus.SUCCEEDED,
+                        "친구와 보낸 하루",
+                        "generated/comic.png",
+                        COMPLETED_AT
+                ),
+                newlyCreated
         );
     }
 }

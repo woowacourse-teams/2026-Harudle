@@ -79,6 +79,11 @@ public class GuestSession {
         return usedAt != null;
     }
 
+    public boolean isUsedForDiary(UUID diaryId) {
+        Objects.requireNonNull(diaryId, "일기 ID는 필수입니다.");
+        return diaryId.equals(this.diaryId);
+    }
+
     public boolean isExpiredAt(Instant now) {
         Objects.requireNonNull(now, "현재 시각은 필수입니다.");
         return !now.isBefore(expiresAt);

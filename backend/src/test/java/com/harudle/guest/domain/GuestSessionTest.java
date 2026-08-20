@@ -79,6 +79,8 @@ class GuestSessionTest {
         assertThat(session.getUsedAt()).isEqualTo(USED_AT);
         assertThat(session.getUpdatedAt()).isEqualTo(USED_AT);
         assertThat(session.isUsed()).isTrue();
+        assertThat(session.isUsedForDiary(DIARY_ID)).isTrue();
+        assertThat(session.isUsedForDiary(ANOTHER_DIARY_ID)).isFalse();
     }
 
     @Test
