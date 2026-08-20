@@ -248,6 +248,17 @@ class S3ImageStorageTest {
                 .isInstanceOf(ImageStorageException.class)
                 .hasMessageContaining("S3 이미지 저장")
                 .hasRootCauseMessage("S3 이미지 객체 크기가 허용 범위를 벗어났습니다.");
+        verify(externalApiLogger).warn(
+                eq(new ExternalApiFailure(
+                        "s3",
+                        "put_object",
+                        "REQUEST_VALIDATION_ERROR",
+                        null,
+                        null,
+                        null
+                )),
+                any(IllegalArgumentException.class)
+        );
         verifyNoInteractions(s3Client);
     }
 

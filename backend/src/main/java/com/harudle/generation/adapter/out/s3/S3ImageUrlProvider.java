@@ -36,9 +36,19 @@ public final class S3ImageUrlProvider implements ImageUrlProvider {
 
     @Override
     public ImageAccessUrl createAccessUrl(String imageObjectKey) {
-        GetObjectPresignRequest presignRequest;
         try {
             S3ObjectKeyValidator.validate(imageObjectKey);
+        } catch (IllegalArgumentException exception) {
+            throw failureReporter.reportValidationFailure(
+                    OPERATION,
+                    TRANSLATION_OPERATION,
+                    imageObjectKey,
+                    exception
+            );
+        }
+
+        GetObjectPresignRequest presignRequest;
+        try {
             GetObjectRequest getObjectRequest = GetObjectRequest.builder()
                     .bucket(bucket)
                     .key(imageObjectKey)

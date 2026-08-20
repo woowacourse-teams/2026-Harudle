@@ -53,9 +53,19 @@ public final class S3ImageStorage implements ImageStorage {
 
     @Override
     public ReferenceImage load(String imageObjectKey) {
-        GetObjectRequest request;
         try {
             S3ObjectKeyValidator.validate(imageObjectKey);
+        } catch (IllegalArgumentException exception) {
+            throw failureReporter.reportValidationFailure(
+                    GET_OBJECT,
+                    LOAD_TRANSLATION_OPERATION,
+                    imageObjectKey,
+                    exception
+            );
+        }
+
+        GetObjectRequest request;
+        try {
             request = GetObjectRequest.builder()
                     .bucket(bucket)
                     .key(imageObjectKey)
@@ -104,6 +114,13 @@ public final class S3ImageStorage implements ImageStorage {
         PreparedStore preparedStore;
         try {
             preparedStore = prepareStore(generationId, generatedImage);
+        } catch (IllegalArgumentException exception) {
+            throw failureReporter.reportValidationFailure(
+                    PUT_OBJECT,
+                    STORE_TRANSLATION_OPERATION,
+                    null,
+                    exception
+            );
         } catch (Exception exception) {
             throw failureReporter.reportInternalFailure(
                     PUT_OBJECT,
@@ -148,9 +165,19 @@ public final class S3ImageStorage implements ImageStorage {
 
     @Override
     public void delete(String imageObjectKey) {
-        DeleteObjectRequest request;
         try {
             S3ObjectKeyValidator.validate(imageObjectKey);
+        } catch (IllegalArgumentException exception) {
+            throw failureReporter.reportValidationFailure(
+                    DELETE_OBJECT,
+                    DELETE_TRANSLATION_OPERATION,
+                    imageObjectKey,
+                    exception
+            );
+        }
+
+        DeleteObjectRequest request;
+        try {
             request = DeleteObjectRequest.builder()
                     .bucket(bucket)
                     .key(imageObjectKey)

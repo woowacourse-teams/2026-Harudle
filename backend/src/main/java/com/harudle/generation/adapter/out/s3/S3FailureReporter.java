@@ -10,6 +10,7 @@ import org.jspecify.annotations.Nullable;
 public final class S3FailureReporter {
 
     private static final String PROVIDER = "s3";
+    private static final String REQUEST_VALIDATION_ERROR = "REQUEST_VALIDATION_ERROR";
 
     private final S3ExceptionTranslator exceptionTranslator;
     private final ExternalApiLogger externalApiLogger;
@@ -68,6 +69,31 @@ public final class S3FailureReporter {
         );
         externalApiLogger.error(
                 new ExternalApiFailure(PROVIDER, operation, failureType, null, null, null),
+                exception
+        );
+        return translated;
+    }
+
+    ImageStorageException reportValidationFailure(
+            String operation,
+            String translationOperation,
+            @Nullable String objectKey,
+            IllegalArgumentException exception
+    ) {
+        ImageStorageException translated = exceptionTranslator.translate(
+                translationOperation,
+                objectKey,
+                exception
+        );
+        externalApiLogger.warn(
+                new ExternalApiFailure(
+                        PROVIDER,
+                        operation,
+                        REQUEST_VALIDATION_ERROR,
+                        null,
+                        null,
+                        null
+                ),
                 exception
         );
         return translated;

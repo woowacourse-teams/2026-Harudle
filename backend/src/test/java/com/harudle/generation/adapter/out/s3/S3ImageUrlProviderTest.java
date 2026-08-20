@@ -91,11 +91,11 @@ class S3ImageUrlProviderTest {
         assertThatThrownBy(() -> imageUrlProvider.createAccessUrl(" "))
                 .isInstanceOf(ImageStorageException.class)
                 .hasRootCauseMessage("이미지 Object Key가 필요합니다.");
-        verify(externalApiLogger).error(
+        verify(externalApiLogger).warn(
                 eq(new ExternalApiFailure(
                         "s3",
                         "presign_get_object",
-                        "REQUEST_PREPARATION_ERROR",
+                        "REQUEST_VALIDATION_ERROR",
                         null,
                         null,
                         null
