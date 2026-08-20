@@ -2,18 +2,23 @@ package com.harudle.common.error;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.lang.reflect.Method;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.MethodParameter;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.validation.BindingResult;
+import org.springframework.validation.DirectFieldBindingResult;
 import org.springframework.web.ErrorResponseException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.context.request.ServletWebRequest;
 
 class GlobalExceptionHandlerTest {
@@ -67,6 +72,35 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    @DisplayName("요청 본문 검증 오류에 필드명과 검증 메시지를 포함한다")
+    void handleMethodArgumentNotValid() throws Exception {
+        BindingResult bindingResult = new DirectFieldBindingResult(
+                new ValidationRequest(),
+                "validationRequest"
+        );
+        bindingResult.rejectValue("content", "NotBlank", "비어 있을 수 없습니다.");
+        Method method = GlobalExceptionHandlerTest.class.getDeclaredMethod(
+                "validate",
+                ValidationRequest.class
+        );
+        MethodArgumentNotValidException exception = new MethodArgumentNotValidException(
+                new MethodParameter(method, 0),
+                bindingResult
+        );
+
+        ResponseEntity<Object> response = handleFrameworkException(exception);
+
+        assertFrameworkError(response, 400, "VALIDATION_ERROR");
+        assertThat(response.getBody()).isInstanceOfSatisfying(ProblemDetail.class, problemDetail ->
+                assertThat(problemDetail.getProperties())
+                        .containsEntry("errors", List.of(new FieldValidationError(
+                                "content",
+                                "비어 있을 수 없습니다."
+                        )))
+        );
+    }
+
+    @Test
     @DisplayName("예상하지 못한 RuntimeException은 내부 서버 오류로 반환한다")
     void handleUnexpectedRuntimeException() {
         ResponseEntity<ProblemDetail> response = exceptionHandler.handleUnexpected(
@@ -85,6 +119,9 @@ class GlobalExceptionHandlerTest {
         return exceptionHandler.handleException(exception, new ServletWebRequest(request));
     }
 
+    private static void validate(ValidationRequest request) {
+    }
+
     private static void assertFrameworkError(
             ResponseEntity<Object> response,
             int expectedStatus,
@@ -100,5 +137,10 @@ class GlobalExceptionHandlerTest {
                     .containsEntry("code", expectedCode)
                     .containsEntry("traceId", TRACE_ID);
         });
+    }
+
+    private static final class ValidationRequest {
+
+        private String content;
     }
 }
