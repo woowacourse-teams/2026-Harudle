@@ -33,6 +33,7 @@ import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
 import org.springframework.util.unit.DataSize;
 import software.amazon.awssdk.awscore.exception.AwsErrorDetails;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProviderChain;
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.sync.RequestBody;
@@ -321,6 +322,39 @@ class S3ImageStorageTest {
                 .hasCause(cause);
         verify(externalApiLogger).warn(
                 eq(new ExternalApiFailure("s3", "get_object", "CLIENT_ERROR", null, null, null)),
+                eq(cause)
+        );
+    }
+
+    @Test
+    @DisplayName("AWS credentials provider chain의 자격 증명 해석 실패는 ERROR로 기록한다")
+    void logCredentialsResolutionFailureAsError() {
+        AwsCredentialsProviderChain credentialsProviderChain = AwsCredentialsProviderChain.of(
+                () -> {
+                    throw SdkClientException.builder()
+                            .message("credentials unavailable")
+                            .build();
+                }
+        );
+        SdkClientException cause = catchThrowableOfType(
+                credentialsProviderChain::resolveCredentials,
+                SdkClientException.class
+        );
+        when(s3Client.getObject(any(GetObjectRequest.class))).thenThrow(cause);
+
+        assertThatThrownBy(() -> imageStorage.load("prompt-assets/reference.png"))
+                .isInstanceOf(ImageStorageException.class)
+                .hasCause(cause);
+
+        verify(externalApiLogger).error(
+                eq(new ExternalApiFailure(
+                        "s3",
+                        "get_object",
+                        "AUTHENTICATION_ERROR",
+                        null,
+                        null,
+                        null
+                )),
                 eq(cause)
         );
     }

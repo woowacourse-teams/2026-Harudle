@@ -5,6 +5,7 @@ import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 import software.amazon.awssdk.awscore.exception.AwsErrorDetails;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
+import software.amazon.awssdk.core.exception.SdkClientException;
 
 @NullMarked
 record S3ProviderErrorMetadata(
@@ -16,6 +17,8 @@ record S3ProviderErrorMetadata(
 ) {
 
     private static final int MAX_CAUSE_DEPTH = 16;
+    private static final String CREDENTIALS_RESOLUTION_FAILURE_MESSAGE_PREFIX =
+            "Unable to load credentials from any of the providers in the chain";
     private static final Set<String> AUTHENTICATION_ERROR_CODES = Set.of(
             "ExpiredToken",
             "InvalidAccessKeyId",
@@ -40,6 +43,15 @@ record S3ProviderErrorMetadata(
     static S3ProviderErrorMetadata from(Throwable exception, boolean configurationOperation) {
         AwsServiceException serviceException = findServiceException(exception);
         if (serviceException == null) {
+            if (isCredentialsResolutionFailure(exception)) {
+                return new S3ProviderErrorMetadata(
+                        "AUTHENTICATION_ERROR",
+                        true,
+                        null,
+                        null,
+                        null
+                );
+            }
             String failureType = configurationOperation ? "CONFIGURATION_ERROR" : "CLIENT_ERROR";
             return new S3ProviderErrorMetadata(
                     failureType,
@@ -89,5 +101,19 @@ record S3ProviderErrorMetadata(
             current = current.getCause();
         }
         return null;
+    }
+
+    private static boolean isCredentialsResolutionFailure(Throwable exception) {
+        Throwable current = exception;
+        for (int depth = 0; current != null && depth < MAX_CAUSE_DEPTH; depth++) {
+            String message = current.getMessage();
+            if (current instanceof SdkClientException
+                    && message != null
+                    && message.startsWith(CREDENTIALS_RESOLUTION_FAILURE_MESSAGE_PREFIX)) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 }
