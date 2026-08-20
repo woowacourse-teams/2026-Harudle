@@ -4,11 +4,28 @@ import harudleLogo from '../../assets/images/harudle-logo.png';
 import { useNavigate, useParams } from 'react-router';
 import useDiaryShare from './useDiaryShare';
 import loadingAnimation from '../../assets/images/loading-animation.webp';
+import { useEffect } from 'react';
+import { useAnalytics } from '../../shared/useAnalytics';
 
 const DiarySharePage = () => {
   const navigate = useNavigate();
   const { shareId } = useParams();
   const { sharedDiaryRequest } = useDiaryShare({ shareId });
+  const { track } = useAnalytics();
+
+  useEffect(() => {
+    if (sharedDiaryRequest.status === 'success' && shareId) {
+      track('diary_share_viewed', { share_id: shareId });
+    }
+  }, [sharedDiaryRequest.status, shareId, track]);
+
+  const handleLandingClick = () => {
+    if (shareId) {
+      track('diary_share_landing_clicked', { share_id: shareId });
+    }
+
+    navigate('/');
+  };
 
   if (
     sharedDiaryRequest.status === 'idle' ||
@@ -28,7 +45,7 @@ const DiarySharePage = () => {
 
   return (
     <div css={diarySharePageStyle}>
-      <button css={logoButtonStyle} onClick={() => navigate('/')}>
+      <button css={logoButtonStyle} onClick={handleLandingClick}>
         <img src={harudleLogo} alt="하루들" css={logoStyle} />
       </button>
 

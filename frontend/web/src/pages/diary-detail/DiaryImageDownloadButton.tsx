@@ -2,11 +2,13 @@ import ActionButton from '../../shared/ActionButton';
 import downloadIcon from '../../assets/icons/download.svg';
 import { useState } from 'react';
 import type { ApiRequest } from '../../shared/api';
+import { useAnalytics } from '../../shared/useAnalytics';
 
 const DiaryImageDownloadButton = ({ imageUrl }: { imageUrl: string }) => {
   const [downloadRequest, setDownloadRequest] = useState<ApiRequest<void>>({
     status: 'idle',
   });
+  const { track } = useAnalytics();
   const handleImageDownload = async () => {
     setDownloadRequest({
       status: 'loading',
@@ -29,6 +31,7 @@ const DiaryImageDownloadButton = ({ imageUrl }: { imageUrl: string }) => {
 
       URL.revokeObjectURL(downloadUrl);
 
+      track('diary_image_downloaded');
       setDownloadRequest({ status: 'success', data: undefined });
     } catch (error) {
       if (error instanceof Error) {

@@ -7,9 +7,11 @@ import {
 } from '../../shared/api';
 import { useNavigate } from 'react-router';
 import { authFetch, requestCsrfToken, setAccessToken } from '../../shared/auth';
+import { useAnalytics } from '../../shared/useAnalytics';
 
 const useLogout = () => {
   const navigate = useNavigate();
+  const { resetUser } = useAnalytics();
   const [logoutRequest, setLogoutRequest] = useState<ApiRequest<void>>({
     status: 'idle',
   });
@@ -36,6 +38,8 @@ const useLogout = () => {
 
         throw new Error('알 수 없는 에러가 발생했습니다.');
       }
+
+      resetUser();
 
       setLogoutRequest({
         status: 'success',

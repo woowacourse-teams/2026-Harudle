@@ -7,10 +7,12 @@ import {
   setAccessToken,
 } from '../../shared/auth';
 import { useNavigate } from 'react-router';
+import { useAnalytics } from '../../shared/useAnalytics';
 
 // 여기 왔을 땐 이미 브라우저가 쿠키에 리프레시 토큰을 저장하고 있는 상태임
 const AuthCallbackPage = () => {
   const navigate = useNavigate();
+  const { identifyCurrentUser } = useAnalytics();
   useEffect(() => {
     const getAccessTokenAtLogin = async () => {
       try {
@@ -33,6 +35,8 @@ const AuthCallbackPage = () => {
         }
 
         setAccessToken(data.accessToken);
+
+        void identifyCurrentUser(data.accessToken);
         navigate('/');
       } catch (error: unknown) {
         if (error instanceof Error) {
@@ -42,7 +46,7 @@ const AuthCallbackPage = () => {
       }
     };
     void getAccessTokenAtLogin();
-  }, []);
+  }, [identifyCurrentUser, navigate]);
 
   return <div>로그인 리다이렉트 페이지</div>;
 };
