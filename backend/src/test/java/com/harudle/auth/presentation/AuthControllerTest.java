@@ -119,7 +119,9 @@ class AuthControllerTest {
                         .header("X-XSRF-TOKEN", csrfCookie.getValue()))
                 .andExpect(status().isUnauthorized())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.type").value("urn:harudle:problem:invalid-refresh-token"))
                 .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"))
+                .andExpect(jsonPath("$.traceId").isNotEmpty())
                 .andExpect(header().string(
                         HttpHeaders.SET_COOKIE,
                         containsString("refresh_token=;")
@@ -142,7 +144,8 @@ class AuthControllerTest {
                         .cookie(refreshTokenCookie(issuedRefreshToken), nextCsrfCookie)
                         .header("X-XSRF-TOKEN", nextCsrfCookie.getValue()))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"));
+                .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"))
+                .andExpect(jsonPath("$.traceId").isNotEmpty());
     }
 
     @Test
@@ -165,7 +168,8 @@ class AuthControllerTest {
                         .cookie(refreshTokenCookie(issuedRefreshToken), csrfCookie)
                         .header("X-XSRF-TOKEN", csrfCookie.getValue()))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"));
+                .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"))
+                .andExpect(jsonPath("$.traceId").isNotEmpty());
     }
 
     @Test

@@ -87,7 +87,9 @@ class CurrentUserControllerTest {
                         .header(HttpHeaders.AUTHORIZATION, bearerToken(UUID.randomUUID())))
                 .andExpect(status().isUnauthorized())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.type").value("urn:harudle:problem:invalid-current-user"))
                 .andExpect(jsonPath("$.code").value("INVALID_CURRENT_USER"))
+                .andExpect(jsonPath("$.traceId").isNotEmpty())
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
                 .andExpect(header().string(
                         HttpHeaders.CONTENT_TYPE,
@@ -103,7 +105,8 @@ class CurrentUserControllerTest {
         mockMvc.perform(get("/api/v1/me")
                         .header(HttpHeaders.AUTHORIZATION, bearerToken(user.getId())))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("INVALID_CURRENT_USER"));
+                .andExpect(jsonPath("$.code").value("INVALID_CURRENT_USER"))
+                .andExpect(jsonPath("$.traceId").isNotEmpty());
     }
 
     private User saveUser(String email, String name) {

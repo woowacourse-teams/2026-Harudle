@@ -23,6 +23,16 @@ public enum ErrorType {
             "Unauthorized",
             "인증 정보가 필요합니다."
     ),
+    INVALID_REFRESH_TOKEN(
+            HttpStatus.UNAUTHORIZED,
+            "Invalid refresh token",
+            "Refresh Token이 유효하지 않습니다."
+    ),
+    INVALID_CURRENT_USER(
+            HttpStatus.UNAUTHORIZED,
+            "Invalid current user",
+            "현재 로그인 사용자를 확인할 수 없습니다."
+    ),
     FORBIDDEN(
             HttpStatus.FORBIDDEN,
             "Forbidden",
