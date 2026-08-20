@@ -2,6 +2,7 @@ import { API_BASE_URL, isProblemDetails, RequestError } from './api';
 
 let accessToken: string | null = null;
 let refreshRequest: Promise<void> | null = null; // Single-Flight 패턴
+let isHandlingAuthFailure = false;
 
 export const setAccessToken = (token: string | null): void => {
   accessToken = token;
@@ -62,8 +63,12 @@ export const authFetch = async (
       error instanceof RequestError &&
       error.problem.code === 'INVALID_REFRESH_TOKEN'
     ) {
-      alert('세션이 만료되었습니다. 다시 로그인 해주세요.');
-      window.location.href = '/login';
+      if (!isHandlingAuthFailure) {
+        isHandlingAuthFailure = true;
+
+        alert('세션이 만료되었습니다. 다시 로그인 해주세요.');
+        window.location.href = '/login';
+      }
     }
 
     throw error; // 인증 에러가 아니면, authFetch를 사용하는 곳에서 에러처리 책임을 넘긴다.
