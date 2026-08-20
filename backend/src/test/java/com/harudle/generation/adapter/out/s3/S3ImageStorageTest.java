@@ -5,6 +5,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -106,6 +109,37 @@ class S3ImageStorageTest {
         assertThat(bodyCaptor.getValue().optionalContentLength()).contains((long) imageBytes.length);
         assertThat(bodyCaptor.getValue().contentStreamProvider().newStream().readAllBytes())
                 .isEqualTo(imageBytes);
+    }
+
+    @Test
+    @DisplayName("S3 저장 성공 후 입력 스트림 닫기에 실패해도 저장 객체를 삭제하지 않는다")
+    void doNotCompensateWhenInputStreamCloseFailsAfterSuccessfulPut() throws IOException {
+        byte[] imageBytes = "generated".getBytes(StandardCharsets.UTF_8);
+        InputStream inputStream = mock(InputStream.class);
+        IOException closeCause = new IOException("stream close failure");
+        doThrow(closeCause).when(inputStream).close();
+        Resource closeFailingResource = new ByteArrayResource(imageBytes) {
+            @Override
+            public InputStream getInputStream() {
+                return inputStream;
+            }
+        };
+        GeneratedImage generatedImage = new GeneratedImage(closeFailingResource, MediaType.IMAGE_PNG);
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenReturn(PutObjectResponse.builder().build());
+
+        assertThatThrownBy(() -> imageStorage.store(GENERATION_ID, generatedImage))
+                .isInstanceOf(ImageStorageException.class)
+                .hasCause(closeCause);
+
+        var callOrder = inOrder(s3Client, inputStream);
+        callOrder.verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+        callOrder.verify(inputStream).close();
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
+        verify(externalApiLogger).warn(
+                eq(new ExternalApiFailure("s3", "put_object", "CLIENT_ERROR", null, null, null)),
+                eq(closeCause)
+        );
     }
 
     @Test

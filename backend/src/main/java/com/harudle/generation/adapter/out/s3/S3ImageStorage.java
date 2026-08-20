@@ -141,6 +141,7 @@ public final class S3ImageStorage implements ImageStorage {
         }
 
         boolean putAttempted = false;
+        boolean putCompleted = false;
         try {
             try (InputStream inputStream = preparedStore.resource().getInputStream()) {
                 RequestBody requestBody = RequestBody.fromInputStream(
@@ -149,6 +150,7 @@ public final class S3ImageStorage implements ImageStorage {
                 );
                 putAttempted = true;
                 s3Client.putObject(preparedStore.request(), requestBody);
+                putCompleted = true;
             }
             return preparedStore.objectKey();
         } catch (Exception exception) {
@@ -167,7 +169,8 @@ public final class S3ImageStorage implements ImageStorage {
                             REQUEST_PREPARATION_ERROR,
                             exception
                     );
-            compensateStoreFailure(preparedStore.objectKey(), putAttempted, storeException);
+            boolean compensationRequired = putAttempted && !putCompleted;
+            compensateStoreFailure(preparedStore.objectKey(), compensationRequired, storeException);
             throw storeException;
         }
     }
@@ -237,10 +240,10 @@ public final class S3ImageStorage implements ImageStorage {
 
     private void compensateStoreFailure(
             String imageObjectKey,
-            boolean putAttempted,
+            boolean compensationRequired,
             ImageStorageException storeException
     ) {
-        if (!putAttempted) {
+        if (!compensationRequired) {
             return;
         }
 
