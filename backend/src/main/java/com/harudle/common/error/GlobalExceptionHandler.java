@@ -19,23 +19,23 @@ import com.harudle.share.service.exception.ShareNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.util.List;
+import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.converter.HttpMessageNotReadableException;
-import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
-import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-import org.springframework.web.method.annotation.HandlerMethodValidationException;
-import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.context.request.ServletWebRequest;
+import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 @RestControllerAdvice
-class GlobalExceptionHandler {
+class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
@@ -45,25 +45,22 @@ class GlobalExceptionHandler {
         this.problemDetailFactory = problemDetailFactory;
     }
 
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    ResponseEntity<ProblemDetail> handleMethodArgumentNotValid(
+    @Override
+    protected ResponseEntity<Object> handleMethodArgumentNotValid(
             MethodArgumentNotValidException exception,
-            HttpServletRequest request
+            HttpHeaders headers,
+            HttpStatusCode status,
+            WebRequest request
     ) {
-        return createResponse(
+        ProblemDetail problemDetail = problemDetailFactory.create(
                 ErrorType.VALIDATION_ERROR,
-                request,
+                extractRequest(request),
                 FieldValidationErrorMapper.from(exception.getBindingResult())
         );
+        return new ResponseEntity<>(problemDetail, headers, status);
     }
 
-    @ExceptionHandler({
-            HandlerMethodValidationException.class,
-            ConstraintViolationException.class,
-            HttpMessageNotReadableException.class,
-            MissingServletRequestParameterException.class,
-            MethodArgumentTypeMismatchException.class
-    })
+    @ExceptionHandler(ConstraintViolationException.class)
     ResponseEntity<ProblemDetail> handleValidation(HttpServletRequest request) {
         return createResponse(ErrorType.VALIDATION_ERROR, request);
     }
@@ -165,19 +162,48 @@ class GlobalExceptionHandler {
         return createResponse(ErrorType.GENERATION_UNAVAILABLE, request);
     }
 
-    @ExceptionHandler(Exception.class)
+    @ExceptionHandler(RuntimeException.class)
     ResponseEntity<ProblemDetail> handleUnexpected(
-            Exception exception,
+            RuntimeException exception,
             HttpServletRequest request
     ) {
-        if (exception instanceof ErrorResponse errorResponse) {
-            if (errorResponse.getStatusCode().is5xxServerError()) {
-                LOGGER.error("프레임워크 API 오류가 발생했습니다.", exception);
-            }
-            return createResponse(errorResponse, request);
-        }
         LOGGER.error("예상하지 못한 API 오류가 발생했습니다.", exception);
         return createResponse(ErrorType.INTERNAL_SERVER_ERROR, request);
+    }
+
+    @Override
+    protected ResponseEntity<Object> handleExceptionInternal(
+            Exception exception,
+            Object body,
+            HttpHeaders headers,
+            HttpStatusCode statusCode,
+            WebRequest request
+    ) {
+        if (statusCode.is5xxServerError()) {
+            LOGGER.error("프레임워크 API 오류가 발생했습니다.", exception);
+        }
+        return super.handleExceptionInternal(exception, body, headers, statusCode, request);
+    }
+
+    @Override
+    protected ResponseEntity<Object> createResponseEntity(
+            Object body,
+            HttpHeaders headers,
+            HttpStatusCode statusCode,
+            WebRequest request
+    ) {
+        ProblemDetail problemDetail = ProblemDetail.class.cast(
+                Objects.requireNonNull(body, "Spring MVC 오류 응답 본문은 필수입니다.")
+        );
+        return new ResponseEntity<>(
+                problemDetailFactory.enrichFrameworkError(
+                        problemDetail,
+                        statusCode,
+                        extractRequest(request)
+                ),
+                headers,
+                statusCode
+        );
     }
 
     private ResponseEntity<ProblemDetail> createResponse(
@@ -208,14 +234,7 @@ class GlobalExceptionHandler {
                 .body(problemDetailFactory.create(errorType, request));
     }
 
-    private ResponseEntity<ProblemDetail> createResponse(
-            ErrorResponse errorResponse,
-            HttpServletRequest request
-    ) {
-        return new ResponseEntity<>(
-                problemDetailFactory.create(errorResponse, request),
-                errorResponse.getHeaders(),
-                errorResponse.getStatusCode()
-        );
+    private static HttpServletRequest extractRequest(WebRequest request) {
+        return ServletWebRequest.class.cast(request).getRequest();
     }
 }
