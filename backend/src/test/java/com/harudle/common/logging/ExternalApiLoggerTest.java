@@ -63,4 +63,26 @@ class ExternalApiLoggerTest {
                 .contains("provider=invalid")
                 .doesNotContain("forged=value");
     }
+
+    @Test
+    @DisplayName("외부 연동 보상 실패는 별도 이벤트로 기록한다")
+    void logCompensationFailure(CapturedOutput output) {
+        ExternalApiFailure failure = new ExternalApiFailure(
+                "s3",
+                "delete_object",
+                "CLIENT_ERROR",
+                null,
+                null,
+                null
+        );
+
+        externalApiLogger.warnCompensation(failure, new IllegalStateException("delete failed"));
+
+        assertThat(output)
+                .contains(" WARN ")
+                .contains("event=compensation_failure")
+                .contains("provider=s3")
+                .contains("operation=delete_object")
+                .doesNotContain("delete failed");
+    }
 }

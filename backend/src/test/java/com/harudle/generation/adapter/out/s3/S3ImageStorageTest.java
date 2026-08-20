@@ -4,10 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.mock;
 
+import com.harudle.common.logging.ExternalApiFailure;
+import com.harudle.common.logging.ExternalApiLogger;
 import com.harudle.generation.configuration.S3StorageProperties;
 import com.harudle.generation.service.port.GeneratedImage;
 import com.harudle.generation.service.port.ImageStorageException;
@@ -28,6 +32,7 @@ import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
 import org.springframework.util.unit.DataSize;
+import software.amazon.awssdk.awscore.exception.AwsErrorDetails;
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.sync.RequestBody;
@@ -38,6 +43,7 @@ import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectResponse;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 
 @ExtendWith(MockitoExtension.class)
 class S3ImageStorageTest {
@@ -49,6 +55,9 @@ class S3ImageStorageTest {
 
     @Mock
     private S3Client s3Client;
+
+    @Mock
+    private ExternalApiLogger externalApiLogger;
 
     private S3ImageStorage imageStorage;
 
@@ -65,7 +74,7 @@ class S3ImageStorageTest {
                 s3Client,
                 properties,
                 new ImageObjectKeyFactory(properties),
-                new S3ExceptionTranslator()
+                new S3FailureReporter(new S3ExceptionTranslator(), externalApiLogger)
         );
     }
 
@@ -118,6 +127,10 @@ class S3ImageStorageTest {
                 .hasMessageContaining("S3 이미지 저장")
                 .hasMessageContaining(OBJECT_KEY)
                 .hasCause(storeCause);
+        verify(externalApiLogger).warn(
+                eq(new ExternalApiFailure("s3", "put_object", "CLIENT_ERROR", null, null, null)),
+                eq(storeCause)
+        );
         ArgumentCaptor<DeleteObjectRequest> requestCaptor = ArgumentCaptor.forClass(DeleteObjectRequest.class);
         verify(s3Client).deleteObject(requestCaptor.capture());
         assertThat(requestCaptor.getValue().bucket()).isEqualTo("test-bucket");
@@ -152,6 +165,10 @@ class S3ImageStorageTest {
                 .isInstanceOf(ImageStorageException.class)
                 .hasMessageContaining("S3 이미지 삭제")
                 .hasCause(deleteCause);
+        verify(externalApiLogger).warnCompensation(
+                eq(new ExternalApiFailure("s3", "delete_object", "CLIENT_ERROR", null, null, null)),
+                eq(deleteCause)
+        );
         verify(s3Client).deleteObject(any(DeleteObjectRequest.class));
     }
 
@@ -171,6 +188,17 @@ class S3ImageStorageTest {
                 .isInstanceOf(ImageStorageException.class)
                 .hasMessageContaining("S3 이미지 저장")
                 .hasRootCauseMessage("stream open failure");
+        verify(externalApiLogger).error(
+                eq(new ExternalApiFailure(
+                        "s3",
+                        "put_object",
+                        "REQUEST_PREPARATION_ERROR",
+                        null,
+                        null,
+                        null
+                )),
+                any(IOException.class)
+        );
         verifyNoInteractions(s3Client);
     }
 
@@ -237,6 +265,17 @@ class S3ImageStorageTest {
         assertThatThrownBy(() -> imageStorage.load("prompt-assets/reference.png"))
                 .isInstanceOf(ImageStorageException.class)
                 .hasRootCauseMessage("S3 이미지 객체 크기가 허용 범위를 벗어났습니다.");
+        verify(externalApiLogger).error(
+                eq(new ExternalApiFailure(
+                        "s3",
+                        "get_object",
+                        "RESPONSE_PROCESSING_ERROR",
+                        null,
+                        null,
+                        null
+                )),
+                any(IllegalArgumentException.class)
+        );
     }
 
     @Test
@@ -269,6 +308,65 @@ class S3ImageStorageTest {
                 .hasMessageContaining("S3 이미지 조회")
                 .hasMessageContaining("prompt-assets/reference.png")
                 .hasCause(cause);
+        verify(externalApiLogger).warn(
+                eq(new ExternalApiFailure("s3", "get_object", "CLIENT_ERROR", null, null, null)),
+                eq(cause)
+        );
+    }
+
+    @Test
+    @DisplayName("S3 권한 오류는 AWS 상태와 요청 ID를 ERROR로 기록한다")
+    void logAccessDeniedAsError() {
+        S3Exception.Builder exceptionBuilder = S3Exception.builder();
+        exceptionBuilder.message("sensitive bucket details");
+        exceptionBuilder.statusCode(403);
+        exceptionBuilder.requestId("request-123");
+        exceptionBuilder.awsErrorDetails(AwsErrorDetails.builder()
+                .serviceName("S3")
+                .errorCode("AccessDenied")
+                .build());
+        S3Exception cause = (S3Exception) exceptionBuilder.build();
+        when(s3Client.getObject(any(GetObjectRequest.class))).thenThrow(cause);
+
+        assertThatThrownBy(() -> imageStorage.load("prompt-assets/reference.png"))
+                .isInstanceOf(ImageStorageException.class)
+                .hasCause(cause);
+
+        verify(externalApiLogger).error(
+                eq(new ExternalApiFailure(
+                        "s3",
+                        "get_object",
+                        "AUTHORIZATION_ERROR",
+                        "403",
+                        "AccessDenied",
+                        "request-123"
+                )),
+                eq(cause)
+        );
+    }
+
+    @Test
+    @DisplayName("AWS 오류 코드가 없는 일시적 S3 장애도 안전하게 WARN으로 기록한다")
+    void logProviderFailureWithoutAwsErrorCode() {
+        S3Exception cause = mock(S3Exception.class);
+        when(cause.statusCode()).thenReturn(503);
+        when(s3Client.getObject(any(GetObjectRequest.class))).thenThrow(cause);
+
+        assertThatThrownBy(() -> imageStorage.load("prompt-assets/reference.png"))
+                .isInstanceOf(ImageStorageException.class)
+                .hasCause(cause);
+
+        verify(externalApiLogger).warn(
+                eq(new ExternalApiFailure(
+                        "s3",
+                        "get_object",
+                        "PROVIDER_ERROR",
+                        "503",
+                        null,
+                        null
+                )),
+                eq(cause)
+        );
     }
 
     @Test
@@ -284,6 +382,10 @@ class S3ImageStorageTest {
                 .hasMessageContaining("S3 이미지 삭제")
                 .hasMessageContaining(OBJECT_KEY)
                 .hasCause(cause);
+        verify(externalApiLogger).warn(
+                eq(new ExternalApiFailure("s3", "delete_object", "CLIENT_ERROR", null, null, null)),
+                eq(cause)
+        );
     }
 
     private static GeneratedImage generatedImage() {

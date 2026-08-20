@@ -3,10 +3,13 @@ package com.harudle.generation.adapter.out.s3;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.harudle.common.logging.ExternalApiFailure;
+import com.harudle.common.logging.ExternalApiLogger;
 import com.harudle.generation.configuration.S3StorageProperties;
 import com.harudle.generation.service.port.ImageAccessUrl;
 import com.harudle.generation.service.port.ImageStorageException;
@@ -38,6 +41,9 @@ class S3ImageUrlProviderTest {
     @Mock
     private PresignedGetObjectRequest presignedRequest;
 
+    @Mock
+    private ExternalApiLogger externalApiLogger;
+
     private S3ImageUrlProvider imageUrlProvider;
 
     @BeforeEach
@@ -52,7 +58,7 @@ class S3ImageUrlProviderTest {
         imageUrlProvider = new S3ImageUrlProvider(
                 s3Presigner,
                 properties,
-                new S3ExceptionTranslator()
+                new S3FailureReporter(new S3ExceptionTranslator(), externalApiLogger)
         );
     }
 
@@ -85,6 +91,17 @@ class S3ImageUrlProviderTest {
         assertThatThrownBy(() -> imageUrlProvider.createAccessUrl(" "))
                 .isInstanceOf(ImageStorageException.class)
                 .hasRootCauseMessage("이미지 Object Key가 필요합니다.");
+        verify(externalApiLogger).error(
+                eq(new ExternalApiFailure(
+                        "s3",
+                        "presign_get_object",
+                        "REQUEST_PREPARATION_ERROR",
+                        null,
+                        null,
+                        null
+                )),
+                any(IllegalArgumentException.class)
+        );
         verifyNoInteractions(s3Presigner);
     }
 
@@ -101,5 +118,16 @@ class S3ImageUrlProviderTest {
                 .hasMessageContaining("S3 이미지 접근 URL 발급")
                 .hasMessageContaining(OBJECT_KEY)
                 .hasCause(cause);
+        verify(externalApiLogger).error(
+                eq(new ExternalApiFailure(
+                        "s3",
+                        "presign_get_object",
+                        "CONFIGURATION_ERROR",
+                        null,
+                        null,
+                        null
+                )),
+                eq(cause)
+        );
     }
 }
