@@ -6,12 +6,16 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.harudle.auth.infrastructure.oauth.OAuthLoginFailureHandler;
 import com.harudle.auth.infrastructure.oauth.OAuthLoginSuccessHandler;
 import com.harudle.common.config.TimeConfiguration;
 import com.harudle.common.error.ProblemDetailFactory;
 import com.harudle.common.error.TraceIdConfiguration;
+import com.harudle.common.security.ApiCorsConfiguration;
 import com.harudle.common.security.CsrfConfiguration;
 import com.harudle.common.security.SecurityConfig;
 import com.harudle.diary.service.GuestDiaryCreationService;
@@ -42,13 +46,17 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpHeaders;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
 @WebMvcTest(GuestDiaryController.class)
 @Import({
+        ApiCorsConfiguration.class,
         DiaryResponseAssembler.class,
         ProblemDetailFactory.class,
         TraceIdConfiguration.class,
@@ -56,8 +64,10 @@ import org.springframework.test.web.servlet.MockMvc;
         SecurityConfig.class,
         TimeConfiguration.class
 })
+@TestPropertySource(properties = "app.auth.frontend-origins=http://localhost:5173")
 class GuestDiaryControllerTest {
 
+    private static final String FRONTEND_ORIGIN = "http://localhost:5173";
     private static final UUID DIARY_ID = UUID.fromString("593363cb-1dc3-46bc-a858-5926f7601ca9");
     private static final UUID GENERATION_ID = UUID.fromString("17ac16ef-c45a-40bb-92ea-aed37659ef1c");
     private static final UUID IDEMPOTENCY_KEY = UUID.fromString("7e5cc251-fdde-4cc0-a54e-2c8142750609");
@@ -238,6 +248,33 @@ class GuestDiaryControllerTest {
 
         assertThat(response.statusCode()).isEqualTo(403);
         verifyNoInteractions(guestDiaryCreationService);
+    }
+
+    @Test
+    @DisplayName("게스트 일기 생성의 CORS 사전 요청에서 필요한 Header를 모두 허용한다")
+    void allowsGuestDiaryCorsPreflight() throws Exception {
+        MvcResult result = mockMvc.perform(options("/api/v1/guest/diaries")
+                        .header(HttpHeaders.ORIGIN, FRONTEND_ORIGIN)
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST")
+                        .header(
+                                HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS,
+                                "Content-Type, Idempotency-Key, X-XSRF-TOKEN"
+                        ))
+                .andExpect(status().isOk())
+                .andExpect(header().string(
+                        HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN,
+                        FRONTEND_ORIGIN
+                ))
+                .andExpect(header().string(
+                        HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS,
+                        "true"
+                ))
+                .andReturn();
+
+        assertThat(result.getResponse().getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS))
+                .containsIgnoringCase("Content-Type")
+                .containsIgnoringCase("Idempotency-Key")
+                .containsIgnoringCase("X-XSRF-TOKEN");
     }
 
     @Test
