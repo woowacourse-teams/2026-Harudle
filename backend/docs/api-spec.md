@@ -594,7 +594,9 @@ Retry-After: 13800
 | `400` | `INVALID_IDEMPOTENCY_KEY` | 멱등성 키 누락 또는 형식 오류 |
 | `401` | `UNAUTHORIZED` | 인증 정보 없음 또는 Access Token 만료 |
 | `401` | `INVALID_REFRESH_TOKEN` | Refresh Token 만료 또는 폐기 |
+| `401` | `INVALID_CURRENT_USER` | Access Token은 유효하지만 현재 사용자를 확인할 수 없음 |
 | `403` | `FORBIDDEN` | 다른 사용자의 리소스 접근 |
+| `403` | `INVALID_CSRF_TOKEN` | CSRF Token 누락 또는 불일치 |
 | `404` | `API_NOT_FOUND` | 존재하지 않는 API 경로 요청 |
 | `404` | `DIARY_NOT_FOUND` | 상세 조회·공유 링크 생성 대상 일기가 없거나 삭제됨 |
 | `404` | `SHARE_NOT_FOUND` | 공개 공유 링크가 없거나 연결된 일기가 삭제됨 |
