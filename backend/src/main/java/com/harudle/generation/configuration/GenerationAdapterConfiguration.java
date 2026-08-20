@@ -4,9 +4,11 @@ import com.google.genai.Client;
 import com.google.genai.Models;
 import com.google.genai.types.HttpOptions;
 import com.google.genai.types.HttpRetryOptions;
+import com.harudle.common.logging.ExternalApiLogger;
 import com.harudle.generation.adapter.out.gemini.DiaryImagePromptRenderer;
 import com.harudle.generation.adapter.out.gemini.GeminiDiaryImageGenerator;
 import com.harudle.generation.adapter.out.gemini.GeminiExceptionTranslator;
+import com.harudle.generation.adapter.out.gemini.GeminiFailureReporter;
 import com.harudle.generation.adapter.out.gemini.GeminiStoryboardGenerator;
 import com.harudle.generation.adapter.out.gemini.GeminiStoryboardResponseMapper;
 import com.harudle.generation.adapter.out.s3.ImageObjectKeyFactory;
@@ -83,6 +85,14 @@ public class GenerationAdapterConfiguration {
     }
 
     @Bean
+    public GeminiFailureReporter geminiFailureReporter(
+            GeminiExceptionTranslator exceptionTranslator,
+            ExternalApiLogger externalApiLogger
+    ) {
+        return new GeminiFailureReporter(exceptionTranslator, externalApiLogger);
+    }
+
+    @Bean
     public DiaryImagePromptRenderer diaryImagePromptRenderer() {
         return new DiaryImagePromptRenderer();
     }
@@ -93,14 +103,14 @@ public class GenerationAdapterConfiguration {
             GeminiGenerationProperties properties,
             ObjectMapper objectMapper,
             GeminiStoryboardResponseMapper responseMapper,
-            GeminiExceptionTranslator exceptionTranslator
+            GeminiFailureReporter failureReporter
     ) {
         return new GeminiStoryboardGenerator(
                 geminiModels,
                 properties,
                 objectMapper,
                 responseMapper,
-                exceptionTranslator
+                failureReporter
         );
     }
 
@@ -109,13 +119,13 @@ public class GenerationAdapterConfiguration {
             Models geminiModels,
             GeminiGenerationProperties properties,
             DiaryImagePromptRenderer promptRenderer,
-            GeminiExceptionTranslator exceptionTranslator
+            GeminiFailureReporter failureReporter
     ) {
         return new GeminiDiaryImageGenerator(
                 geminiModels,
                 properties,
                 promptRenderer,
-                exceptionTranslator
+                failureReporter
         );
     }
 
