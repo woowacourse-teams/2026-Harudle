@@ -7,6 +7,12 @@ server:
         same-site: lax
         secure: ${SESSION_COOKIE_SECURE:false}
 
+logging:
+  level:
+    root: INFO
+  pattern:
+    correlation: "[traceId=%X{traceId:-none}] "
+
 spring:
   application:
     name: harudle
