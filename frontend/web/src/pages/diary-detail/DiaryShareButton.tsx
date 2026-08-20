@@ -8,6 +8,7 @@ import {
 } from '../../shared/api';
 import { useState } from 'react';
 import { authFetch } from '../../shared/auth';
+import { useAnalytics } from '../../shared/useAnalytics';
 
 interface DiaryShareResponse {
   shareId: string;
@@ -38,7 +39,12 @@ const DiaryShareButton = ({
   const [shareRequest, setShareRequest] = useState<
     ApiRequest<DiaryShareResponse>
   >({ status: 'idle' });
+  const { track } = useAnalytics();
   const handleDiaryShare = async () => {
+    if (diaryId) {
+      track('diary_share_clicked', { diary_id: diaryId });
+    }
+
     setShareRequest({
       status: 'loading',
     });
