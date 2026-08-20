@@ -60,6 +60,14 @@ class OAuthEventLoggerTest {
                 "access_token=message-must-not-be-logged",
                 cause
         );
+        exception.setStackTrace(new StackTraceElement[]{
+                new StackTraceElement(
+                        "com.harudle.auth.infrastructure.oauth.OAuthLoginProcessor",
+                        "authenticate",
+                        "OAuthLoginProcessor.java",
+                        73
+                )
+        });
 
         oAuthEventLogger.errorFailure(
                 "kakao\nforged=value",
@@ -74,6 +82,8 @@ class OAuthEventLoggerTest {
                 .contains("reason=INTERNAL_CONSISTENCY_ERROR")
                 .contains("exceptionType=IllegalStateException")
                 .contains("java.lang.RuntimeException: OAuth 인증 처리 실패")
+                .contains("at com.harudle.auth.infrastructure.oauth.OAuthLoginProcessor"
+                        + ".authenticate(OAuthLoginProcessor.java:73)")
                 .doesNotContain("message-must-not-be-logged")
                 .doesNotContain("cause-must-not-be-logged")
                 .doesNotContain("Caused by:")

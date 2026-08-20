@@ -19,6 +19,14 @@ class ExternalApiLoggerTest {
         IllegalStateException exception = new IllegalStateException(
                 "access_token=must-not-be-logged"
         );
+        exception.setStackTrace(new StackTraceElement[]{
+                new StackTraceElement(
+                        "com.harudle.generation.adapter.out.ExternalProviderAdapter",
+                        "requestStoryboard",
+                        "ExternalProviderAdapter.java",
+                        42
+                )
+        });
         ExternalApiFailure failure = new ExternalApiFailure(
                 "gemini",
                 "storyboard_generation",
@@ -41,6 +49,8 @@ class ExternalApiLoggerTest {
                 .contains("providerRequestId=none")
                 .contains("exceptionType=IllegalStateException")
                 .contains("java.lang.RuntimeException: 외부 연동 실패")
+                .contains("at com.harudle.generation.adapter.out.ExternalProviderAdapter"
+                        + ".requestStoryboard(ExternalProviderAdapter.java:42)")
                 .doesNotContain("must-not-be-logged");
     }
 
