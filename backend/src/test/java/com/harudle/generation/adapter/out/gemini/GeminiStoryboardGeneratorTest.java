@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.google.genai.Models;
@@ -14,6 +15,8 @@ import com.google.genai.errors.ClientException;
 import com.google.genai.types.GenerateContentConfig;
 import com.google.genai.types.GenerateContentResponse;
 import com.google.genai.types.ThinkingLevel;
+import com.harudle.common.logging.ExternalApiFailure;
+import com.harudle.common.logging.ExternalApiLogger;
 import com.harudle.generation.configuration.GeminiGenerationProperties;
 import com.harudle.generation.domain.Storyboard;
 import com.harudle.generation.service.exception.AiGenerationErrorType;
@@ -30,13 +33,17 @@ class GeminiStoryboardGeneratorTest {
 
     private final Models models = mock(Models.class);
     private final GenerateContentResponse response = mock(GenerateContentResponse.class);
+    private final ExternalApiLogger externalApiLogger = mock(ExternalApiLogger.class);
     private final GeminiGenerationProperties properties = createProperties();
     private final GeminiStoryboardGenerator generator = new GeminiStoryboardGenerator(
             models,
             properties,
             JsonMapper.builder().build(),
             new GeminiStoryboardResponseMapper(),
-            new GeminiExceptionTranslator()
+            new GeminiFailureReporter(
+                    new GeminiExceptionTranslator(),
+                    externalApiLogger
+            )
     );
 
     @BeforeEach
@@ -82,6 +89,7 @@ class GeminiStoryboardGeneratorTest {
         assertThat(config.thinkingConfig()).get()
                 .extracting(thinkingConfig -> thinkingConfig.thinkingLevel().orElseThrow().knownEnum())
                 .isEqualTo(ThinkingLevel.Known.HIGH);
+        verifyNoInteractions(externalApiLogger);
     }
 
     @Test
@@ -94,6 +102,17 @@ class GeminiStoryboardGeneratorTest {
                     assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.PROVIDER_ERROR);
                     assertThat(exception.getCause()).isInstanceOf(IllegalStateException.class);
                 });
+        verify(externalApiLogger).error(
+                eq(new ExternalApiFailure(
+                        "gemini",
+                        "storyboard_generation",
+                        "RESPONSE_PROCESSING_ERROR",
+                        null,
+                        null,
+                        null
+                )),
+                any(IllegalStateException.class)
+        );
     }
 
     @Test
@@ -136,6 +155,17 @@ class GeminiStoryboardGeneratorTest {
                     assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.TIMEOUT);
                     assertThat(exception).hasCause(cause);
                 });
+        verify(externalApiLogger).warn(
+                new ExternalApiFailure(
+                        "gemini",
+                        "storyboard_generation",
+                        "TIMEOUT",
+                        "REQUEST_TIMEOUT",
+                        "408",
+                        null
+                ),
+                cause
+        );
     }
 
     private StoryboardGenerationRequest createRequest() {

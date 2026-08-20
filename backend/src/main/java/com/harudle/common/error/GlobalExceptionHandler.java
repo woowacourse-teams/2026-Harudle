@@ -22,8 +22,6 @@ import java.util.List;
 import java.util.Objects;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.TypeMismatchException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -44,12 +42,15 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 @NullMarked
 class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(GlobalExceptionHandler.class);
-
     private final ProblemDetailFactory problemDetailFactory;
+    private final ApiExceptionLogger apiExceptionLogger;
 
-    GlobalExceptionHandler(ProblemDetailFactory problemDetailFactory) {
+    GlobalExceptionHandler(
+            ProblemDetailFactory problemDetailFactory,
+            ApiExceptionLogger apiExceptionLogger
+    ) {
         this.problemDetailFactory = problemDetailFactory;
+        this.apiExceptionLogger = apiExceptionLogger;
     }
 
     @Override
@@ -98,7 +99,7 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     @Override
-    protected ResponseEntity<Object> handleHandlerMethodValidationException(
+    protected @Nullable ResponseEntity<Object> handleHandlerMethodValidationException(
             HandlerMethodValidationException exception,
             HttpHeaders headers,
             HttpStatusCode status,
@@ -211,7 +212,11 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     @ExceptionHandler(GenerationUnavailableException.class)
-    ResponseEntity<ProblemDetail> handleGenerationUnavailable(HttpServletRequest request) {
+    ResponseEntity<ProblemDetail> handleGenerationUnavailable(
+            GenerationUnavailableException exception,
+            HttpServletRequest request
+    ) {
+        apiExceptionLogger.error(ErrorType.GENERATION_UNAVAILABLE, exception, request);
         return createResponse(ErrorType.GENERATION_UNAVAILABLE, request);
     }
 
@@ -220,7 +225,7 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             RuntimeException exception,
             HttpServletRequest request
     ) {
-        LOGGER.error("예상하지 못한 API 오류가 발생했습니다.", exception);
+        apiExceptionLogger.error(ErrorType.INTERNAL_SERVER_ERROR, exception, request);
         return createResponse(ErrorType.INTERNAL_SERVER_ERROR, request);
     }
 
@@ -233,7 +238,7 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             WebRequest request
     ) {
         if (statusCode.is5xxServerError()) {
-            LOGGER.error("프레임워크 API 오류가 발생했습니다.", exception);
+            apiExceptionLogger.error(statusCode, exception, extractRequest(request));
         }
         return super.handleExceptionInternal(exception, body, headers, statusCode, request);
     }

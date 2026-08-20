@@ -2,8 +2,13 @@ package com.harudle.common.error;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.harudle.generation.service.exception.AiGenerationErrorType;
+import com.harudle.generation.service.exception.AiGenerationException;
+import com.harudle.generation.service.exception.GenerationUnavailableException;
 import java.lang.reflect.Method;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
@@ -35,8 +40,10 @@ class GlobalExceptionHandlerTest {
 
     private static final String TRACE_ID = "fixed-trace-id";
 
+    private final ApiExceptionLogger apiExceptionLogger = mock(ApiExceptionLogger.class);
     private final GlobalExceptionHandler exceptionHandler = new GlobalExceptionHandler(
-            new ProblemDetailFactory(new RequestTraceId(() -> TRACE_ID))
+            new ProblemDetailFactory(new RequestTraceId(() -> TRACE_ID)),
+            apiExceptionLogger
     );
     private final MockHttpServletRequest request = new MockHttpServletRequest(
             HttpMethod.GET.name(),
@@ -54,6 +61,7 @@ class GlobalExceptionHandlerTest {
         assertFrameworkError(response, 405, "METHOD_NOT_ALLOWED");
         assertThat(response.getHeaders().getAllow())
                 .containsExactlyInAnyOrder(HttpMethod.GET, HttpMethod.DELETE);
+        verifyNoInteractions(apiExceptionLogger);
     }
 
     @Test
@@ -173,6 +181,7 @@ class GlobalExceptionHandlerTest {
         ResponseEntity<Object> response = handleFrameworkException(exception);
 
         assertFrameworkError(response, 500, "INTERNAL_SERVER_ERROR");
+        verify(apiExceptionLogger).error(response.getStatusCode(), exception, request);
     }
 
     @Test
@@ -204,8 +213,10 @@ class GlobalExceptionHandlerTest {
     @Test
     @DisplayName("예상하지 못한 RuntimeException은 내부 서버 오류로 반환한다")
     void handleUnexpectedRuntimeException() {
+        IllegalArgumentException exception = new IllegalArgumentException("서버 내부 불변식 오류");
+
         ResponseEntity<ProblemDetail> response = exceptionHandler.handleUnexpected(
-                new IllegalArgumentException("서버 내부 불변식 오류"),
+                exception,
                 request
         );
 
@@ -214,6 +225,46 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getBody().getProperties())
                 .containsEntry("code", "INTERNAL_SERVER_ERROR")
                 .containsEntry("traceId", TRACE_ID);
+        verify(apiExceptionLogger).error(ErrorType.INTERNAL_SERVER_ERROR, exception, request);
+    }
+
+    @Test
+    @DisplayName("생성 기능 필수 설정 누락은 서버 오류로 기록한다")
+    void handleGenerationUnavailable() {
+        GenerationUnavailableException exception = GenerationUnavailableException.adaptersNotConfigured();
+
+        ResponseEntity<ProblemDetail> response = exceptionHandler.handleGenerationUnavailable(
+                exception,
+                request
+        );
+
+        assertThat(response.getStatusCode().value()).isEqualTo(503);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getProperties())
+                .containsEntry("code", "GENERATION_UNAVAILABLE")
+                .containsEntry("traceId", TRACE_ID);
+        verify(apiExceptionLogger).error(ErrorType.GENERATION_UNAVAILABLE, exception, request);
+    }
+
+    @Test
+    @DisplayName("외부 연동 예외는 전역 예외 처리기에서 중복 기록하지 않는다")
+    void doNotLogTranslatedExternalFailure() {
+        AiGenerationException exception = new AiGenerationException(
+                AiGenerationErrorType.PROVIDER_ERROR,
+                "Gemini 요청에 실패했습니다."
+        );
+
+        ResponseEntity<ProblemDetail> response = exceptionHandler.handleAiGeneration(
+                exception,
+                request
+        );
+
+        assertThat(response.getStatusCode().value()).isEqualTo(502);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getProperties())
+                .containsEntry("code", "AI_PROVIDER_ERROR")
+                .containsEntry("traceId", TRACE_ID);
+        verifyNoInteractions(apiExceptionLogger);
     }
 
     private ResponseEntity<Object> handleFrameworkException(Exception exception) throws Exception {

@@ -19,8 +19,6 @@ import java.net.URI;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.core.Authentication;
@@ -33,8 +31,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(OAuthLoginSuccessHandler.class);
     private static final String KAKAO_REGISTRATION_ID = "kakao";
+    private static final String UNKNOWN_PROVIDER = "unknown";
     private static final String NO_STORE = "no-store";
 
     private final OAuthLoginService oAuthLoginService;
@@ -44,6 +42,7 @@ public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
     private final RefreshTokenCookieWriter refreshTokenCookieWriter;
     private final CookieCsrfTokenRepository csrfTokenRepository;
     private final OAuthFailureRedirector failureRedirector;
+    private final OAuthEventLogger oAuthEventLogger;
     private final LegacyCsrfCookieCleaner legacyCsrfCookieCleaner;
     private final URI successRedirect;
     private final Clock clock;
@@ -57,6 +56,7 @@ public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
             CookieCsrfTokenRepository csrfTokenRepository,
             LegacyCsrfCookieCleaner legacyCsrfCookieCleaner,
             OAuthFailureRedirector failureRedirector,
+            OAuthEventLogger oAuthEventLogger,
             AuthProperties authProperties,
             @Qualifier("authClock")
             Clock authClock
@@ -69,6 +69,7 @@ public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
         this.csrfTokenRepository = csrfTokenRepository;
         this.legacyCsrfCookieCleaner = legacyCsrfCookieCleaner;
         this.failureRedirector = Objects.requireNonNull(failureRedirector, "failureRedirector는 필수입니다.");
+        this.oAuthEventLogger = Objects.requireNonNull(oAuthEventLogger, "oAuthEventLogger는 필수입니다.");
         this.successRedirect = extractSuccessRedirect(authProperties);
         this.clock = Objects.requireNonNull(authClock, "authClock는 필수입니다.");
     }
@@ -79,30 +80,36 @@ public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
             HttpServletResponse response,
             Authentication authentication
     ) throws IOException {
+        String provider = resolveProvider(authentication);
         IssuedRefreshToken issuedRefreshToken;
         try {
             issuedRefreshToken = completeLogin(authentication);
         } catch (InvalidOAuthProfileException exception) {
-            redirectExpectedFailure(response, OAuthFailureReason.INVALID_PROVIDER_PROFILE);
+            redirectProviderFailure(
+                    response,
+                    provider,
+                    OAuthFailureReason.INVALID_PROVIDER_PROFILE,
+                    exception
+            );
             return;
         } catch (RequiredOAuthProfileException exception) {
-            redirectExpectedFailure(response, OAuthFailureReason.REQUIRED_PROFILE_MISSING);
+            redirectExpectedFailure(response, provider, OAuthFailureReason.REQUIRED_PROFILE_MISSING);
             return;
         } catch (InactiveUserException exception) {
-            redirectExpectedFailure(response, OAuthFailureReason.INACTIVE_USER);
+            redirectExpectedFailure(response, provider, OAuthFailureReason.INACTIVE_USER);
             return;
         } catch (UnsupportedOAuthProviderException exception) {
-            redirectInternalFailure(response, OAuthFailureReason.UNSUPPORTED_PROVIDER, exception);
+            redirectInternalFailure(response, provider, OAuthFailureReason.UNSUPPORTED_PROVIDER, exception);
             return;
         } catch (OAuthLoginConsistencyException exception) {
-            redirectInternalFailure(response, OAuthFailureReason.INTERNAL_CONSISTENCY_ERROR, exception);
+            redirectInternalFailure(response, provider, OAuthFailureReason.INTERNAL_CONSISTENCY_ERROR, exception);
             return;
         } catch (RuntimeException exception) {
-            redirectInternalFailure(response, OAuthFailureReason.INTERNAL_ERROR, exception);
+            redirectInternalFailure(response, provider, OAuthFailureReason.INTERNAL_ERROR, exception);
             return;
         }
 
-        writeSuccessfulResponse(request, response, issuedRefreshToken);
+        writeSuccessfulResponse(request, response, issuedRefreshToken, provider);
     }
 
     private IssuedRefreshToken completeLogin(Authentication authentication) {
@@ -140,32 +147,45 @@ public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
 
     private void redirectExpectedFailure(
             HttpServletResponse response,
+            String provider,
             OAuthFailureReason reason
     ) throws IOException {
-        LOGGER.info("OAuth 로그인이 거부되었습니다. reason={}", reason);
+        oAuthEventLogger.infoRejected(provider, reason);
+        failureRedirector.redirect(response, reason);
+    }
+
+    private void redirectProviderFailure(
+            HttpServletResponse response,
+            String provider,
+            OAuthFailureReason reason,
+            RuntimeException exception
+    ) throws IOException {
+        oAuthEventLogger.warnFailure(provider, reason, exception);
         failureRedirector.redirect(response, reason);
     }
 
     private void redirectInternalFailure(
             HttpServletResponse response,
+            String provider,
             OAuthFailureReason reason,
             RuntimeException exception
     ) throws IOException {
-        LOGGER.error("OAuth 로그인 내부 오류가 발생했습니다. reason=" + reason, exception);
+        oAuthEventLogger.errorFailure(provider, reason, exception);
         failureRedirector.redirect(response, reason);
     }
 
     private void writeSuccessfulResponse(
             HttpServletRequest request,
             HttpServletResponse response,
-            IssuedRefreshToken issuedRefreshToken
+            IssuedRefreshToken issuedRefreshToken,
+            String provider
     ) throws IOException {
         try {
             refreshTokenCookieWriter.write(response, issuedRefreshToken);
             writeCsrfToken(request, response);
             redirectToSuccess(response);
         } catch (RuntimeException | IOException exception) {
-            LOGGER.error("OAuth 로그인 성공 응답을 작성하지 못했습니다.", exception);
+            oAuthEventLogger.errorFailure(provider, OAuthFailureReason.INTERNAL_ERROR, exception);
             throw exception;
         }
     }
@@ -182,6 +202,13 @@ public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
         CsrfToken csrfToken = csrfTokenRepository.generateToken(request);
         legacyCsrfCookieCleaner.clear(response);
         csrfTokenRepository.saveToken(csrfToken, request, response);
+    }
+
+    private static String resolveProvider(Authentication authentication) {
+        if (authentication instanceof OAuth2AuthenticationToken oauthAuthentication) {
+            return oauthAuthentication.getAuthorizedClientRegistrationId();
+        }
+        return UNKNOWN_PROVIDER;
     }
 
     private URI extractSuccessRedirect(AuthProperties authProperties) {

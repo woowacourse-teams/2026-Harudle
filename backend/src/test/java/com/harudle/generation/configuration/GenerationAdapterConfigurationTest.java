@@ -4,8 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.genai.Client;
 import com.google.genai.Models;
+import com.harudle.common.logging.ExternalApiLogger;
 import com.harudle.generation.adapter.out.gemini.GeminiDiaryImageGenerator;
+import com.harudle.generation.adapter.out.gemini.GeminiFailureReporter;
 import com.harudle.generation.adapter.out.gemini.GeminiStoryboardGenerator;
+import com.harudle.generation.adapter.out.s3.S3FailureReporter;
 import com.harudle.generation.adapter.out.s3.S3ImageStorage;
 import com.harudle.generation.adapter.out.s3.S3ImageUrlProvider;
 import com.harudle.generation.service.port.DiaryImageGenerator;
@@ -24,6 +27,7 @@ class GenerationAdapterConfigurationTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
             .withUserConfiguration(GenerationAdapterConfiguration.class)
+            .withBean(ExternalApiLogger.class, ExternalApiLogger::new)
             .withBean(ObjectMapper.class, ObjectMapper::new);
 
     @Test
@@ -35,6 +39,8 @@ class GenerationAdapterConfigurationTest {
             assertThat(context).hasSingleBean(Models.class);
             assertThat(context).hasSingleBean(S3Client.class);
             assertThat(context).hasSingleBean(S3Presigner.class);
+            assertThat(context).hasSingleBean(GeminiFailureReporter.class);
+            assertThat(context).hasSingleBean(S3FailureReporter.class);
             assertThat(context).hasSingleBean(StoryboardGenerator.class);
             assertThat(context).hasSingleBean(DiaryImageGenerator.class);
             assertThat(context).hasSingleBean(ImageStorage.class);

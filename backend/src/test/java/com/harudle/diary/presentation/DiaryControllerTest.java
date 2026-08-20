@@ -11,6 +11,7 @@ import com.harudle.auth.infrastructure.oauth.OAuthLoginFailureHandler;
 import com.harudle.auth.infrastructure.oauth.OAuthLoginSuccessHandler;
 import com.harudle.auth.presentation.AuthenticatedUserIdResolver;
 import com.harudle.common.config.TimeConfiguration;
+import com.harudle.common.error.ApiExceptionLoggerTestConfiguration;
 import com.harudle.common.error.ProblemDetailFactory;
 import com.harudle.common.error.TraceIdConfiguration;
 import com.harudle.common.security.CsrfConfiguration;
@@ -59,6 +60,7 @@ import org.springframework.test.web.servlet.MockMvc;
 @Import({
         AuthenticatedUserIdResolver.class,
         DiaryResponseAssembler.class,
+        ApiExceptionLoggerTestConfiguration.class,
         ProblemDetailFactory.class,
         TraceIdConfiguration.class,
         CsrfConfiguration.class,
