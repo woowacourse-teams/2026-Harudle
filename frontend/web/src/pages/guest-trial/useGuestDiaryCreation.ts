@@ -12,6 +12,11 @@ import {
   type GuestTrialStorage,
   type PendingGuestDiary,
 } from './pendingGuestDiary';
+import {
+  createGuestTrialAlreadyUsedError,
+  isGuestTrialAlreadyUsedError,
+} from './guestTrialErrors';
+import { hasUsedGuestTrial, markGuestTrialUsed } from './guestTrialUsage';
 
 export type GuestDiaryCreationState =
   | { status: 'writing' }
@@ -27,6 +32,40 @@ interface GuestDiaryCreationOptions {
 }
 
 const creationRequests = new Map<string, Promise<GuestDiaryResponse>>();
+
+interface InitialGuestDiaryCreation {
+  pendingDiary: PendingGuestDiary | null;
+  creationState: GuestDiaryCreationState;
+}
+
+const getInitialGuestDiaryCreation = (
+  storage: GuestTrialStorage,
+): InitialGuestDiaryCreation => {
+  if (hasUsedGuestTrial(storage)) {
+    try {
+      clearPendingGuestDiary(storage);
+    } catch {
+      // 사용 완료 상태를 우선해 작성창이 다시 노출되지 않게 한다.
+    }
+
+    return {
+      pendingDiary: null,
+      creationState: {
+        status: 'error',
+        error: createGuestTrialAlreadyUsedError(),
+      },
+    };
+  }
+
+  const pendingDiary = loadPendingGuestDiary(storage);
+
+  return {
+    pendingDiary,
+    creationState: {
+      status: pendingDiary ? 'generating' : 'writing',
+    },
+  };
+};
 
 const requestGuestDiaryCreation = (
   pendingDiary: PendingGuestDiary,
@@ -59,14 +98,17 @@ const useGuestDiaryCreation = ({
   createIdempotencyKey = createGuestDiaryIdempotencyKey,
   storage = sessionStorage,
 }: GuestDiaryCreationOptions) => {
+  const [initialCreation] = useState(() =>
+    getInitialGuestDiaryCreation(storage),
+  );
   const pendingDiaryRef = useRef<PendingGuestDiary | null>(
-    loadPendingGuestDiary(storage),
+    initialCreation.pendingDiary,
   );
   const restoredRequestStartedRef = useRef(false);
   const isMountedRef = useRef(true);
-  const [creationState, setCreationState] = useState<GuestDiaryCreationState>({
-    status: 'writing',
-  });
+  const [creationState, setCreationState] = useState<GuestDiaryCreationState>(
+    initialCreation.creationState,
+  );
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -88,6 +130,7 @@ const useGuestDiaryCreation = ({
           createDiary,
         );
 
+        markGuestTrialUsed(storage);
         clearPendingGuestDiary(storage);
         pendingDiaryRef.current = null;
 
@@ -95,6 +138,18 @@ const useGuestDiaryCreation = ({
           setCreationState({ status: 'success', data: diary });
         }
       } catch (error: unknown) {
+        if (isGuestTrialAlreadyUsedError(error)) {
+          markGuestTrialUsed(storage);
+
+          try {
+            clearPendingGuestDiary(storage);
+          } catch {
+            // 이미 소진된 요청은 재시도 대상으로 남기지 않는다.
+          }
+
+          pendingDiaryRef.current = null;
+        }
+
         if (isMountedRef.current && error instanceof Error) {
           setCreationState({ status: 'error', error });
         }
@@ -130,7 +185,7 @@ const useGuestDiaryCreation = ({
         } catch {
           setCreationState({
             status: 'error',
-            error: new Error('생성 요청을 안전하게 저장하지 못했습니다.'),
+            error: new Error('생성 요청을 안전하게 저장하지 못했습니다'),
           });
           return;
         }

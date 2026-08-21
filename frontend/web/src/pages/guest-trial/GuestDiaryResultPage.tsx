@@ -57,7 +57,7 @@ const GuestDiaryResultPage = () => {
 
       <section css={ctaSectionStyle}>
         <p css={ctaDescriptionStyle}>
-          로그인하고 오늘의 이야기를 계속 그림 일기로 만들어보세요.
+          로그인하고 오늘의 이야기를 계속 그림 일기로 만들어보세요
         </p>
         <GuestLoginCta label="카카오로 로그인하기" />
       </section>

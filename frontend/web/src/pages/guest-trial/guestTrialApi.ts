@@ -76,13 +76,13 @@ export const requestGuestCsrfToken = async (): Promise<string> => {
   });
 
   if (!response.ok) {
-    return throwRequestError(response, 'CSRF Token 발급에 실패했습니다.');
+    return throwRequestError(response, 'CSRF Token 발급에 실패했습니다');
   }
 
   const data: unknown = await response.json();
 
   if (!isGuestCsrfTokenResponse(data)) {
-    throw new Error('CSRF Token 응답 형식이 일치하지 않습니다.');
+    throw new Error('CSRF Token 응답 형식이 일치하지 않습니다');
   }
 
   return data.token;
@@ -99,7 +99,7 @@ export const issueGuestSession = async (): Promise<void> => {
   });
 
   if (!response.ok) {
-    return throwRequestError(response, '게스트 세션 발급에 실패했습니다.');
+    return throwRequestError(response, '게스트 세션 발급에 실패했습니다');
   }
 };
 
@@ -127,13 +127,13 @@ export const createGuestDiary = async ({
   });
 
   if (!response.ok) {
-    return throwRequestError(response, '게스트 일기 생성에 실패했습니다.');
+    return throwRequestError(response, '게스트 일기 생성에 실패했습니다');
   }
 
   const data: unknown = await response.json();
 
   if (!isGuestDiaryResponse(data)) {
-    throw new Error('게스트 일기 응답 형식이 일치하지 않습니다.');
+    throw new Error('게스트 일기 응답 형식이 일치하지 않습니다');
   }
 
   return data;
@@ -147,13 +147,13 @@ export const getGuestDiary = async (
   });
 
   if (!response.ok) {
-    return throwRequestError(response, '게스트 일기 조회에 실패했습니다.');
+    return throwRequestError(response, '게스트 일기 조회에 실패했습니다');
   }
 
   const data: unknown = await response.json();
 
   if (!isGuestDiaryResponse(data)) {
-    throw new Error('게스트 일기 응답 형식이 일치하지 않습니다.');
+    throw new Error('게스트 일기 응답 형식이 일치하지 않습니다');
   }
 
   return data;

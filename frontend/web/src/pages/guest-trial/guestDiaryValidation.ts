@@ -28,15 +28,15 @@ export const validateGuestDiary = (
   const sourceTextLength = Array.from(request.sourceText.trim()).length;
 
   if (!isValidIsoDate(request.diaryDate)) {
-    errors.diaryDate = '일기 날짜를 선택해주세요.';
+    errors.diaryDate = '일기 날짜를 선택해주세요';
   } else if (request.diaryDate > today) {
-    errors.diaryDate = '오늘 이후의 날짜는 선택할 수 없어요.';
+    errors.diaryDate = '오늘 이후의 날짜는 선택할 수 없어요';
   }
 
   if (sourceTextLength < 10) {
-    errors.sourceText = '오늘의 이야기를 10자 이상 적어주세요.';
+    errors.sourceText = '오늘의 이야기를 10자 이상 적어주세요';
   } else if (sourceTextLength > 300) {
-    errors.sourceText = '오늘의 이야기는 300자까지 적을 수 있어요.';
+    errors.sourceText = '오늘의 이야기는 300자까지 적을 수 있어요';
   }
 
   return errors;

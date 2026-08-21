@@ -44,7 +44,7 @@ const useGuestDiaryResult = ({
       if (!diaryId) {
         setResultRequest({
           status: 'error',
-          error: new Error('조회할 게스트 일기 ID가 없습니다.'),
+          error: new Error('조회할 게스트 일기 ID가 없습니다'),
         });
         return;
       }

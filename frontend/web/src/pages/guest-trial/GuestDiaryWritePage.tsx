@@ -1,202 +1,455 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { css } from '@emotion/react';
-import { useNavigate } from 'react-router';
-import loadingAnimation from '../../assets/images/loading-animation.webp';
+import { createPortal } from 'react-dom';
+import generationStep1Image from '../../assets/images/generation-step-1-reading.png';
+import generationStep2Image from '../../assets/images/generation-step-2-writing.png';
+import generationStep3Image from '../../assets/images/generation-step-3-selecting-panels.png';
+import generationStep4Image from '../../assets/images/generation-step-4-painting.png';
+import generationCompleteImage from '../../assets/images/generation-step-5-complete.png';
 import { theme } from '../../styles/theme';
+import DiaryGenerateStepper from '../diary-generating/DiaryGenerateStepper';
+import LandingPage from '../landing/LandingPage';
 import GuestLoginCta from './GuestLoginCta';
 import { getKoreanToday, validateGuestDiary } from './guestDiaryValidation';
 import { isGuestTrialAlreadyUsedError } from './guestTrialErrors';
-import { getGuestDiaryResultPath } from './guestTrialPaths';
-import useGuestDiaryCreation from './useGuestDiaryCreation';
+import type { GuestDiaryResponse } from './guestTrialApi';
+import useGuestDiaryCreation, {
+  type GuestDiaryCreationState,
+} from './useGuestDiaryCreation';
 
 const GuestDiaryWritePage = () => {
-  const navigate = useNavigate();
+  const landingHostRef = useRef<HTMLDivElement>(null);
+  const trialCardRef = useRef<HTMLElement>(null);
+  const [landingScrollRoot, setLandingScrollRoot] =
+    useState<HTMLElement | null>(null);
+  const [heroActionRoot, setHeroActionRoot] = useState<HTMLElement | null>(
+    null,
+  );
   const { creationState, submitDiary, retryDiary } = useGuestDiaryCreation({
     enabled: true,
   });
-  const [diaryDate, setDiaryDate] = useState(getKoreanToday);
   const [sourceText, setSourceText] = useState('');
-  const [diaryDateError, setDiaryDateError] = useState<string | null>(null);
   const [sourceTextError, setSourceTextError] = useState<string | null>(null);
-  const completedDiaryId =
-    creationState.status === 'success' ? creationState.data.id : null;
 
-  useEffect(() => {
-    if (completedDiaryId) {
-      navigate(getGuestDiaryResultPath(completedDiaryId), { replace: true });
-    }
-  }, [completedDiaryId, navigate]);
+  useLayoutEffect(() => {
+    const landingHost = landingHostRef.current;
+
+    setLandingScrollRoot(landingHost?.querySelector('main') ?? null);
+    setHeroActionRoot(
+      landingHost?.querySelector(
+        '[aria-labelledby="landing-hero-title"] > div:last-child',
+      ) ?? null,
+    );
+  }, []);
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const request = { diaryDate, sourceText };
+    const request = { diaryDate: getKoreanToday(), sourceText };
     const errors = validateGuestDiary(request);
 
-    setDiaryDateError(errors.diaryDate ?? null);
     setSourceTextError(errors.sourceText ?? null);
 
-    if (errors.diaryDate || errors.sourceText) {
+    if (errors.sourceText) {
       return;
     }
 
     void submitDiary(request);
   };
 
-  if (creationState.status === 'generating') {
-    return <LoadingView message="오늘의 이야기를 그림 일기로 만들고 있어요" />;
-  }
-
-  if (creationState.status === 'success') {
-    return <LoadingView message="완성된 그림 일기를 불러오고 있어요" />;
-  }
-
-  if (creationState.status === 'error') {
-    if (isGuestTrialAlreadyUsedError(creationState.error)) {
-      return (
-        <div css={feedbackPageStyle}>
-          <h1 css={feedbackTitleStyle}>게스트 체험을 이미 사용했어요</h1>
-          <p css={feedbackMessageStyle}>
-            로그인하면 하루들의 그림 일기를 계속 만들 수 있어요.
-          </p>
-          <GuestLoginCta label="카카오로 로그인하기" />
-        </div>
-      );
-    }
-
-    return (
-      <div css={feedbackPageStyle}>
-        <h1 css={feedbackTitleStyle}>일기를 완성하지 못했어요</h1>
-        <p css={feedbackMessageStyle}>{creationState.error.message}</p>
-        <button
-          type="button"
-          css={primaryButtonStyle}
-          onClick={() => void retryDiary()}
-        >
-          같은 요청으로 다시 시도하기
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <main css={pageStyle}>
-      <header css={headerStyle}>
-        <p css={eyebrowStyle}>로그인 없이 한 번 체험하기</p>
-        <h1 css={titleStyle}>오늘의 하루를 들려주세요</h1>
-        <p css={descriptionStyle}>
-          적어주신 이야기로 나만의 네컷 그림 일기를 만들어드려요.
-        </p>
-      </header>
-
-      <form css={formStyle} onSubmit={handleSubmit}>
-        <label css={fieldStyle}>
-          <span css={labelStyle}>일기 날짜</span>
-          <input
-            type="date"
-            value={diaryDate}
-            max={getKoreanToday()}
-            css={inputStyle(diaryDateError !== null)}
-            aria-describedby={
-              diaryDateError ? 'guest-diary-date-error' : undefined
-            }
-            onChange={(event) => {
-              setDiaryDate(event.target.value);
-              setDiaryDateError(null);
-            }}
-          />
-          {diaryDateError ? (
-            <span id="guest-diary-date-error" css={errorStyle}>
-              {diaryDateError}
-            </span>
-          ) : null}
-        </label>
-
-        <label css={fieldStyle}>
-          <span css={labelStyle}>오늘의 이야기</span>
-          <textarea
-            value={sourceText}
-            maxLength={300}
-            css={textAreaStyle(sourceTextError !== null)}
-            aria-describedby={
-              sourceTextError ? 'guest-diary-source-text-error' : undefined
-            }
-            placeholder="오늘 있었던 일과 그때의 기분을 자유롭게 적어주세요."
-            onChange={(event) => {
-              setSourceText(event.target.value);
-              setSourceTextError(null);
-            }}
-          />
-          <span css={descriptionRowStyle}>
-            <span id="guest-diary-source-text-error" css={errorStyle}>
-              {sourceTextError}
-            </span>
-            <span css={countStyle}>{Array.from(sourceText).length} / 300</span>
-          </span>
-        </label>
-
-        <button type="submit" css={primaryButtonStyle}>
-          그림 일기 만들기
-        </button>
-      </form>
-    </main>
+    <div ref={landingHostRef} css={landingHostStyle}>
+      <LandingPage />
+      {heroActionRoot
+        ? createPortal(
+            <button
+              type="button"
+              css={trialStartButtonStyle}
+              onClick={() => {
+                trialCardRef.current?.scrollIntoView({
+                  behavior: 'smooth',
+                  block: 'start',
+                });
+              }}
+            >
+              무료로 사용해보기
+            </button>,
+            heroActionRoot,
+          )
+        : null}
+      {landingScrollRoot
+        ? createPortal(
+            <section
+              ref={trialCardRef}
+              css={trialFormSectionStyle}
+              aria-label="무료 네컷 체험"
+            >
+              <GuestTrialCard
+                creationState={creationState}
+                sourceText={sourceText}
+                sourceTextError={sourceTextError}
+                onSourceTextChange={(value) => {
+                  setSourceText(value);
+                  setSourceTextError(null);
+                }}
+                onSubmit={handleSubmit}
+                onRetry={() => void retryDiary()}
+              />
+            </section>,
+            landingScrollRoot,
+          )
+        : null}
+    </div>
   );
 };
 
 export default GuestDiaryWritePage;
 
-const LoadingView = ({ message }: { message: string }) => {
+const generationSteps = [
+  {
+    message: '오늘의 이야기를 차근차근 읽고 있어요',
+    image: generationStep1Image,
+  },
+  {
+    message: '기억에 남는 장면을 한 장면씩 적고 있어요',
+    image: generationStep2Image,
+  },
+  {
+    message: '네 장면을 고르고 이야기의 흐름을 맞추고 있어요',
+    image: generationStep3Image,
+  },
+  {
+    message: '색을 더하고 다듬어 네컷 그림을 완성하고 있어요',
+    image: generationStep4Image,
+  },
+] as const;
+
+interface GuestTrialCardProps {
+  creationState: GuestDiaryCreationState;
+  sourceText: string;
+  sourceTextError: string | null;
+  onSourceTextChange: (value: string) => void;
+  onSubmit: React.FormEventHandler<HTMLFormElement>;
+  onRetry: () => void;
+}
+
+const GuestTrialCard = ({
+  creationState,
+  sourceText,
+  sourceTextError,
+  onSourceTextChange,
+  onSubmit,
+  onRetry,
+}: GuestTrialCardProps) => {
+  if (creationState.status === 'generating') {
+    return <GuestTrialGeneratingCard />;
+  }
+
+  if (creationState.status === 'success') {
+    return (
+      <GuestTrialResultCard
+        key={creationState.data.generation.imageUrl}
+        diary={creationState.data}
+      />
+    );
+  }
+
+  if (creationState.status === 'error') {
+    return (
+      <GuestTrialErrorCard error={creationState.error} onRetry={onRetry} />
+    );
+  }
+
   return (
-    <div css={feedbackPageStyle}>
-      <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
-      <p css={feedbackTitleStyle}>{message}</p>
-      <p css={feedbackMessageStyle}>완성될 때까지 잠시만 기다려주세요.</p>
+    <form
+      css={trialCardStyle}
+      aria-labelledby="guest-trial-form-title"
+      onSubmit={onSubmit}
+    >
+      <header css={formHeaderStyle}>
+        <p css={formEyebrowStyle}>로그인 없이 체험해보세요! 전부 무료예요</p>
+        <h2 id="guest-trial-form-title" css={formTitleStyle}>
+          아무 이야기나 적어주세요
+        </h2>
+      </header>
+
+      <div css={fieldStyle}>
+        <textarea
+          id="guest-diary-source-text"
+          aria-label="이야기"
+          value={sourceText}
+          maxLength={300}
+          css={textAreaStyle(sourceTextError !== null)}
+          aria-describedby={
+            sourceTextError
+              ? 'guest-diary-source-text-error'
+              : 'guest-diary-source-text-hint'
+          }
+          placeholder="상쾌하게 일어나고 보니 오전 11시였다 부랴부랴 짐을 싸고 버스에서 내리니 비가 와서 비에 홀딱 젖었다"
+          onChange={(event) => onSourceTextChange(event.target.value)}
+        />
+        <span css={descriptionRowStyle}>
+          <span
+            id={
+              sourceTextError
+                ? 'guest-diary-source-text-error'
+                : 'guest-diary-source-text-hint'
+            }
+            css={sourceTextError ? errorStyle : hintStyle}
+          >
+            {sourceTextError ?? '10자 이상 300자 이하로 적어주세요'}
+          </span>
+          <span css={countStyle}>{Array.from(sourceText).length} / 300</span>
+        </span>
+      </div>
+
+      <button type="submit" css={primaryButtonStyle}>
+        네컷 그림 만들기
+      </button>
+    </form>
+  );
+};
+
+const GuestTrialGeneratingCard = () => {
+  const [stepIndex, setStepIndex] = useState(0);
+
+  useEffect(() => {
+    if (stepIndex >= generationSteps.length - 1) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setStepIndex((currentStep) => currentStep + 1);
+    }, 3_000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [stepIndex]);
+
+  const currentStep = generationSteps[stepIndex];
+
+  return (
+    <div
+      css={trialCardStyle}
+      role="status"
+      aria-live="polite"
+      aria-labelledby="guest-trial-generating-title"
+    >
+      <header css={[formHeaderStyle, centeredHeaderStyle]}>
+        <p css={formEyebrowStyle}>잠시만 기다려주세요</p>
+        <h2 id="guest-trial-generating-title" css={formTitleStyle}>
+          네컷 그림을 만들고 있어요
+        </h2>
+      </header>
+
+      <img src={currentStep.image} alt="" css={generationImageStyle} />
+      <p css={generationMessageStyle}>{currentStep.message}</p>
+
+      <div css={generationStepperWrapperStyle}>
+        <DiaryGenerateStepper loadingStep={stepIndex + 1} />
+      </div>
+
+      <p css={freeNoticeStyle}>체험도, 로그인 후 이용도 전부 무료예요</p>
     </div>
   );
 };
 
-const pageStyle = css`
-  display: flex;
-  flex-direction: column;
-  gap: 28px;
+const GuestTrialResultCard = ({ diary }: { diary: GuestDiaryResponse }) => {
+  const [imageLoaded, setImageLoaded] = useState(false);
+
+  if (!imageLoaded) {
+    return (
+      <>
+        <img
+          src={diary.generation.imageUrl}
+          alt=""
+          aria-hidden="true"
+          css={resultPreloadImageStyle}
+          onLoad={() => setImageLoaded(true)}
+        />
+        <div
+          css={trialCardStyle}
+          role="status"
+          aria-live="polite"
+          aria-labelledby="guest-trial-result-loading-title"
+        >
+          <header css={[formHeaderStyle, centeredHeaderStyle]}>
+            <p css={formEyebrowStyle}>거의 다 됐어요</p>
+            <h2 id="guest-trial-result-loading-title" css={formTitleStyle}>
+              완성한 네컷을 불러오고 있어요
+            </h2>
+          </header>
+          <img
+            src={generationCompleteImage}
+            alt=""
+            css={generationImageStyle}
+          />
+          <p css={generationMessageStyle}>
+            결과 사진이 모두 준비되면 바로 보여드릴게요
+          </p>
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <article css={trialCardStyle} aria-labelledby="guest-trial-result-title">
+      <header css={[formHeaderStyle, centeredHeaderStyle]}>
+        <p css={formEyebrowStyle}>네컷이 완성됐어요!</p>
+        <h2 id="guest-trial-result-title" css={formTitleStyle}>
+          {diary.generation.title}
+        </h2>
+      </header>
+
+      <img
+        src={diary.generation.imageUrl}
+        alt={`${diary.generation.title} 네컷 그림`}
+        css={resultImageStyle}
+      />
+
+      <section css={resultCtaStyle} aria-labelledby="guest-trial-login-title">
+        <h3 id="guest-trial-login-title" css={resultCtaTitleStyle}>
+          더 만들어보고 싶나요?
+        </h3>
+        <p css={freeNoticeStyle}>
+          로그인 후에도 네컷 그림 만들기는 전부 무료예요
+        </p>
+        <GuestLoginCta label="로그인하고 무료로 더 만들기" />
+      </section>
+    </article>
+  );
+};
+
+const GuestTrialErrorCard = ({
+  error,
+  onRetry,
+}: {
+  error: Error;
+  onRetry: () => void;
+}) => {
+  const trialAlreadyUsed = isGuestTrialAlreadyUsedError(error);
+
+  return (
+    <div css={trialCardStyle} role="alert">
+      <header css={[formHeaderStyle, centeredHeaderStyle]}>
+        <h2 css={formTitleStyle}>
+          {trialAlreadyUsed
+            ? '게스트 체험을 이미 사용했어요'
+            : '네컷을 완성하지 못했어요'}
+        </h2>
+      </header>
+
+      {!trialAlreadyUsed && <p css={errorMessageStyle}>{error.message}</p>}
+
+      {trialAlreadyUsed ? (
+        <>
+          <p css={freeNoticeStyle}>
+            로그인 후에도 네컷 그림 만들기는 전부 무료예요
+          </p>
+          <GuestLoginCta label="로그인하고 무료로 더 만들기" />
+        </>
+      ) : (
+        <button type="button" css={primaryButtonStyle} onClick={onRetry}>
+          같은 내용으로 다시 시도하기
+        </button>
+      )}
+    </div>
+  );
+};
+
+const landingHostStyle = css`
   width: 100%;
-  min-height: 100%;
-  padding: 36px 20px 28px;
-  overflow-y: auto;
-  background-color: #ffffff;
+  height: 100%;
+
+  [aria-labelledby='landing-final-title'] {
+    padding-bottom: 28px;
+    border-bottom: none;
+  }
+
+  [aria-labelledby='landing-final-title'] > a {
+    display: none;
+  }
+
+  [aria-labelledby='landing-hero-title'] a[href='/oauth2/authorization/kakao'] {
+    display: none;
+  }
 `;
 
-const headerStyle = css`
+const trialStartButtonStyle = css`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 56px;
+  padding: 14px 20px;
+  border: none;
+  border-radius: 16px;
+  background-color: ${theme.colors.bg.brand};
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 24px;
+  cursor: pointer;
+  transition: transform 180ms ease;
+
+  &:active {
+    transform: scale(0.99);
+  }
+
+  &:focus-visible {
+    outline: 3px solid rgb(115 85 218 / 35%);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition-duration: 1ms;
+  }
+`;
+
+const trialFormSectionStyle = css`
+  width: 100%;
+  padding: 0 20px 64px;
+  background-color: #f8f6ff;
+`;
+
+const trialCardStyle = css`
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  padding: 28px 20px 24px;
+  border: 1px solid #efebfa;
+  border-radius: 24px;
+  background-color: #ffffff;
+  box-shadow: 0 18px 40px rgb(47 40 77 / 8%);
+`;
+
+const formHeaderStyle = css`
   display: flex;
   flex-direction: column;
   gap: 8px;
+  margin-bottom: 4px;
 `;
 
-const eyebrowStyle = css`
+const centeredHeaderStyle = css`
+  align-items: center;
+  text-align: center;
+`;
+
+const formEyebrowStyle = css`
+  margin: 0;
   color: ${theme.colors.text.brand};
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
-  line-height: 22px;
+  line-height: 20px;
 `;
 
-const titleStyle = css`
+const formTitleStyle = css`
+  margin: 0;
   color: ${theme.colors.text.primary};
-  font-size: 28px;
-  font-weight: 700;
-  line-height: 40px;
-`;
-
-const descriptionStyle = css`
-  color: ${theme.colors.text.secondary};
-  font-size: 15px;
-  font-weight: 400;
-  line-height: 24px;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 34px;
+  letter-spacing: -0.5px;
   word-break: keep-all;
-`;
-
-const formStyle = css`
-  display: flex;
-  flex-direction: column;
-  gap: 22px;
 `;
 
 const fieldStyle = css`
@@ -205,54 +458,30 @@ const fieldStyle = css`
   gap: 8px;
 `;
 
-const labelStyle = css`
-  color: ${theme.colors.text.primary};
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 24px;
-`;
-
-const inputStyle = (hasError: boolean) => css`
+const textAreaStyle = (hasError: boolean) => css`
   width: 100%;
-  height: 52px;
-  padding: 0 16px;
+  min-height: 240px;
+  padding: 16px;
   border: 1px solid
     ${hasError ? theme.colors.text.danger : theme.colors.border.primary};
   border-radius: 16px;
   outline: none;
-  background-color: #ffffff;
-  color: ${theme.colors.text.primary};
-  font-size: 16px;
-
-  &:focus {
-    border-color: ${
-      hasError ? theme.colors.text.danger : theme.colors.bg.brand
-    };
-  }
-`;
-
-const textAreaStyle = (hasError: boolean) => css`
-  width: 100%;
-  min-height: 220px;
-  padding: 18px;
-  border: 1px solid
-    ${hasError ? theme.colors.text.danger : theme.colors.border.primary};
-  border-radius: 20px;
-  outline: none;
   resize: vertical;
   background-color: #ffffff;
   color: ${theme.colors.text.primary};
-  font-size: 15px;
+  font-size: 16px;
   line-height: 26px;
 
   &::placeholder {
-    color: ${theme.colors.text.secondary};
+    color: #8b8793;
   }
 
   &:focus {
     border-color: ${
-      hasError ? theme.colors.text.danger : theme.colors.bg.brand
+      hasError ? theme.colors.text.danger : theme.colors.text.brand
     };
+    background-color: #ffffff;
+    box-shadow: 0 0 0 3px rgb(115 85 218 / 10%);
   }
 `;
 
@@ -260,11 +489,17 @@ const descriptionRowStyle = css`
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  min-height: 22px;
+  min-height: 20px;
 `;
 
 const errorStyle = css`
   color: ${theme.colors.text.danger};
+  font-size: 13px;
+  line-height: 20px;
+`;
+
+const hintStyle = css`
+  color: ${theme.colors.text.secondary};
   font-size: 13px;
   line-height: 20px;
 `;
@@ -277,52 +512,117 @@ const countStyle = css`
 `;
 
 const primaryButtonStyle = css`
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
   min-height: 56px;
   padding: 14px 20px;
   border: none;
-  border-radius: 18px;
+  border-radius: 16px;
   background-color: ${theme.colors.bg.brand};
   color: #ffffff;
   font-size: 16px;
   font-weight: 700;
   line-height: 24px;
   cursor: pointer;
+  transition: transform 180ms ease;
 
   &:active {
-    transform: scale(0.98);
+    transform: scale(0.99);
+  }
+
+  &:focus-visible {
+    outline: 3px solid rgb(115 85 218 / 35%);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition-duration: 1ms;
   }
 `;
 
-const feedbackPageStyle = css`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  width: 100%;
-  min-height: 100%;
-  padding: 32px 24px;
-  background-color: #ffffff;
-  text-align: center;
+const generationImageStyle = css`
+  width: min(100%, 260px);
+  margin: -8px auto -20px;
+  aspect-ratio: 1;
+  object-fit: contain;
 `;
 
-const loadingImageStyle = css`
-  width: 140px;
-  height: 140px;
-`;
-
-const feedbackTitleStyle = css`
+const generationMessageStyle = css`
+  min-height: 52px;
+  margin: 0;
   color: ${theme.colors.text.primary};
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 700;
-  line-height: 34px;
+  line-height: 26px;
+  text-align: center;
   word-break: keep-all;
 `;
 
-const feedbackMessageStyle = css`
+const generationStepperWrapperStyle = css`
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  overflow-x: auto;
+`;
+
+const freeNoticeStyle = css`
+  width: 100%;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background-color: #f5f1ff;
+  color: ${theme.colors.text.brand};
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 22px;
+  text-align: center;
+  word-break: keep-all;
+`;
+
+const resultPreloadImageStyle = css`
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+`;
+
+const resultImageStyle = css`
+  width: 100%;
+  aspect-ratio: 1;
+  border: 1px solid ${theme.colors.border.primary};
+  border-radius: 18px;
+  background-color: #f8f6ff;
+  object-fit: cover;
+`;
+
+const resultCtaStyle = css`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  padding-top: 20px;
+  border-top: 1px solid ${theme.colors.border.primary};
+  text-align: center;
+`;
+
+const resultCtaTitleStyle = css`
+  margin: 0;
+  color: ${theme.colors.text.primary};
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 30px;
+  word-break: keep-all;
+`;
+
+const errorMessageStyle = css`
+  margin: 0;
   color: ${theme.colors.text.secondary};
   font-size: 15px;
   line-height: 24px;
+  text-align: center;
   word-break: keep-all;
 `;
