@@ -38,6 +38,27 @@ describe('로그인 유도 랜딩 페이지', () => {
     ).toBeInTheDocument();
   });
 
+  it('랜딩 내부 레이아웃 변화를 관찰하고 언마운트 시 해제한다', () => {
+    const observe = jest.fn();
+    const disconnect = jest.fn();
+    const originalResizeObserver = globalThis.ResizeObserver;
+
+    globalThis.ResizeObserver = jest.fn(() => ({
+      observe,
+      unobserve: jest.fn(),
+      disconnect,
+    })) as unknown as typeof ResizeObserver;
+
+    const { unmount } = render(<LandingPage />);
+
+    expect(observe).toHaveBeenCalledTimes(3);
+
+    unmount();
+
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    globalThis.ResizeObserver = originalResizeObserver;
+  });
+
   it('일상을 그림으로 만드는 핵심 가치를 안내한다', () => {
     render(<LandingPage />);
 

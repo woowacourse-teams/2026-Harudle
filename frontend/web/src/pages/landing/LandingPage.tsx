@@ -128,10 +128,19 @@ const LandingPage = ({
       passive: true,
     });
     window.addEventListener('resize', requestScrollUpdate);
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver(requestScrollUpdate);
+
+    resizeObserver?.observe(scrollContainer);
+    resizeObserver?.observe(showcase);
+    resizeObserver?.observe(processSection);
 
     return () => {
       scrollContainer.removeEventListener('scroll', requestScrollUpdate);
       window.removeEventListener('resize', requestScrollUpdate);
+      resizeObserver?.disconnect();
 
       if (animationFrameId !== 0) {
         window.cancelAnimationFrame(animationFrameId);
