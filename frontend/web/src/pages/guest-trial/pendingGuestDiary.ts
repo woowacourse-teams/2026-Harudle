@@ -46,6 +46,7 @@ export const isPendingGuestDiary = (
   return Object.keys(validateGuestDiary(request)).length === 0;
 };
 
+/** 저장값이 손상되었거나 유효하지 않으면 해당 값을 제거하고 null을 반환한다. */
 export const loadPendingGuestDiary = (
   storage: GuestTrialStorage,
 ): PendingGuestDiary | null => {
