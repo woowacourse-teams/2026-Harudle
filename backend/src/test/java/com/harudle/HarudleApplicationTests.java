@@ -48,6 +48,7 @@ class HarudleApplicationTests {
                   AND table_name <> 'flyway_schema_history'
                 ORDER BY table_name
                 """).getResultList();
+
         List<String> tableNames = rows.stream()
                 .map(String.class::cast)
                 .toList();
@@ -57,6 +58,7 @@ class HarudleApplicationTests {
                 "diaries",
                 "diary_generations",
                 "generation_prompts",
+                "guest_sessions",
                 "oauth_accounts",
                 "refresh_tokens",
                 "share_links",

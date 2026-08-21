@@ -1,19 +1,15 @@
 import { useEffect, useState } from 'react';
-import { css } from '@emotion/react';
 import DiaryGenerateStepper from './DiaryGenerateStepper';
-import PageHeader from '../../shared/PageHeader';
-import { API_BASE_URL, type ApiRequestStatus } from '../../shared/api';
-import { useLocation, useNavigate } from 'react-router';
-import { theme } from '../../styles/theme';
-import backIcon from '../../assets/icons/back.svg';
+import { Navigate, useLocation, useNavigate } from 'react-router';
+import useDiaryGenerate from './useDiaryGenerate';
 import generationStep1Image from '../../assets/images/generation-step-1-reading.png';
 import generationStep2Image from '../../assets/images/generation-step-2-writing.png';
 import generationStep3Image from '../../assets/images/generation-step-3-selecting-panels.png';
 import generationStep4Image from '../../assets/images/generation-step-4-painting.png';
 import generationCompleteImage from '../../assets/images/generation-step-5-complete.png';
-import { authFetch } from '../../shared/auth';
-import ActionButton from '../../shared/ActionButton';
-import { throwIfResponseFailed, toUserError } from '../../shared/apiError';
+import { css } from '@emotion/react';
+import { theme } from '../../styles/theme';
+import DiaryGeneratingError from './DiaryGeneratingError';
 
 const generationSteps = [
   {
@@ -33,139 +29,99 @@ const generationSteps = [
     image: generationStep4Image,
   },
   {
-    message: '완성했어요! 1초 뒤에 앨범으로 이동해요',
+    message: '완성했어요! 2초 뒤에 앨범으로 이동해요',
     image: generationCompleteImage,
   },
 ] as const;
 
-const isRecord = (value: unknown): value is Record<string, unknown> => {
-  return typeof value === 'object' && value !== null;
+export const FINAL_STEP = 5;
+
+interface DiaryGeneratingState {
+  diaryDate: string;
+  sourceText: string;
+}
+
+const isDiaryGeneratingState = (
+  value: unknown,
+): value is DiaryGeneratingState => {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'diaryDate' in value &&
+    typeof value.diaryDate === 'string' &&
+    'sourceText' in value &&
+    typeof value.sourceText === 'string'
+  );
 };
 
 const DiaryGeneratingPage = () => {
-  const [loadingStep, setLoadingStep] = useState<number>(1);
-  const [diaryGenerateRequest, setDiaryGenerateRequest] =
-    useState<ApiRequestStatus>('idle');
-  const [generationError, setGenerationError] = useState<string | null>(null);
-  const [createdDiaryId, setCreatedDiaryId] = useState<string | null>(null);
-  const navigate = useNavigate();
   const { state } = useLocation();
 
+  if (!isDiaryGeneratingState(state)) {
+    return <Navigate to="/" replace />;
+  }
+
+  return <DiaryGeneratingContent {...state} />;
+};
+
+export default DiaryGeneratingPage;
+
+const DiaryGeneratingContent = (generateRequestBody: {
+  diaryDate: string;
+  sourceText: string;
+}) => {
+  const [loadingStep, setLoadingStep] = useState<number>(1);
+  const { diaryGenerateRequest } = useDiaryGenerate(generateRequestBody);
+  const navigate = useNavigate();
+
   useEffect(() => {
-    const postDiaryGenerate = async (): Promise<void> => {
-      setDiaryGenerateRequest('loading');
-
-      try {
-        const response = await authFetch(`${API_BASE_URL}/diaries`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Idempotency-Key': state.idempotencyKey,
-          },
-          body: JSON.stringify({
-            diaryDate: state.diaryDate,
-            sourceText: state.sourceText,
-          }),
-        });
-
-        await throwIfResponseFailed(response, '일기 생성에 실패했습니다.');
-
-        const data: unknown = await response.json();
-
-        if (!isRecord(data) || typeof data.id !== 'string') {
-          throw new Error('일기 생성에 실패했습니다.');
-        }
-
-        setCreatedDiaryId(data.id);
-        setDiaryGenerateRequest('success');
-      } catch (error: unknown) {
-        setGenerationError(
-          toUserError(error, '일기 생성에 실패했습니다.').message,
-        );
-        setDiaryGenerateRequest('error');
-      }
-    };
-
-    void postDiaryGenerate();
-  }, [state, navigate]);
-  useEffect(() => {
-    if (loadingStep >= 4 || diaryGenerateRequest === 'error') {
+    if (loadingStep >= FINAL_STEP - 1) {
       return;
     }
 
     const timeoutId = setTimeout(() => {
       setLoadingStep((previousStep) => previousStep + 1);
-    }, 2_000);
+    }, 3_000);
 
     return () => clearTimeout(timeoutId);
-  }, [diaryGenerateRequest, loadingStep]);
+  }, [loadingStep]);
 
-  const isGenerationComplete =
-    loadingStep === 4 &&
-    diaryGenerateRequest === 'success' &&
-    createdDiaryId !== null;
-
-  const displayedStep = isGenerationComplete ? 5 : loadingStep;
-  const currentStep = generationSteps[displayedStep - 1];
-  const isCompleteStep = displayedStep === 5;
+  const isGenerationComplete = diaryGenerateRequest.status === 'success';
 
   useEffect(() => {
-    if (!isGenerationComplete || createdDiaryId === null) {
+    if (!isGenerationComplete) {
       return;
     }
 
     const timeoutId = setTimeout(() => {
-      navigate(`/diaries/${createdDiaryId}`, { replace: true });
-    }, 1_000);
+      navigate(`/diary/${diaryGenerateRequest.data.id}`, {
+        replace: true,
+      });
+    }, 2_000);
 
     return () => clearTimeout(timeoutId);
-  }, [createdDiaryId, isGenerationComplete, navigate]);
+  }, [isGenerationComplete, navigate]);
+
+  const displayedStep = isGenerationComplete ? FINAL_STEP : loadingStep;
+
+  if (diaryGenerateRequest.status === 'error') {
+    return (
+      <DiaryGeneratingError errorMessage={diaryGenerateRequest.error.message} />
+    );
+  }
 
   return (
     <div css={pageStyle}>
-      <PageHeader
-        leftButton={
-          <button css={backButtonStyle} onClick={() => navigate(-1)}>
-            <img css={backIconStyle} src={backIcon} alt="뒤로가기" />
-          </button>
-        }
-        title={null}
-        rightButton={null}
+      <img
+        css={illustrationStyle}
+        src={generationSteps[displayedStep - 1].image}
       />
+      <p css={messageStyle}>{generationSteps[displayedStep - 1].message}</p>
 
-      <main css={contentStyle}>
-        {diaryGenerateRequest === 'error' ? (
-          <div css={errorStyle}>
-            <div css={errorMessageStyle}>
-              {generationError ?? '일기 생성에 실패했습니다.'}
-            </div>
-            <ActionButton
-              label="다시 작성하기"
-              onClick={() =>
-                navigate('/diary-write', {
-                  replace: true,
-                  state,
-                })
-              }
-            />
-          </div>
-        ) : (
-          <>
-            <img
-              css={illustrationStyle(isCompleteStep)}
-              src={currentStep.image}
-              alt="일기 생성 중"
-            />
-            <div css={messageStyle(isCompleteStep)}>{currentStep.message}</div>
-            <DiaryGenerateStepper loadingStep={displayedStep} />
-          </>
-        )}
-      </main>
+      <DiaryGenerateStepper loadingStep={displayedStep} />
     </div>
   );
 };
-
-export default DiaryGeneratingPage;
 
 const pageStyle = css`
   display: flex;
@@ -173,67 +129,20 @@ const pageStyle = css`
   align-items: center;
   width: 100%;
   height: 100%;
-  padding: 12px 20px 10px;
-  overflow: hidden;
-  background-color: ${theme.colors.background};
-  box-sizing: border-box;
+  overflow-y: auto;
 `;
 
-const backButtonStyle = css`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border: none;
-  background-color: transparent;
-  cursor: pointer;
+const illustrationStyle = css`
+  width: 320px;
+  aspect-ratio: 1;
+  object-fit: contain;
 `;
 
-const backIconStyle = css`
-  width: 24px;
-  height: 24px;
-`;
-
-const contentStyle = css`
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  align-items: center;
-  width: 100%;
-`;
-
-const errorStyle = css`
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 20px;
-  width: 342px;
-`;
-
-const errorMessageStyle = css`
-  color: ${theme.colors.textPrimary};
-  font-size: 18px;
-  font-weight: 700;
-  line-height: 28px;
-`;
-
-const illustrationStyle = (isCompleteStep: boolean) => css`
-  width: ${isCompleteStep ? '269px' : '220px'};
-  height: ${isCompleteStep ? '272px' : '220px'};
-  margin-top: -2px;
-  object-fit: cover;
-`;
-
-const messageStyle = (isCompleteStep: boolean) => css`
+const messageStyle = css`
   width: 300px;
   min-height: 68px;
-  margin-top: ${isCompleteStep ? '-21px' : '12px'};
-  color: ${theme.colors.textPrimary};
-  font-family: 'Noto Sans KR', sans-serif;
+  margin-top: -40px;
+  color: ${theme.colors.text.primary};
   font-size: 22px;
   font-weight: 700;
   line-height: 34px;

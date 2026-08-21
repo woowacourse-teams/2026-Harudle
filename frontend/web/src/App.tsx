@@ -1,14 +1,16 @@
 import { css } from '@emotion/react';
-import HomePage from './pages/home/HomePage';
+import HomePage from './pages/home/HomePage/HomePage';
 import { Route, Routes } from 'react-router';
 import DiaryWritePage from './pages/diary-write/DiaryWritePage';
 import DiaryGeneratingPage from './pages/diary-generating/DiaryGeneratingPage';
-import DiaryDetailPage from './pages/diary-detail/DiaryDetailPage';
-import DiarySharePage from './pages/diary-share/DiarySharePage';
+
 import SettingPage from './pages/setting/SettingPage';
 import LoginPage from './pages/login/LoginPage';
-import AuthCallbackPage from './pages/auth-callback/AuthCallbackPage';
-import AuthGuard from './shared/AuthGuard';
+import DiaryDetailPage from './pages/diary-detail/DiaryDetailPage';
+import DiarySharePage from './pages/diary-share/DiarySharePage';
+import AuthCallbackPage from './pages/login/AuthCallbackPage';
+import GuestTrialRoutes from './pages/guest-trial/GuestTrialRoutes';
+import LandingPage from './pages/landing/LandingPage';
 
 const App = () => {
   return (
@@ -16,15 +18,14 @@ const App = () => {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
+        <Route path="/" element={<HomePage />} />
+        <Route path="/diary-write" element={<DiaryWritePage />} />
+        <Route path="/diary-generating" element={<DiaryGeneratingPage />} />
+        <Route path="/diary/:diaryId" element={<DiaryDetailPage />} />
         <Route path="/shares/:shareId" element={<DiarySharePage />} />
-
-        <Route element={<AuthGuard />}>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/diary-write" element={<DiaryWritePage />} />
-          <Route path="/diary-generating" element={<DiaryGeneratingPage />} />
-          <Route path="/diaries/:diaryId" element={<DiaryDetailPage />} />
-          <Route path="/setting" element={<SettingPage />} />
-        </Route>
+        <Route path="/setting" element={<SettingPage />} />
+        <Route path="/landing" element={<LandingPage />} />
+        <Route path="/landing-try/*" element={<GuestTrialRoutes />} />
       </Routes>
     </div>
   );

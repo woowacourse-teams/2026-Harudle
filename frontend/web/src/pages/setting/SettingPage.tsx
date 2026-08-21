@@ -1,147 +1,27 @@
-import BottomNavigation from '../../shared/BottomNavigation';
 import { css } from '@emotion/react';
-import { theme } from '../../styles/theme';
+import BottomNavigation from '../../shared/BottomNavigation';
 import harudleLogo from '../../assets/images/harudle-logo.png';
 import { useNavigate } from 'react-router';
-import { useEffect, useState } from 'react';
-import { API_BASE_URL, type ApiRequest } from '../../shared/api';
+import useProfile from './useProfile';
 import loadingAnimation from '../../assets/images/loading-animation.webp';
-import { authFetch, logout } from '../../shared/auth';
-import { useDelayedLoading } from '../../shared/useDelayedLoading';
-import { throwIfResponseFailed, toUserError } from '../../shared/apiError';
-
-interface ProfileResponse {
-  id: string;
-  name: string;
-  email?: string;
-  oauthProviders: string[];
-  createdAt: string;
-}
-
-const isProfileResponse = (value: unknown): value is ProfileResponse => {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'id' in value &&
-    typeof value.id === 'string' &&
-    'name' in value &&
-    typeof value.name === 'string' &&
-    'email' in value &&
-    'oauthProviders' in value &&
-    Array.isArray(value.oauthProviders) &&
-    value.oauthProviders.every((provider) => typeof provider === 'string') &&
-    'createdAt' in value &&
-    typeof value.createdAt === 'string'
-  );
-};
+import { theme } from '../../styles/theme';
+import useLogout from './useLogout';
+import SettingError from './SettingError';
 
 const SettingPage = () => {
   const navigate = useNavigate();
-  const [profile, setProfile] = useState<ApiRequest<ProfileResponse>>({
-    status: 'idle',
-  });
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const [logoutError, setLogoutError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const getProfile = async (): Promise<void> => {
-      setProfile({ status: 'loading' });
-
-      try {
-        const response = await authFetch(`${API_BASE_URL}/me`);
-
-        await throwIfResponseFailed(
-          response,
-          '사용자 정보를 불러오지 못했습니다.',
-        );
-
-        const data: unknown = await response.json();
-
-        if (!isProfileResponse(data)) {
-          throw new Error('사용자 정보를 불러오지 못했습니다.');
-        }
-
-        setProfile({ status: 'success', data });
-      } catch (error: unknown) {
-        setProfile({
-          status: 'error',
-          error: toUserError(error, '사용자 정보를 불러오지 못했습니다.'),
-        });
-      }
-    };
-
-    void getProfile();
-  }, []);
-
-  const isProfileLoading =
-    profile.status === 'idle' || profile.status === 'loading';
-  const showProfileLoading = useDelayedLoading(isProfileLoading);
-
-  const handleLogout = async () => {
-    setIsLoggingOut(true);
-    setLogoutError(null);
-
-    try {
-      await logout();
-      navigate('/login', { replace: true });
-    } catch (error: unknown) {
-      setLogoutError(toUserError(error, '로그아웃하지 못했습니다.').message);
-      setIsLoggingOut(false);
-    }
-  };
 
   return (
-    <div css={settingPageStyle}>
+    <div css={pageStyle}>
       <header css={pageHeaderStyle}>
         <button css={logoButtonStyle} onClick={() => navigate('/')}>
-          <img src={harudleLogo} alt="하루들" css={logoStyle} />
+          <img css={logoStyle} src={harudleLogo} alt="하루들" />
         </button>
       </header>
 
-      <main css={settingContentStyle}>
-        {isProfileLoading ? (
-          <div css={feedbackStyle}>
-            {showProfileLoading && (
-              <img
-                src={loadingAnimation}
-                alt="로딩 중"
-                css={loadingImageStyle}
-              />
-            )}
-          </div>
-        ) : profile.status === 'error' ? (
-          <div css={feedbackStyle}>{profile.error.message}</div>
-        ) : (
-          <>
-            <div css={pageTitleStyle}>설정</div>
-
-            <div css={accountCardStyle}>
-              <div css={settingRowStyle}>
-                <span css={settingLabelStyle}>이름</span>
-                <span css={settingValueStyle}>
-                  <span>{profile.data.name}</span>
-                </span>
-              </div>
-
-              <div css={settingRowStyle}>
-                <span css={settingLabelStyle}>소셜 계정</span>
-                <span css={settingValueStyle}>
-                  <span>{profile.data.oauthProviders.join(', ')}</span>
-                </span>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              css={logoutButtonStyle}
-              disabled={isLoggingOut}
-              onClick={() => void handleLogout()}
-            >
-              로그아웃
-            </button>
-            {logoutError && <div css={logoutErrorStyle}>{logoutError}</div>}
-          </>
-        )}
+      <main css={contentStyle}>
+        <div css={pageTitleStyle}>설정</div>
+        <SettingPageContent />
       </main>
 
       <BottomNavigation />
@@ -151,31 +31,89 @@ const SettingPage = () => {
 
 export default SettingPage;
 
-const settingPageStyle = css`
+const SettingPageContent = () => {
+  const { profileRequest } = useProfile();
+  const { logoutRequest, handleLogout } = useLogout();
+
+  if (profileRequest.status === 'idle' || profileRequest.status === 'loading') {
+    return (
+      <div css={loadingAnimationBoxStyle}>
+        <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
+      </div>
+    );
+  }
+
+  if (profileRequest.status === 'error') {
+    return <SettingError errorMessage={profileRequest.error.message} />;
+  }
+
+  const { name, oauthProviders } = profileRequest.data;
+
+  return (
+    <div css={settingPageContentStyle}>
+      <div css={accountCardStyle}>
+        <div css={settingRowStyle}>
+          <span css={settingLabelStyle}>이름</span>
+          <span css={settingValueStyle}>
+            <span>{name}</span>
+          </span>
+        </div>
+        <div css={settingRowStyle}>
+          <span css={settingLabelStyle}>소셜 계정</span>
+          <span css={settingValueStyle}>
+            <span>{oauthProviders.join(', ')}</span>
+          </span>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        css={logoutButtonStyle}
+        disabled={logoutRequest.status === 'loading'}
+        onClick={() => void handleLogout()}
+      >
+        로그아웃
+      </button>
+      {logoutRequest.status === 'error' && (
+        <div css={logoutErrorStyle}>{logoutRequest.error.message}</div>
+      )}
+    </div>
+  );
+};
+
+const loadingAnimationBoxStyle = css`
   display: flex;
-  flex-direction: column;
+  justify-content: center;
   align-items: center;
   width: 100%;
   height: 100%;
-  overflow: hidden;
-  background-color: ${theme.colors.background};
+`;
+
+const loadingImageStyle = css`
+  width: 140px;
+  height: 140px;
+`;
+
+const pageStyle = css`
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 `;
 
 const pageHeaderStyle = css`
   width: 100%;
   height: 71px;
-  padding: 0 20px;
   box-sizing: border-box;
-  overflow: hidden;
 `;
 
 const logoButtonStyle = css`
   display: flex;
+  justify-content: center;
   align-items: center;
   width: 100%;
-  height: 71px;
+  height: 100%;
   border: none;
-  background-color: transparent;
+  background: none;
   cursor: pointer;
 `;
 
@@ -184,68 +122,59 @@ const logoStyle = css`
   height: 71px;
 `;
 
-const settingContentStyle = css`
+const contentStyle = css`
+  position: relative;
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 10px;
-  width: 342px;
-  overflow: hidden;
+  gap: 8px;
+  min-height: 0px;
+  padding: 20px 20px 0 20px;
 `;
 
 const pageTitleStyle = css`
-  color: ${theme.colors.textPrimary};
-  font-family: 'Noto Sans KR', sans-serif;
+  color: ${theme.colors.text.primary};
   font-size: 22px;
   font-weight: 700;
   line-height: 32px;
 `;
 
+const settingPageContentStyle = css`
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+`;
+
 const accountCardStyle = css`
-  width: 100%;
   height: 120px;
   overflow: hidden;
-  border: 1px solid ${theme.colors.border};
+  border: 1px solid ${theme.colors.border.primary};
   border-radius: 16px;
-  background-color: ${theme.colors.background};
-  box-sizing: border-box;
 `;
 
 const settingRowStyle = css`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  width: 100%;
   height: 60px;
-  padding: 0 12px 0 16px;
-  box-sizing: border-box;
+  padding: 0 16px;
+  font-size: 15px;
+  line-height: 24px;
 
   &:first-of-type {
-    border-bottom: 1px solid ${theme.colors.border};
+    border-bottom: 1px solid ${theme.colors.border.primary};
   }
 `;
 
 const settingLabelStyle = css`
-  color: ${theme.colors.textPrimary};
-  font-family: 'Noto Sans KR', sans-serif;
-  font-size: 15px;
-  font-weight: 400;
-  line-height: 24px;
+  color: ${theme.colors.text.primary};
 `;
 
 const settingValueStyle = css`
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  width: 150px;
-  height: 32px;
-  color: ${theme.colors.textSecondary};
-  font-family: 'Noto Sans KR', sans-serif;
-  font-size: 15px;
-  font-weight: 400;
-  line-height: 24px;
-  text-align: right;
+  color: ${theme.colors.text.secondary};
   text-transform: capitalize;
 `;
 
@@ -253,16 +182,14 @@ const logoutButtonStyle = css`
   width: 100%;
   height: 56px;
   padding: 0 16px;
-  border: 1px solid ${theme.colors.border};
+  border: 1px solid ${theme.colors.border.primary};
   border-radius: 16px;
-  background-color: ${theme.colors.background};
-  color: ${theme.colors.danger};
-  font-family: 'Noto Sans KR', sans-serif;
+  background-color: transparent;
+  color: ${theme.colors.text.danger};
   font-size: 15px;
   font-weight: 500;
   line-height: 24px;
   text-align: left;
-  box-sizing: border-box;
   cursor: pointer;
 
   &:active {
@@ -276,24 +203,7 @@ const logoutButtonStyle = css`
 `;
 
 const logoutErrorStyle = css`
-  color: ${theme.colors.danger};
+  color: ${theme.colors.text.danger};
   font-size: 13px;
   line-height: 20px;
-`;
-
-const feedbackStyle = css`
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  color: ${theme.colors.textPrimary};
-  font-size: 16px;
-  line-height: 26px;
-  background-color: ${theme.colors.background};
-`;
-
-const loadingImageStyle = css`
-  width: 160px;
-  height: 160px;
 `;

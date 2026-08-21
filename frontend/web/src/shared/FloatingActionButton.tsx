@@ -1,31 +1,20 @@
 import { css } from '@emotion/react';
 import { theme } from '../styles/theme';
-import plusIcon from '../assets/icons/plus.svg';
-import arrowRightIcon from '../assets/icons/arrow-right.svg';
 
-type FloatingActionButtonIcon = 'plus' | 'arrow-right';
+import type { ReactNode } from 'react';
 
 const FloatingActionButton = ({
   onClick,
+  icon,
   disabled,
-  icon = 'plus',
-  type = 'button',
 }: {
   onClick: () => void;
+  icon: ReactNode;
   disabled: boolean;
-  icon?: FloatingActionButtonIcon;
-  type?: 'button' | 'submit';
 }) => {
-  const iconSrc = icon === 'arrow-right' ? arrowRightIcon : plusIcon;
-
   return (
-    <button
-      type={type}
-      css={buttonStyle(disabled)}
-      onClick={onClick}
-      disabled={disabled}
-    >
-      <img src={iconSrc} alt="" css={iconStyle} />
+    <button css={buttonStyle(disabled)} onClick={onClick} disabled={disabled}>
+      {icon}
     </button>
   );
 };
@@ -35,31 +24,19 @@ export default FloatingActionButton;
 const buttonStyle = (disabled: boolean) => css`
   position: absolute;
   right: 20px;
-  bottom: 96px;
+  bottom: 20px;
   z-index: 10;
 
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  width: 52px;
-  height: 52px;
-  padding: 0;
+  width: 56px;
+  height: 56px;
   border: none;
   border-radius: 50%;
 
-  background-color: ${theme.colors.primary};
-  box-shadow: 0 8px 24px rgba(51, 36, 89, 0.16);
+  background-color: ${theme.colors.bg.brand};
   opacity: ${disabled ? 0.4 : 1};
-  cursor: ${disabled ? 'default' : 'pointer'};
+  cursor: pointer;
 
   &:active {
-    transform: ${disabled ? 'none' : 'scale(0.96)'};
+    transform: scale(0.98);
   }
-`;
-
-const iconStyle = css`
-  display: block;
-  width: 24px;
-  height: 24px;
 `;

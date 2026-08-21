@@ -23,10 +23,35 @@ public enum ErrorType {
             "Unauthorized",
             "인증 정보가 필요합니다."
     ),
+    INVALID_REFRESH_TOKEN(
+            HttpStatus.UNAUTHORIZED,
+            "Invalid refresh token",
+            "Refresh Token이 유효하지 않습니다."
+    ),
+    INVALID_CURRENT_USER(
+            HttpStatus.UNAUTHORIZED,
+            "Invalid current user",
+            "현재 로그인 사용자를 확인할 수 없습니다."
+    ),
+    GUEST_SESSION_REQUIRED(
+            HttpStatus.UNAUTHORIZED,
+            "Guest session required",
+            "게스트 세션이 필요합니다."
+    ),
+    GUEST_SESSION_EXPIRED(
+            HttpStatus.UNAUTHORIZED,
+            "Guest session expired",
+            "게스트 세션이 만료되었습니다."
+    ),
     FORBIDDEN(
             HttpStatus.FORBIDDEN,
             "Forbidden",
             "해당 리소스에 접근할 권한이 없습니다."
+    ),
+    INVALID_CSRF_TOKEN(
+            HttpStatus.FORBIDDEN,
+            "Invalid CSRF token",
+            "CSRF Token이 유효하지 않습니다."
     ),
     DIARY_NOT_FOUND(
             HttpStatus.NOT_FOUND,
@@ -52,6 +77,11 @@ public enum ErrorType {
             HttpStatus.CONFLICT,
             "Idempotency key conflict",
             "동일한 멱등성 키가 다른 요청에 사용되었습니다."
+    ),
+    GUEST_TRIAL_ALREADY_USED(
+            HttpStatus.CONFLICT,
+            "Guest trial already used",
+            "로그인 전 무료 사용 기회를 이미 사용했습니다."
     ),
     DAILY_GENERATION_LIMIT_EXCEEDED(
             HttpStatus.TOO_MANY_REQUESTS,

@@ -1,31 +1,33 @@
-import { existsSync } from 'node:fs';
 import path from 'path';
-import process, { loadEnvFile } from 'node:process';
 import { fileURLToPath } from 'url';
 import HtmlWebpackPlugin from 'html-webpack-plugin';
-import webpack from 'webpack';
+import Dotenv from 'dotenv-webpack';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const envPath = path.resolve(__dirname, '.env');
-
-if (existsSync(envPath)) {
-  loadEnvFile(envPath);
-}
-
-const backendBaseUrl = process.env.BACKEND_BASE_URL ?? 'http://localhost:8080';
-const useMsw = process.env.USE_MSW ?? 'false';
 
 export default {
   entry: './src/main.tsx',
   output: {
+    publicPath: '/',
     filename: 'bundle.js',
     path: path.resolve(__dirname, 'dist'),
-    publicPath: '/',
     clean: true,
   },
   module: {
     rules: [
+      {
+        test: /harudle-intro\.jpg$/i,
+        type: 'asset/resource',
+        generator: {
+          filename: 'harudle-intro.jpg',
+        },
+      },
+      {
+        test: /\.(png|svg|jpg|jpeg|webp)$/i,
+        exclude: /harudle-intro\.jpg$/i,
+        type: 'asset/resource',
+      },
       {
         test: /\.(ts|tsx)$/,
         exclude: /node_modules/,
@@ -35,10 +37,6 @@ export default {
           },
         ],
       },
-      {
-        test: /\.(png|svg|webp)$/i,
-        type: 'asset/resource',
-      },
     ],
   },
   devServer: {
@@ -46,12 +44,6 @@ export default {
     open: true,
     hot: true,
     historyApiFallback: true,
-    proxy: [
-      {
-        context: ['/api', '/oauth2', '/login/oauth2'],
-        target: backendBaseUrl,
-      },
-    ],
     client: {
       overlay: true,
     },
@@ -62,10 +54,8 @@ export default {
   plugins: [
     new HtmlWebpackPlugin({
       template: './index.html',
-      favicon: './src/assets/icons/favicon.png',
+      favicon: './src/assets/images/favicon.png',
     }),
-    new webpack.DefinePlugin({
-      'process.env.USE_MSW': JSON.stringify(useMsw),
-    }),
+    new Dotenv({ systemvars: true }),
   ],
 };

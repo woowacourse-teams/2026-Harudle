@@ -1,18 +1,17 @@
-import { useLocation, useNavigate } from 'react-router';
+import { useNavigate } from 'react-router';
 import FloatingActionButton from '../../shared/FloatingActionButton';
 import PageHeader from '../../shared/PageHeader';
 import DiaryInputField from './DiaryInputField';
 import { useState } from 'react';
-import { css } from '@emotion/react';
 import backIcon from '../../assets/icons/back.svg';
+import { css } from '@emotion/react';
 import { theme } from '../../styles/theme';
-import { formatKoreanDate } from '../../shared/date';
+import nextIcon from '../../assets/icons/arrow-right.svg';
 
 const DiaryWritePage = () => {
   const navigate = useNavigate();
-  const { state } = useLocation();
-  const [diaryContent, setDiaryContent] = useState<string>(
-    state?.sourceText ?? '',
+  const [diaryContent, setDiaryContent] = useState(
+    sessionStorage.getItem('diaryContent') ?? '',
   );
   const [diaryContentError, setDiaryContentError] = useState<string | null>(
     null,
@@ -21,42 +20,41 @@ const DiaryWritePage = () => {
   const handleDiarySubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (diaryContent.length < 10) {
-      setDiaryContentError('최소 10자 이상 입력해주세요.');
+      setDiaryContentError('10자 이상으로 입력해주세요!');
       return;
     }
 
-    // 데이터만 보내고, 실제 요청은 생성 페이지에서 하도록 한다.
+    sessionStorage.setItem('diaryContent', diaryContent);
+
     navigate('/diary-generating', {
       state: {
-        diaryDate: formatKoreanDate(new Date()),
+        diaryDate: new Date().toLocaleDateString('sv-SE', {
+          timeZone: 'Asia/Seoul',
+        }),
         sourceText: diaryContent,
-        idempotencyKey: crypto.randomUUID(),
       },
     });
   };
 
-  const handleDiaryContentChange = (
-    e: React.ChangeEvent<HTMLTextAreaElement>,
-  ) => {
-    setDiaryContent(e.target.value);
-    setDiaryContentError(null);
-  };
-
   return (
-    <div css={diaryWritePageStyle}>
+    <div css={pageStyle}>
       <PageHeader
-        leftButton={
+        left={
           <button
             type="button"
             aria-label="뒤로 가기"
-            css={backButtonStyle}
+            css={headerButtonStyle}
             onClick={() => navigate(-1)}
           >
-            <img src={backIcon} alt="" css={backIconStyle} />
+            <img
+              src={backIcon}
+              alt="뒤로가기 아이콘"
+              css={headerButtonIconStyle}
+            />
           </button>
         }
-        title="새 일기 쓰기"
-        rightButton={null}
+        title={'새 일기 쓰기'}
+        right={null}
       />
 
       <main css={contentStyle}>
@@ -66,18 +64,20 @@ const DiaryWritePage = () => {
           자유롭게 적어주세요!
         </h2>
 
-        <form onSubmit={handleDiarySubmit}>
+        <form css={formStyle} onSubmit={handleDiarySubmit}>
           <DiaryInputField
             diaryContent={diaryContent}
-            error={diaryContentError}
-            onDiaryContentChange={handleDiaryContentChange}
+            onDiaryContentChange={(e) => {
+              setDiaryContentError(null);
+              setDiaryContent(e.target.value);
+            }}
+            diaryContentError={diaryContentError}
           />
 
           <FloatingActionButton
-            type="submit"
-            icon="arrow-right"
             onClick={() => {}}
-            disabled={diaryContent.length === 0}
+            icon={<img css={nextIconStyle} src={nextIcon} />}
+            disabled={false}
           />
         </form>
       </main>
@@ -87,7 +87,7 @@ const DiaryWritePage = () => {
 
 export default DiaryWritePage;
 
-const diaryWritePageStyle = css`
+const pageStyle = css`
   position: relative;
   display: flex;
   flex-direction: column;
@@ -95,13 +95,12 @@ const diaryWritePageStyle = css`
   gap: 14px;
   width: 100%;
   height: 100%;
-  padding: 12px 20px 10px;
+  padding: 20px;
   overflow: hidden;
-  background-color: ${theme.colors.background};
-  box-sizing: border-box;
+  background-color: #ffffff;
 `;
 
-const backButtonStyle = css`
+const headerButtonStyle = css`
   display: flex;
   align-items: center;
   justify-content: center;
@@ -113,7 +112,7 @@ const backButtonStyle = css`
   cursor: pointer;
 `;
 
-const backIconStyle = css`
+const headerButtonIconStyle = css`
   width: 24px;
   height: 24px;
 `;
@@ -121,16 +120,24 @@ const backIconStyle = css`
 const contentStyle = css`
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 14px;
+  gap: 12px;
   width: 100%;
+  height: 100%;
 `;
 
 const promptTitleStyle = css`
-  color: ${theme.colors.textPrimary};
-  font-family: 'Noto Sans KR', sans-serif;
+  color: ${theme.colors.text.primary};
   font-size: 22px;
   font-weight: 700;
   line-height: 34px;
   text-align: center;
+`;
+
+const formStyle = css`
+  width: 100%;
+`;
+
+const nextIconStyle = css`
+  width: 24px;
+  height: 24px;
 `;

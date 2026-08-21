@@ -1,33 +1,22 @@
 import { css } from '@emotion/react';
-import homeIcon from '../assets/icons/home.svg';
-import settingsIcon from '../assets/icons/settings.svg';
-import { theme } from '../styles/theme';
 import { useLocation, useNavigate } from 'react-router';
+import homeIcon from '../assets/icons/home.svg';
+import settingIcon from '../assets/icons/settings.svg';
+import { theme } from '../styles/theme';
 
 const BottomNavigation = () => {
-  const navigate = useNavigate();
   const { pathname } = useLocation();
-  const isHomeActive = pathname === '/';
-  const isSettingActive = pathname === '/setting';
+  const navigate = useNavigate();
 
   return (
     <nav css={bottomNavigationStyle}>
-      <button
-        type="button"
-        css={navigationItemStyle}
-        onClick={() => navigate('/')}
-      >
-        <span css={navigationIconStyle(homeIcon, isHomeActive, 32)} />
-        <span css={navigationLabelStyle(isHomeActive)}>홈</span>
+      <button css={buttonStyle} onClick={() => navigate('/')}>
+        <span css={iconStyle(homeIcon, pathname === '/')} />
+        <span css={labelStyle(pathname === '/')}>홈</span>
       </button>
-
-      <button
-        type="button"
-        css={navigationItemStyle}
-        onClick={() => navigate('/setting')}
-      >
-        <span css={navigationIconStyle(settingsIcon, isSettingActive, 28)} />
-        <span css={navigationLabelStyle(isSettingActive)}>설정</span>
+      <button css={buttonStyle} onClick={() => navigate('/setting')}>
+        <span css={iconStyle(settingIcon, pathname === '/setting')} />
+        <span css={labelStyle(pathname === '/setting')}>설정</span>
       </button>
     </nav>
   );
@@ -37,23 +26,25 @@ export default BottomNavigation;
 
 const bottomNavigationStyle = css`
   display: flex;
-  flex-shrink: 0;
+  justify-content: space-around;
+  left: 0;
+  right: 0;
+  bottom: 0;
   width: 100%;
-  height: 88px;
-  background-color: ${theme.colors.background};
+  height: 80px;
+  background-color: #ffffff;
   box-shadow: 0 -1px 2px rgba(17, 17, 24, 0.04);
 `;
 
-const navigationItemStyle = css`
-  display: flex;
+const buttonStyle = css`
   flex: 1;
+  display: flex;
   flex-direction: column;
-  align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 0;
+  align-items: center;
+  height: 100%;
   border: none;
-  background-color: transparent;
+  background: none;
   cursor: pointer;
 
   &:active {
@@ -61,23 +52,15 @@ const navigationItemStyle = css`
   }
 `;
 
-const navigationIconStyle = (
-  icon: string,
-  isActive: boolean,
-  size: number,
-) => css`
-  width: ${size}px;
-  height: ${size}px;
-  background-color: ${
-    isActive ? theme.colors.primary : theme.colors.textSecondary
-  };
+const iconStyle = (icon: string, isActive: boolean) => css`
+  display: block;
+  width: 32px;
+  height: 32px;
+  background-color: ${isActive ? theme.colors.bg.brand : '#6F6B79'};
+  -webkit-mask: url(${icon}) center / contain no-repeat;
   mask: url(${icon}) center / contain no-repeat;
 `;
 
-const navigationLabelStyle = (isActive: boolean) => css`
-  color: ${isActive ? theme.colors.accent : theme.colors.textSecondary};
-  font-family: 'Noto Sans KR', sans-serif;
-  font-size: 12px;
-  font-weight: ${isActive ? 700 : 400};
-  line-height: 18px;
+const labelStyle = (isActive: boolean) => css`
+  color: ${isActive ? theme.colors.bg.brand : '#6F6B79'};
 `;

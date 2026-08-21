@@ -1,7 +1,6 @@
 package com.harudle.diary.presentation;
 
 import com.harudle.auth.presentation.AuthenticatedUserIdResolver;
-import com.harudle.common.validation.CanonicalUuidParser;
 import com.harudle.diary.service.DiaryCreationService;
 import com.harudle.diary.service.DiaryDeletionService;
 import com.harudle.diary.service.DiaryQueryService;
@@ -67,7 +66,7 @@ class DiaryController {
                 userId,
                 request.diaryDate(),
                 request.sourceText(),
-                parseIdempotencyKey(idempotencyKey)
+                IdempotencyKeyParser.parse(idempotencyKey)
         ));
         CreateDiaryResponse response = responseAssembler.toCreateResponse(result);
         if (!result.newlyCreated()) {
@@ -106,8 +105,4 @@ class DiaryController {
         return ResponseEntity.noContent().build();
     }
 
-    private static UUID parseIdempotencyKey(String idempotencyKey) {
-        return CanonicalUuidParser.parse(idempotencyKey)
-                .orElseThrow(InvalidIdempotencyKeyException::new);
-    }
 }

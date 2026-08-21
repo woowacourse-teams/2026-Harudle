@@ -6,16 +6,17 @@ import com.harudle.auth.application.InvalidRefreshTokenException;
 import com.harudle.auth.application.RefreshedTokens;
 import com.harudle.auth.infrastructure.token.RefreshTokenCookieReader;
 import com.harudle.auth.infrastructure.token.RefreshTokenCookieWriter;
+import com.harudle.common.error.ErrorType;
+import com.harudle.common.error.ProblemDetailFactory;
+import com.harudle.common.security.LegacyCsrfCookieCleaner;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import java.net.URI;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Objects;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.CacheControl;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
@@ -35,6 +36,8 @@ public class AuthController {
     private final RefreshTokenCookieReader refreshTokenCookieReader;
     private final RefreshTokenCookieWriter refreshTokenCookieWriter;
     private final CookieCsrfTokenRepository csrfTokenRepository;
+    private final ProblemDetailFactory problemDetailFactory;
+    private final LegacyCsrfCookieCleaner legacyCsrfCookieCleaner;
     private final Clock clock;
 
     public AuthController(
@@ -42,6 +45,8 @@ public class AuthController {
             RefreshTokenCookieReader refreshTokenCookieReader,
             RefreshTokenCookieWriter refreshTokenCookieWriter,
             CookieCsrfTokenRepository csrfTokenRepository,
+            ProblemDetailFactory problemDetailFactory,
+            LegacyCsrfCookieCleaner legacyCsrfCookieCleaner,
             @Qualifier("authClock")
             Clock authClock
     ) {
@@ -49,6 +54,8 @@ public class AuthController {
         this.refreshTokenCookieReader = refreshTokenCookieReader;
         this.refreshTokenCookieWriter = refreshTokenCookieWriter;
         this.csrfTokenRepository = csrfTokenRepository;
+        this.problemDetailFactory = problemDetailFactory;
+        this.legacyCsrfCookieCleaner = legacyCsrfCookieCleaner;
         this.clock = Objects.requireNonNull(authClock, "authClock는 필수입니다.");
     }
 
@@ -58,6 +65,7 @@ public class AuthController {
             HttpServletResponse response
     ) {
         CsrfToken csrfToken = csrfTokenRepository.generateToken(request);
+        legacyCsrfCookieCleaner.clear(response);
         csrfTokenRepository.saveToken(csrfToken, request, response);
 
         return ResponseEntity.ok()
@@ -106,18 +114,11 @@ public class AuthController {
     ) {
         refreshTokenCookieWriter.clear(response);
 
-        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(
-                HttpStatus.UNAUTHORIZED,
-                "Refresh Token이 유효하지 않습니다."
-        );
-        problemDetail.setTitle(HttpStatus.UNAUTHORIZED.getReasonPhrase());
-        problemDetail.setType(URI.create("https://api.harudle.example/problems/invalid-refresh-token"));
-        problemDetail.setInstance(URI.create(request.getRequestURI()));
-        problemDetail.setProperty("code", "INVALID_REFRESH_TOKEN");
-
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+        return ResponseEntity
+                .status(ErrorType.INVALID_REFRESH_TOKEN.status())
                 .contentType(MediaType.APPLICATION_PROBLEM_JSON)
                 .cacheControl(CacheControl.noStore())
-                .body(problemDetail);
+                .body(problemDetailFactory.create(ErrorType.INVALID_REFRESH_TOKEN, request));
     }
+
 }

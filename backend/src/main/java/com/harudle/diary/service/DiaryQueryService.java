@@ -102,7 +102,9 @@ public class DiaryQueryService {
             YearMonth yearMonth,
             Map<LocalDate, List<DiarySummaryResult>> itemsByDate
     ) {
-        return IntStream.rangeClosed(1, yearMonth.lengthOfMonth())
+        int lengthOfMonth = yearMonth.lengthOfMonth();
+        return IntStream.range(0, lengthOfMonth)
+                .map(offset -> lengthOfMonth - offset)
                 .mapToObj(yearMonth::atDay)
                 .map(date -> createDay(date, itemsByDate.getOrDefault(date, List.of())))
                 .toList();

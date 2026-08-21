@@ -56,7 +56,10 @@ class DiaryCreationPersistenceTest {
     private TransactionTemplate transactionTemplate;
 
     @Autowired
-    private DiaryCreationTransactionService transactionService;
+    private MemberDiaryCreationTransactionService transactionService;
+
+    @Autowired
+    private DiaryCreationClaimService claimService;
 
     @MockitoBean
     private JwtDecoder jwtDecoder;
@@ -91,14 +94,30 @@ class DiaryCreationPersistenceTest {
     @Test
     @DisplayName("일기와 처리 중 생성 기록 및 사용량을 하나의 트랜잭션으로 선점한다")
     void claimDiaryCreationAtomically() {
-        DiaryCreationClaim claim = transactionService.claim(createCommand(), true);
+        MemberDiaryCreationClaim memberClaim = transactionService.claim(createCommand(), true);
+        DiaryCreationClaim claim = memberClaim.claim();
 
         assertThat(claim.newlyCreated()).isTrue();
         assertThat(claim.generationStatus()).isEqualTo(GenerationStatus.PROCESSING);
-        assertThat(claim.usage().usedCount()).isEqualTo(1);
+        assertThat(memberClaim.usage().usedCount()).isEqualTo(1);
         assertThat(countRows("diaries")).isEqualTo(1);
         assertThat(countRows("diary_generations")).isEqualTo(1);
         assertThat(countRows("daily_generation_usage")).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("공통 생성 선점은 일기와 생성 기록만 저장하고 사용량을 변경하지 않는다")
+    void claimDiaryCreationWithoutUsagePolicy() {
+        DiaryCreationClaim claim = transactionTemplate.execute(
+                status -> claimService.claim(createCommand(), true)
+        );
+
+        assertThat(claim).isNotNull();
+        assertThat(claim.newlyCreated()).isTrue();
+        assertThat(claim.generationStatus()).isEqualTo(GenerationStatus.PROCESSING);
+        assertThat(countRows("diaries")).isEqualTo(1);
+        assertThat(countRows("diary_generations")).isEqualTo(1);
+        assertThat(countRows("daily_generation_usage")).isZero();
     }
 
     @Test

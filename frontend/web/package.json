@@ -33,6 +33,7 @@
     "@types/react-dom": "^19.2.4",
     "babel-jest": "30.4.1",
     "babel-loader": "10.1.1",
+    "dotenv-webpack": "^9.0.0",
     "eslint": "9.39.5",
     "eslint-config-prettier": "10.1.8",
     "eslint-plugin-react": "7.37.5",
@@ -50,6 +51,8 @@
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
+    "@posthog/react": "^1.10.3",
+    "posthog-js": "^1.418.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router": "^8.3.0"

@@ -1,9 +1,12 @@
 package com.harudle.auth.infrastructure.oauth;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -21,6 +24,7 @@ import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.auth.infrastructure.token.RefreshTokenCookieWriter;
 import com.harudle.common.security.AccessTokenProperties;
 import com.harudle.common.security.AuthProperties;
+import com.harudle.common.security.LegacyCsrfCookieCleaner;
 import com.harudle.common.security.RefreshTokenProperties;
 import java.net.URI;
 import java.time.Clock;
@@ -30,6 +34,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -52,6 +57,9 @@ class OAuthLoginSuccessHandlerTest {
     private OAuthLoginService oAuthLoginService;
     private UserRepository userRepository;
     private RefreshTokenService refreshTokenService;
+    private RefreshTokenCookieWriter refreshTokenCookieWriter;
+    private OAuthFailureRedirector failureRedirector;
+    private OAuthEventLogger oAuthEventLogger;
     private OAuthLoginSuccessHandler handler;
 
     @BeforeEach
@@ -60,15 +68,20 @@ class OAuthLoginSuccessHandlerTest {
         userRepository = mock(UserRepository.class);
         refreshTokenService = mock(RefreshTokenService.class);
         AuthProperties authProperties = createAuthProperties();
+        refreshTokenCookieWriter = spy(new RefreshTokenCookieWriter(authProperties));
+        failureRedirector = spy(new OAuthFailureRedirector(authProperties));
+        oAuthEventLogger = mock(OAuthEventLogger.class);
 
         handler = new OAuthLoginSuccessHandler(
                 oAuthLoginService,
                 new KakaoLoginCommandMapper(new ObjectMapper()),
                 userRepository,
                 refreshTokenService,
-                new RefreshTokenCookieWriter(authProperties),
+                refreshTokenCookieWriter,
                 createCsrfTokenRepository(),
-                new OAuthLoginFailureHandler(authProperties),
+                new LegacyCsrfCookieCleaner(),
+                failureRedirector,
+                oAuthEventLogger,
                 authProperties,
                 FIXED_CLOCK
         );
@@ -104,7 +117,15 @@ class OAuthLoginSuccessHandlerTest {
                 .contains("HttpOnly")
                 .contains("Path=/api/v1/auth");
         assertThat(response.getHeaders(HttpHeaders.SET_COOKIE))
-                .anyMatch(cookie -> cookie.startsWith("XSRF-TOKEN="));
+                .filteredOn(cookie -> cookie.startsWith("XSRF-TOKEN=;"))
+                .singleElement()
+                .satisfies(cookie -> assertThat(cookie)
+                        .contains("Path=/api/v1/auth")
+                        .contains("Max-Age=0"));
+        assertThat(response.getHeaders(HttpHeaders.SET_COOKIE))
+                .filteredOn(cookie -> cookie.startsWith("XSRF-TOKEN=") && !cookie.contains("Max-Age=0"))
+                .singleElement()
+                .satisfies(cookie -> assertThat(cookie).contains("Path=/api/v1"));
         ArgumentCaptor<OAuthLoginCommand> commandCaptor = ArgumentCaptor.forClass(OAuthLoginCommand.class);
         verify(oAuthLoginService).login(commandCaptor.capture(), eq(LOGIN_AT));
         assertThat(commandCaptor.getValue().provider()).isEqualTo(OAuthProvider.KAKAO);
@@ -113,6 +134,36 @@ class OAuthLoginSuccessHandlerTest {
         assertThat(commandCaptor.getValue().displayName()).isEqualTo("하루들");
         verify(userRepository).findById(user.getId());
         verify(refreshTokenService).issue(user, LOGIN_AT);
+        verifyNoInteractions(oAuthEventLogger);
+    }
+
+    @Test
+    @DisplayName("OAuth 로그인 성공 응답 작성 실패는 내부 오류로 기록하고 다시 던진다")
+    void logsSuccessfulResponseWriteFailure() {
+        User user = new User("user@example.com", "하루들", LOGIN_AT);
+        OAuthLoginResult loginResult = new OAuthLoginResult(user.getId());
+        IssuedRefreshToken issuedRefreshToken = new IssuedRefreshToken(
+                "raw-refresh-token",
+                LOGIN_AT.plus(Duration.ofDays(14))
+        );
+        IllegalStateException exception = new IllegalStateException("Cookie 작성에 실패했습니다.");
+        when(oAuthLoginService.login(any(OAuthLoginCommand.class), eq(LOGIN_AT)))
+                .thenReturn(loginResult);
+        when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+        when(refreshTokenService.issue(user, LOGIN_AT)).thenReturn(issuedRefreshToken);
+        doThrow(exception).when(refreshTokenCookieWriter).write(any(), eq(issuedRefreshToken));
+
+        assertThatThrownBy(() -> handler.onAuthenticationSuccess(
+                new MockHttpServletRequest(),
+                new MockHttpServletResponse(),
+                createKakaoAuthentication()
+        )).isSameAs(exception);
+
+        verify(oAuthEventLogger).errorFailure(
+                "kakao",
+                OAuthFailureReason.INTERNAL_ERROR,
+                exception
+        );
     }
 
     @Test
@@ -132,6 +183,8 @@ class OAuthLoginSuccessHandlerTest {
         assertThat(response.getRedirectedUrl())
                 .isEqualTo("http://localhost:5173/auth/callback?error=oauth_failed");
         assertThat(response.getHeader(HttpHeaders.SET_COOKIE)).isNull();
+        verify(failureRedirector).redirect(response, OAuthFailureReason.REQUIRED_PROFILE_MISSING);
+        verify(oAuthEventLogger).infoRejected("kakao", OAuthFailureReason.REQUIRED_PROFILE_MISSING);
         verifyNoInteractions(userRepository, refreshTokenService);
     }
 
@@ -152,6 +205,8 @@ class OAuthLoginSuccessHandlerTest {
         assertThat(response.getRedirectedUrl())
                 .isEqualTo("http://localhost:5173/auth/callback?error=oauth_failed");
         assertThat(response.getHeader(HttpHeaders.SET_COOKIE)).isNull();
+        verify(failureRedirector).redirect(response, OAuthFailureReason.INACTIVE_USER);
+        verify(oAuthEventLogger).infoRejected("kakao", OAuthFailureReason.INACTIVE_USER);
         verifyNoInteractions(userRepository, refreshTokenService);
     }
 
@@ -168,7 +223,92 @@ class OAuthLoginSuccessHandlerTest {
 
         assertThat(response.getRedirectedUrl())
                 .isEqualTo("http://localhost:5173/auth/callback?error=oauth_failed");
+        verify(failureRedirector).redirect(response, OAuthFailureReason.UNSUPPORTED_PROVIDER);
+        verify(oAuthEventLogger).errorFailure(
+                eq("google"),
+                eq(OAuthFailureReason.UNSUPPORTED_PROVIDER),
+                any(UnsupportedOAuthProviderException.class)
+        );
         verifyNoInteractions(oAuthLoginService, userRepository, refreshTokenService);
+    }
+
+    @Test
+    @DisplayName("카카오 프로필이 올바르지 않으면 서비스 로그인으로 전달하지 않고 실패 URL로 이동한다")
+    void redirectsWhenProviderProfileIsInvalid() throws Exception {
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        handler.onAuthenticationSuccess(
+                new MockHttpServletRequest(),
+                response,
+                createAuthenticationWithoutId()
+        );
+
+        assertThat(response.getRedirectedUrl())
+                .isEqualTo("http://localhost:5173/auth/callback?error=oauth_failed");
+        assertThat(response.getHeader(HttpHeaders.SET_COOKIE)).isNull();
+        verify(failureRedirector).redirect(response, OAuthFailureReason.INVALID_PROVIDER_PROFILE);
+        verify(oAuthEventLogger).warnFailure(
+                eq("kakao"),
+                eq(OAuthFailureReason.INVALID_PROVIDER_PROFILE),
+                any(InvalidOAuthProfileException.class)
+        );
+        verifyNoInteractions(oAuthLoginService, userRepository, refreshTokenService);
+    }
+
+    @Test
+    @DisplayName("Refresh Token 발급 중 내부 인자 오류가 발생하면 내부 오류로 분류한다")
+    void classifiesRefreshTokenIssueFailureAsInternalError() throws Exception {
+        User user = new User("user@example.com", "하루들", LOGIN_AT);
+        OAuthLoginResult loginResult = new OAuthLoginResult(user.getId());
+        when(oAuthLoginService.login(any(OAuthLoginCommand.class), eq(LOGIN_AT)))
+                .thenReturn(loginResult);
+        when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+        when(refreshTokenService.issue(user, LOGIN_AT))
+                .thenThrow(new IllegalArgumentException("내부 토큰 불변식 오류"));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        handler.onAuthenticationSuccess(
+                new MockHttpServletRequest(),
+                response,
+                createKakaoAuthentication()
+        );
+
+        assertThat(response.getRedirectedUrl())
+                .isEqualTo("http://localhost:5173/auth/callback?error=oauth_failed");
+        assertThat(response.getHeader(HttpHeaders.SET_COOKIE)).isNull();
+        verify(failureRedirector).redirect(response, OAuthFailureReason.INTERNAL_ERROR);
+        verify(oAuthEventLogger).errorFailure(
+                eq("kakao"),
+                eq(OAuthFailureReason.INTERNAL_ERROR),
+                any(IllegalArgumentException.class)
+        );
+    }
+
+    @Test
+    @DisplayName("로그인 결과의 사용자가 없으면 내부 정합성 오류로 분류한다")
+    void classifiesMissingLoginUserAsConsistencyError() throws Exception {
+        UUID userId = UUID.randomUUID();
+        when(oAuthLoginService.login(any(OAuthLoginCommand.class), eq(LOGIN_AT)))
+                .thenReturn(new OAuthLoginResult(userId));
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        handler.onAuthenticationSuccess(
+                new MockHttpServletRequest(),
+                response,
+                createKakaoAuthentication()
+        );
+
+        assertThat(response.getRedirectedUrl())
+                .isEqualTo("http://localhost:5173/auth/callback?error=oauth_failed");
+        assertThat(response.getHeader(HttpHeaders.SET_COOKIE)).isNull();
+        verify(failureRedirector).redirect(response, OAuthFailureReason.INTERNAL_CONSISTENCY_ERROR);
+        verify(oAuthEventLogger).errorFailure(
+                eq("kakao"),
+                eq(OAuthFailureReason.INTERNAL_CONSISTENCY_ERROR),
+                any(OAuthLoginConsistencyException.class)
+        );
+        verifyNoInteractions(refreshTokenService);
     }
 
     private Authentication createKakaoAuthentication() {
@@ -198,6 +338,24 @@ class OAuthLoginSuccessHandlerTest {
         );
     }
 
+    private Authentication createAuthenticationWithoutId() {
+        Map<String, Object> attributes = Map.of(
+                "kakao_account", Map.of(
+                        "profile", Map.of("nickname", "하루들")
+                )
+        );
+        OAuth2User principal = new DefaultOAuth2User(
+                List.of(),
+                attributes,
+                "kakao_account"
+        );
+        return new OAuth2AuthenticationToken(
+                principal,
+                principal.getAuthorities(),
+                "kakao"
+        );
+    }
+
     private AuthProperties createAuthProperties() {
         return new AuthProperties(
                 List.of("http://localhost:5173"),
@@ -222,7 +380,7 @@ class OAuthLoginSuccessHandlerTest {
     private CookieCsrfTokenRepository createCsrfTokenRepository() {
         CookieCsrfTokenRepository repository = CookieCsrfTokenRepository.withHttpOnlyFalse();
         repository.setCookieName("XSRF-TOKEN");
-        repository.setCookiePath("/api/v1/auth");
+        repository.setCookiePath("/api/v1");
         repository.setCookieCustomizer(builder -> builder.sameSite("Lax"));
 
         return repository;

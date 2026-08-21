@@ -3,8 +3,8 @@ package com.harudle.auth.infrastructure.oauth;
 import com.harudle.auth.application.OAuthLoginCommand;
 import com.harudle.auth.domain.OAuthProvider;
 import java.util.Map;
-import java.util.Objects;
 import org.springframework.stereotype.Component;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
 @Component
@@ -17,19 +17,25 @@ public class KakaoLoginCommandMapper {
     }
 
     public OAuthLoginCommand map(Map<String, Object> attributes) {
-        Objects.requireNonNull(attributes, "카카오 사용자 정보는 필수입니다.");
+        if (attributes == null) {
+            throw new InvalidOAuthProfileException();
+        }
 
-        KakaoUserInfo userInfo = objectMapper.convertValue(
-                attributes,
-                KakaoUserInfo.class
-        );
+        try {
+            KakaoUserInfo userInfo = objectMapper.convertValue(
+                    attributes,
+                    KakaoUserInfo.class
+            );
 
-        return new OAuthLoginCommand(
-                OAuthProvider.KAKAO,
-                userInfo.providerSubject(),
-                userInfo.email(),
-                userInfo.nickname()
-        );
+            return new OAuthLoginCommand(
+                    OAuthProvider.KAKAO,
+                    userInfo.providerSubject(),
+                    userInfo.email(),
+                    userInfo.nickname()
+            );
+        } catch (IllegalArgumentException | JacksonException exception) {
+            throw new InvalidOAuthProfileException(exception);
+        }
     }
 
 }
