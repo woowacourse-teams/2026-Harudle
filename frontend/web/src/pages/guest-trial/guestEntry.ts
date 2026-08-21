@@ -23,6 +23,11 @@ export const checkGuestEntryAuthentication = async (): Promise<boolean> => {
       return false;
     }
 
+    if (response.status === 401 || response.status === 403) {
+      setAccessToken(null);
+      return false;
+    }
+
     if (isProblemDetails(data)) {
       throw new RequestError(data);
     }

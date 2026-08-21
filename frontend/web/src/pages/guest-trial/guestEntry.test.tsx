@@ -74,6 +74,20 @@ describe('게스트 진입 초기화', () => {
     });
   });
 
+  it.each([401, 403])(
+    'Refresh 실패 본문 형식과 관계없이 %i 응답은 비로그인 상태로 판단한다',
+    async (status) => {
+      globalThis.fetch = fetchMock;
+      fetchMock
+        .mockResolvedValueOnce(createResponse({ token: 'csrf-token' }, 200))
+        .mockResolvedValueOnce(
+          createResponse({ message: '인증 정보가 없습니다' }, status),
+        );
+
+      await expect(checkGuestEntryAuthentication()).resolves.toBe(false);
+    },
+  );
+
   it('인증 확인 후 비로그인일 때만 게스트 세션을 발급한다', async () => {
     const executionOrder: string[] = [];
     const checkAuthentication = jest.fn(async () => {
