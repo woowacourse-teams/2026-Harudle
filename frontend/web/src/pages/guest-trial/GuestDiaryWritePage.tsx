@@ -1,6 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { css } from '@emotion/react';
-import { createPortal } from 'react-dom';
 import generationStep1Image from '../../assets/images/generation-step-1-reading.png';
 import generationStep2Image from '../../assets/images/generation-step-2-writing.png';
 import generationStep3Image from '../../assets/images/generation-step-3-selecting-panels.png';
@@ -18,29 +17,12 @@ import useGuestDiaryCreation, {
 } from './useGuestDiaryCreation';
 
 const GuestDiaryWritePage = () => {
-  const landingHostRef = useRef<HTMLDivElement>(null);
   const trialCardRef = useRef<HTMLElement>(null);
-  const [landingScrollRoot, setLandingScrollRoot] =
-    useState<HTMLElement | null>(null);
-  const [heroActionRoot, setHeroActionRoot] = useState<HTMLElement | null>(
-    null,
-  );
   const { creationState, submitDiary, retryDiary } = useGuestDiaryCreation({
     enabled: true,
   });
   const [sourceText, setSourceText] = useState('');
   const [sourceTextError, setSourceTextError] = useState<string | null>(null);
-
-  useLayoutEffect(() => {
-    const landingHost = landingHostRef.current;
-
-    setLandingScrollRoot(landingHost?.querySelector('main') ?? null);
-    setHeroActionRoot(
-      landingHost?.querySelector(
-        '[aria-labelledby="landing-hero-title"] > div:last-child',
-      ) ?? null,
-    );
-  }, []);
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -57,48 +39,42 @@ const GuestDiaryWritePage = () => {
   };
 
   return (
-    <div ref={landingHostRef} css={landingHostStyle}>
-      <LandingPage />
-      {heroActionRoot
-        ? createPortal(
-            <button
-              type="button"
-              css={trialStartButtonStyle}
-              onClick={() => {
-                trialCardRef.current?.scrollIntoView({
-                  behavior: 'smooth',
-                  block: 'start',
-                });
-              }}
-            >
-              무료로 사용해보기
-            </button>,
-            heroActionRoot,
-          )
-        : null}
-      {landingScrollRoot
-        ? createPortal(
-            <section
-              ref={trialCardRef}
-              css={trialFormSectionStyle}
-              aria-label="무료 네컷 체험"
-            >
-              <GuestTrialCard
-                creationState={creationState}
-                sourceText={sourceText}
-                sourceTextError={sourceTextError}
-                onSourceTextChange={(value) => {
-                  setSourceText(value);
-                  setSourceTextError(null);
-                }}
-                onSubmit={handleSubmit}
-                onRetry={() => void retryDiary()}
-              />
-            </section>,
-            landingScrollRoot,
-          )
-        : null}
-    </div>
+    <LandingPage
+      heroAction={
+        <button
+          type="button"
+          css={trialStartButtonStyle}
+          onClick={() => {
+            trialCardRef.current?.scrollIntoView({
+              behavior: 'smooth',
+              block: 'start',
+            });
+          }}
+        >
+          무료로 사용해보기
+        </button>
+      }
+      finalAction={null}
+      trialSection={
+        <section
+          ref={trialCardRef}
+          css={trialFormSectionStyle}
+          aria-label="무료 네컷 체험"
+        >
+          <GuestTrialCard
+            creationState={creationState}
+            sourceText={sourceText}
+            sourceTextError={sourceTextError}
+            onSourceTextChange={(value) => {
+              setSourceText(value);
+              setSourceTextError(null);
+            }}
+            onSubmit={handleSubmit}
+            onRetry={() => void retryDiary()}
+          />
+        </section>
+      }
+    />
   );
 };
 
@@ -354,24 +330,6 @@ const GuestTrialErrorCard = ({
     </div>
   );
 };
-
-const landingHostStyle = css`
-  width: 100%;
-  height: 100%;
-
-  [aria-labelledby='landing-final-title'] {
-    padding-bottom: 28px;
-    border-bottom: none;
-  }
-
-  [aria-labelledby='landing-final-title'] > a {
-    display: none;
-  }
-
-  [aria-labelledby='landing-hero-title'] a[href='/oauth2/authorization/kakao'] {
-    display: none;
-  }
-`;
 
 const trialStartButtonStyle = css`
   display: flex;

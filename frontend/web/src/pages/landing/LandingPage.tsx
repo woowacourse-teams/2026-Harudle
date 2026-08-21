@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { css } from '@emotion/react';
 import emptyPersonAndDog from '../../assets/images/empty-person-and-dog.png';
 import harudleLogo from '../../assets/images/harudle-logo.png';
@@ -43,7 +43,17 @@ const processSteps = [
   },
 ];
 
-const LandingPage = () => {
+interface LandingPageProps {
+  heroAction?: ReactNode;
+  finalAction?: ReactNode;
+  trialSection?: ReactNode;
+}
+
+const LandingPage = ({
+  heroAction = <GuestLoginCta label="카카오로 시작하기" />,
+  finalAction = <GuestLoginCta label="카카오로 시작하기" />,
+  trialSection,
+}: LandingPageProps) => {
   const pageRef = useRef<HTMLElement>(null);
   const showcaseRef = useRef<HTMLElement>(null);
   const processRef = useRef<HTMLElement>(null);
@@ -155,7 +165,7 @@ const LandingPage = () => {
             decoding="async"
             css={heroIllustrationStyle}
           />
-          <GuestLoginCta label="카카오로 시작하기" />
+          {heroAction}
         </div>
       </section>
 
@@ -268,8 +278,9 @@ const LandingPage = () => {
           <br />
           친구에게 공유해보세요
         </h2>
-        <GuestLoginCta label="카카오로 시작하기" />
+        {finalAction}
       </section>
+      {trialSection}
     </main>
   );
 };

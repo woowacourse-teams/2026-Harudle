@@ -2,7 +2,7 @@ import { css } from '@emotion/react';
 import kakaoIcon from '../../assets/icons/kakao.svg';
 import { theme } from '../../styles/theme';
 
-export const KAKAO_OAUTH_PATH = '/oauth2/authorization/kakao';
+const KAKAO_OAUTH_PATH = '/oauth2/authorization/kakao';
 
 const GuestLoginCta = ({ label }: { label: string }) => {
   return (

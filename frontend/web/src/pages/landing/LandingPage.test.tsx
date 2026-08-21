@@ -18,6 +18,26 @@ jest.mock('./assets/guest-diary-friend.jpg', () => 'guest-diary-friend.jpg');
 jest.mock('./assets/guest-diary-workout.png', () => 'guest-diary-workout.png');
 
 describe('로그인 유도 랜딩 페이지', () => {
+  it('호출부가 히어로 액션과 마지막 콘텐츠를 명시적으로 구성할 수 있다', () => {
+    render(
+      <LandingPage
+        heroAction={<button type="button">무료로 사용해보기</button>}
+        finalAction={null}
+        trialSection={<section aria-label="무료 네컷 체험" />}
+      />,
+    );
+
+    expect(
+      screen.getByRole('button', { name: '무료로 사용해보기' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: '카카오로 시작하기' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('region', { name: '무료 네컷 체험' }),
+    ).toBeInTheDocument();
+  });
+
   it('일상을 그림으로 만드는 핵심 가치를 안내한다', () => {
     render(<LandingPage />);
 
