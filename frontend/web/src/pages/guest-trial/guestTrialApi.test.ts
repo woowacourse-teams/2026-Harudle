@@ -32,6 +32,7 @@ const createResponse = (data: unknown, status: number): Response => {
 };
 
 const fetchMock = jest.fn<typeof fetch>();
+const originalFetch = globalThis.fetch;
 
 const mockFetch = (
   responses: Response[],
@@ -43,6 +44,7 @@ const mockFetch = (
 };
 
 afterEach(() => {
+  globalThis.fetch = originalFetch;
   fetchMock.mockReset();
   jest.restoreAllMocks();
 });

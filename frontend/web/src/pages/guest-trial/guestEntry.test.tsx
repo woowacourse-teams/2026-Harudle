@@ -23,6 +23,7 @@ const createResponse = (data: unknown, status: number): Response => {
 };
 
 const fetchMock = jest.fn<typeof fetch>();
+const originalFetch = globalThis.fetch;
 
 const GuestEntryProbe = ({
   initialize,
@@ -35,6 +36,7 @@ const GuestEntryProbe = ({
 };
 
 afterEach(() => {
+  globalThis.fetch = originalFetch;
   fetchMock.mockReset();
   mockNavigate.current = jest.fn();
 });
