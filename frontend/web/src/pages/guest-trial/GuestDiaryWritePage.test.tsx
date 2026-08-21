@@ -9,7 +9,7 @@ import {
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import GuestDiaryWritePage from './GuestDiaryWritePage';
-import { createGuestTrialAlreadyUsedError } from './guestTrialErrors';
+import { GuestTrialAlreadyUsedError } from './guestTrialErrors';
 import type { GuestDiaryRequest, GuestDiaryResponse } from './guestTrialApi';
 import { getKoreanToday } from './guestDiaryValidation';
 import type { GuestDiaryCreationState } from './useGuestDiaryCreation';
@@ -269,7 +269,7 @@ describe('게스트 체험 랜딩 작성 화면', () => {
   it('이미 사용한 상태에서는 첫 화면부터 완료 안내만 보여준다', () => {
     mockCreationState.current = {
       status: 'error',
-      error: createGuestTrialAlreadyUsedError(),
+      error: new GuestTrialAlreadyUsedError(),
     };
 
     render(<GuestDiaryWritePage />);

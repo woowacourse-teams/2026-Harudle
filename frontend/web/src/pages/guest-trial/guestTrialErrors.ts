@@ -7,10 +7,6 @@ export class GuestTrialAlreadyUsedError extends Error {
   }
 }
 
-export const createGuestTrialAlreadyUsedError = (): Error => {
-  return new GuestTrialAlreadyUsedError();
-};
-
 export const isGuestTrialAlreadyUsedError = (error: unknown): boolean => {
   return (
     error instanceof GuestTrialAlreadyUsedError ||

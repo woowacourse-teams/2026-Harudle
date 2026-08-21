@@ -1,7 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 import { RequestError, type ProblemDetails } from '../../shared/api';
 import {
-  createGuestTrialAlreadyUsedError,
+  GuestTrialAlreadyUsedError,
   isGuestTrialAlreadyUsedError,
 } from './guestTrialErrors';
 
@@ -27,8 +27,8 @@ describe('게스트 체험 오류', () => {
         new RequestError(createProblem('GENERATION_IN_PROGRESS')),
       ),
     ).toBe(false);
-    expect(
-      isGuestTrialAlreadyUsedError(createGuestTrialAlreadyUsedError()),
-    ).toBe(true);
+    expect(isGuestTrialAlreadyUsedError(new GuestTrialAlreadyUsedError())).toBe(
+      true,
+    );
   });
 });

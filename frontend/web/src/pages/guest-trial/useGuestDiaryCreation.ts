@@ -13,7 +13,7 @@ import {
   type PendingGuestDiary,
 } from './pendingGuestDiary';
 import {
-  createGuestTrialAlreadyUsedError,
+  GuestTrialAlreadyUsedError,
   isGuestTrialAlreadyUsedError,
 } from './guestTrialErrors';
 import { hasUsedGuestTrial, markGuestTrialUsed } from './guestTrialUsage';
@@ -52,7 +52,7 @@ const getInitialGuestDiaryCreation = (
       pendingDiary: null,
       creationState: {
         status: 'error',
-        error: createGuestTrialAlreadyUsedError(),
+        error: new GuestTrialAlreadyUsedError(),
       },
     };
   }
