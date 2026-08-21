@@ -187,10 +187,15 @@ const GuestTrialCard = ({
 
 const GuestTrialGeneratingCard = () => {
   const [stepIndex, setStepIndex] = useState(0);
+  const [showExtendedWaitMessage, setShowExtendedWaitMessage] = useState(false);
 
   useEffect(() => {
     if (stepIndex >= generationSteps.length - 1) {
-      return;
+      const timeoutId = window.setTimeout(() => {
+        setShowExtendedWaitMessage(true);
+      }, 6_000);
+
+      return () => window.clearTimeout(timeoutId);
     }
 
     const timeoutId = window.setTimeout(() => {
@@ -218,6 +223,11 @@ const GuestTrialGeneratingCard = () => {
 
       <img src={currentStep.image} alt="" css={generationImageStyle} />
       <p css={generationMessageStyle}>{currentStep.message}</p>
+      {showExtendedWaitMessage ? (
+        <p css={extendedWaitMessageStyle}>
+          거의 다 됐어요 조금만 더 기다려주세요
+        </p>
+      ) : null}
 
       <div css={generationStepperWrapperStyle}>
         <DiaryGenerateStepper loadingStep={stepIndex + 1} />
@@ -525,6 +535,15 @@ const generationMessageStyle = css`
   font-size: 18px;
   font-weight: 700;
   line-height: 26px;
+  text-align: center;
+  word-break: keep-all;
+`;
+
+const extendedWaitMessageStyle = css`
+  margin: -12px 0 0;
+  color: ${theme.colors.text.secondary};
+  font-size: 14px;
+  line-height: 22px;
   text-align: center;
   word-break: keep-all;
 `;

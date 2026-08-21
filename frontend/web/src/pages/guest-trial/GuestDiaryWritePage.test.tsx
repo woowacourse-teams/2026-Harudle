@@ -1,5 +1,12 @@
-import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  jest,
+} from '@jest/globals';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import GuestDiaryWritePage from './GuestDiaryWritePage';
 import { createGuestTrialAlreadyUsedError } from './guestTrialErrors';
@@ -95,6 +102,10 @@ beforeEach(() => {
   mockRetryDiary.current = jest.fn(async () => {});
   mockScrollIntoView.current = jest.fn();
   HTMLElement.prototype.scrollIntoView = mockScrollIntoView.current;
+});
+
+afterEach(() => {
+  jest.useRealTimers();
 });
 
 describe('게스트 체험 랜딩 작성 화면', () => {
@@ -225,6 +236,34 @@ describe('게스트 체험 랜딩 작성 화면', () => {
     expect(
       screen.queryByRole('link', { name: '로그인하고 무료로 더 만들기' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('마지막 생성 단계가 길어지면 추가 대기 안내를 보여준다', () => {
+    jest.useFakeTimers();
+    mockCreationState.current = { status: 'generating' };
+
+    render(<GuestDiaryWritePage />);
+
+    for (let step = 0; step < 3; step += 1) {
+      act(() => {
+        jest.advanceTimersByTime(3_000);
+      });
+    }
+
+    expect(
+      screen.getByText('색을 더하고 다듬어 네컷 그림을 완성하고 있어요'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('거의 다 됐어요 조금만 더 기다려주세요'),
+    ).not.toBeInTheDocument();
+
+    act(() => {
+      jest.advanceTimersByTime(6_000);
+    });
+
+    expect(
+      screen.getByText('거의 다 됐어요 조금만 더 기다려주세요'),
+    ).toBeInTheDocument();
   });
 
   it('이미 사용한 상태에서는 첫 화면부터 완료 안내만 보여준다', () => {
