@@ -25,7 +25,7 @@ public interface DiaryQueryRepository extends Repository<Diary, UUID> {
             WHERE diary.userId = :userId
               AND diary.diaryDate BETWEEN :startDate AND :endDate
               AND diary.deletedAt IS NULL
-            ORDER BY diary.diaryDate ASC, diary.createdAt ASC, diary.id ASC
+            ORDER BY diary.diaryDate DESC, diary.createdAt DESC, diary.id DESC
             """)
     List<DiarySnapshot> findMonthlySnapshots(
             @Param("userId") UUID userId,

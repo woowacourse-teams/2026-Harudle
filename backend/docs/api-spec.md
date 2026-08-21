@@ -455,7 +455,8 @@ Query Parameter:
 | `year` | O | 조회 연도 |
 | `month` | O | 조회 월, 1~12 |
 
-해당 월의 모든 날짜를 반환합니다. 일기가 없는 날짜도 `exist: false`로 포함합니다.
+해당 월의 모든 날짜를 최신 날짜부터 내림차순으로 반환합니다. 일기가 없는 날짜도 `exist: false`로 포함하며,
+같은 날짜의 일기는 생성 시각이 최신인 순서로 반환합니다.
 
 ```http
 HTTP/1.1 200 OK
@@ -466,11 +467,6 @@ HTTP/1.1 200 OK
   "year": 2026,
   "month": 8,
   "days": [
-    {
-      "date": "2026-08-05",
-      "exist": false,
-      "items": []
-    },
     {
       "date": "2026-08-06",
       "exist": true,
@@ -486,6 +482,11 @@ HTTP/1.1 200 OK
           "thumbnailUrl": "https://presigned-s3-url.example/..."
         }
       ]
+    },
+    {
+      "date": "2026-08-05",
+      "exist": false,
+      "items": []
     }
   ]
 }
