@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.diary.repository.DiarySnapshot;
+import com.harudle.diary.service.dto.DiaryDayResult;
 import com.harudle.diary.service.dto.DiaryDetailResult;
 import com.harudle.diary.service.dto.DiaryTimelineResult;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
@@ -16,6 +17,7 @@ import com.harudle.generation.repository.DiaryGenerationRepository;
 import com.harudle.generation.repository.DiaryGenerationSnapshot;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -53,7 +55,7 @@ class DiaryQueryServiceTest {
     }
 
     @Test
-    @DisplayName("윤년의 모든 날짜와 성공한 일기를 월간 타임라인으로 조회한다")
+    @DisplayName("윤년의 모든 날짜와 성공한 일기를 최신순 월간 타임라인으로 조회한다")
     void getTimelineIncludesEveryDayOfLeapMonth() {
         DiarySnapshot diary = createDiarySnapshot(DIARY_ID, USER_ID);
         DiarySnapshot secondDiary = createDiarySnapshot(SECOND_DIARY_ID, USER_ID);
@@ -73,17 +75,24 @@ class DiaryQueryServiceTest {
                 USER_ID,
                 LocalDate.of(2028, 2, 1),
                 LocalDate.of(2028, 2, 29)
-        )).thenReturn(List.of(diary, secondDiary));
+        )).thenReturn(List.of(secondDiary, diary));
         when(diaryGenerationRepository.findSnapshotsByDiaryIdInAndStatus(
-                List.of(DIARY_ID, SECOND_DIARY_ID),
+                List.of(SECOND_DIARY_ID, DIARY_ID),
                 GenerationStatus.SUCCEEDED
         )).thenReturn(List.of(generation, secondGeneration));
 
         DiaryTimelineResult result = diaryQueryService.getTimeline(USER_ID, 2028, 2);
 
         assertThat(result.days()).hasSize(29);
-        assertThat(result.days().get(5).hasItems()).isTrue();
-        assertThat(result.days().get(5).items())
+        assertThat(result.days())
+                .extracting(DiaryDayResult::date)
+                .isSortedAccordingTo(Comparator.reverseOrder());
+        DiaryDayResult diaryDay = result.days().stream()
+                .filter(day -> day.date().equals(DIARY_DATE))
+                .findFirst()
+                .orElseThrow();
+        assertThat(diaryDay.hasItems()).isTrue();
+        assertThat(diaryDay.items())
                 .extracting(
                         item -> item.id(),
                         item -> item.title(),
@@ -91,17 +100,18 @@ class DiaryQueryServiceTest {
                 )
                 .containsExactly(
                         tuple(
-                                DIARY_ID,
-                                "친구와 보낸 하루",
-                                "generated/comic.png"
-                        ),
-                        tuple(
                                 SECOND_DIARY_ID,
                                 "산책으로 마무리한 하루",
                                 "generated/second-comic.png"
+                        ),
+                        tuple(
+                                DIARY_ID,
+                                "친구와 보낸 하루",
+                                "generated/comic.png"
                         )
                 );
-        assertThat(result.days().getFirst().hasItems()).isFalse();
+        assertThat(result.days().getFirst().date()).isEqualTo(LocalDate.of(2028, 2, 29));
+        assertThat(result.days().getLast().date()).isEqualTo(LocalDate.of(2028, 2, 1));
     }
 
     @Test
