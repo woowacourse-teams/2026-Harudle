@@ -32,7 +32,15 @@ const GuestDiaryResultPage = () => {
         <p css={feedbackMessageStyle}>{resultRequest.error.message}</p>
         {isGuestTrialAlreadyUsedError(resultRequest.error) ? (
           <GuestLoginCta label="카카오로 로그인하기" />
-        ) : null}
+        ) : (
+          <button
+            type="button"
+            css={feedbackRetryButtonStyle}
+            onClick={retryResult}
+          >
+            다시 시도
+          </button>
+        )}
       </div>
     );
   }

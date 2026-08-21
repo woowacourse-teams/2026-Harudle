@@ -93,4 +93,24 @@ describe('게스트 일기 결과 화면', () => {
 
     expect(mockRetryResult).toHaveBeenCalledTimes(1);
   });
+
+  it('결과 조회 실패를 안내하고 다시 조회한다', async () => {
+    const user = userEvent.setup();
+    mockResultRequest.current = {
+      status: 'error',
+      error: new Error('결과 조회에 실패했습니다'),
+    };
+
+    render(<GuestDiaryResultPage />);
+
+    expect(
+      screen.getByRole('heading', {
+        name: '그림 일기를 불러오지 못했어요',
+      }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '다시 시도' }));
+
+    expect(mockRetryResult).toHaveBeenCalledTimes(1);
+  });
 });
