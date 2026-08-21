@@ -166,6 +166,38 @@ describe('게스트 체험 랜딩 작성 화면', () => {
     });
   });
 
+  it('10자 미만 입력은 생성하지 않고 다시 입력하면 오류 안내를 해제한다', async () => {
+    const user = userEvent.setup();
+    render(<GuestDiaryWritePage />);
+    const textbox = screen.getByRole('textbox', { name: '이야기' });
+
+    await user.type(textbox, '짧은 일기');
+    await user.click(screen.getByRole('button', { name: '네컷 그림 만들기' }));
+
+    expect(mockSubmitDiary.current).not.toHaveBeenCalled();
+    expect(
+      screen.getByText('오늘의 이야기를 10자 이상 적어주세요'),
+    ).toBeInTheDocument();
+    expect(textbox).toHaveAttribute(
+      'aria-describedby',
+      'guest-diary-source-text-error',
+    );
+
+    await user.clear(textbox);
+    await user.type(textbox, '친구와 함께 오래 산책했던 하루였다');
+
+    expect(
+      screen.queryByText('오늘의 이야기를 10자 이상 적어주세요'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText('10자 이상 300자 이하로 적어주세요'),
+    ).toBeInTheDocument();
+    expect(textbox).toHaveAttribute(
+      'aria-describedby',
+      'guest-diary-source-text-hint',
+    );
+  });
+
   it('생성 중에는 랜딩을 유지한 채 작성 카드만 대기 화면으로 바꾼다', () => {
     mockCreationState.current = { status: 'generating' };
 
