@@ -253,7 +253,9 @@ describe('게스트 체험 MSW 시나리오', () => {
       responses.map((response) => response.json()),
     );
 
-    expect(responses.map(({ status }) => status).sort()).toEqual([200, 201]);
+    expect(responses.map(({ status }) => status).sort((a, b) => a - b)).toEqual(
+      [200, 201],
+    );
     expect(responseBodies[0]).toEqual(responseBodies[1]);
   });
 
@@ -268,7 +270,9 @@ describe('게스트 체험 MSW 시나리오', () => {
     ]);
     const rejectedResponse = responses.find(({ status }) => status === 409);
 
-    expect(responses.map(({ status }) => status).sort()).toEqual([201, 409]);
+    expect(responses.map(({ status }) => status).sort((a, b) => a - b)).toEqual(
+      [201, 409],
+    );
     expect(rejectedResponse).toBeDefined();
     await expect(rejectedResponse?.json()).resolves.toMatchObject({
       code: 'GUEST_TRIAL_ALREADY_USED',
