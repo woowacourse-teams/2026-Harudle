@@ -62,6 +62,7 @@ const diaryDetailErrorStyle = css`
   width: 100%;
   height: 100%;
   padding: 24px 20px;
+  overflow-y: auto;
 `;
 
 const headerButtonStyle = css`
