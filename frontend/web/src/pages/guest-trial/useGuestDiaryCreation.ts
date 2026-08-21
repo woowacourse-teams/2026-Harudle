@@ -156,8 +156,14 @@ const useGuestDiaryCreation = ({
           pendingDiaryRef.current = null;
         }
 
-        if (isMountedRef.current && error instanceof Error) {
-          setCreationState({ status: 'error', error });
+        if (isMountedRef.current) {
+          setCreationState({
+            status: 'error',
+            error:
+              error instanceof Error
+                ? error
+                : new Error('게스트 일기 생성에 실패했습니다'),
+          });
         }
       }
     },

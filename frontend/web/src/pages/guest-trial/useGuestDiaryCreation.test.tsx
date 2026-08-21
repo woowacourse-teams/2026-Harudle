@@ -171,6 +171,30 @@ describe('게스트 일기 생성 상태 머신', () => {
     expect(result.current.creationState.status).toBe('success');
   });
 
+  it('Error가 아닌 생성 실패도 오류 상태로 전환한다', async () => {
+    const storage = createMemoryStorage();
+    const createDiary = jest
+      .fn<CreateGuestDiary>()
+      .mockRejectedValue('unknown failure');
+    const { result } = renderHook(() =>
+      useGuestDiaryCreation({
+        enabled: true,
+        storage,
+        createDiary,
+        createIdempotencyKey: () => '7e5cc251-fdde-4cc0-a54e-2c8142750609',
+      }),
+    );
+
+    await act(async () => {
+      await result.current.submitDiary(request);
+    });
+
+    expect(result.current.creationState).toEqual({
+      status: 'error',
+      error: new Error('게스트 일기 생성에 실패했습니다'),
+    });
+  });
+
   it('새로고침 후 pending 요청을 같은 키로 자동 복원한다', async () => {
     const storage = createMemoryStorage();
     storage.setItem(
