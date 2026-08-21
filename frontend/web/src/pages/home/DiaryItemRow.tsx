@@ -72,6 +72,10 @@ const diaryItemRowStyle = css`
     background: #ded8ff;
   }
 
+  &:not(:first-of-type)::before {
+    top: -12px;
+  }
+
   &::after {
     content: '';
     position: absolute;
@@ -116,6 +120,7 @@ const dateStyle = css`
 `;
 
 const titleStyle = css`
+  display: -webkit-box;
   max-height: 60px;
   overflow: hidden;
   color: ${theme.colors.text.primary};
@@ -123,12 +128,15 @@ const titleStyle = css`
   font-weight: 500;
   line-height: 24px;
   word-break: keep-all;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 `;
 
 const thumbnailStyle = css`
-  width: 70px;
-  height: 70px;
+  flex: 0 0 130px;
+  width: 130px;
+  height: 80px;
   border-radius: 12px;
-  object-fit: contain;
+  object-fit: cover;
   box-sizing: border-box;
 `;

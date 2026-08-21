@@ -66,27 +66,27 @@ export default HomePage;
 const RemainingGenerationUsageCard = () => {
   const { generationUsageRequest } = useGenrationUsage();
 
-  if (
+  const showFallback =
     generationUsageRequest.status === 'idle' ||
-    generationUsageRequest.status === 'loading'
-  ) {
-    return <div>-</div>;
-  }
+    generationUsageRequest.status === 'loading';
 
   if (generationUsageRequest.status === 'error') {
     return <div>{generationUsageRequest.error.message}</div>;
   }
-
-  const generationUsage = generationUsageRequest.data;
 
   return (
     <div css={generationUsageCardStyle}>
       <img src={eventAvailableIcon} />
       <span>
         오늘 남은 생성{' '}
-        <span css={generationUsageTextStyle(generationUsage > 0)}>
-          {generationUsage}회
-        </span>
+        {showFallback ? (
+          <span>-</span>
+        ) : (
+          <span css={generationUsageTextStyle(generationUsageRequest.data > 0)}>
+            {generationUsageRequest.data}
+          </span>
+        )}
+        회
       </span>
     </div>
   );

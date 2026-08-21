@@ -9,6 +9,7 @@ import { theme } from '../../styles/theme';
 import useDiaryDelete from './useDiaryDelete';
 import DiaryShareButton from './DiaryShareButton';
 import DiaryImageDownloadButton from './DiaryImageDownloadButton';
+import DiaryDetailError from './DiaryDetailError';
 
 const DiaryDetailPage = () => {
   const navigate = useNavigate();
@@ -28,7 +29,7 @@ const DiaryDetailPage = () => {
   }
 
   if (diaryDetailReqeust.status === 'error') {
-    return <div>{diaryDetailReqeust.error.message}</div>;
+    return <DiaryDetailError errorMessage={diaryDetailReqeust.error.message} />;
   }
 
   if (diaryDeleteRequest.status === 'error') {
