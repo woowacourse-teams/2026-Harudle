@@ -15,7 +15,7 @@ const DiaryImageDownloadButton = ({ imageUrl }: { imageUrl: string }) => {
     });
 
     try {
-      const response = await fetch(imageUrl);
+      const response = await fetch(imageUrl, { cache: 'no-store' });
 
       if (!response.ok) {
         throw new Error('이미지 저장에 실패했습니다.');
