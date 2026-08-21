@@ -584,7 +584,7 @@ const processSectionStyle = css`
   display: flex;
   flex-direction: column;
   gap: 28px;
-  margin-top: -176px;
+  margin-top: clamp(-360px, -32svh, -240px);
   padding: 64px 24px 48px;
   border-radius: 24px 24px 0 0;
   background-color: #ffffff;
