@@ -106,6 +106,34 @@ describe('게스트 일기 생성 상태 머신', () => {
     expect(storage.getItem(GUEST_TRIAL_USED_STORAGE_KEY)).toBe('true');
   });
 
+  it('성공 후 pending 정리에 실패해도 생성 결과를 보여준다', async () => {
+    const storage = createMemoryStorage();
+    storage.removeItem = () => {
+      throw new Error('Storage remove failed');
+    };
+    const createDiary = jest
+      .fn<CreateGuestDiary>()
+      .mockResolvedValue(guestDiaryResponse);
+    const { result } = renderHook(() =>
+      useGuestDiaryCreation({
+        enabled: true,
+        storage,
+        createDiary,
+        createIdempotencyKey: () => '7e5cc251-fdde-4cc0-a54e-2c8142750609',
+      }),
+    );
+
+    await act(async () => {
+      await result.current.submitDiary(request);
+    });
+
+    expect(result.current.creationState).toEqual({
+      status: 'success',
+      data: guestDiaryResponse,
+    });
+    expect(storage.getItem(GUEST_TRIAL_USED_STORAGE_KEY)).toBe('true');
+  });
+
   it('네트워크 실패 후 재시도해도 같은 Idempotency Key를 사용한다', async () => {
     const storage = createMemoryStorage();
     const createDiary = jest

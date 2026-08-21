@@ -131,7 +131,13 @@ const useGuestDiaryCreation = ({
         );
 
         markGuestTrialUsed(storage);
-        clearPendingGuestDiary(storage);
+
+        try {
+          clearPendingGuestDiary(storage);
+        } catch {
+          // Storage 정리 실패가 이미 완료된 생성 결과를 가리지 않게 한다.
+        }
+
         pendingDiaryRef.current = null;
 
         if (isMountedRef.current) {
