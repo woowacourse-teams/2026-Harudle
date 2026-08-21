@@ -10,7 +10,7 @@ import useGuestDiaryResult from './useGuestDiaryResult';
 
 const GuestDiaryResultPage = () => {
   const { diaryId } = useParams();
-  const { resultRequest } = useGuestDiaryResult({ diaryId });
+  const { resultRequest, retryResult } = useGuestDiaryResult({ diaryId });
 
   if (resultRequest.status === 'idle' || resultRequest.status === 'loading') {
     return (
@@ -37,20 +37,24 @@ const GuestDiaryResultPage = () => {
     );
   }
 
-  return <GuestDiaryResult diary={resultRequest.data} />;
+  return <GuestDiaryResult diary={resultRequest.data} onRetry={retryResult} />;
 };
 
-const GuestDiaryResult = ({ diary }: { diary: GuestDiaryResponse }) => {
+const GuestDiaryResult = ({
+  diary,
+  onRetry,
+}: {
+  diary: GuestDiaryResponse;
+  onRetry: () => void;
+}) => {
   const [imageStatus, setImageStatus] = useState<
     'loading' | 'loaded' | 'error'
   >('loading');
-  const [imageLoadAttempt, setImageLoadAttempt] = useState(0);
 
   if (imageStatus === 'loading') {
     return (
       <div css={feedbackPageStyle}>
         <img
-          key={imageLoadAttempt}
           src={diary.generation.imageUrl}
           alt=""
           aria-hidden="true"
@@ -70,14 +74,7 @@ const GuestDiaryResult = ({ diary }: { diary: GuestDiaryResponse }) => {
       <div css={feedbackPageStyle} role="alert">
         <h1 css={feedbackTitleStyle}>결과 이미지를 불러오지 못했어요</h1>
         <p css={feedbackMessageStyle}>잠시 후 다시 시도해주세요</p>
-        <button
-          type="button"
-          css={feedbackRetryButtonStyle}
-          onClick={() => {
-            setImageLoadAttempt((attempt) => attempt + 1);
-            setImageStatus('loading');
-          }}
-        >
+        <button type="button" css={feedbackRetryButtonStyle} onClick={onRetry}>
           다시 시도
         </button>
       </div>

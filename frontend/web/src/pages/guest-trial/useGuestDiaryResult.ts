@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { ApiRequest } from '../../shared/api';
 import { getGuestDiary, type GuestDiaryResponse } from './guestTrialApi';
 
@@ -36,6 +36,7 @@ const useGuestDiaryResult = ({
   const [resultRequest, setResultRequest] = useState<
     ApiRequest<GuestDiaryResponse>
   >({ status: 'idle' });
+  const [requestAttempt, setRequestAttempt] = useState(0);
 
   useEffect(() => {
     let isActive = true;
@@ -69,9 +70,13 @@ const useGuestDiaryResult = ({
     return () => {
       isActive = false;
     };
-  }, [diaryId, getDiary]);
+  }, [diaryId, getDiary, requestAttempt]);
 
-  return { resultRequest };
+  const retryResult = useCallback(() => {
+    setRequestAttempt((attempt) => attempt + 1);
+  }, []);
+
+  return { resultRequest, retryResult };
 };
 
 export default useGuestDiaryResult;

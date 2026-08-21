@@ -1,6 +1,6 @@
 import { StrictMode } from 'react';
 import { describe, expect, it, jest } from '@jest/globals';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import type { GuestDiaryResponse } from './guestTrialApi';
 import useGuestDiaryResult from './useGuestDiaryResult';
 
@@ -54,5 +54,41 @@ describe('게스트 일기 결과 조회', () => {
       expect(result.current.resultRequest.status).toBe('error');
     });
     expect(getDiary).not.toHaveBeenCalled();
+  });
+
+  it('결과 재시도 시 최신 이미지 URL을 다시 조회한다', async () => {
+    const refreshedDiary = {
+      ...guestDiaryResponse,
+      generation: {
+        ...guestDiaryResponse.generation,
+        imageUrl: 'https://example.com/refreshed-guest-diary.png',
+      },
+    };
+    const getDiary = jest
+      .fn<GetGuestDiary>()
+      .mockResolvedValueOnce(guestDiaryResponse)
+      .mockResolvedValueOnce(refreshedDiary);
+    const { result } = renderHook(() =>
+      useGuestDiaryResult({
+        diaryId: guestDiaryResponse.id,
+        getDiary,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.resultRequest.status).toBe('success');
+    });
+
+    act(() => {
+      result.current.retryResult();
+    });
+
+    await waitFor(() => {
+      expect(result.current.resultRequest).toEqual({
+        status: 'success',
+        data: refreshedDiary,
+      });
+    });
+    expect(getDiary).toHaveBeenCalledTimes(2);
   });
 });

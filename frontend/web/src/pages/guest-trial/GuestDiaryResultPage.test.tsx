@@ -8,6 +8,7 @@ import type { ApiRequest } from '../../shared/api';
 const mockResultRequest = {
   current: { status: 'loading' } as ApiRequest<GuestDiaryResponse>,
 };
+const mockRetryResult = jest.fn();
 
 const guestDiaryResponse: GuestDiaryResponse = {
   id: '7e5cc251-fdde-4cc0-a54e-2c8142750609',
@@ -30,7 +31,10 @@ jest.mock('react-router', () => ({
 
 jest.mock('./useGuestDiaryResult', () => ({
   __esModule: true,
-  default: () => ({ resultRequest: mockResultRequest.current }),
+  default: () => ({
+    resultRequest: mockResultRequest.current,
+    retryResult: mockRetryResult,
+  }),
 }));
 
 jest.mock(
@@ -40,6 +44,7 @@ jest.mock(
 jest.mock('../../assets/icons/kakao.svg', () => 'kakao.svg');
 
 beforeEach(() => {
+  mockRetryResult.mockReset();
   mockResultRequest.current = {
     status: 'success',
     data: guestDiaryResponse,
@@ -69,7 +74,7 @@ describe('게스트 일기 결과 화면', () => {
     ).toBeInTheDocument();
   });
 
-  it('이미지 로드 실패를 안내하고 같은 결과 이미지를 다시 요청한다', async () => {
+  it('이미지 로드 실패를 안내하고 결과를 다시 조회한다', async () => {
     const user = userEvent.setup();
     render(<GuestDiaryResultPage />);
 
@@ -86,12 +91,6 @@ describe('게스트 일기 결과 화면', () => {
 
     await user.click(screen.getByRole('button', { name: '다시 시도' }));
 
-    const retriedImage = screen.getByTestId('guest-diary-result-preload');
-
-    expect(retriedImage).toHaveAttribute('src', 'guest-result.png');
-    fireEvent.load(retriedImage);
-    expect(
-      screen.getByRole('link', { name: '카카오로 로그인하기' }),
-    ).toBeInTheDocument();
+    expect(mockRetryResult).toHaveBeenCalledTimes(1);
   });
 });
