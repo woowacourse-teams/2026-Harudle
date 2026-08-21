@@ -1,5 +1,6 @@
 import type { GuestDiaryRequest } from './guestTrialApi';
 import { validateGuestDiary } from './guestDiaryValidation';
+import { isCanonicalUuid } from './guestTrialUuid';
 
 export const GUEST_DIARY_PENDING_STORAGE_KEY =
   'harudle.guest-trial.pending-diary';
@@ -18,19 +19,13 @@ const isRecord = (value: unknown): value is Record<string, unknown> => {
   return typeof value === 'object' && value !== null;
 };
 
-const isUuid = (value: string): boolean => {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-    value,
-  );
-};
-
 export const isPendingGuestDiary = (
   value: unknown,
 ): value is PendingGuestDiary => {
   if (
     !isRecord(value) ||
     typeof value.idempotencyKey !== 'string' ||
-    !isUuid(value.idempotencyKey) ||
+    !isCanonicalUuid(value.idempotencyKey) ||
     !isRecord(value.request) ||
     typeof value.request.diaryDate !== 'string' ||
     typeof value.request.sourceText !== 'string'

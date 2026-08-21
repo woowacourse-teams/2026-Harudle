@@ -1,5 +1,6 @@
 import { delay, http, HttpResponse } from 'msw';
 import diaryImage from '../assets/images/diary-four-panel.png';
+import { isCanonicalUuid } from '../pages/guest-trial/guestTrialUuid';
 
 interface GuestDiaryRequest {
   diaryDate: string;
@@ -178,15 +179,6 @@ const validateGuestSession = (state: GuestTrialMockState, instance: string) => {
   });
 };
 
-const isUuid = (value: string | null): value is string => {
-  return (
-    value !== null &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      value,
-    )
-  );
-};
-
 const isGuestDiaryRequest = (value: unknown): value is GuestDiaryRequest => {
   if (!isRecord(value) || typeof value.sourceText !== 'string') {
     return false;
@@ -282,7 +274,7 @@ export const guestTrialHandlers = [
 
     const idempotencyKey = request.headers.get('Idempotency-Key');
 
-    if (!isUuid(idempotencyKey)) {
+    if (!isCanonicalUuid(idempotencyKey)) {
       return createProblemDetails({
         status: 400,
         code: 'INVALID_IDEMPOTENCY_KEY',
