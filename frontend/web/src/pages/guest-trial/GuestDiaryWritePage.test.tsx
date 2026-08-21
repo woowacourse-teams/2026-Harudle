@@ -239,12 +239,11 @@ describe('게스트 체험 랜딩 작성 화면', () => {
       screen.queryByRole('link', { name: '로그인하고 무료로 더 만들기' }),
     ).not.toBeInTheDocument();
 
-    const preloadedResultImage = document.querySelector(
-      'img[src="guest-result.png"]',
+    const preloadedResultImage = screen.getByTestId(
+      'guest-trial-result-preload',
     );
 
-    expect(preloadedResultImage).not.toBeNull();
-    fireEvent.load(preloadedResultImage as HTMLImageElement);
+    fireEvent.load(preloadedResultImage);
 
     const resultCard = screen.getByRole('article');
 
@@ -283,12 +282,11 @@ describe('게스트 체험 랜딩 작성 화면', () => {
 
     render(<GuestDiaryWritePage />);
 
-    const preloadedResultImage = document.querySelector(
-      'img[src="guest-result.png"]',
+    const preloadedResultImage = screen.getByTestId(
+      'guest-trial-result-preload',
     );
 
-    expect(preloadedResultImage).not.toBeNull();
-    fireEvent.error(preloadedResultImage as HTMLImageElement);
+    fireEvent.error(preloadedResultImage);
 
     const resultCard = screen.getByRole('article');
 

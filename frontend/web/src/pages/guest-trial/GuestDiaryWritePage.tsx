@@ -240,6 +240,7 @@ const GuestTrialResultCard = ({ diary }: { diary: GuestDiaryResponse }) => {
           src={diary.generation.imageUrl}
           alt=""
           aria-hidden="true"
+          data-testid="guest-trial-result-preload"
           css={resultPreloadImageStyle}
           onLoad={() => setImageStatus('loaded')}
           onError={() => setImageStatus('error')}
