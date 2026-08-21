@@ -1,5 +1,8 @@
 FROM node:24-bookworm-slim AS builder
 
+ARG REACT_APP_POSTHOG_KEY
+ARG REACT_APP_POSTHOG_HOST
+
 WORKDIR /workspace
 
 RUN corepack enable \
