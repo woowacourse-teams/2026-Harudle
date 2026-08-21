@@ -198,7 +198,7 @@ describe('로그인 유도 랜딩 페이지', () => {
     const showcase = screen.getByRole('region', {
       name: '완성된 네컷 그림 일기 예시',
     });
-    const activeStory = within(showcase).getByRole('status', {
+    const activeStory = within(showcase).getByRole('group', {
       name: '현재 네컷을 만든 이야기',
     });
     const diaryPairs = [
@@ -222,6 +222,7 @@ describe('로그인 유도 랜딩 페이지', () => {
     expect(
       within(activeStory).getByText('5분 운동하고 야식먹기'),
     ).toBeInTheDocument();
+    expect(activeStory).not.toHaveAttribute('aria-live');
     expect(
       screen.queryByText('아래로 내려 세 개의 하루를 만나보세요'),
     ).not.toBeInTheDocument();

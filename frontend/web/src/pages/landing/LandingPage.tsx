@@ -178,10 +178,8 @@ const LandingPage = ({
           <div css={showcaseStageStyle}>
             <div css={showcaseCopyStyle}>
               <div
-                role="status"
+                role="group"
                 aria-label="현재 네컷을 만든 이야기"
-                aria-live="polite"
-                aria-atomic="true"
                 css={activeDiaryStoryStyle}
               >
                 <p css={diaryCaptionStyle}>
