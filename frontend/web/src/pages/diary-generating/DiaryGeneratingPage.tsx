@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import DiaryGenerateStepper from './DiaryGenerateStepper';
-import { useNavigate } from 'react-router';
+import { Navigate, useLocation, useNavigate } from 'react-router';
 import useDiaryGenerate from './useDiaryGenerate';
 import generationStep1Image from '../../assets/images/generation-step-1-reading.png';
 import generationStep2Image from '../../assets/images/generation-step-2-writing.png';
@@ -9,6 +9,7 @@ import generationStep4Image from '../../assets/images/generation-step-4-painting
 import generationCompleteImage from '../../assets/images/generation-step-5-complete.png';
 import { css } from '@emotion/react';
 import { theme } from '../../styles/theme';
+import DiaryGeneratingError from './DiaryGeneratingError';
 
 const generationSteps = [
   {
@@ -35,10 +36,43 @@ const generationSteps = [
 
 export const FINAL_STEP = 5;
 
+interface DiaryGeneratingState {
+  diaryDate: string;
+  sourceText: string;
+}
+
+const isDiaryGeneratingState = (
+  value: unknown,
+): value is DiaryGeneratingState => {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'diaryDate' in value &&
+    typeof value.diaryDate === 'string' &&
+    'sourceText' in value &&
+    typeof value.sourceText === 'string'
+  );
+};
+
 const DiaryGeneratingPage = () => {
+  const { state } = useLocation();
+
+  if (!isDiaryGeneratingState(state)) {
+    return <Navigate to="/" replace />;
+  }
+
+  return <DiaryGeneratingContent {...state} />;
+};
+
+export default DiaryGeneratingPage;
+
+const DiaryGeneratingContent = (generateRequestBody: {
+  diaryDate: string;
+  sourceText: string;
+}) => {
   const [loadingStep, setLoadingStep] = useState<number>(1);
+  const { diaryGenerateRequest } = useDiaryGenerate(generateRequestBody);
   const navigate = useNavigate();
-  const { diaryGenerateRequest } = useDiaryGenerate();
 
   useEffect(() => {
     if (loadingStep >= FINAL_STEP - 1) {
@@ -60,7 +94,9 @@ const DiaryGeneratingPage = () => {
     }
 
     const timeoutId = setTimeout(() => {
-      navigate(`/diary/${diaryGenerateRequest.data.id}`);
+      navigate(`/diary/${diaryGenerateRequest.data.id}`, {
+        replace: true,
+      });
     }, 2_000);
 
     return () => clearTimeout(timeoutId);
@@ -69,7 +105,9 @@ const DiaryGeneratingPage = () => {
   const displayedStep = isGenerationComplete ? FINAL_STEP : loadingStep;
 
   if (diaryGenerateRequest.status === 'error') {
-    return <div>{diaryGenerateRequest.error.message}</div>;
+    return (
+      <DiaryGeneratingError errorMessage={diaryGenerateRequest.error.message} />
+    );
   }
 
   return (
@@ -84,8 +122,6 @@ const DiaryGeneratingPage = () => {
     </div>
   );
 };
-
-export default DiaryGeneratingPage;
 
 const pageStyle = css`
   display: flex;
