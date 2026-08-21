@@ -162,15 +162,28 @@ describe('게스트 진입 초기화', () => {
       createGuestSession,
     });
 
+    await initialize();
+    await initialize();
+
+    expect(checkAuthentication).toHaveBeenCalledTimes(2);
+    expect(createGuestSession).toHaveBeenCalledTimes(2);
+  });
+
+  it('동시에 진입을 초기화하면 같은 요청을 공유한다', async () => {
+    const checkAuthentication = jest.fn(async () => false);
+    const createGuestSession = jest.fn(async () => {});
+    const initialize = createGuestEntryInitializer({
+      checkAuthentication,
+      createGuestSession,
+    });
+
     const firstRequest = initialize();
     const concurrentRequest = initialize();
 
     expect(firstRequest).toBe(concurrentRequest);
     await firstRequest;
-    await initialize();
-
-    expect(checkAuthentication).toHaveBeenCalledTimes(2);
-    expect(createGuestSession).toHaveBeenCalledTimes(2);
+    expect(checkAuthentication).toHaveBeenCalledTimes(1);
+    expect(createGuestSession).toHaveBeenCalledTimes(1);
   });
 
   it('로그인 사용자는 홈으로 이동하고 게스트 세션을 발급하지 않는다', async () => {
