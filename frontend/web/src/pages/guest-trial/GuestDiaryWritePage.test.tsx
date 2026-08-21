@@ -46,6 +46,9 @@ jest.mock('./useGuestDiaryCreation', () => ({
     retryDiary: mockRetryDiary.current,
   }),
 }));
+jest.mock('../diary-generating/DiaryGeneratingPage', () => ({
+  FINAL_STEP: 5,
+}));
 jest.mock('react-router', () => ({
   useLocation: () => ({ state: null }),
   useNavigate: () => jest.fn(),
