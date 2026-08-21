@@ -10,12 +10,12 @@ jest.mock(
   '../../assets/images/empty-person-and-dog.png',
   () => 'empty-person-and-dog.png',
 );
-jest.mock('./assets/guest-diary-pigeon.png', () => 'guest-diary-pigeon.png');
+jest.mock(
+  './assets/guest-diary-cat-keyboard.png',
+  () => 'guest-diary-cat-keyboard.png',
+);
 jest.mock('./assets/guest-diary-friend.jpg', () => 'guest-diary-friend.jpg');
-jest.mock('./assets/guest-diary-tired.png', () => 'guest-diary-tired.png');
-jest.mock('./assets/guest-diary-workout.png', () => 'guest-diary-workout.png', {
-  virtual: true,
-});
+jest.mock('./assets/guest-diary-workout.png', () => 'guest-diary-workout.png');
 
 describe('로그인 유도 랜딩 페이지', () => {
   it('일상을 그림으로 만드는 핵심 가치를 안내한다', () => {
@@ -152,7 +152,7 @@ describe('로그인 유도 랜딩 페이지', () => {
         name: '러닝머신을 타고 야식을 먹은 하루를 담은 네컷 그림 일기',
       }),
       screen.getByRole('img', {
-        name: '길에서 비둘기 조련사를 만난 하루를 담은 네컷 그림 일기',
+        name: '마감 직전 키보드를 차지한 고양이의 모습을 담은 네컷 그림 일기',
         hidden: true,
       }),
       screen.getByRole('img', {
@@ -188,9 +188,9 @@ describe('로그인 유도 랜딩 페이지', () => {
         src: 'guest-diary-workout.png',
       },
       {
-        caption: '길에서 비둘기 조련사를 만난 날',
-        alt: '길에서 비둘기 조련사를 만난 하루를 담은 네컷 그림 일기',
-        src: 'guest-diary-pigeon.png',
+        caption: '마감 직전 키보드를 차지한 고양이',
+        alt: '마감 직전 키보드를 차지한 고양이의 모습을 담은 네컷 그림 일기',
+        src: 'guest-diary-cat-keyboard.png',
       },
       {
         caption: '게임 친구와 투닥거리던 밤',

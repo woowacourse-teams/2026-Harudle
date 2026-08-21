@@ -175,7 +175,7 @@ describe('게스트 일기 생성 상태 머신', () => {
     storage.setItem(
       GUEST_DIARY_PENDING_STORAGE_KEY,
       JSON.stringify({
-        idempotencyKey: '7e5cc251-fdde-4cc0-a54e-2c8142750609',
+        idempotencyKey: 'b457894d-9f3c-4e80-b839-2b8b71611ba4',
         request,
       }),
     );

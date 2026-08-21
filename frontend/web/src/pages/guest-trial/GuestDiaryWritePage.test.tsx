@@ -39,9 +39,13 @@ jest.mock('./useGuestDiaryCreation', () => ({
     retryDiary: mockRetryDiary.current,
   }),
 }));
+jest.mock('../diary-generating/DiaryGeneratingPage', () => ({
+  FINAL_STEP: 5,
+}));
 
 jest.mock('../../assets/images/harudle-logo.png', () => 'harudle-logo.png');
 jest.mock('../../assets/icons/kakao.svg', () => 'kakao.svg');
+jest.mock('../../assets/icons/check.svg', () => 'check.svg');
 jest.mock('../../assets/images/login-hero.png', () => 'login-hero.png');
 jest.mock('../../assets/images/writing-scene.png', () => 'writing-scene.png');
 jest.mock(
@@ -73,8 +77,8 @@ jest.mock(
   () => 'generation-step-5-complete.png',
 );
 jest.mock(
-  '../landing/assets/guest-diary-pigeon.png',
-  () => 'guest-diary-pigeon.png',
+  '../landing/assets/guest-diary-cat-keyboard.png',
+  () => 'guest-diary-cat-keyboard.png',
 );
 jest.mock(
   '../landing/assets/guest-diary-friend.jpg',
