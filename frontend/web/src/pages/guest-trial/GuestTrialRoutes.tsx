@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { css } from '@emotion/react';
 import { Route, Routes } from 'react-router';
 import loadingAnimation from '../../assets/images/loading-animation.webp';
@@ -7,7 +8,13 @@ import GuestDiaryWritePage from './GuestDiaryWritePage';
 import useGuestEntry from './useGuestEntry';
 
 const GuestTrialRoutes = () => {
-  const { guestEntryRequest } = useGuestEntry();
+  const { guestEntryRequest, retryGuestEntry } = useGuestEntry();
+
+  useEffect(() => {
+    if (guestEntryRequest.status === 'error') {
+      console.error('게스트 체험 진입에 실패했습니다', guestEntryRequest.error);
+    }
+  }, [guestEntryRequest]);
 
   if (
     guestEntryRequest.status === 'idle' ||
@@ -25,7 +32,14 @@ const GuestTrialRoutes = () => {
     return (
       <div css={feedbackPageStyle}>
         <h1 css={feedbackTitleStyle}>게스트 체험을 시작하지 못했어요</h1>
-        <p css={feedbackMessageStyle}>{guestEntryRequest.error.message}</p>
+        <p css={feedbackMessageStyle}>잠시 후 다시 시도해주세요</p>
+        <button
+          type="button"
+          css={feedbackRetryButtonStyle}
+          onClick={retryGuestEntry}
+        >
+          다시 시도
+        </button>
       </div>
     );
   }
@@ -71,4 +85,18 @@ const feedbackMessageStyle = css`
   font-size: 15px;
   line-height: 24px;
   word-break: keep-all;
+`;
+
+const feedbackRetryButtonStyle = css`
+  min-width: 160px;
+  min-height: 48px;
+  padding: 12px 20px;
+  border: none;
+  border-radius: 14px;
+  background-color: ${theme.colors.bg.brand};
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 24px;
+  cursor: pointer;
 `;
