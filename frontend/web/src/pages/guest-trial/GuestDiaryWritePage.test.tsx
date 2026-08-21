@@ -22,6 +22,7 @@ const mockScrollIntoView = { current: jest.fn() };
 const mockCreationState = {
   current: { status: 'writing' } as GuestDiaryCreationState,
 };
+const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
 
 const guestDiaryResponse: GuestDiaryResponse = {
   id: 'guest-diary-id',
@@ -109,6 +110,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+  jest.clearAllTimers();
   jest.useRealTimers();
 });
 
