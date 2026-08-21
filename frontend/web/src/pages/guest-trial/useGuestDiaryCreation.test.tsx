@@ -171,6 +171,40 @@ describe('게스트 일기 생성 상태 머신', () => {
     expect(result.current.creationState.status).toBe('success');
   });
 
+  it('서버 오류 후 재시도할 수 있도록 pending 요청을 유지한다', async () => {
+    const storage = createMemoryStorage();
+    const serverError = new RequestError({
+      type: 'about:blank',
+      title: 'Service Unavailable',
+      status: 503,
+      detail: '일기 생성 중 오류가 발생했습니다.',
+      instance: '/api/v1/guest/diaries',
+      code: 'SERVICE_UNAVAILABLE',
+      traceId: 'trace-id',
+    });
+    const createDiary = jest
+      .fn<CreateGuestDiary>()
+      .mockRejectedValue(serverError);
+    const { result } = renderHook(() =>
+      useGuestDiaryCreation({
+        enabled: true,
+        storage,
+        createDiary,
+        createIdempotencyKey: () => '7e5cc251-fdde-4cc0-a54e-2c8142750609',
+      }),
+    );
+
+    await act(async () => {
+      await result.current.submitDiary(request);
+    });
+
+    expect(result.current.creationState).toEqual({
+      status: 'error',
+      error: serverError,
+    });
+    expect(storage.getItem(GUEST_DIARY_PENDING_STORAGE_KEY)).not.toBeNull();
+  });
+
   it('Error가 아닌 생성 실패도 오류 상태로 전환한다', async () => {
     const storage = createMemoryStorage();
     const createDiary = jest
