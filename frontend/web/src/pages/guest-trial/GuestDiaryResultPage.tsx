@@ -31,7 +31,11 @@ const GuestDiaryResultPage = () => {
         </h1>
         <p css={feedbackMessageStyle}>{resultRequest.error.message}</p>
         {isGuestTrialAlreadyUsedError(resultRequest.error) ? (
-          <GuestLoginCta label="카카오로 로그인하기" />
+          <GuestLoginCta
+            label="카카오로 로그인하기"
+            analyticsEvent="landing_trial_login_clicked"
+            location="already_used"
+          />
         ) : (
           <button
             type="button"
@@ -112,7 +116,11 @@ const GuestDiaryResult = ({
         <p css={ctaDescriptionStyle}>
           로그인하고 오늘의 이야기를 계속 그림 일기로 만들어보세요
         </p>
-        <GuestLoginCta label="카카오로 로그인하기" />
+        <GuestLoginCta
+          label="카카오로 로그인하기"
+          analyticsEvent="landing_trial_login_clicked"
+          location="result"
+        />
       </section>
     </main>
   );

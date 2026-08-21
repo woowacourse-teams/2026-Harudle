@@ -8,6 +8,7 @@ import generationCompleteImage from '../../assets/images/generation-step-5-compl
 import { theme } from '../../styles/theme';
 import DiaryGenerateStepper from '../diary-generating/DiaryGenerateStepper';
 import LandingPage from '../landing/LandingPage';
+import { useAnalytics } from '../../shared/useAnalytics';
 import GuestLoginCta from './GuestLoginCta';
 import { getKoreanToday, validateGuestDiary } from './guestDiaryValidation';
 import { isGuestTrialAlreadyUsedError } from './guestTrialErrors';
@@ -18,6 +19,7 @@ import useGuestDiaryCreation, {
 
 const GuestDiaryWritePage = () => {
   const trialCardRef = useRef<HTMLElement>(null);
+  const { track } = useAnalytics();
   const { creationState, submitDiary, retryDiary } = useGuestDiaryCreation({
     enabled: true,
   });
@@ -35,6 +37,7 @@ const GuestDiaryWritePage = () => {
       return;
     }
 
+    track('landing_trial_diary_create_clicked');
     void submitDiary(request);
   };
 
@@ -309,7 +312,11 @@ const GuestTrialResultCard = ({ diary }: { diary: GuestDiaryResponse }) => {
         <p css={freeNoticeStyle}>
           로그인 후에도 네컷 그림 만들기는 전부 무료예요
         </p>
-        <GuestLoginCta label="로그인하고 무료로 더 만들기" />
+        <GuestLoginCta
+          label="로그인하고 무료로 더 만들기"
+          analyticsEvent="landing_trial_login_clicked"
+          location="result"
+        />
       </section>
     </article>
   );
@@ -341,7 +348,11 @@ const GuestTrialErrorCard = ({
           <p css={freeNoticeStyle}>
             로그인 후에도 네컷 그림 만들기는 전부 무료예요
           </p>
-          <GuestLoginCta label="로그인하고 무료로 더 만들기" />
+          <GuestLoginCta
+            label="로그인하고 무료로 더 만들기"
+            analyticsEvent="landing_trial_login_clicked"
+            location="already_used"
+          />
         </>
       ) : (
         <button type="button" css={primaryButtonStyle} onClick={onRetry}>

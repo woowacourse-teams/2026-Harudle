@@ -19,6 +19,7 @@ type SubmitGuestDiary = (request: GuestDiaryRequest) => Promise<void>;
 const mockSubmitDiary = { current: jest.fn<SubmitGuestDiary>() };
 const mockRetryDiary = { current: jest.fn(async () => {}) };
 const mockScrollIntoView = { current: jest.fn() };
+const mockTrack = jest.fn();
 const mockCreationState = {
   current: { status: 'writing' } as GuestDiaryCreationState,
 };
@@ -46,6 +47,9 @@ jest.mock('./useGuestDiaryCreation', () => ({
     submitDiary: mockSubmitDiary.current,
     retryDiary: mockRetryDiary.current,
   }),
+}));
+jest.mock('../../shared/useAnalytics', () => ({
+  useAnalytics: () => ({ track: mockTrack }),
 }));
 jest.mock('../diary-generating/DiaryGeneratingPage', () => ({
   FINAL_STEP: 5,
@@ -106,6 +110,7 @@ beforeEach(() => {
   mockSubmitDiary.current = jest.fn<SubmitGuestDiary>();
   mockRetryDiary.current = jest.fn(async () => {});
   mockScrollIntoView.current = jest.fn();
+  mockTrack.mockReset();
   HTMLElement.prototype.scrollIntoView = mockScrollIntoView.current;
 });
 
@@ -186,6 +191,9 @@ describe('게스트 체험 랜딩 작성 화면', () => {
       diaryDate: getKoreanToday(),
       sourceText: '친구와 산책하며 오래 웃었던 하루였다.',
     });
+    expect(mockTrack).toHaveBeenCalledWith(
+      'landing_trial_diary_create_clicked',
+    );
   });
 
   it('10자 미만 입력은 생성하지 않고 다시 입력하면 오류 안내를 해제한다', async () => {
@@ -197,6 +205,7 @@ describe('게스트 체험 랜딩 작성 화면', () => {
     await user.click(screen.getByRole('button', { name: '네컷 그림 만들기' }));
 
     expect(mockSubmitDiary.current).not.toHaveBeenCalled();
+    expect(mockTrack).not.toHaveBeenCalled();
     expect(
       screen.getByText('오늘의 이야기를 10자 이상 적어주세요'),
     ).toBeInTheDocument();
