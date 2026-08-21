@@ -40,7 +40,7 @@ const DiaryItemList = ({
   return (
     <div>
       {isMonthlyDiaryExist(days) ? (
-        <div>
+        <div css={diaryListStyle}>
           {days.map((day) => {
             return day.items.map((diary) => (
               <DiaryItemRow
@@ -68,6 +68,14 @@ const DiaryItemList = ({
 };
 
 export default DiaryItemList;
+
+const diaryListStyle = css`
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding-bottom: 76px;
+`;
 
 const loadingAnimationBoxStyle = css`
   display: flex;
