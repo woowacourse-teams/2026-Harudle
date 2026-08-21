@@ -1,6 +1,6 @@
 import { StrictMode } from 'react';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import {
   checkGuestEntryAuthentication,
   createGuestEntryInitializer,
@@ -30,9 +30,19 @@ const GuestEntryProbe = ({
 }: {
   initialize: () => Promise<GuestEntryResult>;
 }) => {
-  const { guestEntryRequest } = useGuestEntry(initialize);
+  const { guestEntryRequest, retryGuestEntry } = useGuestEntry(initialize);
 
-  return <div>{guestEntryRequest.status}</div>;
+  return (
+    <div>
+      <span>{guestEntryRequest.status}</span>
+      {guestEntryRequest.status === 'error' ? (
+        <span>{guestEntryRequest.error.message}</span>
+      ) : null}
+      <button type="button" onClick={retryGuestEntry}>
+        재시도
+      </button>
+    </div>
+  );
 };
 
 afterEach(() => {
@@ -123,6 +133,25 @@ describe('게스트 진입 초기화', () => {
     expect(await screen.findByText('success')).toBeInTheDocument();
     expect(checkAuthentication).toHaveBeenCalledTimes(1);
     expect(createGuestSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('Error가 아닌 실패도 오류로 바꾸고 다시 초기화할 수 있다', async () => {
+    const initialize = jest
+      .fn<() => Promise<GuestEntryResult>>()
+      .mockRejectedValueOnce('network failure')
+      .mockResolvedValueOnce({ status: 'guest' });
+
+    render(<GuestEntryProbe initialize={initialize} />);
+
+    expect(await screen.findByText('error')).toBeInTheDocument();
+    expect(
+      screen.getByText('게스트 체험을 준비하지 못했습니다'),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '재시도' }));
+
+    expect(await screen.findByText('success')).toBeInTheDocument();
+    expect(initialize).toHaveBeenCalledTimes(2);
   });
 
   it('초기화 완료 후 다시 진입하면 인증 상태를 새로 확인한다', async () => {

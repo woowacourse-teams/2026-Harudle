@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import type { ApiRequest } from '../../shared/api';
 import { initializeGuestEntry, type GuestEntryResult } from './guestEntry';
@@ -13,6 +13,7 @@ const useGuestEntry = (
   const [guestEntryRequest, setGuestEntryRequest] = useState<ApiRequest<void>>({
     status: 'loading',
   });
+  const [requestAttempt, setRequestAttempt] = useState(0);
 
   useEffect(() => {
     navigateRef.current = navigate;
@@ -35,17 +36,28 @@ const useGuestEntry = (
         setGuestEntryRequest({ status: 'success', data: undefined });
       })
       .catch((error: unknown) => {
-        if (isActive && error instanceof Error) {
-          setGuestEntryRequest({ status: 'error', error });
+        if (isActive) {
+          setGuestEntryRequest({
+            status: 'error',
+            error:
+              error instanceof Error
+                ? error
+                : new Error('게스트 체험을 준비하지 못했습니다'),
+          });
         }
       });
 
     return () => {
       isActive = false;
     };
-  }, [initialize]);
+  }, [initialize, requestAttempt]);
 
-  return { guestEntryRequest };
+  const retryGuestEntry = useCallback(() => {
+    setGuestEntryRequest({ status: 'loading' });
+    setRequestAttempt((attempt) => attempt + 1);
+  }, []);
+
+  return { guestEntryRequest, retryGuestEntry };
 };
 
 export default useGuestEntry;
