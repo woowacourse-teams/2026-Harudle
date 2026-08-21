@@ -188,13 +188,17 @@ const isUuid = (value: string | null): value is string => {
 };
 
 const isGuestDiaryRequest = (value: unknown): value is GuestDiaryRequest => {
+  if (!isRecord(value) || typeof value.sourceText !== 'string') {
+    return false;
+  }
+
+  const sourceTextLength = Array.from(value.sourceText.trim()).length;
+
   return (
-    isRecord(value) &&
     typeof value.diaryDate === 'string' &&
     /^\d{4}-\d{2}-\d{2}$/.test(value.diaryDate) &&
-    typeof value.sourceText === 'string' &&
-    Array.from(value.sourceText.trim()).length >= 1 &&
-    Array.from(value.sourceText).length <= 300
+    sourceTextLength >= 10 &&
+    sourceTextLength <= 300
   );
 };
 

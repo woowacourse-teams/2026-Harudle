@@ -290,6 +290,22 @@ describe('게스트 체험 MSW 시나리오', () => {
     });
   });
 
+  it('공백을 제외한 일기 내용이 10자 미만이면 생성 요청을 거부한다', async () => {
+    await issueGuestSession();
+
+    const response = await createGuestDiary({
+      request: {
+        ...DIARY_REQUEST,
+        sourceText: '  짧은 일기  ',
+      },
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+    });
+  });
+
   it('유효하지 않은 CSRF Token이면 세션과 생성 요청을 거부한다', async () => {
     const sessionResponse = await issueGuestSession('invalid-token');
     const createResponse = await createGuestDiary({
