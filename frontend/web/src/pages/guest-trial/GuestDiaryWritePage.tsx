@@ -229,9 +229,11 @@ const GuestTrialGeneratingCard = () => {
 };
 
 const GuestTrialResultCard = ({ diary }: { diary: GuestDiaryResponse }) => {
-  const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageStatus, setImageStatus] = useState<
+    'loading' | 'loaded' | 'error'
+  >('loading');
 
-  if (!imageLoaded) {
+  if (imageStatus === 'loading') {
     return (
       <>
         <img
@@ -239,7 +241,8 @@ const GuestTrialResultCard = ({ diary }: { diary: GuestDiaryResponse }) => {
           alt=""
           aria-hidden="true"
           css={resultPreloadImageStyle}
-          onLoad={() => setImageLoaded(true)}
+          onLoad={() => setImageStatus('loaded')}
+          onError={() => setImageStatus('error')}
         />
         <div
           css={trialCardStyle}
@@ -275,11 +278,18 @@ const GuestTrialResultCard = ({ diary }: { diary: GuestDiaryResponse }) => {
         </h2>
       </header>
 
-      <img
-        src={diary.generation.imageUrl}
-        alt={`${diary.generation.title} 네컷 그림`}
-        css={resultImageStyle}
-      />
+      {imageStatus === 'loaded' ? (
+        <img
+          src={diary.generation.imageUrl}
+          alt={`${diary.generation.title} 네컷 그림`}
+          css={resultImageStyle}
+          onError={() => setImageStatus('error')}
+        />
+      ) : (
+        <p role="alert" css={resultImageErrorStyle}>
+          결과 이미지를 불러오지 못했어요
+        </p>
+      )}
 
       <section css={resultCtaStyle} aria-labelledby="guest-trial-login-title">
         <h3 id="guest-trial-login-title" css={resultCtaTitleStyle}>
@@ -554,6 +564,17 @@ const resultImageStyle = css`
   border-radius: 18px;
   background-color: #f8f6ff;
   object-fit: cover;
+`;
+
+const resultImageErrorStyle = css`
+  margin: 0;
+  padding: 24px 16px;
+  border-radius: 18px;
+  background-color: #f8f6ff;
+  color: ${theme.colors.text.secondary};
+  font-size: 15px;
+  line-height: 24px;
+  text-align: center;
 `;
 
 const resultCtaStyle = css`

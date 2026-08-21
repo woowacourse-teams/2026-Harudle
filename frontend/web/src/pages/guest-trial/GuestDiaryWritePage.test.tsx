@@ -274,4 +274,41 @@ describe('게스트 체험 랜딩 작성 화면', () => {
       }),
     ).toHaveAttribute('href', '/oauth2/authorization/kakao');
   });
+
+  it('결과 이미지 로드가 실패하면 제목과 무료 로그인 안내를 보여준다', () => {
+    mockCreationState.current = {
+      status: 'success',
+      data: guestDiaryResponse,
+    };
+
+    render(<GuestDiaryWritePage />);
+
+    const preloadedResultImage = document.querySelector(
+      'img[src="guest-result.png"]',
+    );
+
+    expect(preloadedResultImage).not.toBeNull();
+    fireEvent.error(preloadedResultImage as HTMLImageElement);
+
+    const resultCard = screen.getByRole('article');
+
+    expect(
+      within(resultCard).getByRole('heading', {
+        name: '비에 흠뻑 젖은 하루',
+      }),
+    ).toBeInTheDocument();
+    expect(within(resultCard).getByRole('alert')).toHaveTextContent(
+      '결과 이미지를 불러오지 못했어요',
+    );
+    expect(
+      within(resultCard).queryByRole('img', {
+        name: '비에 흠뻑 젖은 하루 네컷 그림',
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(resultCard).getByRole('link', {
+        name: '로그인하고 무료로 더 만들기',
+      }),
+    ).toBeInTheDocument();
+  });
 });
