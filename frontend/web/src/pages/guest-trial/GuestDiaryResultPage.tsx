@@ -1,9 +1,11 @@
 import { css } from '@emotion/react';
+import { useState } from 'react';
 import { useParams } from 'react-router';
 import loadingAnimation from '../../assets/images/loading-animation.webp';
 import { theme } from '../../styles/theme';
 import GuestLoginCta from './GuestLoginCta';
 import { isGuestTrialAlreadyUsedError } from './guestTrialErrors';
+import type { GuestDiaryResponse } from './guestTrialApi';
 import useGuestDiaryResult from './useGuestDiaryResult';
 
 const GuestDiaryResultPage = () => {
@@ -35,7 +37,52 @@ const GuestDiaryResultPage = () => {
     );
   }
 
-  const diary = resultRequest.data;
+  return <GuestDiaryResult diary={resultRequest.data} />;
+};
+
+const GuestDiaryResult = ({ diary }: { diary: GuestDiaryResponse }) => {
+  const [imageStatus, setImageStatus] = useState<
+    'loading' | 'loaded' | 'error'
+  >('loading');
+  const [imageLoadAttempt, setImageLoadAttempt] = useState(0);
+
+  if (imageStatus === 'loading') {
+    return (
+      <div css={feedbackPageStyle}>
+        <img
+          key={imageLoadAttempt}
+          src={diary.generation.imageUrl}
+          alt=""
+          aria-hidden="true"
+          data-testid="guest-diary-result-preload"
+          css={preloadImageStyle}
+          onLoad={() => setImageStatus('loaded')}
+          onError={() => setImageStatus('error')}
+        />
+        <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
+        <p css={feedbackTitleStyle}>완성된 그림 일기를 불러오고 있어요</p>
+      </div>
+    );
+  }
+
+  if (imageStatus === 'error') {
+    return (
+      <div css={feedbackPageStyle} role="alert">
+        <h1 css={feedbackTitleStyle}>결과 이미지를 불러오지 못했어요</h1>
+        <p css={feedbackMessageStyle}>잠시 후 다시 시도해주세요</p>
+        <button
+          type="button"
+          css={feedbackRetryButtonStyle}
+          onClick={() => {
+            setImageLoadAttempt((attempt) => attempt + 1);
+            setImageStatus('loading');
+          }}
+        >
+          다시 시도
+        </button>
+      </div>
+    );
+  }
 
   return (
     <main css={pageStyle}>
@@ -48,6 +95,7 @@ const GuestDiaryResultPage = () => {
         src={diary.generation.imageUrl}
         alt={`${diary.generation.title} 그림 일기`}
         css={diaryImageStyle}
+        onError={() => setImageStatus('error')}
       />
 
       <section css={storyStyle}>
@@ -164,6 +212,14 @@ const loadingImageStyle = css`
   height: 140px;
 `;
 
+const preloadImageStyle = css`
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+`;
+
 const feedbackTitleStyle = css`
   color: ${theme.colors.text.primary};
   font-size: 22px;
@@ -177,4 +233,18 @@ const feedbackMessageStyle = css`
   font-size: 15px;
   line-height: 24px;
   word-break: keep-all;
+`;
+
+const feedbackRetryButtonStyle = css`
+  min-width: 160px;
+  min-height: 48px;
+  padding: 12px 20px;
+  border: none;
+  border-radius: 14px;
+  background-color: ${theme.colors.bg.brand};
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 24px;
+  cursor: pointer;
 `;
