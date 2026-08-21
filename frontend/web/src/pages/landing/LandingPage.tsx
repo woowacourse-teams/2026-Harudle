@@ -50,8 +50,20 @@ interface LandingPageProps {
 }
 
 const LandingPage = ({
-  heroAction = <GuestLoginCta label="카카오로 시작하기" />,
-  finalAction = <GuestLoginCta label="카카오로 시작하기" />,
+  heroAction = (
+    <GuestLoginCta
+      label="카카오로 시작하기"
+      analyticsEvent="landing_direct_login_clicked"
+      location="hero"
+    />
+  ),
+  finalAction = (
+    <GuestLoginCta
+      label="카카오로 시작하기"
+      analyticsEvent="landing_direct_login_clicked"
+      location="final"
+    />
+  ),
   trialSection,
 }: LandingPageProps) => {
   const pageRef = useRef<HTMLElement>(null);

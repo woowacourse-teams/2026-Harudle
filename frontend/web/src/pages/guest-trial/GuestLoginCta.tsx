@@ -1,14 +1,39 @@
 import { css } from '@emotion/react';
 import kakaoIcon from '../../assets/icons/kakao.svg';
+import { useAnalytics } from '../../shared/useAnalytics';
 import { theme } from '../../styles/theme';
 
 const KAKAO_OAUTH_PATH = '/oauth2/authorization/kakao';
 
-const GuestLoginCta = ({ label }: { label: string }) => {
+type GuestLoginCtaProps = {
+  label: string;
+} & (
+  | {
+      analyticsEvent: 'landing_direct_login_clicked';
+      location: 'hero' | 'final';
+    }
+  | {
+      analyticsEvent: 'landing_trial_login_clicked';
+      location: 'result' | 'already_used';
+    }
+);
+
+const GuestLoginCta = (props: GuestLoginCtaProps) => {
+  const { track } = useAnalytics();
+
+  const handleClick = () => {
+    if (props.analyticsEvent === 'landing_direct_login_clicked') {
+      track('landing_direct_login_clicked', { location: props.location });
+      return;
+    }
+
+    track('landing_trial_login_clicked', { location: props.location });
+  };
+
   return (
-    <a href={KAKAO_OAUTH_PATH} css={linkStyle}>
+    <a href={KAKAO_OAUTH_PATH} css={linkStyle} onClick={handleClick}>
       <img src={kakaoIcon} alt="" css={iconStyle} />
-      {label}
+      {props.label}
     </a>
   );
 };
