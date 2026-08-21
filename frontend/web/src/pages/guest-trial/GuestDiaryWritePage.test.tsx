@@ -128,6 +128,9 @@ describe('게스트 체험 랜딩 작성 화면', () => {
     const trialForm = screen.getByRole('form', {
       name: '아무 이야기나 적어주세요',
     });
+    const finalCta = screen.getByRole('region', {
+      name: /재밌는 이야기를 만들어\s*친구에게 공유해보세요/,
+    });
 
     expect(
       screen.getByText('로그인 없이 체험해보세요! 전부 무료예요'),
@@ -139,6 +142,7 @@ describe('게스트 체험 랜딩 작성 화면', () => {
       finalMascot.compareDocumentPosition(trialForm) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(finalCta).toHaveStyle({ paddingBottom: '28px' });
     expect(screen.queryByLabelText(/날짜/)).not.toBeInTheDocument();
     expect(document.querySelector('input[type="date"]')).toBeNull();
     expect(screen.getByRole('textbox', { name: '이야기' })).toHaveAttribute(

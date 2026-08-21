@@ -269,7 +269,10 @@ const LandingPage = ({
         </section>
       </section>
 
-      <section css={finalCtaSectionStyle} aria-labelledby="landing-final-title">
+      <section
+        css={finalCtaSectionStyle(trialSection !== undefined)}
+        aria-labelledby="landing-final-title"
+      >
         <p css={finalEyebrowStyle}>이제, 당신의 차례예요</p>
         <div css={finalIllustrationFrameStyle}>
           <img
@@ -688,12 +691,12 @@ const processStepDescriptionStyle = css`
   word-break: keep-all;
 `;
 
-const finalCtaSectionStyle = css`
+const finalCtaSectionStyle = (continuesToTrial: boolean) => css`
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 20px;
-  padding: 44px 24px 56px;
+  padding: 44px 24px ${continuesToTrial ? '28px' : '56px'};
   border-top: 1px solid #efebfa;
   background-color: #f8f6ff;
 
