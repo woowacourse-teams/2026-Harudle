@@ -1,7 +1,17 @@
-import { describe, expect, it } from '@jest/globals';
-import { validateGuestDiary } from './guestDiaryValidation';
+import { afterEach, describe, expect, it, jest } from '@jest/globals';
+import { getKoreanToday, validateGuestDiary } from './guestDiaryValidation';
+
+afterEach(() => {
+  jest.useRealTimers();
+});
 
 describe('게스트 일기 입력 검증', () => {
+  it('한국 시간의 연월일을 고정된 ISO 형식으로 반환한다', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-08-20T15:30:00Z'));
+
+    expect(getKoreanToday()).toBe('2026-08-21');
+  });
+
   it('날짜와 내용이 유효하면 오류가 없다', () => {
     expect(
       validateGuestDiary(

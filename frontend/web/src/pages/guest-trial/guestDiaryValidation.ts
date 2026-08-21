@@ -6,9 +6,17 @@ export interface GuestDiaryValidationErrors {
 }
 
 export const getKoreanToday = (): string => {
-  return new Date().toLocaleDateString('sv-SE', {
+  const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Asia/Seoul',
-  });
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const findPart = (type: 'year' | 'month' | 'day') => {
+    return parts.find((part) => part.type === type)?.value ?? '';
+  };
+
+  return `${findPart('year')}-${findPart('month')}-${findPart('day')}`;
 };
 
 const isValidIsoDate = (value: string): boolean => {
