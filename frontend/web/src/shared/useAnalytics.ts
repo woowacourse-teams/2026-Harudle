@@ -14,6 +14,13 @@ interface AnalyticsEventMap {
     share_id: string;
   };
   diary_image_downloaded: undefined;
+  landing_direct_login_clicked: {
+    location: 'hero' | 'final';
+  };
+  landing_trial_diary_create_clicked: undefined;
+  landing_trial_login_clicked: {
+    location: 'result' | 'already_used';
+  };
 }
 
 export type AnalyticsEventName = keyof AnalyticsEventMap;

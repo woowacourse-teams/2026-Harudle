@@ -6,6 +6,7 @@ import useProfile from './useProfile';
 import loadingAnimation from '../../assets/images/loading-animation.webp';
 import { theme } from '../../styles/theme';
 import useLogout from './useLogout';
+import SettingError from './SettingError';
 
 const SettingPage = () => {
   const navigate = useNavigate();
@@ -43,7 +44,7 @@ const SettingPageContent = () => {
   }
 
   if (profileRequest.status === 'error') {
-    return <div>{profileRequest.error.message}</div>;
+    return <SettingError errorMessage={profileRequest.error.message} />;
   }
 
   const { name, oauthProviders } = profileRequest.data;

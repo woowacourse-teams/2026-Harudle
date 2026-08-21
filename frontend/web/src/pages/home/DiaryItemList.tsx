@@ -7,6 +7,7 @@ import DiaryEmptyState from './DiaryEmptyState';
 import loadingAnimation from '../../assets/images/loading-animation.webp';
 import { css } from '@emotion/react';
 import plusIcon from '../../assets/icons/plus.svg';
+import DiaryError from './DiaryError';
 
 const DiaryItemList = ({
   monthlyDiariesRequest,
@@ -31,7 +32,7 @@ const DiaryItemList = ({
   }
 
   if (monthlyDiariesRequest.status === 'error') {
-    return <div>{monthlyDiariesRequest.error.message}</div>;
+    return <DiaryError errorMessage={monthlyDiariesRequest.error.message} />;
   }
 
   const { days } = monthlyDiariesRequest.data;
@@ -39,7 +40,7 @@ const DiaryItemList = ({
   return (
     <div>
       {isMonthlyDiaryExist(days) ? (
-        <div>
+        <div css={diaryListStyle}>
           {days.map((day) => {
             return day.items.map((diary) => (
               <DiaryItemRow
@@ -67,6 +68,14 @@ const DiaryItemList = ({
 };
 
 export default DiaryItemList;
+
+const diaryListStyle = css`
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding-bottom: 76px;
+`;
 
 const loadingAnimationBoxStyle = css`
   display: flex;

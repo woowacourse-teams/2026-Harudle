@@ -17,7 +17,15 @@ export default {
   module: {
     rules: [
       {
+        test: /harudle-intro\.jpg$/i,
+        type: 'asset/resource',
+        generator: {
+          filename: 'harudle-intro.jpg',
+        },
+      },
+      {
         test: /\.(png|svg|jpg|jpeg|webp)$/i,
+        exclude: /harudle-intro\.jpg$/i,
         type: 'asset/resource',
       },
       {
@@ -44,7 +52,10 @@ export default {
     extensions: ['.tsx', '.ts', '.js'],
   },
   plugins: [
-    new HtmlWebpackPlugin({ template: './index.html' }),
+    new HtmlWebpackPlugin({
+      template: './index.html',
+      favicon: './src/assets/images/favicon.png',
+    }),
     new Dotenv({ systemvars: true }),
   ],
 };

@@ -68,7 +68,6 @@ const MOCK_CSRF_TOKEN = 'mock-csrf-token';
 let usedGenerationCount = 0;
 let mockDiarySequence = 1;
 let mockShareSequence = 1;
-let isMockAuthenticated = false;
 
 const createdDiaryRequests = new Map<
   string,
@@ -319,8 +318,6 @@ export const handlers = [
   http.get('/oauth2/authorization/kakao', async ({ request }) => {
     await delay(300);
 
-    isMockAuthenticated = true;
-
     return HttpResponse.redirect(new URL('/', request.url));
   }),
 
@@ -341,15 +338,6 @@ export const handlers = [
 
   http.post('/api/v1/auth/refresh', async () => {
     await delay(300);
-
-    if (!isMockAuthenticated) {
-      return createProblemDetails({
-        status: 401,
-        code: 'INVALID_REFRESH_TOKEN',
-        detail: 'Refresh Token이 유효하지 않습니다.',
-        instance: '/api/v1/auth/refresh',
-      });
-    }
 
     return HttpResponse.json(
       {
@@ -373,8 +361,6 @@ export const handlers = [
     }
 
     await delay(300);
-
-    isMockAuthenticated = false;
 
     return new HttpResponse(null, {
       status: 204,
