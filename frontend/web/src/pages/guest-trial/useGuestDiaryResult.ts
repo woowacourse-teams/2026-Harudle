@@ -59,8 +59,14 @@ const useGuestDiaryResult = ({
           setResultRequest({ status: 'success', data: diary });
         }
       } catch (error: unknown) {
-        if (isActive && error instanceof Error) {
-          setResultRequest({ status: 'error', error });
+        if (isActive) {
+          setResultRequest({
+            status: 'error',
+            error:
+              error instanceof Error
+                ? error
+                : new Error('게스트 일기 결과를 불러오지 못했습니다'),
+          });
         }
       }
     };

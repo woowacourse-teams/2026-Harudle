@@ -56,6 +56,22 @@ describe('게스트 일기 결과 조회', () => {
     expect(getDiary).not.toHaveBeenCalled();
   });
 
+  it('Error가 아닌 조회 실패도 오류 상태로 전환한다', async () => {
+    const getDiary = jest
+      .fn<GetGuestDiary>()
+      .mockRejectedValue('unknown failure');
+    const { result } = renderHook(() =>
+      useGuestDiaryResult({ diaryId: guestDiaryResponse.id, getDiary }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.resultRequest).toEqual({
+        status: 'error',
+        error: new Error('게스트 일기 결과를 불러오지 못했습니다'),
+      });
+    });
+  });
+
   it('결과 재시도 시 최신 이미지 URL을 다시 조회한다', async () => {
     const refreshedDiary = {
       ...guestDiaryResponse,
