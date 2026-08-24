@@ -1,4 +1,5 @@
 import { delay, http, HttpResponse } from 'msw';
+import { isGuestTrialPath } from '../pages/guest-trial/guestTrialPaths';
 
 interface CreateDiaryRequest {
   diaryDate: string;
@@ -338,6 +339,15 @@ export const handlers = [
 
   http.post('/api/v1/auth/refresh', async () => {
     await delay(300);
+
+    if (isGuestTrialPath(globalThis.location.pathname)) {
+      return createProblemDetails({
+        status: 401,
+        code: 'INVALID_REFRESH_TOKEN',
+        detail: '유효한 Refresh Token이 없습니다.',
+        instance: '/api/v1/auth/refresh',
+      });
+    }
 
     return HttpResponse.json(
       {
