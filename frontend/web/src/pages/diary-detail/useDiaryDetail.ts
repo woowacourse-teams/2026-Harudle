@@ -6,6 +6,7 @@ import {
   type ApiRequest,
 } from '../../shared/api';
 import { authFetch } from '../../shared/auth';
+import { useAnalytics } from '../../shared/useAnalytics';
 
 interface DiaryDetail {
   id: string;
@@ -53,6 +54,7 @@ const isDiaryDetail = (value: unknown): value is DiaryDetail => {
 };
 
 const useDiaryDetail = ({ diaryId }: { diaryId: string | undefined }) => {
+  const { track } = useAnalytics();
   const [diaryDetailReqeust, setDiaryDetailRequest] = useState<
     ApiRequest<DiaryDetail>
   >({
@@ -86,6 +88,11 @@ const useDiaryDetail = ({ diaryId }: { diaryId: string | undefined }) => {
           status: 'success',
           data: data,
         });
+
+        track('diary_detail_viewed', {
+          diary_id: data.id,
+          diary_date: data.diaryDate,
+        });
       } catch (error: unknown) {
         if (error instanceof Error) {
           setDiaryDetailRequest({
@@ -97,7 +104,7 @@ const useDiaryDetail = ({ diaryId }: { diaryId: string | undefined }) => {
     };
 
     void getDiaryDetail();
-  }, [diaryId]);
+  }, [diaryId, track]);
 
   return { diaryDetailReqeust };
 };
