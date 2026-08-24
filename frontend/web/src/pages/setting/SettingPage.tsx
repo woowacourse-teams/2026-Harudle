@@ -7,6 +7,11 @@ import loadingAnimation from '../../assets/images/loading-animation.webp';
 import { theme } from '../../styles/theme';
 import useLogout from './useLogout';
 import SettingError from './SettingError';
+import callMadeIcon from '../../assets/icons/call_made.svg';
+import logoutIcon from '../../assets/icons/logout.svg';
+
+const PRIVACY_POLICY_URL =
+  'https://tecothon.notion.site/3c6d0505d9168025b01cdfa02d863a37?pvs=73';
 
 const SettingPage = () => {
   const navigate = useNavigate();
@@ -66,13 +71,24 @@ const SettingPageContent = () => {
         </div>
       </div>
 
+      <a css={privacyPolicyLinkStyle} href={PRIVACY_POLICY_URL}>
+        <span css={settingLabelStyle}>개인정보 처리방침</span>
+        <img
+          css={callMadeIconStyle}
+          src={callMadeIcon}
+          alt=""
+          aria-hidden="true"
+        />
+      </a>
+
       <button
         type="button"
         css={logoutButtonStyle}
         disabled={logoutRequest.status === 'loading'}
         onClick={() => void handleLogout()}
       >
-        로그아웃
+        <span>로그아웃</span>
+        <img css={logoutIconStyle} src={logoutIcon} alt="" aria-hidden="true" />
       </button>
       {logoutRequest.status === 'error' && (
         <div css={logoutErrorStyle}>{logoutRequest.error.message}</div>
@@ -155,6 +171,30 @@ const accountCardStyle = css`
   border-radius: 16px;
 `;
 
+const privacyPolicyLinkStyle = css`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 60px;
+  padding: 0 16px;
+  border: 1px solid ${theme.colors.border.primary};
+  border-radius: 16px;
+  color: ${theme.colors.text.primary};
+  font-size: 15px;
+  line-height: 24px;
+  text-decoration: none;
+
+  &:active {
+    background-color: #f8f7fa;
+  }
+`;
+
+const callMadeIconStyle = css`
+  width: 24px;
+  height: 24px;
+`;
+
 const settingRowStyle = css`
   display: flex;
   align-items: center;
@@ -179,6 +219,9 @@ const settingValueStyle = css`
 `;
 
 const logoutButtonStyle = css`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   width: 100%;
   height: 56px;
   padding: 0 16px;
@@ -200,6 +243,11 @@ const logoutButtonStyle = css`
     opacity: 0.5;
     cursor: default;
   }
+`;
+
+const logoutIconStyle = css`
+  width: 24px;
+  height: 24px;
 `;
 
 const logoutErrorStyle = css`
