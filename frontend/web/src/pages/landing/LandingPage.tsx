@@ -47,6 +47,7 @@ interface LandingPageProps {
   heroAction?: ReactNode;
   finalAction?: ReactNode;
   trialSection?: ReactNode;
+  showIntro?: boolean;
 }
 
 const LandingPage = ({
@@ -65,6 +66,7 @@ const LandingPage = ({
     />
   ),
   trialSection,
+  showIntro = true,
 }: LandingPageProps) => {
   const pageRef = useRef<HTMLElement>(null);
   const showcaseRef = useRef<HTMLElement>(null);
@@ -73,6 +75,10 @@ const LandingPage = ({
   const [visibleProcessStepCount, setVisibleProcessStepCount] = useState(0);
 
   useEffect(() => {
+    if (!showIntro) {
+      return;
+    }
+
     const scrollContainer = pageRef.current;
     const showcase = showcaseRef.current;
     const processSection = processRef.current;
@@ -158,134 +164,145 @@ const LandingPage = ({
         window.cancelAnimationFrame(animationFrameId);
       }
     };
-  }, []);
+  }, [showIntro]);
 
   return (
-    <main ref={pageRef} css={pageStyle}>
-      <header css={topBarStyle}>
-        <img src={harudleLogo} alt="하루들" css={logoStyle} />
-      </header>
+    <main ref={pageRef} css={pageStyle(showIntro)}>
+      {showIntro ? (
+        <>
+          <header css={topBarStyle}>
+            <img src={harudleLogo} alt="하루들" css={logoStyle} />
+          </header>
 
-      <section css={heroSectionStyle} aria-labelledby="landing-hero-title">
-        <div css={heroCopyStyle}>
-          <h1 id="landing-hero-title" css={heroTitleStyle}>
-            일상을 <span css={accentStyle}>그림으로</span>
-            <br />
-            만들어드려요
-          </h1>
-          <p css={heroDescriptionStyle}>
-            찍지 못했던 일상을 그림으로 만들어드립니다
-          </p>
-        </div>
+          <section css={heroSectionStyle} aria-labelledby="landing-hero-title">
+            <div css={heroCopyStyle}>
+              <h1 id="landing-hero-title" css={heroTitleStyle}>
+                일상을 <span css={accentStyle}>그림으로</span>
+                <br />
+                만들어드려요
+              </h1>
+              <p css={heroDescriptionStyle}>
+                찍지 못했던 일상을 그림으로 만들어드립니다
+              </p>
+            </div>
 
-        <div css={heroVisualStyle}>
-          <img
-            src={loginHero}
-            alt="사람들과 강아지가 함께 하루를 시작하는 모습"
-            loading="eager"
-            decoding="async"
-            css={heroIllustrationStyle}
-          />
-          {heroAction}
-        </div>
-      </section>
+            <div css={heroVisualStyle}>
+              <img
+                src={loginHero}
+                alt="사람들과 강아지가 함께 하루를 시작하는 모습"
+                loading="eager"
+                decoding="async"
+                css={heroIllustrationStyle}
+              />
+              {heroAction}
+            </div>
+          </section>
 
-      <section css={storyFlowStyle} aria-label="하루가 네컷이 되는 흐름">
-        <section
-          ref={showcaseRef}
-          css={showcaseSectionStyle}
-          aria-label="완성된 네컷 그림 일기 예시"
-        >
-          <div css={showcaseStageStyle}>
-            <div css={showcaseCopyStyle}>
-              <div
-                role="group"
-                aria-label="현재 네컷을 만든 이야기"
-                css={activeDiaryStoryStyle}
-              >
-                <p css={diaryCaptionStyle}>
-                  {diaryExamples[activeDiaryIndex].caption}
-                </p>
-                <div css={progressStyle} aria-hidden="true">
+          <section css={storyFlowStyle} aria-label="하루가 네컷이 되는 흐름">
+            <section
+              ref={showcaseRef}
+              css={showcaseSectionStyle}
+              aria-label="완성된 네컷 그림 일기 예시"
+            >
+              <div css={showcaseStageStyle}>
+                <div css={showcaseCopyStyle}>
+                  <div
+                    role="group"
+                    aria-label="현재 네컷을 만든 이야기"
+                    css={activeDiaryStoryStyle}
+                  >
+                    <p css={diaryCaptionStyle}>
+                      {diaryExamples[activeDiaryIndex].caption}
+                    </p>
+                    <div css={progressStyle} aria-hidden="true">
+                      {diaryExamples.map((diary, index) => (
+                        <span
+                          key={diary.alt}
+                          css={progressSegmentStyle(index <= activeDiaryIndex)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div css={diaryStackStyle}>
                   {diaryExamples.map((diary, index) => (
-                    <span
+                    <figure
                       key={diary.alt}
-                      css={progressSegmentStyle(index <= activeDiaryIndex)}
-                    />
+                      css={diaryStoryStyle(index, activeDiaryIndex)}
+                      data-diary-active={index === activeDiaryIndex}
+                    >
+                      <figcaption css={reducedDiaryCaptionStyle}>
+                        {diary.caption}
+                      </figcaption>
+                      <div css={diaryFrameStyle}>
+                        <img
+                          src={diary.image}
+                          alt={diary.alt}
+                          loading={index === 0 ? 'eager' : 'lazy'}
+                          decoding="async"
+                          css={diaryImageStyle}
+                        />
+                      </div>
+                    </figure>
                   ))}
                 </div>
               </div>
-            </div>
+            </section>
 
-            <div css={diaryStackStyle}>
-              {diaryExamples.map((diary, index) => (
-                <figure
-                  key={diary.alt}
-                  css={diaryStoryStyle(index, activeDiaryIndex)}
-                  data-diary-active={index === activeDiaryIndex}
-                >
-                  <figcaption css={reducedDiaryCaptionStyle}>
-                    {diary.caption}
-                  </figcaption>
-                  <div css={diaryFrameStyle}>
-                    <img
-                      src={diary.image}
-                      alt={diary.alt}
-                      loading={index === 0 ? 'eager' : 'lazy'}
-                      decoding="async"
-                      css={diaryImageStyle}
-                    />
-                  </div>
-                </figure>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section
-          ref={processRef}
-          css={processSectionStyle}
-          aria-labelledby="landing-process-title"
-        >
-          <header css={processHeadingStyle}>
-            <div css={processHeadingCopyStyle}>
-              <h2 id="landing-process-title" css={sectionTitleStyle}>
-                이렇게 하루를 남겨요
-              </h2>
-            </div>
-            <img
-              src={writingScene}
-              alt="사람이 강아지와 함께 오늘의 이야기를 기록하는 모습"
-              loading="lazy"
-              decoding="async"
-              css={processIllustrationStyle}
-            />
-          </header>
-
-          <ol css={processListStyle}>
-            {processSteps.map((step, index) => (
-              <li
-                key={step.title}
-                css={processStepStyle(index < visibleProcessStepCount, index)}
-              >
-                <span css={processStepNumberStyle} aria-hidden="true">
-                  {String(index + 1).padStart(2, '0')}
-                </span>
-                <div css={processStepCopyStyle}>
-                  <h3 css={processStepTitleStyle}>{step.title}</h3>
-                  <p css={processStepDescriptionStyle}>{step.description}</p>
+            <section
+              ref={processRef}
+              css={processSectionStyle}
+              aria-labelledby="landing-process-title"
+            >
+              <header css={processHeadingStyle}>
+                <div css={processHeadingCopyStyle}>
+                  <h2 id="landing-process-title" css={sectionTitleStyle}>
+                    이렇게 하루를 남겨요
+                  </h2>
                 </div>
-              </li>
-            ))}
-          </ol>
-        </section>
-      </section>
+                <img
+                  src={writingScene}
+                  alt="사람이 강아지와 함께 오늘의 이야기를 기록하는 모습"
+                  loading="lazy"
+                  decoding="async"
+                  css={processIllustrationStyle}
+                />
+              </header>
+
+              <ol css={processListStyle}>
+                {processSteps.map((step, index) => (
+                  <li
+                    key={step.title}
+                    css={processStepStyle(
+                      index < visibleProcessStepCount,
+                      index,
+                    )}
+                  >
+                    <span css={processStepNumberStyle} aria-hidden="true">
+                      {String(index + 1).padStart(2, '0')}
+                    </span>
+                    <div css={processStepCopyStyle}>
+                      <h3 css={processStepTitleStyle}>{step.title}</h3>
+                      <p css={processStepDescriptionStyle}>
+                        {step.description}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          </section>
+        </>
+      ) : null}
 
       <section
         css={finalCtaSectionStyle(trialSection !== undefined)}
         aria-labelledby="landing-final-title"
       >
-        <p css={finalEyebrowStyle}>이제, 당신의 차례예요</p>
+        {showIntro ? (
+          <p css={finalEyebrowStyle}>이제, 당신의 차례예요</p>
+        ) : null}
         <div css={finalIllustrationFrameStyle}>
           <img
             src={emptyPersonAndDog}
@@ -309,12 +326,12 @@ const LandingPage = ({
 
 export default LandingPage;
 
-const pageStyle = css`
+const pageStyle = (showIntro: boolean) => css`
   width: 100%;
   height: 100%;
   overflow-x: hidden;
   overflow-y: auto;
-  background-color: #ffffff;
+  background-color: ${showIntro ? '#ffffff' : '#f8f6ff'};
   color: ${theme.colors.text.primary};
   overscroll-behavior-y: contain;
   scrollbar-width: none;
@@ -709,7 +726,7 @@ const finalCtaSectionStyle = (continuesToTrial: boolean) => css`
   align-items: center;
   gap: 20px;
   padding: 44px 24px ${continuesToTrial ? '28px' : '56px'};
-  border-top: 1px solid #efebfa;
+  border-top: ${continuesToTrial ? 'none' : '1px solid #efebfa'};
   background-color: #f8f6ff;
 
   & > a {

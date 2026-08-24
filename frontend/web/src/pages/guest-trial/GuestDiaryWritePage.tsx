@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { css } from '@emotion/react';
 import generationStep1Image from '../../assets/images/generation-step-1-reading.png';
 import generationStep2Image from '../../assets/images/generation-step-2-writing.png';
@@ -18,7 +18,6 @@ import useGuestDiaryCreation, {
 } from './useGuestDiaryCreation';
 
 const GuestDiaryWritePage = () => {
-  const trialCardRef = useRef<HTMLElement>(null);
   const { track } = useAnalytics();
   const { creationState, submitDiary, retryDiary } = useGuestDiaryCreation({
     enabled: true,
@@ -43,27 +42,10 @@ const GuestDiaryWritePage = () => {
 
   return (
     <LandingPage
-      heroAction={
-        <button
-          type="button"
-          css={trialStartButtonStyle}
-          onClick={() => {
-            trialCardRef.current?.scrollIntoView({
-              behavior: 'smooth',
-              block: 'start',
-            });
-          }}
-        >
-          무료로 사용해보기
-        </button>
-      }
+      showIntro={false}
       finalAction={null}
       trialSection={
-        <section
-          ref={trialCardRef}
-          css={trialFormSectionStyle}
-          aria-label="무료 네컷 체험"
-        >
+        <section css={trialFormSectionStyle} aria-label="무료 네컷 체험">
           <GuestTrialCard
             creationState={creationState}
             sourceText={sourceText}
@@ -163,7 +145,7 @@ const GuestTrialCard = ({
               ? 'guest-diary-source-text-error'
               : 'guest-diary-source-text-hint'
           }
-          placeholder="상쾌하게 일어나고 보니 오전 11시였다 부랴부랴 짐을 싸고 버스에서 내리니 비가 와서 비에 홀딱 젖었다"
+          placeholder="라면 끓이다 한눈팔았더니 국물이 사라졌다."
           onChange={(event) => onSourceTextChange(event.target.value)}
         />
         <span css={descriptionRowStyle}>
@@ -182,7 +164,7 @@ const GuestTrialCard = ({
       </div>
 
       <button type="submit" css={primaryButtonStyle}>
-        네컷 그림 만들기
+        그림일기 만들기
       </button>
     </form>
   );
@@ -362,37 +344,6 @@ const GuestTrialErrorCard = ({
     </div>
   );
 };
-
-const trialStartButtonStyle = css`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  min-height: 56px;
-  padding: 14px 20px;
-  border: none;
-  border-radius: 16px;
-  background-color: ${theme.colors.bg.brand};
-  color: #ffffff;
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 24px;
-  cursor: pointer;
-  transition: transform 180ms ease;
-
-  &:active {
-    transform: scale(0.99);
-  }
-
-  &:focus-visible {
-    outline: 3px solid rgb(115 85 218 / 35%);
-    outline-offset: 2px;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    transition-duration: 1ms;
-  }
-`;
 
 const trialFormSectionStyle = css`
   width: 100%;
