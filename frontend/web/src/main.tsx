@@ -11,23 +11,21 @@ import { PostHogErrorBoundary } from '@posthog/react';
 import { isPostHogEnabled } from './shared/posthog';
 
 const posthogKey = process.env.REACT_APP_POSTHOG_KEY;
-const posthogHost = process.env.REACT_APP_POSTHOG_HOST;
 
 const initializePostHog = (): boolean => {
   if (!isPostHogEnabled) {
     return false;
   }
 
-  if (!posthogKey || !posthogHost) {
-    console.error(
-      'PostHog is enabled, but REACT_APP_POSTHOG_KEY or REACT_APP_POSTHOG_HOST is missing.',
-    );
+  if (!posthogKey) {
+    console.error('PostHog is enabled, but REACT_APP_POSTHOG_KEY is missing.');
 
     return false;
   }
 
   posthog.init(posthogKey, {
-    api_host: posthogHost,
+    api_host: 'https://e.harudle.com',
+    ui_host: 'https://us.posthog.com',
     defaults: '2026-01-30',
   });
 
