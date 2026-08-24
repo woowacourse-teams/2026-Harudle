@@ -6,6 +6,7 @@ import {
   type ApiRequest,
 } from '../../shared/api';
 import { authFetch } from '../../shared/auth';
+import { useAnalytics } from '../../shared/useAnalytics';
 
 export interface DiaryGenerateResponse {
   id: string;
@@ -78,6 +79,7 @@ const useDiaryGenerate = ({
   diaryDate: string;
   sourceText: string;
 }) => {
+  const { track } = useAnalytics();
   const [diaryGenerateRequest, setDiaryGenerateRequest] = useState<
     ApiRequest<DiaryGenerateResponse>
   >({
@@ -125,6 +127,12 @@ const useDiaryGenerate = ({
           data: data,
         });
         sessionStorage.removeItem('diaryContent'); // TOOD: 별도 로직으로 분리 (주입받는 식) + session Item key 상수화
+
+        track('diary_created', {
+          diary_id: data.id,
+          diary_date: data.diaryDate,
+          remaining_generation_count: data.usage.remainingCount,
+        });
       } catch (error: unknown) {
         if (error instanceof Error) {
           setDiaryGenerateRequest({
@@ -136,7 +144,7 @@ const useDiaryGenerate = ({
     };
 
     void getMonthlyDiaries();
-  }, [diaryDate, sourceText]);
+  }, [diaryDate, sourceText, track]);
 
   return { diaryGenerateRequest };
 };
