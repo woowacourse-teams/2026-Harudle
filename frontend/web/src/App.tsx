@@ -9,6 +9,8 @@ import LoginPage from './pages/login/LoginPage';
 import DiaryDetailPage from './pages/diary-detail/DiaryDetailPage';
 import DiarySharePage from './pages/diary-share/DiarySharePage';
 import AuthCallbackPage from './pages/login/AuthCallbackPage';
+import GuestTrialRoutes from './pages/guest-trial/GuestTrialRoutes';
+import LandingPage from './pages/landing/LandingPage';
 
 const App = () => {
   return (
@@ -22,6 +24,8 @@ const App = () => {
         <Route path="/diary/:diaryId" element={<DiaryDetailPage />} />
         <Route path="/shares/:shareId" element={<DiarySharePage />} />
         <Route path="/setting" element={<SettingPage />} />
+        <Route path="/landing" element={<LandingPage />} />
+        <Route path="/landing-try/*" element={<GuestTrialRoutes />} />
       </Routes>
     </div>
   );

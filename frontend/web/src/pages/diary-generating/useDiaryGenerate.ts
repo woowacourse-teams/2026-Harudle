@@ -5,7 +5,6 @@ import {
   RequestError,
   type ApiRequest,
 } from '../../shared/api';
-import { useLocation } from 'react-router';
 import { authFetch } from '../../shared/auth';
 import { useAnalytics } from '../../shared/useAnalytics';
 
@@ -73,14 +72,19 @@ export const isDiaryGenerateResponse = (
   );
 };
 
-const useDiaryGenerate = () => {
+const useDiaryGenerate = ({
+  diaryDate,
+  sourceText,
+}: {
+  diaryDate: string;
+  sourceText: string;
+}) => {
   const { track } = useAnalytics();
   const [diaryGenerateRequest, setDiaryGenerateRequest] = useState<
     ApiRequest<DiaryGenerateResponse>
   >({
     status: 'idle',
   });
-  const { state } = useLocation();
   const idempotencyKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -97,7 +101,10 @@ const useDiaryGenerate = () => {
             'Content-Type': 'application/json',
             'Idempotency-Key': idempotencyKey,
           },
-          body: JSON.stringify(state),
+          body: JSON.stringify({
+            diaryDate,
+            sourceText,
+          }),
         });
 
         if (!response.ok) {
@@ -119,6 +126,7 @@ const useDiaryGenerate = () => {
           status: 'success',
           data: data,
         });
+        sessionStorage.removeItem('diaryContent'); // TOOD: 별도 로직으로 분리 (주입받는 식) + session Item key 상수화
 
         track('diary_created', {
           diary_id: data.id,
@@ -136,7 +144,7 @@ const useDiaryGenerate = () => {
     };
 
     void getMonthlyDiaries();
-  }, [state, track]);
+  }, [diaryDate, sourceText, track]);
 
   return { diaryGenerateRequest };
 };

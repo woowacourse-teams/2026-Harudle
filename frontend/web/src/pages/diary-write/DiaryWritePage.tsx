@@ -10,7 +10,9 @@ import nextIcon from '../../assets/icons/arrow-right.svg';
 
 const DiaryWritePage = () => {
   const navigate = useNavigate();
-  const [diaryContent, setDiaryContent] = useState('');
+  const [diaryContent, setDiaryContent] = useState(
+    sessionStorage.getItem('diaryContent') ?? '',
+  );
   const [diaryContentError, setDiaryContentError] = useState<string | null>(
     null,
   );
@@ -22,6 +24,8 @@ const DiaryWritePage = () => {
       return;
     }
 
+    sessionStorage.setItem('diaryContent', diaryContent);
+
     navigate('/diary-generating', {
       state: {
         diaryDate: new Date().toLocaleDateString('sv-SE', {
@@ -31,6 +35,7 @@ const DiaryWritePage = () => {
       },
     });
   };
+
   return (
     <div css={pageStyle}>
       <PageHeader
