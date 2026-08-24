@@ -7,6 +7,7 @@ import {
 } from '../../shared/api';
 import { useLocation } from 'react-router';
 import { authFetch } from '../../shared/auth';
+import { useAnalytics } from '../../shared/useAnalytics';
 
 export interface DiaryGenerateResponse {
   id: string;
@@ -73,6 +74,7 @@ export const isDiaryGenerateResponse = (
 };
 
 const useDiaryGenerate = () => {
+  const { track } = useAnalytics();
   const [diaryGenerateRequest, setDiaryGenerateRequest] = useState<
     ApiRequest<DiaryGenerateResponse>
   >({
@@ -117,6 +119,12 @@ const useDiaryGenerate = () => {
           status: 'success',
           data: data,
         });
+
+        track('diary_created', {
+          diary_id: data.id,
+          diary_date: data.diaryDate,
+          remaining_generation_count: data.usage.remainingCount,
+        });
       } catch (error: unknown) {
         if (error instanceof Error) {
           setDiaryGenerateRequest({
@@ -128,7 +136,7 @@ const useDiaryGenerate = () => {
     };
 
     void getMonthlyDiaries();
-  }, [state]);
+  }, [state, track]);
 
   return { diaryGenerateRequest };
 };

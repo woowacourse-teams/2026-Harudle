@@ -13,8 +13,10 @@ import type {
 } from './model';
 import { isMonth } from './useSelectedYearMonth';
 import { authFetch } from '../../../shared/auth';
+import { useAnalytics } from '../../../shared/useAnalytics';
 
 const useMonthlyDiaries = ({ year, month }: YearMonth) => {
+  const { track } = useAnalytics();
   const [monthlyDiariesRequest, setMonthlyDiariesRequest] = useState<
     ApiRequest<MonthlyDiariesResponse>
   >({
@@ -50,6 +52,18 @@ const useMonthlyDiaries = ({ year, month }: YearMonth) => {
           status: 'success',
           data: data,
         });
+
+        const diaryCount = data.days.reduce(
+          (count, day) => count + day.items.length,
+          0,
+        );
+
+        track('diary_timeline_viewed', {
+          year: data.year,
+          month: data.month,
+          diary_count: diaryCount,
+          has_diaries: diaryCount > 0,
+        });
       } catch (error: unknown) {
         if (error instanceof Error) {
           setMonthlyDiariesRequest({
@@ -61,7 +75,7 @@ const useMonthlyDiaries = ({ year, month }: YearMonth) => {
     };
 
     void getMonthlyDiaries();
-  }, [year, month]);
+  }, [year, month, track]);
 
   return { monthlyDiariesRequest };
 };
