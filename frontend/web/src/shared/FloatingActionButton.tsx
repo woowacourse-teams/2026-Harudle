@@ -40,7 +40,7 @@ const buttonStyle = () => css`
   }
 
   &:disabled {
-    opacity: 0.9;
+    opacity: 0.65;
     cursor: not-allowed;
   }
 `;
