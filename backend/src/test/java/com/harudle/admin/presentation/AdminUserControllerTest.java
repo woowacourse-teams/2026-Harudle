@@ -183,6 +183,96 @@ class AdminUserControllerTest {
                 .andExpect(jsonPath("$.remainingGenerationCount").value(4));
     }
 
+    @Test
+    @DisplayName("관리자는 오늘 사용량을 직접 설정하고 초기화할 수 있다")
+    void changesAndResetsUsedCount() throws Exception {
+        User admin = userRepository.save(new User("usage-admin@example.com", "관리자", CREATED_AT));
+        grantAdminRole(admin);
+        User user = userRepository.save(new User("usage-user@example.com", "사용량 사용자", CREATED_AT));
+        saveTodayUsage(user, 2, 3);
+
+        mockMvc.perform(put("/api/v1/admin/users/{userId}/usage", user.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"usedCount\":1}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.usedGenerationCount").value(1))
+                .andExpect(jsonPath("$.remainingGenerationCount").value(2));
+
+        mockMvc.perform(put("/api/v1/admin/users/{userId}/usage", user.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"usedCount\":0}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.usedGenerationCount").value(0))
+                .andExpect(jsonPath("$.remainingGenerationCount").value(3));
+    }
+
+    @Test
+    @DisplayName("오늘 사용량 행이 없어도 관리자는 사용량을 설정할 수 있다")
+    void createsMissingTodayUsageWhenChangingUsedCount() throws Exception {
+        User admin = userRepository.save(new User("missing-usage-admin@example.com", "관리자", CREATED_AT));
+        grantAdminRole(admin);
+        User user = userRepository.save(new User("missing-usage@example.com", "사용량 없음", CREATED_AT));
+
+        mockMvc.perform(put("/api/v1/admin/users/{userId}/usage", user.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"usedCount\":2}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.usedGenerationCount").value(2))
+                .andExpect(jsonPath("$.dailyGenerationLimit").value(3))
+                .andExpect(jsonPath("$.remainingGenerationCount").value(1));
+    }
+
+    @Test
+    @DisplayName("현재 한도를 초과하는 사용량 설정은 거부한다")
+    void rejectsUsedCountOverLimit() throws Exception {
+        User admin = userRepository.save(new User("invalid-usage-admin@example.com", "관리자", CREATED_AT));
+        grantAdminRole(admin);
+        User user = userRepository.save(new User("invalid-usage@example.com", "사용량 사용자", CREATED_AT));
+
+        mockMvc.perform(put("/api/v1/admin/users/{userId}/usage", user.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"usedCount\":4}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("지속 한도를 낮춰도 이미 사용한 오늘 사용량은 줄어들지 않는다")
+    void preservesTodaySnapshotWhenPersistentLimitIsLowered() throws Exception {
+        User admin = userRepository.save(new User("lower-limit-admin@example.com", "관리자", CREATED_AT));
+        grantAdminRole(admin);
+        User user = userRepository.save(new User("lower-limit@example.com", "한도 사용자", CREATED_AT));
+        saveTodayUsage(user, 2, 3);
+
+        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-limit", user.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"limitCount\":1}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/admin/users/{userId}", user.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.usedGenerationCount").value(2))
+                .andExpect(jsonPath("$.dailyGenerationLimit").value(3))
+                .andExpect(jsonPath("$.remainingGenerationCount").value(1));
+    }
+
+    @Test
+    @DisplayName("일반 사용자는 관리자 사용량 설정 API를 호출할 수 없다")
+    void rejectsRegularUserUsageChange() throws Exception {
+        User user = userRepository.save(new User("regular-usage@example.com", "일반 사용자", CREATED_AT));
+
+        mockMvc.perform(put("/api/v1/admin/users/{userId}/usage", user.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(user))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"usedCount\":0}"))
+                .andExpect(status().isForbidden());
+    }
+
     private void grantAdminRole(User admin) {
         jdbcTemplate.update("UPDATE users SET role = 'ADMIN' WHERE id = ?", admin.getId());
     }
