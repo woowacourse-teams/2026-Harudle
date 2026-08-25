@@ -7,6 +7,7 @@ import backIcon from '../../assets/icons/back.svg';
 import { css } from '@emotion/react';
 import { theme } from '../../styles/theme';
 import nextIcon from '../../assets/icons/arrow-right.svg';
+import { useDiaryGenerateContext } from '../diary-generating/DiaryGenerateContext';
 
 const DiaryWritePage = () => {
   const navigate = useNavigate();
@@ -16,6 +17,10 @@ const DiaryWritePage = () => {
   const [diaryContentError, setDiaryContentError] = useState<string | null>(
     null,
   );
+  const { diaryGenerateRequest } = useDiaryGenerateContext();
+  if (diaryGenerateRequest.status === 'loading') {
+    navigate('/');
+  }
 
   const handleDiarySubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -33,6 +38,7 @@ const DiaryWritePage = () => {
         }),
         sourceText: diaryContent,
       },
+      replace: true,
     });
   };
 
