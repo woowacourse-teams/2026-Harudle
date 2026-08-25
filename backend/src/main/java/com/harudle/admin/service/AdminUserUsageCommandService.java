@@ -28,4 +28,9 @@ public class AdminUserUsageCommandService {
     public void changeUsedCount(UUID userId, int usedCount) {
         repository.changeUsedCount(userId, usedCount, LocalDate.now(clock));
     }
+
+    @Transactional
+    public void restoreUsedCount(UUID userId, int count) {
+        repository.restoreUsedCount(userId, count, LocalDate.now(clock));
+    }
 }

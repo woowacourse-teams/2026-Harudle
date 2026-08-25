@@ -56,4 +56,22 @@ class JpaAdminUserUsageCommandRepository implements AdminUserUsageCommandReposit
                 """).setParameter("userId", userId).setParameter("usageDate", usageDate)
                 .setParameter("usedCount", usedCount).executeUpdate();
     }
+
+    @Override
+    @Transactional
+    public void restoreUsedCount(UUID userId, int count, LocalDate usageDate) {
+        int updated = entityManager.createNativeQuery("""
+                UPDATE daily_generation_usage
+                   SET used_count = used_count - :count, updated_at = CURRENT_TIMESTAMP
+                 WHERE user_id = :userId AND usage_date = :usageDate
+                   AND used_count >= :count
+                """).setParameter("count", count).setParameter("userId", userId)
+                .setParameter("usageDate", usageDate).executeUpdate();
+        if (updated > 0) return;
+        Number exists = (Number) entityManager.createNativeQuery("""
+                SELECT COUNT(*) FROM users WHERE id = :userId AND deleted_at IS NULL
+                """).setParameter("userId", userId).getSingleResult();
+        if (exists.intValue() == 0) throw new AdminUserNotFoundException(userId);
+        throw new AdminUsageCountOutOfRangeException();
+    }
 }

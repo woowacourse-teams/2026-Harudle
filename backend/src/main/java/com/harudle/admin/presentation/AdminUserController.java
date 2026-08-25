@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Min;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -57,6 +58,15 @@ class AdminUserController {
             @RequestBody @jakarta.validation.Valid ChangeUsedCountRequest request
     ) {
         adminUserUsageCommandService.changeUsedCount(userId, request.usedCount());
+        return AdminUserDetailResponse.from(adminUserQueryService.findDetail(userId));
+    }
+
+    @PatchMapping("/{userId}/generation-usage/restore")
+    AdminUserDetailResponse restoreUsedCount(
+            @PathVariable java.util.UUID userId,
+            @RequestBody @jakarta.validation.Valid RestoreGenerationUsageRequest request
+    ) {
+        adminUserUsageCommandService.restoreUsedCount(userId, request.count());
         return AdminUserDetailResponse.from(adminUserQueryService.findDetail(userId));
     }
 }
