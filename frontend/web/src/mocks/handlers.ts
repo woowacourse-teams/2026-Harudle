@@ -314,6 +314,32 @@ const augustDiaries = [
   },
 ];
 
+const addDiaryToAugustDiaries = (diary: CreateDiaryResponse) => {
+  if (!diary.diaryDate.startsWith('2026-08-')) {
+    return;
+  }
+
+  const diaryItem = {
+    id: diary.id,
+    title: diary.generation.title,
+    thumbnailUrl: diary.generation.imageUrl,
+  };
+  const diaryDay = augustDiaries.find((day) => day.date === diary.diaryDate);
+
+  if (diaryDay) {
+    diaryDay.exist = true;
+    diaryDay.items.unshift(diaryItem);
+    return;
+  }
+
+  augustDiaries.push({
+    date: diary.diaryDate,
+    exist: true,
+    items: [diaryItem],
+  });
+  augustDiaries.sort((a, b) => b.date.localeCompare(a.date));
+};
+
 // 홈 - 월간 일기 조회
 export const handlers = [
   http.get('/oauth2/authorization/kakao', async ({ request }) => {
@@ -622,7 +648,7 @@ export const handlers = [
       return unauthorizedResponse;
     }
 
-    await delay(12_000);
+    await delay(9_000);
 
     const idempotencyKey = request.headers.get('Idempotency-Key');
 
@@ -721,6 +747,7 @@ export const handlers = [
       createdAt: response.createdAt,
       generation: response.generation,
     });
+    addDiaryToAugustDiaries(response);
 
     return HttpResponse.json(response, {
       status: 201,
