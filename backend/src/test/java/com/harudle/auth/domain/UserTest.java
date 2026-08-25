@@ -22,6 +22,8 @@ class UserTest {
         assertThat(user.getId()).isNotNull();
         assertThat(user.getPrimaryEmail()).isEqualTo("user@example.com");
         assertThat(user.getName()).isEqualTo("하루들");
+        assertThat(user.getRole()).isEqualTo(UserRole.USER);
+        assertThat(user.isAdmin()).isFalse();
         assertThat(user.getCreatedAt()).isEqualTo(CREATED_AT);
     }
 

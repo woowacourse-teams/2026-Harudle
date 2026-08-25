@@ -2,6 +2,8 @@ package com.harudle.auth.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
@@ -18,6 +20,10 @@ public class User {
 
     @Column(nullable = false, length = 30)
     private String name;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private UserRole role;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -40,6 +46,7 @@ public class User {
         this.id = UUID.randomUUID();
         this.primaryEmail = primaryEmail;
         this.name = name;
+        this.role = UserRole.USER;
         this.createdAt = now;
         this.updatedAt = now;
     }
@@ -58,6 +65,14 @@ public class User {
 
     public String getName() {
         return name;
+    }
+
+    public UserRole getRole() {
+        return role;
+    }
+
+    public boolean isAdmin() {
+        return role == UserRole.ADMIN;
     }
 
     public Instant getCreatedAt() {
