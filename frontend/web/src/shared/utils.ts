@@ -19,17 +19,19 @@ export const getToday = (): {
   month: Month;
   day: number;
 } => {
-  const today = new Date();
+  const [year, month, day] = new Date()
+    .toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' })
+    .split('-')
+    .map(Number);
 
-  const month = today.getMonth() + 1;
   if (!isMonth(month)) {
     throw new Error('올바른 month가 아닙니다!');
   }
 
   return {
-    year: today.getFullYear(),
-    month: month,
-    day: today.getDate(),
+    year,
+    month,
+    day,
   };
 };
 
