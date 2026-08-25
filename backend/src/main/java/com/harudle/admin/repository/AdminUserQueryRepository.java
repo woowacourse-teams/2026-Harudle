@@ -6,6 +6,8 @@ import java.util.UUID;
 
 public interface AdminUserQueryRepository {
 
+    AdminUserDetail findDetail(UUID userId, LocalDate usageDate);
+
     AdminUserPage search(
             String normalizedQuery,
             Optional<UUID> exactUserId,

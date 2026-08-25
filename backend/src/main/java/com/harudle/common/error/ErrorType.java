@@ -63,6 +63,11 @@ public enum ErrorType {
             "Share not found",
             "공유 링크를 찾을 수 없습니다."
     ),
+    ADMIN_USER_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "Admin user not found",
+            "사용자를 찾을 수 없습니다."
+    ),
     GENERATION_IN_PROGRESS(
             HttpStatus.CONFLICT,
             "Generation in progress",

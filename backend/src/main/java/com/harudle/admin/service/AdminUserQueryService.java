@@ -7,6 +7,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.UUID;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
@@ -35,5 +36,9 @@ public class AdminUserQueryService {
                 page,
                 size
         );
+    }
+
+    public com.harudle.admin.repository.AdminUserDetail findDetail(UUID userId) {
+        return adminUserQueryRepository.findDetail(userId, LocalDate.now(clock));
     }
 }
