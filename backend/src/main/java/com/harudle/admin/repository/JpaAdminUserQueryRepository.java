@@ -31,7 +31,7 @@ class JpaAdminUserQueryRepository implements AdminUserQueryRepository {
         List<AdminUserDetail> users = entityManager.createQuery("""
                 SELECT new com.harudle.admin.repository.AdminUserDetail(
                     u.id, u.name, u.primaryEmail, u.createdAt, u.deletedAt, MAX(oa.lastLoginAt),
-                    :usageDate, COALESCE(usage.usedCount, 0), COALESCE(usage.limitCount, :defaultLimit),
+                    :usageDate, COALESCE(usage.usedCount, 0), COALESCE(usage.limitCount, u.dailyGenerationLimit),
                     null)
                 FROM User u LEFT JOIN OAuthAccount oa ON oa.user = u
                 LEFT JOIN DailyGenerationUsage usage
@@ -40,7 +40,7 @@ class JpaAdminUserQueryRepository implements AdminUserQueryRepository {
                 GROUP BY u.id, u.name, u.primaryEmail, u.createdAt, u.deletedAt, usage.usedCount, usage.limitCount
                 """, AdminUserDetail.class)
                 .setParameter("userId", userId).setParameter("usageDate", usageDate)
-                .setParameter("defaultLimit", GenerationUsage.DEFAULT_LIMIT_COUNT).getResultList();
+                .getResultList();
         if (users.isEmpty()) throw new AdminUserNotFoundException(userId);
         AdminUserDetail user = users.getFirst();
         List<AdminUserDetail.RecentGeneration> generations = entityManager.createQuery("""
@@ -75,20 +75,19 @@ class JpaAdminUserQueryRepository implements AdminUserQueryRepository {
                     u.createdAt,
                     u.deletedAt,
                     MAX(oa.lastLoginAt),
-                    COALESCE(usage.limitCount - usage.usedCount, :defaultLimit)
+                    COALESCE(usage.limitCount - usage.usedCount, u.dailyGenerationLimit)
                 )
                 FROM User u
                 LEFT JOIN OAuthAccount oa ON oa.user = u
                 LEFT JOIN DailyGenerationUsage usage
                     ON usage.id.userId = u.id AND usage.id.usageDate = :usageDate
                 WHERE """ + condition + """
-                GROUP BY u.id, u.name, u.primaryEmail, u.createdAt, u.deletedAt,
+                GROUP BY u.id, u.name, u.primaryEmail, u.createdAt, u.deletedAt, u.dailyGenerationLimit,
                     usage.limitCount, usage.usedCount
                 ORDER BY u.createdAt DESC, u.id DESC
                 """, AdminUserSnapshot.class);
         bindSearchParameters(contentQuery, normalizedQuery, exactUserId);
         contentQuery.setParameter("usageDate", usageDate);
-        contentQuery.setParameter("defaultLimit", GenerationUsage.DEFAULT_LIMIT_COUNT);
         contentQuery.setFirstResult(page * size);
         contentQuery.setMaxResults(size);
 

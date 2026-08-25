@@ -25,6 +25,9 @@ public class User {
     @Column(nullable = false, length = 20)
     private UserRole role;
 
+    @Column(name = "daily_generation_limit", nullable = false)
+    private int dailyGenerationLimit;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -47,6 +50,7 @@ public class User {
         this.primaryEmail = primaryEmail;
         this.name = name;
         this.role = UserRole.USER;
+        this.dailyGenerationLimit = 3;
         this.createdAt = now;
         this.updatedAt = now;
     }
@@ -73,6 +77,17 @@ public class User {
 
     public boolean isAdmin() {
         return role == UserRole.ADMIN;
+    }
+
+    public int getDailyGenerationLimit() {
+        return dailyGenerationLimit;
+    }
+
+    public void changeDailyGenerationLimit(int dailyGenerationLimit) {
+        if (dailyGenerationLimit < 0) {
+            throw new IllegalArgumentException("일일 생성 한도는 0 이상이어야 합니다.");
+        }
+        this.dailyGenerationLimit = dailyGenerationLimit;
     }
 
     public Instant getCreatedAt() {

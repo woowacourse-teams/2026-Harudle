@@ -28,7 +28,7 @@ class JpaGenerationUsageRepository implements GenerationUsageRepository {
                     :userId,
                     :usageDate,
                     :usageIncrement,
-                    :limitCount,
+                    (SELECT daily_generation_limit FROM users WHERE id = :userId),
                     CURRENT_TIMESTAMP,
                     CURRENT_TIMESTAMP
                 )
@@ -81,7 +81,6 @@ class JpaGenerationUsageRepository implements GenerationUsageRepository {
                 .setParameter("userId", userId)
                 .setParameter("usageDate", usageDate)
                 .setParameter("usageIncrement", USAGE_INCREMENT)
-                .setParameter("limitCount", GenerationUsage.DEFAULT_LIMIT_COUNT)
                 .getResultList();
         return usages.stream()
                 .map(columns -> mapUsage(usageDate, columns))

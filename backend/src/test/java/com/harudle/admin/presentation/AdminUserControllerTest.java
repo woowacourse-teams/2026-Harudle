@@ -1,6 +1,7 @@
 package com.harudle.admin.presentation;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -21,6 +22,7 @@ import org.springframework.boot.testcontainers.service.connection.ServiceConnect
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.junit.jupiter.Container;
@@ -157,6 +159,28 @@ class AdminUserControllerTest {
         mockMvc.perform(get("/api/v1/admin/users/{userId}", user.getId())
                         .header(HttpHeaders.AUTHORIZATION, bearerToken(user)))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("관리자가 변경한 일일 생성 한도는 오늘과 이후 사용량에 적용된다")
+    void changesDailyGenerationLimit() throws Exception {
+        User admin = userRepository.save(new User("limit-admin@example.com", "관리자", CREATED_AT));
+        grantAdminRole(admin);
+        User user = userRepository.save(new User("limit-user@example.com", "한도 사용자", CREATED_AT));
+        saveTodayUsage(user, 1, 3);
+
+        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-limit", user.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"limitCount\":5}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/admin/users/{userId}", user.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.usedGenerationCount").value(1))
+                .andExpect(jsonPath("$.dailyGenerationLimit").value(5))
+                .andExpect(jsonPath("$.remainingGenerationCount").value(4));
     }
 
     private void grantAdminRole(User admin) {
