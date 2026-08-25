@@ -113,7 +113,7 @@ class DiaryGenerationFailurePersistenceTest {
         assertThat(diaryRepository.findById(diary.getId()))
                 .hasValueSatisfying(savedDiary -> assertThat(savedDiary.isDeleted()).isTrue());
         assertThat(diaryRepository.findActiveSnapshotById(diary.getId())).isEmpty();
-        assertThat(diaryRepository.findMonthlySnapshots(
+        assertThat(diaryRepository.findActiveSnapshotsBetween(
                 USER_ID,
                 DIARY_DATE.withDayOfMonth(1),
                 DIARY_DATE.withDayOfMonth(DIARY_DATE.lengthOfMonth())

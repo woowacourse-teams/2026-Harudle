@@ -1,10 +1,13 @@
 package com.harudle.diary.service;
 
+import com.harudle.diary.domain.CurrentDiaryStreak;
 import com.harudle.diary.repository.DiaryQueryRepository;
 import com.harudle.diary.repository.DiarySnapshot;
 import com.harudle.diary.service.dto.DiaryDayResult;
 import com.harudle.diary.service.dto.DiaryDetailResult;
 import com.harudle.diary.service.dto.DiaryGenerationResult;
+import com.harudle.diary.service.dto.DiaryStreakDayResult;
+import com.harudle.diary.service.dto.DiaryStreakResult;
 import com.harudle.diary.service.dto.DiarySummaryResult;
 import com.harudle.diary.service.dto.DiaryTimelineResult;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
@@ -12,6 +15,7 @@ import com.harudle.diary.service.exception.DiaryNotFoundException;
 import com.harudle.generation.domain.GenerationStatus;
 import com.harudle.generation.repository.DiaryGenerationQueryRepository;
 import com.harudle.generation.repository.DiaryGenerationSnapshot;
+import java.time.Clock;
 import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -21,6 +25,7 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,27 +35,32 @@ public class DiaryQueryService {
 
     private final DiaryQueryRepository diaryQueryRepository;
     private final DiaryGenerationQueryRepository diaryGenerationQueryRepository;
+    private final Clock clock;
 
     DiaryQueryService(
             DiaryQueryRepository diaryQueryRepository,
-            DiaryGenerationQueryRepository diaryGenerationQueryRepository
+            DiaryGenerationQueryRepository diaryGenerationQueryRepository,
+            @Qualifier("serviceClock") Clock clock
     ) {
         this.diaryQueryRepository = diaryQueryRepository;
         this.diaryGenerationQueryRepository = diaryGenerationQueryRepository;
+        this.clock = clock;
     }
 
     public DiaryTimelineResult getTimeline(UUID userId, int year, int month) {
         validateUserId(userId);
         YearMonth yearMonth = createYearMonth(year, month);
-        List<DiarySnapshot> diaries = diaryQueryRepository.findMonthlySnapshots(
-                        userId,
-                        yearMonth.atDay(1),
-                        yearMonth.atEndOfMonth()
-                );
-        Map<UUID, DiaryGenerationSnapshot> generationsByDiaryId =
-                findSuccessfulGenerationsByDiaryId(diaries);
+        List<DiarySnapshot> diaries = diaryQueryRepository.findActiveSnapshotsBetween(
+                userId,
+                yearMonth.atDay(1),
+                yearMonth.atEndOfMonth()
+        );
+
+        Map<UUID, DiaryGenerationSnapshot> generationsByDiaryId = findSuccessfulGenerationsByDiaryId(diaries);
         Map<LocalDate, List<DiarySummaryResult>> itemsByDate = createItemsByDate(diaries, generationsByDiaryId);
+
         List<DiaryDayResult> days = createDays(yearMonth, itemsByDate);
+
         return new DiaryTimelineResult(year, month, days);
     }
 
@@ -81,6 +91,40 @@ public class DiaryQueryService {
                 .findSnapshotsByDiaryIdInAndStatus(diaryIds, GenerationStatus.SUCCEEDED)
                 .stream()
                 .collect(Collectors.toMap(DiaryGenerationSnapshot::diaryId, Function.identity()));
+    }
+
+    public DiaryStreakResult getCurrentStreak(UUID userId) {
+        validateUserId(userId);
+
+        LocalDate today = LocalDate.now(clock);
+        List<LocalDate> successfulDiaryDates = diaryQueryRepository.findSuccessfulDiaryDatesIncludingDeleted(
+                userId,
+                today,
+                GenerationStatus.SUCCEEDED
+        );
+
+        CurrentDiaryStreak streak = CurrentDiaryStreak.calculate(today, successfulDiaryDates);
+        if (streak.isEmpty()) {
+            return new DiaryStreakResult(false, List.of());
+        }
+
+        List<DiarySnapshot> activeDiaries = diaryQueryRepository.findActiveSnapshotsBetween(
+                userId,
+                streak.oldestDate(),
+                streak.newestDate()
+        );
+
+        Map<UUID, DiaryGenerationSnapshot> generationsByDiaryId = findSuccessfulGenerationsByDiaryId(activeDiaries);
+        Map<LocalDate, List<DiarySummaryResult>> itemsByDate = createItemsByDate(activeDiaries, generationsByDiaryId);
+
+        List<DiaryStreakDayResult> days = streak.dates().stream()
+                .map(date -> new DiaryStreakDayResult(
+                        date,
+                        itemsByDate.getOrDefault(date, List.of())
+                ))
+                .toList();
+
+        return new DiaryStreakResult(streak.recordedToday(), days);
     }
 
     private Map<LocalDate, List<DiarySummaryResult>> createItemsByDate(
