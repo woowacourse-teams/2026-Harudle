@@ -13,7 +13,7 @@ const FloatingActionButton = ({
   disabled: boolean;
 }) => {
   return (
-    <button css={buttonStyle(disabled)} onClick={onClick} disabled={disabled}>
+    <button css={buttonStyle} onClick={onClick} disabled={disabled}>
       {icon}
     </button>
   );
@@ -21,7 +21,7 @@ const FloatingActionButton = ({
 
 export default FloatingActionButton;
 
-const buttonStyle = (disabled: boolean) => css`
+const buttonStyle = () => css`
   position: absolute;
   right: 20px;
   bottom: 20px;
@@ -33,10 +33,14 @@ const buttonStyle = (disabled: boolean) => css`
   border-radius: 50%;
 
   background-color: ${theme.colors.bg.brand};
-  opacity: ${disabled ? 0.4 : 1};
   cursor: pointer;
 
   &:active {
     transform: scale(0.98);
+  }
+
+  &:disabled {
+    opacity: 0.9;
+    cursor: not-allowed;
   }
 `;

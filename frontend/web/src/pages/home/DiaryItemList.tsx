@@ -8,13 +8,25 @@ import loadingAnimation from '../../assets/images/loading-animation.webp';
 import { css } from '@emotion/react';
 import plusIcon from '../../assets/icons/plus.svg';
 import DiaryError from './DiaryError';
+import { useDiaryGenerateContext } from '../diary-generating/DiaryGenerateContext';
+import DiaryItemRowSkeleton from './DiaryItemRowSkeleton';
+import { useEffect } from 'react';
 
 const DiaryItemList = ({
   monthlyDiariesRequest,
+  getMonthlyDiaries,
 }: {
   monthlyDiariesRequest: ApiRequest<MonthlyDiariesResponse>;
+  getMonthlyDiaries: () => Promise<void>;
 }) => {
   const navigate = useNavigate();
+  const { diaryGenerateRequest } = useDiaryGenerateContext();
+
+  useEffect(() => {
+    if (diaryGenerateRequest.status === 'success') {
+      void getMonthlyDiaries();
+    }
+  }, [diaryGenerateRequest.status]);
 
   const isMonthlyDiaryExist = (monthlyDiaryDays: MonthlyDiaryDay[]) => {
     return monthlyDiaryDays.some((day) => day.exist);
@@ -36,11 +48,14 @@ const DiaryItemList = ({
   }
 
   const { days } = monthlyDiariesRequest.data;
+  const showSkeleton = diaryGenerateRequest.status === 'loading';
 
   return (
     <div>
       {isMonthlyDiaryExist(days) ? (
         <div css={diaryListStyle}>
+          {showSkeleton && <DiaryItemRowSkeleton />}
+
           {days.map((day) => {
             return day.items.map((diary) => (
               <DiaryItemRow
@@ -57,9 +72,11 @@ const DiaryItemList = ({
               navigate('/diary-write');
             }}
             icon={<img css={plusIconStyle} src={plusIcon} />}
-            disabled={false}
+            disabled={showSkeleton}
           />
         </div>
+      ) : showSkeleton ? (
+        <DiaryItemRowSkeleton />
       ) : (
         <DiaryEmptyState />
       )}

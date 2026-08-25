@@ -21,7 +21,9 @@ const HomePage = () => {
     getToday().year,
     getToday().month,
   );
-  const { monthlyDiariesRequest } = useMonthlyDiaries({ ...selectedYearMonth });
+  const { monthlyDiariesRequest, getMonthlyDiaries } = useMonthlyDiaries({
+    ...selectedYearMonth,
+  });
 
   const monthlyDiaryCount =
     monthlyDiariesRequest.status === 'success'
@@ -53,7 +55,10 @@ const HomePage = () => {
         <RemainingGenerationUsageCard />
 
         <section css={diaryContentStyle}>
-          <DiaryItemList monthlyDiariesRequest={monthlyDiariesRequest} />
+          <DiaryItemList
+            monthlyDiariesRequest={monthlyDiariesRequest}
+            getMonthlyDiaries={getMonthlyDiaries}
+          />
         </section>
       </main>
 
