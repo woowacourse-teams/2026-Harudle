@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   API_BASE_URL,
   isProblemDetails,
@@ -38,8 +38,8 @@ const useGenrationUsage = () => {
     status: 'idle',
   });
 
-  useEffect(() => {
-    const getRemainingGenerationUsageCard = async (): Promise<void> => {
+  const getRemainingGenerationUsageCard =
+    useCallback(async (): Promise<void> => {
       setGenerationUsageRequest({
         status: 'loading',
       });
@@ -74,12 +74,13 @@ const useGenrationUsage = () => {
           });
         }
       }
-    };
+    }, []);
 
+  useEffect(() => {
     void getRemainingGenerationUsageCard();
-  }, []);
+  }, [getRemainingGenerationUsageCard]);
 
-  return { generationUsageRequest };
+  return { generationUsageRequest, getRemainingGenerationUsageCard };
 };
 
 export default useGenrationUsage;

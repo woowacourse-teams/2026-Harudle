@@ -10,6 +10,8 @@ import { css } from '@emotion/react';
 import { theme } from '../../../styles/theme';
 import eventAvailableIcon from '../../../assets/icons/event-available.svg';
 import { getToday } from '../../../shared/utils';
+import { useDiaryGenerateContext } from '../../diary-generating/DiaryGenerateContext';
+import { useEffect } from 'react';
 
 const formatYearMonthToString = ({ year, month }: YearMonth): string => {
   return `${year}-${month.toString().padStart(2, '0')}`;
@@ -70,7 +72,16 @@ const HomePage = () => {
 export default HomePage;
 
 const RemainingGenerationUsageCard = () => {
-  const { generationUsageRequest } = useGenrationUsage();
+  const { generationUsageRequest, getRemainingGenerationUsageCard } =
+    useGenrationUsage();
+
+  const { diaryGenerateRequest } = useDiaryGenerateContext();
+
+  useEffect(() => {
+    if (diaryGenerateRequest.status === 'success') {
+      void getRemainingGenerationUsageCard();
+    }
+  }, [diaryGenerateRequest.status]);
 
   const showFallback =
     generationUsageRequest.status === 'idle' ||
