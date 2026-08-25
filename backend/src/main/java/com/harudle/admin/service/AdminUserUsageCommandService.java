@@ -23,4 +23,9 @@ public class AdminUserUsageCommandService {
     public void changeDailyGenerationLimit(UUID userId, int limitCount) {
         repository.changeDailyGenerationLimit(userId, limitCount, LocalDate.now(clock));
     }
+
+    @Transactional
+    public void changeUsedCount(UUID userId, int usedCount) {
+        repository.changeUsedCount(userId, usedCount, LocalDate.now(clock));
+    }
 }

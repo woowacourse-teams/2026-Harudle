@@ -50,4 +50,13 @@ class AdminUserController {
                                     @RequestBody @jakarta.validation.Valid ChangeDailyGenerationLimitRequest request) {
         adminUserUsageCommandService.changeDailyGenerationLimit(userId, request.limitCount());
     }
+
+    @PutMapping("/{userId}/usage")
+    AdminUserDetailResponse changeUsedCount(
+            @PathVariable java.util.UUID userId,
+            @RequestBody @jakarta.validation.Valid ChangeUsedCountRequest request
+    ) {
+        adminUserUsageCommandService.changeUsedCount(userId, request.usedCount());
+        return AdminUserDetailResponse.from(adminUserQueryService.findDetail(userId));
+    }
 }

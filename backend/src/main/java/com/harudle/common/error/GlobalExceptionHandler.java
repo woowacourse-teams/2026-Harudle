@@ -2,6 +2,7 @@ package com.harudle.common.error;
 
 import com.harudle.auth.presentation.AuthenticationRequiredException;
 import com.harudle.admin.repository.AdminUserNotFoundException;
+import com.harudle.admin.repository.AdminUsageCountOutOfRangeException;
 import com.harudle.diary.presentation.InvalidIdempotencyKeyException;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
@@ -160,6 +161,11 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(AdminUserNotFoundException.class)
     ResponseEntity<ProblemDetail> handleAdminUserNotFound(HttpServletRequest request) {
         return createResponse(ErrorType.ADMIN_USER_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(AdminUsageCountOutOfRangeException.class)
+    ResponseEntity<ProblemDetail> handleAdminUsageCountOutOfRange(HttpServletRequest request) {
+        return createResponse(ErrorType.VALIDATION_ERROR, request);
     }
 
     @ExceptionHandler(GenerationInProgressException.class)
