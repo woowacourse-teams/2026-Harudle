@@ -14,6 +14,7 @@ import com.harudle.auth.infrastructure.UserRepository;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.sql.Timestamp;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -108,7 +109,7 @@ class AdminUserControllerTest {
         User user = userRepository.save(new User("detail@example.com", "상세 사용자", CREATED_AT));
         saveTodayUsage(user, 2, 5);
         for (int index = 0; index < 6; index++) {
-            saveGeneration(user, CREATED_AT.plusSeconds(index), index == 0);
+            saveGeneration(user, CREATED_AT.plusSeconds(index), index == 5);
         }
 
         mockMvc.perform(get("/api/v1/admin/users/{userId}", user.getId())
@@ -131,7 +132,7 @@ class AdminUserControllerTest {
         User admin = userRepository.save(new User("deleted-admin@example.com", "관리자", CREATED_AT));
         grantAdminRole(admin);
         User user = userRepository.save(new User("deleted@example.com", "탈퇴 사용자", CREATED_AT));
-        jdbcTemplate.update("UPDATE users SET deleted_at = ? WHERE id = ?", CREATED_AT.plusSeconds(1), user.getId());
+        jdbcTemplate.update("UPDATE users SET deleted_at = ? WHERE id = ?", Timestamp.from(CREATED_AT.plusSeconds(1)), user.getId());
 
         mockMvc.perform(get("/api/v1/admin/users/{userId}", user.getId())
                         .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
@@ -286,22 +287,29 @@ class AdminUserControllerTest {
     }
 
     private void saveGeneration(User user, Instant createdAt, boolean failed) {
+        jdbcTemplate.update("""
+                INSERT INTO generation_prompts(storyboard_prompt_text, image_style_prompt_text, image_asset_object_key)
+                SELECT 'test storyboard', 'test style', 'test/admin.png'
+                WHERE NOT EXISTS (SELECT 1 FROM generation_prompts)
+                """);
+        Long promptId = jdbcTemplate.queryForObject("SELECT id FROM generation_prompts LIMIT 1", Long.class);
         UUID diaryId = UUID.randomUUID();
         jdbcTemplate.update("""
                 INSERT INTO diaries(id, user_id, diary_date, source_text, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """, diaryId, user.getId(), createdAt.atZone(ZoneId.of("Asia/Seoul")).toLocalDate(),
-                "관리자 테스트 일기", createdAt, createdAt);
+                "관리자 테스트 일기", Timestamp.from(createdAt), Timestamp.from(createdAt));
         UUID generationId = UUID.randomUUID();
         jdbcTemplate.update("""
                 INSERT INTO diary_generations(
                     id, diary_id, prompt_id, idempotency_key, request_fingerprint, status,
-                    error_code, created_at, updated_at, completed_at)
-                VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
-                """, generationId, diaryId, UUID.randomUUID(),
+                    error_code, image_object_key, created_at, updated_at, completed_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, generationId, diaryId, promptId, UUID.randomUUID(),
                 "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
                 failed ? "FAILED" : "SUCCEEDED", failed ? "AI_PROVIDER_ERROR" : null,
-                createdAt, createdAt, failed ? createdAt.plusSeconds(1) : createdAt.plusSeconds(1));
+                failed ? null : "test/admin-generated/" + generationId + ".png",
+                Timestamp.from(createdAt), Timestamp.from(createdAt), Timestamp.from(createdAt.plusSeconds(1)));
     }
 
     private String bearerToken(User user) {
