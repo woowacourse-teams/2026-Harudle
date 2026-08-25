@@ -43,14 +43,21 @@ class JpaAdminUserQueryRepository implements AdminUserQueryRepository {
                 .getResultList();
         if (users.isEmpty()) throw new AdminUserNotFoundException(userId);
         AdminUserDetail user = users.getFirst();
-        List<AdminUserDetail.RecentGeneration> generations = entityManager.createQuery("""
-                SELECT new com.harudle.admin.repository.AdminUserDetail$RecentGeneration(
-                    generation.id, generation.createdAt, generation.status, generation.completedAt,
-                    generation.errorCode)
+        List<Object[]> generationRows = entityManager.createQuery("""
+                SELECT generation.id, generation.createdAt, generation.status, generation.completedAt,
+                       generation.errorCode
                 FROM DiaryGeneration generation JOIN Diary diary ON diary.id = generation.diaryId
                 WHERE diary.userId = :userId ORDER BY generation.createdAt DESC, generation.id DESC
-                """, AdminUserDetail.RecentGeneration.class)
+                """, Object[].class)
                 .setParameter("userId", userId).setMaxResults(5).getResultList();
+        List<AdminUserDetail.RecentGeneration> generations = generationRows.stream()
+                .map(row -> new AdminUserDetail.RecentGeneration(
+                        (UUID) row[0],
+                        (java.time.Instant) row[1],
+                        (com.harudle.generation.domain.GenerationStatus) row[2],
+                        (java.time.Instant) row[3],
+                        row[4] == null ? null : row[4].toString()))
+                .toList();
         return new AdminUserDetail(user.id(), user.name(), user.email(), user.createdAt(), user.deletedAt(),
                 user.lastLoginAt(), user.usageDate(), user.usedCount(), user.limitCount(), generations);
     }
