@@ -69,4 +69,10 @@ class AdminUserController {
         adminUserUsageCommandService.restoreUsedCount(userId, request.count());
         return AdminUserDetailResponse.from(adminUserQueryService.findDetail(userId));
     }
+
+    @PutMapping("/{userId}/generation-usage/reset")
+    AdminUserDetailResponse resetUsedCount(@PathVariable java.util.UUID userId) {
+        adminUserUsageCommandService.resetUsedCount(userId);
+        return AdminUserDetailResponse.from(adminUserQueryService.findDetail(userId));
+    }
 }

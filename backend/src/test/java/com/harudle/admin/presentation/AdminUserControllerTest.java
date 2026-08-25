@@ -200,10 +200,9 @@ class AdminUserControllerTest {
                 .andExpect(jsonPath("$.usedGenerationCount").value(1))
                 .andExpect(jsonPath("$.remainingGenerationCount").value(2));
 
-        mockMvc.perform(put("/api/v1/admin/users/{userId}/usage", user.getId())
+        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-usage/reset", user.getId())
                         .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"usedCount\":0}"))
+                        )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.usedGenerationCount").value(0))
                 .andExpect(jsonPath("$.remainingGenerationCount").value(3));
