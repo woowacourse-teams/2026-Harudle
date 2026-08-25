@@ -112,9 +112,7 @@ const DiaryGeneratingContent = (generateRequestBody: DiaryGeneratingState) => {
   const displayedStep = isGenerationComplete ? FINAL_STEP : loadingStep;
 
   if (diaryGenerateRequest.status === 'error') {
-    return (
-      <DiaryGeneratingError errorMessage={diaryGenerateRequest.error.message} />
-    );
+    return <DiaryGeneratingError error={diaryGenerateRequest.error} />;
   }
 
   return (
