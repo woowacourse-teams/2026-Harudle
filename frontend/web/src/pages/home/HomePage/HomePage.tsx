@@ -9,6 +9,7 @@ import useGenrationUsage from './useGenrationUsage';
 import { css } from '@emotion/react';
 import { theme } from '../../../styles/theme';
 import eventAvailableIcon from '../../../assets/icons/event-available.svg';
+import { getToday } from '../../../shared/utils';
 
 const formatYearMonthToString = ({ year, month }: YearMonth): string => {
   return `${year}-${month.toString().padStart(2, '0')}`;
@@ -17,8 +18,8 @@ const formatYearMonthToString = ({ year, month }: YearMonth): string => {
 const HomePage = () => {
   const navigate = useNavigate();
   const { selectedYearMonth, handleYearMonthChange } = useSelectedYearMonth(
-    2026,
-    8,
+    getToday().year,
+    getToday().month,
   );
   const { monthlyDiariesRequest } = useMonthlyDiaries({ ...selectedYearMonth });
 

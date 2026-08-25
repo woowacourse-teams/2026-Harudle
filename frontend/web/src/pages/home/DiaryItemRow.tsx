@@ -1,26 +1,7 @@
 import { css } from '@emotion/react';
 import type { MonthlyDiaryDay, MonthlyDiaryItem } from './HomePage/model';
 import { theme } from '../../styles/theme';
-
-const WEEKDAYS = [
-  '일요일',
-  '월요일',
-  '화요일',
-  '수요일',
-  '목요일',
-  '금요일',
-  '토요일',
-];
-
-const formatDiaryDate = (date: string) => {
-  const [year, month, day] = date.split('-').map(Number);
-  const weekday = WEEKDAYS[new Date(year, month - 1, day).getDay()];
-
-  return {
-    date: `${String(month).padStart(2, '0')}.${String(day).padStart(2, '0')}`,
-    weekday,
-  };
-};
+import { formatDiaryDate } from '../../shared/utils';
 
 const DiaryItemRow = ({
   monthlyDiary,
