@@ -13,6 +13,7 @@ import com.harudle.auth.infrastructure.UserRepository;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -97,6 +98,67 @@ class AdminUserControllerTest {
                 .andExpect(status().isForbidden());
     }
 
+    @Test
+    @DisplayName("관리자는 사용자의 사용량과 최근 생성 5건을 조회한다")
+    void findsUserDetail() throws Exception {
+        User admin = userRepository.save(new User("detail-admin@example.com", "관리자", CREATED_AT));
+        grantAdminRole(admin);
+        User user = userRepository.save(new User("detail@example.com", "상세 사용자", CREATED_AT));
+        saveTodayUsage(user, 2, 5);
+        for (int index = 0; index < 6; index++) {
+            saveGeneration(user, CREATED_AT.plusSeconds(index), index == 0);
+        }
+
+        mockMvc.perform(get("/api/v1/admin/users/{userId}", user.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(user.getId().toString()))
+                .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.usageDate").value(LocalDate.now(ZoneId.of("Asia/Seoul")).toString()))
+                .andExpect(jsonPath("$.usedGenerationCount").value(2))
+                .andExpect(jsonPath("$.dailyGenerationLimit").value(5))
+                .andExpect(jsonPath("$.remainingGenerationCount").value(3))
+                .andExpect(jsonPath("$.recentGenerations.length()").value(5))
+                .andExpect(jsonPath("$.recentGenerations[0].status").value("FAILED"))
+                .andExpect(jsonPath("$.recentGenerations[0].failureCode").value("AI_PROVIDER_ERROR"));
+    }
+
+    @Test
+    @DisplayName("탈퇴한 사용자도 관리자는 상세 조회할 수 있다")
+    void findsDeletedUserDetail() throws Exception {
+        User admin = userRepository.save(new User("deleted-admin@example.com", "관리자", CREATED_AT));
+        grantAdminRole(admin);
+        User user = userRepository.save(new User("deleted@example.com", "탈퇴 사용자", CREATED_AT));
+        jdbcTemplate.update("UPDATE users SET deleted_at = ? WHERE id = ?", CREATED_AT.plusSeconds(1), user.getId());
+
+        mockMvc.perform(get("/api/v1/admin/users/{userId}", user.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("DELETED"))
+                .andExpect(jsonPath("$.recentGenerations.length()").value(0));
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 사용자 상세 조회는 404를 반환한다")
+    void rejectsMissingUserDetail() throws Exception {
+        User admin = userRepository.save(new User("missing-admin@example.com", "관리자", CREATED_AT));
+        grantAdminRole(admin);
+
+        mockMvc.perform(get("/api/v1/admin/users/{userId}", UUID.randomUUID())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("일반 사용자는 사용자 상세 조회 API를 호출할 수 없다")
+    void rejectsRegularUserDetail() throws Exception {
+        User user = userRepository.save(new User("regular-detail@example.com", "일반 사용자", CREATED_AT));
+
+        mockMvc.perform(get("/api/v1/admin/users/{userId}", user.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(user)))
+                .andExpect(status().isForbidden());
+    }
+
     private void grantAdminRole(User admin) {
         jdbcTemplate.update("UPDATE users SET role = 'ADMIN' WHERE id = ?", admin.getId());
     }
@@ -107,6 +169,25 @@ class AdminUserControllerTest {
                 INSERT INTO daily_generation_usage(user_id, usage_date, used_count, limit_count)
                 VALUES (?, ?, ?, ?)
                 """, user.getId(), today, usedCount, limitCount);
+    }
+
+    private void saveGeneration(User user, Instant createdAt, boolean failed) {
+        UUID diaryId = UUID.randomUUID();
+        jdbcTemplate.update("""
+                INSERT INTO diaries(id, user_id, diary_date, source_text, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """, diaryId, user.getId(), createdAt.atZone(ZoneId.of("Asia/Seoul")).toLocalDate(),
+                "관리자 테스트 일기", createdAt, createdAt);
+        UUID generationId = UUID.randomUUID();
+        jdbcTemplate.update("""
+                INSERT INTO diary_generations(
+                    id, diary_id, prompt_id, idempotency_key, request_fingerprint, status,
+                    error_code, created_at, updated_at, completed_at)
+                VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
+                """, generationId, diaryId, UUID.randomUUID(),
+                "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                failed ? "FAILED" : "SUCCEEDED", failed ? "AI_PROVIDER_ERROR" : null,
+                createdAt, createdAt, failed ? createdAt.plusSeconds(1) : createdAt.plusSeconds(1));
     }
 
     private String bearerToken(User user) {
