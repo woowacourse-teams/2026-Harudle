@@ -23,6 +23,10 @@ const DiaryItemList = ({
   const { diaryGenerateRequest } = useDiaryGenerateContext();
 
   useEffect(() => {
+    if (diaryGenerateRequest.status === 'error') {
+      alert(diaryGenerateRequest.error.message);
+    }
+
     if (diaryGenerateRequest.status === 'success') {
       void getMonthlyDiaries();
     }
