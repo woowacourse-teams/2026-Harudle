@@ -77,6 +77,8 @@ const useGenrationUsage = () => {
     }, []);
 
   useEffect(() => {
+    // TODO: API 요청과 상태 갱신 책임을 분리해 lint 예외를 제거한다.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void getRemainingGenerationUsageCard();
   }, [getRemainingGenerationUsageCard]);
 
