@@ -78,6 +78,19 @@ class AdminAuthorizationManagerTest {
         assertThat(result.isGranted()).isFalse();
     }
 
+    @Test
+    @DisplayName("사용자 저장소가 구성되지 않았으면 접근을 거부한다")
+    void deniesWhenUserRepositoryIsUnavailable() {
+        AdminAuthorizationManager managerWithoutRepository = new AdminAuthorizationManager(null);
+
+        AuthorizationResult result = managerWithoutRepository.authorize(
+                this::authenticatedUser,
+                context
+        );
+
+        assertThat(result.isGranted()).isFalse();
+    }
+
     private Authentication authenticatedUser() {
         Authentication authentication = mock(Authentication.class);
         when(authentication.isAuthenticated()).thenReturn(true);

@@ -11,9 +11,7 @@ import org.springframework.security.authorization.AuthorizationManager;
 import org.springframework.security.authorization.AuthorizationResult;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.web.access.intercept.RequestAuthorizationContext;
-import org.springframework.stereotype.Component;
 
-@Component
 public class AdminAuthorizationManager implements AuthorizationManager<RequestAuthorizationContext> {
 
     private final UserRepository userRepository;
@@ -28,11 +26,18 @@ public class AdminAuthorizationManager implements AuthorizationManager<RequestAu
             RequestAuthorizationContext context
     ) {
         boolean granted = authenticatedUser(authenticationSupplier.get())
-                .flatMap(userRepository::findById)
+                .flatMap(userId -> findUser(userId))
                 .filter(user -> !user.isDeleted())
                 .map(User::isAdmin)
                 .orElse(false);
         return new AuthorizationDecision(granted);
+    }
+
+    private Optional<User> findUser(UUID userId) {
+        if (userRepository == null) {
+            return Optional.empty();
+        }
+        return userRepository.findById(userId);
     }
 
     private Optional<UUID> authenticatedUser(Authentication authentication) {

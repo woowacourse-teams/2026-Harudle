@@ -2,11 +2,13 @@ package com.harudle.common.security;
 
 import com.harudle.auth.infrastructure.oauth.OAuthLoginFailureHandler;
 import com.harudle.auth.infrastructure.oauth.OAuthLoginSuccessHandler;
+import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.common.error.ProblemDetailFactory;
 import com.harudle.common.error.ProblemDetailResponseWriter;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationTrustResolver;
@@ -59,6 +61,13 @@ public class SecurityConfig {
             ProblemDetailResponseWriter problemDetailResponseWriter
     ) {
         return new ApiAccessDeniedHandler(problemDetailResponseWriter);
+    }
+
+    @Bean
+    public AdminAuthorizationManager adminAuthorizationManager(
+            ObjectProvider<UserRepository> userRepositoryProvider
+    ) {
+        return new AdminAuthorizationManager(userRepositoryProvider.getIfAvailable());
     }
 
     @Bean
