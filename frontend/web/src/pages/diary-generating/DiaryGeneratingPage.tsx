@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import DiaryGenerateStepper from './DiaryGenerateStepper';
 import { Navigate, useLocation, useNavigate } from 'react-router';
-import useDiaryGenerate from './useDiaryGenerate';
 import generationStep1Image from '../../assets/images/generation-step-1-reading.png';
 import generationStep2Image from '../../assets/images/generation-step-2-writing.png';
 import generationStep3Image from '../../assets/images/generation-step-3-selecting-panels.png';
@@ -10,6 +9,7 @@ import generationCompleteImage from '../../assets/images/generation-step-5-compl
 import { css } from '@emotion/react';
 import { theme } from '../../styles/theme';
 import DiaryGeneratingError from './DiaryGeneratingError';
+import { useDiaryGenerateContext } from './DiaryGenerateContext';
 
 const generationSteps = [
   {
@@ -66,12 +66,16 @@ const DiaryGeneratingPage = () => {
 
 export default DiaryGeneratingPage;
 
-const DiaryGeneratingContent = (generateRequestBody: {
-  diaryDate: string;
-  sourceText: string;
-}) => {
+const DiaryGeneratingContent = (generateRequestBody: DiaryGeneratingState) => {
   const [loadingStep, setLoadingStep] = useState<number>(1);
-  const { diaryGenerateRequest } = useDiaryGenerate(generateRequestBody);
+  const { generateDiary, diaryGenerateRequest } = useDiaryGenerateContext();
+
+  useEffect(() => {
+    void generateDiary(
+      generateRequestBody.diaryDate,
+      generateRequestBody.sourceText,
+    );
+  }, [generateRequestBody]);
   const navigate = useNavigate();
 
   useEffect(() => {
