@@ -7,10 +7,15 @@ import {
 } from '../../shared/api';
 import { authFetch } from '../../shared/auth';
 import { useAnalytics } from '../../shared/useAnalytics';
+import type { DiaryGeneratingState } from './DiaryGeneratingPage';
 
 interface DiaryGenerateContextValue {
   diaryGenerateRequest: ApiRequest<DiaryGenerateResponse>;
-  generateDiary: (diaryDate: string, sourceText: string) => Promise<void>;
+  generateDiary: ({
+    diaryDate,
+    sourceText,
+    idempotencyKey,
+  }: DiaryGeneratingState) => Promise<void>;
 }
 
 export const DiaryGenerateContext =
@@ -28,12 +33,11 @@ export const DiaryGenerateProvider = ({
     status: 'idle',
   });
 
-  const idempotencyKey = crypto.randomUUID();
-
-  const generateDiary = async (
-    diaryDate: string,
-    sourceText: string,
-  ): Promise<void> => {
+  const generateDiary = async ({
+    diaryDate,
+    sourceText,
+    idempotencyKey,
+  }: DiaryGeneratingState): Promise<void> => {
     setDiaryGenerateRequest({
       status: 'loading',
     });

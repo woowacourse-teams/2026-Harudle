@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router';
+import { Navigate, useNavigate } from 'react-router';
 import FloatingActionButton from '../../shared/FloatingActionButton';
 import PageHeader from '../../shared/PageHeader';
 import DiaryInputField from './DiaryInputField';
@@ -8,6 +8,7 @@ import { css } from '@emotion/react';
 import { theme } from '../../styles/theme';
 import nextIcon from '../../assets/icons/arrow-right.svg';
 import { useDiaryGenerateContext } from '../diary-generating/DiaryGenerateContext';
+import { getToday } from '../../shared/utils';
 
 const DiaryWritePage = () => {
   const navigate = useNavigate();
@@ -18,8 +19,10 @@ const DiaryWritePage = () => {
     null,
   );
   const { diaryGenerateRequest } = useDiaryGenerateContext();
+
   if (diaryGenerateRequest.status === 'loading') {
-    navigate('/');
+    alert('다른 일기가 생성중입니다.');
+    <Navigate to="/" replace />;
   }
 
   const handleDiarySubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -31,12 +34,12 @@ const DiaryWritePage = () => {
 
     sessionStorage.setItem('diaryContent', diaryContent);
 
+    const { year, month, day } = getToday();
     navigate('/diary-generating', {
       state: {
-        diaryDate: new Date().toLocaleDateString('sv-SE', {
-          timeZone: 'Asia/Seoul',
-        }),
+        diaryDate: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
         sourceText: diaryContent,
+        idempotencyKey: crypto.randomUUID(),
       },
       replace: true,
     });

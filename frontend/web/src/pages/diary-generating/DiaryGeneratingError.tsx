@@ -16,7 +16,7 @@ const DiaryGeneratingError = ({ errorMessage }: { errorMessage: string }) => {
             type="button"
             aria-label="뒤로 가기"
             css={headerButtonStyle}
-            onClick={() => navigate(-1)}
+            onClick={() => navigate('/')}
           >
             <img
               src={backIcon}
@@ -44,7 +44,7 @@ const DiaryGeneratingError = ({ errorMessage }: { errorMessage: string }) => {
         type="button"
         css={retryButtonStyle}
         onClick={() => {
-          navigate(-1);
+          navigate('/diary-write');
         }}
       >
         다시 작성하기
