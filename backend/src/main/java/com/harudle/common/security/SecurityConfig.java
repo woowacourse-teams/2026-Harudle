@@ -86,7 +86,8 @@ public class SecurityConfig {
             HttpSecurity http,
             CookieCsrfTokenRepository csrfTokenRepository,
             ApiAuthenticationEntryPoint apiAuthenticationEntryPoint,
-            ApiAccessDeniedHandler apiAccessDeniedHandler
+            ApiAccessDeniedHandler apiAccessDeniedHandler,
+            AdminAuthorizationManager adminAuthorizationManager
     ) throws Exception {
         http
                 .sessionManagement(session -> session
@@ -110,6 +111,7 @@ public class SecurityConfig {
                                 "/api/v1/public/**",
                                 "/error"
                         ).permitAll()
+                        .requestMatchers("/api/v1/admin/**").access(adminAuthorizationManager)
                         .requestMatchers("/api/v1/**").authenticated()
                         .anyRequest().denyAll()
                 )
