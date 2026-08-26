@@ -1,4 +1,4 @@
-package com.harudle.admin.repository;
+package com.harudle.admin.query;
 
 import java.util.List;
 

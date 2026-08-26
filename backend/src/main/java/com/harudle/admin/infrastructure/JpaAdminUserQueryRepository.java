@@ -1,8 +1,11 @@
 package com.harudle.admin.infrastructure;
 
-import com.harudle.admin.repository.AdminUserPage;
+import com.harudle.admin.query.AdminGenerationSnapshot;
+import com.harudle.admin.query.AdminUserDetail;
+import com.harudle.admin.query.AdminUserDetailSnapshot;
+import com.harudle.admin.query.AdminUserPage;
+import com.harudle.admin.query.AdminUserSnapshot;
 import com.harudle.admin.repository.AdminUserQueryRepository;
-import com.harudle.admin.repository.AdminUserSnapshot;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.TypedQuery;
 import java.time.LocalDate;
@@ -35,6 +38,78 @@ class JpaAdminUserQueryRepository implements AdminUserQueryRepository {
     }
 
     @Override
+    public Optional<AdminUserDetail> findDetail(UUID userId, LocalDate usageDate) {
+        AdminUserDetailSnapshot user = entityManager.createQuery("""
+                SELECT new com.harudle.admin.query.AdminUserDetailSnapshot(
+                    u.id,
+                    u.name,
+                    u.createdAt,
+                    u.deletedAt,
+                    MAX(oa.lastLoginAt),
+                    :usageDate,
+                    COALESCE(usage.usedCount, 0),
+                    COALESCE(usage.limitCount, u.dailyGenerationLimit)
+                )
+                FROM User u
+                LEFT JOIN OAuthAccount oa ON oa.user = u
+                LEFT JOIN DailyGenerationUsage usage
+                    ON usage.id.userId = u.id AND usage.id.usageDate = :usageDate
+                WHERE u.id = :userId
+                  AND %s
+                GROUP BY u.id, u.name, u.createdAt, u.deletedAt, u.dailyGenerationLimit,
+                    usage.usedCount, usage.limitCount
+                """.formatted(GUEST_USER_EXCLUSION), AdminUserDetailSnapshot.class)
+                .setParameter("userId", userId)
+                .setParameter("usageDate", usageDate)
+                .getResultStream()
+                .findFirst()
+                .orElse(null);
+
+        if (user == null) {
+            return Optional.empty();
+        }
+
+        List<AdminGenerationSnapshot> generations = entityManager.createQuery("""
+                SELECT new com.harudle.admin.query.AdminGenerationSnapshot(
+                    generation.id,
+                    generation.createdAt,
+                    generation.status,
+                    generation.completedAt,
+                    generation.errorCode
+                )
+                FROM DiaryGeneration generation
+                JOIN Diary diary ON diary.id = generation.diaryId
+                WHERE diary.userId = :userId
+                ORDER BY generation.createdAt DESC, generation.id DESC
+                """, AdminGenerationSnapshot.class)
+                .setParameter("userId", userId)
+                .setMaxResults(5)
+                .getResultList();
+
+        List<AdminUserDetail.RecentGeneration> recentGenerations = generations.stream()
+                .map(generation -> new AdminUserDetail.RecentGeneration(
+                        generation.id(),
+                        generation.requestedAt(),
+                        generation.status(),
+                        generation.completedAt(),
+                        generation.errorCode()
+                ))
+                .toList();
+
+        return Optional.of(new AdminUserDetail(
+                user.id(),
+                user.name(),
+                user.createdAt(),
+                user.deletedAt(),
+                user.lastLoginAt(),
+                user.usageDate(),
+                user.usedCount(),
+                user.limitCount(),
+                recentGenerations
+        ));
+    }
+
+    @Override
     public AdminUserPage search(
             String normalizedQuery,
             Optional<UUID> exactUserId,
@@ -44,7 +119,7 @@ class JpaAdminUserQueryRepository implements AdminUserQueryRepository {
     ) {
         String searchCondition = createSearchCondition(exactUserId);
         TypedQuery<AdminUserSnapshot> contentQuery = entityManager.createQuery("""
-                SELECT new com.harudle.admin.repository.AdminUserSnapshot(
+                SELECT new com.harudle.admin.query.AdminUserSnapshot(
                     u.id,
                     u.name,
                     u.createdAt,

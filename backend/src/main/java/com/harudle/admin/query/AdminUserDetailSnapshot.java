@@ -1,10 +1,10 @@
-package com.harudle.admin.repository;
+package com.harudle.admin.query;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
 
-public record AdminUserSnapshot(
+public record AdminUserDetailSnapshot(
         UUID id,
         String name,
         Instant createdAt,

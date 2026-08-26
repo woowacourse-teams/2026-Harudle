@@ -1,6 +1,6 @@
 package com.harudle.admin.presentation.dto;
 
-import com.harudle.admin.repository.AdminUserSnapshot;
+import com.harudle.admin.query.AdminUserSnapshot;
 import java.time.Instant;
 import java.util.UUID;
 

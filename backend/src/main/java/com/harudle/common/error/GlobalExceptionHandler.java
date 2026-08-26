@@ -1,5 +1,6 @@
 package com.harudle.common.error;
 
+import com.harudle.admin.service.exception.AdminUserNotFoundException;
 import com.harudle.auth.presentation.AuthenticationRequiredException;
 import com.harudle.diary.presentation.InvalidIdempotencyKeyException;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
@@ -154,6 +155,11 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(ShareNotFoundException.class)
     ResponseEntity<ProblemDetail> handleShareNotFound(HttpServletRequest request) {
         return createResponse(ErrorType.SHARE_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(AdminUserNotFoundException.class)
+    ResponseEntity<ProblemDetail> handleAdminUserNotFound(HttpServletRequest request) {
+        return createResponse(ErrorType.USER_NOT_FOUND, request);
     }
 
     @ExceptionHandler(GenerationInProgressException.class)

@@ -1,6 +1,6 @@
 package com.harudle.admin.presentation.dto;
 
-import com.harudle.admin.repository.AdminUserPage;
+import com.harudle.admin.query.AdminUserPage;
 import java.util.List;
 
 public record AdminUserSearchResponse(

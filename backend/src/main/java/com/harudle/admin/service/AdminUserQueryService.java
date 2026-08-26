@@ -1,7 +1,9 @@
 package com.harudle.admin.service;
 
-import com.harudle.admin.repository.AdminUserPage;
+import com.harudle.admin.query.AdminUserDetail;
+import com.harudle.admin.query.AdminUserPage;
 import com.harudle.admin.repository.AdminUserQueryRepository;
+import com.harudle.admin.service.exception.AdminUserNotFoundException;
 import com.harudle.common.validation.CanonicalUuidParser;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -36,5 +38,10 @@ public class AdminUserQueryService {
                 page,
                 size
         );
+    }
+
+    public AdminUserDetail findDetail(UUID userId) {
+        return adminUserQueryRepository.findDetail(userId, LocalDate.now(clock))
+                .orElseThrow(AdminUserNotFoundException::new);
     }
 }

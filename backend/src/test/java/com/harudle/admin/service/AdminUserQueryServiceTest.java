@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.harudle.admin.repository.AdminUserPage;
 import com.harudle.admin.repository.AdminUserQueryRepository;
+import com.harudle.admin.query.AdminUserPage;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;

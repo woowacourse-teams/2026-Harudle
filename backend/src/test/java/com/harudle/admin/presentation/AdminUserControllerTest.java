@@ -10,6 +10,8 @@ import com.harudle.auth.domain.OAuthProvider;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.OAuthAccountRepository;
 import com.harudle.auth.infrastructure.UserRepository;
+import com.harudle.generation.domain.GenerationPrompt;
+import com.harudle.generation.repository.GenerationPromptRepository;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -54,6 +56,9 @@ class AdminUserControllerTest {
 
     @Autowired
     private OAuthAccountRepository oauthAccountRepository;
+
+    @Autowired
+    private GenerationPromptRepository generationPromptRepository;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -130,6 +135,113 @@ class AdminUserControllerTest {
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
     }
 
+    @Test
+    @DisplayName("사용자 상세 조회는 사용자별 한도와 삭제된 일기의 최근 생성 이력을 반환한다")
+    void findsUserDetailWithUsageAndRecentGenerations() throws Exception {
+        User admin = saveUser("관리자");
+        grantAdminRole(admin);
+        User target = saveUser("상세 사용자");
+        changeDailyGenerationLimit(target, 5);
+        saveOAuthAccount(target);
+        GenerationPrompt prompt = generationPromptRepository.save(new GenerationPrompt(
+                "상세 조회 테스트 스토리보드",
+                "상세 조회 테스트 이미지 스타일",
+                "references/admin-detail.png"
+        ));
+
+        saveGeneration(target, prompt, CREATED_AT, "SUCCEEDED", null, false);
+        UUID deletedGenerationId = saveGeneration(
+                target,
+                prompt,
+                CREATED_AT.plusSeconds(1),
+                "FAILED",
+                "AI_PROVIDER_ERROR",
+                true
+        );
+        saveGeneration(target, prompt, CREATED_AT.plusSeconds(2), "PROCESSING", null, false);
+        saveGeneration(target, prompt, CREATED_AT.plusSeconds(3), "SUCCEEDED", null, false);
+        saveGeneration(
+                target,
+                prompt,
+                CREATED_AT.plusSeconds(4),
+                "FAILED",
+                "IMAGE_STORAGE_ERROR",
+                false
+        );
+        UUID newestGenerationId = saveGeneration(
+                target,
+                prompt,
+                CREATED_AT.plusSeconds(5),
+                "PROCESSING",
+                null,
+                false
+        );
+
+        mockMvc.perform(get("/api/v1/admin/users/{userId}", target.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(target.getId().toString()))
+                .andExpect(jsonPath("$.name").value("상세 사용자"))
+                .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.lastLoginAt").value(CREATED_AT.plusSeconds(10).toString()))
+                .andExpect(jsonPath("$.generationUsage.usageDate")
+                        .value(LocalDate.now(SERVICE_ZONE).toString()))
+                .andExpect(jsonPath("$.generationUsage.usedCount").value(0))
+                .andExpect(jsonPath("$.generationUsage.limitCount").value(5))
+                .andExpect(jsonPath("$.generationUsage.remainingCount").value(5))
+                .andExpect(jsonPath("$.recentGenerations.length()").value(5))
+                .andExpect(jsonPath("$.recentGenerations[0].id")
+                        .value(newestGenerationId.toString()))
+                .andExpect(jsonPath("$.recentGenerations[0].requestedAt")
+                        .value(CREATED_AT.plusSeconds(5).toString()))
+                .andExpect(jsonPath("$.recentGenerations[0].status").value("PROCESSING"))
+                .andExpect(jsonPath("$.recentGenerations[0].completedAt").doesNotExist())
+                .andExpect(jsonPath("$.recentGenerations[1].status").value("FAILED"))
+                .andExpect(jsonPath("$.recentGenerations[1].errorCode")
+                        .value("IMAGE_STORAGE_ERROR"))
+                .andExpect(jsonPath("$.recentGenerations[2].status").value("SUCCEEDED"))
+                .andExpect(jsonPath("$.recentGenerations[3].status").value("PROCESSING"))
+                .andExpect(jsonPath("$.recentGenerations[4].id")
+                        .value(deletedGenerationId.toString()))
+                .andExpect(jsonPath("$.recentGenerations[4].errorCode")
+                        .value("AI_PROVIDER_ERROR"))
+                .andExpect(jsonPath("$.email").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("탈퇴 사용자의 상세 정보는 조회할 수 있다")
+    void findsDeletedUserDetail() throws Exception {
+        User admin = saveUser("관리자");
+        grantAdminRole(admin);
+        User deletedUser = saveUser("탈퇴 사용자");
+        markDeleted(deletedUser);
+
+        mockMvc.perform(get("/api/v1/admin/users/{userId}", deletedUser.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(deletedUser.getId().toString()))
+                .andExpect(jsonPath("$.status").value("DELETED"));
+    }
+
+    @Test
+    @DisplayName("없는 사용자와 게스트 사용자의 상세 조회는 사용자 없음 오류를 반환한다")
+    void rejectsMissingAndGuestUserDetail() throws Exception {
+        User admin = saveUser("관리자");
+        grantAdminRole(admin);
+        User guestUser = saveUser("게스트 사용자");
+        saveGuestSession(guestUser);
+
+        mockMvc.perform(get("/api/v1/admin/users/{userId}", UUID.randomUUID())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
+
+        mockMvc.perform(get("/api/v1/admin/users/{userId}", guestUser.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
+    }
+
     private User saveUser(String name) {
         return saveUser(name, CREATED_AT);
     }
@@ -165,6 +277,56 @@ class AdminUserControllerTest {
                 INSERT INTO daily_generation_usage(user_id, usage_date, used_count, limit_count)
                 VALUES (?, ?, ?, ?)
                 """, user.getId(), LocalDate.now(SERVICE_ZONE), usedCount, limitCount);
+    }
+
+    private void changeDailyGenerationLimit(User user, int limitCount) {
+        jdbcTemplate.update(
+                "UPDATE users SET daily_generation_limit = ? WHERE id = ?",
+                limitCount,
+                user.getId()
+        );
+    }
+
+    private UUID saveGeneration(
+            User user,
+            GenerationPrompt prompt,
+            Instant createdAt,
+            String status,
+            String errorCode,
+            boolean deletedDiary
+    ) {
+        UUID diaryId = UUID.randomUUID();
+        jdbcTemplate.update("""
+                INSERT INTO diaries (
+                    id, user_id, diary_date, source_text, created_at, updated_at, deleted_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, diaryId, user.getId(), createdAt.atZone(SERVICE_ZONE).toLocalDate(),
+                "상세 조회 테스트 일기", Timestamp.from(createdAt), Timestamp.from(createdAt),
+                deletedDiary ? Timestamp.from(createdAt.plusSeconds(1)) : null);
+
+        UUID generationId = UUID.randomUUID();
+        boolean completed = !"PROCESSING".equals(status);
+        jdbcTemplate.update("""
+                INSERT INTO diary_generations (
+                    id,
+                    diary_id,
+                    prompt_id,
+                    idempotency_key,
+                    request_fingerprint,
+                    status,
+                    title,
+                    image_object_key,
+                    error_code,
+                    created_at,
+                    updated_at,
+                    completed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, generationId, diaryId, prompt.getId(), UUID.randomUUID(), "a".repeat(64), status,
+                "SUCCEEDED".equals(status) ? "상세 조회 테스트 생성" : null,
+                "SUCCEEDED".equals(status) ? "generated/admin-detail/" + generationId + ".png" : null,
+                errorCode, Timestamp.from(createdAt), Timestamp.from(createdAt),
+                completed ? Timestamp.from(createdAt.plusSeconds(1)) : null);
+        return generationId;
     }
 
     private void saveGuestSession(User user) {
