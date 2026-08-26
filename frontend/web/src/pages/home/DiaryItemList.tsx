@@ -17,7 +17,11 @@ const DiaryItemList = ({
   getMonthlyDiaries,
 }: {
   monthlyDiariesRequest: ApiRequest<MonthlyDiariesResponse>;
-  getMonthlyDiaries: () => Promise<void>;
+  getMonthlyDiaries: ({
+    showLoading,
+  }: {
+    showLoading: boolean;
+  }) => Promise<void>;
 }) => {
   const navigate = useNavigate();
   const { diaryGenerateRequest, resetDiaryGenerateRequest } =
@@ -33,7 +37,7 @@ const DiaryItemList = ({
 
     if (diaryGenerateRequest.status === 'success') {
       resetDiaryGenerateRequest();
-      void getMonthlyDiaries();
+      void getMonthlyDiaries({ showLoading: false });
     }
   }, [diaryGenerateRequest.status]);
 
