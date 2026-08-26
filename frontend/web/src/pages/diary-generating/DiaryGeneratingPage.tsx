@@ -88,7 +88,7 @@ const DiaryGeneratingContent = (generateRequestBody: DiaryGeneratingState) => {
         error={diaryGenerateRequest.error}
         onReturnClick={() => {
           resetDiaryGenerateRequest();
-          navigate('/');
+          navigate('/', { replace: true });
         }}
       />
     );
