@@ -78,21 +78,6 @@ public class DiaryQueryService {
         return toDetailResult(diary, generation);
     }
 
-    private Map<UUID, DiaryGenerationSnapshot> findSuccessfulGenerationsByDiaryId(
-            List<DiarySnapshot> diaries
-    ) {
-        List<UUID> diaryIds = diaries.stream()
-                .map(DiarySnapshot::id)
-                .toList();
-        if (diaryIds.isEmpty()) {
-            return Map.of();
-        }
-        return diaryGenerationQueryRepository
-                .findSnapshotsByDiaryIdInAndStatus(diaryIds, GenerationStatus.SUCCEEDED)
-                .stream()
-                .collect(Collectors.toMap(DiaryGenerationSnapshot::diaryId, Function.identity()));
-    }
-
     public DiaryStreakResult getCurrentStreak(UUID userId) {
         validateUserId(userId);
 
@@ -125,6 +110,21 @@ public class DiaryQueryService {
                 .toList();
 
         return new DiaryStreakResult(streak.recordedToday(), days);
+    }
+
+    private Map<UUID, DiaryGenerationSnapshot> findSuccessfulGenerationsByDiaryId(
+            List<DiarySnapshot> diaries
+    ) {
+        List<UUID> diaryIds = diaries.stream()
+                .map(DiarySnapshot::id)
+                .toList();
+        if (diaryIds.isEmpty()) {
+            return Map.of();
+        }
+        return diaryGenerationQueryRepository
+                .findSnapshotsByDiaryIdInAndStatus(diaryIds, GenerationStatus.SUCCEEDED)
+                .stream()
+                .collect(Collectors.toMap(DiaryGenerationSnapshot::diaryId, Function.identity()));
     }
 
     private Map<LocalDate, List<DiarySummaryResult>> createItemsByDate(
