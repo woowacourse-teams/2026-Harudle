@@ -1,6 +1,7 @@
 package com.harudle.admin.presentation;
 
 import com.harudle.admin.presentation.dto.AdminUserDetailResponse;
+import com.harudle.admin.presentation.dto.AdminGenerationLimitRequest;
 import com.harudle.admin.presentation.dto.AdminGenerationUsageRestoreRequest;
 import com.harudle.admin.presentation.dto.AdminGenerationUsageResponse;
 import com.harudle.admin.presentation.dto.AdminUserSearchResponse;
@@ -11,6 +12,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import java.util.UUID;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -67,5 +69,14 @@ class AdminUserController {
     @PutMapping("/{userId}/generation-usage/reset")
     AdminGenerationUsageResponse resetGenerationUsage(@PathVariable UUID userId) {
         return AdminGenerationUsageResponse.from(adminGenerationUsageService.reset(userId));
+    }
+
+    @PutMapping("/{userId}/generation-limit")
+    ResponseEntity<Void> changeGenerationLimit(
+            @PathVariable UUID userId,
+            @Valid @RequestBody AdminGenerationLimitRequest request
+    ) {
+        adminGenerationUsageService.changeLimit(userId, request.limitCount());
+        return ResponseEntity.noContent().build();
     }
 }

@@ -45,4 +45,15 @@ public class AdminGenerationUsageService {
         }
         return generationUsageService.resetTodayUsage(userId, user.getDailyGenerationLimit());
     }
+
+    @Transactional
+    public void changeLimit(UUID userId, int limitCount) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(AdminUserNotFoundException::new);
+        if (user.isDeleted()) {
+            throw new AdminInactiveUserException();
+        }
+        user.changeDailyGenerationLimit(limitCount);
+        generationUsageService.updateTodayLimit(userId, limitCount);
+    }
 }

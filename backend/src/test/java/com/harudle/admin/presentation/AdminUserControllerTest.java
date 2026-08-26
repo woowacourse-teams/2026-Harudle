@@ -417,6 +417,128 @@ class AdminUserControllerTest {
                 .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
     }
 
+    @Test
+    @DisplayName("관리자는 사용자의 생성 한도를 변경하고 오늘 사용량 스냅샷도 갱신한다")
+    void changesGenerationLimitAndTodaySnapshot() throws Exception {
+        User admin = saveUser("관리자");
+        grantAdminRole(admin);
+        User target = saveUser("한도 변경 대상 사용자");
+        saveTodayUsage(target, 2, 3);
+
+        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-limit", target.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"limitCount\":5}"))
+                .andExpect(status().isNoContent());
+
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT daily_generation_limit FROM users WHERE id = ?",
+                Integer.class,
+                target.getId()
+        )).isEqualTo(5);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT used_count FROM daily_generation_usage WHERE user_id = ? AND usage_date = ?",
+                Integer.class,
+                target.getId(),
+                LocalDate.now(SERVICE_ZONE)
+        )).isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT limit_count FROM daily_generation_usage WHERE user_id = ? AND usage_date = ?",
+                Integer.class,
+                target.getId(),
+                LocalDate.now(SERVICE_ZONE)
+        )).isEqualTo(5);
+    }
+
+    @Test
+    @DisplayName("새 한도가 오늘 사용량보다 작으면 오늘 스냅샷을 사용량까지 유지한다")
+    void keepsTodaySnapshotAtUsedCountWhenLimitDecreases() throws Exception {
+        User admin = saveUser("관리자");
+        grantAdminRole(admin);
+        User target = saveUser("한도 축소 대상 사용자");
+        saveTodayUsage(target, 2, 3);
+
+        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-limit", target.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"limitCount\":1}"))
+                .andExpect(status().isNoContent());
+
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT daily_generation_limit FROM users WHERE id = ?",
+                Integer.class,
+                target.getId()
+        )).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT used_count FROM daily_generation_usage WHERE user_id = ? AND usage_date = ?",
+                Integer.class,
+                target.getId(),
+                LocalDate.now(SERVICE_ZONE)
+        )).isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT limit_count FROM daily_generation_usage WHERE user_id = ? AND usage_date = ?",
+                Integer.class,
+                target.getId(),
+                LocalDate.now(SERVICE_ZONE)
+        )).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("오늘 사용량 행이 없어도 생성 한도만 변경하고 사용량 행은 만들지 않는다")
+    void changesGenerationLimitWithoutCreatingUsage() throws Exception {
+        User admin = saveUser("관리자");
+        grantAdminRole(admin);
+        User target = saveUser("사용량 없는 사용자");
+
+        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-limit", target.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"limitCount\":7}"))
+                .andExpect(status().isNoContent());
+
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT daily_generation_limit FROM users WHERE id = ?",
+                Integer.class,
+                target.getId()
+        )).isEqualTo(7);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM daily_generation_usage WHERE user_id = ? AND usage_date = ?",
+                Integer.class,
+                target.getId(),
+                LocalDate.now(SERVICE_ZONE)
+        )).isZero();
+    }
+
+    @Test
+    @DisplayName("잘못된 생성 한도 변경 요청은 거부한다")
+    void rejectsInvalidGenerationLimitChange() throws Exception {
+        User admin = saveUser("관리자");
+        grantAdminRole(admin);
+        User deletedUser = saveUser("탈퇴 사용자");
+        markDeleted(deletedUser);
+
+        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-limit", deletedUser.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"limitCount\":5}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INACTIVE_USER"));
+
+        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-limit", UUID.randomUUID())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"limitCount\":5}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
+
+        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-limit", admin.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"limitCount\":-1}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
     private User saveUser(String name) {
         return saveUser(name, CREATED_AT);
     }
