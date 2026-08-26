@@ -128,6 +128,70 @@ class JpaGenerationUsageRepositoryTest {
     }
 
     @Test
+    @DisplayName("현재 사용량 이내의 횟수를 원자적으로 복구한다")
+    void restoresUsageAtomically() {
+        executeUpdate("""
+                INSERT INTO daily_generation_usage (
+                    user_id,
+                    usage_date,
+                    used_count,
+                    limit_count
+                )
+                VALUES (?, ?, 3, 3)
+                """, USER_ID, USAGE_DATE);
+
+        assertThat(generationUsageRepository.tryRestore(USER_ID, USAGE_DATE, 2))
+                .contains(new GenerationUsage(USAGE_DATE, 1, 3));
+        assertThat(generationUsageRepository.find(USER_ID, USAGE_DATE))
+                .contains(new GenerationUsage(USAGE_DATE, 1, 3));
+    }
+
+    @Test
+    @DisplayName("사용량 행이 없거나 복구 수량이 많으면 복구하지 않는다")
+    void rejectsInvalidRestoreWithoutChangingUsage() {
+        assertThat(generationUsageRepository.tryRestore(USER_ID, USAGE_DATE, 1)).isEmpty();
+        assertThat(generationUsageRepository.find(USER_ID, USAGE_DATE)).isEmpty();
+
+        executeUpdate("""
+                INSERT INTO daily_generation_usage (
+                    user_id,
+                    usage_date,
+                    used_count,
+                    limit_count
+                )
+                VALUES (?, ?, 1, 3)
+                """, USER_ID, USAGE_DATE);
+
+        assertThat(generationUsageRepository.tryRestore(USER_ID, USAGE_DATE, 2)).isEmpty();
+        assertThat(generationUsageRepository.find(USER_ID, USAGE_DATE))
+                .contains(new GenerationUsage(USAGE_DATE, 1, 3));
+    }
+
+    @Test
+    @DisplayName("동시 복구 요청은 현재 사용량을 초과하지 않는다")
+    void restoreUsageAtomicallyUnderConcurrency() throws InterruptedException {
+        executeUpdate("""
+                INSERT INTO daily_generation_usage (
+                    user_id,
+                    usage_date,
+                    used_count,
+                    limit_count
+                )
+                VALUES (?, ?, 3, 3)
+                """, USER_ID, USAGE_DATE);
+
+        List<Optional<GenerationUsage>> results = executeConcurrently(restoreTasks());
+
+        assertThat(results).filteredOn(Optional::isPresent).hasSize(3);
+        assertThat(results.stream()
+                .flatMap(Optional::stream)
+                .map(GenerationUsage::usedCount))
+                .containsExactlyInAnyOrder(2, 1, 0);
+        assertThat(generationUsageRepository.find(USER_ID, USAGE_DATE))
+                .contains(new GenerationUsage(USAGE_DATE, 0, 3));
+    }
+
+    @Test
     @DisplayName("외부 트랜잭션이 롤백되면 사용량 증가도 함께 롤백한다")
     void rollbackUsageIncrementWithOuterTransaction() {
         assertThatThrownBy(() -> transactionTemplate.executeWithoutResult(status -> {
@@ -142,6 +206,13 @@ class JpaGenerationUsageRepositoryTest {
         return IntStream.range(0, CONCURRENT_REQUEST_COUNT)
                 .mapToObj(index -> (Callable<Optional<GenerationUsage>>) () ->
                         generationUsageRepository.tryIncrementWithinLimit(USER_ID, USAGE_DATE))
+                .toList();
+    }
+
+    private List<Callable<Optional<GenerationUsage>>> restoreTasks() {
+        return IntStream.range(0, CONCURRENT_REQUEST_COUNT)
+                .mapToObj(index -> (Callable<Optional<GenerationUsage>>) () ->
+                        generationUsageRepository.tryRestore(USER_ID, USAGE_DATE, 1))
                 .toList();
     }
 

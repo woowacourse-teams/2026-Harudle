@@ -10,4 +10,6 @@ public interface GenerationUsageRepository {
     Optional<GenerationUsage> find(UUID userId, LocalDate usageDate);
 
     Optional<GenerationUsage> tryIncrementWithinLimit(UUID userId, LocalDate usageDate);
+
+    Optional<GenerationUsage> tryRestore(UUID userId, LocalDate usageDate, int restoreCount);
 }

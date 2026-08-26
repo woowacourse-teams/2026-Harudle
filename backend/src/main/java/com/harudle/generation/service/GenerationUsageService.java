@@ -7,6 +7,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -38,7 +39,14 @@ public class GenerationUsageService {
         return generationUsageRepository.tryIncrementWithinLimit(userId, usageDate)
                 .orElseThrow(() -> new DailyGenerationLimitExceededException(
                         secondsUntilNextUsageDate(usageDate)
-                ));
+        ));
+    }
+
+    public Optional<GenerationUsage> restoreTodayUsage(UUID userId, int restoreCount) {
+        if (restoreCount < 1) {
+            throw new IllegalArgumentException("복구 횟수는 1 이상이어야 합니다.");
+        }
+        return generationUsageRepository.tryRestore(userId, getUsageDate(), restoreCount);
     }
 
     private LocalDate getUsageDate() {

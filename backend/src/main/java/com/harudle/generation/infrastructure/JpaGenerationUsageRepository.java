@@ -43,6 +43,16 @@ class JpaGenerationUsageRepository implements GenerationUsageRepository {
             FROM incremented_usage
             """;
 
+    private static final String RESTORE_QUERY = """
+            UPDATE daily_generation_usage
+               SET used_count = used_count - :restoreCount,
+                   updated_at = CURRENT_TIMESTAMP
+             WHERE user_id = :userId
+               AND usage_date = :usageDate
+               AND used_count >= :restoreCount
+            RETURNING used_count, limit_count
+            """;
+
     private static final String FIND_QUERY = """
             SELECT new com.harudle.generation.domain.GenerationUsage(
                 usage.id.usageDate,
@@ -82,6 +92,25 @@ class JpaGenerationUsageRepository implements GenerationUsageRepository {
                 .setParameter("usageDate", usageDate)
                 .setParameter("usageIncrement", USAGE_INCREMENT)
                 .setParameter("limitCount", GenerationUsage.DEFAULT_LIMIT_COUNT)
+                .getResultList();
+        return usages.stream()
+                .map(columns -> mapUsage(usageDate, columns))
+                .findFirst();
+    }
+
+    @Override
+    @Transactional
+    @SuppressWarnings("unchecked")
+    public Optional<GenerationUsage> tryRestore(UUID userId, LocalDate usageDate, int restoreCount) {
+        validateParameters(userId, usageDate);
+        if (restoreCount < 1) {
+            throw new IllegalArgumentException("복구 횟수는 1 이상이어야 합니다.");
+        }
+        List<Object[]> usages = entityManager
+                .createNativeQuery(RESTORE_QUERY)
+                .setParameter("userId", userId)
+                .setParameter("usageDate", usageDate)
+                .setParameter("restoreCount", restoreCount)
                 .getResultList();
         return usages.stream()
                 .map(columns -> mapUsage(usageDate, columns))
