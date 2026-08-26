@@ -128,6 +128,45 @@ class JpaGenerationUsageRepositoryTest {
     }
 
     @Test
+    @DisplayName("첫 사용량 행을 생성할 때 사용자의 현재 한도를 스냅샷한다")
+    void snapshotsCurrentUserLimitWhenCreatingUsage() {
+        executeUpdate(
+                "UPDATE users SET daily_generation_limit = ? WHERE id = ?",
+                5,
+                USER_ID
+        );
+
+        assertThat(generationUsageRepository.tryIncrementWithinLimit(USER_ID, USAGE_DATE))
+                .contains(new GenerationUsage(USAGE_DATE, 1, 5));
+        assertThat(generationUsageRepository.find(USER_ID, USAGE_DATE))
+                .contains(new GenerationUsage(USAGE_DATE, 1, 5));
+    }
+
+    @Test
+    @DisplayName("오늘 사용량 한도를 갱신하되 이미 사용한 횟수보다 낮추지 않는다")
+    void updatesLimitCountWithoutGoingBelowUsedCount() {
+        executeUpdate("""
+                INSERT INTO daily_generation_usage (
+                    user_id,
+                    usage_date,
+                    used_count,
+                    limit_count
+                )
+                VALUES (?, ?, 2, 3)
+                """, USER_ID, USAGE_DATE);
+
+        assertThat(generationUsageRepository.updateLimitCount(USER_ID, USAGE_DATE, 1))
+                .isEqualTo(1);
+        assertThat(generationUsageRepository.find(USER_ID, USAGE_DATE))
+                .contains(new GenerationUsage(USAGE_DATE, 2, 2));
+
+        assertThat(generationUsageRepository.updateLimitCount(USER_ID, USAGE_DATE, 5))
+                .isEqualTo(1);
+        assertThat(generationUsageRepository.find(USER_ID, USAGE_DATE))
+                .contains(new GenerationUsage(USAGE_DATE, 2, 5));
+    }
+
+    @Test
     @DisplayName("현재 사용량 이내의 횟수를 원자적으로 복구한다")
     void restoresUsageAtomically() {
         executeUpdate("""

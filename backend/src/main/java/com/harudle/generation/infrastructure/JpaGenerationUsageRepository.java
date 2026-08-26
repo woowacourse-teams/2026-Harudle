@@ -24,14 +24,15 @@ class JpaGenerationUsageRepository implements GenerationUsageRepository {
                     created_at,
                     updated_at
                 )
-                VALUES (
+                SELECT
                     :userId,
                     :usageDate,
                     :usageIncrement,
-                    :limitCount,
+                    u.daily_generation_limit,
                     CURRENT_TIMESTAMP,
                     CURRENT_TIMESTAMP
-                )
+                FROM users u
+                WHERE u.id = :userId
                 ON CONFLICT (user_id, usage_date)
                 DO UPDATE
                    SET used_count = daily_generation_usage.used_count + EXCLUDED.used_count,
@@ -41,6 +42,14 @@ class JpaGenerationUsageRepository implements GenerationUsageRepository {
             )
             SELECT used_count, limit_count
             FROM incremented_usage
+            """;
+
+    private static final String UPDATE_LIMIT_COUNT_QUERY = """
+            UPDATE daily_generation_usage
+               SET limit_count = GREATEST(used_count, :limitCount),
+                   updated_at = CURRENT_TIMESTAMP
+             WHERE user_id = :userId
+               AND usage_date = :usageDate
             """;
 
     private static final String RESTORE_QUERY = """
@@ -100,11 +109,25 @@ class JpaGenerationUsageRepository implements GenerationUsageRepository {
                 .setParameter("userId", userId)
                 .setParameter("usageDate", usageDate)
                 .setParameter("usageIncrement", USAGE_INCREMENT)
-                .setParameter("limitCount", GenerationUsage.DEFAULT_LIMIT_COUNT)
                 .getResultList();
         return usages.stream()
                 .map(columns -> mapUsage(usageDate, columns))
                 .findFirst();
+    }
+
+    @Override
+    @Transactional
+    public int updateLimitCount(UUID userId, LocalDate usageDate, int limitCount) {
+        validateParameters(userId, usageDate);
+        if (limitCount < 0) {
+            throw new IllegalArgumentException("일일 생성 한도는 0 이상이어야 합니다.");
+        }
+        return entityManager
+                .createNativeQuery(UPDATE_LIMIT_COUNT_QUERY)
+                .setParameter("userId", userId)
+                .setParameter("usageDate", usageDate)
+                .setParameter("limitCount", limitCount)
+                .executeUpdate();
     }
 
     @Override
