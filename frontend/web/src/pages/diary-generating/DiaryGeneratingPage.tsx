@@ -87,11 +87,17 @@ const DiaryGeneratingContent = (generateRequestBody: DiaryGeneratingState) => {
     navigate('/', { replace: true });
   }, [resetDiaryGenerateRequest, navigate]);
 
+  const handleDairyWriteRetry = useCallback(() => {
+    resetDiaryGenerateRequest();
+    navigate('/diary-write');
+  }, [resetDiaryGenerateRequest, navigate]);
+
   if (diaryGenerateRequest.status === 'error') {
     return (
       <DiaryGeneratingError
         error={diaryGenerateRequest.error}
         onReturnHome={handleReturnHome}
+        onDiaryWriteRetry={handleDairyWriteRetry}
       />
     );
   }
