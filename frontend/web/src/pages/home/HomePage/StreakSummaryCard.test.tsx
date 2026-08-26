@@ -1,11 +1,6 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { render, screen } from '@testing-library/react';
 import StreakSummaryCard from './StreakSummaryCard';
-import {
-  DiaryGenerateContext,
-  type DiaryGenerateResponse,
-} from '../../diary-generating/DiaryGenerateContext';
-import type { ApiRequest } from '../../../shared/api';
 
 jest.mock(
   '../../../assets/images/dog-streak-diary.png',
@@ -25,21 +20,7 @@ const createJsonResponse = (data: unknown): Response =>
     json: async () => data,
   }) as Response;
 
-const idleDiaryGenerateRequest: ApiRequest<DiaryGenerateResponse> = {
-  status: 'idle',
-};
-
-const renderCard = (diaryGenerateRequest: ApiRequest<DiaryGenerateResponse>) =>
-  render(
-    <DiaryGenerateContext.Provider
-      value={{
-        diaryGenerateRequest,
-        generateDiary: async () => undefined,
-      }}
-    >
-      <StreakSummaryCard />
-    </DiaryGenerateContext.Provider>,
-  );
+const renderCard = () => render(<StreakSummaryCard />);
 
 describe('StreakSummaryCard', () => {
   beforeEach(() => {
@@ -67,7 +48,7 @@ describe('StreakSummaryCard', () => {
       }),
     );
 
-    renderCard(idleDiaryGenerateRequest);
+    renderCard();
 
     expect(await screen.findByText('5일째')).toBeInTheDocument();
     expect(screen.getByText('오늘도 이어가 볼까요?')).toBeInTheDocument();
@@ -88,11 +69,11 @@ describe('StreakSummaryCard', () => {
       }),
     );
 
-    const firstRender = renderCard(idleDiaryGenerateRequest);
+    const firstRender = renderCard();
     expect(await screen.findByText('6일째')).toBeInTheDocument();
     firstRender.unmount();
 
-    renderCard(idleDiaryGenerateRequest);
+    renderCard();
 
     expect(await screen.findByText('6일째')).toBeInTheDocument();
     expect(mockAuthFetch).toHaveBeenCalledTimes(1);
@@ -107,11 +88,11 @@ describe('StreakSummaryCard', () => {
       }),
     );
 
-    const firstRender = renderCard(idleDiaryGenerateRequest);
+    const firstRender = renderCard();
     expect(await screen.findByText('5일째')).toBeInTheDocument();
     firstRender.unmount();
 
-    renderCard(idleDiaryGenerateRequest);
+    renderCard();
 
     expect(await screen.findByText('5일째')).toBeInTheDocument();
     expect(mockAuthFetch).toHaveBeenCalledTimes(2);
@@ -126,7 +107,7 @@ describe('StreakSummaryCard', () => {
       }),
     );
 
-    renderCard(idleDiaryGenerateRequest);
+    renderCard();
 
     expect(
       await screen.findByText('잠시 후 다시 확인해 주세요.'),
