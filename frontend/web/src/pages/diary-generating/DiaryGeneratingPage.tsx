@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import DiaryGenerateStepper from './DiaryGenerateStepper';
 import { Navigate, useLocation, useNavigate } from 'react-router';
 import generationStep1Image from '../../assets/images/generation-step-1-reading.png';
@@ -12,6 +12,7 @@ import DiaryGeneratingError from './DiaryGeneratingError';
 import { useDiaryGenerateContext } from './DiaryGenerateContext';
 import PageHeader from '../../shared/PageHeader';
 import backIcon from '../../assets/icons/back.svg';
+import useGenerateLoading from './useGenerateLoading';
 
 const generationSteps = [
   {
@@ -35,8 +36,6 @@ const generationSteps = [
     image: generationCompleteImage,
   },
 ] as const;
-
-export const FINAL_STEP = 5;
 
 export interface DiaryGeneratingState {
   diaryDate: string;
@@ -73,46 +72,26 @@ const DiaryGeneratingPage = () => {
 export default DiaryGeneratingPage;
 
 const DiaryGeneratingContent = (generateRequestBody: DiaryGeneratingState) => {
-  const [loadingStep, setLoadingStep] = useState<number>(1);
-  const { generateDiary, diaryGenerateRequest } = useDiaryGenerateContext();
+  const { generateDiary, diaryGenerateRequest, resetDiaryGenerateRequest } =
+    useDiaryGenerateContext();
+  const { isGenerationComplete, displayedStep } =
+    useGenerateLoading(diaryGenerateRequest);
 
   useEffect(() => {
     void generateDiary(generateRequestBody);
   }, [generateRequestBody]);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    if (loadingStep >= FINAL_STEP - 1) {
-      return;
-    }
-
-    const timeoutId = setTimeout(() => {
-      setLoadingStep((previousStep) => previousStep + 1);
-    }, 3_000);
-
-    return () => clearTimeout(timeoutId);
-  }, [loadingStep]);
-
-  const isGenerationComplete = diaryGenerateRequest.status === 'success';
-
-  useEffect(() => {
-    if (!isGenerationComplete) {
-      return;
-    }
-
-    const timeoutId = setTimeout(() => {
-      navigate(`/diary/${diaryGenerateRequest.data.id}`, {
-        replace: true,
-      });
-    }, 2_000);
-
-    return () => clearTimeout(timeoutId);
-  }, [isGenerationComplete, navigate]);
-
-  const displayedStep = isGenerationComplete ? FINAL_STEP : loadingStep;
-
   if (diaryGenerateRequest.status === 'error') {
-    return <DiaryGeneratingError error={diaryGenerateRequest.error} />;
+    return (
+      <DiaryGeneratingError
+        error={diaryGenerateRequest.error}
+        onReturnClick={() => {
+          resetDiaryGenerateRequest();
+          navigate('/');
+        }}
+      />
+    );
   }
 
   return (
