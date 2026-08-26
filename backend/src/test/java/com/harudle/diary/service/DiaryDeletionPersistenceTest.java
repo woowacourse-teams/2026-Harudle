@@ -117,7 +117,7 @@ class DiaryDeletionPersistenceTest {
 
         diaryDeletionService.delete(USER_ID, deletedDiary.getId());
 
-        assertThat(diaryRepository.findSuccessfulDiaryDatesIncludingDeleted(
+        assertThat(diaryRepository.findDiaryDatesIncludingDeletedByGenerationStatus(
                 USER_ID,
                 newestDiary.getDiaryDate(),
                 GenerationStatus.SUCCEEDED

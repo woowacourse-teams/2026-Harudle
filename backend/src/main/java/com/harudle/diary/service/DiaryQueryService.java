@@ -82,7 +82,7 @@ public class DiaryQueryService {
         validateUserId(userId);
 
         LocalDate today = LocalDate.now(clock);
-        List<LocalDate> successfulDiaryDates = diaryQueryRepository.findSuccessfulDiaryDatesIncludingDeleted(
+        List<LocalDate> successfulDiaryDates = diaryQueryRepository.findDiaryDatesIncludingDeletedByGenerationStatus(
                 userId,
                 today,
                 GenerationStatus.SUCCEEDED

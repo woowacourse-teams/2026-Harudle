@@ -145,7 +145,7 @@ class DiaryQueryServiceTest {
                 "그제의 일기",
                 "generated/oldest.png"
         );
-        when(diaryRepository.findSuccessfulDiaryDatesIncludingDeleted(
+        when(diaryRepository.findDiaryDatesIncludingDeletedByGenerationStatus(
                 USER_ID,
                 DIARY_DATE,
                 GenerationStatus.SUCCEEDED
@@ -181,7 +181,7 @@ class DiaryQueryServiceTest {
     void getCurrentStreakFromYesterday() {
         LocalDate yesterday = DIARY_DATE.minusDays(1);
         LocalDate oldestDate = DIARY_DATE.minusDays(2);
-        when(diaryRepository.findSuccessfulDiaryDatesIncludingDeleted(
+        when(diaryRepository.findDiaryDatesIncludingDeletedByGenerationStatus(
                 USER_ID,
                 DIARY_DATE,
                 GenerationStatus.SUCCEEDED
@@ -207,7 +207,7 @@ class DiaryQueryServiceTest {
     @Test
     @DisplayName("현재 streak가 끝났으면 콘텐츠를 추가 조회하지 않는다")
     void getCurrentStreakReturnsEmptyWhenExpired() {
-        when(diaryRepository.findSuccessfulDiaryDatesIncludingDeleted(
+        when(diaryRepository.findDiaryDatesIncludingDeletedByGenerationStatus(
                 USER_ID,
                 DIARY_DATE,
                 GenerationStatus.SUCCEEDED

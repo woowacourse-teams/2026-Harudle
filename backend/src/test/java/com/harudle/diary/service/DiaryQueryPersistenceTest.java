@@ -163,7 +163,7 @@ class DiaryQueryPersistenceTest {
         insertSuccessfulGeneration(OUTSIDE_MONTH_DIARY_ID, "조회 기준일 이후 성공 일기");
 
         List<LocalDate> successfulDates =
-                diaryRepository.findSuccessfulDiaryDatesIncludingDeleted(
+                diaryRepository.findDiaryDatesIncludingDeletedByGenerationStatus(
                         USER_ID,
                         newestDate,
                         GenerationStatus.SUCCEEDED

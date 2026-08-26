@@ -52,7 +52,7 @@ public interface DiaryQueryRepository extends Repository<Diary, UUID> {
               )
             ORDER BY diary.diaryDate DESC
             """)
-    List<LocalDate> findSuccessfulDiaryDatesIncludingDeleted(
+    List<LocalDate> findDiaryDatesIncludingDeletedByGenerationStatus(
             @Param("userId") UUID userId,
             @Param("endDate") LocalDate endDate,
             @Param("generationStatus") GenerationStatus generationStatus
