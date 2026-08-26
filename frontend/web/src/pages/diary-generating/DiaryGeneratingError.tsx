@@ -4,9 +4,28 @@ import { theme } from '../../styles/theme';
 import PageHeader from '../../shared/PageHeader';
 import backIcon from '../../assets/icons/back.svg';
 import { useNavigate } from 'react-router';
+import { useEffect } from 'react';
+import { RequestError } from '../../shared/api';
 
-const DiaryGeneratingError = ({ errorMessage }: { errorMessage: string }) => {
+const DiaryGeneratingError = ({ error }: { error: Error }) => {
   const navigate = useNavigate();
+  const isGenerationInProgress =
+    error instanceof RequestError &&
+    error.problem.code === 'GENERATION_IN_PROGRESS';
+
+  useEffect(() => {
+    if (!isGenerationInProgress) {
+      return;
+    }
+
+    // alert를 렌더링 도중에 실행시키지 않기 위해 useEffect로 감싼다. (순수성 보장)
+    alert('이미 일기를 만들고 있어요. 완료되면 홈에 반영돼요.');
+    navigate('/', { replace: true });
+  }, [isGenerationInProgress, navigate]);
+
+  if (isGenerationInProgress) {
+    return null;
+  }
 
   return (
     <div css={diaryGeneratingErrorStyle} role="alert">
@@ -16,7 +35,7 @@ const DiaryGeneratingError = ({ errorMessage }: { errorMessage: string }) => {
             type="button"
             aria-label="뒤로 가기"
             css={headerButtonStyle}
-            onClick={() => navigate(-1)}
+            onClick={() => navigate('/')}
           >
             <img
               src={backIcon}
@@ -37,14 +56,14 @@ const DiaryGeneratingError = ({ errorMessage }: { errorMessage: string }) => {
 
       <div css={messageBoxStyle}>
         <h2 css={titleStyle}>일기 생성 중 오류가 발생했어요</h2>
-        <p css={descriptionStyle}>{errorMessage}</p>
+        <p css={descriptionStyle}>{error.message}</p>
       </div>
 
       <button
         type="button"
         css={retryButtonStyle}
         onClick={() => {
-          navigate(-1);
+          navigate('/diary-write');
         }}
       >
         다시 작성하기
