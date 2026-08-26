@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import DiaryGenerateStepper from './DiaryGenerateStepper';
 import { Navigate, useLocation, useNavigate } from 'react-router';
 import generationStep1Image from '../../assets/images/generation-step-1-reading.png';
@@ -82,14 +82,16 @@ const DiaryGeneratingContent = (generateRequestBody: DiaryGeneratingState) => {
   }, [generateRequestBody]);
   const navigate = useNavigate();
 
+  const handleReturnHome = useCallback(() => {
+    resetDiaryGenerateRequest();
+    navigate('/', { replace: true });
+  }, [resetDiaryGenerateRequest, navigate]);
+
   if (diaryGenerateRequest.status === 'error') {
     return (
       <DiaryGeneratingError
         error={diaryGenerateRequest.error}
-        onReturnClick={() => {
-          resetDiaryGenerateRequest();
-          navigate('/', { replace: true });
-        }}
+        onReturnHome={handleReturnHome}
       />
     );
   }

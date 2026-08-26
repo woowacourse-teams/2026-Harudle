@@ -9,10 +9,10 @@ import { RequestError } from '../../shared/api';
 
 const DiaryGeneratingError = ({
   error,
-  onReturnClick,
+  onReturnHome,
 }: {
   error: Error;
-  onReturnClick: () => void;
+  onReturnHome: () => void;
 }) => {
   const navigate = useNavigate();
   const isGenerationInProgress =
@@ -26,8 +26,8 @@ const DiaryGeneratingError = ({
 
     // alert를 렌더링 도중에 실행시키지 않기 위해 useEffect로 감싼다. (순수성 보장)
     alert('이미 일기를 만들고 있어요. 완료되면 홈에 반영돼요.');
-    navigate('/', { replace: true });
-  }, [isGenerationInProgress, navigate]);
+    onReturnHome();
+  }, [isGenerationInProgress, onReturnHome]);
 
   if (isGenerationInProgress) {
     return null;
@@ -41,7 +41,7 @@ const DiaryGeneratingError = ({
             type="button"
             aria-label="뒤로 가기"
             css={headerButtonStyle}
-            onClick={onReturnClick}
+            onClick={onReturnHome}
           >
             <img
               src={backIcon}
