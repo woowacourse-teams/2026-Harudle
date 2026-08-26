@@ -11,9 +11,9 @@ public class CurrentDiaryStreak {
     private final LocalDate today;
     private final List<LocalDate> dates;
 
-    public CurrentDiaryStreak(LocalDate today, List<LocalDate> dates) {
+    private CurrentDiaryStreak(LocalDate today, List<LocalDate> dates) {
         this.today = today;
-        this.dates = dates;
+        this.dates = List.copyOf(dates);
     }
 
     public static CurrentDiaryStreak calculate(LocalDate today, List<LocalDate> successfulDiaryDates) {
