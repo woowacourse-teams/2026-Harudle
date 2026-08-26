@@ -93,16 +93,30 @@ const RemainingGenerationUsage = () => {
     generationUsageRequest.status === 'success'
       ? generationUsageRequest.data
       : null;
+  const hasGenerationUsageError = generationUsageRequest.status === 'error';
 
   return (
     <div css={remainingGenerationUsageStyle} aria-live="polite">
-      <span>
-        오늘 남은 생성{' '}
-        <strong css={generationUsageTextStyle(remainingCount)}>
-          {remainingCount ?? '-'}
-        </strong>
-        회
-      </span>
+      {hasGenerationUsageError ? (
+        <>
+          <span>생성 횟수 조회 실패</span>
+          <button
+            css={retryButtonStyle}
+            type="button"
+            onClick={() => void getRemainingGenerationUsageCard()}
+          >
+            재시도
+          </button>
+        </>
+      ) : (
+        <span>
+          오늘 남은 생성{' '}
+          <strong css={generationUsageTextStyle(remainingCount)}>
+            {remainingCount ?? '-'}
+          </strong>
+          회
+        </span>
+      )}
     </div>
   );
 };
@@ -204,4 +218,14 @@ const generationUsageTextStyle = (remainingCount: number | null) => css`
         : theme.colors.text.danger
   };
   font-weight: 800;
+`;
+
+const retryButtonStyle = css`
+  margin-left: 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: ${theme.colors.text.brand};
+  font: inherit;
+  cursor: pointer;
 `;
