@@ -22,7 +22,7 @@ const DiaryWritePage = () => {
 
   if (diaryGenerateRequest.status === 'loading') {
     alert('다른 일기가 생성중입니다.');
-    <Navigate to="/" replace />;
+    return <Navigate to="/" replace />;
   }
 
   const handleDiarySubmit = (e: React.FormEvent<HTMLFormElement>) => {
