@@ -9,6 +9,7 @@ import posthog from 'posthog-js';
 import { PostHogProvider } from '@posthog/react';
 import { PostHogErrorBoundary } from '@posthog/react';
 import { isPostHogEnabled } from './shared/posthog';
+import { DiaryGenerateProvider } from './pages/diary-generating/DiaryGenerateContext';
 
 const posthogKey = process.env.REACT_APP_POSTHOG_KEY;
 
@@ -58,13 +59,15 @@ void enableMocking().then(() => {
 
   createRoot(root).render(
     <StrictMode>
-      {isPostHogInitialized ? (
-        <PostHogProvider client={posthog}>
-          <PostHogErrorBoundary>{app}</PostHogErrorBoundary>
-        </PostHogProvider>
-      ) : (
-        app
-      )}
+      <DiaryGenerateProvider>
+        {isPostHogInitialized ? (
+          <PostHogProvider client={posthog}>
+            <PostHogErrorBoundary>{app}</PostHogErrorBoundary>
+          </PostHogProvider>
+        ) : (
+          app
+        )}
+      </DiaryGenerateProvider>
     </StrictMode>,
   );
 });

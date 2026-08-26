@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import DiaryGenerateStepper from './DiaryGenerateStepper';
 import { Navigate, useLocation, useNavigate } from 'react-router';
-import useDiaryGenerate from './useDiaryGenerate';
 import generationStep1Image from '../../assets/images/generation-step-1-reading.png';
 import generationStep2Image from '../../assets/images/generation-step-2-writing.png';
 import generationStep3Image from '../../assets/images/generation-step-3-selecting-panels.png';
@@ -10,6 +9,9 @@ import generationCompleteImage from '../../assets/images/generation-step-5-compl
 import { css } from '@emotion/react';
 import { theme } from '../../styles/theme';
 import DiaryGeneratingError from './DiaryGeneratingError';
+import { useDiaryGenerateContext } from './DiaryGenerateContext';
+import PageHeader from '../../shared/PageHeader';
+import backIcon from '../../assets/icons/back.svg';
 
 const generationSteps = [
   {
@@ -36,9 +38,10 @@ const generationSteps = [
 
 export const FINAL_STEP = 5;
 
-interface DiaryGeneratingState {
+export interface DiaryGeneratingState {
   diaryDate: string;
   sourceText: string;
+  idempotencyKey: string;
 }
 
 const isDiaryGeneratingState = (
@@ -50,7 +53,9 @@ const isDiaryGeneratingState = (
     'diaryDate' in value &&
     typeof value.diaryDate === 'string' &&
     'sourceText' in value &&
-    typeof value.sourceText === 'string'
+    typeof value.sourceText === 'string' &&
+    'idempotencyKey' in value &&
+    typeof value.idempotencyKey === 'string'
   );
 };
 
@@ -58,6 +63,7 @@ const DiaryGeneratingPage = () => {
   const { state } = useLocation();
 
   if (!isDiaryGeneratingState(state)) {
+    alert('일기 생성 형식이 올바르지 않습니다.');
     return <Navigate to="/" replace />;
   }
 
@@ -66,12 +72,13 @@ const DiaryGeneratingPage = () => {
 
 export default DiaryGeneratingPage;
 
-const DiaryGeneratingContent = (generateRequestBody: {
-  diaryDate: string;
-  sourceText: string;
-}) => {
+const DiaryGeneratingContent = (generateRequestBody: DiaryGeneratingState) => {
   const [loadingStep, setLoadingStep] = useState<number>(1);
-  const { diaryGenerateRequest } = useDiaryGenerate(generateRequestBody);
+  const { generateDiary, diaryGenerateRequest } = useDiaryGenerateContext();
+
+  useEffect(() => {
+    void generateDiary(generateRequestBody);
+  }, [generateRequestBody]);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -105,18 +112,42 @@ const DiaryGeneratingContent = (generateRequestBody: {
   const displayedStep = isGenerationComplete ? FINAL_STEP : loadingStep;
 
   if (diaryGenerateRequest.status === 'error') {
-    return (
-      <DiaryGeneratingError errorMessage={diaryGenerateRequest.error.message} />
-    );
+    return <DiaryGeneratingError error={diaryGenerateRequest.error} />;
   }
 
   return (
     <div css={pageStyle}>
+      <PageHeader
+        left={
+          <button
+            type="button"
+            aria-label="뒤로 가기"
+            css={headerButtonStyle}
+            onClick={() => navigate('/')}
+          >
+            <img
+              src={backIcon}
+              alt="뒤로가기 아이콘"
+              css={headerButtonIconStyle}
+            />
+          </button>
+        }
+        title={null}
+        right={null}
+      />
       <img
         css={illustrationStyle}
         src={generationSteps[displayedStep - 1].image}
       />
       <p css={messageStyle}>{generationSteps[displayedStep - 1].message}</p>
+
+      <div css={supportingMessageSlotStyle}>
+        {!isGenerationComplete && (
+          <p css={supportingMessageStyle}>
+            다른 화면으로 이동해도 일기는 계속 만들어요!
+          </p>
+        )}
+      </div>
 
       <DiaryGenerateStepper loadingStep={displayedStep} />
     </div>
@@ -129,7 +160,25 @@ const pageStyle = css`
   align-items: center;
   width: 100%;
   height: 100%;
+  padding: 24px 20px;
   overflow-y: auto;
+`;
+
+const headerButtonStyle = css`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background-color: transparent;
+  cursor: pointer;
+`;
+
+const headerButtonIconStyle = css`
+  width: 24px;
+  height: 24px;
 `;
 
 const illustrationStyle = css`
@@ -147,5 +196,24 @@ const messageStyle = css`
   font-weight: 700;
   line-height: 34px;
   text-align: center;
+  word-break: keep-all;
+`;
+
+const supportingMessageSlotStyle = css`
+  min-height: 42px;
+  margin: 4px 0 16px;
+`;
+
+const supportingMessageStyle = css`
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 4px 20px;
+  border-radius: 12px;
+  background-color: #f7f4ff;
+  color: ${theme.colors.text.brand};
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 22px;
   word-break: keep-all;
 `;
