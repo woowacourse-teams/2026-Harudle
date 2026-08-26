@@ -39,7 +39,7 @@ const useDiaryShare = ({ shareId }: { shareId: string | undefined }) => {
   });
 
   useEffect(() => {
-    const getMonthlyDiaries = async (): Promise<void> => {
+    const getSharedDiary = async (): Promise<void> => {
       setSharedDiaryRequest({
         status: 'loading',
       });
@@ -77,7 +77,7 @@ const useDiaryShare = ({ shareId }: { shareId: string | undefined }) => {
       }
     };
 
-    void getMonthlyDiaries();
+    void getSharedDiary();
   }, [shareId]);
 
   return { sharedDiaryRequest };
