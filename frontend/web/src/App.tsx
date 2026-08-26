@@ -11,6 +11,7 @@ import DiarySharePage from './pages/diary-share/DiarySharePage';
 import AuthCallbackPage from './pages/login/AuthCallbackPage';
 import GuestTrialRoutes from './pages/guest-trial/GuestTrialRoutes';
 import LandingPage from './pages/landing/LandingPage';
+import AdminRoutes from './pages/admin/AdminRoutes';
 
 const App = () => {
   return (
@@ -26,6 +27,7 @@ const App = () => {
         <Route path="/setting" element={<SettingPage />} />
         <Route path="/landing" element={<LandingPage />} />
         <Route path="/landing-try/*" element={<GuestTrialRoutes />} />
+        <Route path="/admin/*" element={<AdminRoutes />} />
       </Routes>
     </div>
   );
