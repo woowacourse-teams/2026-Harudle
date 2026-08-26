@@ -9,8 +9,6 @@ import useGenrationUsage from './useGenrationUsage';
 import { css } from '@emotion/react';
 import { theme } from '../../../styles/theme';
 import { getToday } from '../../../shared/utils';
-import { useDiaryGenerateContext } from '../../diary-generating/DiaryGenerateContext';
-import { useEffect } from 'react';
 import StreakSummaryCard from './StreakSummaryCard';
 
 const formatYearMonthToString = ({ year, month }: YearMonth): string => {
@@ -80,14 +78,6 @@ export default HomePage;
 const RemainingGenerationUsage = () => {
   const { generationUsageRequest, getRemainingGenerationUsageCard } =
     useGenrationUsage();
-
-  const { diaryGenerateRequest } = useDiaryGenerateContext();
-
-  useEffect(() => {
-    if (diaryGenerateRequest.status === 'success') {
-      void getRemainingGenerationUsageCard();
-    }
-  }, [diaryGenerateRequest.status, getRemainingGenerationUsageCard]);
 
   const remainingCount =
     generationUsageRequest.status === 'success'
