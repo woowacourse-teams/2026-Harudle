@@ -1,6 +1,7 @@
 package com.harudle.admin.presentation;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -25,6 +26,7 @@ import org.springframework.boot.testcontainers.service.connection.ServiceConnect
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.junit.jupiter.Container;
@@ -240,6 +242,101 @@ class AdminUserControllerTest {
                         .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("관리자는 사용자의 오늘 생성 횟수를 지정한 수량만큼 복구할 수 있다")
+    void restoresGenerationUsage() throws Exception {
+        User admin = saveUser("관리자");
+        grantAdminRole(admin);
+        User target = saveUser("복구 대상 사용자");
+        saveTodayUsage(target, 3, 3);
+
+        mockMvc.perform(patch("/api/v1/admin/users/{userId}/generation-usage/restore", target.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"count\":2}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.usageDate").value(LocalDate.now(SERVICE_ZONE).toString()))
+                .andExpect(jsonPath("$.usedCount").value(1))
+                .andExpect(jsonPath("$.limitCount").value(3))
+                .andExpect(jsonPath("$.remainingCount").value(2));
+
+        Integer usedCount = jdbcTemplate.queryForObject(
+                "SELECT used_count FROM daily_generation_usage WHERE user_id = ? AND usage_date = ?",
+                Integer.class,
+                target.getId(),
+                LocalDate.now(SERVICE_ZONE)
+        );
+        org.assertj.core.api.Assertions.assertThat(usedCount).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("사용량 행이 없거나 복구 수량이 많으면 충돌 오류를 반환한다")
+    void rejectsConflictingGenerationUsageRestore() throws Exception {
+        User admin = saveUser("관리자");
+        grantAdminRole(admin);
+        User targetWithoutUsage = saveUser("사용량 없는 사용자");
+
+        mockMvc.perform(patch(
+                        "/api/v1/admin/users/{userId}/generation-usage/restore",
+                        targetWithoutUsage.getId()
+                )
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"count\":1}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("GENERATION_USAGE_CONFLICT"));
+
+        User targetWithInsufficientUsage = saveUser("사용량 부족 사용자");
+        saveTodayUsage(targetWithInsufficientUsage, 1, 3);
+
+        mockMvc.perform(patch(
+                        "/api/v1/admin/users/{userId}/generation-usage/restore",
+                        targetWithInsufficientUsage.getId()
+                )
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"count\":2}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("GENERATION_USAGE_CONFLICT"));
+    }
+
+    @Test
+    @DisplayName("탈퇴 사용자의 생성 횟수 복구는 거부한다")
+    void rejectsGenerationUsageRestoreForDeletedUser() throws Exception {
+        User admin = saveUser("관리자");
+        grantAdminRole(admin);
+        User deletedUser = saveUser("탈퇴 사용자");
+        markDeleted(deletedUser);
+        saveTodayUsage(deletedUser, 1, 3);
+
+        mockMvc.perform(patch(
+                        "/api/v1/admin/users/{userId}/generation-usage/restore",
+                        deletedUser.getId()
+                )
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"count\":1}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INACTIVE_USER"));
+    }
+
+    @Test
+    @DisplayName("복구 횟수가 1 미만이면 검증 오류를 반환한다")
+    void rejectsInvalidGenerationUsageRestoreCount() throws Exception {
+        User admin = saveUser("관리자");
+        grantAdminRole(admin);
+
+        mockMvc.perform(patch(
+                        "/api/v1/admin/users/{userId}/generation-usage/restore",
+                        admin.getId()
+                )
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"count\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
     }
 
     private User saveUser(String name) {

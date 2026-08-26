@@ -68,6 +68,16 @@ public enum ErrorType {
             "User not found",
             "사용자를 찾을 수 없습니다."
     ),
+    INACTIVE_USER(
+            HttpStatus.CONFLICT,
+            "Inactive user",
+            "탈퇴한 사용자는 관리자 변경 작업의 대상이 될 수 없습니다."
+    ),
+    GENERATION_USAGE_CONFLICT(
+            HttpStatus.CONFLICT,
+            "Generation usage conflict",
+            "현재 생성 사용량을 기준으로 요청을 다시 확인해 주세요."
+    ),
     GENERATION_IN_PROGRESS(
             HttpStatus.CONFLICT,
             "Generation in progress",

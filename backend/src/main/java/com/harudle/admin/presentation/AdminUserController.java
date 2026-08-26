@@ -1,15 +1,21 @@
 package com.harudle.admin.presentation;
 
 import com.harudle.admin.presentation.dto.AdminUserDetailResponse;
+import com.harudle.admin.presentation.dto.AdminGenerationUsageRestoreRequest;
+import com.harudle.admin.presentation.dto.AdminGenerationUsageResponse;
 import com.harudle.admin.presentation.dto.AdminUserSearchResponse;
 import com.harudle.admin.query.AdminUserPage;
+import com.harudle.admin.service.AdminGenerationUsageService;
 import com.harudle.admin.service.AdminUserQueryService;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import java.util.UUID;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -22,9 +28,14 @@ class AdminUserController {
     private static final int MAX_PAGE_SIZE = 100;
 
     private final AdminUserQueryService adminUserQueryService;
+    private final AdminGenerationUsageService adminGenerationUsageService;
 
-    AdminUserController(AdminUserQueryService adminUserQueryService) {
+    AdminUserController(
+            AdminUserQueryService adminUserQueryService,
+            AdminGenerationUsageService adminGenerationUsageService
+    ) {
         this.adminUserQueryService = adminUserQueryService;
+        this.adminGenerationUsageService = adminGenerationUsageService;
     }
 
     @GetMapping
@@ -40,5 +51,15 @@ class AdminUserController {
     @GetMapping("/{userId}")
     AdminUserDetailResponse findDetail(@PathVariable UUID userId) {
         return AdminUserDetailResponse.from(adminUserQueryService.findDetail(userId));
+    }
+
+    @PatchMapping("/{userId}/generation-usage/restore")
+    AdminGenerationUsageResponse restoreGenerationUsage(
+            @PathVariable UUID userId,
+            @Valid @RequestBody AdminGenerationUsageRestoreRequest request
+    ) {
+        return AdminGenerationUsageResponse.from(
+                adminGenerationUsageService.restore(userId, request.count())
+        );
     }
 }
