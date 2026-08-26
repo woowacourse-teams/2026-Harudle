@@ -23,61 +23,66 @@ const useMonthlyDiaries = ({ year, month }: YearMonth) => {
     status: 'idle',
   });
 
-  const getMonthlyDiaries = useCallback(async (): Promise<void> => {
-    setMonthlyDiariesRequest({
-      status: 'loading',
-    });
-
-    try {
-      const response = await authFetch(
-        `${API_BASE_URL}/diaries?year=${year}&month=${month}`,
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        if (isProblemDetails(errorData)) {
-          throw new RequestError(errorData);
-        }
-
-        throw new Error('알 수 없는 에러가 발생했습니다.');
-      }
-
-      const data: unknown = await response.json();
-
-      if (!isMonthlyDiariesResponse(data)) {
-        throw new Error('MonthlyDiaries 응답 형식이 일치하지 않습니다.');
-      }
-
-      setMonthlyDiariesRequest({
-        status: 'success',
-        data: data,
-      });
-
-      const diaryCount = data.days.reduce(
-        (count, day) => count + day.items.length,
-        0,
-      );
-
-      track('diary_timeline_viewed', {
-        year: data.year,
-        month: data.month,
-        diary_count: diaryCount,
-        has_diaries: diaryCount > 0,
-      });
-    } catch (error: unknown) {
-      if (error instanceof Error) {
+  const getMonthlyDiaries = useCallback(
+    async ({ showLoading = true }: { showLoading: boolean }): Promise<void> => {
+      if (showLoading) {
         setMonthlyDiariesRequest({
-          status: 'error',
-          error: error,
+          status: 'loading',
         });
       }
-    }
-  }, [year, month, track]);
+
+      try {
+        const response = await authFetch(
+          `${API_BASE_URL}/diaries?year=${year}&month=${month}`,
+        );
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          if (isProblemDetails(errorData)) {
+            throw new RequestError(errorData);
+          }
+
+          throw new Error('알 수 없는 에러가 발생했습니다.');
+        }
+
+        const data: unknown = await response.json();
+
+        if (!isMonthlyDiariesResponse(data)) {
+          throw new Error('MonthlyDiaries 응답 형식이 일치하지 않습니다.');
+        }
+
+        setMonthlyDiariesRequest({
+          status: 'success',
+          data: data,
+        });
+
+        const diaryCount = data.days.reduce(
+          (count, day) => count + day.items.length,
+          0,
+        );
+
+        track('diary_timeline_viewed', {
+          year: data.year,
+          month: data.month,
+          diary_count: diaryCount,
+          has_diaries: diaryCount > 0,
+        });
+      } catch (error: unknown) {
+        if (error instanceof Error) {
+          setMonthlyDiariesRequest({
+            status: 'error',
+            error: error,
+          });
+        }
+      }
+    },
+    [year, month, track],
+  );
 
   useEffect(() => {
     // TODO: API 요청과 상태 갱신 책임을 분리해 lint 예외를 제거한다.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void getMonthlyDiaries();
+    void getMonthlyDiaries({ showLoading: true });
   }, [getMonthlyDiaries]);
 
   return { monthlyDiariesRequest, getMonthlyDiaries };
