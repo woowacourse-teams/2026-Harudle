@@ -1,7 +1,9 @@
 package com.harudle.admin.presentation;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -337,6 +339,82 @@ class AdminUserControllerTest {
                         .content("{\"count\":0}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    @DisplayName("관리자는 사용자의 오늘 생성 사용량을 0으로 초기화하고 반복 요청에도 같은 결과를 반환한다")
+    void resetsGenerationUsageIdempotently() throws Exception {
+        User admin = saveUser("관리자");
+        grantAdminRole(admin);
+        User target = saveUser("초기화 대상 사용자");
+        saveTodayUsage(target, 3, 5);
+
+        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-usage/reset", target.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.usageDate").value(LocalDate.now(SERVICE_ZONE).toString()))
+                .andExpect(jsonPath("$.usedCount").value(0))
+                .andExpect(jsonPath("$.limitCount").value(5))
+                .andExpect(jsonPath("$.remainingCount").value(5));
+
+        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-usage/reset", target.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.usedCount").value(0))
+                .andExpect(jsonPath("$.limitCount").value(5))
+                .andExpect(jsonPath("$.remainingCount").value(5));
+
+        Integer usedCount = jdbcTemplate.queryForObject(
+                "SELECT used_count FROM daily_generation_usage WHERE user_id = ? AND usage_date = ?",
+                Integer.class,
+                target.getId(),
+                LocalDate.now(SERVICE_ZONE)
+        );
+        assertThat(usedCount).isZero();
+    }
+
+    @Test
+    @DisplayName("사용량 행이 없으면 사용자별 한도로 기본 사용량을 반환하고 행을 만들지 않는다")
+    void returnsCurrentLimitWithoutCreatingUsageOnReset() throws Exception {
+        User admin = saveUser("관리자");
+        grantAdminRole(admin);
+        User target = saveUser("사용량 없는 사용자");
+        changeDailyGenerationLimit(target, 7);
+
+        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-usage/reset", target.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.usageDate").value(LocalDate.now(SERVICE_ZONE).toString()))
+                .andExpect(jsonPath("$.usedCount").value(0))
+                .andExpect(jsonPath("$.limitCount").value(7))
+                .andExpect(jsonPath("$.remainingCount").value(7));
+
+        Integer usageRowCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM daily_generation_usage WHERE user_id = ? AND usage_date = ?",
+                Integer.class,
+                target.getId(),
+                LocalDate.now(SERVICE_ZONE)
+        );
+        assertThat(usageRowCount).isZero();
+    }
+
+    @Test
+    @DisplayName("탈퇴했거나 없는 사용자의 생성 사용량 초기화는 거부한다")
+    void rejectsInvalidGenerationUsageResetTarget() throws Exception {
+        User admin = saveUser("관리자");
+        grantAdminRole(admin);
+        User deletedUser = saveUser("탈퇴 사용자");
+        markDeleted(deletedUser);
+
+        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-usage/reset", deletedUser.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INACTIVE_USER"));
+
+        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-usage/reset", UUID.randomUUID())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
     }
 
     private User saveUser(String name) {

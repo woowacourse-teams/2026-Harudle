@@ -35,4 +35,14 @@ public class AdminGenerationUsageService {
         return generationUsageService.restoreTodayUsage(userId, restoreCount)
                 .orElseThrow(AdminGenerationUsageConflictException::new);
     }
+
+    @Transactional
+    public GenerationUsage reset(UUID userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(AdminUserNotFoundException::new);
+        if (user.isDeleted()) {
+            throw new AdminInactiveUserException();
+        }
+        return generationUsageService.resetTodayUsage(userId, user.getDailyGenerationLimit());
+    }
 }
