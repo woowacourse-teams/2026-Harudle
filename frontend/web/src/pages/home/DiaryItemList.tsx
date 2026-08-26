@@ -17,18 +17,27 @@ const DiaryItemList = ({
   getMonthlyDiaries,
 }: {
   monthlyDiariesRequest: ApiRequest<MonthlyDiariesResponse>;
-  getMonthlyDiaries: () => Promise<void>;
+  getMonthlyDiaries: ({
+    showLoading,
+  }: {
+    showLoading: boolean;
+  }) => Promise<void>;
 }) => {
   const navigate = useNavigate();
-  const { diaryGenerateRequest } = useDiaryGenerateContext();
+  const { diaryGenerateRequest, resetDiaryGenerateRequest } =
+    useDiaryGenerateContext();
 
+  // 홈 화면에서는 최초 1번만 일기 생성 성공 또는 실패 후처리를 하면 되므로
+  // 비동기 상태를 초기화한다.
   useEffect(() => {
     if (diaryGenerateRequest.status === 'error') {
+      resetDiaryGenerateRequest();
       alert(diaryGenerateRequest.error.message);
     }
 
     if (diaryGenerateRequest.status === 'success') {
-      void getMonthlyDiaries();
+      resetDiaryGenerateRequest();
+      void getMonthlyDiaries({ showLoading: false });
     }
   }, [diaryGenerateRequest.status]);
 

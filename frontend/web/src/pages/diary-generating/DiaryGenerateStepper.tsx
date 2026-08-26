@@ -1,7 +1,7 @@
 import { css } from '@emotion/react';
 import { theme } from '../../styles/theme';
 import checkIcon from '../../assets/icons/check.svg';
-import { FINAL_STEP } from './DiaryGeneratingPage';
+import { FINAL_STEP } from './useGenerateLoading';
 
 const stepLabels = [
   '이야기 분석 중',
