@@ -49,6 +49,12 @@ public class GenerationUsageService {
         return generationUsageRepository.tryRestore(userId, getUsageDate(), restoreCount);
     }
 
+    public GenerationUsage resetTodayUsage(UUID userId, int currentLimitCount) {
+        LocalDate usageDate = getUsageDate();
+        return generationUsageRepository.tryReset(userId, usageDate)
+                .orElseGet(() -> GenerationUsage.empty(usageDate, currentLimitCount));
+    }
+
     private LocalDate getUsageDate() {
         return LocalDate.now(clock);
     }

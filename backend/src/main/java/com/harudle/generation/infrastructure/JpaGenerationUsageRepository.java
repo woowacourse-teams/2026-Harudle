@@ -53,6 +53,15 @@ class JpaGenerationUsageRepository implements GenerationUsageRepository {
             RETURNING used_count, limit_count
             """;
 
+    private static final String RESET_QUERY = """
+            UPDATE daily_generation_usage
+               SET used_count = 0,
+                   updated_at = CURRENT_TIMESTAMP
+             WHERE user_id = :userId
+               AND usage_date = :usageDate
+            RETURNING used_count, limit_count
+            """;
+
     private static final String FIND_QUERY = """
             SELECT new com.harudle.generation.domain.GenerationUsage(
                 usage.id.usageDate,
@@ -111,6 +120,21 @@ class JpaGenerationUsageRepository implements GenerationUsageRepository {
                 .setParameter("userId", userId)
                 .setParameter("usageDate", usageDate)
                 .setParameter("restoreCount", restoreCount)
+                .getResultList();
+        return usages.stream()
+                .map(columns -> mapUsage(usageDate, columns))
+                .findFirst();
+    }
+
+    @Override
+    @Transactional
+    @SuppressWarnings("unchecked")
+    public Optional<GenerationUsage> tryReset(UUID userId, LocalDate usageDate) {
+        validateParameters(userId, usageDate);
+        List<Object[]> usages = entityManager
+                .createNativeQuery(RESET_QUERY)
+                .setParameter("userId", userId)
+                .setParameter("usageDate", usageDate)
                 .getResultList();
         return usages.stream()
                 .map(columns -> mapUsage(usageDate, columns))

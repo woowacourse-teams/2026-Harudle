@@ -192,6 +192,34 @@ class JpaGenerationUsageRepositoryTest {
     }
 
     @Test
+    @DisplayName("사용량을 0으로 초기화하고 기존 한도 스냅샷을 유지한다")
+    void resetsUsageAndKeepsLimitSnapshot() {
+        executeUpdate("""
+                INSERT INTO daily_generation_usage (
+                    user_id,
+                    usage_date,
+                    used_count,
+                    limit_count
+                )
+                VALUES (?, ?, 3, 5)
+                """, USER_ID, USAGE_DATE);
+
+        assertThat(generationUsageRepository.tryReset(USER_ID, USAGE_DATE))
+                .contains(new GenerationUsage(USAGE_DATE, 0, 5));
+        assertThat(generationUsageRepository.tryReset(USER_ID, USAGE_DATE))
+                .contains(new GenerationUsage(USAGE_DATE, 0, 5));
+        assertThat(generationUsageRepository.find(USER_ID, USAGE_DATE))
+                .contains(new GenerationUsage(USAGE_DATE, 0, 5));
+    }
+
+    @Test
+    @DisplayName("사용량 행이 없으면 초기화하지 않고 빈 결과를 반환한다")
+    void returnsEmptyWhenResetUsageDoesNotExist() {
+        assertThat(generationUsageRepository.tryReset(USER_ID, USAGE_DATE)).isEmpty();
+        assertThat(generationUsageRepository.find(USER_ID, USAGE_DATE)).isEmpty();
+    }
+
+    @Test
     @DisplayName("외부 트랜잭션이 롤백되면 사용량 증가도 함께 롤백한다")
     void rollbackUsageIncrementWithOuterTransaction() {
         assertThatThrownBy(() -> transactionTemplate.executeWithoutResult(status -> {

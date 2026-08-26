@@ -16,7 +16,11 @@ public record GenerationUsage(
     }
 
     public static GenerationUsage empty(LocalDate usageDate) {
-        return new GenerationUsage(usageDate, 0, DEFAULT_LIMIT_COUNT);
+        return empty(usageDate, DEFAULT_LIMIT_COUNT);
+    }
+
+    public static GenerationUsage empty(LocalDate usageDate, int limitCount) {
+        return new GenerationUsage(usageDate, 0, limitCount);
     }
 
     public int remainingCount() {

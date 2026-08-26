@@ -12,4 +12,6 @@ public interface GenerationUsageRepository {
     Optional<GenerationUsage> tryIncrementWithinLimit(UUID userId, LocalDate usageDate);
 
     Optional<GenerationUsage> tryRestore(UUID userId, LocalDate usageDate, int restoreCount);
+
+    Optional<GenerationUsage> tryReset(UUID userId, LocalDate usageDate);
 }
