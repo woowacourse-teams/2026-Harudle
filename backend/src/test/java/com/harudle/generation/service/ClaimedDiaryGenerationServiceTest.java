@@ -11,7 +11,6 @@ import static org.mockito.Mockito.when;
 import com.harudle.generation.domain.DiaryGeneration;
 import com.harudle.generation.domain.GenerationErrorCode;
 import com.harudle.generation.domain.GenerationPrompt;
-import com.harudle.generation.domain.GenerationStatus;
 import com.harudle.generation.domain.StoryPanel;
 import com.harudle.generation.domain.Storyboard;
 import com.harudle.generation.repository.DiaryGenerationRepository;

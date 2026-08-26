@@ -6,6 +6,7 @@ import com.harudle.diary.domain.Diary;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.generation.domain.DiaryGeneration;
 import com.harudle.generation.domain.GenerationPrompt;
+import com.harudle.generation.domain.GenerationStatus;
 import com.harudle.generation.repository.DiaryGenerationRepository;
 import com.harudle.generation.repository.GenerationPromptRepository;
 import com.harudle.share.domain.ShareLink;
@@ -13,6 +14,7 @@ import com.harudle.share.repository.ShareLinkRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
 import java.util.stream.IntStream;
@@ -38,6 +40,7 @@ class DiaryDeletionPersistenceTest {
     private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:18-alpine");
     private static final UUID USER_ID = UUID.fromString("08d69a34-6d70-4d42-a158-671bc67733c9");
     private static final LocalDate DIARY_DATE = LocalDate.of(2026, 8, 6);
+    private static final Instant COMPLETED_AT = Instant.parse("2026-08-06T12:00:00Z");
 
     @Container
     @ServiceConnection
@@ -105,6 +108,36 @@ class DiaryDeletionPersistenceTest {
                 .hasValueSatisfying(diary -> assertThat(diary.isDeleted()).isFalse());
     }
 
+    @Test
+    @DisplayName("중간의 성공 일기를 삭제해도 생성 기록과 streak 날짜는 유지한다")
+    void keepSuccessfulActivityAfterDeletingMiddleDiary() {
+        Diary oldestDiary = createSuccessfulDiary(DIARY_DATE);
+        Diary deletedDiary = createSuccessfulDiary(DIARY_DATE.plusDays(1));
+        Diary newestDiary = createSuccessfulDiary(DIARY_DATE.plusDays(2));
+
+        diaryDeletionService.delete(USER_ID, deletedDiary.getId());
+
+        assertThat(diaryRepository.findDiaryDatesIncludingDeletedByGenerationStatus(
+                USER_ID,
+                newestDiary.getDiaryDate(),
+                GenerationStatus.SUCCEEDED
+        )).containsExactly(
+                newestDiary.getDiaryDate(),
+                deletedDiary.getDiaryDate(),
+                oldestDiary.getDiaryDate()
+        );
+        assertThat(diaryGenerationRepository.findSnapshotByDiaryId(deletedDiary.getId()))
+                .hasValueSatisfying(generation ->
+                        assertThat(generation.status()).isEqualTo(GenerationStatus.SUCCEEDED)
+                );
+        assertThat(diaryRepository.findActiveSnapshotsBetween(
+                USER_ID,
+                oldestDiary.getDiaryDate(),
+                newestDiary.getDiaryDate()
+        )).extracting(snapshot -> snapshot.id())
+                .containsExactly(newestDiary.getId(), oldestDiary.getId());
+    }
+
     private Diary createDiaryWithShareLink(LocalDate diaryDate) {
         Diary diary = diaryRepository.saveAndFlush(Diary.create(USER_ID, diaryDate, "오늘의 일기"));
         DiaryGeneration generation = diaryGenerationRepository.saveAndFlush(DiaryGeneration.start(
@@ -114,6 +147,23 @@ class DiaryDeletionPersistenceTest {
                 "a".repeat(64)
         ));
         shareLinkRepository.saveAndFlush(ShareLink.create(generation.getId()));
+        return diary;
+    }
+
+    private Diary createSuccessfulDiary(LocalDate diaryDate) {
+        Diary diary = diaryRepository.saveAndFlush(Diary.create(USER_ID, diaryDate, "오늘의 일기"));
+        DiaryGeneration generation = DiaryGeneration.start(
+                diary.getId(),
+                generationPrompt.getId(),
+                UUID.randomUUID(),
+                "a".repeat(64)
+        );
+        generation.succeed(
+                TestStoryboardFactory.create(),
+                "generated/%s.png".formatted(diary.getId()),
+                COMPLETED_AT
+        );
+        diaryGenerationRepository.saveAndFlush(generation);
         return diary;
     }
 
