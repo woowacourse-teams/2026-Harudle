@@ -60,6 +60,17 @@ class SecurityConfigTest {
     }
 
     @Test
+    @DisplayName("인증된 일반 사용자는 관리자 API에 접근할 수 없다")
+    void rejectsNonAdminApiRequest() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/test")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + issueAccessToken()))
+                .andExpect(status().isForbidden())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"))
+                .andExpect(jsonPath("$.traceId").isNotEmpty());
+    }
+
+    @Test
     @DisplayName("JSESSIONID만으로 보호 API에 접근할 수 없다")
     void rejectsSessionOnlyApiRequest() throws Exception {
         MockHttpSession session = new MockHttpSession();
