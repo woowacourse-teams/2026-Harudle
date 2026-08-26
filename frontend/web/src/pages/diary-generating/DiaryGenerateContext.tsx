@@ -16,6 +16,7 @@ interface DiaryGenerateContextValue {
     sourceText,
     idempotencyKey,
   }: DiaryGeneratingState) => Promise<void>;
+  resetDiaryGenerateRequest: () => void;
 }
 
 export const DiaryGenerateContext =
@@ -32,6 +33,11 @@ export const DiaryGenerateProvider = ({
   >({
     status: 'idle',
   });
+
+  const resetDiaryGenerateRequest = () =>
+    setDiaryGenerateRequest({
+      status: 'idle',
+    });
 
   const generateDiary = async ({
     diaryDate,
@@ -95,6 +101,7 @@ export const DiaryGenerateProvider = ({
       value={{
         diaryGenerateRequest,
         generateDiary,
+        resetDiaryGenerateRequest,
       }}
     >
       {children}

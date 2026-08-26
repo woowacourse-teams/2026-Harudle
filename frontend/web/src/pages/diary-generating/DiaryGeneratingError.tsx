@@ -7,7 +7,13 @@ import { useNavigate } from 'react-router';
 import { useEffect } from 'react';
 import { RequestError } from '../../shared/api';
 
-const DiaryGeneratingError = ({ error }: { error: Error }) => {
+const DiaryGeneratingError = ({
+  error,
+  onReturnClick,
+}: {
+  error: Error;
+  onReturnClick: () => void;
+}) => {
   const navigate = useNavigate();
   const isGenerationInProgress =
     error instanceof RequestError &&
@@ -35,7 +41,7 @@ const DiaryGeneratingError = ({ error }: { error: Error }) => {
             type="button"
             aria-label="뒤로 가기"
             css={headerButtonStyle}
-            onClick={() => navigate('/')}
+            onClick={onReturnClick}
           >
             <img
               src={backIcon}
