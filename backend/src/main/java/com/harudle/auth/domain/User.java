@@ -2,6 +2,8 @@ package com.harudle.auth.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
@@ -10,6 +12,8 @@ import java.util.UUID;
 @Entity
 @Table(name = "users")
 public class User {
+    private static final int DEFAULT_DAILY_GENERATION_LIMIT = 3;
+
     @Id
     private UUID id;
 
@@ -18,6 +22,13 @@ public class User {
 
     @Column(nullable = false, length = 30)
     private String name;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private UserRole role;
+
+    @Column(name = "daily_generation_limit", nullable = false)
+    private int dailyGenerationLimit;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -40,6 +51,8 @@ public class User {
         this.id = UUID.randomUUID();
         this.primaryEmail = primaryEmail;
         this.name = name;
+        this.role = UserRole.USER;
+        this.dailyGenerationLimit = DEFAULT_DAILY_GENERATION_LIMIT;
         this.createdAt = now;
         this.updatedAt = now;
     }
@@ -58,6 +71,25 @@ public class User {
 
     public String getName() {
         return name;
+    }
+
+    public UserRole getRole() {
+        return role;
+    }
+
+    public boolean isAdmin() {
+        return role == UserRole.ADMIN;
+    }
+
+    public int getDailyGenerationLimit() {
+        return dailyGenerationLimit;
+    }
+
+    public void changeDailyGenerationLimit(int dailyGenerationLimit) {
+        if (dailyGenerationLimit < 0) {
+            throw new IllegalArgumentException("일일 생성 한도는 0 이상이어야 합니다.");
+        }
+        this.dailyGenerationLimit = dailyGenerationLimit;
     }
 
     public Instant getCreatedAt() {
