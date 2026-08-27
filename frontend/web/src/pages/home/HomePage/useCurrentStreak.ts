@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   API_BASE_URL,
   isProblemDetails,
@@ -138,68 +138,74 @@ const useCurrentStreak = () => {
     status: 'idle',
   });
 
-  const getCurrentStreak = useCallback(async (): Promise<void> => {
-    const todayKey = getTodayKey();
-    const cachedStreak = readCurrentStreakCache(todayKey);
+  const todayKey = getTodayKey();
+  const cachedStreak = useMemo(
+    () => readCurrentStreakCache(todayKey),
+    [todayKey],
+  );
 
-    if (cachedStreak !== null) {
+  const getCurrentStreak = useCallback(
+    async (cache: CurrentStreak | null) => {
+      if (cache !== null) {
+        setCurrentStreakRequest({
+          status: 'success',
+          data: cache,
+        });
+        return;
+      }
+
       setCurrentStreakRequest({
-        status: 'success',
-        data: cachedStreak,
+        status: 'loading',
       });
-      return;
-    }
 
-    setCurrentStreakRequest({
-      status: 'loading',
-    });
+      try {
+        const response = await authFetch(
+          `${API_BASE_URL}/diaries/current-streak`,
+        );
 
-    try {
-      const response = await authFetch(
-        `${API_BASE_URL}/diaries/current-streak`,
-      );
+        if (!response.ok) {
+          const errorData = await response.json();
+          if (isProblemDetails(errorData)) {
+            throw new RequestError(errorData);
+          }
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        if (isProblemDetails(errorData)) {
-          throw new RequestError(errorData);
+          throw new Error('알 수 없는 에러가 발생했습니다.');
         }
 
-        throw new Error('알 수 없는 에러가 발생했습니다.');
-      }
+        const data: unknown = await response.json();
 
-      const data: unknown = await response.json();
+        if (!isCurrentStreakResponse(data)) {
+          throw new Error('CurrentStreak 응답 형식이 일치하지 않습니다.');
+        }
 
-      if (!isCurrentStreakResponse(data)) {
-        throw new Error('CurrentStreak 응답 형식이 일치하지 않습니다.');
-      }
+        const currentStreak = {
+          streakCount: data.streakCount,
+          recordedToday: data.recordedToday,
+        };
 
-      const currentStreak = {
-        streakCount: data.streakCount,
-        recordedToday: data.recordedToday,
-      };
-
-      setCurrentStreakRequest({
-        status: 'success',
-        data: currentStreak,
-      });
-
-      writeCurrentStreakCache(todayKey, currentStreak);
-    } catch (error: unknown) {
-      if (error instanceof Error) {
         setCurrentStreakRequest({
-          status: 'error',
-          error,
+          status: 'success',
+          data: currentStreak,
         });
+
+        writeCurrentStreakCache(todayKey, currentStreak);
+      } catch (error: unknown) {
+        if (error instanceof Error) {
+          setCurrentStreakRequest({
+            status: 'error',
+            error,
+          });
+        }
       }
-    }
-  }, []);
+    },
+    [todayKey],
+  );
 
   useEffect(() => {
     // TODO: API 요청과 상태 갱신 책임을 분리해 lint 예외를 제거한다.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void getCurrentStreak();
-  }, [getCurrentStreak]);
+    void getCurrentStreak(cachedStreak);
+  }, [cachedStreak, getCurrentStreak]);
 
   return { currentStreakRequest, getCurrentStreak };
 };
