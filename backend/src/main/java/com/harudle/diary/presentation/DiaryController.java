@@ -105,4 +105,13 @@ class DiaryController {
         return ResponseEntity.noContent().build();
     }
 
+    @GetMapping("/current-streak")
+    public DiaryStreakResponse getCurrentStreak(
+            Authentication authentication
+    ) {
+        UUID userId = authenticatedUserIdResolver.resolve(authentication);
+        return responseAssembler.toStreakResponse(
+                diaryQueryService.getCurrentStreak(userId)
+        );
+    }
 }
