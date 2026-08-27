@@ -66,6 +66,7 @@ class JpaGenerationUsageRepository implements GenerationUsageRepository {
     private static final String RESET_QUERY = """
             UPDATE daily_generation_usage
                SET used_count = 0,
+                   limit_count = :limitCount,
                    updated_at = CURRENT_TIMESTAMP
              WHERE user_id = :userId
                AND usage_date = :usageDate
@@ -153,12 +154,16 @@ class JpaGenerationUsageRepository implements GenerationUsageRepository {
     @Override
     @Transactional
     @SuppressWarnings("unchecked")
-    public Optional<GenerationUsage> tryReset(UUID userId, LocalDate usageDate) {
+    public Optional<GenerationUsage> tryReset(UUID userId, LocalDate usageDate, int limitCount) {
         validateParameters(userId, usageDate);
+        if (limitCount < 1) {
+            throw new IllegalArgumentException("일일 생성 한도는 1 이상이어야 합니다.");
+        }
         List<Object[]> usages = entityManager
                 .createNativeQuery(RESET_QUERY)
                 .setParameter("userId", userId)
                 .setParameter("usageDate", usageDate)
+                .setParameter("limitCount", limitCount)
                 .getResultList();
         return usages.stream()
                 .map(columns -> mapUsage(usageDate, columns))

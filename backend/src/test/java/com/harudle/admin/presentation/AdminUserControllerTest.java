@@ -404,6 +404,7 @@ class AdminUserControllerTest {
         User admin = saveUser("관리자");
         grantAdminRole(admin);
         User target = saveUser("초기화 대상 사용자");
+        changeDailyGenerationLimit(target, 5);
         saveTodayUsage(target, 3, 5);
 
         mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-usage/reset", target.getId())
@@ -538,6 +539,46 @@ class AdminUserControllerTest {
                 target.getId(),
                 LocalDate.now(SERVICE_ZONE)
         )).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("한도를 낮춘 뒤 사용량을 초기화하면 현재 한도로 오늘 스냅샷을 갱신한다")
+    void resetsTodaySnapshotToCurrentLimitAfterLimitDecrease() throws Exception {
+        User admin = saveUser("관리자");
+        grantAdminRole(admin);
+        User target = saveUser("한도 초기화 대상 사용자");
+        saveTodayUsage(target, 2, 3);
+
+        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-limit", target.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"limitCount\":1}"))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-usage/reset", target.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.usedCount").value(0))
+                .andExpect(jsonPath("$.limitCount").value(1))
+                .andExpect(jsonPath("$.remainingCount").value(1));
+
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT daily_generation_limit FROM users WHERE id = ?",
+                Integer.class,
+                target.getId()
+        )).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT used_count FROM daily_generation_usage WHERE user_id = ? AND usage_date = ?",
+                Integer.class,
+                target.getId(),
+                LocalDate.now(SERVICE_ZONE)
+        )).isZero();
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT limit_count FROM daily_generation_usage WHERE user_id = ? AND usage_date = ?",
+                Integer.class,
+                target.getId(),
+                LocalDate.now(SERVICE_ZONE)
+        )).isEqualTo(1);
     }
 
     @Test

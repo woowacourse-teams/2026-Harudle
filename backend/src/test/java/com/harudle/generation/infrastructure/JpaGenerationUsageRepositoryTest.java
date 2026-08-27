@@ -239,8 +239,8 @@ class JpaGenerationUsageRepositoryTest {
     }
 
     @Test
-    @DisplayName("사용량을 0으로 초기화하고 기존 한도 스냅샷을 유지한다")
-    void resetsUsageAndKeepsLimitSnapshot() {
+    @DisplayName("사용량을 0으로 초기화하고 전달받은 한도로 스냅샷을 갱신한다")
+    void resetsUsageAndUpdatesLimitSnapshot() {
         executeUpdate("""
                 INSERT INTO daily_generation_usage (
                     user_id,
@@ -251,18 +251,18 @@ class JpaGenerationUsageRepositoryTest {
                 VALUES (?, ?, 3, 5)
                 """, USER_ID, USAGE_DATE);
 
-        assertThat(generationUsageRepository.tryReset(USER_ID, USAGE_DATE))
-                .contains(new GenerationUsage(USAGE_DATE, 0, 5));
-        assertThat(generationUsageRepository.tryReset(USER_ID, USAGE_DATE))
-                .contains(new GenerationUsage(USAGE_DATE, 0, 5));
+        assertThat(generationUsageRepository.tryReset(USER_ID, USAGE_DATE, 3))
+                .contains(new GenerationUsage(USAGE_DATE, 0, 3));
+        assertThat(generationUsageRepository.tryReset(USER_ID, USAGE_DATE, 3))
+                .contains(new GenerationUsage(USAGE_DATE, 0, 3));
         assertThat(generationUsageRepository.find(USER_ID, USAGE_DATE))
-                .contains(new GenerationUsage(USAGE_DATE, 0, 5));
+                .contains(new GenerationUsage(USAGE_DATE, 0, 3));
     }
 
     @Test
     @DisplayName("사용량 행이 없으면 초기화하지 않고 빈 결과를 반환한다")
     void returnsEmptyWhenResetUsageDoesNotExist() {
-        assertThat(generationUsageRepository.tryReset(USER_ID, USAGE_DATE)).isEmpty();
+        assertThat(generationUsageRepository.tryReset(USER_ID, USAGE_DATE, 3)).isEmpty();
         assertThat(generationUsageRepository.find(USER_ID, USAGE_DATE)).isEmpty();
     }
 
