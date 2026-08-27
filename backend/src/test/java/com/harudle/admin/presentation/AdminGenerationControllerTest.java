@@ -210,6 +210,12 @@ class AdminGenerationControllerTest {
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
 
         mockMvc.perform(get("/api/v1/admin/generations")
+                        .queryParam("to", LocalDate.MAX.toString())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+
+        mockMvc.perform(get("/api/v1/admin/generations")
                         .queryParam("size", "101")
                         .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
                 .andExpect(status().isBadRequest())

@@ -49,6 +49,9 @@ public class AdminGenerationHistoryQueryService {
         if (from != null && to != null && from.isAfter(to)) {
             throw new AdminGenerationHistoryDateRangeException();
         }
+        if (LocalDate.MAX.equals(to)) {
+            throw new AdminGenerationHistoryDateRangeException();
+        }
     }
 
     private Instant toStartInstant(LocalDate date) {
