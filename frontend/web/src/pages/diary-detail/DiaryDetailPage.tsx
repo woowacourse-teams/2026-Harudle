@@ -80,9 +80,9 @@ const DiaryDetailPage = () => {
 
       <main css={contentStyle}>
         <div css={diaryTitleStyle}>{title}</div>
-        <div>
-          <img css={diaryImageStyle} src={imageUrl} alt="그림 일기" />
-        </div>
+
+        <img css={diaryImageStyle} src={imageUrl} alt="그림 일기" />
+
         <div>
           <span css={storyTitleStyle}>오늘의 이야기</span>
           <p css={storyTextStyle}>{diaryDetail.sourceText}</p>
@@ -140,6 +140,8 @@ const contentStyle = css`
   gap: 8px;
   width: 100%;
   height: 100%;
+  padding-bottom: 40px;
+  box-sizing: border-box;
   overflow-y: auto;
 `;
 
