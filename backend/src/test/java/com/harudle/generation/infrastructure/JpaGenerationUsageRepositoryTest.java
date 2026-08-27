@@ -167,6 +167,14 @@ class JpaGenerationUsageRepositoryTest {
     }
 
     @Test
+    @DisplayName("1 미만인 오늘 사용량 한도 변경은 거부한다")
+    void rejectsLimitCountBelowOne() {
+        assertThatThrownBy(() -> generationUsageRepository.updateLimitCount(USER_ID, USAGE_DATE, 0))
+                .hasRootCauseInstanceOf(IllegalArgumentException.class)
+                .hasRootCauseMessage("일일 생성 한도는 1 이상이어야 합니다.");
+    }
+
+    @Test
     @DisplayName("현재 사용량 이내의 횟수를 원자적으로 복구한다")
     void restoresUsageAtomically() {
         executeUpdate("""

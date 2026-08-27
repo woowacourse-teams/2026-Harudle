@@ -130,4 +130,12 @@ class GenerationUsageServiceTest {
 
         verify(generationUsageRepository).updateLimitCount(USER_ID, USAGE_DATE, 5);
     }
+
+    @Test
+    @DisplayName("1 미만인 오늘 사용량 한도 변경은 거부한다")
+    void rejectsTodayLimitBelowOne() {
+        assertThatThrownBy(() -> generationUsageService.updateTodayLimit(USER_ID, 0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("일일 생성 한도는 1 이상이어야 합니다.");
+    }
 }

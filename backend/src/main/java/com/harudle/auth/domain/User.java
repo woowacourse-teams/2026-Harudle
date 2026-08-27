@@ -86,8 +86,8 @@ public class User {
     }
 
     public void changeDailyGenerationLimit(int dailyGenerationLimit) {
-        if (dailyGenerationLimit < 0) {
-            throw new IllegalArgumentException("일일 생성 한도는 0 이상이어야 합니다.");
+        if (dailyGenerationLimit < 1) {
+            throw new IllegalArgumentException("일일 생성 한도는 1 이상이어야 합니다.");
         }
         this.dailyGenerationLimit = dailyGenerationLimit;
     }

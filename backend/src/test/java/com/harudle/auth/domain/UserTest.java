@@ -42,7 +42,7 @@ class UserTest {
     }
 
     @Test
-    @DisplayName("일일 생성 한도를 0 이상으로 변경한다")
+    @DisplayName("일일 생성 한도를 1 이상으로 변경한다")
     void changesDailyGenerationLimit() {
         User user = new User(null, "사용자", CREATED_AT);
 
@@ -52,12 +52,15 @@ class UserTest {
     }
 
     @Test
-    @DisplayName("음수인 일일 생성 한도는 거부한다")
-    void rejectsNegativeDailyGenerationLimit() {
+    @DisplayName("1 미만인 일일 생성 한도는 거부한다")
+    void rejectsDailyGenerationLimitBelowOne() {
         User user = new User(null, "사용자", CREATED_AT);
 
+        assertThatThrownBy(() -> user.changeDailyGenerationLimit(0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("일일 생성 한도는 1 이상이어야 합니다.");
         assertThatThrownBy(() -> user.changeDailyGenerationLimit(-1))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("일일 생성 한도는 0 이상이어야 합니다.");
+                .hasMessage("일일 생성 한도는 1 이상이어야 합니다.");
     }
 }

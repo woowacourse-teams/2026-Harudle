@@ -55,8 +55,8 @@ public class GenerationUsageService {
     }
 
     public void updateTodayLimit(UUID userId, int limitCount) {
-        if (limitCount < 0) {
-            throw new IllegalArgumentException("일일 생성 한도는 0 이상이어야 합니다.");
+        if (limitCount < 1) {
+            throw new IllegalArgumentException("일일 생성 한도는 1 이상이어야 합니다.");
         }
         generationUsageRepository.updateLimitCount(userId, getUsageDate(), limitCount);
     }

@@ -33,6 +33,7 @@ class JpaGenerationUsageRepository implements GenerationUsageRepository {
                     CURRENT_TIMESTAMP
                 FROM users u
                 WHERE u.id = :userId
+                  AND u.daily_generation_limit >= :usageIncrement
                 ON CONFLICT (user_id, usage_date)
                 DO UPDATE
                    SET used_count = daily_generation_usage.used_count + EXCLUDED.used_count,
@@ -119,8 +120,8 @@ class JpaGenerationUsageRepository implements GenerationUsageRepository {
     @Transactional
     public int updateLimitCount(UUID userId, LocalDate usageDate, int limitCount) {
         validateParameters(userId, usageDate);
-        if (limitCount < 0) {
-            throw new IllegalArgumentException("일일 생성 한도는 0 이상이어야 합니다.");
+        if (limitCount < 1) {
+            throw new IllegalArgumentException("일일 생성 한도는 1 이상이어야 합니다.");
         }
         return entityManager
                 .createNativeQuery(UPDATE_LIMIT_COUNT_QUERY)
