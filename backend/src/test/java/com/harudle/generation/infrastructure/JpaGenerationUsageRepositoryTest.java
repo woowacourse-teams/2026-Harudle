@@ -18,6 +18,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -172,6 +173,21 @@ class JpaGenerationUsageRepositoryTest {
         assertThatThrownBy(() -> generationUsageRepository.updateLimitCount(USER_ID, USAGE_DATE, 0))
                 .hasRootCauseInstanceOf(IllegalArgumentException.class)
                 .hasRootCauseMessage("일일 생성 한도는 1 이상이어야 합니다.");
+    }
+
+    @Test
+    @DisplayName("사용량 스냅샷의 제한 횟수 0은 DB에서 거부한다")
+    void rejectsZeroLimitCountAtDatabase() {
+        assertThatThrownBy(() -> executeUpdate("""
+                INSERT INTO daily_generation_usage (
+                    user_id,
+                    usage_date,
+                    used_count,
+                    limit_count
+                )
+                VALUES (?, ?, 0, 0)
+                """, USER_ID, USAGE_DATE))
+                .isInstanceOf(ConstraintViolationException.class);
     }
 
     @Test
