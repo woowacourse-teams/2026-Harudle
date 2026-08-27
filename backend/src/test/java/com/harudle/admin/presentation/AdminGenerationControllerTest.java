@@ -214,6 +214,13 @@ class AdminGenerationControllerTest {
                         .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+
+        mockMvc.perform(get("/api/v1/admin/generations")
+                        .queryParam("page", "21474837")
+                        .queryParam("size", "100")
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
     }
 
     private User saveUser(String name) {

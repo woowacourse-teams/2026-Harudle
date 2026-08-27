@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 class AdminGenerationController {
 
     private static final int MAX_PAGE_SIZE = 100;
+    private static final int MAX_PAGE = Integer.MAX_VALUE / MAX_PAGE_SIZE;
 
     private final AdminGenerationHistoryQueryService generationHistoryQueryService;
 
@@ -36,7 +37,7 @@ class AdminGenerationController {
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
-            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "0") @Min(0) @Max(MAX_PAGE) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(MAX_PAGE_SIZE) int size
     ) {
         AdminGenerationHistoryPage result = generationHistoryQueryService.search(
