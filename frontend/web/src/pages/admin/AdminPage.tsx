@@ -22,7 +22,7 @@ import {
   searchAdminGenerations,
   searchAdminUsers,
   setAdminGenerationLimit,
-  setAdminUsage,
+  type AdminGenerationUsage,
   type AdminUserDetail,
   type AdminUserSummary,
   type GenerationHistory,
@@ -31,6 +31,7 @@ import {
 
 type View = 'dashboard' | 'users' | 'generations' | 'failed';
 type UserStatusFilter = 'ALL' | 'ACTIVE' | 'DELETED';
+type UsageModalMode = 'restore' | 'reset' | 'limit';
 
 const today = () => {
   const date = new Date();
@@ -51,32 +52,36 @@ const AdminPage = () => {
   const isHistoryView = view === 'generations' || view === 'failed';
   const [users, setUsers] = useState<AdminUserSummary[]>([]);
   const [generations, setGenerations] = useState<GenerationHistory[]>([]);
+  const [failedGenerationCount, setFailedGenerationCount] = useState<
+    number | null
+  >(null);
   const [detail, setDetail] = useState<AdminUserDetail | null>(null);
   const [query, setQuery] = useState('');
+  const [submittedQuery, setSubmittedQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<UserStatusFilter>('ALL');
   const [historyDate, setHistoryDate] = useState(today);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [usageModal, setUsageModal] = useState<UsageModalMode | null>(null);
+  const [usageModalValue, setUsageModalValue] = useState('');
+  const [usageModalError, setUsageModalError] = useState<string | null>(null);
 
-  const loadUsers = useCallback(
-    async (nextQuery = query) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const result = await searchAdminUsers(nextQuery);
-        setUsers(result.content);
-      } catch (cause) {
-        setError(
-          cause instanceof Error
-            ? cause.message
-            : '사용자를 불러오지 못했습니다.',
-        );
-      } finally {
-        setLoading(false);
-      }
-    },
-    [query],
-  );
+  const loadUsers = useCallback(async (nextQuery = '') => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await searchAdminUsers(nextQuery);
+      setUsers(result.content);
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : '사용자를 불러오지 못했습니다.',
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   const loadGenerations = useCallback(
     async (status?: GenerationStatus) => {
@@ -107,21 +112,28 @@ const AdminPage = () => {
   const loadDashboard = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setFailedGenerationCount(null);
     try {
-      const [userPage, generationPage] = await Promise.all([
-        searchAdminUsers('', 0, 20),
-        searchAdminGenerations({
-          page: 0,
-          size: 20,
-          from: historyDate,
-          to: historyDate,
-        }),
-      ]);
+      const [userPage, generationPage, failedGenerationPage] =
+        await Promise.all([
+          searchAdminUsers('', 0, 20),
+          searchAdminGenerations({
+            page: 0,
+            size: 20,
+            from: historyDate,
+            to: historyDate,
+          }),
+          searchAdminGenerations({
+            page: 0,
+            size: 1,
+            status: 'FAILED',
+            from: historyDate,
+            to: historyDate,
+          }),
+        ]);
       setUsers(userPage.content);
       setGenerations(generationPage.content);
-      if (userPage.content.length > 0) {
-        setDetail(await getAdminUser(userPage.content[0].id));
-      }
+      setFailedGenerationCount(failedGenerationPage.totalElements);
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -137,16 +149,25 @@ const AdminPage = () => {
     // URL 상태 변화에 맞춰 관리자 API를 조회한다.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (view === 'dashboard') void loadDashboard();
-    else if (view === 'users') void loadUsers();
-    else void loadGenerations(view === 'failed' ? 'FAILED' : undefined);
-  }, [loadDashboard, loadGenerations, loadUsers, view]);
+    else if (view !== 'users') {
+      void loadGenerations(view === 'failed' ? 'FAILED' : undefined);
+    }
+  }, [loadDashboard, loadGenerations, view]);
+
+  useEffect(() => {
+    if (view !== 'users') return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadUsers(submittedQuery);
+  }, [loadUsers, submittedQuery, view]);
 
   const navigate = (nextView: View) => {
     setDetail(null);
+    setUsageModal(null);
     setSearchParams(nextView === 'dashboard' ? {} : { view: nextView });
   };
 
   const selectUser = async (userId: string) => {
+    setUsageModal(null);
     setLoading(true);
     setError(null);
     try {
@@ -170,30 +191,10 @@ const AdminPage = () => {
     [statusFilter, users],
   );
 
-  const updateDetail = async (action: () => Promise<AdminUserDetail>) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const updated = await action();
-      setDetail(updated);
-      setUsers((current) =>
-        current.map((user) =>
-          user.id === updated.id ? { ...user, ...updated } : user,
-        ),
-      );
-    } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : '생성 사용량을 변경하지 못했습니다.',
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const updateGenerationLimit = async (action: () => Promise<void>) => {
-    if (!detail) return;
+  const updateDetail = async (
+    action: () => Promise<AdminGenerationUsage>,
+  ): Promise<boolean> => {
+    if (!detail) return false;
     setLoading(true);
     setError(null);
     try {
@@ -205,84 +206,129 @@ const AdminPage = () => {
           user.id === updated.id ? { ...user, ...updated } : user,
         ),
       );
+      return true;
     } catch (cause) {
-      setError(
+      const message =
         cause instanceof Error
           ? cause.message
-          : '생성 한도를 변경하지 못했습니다.',
-      );
+          : '생성 사용량을 변경하지 못했습니다.';
+      setError(message);
+      setUsageModalError(message);
+      return false;
     } finally {
       setLoading(false);
     }
   };
 
-  const handleRestore = () => {
+  const updateGenerationLimit = async (
+    action: () => Promise<void>,
+  ): Promise<boolean> => {
+    if (!detail) return false;
+    setLoading(true);
+    setError(null);
+    try {
+      await action();
+      const updated = await getAdminUser(detail.id);
+      setDetail(updated);
+      setUsers((current) =>
+        current.map((user) =>
+          user.id === updated.id ? { ...user, ...updated } : user,
+        ),
+      );
+      return true;
+    } catch (cause) {
+      const message =
+        cause instanceof Error
+          ? cause.message
+          : '생성 한도를 변경하지 못했습니다.';
+      setError(message);
+      setUsageModalError(message);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openUsageModal = (mode: UsageModalMode) => {
     if (!detail || detail.status !== 'ACTIVE') return;
-    const value = window.prompt('복구할 생성 횟수를 입력하세요.', '1');
-    if (value === null) return;
-    const count = Number(value);
-    if (!Number.isInteger(count) || count < 1) {
-      window.alert('1 이상의 정수를 입력해주세요.');
+    setError(null);
+    setUsageModalError(null);
+    setUsageModalValue(
+      mode === 'restore'
+        ? '1'
+        : mode === 'limit'
+          ? String(detail.generationUsage.limitCount)
+          : '',
+    );
+    setUsageModal(mode);
+  };
+
+  const closeUsageModal = useCallback(() => {
+    if (loading) return;
+    setUsageModal(null);
+    setUsageModalError(null);
+  }, [loading]);
+
+  const handleUsageModalSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!detail || !usageModal) return;
+
+    setUsageModalError(null);
+    if (usageModal === 'reset') {
+      if (await updateDetail(() => resetAdminUsage(detail.id))) {
+        closeUsageModal();
+      }
       return;
     }
-    void updateDetail(() => restoreAdminUsage(detail.id, count));
+
+    const value = Number(usageModalValue);
+    if (!Number.isInteger(value) || value < 1) {
+      setUsageModalError('1 이상의 정수를 입력해주세요.');
+      return;
+    }
+
+    if (usageModal === 'restore' && value > detail.generationUsage.usedCount) {
+      setUsageModalError(
+        `현재 사용 횟수(${detail.generationUsage.usedCount}회) 이하로 입력해주세요.`,
+      );
+      return;
+    }
+
+    const succeeded =
+      usageModal === 'restore'
+        ? await updateDetail(() => restoreAdminUsage(detail.id, value))
+        : await updateGenerationLimit(() =>
+            setAdminGenerationLimit(detail.id, value),
+          );
+    if (succeeded) closeUsageModal();
+  };
+
+  useEffect(() => {
+    if (!usageModal || loading) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeUsageModal();
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [closeUsageModal, loading, usageModal]);
+
+  const handleRestore = () => {
+    openUsageModal('restore');
   };
 
   const handleReset = () => {
-    if (!detail || detail.status !== 'ACTIVE') return;
-    if (window.confirm('오늘 사용량을 전체 초기화할까요?')) {
-      void updateDetail(() => resetAdminUsage(detail.id));
-    }
-  };
-
-  const handleSetUsage = () => {
-    if (!detail || detail.status !== 'ACTIVE') return;
-    const value = window.prompt(
-      '오늘 사용한 생성 횟수를 입력하세요.',
-      String(detail.usedGenerationCount),
-    );
-    if (value === null) return;
-    const usedCount = Number(value);
-    if (
-      !Number.isInteger(usedCount) ||
-      usedCount < 0 ||
-      usedCount > detail.dailyGenerationLimit
-    ) {
-      window.alert(
-        `0부터 ${detail.dailyGenerationLimit} 사이의 정수를 입력해주세요.`,
-      );
-      return;
-    }
-    void updateDetail(() => setAdminUsage(detail.id, usedCount));
+    openUsageModal('reset');
   };
 
   const handleSetGenerationLimit = () => {
-    if (!detail || detail.status !== 'ACTIVE') return;
-    const value = window.prompt(
-      '오늘 생성 한도를 입력하세요.',
-      String(detail.dailyGenerationLimit),
-    );
-    if (value === null) return;
-    const limitCount = Number(value);
-    if (
-      !Number.isInteger(limitCount) ||
-      limitCount < detail.usedGenerationCount
-    ) {
-      window.alert(
-        `현재 사용 횟수(${detail.usedGenerationCount}) 이상인 정수를 입력해주세요.`,
-      );
-      return;
-    }
-    void updateGenerationLimit(() =>
-      setAdminGenerationLimit(detail.id, limitCount),
-    );
+    openUsageModal('limit');
   };
 
   return (
     <div css={pageStyle(isHistoryView)}>
-      <aside css={sidebarStyle}>
+      <aside className="sidebar" css={sidebarStyle}>
         <img src={logo} alt="Harudle" css={logoStyle} />
-        <nav css={menuStyle} aria-label="관리자 메뉴">
+        <nav className="menu" css={menuStyle} aria-label="관리자 메뉴">
           <MenuButton
             active={view === 'dashboard'}
             icon={navDashboardIcon}
@@ -340,7 +386,10 @@ const AdminPage = () => {
           />
         )}
         {view === 'dashboard' && (
-          <OperationCard onClick={() => navigate('failed')} />
+          <OperationCard
+            failedGenerationCount={failedGenerationCount}
+            onClick={() => navigate('failed')}
+          />
         )}
         {(view === 'dashboard' || view === 'users') && (
           <UserSearchCard
@@ -353,7 +402,8 @@ const AdminPage = () => {
             onStatusChange={setStatusFilter}
             onSearch={(event) => {
               event.preventDefault();
-              void loadUsers(query);
+              setSubmittedQuery(query);
+              if (view === 'dashboard') void loadUsers(query);
             }}
             onSelect={selectUser}
           />
@@ -369,7 +419,6 @@ const AdminPage = () => {
             date={historyDate}
             onDateChange={(date) => {
               setHistoryDate(date);
-              void loadGenerations(view === 'failed' ? 'FAILED' : undefined);
             }}
             onFailedOnly={() => navigate('failed')}
             onAll={() => navigate('generations')}
@@ -385,8 +434,22 @@ const AdminPage = () => {
           showEmptyDetail={view === 'dashboard' || view === 'users'}
           onRestore={handleRestore}
           onReset={handleReset}
-          onSetUsage={handleSetUsage}
           onSetGenerationLimit={handleSetGenerationLimit}
+        />
+      )}
+      {usageModal && detail && (
+        <UsageManagementModal
+          mode={usageModal}
+          usage={detail.generationUsage}
+          value={usageModalValue}
+          error={usageModalError}
+          loading={loading}
+          onValueChange={(value) => {
+            setUsageModalValue(value);
+            setUsageModalError(null);
+          }}
+          onClose={closeUsageModal}
+          onSubmit={handleUsageModalSubmit}
         />
       )}
     </div>
@@ -444,13 +507,22 @@ const PageTitle = ({
   </header>
 );
 
-const OperationCard = ({ onClick }: { onClick: () => void }) => (
+const OperationCard = ({
+  failedGenerationCount,
+  onClick,
+}: {
+  failedGenerationCount: number | null;
+  onClick: () => void;
+}) => (
   <section css={operationCardStyle}>
     <img src={operationAlertIcon} alt="" />
     <div>
       <h2>운영 확인 필요</h2>
       <button type="button" onClick={onClick}>
-        <span>실패한 생성</span>
+        <span>
+          실패한 생성{' '}
+          {failedGenerationCount === null ? '-' : failedGenerationCount}건
+        </span>
         <strong>확인하기 ›</strong>
       </button>
     </div>
@@ -547,7 +619,10 @@ const UserTable = ({
                 status={user.status === 'ACTIVE' ? '활성' : '비활성'}
               />
             </td>
-            <td>{user.remainingGenerationCount} / 오늘</td>
+            <td>
+              {user.generationUsage.remainingCount} /{' '}
+              {user.generationUsage.limitCount}
+            </td>
             <td>
               <button
                 css={detailButtonStyle}
@@ -655,7 +730,7 @@ const GenerationTable = ({
             <td>
               <GenerationStatusPill status={generation.status} />
             </td>
-            <td>{generation.failureCode ?? '-'}</td>
+            <td>{generation.errorCode ?? '-'}</td>
           </tr>
         ))}
         {generations.length === 0 && (
@@ -677,7 +752,6 @@ const DetailPanel = ({
   showEmptyDetail,
   onRestore,
   onReset,
-  onSetUsage,
   onSetGenerationLimit,
 }: {
   detail: AdminUserDetail | null;
@@ -686,10 +760,9 @@ const DetailPanel = ({
   showEmptyDetail: boolean;
   onRestore: () => void;
   onReset: () => void;
-  onSetUsage: () => void;
   onSetGenerationLimit: () => void;
 }) => (
-  <aside css={detailAsideStyle}>
+  <aside className="detail-aside" css={detailAsideStyle}>
     <div css={posthogStyle}>
       <PostHogLink />
     </div>
@@ -714,11 +787,11 @@ const DetailPanel = ({
         <hr css={dividerStyle} />
         <h3>오늘 생성 사용량</h3>
         <div css={usageStyle}>
-          <Metric label="사용 횟수" value={detail.usedGenerationCount} />
-          <Metric label="생성 한도" value={detail.dailyGenerationLimit} />
+          <Metric label="사용 횟수" value={detail.generationUsage.usedCount} />
+          <Metric label="생성 한도" value={detail.generationUsage.limitCount} />
           <Metric
             label="남은 횟수"
-            value={detail.remainingGenerationCount}
+            value={detail.generationUsage.remainingCount}
             accent
           />
         </div>
@@ -729,7 +802,7 @@ const DetailPanel = ({
           disabled={loading || detail.status !== 'ACTIVE'}
           onClick={onRestore}
         >
-          선택 횟수 복구
+          사용 횟수 복구
         </button>
         <button
           css={resetActionButtonStyle}
@@ -740,14 +813,6 @@ const DetailPanel = ({
           오늘 사용량 전체 초기화
         </button>
         <div css={secondaryActionGridStyle}>
-          <button
-            css={secondaryActionButtonStyle}
-            type="button"
-            disabled={loading || detail.status !== 'ACTIVE'}
-            onClick={onSetUsage}
-          >
-            사용 횟수 지정
-          </button>
           <button
             css={secondaryActionButtonStyle}
             type="button"
@@ -768,6 +833,154 @@ const DetailPanel = ({
     ) : null}
   </aside>
 );
+
+const UsageManagementModal = ({
+  mode,
+  usage,
+  value,
+  error,
+  loading,
+  onValueChange,
+  onClose,
+  onSubmit,
+}: {
+  mode: UsageModalMode;
+  usage: AdminGenerationUsage;
+  value: string;
+  error: string | null;
+  loading: boolean;
+  onValueChange: (value: string) => void;
+  onClose: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) => {
+  const isRestore = mode === 'restore';
+  const isReset = mode === 'reset';
+  const title = isRestore
+    ? '사용 횟수 복구'
+    : isReset
+      ? '오늘 사용량 전체 초기화'
+      : '생성 한도 변경';
+
+  return (
+    <div
+      css={usageModalBackdropStyle}
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div
+        css={usageModalStyle}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="usage-modal-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div css={usageModalHeaderStyle}>
+          <div>
+            <p css={usageModalEyebrowStyle}>생성 사용량 관리</p>
+            <h2 id="usage-modal-title">{title}</h2>
+          </div>
+          <button
+            css={usageModalCloseButtonStyle}
+            type="button"
+            aria-label="팝업 닫기"
+            onClick={onClose}
+            disabled={loading}
+          >
+            ×
+          </button>
+        </div>
+
+        <form onSubmit={onSubmit}>
+          {isRestore ? (
+            <>
+              <p css={usageModalDescriptionStyle}>
+                현재 사용 횟수 <strong>{usage.usedCount}회</strong> 중 복구할
+                횟수를 입력해주세요.
+              </p>
+              <label css={usageModalFieldStyle} htmlFor="usage-modal-value">
+                복구할 횟수
+                <span css={usageModalInputStyle}>
+                  <input
+                    id="usage-modal-value"
+                    type="number"
+                    inputMode="numeric"
+                    min="1"
+                    max={usage.usedCount}
+                    step="1"
+                    value={value}
+                    onChange={(event) => onValueChange(event.target.value)}
+                    autoFocus
+                  />
+                  <span>회</span>
+                </span>
+              </label>
+              <p css={usageModalHintStyle}>
+                1회부터 현재 사용 횟수까지 입력할 수 있어요.
+              </p>
+            </>
+          ) : isReset ? (
+            <div css={usageModalNoticeStyle}>
+              <strong>오늘 사용량을 0회로 초기화할까요?</strong>
+              <p>
+                현재 사용 횟수와 남은 횟수가 오늘 생성 한도에 맞게 다시
+                계산됩니다.
+              </p>
+            </div>
+          ) : (
+            <>
+              <p css={usageModalDescriptionStyle}>
+                오늘 사용 가능한 생성 한도를 입력해주세요.
+              </p>
+              <label css={usageModalFieldStyle} htmlFor="usage-modal-value">
+                생성 한도
+                <span css={usageModalInputStyle}>
+                  <input
+                    id="usage-modal-value"
+                    type="number"
+                    inputMode="numeric"
+                    min="1"
+                    step="1"
+                    value={value}
+                    onChange={(event) => onValueChange(event.target.value)}
+                    autoFocus
+                  />
+                  <span>회</span>
+                </span>
+              </label>
+              <p css={usageModalHintStyle}>1회 이상의 정수로 입력해주세요.</p>
+            </>
+          )}
+
+          {error && (
+            <p css={usageModalErrorStyle} role="alert">
+              {error}
+            </p>
+          )}
+
+          <div css={usageModalActionsStyle}>
+            <button
+              css={usageModalCancelButtonStyle}
+              type="button"
+              onClick={onClose}
+              disabled={loading}
+            >
+              취소
+            </button>
+            <button
+              css={usageModalConfirmButtonStyle(isReset)}
+              type="submit"
+              disabled={loading}
+            >
+              {loading ? '처리 중...' : isReset ? '전체 초기화' : '변경하기'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
 
 const PostHogLink = () => (
   <a
@@ -821,15 +1034,17 @@ const formatDateTime = (value: string) =>
 
 const pageStyle = (wideContent: boolean) => css`
   width: 100vw;
+  height: 100vh;
   min-height: 100vh;
+  max-height: 100vh;
   margin-left: calc(50% - 50vw);
   display: grid;
   grid-template-columns: ${
     wideContent ? '250px minmax(620px, 1fr)' : '250px minmax(620px, 1fr) 430px'
   };
-  max-width: 1500px;
-  margin-right: auto;
-  overflow: hidden;
+  max-width: none;
+  overflow-x: hidden;
+  overflow-y: auto;
   border: 1px solid #ddd8d1;
   border-radius: 8px;
   background: #fffefa;
@@ -844,7 +1059,7 @@ const pageStyle = (wideContent: boolean) => css`
   button {
     font-family: inherit;
   }
-  @media (max-width: 1100px) {
+  @media (max-width: 1320px) {
     grid-template-columns: 210px minmax(0, 1fr);
     .detail-aside {
       display: none;
@@ -852,12 +1067,14 @@ const pageStyle = (wideContent: boolean) => css`
   }
   @media (max-width: 760px) {
     display: block;
+    width: 100%;
     min-height: 100vh;
+    margin-left: 0;
     .sidebar {
-      display: none;
+      display: block;
     }
     .detail-aside {
-      display: none;
+      display: block;
     }
   }
 `;
@@ -867,16 +1084,31 @@ const sidebarStyle = css`
   padding: 38px 20px 24px;
   border-right: 1px solid #ddd8d1;
   background: #fffefa;
+  @media (max-width: 760px) {
+    padding: 12px 16px 10px;
+    border-right: 0;
+    border-bottom: 1px solid #ddd8d1;
+  }
 `;
 const logoStyle = css`
   width: 190px;
   height: 92px;
   object-fit: contain;
+  @media (max-width: 760px) {
+    width: 150px;
+    height: 58px;
+  }
 `;
 const menuStyle = css`
   display: grid;
   gap: 10px;
   margin-top: 20px;
+  @media (max-width: 760px) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    margin-top: 8px;
+  }
 `;
 const menuButtonStyle = (active: boolean) => css`
   display: flex;
@@ -896,6 +1128,15 @@ const menuButtonStyle = (active: boolean) => css`
     height: 28px;
     object-fit: contain;
   }
+  @media (max-width: 760px) {
+    gap: 6px;
+    padding: 10px;
+    font-size: 13px;
+    img {
+      width: 22px;
+      height: 22px;
+    }
+  }
 `;
 const adminProfileStyle = css`
   display: flex;
@@ -907,6 +1148,9 @@ const adminProfileStyle = css`
     display: block;
     margin-top: 4px;
     color: ${theme.colors.text.secondary};
+  }
+  @media (max-width: 760px) {
+    display: none;
   }
 `;
 const adminAvatarStyle = css`
@@ -930,6 +1174,9 @@ const mainStyle = css`
   min-width: 0;
   padding: 34px 38px 30px;
   background: #fffefa;
+  @media (max-width: 760px) {
+    padding: 24px 16px 24px;
+  }
 `;
 const headlineStyle = css`
   position: relative;
@@ -945,6 +1192,17 @@ const headlineStyle = css`
   }
   .hero {
   }
+  @media (max-width: 760px) {
+    min-height: 132px;
+    h1 {
+      max-width: 190px;
+      font-size: 24px;
+      line-height: 1.3;
+    }
+    p {
+      font-size: 13px;
+    }
+  }
 `;
 const heroCharacterStyle = css`
   position: absolute;
@@ -955,6 +1213,12 @@ const heroCharacterStyle = css`
   object-fit: contain;
   object-position: center;
   pointer-events: none;
+  @media (max-width: 760px) {
+    top: -20px;
+    right: -8px;
+    width: 180px;
+    height: 120px;
+  }
 `;
 const pageTitleStyle = css`
   display: flex;
@@ -971,6 +1235,17 @@ const pageTitleStyle = css`
   h1 {
     margin: 0;
     font-size: 26px;
+  }
+  @media (max-width: 760px) {
+    min-height: 56px;
+    gap: 8px;
+    margin-bottom: 12px;
+    button {
+      font-size: 24px;
+    }
+    h1 {
+      font-size: 22px;
+    }
   }
 `;
 const operationCardStyle = css`
@@ -1008,6 +1283,22 @@ const operationCardStyle = css`
       color: ${theme.colors.text.brand};
     }
   }
+  @media (max-width: 760px) {
+    grid-template-columns: 58px minmax(0, 1fr);
+    padding: 10px 12px;
+    img {
+      width: 48px;
+      height: 48px;
+    }
+    h2 {
+      margin-bottom: 8px;
+      font-size: 16px;
+    }
+    button {
+      padding: 10px 12px;
+      font-size: 13px;
+    }
+  }
 `;
 const sectionCardStyle = css`
   margin-bottom: 14px;
@@ -1015,6 +1306,9 @@ const sectionCardStyle = css`
   border: 1px solid #ddd8d1;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.76);
+  @media (max-width: 760px) {
+    padding: 12px 6px 10px;
+  }
 `;
 const sectionHeadingStyle = css`
   display: flex;
@@ -1030,6 +1324,17 @@ const sectionHeadingStyle = css`
     margin: 0;
     font-size: 18px;
     font-weight: 700;
+  }
+  @media (max-width: 760px) {
+    gap: 8px;
+    padding: 0 6px 8px;
+    img {
+      width: 54px;
+      height: 50px;
+    }
+    h2 {
+      font-size: 16px;
+    }
   }
 `;
 const userSearchHeadingStyle = css`
@@ -1093,6 +1398,16 @@ const searchFormStyle = css`
     white-space: nowrap;
     cursor: pointer;
   }
+  @media (max-width: 760px) {
+    width: 100%;
+    margin-left: 0;
+    gap: 6px;
+    min-height: 38px;
+    padding: 4px 6px 4px 10px;
+    input {
+      font-size: 13px;
+    }
+  }
 `;
 const statusSelectStyle = css`
   margin: 0 10px 12px;
@@ -1100,9 +1415,14 @@ const statusSelectStyle = css`
   border: 1px solid #d5d0c9;
   border-radius: 8px;
   background: white;
+  @media (max-width: 760px) {
+    width: calc(100% - 12px);
+    margin: 0 6px 10px;
+  }
 `;
 const tableScrollStyle = css`
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 `;
 const tableStyle = css`
   width: 100%;
@@ -1129,6 +1449,14 @@ const tableStyle = css`
   th:nth-child(n + 3),
   td:nth-child(n + 3) {
     text-align: center;
+  }
+  @media (max-width: 760px) {
+    min-width: 560px;
+    font-size: 12px;
+    th,
+    td {
+      padding: 9px 10px;
+    }
   }
 `;
 const miniUserStyle = css`
@@ -1226,16 +1554,26 @@ const detailAsideStyle = css`
   min-width: 0;
   padding: 42px 36px 26px 28px;
   background: #fffefa;
+  @media (max-width: 760px) {
+    padding: 0 16px 24px;
+  }
 `;
 const posthogStyle = css`
   display: flex;
   justify-content: flex-end;
   margin-bottom: 88px;
+  @media (max-width: 760px) {
+    margin-bottom: 16px;
+  }
 `;
 const historyPosthogStyle = css`
   position: absolute;
   top: 34px;
   right: 38px;
+  @media (max-width: 760px) {
+    top: 16px;
+    right: 16px;
+  }
 `;
 const posthogLinkStyle = css`
   display: inline-block;
@@ -1245,6 +1583,10 @@ const posthogLinkStyle = css`
   color: ${theme.colors.text.brand};
   font-weight: 800;
   text-decoration: none;
+  @media (max-width: 760px) {
+    padding: 9px 12px;
+    font-size: 12px;
+  }
 `;
 const detailCardStyle = css`
   padding: 24px;
@@ -1254,6 +1596,9 @@ const detailCardStyle = css`
   h3 {
     margin: 20px 0 12px;
     font-size: 16px;
+  }
+  @media (max-width: 760px) {
+    padding: 16px;
   }
 `;
 const detailHeadingStyle = css`
@@ -1271,6 +1616,17 @@ const detailHeadingStyle = css`
     font-size: 21px;
     font-weight: 700;
   }
+  @media (max-width: 760px) {
+    gap: 10px;
+    margin-bottom: 18px;
+    img {
+      width: 48px;
+      height: 48px;
+    }
+    h2 {
+      font-size: 19px;
+    }
+  }
 `;
 const detailInfoStyle = css`
   display: grid;
@@ -1287,6 +1643,10 @@ const detailInfoStyle = css`
     font-weight: 500;
     overflow-wrap: anywhere;
   }
+  @media (max-width: 760px) {
+    grid-template-columns: 80px minmax(0, 1fr);
+    gap: 13px 10px;
+  }
 `;
 const dividerStyle = css`
   margin: 24px 0 20px;
@@ -1299,6 +1659,9 @@ const usageStyle = css`
   margin: 12px 0 18px;
   border: 1px solid ${theme.colors.bg.brand};
   border-radius: 12px;
+  @media (max-width: 760px) {
+    margin-top: 10px;
+  }
 `;
 const metricStyle = (accent: boolean) => css`
   padding: 14px;
@@ -1316,6 +1679,16 @@ const metricStyle = (accent: boolean) => css`
     margin-top: 8px;
     color: ${accent ? theme.colors.text.brand : theme.colors.text.primary};
     font-size: 27px;
+  }
+  @media (max-width: 760px) {
+    padding: 10px 6px;
+    span {
+      font-size: 12px;
+    }
+    strong {
+      margin-top: 6px;
+      font-size: 22px;
+    }
   }
 `;
 const actionButtonStyle = css`
@@ -1345,13 +1718,176 @@ const secondaryActionGridStyle = css`
   margin-top: 8px;
 `;
 const secondaryActionButtonStyle = css`
-  padding: 10px 8px;
+  grid-column: 1 / -1;
+  width: 100%;
+  padding: 14px;
   border: 1px solid #d5ccef;
   border-radius: 8px;
   background: #faf8ff;
   color: ${theme.colors.text.brand};
+  font-weight: 800;
+  cursor: pointer;
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+`;
+const usageModalBackdropStyle = css`
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(42 32 58 / 32%);
+  backdrop-filter: blur(2px);
+`;
+const usageModalStyle = css`
+  width: min(100%, 420px);
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  padding: 24px;
+  border: 1px solid #ddd8d1;
+  border-radius: 16px;
+  background: #fffefa;
+  box-shadow: 0 20px 50px rgb(46 36 61 / 20%);
+`;
+const usageModalHeaderStyle = css`
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  h2 {
+    margin: 4px 0 0;
+    font-size: 21px;
+    font-weight: 800;
+  }
+`;
+const usageModalEyebrowStyle = css`
+  margin: 0;
+  color: ${theme.colors.text.brand};
+  font-size: 12px;
+  font-weight: 700;
+`;
+const usageModalCloseButtonStyle = css`
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #f3f0ec;
+  color: ${theme.colors.text.secondary};
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+`;
+const usageModalDescriptionStyle = css`
+  margin: 22px 0 0;
+  color: ${theme.colors.text.secondary};
+  font-size: 14px;
+  line-height: 1.6;
+  strong {
+    color: ${theme.colors.text.primary};
+  }
+`;
+const usageModalFieldStyle = css`
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+  color: ${theme.colors.text.primary};
   font-size: 13px;
   font-weight: 700;
+`;
+const usageModalInputStyle = css`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: 1px solid #cfc9c1;
+  border-radius: 10px;
+  background: white;
+  &:focus-within {
+    border-color: ${theme.colors.bg.brand};
+    box-shadow: 0 0 0 3px rgb(139 112 232 / 12%);
+  }
+  input {
+    width: 100%;
+    min-width: 0;
+    padding: 12px 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: ${theme.colors.text.primary};
+    font: inherit;
+    font-size: 18px;
+    font-weight: 700;
+  }
+  > span {
+    flex: 0 0 auto;
+    color: ${theme.colors.text.secondary};
+    font-size: 14px;
+    font-weight: 500;
+  }
+`;
+const usageModalHintStyle = css`
+  margin: 8px 0 0;
+  color: ${theme.colors.text.secondary};
+  font-size: 12px;
+`;
+const usageModalNoticeStyle = css`
+  margin-top: 22px;
+  padding: 16px;
+  border-radius: 10px;
+  background: #faf8f4;
+  line-height: 1.6;
+  strong {
+    display: block;
+    font-size: 15px;
+  }
+  p {
+    margin: 8px 0 0;
+    color: ${theme.colors.text.secondary};
+    font-size: 13px;
+  }
+`;
+const usageModalErrorStyle = css`
+  margin: 12px 0 0;
+  color: ${theme.colors.text.danger};
+  font-size: 12px;
+  line-height: 1.5;
+`;
+const usageModalActionsStyle = css`
+  display: grid;
+  grid-template-columns: 1fr 1.35fr;
+  gap: 8px;
+  margin-top: 24px;
+`;
+const usageModalCancelButtonStyle = css`
+  padding: 12px;
+  border: 1px solid #d5d0c9;
+  border-radius: 8px;
+  background: white;
+  color: ${theme.colors.text.primary};
+  font-weight: 700;
+  cursor: pointer;
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+`;
+const usageModalConfirmButtonStyle = (reset: boolean) => css`
+  padding: 12px;
+  border: 0;
+  border-radius: 8px;
+  background: ${reset ? '#ffe29a' : '#a990eb'};
+  color: ${reset ? '#3e3520' : 'white'};
+  font-weight: 800;
   cursor: pointer;
   &:disabled {
     cursor: not-allowed;

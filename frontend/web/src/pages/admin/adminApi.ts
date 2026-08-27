@@ -4,28 +4,31 @@ import { authFetch } from '../../shared/auth';
 export type UserStatus = 'ACTIVE' | 'DELETED';
 export type GenerationStatus = 'PROCESSING' | 'SUCCEEDED' | 'FAILED';
 
+export interface AdminGenerationUsage {
+  usageDate: string;
+  usedCount: number;
+  limitCount: number;
+  remainingCount: number;
+}
+
 export interface AdminUserSummary {
   id: string;
   name: string;
-  email: string | null;
   status: UserStatus;
   createdAt: string;
-  lastLoginAt: string | null;
-  remainingGenerationCount: number;
+  lastLoginAt?: string | null;
+  generationUsage: AdminGenerationUsage;
 }
 
 export interface Generation {
   id: string;
   requestedAt: string;
   status: GenerationStatus;
-  completedAt: string | null;
-  failureCode: string | null;
+  completedAt?: string | null;
+  errorCode?: string | null;
 }
 
 export interface AdminUserDetail extends AdminUserSummary {
-  usageDate: string;
-  usedGenerationCount: number;
-  dailyGenerationLimit: number;
   recentGenerations: Generation[];
 }
 
@@ -33,7 +36,6 @@ export interface GenerationHistory extends Generation {
   user: {
     id: string;
     name: string;
-    email: string | null;
   };
 }
 
@@ -49,8 +51,8 @@ export interface Page<T> {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
-const isStringOrNull = (value: unknown): value is string | null =>
-  value === null || typeof value === 'string';
+const isOptionalString = (value: unknown): value is string | null | undefined =>
+  value === undefined || value === null || typeof value === 'string';
 
 const isUserStatus = (value: unknown): value is UserStatus =>
   value === 'ACTIVE' || value === 'DELETED';
@@ -58,30 +60,33 @@ const isUserStatus = (value: unknown): value is UserStatus =>
 const isGenerationStatus = (value: unknown): value is GenerationStatus =>
   value === 'PROCESSING' || value === 'SUCCEEDED' || value === 'FAILED';
 
+const isGenerationUsage = (value: unknown): value is AdminGenerationUsage =>
+  isRecord(value) &&
+  typeof value.usageDate === 'string' &&
+  typeof value.usedCount === 'number' &&
+  typeof value.limitCount === 'number' &&
+  typeof value.remainingCount === 'number';
+
 const isUserSummary = (value: unknown): value is AdminUserSummary =>
   isRecord(value) &&
   typeof value.id === 'string' &&
   typeof value.name === 'string' &&
-  isStringOrNull(value.email) &&
   isUserStatus(value.status) &&
   typeof value.createdAt === 'string' &&
-  isStringOrNull(value.lastLoginAt) &&
-  typeof value.remainingGenerationCount === 'number';
+  isOptionalString(value.lastLoginAt) &&
+  isGenerationUsage(value.generationUsage);
 
 const isGeneration = (value: unknown): value is Generation =>
   isRecord(value) &&
   typeof value.id === 'string' &&
   typeof value.requestedAt === 'string' &&
   isGenerationStatus(value.status) &&
-  isStringOrNull(value.completedAt) &&
-  isStringOrNull(value.failureCode);
+  isOptionalString(value.completedAt) &&
+  isOptionalString(value.errorCode);
 
 const isUserDetail = (value: unknown): value is AdminUserDetail =>
   isUserSummary(value) &&
   isRecord(value) &&
-  typeof value.usageDate === 'string' &&
-  typeof value.usedGenerationCount === 'number' &&
-  typeof value.dailyGenerationLimit === 'number' &&
   Array.isArray(value.recentGenerations) &&
   value.recentGenerations.every(isGeneration);
 
@@ -90,8 +95,7 @@ const isGenerationHistory = (value: unknown): value is GenerationHistory =>
   isRecord(value) &&
   isRecord(value.user) &&
   typeof value.user.id === 'string' &&
-  typeof value.user.name === 'string' &&
-  isStringOrNull(value.user.email);
+  typeof value.user.name === 'string';
 
 const readPage = <T>(
   value: unknown,
@@ -174,10 +178,10 @@ export const searchAdminGenerations = async (
 const updateUsage = async (
   url: string,
   init: RequestInit,
-): Promise<AdminUserDetail> => {
+): Promise<AdminGenerationUsage> => {
   const response = await authFetch(url, init);
   const value = await readJson(response);
-  if (!isUserDetail(value)) {
+  if (!isGenerationUsage(value)) {
     throw new Error('사용량 변경 응답 형식이 올바르지 않습니다.');
   }
   return value;
@@ -196,13 +200,6 @@ export const restoreAdminUsage = (userId: string, count: number) =>
 export const resetAdminUsage = (userId: string) =>
   updateUsage(`${API_BASE_URL}/admin/users/${userId}/generation-usage/reset`, {
     method: 'PUT',
-  });
-
-export const setAdminUsage = (userId: string, usedCount: number) =>
-  updateUsage(`${API_BASE_URL}/admin/users/${userId}/usage`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ usedCount }),
   });
 
 export const setAdminGenerationLimit = async (
