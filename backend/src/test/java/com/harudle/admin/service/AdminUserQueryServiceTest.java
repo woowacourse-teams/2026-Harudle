@@ -11,12 +11,13 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -43,13 +44,14 @@ class AdminUserQueryServiceTest {
     @Test
     @DisplayName("검색어 앞뒤 공백을 제거하고 소문자로 정규화한다")
     void normalizesQuery() {
-        AdminUserPage expected = new AdminUserPage(List.of(), 0);
-        when(adminUserQueryRepository.search("하루", Optional.empty(), TODAY, 0, 20))
-                .thenReturn(expected);
+        var pageable = PageRequest.of(0, 20);
+        when(adminUserQueryRepository.search("하루", null, TODAY, pageable))
+                .thenReturn(new PageImpl<>(List.of(), pageable, 0));
 
         AdminUserPage actual = adminUserQueryService.search("  하루  ", 0, 20);
 
-        assertThat(actual).isSameAs(expected);
+        assertThat(actual.content()).isEmpty();
+        assertThat(actual.totalElements()).isZero();
     }
 
     @Test
@@ -57,20 +59,18 @@ class AdminUserQueryServiceTest {
     void recognizesExactUserId() {
         when(adminUserQueryRepository.search(
                 USER_ID.toString(),
-                Optional.of(USER_ID),
+                USER_ID,
                 TODAY,
-                2,
-                10
-        )).thenReturn(new AdminUserPage(List.of(), 0));
+                PageRequest.of(2, 10)
+        )).thenReturn(new PageImpl<>(List.of(), PageRequest.of(2, 10), 0));
 
         adminUserQueryService.search(USER_ID.toString().toUpperCase(), 2, 10);
 
         verify(adminUserQueryRepository).search(
                 USER_ID.toString(),
-                Optional.of(USER_ID),
+                USER_ID,
                 TODAY,
-                2,
-                10
+                PageRequest.of(2, 10)
         );
     }
 }
