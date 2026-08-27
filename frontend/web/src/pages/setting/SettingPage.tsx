@@ -9,9 +9,12 @@ import useLogout from './useLogout';
 import SettingError from './SettingError';
 import callMadeIcon from '../../assets/icons/call_made.svg';
 import logoutIcon from '../../assets/icons/logout.svg';
+import articlePersonIcon from '../../assets/icons/article_person.svg';
 
 const PRIVACY_POLICY_URL =
   'https://tecothon.notion.site/3c6d0505d9168025b01cdfa02d863a37?pvs=73';
+
+const GOOGLE_FROM_URL = 'https://forms.gle/8DMM4L835Esxk7BE6';
 
 const SettingPage = () => {
   const navigate = useNavigate();
@@ -56,7 +59,7 @@ const SettingPageContent = () => {
 
   return (
     <div css={settingPageContentStyle}>
-      <div css={accountCardStyle}>
+      <div css={settingCardStyle}>
         <div css={settingRowStyle}>
           <span css={settingLabelStyle}>이름</span>
           <span css={settingValueStyle}>
@@ -71,15 +74,26 @@ const SettingPageContent = () => {
         </div>
       </div>
 
-      <a css={privacyPolicyLinkStyle} href={PRIVACY_POLICY_URL}>
-        <span css={settingLabelStyle}>개인정보 처리방침</span>
-        <img
-          css={callMadeIconStyle}
-          src={callMadeIcon}
-          alt=""
-          aria-hidden="true"
-        />
-      </a>
+      <div css={settingCardStyle}>
+        <a
+          css={[settingRowStyle, settingLinkStyle]}
+          href={GOOGLE_FROM_URL}
+          target="blank"
+        >
+          <span css={settingLabelStyle}>피드백 남기기</span>
+          <img css={iconStyle} src={callMadeIcon} alt="" aria-hidden="true" />
+        </a>
+
+        <a css={[settingRowStyle, settingLinkStyle]} href={PRIVACY_POLICY_URL}>
+          <span css={settingLabelStyle}>개인정보 처리방침</span>
+          <img
+            css={iconStyle}
+            src={articlePersonIcon}
+            alt=""
+            aria-hidden="true"
+          />
+        </a>
+      </div>
 
       <button
         type="button"
@@ -164,25 +178,15 @@ const settingPageContentStyle = css`
   overflow-y: auto;
 `;
 
-const accountCardStyle = css`
+const settingCardStyle = css`
   height: 120px;
   overflow: hidden;
   border: 1px solid ${theme.colors.border.primary};
   border-radius: 16px;
 `;
 
-const privacyPolicyLinkStyle = css`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  height: 60px;
-  padding: 0 16px;
-  border: 1px solid ${theme.colors.border.primary};
-  border-radius: 16px;
+const settingLinkStyle = css`
   color: ${theme.colors.text.primary};
-  font-size: 15px;
-  line-height: 24px;
   text-decoration: none;
 
   &:active {
@@ -190,7 +194,7 @@ const privacyPolicyLinkStyle = css`
   }
 `;
 
-const callMadeIconStyle = css`
+const iconStyle = css`
   width: 24px;
   height: 24px;
 `;
