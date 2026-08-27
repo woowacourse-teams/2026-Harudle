@@ -9,8 +9,8 @@
 일상에서 놓쳤던 순간들을 그림으로 남겨 사람들과 즐겨보세요!
 </p>
 
-
----
+<br>
+<br>
 
 ## 하루들은 어떤 서비스인가요?
 
@@ -20,19 +20,62 @@
 
 초기 사용자 검증에서 수동 제작 참여자 16명 중 14명이 결과에 만족했고, 프로토타입은 평균 만족도 4.5/5와 응답자 12명 중 11명의 재사용 의향을 확인했습니다.
 
-
+<br>
+<br>
 
 ## Team Harudle
 
-|  [이산](https://github.com/rix01)  | [아이큐](https://github.com/e9ua1) |    [캐모](https://github.com/jason0904)    |   [초록](https://github.com/2jaeheon)    |    [이현](https://github.com/jebiyeon02)     |
-| :--------------------------------: | :--------------------------------: | :----------------------------------------: | :--------------------------------------: | :------------------------------------------: |
-| [@rix01](https://github.com/rix01) | [@e9ua1](https://github.com/e9ua1) | [@jason0904](https://github.com/jason0904) | [@2jaeheon](https://github.com/2jaeheon) | [@jebiyeon02](https://github.com/jebiyeon02) |
+<table>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/rix01">
+        <img src="https://github.com/rix01.png?size=120" width="96" alt="이산 프로필 이미지"><br>
+        <strong>이산</strong><br>
+        <sub>@rix01</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/e9ua1">
+        <img src="https://github.com/e9ua1.png?size=120" width="96" alt="아이큐 프로필 이미지"><br>
+        <strong>아이큐</strong><br>
+        <sub>@e9ua1</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/jason0904">
+        <img src="https://github.com/jason0904.png?size=120" width="96" alt="캐모 프로필 이미지"><br>
+        <strong>캐모</strong><br>
+        <sub>@jason0904</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/2jaeheon">
+        <img src="https://github.com/2jaeheon.png?size=120" width="96" alt="초록 프로필 이미지"><br>
+        <strong>초록</strong><br>
+        <sub>@2jaeheon</sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/jebiyeon02">
+        <img src="https://github.com/jebiyeon02.png?size=120" width="96" alt="이현 프로필 이미지"><br>
+        <strong>이현</strong><br>
+        <sub>@jebiyeon02</sub>
+      </a>
+    </td>
+  </tr>
+</table>
 
 </div>
 
+<br>
+<br>
+
 ---
 
-#### 핵심 흐름
+<br>
+<br>
+
+## 핵심 흐름
 
 | 1. 기록                     | 2. 생성                                             | 3. 보관                                  | 4. 공유                              |
 | --------------------------- | --------------------------------------------------- | ---------------------------------------- | ------------------------------------ |
@@ -40,6 +83,9 @@
 
 로그인 전에는 게스트로 한 번 체험할 수 있고, 
 카카오 로그인 후에는 기록을 계속 쌓을 수 있습니다.
+
+<br>
+<br>
 
 ## 현재 구현
 
@@ -54,6 +100,9 @@
 | 안정성      | 생성 실패 정리, 장시간 처리 중인 작업 복구, 프롬프트 버전 보존        |
 
 Gemini와 S3 연동은 환경 변수로 활성화합니다. 기본 로컬 설정에서는 외부 생성 어댑터가 비활성화되어 있습니다.
+
+<br>
+<br>
 
 ## 기술 구성
 
@@ -74,7 +123,11 @@ flowchart LR
 | Test      | Jest, Testing Library, MSW, JUnit 6, AssertJ, RestAssured, Testcontainers |
 | Delivery  | GitHub Actions, Gradle, pnpm                                              |
 
+<br>
+
 ---
+
+<br>
 
 ## 로컬에서 시작하기
 
@@ -93,7 +146,7 @@ git clone https://github.com/woowacourse-teams/2026-Harudle.git
 cd 2026-Harudle
 ```
 
-
+<br>
 
 ### Backend
 
@@ -108,7 +161,7 @@ docker compose up -d
 
 실행 전 `backend/.env`의 `DB_PASSWORD`, `KAKAO_REST_API_KEY`, `KAKAO_CLIENT_SECRET`, `JWT_SECRET_BASE64`를 채워야 합니다. Gemini와 S3를 함께 사용하려면 `HARUDLE_GENERATION_ADAPTERS_ENABLED=true`로 변경하고 관련 설정도 입력합니다.
 
-
+<br>
 
 ### Frontend
 
@@ -129,7 +182,11 @@ pnpm --dir web dev
 
 Scalar와 OpenAPI 문서는 `HARUDLE_API_DOCUMENTATION_ENABLED=true`일 때만 열립니다. 예시 환경 변수 파일은 로컬 문서를 활성화한 상태입니다. JWT & CSRF 흐름과 요청 예시는 [API 명세](./backend/docs/api-spec.md)를 참고해 주세요.
 
+<br>
+
 ---
+
+<br>
 
 ## 테스트
 
@@ -147,7 +204,11 @@ pnpm --dir web check
 
 Pull Request에서는 변경 영역에 맞춰 [GitHub Actions](./.github/workflows/test.yml)가 Backend 또는 Frontend 검증을 실행합니다.
 
+<br>
+
 ---
+
+<br>
 
 ## 생성 프롬프트 운영 원칙
 
