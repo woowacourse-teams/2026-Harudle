@@ -14,6 +14,12 @@ import org.springframework.transaction.annotation.Transactional;
 class JpaGenerationUsageRepository implements GenerationUsageRepository {
 
     private static final int USAGE_INCREMENT = 1;
+    private static final String LOCK_USER_QUERY = """
+            SELECT id
+            FROM users
+            WHERE id = :userId
+            FOR UPDATE
+            """;
     private static final String INCREMENT_QUERY = """
             WITH incremented_usage AS (
                 INSERT INTO daily_generation_usage (
@@ -106,6 +112,7 @@ class JpaGenerationUsageRepository implements GenerationUsageRepository {
     @SuppressWarnings("unchecked")
     public Optional<GenerationUsage> tryIncrementWithinLimit(UUID userId, LocalDate usageDate) {
         validateParameters(userId, usageDate);
+        lockUserRow(userId);
         List<Object[]> usages = entityManager
                 .createNativeQuery(INCREMENT_QUERY)
                 .setParameter("userId", userId)
@@ -124,6 +131,7 @@ class JpaGenerationUsageRepository implements GenerationUsageRepository {
         if (limitCount < 1) {
             throw new IllegalArgumentException("일일 생성 한도는 1 이상이어야 합니다.");
         }
+        lockUserRow(userId);
         return entityManager
                 .createNativeQuery(UPDATE_LIMIT_COUNT_QUERY)
                 .setParameter("userId", userId)
@@ -176,6 +184,12 @@ class JpaGenerationUsageRepository implements GenerationUsageRepository {
                 ((Number) columns[0]).intValue(),
                 ((Number) columns[1]).intValue()
         );
+    }
+
+    private void lockUserRow(UUID userId) {
+        entityManager.createNativeQuery(LOCK_USER_QUERY)
+                .setParameter("userId", userId)
+                .getResultList();
     }
 
     private static void validateParameters(UUID userId, LocalDate usageDate) {

@@ -17,6 +17,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.IntStream;
 import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.AfterEach;
@@ -139,6 +140,64 @@ class JpaGenerationUsageRepositoryTest {
 
         assertThat(generationUsageRepository.tryIncrementWithinLimit(USER_ID, USAGE_DATE))
                 .contains(new GenerationUsage(USAGE_DATE, 1, 5));
+        assertThat(generationUsageRepository.find(USER_ID, USAGE_DATE))
+                .contains(new GenerationUsage(USAGE_DATE, 1, 5));
+    }
+
+    @Test
+    @DisplayName("첫 사용량 생성과 한도 변경은 사용자 행 잠금으로 직렬화된다")
+    void serializesFirstUsageCreationAndLimitChange() throws Exception {
+        CountDownLatch incrementHolding = new CountDownLatch(1);
+        CountDownLatch releaseIncrement = new CountDownLatch(1);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            Future<Optional<GenerationUsage>> incrementFuture = executor.submit(() ->
+                    transactionTemplate.execute(status -> {
+                        Optional<GenerationUsage> usage = generationUsageRepository
+                                .tryIncrementWithinLimit(USER_ID, USAGE_DATE);
+                        incrementHolding.countDown();
+                        awaitLatch(releaseIncrement);
+                        return usage;
+                    })
+            );
+
+            try {
+                assertThat(incrementHolding.await(
+                        CONCURRENCY_READY_TIMEOUT_SECONDS,
+                        TimeUnit.SECONDS
+                )).isTrue();
+
+                Future<Integer> limitUpdateFuture = executor.submit(() ->
+                        transactionTemplate.execute(status -> {
+                            int updatedRows = generationUsageRepository
+                                    .updateLimitCount(USER_ID, USAGE_DATE, 5);
+                            executeUpdate(
+                                    "UPDATE users SET daily_generation_limit = ? WHERE id = ?",
+                                    5,
+                                    USER_ID
+                            );
+                            return updatedRows;
+                        })
+                );
+
+                assertThatThrownBy(() -> limitUpdateFuture.get(500, TimeUnit.MILLISECONDS))
+                        .isInstanceOf(TimeoutException.class);
+
+                releaseIncrement.countDown();
+                assertThat(incrementFuture.get(
+                        CONCURRENCY_READY_TIMEOUT_SECONDS,
+                        TimeUnit.SECONDS
+                )).contains(new GenerationUsage(USAGE_DATE, 1, 3));
+                assertThat(limitUpdateFuture.get(
+                        CONCURRENCY_READY_TIMEOUT_SECONDS,
+                        TimeUnit.SECONDS
+                )).isEqualTo(1);
+            } finally {
+                releaseIncrement.countDown();
+            }
+        }
+
+        assertThat(findUserDailyGenerationLimit()).isEqualTo(5);
         assertThat(generationUsageRepository.find(USER_ID, USAGE_DATE))
                 .contains(new GenerationUsage(USAGE_DATE, 1, 5));
     }
@@ -338,6 +397,24 @@ class JpaGenerationUsageRepositoryTest {
         } catch (Exception exception) {
             throw new IllegalStateException("동시 사용량 증가 결과를 가져오지 못했습니다.", exception);
         }
+    }
+
+    private void awaitLatch(CountDownLatch latch) {
+        try {
+            if (!latch.await(CONCURRENCY_READY_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("동시 실행 작업이 제한 시간 안에 해제되지 않았습니다.");
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("동시 실행 작업 대기 중 인터럽트가 발생했습니다.", exception);
+        }
+    }
+
+    private int findUserDailyGenerationLimit() {
+        return transactionTemplate.execute(status -> ((Number) entityManager
+                .createNativeQuery("SELECT daily_generation_limit FROM users WHERE id = ?")
+                .setParameter(1, USER_ID)
+                .getSingleResult()).intValue());
     }
 
     private void executeUpdate(String statement, Object... parameters) {
