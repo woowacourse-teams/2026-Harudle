@@ -14,8 +14,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -47,15 +48,14 @@ class AdminGenerationHistoryQueryServiceTest {
     @Test
     @DisplayName("날짜와 상태 필터를 저장소 조회 조건으로 변환한다")
     void convertsFiltersForRepository() {
-        AdminGenerationHistoryPage expected = new AdminGenerationHistoryPage(List.of(), 0);
+        var pageable = PageRequest.of(1, 10);
         when(generationHistoryQueryRepository.search(
-                Optional.of(USER_ID),
-                Optional.of(GenerationStatus.FAILED),
-                Optional.of(Instant.parse("2026-08-05T15:00:00Z")),
-                Optional.of(Instant.parse("2026-08-07T15:00:00Z")),
-                1,
-                10
-        )).thenReturn(expected);
+                USER_ID,
+                GenerationStatus.FAILED,
+                Instant.parse("2026-08-05T15:00:00Z"),
+                Instant.parse("2026-08-07T15:00:00Z"),
+                pageable
+        )).thenReturn(new PageImpl<>(List.of(), pageable, 0));
 
         AdminGenerationHistoryPage actual = generationHistoryQueryService.search(
                 USER_ID,
@@ -66,14 +66,14 @@ class AdminGenerationHistoryQueryServiceTest {
                 10
         );
 
-        assertThat(actual).isSameAs(expected);
+        assertThat(actual.content()).isEmpty();
+        assertThat(actual.totalElements()).isZero();
         verify(generationHistoryQueryRepository).search(
-                Optional.of(USER_ID),
-                Optional.of(GenerationStatus.FAILED),
-                Optional.of(Instant.parse("2026-08-05T15:00:00Z")),
-                Optional.of(Instant.parse("2026-08-07T15:00:00Z")),
-                1,
-                10
+                USER_ID,
+                GenerationStatus.FAILED,
+                Instant.parse("2026-08-05T15:00:00Z"),
+                Instant.parse("2026-08-07T15:00:00Z"),
+                pageable
         );
     }
 

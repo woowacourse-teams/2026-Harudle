@@ -2,7 +2,6 @@ package com.harudle.admin.infrastructure;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.harudle.admin.query.AdminGenerationHistoryPage;
 import com.harudle.admin.query.AdminGenerationHistorySnapshot;
 import com.harudle.admin.repository.AdminGenerationHistoryQueryRepository;
 import com.harudle.auth.domain.User;
@@ -15,8 +14,8 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.PageRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -114,20 +113,19 @@ class JpaAdminGenerationHistoryQueryRepositoryTest {
                 null
         );
 
-        AdminGenerationHistoryPage result = generationHistoryQueryRepository.search(
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                0,
-                20
+        var result = generationHistoryQueryRepository.search(
+                null,
+                null,
+                null,
+                null,
+                PageRequest.of(0, 20)
         );
 
-        assertThat(result.totalElements()).isEqualTo(3);
-        assertThat(result.content())
+        assertThat(result.getTotalElements()).isEqualTo(3);
+        assertThat(result.getContent())
                 .extracting(AdminGenerationHistorySnapshot::id)
                 .containsExactly(THIRD_GENERATION_ID, SECOND_GENERATION_ID, FIRST_GENERATION_ID);
-        assertThat(result.content().getFirst().userName()).isEqualTo("두 번째 사용자");
+        assertThat(result.getContent().getFirst().userName()).isEqualTo("두 번째 사용자");
     }
 
     @Test
@@ -155,20 +153,19 @@ class JpaAdminGenerationHistoryQueryRepositoryTest {
                 GenerationErrorCode.IMAGE_STORAGE_ERROR
         );
 
-        AdminGenerationHistoryPage result = generationHistoryQueryRepository.search(
-                Optional.of(firstUser.getId()),
-                Optional.of(GenerationStatus.FAILED),
-                Optional.of(CREATED_AT),
-                Optional.of(CREATED_AT.plusSeconds(1)),
-                0,
-                20
+        var result = generationHistoryQueryRepository.search(
+                firstUser.getId(),
+                GenerationStatus.FAILED,
+                CREATED_AT,
+                CREATED_AT.plusSeconds(1),
+                PageRequest.of(0, 20)
         );
 
-        assertThat(result.totalElements()).isEqualTo(1);
-        assertThat(result.content())
+        assertThat(result.getTotalElements()).isEqualTo(1);
+        assertThat(result.getContent())
                 .extracting(AdminGenerationHistorySnapshot::id)
                 .containsExactly(FIRST_GENERATION_ID);
-        assertThat(result.content().getFirst().errorCode())
+        assertThat(result.getContent().getFirst().errorCode())
                 .isEqualTo(GenerationErrorCode.AI_PROVIDER_ERROR);
     }
 
@@ -197,17 +194,16 @@ class JpaAdminGenerationHistoryQueryRepositoryTest {
                 null
         );
 
-        AdminGenerationHistoryPage result = generationHistoryQueryRepository.search(
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                1,
-                1
+        var result = generationHistoryQueryRepository.search(
+                null,
+                null,
+                null,
+                null,
+                PageRequest.of(1, 1)
         );
 
-        assertThat(result.totalElements()).isEqualTo(3);
-        assertThat(result.content())
+        assertThat(result.getTotalElements()).isEqualTo(3);
+        assertThat(result.getContent())
                 .extracting(AdminGenerationHistorySnapshot::id)
                 .containsExactly(SECOND_GENERATION_ID);
     }

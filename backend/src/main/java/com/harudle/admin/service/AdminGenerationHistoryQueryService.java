@@ -7,9 +7,9 @@ import com.harudle.generation.domain.GenerationStatus;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.Optional;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -35,14 +35,14 @@ public class AdminGenerationHistoryQueryService {
             int size
     ) {
         validateDateRange(from, to);
-        return generationHistoryQueryRepository.search(
-                Optional.ofNullable(userId),
-                Optional.ofNullable(status),
+        var result = generationHistoryQueryRepository.search(
+                userId,
+                status,
                 toStartInstant(from),
                 toExclusiveInstant(to),
-                page,
-                size
+                PageRequest.of(page, size)
         );
+        return new AdminGenerationHistoryPage(result.getContent(), result.getTotalElements());
     }
 
     private void validateDateRange(LocalDate from, LocalDate to) {
@@ -51,13 +51,17 @@ public class AdminGenerationHistoryQueryService {
         }
     }
 
-    private Optional<Instant> toStartInstant(LocalDate date) {
-        return Optional.ofNullable(date)
-                .map(value -> value.atStartOfDay(clock.getZone()).toInstant());
+    private Instant toStartInstant(LocalDate date) {
+        if (date == null) {
+            return null;
+        }
+        return date.atStartOfDay(clock.getZone()).toInstant();
     }
 
-    private Optional<Instant> toExclusiveInstant(LocalDate date) {
-        return Optional.ofNullable(date)
-                .map(value -> value.plusDays(1).atStartOfDay(clock.getZone()).toInstant());
+    private Instant toExclusiveInstant(LocalDate date) {
+        if (date == null) {
+            return null;
+        }
+        return date.plusDays(1).atStartOfDay(clock.getZone()).toInstant();
     }
 }
