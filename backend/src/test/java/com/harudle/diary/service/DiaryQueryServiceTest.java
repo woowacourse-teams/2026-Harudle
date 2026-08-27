@@ -3,20 +3,25 @@ package com.harudle.diary.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.groups.Tuple.tuple;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.diary.repository.DiarySnapshot;
 import com.harudle.diary.service.dto.DiaryDayResult;
 import com.harudle.diary.service.dto.DiaryDetailResult;
+import com.harudle.diary.service.dto.DiaryStreakDayResult;
+import com.harudle.diary.service.dto.DiaryStreakResult;
 import com.harudle.diary.service.dto.DiaryTimelineResult;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
 import com.harudle.generation.domain.GenerationStatus;
 import com.harudle.generation.repository.DiaryGenerationRepository;
 import com.harudle.generation.repository.DiaryGenerationSnapshot;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -38,8 +43,10 @@ class DiaryQueryServiceTest {
     private static final UUID GENERATION_ID = UUID.fromString("17ac16ef-c45a-40bb-92ea-aed37659ef1c");
     private static final UUID SECOND_GENERATION_ID = UUID.fromString("a8e8758d-493b-42be-9127-c5a457ee5f12");
     private static final LocalDate DIARY_DATE = LocalDate.of(2028, 2, 6);
+    private static final Instant CURRENT_TIME = Instant.parse("2028-02-05T15:30:00Z");
     private static final Instant CREATED_AT = Instant.parse("2028-02-06T11:00:00Z");
     private static final Instant COMPLETED_AT = Instant.parse("2028-02-06T12:00:00Z");
+    private static final ZoneId SERVICE_ZONE_ID = ZoneId.of("Asia/Seoul");
 
     @Mock
     private DiaryRepository diaryRepository;
@@ -51,7 +58,12 @@ class DiaryQueryServiceTest {
 
     @BeforeEach
     void setUp() {
-        diaryQueryService = new DiaryQueryService(diaryRepository, diaryGenerationRepository);
+        Clock clock = Clock.fixed(CURRENT_TIME, SERVICE_ZONE_ID);
+        diaryQueryService = new DiaryQueryService(
+                diaryRepository,
+                diaryGenerationRepository,
+                clock
+        );
     }
 
     @Test
@@ -71,7 +83,7 @@ class DiaryQueryServiceTest {
                 "산책으로 마무리한 하루",
                 "generated/second-comic.png"
         );
-        when(diaryRepository.findMonthlySnapshots(
+        when(diaryRepository.findActiveSnapshotsBetween(
                 USER_ID,
                 LocalDate.of(2028, 2, 1),
                 LocalDate.of(2028, 2, 29)
@@ -115,6 +127,101 @@ class DiaryQueryServiceTest {
     }
 
     @Test
+    @DisplayName("삭제된 중간 일기의 날짜는 streak에 유지하고 콘텐츠만 제외한다")
+    void getCurrentStreakKeepsDeletedDayWithoutExposingContent() {
+        LocalDate deletedDate = DIARY_DATE.minusDays(1);
+        LocalDate oldestDate = DIARY_DATE.minusDays(2);
+        DiarySnapshot todayDiary = createDiarySnapshot(DIARY_ID, USER_ID, DIARY_DATE);
+        DiarySnapshot oldestDiary = createDiarySnapshot(SECOND_DIARY_ID, USER_ID, oldestDate);
+        DiaryGenerationSnapshot todayGeneration = createSuccessfulGenerationSnapshot(
+                GENERATION_ID,
+                DIARY_ID,
+                "오늘의 일기",
+                "generated/today.png"
+        );
+        DiaryGenerationSnapshot oldestGeneration = createSuccessfulGenerationSnapshot(
+                SECOND_GENERATION_ID,
+                SECOND_DIARY_ID,
+                "그제의 일기",
+                "generated/oldest.png"
+        );
+        when(diaryRepository.findDiaryDatesIncludingDeletedByGenerationStatus(
+                USER_ID,
+                DIARY_DATE,
+                GenerationStatus.SUCCEEDED
+        )).thenReturn(List.of(DIARY_DATE, deletedDate, oldestDate));
+        when(diaryRepository.findActiveSnapshotsBetween(
+                USER_ID,
+                oldestDate,
+                DIARY_DATE
+        )).thenReturn(List.of(todayDiary, oldestDiary));
+        when(diaryGenerationRepository.findSnapshotsByDiaryIdInAndStatus(
+                List.of(DIARY_ID, SECOND_DIARY_ID),
+                GenerationStatus.SUCCEEDED
+        )).thenReturn(List.of(todayGeneration, oldestGeneration));
+
+        DiaryStreakResult result = diaryQueryService.getCurrentStreak(USER_ID);
+
+        assertThat(result.streakCount()).isEqualTo(3);
+        assertThat(result.recordedToday()).isTrue();
+        assertThat(result.days())
+                .extracting(DiaryStreakDayResult::date)
+                .containsExactly(DIARY_DATE, deletedDate, oldestDate);
+        assertThat(result.days().getFirst().items())
+                .extracting(item -> item.id())
+                .containsExactly(DIARY_ID);
+        assertThat(result.days().get(1).items()).isEmpty();
+        assertThat(result.days().getLast().items())
+                .extracting(item -> item.id())
+                .containsExactly(SECOND_DIARY_ID);
+    }
+
+    @Test
+    @DisplayName("오늘 기록이 없으면 어제까지의 streak와 미기록 상태를 반환한다")
+    void getCurrentStreakFromYesterday() {
+        LocalDate yesterday = DIARY_DATE.minusDays(1);
+        LocalDate oldestDate = DIARY_DATE.minusDays(2);
+        when(diaryRepository.findDiaryDatesIncludingDeletedByGenerationStatus(
+                USER_ID,
+                DIARY_DATE,
+                GenerationStatus.SUCCEEDED
+        )).thenReturn(List.of(yesterday, oldestDate));
+        when(diaryRepository.findActiveSnapshotsBetween(
+                USER_ID,
+                oldestDate,
+                yesterday
+        )).thenReturn(List.of());
+
+        DiaryStreakResult result = diaryQueryService.getCurrentStreak(USER_ID);
+
+        assertThat(result.streakCount()).isEqualTo(2);
+        assertThat(result.recordedToday()).isFalse();
+        assertThat(result.days())
+                .extracting(DiaryStreakDayResult::date)
+                .containsExactly(yesterday, oldestDate);
+        assertThat(result.days())
+                .allSatisfy(day -> assertThat(day.items()).isEmpty());
+        verifyNoInteractions(diaryGenerationRepository);
+    }
+
+    @Test
+    @DisplayName("현재 streak가 끝났으면 콘텐츠를 추가 조회하지 않는다")
+    void getCurrentStreakReturnsEmptyWhenExpired() {
+        when(diaryRepository.findDiaryDatesIncludingDeletedByGenerationStatus(
+                USER_ID,
+                DIARY_DATE,
+                GenerationStatus.SUCCEEDED
+        )).thenReturn(List.of(DIARY_DATE.minusDays(2)));
+
+        DiaryStreakResult result = diaryQueryService.getCurrentStreak(USER_ID);
+
+        assertThat(result.streakCount()).isZero();
+        assertThat(result.recordedToday()).isFalse();
+        assertThat(result.days()).isEmpty();
+        verifyNoInteractions(diaryGenerationRepository);
+    }
+
+    @Test
     @DisplayName("본인 소유의 삭제되지 않은 일기 상세를 조회한다")
     void getDetail() {
         when(diaryRepository.findActiveSnapshotById(DIARY_ID))
@@ -154,10 +261,18 @@ class DiaryQueryServiceTest {
     }
 
     private DiarySnapshot createDiarySnapshot(UUID diaryId, UUID userId) {
+        return createDiarySnapshot(diaryId, userId, DIARY_DATE);
+    }
+
+    private DiarySnapshot createDiarySnapshot(
+            UUID diaryId,
+            UUID userId,
+            LocalDate diaryDate
+    ) {
         return new DiarySnapshot(
                 diaryId,
                 userId,
-                DIARY_DATE,
+                diaryDate,
                 "오늘의 일기",
                 CREATED_AT
         );

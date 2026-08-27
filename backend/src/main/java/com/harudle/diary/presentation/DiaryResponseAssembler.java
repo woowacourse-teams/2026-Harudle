@@ -5,6 +5,8 @@ import com.harudle.diary.service.dto.CreateGuestDiaryResult;
 import com.harudle.diary.service.dto.DiaryDayResult;
 import com.harudle.diary.service.dto.DiaryDetailResult;
 import com.harudle.diary.service.dto.DiaryGenerationResult;
+import com.harudle.diary.service.dto.DiaryStreakDayResult;
+import com.harudle.diary.service.dto.DiaryStreakResult;
 import com.harudle.diary.service.dto.DiarySummaryResult;
 import com.harudle.diary.service.dto.DiaryTimelineResult;
 import com.harudle.generation.presentation.GenerationUsageResponse;
@@ -129,6 +131,26 @@ final class DiaryResponseAssembler {
                 toServiceTime(imageAccessUrl.expiresAt()),
                 toServiceTime(result.completedAt())
         );
+    }
+
+    DiaryStreakResponse toStreakResponse(DiaryStreakResult result) {
+        List<DiaryStreakDayResponse> days = result.days().stream()
+                .map(this::toStreakDayResponse)
+                .toList();
+
+        return new DiaryStreakResponse(
+                result.streakCount(),
+                result.recordedToday(),
+                days
+        );
+    }
+
+    private DiaryStreakDayResponse toStreakDayResponse(DiaryStreakDayResult result) {
+        List<DiarySummaryResponse> items = result.items().stream()
+                .map(this::toSummaryResponse)
+                .toList();
+
+        return new DiaryStreakDayResponse(result.date(), items);
     }
 
     private ImageAccessUrl createImageAccessUrl(String imageObjectKey) {
