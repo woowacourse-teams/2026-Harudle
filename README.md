@@ -28,7 +28,9 @@
 | :--------------------------------: | :--------------------------------: | :----------------------------------------: | :--------------------------------------: | :------------------------------------------: |
 | [@rix01](https://github.com/rix01) | [@e9ua1](https://github.com/e9ua1) | [@jason0904](https://github.com/jason0904) | [@2jaeheon](https://github.com/2jaeheon) | [@jebiyeon02](https://github.com/jebiyeon02) |
 
+</div>
 
+---
 
 #### 핵심 흐름
 
@@ -38,8 +40,6 @@
 
 로그인 전에는 게스트로 한 번 체험할 수 있고, 
 카카오 로그인 후에는 기록을 계속 쌓을 수 있습니다.
-
-
 
 ## 현재 구현
 
@@ -54,8 +54,6 @@
 | 안정성      | 생성 실패 정리, 장시간 처리 중인 작업 복구, 프롬프트 버전 보존        |
 
 Gemini와 S3 연동은 환경 변수로 활성화합니다. 기본 로컬 설정에서는 외부 생성 어댑터가 비활성화되어 있습니다.
-
-
 
 ## 기술 구성
 
@@ -76,9 +74,7 @@ flowchart LR
 | Test      | Jest, Testing Library, MSW, JUnit 6, AssertJ, RestAssured, Testcontainers |
 | Delivery  | GitHub Actions, Gradle, pnpm                                              |
 
-
-
-
+---
 
 ## 로컬에서 시작하기
 
@@ -133,7 +129,7 @@ pnpm --dir web dev
 
 Scalar와 OpenAPI 문서는 `HARUDLE_API_DOCUMENTATION_ENABLED=true`일 때만 열립니다. 예시 환경 변수 파일은 로컬 문서를 활성화한 상태입니다. JWT & CSRF 흐름과 요청 예시는 [API 명세](./backend/docs/api-spec.md)를 참고해 주세요.
 
-
+---
 
 ## 테스트
 
@@ -151,9 +147,9 @@ pnpm --dir web check
 
 Pull Request에서는 변경 영역에 맞춰 [GitHub Actions](./.github/workflows/test.yml)가 Backend 또는 Frontend 검증을 실행합니다.
 
+---
 
-
-### 생성 프롬프트 운영 원칙
+## 생성 프롬프트 운영 원칙
 
 운영에서 승인한 참조 이미지를 비공개 이미지 저장소에 업로드한 뒤 다음 환경 변수를 주입합니다.
 
