@@ -1,9 +1,6 @@
 import { useState } from 'react';
-import type { Month, YearMonth } from './model';
-
-export const isMonth = (value: number): value is Month => {
-  return value >= 1 && value <= 12;
-};
+import type { YearMonth } from './model';
+import { isMonth, type Month } from '../../../shared/utils';
 
 const formatYearMonthToObject = (yearMonth: string): YearMonth => {
   const [year, month] = yearMonth.split('-').map((string) => Number(string));

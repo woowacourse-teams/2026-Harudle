@@ -8,7 +8,10 @@ import useMonthlyDiaries from './useMonthlyDiaries';
 import useGenrationUsage from './useGenrationUsage';
 import { css } from '@emotion/react';
 import { theme } from '../../../styles/theme';
-import eventAvailableIcon from '../../../assets/icons/event-available.svg';
+import { getToday } from '../../../shared/utils';
+import { useDiaryGenerateContext } from '../../diary-generating/DiaryGenerateContext';
+import { useEffect } from 'react';
+import StreakSummaryCard from './StreakSummaryCard';
 
 const formatYearMonthToString = ({ year, month }: YearMonth): string => {
   return `${year}-${month.toString().padStart(2, '0')}`;
@@ -17,10 +20,12 @@ const formatYearMonthToString = ({ year, month }: YearMonth): string => {
 const HomePage = () => {
   const navigate = useNavigate();
   const { selectedYearMonth, handleYearMonthChange } = useSelectedYearMonth(
-    2026,
-    8,
+    getToday().year,
+    getToday().month,
   );
-  const { monthlyDiariesRequest } = useMonthlyDiaries({ ...selectedYearMonth });
+  const { monthlyDiariesRequest, getMonthlyDiaries } = useMonthlyDiaries({
+    ...selectedYearMonth,
+  });
 
   const monthlyDiaryCount =
     monthlyDiariesRequest.status === 'success'
@@ -43,16 +48,25 @@ const HomePage = () => {
           <input
             css={monthInputStyle}
             type="month"
+            aria-label="조회할 월"
             value={formatYearMonthToString(selectedYearMonth)}
             onChange={handleYearMonthChange}
           />
-          <span>{monthlyDiaryCount}개의 기록</span>
+          <div css={contentSummaryStyle}>
+            <RemainingGenerationUsage />
+            <span css={monthlyDiaryCountStyle}>
+              {monthlyDiaryCount}개의 기록
+            </span>
+          </div>
         </div>
 
-        <RemainingGenerationUsageCard />
+        <StreakSummaryCard />
 
         <section css={diaryContentStyle}>
-          <DiaryItemList monthlyDiariesRequest={monthlyDiariesRequest} />
+          <DiaryItemList
+            monthlyDiariesRequest={monthlyDiariesRequest}
+            getMonthlyDiaries={getMonthlyDiaries}
+          />
         </section>
       </main>
 
@@ -63,31 +77,46 @@ const HomePage = () => {
 
 export default HomePage;
 
-const RemainingGenerationUsageCard = () => {
-  const { generationUsageRequest } = useGenrationUsage();
+const RemainingGenerationUsage = () => {
+  const { generationUsageRequest, getRemainingGenerationUsageCard } =
+    useGenrationUsage();
 
-  const showFallback =
-    generationUsageRequest.status === 'idle' ||
-    generationUsageRequest.status === 'loading';
+  const { diaryGenerateRequest } = useDiaryGenerateContext();
 
-  if (generationUsageRequest.status === 'error') {
-    return <div>{generationUsageRequest.error.message}</div>;
-  }
+  useEffect(() => {
+    if (diaryGenerateRequest.status === 'success') {
+      void getRemainingGenerationUsageCard();
+    }
+  }, [diaryGenerateRequest.status, getRemainingGenerationUsageCard]);
+
+  const remainingCount =
+    generationUsageRequest.status === 'success'
+      ? generationUsageRequest.data
+      : null;
+  const hasGenerationUsageError = generationUsageRequest.status === 'error';
 
   return (
-    <div css={generationUsageCardStyle}>
-      <img src={eventAvailableIcon} />
-      <span>
-        오늘 남은 생성{' '}
-        {showFallback ? (
-          <span>-</span>
-        ) : (
-          <span css={generationUsageTextStyle(generationUsageRequest.data > 0)}>
-            {generationUsageRequest.data}
-          </span>
-        )}
-        회
-      </span>
+    <div css={remainingGenerationUsageStyle} aria-live="polite">
+      {hasGenerationUsageError ? (
+        <>
+          <span>생성 횟수 조회 실패</span>
+          <button
+            css={retryButtonStyle}
+            type="button"
+            onClick={() => void getRemainingGenerationUsageCard()}
+          >
+            재시도
+          </button>
+        </>
+      ) : (
+        <span>
+          오늘 남은 생성{' '}
+          <strong css={generationUsageTextStyle(remainingCount)}>
+            {remainingCount ?? '-'}
+          </strong>
+          회
+        </span>
+      )}
     </div>
   );
 };
@@ -125,7 +154,7 @@ const homePageContentStyle = css`
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
   min-height: 0px;
   padding: 20px 20px 0 20px;
 `;
@@ -133,19 +162,28 @@ const homePageContentStyle = css`
 const contentHeaderStyle = css`
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  gap: 12px;
   width: 100%;
+`;
 
-  span {
-    color: ${theme.colors.text.secondary};
-    font-size: 14px;
-    font-weight: 500;
-  }
+const contentSummaryStyle = css`
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  min-width: 0;
+`;
+
+const monthlyDiaryCountStyle = css`
+  color: ${theme.colors.text.secondary};
+  font-size: 14px;
+  font-weight: 500;
 `;
 
 const monthInputStyle = css`
   width: 135px;
-  height: 100%;
+  height: 28px;
   border: none;
   outline: none;
   background-color: transparent;
@@ -161,18 +199,33 @@ const diaryContentStyle = css`
   overflow-y: auto;
 `;
 
-const generationUsageCardStyle = css`
+const remainingGenerationUsageStyle = css`
   display: flex;
   align-items: center;
-  gap: 10px;
-  width: 100%;
-  height: 48px;
-  padding: 0 16px;
-  border: 1px solid ${theme.colors.border.primary};
-  border-radius: 16px;
-  background-color: #faf6fe;
+  color: ${theme.colors.text.primary};
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 22px;
+  white-space: nowrap;
 `;
 
-const generationUsageTextStyle = (isLeft: boolean) => css`
-  color: ${isLeft ? theme.colors.text.brand : theme.colors.text.danger};
+const generationUsageTextStyle = (remainingCount: number | null) => css`
+  color: ${
+    remainingCount === null
+      ? theme.colors.text.secondary
+      : remainingCount > 0
+        ? theme.colors.text.brand
+        : theme.colors.text.danger
+  };
+  font-weight: 800;
+`;
+
+const retryButtonStyle = css`
+  margin-left: 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: ${theme.colors.text.brand};
+  font: inherit;
+  cursor: pointer;
 `;

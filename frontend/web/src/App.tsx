@@ -12,6 +12,7 @@ import AuthCallbackPage from './pages/login/AuthCallbackPage';
 import GuestTrialRoutes from './pages/guest-trial/GuestTrialRoutes';
 import LandingPage from './pages/landing/LandingPage';
 import AdminRoutes from './pages/admin/AdminRoutes';
+import NotFoundPage from './pages/not-found/NotFoundPage';
 
 const App = () => {
   return (
@@ -28,6 +29,7 @@ const App = () => {
         <Route path="/landing" element={<LandingPage />} />
         <Route path="/landing-try/*" element={<GuestTrialRoutes />} />
         <Route path="/admin/*" element={<AdminRoutes />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </div>
   );

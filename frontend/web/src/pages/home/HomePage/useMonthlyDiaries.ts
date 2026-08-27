@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   API_BASE_URL,
   isProblemDetails,
@@ -11,9 +11,9 @@ import type {
   MonthlyDiaryItem,
   YearMonth,
 } from './model';
-import { isMonth } from './useSelectedYearMonth';
 import { authFetch } from '../../../shared/auth';
 import { useAnalytics } from '../../../shared/useAnalytics';
+import { isMonth } from '../../../shared/utils';
 
 const useMonthlyDiaries = ({ year, month }: YearMonth) => {
   const { track } = useAnalytics();
@@ -23,11 +23,14 @@ const useMonthlyDiaries = ({ year, month }: YearMonth) => {
     status: 'idle',
   });
 
-  useEffect(() => {
-    const getMonthlyDiaries = async (): Promise<void> => {
-      setMonthlyDiariesRequest({
-        status: 'loading',
-      });
+  const getMonthlyDiaries = useCallback(
+    async ({ showLoading = true }: { showLoading: boolean }): Promise<void> => {
+      if (showLoading) {
+        setMonthlyDiariesRequest({
+          status: 'loading',
+        });
+      }
+
       try {
         const response = await authFetch(
           `${API_BASE_URL}/diaries?year=${year}&month=${month}`,
@@ -72,12 +75,17 @@ const useMonthlyDiaries = ({ year, month }: YearMonth) => {
           });
         }
       }
-    };
+    },
+    [year, month, track],
+  );
 
-    void getMonthlyDiaries();
-  }, [year, month, track]);
+  useEffect(() => {
+    // TODO: API 요청과 상태 갱신 책임을 분리해 lint 예외를 제거한다.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void getMonthlyDiaries({ showLoading: true });
+  }, [getMonthlyDiaries]);
 
-  return { monthlyDiariesRequest };
+  return { monthlyDiariesRequest, getMonthlyDiaries };
 };
 
 export default useMonthlyDiaries;
