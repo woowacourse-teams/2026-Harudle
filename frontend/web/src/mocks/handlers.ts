@@ -468,6 +468,25 @@ export const handlers = [
     });
   }),
 
+  http.get('/api/v1/diaries/current-streak', async ({ request }) => {
+    const unauthorizedResponse = validateAccessToken(request);
+
+    if (unauthorizedResponse) {
+      return unauthorizedResponse;
+    }
+
+    await delay(1_500);
+
+    return HttpResponse.json({
+      streakCount: 6,
+      recordedToday: true,
+      days: augustDiaries.slice(0, 5).map(({ date, items }) => ({
+        date,
+        items,
+      })),
+    });
+  }),
+
   http.get('/api/v1/diaries/:diaryId', async ({ params, request }) => {
     const unauthorizedResponse = validateAccessToken(request);
 
