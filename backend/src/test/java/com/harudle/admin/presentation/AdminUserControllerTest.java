@@ -254,6 +254,56 @@ class AdminUserControllerTest {
     }
 
     @Test
+    @DisplayName("게스트 사용자의 생성 사용량 변경은 거부한다")
+    void rejectsGenerationUsageOperationsForGuestUser() throws Exception {
+        User admin = saveUser("관리자");
+        grantAdminRole(admin);
+        User guestUser = saveUser("게스트 사용자");
+        saveGuestSession(guestUser);
+        saveTodayUsage(guestUser, 2, 3);
+
+        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-limit", guestUser.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"limitCount\":5}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
+
+        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-usage/reset", guestUser.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
+
+        mockMvc.perform(patch(
+                        "/api/v1/admin/users/{userId}/generation-usage/restore",
+                        guestUser.getId()
+                )
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"count\":1}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
+
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT daily_generation_limit FROM users WHERE id = ?",
+                Integer.class,
+                guestUser.getId()
+        )).isEqualTo(3);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT used_count FROM daily_generation_usage WHERE user_id = ? AND usage_date = ?",
+                Integer.class,
+                guestUser.getId(),
+                LocalDate.now(SERVICE_ZONE)
+        )).isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT limit_count FROM daily_generation_usage WHERE user_id = ? AND usage_date = ?",
+                Integer.class,
+                guestUser.getId(),
+                LocalDate.now(SERVICE_ZONE)
+        )).isEqualTo(3);
+    }
+
+    @Test
     @DisplayName("관리자는 사용자의 오늘 생성 횟수를 지정한 수량만큼 복구할 수 있다")
     void restoresGenerationUsage() throws Exception {
         User admin = saveUser("관리자");
