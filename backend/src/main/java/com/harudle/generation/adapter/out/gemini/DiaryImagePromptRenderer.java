@@ -7,6 +7,8 @@ import java.util.List;
 
 public final class DiaryImagePromptRenderer {
 
+    private static final String TITLE_PREFIX = "# ";
+    private static final String CREATOR_HANDLE = "@harudle.official";
     private static final String PANEL_HEADER_FORMAT = "Panel %d — %s — %s:";
     private static final List<String> PANEL_POSITIONS = List.of(
             "TOP LEFT",
@@ -25,17 +27,19 @@ public final class DiaryImagePromptRenderer {
         List<String> lines = new ArrayList<>();
         addStoryOverview(lines, storyboard);
         addPanels(lines, storyboard.panels());
-        addFinalStoryCheck(lines, storyboard.panels());
+        addFinalStoryCheck(lines, storyboard);
         return String.join("\n", lines);
     }
 
     private static void addStoryOverview(List<String> lines, Storyboard storyboard) {
         lines.add("SELECTED STORY: " + storyboard.title());
+        lines.add("This selected-story line is internal metadata only. Never render it inside any panel.");
         lines.add("");
         lines.add("SOURCE AND ADAPTATION RULE:");
         lines.add("This four-panel story was adapted from one diary entry. Preserve this intentional "
                 + "reveal order, cast, causal logic, meaning, and ending. Do not add another event, "
-                + "character, brand, or subplot.");
+                + "character, story-world brand, or subplot. The fixed creator handle \""
+                + CREATOR_HANDLE + "\" is required metadata outside the panel grid.");
         lines.add("");
         lines.add("CAST AND CONTINUITY:");
         lines.add(storyboard.castContinuity());
@@ -65,6 +69,9 @@ public final class DiaryImagePromptRenderer {
         lines.add("Do not place readable text, labels, logos, brands, model names, or UI words "
                 + "inside the scene.");
         lines.add("Caption reads exactly: \"%s\"".formatted(panel.caption()));
+        lines.add("This panel contains exactly one readable text block: its assigned caption.");
+        lines.add("Never place the comic title, footer title, creator handle, or any text beginning with \"#\" "
+                + "inside this panel.");
     }
 
     private static String renderProps(List<String> props) {
@@ -74,15 +81,32 @@ public final class DiaryImagePromptRenderer {
         return String.join(", ", props);
     }
 
-    private static void addFinalStoryCheck(List<String> lines, List<StoryPanel> panels) {
+    private static void addFinalStoryCheck(List<String> lines, Storyboard storyboard) {
+        String visibleTitle = TITLE_PREFIX + storyboard.title();
         lines.add("");
         lines.add("FINAL STORY CHECK:");
         lines.add("Exactly four equal 2x2 panels in top-left to bottom-right reading order. Follow "
                 + "the storyboard's clear chronological cause-and-effect order.");
-        lines.add("Render exactly these four Korean captions once each and no other readable text:");
-        for (StoryPanel panel : panels) {
+        lines.add("Render exactly six readable text blocks: one comic title, four panel captions, "
+                + "and one creator handle.");
+        lines.add("The four panel captions read exactly:");
+        for (StoryPanel panel : storyboard.panels()) {
             lines.add("- \"" + panel.caption() + "\"");
         }
+        lines.add("Do not render any other readable text, date, additional hashtag, logo, signature, "
+                + "or footer label.");
         lines.add("Keep the ending faithful to the diary. Square 1:1 canvas.");
+        lines.add("");
+        lines.add("FINAL FOOTER LOCK — HIGHEST LAYOUT PRIORITY:");
+        lines.add("Create one separate white footer band below the complete four-panel grid.");
+        lines.add("The footer is outside every panel and outside the grid border.");
+        lines.add("Render exactly these two footer text blocks on the same footer line:");
+        lines.add("- left: \"" + visibleTitle + "\"");
+        lines.add("- right: \"" + CREATOR_HANDLE + "\"");
+        lines.add("Left-align the footer title with the grid's left edge and right-align the creator handle "
+                + "with the grid's right edge.");
+        lines.add("Never place either footer text inside Panel 1, Panel 2, Panel 3, or Panel 4.");
+        lines.add("No footer character, including \"#\", \"@\", or \".\", may cross or touch the grid border.");
+        lines.add("Do not render the footer title or creator handle above the grid.");
     }
 }

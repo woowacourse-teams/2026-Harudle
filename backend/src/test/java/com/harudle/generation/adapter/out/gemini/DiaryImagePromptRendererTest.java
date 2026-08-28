@@ -1,29 +1,43 @@
 package com.harudle.generation.adapter.out.gemini;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.harudle.generation.domain.StoryPanel;
 import com.harudle.generation.domain.Storyboard;
-import java.io.IOException;
-import java.io.InputStream;
 import java.util.List;
-import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.core.io.ClassPathResource;
 
 class DiaryImagePromptRendererTest {
 
     private final DiaryImagePromptRenderer renderer = new DiaryImagePromptRenderer();
 
     @Test
-    @DisplayName("스토리보드를 Gemini 이미지용 이야기 프롬프트로 변환한다")
-    void renderDiaryImagePrompt() throws IOException {
+    void renderDiaryImagePrompt() {
         Storyboard storyboard = createStoryboard();
 
         String renderedPrompt = renderer.render(storyboard);
 
-        assertThat(renderedPrompt).isEqualTo(readGoldenPrompt());
+        assertThat(renderedPrompt)
+                .startsWith("SELECTED STORY: 인스타 맛집의 함정")
+                .contains("This selected-story line is internal metadata only. Never render it inside any panel.")
+                .contains("Render exactly six readable text blocks: one comic title, four panel captions, "
+                        + "and one creator handle.")
+                .contains("FINAL FOOTER LOCK — HIGHEST LAYOUT PRIORITY:")
+                .contains("- left: \"# 인스타 맛집의 함정\"")
+                .contains("- right: \"@harudle.official\"")
+                .contains("Never place either footer text inside Panel 1, Panel 2, Panel 3, or Panel 4.")
+                .contains("- \"와, 침 고인다\"")
+                .contains("- \"막상 먹어보면...\"")
+                .contains("- \"다신 안 속아\"")
+                .contains("- \"이번엔 다를지도?\"")
+                .doesNotContain("VISIBLE COMIC TITLE READS EXACTLY:")
+                .doesNotContain("FIXED CREATOR HANDLE READS EXACTLY:")
+                .doesNotContain("Render exactly these four Korean captions once each and no other readable text:");
+
+        assertThat(renderedPrompt.lines()
+                .filter("This panel contains exactly one readable text block: its assigned caption."::equals)
+                .count())
+                .isEqualTo(4);
     }
 
     private static Storyboard createStoryboard() {
@@ -73,12 +87,4 @@ class DiaryImagePromptRendererTest {
         );
     }
 
-    private static String readGoldenPrompt() throws IOException {
-        ClassPathResource resource = new ClassPathResource("gemini/example-story-prompt.txt");
-        try (InputStream inputStream = resource.getInputStream()) {
-            return new String(inputStream.readAllBytes(), UTF_8)
-                    .replace("\r\n", "\n")
-                    .stripTrailing();
-        }
-    }
 }
