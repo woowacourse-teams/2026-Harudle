@@ -8,6 +8,7 @@ import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.generation.domain.GenerationUsage;
 import com.harudle.generation.service.GenerationUsageService;
 import com.harudle.guest.repository.GuestSessionRepository;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,21 +39,29 @@ public class AdminGenerationUsageService {
 
     @Transactional
     public GenerationUsage reset(UUID userId) {
-        User user = findManageableUser(userId);
+        User user = findManageableUserForUpdate(userId);
         return generationUsageService.resetTodayUsage(userId, user.getDailyGenerationLimit());
     }
 
     @Transactional
     public void changeLimit(UUID userId, int limitCount) {
-        User user = findManageableUser(userId);
+        User user = findManageableUserForUpdate(userId);
         user.changeDailyGenerationLimit(limitCount);
         generationUsageService.updateTodayLimit(userId, limitCount);
     }
 
     private User findManageableUser(UUID userId) {
-        User user = userRepository.findById(userId)
+        return validateManageableUser(userRepository.findById(userId));
+    }
+
+    private User findManageableUserForUpdate(UUID userId) {
+        return validateManageableUser(userRepository.findByIdForUpdate(userId));
+    }
+
+    private User validateManageableUser(Optional<User> userOptional) {
+        User user = userOptional
                 .orElseThrow(AdminUserNotFoundException::new);
-        if (guestSessionRepository.existsByGuestUserId(userId)) {
+        if (guestSessionRepository.existsByGuestUserId(user.getId())) {
             throw new AdminUserNotFoundException();
         }
         if (user.isDeleted()) {
