@@ -5,6 +5,9 @@ import com.harudle.auth.application.CurrentUserService;
 import com.harudle.auth.application.InvalidCurrentUserException;
 import com.harudle.common.error.ErrorType;
 import com.harudle.common.error.ProblemDetailFactory;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Objects;
 import java.util.UUID;
@@ -19,6 +22,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = "Auth")
+@SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequestMapping("/api/v1/me")
 public class CurrentUserController {
@@ -34,6 +39,10 @@ public class CurrentUserController {
         this.problemDetailFactory = problemDetailFactory;
     }
 
+    @Operation(
+            summary = "내 프로필 조회",
+            description = "인증된 사용자의 프로필과 연결된 OAuth Provider를 조회합니다."
+    )
     @GetMapping
     public ResponseEntity<CurrentUserResponse> find(
             @AuthenticationPrincipal Jwt jwt
