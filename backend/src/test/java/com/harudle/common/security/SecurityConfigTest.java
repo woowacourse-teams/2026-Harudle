@@ -9,8 +9,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.harudle.auth.application.AccessTokenService;
+import com.harudle.auth.domain.User;
+import com.harudle.auth.infrastructure.UserRepository;
 import java.time.Instant;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,7 +23,9 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpSession;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.testcontainers.junit.jupiter.Container;
@@ -32,6 +37,9 @@ import org.testcontainers.utility.DockerImageName;
 @SpringBootTest(properties = "HARUDLE_API_DOCUMENTATION_ENABLED=true")
 @AutoConfigureMockMvc
 @Import(SecurityTestController.class)
+@TestPropertySource(properties = {
+        "app.auth.failure-redirect=http://localhost:5173/auth/callback?error=oauth_failed"
+})
 class SecurityConfigTest {
 
     private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:18-alpine");
@@ -46,6 +54,17 @@ class SecurityConfigTest {
     @Autowired
     private AccessTokenService accessTokenService;
 
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @AfterEach
+    void tearDown() {
+        userRepository.deleteAll();
+    }
+
     @Test
     @DisplayName("Access Token 없이 보호 API에 접근할 수 없다")
     void rejectsUnauthenticatedApiRequest() throws Exception {
@@ -57,6 +76,42 @@ class SecurityConfigTest {
                 .andExpect(jsonPath("$.type").value("urn:harudle:problem:unauthorized"))
                 .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
                 .andExpect(jsonPath("$.traceId").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("DB에 존재하지 않는 사용자는 관리자 API에 접근할 수 없다")
+    void rejectsUnknownUserFromAdminApi() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/test")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + issueAccessToken(UUID.randomUUID())))
+                .andExpect(status().isForbidden())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"))
+                .andExpect(jsonPath("$.traceId").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("인증된 일반 사용자는 관리자 API에 접근할 수 없다")
+    void rejectsRegularUserFromAdminApi() throws Exception {
+        User user = saveUser("security-user@harudle.example", "일반 사용자");
+
+        mockMvc.perform(get("/api/v1/admin/test")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + issueAccessToken(user.getId())))
+                .andExpect(status().isForbidden())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"))
+                .andExpect(jsonPath("$.traceId").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("인증된 관리자는 관리자 API에 접근할 수 있다")
+    void acceptsAdminApiRequestForAdminUser() throws Exception {
+        User admin = saveUser("security-admin@harudle.example", "관리자");
+        grantAdminRole(admin);
+
+        mockMvc.perform(get("/api/v1/admin/test")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + issueAccessToken(admin.getId())))
+                .andExpect(status().isOk())
+                .andExpect(content().string("admin"));
     }
 
     @Test
@@ -74,7 +129,7 @@ class SecurityConfigTest {
     @Test
     @DisplayName("유효한 Access Token으로 보호 API에 접근할 수 있다")
     void acceptsValidAccessToken() throws Exception {
-        String accessToken = issueAccessToken();
+        String accessToken = issueAccessToken(UUID.randomUUID());
 
         MvcResult result = mockMvc.perform(get("/api/v1/test-auth")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
@@ -146,7 +201,7 @@ class SecurityConfigTest {
     @DisplayName("등록하지 않은 경로는 접근할 수 없다")
     void rejectsUnregisteredPath() throws Exception {
         mockMvc.perform(get("/unregistered")
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + issueAccessToken()))
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + issueAccessToken(UUID.randomUUID())))
                 .andExpect(status().isForbidden())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(header().string(HttpHeaders.WWW_AUTHENTICATE, startsWith("Bearer")))
@@ -182,9 +237,17 @@ class SecurityConfigTest {
                 ));
     }
 
-    private String issueAccessToken() {
+    private User saveUser(String email, String name) {
+        return userRepository.saveAndFlush(new User(email, name, Instant.now()));
+    }
+
+    private void grantAdminRole(User user) {
+        jdbcTemplate.update("UPDATE users SET role = 'ADMIN' WHERE id = ?", user.getId());
+    }
+
+    private String issueAccessToken(UUID userId) {
         return accessTokenService.issue(
-                UUID.randomUUID(),
+                userId,
                 Instant.now()
         ).accessToken();
     }

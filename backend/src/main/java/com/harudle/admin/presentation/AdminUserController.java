@@ -1,0 +1,90 @@
+package com.harudle.admin.presentation;
+
+import com.harudle.admin.presentation.dto.AdminUserDetailResponse;
+import com.harudle.admin.presentation.dto.AdminGenerationLimitRequest;
+import com.harudle.admin.presentation.dto.AdminGenerationUsageRestoreRequest;
+import com.harudle.admin.presentation.dto.AdminGenerationUsageResponse;
+import com.harudle.admin.presentation.dto.AdminUserSearchResponse;
+import com.harudle.admin.query.AdminUserPage;
+import com.harudle.admin.service.AdminGenerationUsageService;
+import com.harudle.admin.service.AdminUserQueryService;
+import com.harudle.common.validation.IdempotencyKeyParser;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import java.util.UUID;
+import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@Validated
+@RestController
+@RequestMapping("/api/v1/admin/users")
+class AdminUserController {
+
+    private static final int MAX_PAGE_SIZE = 100;
+    private static final int MAX_PAGE = Integer.MAX_VALUE / MAX_PAGE_SIZE;
+
+    private final AdminUserQueryService adminUserQueryService;
+    private final AdminGenerationUsageService adminGenerationUsageService;
+
+    AdminUserController(
+            AdminUserQueryService adminUserQueryService,
+            AdminGenerationUsageService adminGenerationUsageService
+    ) {
+        this.adminUserQueryService = adminUserQueryService;
+        this.adminGenerationUsageService = adminGenerationUsageService;
+    }
+
+    @GetMapping
+    AdminUserSearchResponse search(
+            @RequestParam(defaultValue = "") String query,
+            @RequestParam(defaultValue = "0") @Min(0) @Max(MAX_PAGE) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(MAX_PAGE_SIZE) int size
+    ) {
+        AdminUserPage result = adminUserQueryService.search(query, page, size);
+        return AdminUserSearchResponse.from(result, page, size);
+    }
+
+    @GetMapping("/{userId}")
+    AdminUserDetailResponse findDetail(@PathVariable UUID userId) {
+        return AdminUserDetailResponse.from(adminUserQueryService.findDetail(userId));
+    }
+
+    @PatchMapping("/{userId}/generation-usage/restore")
+    AdminGenerationUsageResponse restoreGenerationUsage(
+            @PathVariable UUID userId,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
+            @Valid @RequestBody AdminGenerationUsageRestoreRequest request
+    ) {
+        return AdminGenerationUsageResponse.from(
+                adminGenerationUsageService.restore(
+                        userId,
+                        request.count(),
+                        IdempotencyKeyParser.parse(idempotencyKey)
+                )
+        );
+    }
+
+    @PutMapping("/{userId}/generation-usage/reset")
+    AdminGenerationUsageResponse resetGenerationUsage(@PathVariable UUID userId) {
+        return AdminGenerationUsageResponse.from(adminGenerationUsageService.reset(userId));
+    }
+
+    @PutMapping("/{userId}/generation-limit")
+    ResponseEntity<Void> changeGenerationLimit(
+            @PathVariable UUID userId,
+            @Valid @RequestBody AdminGenerationLimitRequest request
+    ) {
+        adminGenerationUsageService.changeLimit(userId, request.limitCount());
+        return ResponseEntity.noContent().build();
+    }
+}
