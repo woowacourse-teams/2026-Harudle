@@ -9,7 +9,12 @@ import { restoreAccessToken } from '../../shared/auth';
 
 const LoginPage = () => {
   const navigate = useNavigate();
+
   useEffect(() => {
+    if (localStorage.getItem('harudle.has-completed-oauth') === null) {
+      return;
+    }
+
     const tryRestoreAccessToken = async (): Promise<boolean> => {
       try {
         await restoreAccessToken();
