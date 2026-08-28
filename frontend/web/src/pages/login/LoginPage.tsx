@@ -3,8 +3,33 @@ import harudleLogo from '../../assets/images/harudle-logo.png';
 import loginHero from '../../assets/images/login-hero.png';
 import kakaoIcon from '../../assets/icons/kakao.svg';
 import { theme } from '../../styles/theme';
+import { useEffect } from 'react';
+import { useNavigate } from 'react-router';
+import { restoreAccessToken } from '../../shared/auth';
 
 const LoginPage = () => {
+  const navigate = useNavigate();
+  useEffect(() => {
+    const tryRestoreAccessToken = async (): Promise<boolean> => {
+      try {
+        await restoreAccessToken();
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    const checkAuthentication = async () => {
+      const isAuthenticated = await tryRestoreAccessToken();
+
+      if (isAuthenticated) {
+        navigate('/', { replace: true });
+        return;
+      }
+    };
+
+    void checkAuthentication();
+  }, [navigate]);
   return (
     <div css={pageStyle}>
       <div css={heroStyle}>
