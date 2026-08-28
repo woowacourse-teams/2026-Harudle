@@ -19,18 +19,25 @@ class DiaryImagePromptRendererTest {
 
         assertThat(renderedPrompt)
                 .startsWith("SELECTED STORY: 인스타 맛집의 함정")
-                .contains("VISIBLE COMIC TITLE READS EXACTLY: \"# 인스타 맛집의 함정\"")
-                .contains("FIXED CREATOR HANDLE READS EXACTLY: \"@harudle.official\"")
+                .contains("This selected-story line is internal metadata only. Never render it inside any panel.")
                 .contains("Render exactly six readable text blocks: one comic title, four panel captions, "
                         + "and one creator handle.")
-                .contains("Comic title reads exactly: \"# 인스타 맛집의 함정\"")
-                .contains("Creator handle reads exactly: \"@harudle.official\"")
-                .contains("Place both on the same footer line below the grid:")
+                .contains("FINAL FOOTER LOCK — HIGHEST LAYOUT PRIORITY:")
+                .contains("- left: \"# 인스타 맛집의 함정\"")
+                .contains("- right: \"@harudle.official\"")
+                .contains("Never place either footer text inside Panel 1, Panel 2, Panel 3, or Panel 4.")
                 .contains("- \"와, 침 고인다\"")
                 .contains("- \"막상 먹어보면...\"")
                 .contains("- \"다신 안 속아\"")
                 .contains("- \"이번엔 다를지도?\"")
+                .doesNotContain("VISIBLE COMIC TITLE READS EXACTLY:")
+                .doesNotContain("FIXED CREATOR HANDLE READS EXACTLY:")
                 .doesNotContain("Render exactly these four Korean captions once each and no other readable text:");
+
+        assertThat(renderedPrompt.lines()
+                .filter("This panel contains exactly one readable text block: its assigned caption."::equals)
+                .count())
+                .isEqualTo(4);
     }
 
     private static Storyboard createStoryboard() {

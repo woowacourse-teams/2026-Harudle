@@ -97,11 +97,13 @@ class GeminiDiaryImageGeneratorTest {
         });
         assertThat(parts.get(2).text()).get().asString()
                 .startsWith("[Final Task]\nIMAGE STYLE PROMPT\n\nSELECTED STORY:")
-                .contains("VISIBLE COMIC TITLE READS EXACTLY: \"# 카페에서 생긴 일\"")
-                .contains("FIXED CREATOR HANDLE READS EXACTLY: \"@harudle.official\"")
                 .contains("Panel 1 — TOP LEFT — SETUP:")
                 .contains("Caption reads exactly: \"캡션 1\"")
-                .contains("Render exactly six readable text blocks:");
+                .contains("This panel contains exactly one readable text block: its assigned caption.")
+                .contains("Render exactly six readable text blocks:")
+                .contains("FINAL FOOTER LOCK — HIGHEST LAYOUT PRIORITY:")
+                .contains("- left: \"# 카페에서 생긴 일\"")
+                .contains("- right: \"@harudle.official\"");
 
         GenerateContentConfig config = configCaptor.getValue();
         assertThat(config.responseModalities()).contains(List.of("TEXT", "IMAGE"));
