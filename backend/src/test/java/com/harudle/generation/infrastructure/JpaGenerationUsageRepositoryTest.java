@@ -18,6 +18,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.AfterEach;
@@ -354,16 +355,20 @@ class JpaGenerationUsageRepositoryTest {
     }
 
     private List<Callable<Optional<GenerationUsage>>> incrementTasks() {
-        return IntStream.range(0, CONCURRENT_REQUEST_COUNT)
-                .mapToObj(index -> (Callable<Optional<GenerationUsage>>) () ->
-                        generationUsageRepository.tryIncrementWithinLimit(USER_ID, USAGE_DATE))
-                .toList();
+        return createTasks(
+                () -> () -> generationUsageRepository.tryIncrementWithinLimit(USER_ID, USAGE_DATE)
+        );
     }
 
     private List<Callable<Optional<GenerationUsage>>> restoreTasks() {
+        return createTasks(
+                () -> () -> generationUsageRepository.tryRestore(USER_ID, USAGE_DATE, 1)
+        );
+    }
+
+    private <T> List<Callable<T>> createTasks(Supplier<Callable<T>> taskFactory) {
         return IntStream.range(0, CONCURRENT_REQUEST_COUNT)
-                .mapToObj(index -> (Callable<Optional<GenerationUsage>>) () ->
-                        generationUsageRepository.tryRestore(USER_ID, USAGE_DATE, 1))
+                .mapToObj(index -> taskFactory.get())
                 .toList();
     }
 
