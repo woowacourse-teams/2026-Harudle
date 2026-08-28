@@ -118,6 +118,12 @@ public class SecurityConfig {
                         "/error"
                         ).permitAll()
                         .requestMatchers("/api/v1/admin/**").access(adminAuthorizationManager)
+                        .requestMatchers(
+                                "/scalar",
+                                "/scalar/**",
+                                "/v3/api-docs",
+                                "/v3/api-docs/**"
+                        ).permitAll()
                         .requestMatchers("/api/v1/**").authenticated()
                         .anyRequest().denyAll()
                 )

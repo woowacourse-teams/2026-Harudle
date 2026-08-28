@@ -34,7 +34,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest
+@SpringBootTest(properties = "HARUDLE_API_DOCUMENTATION_ENABLED=true")
 @AutoConfigureMockMvc
 @Import(SecurityTestController.class)
 @TestPropertySource(properties = {
@@ -158,6 +158,43 @@ class SecurityConfigTest {
         mockMvc.perform(get("/api/v1/public/test"))
                 .andExpect(status().isOk())
                 .andExpect(content().string("public"));
+    }
+
+    @Test
+    @DisplayName("Scalar 문서는 Access Token 없이 접근할 수 있다")
+    void allowsScalarWithoutAccessToken() throws Exception {
+        mockMvc.perform(get("/scalar"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("OpenAPI 문서는 Access Token 없이 접근할 수 있다")
+    void allowsOpenApiDocsWithoutAccessToken() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON));
+    }
+
+    @Test
+    @DisplayName("OpenAPI 문서에 CSRF 입력 방식과 변경 API의 성공 응답을 명시한다")
+    void documentsCsrfAndMutationSuccessResponses() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.components.securitySchemes.csrfToken.type").value("apiKey"))
+                .andExpect(jsonPath("$.components.securitySchemes.csrfToken.in").value("header"))
+                .andExpect(jsonPath("$.components.securitySchemes.csrfToken.name").value("X-XSRF-TOKEN"))
+                .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.security[0].bearerAuth").isArray())
+                .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.security[0].csrfToken").isArray())
+                .andExpect(jsonPath("$.paths['/api/v1/guest/session'].post.security[0].csrfToken").isArray())
+                .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['200']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['201']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/guest/diaries'].post.responses['200']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/guest/diaries'].post.responses['201']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/diaries/{diaryId}'].delete.responses['204']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/diaries/{diaryId}/share-link'].put.responses['200']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/diaries/{diaryId}/share-link'].put.responses['201']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/auth/logout'].post.responses['204']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/guest/session'].post.responses['204']").exists());
     }
 
     @Test

@@ -4,6 +4,9 @@ import com.harudle.guest.application.GuestSessionService;
 import com.harudle.guest.application.IssuedGuestSession;
 import com.harudle.guest.infrastructure.cookie.GuestSessionCookieReader;
 import com.harudle.guest.infrastructure.cookie.GuestSessionCookieWriter;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.time.Clock;
@@ -17,6 +20,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = "Guest")
 @RestController
 @RequestMapping("/api/v1/guest")
 public class GuestSessionController {
@@ -39,6 +43,11 @@ public class GuestSessionController {
         this.clock = Objects.requireNonNull(authClock, "authClock는 필수입니다.");
     }
 
+    @Operation(
+            summary = "게스트 세션 발급 또는 재사용",
+            description = "유효한 게스트 세션 쿠키가 있으면 재사용하고, 없으면 새 세션을 발급합니다."
+    )
+    @ApiResponse(responseCode = "204", description = "게스트 세션 발급 또는 재사용 완료")
     @PostMapping("/session")
     public ResponseEntity<Void> issue(
             HttpServletRequest request,

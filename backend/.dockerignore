@@ -1,0 +1,11 @@
+.gradle
+build
+.idea
+*.iml
+.env
+.env.*
+docs
+README.md
+compose.yaml
+Dockerfile*
+!Dockerfile
