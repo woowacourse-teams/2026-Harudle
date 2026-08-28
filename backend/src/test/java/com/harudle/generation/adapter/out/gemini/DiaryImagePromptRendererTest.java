@@ -19,12 +19,13 @@ class DiaryImagePromptRendererTest {
 
         assertThat(renderedPrompt)
                 .startsWith("SELECTED STORY: 인스타 맛집의 함정")
-                .contains("VISIBLE COMIC TITLE READS EXACTLY: \"인스타 맛집의 함정\"")
+                .contains("VISIBLE COMIC TITLE READS EXACTLY: \"# 인스타 맛집의 함정\"")
                 .contains("FIXED CREATOR HANDLE READS EXACTLY: \"@harudle.official\"")
                 .contains("Render exactly six readable text blocks: one comic title, four panel captions, "
                         + "and one creator handle.")
-                .contains("Comic title reads exactly: \"인스타 맛집의 함정\"")
+                .contains("Comic title reads exactly: \"# 인스타 맛집의 함정\"")
                 .contains("Creator handle reads exactly: \"@harudle.official\"")
+                .contains("Place both on the same footer line below the grid:")
                 .contains("- \"와, 침 고인다\"")
                 .contains("- \"막상 먹어보면...\"")
                 .contains("- \"다신 안 속아\"")

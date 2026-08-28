@@ -7,6 +7,7 @@ import java.util.List;
 
 public final class DiaryImagePromptRenderer {
 
+    private static final String TITLE_PREFIX = "# ";
     private static final String CREATOR_HANDLE = "@harudle.official";
     private static final String PANEL_HEADER_FORMAT = "Panel %d — %s — %s:";
     private static final List<String> PANEL_POSITIONS = List.of(
@@ -31,12 +32,14 @@ public final class DiaryImagePromptRenderer {
     }
 
     private static void addStoryOverview(List<String> lines, Storyboard storyboard) {
+        String visibleTitle = TITLE_PREFIX + storyboard.title();
         lines.add("SELECTED STORY: " + storyboard.title());
-        lines.add("VISIBLE COMIC TITLE READS EXACTLY: \"" + storyboard.title() + "\"");
-        lines.add("Place the comic title once above the four-panel grid, centered and outside the grid border.");
+        lines.add("VISIBLE COMIC TITLE READS EXACTLY: \"" + visibleTitle + "\"");
+        lines.add("Place the comic title once below the four-panel grid, left-aligned with the grid's left edge, "
+                + "and outside the grid border.");
         lines.add("FIXED CREATOR HANDLE READS EXACTLY: \"" + CREATOR_HANDLE + "\"");
         lines.add("Place the creator handle once below the grid, right-aligned with the grid's right edge, "
-                + "and outside the grid border.");
+                + "outside the grid border, and on the same footer line as the comic title.");
         lines.add("");
         lines.add("SOURCE AND ADAPTATION RULE:");
         lines.add("This four-panel story was adapted from one diary entry. Preserve this intentional "
@@ -82,21 +85,24 @@ public final class DiaryImagePromptRenderer {
     }
 
     private static void addFinalStoryCheck(List<String> lines, Storyboard storyboard) {
+        String visibleTitle = TITLE_PREFIX + storyboard.title();
         lines.add("");
         lines.add("FINAL STORY CHECK:");
         lines.add("Exactly four equal 2x2 panels in top-left to bottom-right reading order. Follow "
                 + "the storyboard's clear chronological cause-and-effect order.");
         lines.add("Render exactly six readable text blocks: one comic title, four panel captions, "
                 + "and one creator handle.");
-        lines.add("Comic title reads exactly: \"" + storyboard.title() + "\"");
+        lines.add("Comic title reads exactly: \"" + visibleTitle + "\"");
         lines.add("Creator handle reads exactly: \"" + CREATOR_HANDLE + "\"");
-        lines.add("Place the comic title above the grid and the creator handle below the grid, right-aligned "
-                + "with the grid's right edge. Keep both outside the grid border.");
+        lines.add("Place both on the same footer line below the grid: comic title left-aligned with the grid's "
+                + "left edge and creator handle right-aligned with the grid's right edge. Keep both outside "
+                + "the grid border.");
         lines.add("The four panel captions read exactly:");
         for (StoryPanel panel : storyboard.panels()) {
             lines.add("- \"" + panel.caption() + "\"");
         }
-        lines.add("Do not render any other readable text, date, hashtag, logo, signature, or footer label.");
+        lines.add("Do not render any other readable text, date, additional hashtag, logo, signature, "
+                + "or footer label.");
         lines.add("Keep the ending faithful to the diary. Square 1:1 canvas.");
     }
 }
