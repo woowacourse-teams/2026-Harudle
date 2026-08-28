@@ -1,0 +1,60 @@
+name: harudle
+
+services:
+  backend:
+    image: harudle-backend:local
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      SERVER_PORT: 8080
+      SERVER_FORWARD_HEADERS_STRATEGY: framework
+    expose:
+      - "8080"
+    healthcheck:
+      test: >-
+        code=$$(curl -sS -o /dev/null -w '%{http_code}'
+        http://127.0.0.1:8080/api/v1/public/shares/00000000-0000-0000-0000-000000000000);
+        [ "$$code" -ge 200 ] && [ "$$code" -lt 500 ]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+    mem_limit: 1200m
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    networks:
+      - app
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: "${AWS_REGION:-ap-northeast-2}"
+        awslogs-group: "/harudle/prod/backend"
+        awslogs-create-group: "true"
+
+  frontend:
+    image: harudle-frontend:local
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_started
+    ports:
+      - "127.0.0.1:${APP_PORT:-3000}:80"
+    mem_limit: 192m
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - app
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: "${AWS_REGION:-ap-northeast-2}"
+        awslogs-group: "/harudle/prod/frontend-nginx"
+        awslogs-create-group: "true"
+
+networks:
+  app:
+    driver: bridge

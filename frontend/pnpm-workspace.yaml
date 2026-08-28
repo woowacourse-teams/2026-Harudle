@@ -3,5 +3,6 @@ packages:
   - "mobile"
   - "packages/*"
 allowBuilds:
+  core-js: true
   msw: false
   unrs-resolver: false

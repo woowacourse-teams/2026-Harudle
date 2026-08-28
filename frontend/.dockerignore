@@ -1,0 +1,10 @@
+node_modules
+web/node_modules
+web/dist
+.idea
+*.iml
+.env
+.env.*
+README.md
+Dockerfile*
+!Dockerfile
