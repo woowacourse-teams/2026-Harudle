@@ -8,6 +8,8 @@ import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.dto.CreateDiaryResult;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -65,6 +67,10 @@ class DiaryController {
             summary = "일기 생성",
             description = "일기를 저장하고 4컷 이미지를 동기 생성합니다. 동일한 멱등성 요청의 성공 결과는 재사용합니다."
     )
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "새 일기 생성 완료"),
+            @ApiResponse(responseCode = "200", description = "멱등 재요청의 기존 일기 반환")
+    })
     @PostMapping
     public ResponseEntity<CreateDiaryResponse> create(
             Authentication authentication,
@@ -122,6 +128,7 @@ class DiaryController {
             summary = "일기 삭제",
             description = "본인 소유의 일기를 소프트 삭제합니다. 이미 없거나 삭제된 경우에도 성공합니다."
     )
+    @ApiResponse(responseCode = "204", description = "일기 삭제 완료")
     @DeleteMapping("/{diaryId}")
     public ResponseEntity<Void> delete(
             Authentication authentication,

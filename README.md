@@ -202,7 +202,7 @@ cd frontend
 pnpm --dir web check
 ```
 
-Pull Request에서는 변경 영역에 맞춰 [GitHub Actions](./.github/workflows/test.yml)가 Backend 또는 Frontend 검증을 실행합니다.
+Pull Request의 대상 브랜치가 `develop-frontend`이면 Frontend 검증만, `develop-backend`이면 Backend 검증만 실행합니다. `dev` 또는 `main` 대상 Pull Request에서는 Backend와 Frontend 검증을 모두 실행합니다.
 
 <br>
 

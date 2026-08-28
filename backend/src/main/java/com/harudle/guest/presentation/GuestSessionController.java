@@ -5,6 +5,7 @@ import com.harudle.guest.application.IssuedGuestSession;
 import com.harudle.guest.infrastructure.cookie.GuestSessionCookieReader;
 import com.harudle.guest.infrastructure.cookie.GuestSessionCookieWriter;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -46,6 +47,7 @@ public class GuestSessionController {
             summary = "게스트 세션 발급 또는 재사용",
             description = "유효한 게스트 세션 쿠키가 있으면 재사용하고, 없으면 새 세션을 발급합니다."
     )
+    @ApiResponse(responseCode = "204", description = "게스트 세션 발급 또는 재사용 완료")
     @PostMapping("/session")
     public ResponseEntity<Void> issue(
             HttpServletRequest request,

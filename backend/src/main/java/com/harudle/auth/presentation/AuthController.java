@@ -10,6 +10,7 @@ import com.harudle.common.error.ErrorType;
 import com.harudle.common.error.ProblemDetailFactory;
 import com.harudle.common.security.LegacyCsrfCookieCleaner;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -107,6 +108,7 @@ public class AuthController {
             summary = "로그아웃",
             description = "Refresh Token 쿠키로 현재 세션을 폐기하고 쿠키를 삭제합니다."
     )
+    @ApiResponse(responseCode = "204", description = "로그아웃 완료")
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(
             HttpServletRequest request,
