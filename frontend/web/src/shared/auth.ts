@@ -20,6 +20,11 @@ export const authFetch = async (
   init?: AuthFetchRequestInit,
 ) => {
   try {
+    if (localStorage.getItem('harudle.has-completed-oauth') === null) {
+      window.location.replace('/login');
+      throw new Error('OAuth 로그인 이력이 없습니다.');
+    }
+
     if (!accessToken) {
       await restoreAccessToken();
     }
@@ -115,7 +120,7 @@ export const isRefreshTokenResponse = (
   );
 };
 
-const restoreAccessToken = async (): Promise<void> => {
+export const restoreAccessToken = async (): Promise<void> => {
   if (refreshRequest) {
     await refreshRequest;
     return;
