@@ -1,0 +1,4 @@
+buildspec.yml text eol=lf
+appspec.yml text eol=lf
+deploy/compose.prod.yaml text eol=lf
+deploy/scripts/*.sh text eol=lf
