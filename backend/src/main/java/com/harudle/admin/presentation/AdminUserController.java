@@ -8,6 +8,7 @@ import com.harudle.admin.presentation.dto.AdminUserSearchResponse;
 import com.harudle.admin.query.AdminUserPage;
 import com.harudle.admin.service.AdminGenerationUsageService;
 import com.harudle.admin.service.AdminUserQueryService;
+import com.harudle.common.validation.IdempotencyKeyParser;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -60,10 +62,15 @@ class AdminUserController {
     @PatchMapping("/{userId}/generation-usage/restore")
     AdminGenerationUsageResponse restoreGenerationUsage(
             @PathVariable UUID userId,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody AdminGenerationUsageRestoreRequest request
     ) {
         return AdminGenerationUsageResponse.from(
-                adminGenerationUsageService.restore(userId, request.count())
+                adminGenerationUsageService.restore(
+                        userId,
+                        request.count(),
+                        IdempotencyKeyParser.parse(idempotencyKey)
+                )
         );
     }
 

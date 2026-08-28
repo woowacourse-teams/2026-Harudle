@@ -9,6 +9,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -36,6 +37,9 @@ class AdminGenerationUsageServiceTest {
 
     private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:18-alpine");
     private static final UUID USER_ID = UUID.fromString("08d69a34-6d70-4d42-a158-671bc67733c9");
+    private static final UUID IDEMPOTENCY_KEY = UUID.fromString(
+            "b7a8a9aa-0b1c-4d2e-8f3a-4b5c6d7e8f90"
+    );
     private static final ZoneId SERVICE_ZONE = ZoneId.of("Asia/Seoul");
     private static final LocalDate USAGE_DATE = LocalDate.now(SERVICE_ZONE);
     private static final long CONCURRENCY_READY_TIMEOUT_SECONDS = 5L;
@@ -125,6 +129,30 @@ class AdminGenerationUsageServiceTest {
                 .contains(new GenerationUsage(USAGE_DATE, 0, 3));
     }
 
+    @Test
+    @DisplayName("같은 멱등성 키의 동시 복구 요청은 한 번만 사용량을 차감한다")
+    void restoresOnlyOnceForConcurrentRequestsWithSameIdempotencyKey() throws Exception {
+        CyclicBarrier startBarrier = new CyclicBarrier(2);
+
+        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            Future<GenerationUsage> first = submitRestore(executor, startBarrier);
+            Future<GenerationUsage> second = submitRestore(executor, startBarrier);
+
+            assertThat(first.get(CONCURRENCY_READY_TIMEOUT_SECONDS, TimeUnit.SECONDS))
+                    .isEqualTo(new GenerationUsage(USAGE_DATE, 3, 5));
+            assertThat(second.get(CONCURRENCY_READY_TIMEOUT_SECONDS, TimeUnit.SECONDS))
+                    .isEqualTo(new GenerationUsage(USAGE_DATE, 3, 5));
+        }
+
+        assertThat(generationUsageRepository.find(USER_ID, USAGE_DATE))
+                .contains(new GenerationUsage(USAGE_DATE, 3, 5));
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM admin_generation_usage_restores WHERE idempotency_key = ?",
+                Integer.class,
+                IDEMPOTENCY_KEY
+        )).isEqualTo(1);
+    }
+
     private Future<?> submitLimitChange(
             ExecutorService executor,
             CountDownLatch limitChangeHolding,
@@ -135,6 +163,20 @@ class AdminGenerationUsageServiceTest {
             limitChangeHolding.countDown();
             awaitLatch(releaseLimitChange);
         }));
+    }
+
+    private Future<GenerationUsage> submitRestore(
+            ExecutorService executor,
+            CyclicBarrier startBarrier
+    ) {
+        return executor.submit(() -> {
+            try {
+                startBarrier.await();
+                return adminGenerationUsageService.restore(USER_ID, 2, IDEMPOTENCY_KEY);
+            } catch (Exception exception) {
+                throw new IllegalStateException("동시 사용량 복구 요청을 처리하지 못했습니다.", exception);
+            }
+        });
     }
 
     private void awaitLatch(CountDownLatch latch) {

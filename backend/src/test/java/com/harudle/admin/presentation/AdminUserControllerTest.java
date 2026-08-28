@@ -44,6 +44,8 @@ class AdminUserControllerTest {
     private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:18-alpine");
     private static final Instant CREATED_AT = Instant.parse("2026-08-25T01:00:00Z");
     private static final ZoneId SERVICE_ZONE = ZoneId.of("Asia/Seoul");
+    private static final String IDEMPOTENCY_KEY = "b7a8a9aa-0b1c-4d2e-8f3a-4b5c6d7e8f90";
+    private static final String ANOTHER_IDEMPOTENCY_KEY = "c8b9baab-1c2d-4e3f-9a4b-5c6d7e8f9012";
 
     @Container
     @ServiceConnection
@@ -279,6 +281,7 @@ class AdminUserControllerTest {
                         guestUser.getId()
                 )
                         .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+                        .header("Idempotency-Key", IDEMPOTENCY_KEY)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"count\":1}"))
                 .andExpect(status().isNotFound())
@@ -313,6 +316,7 @@ class AdminUserControllerTest {
 
         mockMvc.perform(patch("/api/v1/admin/users/{userId}/generation-usage/restore", target.getId())
                         .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+                        .header("Idempotency-Key", IDEMPOTENCY_KEY)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"count\":2}"))
                 .andExpect(status().isOk())
@@ -327,7 +331,79 @@ class AdminUserControllerTest {
                 target.getId(),
                 LocalDate.now(SERVICE_ZONE)
         );
-        org.assertj.core.api.Assertions.assertThat(usedCount).isEqualTo(1);
+        assertThat(usedCount).isEqualTo(1);
+
+        mockMvc.perform(patch("/api/v1/admin/users/{userId}/generation-usage/restore", target.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+                        .header("Idempotency-Key", IDEMPOTENCY_KEY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"count\":2}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.usageDate").value(LocalDate.now(SERVICE_ZONE).toString()))
+                .andExpect(jsonPath("$.usedCount").value(1))
+                .andExpect(jsonPath("$.limitCount").value(3))
+                .andExpect(jsonPath("$.remainingCount").value(2));
+
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT used_count FROM daily_generation_usage WHERE user_id = ? AND usage_date = ?",
+                Integer.class,
+                target.getId(),
+                LocalDate.now(SERVICE_ZONE)
+        )).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("같은 멱등성 키를 다른 복구 요청에 사용하면 거부한다")
+    void rejectsReuseOfIdempotencyKeyForDifferentRestore() throws Exception {
+        User admin = saveUser("관리자");
+        grantAdminRole(admin);
+        User target = saveUser("복구 대상 사용자");
+        saveTodayUsage(target, 3, 3);
+
+        mockMvc.perform(patch("/api/v1/admin/users/{userId}/generation-usage/restore", target.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+                        .header("Idempotency-Key", IDEMPOTENCY_KEY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"count\":1}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(patch("/api/v1/admin/users/{userId}/generation-usage/restore", target.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+                        .header("Idempotency-Key", IDEMPOTENCY_KEY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"count\":2}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("IDEMPOTENCY_KEY_CONFLICT"));
+
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT used_count FROM daily_generation_usage WHERE user_id = ? AND usage_date = ?",
+                Integer.class,
+                target.getId(),
+                LocalDate.now(SERVICE_ZONE)
+        )).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("멱등성 키가 없으면 사용량 복구를 거부한다")
+    void rejectsMissingIdempotencyKeyForGenerationUsageRestore() throws Exception {
+        User admin = saveUser("관리자");
+        grantAdminRole(admin);
+        User target = saveUser("복구 대상 사용자");
+        saveTodayUsage(target, 3, 3);
+
+        mockMvc.perform(patch("/api/v1/admin/users/{userId}/generation-usage/restore", target.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"count\":1}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_IDEMPOTENCY_KEY"));
+
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT used_count FROM daily_generation_usage WHERE user_id = ? AND usage_date = ?",
+                Integer.class,
+                target.getId(),
+                LocalDate.now(SERVICE_ZONE)
+        )).isEqualTo(3);
     }
 
     @Test
@@ -342,6 +418,20 @@ class AdminUserControllerTest {
                         targetWithoutUsage.getId()
                 )
                         .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+                        .header("Idempotency-Key", IDEMPOTENCY_KEY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"count\":1}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("GENERATION_USAGE_CONFLICT"));
+
+        saveTodayUsage(targetWithoutUsage, 1, 3);
+
+        mockMvc.perform(patch(
+                        "/api/v1/admin/users/{userId}/generation-usage/restore",
+                        targetWithoutUsage.getId()
+                )
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+                        .header("Idempotency-Key", IDEMPOTENCY_KEY)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"count\":1}"))
                 .andExpect(status().isConflict())
@@ -355,6 +445,7 @@ class AdminUserControllerTest {
                         targetWithInsufficientUsage.getId()
                 )
                         .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+                        .header("Idempotency-Key", ANOTHER_IDEMPOTENCY_KEY)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"count\":2}"))
                 .andExpect(status().isConflict())
@@ -375,6 +466,7 @@ class AdminUserControllerTest {
                         deletedUser.getId()
                 )
                         .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+                        .header("Idempotency-Key", IDEMPOTENCY_KEY)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"count\":1}"))
                 .andExpect(status().isConflict())

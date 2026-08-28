@@ -1,14 +1,13 @@
-package com.harudle.diary.presentation;
+package com.harudle.common.validation;
 
-import com.harudle.common.validation.CanonicalUuidParser;
 import java.util.UUID;
 
-final class IdempotencyKeyParser {
+public final class IdempotencyKeyParser {
 
     private IdempotencyKeyParser() {
     }
 
-    static UUID parse(String idempotencyKey) {
+    public static UUID parse(String idempotencyKey) {
         return CanonicalUuidParser.parse(idempotencyKey)
                 .orElseThrow(InvalidIdempotencyKeyException::new);
     }

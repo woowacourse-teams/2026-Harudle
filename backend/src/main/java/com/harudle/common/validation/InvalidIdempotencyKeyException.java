@@ -1,4 +1,4 @@
-package com.harudle.diary.presentation;
+package com.harudle.common.validation;
 
 import java.io.Serial;
 

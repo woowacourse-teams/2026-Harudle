@@ -5,7 +5,7 @@ import com.harudle.admin.service.exception.AdminGenerationUsageConflictException
 import com.harudle.admin.service.exception.AdminGenerationHistoryDateRangeException;
 import com.harudle.admin.service.exception.AdminInactiveUserException;
 import com.harudle.auth.presentation.AuthenticationRequiredException;
-import com.harudle.diary.presentation.InvalidIdempotencyKeyException;
+import com.harudle.common.validation.InvalidIdempotencyKeyException;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
 import com.harudle.generation.service.exception.AiGenerationException;
