@@ -1,5 +1,5 @@
 import { css } from '@emotion/react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useSearchParams } from 'react-router';
 import logo from '../../assets/images/harudle-logo.png';
@@ -65,26 +65,38 @@ const AdminPage = () => {
   const [usageModal, setUsageModal] = useState<UsageModalMode | null>(null);
   const [usageModalValue, setUsageModalValue] = useState('');
   const [usageModalError, setUsageModalError] = useState<string | null>(null);
+  const requestSequenceRef = useRef(0);
+  const usersRequestIdRef = useRef(0);
+  const generationsRequestIdRef = useRef(0);
+  const failedGenerationRequestIdRef = useRef(0);
+  const detailRequestIdRef = useRef(0);
 
   const loadUsers = useCallback(async (nextQuery = '') => {
+    const requestId = ++requestSequenceRef.current;
+    usersRequestIdRef.current = requestId;
     setLoading(true);
     setError(null);
     try {
       const result = await searchAdminUsers(nextQuery);
-      setUsers(result.content);
+      if (usersRequestIdRef.current === requestId) {
+        setUsers(result.content);
+      }
     } catch (cause) {
+      if (requestSequenceRef.current !== requestId) return;
       setError(
         cause instanceof Error
           ? cause.message
           : '사용자를 불러오지 못했습니다.',
       );
     } finally {
-      setLoading(false);
+      if (requestSequenceRef.current === requestId) setLoading(false);
     }
   }, []);
 
   const loadGenerations = useCallback(
     async (status?: GenerationStatus) => {
+      const requestId = ++requestSequenceRef.current;
+      generationsRequestIdRef.current = requestId;
       setLoading(true);
       setError(null);
       try {
@@ -95,21 +107,28 @@ const AdminPage = () => {
           from: historyDate,
           to: historyDate,
         });
-        setGenerations(result.content);
+        if (generationsRequestIdRef.current === requestId) {
+          setGenerations(result.content);
+        }
       } catch (cause) {
+        if (requestSequenceRef.current !== requestId) return;
         setError(
           cause instanceof Error
             ? cause.message
             : '생성 이력을 불러오지 못했습니다.',
         );
       } finally {
-        setLoading(false);
+        if (requestSequenceRef.current === requestId) setLoading(false);
       }
     },
     [historyDate],
   );
 
   const loadDashboard = useCallback(async () => {
+    const requestId = ++requestSequenceRef.current;
+    usersRequestIdRef.current = requestId;
+    generationsRequestIdRef.current = requestId;
+    failedGenerationRequestIdRef.current = requestId;
     setLoading(true);
     setError(null);
     setFailedGenerationCount(null);
@@ -131,17 +150,24 @@ const AdminPage = () => {
             to: historyDate,
           }),
         ]);
-      setUsers(userPage.content);
-      setGenerations(generationPage.content);
-      setFailedGenerationCount(failedGenerationPage.totalElements);
+      if (usersRequestIdRef.current === requestId) {
+        setUsers(userPage.content);
+      }
+      if (generationsRequestIdRef.current === requestId) {
+        setGenerations(generationPage.content);
+      }
+      if (failedGenerationRequestIdRef.current === requestId) {
+        setFailedGenerationCount(failedGenerationPage.totalElements);
+      }
     } catch (cause) {
+      if (requestSequenceRef.current !== requestId) return;
       setError(
         cause instanceof Error
           ? cause.message
           : '관리자 데이터를 불러오지 못했습니다.',
       );
     } finally {
-      setLoading(false);
+      if (requestSequenceRef.current === requestId) setLoading(false);
     }
   }, [historyDate]);
 
@@ -161,25 +187,34 @@ const AdminPage = () => {
   }, [loadUsers, submittedQuery, view]);
 
   const navigate = (nextView: View) => {
+    const invalidationId = ++requestSequenceRef.current;
+    usersRequestIdRef.current = invalidationId;
+    generationsRequestIdRef.current = invalidationId;
+    failedGenerationRequestIdRef.current = invalidationId;
+    detailRequestIdRef.current = invalidationId;
     setDetail(null);
     setUsageModal(null);
     setSearchParams(nextView === 'dashboard' ? {} : { view: nextView });
   };
 
   const selectUser = async (userId: string) => {
+    const requestId = ++requestSequenceRef.current;
+    detailRequestIdRef.current = requestId;
     setUsageModal(null);
     setLoading(true);
     setError(null);
     try {
-      setDetail(await getAdminUser(userId));
+      const result = await getAdminUser(userId);
+      if (detailRequestIdRef.current === requestId) setDetail(result);
     } catch (cause) {
+      if (requestSequenceRef.current !== requestId) return;
       setError(
         cause instanceof Error
           ? cause.message
           : '사용자 정보를 불러오지 못했습니다.',
       );
     } finally {
-      setLoading(false);
+      if (requestSequenceRef.current === requestId) setLoading(false);
     }
   };
 
@@ -195,19 +230,26 @@ const AdminPage = () => {
     action: () => Promise<AdminGenerationUsage>,
   ): Promise<boolean> => {
     if (!detail) return false;
+    const requestId = ++requestSequenceRef.current;
+    detailRequestIdRef.current = requestId;
+    const usersRequestId = usersRequestIdRef.current;
     setLoading(true);
     setError(null);
     try {
       await action();
       const updated = await getAdminUser(detail.id);
+      if (detailRequestIdRef.current !== requestId) return false;
       setDetail(updated);
-      setUsers((current) =>
-        current.map((user) =>
-          user.id === updated.id ? { ...user, ...updated } : user,
-        ),
-      );
+      if (usersRequestIdRef.current === usersRequestId) {
+        setUsers((current) =>
+          current.map((user) =>
+            user.id === updated.id ? { ...user, ...updated } : user,
+          ),
+        );
+      }
       return true;
     } catch (cause) {
+      if (requestSequenceRef.current !== requestId) return false;
       const message =
         cause instanceof Error
           ? cause.message
@@ -216,7 +258,7 @@ const AdminPage = () => {
       setUsageModalError(message);
       return false;
     } finally {
-      setLoading(false);
+      if (requestSequenceRef.current === requestId) setLoading(false);
     }
   };
 
@@ -224,19 +266,26 @@ const AdminPage = () => {
     action: () => Promise<void>,
   ): Promise<boolean> => {
     if (!detail) return false;
+    const requestId = ++requestSequenceRef.current;
+    detailRequestIdRef.current = requestId;
+    const usersRequestId = usersRequestIdRef.current;
     setLoading(true);
     setError(null);
     try {
       await action();
       const updated = await getAdminUser(detail.id);
+      if (detailRequestIdRef.current !== requestId) return false;
       setDetail(updated);
-      setUsers((current) =>
-        current.map((user) =>
-          user.id === updated.id ? { ...user, ...updated } : user,
-        ),
-      );
+      if (usersRequestIdRef.current === usersRequestId) {
+        setUsers((current) =>
+          current.map((user) =>
+            user.id === updated.id ? { ...user, ...updated } : user,
+          ),
+        );
+      }
       return true;
     } catch (cause) {
+      if (requestSequenceRef.current !== requestId) return false;
       const message =
         cause instanceof Error
           ? cause.message
@@ -245,7 +294,7 @@ const AdminPage = () => {
       setUsageModalError(message);
       return false;
     } finally {
-      setLoading(false);
+      if (requestSequenceRef.current === requestId) setLoading(false);
     }
   };
 
