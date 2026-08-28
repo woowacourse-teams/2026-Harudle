@@ -1,11 +1,6 @@
 package com.harudle.admin.presentation;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.harudle.auth.application.AccessTokenService;
 import com.harudle.auth.domain.OAuthAccount;
@@ -15,12 +10,16 @@ import com.harudle.auth.infrastructure.OAuthAccountRepository;
 import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.generation.domain.GenerationPrompt;
 import com.harudle.generation.repository.GenerationPromptRepository;
+import io.restassured.http.ContentType;
+import io.restassured.module.mockmvc.RestAssuredMockMvc;
+import io.restassured.module.mockmvc.response.MockMvcResponse;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,7 +27,6 @@ import org.springframework.boot.testcontainers.service.connection.ServiceConnect
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.junit.jupiter.Container;
@@ -69,9 +67,15 @@ class AdminUserControllerTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @BeforeEach
+    void setUp() {
+        RestAssuredMockMvc.mockMvc(mockMvc);
+    }
+
     @AfterEach
     void tearDown() {
         userRepository.deleteAll();
+        RestAssuredMockMvc.reset();
     }
 
     @Test
@@ -87,29 +91,38 @@ class AdminUserControllerTest {
         saveTodayUsage(activeUser, 2, 3);
         saveGuestSession(guestUser);
 
-        mockMvc.perform(get("/api/v1/admin/users")
-                        .queryParam("query", "  하루들  ")
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content.length()").value(2))
-                .andExpect(jsonPath("$.content[0].id").value(activeUser.getId().toString()))
-                .andExpect(jsonPath("$.content[0].name").value("하루들이"))
-                .andExpect(jsonPath("$.content[0].status").value("ACTIVE"))
-                .andExpect(jsonPath("$.content[0].lastLoginAt").isNotEmpty())
-                .andExpect(jsonPath("$.content[0].generationUsage.usageDate")
-                        .value(LocalDate.now(SERVICE_ZONE).toString()))
-                .andExpect(jsonPath("$.content[0].generationUsage.usedCount").value(2))
-                .andExpect(jsonPath("$.content[0].generationUsage.limitCount").value(3))
-                .andExpect(jsonPath("$.content[0].generationUsage.remainingCount").value(1))
-                .andExpect(jsonPath("$.content[0].email").doesNotExist())
-                .andExpect(jsonPath("$.content[1].id").value(deletedUser.getId().toString()))
-                .andExpect(jsonPath("$.content[1].status").value("DELETED"))
-                .andExpect(jsonPath("$.content[1].generationUsage.usedCount").value(0))
-                .andExpect(jsonPath("$.content[1].generationUsage.limitCount").value(3))
-                .andExpect(jsonPath("$.content[1].generationUsage.remainingCount").value(3))
-                .andExpect(jsonPath("$.totalElements").value(2))
-                .andExpect(jsonPath("$.totalPages").value(1))
-                .andExpect(jsonPath("$.hasNext").value(false));
+        MockMvcResponse response = adminRequest(admin)
+                .queryParam("query", "  하루들  ")
+                .get("/api/v1/admin/users");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.jsonPath().getList("content")).hasSize(2);
+        assertThat(response.jsonPath().getString("content[0].id"))
+                .isEqualTo(activeUser.getId().toString());
+        assertThat(response.jsonPath().getString("content[0].name")).isEqualTo("하루들이");
+        assertThat(response.jsonPath().getString("content[0].status")).isEqualTo("ACTIVE");
+        assertThat(response.jsonPath().getString("content[0].lastLoginAt")).isNotNull();
+        assertThat(response.jsonPath().getString("content[0].generationUsage.usageDate"))
+                .isEqualTo(LocalDate.now(SERVICE_ZONE).toString());
+        assertThat(response.jsonPath().getInt("content[0].generationUsage.usedCount"))
+                .isEqualTo(2);
+        assertThat(response.jsonPath().getInt("content[0].generationUsage.limitCount"))
+                .isEqualTo(3);
+        assertThat(response.jsonPath().getInt("content[0].generationUsage.remainingCount"))
+                .isEqualTo(1);
+        assertThat(response.jsonPath().getString("content[0].email")).isNull();
+        assertThat(response.jsonPath().getString("content[1].id"))
+                .isEqualTo(deletedUser.getId().toString());
+        assertThat(response.jsonPath().getString("content[1].status")).isEqualTo("DELETED");
+        assertThat(response.jsonPath().getInt("content[1].generationUsage.usedCount"))
+                .isZero();
+        assertThat(response.jsonPath().getInt("content[1].generationUsage.limitCount"))
+                .isEqualTo(3);
+        assertThat(response.jsonPath().getInt("content[1].generationUsage.remainingCount"))
+                .isEqualTo(3);
+        assertThat(response.jsonPath().getInt("totalElements")).isEqualTo(2);
+        assertThat(response.jsonPath().getInt("totalPages")).isEqualTo(1);
+        assertThat(response.jsonPath().getBoolean("hasNext")).isFalse();
     }
 
     @Test
@@ -118,14 +131,15 @@ class AdminUserControllerTest {
         User admin = saveUser("관리자");
         grantAdminRole(admin);
 
-        mockMvc.perform(get("/api/v1/admin/users")
-                        .queryParam("query", "없는 사용자")
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content").isEmpty())
-                .andExpect(jsonPath("$.totalElements").value(0))
-                .andExpect(jsonPath("$.totalPages").value(0))
-                .andExpect(jsonPath("$.hasNext").value(false));
+        MockMvcResponse response = adminRequest(admin)
+                .queryParam("query", "없는 사용자")
+                .get("/api/v1/admin/users");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.jsonPath().getList("content")).isEmpty();
+        assertThat(response.jsonPath().getInt("totalElements")).isZero();
+        assertThat(response.jsonPath().getInt("totalPages")).isZero();
+        assertThat(response.jsonPath().getBoolean("hasNext")).isFalse();
     }
 
     @Test
@@ -134,18 +148,16 @@ class AdminUserControllerTest {
         User admin = saveUser("관리자");
         grantAdminRole(admin);
 
-        mockMvc.perform(get("/api/v1/admin/users")
-                        .queryParam("size", "101")
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        MockMvcResponse response = adminRequest(admin)
+                .queryParam("size", "101")
+                .get("/api/v1/admin/users");
+        assertValidationError(response);
 
-        mockMvc.perform(get("/api/v1/admin/users")
-                        .queryParam("page", "21474837")
-                        .queryParam("size", "100")
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        response = adminRequest(admin)
+                .queryParam("page", "21474837")
+                .queryParam("size", "100")
+                .get("/api/v1/admin/users");
+        assertValidationError(response);
     }
 
     @Test
@@ -190,35 +202,41 @@ class AdminUserControllerTest {
                 false
         );
 
-        mockMvc.perform(get("/api/v1/admin/users/{userId}", target.getId())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(target.getId().toString()))
-                .andExpect(jsonPath("$.name").value("상세 사용자"))
-                .andExpect(jsonPath("$.status").value("ACTIVE"))
-                .andExpect(jsonPath("$.lastLoginAt").value(CREATED_AT.plusSeconds(10).toString()))
-                .andExpect(jsonPath("$.generationUsage.usageDate")
-                        .value(LocalDate.now(SERVICE_ZONE).toString()))
-                .andExpect(jsonPath("$.generationUsage.usedCount").value(0))
-                .andExpect(jsonPath("$.generationUsage.limitCount").value(5))
-                .andExpect(jsonPath("$.generationUsage.remainingCount").value(5))
-                .andExpect(jsonPath("$.recentGenerations.length()").value(5))
-                .andExpect(jsonPath("$.recentGenerations[0].id")
-                        .value(newestGenerationId.toString()))
-                .andExpect(jsonPath("$.recentGenerations[0].requestedAt")
-                        .value(CREATED_AT.plusSeconds(5).toString()))
-                .andExpect(jsonPath("$.recentGenerations[0].status").value("PROCESSING"))
-                .andExpect(jsonPath("$.recentGenerations[0].completedAt").doesNotExist())
-                .andExpect(jsonPath("$.recentGenerations[1].status").value("FAILED"))
-                .andExpect(jsonPath("$.recentGenerations[1].errorCode")
-                        .value("IMAGE_STORAGE_ERROR"))
-                .andExpect(jsonPath("$.recentGenerations[2].status").value("SUCCEEDED"))
-                .andExpect(jsonPath("$.recentGenerations[3].status").value("PROCESSING"))
-                .andExpect(jsonPath("$.recentGenerations[4].id")
-                        .value(deletedGenerationId.toString()))
-                .andExpect(jsonPath("$.recentGenerations[4].errorCode")
-                        .value("AI_PROVIDER_ERROR"))
-                .andExpect(jsonPath("$.email").doesNotExist());
+        MockMvcResponse response = adminRequest(admin)
+                .get("/api/v1/admin/users/{userId}", target.getId());
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.jsonPath().getString("id")).isEqualTo(target.getId().toString());
+        assertThat(response.jsonPath().getString("name")).isEqualTo("상세 사용자");
+        assertThat(response.jsonPath().getString("status")).isEqualTo("ACTIVE");
+        assertThat(response.jsonPath().getString("lastLoginAt"))
+                .isEqualTo(CREATED_AT.plusSeconds(10).toString());
+        assertThat(response.jsonPath().getString("generationUsage.usageDate"))
+                .isEqualTo(LocalDate.now(SERVICE_ZONE).toString());
+        assertThat(response.jsonPath().getInt("generationUsage.usedCount")).isZero();
+        assertThat(response.jsonPath().getInt("generationUsage.limitCount")).isEqualTo(5);
+        assertThat(response.jsonPath().getInt("generationUsage.remainingCount")).isEqualTo(5);
+        assertThat(response.jsonPath().getList("recentGenerations")).hasSize(5);
+        assertThat(response.jsonPath().getString("recentGenerations[0].id"))
+                .isEqualTo(newestGenerationId.toString());
+        assertThat(response.jsonPath().getString("recentGenerations[0].requestedAt"))
+                .isEqualTo(CREATED_AT.plusSeconds(5).toString());
+        assertThat(response.jsonPath().getString("recentGenerations[0].status"))
+                .isEqualTo("PROCESSING");
+        assertThat(response.jsonPath().getString("recentGenerations[0].completedAt")).isNull();
+        assertThat(response.jsonPath().getString("recentGenerations[1].status"))
+                .isEqualTo("FAILED");
+        assertThat(response.jsonPath().getString("recentGenerations[1].errorCode"))
+                .isEqualTo("IMAGE_STORAGE_ERROR");
+        assertThat(response.jsonPath().getString("recentGenerations[2].status"))
+                .isEqualTo("SUCCEEDED");
+        assertThat(response.jsonPath().getString("recentGenerations[3].status"))
+                .isEqualTo("PROCESSING");
+        assertThat(response.jsonPath().getString("recentGenerations[4].id"))
+                .isEqualTo(deletedGenerationId.toString());
+        assertThat(response.jsonPath().getString("recentGenerations[4].errorCode"))
+                .isEqualTo("AI_PROVIDER_ERROR");
+        assertThat(response.jsonPath().getString("email")).isNull();
     }
 
     @Test
@@ -229,11 +247,12 @@ class AdminUserControllerTest {
         User deletedUser = saveUser("탈퇴 사용자");
         markDeleted(deletedUser);
 
-        mockMvc.perform(get("/api/v1/admin/users/{userId}", deletedUser.getId())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(deletedUser.getId().toString()))
-                .andExpect(jsonPath("$.status").value("DELETED"));
+        MockMvcResponse response = adminRequest(admin)
+                .get("/api/v1/admin/users/{userId}", deletedUser.getId());
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.jsonPath().getString("id")).isEqualTo(deletedUser.getId().toString());
+        assertThat(response.jsonPath().getString("status")).isEqualTo("DELETED");
     }
 
     @Test
@@ -244,15 +263,13 @@ class AdminUserControllerTest {
         User guestUser = saveUser("게스트 사용자");
         saveGuestSession(guestUser);
 
-        mockMvc.perform(get("/api/v1/admin/users/{userId}", UUID.randomUUID())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
+        MockMvcResponse response = adminRequest(admin)
+                .get("/api/v1/admin/users/{userId}", UUID.randomUUID());
+        assertResponseCode(response, 404, "USER_NOT_FOUND");
 
-        mockMvc.perform(get("/api/v1/admin/users/{userId}", guestUser.getId())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
+        response = adminRequest(admin)
+                .get("/api/v1/admin/users/{userId}", guestUser.getId());
+        assertResponseCode(response, 404, "USER_NOT_FOUND");
     }
 
     @Test
@@ -264,28 +281,22 @@ class AdminUserControllerTest {
         saveGuestSession(guestUser);
         saveTodayUsage(guestUser, 2, 3);
 
-        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-limit", guestUser.getId())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"limitCount\":5}"))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
+        MockMvcResponse response = adminRequest(admin)
+                .contentType(ContentType.JSON)
+                .body("{\"limitCount\":5}")
+                .put("/api/v1/admin/users/{userId}/generation-limit", guestUser.getId());
+        assertResponseCode(response, 404, "USER_NOT_FOUND");
 
-        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-usage/reset", guestUser.getId())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
+        response = adminRequest(admin)
+                .put("/api/v1/admin/users/{userId}/generation-usage/reset", guestUser.getId());
+        assertResponseCode(response, 404, "USER_NOT_FOUND");
 
-        mockMvc.perform(patch(
-                        "/api/v1/admin/users/{userId}/generation-usage/restore",
-                        guestUser.getId()
-                )
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
-                        .header("Idempotency-Key", IDEMPOTENCY_KEY)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"count\":1}"))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
+        response = adminRequest(admin)
+                .header("Idempotency-Key", IDEMPOTENCY_KEY)
+                .contentType(ContentType.JSON)
+                .body("{\"count\":1}")
+                .patch("/api/v1/admin/users/{userId}/generation-usage/restore", guestUser.getId());
+        assertResponseCode(response, 404, "USER_NOT_FOUND");
 
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT daily_generation_limit FROM users WHERE id = ?",
@@ -314,16 +325,18 @@ class AdminUserControllerTest {
         User target = saveUser("복구 대상 사용자");
         saveTodayUsage(target, 3, 3);
 
-        mockMvc.perform(patch("/api/v1/admin/users/{userId}/generation-usage/restore", target.getId())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
-                        .header("Idempotency-Key", IDEMPOTENCY_KEY)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"count\":2}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.usageDate").value(LocalDate.now(SERVICE_ZONE).toString()))
-                .andExpect(jsonPath("$.usedCount").value(1))
-                .andExpect(jsonPath("$.limitCount").value(3))
-                .andExpect(jsonPath("$.remainingCount").value(2));
+        MockMvcResponse response = adminRequest(admin)
+                .header("Idempotency-Key", IDEMPOTENCY_KEY)
+                .contentType(ContentType.JSON)
+                .body("{\"count\":2}")
+                .patch("/api/v1/admin/users/{userId}/generation-usage/restore", target.getId());
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.jsonPath().getString("usageDate"))
+                .isEqualTo(LocalDate.now(SERVICE_ZONE).toString());
+        assertThat(response.jsonPath().getInt("usedCount")).isEqualTo(1);
+        assertThat(response.jsonPath().getInt("limitCount")).isEqualTo(3);
+        assertThat(response.jsonPath().getInt("remainingCount")).isEqualTo(2);
 
         Integer usedCount = jdbcTemplate.queryForObject(
                 "SELECT used_count FROM daily_generation_usage WHERE user_id = ? AND usage_date = ?",
@@ -333,16 +346,18 @@ class AdminUserControllerTest {
         );
         assertThat(usedCount).isEqualTo(1);
 
-        mockMvc.perform(patch("/api/v1/admin/users/{userId}/generation-usage/restore", target.getId())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
-                        .header("Idempotency-Key", IDEMPOTENCY_KEY)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"count\":2}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.usageDate").value(LocalDate.now(SERVICE_ZONE).toString()))
-                .andExpect(jsonPath("$.usedCount").value(1))
-                .andExpect(jsonPath("$.limitCount").value(3))
-                .andExpect(jsonPath("$.remainingCount").value(2));
+        response = adminRequest(admin)
+                .header("Idempotency-Key", IDEMPOTENCY_KEY)
+                .contentType(ContentType.JSON)
+                .body("{\"count\":2}")
+                .patch("/api/v1/admin/users/{userId}/generation-usage/restore", target.getId());
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.jsonPath().getString("usageDate"))
+                .isEqualTo(LocalDate.now(SERVICE_ZONE).toString());
+        assertThat(response.jsonPath().getInt("usedCount")).isEqualTo(1);
+        assertThat(response.jsonPath().getInt("limitCount")).isEqualTo(3);
+        assertThat(response.jsonPath().getInt("remainingCount")).isEqualTo(2);
 
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT used_count FROM daily_generation_usage WHERE user_id = ? AND usage_date = ?",
@@ -360,20 +375,19 @@ class AdminUserControllerTest {
         User target = saveUser("복구 대상 사용자");
         saveTodayUsage(target, 3, 3);
 
-        mockMvc.perform(patch("/api/v1/admin/users/{userId}/generation-usage/restore", target.getId())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
-                        .header("Idempotency-Key", IDEMPOTENCY_KEY)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"count\":1}"))
-                .andExpect(status().isOk());
+        MockMvcResponse response = adminRequest(admin)
+                .header("Idempotency-Key", IDEMPOTENCY_KEY)
+                .contentType(ContentType.JSON)
+                .body("{\"count\":1}")
+                .patch("/api/v1/admin/users/{userId}/generation-usage/restore", target.getId());
+        assertThat(response.statusCode()).isEqualTo(200);
 
-        mockMvc.perform(patch("/api/v1/admin/users/{userId}/generation-usage/restore", target.getId())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
-                        .header("Idempotency-Key", IDEMPOTENCY_KEY)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"count\":2}"))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("IDEMPOTENCY_KEY_CONFLICT"));
+        response = adminRequest(admin)
+                .header("Idempotency-Key", IDEMPOTENCY_KEY)
+                .contentType(ContentType.JSON)
+                .body("{\"count\":2}")
+                .patch("/api/v1/admin/users/{userId}/generation-usage/restore", target.getId());
+        assertResponseCode(response, 409, "IDEMPOTENCY_KEY_CONFLICT");
 
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT used_count FROM daily_generation_usage WHERE user_id = ? AND usage_date = ?",
@@ -391,12 +405,11 @@ class AdminUserControllerTest {
         User target = saveUser("복구 대상 사용자");
         saveTodayUsage(target, 3, 3);
 
-        mockMvc.perform(patch("/api/v1/admin/users/{userId}/generation-usage/restore", target.getId())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"count\":1}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_IDEMPOTENCY_KEY"));
+        MockMvcResponse response = adminRequest(admin)
+                .contentType(ContentType.JSON)
+                .body("{\"count\":1}")
+                .patch("/api/v1/admin/users/{userId}/generation-usage/restore", target.getId());
+        assertResponseCode(response, 400, "INVALID_IDEMPOTENCY_KEY");
 
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT used_count FROM daily_generation_usage WHERE user_id = ? AND usage_date = ?",
@@ -413,43 +426,31 @@ class AdminUserControllerTest {
         grantAdminRole(admin);
         User targetWithoutUsage = saveUser("사용량 없는 사용자");
 
-        mockMvc.perform(patch(
-                        "/api/v1/admin/users/{userId}/generation-usage/restore",
-                        targetWithoutUsage.getId()
-                )
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
-                        .header("Idempotency-Key", IDEMPOTENCY_KEY)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"count\":1}"))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("GENERATION_USAGE_CONFLICT"));
+        MockMvcResponse response = adminRequest(admin)
+                .header("Idempotency-Key", IDEMPOTENCY_KEY)
+                .contentType(ContentType.JSON)
+                .body("{\"count\":1}")
+                .patch("/api/v1/admin/users/{userId}/generation-usage/restore", targetWithoutUsage.getId());
+        assertResponseCode(response, 409, "GENERATION_USAGE_CONFLICT");
 
         saveTodayUsage(targetWithoutUsage, 1, 3);
 
-        mockMvc.perform(patch(
-                        "/api/v1/admin/users/{userId}/generation-usage/restore",
-                        targetWithoutUsage.getId()
-                )
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
-                        .header("Idempotency-Key", IDEMPOTENCY_KEY)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"count\":1}"))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("GENERATION_USAGE_CONFLICT"));
+        response = adminRequest(admin)
+                .header("Idempotency-Key", IDEMPOTENCY_KEY)
+                .contentType(ContentType.JSON)
+                .body("{\"count\":1}")
+                .patch("/api/v1/admin/users/{userId}/generation-usage/restore", targetWithoutUsage.getId());
+        assertResponseCode(response, 409, "GENERATION_USAGE_CONFLICT");
 
         User targetWithInsufficientUsage = saveUser("사용량 부족 사용자");
         saveTodayUsage(targetWithInsufficientUsage, 1, 3);
 
-        mockMvc.perform(patch(
-                        "/api/v1/admin/users/{userId}/generation-usage/restore",
-                        targetWithInsufficientUsage.getId()
-                )
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
-                        .header("Idempotency-Key", ANOTHER_IDEMPOTENCY_KEY)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"count\":2}"))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("GENERATION_USAGE_CONFLICT"));
+        response = adminRequest(admin)
+                .header("Idempotency-Key", ANOTHER_IDEMPOTENCY_KEY)
+                .contentType(ContentType.JSON)
+                .body("{\"count\":2}")
+                .patch("/api/v1/admin/users/{userId}/generation-usage/restore", targetWithInsufficientUsage.getId());
+        assertResponseCode(response, 409, "GENERATION_USAGE_CONFLICT");
     }
 
     @Test
@@ -461,16 +462,12 @@ class AdminUserControllerTest {
         markDeleted(deletedUser);
         saveTodayUsage(deletedUser, 1, 3);
 
-        mockMvc.perform(patch(
-                        "/api/v1/admin/users/{userId}/generation-usage/restore",
-                        deletedUser.getId()
-                )
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
-                        .header("Idempotency-Key", IDEMPOTENCY_KEY)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"count\":1}"))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("INACTIVE_USER"));
+        MockMvcResponse response = adminRequest(admin)
+                .header("Idempotency-Key", IDEMPOTENCY_KEY)
+                .contentType(ContentType.JSON)
+                .body("{\"count\":1}")
+                .patch("/api/v1/admin/users/{userId}/generation-usage/restore", deletedUser.getId());
+        assertResponseCode(response, 409, "INACTIVE_USER");
     }
 
     @Test
@@ -479,15 +476,11 @@ class AdminUserControllerTest {
         User admin = saveUser("관리자");
         grantAdminRole(admin);
 
-        mockMvc.perform(patch(
-                        "/api/v1/admin/users/{userId}/generation-usage/restore",
-                        admin.getId()
-                )
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"count\":0}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        MockMvcResponse response = adminRequest(admin)
+                .contentType(ContentType.JSON)
+                .body("{\"count\":0}")
+                .patch("/api/v1/admin/users/{userId}/generation-usage/restore", admin.getId());
+        assertResponseCode(response, 400, "VALIDATION_ERROR");
     }
 
     @Test
@@ -499,20 +492,21 @@ class AdminUserControllerTest {
         changeDailyGenerationLimit(target, 5);
         saveTodayUsage(target, 3, 5);
 
-        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-usage/reset", target.getId())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.usageDate").value(LocalDate.now(SERVICE_ZONE).toString()))
-                .andExpect(jsonPath("$.usedCount").value(0))
-                .andExpect(jsonPath("$.limitCount").value(5))
-                .andExpect(jsonPath("$.remainingCount").value(5));
+        MockMvcResponse response = adminRequest(admin)
+                .put("/api/v1/admin/users/{userId}/generation-usage/reset", target.getId());
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.jsonPath().getString("usageDate"))
+                .isEqualTo(LocalDate.now(SERVICE_ZONE).toString());
+        assertThat(response.jsonPath().getInt("usedCount")).isZero();
+        assertThat(response.jsonPath().getInt("limitCount")).isEqualTo(5);
+        assertThat(response.jsonPath().getInt("remainingCount")).isEqualTo(5);
 
-        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-usage/reset", target.getId())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.usedCount").value(0))
-                .andExpect(jsonPath("$.limitCount").value(5))
-                .andExpect(jsonPath("$.remainingCount").value(5));
+        response = adminRequest(admin)
+                .put("/api/v1/admin/users/{userId}/generation-usage/reset", target.getId());
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.jsonPath().getInt("usedCount")).isZero();
+        assertThat(response.jsonPath().getInt("limitCount")).isEqualTo(5);
+        assertThat(response.jsonPath().getInt("remainingCount")).isEqualTo(5);
 
         Integer usedCount = jdbcTemplate.queryForObject(
                 "SELECT used_count FROM daily_generation_usage WHERE user_id = ? AND usage_date = ?",
@@ -531,13 +525,14 @@ class AdminUserControllerTest {
         User target = saveUser("사용량 없는 사용자");
         changeDailyGenerationLimit(target, 7);
 
-        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-usage/reset", target.getId())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.usageDate").value(LocalDate.now(SERVICE_ZONE).toString()))
-                .andExpect(jsonPath("$.usedCount").value(0))
-                .andExpect(jsonPath("$.limitCount").value(7))
-                .andExpect(jsonPath("$.remainingCount").value(7));
+        MockMvcResponse response = adminRequest(admin)
+                .put("/api/v1/admin/users/{userId}/generation-usage/reset", target.getId());
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.jsonPath().getString("usageDate"))
+                .isEqualTo(LocalDate.now(SERVICE_ZONE).toString());
+        assertThat(response.jsonPath().getInt("usedCount")).isZero();
+        assertThat(response.jsonPath().getInt("limitCount")).isEqualTo(7);
+        assertThat(response.jsonPath().getInt("remainingCount")).isEqualTo(7);
 
         Integer usageRowCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM daily_generation_usage WHERE user_id = ? AND usage_date = ?",
@@ -556,15 +551,13 @@ class AdminUserControllerTest {
         User deletedUser = saveUser("탈퇴 사용자");
         markDeleted(deletedUser);
 
-        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-usage/reset", deletedUser.getId())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("INACTIVE_USER"));
+        MockMvcResponse response = adminRequest(admin)
+                .put("/api/v1/admin/users/{userId}/generation-usage/reset", deletedUser.getId());
+        assertResponseCode(response, 409, "INACTIVE_USER");
 
-        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-usage/reset", UUID.randomUUID())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
+        response = adminRequest(admin)
+                .put("/api/v1/admin/users/{userId}/generation-usage/reset", UUID.randomUUID());
+        assertResponseCode(response, 404, "USER_NOT_FOUND");
     }
 
     @Test
@@ -575,11 +568,11 @@ class AdminUserControllerTest {
         User target = saveUser("한도 변경 대상 사용자");
         saveTodayUsage(target, 2, 3);
 
-        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-limit", target.getId())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"limitCount\":5}"))
-                .andExpect(status().isNoContent());
+        MockMvcResponse response = adminRequest(admin)
+                .contentType(ContentType.JSON)
+                .body("{\"limitCount\":5}")
+                .put("/api/v1/admin/users/{userId}/generation-limit", target.getId());
+        assertThat(response.statusCode()).isEqualTo(204);
 
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT daily_generation_limit FROM users WHERE id = ?",
@@ -608,11 +601,11 @@ class AdminUserControllerTest {
         User target = saveUser("한도 축소 대상 사용자");
         saveTodayUsage(target, 2, 3);
 
-        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-limit", target.getId())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"limitCount\":1}"))
-                .andExpect(status().isNoContent());
+        MockMvcResponse response = adminRequest(admin)
+                .contentType(ContentType.JSON)
+                .body("{\"limitCount\":1}")
+                .put("/api/v1/admin/users/{userId}/generation-limit", target.getId());
+        assertThat(response.statusCode()).isEqualTo(204);
 
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT daily_generation_limit FROM users WHERE id = ?",
@@ -641,18 +634,18 @@ class AdminUserControllerTest {
         User target = saveUser("한도 초기화 대상 사용자");
         saveTodayUsage(target, 2, 3);
 
-        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-limit", target.getId())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"limitCount\":1}"))
-                .andExpect(status().isNoContent());
+        MockMvcResponse response = adminRequest(admin)
+                .contentType(ContentType.JSON)
+                .body("{\"limitCount\":1}")
+                .put("/api/v1/admin/users/{userId}/generation-limit", target.getId());
+        assertThat(response.statusCode()).isEqualTo(204);
 
-        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-usage/reset", target.getId())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.usedCount").value(0))
-                .andExpect(jsonPath("$.limitCount").value(1))
-                .andExpect(jsonPath("$.remainingCount").value(1));
+        response = adminRequest(admin)
+                .put("/api/v1/admin/users/{userId}/generation-usage/reset", target.getId());
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.jsonPath().getInt("usedCount")).isZero();
+        assertThat(response.jsonPath().getInt("limitCount")).isEqualTo(1);
+        assertThat(response.jsonPath().getInt("remainingCount")).isEqualTo(1);
 
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT daily_generation_limit FROM users WHERE id = ?",
@@ -680,11 +673,11 @@ class AdminUserControllerTest {
         grantAdminRole(admin);
         User target = saveUser("사용량 없는 사용자");
 
-        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-limit", target.getId())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"limitCount\":7}"))
-                .andExpect(status().isNoContent());
+        MockMvcResponse response = adminRequest(admin)
+                .contentType(ContentType.JSON)
+                .body("{\"limitCount\":7}")
+                .put("/api/v1/admin/users/{userId}/generation-limit", target.getId());
+        assertThat(response.statusCode()).isEqualTo(204);
 
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT daily_generation_limit FROM users WHERE id = ?",
@@ -707,33 +700,45 @@ class AdminUserControllerTest {
         User deletedUser = saveUser("탈퇴 사용자");
         markDeleted(deletedUser);
 
-        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-limit", deletedUser.getId())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"limitCount\":5}"))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("INACTIVE_USER"));
+        MockMvcResponse response = adminRequest(admin)
+                .contentType(ContentType.JSON)
+                .body("{\"limitCount\":5}")
+                .put("/api/v1/admin/users/{userId}/generation-limit", deletedUser.getId());
+        assertResponseCode(response, 409, "INACTIVE_USER");
 
-        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-limit", UUID.randomUUID())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"limitCount\":5}"))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
+        response = adminRequest(admin)
+                .contentType(ContentType.JSON)
+                .body("{\"limitCount\":5}")
+                .put("/api/v1/admin/users/{userId}/generation-limit", UUID.randomUUID());
+        assertResponseCode(response, 404, "USER_NOT_FOUND");
 
-        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-limit", admin.getId())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"limitCount\":-1}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        response = adminRequest(admin)
+                .contentType(ContentType.JSON)
+                .body("{\"limitCount\":-1}")
+                .put("/api/v1/admin/users/{userId}/generation-limit", admin.getId());
+        assertValidationError(response);
 
-        mockMvc.perform(put("/api/v1/admin/users/{userId}/generation-limit", admin.getId())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"limitCount\":0}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        response = adminRequest(admin)
+                .contentType(ContentType.JSON)
+                .body("{\"limitCount\":0}")
+                .put("/api/v1/admin/users/{userId}/generation-limit", admin.getId());
+        assertValidationError(response);
+    }
+
+    private void assertValidationError(MockMvcResponse response) {
+        assertResponseCode(response, 400, "VALIDATION_ERROR");
+    }
+
+    private void assertResponseCode(MockMvcResponse response, int statusCode, String code) {
+        assertThat(response.statusCode()).isEqualTo(statusCode);
+        assertThat(response.jsonPath().getString("code")).isEqualTo(code);
+    }
+
+    private io.restassured.module.mockmvc.specification.MockMvcRequestSpecification adminRequest(
+            User admin
+    ) {
+        return RestAssuredMockMvc.given()
+                .header(HttpHeaders.AUTHORIZATION, bearerToken(admin));
     }
 
     private User saveUser(String name) {

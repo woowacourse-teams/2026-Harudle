@@ -1,9 +1,6 @@
 package com.harudle.admin.presentation;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.harudle.auth.application.AccessTokenService;
 import com.harudle.auth.domain.User;
@@ -12,6 +9,8 @@ import com.harudle.generation.domain.GenerationErrorCode;
 import com.harudle.generation.domain.GenerationPrompt;
 import com.harudle.generation.domain.GenerationStatus;
 import com.harudle.generation.repository.GenerationPromptRepository;
+import io.restassured.module.mockmvc.RestAssuredMockMvc;
+import io.restassured.module.mockmvc.response.MockMvcResponse;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -65,6 +64,7 @@ class AdminGenerationControllerTest {
 
     @BeforeEach
     void setUp() {
+        RestAssuredMockMvc.mockMvc(mockMvc);
         generationPrompt = generationPromptRepository.saveAndFlush(new GenerationPrompt(
                 "관리자 생성 이력 스토리보드",
                 "관리자 생성 이력 이미지 스타일",
@@ -78,6 +78,7 @@ class AdminGenerationControllerTest {
         jdbcTemplate.update("DELETE FROM diaries");
         userRepository.deleteAll();
         generationPromptRepository.deleteAll();
+        RestAssuredMockMvc.reset();
     }
 
     @Test
@@ -106,27 +107,34 @@ class AdminGenerationControllerTest {
                 null
         );
 
-        mockMvc.perform(get("/api/v1/admin/generations")
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content.length()").value(3))
-                .andExpect(jsonPath("$.content[0].id").value(newestGenerationId.toString()))
-                .andExpect(jsonPath("$.content[0].user.id").value(secondUser.getId().toString()))
-                .andExpect(jsonPath("$.content[0].user.name").value("두 번째 사용자"))
-                .andExpect(jsonPath("$.content[0].user.email").doesNotExist())
-                .andExpect(jsonPath("$.content[0].status").value("PROCESSING"))
-                .andExpect(jsonPath("$.content[0].completedAt").doesNotExist())
-                .andExpect(jsonPath("$.content[0].errorCode").doesNotExist())
-                .andExpect(jsonPath("$.content[1].id").value(middleGenerationId.toString()))
-                .andExpect(jsonPath("$.content[1].status").value("SUCCEEDED"))
-                .andExpect(jsonPath("$.content[2].id").value(oldestGenerationId.toString()))
-                .andExpect(jsonPath("$.content[2].status").value("FAILED"))
-                .andExpect(jsonPath("$.content[2].errorCode").value("AI_PROVIDER_ERROR"))
-                .andExpect(jsonPath("$.page").value(0))
-                .andExpect(jsonPath("$.size").value(20))
-                .andExpect(jsonPath("$.totalElements").value(3))
-                .andExpect(jsonPath("$.totalPages").value(1))
-                .andExpect(jsonPath("$.hasNext").value(false));
+        MockMvcResponse response = adminRequest(admin)
+                .get("/api/v1/admin/generations");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.jsonPath().getList("content")).hasSize(3);
+        assertThat(response.jsonPath().getString("content[0].id"))
+                .isEqualTo(newestGenerationId.toString());
+        assertThat(response.jsonPath().getString("content[0].user.id"))
+                .isEqualTo(secondUser.getId().toString());
+        assertThat(response.jsonPath().getString("content[0].user.name"))
+                .isEqualTo("두 번째 사용자");
+        assertThat(response.jsonPath().getString("content[0].user.email")).isNull();
+        assertThat(response.jsonPath().getString("content[0].status")).isEqualTo("PROCESSING");
+        assertThat(response.jsonPath().getString("content[0].completedAt")).isNull();
+        assertThat(response.jsonPath().getString("content[0].errorCode")).isNull();
+        assertThat(response.jsonPath().getString("content[1].id"))
+                .isEqualTo(middleGenerationId.toString());
+        assertThat(response.jsonPath().getString("content[1].status")).isEqualTo("SUCCEEDED");
+        assertThat(response.jsonPath().getString("content[2].id"))
+                .isEqualTo(oldestGenerationId.toString());
+        assertThat(response.jsonPath().getString("content[2].status")).isEqualTo("FAILED");
+        assertThat(response.jsonPath().getString("content[2].errorCode"))
+                .isEqualTo("AI_PROVIDER_ERROR");
+        assertThat(response.jsonPath().getInt("page")).isZero();
+        assertThat(response.jsonPath().getInt("size")).isEqualTo(20);
+        assertThat(response.jsonPath().getInt("totalElements")).isEqualTo(3);
+        assertThat(response.jsonPath().getInt("totalPages")).isEqualTo(1);
+        assertThat(response.jsonPath().getBoolean("hasNext")).isFalse();
     }
 
     @Test
@@ -155,18 +163,22 @@ class AdminGenerationControllerTest {
                 GenerationErrorCode.AI_PROVIDER_ERROR
         );
 
-        mockMvc.perform(get("/api/v1/admin/generations")
-                        .queryParam("userId", target.getId().toString())
-                        .queryParam("status", "FAILED")
-                        .queryParam("from", "2026-08-06")
-                        .queryParam("to", "2026-08-06")
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content.length()").value(1))
-                .andExpect(jsonPath("$.content[0].id").value(targetFailedGenerationId.toString()))
-                .andExpect(jsonPath("$.content[0].user.name").value("대상 사용자"))
-                .andExpect(jsonPath("$.content[0].errorCode").value("IMAGE_STORAGE_ERROR"))
-                .andExpect(jsonPath("$.totalElements").value(1));
+        MockMvcResponse response = adminRequest(admin)
+                .queryParam("userId", target.getId().toString())
+                .queryParam("status", "FAILED")
+                .queryParam("from", "2026-08-06")
+                .queryParam("to", "2026-08-06")
+                .get("/api/v1/admin/generations");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.jsonPath().getList("content")).hasSize(1);
+        assertThat(response.jsonPath().getString("content[0].id"))
+                .isEqualTo(targetFailedGenerationId.toString());
+        assertThat(response.jsonPath().getString("content[0].user.name"))
+                .isEqualTo("대상 사용자");
+        assertThat(response.jsonPath().getString("content[0].errorCode"))
+                .isEqualTo("IMAGE_STORAGE_ERROR");
+        assertThat(response.jsonPath().getInt("totalElements")).isEqualTo(1);
     }
 
     @Test
@@ -175,13 +187,14 @@ class AdminGenerationControllerTest {
         User admin = saveUser("관리자");
         grantAdminRole(admin);
 
-        mockMvc.perform(get("/api/v1/admin/generations")
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content").isEmpty())
-                .andExpect(jsonPath("$.totalElements").value(0))
-                .andExpect(jsonPath("$.totalPages").value(0))
-                .andExpect(jsonPath("$.hasNext").value(false));
+        MockMvcResponse response = adminRequest(admin)
+                .get("/api/v1/admin/generations");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.jsonPath().getList("content")).isEmpty();
+        assertThat(response.jsonPath().getInt("totalElements")).isZero();
+        assertThat(response.jsonPath().getInt("totalPages")).isZero();
+        assertThat(response.jsonPath().getBoolean("hasNext")).isFalse();
     }
 
     @Test
@@ -190,43 +203,37 @@ class AdminGenerationControllerTest {
         User admin = saveUser("관리자");
         grantAdminRole(admin);
 
-        mockMvc.perform(get("/api/v1/admin/generations")
-                        .queryParam("userId", "not-a-uuid")
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        MockMvcResponse response = adminRequest(admin)
+                .queryParam("userId", "not-a-uuid")
+                .get("/api/v1/admin/generations");
+        assertValidationError(response);
 
-        mockMvc.perform(get("/api/v1/admin/generations")
-                        .queryParam("status", "UNKNOWN")
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        response = adminRequest(admin)
+                .queryParam("status", "UNKNOWN")
+                .get("/api/v1/admin/generations");
+        assertValidationError(response);
 
-        mockMvc.perform(get("/api/v1/admin/generations")
-                        .queryParam("from", "2026-08-07")
-                        .queryParam("to", "2026-08-06")
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        response = adminRequest(admin)
+                .queryParam("from", "2026-08-07")
+                .queryParam("to", "2026-08-06")
+                .get("/api/v1/admin/generations");
+        assertValidationError(response);
 
-        mockMvc.perform(get("/api/v1/admin/generations")
-                        .queryParam("to", LocalDate.MAX.toString())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        response = adminRequest(admin)
+                .queryParam("to", LocalDate.MAX.toString())
+                .get("/api/v1/admin/generations");
+        assertValidationError(response);
 
-        mockMvc.perform(get("/api/v1/admin/generations")
-                        .queryParam("size", "101")
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        response = adminRequest(admin)
+                .queryParam("size", "101")
+                .get("/api/v1/admin/generations");
+        assertValidationError(response);
 
-        mockMvc.perform(get("/api/v1/admin/generations")
-                        .queryParam("page", "21474837")
-                        .queryParam("size", "100")
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        response = adminRequest(admin)
+                .queryParam("page", "21474837")
+                .queryParam("size", "100")
+                .get("/api/v1/admin/generations");
+        assertValidationError(response);
     }
 
     private User saveUser(String name) {
@@ -235,6 +242,18 @@ class AdminGenerationControllerTest {
 
     private void grantAdminRole(User user) {
         jdbcTemplate.update("UPDATE users SET role = 'ADMIN' WHERE id = ?", user.getId());
+    }
+
+    private void assertValidationError(MockMvcResponse response) {
+        assertThat(response.statusCode()).isEqualTo(400);
+        assertThat(response.jsonPath().getString("code")).isEqualTo("VALIDATION_ERROR");
+    }
+
+    private io.restassured.module.mockmvc.specification.MockMvcRequestSpecification adminRequest(
+            User admin
+    ) {
+        return RestAssuredMockMvc.given()
+                .header(HttpHeaders.AUTHORIZATION, bearerToken(admin));
     }
 
     private UUID saveGeneration(
