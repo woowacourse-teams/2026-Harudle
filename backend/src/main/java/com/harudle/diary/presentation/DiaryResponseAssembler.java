@@ -1,18 +1,23 @@
 package com.harudle.diary.presentation;
 
 import com.harudle.diary.service.dto.CreateDiaryResult;
+import com.harudle.diary.service.dto.CreateGuestDiaryResult;
 import com.harudle.diary.service.dto.DiaryDayResult;
 import com.harudle.diary.service.dto.DiaryDetailResult;
 import com.harudle.diary.service.dto.DiaryGenerationResult;
+import com.harudle.diary.service.dto.DiaryStreakDayResult;
+import com.harudle.diary.service.dto.DiaryStreakResult;
 import com.harudle.diary.service.dto.DiarySummaryResult;
 import com.harudle.diary.service.dto.DiaryTimelineResult;
 import com.harudle.generation.presentation.GenerationUsageResponse;
 import com.harudle.generation.service.port.ImageAccessUrl;
 import com.harudle.generation.service.port.ImageUrlProvider;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -47,6 +52,26 @@ final class DiaryResponseAssembler {
         );
     }
 
+    GuestDiaryResponse toGuestCreateResponse(CreateGuestDiaryResult result) {
+        return toGuestResponse(
+                result.id(),
+                result.diaryDate(),
+                result.sourceText(),
+                result.createdAt(),
+                result.generation()
+        );
+    }
+
+    GuestDiaryResponse toGuestDetailResponse(DiaryDetailResult result) {
+        return toGuestResponse(
+                result.id(),
+                result.diaryDate(),
+                result.sourceText(),
+                result.createdAt(),
+                result.generation()
+        );
+    }
+
     DiaryTimelineResponse toTimelineResponse(DiaryTimelineResult result) {
         List<DiaryDayResponse> days = result.days().stream()
                 .map(this::toDayResponse)
@@ -70,6 +95,22 @@ final class DiaryResponseAssembler {
         );
     }
 
+    private GuestDiaryResponse toGuestResponse(
+            UUID id,
+            LocalDate diaryDate,
+            String sourceText,
+            Instant createdAt,
+            DiaryGenerationResult generation
+    ) {
+        return new GuestDiaryResponse(
+                id,
+                diaryDate,
+                sourceText,
+                toServiceTime(createdAt),
+                toGenerationResponse(generation)
+        );
+    }
+
     private DiaryGenerationResponse toGenerationResponse(DiaryGenerationResult result) {
         if (result.imageObjectKey() == null) {
             return new DiaryGenerationResponse(
@@ -90,6 +131,26 @@ final class DiaryResponseAssembler {
                 toServiceTime(imageAccessUrl.expiresAt()),
                 toServiceTime(result.completedAt())
         );
+    }
+
+    DiaryStreakResponse toStreakResponse(DiaryStreakResult result) {
+        List<DiaryStreakDayResponse> days = result.days().stream()
+                .map(this::toStreakDayResponse)
+                .toList();
+
+        return new DiaryStreakResponse(
+                result.streakCount(),
+                result.recordedToday(),
+                days
+        );
+    }
+
+    private DiaryStreakDayResponse toStreakDayResponse(DiaryStreakDayResult result) {
+        List<DiarySummaryResponse> items = result.items().stream()
+                .map(this::toSummaryResponse)
+                .toList();
+
+        return new DiaryStreakDayResponse(result.date(), items);
     }
 
     private ImageAccessUrl createImageAccessUrl(String imageObjectKey) {

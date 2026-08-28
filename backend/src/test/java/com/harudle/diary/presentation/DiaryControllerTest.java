@@ -11,6 +11,7 @@ import com.harudle.auth.infrastructure.oauth.OAuthLoginFailureHandler;
 import com.harudle.auth.infrastructure.oauth.OAuthLoginSuccessHandler;
 import com.harudle.auth.presentation.AuthenticatedUserIdResolver;
 import com.harudle.common.config.TimeConfiguration;
+import com.harudle.common.error.ApiExceptionLoggerTestConfiguration;
 import com.harudle.common.error.ProblemDetailFactory;
 import com.harudle.common.error.TraceIdConfiguration;
 import com.harudle.common.security.CsrfConfiguration;
@@ -23,6 +24,8 @@ import com.harudle.diary.service.dto.CreateDiaryResult;
 import com.harudle.diary.service.dto.DiaryDayResult;
 import com.harudle.diary.service.dto.DiaryDetailResult;
 import com.harudle.diary.service.dto.DiaryGenerationResult;
+import com.harudle.diary.service.dto.DiaryStreakDayResult;
+import com.harudle.diary.service.dto.DiaryStreakResult;
 import com.harudle.diary.service.dto.DiarySummaryResult;
 import com.harudle.diary.service.dto.DiaryTimelineResult;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
@@ -59,6 +62,7 @@ import org.springframework.test.web.servlet.MockMvc;
 @Import({
         AuthenticatedUserIdResolver.class,
         DiaryResponseAssembler.class,
+        ApiExceptionLoggerTestConfiguration.class,
         ProblemDetailFactory.class,
         TraceIdConfiguration.class,
         CsrfConfiguration.class,
@@ -208,6 +212,57 @@ class DiaryControllerTest {
                 .isEqualTo("https://images.harudle.example/second-comic.png");
         assertThat(response.asString()).doesNotContain("generated/comic.png");
         assertThat(response.asString()).doesNotContain("generated/second-comic.png");
+    }
+
+    @Test
+    @DisplayName("현재 streak와 삭제되어 콘텐츠가 없는 연속 날짜를 조회한다")
+    void getCurrentStreak() {
+        DiarySummaryResult summary = new DiarySummaryResult(
+                DIARY_ID,
+                "친구와 보낸 하루",
+                "generated/comic.png"
+        );
+        DiaryStreakResult result = new DiaryStreakResult(
+                true,
+                List.of(
+                        new DiaryStreakDayResult(DIARY_DATE, List.of(summary)),
+                        new DiaryStreakDayResult(DIARY_DATE.minusDays(1), List.of())
+                )
+        );
+        when(diaryQueryService.getCurrentStreak(USER_ID)).thenReturn(result);
+        configureImageUrl();
+
+        MockMvcResponse response = authenticatedRequest()
+                .get("/api/v1/diaries/current-streak");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.jsonPath().getInt("streakCount")).isEqualTo(2);
+        assertThat(response.jsonPath().getBoolean("recordedToday")).isTrue();
+        assertThat(response.jsonPath().getString("days[0].date"))
+                .isEqualTo(DIARY_DATE.toString());
+        assertThat(response.jsonPath().getString("days[0].items[0].id"))
+                .isEqualTo(DIARY_ID.toString());
+        assertThat(response.jsonPath().getString("days[0].items[0].thumbnailUrl"))
+                .isEqualTo("https://images.harudle.example/comic.png");
+        assertThat(response.jsonPath().getString("days[1].date"))
+                .isEqualTo(DIARY_DATE.minusDays(1).toString());
+        assertThat(response.jsonPath().getList("days[1].items")).isEmpty();
+        assertThat(response.asString()).doesNotContain("imageObjectKey", "generated/comic.png");
+    }
+
+    @Test
+    @DisplayName("현재 streak가 없으면 빈 날짜 목록을 반환한다")
+    void getEmptyCurrentStreak() {
+        when(diaryQueryService.getCurrentStreak(USER_ID))
+                .thenReturn(new DiaryStreakResult(false, List.of()));
+
+        MockMvcResponse response = authenticatedRequest()
+                .get("/api/v1/diaries/current-streak");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.jsonPath().getInt("streakCount")).isZero();
+        assertThat(response.jsonPath().getBoolean("recordedToday")).isFalse();
+        assertThat(response.jsonPath().getList("days")).isEmpty();
     }
 
     @Test
@@ -451,7 +506,11 @@ class DiaryControllerTest {
                 .get("/api/v1/diaries/{diaryId}", DIARY_ID);
 
         assertThat(response.statusCode()).isEqualTo(401);
+        assertThat(response.contentType()).startsWith("application/problem+json");
         assertThat(response.header("WWW-Authenticate")).startsWith("Bearer");
+        assertThat(response.jsonPath().getString("type")).isEqualTo("urn:harudle:problem:unauthorized");
+        assertThat(response.jsonPath().getString("code")).isEqualTo("UNAUTHORIZED");
+        assertThat(response.jsonPath().getString("traceId")).hasSize(32);
     }
 
     @Test

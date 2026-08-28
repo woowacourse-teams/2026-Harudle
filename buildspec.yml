@@ -25,7 +25,15 @@ phases:
     commands:
       - set -euo pipefail
       - docker buildx build --platform linux/arm64 --pull --load --tag harudle-backend:local ./backend
-      - docker buildx build --platform linux/arm64 --pull --load --tag harudle-frontend:local ./frontend
+      - >-
+        docker buildx build
+        --platform linux/arm64
+        --pull
+        --load
+        --build-arg REACT_APP_POSTHOG_KEY
+        --build-arg REACT_APP_POSTHOG_HOST
+        --tag harudle-frontend:local
+        ./frontend
       - test "$(docker image inspect --format '{{.Architecture}}' harudle-backend:local)" = "arm64"
       - test "$(docker image inspect --format '{{.Architecture}}' harudle-frontend:local)" = "arm64"
   post_build:
@@ -42,6 +50,7 @@ phases:
 artifacts:
   files:
     - appspec.yml
+    - deploy/compose.dev.yaml
     - deploy/compose.prod.yaml
     - deploy/scripts/**/*
     - build-artifacts/*

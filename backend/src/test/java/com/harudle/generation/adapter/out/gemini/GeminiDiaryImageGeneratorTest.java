@@ -8,14 +8,18 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
 import com.google.genai.Models;
+import com.google.genai.errors.ClientException;
 import com.google.genai.types.Content;
 import com.google.genai.types.GenerateContentConfig;
 import com.google.genai.types.GenerateContentResponse;
 import com.google.genai.types.Part;
+import com.harudle.common.logging.ExternalApiFailure;
+import com.harudle.common.logging.ExternalApiLogger;
 import com.harudle.generation.configuration.GeminiGenerationProperties;
 import com.harudle.generation.domain.StoryPanel;
 import com.harudle.generation.domain.Storyboard;
@@ -43,11 +47,15 @@ class GeminiDiaryImageGeneratorTest {
     private final Models models = mock(Models.class);
     private final GenerateContentResponse response = mock(GenerateContentResponse.class);
     private final DiaryImagePromptRenderer promptRenderer = new DiaryImagePromptRenderer();
+    private final ExternalApiLogger externalApiLogger = mock(ExternalApiLogger.class);
     private final GeminiDiaryImageGenerator generator = new GeminiDiaryImageGenerator(
             models,
             createProperties(),
             promptRenderer,
-            new GeminiExceptionTranslator()
+            new GeminiFailureReporter(
+                    new GeminiExceptionTranslator(),
+                    externalApiLogger
+            )
     );
 
     @BeforeEach
@@ -89,14 +97,18 @@ class GeminiDiaryImageGeneratorTest {
         });
         assertThat(parts.get(2).text()).get().asString()
                 .startsWith("[Final Task]\nIMAGE STYLE PROMPT\n\nSELECTED STORY:")
+                .contains("VISIBLE COMIC TITLE READS EXACTLY: \"카페에서 생긴 일\"")
+                .contains("FIXED CREATOR HANDLE READS EXACTLY: \"@harudle.official\"")
                 .contains("Panel 1 — TOP LEFT — SETUP:")
-                .contains("Caption reads exactly: \"캡션 1\"");
+                .contains("Caption reads exactly: \"캡션 1\"")
+                .contains("Render exactly six readable text blocks:");
 
         GenerateContentConfig config = configCaptor.getValue();
         assertThat(config.responseModalities()).contains(List.of("TEXT", "IMAGE"));
         assertThat(config.imageConfig()).get()
                 .extracting(imageConfig -> imageConfig.aspectRatio().orElseThrow())
                 .isEqualTo("1:1");
+        verifyNoInteractions(externalApiLogger);
     }
 
     @Test
@@ -109,6 +121,17 @@ class GeminiDiaryImageGeneratorTest {
                     assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.PROVIDER_ERROR);
                     assertThat(exception.getCause()).isInstanceOf(IllegalStateException.class);
                 });
+        verify(externalApiLogger).error(
+                eq(new ExternalApiFailure(
+                        "gemini",
+                        "image_generation",
+                        "RESPONSE_PROCESSING_ERROR",
+                        null,
+                        null,
+                        null
+                )),
+                any(IllegalStateException.class)
+        );
     }
 
     @ParameterizedTest
@@ -142,6 +165,42 @@ class GeminiDiaryImageGeneratorTest {
                     assertThat(exception.getCause()).isInstanceOf(IllegalArgumentException.class);
                 });
         verify(models, never()).generateContent(anyString(), any(Content.class), any(GenerateContentConfig.class));
+        verify(externalApiLogger).error(
+                eq(new ExternalApiFailure(
+                        "gemini",
+                        "image_generation",
+                        "REQUEST_PREPARATION_ERROR",
+                        null,
+                        null,
+                        null
+                )),
+                any(IllegalArgumentException.class)
+        );
+    }
+
+    @Test
+    @DisplayName("Gemini 이미지 요청 시간이 초과되면 외부 연동 실패를 기록한다")
+    void logImageGenerationTimeout() {
+        ClientException cause = new ClientException(504, "GATEWAY_TIMEOUT", "timeout");
+        when(models.generateContent(anyString(), any(Content.class), any(GenerateContentConfig.class)))
+                .thenThrow(cause);
+
+        assertThatThrownBy(() -> generator.generate(createRequest(createReferenceImage())))
+                .isInstanceOfSatisfying(AiGenerationException.class, exception -> {
+                    assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.TIMEOUT);
+                    assertThat(exception).hasCause(cause);
+                });
+        verify(externalApiLogger).warn(
+                new ExternalApiFailure(
+                        "gemini",
+                        "image_generation",
+                        "TIMEOUT",
+                        "GATEWAY_TIMEOUT",
+                        "504",
+                        null
+                ),
+                cause
+        );
     }
 
     private DiaryImageGenerationRequest createRequest(ReferenceImage referenceImage) {

@@ -3,12 +3,15 @@ package com.harudle.auth.presentation;
 import com.harudle.auth.application.CurrentUserResult;
 import com.harudle.auth.application.CurrentUserService;
 import com.harudle.auth.application.InvalidCurrentUserException;
+import com.harudle.common.error.ErrorType;
+import com.harudle.common.error.ProblemDetailFactory;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
-import java.net.URI;
 import java.util.Objects;
 import java.util.UUID;
 import org.springframework.http.CacheControl;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
@@ -19,16 +22,27 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = "Auth")
+@SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequestMapping("/api/v1/me")
 public class CurrentUserController {
 
     private final CurrentUserService currentUserService;
+    private final ProblemDetailFactory problemDetailFactory;
 
-    public CurrentUserController(CurrentUserService currentUserService) {
+    public CurrentUserController(
+            CurrentUserService currentUserService,
+            ProblemDetailFactory problemDetailFactory
+    ) {
         this.currentUserService = currentUserService;
+        this.problemDetailFactory = problemDetailFactory;
     }
 
+    @Operation(
+            summary = "내 프로필 조회",
+            description = "인증된 사용자의 프로필과 연결된 OAuth Provider를 조회합니다."
+    )
     @GetMapping
     public ResponseEntity<CurrentUserResponse> find(
             @AuthenticationPrincipal Jwt jwt
@@ -42,22 +56,12 @@ public class CurrentUserController {
     }
 
     @ExceptionHandler(InvalidCurrentUserException.class)
-    public ResponseEntity<ProblemDetail> handleInvalidCurrentUser(
-            HttpServletRequest request
-    ) {
-        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(
-                HttpStatus.UNAUTHORIZED,
-                "현재 로그인 사용자를 확인할 수 없습니다."
-        );
-        problemDetail.setTitle(HttpStatus.UNAUTHORIZED.getReasonPhrase());
-        problemDetail.setType(URI.create("https://api.harudle.example/problems/invalid-current-user"));
-        problemDetail.setInstance(URI.create(request.getRequestURI()));
-        problemDetail.setProperty("code", "INVALID_CURRENT_USER");
-
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+    public ResponseEntity<ProblemDetail> handleInvalidCurrentUser(HttpServletRequest request) {
+        return ResponseEntity
+                .status(ErrorType.INVALID_CURRENT_USER.status())
                 .contentType(MediaType.APPLICATION_PROBLEM_JSON)
                 .cacheControl(CacheControl.noStore())
-                .body(problemDetail);
+                .body(problemDetailFactory.create(ErrorType.INVALID_CURRENT_USER, request));
     }
 
     private UUID extractUserId(Jwt jwt) {

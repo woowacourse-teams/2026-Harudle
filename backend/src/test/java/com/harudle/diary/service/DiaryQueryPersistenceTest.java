@@ -3,14 +3,19 @@ package com.harudle.diary.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.harudle.diary.repository.DiaryRepository;
+import com.harudle.diary.repository.DiarySnapshot;
 import com.harudle.diary.service.dto.DiaryDayResult;
+import com.harudle.diary.service.dto.DiaryTimelineResult;
 import com.harudle.generation.domain.GenerationPrompt;
+import com.harudle.generation.domain.GenerationStatus;
 import com.harudle.generation.repository.GenerationPromptRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Comparator;
+import java.util.List;
 import java.util.UUID;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
@@ -41,8 +46,10 @@ class DiaryQueryPersistenceTest {
     private static final UUID DELETED_DIARY_ID = UUID.fromString("00000000-0000-0000-0000-000000000004");
     private static final UUID OTHER_USERS_DIARY_ID = UUID.fromString("00000000-0000-0000-0000-000000000005");
     private static final UUID OUTSIDE_MONTH_DIARY_ID = UUID.fromString("00000000-0000-0000-0000-000000000006");
+    private static final UUID LATEST_DATE_DIARY_ID = UUID.fromString("00000000-0000-0000-0000-000000000007");
     private static final LocalDate DIARY_DATE = LocalDate.of(2026, 8, 6);
     private static final Instant CREATED_AT = Instant.parse("2026-08-06T12:00:00Z");
+    private static final Instant LATER_CREATED_AT = CREATED_AT.plusSeconds(1);
 
     @Container
     @ServiceConnection
@@ -88,35 +95,100 @@ class DiaryQueryPersistenceTest {
     }
 
     @Test
-    @DisplayName("월간 조회는 본인의 성공한 활성 일기만 고유한 순서로 반환한다")
+    @DisplayName("월간 조회는 본인의 성공한 활성 일기를 최신순으로 반환한다")
     void findMonthlySuccessfulActiveDiariesInStableOrder() {
-        insertDiary(FIRST_DIARY_ID, USER_ID, DIARY_DATE, null);
-        insertDiary(SECOND_DIARY_ID, USER_ID, DIARY_DATE, null);
-        insertDiary(FAILED_DIARY_ID, USER_ID, DIARY_DATE, null);
-        insertDiary(DELETED_DIARY_ID, USER_ID, DIARY_DATE, CREATED_AT.plusSeconds(1));
-        insertDiary(OTHER_USERS_DIARY_ID, OTHER_USER_ID, DIARY_DATE, null);
-        insertDiary(OUTSIDE_MONTH_DIARY_ID, USER_ID, DIARY_DATE.plusMonths(1), null);
+        insertDiary(FIRST_DIARY_ID, USER_ID, DIARY_DATE, CREATED_AT, null);
+        insertDiary(SECOND_DIARY_ID, USER_ID, DIARY_DATE, LATER_CREATED_AT, null);
+        insertDiary(FAILED_DIARY_ID, USER_ID, DIARY_DATE, LATER_CREATED_AT, null);
+        insertDiary(DELETED_DIARY_ID, USER_ID, DIARY_DATE, CREATED_AT, LATER_CREATED_AT);
+        insertDiary(OTHER_USERS_DIARY_ID, OTHER_USER_ID, DIARY_DATE, CREATED_AT, null);
+        insertDiary(OUTSIDE_MONTH_DIARY_ID, USER_ID, DIARY_DATE.plusMonths(1), CREATED_AT, null);
+        insertDiary(LATEST_DATE_DIARY_ID, USER_ID, DIARY_DATE.plusDays(1), CREATED_AT, null);
         insertSuccessfulGeneration(FIRST_DIARY_ID, "첫 번째 일기");
         insertSuccessfulGeneration(SECOND_DIARY_ID, "두 번째 일기");
         insertFailedGeneration(FAILED_DIARY_ID);
         insertSuccessfulGeneration(DELETED_DIARY_ID, "삭제된 일기");
         insertSuccessfulGeneration(OTHER_USERS_DIARY_ID, "다른 사용자 일기");
         insertSuccessfulGeneration(OUTSIDE_MONTH_DIARY_ID, "다른 달 일기");
+        insertSuccessfulGeneration(LATEST_DATE_DIARY_ID, "최신 날짜 일기");
 
-        assertThat(diaryRepository.findMonthlySnapshots(
+        assertThat(diaryRepository.findActiveSnapshotsBetween(
                 USER_ID,
                 LocalDate.of(2026, 8, 1),
                 LocalDate.of(2026, 8, 31)
         )).extracting(snapshot -> snapshot.id())
-                .containsExactly(FIRST_DIARY_ID, SECOND_DIARY_ID, FAILED_DIARY_ID);
+                .containsExactly(
+                        LATEST_DATE_DIARY_ID,
+                        FAILED_DIARY_ID,
+                        SECOND_DIARY_ID,
+                        FIRST_DIARY_ID
+                );
 
-        DiaryDayResult day = diaryQueryService.getTimeline(USER_ID, 2026, 8)
-                .days()
-                .get(5);
+        DiaryTimelineResult timeline = diaryQueryService.getTimeline(USER_ID, 2026, 8);
+        assertThat(timeline.days())
+                .extracting(DiaryDayResult::date)
+                .isSortedAccordingTo(Comparator.reverseOrder());
+        DiaryDayResult latestDate = findDay(timeline, DIARY_DATE.plusDays(1));
+        DiaryDayResult diaryDate = findDay(timeline, DIARY_DATE);
 
-        assertThat(day.items())
+        assertThat(latestDate.items())
                 .extracting(item -> item.id())
-                .containsExactly(FIRST_DIARY_ID, SECOND_DIARY_ID);
+                .containsExactly(LATEST_DATE_DIARY_ID);
+        assertThat(diaryDate.items())
+                .extracting(item -> item.id())
+                .containsExactly(SECOND_DIARY_ID, FIRST_DIARY_ID);
+    }
+
+    @Test
+    @DisplayName("삭제된 성공 일기는 streak 날짜에 유지하고 활성 일기 조회에서는 제외한다")
+    void keepDeletedSuccessfulDiaryDateOnlyForStreak() {
+        LocalDate oldestDate = DIARY_DATE;
+        LocalDate deletedDate = DIARY_DATE.plusDays(1);
+        LocalDate newestDate = DIARY_DATE.plusDays(2);
+        LocalDate failedDate = DIARY_DATE.minusDays(1);
+        LocalDate futureDate = newestDate.plusDays(1);
+        insertDiary(FIRST_DIARY_ID, USER_ID, oldestDate, CREATED_AT, null);
+        insertDiary(DELETED_DIARY_ID, USER_ID, deletedDate, CREATED_AT, LATER_CREATED_AT);
+        insertDiary(LATEST_DATE_DIARY_ID, USER_ID, newestDate, CREATED_AT, null);
+        insertDiary(SECOND_DIARY_ID, USER_ID, newestDate, LATER_CREATED_AT, null);
+        insertDiary(FAILED_DIARY_ID, USER_ID, failedDate, CREATED_AT, LATER_CREATED_AT);
+        insertDiary(OTHER_USERS_DIARY_ID, OTHER_USER_ID, newestDate, CREATED_AT, null);
+        insertDiary(OUTSIDE_MONTH_DIARY_ID, USER_ID, futureDate, CREATED_AT, null);
+        insertSuccessfulGeneration(FIRST_DIARY_ID, "가장 오래된 성공 일기");
+        insertSuccessfulGeneration(DELETED_DIARY_ID, "삭제한 성공 일기");
+        insertSuccessfulGeneration(LATEST_DATE_DIARY_ID, "가장 최근 성공 일기");
+        insertSuccessfulGeneration(SECOND_DIARY_ID, "같은 날 작성한 두 번째 성공 일기");
+        insertFailedGeneration(FAILED_DIARY_ID);
+        insertSuccessfulGeneration(OTHER_USERS_DIARY_ID, "다른 사용자의 성공 일기");
+        insertSuccessfulGeneration(OUTSIDE_MONTH_DIARY_ID, "조회 기준일 이후 성공 일기");
+
+        List<LocalDate> successfulDates =
+                diaryRepository.findDiaryDatesIncludingDeletedByGenerationStatus(
+                        USER_ID,
+                        newestDate,
+                        GenerationStatus.SUCCEEDED
+                );
+        List<DiarySnapshot> activeDiaries = diaryRepository.findActiveSnapshotsBetween(
+                USER_ID,
+                oldestDate,
+                newestDate
+        );
+
+        assertThat(successfulDates).containsExactly(
+                newestDate,
+                deletedDate,
+                oldestDate
+        );
+        assertThat(activeDiaries)
+                .extracting(DiarySnapshot::id)
+                .containsExactly(SECOND_DIARY_ID, LATEST_DATE_DIARY_ID, FIRST_DIARY_ID);
+    }
+
+    private DiaryDayResult findDay(DiaryTimelineResult timeline, LocalDate date) {
+        return timeline.days().stream()
+                .filter(day -> day.date().equals(date))
+                .findFirst()
+                .orElseThrow();
     }
 
     private void insertUser(UUID userId, String email) {
@@ -128,7 +200,13 @@ class DiaryQueryPersistenceTest {
         );
     }
 
-    private void insertDiary(UUID diaryId, UUID userId, LocalDate diaryDate, Instant deletedAt) {
+    private void insertDiary(
+            UUID diaryId,
+            UUID userId,
+            LocalDate diaryDate,
+            Instant createdAt,
+            Instant deletedAt
+    ) {
         executeUpdate("""
                 INSERT INTO diaries (
                     id,
@@ -140,7 +218,7 @@ class DiaryQueryPersistenceTest {
                     deleted_at
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, diaryId, userId, diaryDate, "오늘의 일기", CREATED_AT, CREATED_AT, deletedAt);
+                """, diaryId, userId, diaryDate, "오늘의 일기", createdAt, createdAt, deletedAt);
     }
 
     private void insertSuccessfulGeneration(UUID diaryId, String title) {

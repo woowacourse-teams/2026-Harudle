@@ -12,7 +12,10 @@ import tools.jackson.databind.ObjectMapper;
 
 public final class GeminiStoryboardGenerator implements StoryboardGenerator {
 
-    private static final String OPERATION = "스토리보드 생성";
+    private static final String OPERATION = "storyboard_generation";
+    private static final String TRANSLATION_OPERATION = "스토리보드 생성";
+    private static final String REQUEST_PREPARATION_ERROR = "REQUEST_PREPARATION_ERROR";
+    private static final String RESPONSE_PROCESSING_ERROR = "RESPONSE_PROCESSING_ERROR";
     private static final String SOURCE_DIARY_HEADER = "[SOURCE DIARY — preserve its meaning]";
     private static final String JSON_RESPONSE_MIME_TYPE = "application/json";
 
@@ -20,35 +23,58 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
     private final GeminiGenerationProperties properties;
     private final ObjectMapper objectMapper;
     private final GeminiStoryboardResponseMapper responseMapper;
-    private final GeminiExceptionTranslator exceptionTranslator;
+    private final GeminiFailureReporter failureReporter;
 
     public GeminiStoryboardGenerator(
             Models models,
             GeminiGenerationProperties properties,
             ObjectMapper objectMapper,
             GeminiStoryboardResponseMapper responseMapper,
-            GeminiExceptionTranslator exceptionTranslator
+            GeminiFailureReporter failureReporter
     ) {
         this.models = models;
         this.properties = properties;
         this.objectMapper = objectMapper;
         this.responseMapper = responseMapper;
-        this.exceptionTranslator = exceptionTranslator;
+        this.failureReporter = failureReporter;
     }
 
     @Override
     public Storyboard generate(StoryboardGenerationRequest request) {
+        String requestText;
+        GenerateContentConfig config;
         try {
-            String requestText = createRequestText(request);
-            GenerateContentConfig config = createGenerateContentConfig();
-            GenerateContentResponse response = models.generateContent(
+            requestText = createRequestText(request);
+            config = createGenerateContentConfig();
+        } catch (Exception exception) {
+            throw failureReporter.reportInternalFailure(
+                    OPERATION,
+                    TRANSLATION_OPERATION,
+                    REQUEST_PREPARATION_ERROR,
+                    exception
+            );
+        }
+
+        GenerateContentResponse response;
+        try {
+            response = models.generateContent(
                     properties.storyboardModel(),
                     requestText,
                     config
             );
+        } catch (Exception exception) {
+            throw failureReporter.reportProviderFailure(OPERATION, TRANSLATION_OPERATION, exception);
+        }
+
+        try {
             return mapResponse(response);
         } catch (Exception exception) {
-            throw exceptionTranslator.translate(OPERATION, exception);
+            throw failureReporter.reportInternalFailure(
+                    OPERATION,
+                    TRANSLATION_OPERATION,
+                    RESPONSE_PROCESSING_ERROR,
+                    exception
+            );
         }
     }
 

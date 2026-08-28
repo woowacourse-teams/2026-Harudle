@@ -4,13 +4,16 @@ import com.google.genai.Client;
 import com.google.genai.Models;
 import com.google.genai.types.HttpOptions;
 import com.google.genai.types.HttpRetryOptions;
+import com.harudle.common.logging.ExternalApiLogger;
 import com.harudle.generation.adapter.out.gemini.DiaryImagePromptRenderer;
 import com.harudle.generation.adapter.out.gemini.GeminiDiaryImageGenerator;
 import com.harudle.generation.adapter.out.gemini.GeminiExceptionTranslator;
+import com.harudle.generation.adapter.out.gemini.GeminiFailureReporter;
 import com.harudle.generation.adapter.out.gemini.GeminiStoryboardGenerator;
 import com.harudle.generation.adapter.out.gemini.GeminiStoryboardResponseMapper;
 import com.harudle.generation.adapter.out.s3.ImageObjectKeyFactory;
 import com.harudle.generation.adapter.out.s3.S3ExceptionTranslator;
+import com.harudle.generation.adapter.out.s3.S3FailureReporter;
 import com.harudle.generation.adapter.out.s3.S3ImageStorage;
 import com.harudle.generation.adapter.out.s3.S3ImageUrlProvider;
 import com.harudle.generation.service.port.DiaryImageGenerator;
@@ -83,6 +86,14 @@ public class GenerationAdapterConfiguration {
     }
 
     @Bean
+    public GeminiFailureReporter geminiFailureReporter(
+            GeminiExceptionTranslator exceptionTranslator,
+            ExternalApiLogger externalApiLogger
+    ) {
+        return new GeminiFailureReporter(exceptionTranslator, externalApiLogger);
+    }
+
+    @Bean
     public DiaryImagePromptRenderer diaryImagePromptRenderer() {
         return new DiaryImagePromptRenderer();
     }
@@ -93,14 +104,14 @@ public class GenerationAdapterConfiguration {
             GeminiGenerationProperties properties,
             ObjectMapper objectMapper,
             GeminiStoryboardResponseMapper responseMapper,
-            GeminiExceptionTranslator exceptionTranslator
+            GeminiFailureReporter failureReporter
     ) {
         return new GeminiStoryboardGenerator(
                 geminiModels,
                 properties,
                 objectMapper,
                 responseMapper,
-                exceptionTranslator
+                failureReporter
         );
     }
 
@@ -109,13 +120,13 @@ public class GenerationAdapterConfiguration {
             Models geminiModels,
             GeminiGenerationProperties properties,
             DiaryImagePromptRenderer promptRenderer,
-            GeminiExceptionTranslator exceptionTranslator
+            GeminiFailureReporter failureReporter
     ) {
         return new GeminiDiaryImageGenerator(
                 geminiModels,
                 properties,
                 promptRenderer,
-                exceptionTranslator
+                failureReporter
         );
     }
 
@@ -130,17 +141,25 @@ public class GenerationAdapterConfiguration {
     }
 
     @Bean
+    public S3FailureReporter s3FailureReporter(
+            S3ExceptionTranslator exceptionTranslator,
+            ExternalApiLogger externalApiLogger
+    ) {
+        return new S3FailureReporter(exceptionTranslator, externalApiLogger);
+    }
+
+    @Bean
     public ImageStorage imageStorage(
             S3Client s3Client,
             S3StorageProperties properties,
             ImageObjectKeyFactory objectKeyFactory,
-            S3ExceptionTranslator exceptionTranslator
+            S3FailureReporter failureReporter
     ) {
         return new S3ImageStorage(
                 s3Client,
                 properties,
                 objectKeyFactory,
-                exceptionTranslator
+                failureReporter
         );
     }
 
@@ -148,8 +167,8 @@ public class GenerationAdapterConfiguration {
     public ImageUrlProvider imageUrlProvider(
             S3Presigner s3Presigner,
             S3StorageProperties properties,
-            S3ExceptionTranslator exceptionTranslator
+            S3FailureReporter failureReporter
     ) {
-        return new S3ImageUrlProvider(s3Presigner, properties, exceptionTranslator);
+        return new S3ImageUrlProvider(s3Presigner, properties, failureReporter);
     }
 }
