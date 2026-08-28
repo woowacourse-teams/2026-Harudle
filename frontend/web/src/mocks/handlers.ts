@@ -1,5 +1,6 @@
 import { delay, http, HttpResponse } from 'msw';
 import { isGuestTrialPath } from '../pages/guest-trial/guestTrialPaths';
+import { MOCK_SCENARIO_HEADER, MOCK_SCENARIOS } from './mockScenarios';
 
 interface CreateDiaryRequest {
   diaryDate: string;
@@ -345,6 +346,13 @@ export const handlers = [
   http.get('/oauth2/authorization/kakao', async ({ request }) => {
     await delay(300);
 
+    if (
+      request.headers.get(MOCK_SCENARIO_HEADER) ===
+      MOCK_SCENARIOS.oauthAuthorization
+    ) {
+      return HttpResponse.html('<!doctype html><title>카카오 OAuth</title>');
+    }
+
     return HttpResponse.redirect(new URL('/', request.url));
   }),
 
@@ -363,8 +371,20 @@ export const handlers = [
     );
   }),
 
-  http.post('/api/v1/auth/refresh', async () => {
+  http.post('/api/v1/auth/refresh', async ({ request }) => {
     await delay(300);
+
+    if (
+      request.headers.get(MOCK_SCENARIO_HEADER) ===
+      MOCK_SCENARIOS.authRefreshFailure
+    ) {
+      return createProblemDetails({
+        status: 401,
+        code: 'INVALID_REFRESH_TOKEN',
+        detail: '유효한 Refresh Token이 없습니다.',
+        instance: '/api/v1/auth/refresh',
+      });
+    }
 
     if (isGuestTrialPath(globalThis.location.pathname)) {
       return createProblemDetails({
