@@ -89,4 +89,24 @@ class AdminGenerationHistoryQueryServiceTest {
                 20
         )).isInstanceOf(AdminGenerationHistoryDateRangeException.class);
     }
+
+    @Test
+    @DisplayName("DB 시간 범위를 벗어나는 시작일과 종료일을 거부한다")
+    void rejectsDatesOutsideSupportedRange() {
+        assertDateRangeRejected(LocalDate.MAX, null);
+        assertDateRangeRejected(null, LocalDate.MAX.minusDays(1));
+        assertDateRangeRejected(LocalDate.MIN, null);
+        assertDateRangeRejected(null, LocalDate.MIN);
+    }
+
+    private void assertDateRangeRejected(LocalDate from, LocalDate to) {
+        assertThatThrownBy(() -> generationHistoryQueryService.search(
+                null,
+                null,
+                from,
+                to,
+                0,
+                20
+        )).isInstanceOf(AdminGenerationHistoryDateRangeException.class);
+    }
 }

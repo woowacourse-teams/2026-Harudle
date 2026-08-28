@@ -15,6 +15,9 @@ import org.springframework.stereotype.Service;
 @Service
 public class AdminGenerationHistoryQueryService {
 
+    private static final LocalDate MIN_SUPPORTED_DATE = LocalDate.of(1, 1, 1);
+    private static final LocalDate MAX_SUPPORTED_DATE = LocalDate.of(9999, 12, 31);
+
     private final AdminGenerationHistoryQueryRepository generationHistoryQueryRepository;
     private final Clock clock;
 
@@ -46,12 +49,17 @@ public class AdminGenerationHistoryQueryService {
     }
 
     private void validateDateRange(LocalDate from, LocalDate to) {
+        if (isOutsideSupportedRange(from) || isOutsideSupportedRange(to)) {
+            throw new AdminGenerationHistoryDateRangeException();
+        }
         if (from != null && to != null && from.isAfter(to)) {
             throw new AdminGenerationHistoryDateRangeException();
         }
-        if (LocalDate.MAX.equals(to)) {
-            throw new AdminGenerationHistoryDateRangeException();
-        }
+    }
+
+    private boolean isOutsideSupportedRange(LocalDate date) {
+        return date != null
+                && (date.isBefore(MIN_SUPPORTED_DATE) || date.isAfter(MAX_SUPPORTED_DATE));
     }
 
     private Instant toStartInstant(LocalDate date) {
