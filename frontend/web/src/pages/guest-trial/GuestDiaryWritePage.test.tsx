@@ -18,12 +18,10 @@ type SubmitGuestDiary = (request: GuestDiaryRequest) => Promise<void>;
 
 const mockSubmitDiary = { current: jest.fn<SubmitGuestDiary>() };
 const mockRetryDiary = { current: jest.fn(async () => {}) };
-const mockScrollIntoView = { current: jest.fn() };
 const mockTrack = jest.fn();
 const mockCreationState = {
   current: { status: 'writing' } as GuestDiaryCreationState,
 };
-const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
 
 const guestDiaryResponse: GuestDiaryResponse = {
   id: 'guest-diary-id',
@@ -109,29 +107,36 @@ beforeEach(() => {
   mockCreationState.current = { status: 'writing' };
   mockSubmitDiary.current = jest.fn<SubmitGuestDiary>();
   mockRetryDiary.current = jest.fn(async () => {});
-  mockScrollIntoView.current = jest.fn();
   mockTrack.mockReset();
-  HTMLElement.prototype.scrollIntoView = mockScrollIntoView.current;
 });
 
 afterEach(() => {
-  HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
   jest.clearAllTimers();
   jest.useRealTimers();
 });
 
 describe('게스트 체험 랜딩 작성 화면', () => {
-  it('기존 랜딩을 모두 보여준 뒤 마지막 마스코트 아래에서 바로 일기를 작성할 수 있다', () => {
-    render(<GuestDiaryWritePage />);
+  it('기존 랜딩 앞부분 없이 마지막 마스코트와 입력 화면만 보여준다', () => {
+    const { container } = render(<GuestDiaryWritePage />);
 
     expect(
-      screen.getByRole('heading', {
+      screen.queryByRole('heading', {
         name: /일상을 그림으로\s*만들어드려요/,
       }),
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
     expect(
-      screen.getByText('찍지 못했던 일상을 그림으로 만들어드립니다'),
-    ).toBeInTheDocument();
+      screen.queryByText('찍지 못했던 일상을 그림으로 만들어드립니다'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('img', { name: '하루들' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('region', { name: '하루가 네컷이 되는 흐름' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('이제, 당신의 차례예요')).not.toBeInTheDocument();
+    expect(container.querySelector('main')).toHaveStyle({
+      backgroundColor: '#f8f6ff',
+    });
 
     const finalMascot = screen.getByRole('img', {
       name: '사람과 강아지가 함께 새로운 네컷을 시작하는 모습',
@@ -158,23 +163,11 @@ describe('게스트 체험 랜딩 작성 화면', () => {
     expect(document.querySelector('input[type="date"]')).toBeNull();
     expect(screen.getByRole('textbox', { name: '이야기' })).toHaveAttribute(
       'placeholder',
-      '상쾌하게 일어나고 보니 오전 11시였다 부랴부랴 짐을 싸고 버스에서 내리니 비가 와서 비에 홀딱 젖었다',
+      '라면 끓이다 한눈팔았더니 국물이 사라졌다.',
     );
     expect(
-      screen.getByRole('button', { name: '네컷 그림 만들기' }),
+      screen.getByRole('button', { name: '그림일기 만들기' }),
     ).toBeInTheDocument();
-  });
-
-  it('맨 위 무료 체험 버튼을 누르면 입력 폼으로 내려간다', async () => {
-    const user = userEvent.setup();
-    render(<GuestDiaryWritePage />);
-
-    await user.click(screen.getByRole('button', { name: '무료로 사용해보기' }));
-
-    expect(mockScrollIntoView.current).toHaveBeenCalledWith({
-      behavior: 'smooth',
-      block: 'start',
-    });
   });
 
   it('입력한 내용을 별도 작성 페이지 이동 없이 바로 생성한다', async () => {
@@ -185,7 +178,7 @@ describe('게스트 체험 랜딩 작성 화면', () => {
       screen.getByRole('textbox', { name: '이야기' }),
       '친구와 산책하며 오래 웃었던 하루였다.',
     );
-    await user.click(screen.getByRole('button', { name: '네컷 그림 만들기' }));
+    await user.click(screen.getByRole('button', { name: '그림일기 만들기' }));
 
     expect(mockSubmitDiary.current).toHaveBeenCalledWith({
       diaryDate: getKoreanToday(),
@@ -202,7 +195,7 @@ describe('게스트 체험 랜딩 작성 화면', () => {
     const textbox = screen.getByRole('textbox', { name: '이야기' });
 
     await user.type(textbox, '짧은 일기');
-    await user.click(screen.getByRole('button', { name: '네컷 그림 만들기' }));
+    await user.click(screen.getByRole('button', { name: '그림일기 만들기' }));
 
     expect(mockSubmitDiary.current).not.toHaveBeenCalled();
     expect(mockTrack).not.toHaveBeenCalled();
@@ -235,10 +228,10 @@ describe('게스트 체험 랜딩 작성 화면', () => {
     render(<GuestDiaryWritePage />);
 
     expect(
-      screen.getByRole('heading', {
+      screen.queryByRole('heading', {
         name: /일상을 그림으로\s*만들어드려요/,
       }),
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('form', { name: '아무 이야기나 적어주세요' }),
     ).not.toBeInTheDocument();
@@ -316,10 +309,10 @@ describe('게스트 체험 랜딩 작성 화면', () => {
     render(<GuestDiaryWritePage />);
 
     expect(
-      screen.getByRole('heading', {
+      screen.queryByRole('heading', {
         name: /일상을 그림으로\s*만들어드려요/,
       }),
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('form', { name: '아무 이야기나 적어주세요' }),
     ).not.toBeInTheDocument();

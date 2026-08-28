@@ -7,6 +7,14 @@ import loadingAnimation from '../../assets/images/loading-animation.webp';
 import { theme } from '../../styles/theme';
 import useLogout from './useLogout';
 import SettingError from './SettingError';
+import callMadeIcon from '../../assets/icons/call_made.svg';
+import logoutIcon from '../../assets/icons/logout.svg';
+import articlePersonIcon from '../../assets/icons/article_person.svg';
+
+const PRIVACY_POLICY_URL =
+  'https://tecothon.notion.site/3c6d0505d9168025b01cdfa02d863a37?pvs=73';
+
+const GOOGLE_FROM_URL = 'https://forms.gle/8DMM4L835Esxk7BE6';
 
 const SettingPage = () => {
   const navigate = useNavigate();
@@ -51,7 +59,7 @@ const SettingPageContent = () => {
 
   return (
     <div css={settingPageContentStyle}>
-      <div css={accountCardStyle}>
+      <div css={settingCardStyle}>
         <div css={settingRowStyle}>
           <span css={settingLabelStyle}>이름</span>
           <span css={settingValueStyle}>
@@ -66,13 +74,35 @@ const SettingPageContent = () => {
         </div>
       </div>
 
+      <div css={settingCardStyle}>
+        <a
+          css={[settingRowStyle, settingLinkStyle]}
+          href={GOOGLE_FROM_URL}
+          target="blank"
+        >
+          <span css={settingLabelStyle}>피드백 남기기</span>
+          <img css={iconStyle} src={callMadeIcon} alt="" aria-hidden="true" />
+        </a>
+
+        <a css={[settingRowStyle, settingLinkStyle]} href={PRIVACY_POLICY_URL}>
+          <span css={settingLabelStyle}>개인정보 처리방침</span>
+          <img
+            css={iconStyle}
+            src={articlePersonIcon}
+            alt=""
+            aria-hidden="true"
+          />
+        </a>
+      </div>
+
       <button
         type="button"
         css={logoutButtonStyle}
         disabled={logoutRequest.status === 'loading'}
         onClick={() => void handleLogout()}
       >
-        로그아웃
+        <span>로그아웃</span>
+        <img css={logoutIconStyle} src={logoutIcon} alt="" aria-hidden="true" />
       </button>
       {logoutRequest.status === 'error' && (
         <div css={logoutErrorStyle}>{logoutRequest.error.message}</div>
@@ -148,11 +178,25 @@ const settingPageContentStyle = css`
   overflow-y: auto;
 `;
 
-const accountCardStyle = css`
+const settingCardStyle = css`
   height: 120px;
   overflow: hidden;
   border: 1px solid ${theme.colors.border.primary};
   border-radius: 16px;
+`;
+
+const settingLinkStyle = css`
+  color: ${theme.colors.text.primary};
+  text-decoration: none;
+
+  &:active {
+    background-color: #f8f7fa;
+  }
+`;
+
+const iconStyle = css`
+  width: 24px;
+  height: 24px;
 `;
 
 const settingRowStyle = css`
@@ -179,6 +223,9 @@ const settingValueStyle = css`
 `;
 
 const logoutButtonStyle = css`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   width: 100%;
   height: 56px;
   padding: 0 16px;
@@ -200,6 +247,11 @@ const logoutButtonStyle = css`
     opacity: 0.5;
     cursor: default;
   }
+`;
+
+const logoutIconStyle = css`
+  width: 24px;
+  height: 24px;
 `;
 
 const logoutErrorStyle = css`

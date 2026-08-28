@@ -8,13 +8,38 @@ import loadingAnimation from '../../assets/images/loading-animation.webp';
 import { css } from '@emotion/react';
 import plusIcon from '../../assets/icons/plus.svg';
 import DiaryError from './DiaryError';
+import { useDiaryGenerateContext } from '../diary-generating/DiaryGenerateContext';
+import DiaryItemRowSkeleton from './DiaryItemRowSkeleton';
+import { useEffect } from 'react';
 
 const DiaryItemList = ({
   monthlyDiariesRequest,
+  getMonthlyDiaries,
 }: {
   monthlyDiariesRequest: ApiRequest<MonthlyDiariesResponse>;
+  getMonthlyDiaries: ({
+    showLoading,
+  }: {
+    showLoading: boolean;
+  }) => Promise<void>;
 }) => {
   const navigate = useNavigate();
+  const { diaryGenerateRequest, resetDiaryGenerateRequest } =
+    useDiaryGenerateContext();
+
+  // 홈 화면에서는 최초 1번만 일기 생성 성공 또는 실패 후처리를 하면 되므로
+  // 비동기 상태를 초기화한다.
+  useEffect(() => {
+    if (diaryGenerateRequest.status === 'error') {
+      resetDiaryGenerateRequest();
+      alert(diaryGenerateRequest.error.message);
+    }
+
+    if (diaryGenerateRequest.status === 'success') {
+      resetDiaryGenerateRequest();
+      void getMonthlyDiaries({ showLoading: false });
+    }
+  }, [diaryGenerateRequest.status]);
 
   const isMonthlyDiaryExist = (monthlyDiaryDays: MonthlyDiaryDay[]) => {
     return monthlyDiaryDays.some((day) => day.exist);
@@ -36,11 +61,14 @@ const DiaryItemList = ({
   }
 
   const { days } = monthlyDiariesRequest.data;
+  const showSkeleton = diaryGenerateRequest.status === 'loading';
 
   return (
     <div>
       {isMonthlyDiaryExist(days) ? (
         <div css={diaryListStyle}>
+          {showSkeleton && <DiaryItemRowSkeleton />}
+
           {days.map((day) => {
             return day.items.map((diary) => (
               <DiaryItemRow
@@ -57,9 +85,11 @@ const DiaryItemList = ({
               navigate('/diary-write');
             }}
             icon={<img css={plusIconStyle} src={plusIcon} />}
-            disabled={false}
+            disabled={showSkeleton}
           />
         </div>
+      ) : showSkeleton ? (
+        <DiaryItemRowSkeleton />
       ) : (
         <DiaryEmptyState />
       )}

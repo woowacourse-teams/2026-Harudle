@@ -4,6 +4,21 @@ import { usePostHog } from '@posthog/react';
 import { identifyCurrentUserForPostHog, isPostHogEnabled } from './posthog';
 
 interface AnalyticsEventMap {
+  diary_timeline_viewed: {
+    year: number;
+    month: number;
+    diary_count: number;
+    has_diaries: boolean;
+  };
+  diary_detail_viewed: {
+    diary_id: string;
+    diary_date: string;
+  };
+  diary_created: {
+    diary_id: string;
+    diary_date: string;
+    remaining_generation_count: number;
+  };
   diary_share_clicked: {
     diary_id: string;
   };

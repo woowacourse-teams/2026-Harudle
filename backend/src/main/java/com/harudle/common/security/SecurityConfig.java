@@ -110,6 +110,12 @@ public class SecurityConfig {
                                 "/api/v1/public/**",
                                 "/error"
                         ).permitAll()
+                        .requestMatchers(
+                                "/scalar",
+                                "/scalar/**",
+                                "/v3/api-docs",
+                                "/v3/api-docs/**"
+                        ).permitAll()
                         .requestMatchers("/api/v1/**").authenticated()
                         .anyRequest().denyAll()
                 )
