@@ -27,6 +27,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.dao.InvalidDataAccessApiUsageException;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -230,8 +231,8 @@ class JpaGenerationUsageRepositoryTest {
     @DisplayName("1 미만인 오늘 사용량 한도 변경은 거부한다")
     void rejectsLimitCountBelowOne() {
         assertThatThrownBy(() -> generationUsageRepository.updateLimitCount(USER_ID, USAGE_DATE, 0))
-                .hasRootCauseInstanceOf(IllegalArgumentException.class)
-                .hasRootCauseMessage("일일 생성 한도는 1 이상이어야 합니다.");
+                .isInstanceOf(InvalidDataAccessApiUsageException.class)
+                .hasMessage("일일 생성 한도는 1 이상이어야 합니다.");
     }
 
     @Test
