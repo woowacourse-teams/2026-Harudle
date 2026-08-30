@@ -158,6 +158,7 @@ const problemTitleByCode: Record<string, string> = {
   SHARE_NOT_FOUND: 'Share not found',
   DUPLICATE_DIARY: 'Duplicate diary',
   DAILY_GENERATION_LIMIT_EXCEEDED: 'Daily generation limit exceeded',
+  DIARY_GENERATION_FAILED: 'Diary generation failed',
   INVALID_REFRESH_TOKEN: 'Invalid refresh token',
   INVALID_CURRENT_USER: 'Invalid current user',
   UNAUTHORIZED: 'Unauthorized',
@@ -687,7 +688,19 @@ export const handlers = [
       return unauthorizedResponse;
     }
 
-    await delay(9_000);
+    const isGenerationFailure =
+      request.headers.get(MOCK_SCENARIO_HEADER) ===
+      MOCK_SCENARIOS.diaryGenerationFailure;
+
+    await delay(isGenerationFailure ? 3_000 : 9_000);
+
+    if (isGenerationFailure) {
+      return createProblemDetails({
+        status: 503,
+        code: 'DIARY_GENERATION_FAILED',
+        detail: '일기를 만드는 중 문제가 발생했습니다. 다시 시도해주세요.',
+      });
+    }
 
     const idempotencyKey = request.headers.get('Idempotency-Key');
 
