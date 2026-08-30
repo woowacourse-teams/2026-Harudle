@@ -7,4 +7,6 @@ export const MOCK_SCENARIOS = {
   diaryDetailFailure: 'diary-detail-failure',
   diaryDeleteFailure: 'diary-delete-failure',
   diaryShareFailure: 'diary-share-failure',
+  profileFailure: 'profile-failure',
+  logoutFailure: 'logout-failure',
 } as const;

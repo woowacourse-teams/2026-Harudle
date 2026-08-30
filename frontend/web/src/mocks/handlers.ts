@@ -162,6 +162,8 @@ const problemTitleByCode: Record<string, string> = {
   DIARY_DETAIL_REQUEST_FAILED: 'Diary detail request failed',
   DIARY_DELETE_FAILED: 'Diary delete failed',
   DIARY_SHARE_FAILED: 'Diary share failed',
+  PROFILE_REQUEST_FAILED: 'Profile request failed',
+  LOGOUT_FAILED: 'Logout failed',
   INVALID_REFRESH_TOKEN: 'Invalid refresh token',
   INVALID_CURRENT_USER: 'Invalid current user',
   UNAUTHORIZED: 'Unauthorized',
@@ -422,6 +424,17 @@ export const handlers = [
 
     await delay(300);
 
+    if (
+      request.headers.get(MOCK_SCENARIO_HEADER) === MOCK_SCENARIOS.logoutFailure
+    ) {
+      return createProblemDetails({
+        status: 503,
+        code: 'LOGOUT_FAILED',
+        detail: '로그아웃에 실패했습니다. 다시 시도해주세요.',
+        instance: '/api/v1/auth/logout',
+      });
+    }
+
     return new HttpResponse(null, {
       status: 204,
       headers: {
@@ -438,6 +451,18 @@ export const handlers = [
     }
 
     await delay(300);
+
+    if (
+      request.headers.get(MOCK_SCENARIO_HEADER) ===
+      MOCK_SCENARIOS.profileFailure
+    ) {
+      return createProblemDetails({
+        status: 503,
+        code: 'PROFILE_REQUEST_FAILED',
+        detail: '설정 정보를 불러오지 못했습니다. 다시 시도해주세요.',
+        instance: '/api/v1/me',
+      });
+    }
 
     return HttpResponse.json(
       {
