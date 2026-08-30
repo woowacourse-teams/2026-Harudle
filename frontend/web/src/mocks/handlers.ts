@@ -159,6 +159,9 @@ const problemTitleByCode: Record<string, string> = {
   DUPLICATE_DIARY: 'Duplicate diary',
   DAILY_GENERATION_LIMIT_EXCEEDED: 'Daily generation limit exceeded',
   DIARY_GENERATION_FAILED: 'Diary generation failed',
+  DIARY_DETAIL_REQUEST_FAILED: 'Diary detail request failed',
+  DIARY_DELETE_FAILED: 'Diary delete failed',
+  DIARY_SHARE_FAILED: 'Diary share failed',
   INVALID_REFRESH_TOKEN: 'Invalid refresh token',
   INVALID_CURRENT_USER: 'Invalid current user',
   UNAUTHORIZED: 'Unauthorized',
@@ -524,6 +527,18 @@ export const handlers = [
 
     await delay(1_500);
 
+    if (
+      request.headers.get(MOCK_SCENARIO_HEADER) ===
+      MOCK_SCENARIOS.diaryDetailFailure
+    ) {
+      return createProblemDetails({
+        status: 503,
+        code: 'DIARY_DETAIL_REQUEST_FAILED',
+        detail: '일기 상세 정보를 불러오지 못했습니다. 다시 시도해주세요.',
+        instance: `/api/v1/diaries/${diaryId}`,
+      });
+    }
+
     if (createdDiaryDetail) {
       return HttpResponse.json(createdDiaryDetail);
     }
@@ -565,6 +580,18 @@ export const handlers = [
     const diaryId = String(params.diaryId);
 
     await delay(1_500);
+
+    if (
+      request.headers.get(MOCK_SCENARIO_HEADER) ===
+      MOCK_SCENARIOS.diaryDeleteFailure
+    ) {
+      return createProblemDetails({
+        status: 503,
+        code: 'DIARY_DELETE_FAILED',
+        detail: '일기 삭제에 실패했습니다. 다시 시도해주세요.',
+        instance: `/api/v1/diaries/${diaryId}`,
+      });
+    }
 
     for (const day of augustDiaries) {
       const diaryIndex = day.items.findIndex((diary) => diary.id === diaryId);
@@ -628,6 +655,18 @@ export const handlers = [
             : undefined;
 
       await delay(1_500);
+
+      if (
+        request.headers.get(MOCK_SCENARIO_HEADER) ===
+        MOCK_SCENARIOS.diaryShareFailure
+      ) {
+        return createProblemDetails({
+          status: 503,
+          code: 'DIARY_SHARE_FAILED',
+          detail: '공유 링크를 만들지 못했습니다. 다시 시도해주세요.',
+          instance: `/api/v1/diaries/${diaryId}/share-link`,
+        });
+      }
 
       if (!sharedDiary) {
         return createProblemDetails({
