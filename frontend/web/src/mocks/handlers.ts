@@ -469,6 +469,7 @@ export const handlers = [
         id: '08d69a34-6d70-4d42-a158-671bc67733c9',
         name: '하루들',
         email: 'harudle.official@gmail.com',
+        role: 'ADMIN',
         oauthProviders: ['kakao'],
         createdAt: '2026-08-06T10:30:00+09:00',
       },
