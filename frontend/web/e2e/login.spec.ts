@@ -4,6 +4,32 @@ import {
   MOCK_SCENARIOS,
 } from '../src/mocks/mockScenarios';
 
+test.describe('인증 상태에 따른 리다이렉트', () => {
+  test('로그인하지 않은 상태로 홈 화면에 접근하면 로그인 화면으로 이동한다', async ({
+    page,
+  }) => {
+    await page.goto('/');
+
+    await expect(page).toHaveURL('/login');
+    await expect(
+      page.getByRole('button', { name: '카카오로 시작하기' }),
+    ).toBeVisible();
+  });
+
+  test('로그인한 상태로 로그인 화면에 접근하면 홈 화면으로 이동한다', async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('harudle.has-completed-oauth', 'true');
+    });
+
+    await page.goto('/login');
+
+    await expect(page).toHaveURL('/');
+    await expect(page.getByLabel('조회할 월')).toBeVisible();
+  });
+});
+
 test.describe('카카오 로그인', () => {
   test('로그인 버튼을 누르면 카카오 OAuth 경로로 이동한다', async ({
     page,
