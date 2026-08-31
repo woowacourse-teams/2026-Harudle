@@ -148,6 +148,28 @@ class AdminGenerationUsageServiceTest {
     }
 
     @Test
+    @DisplayName("오늘 사용량과 동일한 생성 한도 변경은 허용한다")
+    void allowsLimitChangeEqualToTodayUsage() {
+        adminGenerationUsageService.changeLimit(USER_ID, 5);
+
+        assertThat(findUserDailyGenerationLimit()).isEqualTo(5);
+        assertThat(generationUsageRepository.find(USER_ID, USAGE_DATE))
+                .contains(new GenerationUsage(USAGE_DATE, 5, 5));
+    }
+
+    @Test
+    @DisplayName("0인 생성 한도 변경은 거부하고 기존 상태를 유지한다")
+    void rejectsZeroLimitChangeWithoutChangingState() {
+        assertThatThrownBy(() -> adminGenerationUsageService.changeLimit(USER_ID, 0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("일일 생성 한도는 1 이상이어야 합니다.");
+
+        assertThat(findUserDailyGenerationLimit()).isEqualTo(5);
+        assertThat(generationUsageRepository.find(USER_ID, USAGE_DATE))
+                .contains(new GenerationUsage(USAGE_DATE, 5, 5));
+    }
+
+    @Test
     @DisplayName("같은 멱등성 키의 동시 복구 요청은 한 번만 사용량을 차감한다")
     void restoresOnlyOnceForConcurrentRequestsWithSameIdempotencyKey() throws Exception {
         CyclicBarrier startBarrier = new CyclicBarrier(2);
