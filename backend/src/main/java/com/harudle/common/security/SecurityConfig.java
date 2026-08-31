@@ -1,5 +1,6 @@
 package com.harudle.common.security;
 
+import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.auth.infrastructure.oauth.OAuthLoginFailureHandler;
 import com.harudle.auth.infrastructure.oauth.OAuthLoginSuccessHandler;
 import com.harudle.common.error.ProblemDetailFactory;
@@ -62,6 +63,11 @@ public class SecurityConfig {
     }
 
     @Bean
+    public AdminAuthorizationManager adminAuthorizationManager(UserRepository userRepository) {
+        return new AdminAuthorizationManager(userRepository);
+    }
+
+    @Bean
     @Order(1)
     public SecurityFilterChain oauthSecurityFilterChain(HttpSecurity http) throws Exception {
         http
@@ -86,7 +92,8 @@ public class SecurityConfig {
             HttpSecurity http,
             CookieCsrfTokenRepository csrfTokenRepository,
             ApiAuthenticationEntryPoint apiAuthenticationEntryPoint,
-            ApiAccessDeniedHandler apiAccessDeniedHandler
+            ApiAccessDeniedHandler apiAccessDeniedHandler,
+            AdminAuthorizationManager adminAuthorizationManager
     ) throws Exception {
         http
                 .sessionManagement(session -> session
@@ -107,9 +114,10 @@ public class SecurityConfig {
                                 "/api/v1/auth/refresh",
                                 "/api/v1/auth/csrf",
                                 "/api/v1/auth/logout",
-                                "/api/v1/public/**",
-                                "/error"
+                        "/api/v1/public/**",
+                        "/error"
                         ).permitAll()
+                        .requestMatchers("/api/v1/admin/**").access(adminAuthorizationManager)
                         .requestMatchers(
                                 "/scalar",
                                 "/scalar/**",

@@ -1,6 +1,7 @@
 package com.harudle.diary.presentation;
 
 import com.harudle.auth.presentation.AuthenticatedUserIdResolver;
+import com.harudle.common.validation.IdempotencyKeyParser;
 import com.harudle.diary.service.DiaryCreationService;
 import com.harudle.diary.service.DiaryDeletionService;
 import com.harudle.diary.service.DiaryQueryService;

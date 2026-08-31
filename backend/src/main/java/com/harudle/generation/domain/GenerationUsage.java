@@ -16,7 +16,11 @@ public record GenerationUsage(
     }
 
     public static GenerationUsage empty(LocalDate usageDate) {
-        return new GenerationUsage(usageDate, 0, DEFAULT_LIMIT_COUNT);
+        return empty(usageDate, DEFAULT_LIMIT_COUNT);
+    }
+
+    public static GenerationUsage empty(LocalDate usageDate, int limitCount) {
+        return new GenerationUsage(usageDate, 0, limitCount);
     }
 
     public int remainingCount() {
@@ -33,8 +37,8 @@ public record GenerationUsage(
         if (usedCount < 0) {
             throw new IllegalArgumentException("사용 횟수는 0 이상이어야 합니다.");
         }
-        if (limitCount < 0) {
-            throw new IllegalArgumentException("제한 횟수는 0 이상이어야 합니다.");
+        if (limitCount < 1) {
+            throw new IllegalArgumentException("제한 횟수는 1 이상이어야 합니다.");
         }
         if (usedCount > limitCount) {
             throw new IllegalArgumentException("사용 횟수는 제한 횟수를 초과할 수 없습니다.");

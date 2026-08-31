@@ -3,6 +3,7 @@ package com.harudle.share.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
+import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.auth.infrastructure.oauth.OAuthLoginFailureHandler;
 import com.harudle.auth.infrastructure.oauth.OAuthLoginSuccessHandler;
 import com.harudle.common.config.TimeConfiguration;
@@ -61,6 +62,9 @@ class PublicShareControllerTest {
 
     @MockitoBean
     private JwtDecoder jwtDecoder;
+
+    @MockitoBean
+    private UserRepository userRepository;
 
     @MockitoBean
     private OAuthLoginSuccessHandler oAuthLoginSuccessHandler;

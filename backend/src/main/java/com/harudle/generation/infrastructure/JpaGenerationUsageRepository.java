@@ -14,6 +14,12 @@ import org.springframework.transaction.annotation.Transactional;
 class JpaGenerationUsageRepository implements GenerationUsageRepository {
 
     private static final int USAGE_INCREMENT = 1;
+    private static final String LOCK_USER_QUERY = """
+            SELECT id
+            FROM users
+            WHERE id = :userId
+            FOR UPDATE
+            """;
     private static final String INCREMENT_QUERY = """
             WITH incremented_usage AS (
                 INSERT INTO daily_generation_usage (
@@ -24,14 +30,16 @@ class JpaGenerationUsageRepository implements GenerationUsageRepository {
                     created_at,
                     updated_at
                 )
-                VALUES (
+                SELECT
                     :userId,
                     :usageDate,
                     :usageIncrement,
-                    :limitCount,
+                    u.daily_generation_limit,
                     CURRENT_TIMESTAMP,
                     CURRENT_TIMESTAMP
-                )
+                FROM users u
+                WHERE u.id = :userId
+                  AND u.daily_generation_limit >= :usageIncrement
                 ON CONFLICT (user_id, usage_date)
                 DO UPDATE
                    SET used_count = daily_generation_usage.used_count + EXCLUDED.used_count,
@@ -41,6 +49,34 @@ class JpaGenerationUsageRepository implements GenerationUsageRepository {
             )
             SELECT used_count, limit_count
             FROM incremented_usage
+            """;
+
+    private static final String UPDATE_LIMIT_COUNT_QUERY = """
+            UPDATE daily_generation_usage
+               SET limit_count = GREATEST(used_count, :limitCount),
+                   updated_at = CURRENT_TIMESTAMP
+             WHERE user_id = :userId
+               AND usage_date = :usageDate
+            """;
+
+    private static final String RESTORE_QUERY = """
+            UPDATE daily_generation_usage
+               SET used_count = used_count - :restoreCount,
+                   updated_at = CURRENT_TIMESTAMP
+             WHERE user_id = :userId
+               AND usage_date = :usageDate
+               AND used_count >= :restoreCount
+            RETURNING used_count, limit_count
+            """;
+
+    private static final String RESET_QUERY = """
+            UPDATE daily_generation_usage
+               SET used_count = 0,
+                   limit_count = :limitCount,
+                   updated_at = CURRENT_TIMESTAMP
+             WHERE user_id = :userId
+               AND usage_date = :usageDate
+            RETURNING used_count, limit_count
             """;
 
     private static final String FIND_QUERY = """
@@ -76,12 +112,66 @@ class JpaGenerationUsageRepository implements GenerationUsageRepository {
     @SuppressWarnings("unchecked")
     public Optional<GenerationUsage> tryIncrementWithinLimit(UUID userId, LocalDate usageDate) {
         validateParameters(userId, usageDate);
+        lockUserRow(userId);
         List<Object[]> usages = entityManager
                 .createNativeQuery(INCREMENT_QUERY)
                 .setParameter("userId", userId)
                 .setParameter("usageDate", usageDate)
                 .setParameter("usageIncrement", USAGE_INCREMENT)
-                .setParameter("limitCount", GenerationUsage.DEFAULT_LIMIT_COUNT)
+                .getResultList();
+        return usages.stream()
+                .map(columns -> mapUsage(usageDate, columns))
+                .findFirst();
+    }
+
+    @Override
+    @Transactional
+    public int updateLimitCount(UUID userId, LocalDate usageDate, int limitCount) {
+        validateParameters(userId, usageDate);
+        if (limitCount < 1) {
+            throw new IllegalArgumentException("일일 생성 한도는 1 이상이어야 합니다.");
+        }
+        lockUserRow(userId);
+        return entityManager
+                .createNativeQuery(UPDATE_LIMIT_COUNT_QUERY)
+                .setParameter("userId", userId)
+                .setParameter("usageDate", usageDate)
+                .setParameter("limitCount", limitCount)
+                .executeUpdate();
+    }
+
+    @Override
+    @Transactional
+    @SuppressWarnings("unchecked")
+    public Optional<GenerationUsage> tryRestore(UUID userId, LocalDate usageDate, int restoreCount) {
+        validateParameters(userId, usageDate);
+        if (restoreCount < 1) {
+            throw new IllegalArgumentException("복구 횟수는 1 이상이어야 합니다.");
+        }
+        List<Object[]> usages = entityManager
+                .createNativeQuery(RESTORE_QUERY)
+                .setParameter("userId", userId)
+                .setParameter("usageDate", usageDate)
+                .setParameter("restoreCount", restoreCount)
+                .getResultList();
+        return usages.stream()
+                .map(columns -> mapUsage(usageDate, columns))
+                .findFirst();
+    }
+
+    @Override
+    @Transactional
+    @SuppressWarnings("unchecked")
+    public Optional<GenerationUsage> tryReset(UUID userId, LocalDate usageDate, int limitCount) {
+        validateParameters(userId, usageDate);
+        if (limitCount < 1) {
+            throw new IllegalArgumentException("일일 생성 한도는 1 이상이어야 합니다.");
+        }
+        List<Object[]> usages = entityManager
+                .createNativeQuery(RESET_QUERY)
+                .setParameter("userId", userId)
+                .setParameter("usageDate", usageDate)
+                .setParameter("limitCount", limitCount)
                 .getResultList();
         return usages.stream()
                 .map(columns -> mapUsage(usageDate, columns))
@@ -94,6 +184,12 @@ class JpaGenerationUsageRepository implements GenerationUsageRepository {
                 ((Number) columns[0]).intValue(),
                 ((Number) columns[1]).intValue()
         );
+    }
+
+    private void lockUserRow(UUID userId) {
+        entityManager.createNativeQuery(LOCK_USER_QUERY)
+                .setParameter("userId", userId)
+                .getResultList();
     }
 
     private static void validateParameters(UUID userId, LocalDate usageDate) {

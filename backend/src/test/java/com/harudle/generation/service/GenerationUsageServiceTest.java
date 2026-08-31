@@ -3,8 +3,11 @@ package com.harudle.generation.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.harudle.auth.domain.User;
+import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.generation.domain.GenerationUsage;
 import com.harudle.generation.repository.GenerationUsageRepository;
 import com.harudle.generation.service.exception.DailyGenerationLimitExceededException;
@@ -32,12 +35,19 @@ class GenerationUsageServiceTest {
     @Mock
     private GenerationUsageRepository generationUsageRepository;
 
+    @Mock
+    private UserRepository userRepository;
+
     private GenerationUsageService generationUsageService;
 
     @BeforeEach
     void setUp() {
         Clock clock = Clock.fixed(NOW, SERVICE_ZONE_ID);
-        generationUsageService = new GenerationUsageService(generationUsageRepository, clock);
+        generationUsageService = new GenerationUsageService(
+                generationUsageRepository,
+                userRepository,
+                clock
+        );
     }
 
     @Test
@@ -55,10 +65,13 @@ class GenerationUsageServiceTest {
     @DisplayName("오늘의 생성 사용 기록이 없으면 빈 사용량을 반환한다")
     void getTodayUsageReturnsEmptyUsage() {
         when(generationUsageRepository.find(USER_ID, USAGE_DATE)).thenReturn(Optional.empty());
+        User user = new User(null, "사용자", NOW);
+        user.changeDailyGenerationLimit(5);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
 
         GenerationUsage actual = generationUsageService.getTodayUsage(USER_ID);
 
-        assertThat(actual).isEqualTo(GenerationUsage.empty(USAGE_DATE));
+        assertThat(actual).isEqualTo(GenerationUsage.empty(USAGE_DATE, 5));
     }
 
     @Test
@@ -97,6 +110,7 @@ class GenerationUsageServiceTest {
                 .thenReturn(beforeMidnight, afterMidnight, afterMidnight);
         GenerationUsageService service = new GenerationUsageService(
                 generationUsageRepository,
+                userRepository,
                 crossingMidnightClock
         );
         when(generationUsageRepository.tryIncrementWithinLimit(USER_ID, USAGE_DATE))
@@ -107,5 +121,21 @@ class GenerationUsageServiceTest {
                         DailyGenerationLimitExceededException.class,
                         exception -> assertThat(exception.retryAfterSeconds()).isEqualTo(1L)
                 );
+    }
+
+    @Test
+    @DisplayName("오늘 사용량 한도를 사용자별 정책에 맞춰 갱신한다")
+    void updateTodayLimit() {
+        generationUsageService.updateTodayLimit(USER_ID, 5);
+
+        verify(generationUsageRepository).updateLimitCount(USER_ID, USAGE_DATE, 5);
+    }
+
+    @Test
+    @DisplayName("1 미만인 오늘 사용량 한도 변경은 거부한다")
+    void rejectsTodayLimitBelowOne() {
+        assertThatThrownBy(() -> generationUsageService.updateTodayLimit(USER_ID, 0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("일일 생성 한도는 1 이상이어야 합니다.");
     }
 }

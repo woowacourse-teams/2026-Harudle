@@ -12,6 +12,7 @@ import { getToday } from '../../../shared/utils';
 import { useDiaryGenerateContext } from '../../diary-generating/DiaryGenerateContext';
 import { useEffect } from 'react';
 import StreakSummaryCard from './StreakSummaryCard';
+import keyboardArrowDownIcon from '../../../assets/icons/keyboard_arrow_down.svg';
 
 const formatYearMonthToString = ({ year, month }: YearMonth): string => {
   return `${year}-${month.toString().padStart(2, '0')}`;
@@ -45,13 +46,21 @@ const HomePage = () => {
 
       <main css={homePageContentStyle}>
         <div css={contentHeaderStyle}>
-          <input
-            css={monthInputStyle}
-            type="month"
-            aria-label="조회할 월"
-            value={formatYearMonthToString(selectedYearMonth)}
-            onChange={handleYearMonthChange}
-          />
+          <div css={monthPickerStyle}>
+            <input
+              css={monthInputStyle}
+              type="month"
+              aria-label="조회할 월"
+              value={formatYearMonthToString(selectedYearMonth)}
+              onChange={handleYearMonthChange}
+            />
+            <img
+              css={monthPickerIconStyle}
+              src={keyboardArrowDownIcon}
+              alt=""
+              aria-hidden="true"
+            />
+          </div>
           <div css={contentSummaryStyle}>
             <RemainingGenerationUsage />
             <span css={monthlyDiaryCountStyle}>
@@ -181,9 +190,17 @@ const monthlyDiaryCountStyle = css`
   font-weight: 500;
 `;
 
-const monthInputStyle = css`
+const monthPickerStyle = css`
+  position: relative;
   width: 135px;
   height: 28px;
+`;
+
+const monthInputStyle = css`
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding-right: 24px;
   border: none;
   outline: none;
   background-color: transparent;
@@ -192,6 +209,30 @@ const monthInputStyle = css`
   font-weight: 700;
   line-height: 26px;
   cursor: pointer;
+
+  appearance: none;
+  -webkit-appearance: none;
+
+  &::-webkit-calendar-picker-indicator {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    -webkit-appearance: none;
+    cursor: pointer;
+  }
+`;
+
+const monthPickerIconStyle = css`
+  position: absolute;
+  top: 50%;
+  right: 0;
+  width: 24px;
+  height: 24px;
+  transform: translateY(-50%);
+  pointer-events: none;
 `;
 
 const diaryContentStyle = css`
