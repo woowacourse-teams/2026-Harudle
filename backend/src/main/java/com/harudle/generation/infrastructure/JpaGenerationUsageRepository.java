@@ -53,10 +53,11 @@ class JpaGenerationUsageRepository implements GenerationUsageRepository {
 
     private static final String UPDATE_LIMIT_COUNT_QUERY = """
             UPDATE daily_generation_usage
-               SET limit_count = GREATEST(used_count, :limitCount),
+               SET limit_count = :limitCount,
                    updated_at = CURRENT_TIMESTAMP
              WHERE user_id = :userId
                AND usage_date = :usageDate
+               AND used_count <= :limitCount
             """;
 
     private static final String RESTORE_QUERY = """

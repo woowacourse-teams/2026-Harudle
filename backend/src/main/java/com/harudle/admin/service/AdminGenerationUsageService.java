@@ -2,6 +2,7 @@ package com.harudle.admin.service;
 
 import com.harudle.admin.domain.AdminGenerationUsageRestore;
 import com.harudle.admin.repository.AdminGenerationUsageRestoreRepository;
+import com.harudle.admin.service.exception.AdminGenerationLimitBelowUsageException;
 import com.harudle.admin.service.exception.AdminGenerationUsageConflictException;
 import com.harudle.admin.service.exception.AdminInactiveUserException;
 import com.harudle.admin.service.exception.AdminUserNotFoundException;
@@ -74,6 +75,11 @@ public class AdminGenerationUsageService {
     @Transactional
     public void changeLimit(UUID userId, int limitCount) {
         User user = findManageableUserForUpdate(userId);
+        validateLimitCount(limitCount);
+        GenerationUsage todayUsage = generationUsageService.getTodayUsage(userId);
+        if (todayUsage.usedCount() > limitCount) {
+            throw new AdminGenerationLimitBelowUsageException();
+        }
         user.changeDailyGenerationLimit(limitCount);
         generationUsageService.updateTodayLimit(userId, limitCount);
     }
@@ -100,6 +106,12 @@ public class AdminGenerationUsageService {
         }
         if (idempotencyKey == null) {
             throw new IllegalArgumentException("멱등성 키는 필수입니다.");
+        }
+    }
+
+    private static void validateLimitCount(int limitCount) {
+        if (limitCount < 1) {
+            throw new IllegalArgumentException("일일 생성 한도는 1 이상이어야 합니다.");
         }
     }
 }

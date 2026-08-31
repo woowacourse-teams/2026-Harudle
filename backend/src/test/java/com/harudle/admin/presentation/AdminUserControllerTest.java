@@ -594,8 +594,8 @@ class AdminUserControllerTest {
     }
 
     @Test
-    @DisplayName("새 한도가 오늘 사용량보다 작으면 오늘 스냅샷을 사용량까지 유지한다")
-    void keepsTodaySnapshotAtUsedCountWhenLimitDecreases() throws Exception {
+    @DisplayName("새 한도가 오늘 사용량보다 작으면 기존 한도를 유지하고 변경을 거부한다")
+    void rejectsGenerationLimitBelowTodayUsage() throws Exception {
         User admin = saveUser("관리자");
         grantAdminRole(admin);
         User target = saveUser("한도 축소 대상 사용자");
@@ -605,19 +605,21 @@ class AdminUserControllerTest {
                 .contentType(ContentType.JSON)
                 .body("{\"limitCount\":1}")
                 .put("/api/v1/admin/users/{userId}/generation-limit", target.getId());
-        assertThat(response.statusCode()).isEqualTo(204);
+        assertResponseCode(response, 409, "GENERATION_LIMIT_BELOW_USAGE");
+        assertThat(response.jsonPath().getString("detail"))
+                .isEqualTo("현재 사용량보다 작은 생성 한도로 변경할 수 없습니다.");
 
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT daily_generation_limit FROM users WHERE id = ?",
                 Integer.class,
                 target.getId()
-        )).isEqualTo(1);
+        )).isEqualTo(3);
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT used_count FROM daily_generation_usage WHERE user_id = ? AND usage_date = ?",
                 Integer.class,
                 target.getId(),
                 LocalDate.now(SERVICE_ZONE)
-        )).isEqualTo(2);
+        )).isEqualTo(3);
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT limit_count FROM daily_generation_usage WHERE user_id = ? AND usage_date = ?",
                 Integer.class,
@@ -632,11 +634,12 @@ class AdminUserControllerTest {
         User admin = saveUser("관리자");
         grantAdminRole(admin);
         User target = saveUser("한도 초기화 대상 사용자");
-        saveTodayUsage(target, 2, 3);
+        changeDailyGenerationLimit(target, 5);
+        saveTodayUsage(target, 2, 5);
 
         MockMvcResponse response = adminRequest(admin)
                 .contentType(ContentType.JSON)
-                .body("{\"limitCount\":1}")
+                .body("{\"limitCount\":2}")
                 .put("/api/v1/admin/users/{userId}/generation-limit", target.getId());
         assertThat(response.statusCode()).isEqualTo(204);
 
@@ -644,14 +647,14 @@ class AdminUserControllerTest {
                 .put("/api/v1/admin/users/{userId}/generation-usage/reset", target.getId());
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.jsonPath().getInt("usedCount")).isZero();
-        assertThat(response.jsonPath().getInt("limitCount")).isEqualTo(1);
-        assertThat(response.jsonPath().getInt("remainingCount")).isEqualTo(1);
+        assertThat(response.jsonPath().getInt("limitCount")).isEqualTo(2);
+        assertThat(response.jsonPath().getInt("remainingCount")).isEqualTo(2);
 
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT daily_generation_limit FROM users WHERE id = ?",
                 Integer.class,
                 target.getId()
-        )).isEqualTo(1);
+        )).isEqualTo(2);
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT used_count FROM daily_generation_usage WHERE user_id = ? AND usage_date = ?",
                 Integer.class,
@@ -663,7 +666,7 @@ class AdminUserControllerTest {
                 Integer.class,
                 target.getId(),
                 LocalDate.now(SERVICE_ZONE)
-        )).isEqualTo(1);
+        )).isEqualTo(2);
     }
 
     @Test
