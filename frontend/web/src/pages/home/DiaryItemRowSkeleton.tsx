@@ -8,7 +8,7 @@ const DiaryItemRowSkeleton = () => {
   const { date: formattedDate, weekday } = formatDiaryDate(date);
 
   return (
-    <div css={skeletonRowStyle}>
+    <div css={skeletonRowStyle} data-testid="diary-generation-skeleton">
       <div css={dateStyle}>
         <strong>{formattedDate}</strong>
         <span>{weekday}</span>

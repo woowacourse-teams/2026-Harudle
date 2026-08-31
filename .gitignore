@@ -246,6 +246,10 @@ psd
 thumb
 sketch
 
+### Web test ###
+frontend/web/test-results/
+frontend/web/playwright-report/
+
 ### ReactNative ###
 # React Native Stack Base
 
