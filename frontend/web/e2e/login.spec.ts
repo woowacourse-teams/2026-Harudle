@@ -31,12 +31,9 @@ test.describe('인증 상태에 따른 리다이렉트', () => {
 });
 
 test.describe('카카오 로그인', () => {
-  test('로그인 버튼을 누르면 카카오 OAuth 경로로 이동한다', async ({
+  test('개발 환경에서 로그인 버튼을 누르면 인증 콜백을 거쳐 홈으로 이동한다', async ({
     page,
   }) => {
-    await page.setExtraHTTPHeaders({
-      [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.oauthAuthorization,
-    });
     await page.goto('/login');
 
     const loginButton = page.getByRole('button', {
@@ -46,7 +43,8 @@ test.describe('카카오 로그인', () => {
     await expect(loginButton).toBeVisible();
     await loginButton.click();
 
-    await expect(page).toHaveURL(/\/oauth2\/authorization\/kakao$/);
+    await expect(page).toHaveURL('/');
+    await expect(page.getByLabel('조회할 월')).toBeVisible();
   });
 
   test('인증 콜백에서 Access Token 발급에 성공하면 홈으로 이동한다', async ({

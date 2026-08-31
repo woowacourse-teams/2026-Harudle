@@ -87,12 +87,30 @@ test.describe('일기 상세', () => {
   });
 
   test('상단 뒤로가기 버튼을 누르면 홈 화면으로 이동한다', async ({ page }) => {
-    await goToSampleDiaryDetail(page);
+    await goToHome(page);
+    await clickSampleDiary(page);
 
     await page.getByRole('button', { name: '뒤로 가기' }).click();
 
     await expect(page).toHaveURL('/');
     await expect(page.getByLabel('조회할 월')).toBeVisible();
+  });
+
+  test('다른 월에서 상세 화면에 진입한 뒤 돌아가면 선택한 월을 유지한다', async ({
+    page,
+  }) => {
+    await page.clock.setFixedTime(new Date('2026-07-30T12:00:00+09:00'));
+    await page.goto('/');
+
+    const monthInput = page.getByLabel('조회할 월');
+    await monthInput.fill('2026-08');
+    await expect(page).toHaveURL('/?yearMonth=2026-08');
+
+    await clickSampleDiary(page);
+    await page.getByRole('button', { name: '뒤로 가기' }).click();
+
+    await expect(page).toHaveURL('/?yearMonth=2026-08');
+    await expect(monthInput).toHaveValue('2026-08');
   });
 
   test('삭제를 확인하면 일기를 삭제하고 홈 화면으로 이동한다', async ({

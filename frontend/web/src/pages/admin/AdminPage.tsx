@@ -971,7 +971,7 @@ const UsageManagementModal = ({
             </>
           ) : isReset ? (
             <div css={usageModalNoticeStyle}>
-              <strong>오늘 사용량을 0회로 초기화할까요?</strong>
+              <strong>오늘 사용량을 초기화할까요?</strong>
               <p>
                 현재 사용 횟수와 남은 횟수가 오늘 생성 한도에 맞게 다시
                 계산됩니다.
