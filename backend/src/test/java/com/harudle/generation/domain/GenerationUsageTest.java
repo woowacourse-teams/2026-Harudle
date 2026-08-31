@@ -36,4 +36,12 @@ class GenerationUsageTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("사용 횟수는 제한 횟수를 초과할 수 없습니다.");
     }
+
+    @Test
+    @DisplayName("제한 횟수는 1 미만일 수 없다")
+    void rejectLimitCountBelowOne() {
+        assertThatThrownBy(() -> GenerationUsage.empty(USAGE_DATE, 0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("제한 횟수는 1 이상이어야 합니다.");
+    }
 }

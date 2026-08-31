@@ -15,4 +15,9 @@ class SecurityTestController {
     String publicEndpoint() {
         return "public";
     }
+
+    @GetMapping("/api/v1/admin/test")
+    String adminEndpoint() {
+        return "admin";
+    }
 }

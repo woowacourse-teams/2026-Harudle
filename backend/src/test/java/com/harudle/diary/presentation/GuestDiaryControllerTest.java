@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.auth.infrastructure.oauth.OAuthLoginFailureHandler;
 import com.harudle.auth.infrastructure.oauth.OAuthLoginSuccessHandler;
 import com.harudle.common.config.TimeConfiguration;
@@ -96,6 +97,9 @@ class GuestDiaryControllerTest {
 
     @MockitoBean
     private JwtDecoder jwtDecoder;
+
+    @MockitoBean
+    private UserRepository userRepository;
 
     @MockitoBean
     private OAuthLoginSuccessHandler oAuthLoginSuccessHandler;

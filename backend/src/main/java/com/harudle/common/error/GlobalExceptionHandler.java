@@ -1,7 +1,11 @@
 package com.harudle.common.error;
 
+import com.harudle.admin.service.exception.AdminUserNotFoundException;
+import com.harudle.admin.service.exception.AdminGenerationUsageConflictException;
+import com.harudle.admin.service.exception.AdminGenerationHistoryDateRangeException;
+import com.harudle.admin.service.exception.AdminInactiveUserException;
 import com.harudle.auth.presentation.AuthenticationRequiredException;
-import com.harudle.diary.presentation.InvalidIdempotencyKeyException;
+import com.harudle.common.validation.InvalidIdempotencyKeyException;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
 import com.harudle.generation.service.exception.AiGenerationException;
@@ -154,6 +158,26 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(ShareNotFoundException.class)
     ResponseEntity<ProblemDetail> handleShareNotFound(HttpServletRequest request) {
         return createResponse(ErrorType.SHARE_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(AdminUserNotFoundException.class)
+    ResponseEntity<ProblemDetail> handleAdminUserNotFound(HttpServletRequest request) {
+        return createResponse(ErrorType.USER_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(AdminInactiveUserException.class)
+    ResponseEntity<ProblemDetail> handleAdminInactiveUser(HttpServletRequest request) {
+        return createResponse(ErrorType.INACTIVE_USER, request);
+    }
+
+    @ExceptionHandler(AdminGenerationUsageConflictException.class)
+    ResponseEntity<ProblemDetail> handleAdminGenerationUsageConflict(HttpServletRequest request) {
+        return createResponse(ErrorType.GENERATION_USAGE_CONFLICT, request);
+    }
+
+    @ExceptionHandler(AdminGenerationHistoryDateRangeException.class)
+    ResponseEntity<ProblemDetail> handleAdminGenerationHistoryDateRange(HttpServletRequest request) {
+        return createResponse(ErrorType.VALIDATION_ERROR, request);
     }
 
     @ExceptionHandler(GenerationInProgressException.class)

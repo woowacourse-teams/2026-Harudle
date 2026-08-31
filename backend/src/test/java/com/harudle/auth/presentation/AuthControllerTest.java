@@ -32,6 +32,7 @@ import org.springframework.boot.testcontainers.service.connection.ServiceConnect
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.testcontainers.junit.jupiter.Container;
@@ -42,6 +43,10 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest
 @AutoConfigureMockMvc
+@TestPropertySource(properties = {
+        "app.auth.frontend-origins=http://localhost:5173",
+        "app.auth.failure-redirect=http://localhost:5173/auth/callback?error=oauth_failed"
+})
 class AuthControllerTest {
 
     private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:18-alpine");
