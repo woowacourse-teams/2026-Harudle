@@ -24,7 +24,15 @@ public class ApiCorsConfiguration {
     private CorsConfiguration createConfiguration(List<String> frontendOrigins) {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(frontendOrigins);
-        configuration.setAllowedMethods(List.of("GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedMethods(List.of(
+                "GET",
+                "HEAD",
+                "POST",
+                "PUT",
+                "PATCH",
+                "DELETE",
+                "OPTIONS"
+        ));
         configuration.setAllowedHeaders(List.of(
                 "Accept",
                 "Authorization",
