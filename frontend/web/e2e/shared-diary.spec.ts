@@ -1,4 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
+import { AUTHENTICATED_STORAGE_STATE } from './auth';
+
+test.use({ storageState: AUTHENTICATED_STORAGE_STATE });
 
 const SAMPLE_SHARE_ID = '06ed972e-0b79-4da0-9716-c9bd8faec85d';
 const UNKNOWN_SHARE_ID = '00000000-0000-4000-8000-000000000999';

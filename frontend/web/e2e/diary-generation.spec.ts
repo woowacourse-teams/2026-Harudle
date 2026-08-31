@@ -3,6 +3,9 @@ import {
   MOCK_SCENARIO_HEADER,
   MOCK_SCENARIOS,
 } from '../src/mocks/mockScenarios';
+import { AUTHENTICATED_STORAGE_STATE } from './auth';
+
+test.use({ storageState: AUTHENTICATED_STORAGE_STATE });
 
 const TODAY = new Date('2026-08-30T12:00:00+09:00');
 const VALID_DIARY_CONTENT =

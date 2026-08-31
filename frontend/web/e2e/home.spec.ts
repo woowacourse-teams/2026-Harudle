@@ -1,4 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
+import { AUTHENTICATED_STORAGE_STATE } from './auth';
+
+test.use({ storageState: AUTHENTICATED_STORAGE_STATE });
 
 const goToHomeAt = async (page: Page, date: string) => {
   await page.clock.setFixedTime(new Date(date));

@@ -3,6 +3,9 @@ import {
   MOCK_SCENARIO_HEADER,
   MOCK_SCENARIOS,
 } from '../src/mocks/mockScenarios';
+import { AUTHENTICATED_STORAGE_STATE } from './auth';
+
+test.use({ storageState: AUTHENTICATED_STORAGE_STATE });
 
 const goToSetting = async (
   page: Page,
@@ -49,6 +52,9 @@ test.describe('설정', () => {
   test('로그아웃하면 로그인 화면으로 이동한다', async ({ page }) => {
     await goToSetting(page);
     await expectProfile(page);
+    await page.setExtraHTTPHeaders({
+      [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.authRefreshFailure,
+    });
 
     await page.getByRole('button', { name: '로그아웃' }).click();
 
