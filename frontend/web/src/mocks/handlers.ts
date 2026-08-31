@@ -1,5 +1,6 @@
 import { delay, http, HttpResponse } from 'msw';
 import { isGuestTrialPath } from '../pages/guest-trial/guestTrialPaths';
+import { MOCK_SCENARIO_HEADER, MOCK_SCENARIOS } from './mockScenarios';
 
 interface CreateDiaryRequest {
   diaryDate: string;
@@ -157,6 +158,12 @@ const problemTitleByCode: Record<string, string> = {
   SHARE_NOT_FOUND: 'Share not found',
   DUPLICATE_DIARY: 'Duplicate diary',
   DAILY_GENERATION_LIMIT_EXCEEDED: 'Daily generation limit exceeded',
+  DIARY_GENERATION_FAILED: 'Diary generation failed',
+  DIARY_DETAIL_REQUEST_FAILED: 'Diary detail request failed',
+  DIARY_DELETE_FAILED: 'Diary delete failed',
+  DIARY_SHARE_FAILED: 'Diary share failed',
+  PROFILE_REQUEST_FAILED: 'Profile request failed',
+  LOGOUT_FAILED: 'Logout failed',
   INVALID_REFRESH_TOKEN: 'Invalid refresh token',
   INVALID_CURRENT_USER: 'Invalid current user',
   UNAUTHORIZED: 'Unauthorized',
@@ -345,6 +352,13 @@ export const handlers = [
   http.get('/oauth2/authorization/kakao', async ({ request }) => {
     await delay(300);
 
+    if (
+      request.headers.get(MOCK_SCENARIO_HEADER) ===
+      MOCK_SCENARIOS.oauthAuthorization
+    ) {
+      return HttpResponse.html('<!doctype html><title>카카오 OAuth</title>');
+    }
+
     return HttpResponse.redirect(new URL('/', request.url));
   }),
 
@@ -363,8 +377,20 @@ export const handlers = [
     );
   }),
 
-  http.post('/api/v1/auth/refresh', async () => {
+  http.post('/api/v1/auth/refresh', async ({ request }) => {
     await delay(300);
+
+    if (
+      request.headers.get(MOCK_SCENARIO_HEADER) ===
+      MOCK_SCENARIOS.authRefreshFailure
+    ) {
+      return createProblemDetails({
+        status: 401,
+        code: 'INVALID_REFRESH_TOKEN',
+        detail: '유효한 Refresh Token이 없습니다.',
+        instance: '/api/v1/auth/refresh',
+      });
+    }
 
     if (isGuestTrialPath(globalThis.location.pathname)) {
       return createProblemDetails({
@@ -398,6 +424,17 @@ export const handlers = [
 
     await delay(300);
 
+    if (
+      request.headers.get(MOCK_SCENARIO_HEADER) === MOCK_SCENARIOS.logoutFailure
+    ) {
+      return createProblemDetails({
+        status: 503,
+        code: 'LOGOUT_FAILED',
+        detail: '로그아웃에 실패했습니다. 다시 시도해주세요.',
+        instance: '/api/v1/auth/logout',
+      });
+    }
+
     return new HttpResponse(null, {
       status: 204,
       headers: {
@@ -414,6 +451,18 @@ export const handlers = [
     }
 
     await delay(300);
+
+    if (
+      request.headers.get(MOCK_SCENARIO_HEADER) ===
+      MOCK_SCENARIOS.profileFailure
+    ) {
+      return createProblemDetails({
+        status: 503,
+        code: 'PROFILE_REQUEST_FAILED',
+        detail: '설정 정보를 불러오지 못했습니다. 다시 시도해주세요.',
+        instance: '/api/v1/me',
+      });
+    }
 
     return HttpResponse.json(
       {
@@ -503,6 +552,18 @@ export const handlers = [
 
     await delay(1_500);
 
+    if (
+      request.headers.get(MOCK_SCENARIO_HEADER) ===
+      MOCK_SCENARIOS.diaryDetailFailure
+    ) {
+      return createProblemDetails({
+        status: 503,
+        code: 'DIARY_DETAIL_REQUEST_FAILED',
+        detail: '일기 상세 정보를 불러오지 못했습니다. 다시 시도해주세요.',
+        instance: `/api/v1/diaries/${diaryId}`,
+      });
+    }
+
     if (createdDiaryDetail) {
       return HttpResponse.json(createdDiaryDetail);
     }
@@ -544,6 +605,18 @@ export const handlers = [
     const diaryId = String(params.diaryId);
 
     await delay(1_500);
+
+    if (
+      request.headers.get(MOCK_SCENARIO_HEADER) ===
+      MOCK_SCENARIOS.diaryDeleteFailure
+    ) {
+      return createProblemDetails({
+        status: 503,
+        code: 'DIARY_DELETE_FAILED',
+        detail: '일기 삭제에 실패했습니다. 다시 시도해주세요.',
+        instance: `/api/v1/diaries/${diaryId}`,
+      });
+    }
 
     for (const day of augustDiaries) {
       const diaryIndex = day.items.findIndex((diary) => diary.id === diaryId);
@@ -608,6 +681,18 @@ export const handlers = [
 
       await delay(1_500);
 
+      if (
+        request.headers.get(MOCK_SCENARIO_HEADER) ===
+        MOCK_SCENARIOS.diaryShareFailure
+      ) {
+        return createProblemDetails({
+          status: 503,
+          code: 'DIARY_SHARE_FAILED',
+          detail: '공유 링크를 만들지 못했습니다. 다시 시도해주세요.',
+          instance: `/api/v1/diaries/${diaryId}/share-link`,
+        });
+      }
+
       if (!sharedDiary) {
         return createProblemDetails({
           status: 404,
@@ -667,7 +752,19 @@ export const handlers = [
       return unauthorizedResponse;
     }
 
-    await delay(9_000);
+    const isGenerationFailure =
+      request.headers.get(MOCK_SCENARIO_HEADER) ===
+      MOCK_SCENARIOS.diaryGenerationFailure;
+
+    await delay(isGenerationFailure ? 3_000 : 9_000);
+
+    if (isGenerationFailure) {
+      return createProblemDetails({
+        status: 503,
+        code: 'DIARY_GENERATION_FAILED',
+        detail: '일기를 만드는 중 문제가 발생했습니다. 다시 시도해주세요.',
+      });
+    }
 
     const idempotencyKey = request.headers.get('Idempotency-Key');
 
