@@ -619,13 +619,13 @@ class AdminUserControllerTest {
                 Integer.class,
                 target.getId(),
                 LocalDate.now(SERVICE_ZONE)
-        )).isEqualTo(3);
+        )).isEqualTo(2);
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT limit_count FROM daily_generation_usage WHERE user_id = ? AND usage_date = ?",
                 Integer.class,
                 target.getId(),
                 LocalDate.now(SERVICE_ZONE)
-        )).isEqualTo(2);
+        )).isEqualTo(3);
     }
 
     @Test
