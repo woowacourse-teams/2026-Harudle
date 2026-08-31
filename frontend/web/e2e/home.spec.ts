@@ -35,7 +35,7 @@ test.describe('월별 일기 조회', () => {
     await goToHomeAt(page, '2026-07-30T12:00:00+09:00');
     const monthInput = page.getByLabel('조회할 월');
 
-    await expect(page.getByText('아직 기록이 없어요')).toBeVisible();
+    await expect(page.getByText('2026년 7월에는 기록이 없어요')).toBeVisible();
     await monthInput.fill('2026-08');
 
     await expect(monthInput).toHaveValue('2026-08');
@@ -54,9 +54,9 @@ test.describe('월별 일기 조회', () => {
 
     await expect(monthInput).toHaveValue('2025-12');
     await expect(page.getByText('0개의 기록')).toBeVisible();
-    await expect(page.getByText('아직 기록이 없어요')).toBeVisible();
+    await expect(page.getByText('2025년 12월에는 기록이 없어요')).toBeVisible();
     await expect(
-      page.getByText('오늘의 이야기를 네컷 만화로 남겨보세요!'),
+      page.getByText('다른 달을 살펴보거나 오늘의 이야기를 남겨보세요!'),
     ).toBeVisible();
     await expect(
       page.getByRole('button', { name: '새 일기 쓰기' }),
