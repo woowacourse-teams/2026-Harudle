@@ -27,6 +27,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -55,6 +56,9 @@ class CurrentUserControllerTest {
     private UserRepository userRepository;
 
     @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @Autowired
     private OAuthAccountRepository oauthAccountRepository;
 
     @BeforeEach
@@ -81,10 +85,24 @@ class CurrentUserControllerTest {
                 .andExpect(jsonPath("$.id").value(user.getId().toString()))
                 .andExpect(jsonPath("$.name").value("하루들"))
                 .andExpect(jsonPath("$.email").value("user@example.com"))
+                .andExpect(jsonPath("$.role").value("USER"))
                 .andExpect(jsonPath("$.oauthProviders").isArray())
                 .andExpect(jsonPath("$.oauthProviders[0]").value("kakao"))
                 .andExpect(jsonPath("$.oauthProvider").doesNotExist())
                 .andExpect(jsonPath("$.createdAt").value(CREATED_AT.toString()));
+    }
+
+    @Test
+    @DisplayName("관리자 사용자의 내 프로필 조회 응답에 ADMIN role을 포함한다")
+    void findsCurrentAdmin() throws Exception {
+        User user = saveUser("admin@example.com", "관리자");
+        grantAdminRole(user);
+        saveOAuthAccount(user, "67890", "admin@example.com");
+
+        mockMvc.perform(get("/api/v1/me")
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken(user.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.role").value("ADMIN"));
     }
 
     @Test
@@ -129,6 +147,10 @@ class CurrentUserControllerTest {
 
     private User saveUser(String email, String name) {
         return userRepository.save(new User(email, name, CREATED_AT));
+    }
+
+    private void grantAdminRole(User user) {
+        jdbcTemplate.update("UPDATE users SET role = 'ADMIN' WHERE id = ?", user.getId());
     }
 
     private OAuthAccount saveOAuthAccount(User user, String subject, String email) {
