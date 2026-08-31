@@ -10,6 +10,15 @@ import { restoreAccessToken } from '../../shared/auth';
 const LoginPage = () => {
   const navigate = useNavigate();
 
+  const handleKakaoLogin = () => {
+    if (process.env.NODE_ENV === 'development') {
+      navigate('/auth/callback');
+      return;
+    }
+
+    window.location.assign('/oauth2/authorization/kakao');
+  };
+
   useEffect(() => {
     if (localStorage.getItem('harudle.has-completed-oauth') === null) {
       return;
@@ -49,13 +58,7 @@ const LoginPage = () => {
       </div>
 
       <div css={loginAreaStyle}>
-        <button
-          type="button"
-          css={kakaoButtonStyle}
-          onClick={() => {
-            window.location.assign('/oauth2/authorization/kakao');
-          }}
-        >
+        <button type="button" css={kakaoButtonStyle} onClick={handleKakaoLogin}>
           <img src={kakaoIcon} alt="" css={kakaoIconStyle} />
           카카오로 시작하기
         </button>

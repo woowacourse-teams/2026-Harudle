@@ -359,7 +359,7 @@ export const handlers = [
       return HttpResponse.html('<!doctype html><title>카카오 OAuth</title>');
     }
 
-    return HttpResponse.redirect(new URL('/', request.url));
+    return HttpResponse.redirect(new URL('/auth/callback', request.url));
   }),
 
   http.get('/api/v1/auth/csrf', async () => {
