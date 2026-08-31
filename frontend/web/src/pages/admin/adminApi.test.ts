@@ -1,4 +1,11 @@
-import { afterEach, describe, expect, it, jest } from '@jest/globals';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  jest,
+} from '@jest/globals';
 import {
   getAdminUser,
   resetAdminUsage,
@@ -9,9 +16,11 @@ import {
 } from './adminApi';
 
 const mockAuthFetch = jest.fn<(...args: unknown[]) => Promise<Response>>();
+const mockRequestCsrfToken = jest.fn<() => Promise<string>>();
 
 jest.mock('../../shared/auth', () => ({
   authFetch: (...args: unknown[]) => mockAuthFetch(...args),
+  requestCsrfToken: () => mockRequestCsrfToken(),
 }));
 
 const createJsonResponse = (data: unknown, status = 200): Response =>
@@ -47,6 +56,12 @@ const userSummary = {
 
 afterEach(() => {
   mockAuthFetch.mockReset();
+  mockRequestCsrfToken.mockReset();
+  jest.restoreAllMocks();
+});
+
+beforeEach(() => {
+  mockRequestCsrfToken.mockResolvedValue('csrf-token');
 });
 
 describe('관리자 API', () => {
@@ -117,27 +132,50 @@ describe('관리자 API', () => {
     );
   });
 
-  it('사용량 복구는 PATCH와 count 본문을 사용한다', async () => {
+  it('사용량 복구는 PATCH와 필수 보안 헤더 및 count 본문을 사용한다', async () => {
     mockAuthFetch.mockResolvedValueOnce(createJsonResponse(usage));
+    jest
+      .spyOn(crypto, 'randomUUID')
+      .mockReturnValue('7e5cc251-fdde-4cc0-a54e-2c8142750609');
 
     await expect(restoreAdminUsage(userSummary.id, 1)).resolves.toEqual(usage);
-    expect(mockAuthFetch).toHaveBeenCalledWith(
+    const [url, requestInit] = mockAuthFetch.mock.calls[0] as [
+      string,
+      RequestInit,
+    ];
+    expect(url).toBe(
       `/api/v1/admin/users/${userSummary.id}/generation-usage/restore`,
-      {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ count: 1 }),
-      },
     );
+    expect(requestInit).toMatchObject({
+      method: 'PATCH',
+      credentials: 'include',
+      body: JSON.stringify({ count: 1 }),
+    });
+    const headers = new Headers(requestInit.headers);
+    expect(headers.get('Content-Type')).toBe('application/json');
+    expect(headers.get('Idempotency-Key')).toBe(
+      '7e5cc251-fdde-4cc0-a54e-2c8142750609',
+    );
+    expect(headers.get('X-XSRF-TOKEN')).toBe('csrf-token');
   });
 
-  it('사용량 초기화는 PUT을 사용하고 사용량 응답을 읽는다', async () => {
+  it('사용량 초기화는 PUT과 CSRF 헤더를 사용하고 사용량 응답을 읽는다', async () => {
     mockAuthFetch.mockResolvedValueOnce(createJsonResponse(usage));
 
     await expect(resetAdminUsage(userSummary.id)).resolves.toEqual(usage);
-    expect(mockAuthFetch).toHaveBeenCalledWith(
+    const [url, requestInit] = mockAuthFetch.mock.calls[0] as [
+      string,
+      RequestInit,
+    ];
+    expect(url).toBe(
       `/api/v1/admin/users/${userSummary.id}/generation-usage/reset`,
-      { method: 'PUT' },
+    );
+    expect(requestInit).toMatchObject({
+      method: 'PUT',
+      credentials: 'include',
+    });
+    expect(new Headers(requestInit.headers).get('X-XSRF-TOKEN')).toBe(
+      'csrf-token',
     );
   });
 
@@ -147,13 +185,18 @@ describe('관리자 API', () => {
     await expect(
       setAdminGenerationLimit(userSummary.id, 5),
     ).resolves.toBeUndefined();
-    expect(mockAuthFetch).toHaveBeenCalledWith(
-      `/api/v1/admin/users/${userSummary.id}/generation-limit`,
-      {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ limitCount: 5 }),
-      },
-    );
+    const [url, requestInit] = mockAuthFetch.mock.calls[0] as [
+      string,
+      RequestInit,
+    ];
+    expect(url).toBe(`/api/v1/admin/users/${userSummary.id}/generation-limit`);
+    expect(requestInit).toMatchObject({
+      method: 'PUT',
+      credentials: 'include',
+      body: JSON.stringify({ limitCount: 5 }),
+    });
+    const headers = new Headers(requestInit.headers);
+    expect(headers.get('Content-Type')).toBe('application/json');
+    expect(headers.get('X-XSRF-TOKEN')).toBe('csrf-token');
   });
 });

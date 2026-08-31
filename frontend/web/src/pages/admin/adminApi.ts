@@ -1,5 +1,5 @@
 import { API_BASE_URL, isProblemDetails, RequestError } from '../../shared/api';
-import { authFetch } from '../../shared/auth';
+import { authFetch, requestCsrfToken } from '../../shared/auth';
 
 export type UserStatus = 'ACTIVE' | 'DELETED';
 export type GenerationStatus = 'PROCESSING' | 'SUCCEEDED' | 'FAILED';
@@ -175,11 +175,26 @@ export const searchAdminGenerations = async (
   return readPage(await readJson(response), isGenerationHistory);
 };
 
+const adminMutationFetch = async (
+  url: string,
+  init: RequestInit,
+): Promise<Response> => {
+  const csrfToken = await requestCsrfToken();
+  const headers = new Headers(init.headers);
+  headers.set('X-XSRF-TOKEN', csrfToken);
+
+  return authFetch(url, {
+    ...init,
+    credentials: 'include',
+    headers,
+  });
+};
+
 const updateUsage = async (
   url: string,
   init: RequestInit,
 ): Promise<AdminGenerationUsage> => {
-  const response = await authFetch(url, init);
+  const response = await adminMutationFetch(url, init);
   const value = await readJson(response);
   if (!isGenerationUsage(value)) {
     throw new Error('사용량 변경 응답 형식이 올바르지 않습니다.');
@@ -187,12 +202,19 @@ const updateUsage = async (
   return value;
 };
 
+const createAdminGenerationUsageRestoreIdempotencyKey = (): string => {
+  return crypto.randomUUID();
+};
+
 export const restoreAdminUsage = (userId: string, count: number) =>
   updateUsage(
     `${API_BASE_URL}/admin/users/${userId}/generation-usage/restore`,
     {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Idempotency-Key': createAdminGenerationUsageRestoreIdempotencyKey(),
+      },
       body: JSON.stringify({ count }),
     },
   );
@@ -206,7 +228,7 @@ export const setAdminGenerationLimit = async (
   userId: string,
   limitCount: number,
 ): Promise<void> => {
-  const response = await authFetch(
+  const response = await adminMutationFetch(
     `${API_BASE_URL}/admin/users/${userId}/generation-limit`,
     {
       method: 'PUT',
