@@ -205,8 +205,8 @@ class JpaGenerationUsageRepositoryTest {
     }
 
     @Test
-    @DisplayName("오늘 사용량 한도를 갱신하되 이미 사용한 횟수보다 낮추지 않는다")
-    void updatesLimitCountWithoutGoingBelowUsedCount() {
+    @DisplayName("오늘 사용량 이상인 한도로만 갱신한다")
+    void updatesLimitCountOnlyWhenNotBelowUsedCount() {
         executeUpdate("""
                 INSERT INTO daily_generation_usage (
                     user_id,
@@ -218,6 +218,11 @@ class JpaGenerationUsageRepositoryTest {
                 """, USER_ID, USAGE_DATE);
 
         assertThat(generationUsageRepository.updateLimitCount(USER_ID, USAGE_DATE, 1))
+                .isZero();
+        assertThat(generationUsageRepository.find(USER_ID, USAGE_DATE))
+                .contains(new GenerationUsage(USAGE_DATE, 2, 3));
+
+        assertThat(generationUsageRepository.updateLimitCount(USER_ID, USAGE_DATE, 2))
                 .isEqualTo(1);
         assertThat(generationUsageRepository.find(USER_ID, USAGE_DATE))
                 .contains(new GenerationUsage(USAGE_DATE, 2, 2));

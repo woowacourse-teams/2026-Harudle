@@ -35,7 +35,7 @@ class ApiCorsConfigurationTest {
 
         assertThat(configuration).isNotNull();
         assertThat(configuration.getAllowedOrigins()).containsExactlyElementsOf(ALLOWED_ORIGINS);
-        assertThat(configuration.getAllowedMethods()).contains("GET", "HEAD", "OPTIONS");
+        assertThat(configuration.getAllowedMethods()).contains("GET", "HEAD", "OPTIONS", "PATCH");
     }
 
     @Test

@@ -2,6 +2,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import HtmlWebpackPlugin from 'html-webpack-plugin';
 import Dotenv from 'dotenv-webpack';
+import CopyWebpackPlugin from 'copy-webpack-plugin';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -55,6 +56,18 @@ export default {
     new HtmlWebpackPlugin({
       template: './index.html',
       favicon: './src/assets/images/favicon.png',
+    }),
+    new CopyWebpackPlugin({
+      patterns: [
+        {
+          from: path.resolve(__dirname, 'manifest.json'),
+          to: 'manifest.json',
+        },
+        {
+          from: path.resolve(__dirname, 'icon-192.png'),
+          to: 'icon-192.png',
+        },
+      ],
     }),
     new Dotenv({ systemvars: true }),
   ],
