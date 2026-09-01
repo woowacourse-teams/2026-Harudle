@@ -1,4 +1,4 @@
-package com.harudle.generation.service.port;
+package com.harudle.generation.diary.service.port.dto;
 
 import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;

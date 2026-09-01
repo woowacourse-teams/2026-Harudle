@@ -1,5 +1,7 @@
-package com.harudle.generation.service.port;
+package com.harudle.generation.diary.service.port;
 
+import com.harudle.generation.diary.service.port.dto.GeneratedImage;
+import com.harudle.generation.diary.service.port.dto.ReferenceImage;
 import java.util.UUID;
 
 public interface ImageStorage {

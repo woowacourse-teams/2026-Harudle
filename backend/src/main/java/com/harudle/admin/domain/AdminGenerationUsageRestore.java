@@ -1,6 +1,6 @@
 package com.harudle.admin.domain;
 
-import com.harudle.generation.domain.GenerationUsage;
+import com.harudle.generation.usage.domain.GenerationUsage;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;

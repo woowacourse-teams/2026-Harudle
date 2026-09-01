@@ -1,6 +1,7 @@
-package com.harudle.generation.domain;
+package com.harudle.generation.prompt.domain;
 
 import com.harudle.common.validation.TextValidator;
+import com.harudle.generation.diary.domain.ImageObjectKeyPolicy;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;

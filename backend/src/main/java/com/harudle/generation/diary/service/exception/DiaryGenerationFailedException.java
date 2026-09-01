@@ -1,6 +1,6 @@
-package com.harudle.generation.service.exception;
+package com.harudle.generation.diary.service.exception;
 
-import com.harudle.generation.domain.GenerationErrorCode;
+import com.harudle.generation.diary.domain.GenerationErrorCode;
 import java.io.Serial;
 
 public final class DiaryGenerationFailedException extends RuntimeException {

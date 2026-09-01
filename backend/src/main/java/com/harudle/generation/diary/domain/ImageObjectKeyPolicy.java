@@ -1,4 +1,4 @@
-package com.harudle.generation.domain;
+package com.harudle.generation.diary.domain;
 
 import com.harudle.common.validation.TextValidator;
 import java.nio.charset.StandardCharsets;
@@ -6,7 +6,7 @@ import java.util.Locale;
 
 public final class ImageObjectKeyPolicy {
 
-    static final int MAX_UTF8_BYTES = 1024;
+    public static final int MAX_UTF8_BYTES = 1024;
 
     private ImageObjectKeyPolicy() {
     }

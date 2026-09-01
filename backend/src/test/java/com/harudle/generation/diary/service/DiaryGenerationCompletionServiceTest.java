@@ -1,4 +1,4 @@
-package com.harudle.generation.service;
+package com.harudle.generation.diary.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -8,13 +8,13 @@ import static org.mockito.Mockito.when;
 
 import com.harudle.diary.domain.Diary;
 import com.harudle.diary.repository.DiaryRepository;
-import com.harudle.generation.domain.DiaryGeneration;
-import com.harudle.generation.domain.GenerationErrorCode;
-import com.harudle.generation.domain.GenerationStatus;
-import com.harudle.generation.domain.StoryPanel;
-import com.harudle.generation.domain.Storyboard;
-import com.harudle.generation.repository.DiaryGenerationRepository;
-import com.harudle.generation.service.exception.DiaryGenerationFailedException;
+import com.harudle.generation.diary.domain.DiaryGeneration;
+import com.harudle.generation.diary.domain.GenerationErrorCode;
+import com.harudle.generation.diary.domain.GenerationStatus;
+import com.harudle.generation.diary.domain.StoryPanel;
+import com.harudle.generation.diary.domain.Storyboard;
+import com.harudle.generation.diary.repository.DiaryGenerationRepository;
+import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;

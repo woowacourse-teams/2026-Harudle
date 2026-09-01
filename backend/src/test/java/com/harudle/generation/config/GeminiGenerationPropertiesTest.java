@@ -1,4 +1,4 @@
-package com.harudle.generation.configuration;
+package com.harudle.generation.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

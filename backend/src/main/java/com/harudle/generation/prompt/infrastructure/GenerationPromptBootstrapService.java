@@ -1,7 +1,7 @@
-package com.harudle.generation.infrastructure;
+package com.harudle.generation.prompt.infrastructure;
 
-import com.harudle.generation.domain.GenerationPrompt;
-import com.harudle.generation.repository.GenerationPromptRepository;
+import com.harudle.generation.prompt.domain.GenerationPrompt;
+import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

@@ -1,7 +1,7 @@
-package com.harudle.generation.service.dto;
+package com.harudle.generation.diary.service.dto;
 
 import com.harudle.common.validation.TextValidator;
-import com.harudle.generation.domain.ImageObjectKeyPolicy;
+import com.harudle.generation.diary.domain.ImageObjectKeyPolicy;
 import java.time.Instant;
 import java.util.UUID;
 

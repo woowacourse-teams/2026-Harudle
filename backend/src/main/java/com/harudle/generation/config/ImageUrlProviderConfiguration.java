@@ -1,7 +1,7 @@
-package com.harudle.generation.infrastructure;
+package com.harudle.generation.config;
 
-import com.harudle.generation.service.port.ImageStorageException;
-import com.harudle.generation.service.port.ImageUrlProvider;
+import com.harudle.generation.diary.service.port.ImageStorageException;
+import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;

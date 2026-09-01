@@ -1,8 +1,8 @@
-package com.harudle.generation.service;
+package com.harudle.generation.diary.service;
 
-import com.harudle.generation.configuration.GenerationLifecycleProperties;
-import com.harudle.generation.domain.GenerationStatus;
-import com.harudle.generation.repository.DiaryGenerationRepository;
+import com.harudle.generation.config.GenerationLifecycleProperties;
+import com.harudle.generation.diary.domain.GenerationStatus;
+import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;

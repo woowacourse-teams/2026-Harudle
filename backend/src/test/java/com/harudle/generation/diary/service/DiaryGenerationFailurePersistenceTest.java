@@ -1,15 +1,15 @@
-package com.harudle.generation.service;
+package com.harudle.generation.diary.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.harudle.diary.domain.Diary;
 import com.harudle.diary.repository.DiaryRepository;
-import com.harudle.generation.domain.DiaryGeneration;
-import com.harudle.generation.domain.GenerationErrorCode;
-import com.harudle.generation.domain.GenerationPrompt;
-import com.harudle.generation.domain.GenerationStatus;
-import com.harudle.generation.repository.DiaryGenerationRepository;
-import com.harudle.generation.repository.GenerationPromptRepository;
+import com.harudle.generation.diary.domain.DiaryGeneration;
+import com.harudle.generation.diary.domain.GenerationErrorCode;
+import com.harudle.generation.prompt.domain.GenerationPrompt;
+import com.harudle.generation.diary.domain.GenerationStatus;
+import com.harudle.generation.diary.repository.DiaryGenerationRepository;
+import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;

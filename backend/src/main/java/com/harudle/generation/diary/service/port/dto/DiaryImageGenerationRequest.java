@@ -1,7 +1,7 @@
-package com.harudle.generation.service.port;
+package com.harudle.generation.diary.service.port.dto;
 
 import com.harudle.common.validation.TextValidator;
-import com.harudle.generation.domain.Storyboard;
+import com.harudle.generation.diary.domain.Storyboard;
 
 public record DiaryImageGenerationRequest(
         Storyboard storyboard,

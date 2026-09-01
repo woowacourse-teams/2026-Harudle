@@ -1,6 +1,6 @@
-package com.harudle.generation.service;
+package com.harudle.generation.diary.service;
 
-import com.harudle.generation.service.dto.GenerateDiaryImageCommand;
+import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;

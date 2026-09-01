@@ -1,7 +1,7 @@
-package com.harudle.generation.repository;
+package com.harudle.generation.diary.repository;
 
-import com.harudle.generation.domain.DiaryGeneration;
-import com.harudle.generation.domain.GenerationStatus;
+import com.harudle.generation.diary.domain.DiaryGeneration;
+import com.harudle.generation.diary.domain.GenerationStatus;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -15,7 +15,7 @@ import org.springframework.data.repository.query.Param;
 public interface DiaryGenerationQueryRepository extends Repository<DiaryGeneration, UUID> {
 
     @Query("""
-            SELECT new com.harudle.generation.repository.DiaryGenerationSnapshot(
+            SELECT new com.harudle.generation.diary.repository.DiaryGenerationSnapshot(
                 generation.id,
                 generation.diaryId,
                 generation.status,
@@ -29,7 +29,7 @@ public interface DiaryGenerationQueryRepository extends Repository<DiaryGenerati
     Optional<DiaryGenerationSnapshot> findSnapshotByDiaryId(@Param("diaryId") UUID diaryId);
 
     @Query("""
-            SELECT new com.harudle.generation.repository.DiaryGenerationSnapshot(
+            SELECT new com.harudle.generation.diary.repository.DiaryGenerationSnapshot(
                 generation.id,
                 generation.diaryId,
                 generation.status,

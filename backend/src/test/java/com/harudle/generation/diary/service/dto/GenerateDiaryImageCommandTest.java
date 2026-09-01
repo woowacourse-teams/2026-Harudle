@@ -1,9 +1,9 @@
-package com.harudle.generation.service;
+package com.harudle.generation.diary.service.dto;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.harudle.generation.service.dto.GenerateDiaryImageCommand;
+import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
 import java.time.LocalDate;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;

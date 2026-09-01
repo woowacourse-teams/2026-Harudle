@@ -1,6 +1,6 @@
-package com.harudle.generation.presentation;
+package com.harudle.generation.usage.presentation;
 
-import com.harudle.generation.domain.GenerationUsage;
+import com.harudle.generation.usage.domain.GenerationUsage;
 import java.time.LocalDate;
 
 public record GenerationUsageResponse(

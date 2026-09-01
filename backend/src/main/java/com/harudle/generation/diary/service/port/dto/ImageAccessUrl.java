@@ -1,4 +1,4 @@
-package com.harudle.generation.service.port;
+package com.harudle.generation.diary.service.port.dto;
 
 import java.net.URI;
 import java.time.Instant;

@@ -1,8 +1,8 @@
 package com.harudle.admin.repository;
 
 import com.harudle.admin.query.AdminGenerationHistorySnapshot;
-import com.harudle.generation.domain.DiaryGeneration;
-import com.harudle.generation.domain.GenerationStatus;
+import com.harudle.generation.diary.domain.DiaryGeneration;
+import com.harudle.generation.diary.domain.GenerationStatus;
 import java.time.Instant;
 import java.util.UUID;
 import org.springframework.data.domain.Page;

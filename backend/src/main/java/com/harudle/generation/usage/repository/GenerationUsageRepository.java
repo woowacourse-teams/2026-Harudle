@@ -1,6 +1,6 @@
-package com.harudle.generation.repository;
+package com.harudle.generation.usage.repository;
 
-import com.harudle.generation.domain.GenerationUsage;
+import com.harudle.generation.usage.domain.GenerationUsage;
 import java.time.LocalDate;
 import java.util.Optional;
 import java.util.UUID;

@@ -1,4 +1,4 @@
-package com.harudle.generation.domain;
+package com.harudle.generation.diary.domain;
 
 import com.harudle.common.validation.TextValidator;
 import java.util.List;

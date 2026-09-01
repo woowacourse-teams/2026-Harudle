@@ -1,8 +1,8 @@
 package com.harudle.generation.adapter.out.s3;
 
-import com.harudle.generation.configuration.S3StorageProperties;
-import com.harudle.generation.service.port.ImageAccessUrl;
-import com.harudle.generation.service.port.ImageUrlProvider;
+import com.harudle.generation.config.S3StorageProperties;
+import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
+import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import java.time.Duration;
 import java.util.Objects;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;

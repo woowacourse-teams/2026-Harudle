@@ -1,7 +1,7 @@
-package com.harudle.generation.infrastructure;
+package com.harudle.generation.usage.infrastructure;
 
-import com.harudle.generation.domain.GenerationUsage;
-import com.harudle.generation.repository.GenerationUsageRepository;
+import com.harudle.generation.usage.domain.GenerationUsage;
+import com.harudle.generation.usage.repository.GenerationUsageRepository;
 import jakarta.persistence.EntityManager;
 import java.time.LocalDate;
 import java.util.List;
@@ -81,7 +81,7 @@ class JpaGenerationUsageRepository implements GenerationUsageRepository {
             """;
 
     private static final String FIND_QUERY = """
-            SELECT new com.harudle.generation.domain.GenerationUsage(
+            SELECT new com.harudle.generation.usage.domain.GenerationUsage(
                 usage.id.usageDate,
                 usage.usedCount,
                 usage.limitCount

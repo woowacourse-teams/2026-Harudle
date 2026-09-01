@@ -1,6 +1,6 @@
-package com.harudle.generation.repository;
+package com.harudle.generation.diary.repository;
 
-import com.harudle.generation.domain.GenerationStatus;
+import com.harudle.generation.diary.domain.GenerationStatus;
 import java.time.Instant;
 import java.util.UUID;
 

@@ -1,4 +1,4 @@
-package com.harudle.generation.configuration;
+package com.harudle.generation.config;
 
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotNull;

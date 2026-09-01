@@ -1,4 +1,4 @@
-package com.harudle.generation.domain;
+package com.harudle.generation.diary.domain;
 
 public enum GenerationErrorCode {
 

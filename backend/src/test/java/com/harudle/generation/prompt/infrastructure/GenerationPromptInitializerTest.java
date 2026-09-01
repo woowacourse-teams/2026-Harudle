@@ -1,4 +1,4 @@
-package com.harudle.generation.infrastructure;
+package com.harudle.generation.prompt.infrastructure;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -8,11 +8,11 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.harudle.generation.config.GenerationPromptBootstrapProperties;
-import com.harudle.generation.domain.GenerationPrompt;
-import com.harudle.generation.repository.GenerationPromptRepository;
-import com.harudle.generation.service.port.ImageStorage;
-import com.harudle.generation.service.port.ImageStorageException;
-import com.harudle.generation.service.port.ReferenceImage;
+import com.harudle.generation.prompt.domain.GenerationPrompt;
+import com.harudle.generation.prompt.repository.GenerationPromptRepository;
+import com.harudle.generation.diary.service.port.ImageStorage;
+import com.harudle.generation.diary.service.port.ImageStorageException;
+import com.harudle.generation.diary.service.port.dto.ReferenceImage;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;

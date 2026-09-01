@@ -1,4 +1,4 @@
-package com.harudle.generation.configuration;
+package com.harudle.generation.config;
 
 import com.google.genai.Client;
 import com.google.genai.Models;
@@ -16,10 +16,10 @@ import com.harudle.generation.adapter.out.s3.S3ExceptionTranslator;
 import com.harudle.generation.adapter.out.s3.S3FailureReporter;
 import com.harudle.generation.adapter.out.s3.S3ImageStorage;
 import com.harudle.generation.adapter.out.s3.S3ImageUrlProvider;
-import com.harudle.generation.service.port.DiaryImageGenerator;
-import com.harudle.generation.service.port.ImageStorage;
-import com.harudle.generation.service.port.ImageUrlProvider;
-import com.harudle.generation.service.port.StoryboardGenerator;
+import com.harudle.generation.diary.service.port.DiaryImageGenerator;
+import com.harudle.generation.diary.service.port.ImageStorage;
+import com.harudle.generation.diary.service.port.ImageUrlProvider;
+import com.harudle.generation.diary.service.port.StoryboardGenerator;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;

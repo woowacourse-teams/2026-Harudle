@@ -1,4 +1,4 @@
-package com.harudle.generation.infrastructure;
+package com.harudle.generation.diary.infrastructure;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;

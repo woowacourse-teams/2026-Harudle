@@ -1,9 +1,9 @@
-package com.harudle.generation.service;
+package com.harudle.generation.diary.service.port.dto;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.harudle.generation.service.port.ReferenceImage;
+import com.harudle.generation.diary.service.port.dto.ReferenceImage;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

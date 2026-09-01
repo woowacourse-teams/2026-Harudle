@@ -1,4 +1,4 @@
-package com.harudle.generation.service;
+package com.harudle.generation.usage.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -8,9 +8,9 @@ import static org.mockito.Mockito.when;
 
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.UserRepository;
-import com.harudle.generation.domain.GenerationUsage;
-import com.harudle.generation.repository.GenerationUsageRepository;
-import com.harudle.generation.service.exception.DailyGenerationLimitExceededException;
+import com.harudle.generation.usage.domain.GenerationUsage;
+import com.harudle.generation.usage.repository.GenerationUsageRepository;
+import com.harudle.generation.usage.service.exception.DailyGenerationLimitExceededException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;

@@ -1,7 +1,7 @@
 package com.harudle.diary.service;
 
-import com.harudle.generation.domain.StoryPanel;
-import com.harudle.generation.domain.Storyboard;
+import com.harudle.generation.diary.domain.StoryPanel;
+import com.harudle.generation.diary.domain.Storyboard;
 import java.util.List;
 
 final class TestStoryboardFactory {

@@ -1,9 +1,9 @@
-package com.harudle.generation.infrastructure;
+package com.harudle.generation.prompt.infrastructure;
 
 import com.harudle.generation.config.GenerationPromptBootstrapProperties;
-import com.harudle.generation.domain.GenerationPrompt;
-import com.harudle.generation.repository.GenerationPromptRepository;
-import com.harudle.generation.service.port.ImageStorage;
+import com.harudle.generation.prompt.domain.GenerationPrompt;
+import com.harudle.generation.prompt.repository.GenerationPromptRepository;
+import com.harudle.generation.diary.service.port.ImageStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;

@@ -1,10 +1,10 @@
-package com.harudle.generation.service;
+package com.harudle.generation.usage.service;
 
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.UserRepository;
-import com.harudle.generation.domain.GenerationUsage;
-import com.harudle.generation.repository.GenerationUsageRepository;
-import com.harudle.generation.service.exception.DailyGenerationLimitExceededException;
+import com.harudle.generation.usage.domain.GenerationUsage;
+import com.harudle.generation.usage.repository.GenerationUsageRepository;
+import com.harudle.generation.usage.service.exception.DailyGenerationLimitExceededException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;

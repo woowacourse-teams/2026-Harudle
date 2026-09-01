@@ -1,4 +1,4 @@
-package com.harudle.generation.service.exception;
+package com.harudle.generation.diary.service.exception;
 
 public enum AiGenerationErrorType {
 

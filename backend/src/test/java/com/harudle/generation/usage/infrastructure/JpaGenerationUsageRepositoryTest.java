@@ -1,10 +1,10 @@
-package com.harudle.generation.infrastructure;
+package com.harudle.generation.usage.infrastructure;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.harudle.generation.domain.GenerationUsage;
-import com.harudle.generation.repository.GenerationUsageRepository;
+import com.harudle.generation.usage.domain.GenerationUsage;
+import com.harudle.generation.usage.repository.GenerationUsageRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;

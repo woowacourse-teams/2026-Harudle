@@ -4,10 +4,10 @@ import com.google.genai.Models;
 import com.google.genai.types.GenerateContentConfig;
 import com.google.genai.types.GenerateContentResponse;
 import com.google.genai.types.ThinkingConfig;
-import com.harudle.generation.configuration.GeminiGenerationProperties;
-import com.harudle.generation.domain.Storyboard;
-import com.harudle.generation.service.port.StoryboardGenerationRequest;
-import com.harudle.generation.service.port.StoryboardGenerator;
+import com.harudle.generation.config.GeminiGenerationProperties;
+import com.harudle.generation.diary.domain.Storyboard;
+import com.harudle.generation.diary.service.port.dto.StoryboardGenerationRequest;
+import com.harudle.generation.diary.service.port.StoryboardGenerator;
 import tools.jackson.databind.ObjectMapper;
 
 public final class GeminiStoryboardGenerator implements StoryboardGenerator {

@@ -1,6 +1,6 @@
-package com.harudle.generation.repository;
+package com.harudle.generation.prompt.repository;
 
-import com.harudle.generation.domain.GenerationPrompt;
+import com.harudle.generation.prompt.domain.GenerationPrompt;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;

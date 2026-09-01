@@ -1,8 +1,8 @@
-package com.harudle.generation.presentation;
+package com.harudle.generation.usage.presentation;
 
 import com.harudle.auth.presentation.AuthenticatedUserIdResolver;
-import com.harudle.generation.domain.GenerationUsage;
-import com.harudle.generation.service.GenerationUsageService;
+import com.harudle.generation.usage.domain.GenerationUsage;
+import com.harudle.generation.usage.service.GenerationUsageService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;

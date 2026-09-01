@@ -1,8 +1,8 @@
-package com.harudle.generation.infrastructure;
+package com.harudle.generation.prompt.infrastructure;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.harudle.generation.domain.GenerationPrompt;
+import com.harudle.generation.prompt.domain.GenerationPrompt;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.util.List;

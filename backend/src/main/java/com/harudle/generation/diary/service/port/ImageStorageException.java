@@ -1,4 +1,4 @@
-package com.harudle.generation.service.port;
+package com.harudle.generation.diary.service.port;
 
 import java.io.Serial;
 

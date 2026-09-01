@@ -1,7 +1,7 @@
-package com.harudle.generation.repository;
+package com.harudle.generation.diary.repository;
 
-import com.harudle.generation.domain.DiaryGeneration;
-import com.harudle.generation.domain.GenerationStatus;
+import com.harudle.generation.diary.domain.DiaryGeneration;
+import com.harudle.generation.diary.domain.GenerationStatus;
 import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.util.List;

@@ -1,4 +1,4 @@
-package com.harudle.generation.domain;
+package com.harudle.generation.usage.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

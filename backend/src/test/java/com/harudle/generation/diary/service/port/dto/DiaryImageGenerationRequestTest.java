@@ -1,12 +1,12 @@
-package com.harudle.generation.service;
+package com.harudle.generation.diary.service.port.dto;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.harudle.generation.domain.StoryPanel;
-import com.harudle.generation.domain.Storyboard;
-import com.harudle.generation.service.port.DiaryImageGenerationRequest;
-import com.harudle.generation.service.port.ReferenceImage;
+import com.harudle.generation.diary.domain.StoryPanel;
+import com.harudle.generation.diary.domain.Storyboard;
+import com.harudle.generation.diary.service.port.dto.DiaryImageGenerationRequest;
+import com.harudle.generation.diary.service.port.dto.ReferenceImage;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;

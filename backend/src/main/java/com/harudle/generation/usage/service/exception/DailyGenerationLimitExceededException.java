@@ -1,4 +1,4 @@
-package com.harudle.generation.service.exception;
+package com.harudle.generation.usage.service.exception;
 
 import java.io.Serial;
 

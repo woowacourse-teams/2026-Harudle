@@ -1,11 +1,11 @@
-package com.harudle.generation.infrastructure;
+package com.harudle.generation.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.harudle.generation.service.port.ImageAccessUrl;
-import com.harudle.generation.service.port.ImageStorageException;
-import com.harudle.generation.service.port.ImageUrlProvider;
+import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
+import com.harudle.generation.diary.service.port.ImageStorageException;
+import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import java.net.URI;
 import java.time.Instant;
 import org.junit.jupiter.api.DisplayName;

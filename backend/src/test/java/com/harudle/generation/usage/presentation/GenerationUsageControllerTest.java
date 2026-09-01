@@ -1,4 +1,4 @@
-package com.harudle.generation.presentation;
+package com.harudle.generation.usage.presentation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
@@ -15,8 +15,8 @@ import com.harudle.common.error.ProblemDetailFactory;
 import com.harudle.common.error.TraceIdConfiguration;
 import com.harudle.common.security.CsrfConfiguration;
 import com.harudle.common.security.SecurityConfig;
-import com.harudle.generation.domain.GenerationUsage;
-import com.harudle.generation.service.GenerationUsageService;
+import com.harudle.generation.usage.domain.GenerationUsage;
+import com.harudle.generation.usage.service.GenerationUsageService;
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
 import io.restassured.module.mockmvc.response.MockMvcResponse;
 import java.time.LocalDate;

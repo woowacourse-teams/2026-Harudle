@@ -1,9 +1,9 @@
-package com.harudle.generation.service;
+package com.harudle.generation.diary.service.port;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.harudle.generation.service.port.ImageStorageException;
+import com.harudle.generation.diary.service.port.ImageStorageException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
