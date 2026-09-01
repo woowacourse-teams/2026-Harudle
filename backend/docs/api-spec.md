@@ -205,6 +205,7 @@ HTTP/1.1 200 OK
   "name": "하루들",
   "email": "harudle.official@gmail.com",
   "oauthProvider": "KAKAO",
+  "role": "USER",
   "createdAt": "2026-08-06T10:30:00+09:00"
 }
 ```
