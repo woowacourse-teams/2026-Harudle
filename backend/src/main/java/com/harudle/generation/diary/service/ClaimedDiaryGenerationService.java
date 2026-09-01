@@ -79,7 +79,7 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
                     generatedDiaryImage.storyboard(),
                     generatedDiaryImage.imageObjectKey()
             );
-            if (!completedGeneration.usesImageObjectKey(generatedDiaryImage.imageObjectKey())) {
+            if (completedGeneration.notUsesImageObjectKey(generatedDiaryImage.imageObjectKey())) {
                 deleteDiscardedImage(generatedDiaryImage.imageObjectKey());
             }
             return completedGeneration;
@@ -122,7 +122,7 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
         return switch (generation.getStatus()) {
             case PROCESSING -> false;
             case FAILED -> true;
-            case SUCCEEDED -> !generation.usesImageObjectKey(imageObjectKey);
+            case SUCCEEDED -> !generation.notUsesImageObjectKey(imageObjectKey);
         };
     }
 

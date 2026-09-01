@@ -143,8 +143,8 @@ public class DiaryGeneration {
         return this.requestFingerprint.equals(normalizeRequestFingerprint(requestFingerprint));
     }
 
-    public boolean usesImageObjectKey(String candidate) {
-        return imageObjectKey != null && imageObjectKey.equals(candidate);
+    public boolean notUsesImageObjectKey(String candidate) {
+        return imageObjectKey == null || !imageObjectKey.equals(candidate);
     }
 
     public boolean matchesExecutableClaim(
