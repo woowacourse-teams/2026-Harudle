@@ -4,6 +4,7 @@ import com.harudle.generation.config.GenerationPromptBootstrapProperties;
 import com.harudle.generation.prompt.domain.GenerationPrompt;
 import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import com.harudle.generation.diary.service.port.ImageStorage;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
@@ -37,7 +38,7 @@ public class GenerationPromptInitializer implements ApplicationRunner, Ordered {
     }
 
     @Override
-    public void run(ApplicationArguments arguments) {
+    public void run(@NonNull ApplicationArguments arguments) {
         if (generationPromptRepository.count() > 0) {
             return;
         }
