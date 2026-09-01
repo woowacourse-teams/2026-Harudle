@@ -1,6 +1,6 @@
 package com.harudle.diary.service.dto;
 
-import com.harudle.generation.domain.GenerationUsage;
+import com.harudle.generation.usage.domain.GenerationUsage;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;

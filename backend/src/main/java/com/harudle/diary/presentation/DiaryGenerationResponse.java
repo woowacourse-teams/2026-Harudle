@@ -1,6 +1,6 @@
 package com.harudle.diary.presentation;
 
-import com.harudle.generation.domain.GenerationStatus;
+import com.harudle.generation.diary.domain.GenerationStatus;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 

@@ -1,10 +1,10 @@
 package com.harudle.generation.adapter.out.s3;
 
-import com.harudle.generation.configuration.S3StorageProperties;
-import com.harudle.generation.service.port.GeneratedImage;
-import com.harudle.generation.service.port.ImageStorage;
-import com.harudle.generation.service.port.ImageStorageException;
-import com.harudle.generation.service.port.ReferenceImage;
+import com.harudle.generation.config.S3StorageProperties;
+import com.harudle.generation.diary.service.port.dto.GeneratedImage;
+import com.harudle.generation.diary.service.port.ImageStorage;
+import com.harudle.generation.diary.service.port.ImageStorageException;
+import com.harudle.generation.diary.service.port.dto.ReferenceImage;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Objects;

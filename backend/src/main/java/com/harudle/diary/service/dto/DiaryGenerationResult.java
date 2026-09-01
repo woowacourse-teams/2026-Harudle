@@ -1,6 +1,6 @@
 package com.harudle.diary.service.dto;
 
-import com.harudle.generation.domain.GenerationStatus;
+import com.harudle.generation.diary.domain.GenerationStatus;
 import java.time.Instant;
 import java.util.UUID;
 

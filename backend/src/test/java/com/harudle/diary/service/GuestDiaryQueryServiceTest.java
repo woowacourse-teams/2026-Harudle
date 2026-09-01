@@ -9,7 +9,7 @@ import static org.mockito.Mockito.when;
 import com.harudle.diary.service.dto.DiaryDetailResult;
 import com.harudle.diary.service.dto.DiaryGenerationResult;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
-import com.harudle.generation.domain.GenerationStatus;
+import com.harudle.generation.diary.domain.GenerationStatus;
 import com.harudle.guest.application.GuestSessionResolver;
 import com.harudle.guest.domain.GuestSession;
 import java.time.Clock;

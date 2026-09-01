@@ -1,7 +1,7 @@
 package com.harudle.common.error;
 
-import com.harudle.generation.domain.GenerationErrorCode;
-import com.harudle.generation.service.exception.AiGenerationErrorType;
+import com.harudle.generation.diary.domain.GenerationErrorCode;
+import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import java.net.URI;
 import java.util.Locale;
 import org.springframework.http.HttpStatus;

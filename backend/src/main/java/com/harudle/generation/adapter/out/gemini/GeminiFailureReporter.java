@@ -2,7 +2,7 @@ package com.harudle.generation.adapter.out.gemini;
 
 import com.harudle.common.logging.ExternalApiFailure;
 import com.harudle.common.logging.ExternalApiLogger;
-import com.harudle.generation.service.exception.AiGenerationException;
+import com.harudle.generation.diary.service.exception.AiGenerationException;
 import org.jspecify.annotations.NullMarked;
 
 @NullMarked

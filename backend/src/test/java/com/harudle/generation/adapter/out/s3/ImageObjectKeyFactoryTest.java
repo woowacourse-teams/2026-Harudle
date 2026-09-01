@@ -3,7 +3,7 @@ package com.harudle.generation.adapter.out.s3;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.harudle.generation.configuration.S3StorageProperties;
+import com.harudle.generation.config.S3StorageProperties;
 import java.time.Duration;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;

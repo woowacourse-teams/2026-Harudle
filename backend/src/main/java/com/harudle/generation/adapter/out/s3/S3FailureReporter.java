@@ -2,7 +2,7 @@ package com.harudle.generation.adapter.out.s3;
 
 import com.harudle.common.logging.ExternalApiFailure;
 import com.harudle.common.logging.ExternalApiLogger;
-import com.harudle.generation.service.port.ImageStorageException;
+import com.harudle.generation.diary.service.port.ImageStorageException;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 

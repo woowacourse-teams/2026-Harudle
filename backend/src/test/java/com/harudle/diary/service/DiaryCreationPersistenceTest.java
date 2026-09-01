@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.harudle.diary.service.dto.CreateDiaryCommand;
-import com.harudle.generation.domain.GenerationStatus;
-import com.harudle.generation.service.exception.DailyGenerationLimitExceededException;
+import com.harudle.generation.diary.domain.GenerationStatus;
+import com.harudle.generation.usage.service.exception.DailyGenerationLimitExceededException;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;

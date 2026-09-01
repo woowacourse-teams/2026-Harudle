@@ -2,12 +2,12 @@ package com.harudle.diary.service;
 
 import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.dto.DiaryGenerationResult;
-import com.harudle.generation.domain.GenerationStatus;
-import com.harudle.generation.service.DiaryGenerationExecutor;
-import com.harudle.generation.service.dto.CompletedDiaryGeneration;
-import com.harudle.generation.service.dto.GenerateDiaryImageCommand;
-import com.harudle.generation.service.exception.DiaryGenerationFailedException;
-import com.harudle.generation.service.exception.GenerationInProgressException;
+import com.harudle.generation.diary.domain.GenerationStatus;
+import com.harudle.generation.diary.service.DiaryGenerationExecutor;
+import com.harudle.generation.diary.service.dto.CompletedDiaryGeneration;
+import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
+import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
+import com.harudle.generation.diary.service.exception.GenerationInProgressException;
 import org.springframework.stereotype.Service;
 
 @Service

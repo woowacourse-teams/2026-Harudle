@@ -1,6 +1,6 @@
 package com.harudle.generation.adapter.out.s3;
 
-import com.harudle.generation.configuration.S3StorageProperties;
+import com.harudle.generation.config.S3StorageProperties;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
