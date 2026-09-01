@@ -10,6 +10,7 @@ import SettingError from './SettingError';
 import callMadeIcon from '../../assets/icons/call_made.svg';
 import logoutIcon from '../../assets/icons/logout.svg';
 import articlePersonIcon from '../../assets/icons/article_person.svg';
+import PwaInstallButton from './PwaInstallButton';
 
 const PRIVACY_POLICY_URL = 'https://harudle.notion.site/';
 
@@ -93,6 +94,8 @@ const SettingPageContent = () => {
           />
         </a>
       </div>
+
+      <PwaInstallButton />
 
       <button
         type="button"
