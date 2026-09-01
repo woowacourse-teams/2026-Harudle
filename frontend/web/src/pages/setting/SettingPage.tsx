@@ -11,8 +11,7 @@ import callMadeIcon from '../../assets/icons/call_made.svg';
 import logoutIcon from '../../assets/icons/logout.svg';
 import articlePersonIcon from '../../assets/icons/article_person.svg';
 
-const PRIVACY_POLICY_URL =
-  'https://tecothon.notion.site/3c6d0505d9168025b01cdfa02d863a37?pvs=73';
+const PRIVACY_POLICY_URL = 'https://harudle.notion.site/';
 
 const GOOGLE_FROM_URL = 'https://forms.gle/8DMM4L835Esxk7BE6';
 
