@@ -31,14 +31,5 @@
   </head>
   <body>
     <div id="root"></div>
-    <script>
-      // 브라우저가 서비스 워커를 지원하는지 확인 후 등록
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker
-          .register('/service-worker.js')
-          .then(() => console.log('서비스 워커 등록 완료!'))
-          .catch((err) => console.log('등록 실패:', err));
-      }
-    </script>
   </body>
 </html>

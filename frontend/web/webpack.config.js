@@ -64,10 +64,6 @@ export default {
           to: 'manifest.json',
         },
         {
-          from: path.resolve(__dirname, 'service-worker.js'),
-          to: 'service-worker.js',
-        },
-        {
           from: path.resolve(__dirname, 'icon-192.png'),
           to: 'icon-192.png',
         },
