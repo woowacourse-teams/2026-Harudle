@@ -3,6 +3,7 @@ package com.harudle.admin.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.harudle.admin.service.exception.AdminGenerationLimitBelowUsageException;
 import com.harudle.generation.domain.GenerationUsage;
 import com.harudle.generation.repository.GenerationUsageRepository;
 import java.time.LocalDate;
@@ -96,6 +97,11 @@ class AdminGenerationUsageServiceTest {
     @Test
     @DisplayName("한도 변경과 사용량 초기화는 사용자 행 잠금으로 직렬화된다")
     void serializesLimitChangeAndReset() throws Exception {
+        jdbcTemplate.update(
+                "UPDATE daily_generation_usage SET used_count = ? WHERE user_id = ?",
+                2,
+                USER_ID
+        );
         CountDownLatch limitChangeHolding = new CountDownLatch(1);
         CountDownLatch releaseLimitChange = new CountDownLatch(1);
 
@@ -127,6 +133,40 @@ class AdminGenerationUsageServiceTest {
         assertThat(findUserDailyGenerationLimit()).isEqualTo(3);
         assertThat(generationUsageRepository.find(USER_ID, USAGE_DATE))
                 .contains(new GenerationUsage(USAGE_DATE, 0, 3));
+    }
+
+    @Test
+    @DisplayName("오늘 사용량보다 작은 생성 한도 변경은 거부한다")
+    void rejectsLimitChangeBelowTodayUsage() {
+        assertThatThrownBy(() -> adminGenerationUsageService.changeLimit(USER_ID, 4))
+                .isInstanceOf(AdminGenerationLimitBelowUsageException.class)
+                .hasMessage("현재 사용량보다 작은 생성 한도로 변경할 수 없습니다.");
+
+        assertThat(findUserDailyGenerationLimit()).isEqualTo(5);
+        assertThat(generationUsageRepository.find(USER_ID, USAGE_DATE))
+                .contains(new GenerationUsage(USAGE_DATE, 5, 5));
+    }
+
+    @Test
+    @DisplayName("오늘 사용량과 동일한 생성 한도 변경은 허용한다")
+    void allowsLimitChangeEqualToTodayUsage() {
+        adminGenerationUsageService.changeLimit(USER_ID, 5);
+
+        assertThat(findUserDailyGenerationLimit()).isEqualTo(5);
+        assertThat(generationUsageRepository.find(USER_ID, USAGE_DATE))
+                .contains(new GenerationUsage(USAGE_DATE, 5, 5));
+    }
+
+    @Test
+    @DisplayName("0인 생성 한도 변경은 거부하고 기존 상태를 유지한다")
+    void rejectsZeroLimitChangeWithoutChangingState() {
+        assertThatThrownBy(() -> adminGenerationUsageService.changeLimit(USER_ID, 0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("일일 생성 한도는 1 이상이어야 합니다.");
+
+        assertThat(findUserDailyGenerationLimit()).isEqualTo(5);
+        assertThat(generationUsageRepository.find(USER_ID, USAGE_DATE))
+                .contains(new GenerationUsage(USAGE_DATE, 5, 5));
     }
 
     @Test

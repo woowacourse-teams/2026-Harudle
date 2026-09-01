@@ -1,6 +1,7 @@
 package com.harudle.common.error;
 
 import com.harudle.admin.service.exception.AdminUserNotFoundException;
+import com.harudle.admin.service.exception.AdminGenerationLimitBelowUsageException;
 import com.harudle.admin.service.exception.AdminGenerationUsageConflictException;
 import com.harudle.admin.service.exception.AdminGenerationHistoryDateRangeException;
 import com.harudle.admin.service.exception.AdminInactiveUserException;
@@ -173,6 +174,11 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(AdminGenerationUsageConflictException.class)
     ResponseEntity<ProblemDetail> handleAdminGenerationUsageConflict(HttpServletRequest request) {
         return createResponse(ErrorType.GENERATION_USAGE_CONFLICT, request);
+    }
+
+    @ExceptionHandler(AdminGenerationLimitBelowUsageException.class)
+    ResponseEntity<ProblemDetail> handleAdminGenerationLimitBelowUsage(HttpServletRequest request) {
+        return createResponse(ErrorType.GENERATION_LIMIT_BELOW_USAGE, request);
     }
 
     @ExceptionHandler(AdminGenerationHistoryDateRangeException.class)

@@ -78,6 +78,11 @@ public enum ErrorType {
             "Generation usage conflict",
             "현재 생성 사용량을 기준으로 요청을 다시 확인해 주세요."
     ),
+    GENERATION_LIMIT_BELOW_USAGE(
+            HttpStatus.CONFLICT,
+            "Generation limit below usage",
+            "현재 사용량보다 작은 생성 한도로 변경할 수 없습니다."
+    ),
     GENERATION_IN_PROGRESS(
             HttpStatus.CONFLICT,
             "Generation in progress",

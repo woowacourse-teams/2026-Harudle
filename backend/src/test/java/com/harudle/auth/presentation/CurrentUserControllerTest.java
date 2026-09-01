@@ -1,11 +1,6 @@
 package com.harudle.auth.presentation;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.harudle.auth.application.AccessTokenService;
 import com.harudle.auth.domain.OAuthAccount;
@@ -27,6 +22,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -55,6 +51,9 @@ class CurrentUserControllerTest {
     private UserRepository userRepository;
 
     @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @Autowired
     private OAuthAccountRepository oauthAccountRepository;
 
     @BeforeEach
@@ -69,29 +68,48 @@ class CurrentUserControllerTest {
 
     @Test
     @DisplayName("유효한 Access Token으로 내 프로필을 조회한다")
-    void findsCurrentUser() throws Exception {
+    void findsCurrentUser() {
         User user = saveUser("user@example.com", "하루들");
         saveOAuthAccount(user, "12345", "user@example.com");
 
-        mockMvc.perform(get("/api/v1/me")
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(user.getId())))
-                .andExpect(status().isOk())
-                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
-                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.id").value(user.getId().toString()))
-                .andExpect(jsonPath("$.name").value("하루들"))
-                .andExpect(jsonPath("$.email").value("user@example.com"))
-                .andExpect(jsonPath("$.oauthProviders").isArray())
-                .andExpect(jsonPath("$.oauthProviders[0]").value("kakao"))
-                .andExpect(jsonPath("$.oauthProvider").doesNotExist())
-                .andExpect(jsonPath("$.createdAt").value(CREATED_AT.toString()));
+        MockMvcResponse response = RestAssuredMockMvc.given()
+                .header(HttpHeaders.AUTHORIZATION, bearerToken(user.getId()))
+                .get("/api/v1/me");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.header(HttpHeaders.CACHE_CONTROL)).isEqualTo("no-store");
+        assertThat(response.contentType()).startsWith(MediaType.APPLICATION_JSON_VALUE);
+        assertThat(response.jsonPath().getString("id")).isEqualTo(user.getId().toString());
+        assertThat(response.jsonPath().getString("name")).isEqualTo("하루들");
+        assertThat(response.jsonPath().getString("email")).isEqualTo("user@example.com");
+        assertThat(response.jsonPath().getString("role")).isEqualTo("USER");
+        assertThat(response.jsonPath().getList("oauthProviders")).containsExactly("kakao");
+        assertThat(response.jsonPath().getString("oauthProvider")).isNull();
+        assertThat(response.jsonPath().getString("createdAt")).isEqualTo(CREATED_AT.toString());
+    }
+
+    @Test
+    @DisplayName("관리자 사용자의 내 프로필 조회 응답에 ADMIN role을 포함한다")
+    void findsCurrentAdmin() {
+        User user = saveUser("admin@example.com", "관리자");
+        grantAdminRole(user);
+        saveOAuthAccount(user, "67890", "admin@example.com");
+
+        MockMvcResponse response = RestAssuredMockMvc.given()
+                .header(HttpHeaders.AUTHORIZATION, bearerToken(user.getId()))
+                .get("/api/v1/me");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.jsonPath().getString("role")).isEqualTo("ADMIN");
     }
 
     @Test
     @DisplayName("Access Token 없이 내 프로필을 조회할 수 없다")
-    void rejectsUnauthenticatedRequest() throws Exception {
-        mockMvc.perform(get("/api/v1/me"))
-                .andExpect(status().isUnauthorized());
+    void rejectsUnauthenticatedRequest() {
+        MockMvcResponse response = RestAssuredMockMvc.given()
+                .get("/api/v1/me");
+
+        assertThat(response.statusCode()).isEqualTo(401);
     }
 
     @Test
@@ -117,18 +135,24 @@ class CurrentUserControllerTest {
 
     @Test
     @DisplayName("OAuth 계정이 없는 사용자 식별자의 Access Token으로 내 프로필을 조회할 수 없다")
-    void rejectsUserWithoutOAuthAccount() throws Exception {
+    void rejectsUserWithoutOAuthAccount() {
         User user = saveUser("user-without-account@example.com", "하루들");
 
-        mockMvc.perform(get("/api/v1/me")
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(user.getId())))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("INVALID_CURRENT_USER"))
-                .andExpect(jsonPath("$.traceId").isNotEmpty());
+        MockMvcResponse response = RestAssuredMockMvc.given()
+                .header(HttpHeaders.AUTHORIZATION, bearerToken(user.getId()))
+                .get("/api/v1/me");
+
+        assertThat(response.statusCode()).isEqualTo(401);
+        assertThat(response.jsonPath().getString("code")).isEqualTo("INVALID_CURRENT_USER");
+        assertThat(response.jsonPath().getString("traceId")).isNotBlank();
     }
 
     private User saveUser(String email, String name) {
         return userRepository.save(new User(email, name, CREATED_AT));
+    }
+
+    private void grantAdminRole(User user) {
+        jdbcTemplate.update("UPDATE users SET role = 'ADMIN' WHERE id = ?", user.getId());
     }
 
     private OAuthAccount saveOAuthAccount(User user, String subject, String email) {
