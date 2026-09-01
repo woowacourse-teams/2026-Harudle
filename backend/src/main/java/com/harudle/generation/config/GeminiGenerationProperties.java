@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import java.time.Duration;
+import org.jspecify.annotations.NonNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
@@ -32,7 +33,7 @@ public record GeminiGenerationProperties(
     }
 
     @Override
-    public String toString() {
+    public @NonNull String toString() {
         return ("GeminiGenerationProperties[apiKey=***, storyboardModel=%s, imageModel=%s, "
                 + "storyboardThinkingLevel=%s, imageAspectRatio=%s, maxOutputTokens=%d, "
                 + "retryAttempts=%d, requestTimeout=%s]").formatted(

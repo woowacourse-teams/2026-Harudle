@@ -2,7 +2,6 @@ package com.harudle.generation.config;
 
 import com.harudle.generation.prompt.infrastructure.GenerationPromptBootstrapService;
 import com.harudle.generation.prompt.infrastructure.GenerationPromptInitializer;
-import com.harudle.generation.config.GenerationLifecycleProperties;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import com.harudle.generation.diary.service.ClaimedDiaryGenerationService;
