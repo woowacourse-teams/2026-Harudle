@@ -65,10 +65,8 @@ const LoginPage = () => {
 
         <p css={noticeStyle}>
           로그인하면 이용약관 및{' '}
-          <a href="https://tecothon.notion.site/3c6d0505d9168025b01cdfa02d863a37?pvs=73">
-            개인정보처리방침
-          </a>
-          에 동의한 것으로 간주됩니다.
+          <a href="https://harudle.notion.site/">개인정보처리방침</a>에 동의한
+          것으로 간주됩니다.
         </p>
       </div>
     </div>
