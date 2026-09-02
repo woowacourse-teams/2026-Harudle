@@ -1,5 +1,6 @@
 import { css } from '@emotion/react';
 import downloadIcon from '../../assets/icons/download.svg';
+import { useAnalytics } from '../../shared/useAnalytics';
 import { theme } from '../../styles/theme';
 import { usePwaInstall } from './PwaInstallContext';
 
@@ -8,12 +9,17 @@ const INSTALL_GUIDE_URL =
 
 const PwaInstallButton = () => {
   const { status, install } = usePwaInstall();
+  const { track } = useAnalytics();
 
   if (status === 'installed' || status === 'unavailable') {
     return null;
   }
 
   const handleClick = () => {
+    track('pwa_install_clicked', {
+      method: status === 'ios-guide' ? 'ios_guide' : 'native_prompt',
+    });
+
     if (status === 'ios-guide') {
       window.open(INSTALL_GUIDE_URL, '_blank', 'noopener,noreferrer');
       return;
