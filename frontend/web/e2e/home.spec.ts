@@ -21,7 +21,7 @@ test.describe('월별 일기 조회', () => {
 
     await expect(loadingSpinner).toBeVisible();
     await expect(page.getByLabel('조회할 월')).toHaveValue('2026-08');
-    await expect(page.getByText('6개의 기록')).toBeVisible();
+    await expect(page.getByText('총 6개')).toBeVisible();
     await expect(loadingSpinner).toBeHidden();
     await expect(getDiaryItems(page)).toHaveCount(6);
     await expect(
@@ -39,7 +39,7 @@ test.describe('월별 일기 조회', () => {
     await monthInput.fill('2026-08');
 
     await expect(monthInput).toHaveValue('2026-08');
-    await expect(page.getByText('6개의 기록')).toBeVisible();
+    await expect(page.getByText('총 6개')).toBeVisible();
     await expect(getDiaryItems(page)).toHaveCount(6);
   });
 
@@ -53,7 +53,6 @@ test.describe('월별 일기 조회', () => {
     await monthInput.fill('2025-12');
 
     await expect(monthInput).toHaveValue('2025-12');
-    await expect(page.getByText('0개의 기록')).toBeVisible();
     await expect(page.getByText('2025년 12월에는 기록이 없어요')).toBeVisible();
     await expect(
       page.getByText('다른 달을 살펴보거나 오늘의 이야기를 남겨보세요!'),

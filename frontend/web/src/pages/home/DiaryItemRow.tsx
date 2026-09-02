@@ -1,7 +1,10 @@
 import { css } from '@emotion/react';
-import type { MonthlyDiaryDay, MonthlyDiaryItem } from './HomePage/model';
 import { theme } from '../../styles/theme';
 import { formatDiaryDate } from '../../shared/utils';
+import type {
+  MonthlyDiaryDay,
+  MonthlyDiaryItem,
+} from '../../domain/diary/monthlyDiaries';
 
 const DiaryItemRow = ({
   monthlyDiary,
