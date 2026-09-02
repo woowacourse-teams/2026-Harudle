@@ -3,7 +3,6 @@ import BottomNavigation from '../../shared/BottomNavigation';
 import harudleLogo from '../../assets/images/harudle-logo.png';
 import { useNavigate } from 'react-router';
 import useProfile from './useProfile';
-import loadingAnimation from '../../assets/images/loading-animation.webp';
 import { theme } from '../../styles/theme';
 import useLogout from './useLogout';
 import SettingError from './SettingError';
@@ -11,6 +10,7 @@ import callMadeIcon from '../../assets/icons/call_made.svg';
 import logoutIcon from '../../assets/icons/logout.svg';
 import articlePersonIcon from '../../assets/icons/article_person.svg';
 import PwaInstallButton from './PwaInstallButton';
+import LoadingSpinner from '../../shared/LoadingSpinner';
 
 const PRIVACY_POLICY_URL = 'https://harudle.notion.site/';
 
@@ -44,11 +44,7 @@ const SettingPageContent = () => {
   const { logoutRequest, handleLogout } = useLogout();
 
   if (profileRequest.status === 'idle' || profileRequest.status === 'loading') {
-    return (
-      <div css={loadingAnimationBoxStyle}>
-        <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
-      </div>
-    );
+    return <LoadingSpinner />;
   }
 
   if (profileRequest.status === 'error') {
@@ -112,19 +108,6 @@ const SettingPageContent = () => {
     </div>
   );
 };
-
-const loadingAnimationBoxStyle = css`
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 100%;
-  height: 100%;
-`;
-
-const loadingImageStyle = css`
-  width: 140px;
-  height: 140px;
-`;
 
 const pageStyle = css`
   display: flex;
