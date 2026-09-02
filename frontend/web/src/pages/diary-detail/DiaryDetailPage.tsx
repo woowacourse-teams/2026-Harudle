@@ -4,12 +4,12 @@ import backIcon from '../../assets/icons/back.svg';
 import moreIcon from '../../assets/icons/delete.svg';
 import { css } from '@emotion/react';
 import useDiaryDetail from './useDiaryDetail';
-import loadingAnimation from '../../assets/images/loading-animation.webp';
 import { theme } from '../../styles/theme';
 import useDiaryDelete from './useDiaryDelete';
 import DiaryShareButton from './DiaryShareButton';
 import DiaryImageDownloadButton from './DiaryImageDownloadButton';
 import DiaryDetailError from './DiaryDetailError';
+import LoadingSpinner from '../../shared/LoadingSpinner';
 
 const DiaryDetailPage = () => {
   const navigate = useNavigate();
@@ -21,11 +21,7 @@ const DiaryDetailPage = () => {
     diaryDetailReqeust.status === 'idle' ||
     diaryDetailReqeust.status === 'loading'
   ) {
-    return (
-      <div css={loadingAnimationBoxStyle}>
-        <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
-      </div>
-    );
+    return <LoadingSpinner />;
   }
 
   if (diaryDetailReqeust.status === 'error') {
@@ -119,19 +115,6 @@ const headerButtonStyle = css`
 const headerButtonIconStyle = css`
   width: 24px;
   height: 24px;
-`;
-
-const loadingAnimationBoxStyle = css`
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 100%;
-  height: 100%;
-`;
-
-const loadingImageStyle = css`
-  width: 140px;
-  height: 140px;
 `;
 
 const contentStyle = css`

@@ -4,13 +4,13 @@ import FloatingActionButton from '../../shared/FloatingActionButton';
 import DiaryItemRow from './DiaryItemRow';
 import type { MonthlyDiariesResponse, MonthlyDiaryDay } from './HomePage/model';
 import DiaryEmptyState from './DiaryEmptyState';
-import loadingAnimation from '../../assets/images/loading-animation.webp';
 import { css } from '@emotion/react';
 import plusIcon from '../../assets/icons/plus.svg';
 import DiaryError from './DiaryError';
 import { useDiaryGenerateContext } from '../diary-generating/DiaryGenerateContext';
 import DiaryItemRowSkeleton from './DiaryItemRowSkeleton';
 import { useEffect } from 'react';
+import LoadingSpinner from '../../shared/LoadingSpinner';
 
 const DiaryItemList = ({
   monthlyDiariesRequest,
@@ -49,11 +49,7 @@ const DiaryItemList = ({
     monthlyDiariesRequest.status === 'idle' ||
     monthlyDiariesRequest.status === 'loading'
   ) {
-    return (
-      <div css={loadingAnimationBoxStyle}>
-        <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
-      </div>
-    );
+    return <LoadingSpinner />;
   }
 
   if (monthlyDiariesRequest.status === 'error') {
@@ -105,19 +101,6 @@ const diaryListStyle = css`
   gap: 12px;
   width: 100%;
   padding-bottom: 76px;
-`;
-
-const loadingAnimationBoxStyle = css`
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 100%;
-  height: 100%;
-`;
-
-const loadingImageStyle = css`
-  width: 140px;
-  height: 140px;
 `;
 
 const plusIconStyle = css`

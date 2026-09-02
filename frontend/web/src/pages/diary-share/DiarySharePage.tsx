@@ -3,9 +3,9 @@ import { theme } from '../../styles/theme';
 import harudleLogo from '../../assets/images/harudle-logo.png';
 import { useNavigate, useParams } from 'react-router';
 import useDiaryShare from './useDiaryShare';
-import loadingAnimation from '../../assets/images/loading-animation.webp';
 import { useEffect } from 'react';
 import { useAnalytics } from '../../shared/useAnalytics';
+import LoadingSpinner from '../../shared/LoadingSpinner';
 
 const DiarySharePage = () => {
   const navigate = useNavigate();
@@ -31,11 +31,7 @@ const DiarySharePage = () => {
     sharedDiaryRequest.status === 'idle' ||
     sharedDiaryRequest.status === 'loading'
   ) {
-    return (
-      <div css={loadingAnimationBoxStyle}>
-        <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
-      </div>
-    );
+    return <LoadingSpinner />;
   }
 
   if (sharedDiaryRequest.status === 'error') {
@@ -133,17 +129,4 @@ const diaryDateStyle = css`
   font-weight: 500;
   line-height: 24px;
   text-align: center;
-`;
-
-const loadingAnimationBoxStyle = css`
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 100%;
-  height: 100%;
-`;
-
-const loadingImageStyle = css`
-  width: 140px;
-  height: 140px;
 `;
