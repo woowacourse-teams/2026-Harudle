@@ -23,7 +23,7 @@ interface PwaInstallContextValue {
 const PwaInstallContext = createContext<PwaInstallContextValue | null>(null);
 
 // 일반 브라우저의 display-mode와 iOS 전용 standalone 값을 모두 확인한다.
-const isInstalled = () => {
+export const isPwaInstalled = () => {
   const navigatorWithStandalone = navigator as Navigator & {
     standalone?: boolean;
   };
@@ -48,7 +48,7 @@ export const PwaInstallProvider = ({ children }: { children: ReactNode }) => {
     useState<BeforeInstallPromptEvent | null>(null);
   const [status, setStatus] = useState<PwaInstallStatus>(() => {
     // 이미 앱으로 실행 중이면 설치 버튼을 노출하지 않는다.
-    if (isInstalled()) {
+    if (isPwaInstalled()) {
       return 'installed';
     }
 

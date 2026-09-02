@@ -36,6 +36,10 @@ interface AnalyticsEventMap {
   landing_trial_login_clicked: {
     location: 'result' | 'already_used';
   };
+  pwa_install_clicked: {
+    method: 'native_prompt' | 'ios_guide';
+  };
+  pwa_first_launched: undefined;
 }
 
 export type AnalyticsEventName = keyof AnalyticsEventMap;
