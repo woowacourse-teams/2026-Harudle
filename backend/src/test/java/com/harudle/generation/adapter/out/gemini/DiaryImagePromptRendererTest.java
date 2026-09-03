@@ -40,6 +40,32 @@ class DiaryImagePromptRendererTest {
                 .isEqualTo(4);
     }
 
+    @Test
+    void preserveExplicitCharacterLogoFromCastContinuity() {
+        Storyboard baseStoryboard = createStoryboard();
+        String annotatedCast = "The protagonist wears a shirt with a T1 logo in every panel where shown.";
+        Storyboard storyboard = new Storyboard(
+                baseStoryboard.title(),
+                annotatedCast,
+                baseStoryboard.panels()
+        );
+
+        String renderedPrompt = renderer.render(storyboard);
+
+        assertThat(renderedPrompt)
+                .contains("CAST AND CONTINUITY:\n" + annotatedCast)
+                .contains("Preserve source-required clothing marks, accessories, logos, or brands explicitly "
+                        + "defined in CAST AND CONTINUITY.")
+                .contains("Small source-required character marks or logos defined in "
+                        + "CAST AND CONTINUITY are visual identity details, not additional text blocks.")
+                .doesNotContain("Do not place readable text, labels, logos, brands, model names, or UI words");
+
+        assertThat(renderedPrompt.lines()
+                .filter(line -> line.startsWith("Do not add unrequested readable text"))
+                .count())
+                .isEqualTo(4);
+    }
+
     private static Storyboard createStoryboard() {
         return new Storyboard(
                 "인스타 맛집의 함정",
