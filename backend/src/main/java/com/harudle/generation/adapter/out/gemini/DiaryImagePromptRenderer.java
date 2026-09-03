@@ -10,6 +10,10 @@ public final class DiaryImagePromptRenderer {
     private static final String TITLE_PREFIX = "# ";
     private static final String CREATOR_HANDLE = "@harudle.official";
     private static final String PANEL_HEADER_FORMAT = "Panel %d — %s — %s:";
+    private static final String CAPTION_POSITION_RULE = "Place this caption inside the upper-left area "
+            + "of this panel with consistent inner padding. Use clean scene negative space behind it; "
+            + "never place it below the scene, outside the panel, in a separate caption band or strip, "
+            + "or across a panel divider.";
     private static final List<String> PANEL_POSITIONS = List.of(
             "TOP LEFT",
             "TOP RIGHT",
@@ -73,6 +77,7 @@ public final class DiaryImagePromptRenderer {
                 + "inside the scene. Preserve only source-required character marks, accessories, logos, "
                 + "or brands explicitly assigned in CAST AND CONTINUITY.");
         lines.add("Caption reads exactly: \"%s\"".formatted(panel.caption()));
+        lines.add(CAPTION_POSITION_RULE);
         lines.add("This panel contains exactly one readable text block: its assigned caption.");
         lines.add("Never place the comic title, footer title, creator handle, or any text beginning with \"#\" "
                 + "inside this panel.");
@@ -97,6 +102,9 @@ public final class DiaryImagePromptRenderer {
         for (StoryPanel panel : storyboard.panels()) {
             lines.add("- \"" + panel.caption() + "\"");
         }
+        lines.add("All four captions must appear at matching upper-left positions inside their assigned "
+                + "panels. Never use bottom caption bands, external caption strips, or captions crossing "
+                + "panel dividers.");
         lines.add("Do not render any other readable text, date, additional hashtag, unrequested logo, "
                 + "signature, or footer label. Small source-required character marks or logos defined in "
                 + "CAST AND CONTINUITY are visual identity details, not additional text blocks.");
