@@ -122,7 +122,7 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
         return switch (generation.getStatus()) {
             case PROCESSING -> false;
             case FAILED -> true;
-            case SUCCEEDED -> !generation.notUsesImageObjectKey(imageObjectKey);
+            case SUCCEEDED -> generation.notUsesImageObjectKey(imageObjectKey);
         };
     }
 

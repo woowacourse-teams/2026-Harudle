@@ -12,8 +12,10 @@ import static org.mockito.Mockito.when;
 
 import com.google.genai.Models;
 import com.google.genai.errors.ClientException;
+import com.google.genai.types.Content;
 import com.google.genai.types.GenerateContentConfig;
 import com.google.genai.types.GenerateContentResponse;
+import com.google.genai.types.Part;
 import com.google.genai.types.ThinkingLevel;
 import com.harudle.common.logging.ExternalApiFailure;
 import com.harudle.common.logging.ExternalApiLogger;
@@ -75,12 +77,23 @@ class GeminiStoryboardGeneratorTest {
         );
 
         assertThat(requestTextCaptor.getValue()).isEqualTo("""
-                스토리보드 생성 규칙
-                
-                [SOURCE DIARY — preserve its meaning]
-                오늘 친구와 카페에 갔다.""");
+                <context>
+                <diary>
+                오늘 친구와 카페에 갔다.
+                </diary>
+                </context>
+
+                <task>
+                Based only on the diary above, create exactly one schema-compliant four-panel storyboard.
+                Preserve its central cause-and-effect chain and actual outcome.
+                Use setup → action → escalation → resolution.
+                Make the four captions form one connected miniature comedy or warm emotional routine.
+                Return only the JSON.
+                </task>""");
 
         GenerateContentConfig config = configCaptor.getValue();
+        assertThat(config.systemInstruction())
+                .contains(Content.fromParts(Part.fromText("스토리보드 생성 규칙")));
         assertThat(config.responseMimeType()).contains("application/json");
         assertThat(config.responseJsonSchema())
                 .contains(GeminiStoryboardResponseSchema.schema());

@@ -1,8 +1,10 @@
 package com.harudle.generation.adapter.out.gemini;
 
 import com.google.genai.Models;
+import com.google.genai.types.Content;
 import com.google.genai.types.GenerateContentConfig;
 import com.google.genai.types.GenerateContentResponse;
+import com.google.genai.types.Part;
 import com.google.genai.types.ThinkingConfig;
 import com.harudle.generation.config.GeminiGenerationProperties;
 import com.harudle.generation.diary.domain.Storyboard;
@@ -16,8 +18,21 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
     private static final String TRANSLATION_OPERATION = "스토리보드 생성";
     private static final String REQUEST_PREPARATION_ERROR = "REQUEST_PREPARATION_ERROR";
     private static final String RESPONSE_PROCESSING_ERROR = "RESPONSE_PROCESSING_ERROR";
-    private static final String SOURCE_DIARY_HEADER = "[SOURCE DIARY — preserve its meaning]";
     private static final String JSON_RESPONSE_MIME_TYPE = "application/json";
+    private static final String DIARY_REQUEST_TEMPLATE = """
+            <context>
+            <diary>
+            %s
+            </diary>
+            </context>
+
+            <task>
+            Based only on the diary above, create exactly one schema-compliant four-panel storyboard.
+            Preserve its central cause-and-effect chain and actual outcome.
+            Use setup → action → escalation → resolution.
+            Make the four captions form one connected miniature comedy or warm emotional routine.
+            Return only the JSON.
+            </task>""";
 
     private final Models models;
     private final GeminiGenerationProperties properties;
@@ -45,7 +60,7 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
         GenerateContentConfig config;
         try {
             requestText = createRequestText(request);
-            config = createGenerateContentConfig();
+            config = createGenerateContentConfig(request.storyboardPromptText());
         } catch (Exception exception) {
             throw failureReporter.reportInternalFailure(
                     OPERATION,
@@ -79,19 +94,16 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
     }
 
     private static String createRequestText(StoryboardGenerationRequest request) {
-        return request.storyboardPromptText()
-                + "\n\n"
-                + SOURCE_DIARY_HEADER
-                + "\n"
-                + request.diaryText();
+        return DIARY_REQUEST_TEMPLATE.formatted(request.diaryText());
     }
 
-    private GenerateContentConfig createGenerateContentConfig() {
+    private GenerateContentConfig createGenerateContentConfig(String systemPrompt) {
         ThinkingConfig thinkingConfig = ThinkingConfig.builder()
                 .thinkingLevel(properties.storyboardThinkingLevel())
                 .build();
 
         return GenerateContentConfig.builder()
+                .systemInstruction(Content.fromParts(Part.fromText(systemPrompt)))
                 .responseMimeType(JSON_RESPONSE_MIME_TYPE)
                 .responseJsonSchema(GeminiStoryboardResponseSchema.schema())
                 .maxOutputTokens(properties.maxOutputTokens())
