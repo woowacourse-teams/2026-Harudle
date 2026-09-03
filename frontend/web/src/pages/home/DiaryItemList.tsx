@@ -11,7 +11,7 @@ import { useDiaryGenerateContext } from '../diary-generating/DiaryGenerateContex
 import DiaryItemRowSkeleton from './DiaryItemRowSkeleton';
 import { useEffect } from 'react';
 import { theme } from '../../styles/theme';
-import useMonthlyDiaries from './HomePage/useMonthlyDiaries';
+import useMonthlyDiaries from './useMonthlyDiaries';
 import type { MonthlyDiaryDay } from '../../domain/diary/monthlyDiaries';
 import type { Month } from '../../shared/utils';
 import LoadingSpinner from '../../shared/LoadingSpinner';

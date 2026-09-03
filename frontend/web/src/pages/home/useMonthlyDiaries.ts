@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { type ApiRequest } from '../../../shared/api';
-import { useAnalytics } from '../../../shared/useAnalytics';
+import { type ApiRequest } from '../../shared/api';
+import { useAnalytics } from '../../shared/useAnalytics';
 import {
   getMonthlyDiaries,
   type MonthlyDiariesResponse,
-} from '../../../domain/diary/monthlyDiaries';
-import type { Month } from '../../../shared/utils';
+} from '../../domain/diary/monthlyDiaries';
+import type { Month } from '../../shared/utils';
 
 const useMonthlyDiaries = ({ year, month }: { year: number; month: Month }) => {
   const { track } = useAnalytics();
