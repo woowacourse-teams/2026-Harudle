@@ -30,12 +30,20 @@ class DiaryImagePromptRendererTest {
                 .contains("- \"막상 먹어보면...\"")
                 .contains("- \"다신 안 속아\"")
                 .contains("- \"이번엔 다를지도?\"")
+                .contains("All four captions must appear at matching upper-left positions inside their assigned "
+                        + "panels. Never use bottom caption bands, external caption strips, or captions crossing "
+                        + "panel dividers.")
                 .doesNotContain("VISIBLE COMIC TITLE READS EXACTLY:")
                 .doesNotContain("FIXED CREATOR HANDLE READS EXACTLY:")
                 .doesNotContain("Render exactly these four Korean captions once each and no other readable text:");
 
         assertThat(renderedPrompt.lines()
                 .filter("This panel contains exactly one readable text block: its assigned caption."::equals)
+                .count())
+                .isEqualTo(4);
+
+        assertThat(renderedPrompt.lines()
+                .filter(line -> line.startsWith("Place this caption inside the upper-left area"))
                 .count())
                 .isEqualTo(4);
     }
