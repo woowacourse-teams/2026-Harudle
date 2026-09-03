@@ -44,6 +44,9 @@ public final class DiaryImagePromptRenderer {
         lines.add("CAST AND CONTINUITY:");
         lines.add(storyboard.castContinuity());
         lines.add("Use the same recognizable character designs in every panel where they recur.");
+        lines.add("Preserve source-required clothing marks, accessories, logos, or brands explicitly "
+                + "defined in CAST AND CONTINUITY. Render each only on its assigned character, never as "
+                + "standalone background text, signage, or decoration.");
         lines.add("");
     }
 
@@ -66,8 +69,9 @@ public final class DiaryImagePromptRenderer {
         lines.add("Characters and action: " + panel.characters());
         lines.add("Visible emotion: " + panel.emotion());
         lines.add("Sparse symbolic props: " + renderProps(panel.props()));
-        lines.add("Do not place readable text, labels, logos, brands, model names, or UI words "
-                + "inside the scene.");
+        lines.add("Do not add unrequested readable text, labels, logos, brands, model names, or UI words "
+                + "inside the scene. Preserve only source-required character marks, accessories, logos, "
+                + "or brands explicitly assigned in CAST AND CONTINUITY.");
         lines.add("Caption reads exactly: \"%s\"".formatted(panel.caption()));
         lines.add("This panel contains exactly one readable text block: its assigned caption.");
         lines.add("Never place the comic title, footer title, creator handle, or any text beginning with \"#\" "
@@ -93,8 +97,9 @@ public final class DiaryImagePromptRenderer {
         for (StoryPanel panel : storyboard.panels()) {
             lines.add("- \"" + panel.caption() + "\"");
         }
-        lines.add("Do not render any other readable text, date, additional hashtag, logo, signature, "
-                + "or footer label.");
+        lines.add("Do not render any other readable text, date, additional hashtag, unrequested logo, "
+                + "signature, or footer label. Small source-required character marks or logos defined in "
+                + "CAST AND CONTINUITY are visual identity details, not additional text blocks.");
         lines.add("Keep the ending faithful to the diary. Square 1:1 canvas.");
         lines.add("");
         lines.add("FINAL FOOTER LOCK — HIGHEST LAYOUT PRIORITY:");
