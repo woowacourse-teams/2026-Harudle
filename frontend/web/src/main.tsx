@@ -8,44 +8,14 @@ import { BrowserRouter } from 'react-router';
 import posthog from 'posthog-js';
 import { PostHogProvider } from '@posthog/react';
 import { PostHogErrorBoundary } from '@posthog/react';
-import { isPostHogEnabled } from './shared/posthog';
+import { initializePostHog } from './shared/posthog';
 import { DiaryGenerateProvider } from './pages/diary-generating/DiaryGenerateContext';
 import { PwaInstallProvider } from './pages/setting/PwaInstallContext';
-
-const posthogKey = process.env.REACT_APP_POSTHOG_KEY;
-
-const initializePostHog = (): boolean => {
-  if (!isPostHogEnabled) {
-    return false;
-  }
-
-  if (!posthogKey) {
-    console.error('PostHog is enabled, but REACT_APP_POSTHOG_KEY is missing.');
-
-    return false;
-  }
-
-  posthog.init(posthogKey, {
-    api_host: 'https://e.harudle.com',
-    ui_host: 'https://us.posthog.com',
-    defaults: '2026-01-30',
-  });
-
-  return true;
-};
-
-const isPostHogInitialized = initializePostHog();
+import { enableMocking } from './mocks/enableMocking';
 
 const root = document.getElementById('root');
 
-const enableMocking = async () => {
-  if (process.env.NODE_ENV !== 'development') {
-    return;
-  }
-
-  const { worker } = await import('./mocks/browser');
-  await worker.start({ onUnhandledRequest: 'bypass' });
-};
+const isPostHogInitialized = initializePostHog();
 
 void enableMocking().then(() => {
   if (!root) {
