@@ -33,6 +33,9 @@ class DiaryImagePromptRendererTest {
                 .contains("All four captions must appear at matching upper-left positions inside their assigned "
                         + "panels. Never use bottom caption bands, external caption strips, or captions crossing "
                         + "panel dividers.")
+                .contains("FINAL CANVAS AND GRID LOCK — HIGHEST LAYOUT PRIORITY:")
+                .contains("Use a square 1:1 canvas with one flat pure-white background")
+                .contains("exactly one vertical separator, and exactly one horizontal separator")
                 .doesNotContain("VISIBLE COMIC TITLE READS EXACTLY:")
                 .doesNotContain("FIXED CREATOR HANDLE READS EXACTLY:")
                 .doesNotContain("Render exactly these four Korean captions once each and no other readable text:");

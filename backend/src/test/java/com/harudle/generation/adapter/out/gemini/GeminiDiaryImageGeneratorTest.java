@@ -96,7 +96,8 @@ class GeminiDiaryImageGeneratorTest {
             assertThat(inlineData.mimeType()).contains("image/png");
         });
         assertThat(parts.get(2).text()).get().asString()
-                .startsWith("[Final Task]\nIMAGE STYLE PROMPT\n\nSELECTED STORY:")
+                .startsWith("[Final Task]\nSELECTED STORY:")
+                .doesNotContain("IMAGE STYLE PROMPT")
                 .contains("Panel 1 — TOP LEFT — SETUP:")
                 .contains("Caption reads exactly: \"캡션 1\"")
                 .contains("This panel contains exactly one readable text block: its assigned caption.")
@@ -106,6 +107,8 @@ class GeminiDiaryImageGeneratorTest {
                 .contains("- right: \"@harudle.official\"");
 
         GenerateContentConfig config = configCaptor.getValue();
+        assertThat(config.systemInstruction())
+                .contains(Content.fromParts(Part.fromText("IMAGE STYLE PROMPT")));
         assertThat(config.responseModalities()).contains(List.of("TEXT", "IMAGE"));
         assertThat(config.imageConfig()).get()
                 .extracting(imageConfig -> imageConfig.aspectRatio().orElseThrow())

@@ -108,7 +108,16 @@ public final class DiaryImagePromptRenderer {
         lines.add("Do not render any other readable text, date, additional hashtag, unrequested logo, "
                 + "signature, or footer label. Small source-required character marks or logos defined in "
                 + "CAST AND CONTINUITY are visual identity details, not additional text blocks.");
-        lines.add("Keep the ending faithful to the diary. Square 1:1 canvas.");
+        lines.add("Keep the ending faithful to the diary.");
+        lines.add("");
+        lines.add("FINAL CANVAS AND GRID LOCK — HIGHEST LAYOUT PRIORITY:");
+        lines.add("Use a square 1:1 canvas with one flat pure-white background and a small plain outer margin.");
+        lines.add("The four-panel grid occupies approximately 88–90% of the canvas height; the footer below it "
+                + "occupies approximately 6–8%. Keep the area above the grid empty.");
+        lines.add("Draw exactly one thin, slightly organic black outer border around the grid, exactly one "
+                + "vertical separator, and exactly one horizontal separator, forming four equal panels.");
+        lines.add("Do not add another border, subdivision, banner, title box, or footer box. Keep every panel's "
+                + "characters, objects, motion marks, and caption fully inside that panel.");
         lines.add("");
         lines.add("FINAL FOOTER LOCK — HIGHEST LAYOUT PRIORITY:");
         lines.add("Create one separate white footer band below the complete four-panel grid.");
