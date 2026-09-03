@@ -6,12 +6,13 @@ import { theme } from '../../styles/theme';
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { restoreAccessToken } from '../../shared/auth';
+import { isMswEnabled } from '../../shared/environment';
 
 const LoginPage = () => {
   const navigate = useNavigate();
 
   const handleKakaoLogin = () => {
-    if (process.env.NODE_ENV === 'development') {
+    if (isMswEnabled) {
       navigate('/auth/callback');
       return;
     }

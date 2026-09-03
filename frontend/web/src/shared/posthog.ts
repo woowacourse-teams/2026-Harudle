@@ -1,6 +1,28 @@
 import type { PostHog } from 'posthog-js';
-
 import { API_BASE_URL } from './api';
+import posthog from 'posthog-js';
+
+const posthogKey = process.env.REACT_APP_POSTHOG_KEY;
+
+export const initializePostHog = (): boolean => {
+  if (!isPostHogEnabled) {
+    return false;
+  }
+
+  if (!posthogKey) {
+    console.error('PostHog is enabled, but REACT_APP_POSTHOG_KEY is missing.');
+
+    return false;
+  }
+
+  posthog.init(posthogKey, {
+    api_host: 'https://e.harudle.com',
+    ui_host: 'https://us.posthog.com',
+    defaults: '2026-01-30',
+  });
+
+  return true;
+};
 
 const localHostnames = new Set(['localhost', '127.0.0.1', '0.0.0.0', '[::1]']);
 
