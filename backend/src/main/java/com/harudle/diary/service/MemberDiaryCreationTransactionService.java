@@ -1,8 +1,8 @@
 package com.harudle.diary.service;
 
 import com.harudle.diary.service.dto.CreateDiaryCommand;
-import com.harudle.generation.domain.GenerationUsage;
-import com.harudle.generation.service.GenerationUsageService;
+import com.harudle.generation.usage.domain.GenerationUsage;
+import com.harudle.generation.usage.service.GenerationUsageService;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

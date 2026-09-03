@@ -15,10 +15,10 @@ import static org.mockito.Mockito.mock;
 
 import com.harudle.common.logging.ExternalApiFailure;
 import com.harudle.common.logging.ExternalApiLogger;
-import com.harudle.generation.configuration.S3StorageProperties;
-import com.harudle.generation.service.port.GeneratedImage;
-import com.harudle.generation.service.port.ImageStorageException;
-import com.harudle.generation.service.port.ReferenceImage;
+import com.harudle.generation.config.S3StorageProperties;
+import com.harudle.generation.diary.service.port.dto.GeneratedImage;
+import com.harudle.generation.diary.service.port.ImageStorageException;
+import com.harudle.generation.diary.service.port.dto.ReferenceImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;

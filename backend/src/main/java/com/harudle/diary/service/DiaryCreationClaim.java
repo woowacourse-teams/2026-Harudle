@@ -1,7 +1,7 @@
 package com.harudle.diary.service;
 
-import com.harudle.generation.domain.GenerationErrorCode;
-import com.harudle.generation.domain.GenerationStatus;
+import com.harudle.generation.diary.domain.GenerationErrorCode;
+import com.harudle.generation.diary.domain.GenerationStatus;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;

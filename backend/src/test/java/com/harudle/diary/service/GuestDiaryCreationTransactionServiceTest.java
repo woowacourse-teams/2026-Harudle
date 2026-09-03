@@ -7,7 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.harudle.diary.service.dto.CreateGuestDiaryCommand;
-import com.harudle.generation.domain.GenerationStatus;
+import com.harudle.generation.diary.domain.GenerationStatus;
 import com.harudle.guest.application.GuestSessionResolver;
 import com.harudle.guest.application.exception.GuestTrialAlreadyUsedException;
 import com.harudle.guest.domain.GuestSession;

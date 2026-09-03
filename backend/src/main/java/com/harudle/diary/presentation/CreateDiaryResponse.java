@@ -1,6 +1,6 @@
 package com.harudle.diary.presentation;
 
-import com.harudle.generation.presentation.GenerationUsageResponse;
+import com.harudle.generation.usage.presentation.GenerationUsageResponse;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
