@@ -85,9 +85,12 @@ class GeminiStoryboardGeneratorTest {
 
                 <task>
                 Based only on the diary above, create exactly one schema-compliant four-panel storyboard.
-                Preserve its central cause-and-effect chain and actual outcome.
-                Use setup → action → escalation → resolution.
-                Make the four captions form one connected miniature comedy or warm emotional routine.
+                Before returning, verify:
+                - exactly four panels use setup → action → escalation → resolution in order
+                - one source-faithful central cause-and-effect chain preserves the actual outcome
+                - panel 3 contains the main turn and panel 4 completes or changes earlier meaning
+                - the four captions form one connected verbal routine rather than four event labels
+                - every valid character annotation is preserved consistently
                 Return only the JSON.
                 </task>""");
 
