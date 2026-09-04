@@ -14,6 +14,11 @@ public final class DiaryImagePromptRenderer {
             + "of this panel with consistent inner padding. Use clean scene negative space behind it; "
             + "never place it below the scene, outside the panel, in a separate caption band or strip, "
             + "or across a panel divider.";
+    private static final String SCENE_OBJECT_TEXT_RULE = "Inside scene objects—including phones, screens, "
+            + "chats, documents, signs, clocks, and packaging—render no letters, numbers, pseudo-text, "
+            + "fake Korean glyphs, or readable UI. Keep them text-free: use blank surfaces or clear non-text "
+            + "visuals such as simple icons, pictograms, or images. The assigned panel caption alone conveys "
+            + "any essential written or digital information.";
     private static final List<String> PANEL_POSITIONS = List.of(
             "TOP LEFT",
             "TOP RIGHT",
@@ -76,6 +81,7 @@ public final class DiaryImagePromptRenderer {
         lines.add("Do not add unrequested readable text, labels, logos, brands, model names, or UI words "
                 + "inside the scene. Preserve only source-required character marks, accessories, logos, "
                 + "or brands explicitly assigned in CAST AND CONTINUITY.");
+        lines.add(SCENE_OBJECT_TEXT_RULE);
         lines.add("Caption reads exactly: \"%s\"".formatted(panel.caption()));
         lines.add(CAPTION_POSITION_RULE);
         lines.add("This panel contains exactly one readable text block: its assigned caption.");
@@ -108,6 +114,9 @@ public final class DiaryImagePromptRenderer {
         lines.add("Do not render any other readable text, date, additional hashtag, unrequested logo, "
                 + "signature, or footer label. Small source-required character marks or logos defined in "
                 + "CAST AND CONTINUITY are visual identity details, not additional text blocks.");
+        lines.add("All phones, screens, chats, documents, signs, clocks, and packaging must remain text-free: "
+                + "blank or non-text visuals only, with no letters, numbers, pseudo-text, fake Korean glyphs, "
+                + "or readable UI.");
         lines.add("Keep the ending faithful to the diary.");
         lines.add("");
         lines.add("FINAL CANVAS AND GRID LOCK — HIGHEST LAYOUT PRIORITY:");

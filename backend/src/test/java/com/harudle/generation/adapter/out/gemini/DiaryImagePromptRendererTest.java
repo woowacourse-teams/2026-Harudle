@@ -36,6 +36,9 @@ class DiaryImagePromptRendererTest {
                 .contains("FINAL CANVAS AND GRID LOCK — HIGHEST LAYOUT PRIORITY:")
                 .contains("Use a square 1:1 canvas with one flat pure-white background")
                 .contains("exactly one vertical separator, and exactly one horizontal separator")
+                .contains("All phones, screens, chats, documents, signs, clocks, and packaging must remain "
+                        + "text-free: blank or non-text visuals only, with no letters, numbers, pseudo-text, "
+                        + "fake Korean glyphs, or readable UI.")
                 .doesNotContain("VISIBLE COMIC TITLE READS EXACTLY:")
                 .doesNotContain("FIXED CREATOR HANDLE READS EXACTLY:")
                 .doesNotContain("Render exactly these four Korean captions once each and no other readable text:");
@@ -47,6 +50,11 @@ class DiaryImagePromptRendererTest {
 
         assertThat(renderedPrompt.lines()
                 .filter(line -> line.startsWith("Place this caption inside the upper-left area"))
+                .count())
+                .isEqualTo(4);
+
+        assertThat(renderedPrompt.lines()
+                .filter(line -> line.startsWith("Inside scene objects—including phones, screens"))
                 .count())
                 .isEqualTo(4);
     }
