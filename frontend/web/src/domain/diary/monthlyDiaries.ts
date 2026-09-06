@@ -14,12 +14,15 @@ export const getMonthlyDiaries = async ({
   );
 
   if (!response.ok) {
-    const errorData = await response.json();
+    const errorData = await response.json().catch(() => null);
+
     if (isProblemDetails(errorData)) {
       throw new RequestError(errorData);
     }
 
-    throw new Error('알 수 없는 에러가 발생했습니다.');
+    throw new Error(
+      '월별 일기를 불러오는 중 문제가 발생했습니다. 다시 시도해주세요.',
+    );
   }
 
   const data: unknown = await response.json();
