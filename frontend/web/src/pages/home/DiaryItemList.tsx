@@ -35,7 +35,7 @@ const DiaryItemList = ({ year, month }: { year: number; month: Month }) => {
 
     if (diaryGenerateRequest.status === 'success') {
       resetDiaryGenerateRequest();
-      void refetch({ showLoading: false });
+      void refetch();
     }
   }, [diaryGenerateRequest.status]);
 

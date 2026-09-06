@@ -57,12 +57,9 @@ const useMonthlyDiaries = ({ year, month }: { year: number; month: Month }) => {
     void execute({ showLoading: true });
   }, [execute]);
 
-  const refetch = useCallback(
-    ({ showLoading }: { showLoading: boolean }) => {
-      void execute({ showLoading });
-    },
-    [execute],
-  );
+  const refetch = useCallback(() => {
+    void execute({ showLoading: false });
+  }, [execute]);
 
   return { request, refetch };
 };
