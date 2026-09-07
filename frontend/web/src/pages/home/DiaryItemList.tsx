@@ -9,7 +9,7 @@ import plusIcon from '../../assets/icons/plus.svg';
 import DiaryError from './DiaryError';
 import { useDiaryGenerateContext } from '../diary-generating/DiaryGenerateContext';
 import DiaryItemRowSkeleton from './DiaryItemRowSkeleton';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { theme } from '../../styles/theme';
 import useMonthlyDiaries from './useMonthlyDiaries';
 import type { MonthlyDiaryDay } from '../../domain/diary/monthlyDiaries';
@@ -27,6 +27,8 @@ const DiaryItemList = ({ year, month }: { year: number; month: Month }) => {
    * 홈 화면에서는 최초 1번만 일기 생성 성공 또는 실패 후처리를 하면 되므로
    * 비동기 상태를 초기화한다.
    */
+  const initialDiaryGenerateStatusRef = useRef(diaryGenerateRequest.status);
+
   useEffect(() => {
     if (diaryGenerateRequest.status === 'error') {
       resetDiaryGenerateRequest();
@@ -35,9 +37,12 @@ const DiaryItemList = ({ year, month }: { year: number; month: Month }) => {
 
     if (diaryGenerateRequest.status === 'success') {
       resetDiaryGenerateRequest();
-      void refetch();
+
+      if (initialDiaryGenerateStatusRef.current !== 'success') {
+        void refetch();
+      }
     }
-  }, [diaryGenerateRequest.status]);
+  }, [diaryGenerateRequest, resetDiaryGenerateRequest, refetch]);
 
   const isMonthlyDiaryExist = (monthlyDiaryDays: MonthlyDiaryDay[]) => {
     return monthlyDiaryDays.some((day) => day.exist);
