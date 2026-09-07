@@ -5,12 +5,15 @@ import { isMonth, type Month } from '../../shared/utils';
 export const getMonthlyDiaries = async ({
   year,
   month,
+  signal,
 }: {
   year: number;
   month: Month;
+  signal?: AbortSignal;
 }): Promise<MonthlyDiariesResponse> => {
   const response = await authFetch(
     `${API_BASE_URL}/diaries?year=${year}&month=${month}`,
+    { signal },
   );
 
   if (!response.ok) {
