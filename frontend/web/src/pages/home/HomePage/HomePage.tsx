@@ -1,20 +1,24 @@
 import BottomNavigation from '../../../shared/BottomNavigation';
 import DiaryItemList from '../DiaryItemList';
 import { useNavigate } from 'react-router';
-import type { YearMonth } from './model';
 import harudleLogo from '../../../assets/images/harudle-logo.png';
 import useSelectedYearMonth from './useSelectedYearMonth';
-import useMonthlyDiaries from './useMonthlyDiaries';
 import useGenrationUsage from './useGenrationUsage';
 import { css } from '@emotion/react';
 import { theme } from '../../../styles/theme';
-import { getToday } from '../../../shared/utils';
+import { getToday, type Month } from '../../../shared/utils';
 import { useDiaryGenerateContext } from '../../diary-generating/DiaryGenerateContext';
 import { useEffect } from 'react';
 import StreakSummaryCard from './StreakSummaryCard';
 import keyboardArrowDownIcon from '../../../assets/icons/keyboard_arrow_down.svg';
 
-const formatYearMonthToString = ({ year, month }: YearMonth): string => {
+const formatYearMonthToString = ({
+  year,
+  month,
+}: {
+  year: number;
+  month: Month;
+}): string => {
   return `${year}-${month.toString().padStart(2, '0')}`;
 };
 
@@ -24,17 +28,6 @@ const HomePage = () => {
     getToday().year,
     getToday().month,
   );
-  const { monthlyDiariesRequest, getMonthlyDiaries } = useMonthlyDiaries({
-    ...selectedYearMonth,
-  });
-
-  const monthlyDiaryCount =
-    monthlyDiariesRequest.status === 'success'
-      ? monthlyDiariesRequest.data.days.reduce(
-          (count, day) => count + day.items.length,
-          0,
-        )
-      : 0;
 
   return (
     <div css={homePageStyle}>
@@ -63,19 +56,13 @@ const HomePage = () => {
           </div>
           <div css={contentSummaryStyle}>
             <RemainingGenerationUsage />
-            <span css={monthlyDiaryCountStyle}>
-              {monthlyDiaryCount}개의 기록
-            </span>
           </div>
         </div>
 
         <StreakSummaryCard />
 
         <section css={diaryContentStyle}>
-          <DiaryItemList
-            monthlyDiariesRequest={monthlyDiariesRequest}
-            getMonthlyDiaries={getMonthlyDiaries}
-          />
+          <DiaryItemList {...selectedYearMonth} />
         </section>
       </main>
 
@@ -182,12 +169,6 @@ const contentSummaryStyle = css`
   align-items: flex-end;
   gap: 8px;
   min-width: 0;
-`;
-
-const monthlyDiaryCountStyle = css`
-  color: ${theme.colors.text.secondary};
-  font-size: 14px;
-  font-weight: 500;
 `;
 
 const monthPickerStyle = css`

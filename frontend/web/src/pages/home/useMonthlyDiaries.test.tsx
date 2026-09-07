@@ -1,16 +1,15 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { renderHook, waitFor } from '@testing-library/react';
-
 import useMonthlyDiaries from './useMonthlyDiaries';
 
 const mockTrack = jest.fn<(...args: unknown[]) => void>();
 const mockAuthFetch = jest.fn<(...args: unknown[]) => Promise<Response>>();
 
-jest.mock('../../../shared/useAnalytics', () => ({
+jest.mock('../../shared/useAnalytics', () => ({
   useAnalytics: () => ({ track: mockTrack }),
 }));
 
-jest.mock('../../../shared/auth', () => ({
+jest.mock('../../shared/auth', () => ({
   authFetch: (...args: unknown[]) => mockAuthFetch(...args),
 }));
 
