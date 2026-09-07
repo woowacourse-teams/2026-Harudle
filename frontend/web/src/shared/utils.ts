@@ -11,7 +11,7 @@ const WEEKDAYS = [
 export type Month = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 
 export const isMonth = (value: number): value is Month => {
-  return value >= 1 && value <= 12;
+  return Number.isInteger(value) && value >= 1 && value <= 12;
 };
 
 export const getToday = (): {
