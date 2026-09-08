@@ -18,9 +18,9 @@ const DiaryWritePage = () => {
   const [diaryContentError, setDiaryContentError] = useState<string | null>(
     null,
   );
-  const { diaryGenerateRequest } = useDiaryGenerateContext();
+  const { request } = useDiaryGenerateContext();
 
-  if (diaryGenerateRequest.status === 'loading') {
+  if (request.status === 'loading') {
     alert('다른 일기가 생성중입니다.');
     return <Navigate to="/" replace />;
   }

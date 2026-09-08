@@ -19,8 +19,10 @@ import LoadingSpinner from '../../shared/LoadingSpinner';
 const DiaryItemList = ({ year, month }: { year: number; month: Month }) => {
   const navigate = useNavigate();
   const { request, refetch } = useMonthlyDiaries({ year, month });
-  const { diaryGenerateRequest, resetDiaryGenerateRequest } =
-    useDiaryGenerateContext();
+  const {
+    request: diaryGenerateRequest,
+    resetRequest: resetDiaryGenerateRequest,
+  } = useDiaryGenerateContext();
 
   /**
    * 일기 생성 중 홈 화면으로 이동했을 떄
