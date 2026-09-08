@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from 'react';
 import { type ApiRequest } from '../../shared/api';
+import { DIARY_CONTENT_SESSION_KEY } from '../../shared/constants';
 
 import { useAnalytics } from '../../shared/useAnalytics';
 import {
@@ -66,7 +67,7 @@ export const DiaryGenerateProvider = ({
           data: diaryGenerateResponse,
         });
 
-        sessionStorage.removeItem('diaryContent'); // TOOD: 별도 로직으로 분리 (주입받는 식) + session Item key 상수화
+        sessionStorage.removeItem(DIARY_CONTENT_SESSION_KEY); // TOOD: 별도 로직으로 분리 (책임분리)
 
         track('diary_created', {
           diary_id: diaryGenerateResponse.id,
