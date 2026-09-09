@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { RequestError, type ProblemDetails } from '../../shared/api';
-import type { GenerationStatus } from '../generation/generation';
-import { generateDiary, type DiaryGenerateRequest } from './diaryGenerate';
+import {
+  generateDiary,
+  type DiaryGenerateRequest,
+  type GenerationStatus,
+} from './diaryGenerate';
 
 const mockAuthFetch = jest.fn<(...args: unknown[]) => Promise<Response>>();
 
