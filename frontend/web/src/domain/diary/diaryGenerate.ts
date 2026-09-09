@@ -38,7 +38,7 @@ export const generateDiary = async ({
 };
 
 export interface DiaryGenerateRequest {
-  diaryDate: string; // TODO: 이번에 날짜 형식 검증 ㄱㄱ
+  diaryDate: string;
   sourceText: string;
   idempotencyKey: string;
 }
@@ -65,11 +65,11 @@ export interface DiaryGenerateResponse {
   createdAt: string;
   generation: {
     id: string;
-    status: 'SUCCEEDED';
-    title: string;
-    imageUrl: string;
-    imageUrlExpiresAt: string;
-    completedAt: string;
+    status: GenerationStatus;
+    title: string | null;
+    imageUrl: string | null;
+    imageUrlExpiresAt: string | null;
+    completedAt: string | null;
   };
   usage: {
     usageDate: string;
@@ -99,15 +99,19 @@ export const isDiaryGenerateResponse = (
     'id' in value.generation &&
     typeof value.generation.id === 'string' &&
     'status' in value.generation &&
-    value.generation.status === 'SUCCEEDED' &&
+    isGenerationStatus(value.generation.status) &&
     'title' in value.generation &&
-    typeof value.generation.title === 'string' &&
+    (typeof value.generation.title === 'string' ||
+      value.generation.title === null) &&
     'imageUrl' in value.generation &&
-    typeof value.generation.imageUrl === 'string' &&
+    (typeof value.generation.imageUrl === 'string' ||
+      value.generation.imageUrl === null) &&
     'imageUrlExpiresAt' in value.generation &&
-    typeof value.generation.imageUrlExpiresAt === 'string' &&
+    (typeof value.generation.imageUrlExpiresAt === 'string' ||
+      value.generation.imageUrlExpiresAt === null) &&
     'completedAt' in value.generation &&
-    typeof value.generation.completedAt === 'string' &&
+    (typeof value.generation.completedAt === 'string' ||
+      value.generation.completedAt === null) &&
     'usage' in value &&
     typeof value.usage === 'object' &&
     value.usage !== null &&
@@ -121,3 +125,8 @@ export const isDiaryGenerateResponse = (
     typeof value.usage.remainingCount === 'number'
   );
 };
+
+export type GenerationStatus = 'PROCESSING' | 'SUCCEEDED' | 'FAILED';
+
+export const isGenerationStatus = (value: unknown): value is GenerationStatus =>
+  value === 'PROCESSING' || value === 'SUCCEEDED' || value === 'FAILED';
