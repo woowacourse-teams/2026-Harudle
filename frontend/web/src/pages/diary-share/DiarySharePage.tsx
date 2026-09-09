@@ -10,14 +10,14 @@ import LoadingSpinner from '../../shared/LoadingSpinner';
 const DiarySharePage = () => {
   const navigate = useNavigate();
   const { shareId } = useParams();
-  const { sharedDiaryRequest } = useDiaryShare({ shareId });
+  const { request } = useDiaryShare({ shareId });
   const { track } = useAnalytics();
 
   useEffect(() => {
-    if (sharedDiaryRequest.status === 'success' && shareId) {
+    if (request.status === 'success' && shareId) {
       track('diary_share_viewed', { share_id: shareId });
     }
-  }, [sharedDiaryRequest.status, shareId, track]);
+  }, [request.status, shareId, track]);
 
   const handleLandingClick = () => {
     if (shareId) {
@@ -27,17 +27,14 @@ const DiarySharePage = () => {
     navigate('/');
   };
 
-  if (
-    sharedDiaryRequest.status === 'idle' ||
-    sharedDiaryRequest.status === 'loading'
-  ) {
+  if (request.status === 'idle' || request.status === 'loading') {
     return <LoadingSpinner />;
   }
 
-  if (sharedDiaryRequest.status === 'error') {
-    return <div>{sharedDiaryRequest.error.message}</div>;
+  if (request.status === 'error') {
+    return <div>{request.error.message}</div>;
   }
-  const { title, imageUrl, diaryDate } = sharedDiaryRequest.data;
+  const { title, imageUrl, diaryDate } = request.data;
 
   return (
     <div css={diarySharePageStyle}>
