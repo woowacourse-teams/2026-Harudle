@@ -52,10 +52,6 @@ const DiaryShareButton = ({
         });
         alert(error.message);
       }
-    } finally {
-      setRequest({
-        status: 'idle',
-      });
     }
   };
 
