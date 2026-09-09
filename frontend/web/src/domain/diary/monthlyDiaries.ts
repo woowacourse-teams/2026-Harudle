@@ -17,7 +17,7 @@ export const getMonthlyDiaries = async ({
   );
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => null);
+    const errorData: unknown = await response.json().catch(() => null);
 
     if (isProblemDetails(errorData)) {
       throw new RequestError(errorData);

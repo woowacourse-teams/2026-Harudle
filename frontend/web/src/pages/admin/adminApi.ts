@@ -1,8 +1,11 @@
+import {
+  isGenerationStatus,
+  type GenerationStatus,
+} from '../../domain/diary/diaryGenerate';
 import { API_BASE_URL, isProblemDetails, RequestError } from '../../shared/api';
 import { authFetch, requestCsrfToken } from '../../shared/auth';
 
 export type UserStatus = 'ACTIVE' | 'DELETED';
-export type GenerationStatus = 'PROCESSING' | 'SUCCEEDED' | 'FAILED';
 
 export interface AdminGenerationUsage {
   usageDate: string;
@@ -56,9 +59,6 @@ const isOptionalString = (value: unknown): value is string | null | undefined =>
 
 const isUserStatus = (value: unknown): value is UserStatus =>
   value === 'ACTIVE' || value === 'DELETED';
-
-const isGenerationStatus = (value: unknown): value is GenerationStatus =>
-  value === 'PROCESSING' || value === 'SUCCEEDED' || value === 'FAILED';
 
 const isGenerationUsage = (value: unknown): value is AdminGenerationUsage =>
   isRecord(value) &&

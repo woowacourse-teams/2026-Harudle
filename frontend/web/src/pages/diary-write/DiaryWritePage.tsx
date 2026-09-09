@@ -9,18 +9,19 @@ import { theme } from '../../styles/theme';
 import nextIcon from '../../assets/icons/arrow-right.svg';
 import { useDiaryGenerateContext } from '../diary-generating/DiaryGenerateContext';
 import { getToday } from '../../shared/utils';
+import { DIARY_CONTENT_SESSION_KEY } from '../../shared/constants';
 
 const DiaryWritePage = () => {
   const navigate = useNavigate();
   const [diaryContent, setDiaryContent] = useState(
-    sessionStorage.getItem('diaryContent') ?? '',
+    sessionStorage.getItem(DIARY_CONTENT_SESSION_KEY) ?? '',
   );
   const [diaryContentError, setDiaryContentError] = useState<string | null>(
     null,
   );
-  const { diaryGenerateRequest } = useDiaryGenerateContext();
+  const { request } = useDiaryGenerateContext();
 
-  if (diaryGenerateRequest.status === 'loading') {
+  if (request.status === 'loading') {
     alert('다른 일기가 생성중입니다.');
     return <Navigate to="/" replace />;
   }
@@ -32,7 +33,7 @@ const DiaryWritePage = () => {
       return;
     }
 
-    sessionStorage.setItem('diaryContent', diaryContent);
+    sessionStorage.setItem(DIARY_CONTENT_SESSION_KEY, diaryContent);
 
     const { year, month, day } = getToday();
     navigate('/diary-generating', {

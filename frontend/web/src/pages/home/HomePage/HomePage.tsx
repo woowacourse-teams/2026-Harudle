@@ -77,7 +77,7 @@ const RemainingGenerationUsage = () => {
   const { generationUsageRequest, getRemainingGenerationUsageCard } =
     useGenrationUsage();
 
-  const { diaryGenerateRequest } = useDiaryGenerateContext();
+  const { request: diaryGenerateRequest } = useDiaryGenerateContext();
 
   useEffect(() => {
     if (diaryGenerateRequest.status === 'success') {
