@@ -1,51 +1,33 @@
-import { useState } from 'react';
-import {
-  API_BASE_URL,
-  isProblemDetails,
-  RequestError,
-  type ApiRequest,
-} from '../../shared/api';
+import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { authFetch } from '../../shared/auth';
+import { deleteDiary } from '../../domain/diary/diaryDelete';
+import type { ApiRequest } from '../../shared/api';
 
 const useDiaryDelete = ({ diaryId }: { diaryId: string | undefined }) => {
-  const [diaryDeleteRequest, setDiaryDeleteRequest] = useState<
-    ApiRequest<void>
-  >({
+  const [request, setRequest] = useState<ApiRequest<void>>({
     status: 'idle',
   });
   const navigate = useNavigate();
 
-  const handleDiaryDelete = async (): Promise<void> => {
-    setDiaryDeleteRequest({ status: 'loading' });
+  const execute = useCallback(async (): Promise<void> => {
+    setRequest({ status: 'loading' });
 
     try {
-      const response = await authFetch(`${API_BASE_URL}/diaries/${diaryId}`, {
-        method: 'DELETE',
-      });
+      await deleteDiary({ diaryId });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        if (isProblemDetails(errorData)) {
-          throw new RequestError(errorData);
-        }
-
-        throw new Error('알 수 없는 에러가 발생했습니다.');
-      }
-
-      setDiaryDeleteRequest({ status: 'success', data: undefined });
+      setRequest({ status: 'success', data: undefined });
       navigate('/');
     } catch (error: unknown) {
       if (error instanceof Error) {
-        setDiaryDeleteRequest({
+        setRequest({
           status: 'error',
           error: error,
         });
       }
     }
-  };
+  }, [diaryId, navigate]);
 
-  return { diaryDeleteRequest, handleDiaryDelete };
+  return { request, execute };
 };
 
 export default useDiaryDelete;

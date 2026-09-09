@@ -14,22 +14,27 @@ import LoadingSpinner from '../../shared/LoadingSpinner';
 const DiaryDetailPage = () => {
   const navigate = useNavigate();
   const { diaryId } = useParams();
-  const { request } = useDiaryDetail({ diaryId });
-  const { diaryDeleteRequest, handleDiaryDelete } = useDiaryDelete({ diaryId });
+  const { request: diaryDetailRequest } = useDiaryDetail({ diaryId });
+  const { request: diaryDeleteRequest, execute: deleteDiary } = useDiaryDelete({
+    diaryId,
+  });
 
-  if (request.status === 'idle' || request.status === 'loading') {
+  if (
+    diaryDetailRequest.status === 'idle' ||
+    diaryDetailRequest.status === 'loading'
+  ) {
     return <LoadingSpinner />;
   }
 
-  if (request.status === 'error') {
-    return <DiaryDetailError errorMessage={request.error.message} />;
+  if (diaryDetailRequest.status === 'error') {
+    return <DiaryDetailError errorMessage={diaryDetailRequest.error.message} />;
   }
 
   if (diaryDeleteRequest.status === 'error') {
     alert(diaryDeleteRequest.error.message);
   }
 
-  const diaryDetail = request.data;
+  const diaryDetail = diaryDetailRequest.data;
   const { imageUrl, title } = diaryDetail.generation;
 
   return (
@@ -58,7 +63,7 @@ const DiaryDetailPage = () => {
             onClick={() => {
               const confirmDelete = window.confirm('일기를 삭제할까요?');
               if (confirmDelete) {
-                void handleDiaryDelete();
+                void deleteDiary();
               }
             }}
           >
