@@ -21,7 +21,7 @@ export const getDiaryDetail = async ({
   const data: unknown = await response.json();
 
   if (!isDiaryDetailResponse(data)) {
-    throw new Error('MonthlyDiaries 응답 형식이 일치하지 않습니다.');
+    throw new Error('DiaryDetail 응답 형식이 일치하지 않습니다.');
   }
 
   return data;
