@@ -14,25 +14,22 @@ import LoadingSpinner from '../../shared/LoadingSpinner';
 const DiaryDetailPage = () => {
   const navigate = useNavigate();
   const { diaryId } = useParams();
-  const { diaryDetailReqeust } = useDiaryDetail({ diaryId });
+  const { request } = useDiaryDetail({ diaryId });
   const { diaryDeleteRequest, handleDiaryDelete } = useDiaryDelete({ diaryId });
 
-  if (
-    diaryDetailReqeust.status === 'idle' ||
-    diaryDetailReqeust.status === 'loading'
-  ) {
+  if (request.status === 'idle' || request.status === 'loading') {
     return <LoadingSpinner />;
   }
 
-  if (diaryDetailReqeust.status === 'error') {
-    return <DiaryDetailError errorMessage={diaryDetailReqeust.error.message} />;
+  if (request.status === 'error') {
+    return <DiaryDetailError errorMessage={request.error.message} />;
   }
 
   if (diaryDeleteRequest.status === 'error') {
     alert(diaryDeleteRequest.error.message);
   }
 
-  const diaryDetail = diaryDetailReqeust.data;
+  const diaryDetail = request.data;
   const { imageUrl, title } = diaryDetail.generation;
 
   return (
