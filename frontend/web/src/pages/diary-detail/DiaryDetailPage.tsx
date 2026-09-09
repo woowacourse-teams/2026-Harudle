@@ -10,6 +10,7 @@ import DiaryShareButton from './DiaryShareButton';
 import DiaryImageDownloadButton from './DiaryImageDownloadButton';
 import DiaryDetailError from './DiaryDetailError';
 import LoadingSpinner from '../../shared/LoadingSpinner';
+import { useEffect } from 'react';
 
 const DiaryDetailPage = () => {
   const navigate = useNavigate();
@@ -18,6 +19,12 @@ const DiaryDetailPage = () => {
   const { request: diaryDeleteRequest, execute: deleteDiary } = useDiaryDelete({
     diaryId,
   });
+
+  useEffect(() => {
+    if (diaryDeleteRequest.status === 'error') {
+      alert(diaryDeleteRequest.error.message);
+    }
+  }, [diaryDeleteRequest]);
 
   if (
     diaryDetailRequest.status === 'idle' ||
@@ -28,10 +35,6 @@ const DiaryDetailPage = () => {
 
   if (diaryDetailRequest.status === 'error') {
     return <DiaryDetailError errorMessage={diaryDetailRequest.error.message} />;
-  }
-
-  if (diaryDeleteRequest.status === 'error') {
-    alert(diaryDeleteRequest.error.message);
   }
 
   const diaryDetail = diaryDetailRequest.data;
