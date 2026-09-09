@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { RequestError, type ProblemDetails } from '../../shared/api';
+import type { GenerationStatus } from '../generation/generation';
 import { generateDiary, type DiaryGenerateRequest } from './diaryGenerate';
 
 const mockAuthFetch = jest.fn<(...args: unknown[]) => Promise<Response>>();
@@ -24,11 +25,52 @@ const createErrorResponse = (json: () => Promise<unknown>): Response =>
     json,
   }) as Response;
 
+const createSuccessResponse = (status: GenerationStatus): Response => {
+  const isSucceeded = status === 'SUCCEEDED';
+
+  return {
+    ok: true,
+    status: 201,
+    json: async () => ({
+      id: '4f688273-37a3-453a-8348-b6596f4b4a61',
+      diaryDate: diaryGenerateRequest.diaryDate,
+      sourceText: diaryGenerateRequest.sourceText,
+      createdAt: '2026-09-09T20:10:23+09:00',
+      generation: {
+        id: 'fc6f08df-61af-4420-b600-e5496c92e36f',
+        status,
+        title: isSucceeded ? '친구와 함께한 산책' : null,
+        imageUrl: isSucceeded ? 'https://example.com/diary.png' : null,
+        imageUrlExpiresAt: isSucceeded ? '2026-09-09T20:20:23+09:00' : null,
+        completedAt:
+          status === 'PROCESSING' ? null : '2026-09-09T20:11:42+09:00',
+      },
+      usage: {
+        usageDate: '2026-09-09',
+        usedCount: 1,
+        limitCount: 3,
+        remainingCount: 2,
+      },
+    }),
+  } as Response;
+};
+
 afterEach(() => {
   mockAuthFetch.mockReset();
 });
 
 describe('일기 생성 API', () => {
+  it.each<GenerationStatus>(['PROCESSING', 'SUCCEEDED', 'FAILED'])(
+    '생성 상태가 %s인 정상 응답을 반환한다',
+    async (status) => {
+      mockAuthFetch.mockResolvedValueOnce(createSuccessResponse(status));
+
+      await expect(generateDiary(diaryGenerateRequest)).resolves.toMatchObject({
+        generation: { status },
+      });
+    },
+  );
+
   it('실패 응답을 JSON으로 파싱할 수 없으면 기본 오류를 던진다', async () => {
     mockAuthFetch.mockResolvedValueOnce(
       createErrorResponse(() =>
