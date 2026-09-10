@@ -63,6 +63,25 @@ afterEach(() => {
 });
 
 describe('일기 생성 API', () => {
+  it('생성 요청의 URL, 메서드, 헤더와 본문을 전달한다', async () => {
+    mockAuthFetch.mockResolvedValueOnce(createSuccessResponse('SUCCEEDED'));
+
+    await generateDiary(diaryGenerateRequest);
+
+    expect(mockAuthFetch).toHaveBeenCalledTimes(1);
+    expect(mockAuthFetch).toHaveBeenCalledWith('/api/v1/diaries', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Idempotency-Key': diaryGenerateRequest.idempotencyKey,
+      },
+      body: JSON.stringify({
+        diaryDate: diaryGenerateRequest.diaryDate,
+        sourceText: diaryGenerateRequest.sourceText,
+      }),
+    });
+  });
+
   it.each<GenerationStatus>(['PROCESSING', 'SUCCEEDED', 'FAILED'])(
     '생성 상태가 %s인 정상 응답을 반환한다',
     async (status) => {
@@ -74,25 +93,19 @@ describe('일기 생성 API', () => {
     },
   );
 
-  it('실패 응답을 JSON으로 파싱할 수 없으면 기본 오류를 던진다', async () => {
-    mockAuthFetch.mockResolvedValueOnce(
-      createErrorResponse(() =>
-        Promise.reject(new SyntaxError('Invalid JSON')),
-      ),
-    );
+  it('성공 응답 형식이 잘못되면 검증 오류를 던진다', async () => {
+    const response = createSuccessResponse('SUCCEEDED');
+    const data: unknown = await response.json();
+    if (typeof data !== 'object' || data === null) {
+      throw new Error('테스트 응답은 객체여야 합니다.');
+    }
+    mockAuthFetch.mockResolvedValueOnce({
+      ...response,
+      json: async () => ({ ...data, usage: null }),
+    });
 
     await expect(generateDiary(diaryGenerateRequest)).rejects.toThrow(
-      fallbackErrorMessage,
-    );
-  });
-
-  it('실패 응답이 Problem Details 형식이 아니면 기본 오류를 던진다', async () => {
-    mockAuthFetch.mockResolvedValueOnce(
-      createErrorResponse(async () => ({ message: 'Internal Server Error' })),
-    );
-
-    await expect(generateDiary(diaryGenerateRequest)).rejects.toThrow(
-      fallbackErrorMessage,
+      'DiaryGenerate 응답 형식이 일치하지 않습니다.',
     );
   });
 
@@ -117,5 +130,27 @@ describe('일기 생성 API', () => {
       message: problemDetails.detail,
       problem: problemDetails,
     });
+  });
+
+  it('실패 응답이 Problem Details 형식이 아니면 기본 오류를 던진다', async () => {
+    mockAuthFetch.mockResolvedValueOnce(
+      createErrorResponse(async () => ({ message: 'Internal Server Error' })),
+    );
+
+    await expect(generateDiary(diaryGenerateRequest)).rejects.toThrow(
+      fallbackErrorMessage,
+    );
+  });
+
+  it('실패 응답을 JSON으로 파싱할 수 없으면 기본 오류를 던진다', async () => {
+    mockAuthFetch.mockResolvedValueOnce(
+      createErrorResponse(() =>
+        Promise.reject(new SyntaxError('Invalid JSON')),
+      ),
+    );
+
+    await expect(generateDiary(diaryGenerateRequest)).rejects.toThrow(
+      fallbackErrorMessage,
+    );
   });
 });

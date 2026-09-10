@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { ApiRequest } from '../../shared/api';
-import { useAnalytics } from '../../shared/useAnalytics';
 import {
-  getDiaryDetail,
-  type DiaryDetailResponse,
-} from '../../domain/diary/diaryDetail';
+  getSharedDiary,
+  type SharedDiaryResponse,
+} from '../../domain/diary/sharedDiary';
+import type { ApiRequest } from '../../shared/api';
 
-const useDiaryDetail = ({ diaryId }: { diaryId: string }) => {
-  const { track } = useAnalytics();
-  const [request, setRequest] = useState<ApiRequest<DiaryDetailResponse>>({
+const useSharedDiary = ({ shareId }: { shareId: string }) => {
+  const [request, setRequest] = useState<ApiRequest<SharedDiaryResponse>>({
     status: 'idle',
   });
 
@@ -17,16 +15,11 @@ const useDiaryDetail = ({ diaryId }: { diaryId: string }) => {
       status: 'loading',
     });
     try {
-      const diaryDetailResponse = await getDiaryDetail({ diaryId });
+      const sharedDiaryResponse = await getSharedDiary({ shareId });
 
       setRequest({
         status: 'success',
-        data: diaryDetailResponse,
-      });
-
-      track('diary_detail_viewed', {
-        diary_id: diaryDetailResponse.id,
-        diary_date: diaryDetailResponse.diaryDate,
+        data: sharedDiaryResponse,
       });
     } catch (error: unknown) {
       if (error instanceof Error) {
@@ -36,7 +29,7 @@ const useDiaryDetail = ({ diaryId }: { diaryId: string }) => {
         });
       }
     }
-  }, [diaryId, track]);
+  }, [shareId]);
 
   useEffect(() => {
     // TODO: API 요청과 상태 갱신 책임을 분리해 lint 예외를 제거한다.
@@ -47,4 +40,4 @@ const useDiaryDetail = ({ diaryId }: { diaryId: string }) => {
   return { request };
 };
 
-export default useDiaryDetail;
+export default useSharedDiary;
