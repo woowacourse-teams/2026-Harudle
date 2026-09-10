@@ -61,6 +61,39 @@ describe('월별 일기 조회 API', () => {
     await expect(getMonthlyDiaries(monthlyDiariesRequest)).resolves.toEqual(
       monthlyDiariesResponse,
     );
+
+    expect(mockAuthFetch).toHaveBeenCalledTimes(1);
+    expect(mockAuthFetch).toHaveBeenCalledWith(
+      '/api/v1/diaries?year=2026&month=8',
+      { signal: undefined },
+    );
+  });
+
+  it('성공 응답 형식이 잘못되면 검증 오류를 던진다', async () => {
+    mockAuthFetch.mockResolvedValueOnce(
+      createJsonResponse(
+        {
+          ...monthlyDiariesResponse,
+          days: [
+            {
+              ...monthlyDiariesResponse.days[0],
+              items: [
+                {
+                  id: 123,
+                  title: '일기',
+                  thumbnailUrl: 'https://example.com/image.png',
+                },
+              ],
+            },
+          ],
+        },
+        200,
+      ),
+    );
+
+    await expect(getMonthlyDiaries(monthlyDiariesRequest)).rejects.toThrow(
+      'MonthlyDiaries 응답 형식이 일치하지 않습니다.',
+    );
   });
 
   it('조회에 실패하면 RequestError를 던진다', async () => {
@@ -71,5 +104,28 @@ describe('월별 일기 조회 API', () => {
     await expect(
       getMonthlyDiaries(monthlyDiariesRequest),
     ).rejects.toBeInstanceOf(RequestError);
+  });
+
+  it('실패 응답이 Problem Details 형식이 아니면 기본 오류를 던진다', async () => {
+    mockAuthFetch.mockResolvedValueOnce(
+      createJsonResponse({ message: 'Internal Server Error' }, 500),
+    );
+
+    await expect(getMonthlyDiaries(monthlyDiariesRequest)).rejects.toThrow(
+      '월별 일기를 불러오는 중 문제가 발생했습니다. 다시 시도해주세요.',
+    );
+  });
+
+  it('실패 응답을 JSON으로 파싱할 수 없으면 기본 오류를 던진다', async () => {
+    mockAuthFetch.mockResolvedValueOnce({
+      ...createJsonResponse(null, 500),
+      json: async () => {
+        throw new SyntaxError('Invalid JSON');
+      },
+    });
+
+    await expect(getMonthlyDiaries(monthlyDiariesRequest)).rejects.toThrow(
+      '월별 일기를 불러오는 중 문제가 발생했습니다. 다시 시도해주세요.',
+    );
   });
 });

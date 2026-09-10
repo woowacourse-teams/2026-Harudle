@@ -33,9 +33,19 @@ afterEach(() => {
 
 describe('일기 삭제 API', () => {
   it('삭제에 성공하면 정상적으로 완료한다', async () => {
-    mockAuthFetch.mockResolvedValueOnce(createJsonResponse(null, 204));
+    const json = jest.fn<() => Promise<unknown>>();
+    mockAuthFetch.mockResolvedValueOnce({
+      ...createJsonResponse(null, 204),
+      json,
+    });
 
     await expect(deleteDiary({ diaryId: DIARY_ID })).resolves.toBeUndefined();
+
+    expect(json).not.toHaveBeenCalled();
+    expect(mockAuthFetch).toHaveBeenCalledTimes(1);
+    expect(mockAuthFetch).toHaveBeenCalledWith(`/api/v1/diaries/${DIARY_ID}`, {
+      method: 'DELETE',
+    });
   });
 
   it('삭제에 실패하면 RequestError를 던진다', async () => {
@@ -45,6 +55,29 @@ describe('일기 삭제 API', () => {
 
     await expect(deleteDiary({ diaryId: DIARY_ID })).rejects.toBeInstanceOf(
       RequestError,
+    );
+  });
+
+  it('실패 응답이 Problem Details 형식이 아니면 기본 오류를 던진다', async () => {
+    mockAuthFetch.mockResolvedValueOnce(
+      createJsonResponse({ message: 'Internal Server Error' }, 500),
+    );
+
+    await expect(deleteDiary({ diaryId: DIARY_ID })).rejects.toThrow(
+      '알 수 없는 에러가 발생했습니다.',
+    );
+  });
+
+  it('실패 응답을 JSON으로 파싱할 수 없으면 기본 오류를 던진다', async () => {
+    mockAuthFetch.mockResolvedValueOnce({
+      ...createJsonResponse(null, 500),
+      json: async () => {
+        throw new SyntaxError('Invalid JSON');
+      },
+    });
+
+    await expect(deleteDiary({ diaryId: DIARY_ID })).rejects.toThrow(
+      '알 수 없는 에러가 발생했습니다.',
     );
   });
 });
