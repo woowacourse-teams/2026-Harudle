@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { RequestError, type ProblemDetails } from '../../shared/api';
-import { logoutUser } from './logout';
+import { logout } from './logout';
 
 const mockAuthFetch = jest.fn<(...args: unknown[]) => Promise<Response>>();
 
@@ -26,9 +26,7 @@ describe('로그아웃 API', () => {
   it('CSRF Token을 헤더에 담아 로그아웃을 요청한다', async () => {
     mockAuthFetch.mockResolvedValueOnce(createJsonResponse(null, 204));
 
-    await expect(
-      logoutUser({ csrfToken: 'csrf-token' }),
-    ).resolves.toBeUndefined();
+    await expect(logout({ csrfToken: 'csrf-token' })).resolves.toBeUndefined();
 
     expect(mockAuthFetch).toHaveBeenCalledWith('/api/v1/auth/logout', {
       method: 'POST',
@@ -46,7 +44,7 @@ describe('로그아웃 API', () => {
       },
     });
 
-    await expect(logoutUser({ csrfToken: 'csrf-token' })).rejects.toThrow(
+    await expect(logout({ csrfToken: 'csrf-token' })).rejects.toThrow(
       fallbackErrorMessage,
     );
   });
@@ -56,7 +54,7 @@ describe('로그아웃 API', () => {
       createJsonResponse({ message: 'Internal Server Error' }, 500),
     );
 
-    await expect(logoutUser({ csrfToken: 'csrf-token' })).rejects.toThrow(
+    await expect(logout({ csrfToken: 'csrf-token' })).rejects.toThrow(
       fallbackErrorMessage,
     );
   });
@@ -75,7 +73,7 @@ describe('로그아웃 API', () => {
       createJsonResponse(problemDetails, problemDetails.status),
     );
 
-    const result = logoutUser({ csrfToken: 'csrf-token' });
+    const result = logout({ csrfToken: 'csrf-token' });
 
     await expect(result).rejects.toBeInstanceOf(RequestError);
     await expect(result).rejects.toMatchObject({
