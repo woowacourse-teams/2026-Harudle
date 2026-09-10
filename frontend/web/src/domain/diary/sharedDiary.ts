@@ -25,7 +25,7 @@ export const getSharedDiary = async ({
 };
 
 export interface SharedDiaryRequest {
-  shareId: string | undefined;
+  shareId: string;
 }
 
 export interface SharedDiaryResponse {
