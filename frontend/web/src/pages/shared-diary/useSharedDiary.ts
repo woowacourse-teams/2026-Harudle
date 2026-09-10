@@ -5,7 +5,7 @@ import {
 } from '../../domain/diary/sharedDiary';
 import type { ApiRequest } from '../../shared/api';
 
-const useDiaryShare = ({ shareId }: { shareId: string | undefined }) => {
+const useSharedDiary = ({ shareId }: { shareId: string }) => {
   const [request, setRequest] = useState<ApiRequest<SharedDiaryResponse>>({
     status: 'idle',
   });
@@ -40,4 +40,4 @@ const useDiaryShare = ({ shareId }: { shareId: string | undefined }) => {
   return { request };
 };
 
-export default useDiaryShare;
+export default useSharedDiary;

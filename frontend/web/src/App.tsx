@@ -7,13 +7,13 @@ import DiaryGeneratingPage from './pages/diary-generating/DiaryGeneratingPage';
 import SettingPage from './pages/setting/SettingPage';
 import LoginPage from './pages/login/LoginPage';
 import DiaryDetailPage from './pages/diary-detail/DiaryDetailPage';
-import DiarySharePage from './pages/diary-share/DiarySharePage';
 import AuthCallbackPage from './pages/login/AuthCallbackPage';
 import GuestTrialRoutes from './pages/guest-trial/GuestTrialRoutes';
 import LandingPage from './pages/landing/LandingPage';
 import AdminGuard from './pages/admin/AdminGuard';
 import NotFoundPage from './pages/not-found/NotFoundPage';
 import PwaAnalyticsTracker from './pages/setting/PwaAnalyticsTracker';
+import SharedDiaryPage from './pages/shared-diary/SharedDiaryPage';
 
 const App = () => {
   return (
@@ -26,7 +26,7 @@ const App = () => {
         <Route path="/diary-write" element={<DiaryWritePage />} />
         <Route path="/diary-generating" element={<DiaryGeneratingPage />} />
         <Route path="/diary/:diaryId" element={<DiaryDetailPage />} />
-        <Route path="/shares/:shareId" element={<DiarySharePage />} />
+        <Route path="/shares/:shareId" element={<SharedDiaryPage />} />
         <Route path="/setting" element={<SettingPage />} />
         <Route path="/landing" element={<LandingPage />} />
         <Route path="/landing-try/*" element={<GuestTrialRoutes />} />

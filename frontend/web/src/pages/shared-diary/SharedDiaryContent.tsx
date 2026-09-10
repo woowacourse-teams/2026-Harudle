@@ -1,16 +1,16 @@
-import { css } from '@emotion/react';
-import { theme } from '../../styles/theme';
-import harudleLogo from '../../assets/images/harudle-logo.png';
-import { useNavigate, useParams } from 'react-router';
-import useDiaryShare from './useDiaryShare';
 import { useEffect } from 'react';
+import useSharedDiary from './useSharedDiary';
 import { useAnalytics } from '../../shared/useAnalytics';
 import LoadingSpinner from '../../shared/LoadingSpinner';
+import SharedDiaryError from './SharedDiaryError';
+import { css } from '@emotion/react';
+import { theme } from '../../styles/theme';
+import { useNavigate } from 'react-router';
+import harudleLogo from '../../assets/images/harudle-logo.png';
 
-const DiarySharePage = () => {
+const SharedDiaryContent = ({ shareId }: { shareId: string }) => {
   const navigate = useNavigate();
-  const { shareId } = useParams();
-  const { request } = useDiaryShare({ shareId });
+  const { request } = useSharedDiary({ shareId });
   const { track } = useAnalytics();
 
   useEffect(() => {
@@ -32,15 +32,16 @@ const DiarySharePage = () => {
   }
 
   if (request.status === 'error') {
-    return <div>{request.error.message}</div>;
+    return <SharedDiaryError errorMessage={request.error.message} />;
   }
   const { title, imageUrl, diaryDate } = request.data;
 
   return (
-    <div css={diarySharePageStyle}>
+    <div css={SharedDiaryPageStyle}>
       <button css={logoButtonStyle} onClick={handleLandingClick}>
         <img src={harudleLogo} alt="하루들" css={logoStyle} />
       </button>
+      <p css={logoHintStyle}>로고를 눌러 하루들을 시작해 보세요</p>
 
       <main css={sharedDiaryContentStyle}>
         <div css={diaryTitleStyle}>{title}</div>
@@ -51,9 +52,9 @@ const DiarySharePage = () => {
   );
 };
 
-export default DiarySharePage;
+export default SharedDiaryContent;
 
-const diarySharePageStyle = css`
+const SharedDiaryPageStyle = css`
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -86,12 +87,21 @@ const logoStyle = css`
   object-fit: fill;
 `;
 
+const logoHintStyle = css`
+  margin: 0 0 24px;
+  color: ${theme.colors.text.secondary};
+  font-size: 13px;
+  line-height: 20px;
+  text-align: center;
+`;
+
 const sharedDiaryContentStyle = css`
   display: flex;
   flex: 1;
   flex-direction: column;
   align-items: center;
   width: 390px;
+  padding-bottom: 32px;
 `;
 
 const diaryTitleStyle = css`
