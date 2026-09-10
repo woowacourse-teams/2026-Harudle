@@ -12,7 +12,7 @@ const DiaryShareButton = ({
   diaryId,
   diaryTitle,
 }: {
-  diaryId: string | undefined;
+  diaryId: string;
   diaryTitle: string;
 }) => {
   const [request, setRequest] = useState<ApiRequest<DiaryShareLinkResponse>>({
@@ -20,9 +20,7 @@ const DiaryShareButton = ({
   });
   const { track } = useAnalytics();
   const execute = async () => {
-    if (diaryId) {
-      track('diary_share_clicked', { diary_id: diaryId });
-    }
+    track('diary_share_clicked', { diary_id: diaryId });
 
     setRequest({
       status: 'loading',

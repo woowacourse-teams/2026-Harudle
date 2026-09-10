@@ -3,9 +3,7 @@ import { authFetch } from '../../shared/auth';
 
 export const getDiaryDetail = async ({
   diaryId,
-}: {
-  diaryId: string | undefined;
-}): Promise<DiaryDetailResponse> => {
+}: DiaryDetailRequest): Promise<DiaryDetailResponse> => {
   const response = await authFetch(`${API_BASE_URL}/diaries/${diaryId}`);
 
   if (!response.ok) {
@@ -26,6 +24,10 @@ export const getDiaryDetail = async ({
 
   return data;
 };
+
+export interface DiaryDetailRequest {
+  diaryId: string;
+}
 
 export interface DiaryDetailResponse {
   id: string;

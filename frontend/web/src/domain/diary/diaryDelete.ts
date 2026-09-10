@@ -20,5 +20,5 @@ export const deleteDiary = async ({
 };
 
 export interface DiaryDeleteRequest {
-  diaryId: string | undefined;
+  diaryId: string;
 }

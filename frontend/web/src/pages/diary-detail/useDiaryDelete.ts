@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import { deleteDiary } from '../../domain/diary/diaryDelete';
 import type { ApiRequest } from '../../shared/api';
 
-const useDiaryDelete = ({ diaryId }: { diaryId: string | undefined }) => {
+const useDiaryDelete = ({ diaryId }: { diaryId: string }) => {
   const [request, setRequest] = useState<ApiRequest<void>>({
     status: 'idle',
   });

@@ -6,7 +6,7 @@ import {
   type DiaryDetailResponse,
 } from '../../domain/diary/diaryDetail';
 
-const useDiaryDetail = ({ diaryId }: { diaryId: string | undefined }) => {
+const useDiaryDetail = ({ diaryId }: { diaryId: string }) => {
   const { track } = useAnalytics();
   const [request, setRequest] = useState<ApiRequest<DiaryDetailResponse>>({
     status: 'idle',

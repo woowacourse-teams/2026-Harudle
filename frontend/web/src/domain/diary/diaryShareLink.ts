@@ -31,7 +31,7 @@ export const createDiaryShareLink = async ({
 };
 
 export interface DiaryShareLinkRequest {
-  diaryId: string | undefined;
+  diaryId: string;
 }
 
 export interface DiaryShareLinkResponse {
