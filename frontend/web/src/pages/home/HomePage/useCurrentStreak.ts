@@ -1,86 +1,71 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { type ApiRequest } from '../../../shared/api';
+import { getToday, isRecord } from '../../../shared/utils';
 import {
-  API_BASE_URL,
-  isProblemDetails,
-  RequestError,
-  type ApiRequest,
-} from '../../../shared/api';
-import { authFetch } from '../../../shared/auth';
-import { getToday } from '../../../shared/utils';
+  getCurrentStreak,
+  type CurrentStreak,
+} from '../../../domain/currentStreak';
+import { CURRENT_STREAK_CACHE_KEY } from '../../../shared/constants';
 
-interface DiaryStreakItem {
-  id: string;
-  title: string;
-  thumbnailUrl: string;
-}
+const useCurrentStreak = () => {
+  const [request, setRequest] = useState<ApiRequest<CurrentStreak>>({
+    status: 'idle',
+  });
 
-interface DiaryStreakDay {
-  date: string;
-  items: DiaryStreakItem[];
-}
-
-interface CurrentStreakResponse {
-  streakCount: number;
-  recordedToday: boolean;
-  days: DiaryStreakDay[];
-}
-
-export interface CurrentStreak {
-  streakCount: number;
-  recordedToday: boolean;
-}
-
-interface CurrentStreakCache {
-  date: string;
-  streakCount: number;
-  recordedToday: true;
-}
-
-const CURRENT_STREAK_CACHE_KEY = 'harudle.current-streak';
-
-const isRecord = (value: unknown): value is Record<string, unknown> => {
-  return typeof value === 'object' && value !== null;
-};
-
-const isDiaryStreakItem = (value: unknown): value is DiaryStreakItem => {
-  return (
-    isRecord(value) &&
-    typeof value.id === 'string' &&
-    typeof value.title === 'string' &&
-    typeof value.thumbnailUrl === 'string'
+  const todayKey = getTodayKey();
+  const cachedStreak = useMemo(
+    () => readCurrentStreakCache(todayKey),
+    [todayKey],
   );
+
+  const execute = useCallback(
+    async (cache: CurrentStreak | null) => {
+      if (cache !== null) {
+        setRequest({
+          status: 'success',
+          data: cache,
+        });
+        return;
+      }
+
+      setRequest({
+        status: 'loading',
+      });
+
+      try {
+        const response = await getCurrentStreak();
+
+        setRequest({
+          status: 'success',
+          data: response,
+        });
+
+        writeCurrentStreakCache(todayKey, {
+          streakCount: response.streakCount,
+          recordedToday: response.recordedToday,
+        });
+      } catch (error: unknown) {
+        if (error instanceof Error) {
+          setRequest({
+            status: 'error',
+            error,
+          });
+        }
+      }
+    },
+    [todayKey],
+  );
+
+  useEffect(() => {
+    // TODO: API 요청과 상태 갱신 책임을 분리해 lint 예외를 제거한다.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void execute(cachedStreak);
+  }, [cachedStreak, execute]);
+
+  return { request, execute };
 };
 
-const isDiaryStreakDay = (value: unknown): value is DiaryStreakDay => {
-  return (
-    isRecord(value) &&
-    typeof value.date === 'string' &&
-    Array.isArray(value.items) &&
-    value.items.every(isDiaryStreakItem)
-  );
-};
-
-const isCurrentStreakResponse = (
-  value: unknown,
-): value is CurrentStreakResponse => {
-  return (
-    isRecord(value) &&
-    typeof value.streakCount === 'number' &&
-    typeof value.recordedToday === 'boolean' &&
-    Array.isArray(value.days) &&
-    value.days.every(isDiaryStreakDay)
-  );
-};
-
-const isCurrentStreakCache = (value: unknown): value is CurrentStreakCache => {
-  return (
-    isRecord(value) &&
-    typeof value.date === 'string' &&
-    typeof value.streakCount === 'number' &&
-    value.streakCount >= 0 &&
-    value.recordedToday === true
-  );
-};
+export default useCurrentStreak;
 
 const getTodayKey = (): string => {
   const { year, month, day } = getToday();
@@ -131,83 +116,17 @@ const writeCurrentStreakCache = (
   }
 };
 
-const useCurrentStreak = () => {
-  const [currentStreakRequest, setCurrentStreakRequest] = useState<
-    ApiRequest<CurrentStreak>
-  >({
-    status: 'idle',
-  });
+interface CurrentStreakCache extends CurrentStreak {
+  date: string;
+  recordedToday: true;
+}
 
-  const todayKey = getTodayKey();
-  const cachedStreak = useMemo(
-    () => readCurrentStreakCache(todayKey),
-    [todayKey],
+const isCurrentStreakCache = (value: unknown): value is CurrentStreakCache => {
+  return (
+    isRecord(value) &&
+    typeof value.date === 'string' &&
+    typeof value.streakCount === 'number' &&
+    value.streakCount >= 0 &&
+    value.recordedToday === true
   );
-
-  const getCurrentStreak = useCallback(
-    async (cache: CurrentStreak | null) => {
-      if (cache !== null) {
-        setCurrentStreakRequest({
-          status: 'success',
-          data: cache,
-        });
-        return;
-      }
-
-      setCurrentStreakRequest({
-        status: 'loading',
-      });
-
-      try {
-        const response = await authFetch(
-          `${API_BASE_URL}/diaries/current-streak`,
-        );
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          if (isProblemDetails(errorData)) {
-            throw new RequestError(errorData);
-          }
-
-          throw new Error('알 수 없는 에러가 발생했습니다.');
-        }
-
-        const data: unknown = await response.json();
-
-        if (!isCurrentStreakResponse(data)) {
-          throw new Error('CurrentStreak 응답 형식이 일치하지 않습니다.');
-        }
-
-        const currentStreak = {
-          streakCount: data.streakCount,
-          recordedToday: data.recordedToday,
-        };
-
-        setCurrentStreakRequest({
-          status: 'success',
-          data: currentStreak,
-        });
-
-        writeCurrentStreakCache(todayKey, currentStreak);
-      } catch (error: unknown) {
-        if (error instanceof Error) {
-          setCurrentStreakRequest({
-            status: 'error',
-            error,
-          });
-        }
-      }
-    },
-    [todayKey],
-  );
-
-  useEffect(() => {
-    // TODO: API 요청과 상태 갱신 책임을 분리해 lint 예외를 제거한다.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void getCurrentStreak(cachedStreak);
-  }, [cachedStreak, getCurrentStreak]);
-
-  return { currentStreakRequest, getCurrentStreak };
 };
-
-export default useCurrentStreak;
