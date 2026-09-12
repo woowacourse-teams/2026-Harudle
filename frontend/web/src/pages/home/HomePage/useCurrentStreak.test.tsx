@@ -48,6 +48,7 @@ describe('useCurrentStreak 캐시 정책', () => {
     ['지난 날짜', JSON.stringify({ ...cache, date: '2026-09-11' })],
     ['잘못된 JSON', '{'],
     ['잘못된 필드 타입', JSON.stringify({ ...cache, streakCount: '3' })],
+    ['소수인 연속 기록', JSON.stringify({ ...cache, streakCount: 3.5 })],
     ['오늘 미기록 캐시', JSON.stringify({ ...cache, recordedToday: false })],
   ])(
     '%s이면 API로 조회하고 오늘 기록한 결과를 캐시에 저장한다',

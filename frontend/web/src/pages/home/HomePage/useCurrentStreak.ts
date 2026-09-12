@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { type ApiRequest } from '../../../shared/api';
-import { getToday, isRecord } from '../../../shared/utils';
+import {
+  getToday,
+  isNonNegativeInteger,
+  isRecord,
+} from '../../../shared/utils';
 import {
   getCurrentStreak,
   type CurrentStreak,
@@ -126,7 +130,7 @@ const isCurrentStreakCache = (value: unknown): value is CurrentStreakCache => {
     isRecord(value) &&
     typeof value.date === 'string' &&
     typeof value.streakCount === 'number' &&
-    value.streakCount >= 0 &&
+    isNonNegativeInteger(value.streakCount) &&
     value.recordedToday === true
   );
 };
