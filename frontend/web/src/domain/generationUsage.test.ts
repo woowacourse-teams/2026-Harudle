@@ -36,7 +36,9 @@ describe('생성 횟수 조회 API', () => {
     await expect(getGenerationUsage()).resolves.toEqual(data);
 
     expect(mockAuthFetch).toHaveBeenCalledTimes(1);
-    expect(mockAuthFetch).toHaveBeenCalledWith('/api/v1/me/generation-usage');
+    expect(mockAuthFetch).toHaveBeenCalledWith('/api/v1/me/generation-usage', {
+      signal: undefined,
+    });
   });
 
   it('성공 응답 형식이 잘못되면 검증 오류를 던진다', async () => {
