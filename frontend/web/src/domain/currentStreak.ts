@@ -1,6 +1,6 @@
 import { API_BASE_URL, isProblemDetails, RequestError } from '../shared/api';
 import { authFetch } from '../shared/auth';
-import { isRecord } from '../shared/utils';
+import { isNonNegativeInteger, isRecord } from '../shared/utils';
 
 export const getCurrentStreak = async (): Promise<CurrentStreakResponse> => {
   const response = await authFetch(`${API_BASE_URL}/diaries/current-streak`);
@@ -66,7 +66,9 @@ const isCurrentStreakResponse = (
 ): value is CurrentStreakResponse => {
   return (
     isRecord(value) &&
+    'streakCount' in value &&
     typeof value.streakCount === 'number' &&
+    isNonNegativeInteger(value.streakCount) &&
     typeof value.recordedToday === 'boolean' &&
     Array.isArray(value.days) &&
     value.days.every(isDiaryStreakDay)

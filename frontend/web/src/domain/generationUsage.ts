@@ -1,5 +1,6 @@
 import { API_BASE_URL, isProblemDetails, RequestError } from '../shared/api';
 import { authFetch } from '../shared/auth';
+import { isNonNegativeInteger } from '../shared/utils';
 
 export const getGenerationUsage =
   async (): Promise<GenerationUsageResponse> => {
@@ -43,9 +44,12 @@ const isGenerationUsageResponse = (
     typeof value.usageDate === 'string' &&
     'usedCount' in value &&
     typeof value.usedCount === 'number' &&
+    isNonNegativeInteger(value.usedCount) &&
     'limitCount' in value &&
     typeof value.limitCount === 'number' &&
+    isNonNegativeInteger(value.limitCount) &&
     'remainingCount' in value &&
-    typeof value.remainingCount === 'number'
+    typeof value.remainingCount === 'number' &&
+    isNonNegativeInteger(value.remainingCount)
   );
 };

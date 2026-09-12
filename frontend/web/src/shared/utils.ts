@@ -48,3 +48,7 @@ export const formatDiaryDate = (date: string) => {
 export const isRecord = (value: unknown): value is Record<string, unknown> => {
   return typeof value === 'object' && value !== null;
 };
+
+export const isNonNegativeInteger = (value: number) => {
+  return Number.isInteger(value) && value >= 0;
+};
