@@ -41,7 +41,7 @@ export default SettingPage;
 
 const SettingPageContent = () => {
   const { profileRequest } = useProfile();
-  const { logoutRequest, handleLogout } = useLogout();
+  const { request, handleLogout } = useLogout();
 
   if (profileRequest.status === 'idle' || profileRequest.status === 'loading') {
     return <LoadingSpinner />;
@@ -96,14 +96,14 @@ const SettingPageContent = () => {
       <button
         type="button"
         css={logoutButtonStyle}
-        disabled={logoutRequest.status === 'loading'}
+        disabled={request.status === 'loading'}
         onClick={() => void handleLogout()}
       >
         <span>로그아웃</span>
         <img css={logoutIconStyle} src={logoutIcon} alt="" aria-hidden="true" />
       </button>
-      {logoutRequest.status === 'error' && (
-        <div css={logoutErrorStyle}>{logoutRequest.error.message}</div>
+      {request.status === 'error' && (
+        <div css={logoutErrorStyle}>{request.error.message}</div>
       )}
     </div>
   );
