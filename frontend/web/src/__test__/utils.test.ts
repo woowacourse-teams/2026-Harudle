@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
-import { getToday, isMonth } from '../shared/utils';
+import { getToday, isMonth, isNonNegativeInteger } from '../shared/utils';
 
 afterEach(() => {
   jest.useRealTimers();
@@ -38,5 +38,36 @@ describe('isMonth 테스트', () => {
 
     // when & then
     expect(isMonth(invalidMonth)).toEqual(false);
+  });
+});
+
+describe('isNonNegativeInteger 테스트', () => {
+  it('값이 0인 경우 true를 반환한다.', () => {
+    // given
+    const validNumber = 0;
+
+    // when & then
+    expect(isNonNegativeInteger(validNumber)).toEqual(true);
+  });
+  it('값이 양의 정수인 경우 true를 반환한다.', () => {
+    // given
+    const validNumber = 3;
+
+    // when & then
+    expect(isNonNegativeInteger(validNumber)).toEqual(true);
+  });
+  it('값이 0보다 큰 소수인 경우 false를 반환한다', () => {
+    // given
+    const invalidNumber = 3.3;
+
+    // when & then
+    expect(isNonNegativeInteger(invalidNumber)).toEqual(false);
+  });
+  it('값이 음수인 경우 false를 반환한다.', () => {
+    // given
+    const invalidNumber = -3;
+
+    // when & then
+    expect(isNonNegativeInteger(invalidNumber)).toEqual(false);
   });
 });

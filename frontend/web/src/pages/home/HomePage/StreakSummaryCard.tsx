@@ -1,58 +1,21 @@
 import { css } from '@emotion/react';
 import { theme } from '../../../styles/theme';
-import useCurrentStreak, { type CurrentStreak } from './useCurrentStreak';
+import useCurrentStreak from './useCurrentStreak';
 import type { ApiRequest } from '../../../shared/api';
 import dogStreakCharacter from '../../../assets/images/dog-streak-diary.png';
-
-const getStreakCopy = (currentStreakRequest: ApiRequest<CurrentStreak>) => {
-  if (
-    currentStreakRequest.status === 'idle' ||
-    currentStreakRequest.status === 'loading'
-  ) {
-    return {
-      count: '-',
-      description: '기록을 불러오고 있어요.',
-    };
-  }
-
-  if (currentStreakRequest.status === 'error') {
-    return {
-      count: '-',
-      description: '잠시 후 다시 확인해 주세요.',
-    };
-  }
-
-  const { streakCount, recordedToday } = currentStreakRequest.data;
-
-  if (streakCount === 0) {
-    return {
-      count: '0',
-      description: '오늘부터 기록을 시작해 볼까요?',
-    };
-  }
-
-  return {
-    count: String(streakCount),
-    description: recordedToday
-      ? '오늘도 기록을 이어갔어요!'
-      : '오늘도 이어가 볼까요?',
-  };
-};
+import type { CurrentStreak } from '../../../domain/currentStreak';
 
 const StreakSummaryCard = () => {
-  const { currentStreakRequest } = useCurrentStreak();
+  const { request } = useCurrentStreak();
 
-  const copy = getStreakCopy(currentStreakRequest);
+  const message = getStreakMessage(request);
 
   return (
     <section
       css={streakCardStyle}
       aria-label="연속 기록"
       aria-live="polite"
-      aria-busy={
-        currentStreakRequest.status === 'idle' ||
-        currentStreakRequest.status === 'loading'
-      }
+      aria-busy={request.status === 'idle' || request.status === 'loading'}
     >
       <div css={streakCharacterFrameStyle}>
         <img
@@ -64,9 +27,9 @@ const StreakSummaryCard = () => {
       <div css={streakCopyStyle}>
         <p css={streakTitleStyle}>
           <span>연속</span>
-          <strong>{copy.count}일째</strong>
+          <strong>{message.count}일째</strong>
         </p>
-        <p css={streakDescriptionStyle}>{copy.description}</p>
+        <p css={streakDescriptionStyle}>{message.description}</p>
       </div>
     </section>
   );
@@ -133,3 +96,35 @@ const streakDescriptionStyle = css`
   font-weight: 500;
   line-height: 20px;
 `;
+
+const getStreakMessage = (request: ApiRequest<CurrentStreak>) => {
+  if (request.status === 'idle' || request.status === 'loading') {
+    return {
+      count: '-',
+      description: '기록을 불러오고 있어요.',
+    };
+  }
+
+  if (request.status === 'error') {
+    return {
+      count: '-',
+      description: '잠시 후 다시 확인해 주세요.',
+    };
+  }
+
+  const { streakCount, recordedToday } = request.data;
+
+  if (streakCount === 0) {
+    return {
+      count: '0',
+      description: '오늘부터 기록을 시작해 볼까요?',
+    };
+  }
+
+  return {
+    count: String(streakCount),
+    description: recordedToday
+      ? '오늘도 기록을 이어갔어요!'
+      : '오늘도 이어가 볼까요?',
+  };
+};

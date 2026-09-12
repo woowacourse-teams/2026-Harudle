@@ -3,7 +3,6 @@ import DiaryItemList from '../DiaryItemList';
 import { useNavigate } from 'react-router';
 import harudleLogo from '../../../assets/images/harudle-logo.png';
 import useSelectedYearMonth from './useSelectedYearMonth';
-import useGenrationUsage from './useGenrationUsage';
 import { css } from '@emotion/react';
 import { theme } from '../../../styles/theme';
 import { getToday, type Month } from '../../../shared/utils';
@@ -11,6 +10,7 @@ import { useDiaryGenerateContext } from '../../diary-generating/DiaryGenerateCon
 import { useEffect } from 'react';
 import StreakSummaryCard from './StreakSummaryCard';
 import keyboardArrowDownIcon from '../../../assets/icons/keyboard_arrow_down.svg';
+import useGenerationUsage from './useGenrationUsage';
 
 const formatYearMonthToString = ({
   year,
@@ -74,22 +74,18 @@ const HomePage = () => {
 export default HomePage;
 
 const RemainingGenerationUsage = () => {
-  const { generationUsageRequest, getRemainingGenerationUsageCard } =
-    useGenrationUsage();
+  const { request, execute } = useGenerationUsage();
 
   const { request: diaryGenerateRequest } = useDiaryGenerateContext();
 
   useEffect(() => {
     if (diaryGenerateRequest.status === 'success') {
-      void getRemainingGenerationUsageCard();
+      void execute();
     }
-  }, [diaryGenerateRequest.status, getRemainingGenerationUsageCard]);
+  }, [diaryGenerateRequest.status, execute]);
 
-  const remainingCount =
-    generationUsageRequest.status === 'success'
-      ? generationUsageRequest.data
-      : null;
-  const hasGenerationUsageError = generationUsageRequest.status === 'error';
+  const remainingCount = request.status === 'success' ? request.data : null;
+  const hasGenerationUsageError = request.status === 'error';
 
   return (
     <div css={remainingGenerationUsageStyle} aria-live="polite">
@@ -99,7 +95,7 @@ const RemainingGenerationUsage = () => {
           <button
             css={retryButtonStyle}
             type="button"
-            onClick={() => void getRemainingGenerationUsageCard()}
+            onClick={() => void execute()}
           >
             재시도
           </button>
