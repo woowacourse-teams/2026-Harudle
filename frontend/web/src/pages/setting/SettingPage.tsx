@@ -148,7 +148,7 @@ const contentStyle = css`
 `;
 
 const pageTitleStyle = css`
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 22px;
   font-weight: 700;
   line-height: 32px;
@@ -166,12 +166,12 @@ const settingPageContentStyle = css`
 const settingCardStyle = css`
   height: 120px;
   overflow: hidden;
-  border: 1px solid ${theme.colors.border.primary};
+  border: 1px solid ${theme.colors.stroke.outline};
   border-radius: 16px;
 `;
 
 const settingLinkStyle = css`
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   text-decoration: none;
 
   &:active {
@@ -194,16 +194,16 @@ const settingRowStyle = css`
   line-height: 24px;
 
   &:first-of-type {
-    border-bottom: 1px solid ${theme.colors.border.primary};
+    border-bottom: 1px solid ${theme.colors.stroke.divider};
   }
 `;
 
 const settingLabelStyle = css`
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
 `;
 
 const settingValueStyle = css`
-  color: ${theme.colors.text.secondary};
+  color: ${theme.colors.foreground.neutralMuted};
   text-transform: capitalize;
 `;
 
@@ -214,10 +214,10 @@ const logoutButtonStyle = css`
   width: 100%;
   height: 56px;
   padding: 0 16px;
-  border: 1px solid ${theme.colors.border.primary};
+  border: 1px solid ${theme.colors.stroke.outline};
   border-radius: 16px;
   background-color: transparent;
-  color: ${theme.colors.text.danger};
+  color: ${theme.colors.foreground.critical};
   font-size: 15px;
   font-weight: 500;
   line-height: 24px;
@@ -225,7 +225,7 @@ const logoutButtonStyle = css`
   cursor: pointer;
 
   &:active {
-    background-color: #fff7f7;
+    background-color: ${theme.colors.background.criticalWeak};
   }
 
   &:disabled {
@@ -240,7 +240,7 @@ const logoutIconStyle = css`
 `;
 
 const logoutErrorStyle = css`
-  color: ${theme.colors.text.danger};
+  color: ${theme.colors.foreground.critical};
   font-size: 13px;
   line-height: 20px;
 `;

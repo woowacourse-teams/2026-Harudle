@@ -1097,7 +1097,7 @@ const pageStyle = (wideContent: boolean) => css`
   border: 1px solid #ddd8d1;
   border-radius: 8px;
   background: #fffefa;
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-family: 'Avenir Next', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
   letter-spacing: -0.02em;
   -webkit-font-smoothing: antialiased;
@@ -1167,7 +1167,7 @@ const menuButtonStyle = (active: boolean) => css`
   border: 0;
   border-radius: 10px;
   background: ${active ? 'linear-gradient(90deg,#eee8ff,#f3edff)' : 'transparent'};
-  color: ${active ? theme.colors.text.brand : theme.colors.text.primary};
+  color: ${active ? theme.colors.foreground.brand : theme.colors.foreground.neutral};
   text-align: left;
   font-size: 16px;
   font-weight: 700;
@@ -1196,7 +1196,7 @@ const adminProfileStyle = css`
   small {
     display: block;
     margin-top: 4px;
-    color: ${theme.colors.text.secondary};
+    color: ${theme.colors.foreground.neutralMuted};
   }
   @media (max-width: 760px) {
     display: none;
@@ -1210,7 +1210,7 @@ const adminAvatarStyle = css`
   overflow: hidden;
   border: 1px solid #ddd8d1;
   border-radius: 50%;
-  background: white;
+  background: ${theme.colors.background.surface};
   img {
     width: 50px;
     height: 50px;
@@ -1237,7 +1237,7 @@ const headlineStyle = css`
   }
   p {
     margin: 0;
-    color: ${theme.colors.text.secondary};
+    color: ${theme.colors.foreground.neutralMuted};
   }
   .hero {
   }
@@ -1325,11 +1325,11 @@ const operationCardStyle = css`
     padding: 12px 18px;
     border: 1px solid #e8e4de;
     border-radius: 10px;
-    background: white;
-    color: ${theme.colors.text.primary};
+    background: ${theme.colors.background.surface};
+    color: ${theme.colors.foreground.neutral};
     cursor: pointer;
     strong {
-      color: ${theme.colors.text.brand};
+      color: ${theme.colors.foreground.brand};
     }
   }
   @media (max-width: 760px) {
@@ -1407,12 +1407,12 @@ const searchFormStyle = css`
   padding: 5px 8px 5px 14px;
   border: 1px solid #cfc9c1;
   border-radius: 10px;
-  background: white;
+  background: ${theme.colors.background.surface};
   transition:
     border-color 0.2s ease,
     box-shadow 0.2s ease;
   &:focus-within {
-    border-color: ${theme.colors.bg.brand};
+    border-color: ${theme.colors.stroke.brandSolid};
     box-shadow: 0 0 0 3px rgb(139 112 232 / 12%);
   }
   img {
@@ -1427,7 +1427,7 @@ const searchFormStyle = css`
     border: 0;
     outline: 0;
     background: transparent;
-    color: ${theme.colors.text.primary};
+    color: ${theme.colors.foreground.neutral};
     font: inherit;
     font-size: 14px;
   }
@@ -1440,8 +1440,8 @@ const searchFormStyle = css`
     padding: 7px 10px;
     border: 0;
     border-radius: 7px;
-    background: ${theme.colors.bg.brand};
-    color: white;
+    background: ${theme.colors.background.brandSolid};
+    color: ${theme.colors.foreground.onBrand};
     font-weight: 700;
     line-height: 1.2;
     white-space: nowrap;
@@ -1463,7 +1463,7 @@ const statusSelectStyle = css`
   padding: 9px 12px;
   border: 1px solid #d5d0c9;
   border-radius: 8px;
-  background: white;
+  background: ${theme.colors.background.surface};
   @media (max-width: 760px) {
     width: calc(100% - 12px);
     margin: 0 6px 10px;
@@ -1519,7 +1519,7 @@ const miniUserStyle = css`
     padding: 2px;
     border: 1px solid #cfc3f4;
     border-radius: 50%;
-    background: #f7f4ff;
+    background: ${theme.colors.background.brandWeak};
     object-fit: contain;
   }
 `;
@@ -1548,7 +1548,7 @@ const detailButtonStyle = css`
 `;
 const emptyCellStyle = css`
   padding: 32px !important;
-  color: ${theme.colors.text.secondary}!important;
+  color: ${theme.colors.foreground.neutralMuted}!important;
   text-align: center !important;
 `;
 const historyToolbarStyle = css`
@@ -1563,10 +1563,10 @@ const historyToolbarStyle = css`
 `;
 const filterButtonStyle = (active: boolean) => css`
   padding: 9px 14px;
-  border: 1px solid ${active ? theme.colors.bg.brand : '#d5d0c9'};
+  border: 1px solid ${active ? theme.colors.stroke.brandSolid : '#d5d0c9'};
   border-radius: 8px;
-  background: ${active ? '#eee9ff' : 'white'};
-  color: ${active ? theme.colors.text.brand : theme.colors.text.primary};
+  background: ${active ? '#eee9ff' : theme.colors.background.surface};
+  color: ${active ? theme.colors.foreground.brand : theme.colors.foreground.neutral};
   font-weight: ${active ? 700 : 400};
   cursor: pointer;
 `;
@@ -1575,14 +1575,14 @@ const dateLabelStyle = css`
   align-items: center;
   gap: 8px;
   margin-left: auto;
-  color: ${theme.colors.text.secondary};
+  color: ${theme.colors.foreground.neutralMuted};
   font-size: 13px;
   input {
     padding: 8px 10px;
     border: 1px solid #d5d0c9;
     border-radius: 8px;
-    background: white;
-    color: ${theme.colors.text.primary};
+    background: ${theme.colors.background.surface};
+    color: ${theme.colors.foreground.neutral};
   }
 `;
 const idCellStyle = css`
@@ -1595,7 +1595,7 @@ const generationPillStyle = (status: GenerationStatus) => css`
   padding: 5px 10px;
   border-radius: 7px;
   background: ${status === 'FAILED' ? '#ffdfe6' : status === 'SUCCEEDED' ? '#e8f5e4' : '#eee9ff'};
-  color: ${status === 'FAILED' ? '#e7526b' : status === 'SUCCEEDED' ? '#4d8b48' : '#7355da'};
+  color: ${status === 'FAILED' ? '#e7526b' : status === 'SUCCEEDED' ? '#4d8b48' : theme.colors.foreground.brand};
   text-align: center;
   font-weight: 700;
 `;
@@ -1627,9 +1627,9 @@ const historyPosthogStyle = css`
 const posthogLinkStyle = css`
   display: inline-block;
   padding: 13px 18px;
-  border: 2px solid ${theme.colors.bg.brand};
+  border: 2px solid ${theme.colors.stroke.brandSolid};
   border-radius: 8px;
-  color: ${theme.colors.text.brand};
+  color: ${theme.colors.foreground.brand};
   font-weight: 800;
   text-decoration: none;
   @media (max-width: 760px) {
@@ -1682,13 +1682,13 @@ const detailInfoStyle = css`
   grid-template-columns: 105px 1fr;
   gap: 19px 16px;
   margin: 0;
-  color: ${theme.colors.text.secondary};
+  color: ${theme.colors.foreground.neutralMuted};
   dt,
   dd {
     margin: 0;
   }
   dd {
-    color: ${theme.colors.text.primary};
+    color: ${theme.colors.foreground.neutral};
     font-weight: 500;
     overflow-wrap: anywhere;
   }
@@ -1706,7 +1706,7 @@ const usageStyle = css`
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   margin: 12px 0 18px;
-  border: 1px solid ${theme.colors.bg.brand};
+  border: 1px solid ${theme.colors.stroke.brandSolid};
   border-radius: 12px;
   @media (max-width: 760px) {
     margin-top: 10px;
@@ -1726,7 +1726,7 @@ const metricStyle = (accent: boolean) => css`
   strong {
     display: block;
     margin-top: 8px;
-    color: ${accent ? theme.colors.text.brand : theme.colors.text.primary};
+    color: ${accent ? theme.colors.foreground.brand : theme.colors.foreground.neutral};
     font-size: 27px;
   }
   @media (max-width: 760px) {
@@ -1747,7 +1747,7 @@ const actionButtonStyle = css`
   border: 0;
   border-radius: 8px;
   background: #a990eb;
-  color: white;
+  color: ${theme.colors.foreground.onBrand};
   font-weight: 800;
   cursor: pointer;
   &:disabled {
@@ -1773,7 +1773,7 @@ const secondaryActionButtonStyle = css`
   border: 1px solid #d5ccef;
   border-radius: 8px;
   background: #faf8ff;
-  color: ${theme.colors.text.brand};
+  color: ${theme.colors.foreground.brand};
   font-weight: 800;
   cursor: pointer;
   &:disabled {
@@ -1814,7 +1814,7 @@ const usageModalHeaderStyle = css`
 `;
 const usageModalEyebrowStyle = css`
   margin: 0;
-  color: ${theme.colors.text.brand};
+  color: ${theme.colors.foreground.brand};
   font-size: 12px;
   font-weight: 700;
 `;
@@ -1827,7 +1827,7 @@ const usageModalCloseButtonStyle = css`
   border: 0;
   border-radius: 50%;
   background: #f3f0ec;
-  color: ${theme.colors.text.secondary};
+  color: ${theme.colors.foreground.neutralMuted};
   font-size: 22px;
   line-height: 1;
   cursor: pointer;
@@ -1838,18 +1838,18 @@ const usageModalCloseButtonStyle = css`
 `;
 const usageModalDescriptionStyle = css`
   margin: 22px 0 0;
-  color: ${theme.colors.text.secondary};
+  color: ${theme.colors.foreground.neutralMuted};
   font-size: 14px;
   line-height: 1.6;
   strong {
-    color: ${theme.colors.text.primary};
+    color: ${theme.colors.foreground.neutral};
   }
 `;
 const usageModalFieldStyle = css`
   display: grid;
   gap: 8px;
   margin-top: 18px;
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 13px;
   font-weight: 700;
 `;
@@ -1860,9 +1860,9 @@ const usageModalInputStyle = css`
   padding: 0 14px;
   border: 1px solid #cfc9c1;
   border-radius: 10px;
-  background: white;
+  background: ${theme.colors.background.surface};
   &:focus-within {
-    border-color: ${theme.colors.bg.brand};
+    border-color: ${theme.colors.stroke.brandSolid};
     box-shadow: 0 0 0 3px rgb(139 112 232 / 12%);
   }
   input {
@@ -1872,21 +1872,21 @@ const usageModalInputStyle = css`
     border: 0;
     outline: 0;
     background: transparent;
-    color: ${theme.colors.text.primary};
+    color: ${theme.colors.foreground.neutral};
     font: inherit;
     font-size: 18px;
     font-weight: 700;
   }
   > span {
     flex: 0 0 auto;
-    color: ${theme.colors.text.secondary};
+    color: ${theme.colors.foreground.neutralMuted};
     font-size: 14px;
     font-weight: 500;
   }
 `;
 const usageModalHintStyle = css`
   margin: 8px 0 0;
-  color: ${theme.colors.text.secondary};
+  color: ${theme.colors.foreground.neutralMuted};
   font-size: 12px;
 `;
 const usageModalNoticeStyle = css`
@@ -1901,13 +1901,13 @@ const usageModalNoticeStyle = css`
   }
   p {
     margin: 8px 0 0;
-    color: ${theme.colors.text.secondary};
+    color: ${theme.colors.foreground.neutralMuted};
     font-size: 13px;
   }
 `;
 const usageModalErrorStyle = css`
   margin: 12px 0 0;
-  color: ${theme.colors.text.danger};
+  color: ${theme.colors.foreground.critical};
   font-size: 12px;
   line-height: 1.5;
 `;
@@ -1921,8 +1921,8 @@ const usageModalCancelButtonStyle = css`
   padding: 12px;
   border: 1px solid #d5d0c9;
   border-radius: 8px;
-  background: white;
-  color: ${theme.colors.text.primary};
+  background: ${theme.colors.background.surface};
+  color: ${theme.colors.foreground.neutral};
   font-weight: 700;
   cursor: pointer;
   &:disabled {
@@ -1935,7 +1935,7 @@ const usageModalConfirmButtonStyle = (reset: boolean) => css`
   border: 0;
   border-radius: 8px;
   background: ${reset ? '#ffe29a' : '#a990eb'};
-  color: ${reset ? '#3e3520' : 'white'};
+  color: ${reset ? '#3e3520' : theme.colors.foreground.onBrand};
   font-weight: 800;
   cursor: pointer;
   &:disabled {
@@ -1947,7 +1947,7 @@ const emptyDetailStyle = css`
   padding: 48px 24px;
   border: 1px dashed #d5d0c9;
   border-radius: 12px;
-  color: ${theme.colors.text.secondary};
+  color: ${theme.colors.foreground.neutralMuted};
   text-align: center;
   line-height: 1.7;
 `;
@@ -1956,12 +1956,12 @@ const errorStyle = css`
   padding: 12px;
   border-radius: 8px;
   background: #fff0f0;
-  color: ${theme.colors.text.danger};
+  color: ${theme.colors.foreground.critical};
   font-size: 13px;
 `;
 const messageStyle = css`
   padding: 32px 0;
-  color: ${theme.colors.text.secondary};
+  color: ${theme.colors.foreground.neutralMuted};
   text-align: center;
 `;
 

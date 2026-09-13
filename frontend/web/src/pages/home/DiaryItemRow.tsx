@@ -1,3 +1,4 @@
+import { diaryTimelineColors } from './diaryTimelineColors';
 import { css } from '@emotion/react';
 import { theme } from '../../styles/theme';
 import { formatDiaryDate } from '../../shared/utils';
@@ -53,7 +54,7 @@ const diaryItemRowStyle = css`
     bottom: 0;
     left: 25px;
     width: 2px;
-    background: #ded8ff;
+    background: ${diaryTimelineColors.connector};
   }
 
   &:not(:first-of-type)::before {
@@ -68,7 +69,7 @@ const diaryItemRowStyle = css`
     width: 12px;
     height: 12px;
     border-radius: 50%;
-    background: #aaa8b2;
+    background: ${diaryTimelineColors.marker};
     transform: translate(-50%, -50%);
     z-index: 1;
     pointer-events: none;
@@ -89,14 +90,14 @@ const dateStyle = css`
   white-space: nowrap;
 
   strong {
-    color: ${theme.colors.text.primary};
+    color: ${theme.colors.foreground.neutral};
     font-size: 15px;
     font-weight: 700;
     line-height: 24px;
   }
 
   span {
-    color: ${theme.colors.text.secondary};
+    color: ${theme.colors.foreground.neutralMuted};
     font-size: 12px;
     font-weight: 400;
     line-height: 18px;
@@ -107,7 +108,7 @@ const titleStyle = css`
   display: -webkit-box;
   max-height: 60px;
   overflow: hidden;
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 15px;
   font-weight: 500;
   line-height: 24px;

@@ -348,7 +348,7 @@ const GuestTrialErrorCard = ({
 const trialFormSectionStyle = css`
   width: 100%;
   padding: 0 20px 64px;
-  background-color: #f8f6ff;
+  background-color: ${theme.colors.background.brandWeak};
 `;
 
 const trialCardStyle = css`
@@ -357,9 +357,9 @@ const trialCardStyle = css`
   gap: 20px;
   width: 100%;
   padding: 28px 20px 24px;
-  border: 1px solid #efebfa;
+  border: 1px solid ${theme.colors.stroke.brandWeak};
   border-radius: 24px;
-  background-color: #ffffff;
+  background-color: ${theme.colors.background.surface};
   box-shadow: 0 18px 40px rgb(47 40 77 / 8%);
 `;
 
@@ -377,7 +377,7 @@ const centeredHeaderStyle = css`
 
 const formEyebrowStyle = css`
   margin: 0;
-  color: ${theme.colors.text.brand};
+  color: ${theme.colors.foreground.brand};
   font-size: 13px;
   font-weight: 700;
   line-height: 20px;
@@ -385,7 +385,7 @@ const formEyebrowStyle = css`
 
 const formTitleStyle = css`
   margin: 0;
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 24px;
   font-weight: 800;
   line-height: 34px;
@@ -404,24 +404,24 @@ const textAreaStyle = (hasError: boolean) => css`
   min-height: 240px;
   padding: 16px;
   border: 1px solid
-    ${hasError ? theme.colors.text.danger : theme.colors.border.primary};
+    ${hasError ? theme.colors.stroke.critical : theme.colors.stroke.outline};
   border-radius: 16px;
   outline: none;
   resize: vertical;
-  background-color: #ffffff;
-  color: ${theme.colors.text.primary};
+  background-color: ${theme.colors.background.surface};
+  color: ${theme.colors.foreground.neutral};
   font-size: 16px;
   line-height: 26px;
 
   &::placeholder {
-    color: #8b8793;
+    color: ${theme.colors.foreground.placeholder};
   }
 
   &:focus {
     border-color: ${
-      hasError ? theme.colors.text.danger : theme.colors.text.brand
+      hasError ? theme.colors.stroke.critical : theme.colors.stroke.brandStrong
     };
-    background-color: #ffffff;
+    background-color: ${theme.colors.background.surface};
     box-shadow: 0 0 0 3px rgb(115 85 218 / 10%);
   }
 `;
@@ -434,20 +434,20 @@ const descriptionRowStyle = css`
 `;
 
 const errorStyle = css`
-  color: ${theme.colors.text.danger};
+  color: ${theme.colors.foreground.critical};
   font-size: 13px;
   line-height: 20px;
 `;
 
 const hintStyle = css`
-  color: ${theme.colors.text.secondary};
+  color: ${theme.colors.foreground.neutralMuted};
   font-size: 13px;
   line-height: 20px;
 `;
 
 const countStyle = css`
   flex-shrink: 0;
-  color: ${theme.colors.text.secondary};
+  color: ${theme.colors.foreground.neutralMuted};
   font-size: 13px;
   line-height: 20px;
 `;
@@ -461,8 +461,8 @@ const primaryButtonStyle = css`
   padding: 14px 20px;
   border: none;
   border-radius: 16px;
-  background-color: ${theme.colors.bg.brand};
-  color: #ffffff;
+  background-color: ${theme.colors.background.brandSolid};
+  color: ${theme.colors.foreground.onBrand};
   font-size: 16px;
   font-weight: 700;
   line-height: 24px;
@@ -474,7 +474,7 @@ const primaryButtonStyle = css`
   }
 
   &:focus-visible {
-    outline: 3px solid rgb(115 85 218 / 35%);
+    outline: 3px solid ${theme.colors.stroke.focusRing};
     outline-offset: 2px;
   }
 
@@ -493,7 +493,7 @@ const generationImageStyle = css`
 const generationMessageStyle = css`
   min-height: 52px;
   margin: 0;
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 18px;
   font-weight: 700;
   line-height: 26px;
@@ -503,7 +503,7 @@ const generationMessageStyle = css`
 
 const extendedWaitMessageStyle = css`
   margin: -12px 0 0;
-  color: ${theme.colors.text.secondary};
+  color: ${theme.colors.foreground.neutralMuted};
   font-size: 14px;
   line-height: 22px;
   text-align: center;
@@ -523,7 +523,7 @@ const freeNoticeStyle = css`
   padding: 12px 14px;
   border-radius: 14px;
   background-color: #f5f1ff;
-  color: ${theme.colors.text.brand};
+  color: ${theme.colors.foreground.brand};
   font-size: 14px;
   font-weight: 700;
   line-height: 22px;
@@ -542,9 +542,9 @@ const resultPreloadImageStyle = css`
 const resultImageStyle = css`
   width: 100%;
   aspect-ratio: 1;
-  border: 1px solid ${theme.colors.border.primary};
+  border: 1px solid ${theme.colors.stroke.outline};
   border-radius: 18px;
-  background-color: #f8f6ff;
+  background-color: ${theme.colors.background.brandWeak};
   object-fit: cover;
 `;
 
@@ -552,8 +552,8 @@ const resultImageErrorStyle = css`
   margin: 0;
   padding: 24px 16px;
   border-radius: 18px;
-  background-color: #f8f6ff;
-  color: ${theme.colors.text.secondary};
+  background-color: ${theme.colors.background.brandWeak};
+  color: ${theme.colors.foreground.neutralMuted};
   font-size: 15px;
   line-height: 24px;
   text-align: center;
@@ -566,13 +566,13 @@ const resultCtaStyle = css`
   gap: 16px;
   width: 100%;
   padding-top: 20px;
-  border-top: 1px solid ${theme.colors.border.primary};
+  border-top: 1px solid ${theme.colors.stroke.divider};
   text-align: center;
 `;
 
 const resultCtaTitleStyle = css`
   margin: 0;
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 20px;
   font-weight: 800;
   line-height: 30px;
@@ -581,7 +581,7 @@ const resultCtaTitleStyle = css`
 
 const errorMessageStyle = css`
   margin: 0;
-  color: ${theme.colors.text.secondary};
+  color: ${theme.colors.foreground.neutralMuted};
   font-size: 15px;
   line-height: 24px;
   text-align: center;
