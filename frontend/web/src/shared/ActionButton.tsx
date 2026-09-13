@@ -47,10 +47,10 @@ const actionButtonStyle = (variant: ActionButtonVariant) => css`
   width: 100%;
   height: 56px;
   padding: 16px 20px;
-  border: ${variant === 'primary' ? 'none' : `1px solid ${theme.colors.border.primary}`};
+  border: ${variant === 'primary' ? 'none' : `1px solid ${theme.colors.stroke.outline}`};
   border-radius: 24px;
-  background-color: ${variant === 'primary' ? theme.colors.bg.brand : '#FFFFFF'};
-  color: ${variant === 'primary' ? 'white' : 'black'};
+  background-color: ${variant === 'primary' ? theme.colors.background.brandSolid : theme.colors.background.surface};
+  color: ${variant === 'primary' ? theme.colors.foreground.onBrand : theme.colors.foreground.neutral};
   font-size: 16px;
   font-weight: 500;
   line-height: 24px;

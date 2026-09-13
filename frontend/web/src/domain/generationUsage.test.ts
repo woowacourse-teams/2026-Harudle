@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '../shared/errorMessage';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { RequestError, type ProblemDetails } from '../shared/api';
 import { getGenerationUsage } from './generationUsage';
@@ -14,9 +15,6 @@ const data = {
   limitCount: 3,
   remainingCount: 2,
 };
-
-const fallbackErrorMessage =
-  '남은 생성 횟수를 조회하는 중 에러가 발생했습니다. 다시 시도해주세요.';
 
 const createJsonResponse = (data: unknown, status: number): Response =>
   ({
@@ -47,7 +45,7 @@ describe('생성 횟수 조회 API', () => {
     );
 
     await expect(getGenerationUsage()).rejects.toThrow(
-      'GenerationUsage 응답 형식이 일치하지 않습니다.',
+      ERROR_MESSAGES.INVALID_GENERATION_USAGE_RESPONSE,
     );
   });
 
@@ -78,7 +76,9 @@ describe('생성 횟수 조회 API', () => {
       createJsonResponse({ message: 'Internal Server Error' }, 500),
     );
 
-    await expect(getGenerationUsage()).rejects.toThrow(fallbackErrorMessage);
+    await expect(getGenerationUsage()).rejects.toThrow(
+      ERROR_MESSAGES.GENERATION_USAGE_FETCH_FAILED,
+    );
   });
 
   it('실패 응답을 JSON으로 파싱할 수 없으면 기본 오류를 던진다', async () => {
@@ -89,6 +89,8 @@ describe('생성 횟수 조회 API', () => {
       },
     });
 
-    await expect(getGenerationUsage()).rejects.toThrow(fallbackErrorMessage);
+    await expect(getGenerationUsage()).rejects.toThrow(
+      ERROR_MESSAGES.GENERATION_USAGE_FETCH_FAILED,
+    );
   });
 });

@@ -181,7 +181,7 @@ const monthInputStyle = css`
   border: none;
   outline: none;
   background-color: transparent;
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 18px;
   font-weight: 700;
   line-height: 26px;
@@ -220,7 +220,7 @@ const diaryContentStyle = css`
 const remainingGenerationUsageStyle = css`
   display: flex;
   align-items: center;
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 15px;
   font-weight: 500;
   line-height: 22px;
@@ -230,10 +230,10 @@ const remainingGenerationUsageStyle = css`
 const generationUsageTextStyle = (remainingCount: number | null) => css`
   color: ${
     remainingCount === null
-      ? theme.colors.text.secondary
+      ? theme.colors.foreground.neutralMuted
       : remainingCount > 0
-        ? theme.colors.text.brand
-        : theme.colors.text.danger
+        ? theme.colors.foreground.brand
+        : theme.colors.foreground.critical
   };
   font-weight: 800;
 `;
@@ -243,7 +243,7 @@ const retryButtonStyle = css`
   padding: 0;
   border: none;
   background: none;
-  color: ${theme.colors.text.brand};
+  color: ${theme.colors.foreground.brand};
   font: inherit;
   cursor: pointer;
 `;

@@ -107,7 +107,7 @@ const pageStyle = css`
   height: 100%;
   padding: 20px;
   overflow: hidden;
-  background-color: #ffffff;
+  background-color: ${theme.colors.background.surface};
 `;
 
 const headerButtonStyle = css`
@@ -136,7 +136,7 @@ const contentStyle = css`
 `;
 
 const promptTitleStyle = css`
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 22px;
   font-weight: 700;
   line-height: 34px;

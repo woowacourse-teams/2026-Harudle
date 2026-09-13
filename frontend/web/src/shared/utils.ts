@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from './errorMessage';
 const WEEKDAYS = [
   '일요일',
   '월요일',
@@ -25,7 +26,7 @@ export const getToday = (): {
     .map(Number);
 
   if (!isMonth(month)) {
-    throw new Error('올바른 month가 아닙니다!');
+    throw new Error(ERROR_MESSAGES.INVALID_MONTH);
   }
 
   return {

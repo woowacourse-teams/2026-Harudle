@@ -45,7 +45,7 @@ const streakCardStyle = css`
   width: 100%;
   min-height: 84px;
   padding: 4px 12px 4px 8px;
-  border: 1px solid ${theme.colors.border.primary};
+  border: 1px solid ${theme.colors.stroke.outline};
   border-radius: 16px;
   background-color: #faf6fe;
 `;
@@ -77,13 +77,13 @@ const streakTitleStyle = css`
   display: flex;
   align-items: baseline;
   gap: 8px;
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 16px;
   font-weight: 500;
   line-height: 20px;
 
   strong {
-    color: ${theme.colors.text.brand};
+    color: ${theme.colors.foreground.brand};
     font-size: 16px;
     font-weight: 700;
   }
@@ -91,7 +91,7 @@ const streakTitleStyle = css`
 
 const streakDescriptionStyle = css`
   margin-top: 4px;
-  color: ${theme.colors.text.secondary};
+  color: ${theme.colors.foreground.neutralMuted};
   font-size: 14px;
   font-weight: 500;
   line-height: 20px;

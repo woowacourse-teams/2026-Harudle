@@ -84,7 +84,7 @@ const pageStyle = css`
   height: 100%;
   padding: 12px 20px 10px;
   overflow: hidden;
-  background-color: #ffffff;
+  background-color: ${theme.colors.background.surface};
 `;
 
 const heroStyle = css`
@@ -111,7 +111,7 @@ const heroImageStyle = css`
 `;
 
 const titleStyle = css`
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 28px;
   font-weight: 700;
   line-height: 42px;
@@ -119,7 +119,7 @@ const titleStyle = css`
 `;
 
 const accentStyle = css`
-  color: ${theme.colors.text.brand};
+  color: ${theme.colors.foreground.brand};
 `;
 
 const loginAreaStyle = css`
@@ -141,9 +141,9 @@ const kakaoButtonStyle = css`
   padding: 0 24px;
   border: none;
   border-radius: 16px;
-  background-color: #ffd66b;
+  background-color: ${theme.colors.background.kakao};
   box-shadow: 0 4px 16px rgb(26 20 41 / 6%);
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 17px;
   font-weight: 700;
   line-height: 24px;
@@ -158,7 +158,7 @@ const kakaoIconStyle = css`
 const noticeStyle = css`
   width: 100%;
   max-width: 342px;
-  color: ${theme.colors.text.secondary};
+  color: ${theme.colors.foreground.neutralMuted};
   font-size: 11px;
   font-weight: 400;
   line-height: 18px;

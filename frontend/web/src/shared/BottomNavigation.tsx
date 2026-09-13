@@ -32,7 +32,7 @@ const bottomNavigationStyle = css`
   bottom: 0;
   width: 100%;
   height: 80px;
-  background-color: #ffffff;
+  background-color: ${theme.colors.background.surface};
   box-shadow: 0 -1px 2px rgba(17, 17, 24, 0.04);
 `;
 
@@ -56,11 +56,11 @@ const iconStyle = (icon: string, isActive: boolean) => css`
   display: block;
   width: 32px;
   height: 32px;
-  background-color: ${isActive ? theme.colors.bg.brand : '#6F6B79'};
+  background-color: ${isActive ? theme.colors.foreground.brand : theme.colors.foreground.neutralMuted};
   -webkit-mask: url(${icon}) center / contain no-repeat;
   mask: url(${icon}) center / contain no-repeat;
 `;
 
 const labelStyle = (isActive: boolean) => css`
-  color: ${isActive ? theme.colors.bg.brand : '#6F6B79'};
+  color: ${isActive ? theme.colors.foreground.brand : theme.colors.foreground.neutralMuted};
 `;

@@ -118,14 +118,14 @@ const diaryListHeaderStyle = css`
 `;
 
 const diaryListTitleStyle = css`
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 15px;
   font-weight: 600;
   line-height: 22px;
 `;
 
 const monthlyDiaryCountStyle = css`
-  color: ${theme.colors.text.secondary};
+  color: ${theme.colors.foreground.neutralMuted};
   font-size: 13px;
   font-weight: 400;
   line-height: 20px;

@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { API_BASE_URL, isProblemDetails, RequestError } from '../../shared/api';
 import { authFetch } from '../../shared/auth';
 
@@ -18,13 +19,13 @@ export const createDiaryShareLink = async ({
       throw new RequestError(errorData);
     }
 
-    throw new Error('알 수 없는 에러가 발생했습니다.');
+    throw new Error(ERROR_MESSAGES.DIARY_SHARE_LINK_CREATION_FAILED);
   }
 
   const data: unknown = await response.json();
 
   if (!isDiaryShareLinkResponse(data)) {
-    throw new Error('DiaryShare 응답 형식이 일치하지 않습니다.');
+    throw new Error(ERROR_MESSAGES.INVALID_DIARY_SHARE_RESPONSE);
   }
 
   return data;

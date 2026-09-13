@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { API_BASE_URL, isProblemDetails, RequestError } from '../../shared/api';
 import { authFetch } from '../../shared/auth';
 
@@ -10,15 +11,13 @@ export const getUserProfile = async (): Promise<ProfileResponse> => {
       throw new RequestError(errorData);
     }
 
-    throw new Error(
-      '프로필을 조회하는 중 문제가 발생했습니다. 다시 시도해주세요.',
-    );
+    throw new Error(ERROR_MESSAGES.PROFILE_FETCH_FAILED);
   }
 
   const data: unknown = await response.json();
 
   if (!isProfileResponse(data)) {
-    throw new Error('Profile 응답 형식이 일치하지 않습니다.');
+    throw new Error(ERROR_MESSAGES.INVALID_PROFILE_RESPONSE);
   }
 
   return data;
