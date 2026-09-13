@@ -134,7 +134,7 @@ const contentStyle = css`
 
 const diaryTitleStyle = css`
   flex-shrink: 0;
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 26px;
   font-weight: 700;
   line-height: 36px;
@@ -146,14 +146,14 @@ const diaryImageStyle = css`
   width: 100%;
   aspect-ratio: 1;
   border-radius: 16px;
-  outline: 1px solid ${theme.colors.border};
+  outline: 1px solid ${theme.colors.stroke.outline};
   background-color: transparent;
   object-fit: cover;
 `;
 
 const storyTitleStyle = css`
   text-align: center;
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 18px;
   font-weight: 700;
   line-height: 28px;
@@ -164,7 +164,7 @@ const storyTitleStyle = css`
 const storyTextStyle = css`
   flex-shrink: 0;
   margin-top: -2px;
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 16px;
   font-weight: 400;
   line-height: 26px;

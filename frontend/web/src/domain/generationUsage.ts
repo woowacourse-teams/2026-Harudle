@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '../shared/errorMessage';
 import { API_BASE_URL, isProblemDetails, RequestError } from '../shared/api';
 import { authFetch } from '../shared/auth';
 import { isNonNegativeInteger } from '../shared/utils';
@@ -18,15 +19,13 @@ export const getGenerationUsage = async ({
       throw new RequestError(errorData);
     }
 
-    throw new Error(
-      '남은 생성 횟수를 조회하는 중 에러가 발생했습니다. 다시 시도해주세요.',
-    );
+    throw new Error(ERROR_MESSAGES.GENERATION_USAGE_FETCH_FAILED);
   }
 
   const data: unknown = await response.json();
 
   if (!isGenerationUsageResponse(data)) {
-    throw new Error('GenerationUsage 응답 형식이 일치하지 않습니다.');
+    throw new Error(ERROR_MESSAGES.INVALID_GENERATION_USAGE_RESPONSE);
   }
 
   return data;

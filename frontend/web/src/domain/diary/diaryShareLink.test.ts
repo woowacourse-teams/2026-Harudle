@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { RequestError, type ProblemDetails } from '../../shared/api';
 import { createDiaryShareLink } from './diaryShareLink';
@@ -60,7 +61,7 @@ describe('일기 공유 링크 생성 API', () => {
     );
 
     await expect(createDiaryShareLink({ diaryId: DIARY_ID })).rejects.toThrow(
-      'DiaryShare 응답 형식이 일치하지 않습니다.',
+      ERROR_MESSAGES.INVALID_DIARY_SHARE_RESPONSE,
     );
   });
 
@@ -80,7 +81,7 @@ describe('일기 공유 링크 생성 API', () => {
     );
 
     await expect(createDiaryShareLink({ diaryId: DIARY_ID })).rejects.toThrow(
-      '알 수 없는 에러가 발생했습니다.',
+      ERROR_MESSAGES.DIARY_SHARE_LINK_CREATION_FAILED,
     );
   });
 
@@ -93,7 +94,7 @@ describe('일기 공유 링크 생성 API', () => {
     });
 
     await expect(createDiaryShareLink({ diaryId: DIARY_ID })).rejects.toThrow(
-      '알 수 없는 에러가 발생했습니다.',
+      ERROR_MESSAGES.DIARY_SHARE_LINK_CREATION_FAILED,
     );
   });
 });

@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { RequestError, type ProblemDetails } from '../../shared/api';
 import { getMonthlyDiaries } from './monthlyDiaries';
@@ -92,7 +93,7 @@ describe('월별 일기 조회 API', () => {
     );
 
     await expect(getMonthlyDiaries(monthlyDiariesRequest)).rejects.toThrow(
-      'MonthlyDiaries 응답 형식이 일치하지 않습니다.',
+      ERROR_MESSAGES.INVALID_MONTHLY_DIARIES_RESPONSE,
     );
   });
 
@@ -112,7 +113,7 @@ describe('월별 일기 조회 API', () => {
     );
 
     await expect(getMonthlyDiaries(monthlyDiariesRequest)).rejects.toThrow(
-      '월별 일기를 불러오는 중 문제가 발생했습니다. 다시 시도해주세요.',
+      ERROR_MESSAGES.MONTHLY_DIARIES_FETCH_FAILED,
     );
   });
 
@@ -125,7 +126,7 @@ describe('월별 일기 조회 API', () => {
     });
 
     await expect(getMonthlyDiaries(monthlyDiariesRequest)).rejects.toThrow(
-      '월별 일기를 불러오는 중 문제가 발생했습니다. 다시 시도해주세요.',
+      ERROR_MESSAGES.MONTHLY_DIARIES_FETCH_FAILED,
     );
   });
 });

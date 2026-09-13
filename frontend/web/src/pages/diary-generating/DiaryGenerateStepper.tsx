@@ -69,7 +69,7 @@ const progressRailStyle = css`
 const progressBarStyle = (progress: number) => css`
   width: 100%;
   height: ${progress}%;
-  background-color: ${theme.colors.bg.brand};
+  background-color: ${theme.colors.background.brandSolid};
   transition: height 500ms ease-in-out;
 `;
 
@@ -99,9 +99,9 @@ const indicatorStyle = ({
   width: 24px;
   height: 24px;
   border: 2px solid
-    ${isComplete || isActive ? theme.colors.bg.brand : '#e3e3e8'};
+    ${isComplete || isActive ? theme.colors.stroke.brandSolid : '#e3e3e8'};
   border-radius: 50%;
-  background-color: ${isComplete ? theme.colors.bg.brand : '#ffffff'};
+  background-color: ${isComplete ? theme.colors.background.brandSolid : theme.colors.background.surface};
   box-sizing: border-box;
   transform: scale(${isActive ? 1.1 : 1});
 
@@ -112,7 +112,7 @@ const indicatorStyle = ({
 `;
 
 const labelStyle = css`
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 16px;
   font-weight: 500;
   line-height: 24px;

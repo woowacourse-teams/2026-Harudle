@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { API_BASE_URL, isProblemDetails, RequestError } from '../../shared/api';
 import { authFetch } from '../../shared/auth';
 import { isMonth, type Month } from '../../shared/utils';
@@ -23,15 +24,13 @@ export const getMonthlyDiaries = async ({
       throw new RequestError(errorData);
     }
 
-    throw new Error(
-      '월별 일기를 불러오는 중 문제가 발생했습니다. 다시 시도해주세요.',
-    );
+    throw new Error(ERROR_MESSAGES.MONTHLY_DIARIES_FETCH_FAILED);
   }
 
   const data: unknown = await response.json();
 
   if (!isMonthlyDiariesResponse(data)) {
-    throw new Error('MonthlyDiaries 응답 형식이 일치하지 않습니다.');
+    throw new Error(ERROR_MESSAGES.INVALID_MONTHLY_DIARIES_RESPONSE);
   }
 
   return data;

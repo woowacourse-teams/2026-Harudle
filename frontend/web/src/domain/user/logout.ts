@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { API_BASE_URL, isProblemDetails, RequestError } from '../../shared/api';
 import { authFetch } from '../../shared/auth';
 
@@ -20,6 +21,6 @@ export const logout = async ({
       throw new RequestError(errorData);
     }
 
-    throw new Error('로그아웃하는 중 문제가 발생했습니다. 다시 시도해주세요.');
+    throw new Error(ERROR_MESSAGES.LOGOUT_FAILED);
   }
 };

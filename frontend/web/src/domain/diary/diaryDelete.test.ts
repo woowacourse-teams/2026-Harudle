@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { RequestError, type ProblemDetails } from '../../shared/api';
 import { deleteDiary } from './diaryDelete';
@@ -64,7 +65,7 @@ describe('일기 삭제 API', () => {
     );
 
     await expect(deleteDiary({ diaryId: DIARY_ID })).rejects.toThrow(
-      '알 수 없는 에러가 발생했습니다.',
+      ERROR_MESSAGES.DIARY_DELETION_FAILED,
     );
   });
 
@@ -77,7 +78,7 @@ describe('일기 삭제 API', () => {
     });
 
     await expect(deleteDiary({ diaryId: DIARY_ID })).rejects.toThrow(
-      '알 수 없는 에러가 발생했습니다.',
+      ERROR_MESSAGES.DIARY_DELETION_FAILED,
     );
   });
 });

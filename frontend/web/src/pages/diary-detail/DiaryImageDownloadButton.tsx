@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import ActionButton from '../../shared/ActionButton';
 import downloadIcon from '../../assets/icons/download.svg';
 import { useState } from 'react';
@@ -18,7 +19,7 @@ const DiaryImageDownloadButton = ({ imageUrl }: { imageUrl: string }) => {
       const response = await fetch(imageUrl, { cache: 'no-store' });
 
       if (!response.ok) {
-        throw new Error('이미지 저장에 실패했습니다.');
+        throw new Error(ERROR_MESSAGES.DIARY_IMAGE_SAVE_FAILED);
       }
 
       const blob = await response.blob();

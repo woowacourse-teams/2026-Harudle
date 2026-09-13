@@ -160,7 +160,7 @@ const messageStyle = css`
   width: 300px;
   min-height: 68px;
   margin-top: -40px;
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 22px;
   font-weight: 700;
   line-height: 34px;
@@ -179,8 +179,8 @@ const supportingMessageStyle = css`
   align-items: center;
   padding: 4px 20px;
   border-radius: 12px;
-  background-color: #f7f4ff;
-  color: ${theme.colors.text.brand};
+  background-color: ${theme.colors.background.brandWeak};
+  color: ${theme.colors.foreground.brand};
   font-size: 14px;
   font-weight: 600;
   line-height: 22px;

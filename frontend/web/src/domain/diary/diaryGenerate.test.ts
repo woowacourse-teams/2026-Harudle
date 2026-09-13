@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { RequestError, type ProblemDetails } from '../../shared/api';
 import {
@@ -17,9 +18,6 @@ const diaryGenerateRequest: DiaryGenerateRequest = {
   sourceText: '오늘은 친구와 공원을 산책하며 즐거운 이야기를 나누었다.',
   idempotencyKey: '7e5cc251-fdde-4cc0-a54e-2c8142750609',
 };
-
-const fallbackErrorMessage =
-  '일기 생성 도중 문제가 발생했습니다. 다시 시도해주세요.';
 
 const createErrorResponse = (json: () => Promise<unknown>): Response =>
   ({
@@ -105,7 +103,7 @@ describe('일기 생성 API', () => {
     });
 
     await expect(generateDiary(diaryGenerateRequest)).rejects.toThrow(
-      'DiaryGenerate 응답 형식이 일치하지 않습니다.',
+      ERROR_MESSAGES.INVALID_DIARY_GENERATION_RESPONSE,
     );
   });
 
@@ -138,7 +136,7 @@ describe('일기 생성 API', () => {
     );
 
     await expect(generateDiary(diaryGenerateRequest)).rejects.toThrow(
-      fallbackErrorMessage,
+      ERROR_MESSAGES.DIARY_GENERATION_FAILED,
     );
   });
 
@@ -150,7 +148,7 @@ describe('일기 생성 API', () => {
     );
 
     await expect(generateDiary(diaryGenerateRequest)).rejects.toThrow(
-      fallbackErrorMessage,
+      ERROR_MESSAGES.DIARY_GENERATION_FAILED,
     );
   });
 });

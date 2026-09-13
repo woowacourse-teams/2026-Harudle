@@ -50,8 +50,8 @@ const linkStyle = css`
   min-height: 56px;
   padding: 14px 20px;
   border-radius: 16px;
-  background-color: #ffd66b;
-  color: ${theme.colors.text.primary};
+  background-color: ${theme.colors.background.kakao};
+  color: ${theme.colors.foreground.neutral};
   font-size: 16px;
   font-weight: 700;
   line-height: 24px;

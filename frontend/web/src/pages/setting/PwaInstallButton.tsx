@@ -82,11 +82,11 @@ const installButtonStyle = css`
   border-radius: 20px;
   background: linear-gradient(
     135deg,
-    ${theme.colors.bg.brand} 0%,
-    #7355da 100%
+    ${theme.colors.background.brandSolid} 0%,
+    ${theme.colors.background.brandStrong} 100%
   );
   box-shadow: 0 8px 20px rgb(115 85 218 / 20%);
-  color: #ffffff;
+  color: ${theme.colors.foreground.onBrand};
   text-align: left;
   cursor: pointer;
   transition:
@@ -110,7 +110,7 @@ const installButtonStyle = css`
   }
 
   &:focus-visible {
-    outline: 3px solid rgb(115 85 218 / 24%);
+    outline: 3px solid ${theme.colors.stroke.focusRing};
     outline-offset: 3px;
   }
 
@@ -158,33 +158,33 @@ const iconButtonStyle = css`
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background-color: #ffffff;
+  background-color: ${theme.colors.background.surface};
   box-shadow: 0 4px 12px rgb(52 35 112 / 18%);
 `;
 
 const iconStyle = css`
   width: 24px;
   height: 24px;
-  background-color: ${theme.colors.text.brand};
+  background-color: ${theme.colors.foreground.brand};
   -webkit-mask: url(${downloadIcon}) center / 24px 24px no-repeat;
   mask: url(${downloadIcon}) center / 24px 24px no-repeat;
 `;
 
 const guideLinkStyle = css`
   padding: 2px 4px;
-  color: ${theme.colors.text.secondary};
+  color: ${theme.colors.foreground.neutralMuted};
   font-size: 12px;
   line-height: 18px;
   text-decoration: none;
 
   & > strong {
-    color: ${theme.colors.text.brand};
+    color: ${theme.colors.foreground.brand};
     font-weight: 600;
   }
 
   &:focus-visible {
     border-radius: 4px;
-    outline: 2px solid rgb(115 85 218 / 24%);
+    outline: 2px solid ${theme.colors.stroke.focusRing};
     outline-offset: 2px;
   }
 

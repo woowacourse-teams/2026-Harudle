@@ -1,3 +1,4 @@
+import { diaryTimelineColors } from './diaryTimelineColors';
 import { css, keyframes } from '@emotion/react';
 import { theme } from '../../styles/theme';
 import { formatDiaryDate, getToday } from '../../shared/utils';
@@ -51,7 +52,7 @@ const skeletonRowStyle = css`
     bottom: -12px;
     left: 25px;
     width: 2px;
-    background: #ded8ff;
+    background: ${diaryTimelineColors.connector};
   }
 
   &::after {
@@ -62,7 +63,7 @@ const skeletonRowStyle = css`
     width: 12px;
     height: 12px;
     border-radius: 50%;
-    background: #aaa8b2;
+    background: ${diaryTimelineColors.marker};
     transform: translate(-50%, -50%);
   }
 `;
@@ -77,14 +78,14 @@ const dateStyle = css`
   white-space: nowrap;
 
   strong {
-    color: ${theme.colors.text.primary};
+    color: ${theme.colors.foreground.neutral};
     font-size: 15px;
     font-weight: 700;
     line-height: 24px;
   }
 
   span {
-    color: ${theme.colors.text.secondary};
+    color: ${theme.colors.foreground.neutralMuted};
     font-size: 12px;
     line-height: 18px;
   }

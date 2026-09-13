@@ -63,7 +63,7 @@ const SharedDiaryPageStyle = css`
   height: 100%;
   padding-top: 44px;
   overflow: auto;
-  background-color: #ffffff;
+  background-color: ${theme.colors.background.surface};
 `;
 
 const logoButtonStyle = css`
@@ -89,7 +89,7 @@ const logoStyle = css`
 
 const logoHintStyle = css`
   margin: 0 0 24px;
-  color: ${theme.colors.text.secondary};
+  color: ${theme.colors.foreground.neutralMuted};
   font-size: 13px;
   line-height: 20px;
   text-align: center;
@@ -110,7 +110,7 @@ const diaryTitleStyle = css`
   justify-content: center;
   width: 374px;
   height: 72px;
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 26px;
   font-weight: 700;
   line-height: 36px;
@@ -124,14 +124,14 @@ const diaryImageStyle = css`
   margin-top: 20px;
   padding: 2px;
   border-radius: 16px;
-  background-color: #ffffff;
+  background-color: ${theme.colors.background.surface};
   object-fit: cover;
   box-sizing: border-box;
 `;
 
 const diaryDateStyle = css`
   width: 374px;
-  color: ${theme.colors.text.secondary};
+  color: ${theme.colors.foreground.neutralMuted};
   font-size: 15px;
   font-weight: 500;
   line-height: 24px;

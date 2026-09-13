@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { RequestError, type ProblemDetails } from '../../shared/api';
 import { getUserProfile } from './profile';
@@ -16,9 +17,6 @@ const profile = {
   oauthProviders: ['kakao'],
   createdAt: '2026-08-13T08:06:11.371007Z',
 };
-
-const fallbackErrorMessage =
-  '프로필을 조회하는 중 문제가 발생했습니다. 다시 시도해주세요.';
 
 const createJsonResponse = (data: unknown, status: number): Response =>
   ({
@@ -55,7 +53,7 @@ describe('프로필 조회 API', () => {
     );
 
     await expect(getUserProfile()).rejects.toThrow(
-      'Profile 응답 형식이 일치하지 않습니다.',
+      ERROR_MESSAGES.INVALID_PROFILE_RESPONSE,
     );
   });
 
@@ -78,7 +76,9 @@ describe('프로필 조회 API', () => {
       },
     });
 
-    await expect(getUserProfile()).rejects.toThrow(fallbackErrorMessage);
+    await expect(getUserProfile()).rejects.toThrow(
+      ERROR_MESSAGES.PROFILE_FETCH_FAILED,
+    );
   });
 
   it('실패 응답이 Problem Details 형식이 아니면 기본 오류를 던진다', async () => {
@@ -86,7 +86,9 @@ describe('프로필 조회 API', () => {
       createJsonResponse({ message: 'Internal Server Error' }, 500),
     );
 
-    await expect(getUserProfile()).rejects.toThrow(fallbackErrorMessage);
+    await expect(getUserProfile()).rejects.toThrow(
+      ERROR_MESSAGES.PROFILE_FETCH_FAILED,
+    );
   });
 
   it('실패 응답이 Problem Details 형식이면 RequestError를 던진다', async () => {
