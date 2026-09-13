@@ -2,7 +2,7 @@ import ActionButton from '../../shared/ActionButton';
 import downloadIcon from '../../assets/icons/download.svg';
 import { useState } from 'react';
 import type { ApiRequest } from '../../shared/api';
-import { useAnalytics } from '../../shared/useAnalytics';
+import { useAnalytics } from '../../posthog/useAnalytics';
 
 const DiaryImageDownloadButton = ({ imageUrl }: { imageUrl: string }) => {
   const [downloadRequest, setDownloadRequest] = useState<ApiRequest<void>>({

@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { type ApiRequest } from '../../shared/api';
 import { useNavigate } from 'react-router';
 import { requestCsrfToken, setAccessToken } from '../../shared/auth';
-import { useAnalytics } from '../../shared/useAnalytics';
 import { logout } from '../../domain/user/logout';
+import { useAnalytics } from '../../posthog/useAnalytics';
 
 const useLogout = () => {
   const navigate = useNavigate();

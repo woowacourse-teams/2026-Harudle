@@ -1,7 +1,7 @@
 import { css } from '@emotion/react';
 import kakaoIcon from '../../assets/icons/kakao.svg';
-import { useAnalytics } from '../../shared/useAnalytics';
 import { theme } from '../../styles/theme';
+import { useAnalytics } from '../../posthog/useAnalytics';
 
 const KAKAO_OAUTH_PATH = '/oauth2/authorization/kakao';
 

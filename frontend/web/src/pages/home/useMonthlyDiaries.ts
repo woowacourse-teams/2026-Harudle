@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type ApiRequest } from '../../shared/api';
-import { useAnalytics } from '../../shared/useAnalytics';
 import {
   getMonthlyDiaries,
   type MonthlyDiariesResponse,
 } from '../../domain/diary/monthlyDiaries';
 import type { Month } from '../../shared/utils';
+import { useAnalytics } from '../../posthog/useAnalytics';
 
 const useMonthlyDiaries = ({ year, month }: { year: number; month: Month }) => {
   const { track } = useAnalytics();

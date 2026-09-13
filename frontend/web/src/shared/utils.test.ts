@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
-import { getToday, isMonth, isNonNegativeInteger } from '../shared/utils';
+import { getToday, isMonth, isNonNegativeInteger } from './utils';
 
 afterEach(() => {
   jest.useRealTimers();

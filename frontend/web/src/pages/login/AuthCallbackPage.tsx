@@ -7,7 +7,7 @@ import {
   setAccessToken,
 } from '../../shared/auth';
 import { useNavigate } from 'react-router';
-import { useAnalytics } from '../../shared/useAnalytics';
+import { useAnalytics } from '../../posthog/useAnalytics';
 
 // 여기 왔을 땐 이미 브라우저가 쿠키에 리프레시 토큰을 저장하고 있는 상태임
 const AuthCallbackPage = () => {

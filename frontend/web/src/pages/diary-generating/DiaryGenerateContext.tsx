@@ -7,13 +7,12 @@ import {
 } from 'react';
 import { type ApiRequest } from '../../shared/api';
 import { DIARY_CONTENT_SESSION_KEY } from '../../shared/constants';
-
-import { useAnalytics } from '../../shared/useAnalytics';
 import {
   generateDiary,
   type DiaryGenerateRequest,
   type DiaryGenerateResponse,
 } from '../../domain/diary/diaryGenerate';
+import { useAnalytics } from '../../posthog/useAnalytics';
 
 interface DiaryGenerateContextValue {
   request: ApiRequest<DiaryGenerateResponse>;

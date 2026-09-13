@@ -6,7 +6,7 @@ import {
   type DiaryShareLinkResponse,
 } from '../../domain/diary/diaryShareLink';
 import type { ApiRequest } from '../../shared/api';
-import { useAnalytics } from '../../shared/useAnalytics';
+import { useAnalytics } from '../../posthog/useAnalytics';
 
 const DiaryShareButton = ({
   diaryId,
