@@ -1,6 +1,6 @@
 import type { PostHog } from 'posthog-js';
-import { API_BASE_URL } from './api';
 import posthog from 'posthog-js';
+import { API_BASE_URL } from '../shared/api';
 
 const posthogKey = process.env.REACT_APP_POSTHOG_KEY;
 

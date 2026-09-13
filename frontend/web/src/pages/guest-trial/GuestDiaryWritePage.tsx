@@ -8,7 +8,6 @@ import generationCompleteImage from '../../assets/images/generation-step-5-compl
 import { theme } from '../../styles/theme';
 import DiaryGenerateStepper from '../diary-generating/DiaryGenerateStepper';
 import LandingPage from '../landing/LandingPage';
-import { useAnalytics } from '../../shared/useAnalytics';
 import GuestLoginCta from './GuestLoginCta';
 import { getKoreanToday, validateGuestDiary } from './guestDiaryValidation';
 import { isGuestTrialAlreadyUsedError } from './guestTrialErrors';
@@ -16,6 +15,7 @@ import type { GuestDiaryResponse } from './guestTrialApi';
 import useGuestDiaryCreation, {
   type GuestDiaryCreationState,
 } from './useGuestDiaryCreation';
+import { useAnalytics } from '../../posthog/useAnalytics';
 
 const GuestDiaryWritePage = () => {
   const { track } = useAnalytics();

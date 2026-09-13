@@ -1,8 +1,8 @@
 import { css } from '@emotion/react';
 import downloadIcon from '../../assets/icons/download.svg';
-import { useAnalytics } from '../../shared/useAnalytics';
 import { theme } from '../../styles/theme';
 import { usePwaInstall } from './PwaInstallContext';
+import { useAnalytics } from '../../posthog/useAnalytics';
 
 const INSTALL_GUIDE_URL =
   'https://harudle.notion.site/3ced0505d916802a83a1d5a5c9956295';

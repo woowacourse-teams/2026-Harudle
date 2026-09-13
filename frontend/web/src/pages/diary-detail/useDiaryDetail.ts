@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ApiRequest } from '../../shared/api';
-import { useAnalytics } from '../../shared/useAnalytics';
 import {
   getDiaryDetail,
   type DiaryDetailResponse,
 } from '../../domain/diary/diaryDetail';
+import { useAnalytics } from '../../posthog/useAnalytics';
 
 const useDiaryDetail = ({ diaryId }: { diaryId: string }) => {
   const { track } = useAnalytics();

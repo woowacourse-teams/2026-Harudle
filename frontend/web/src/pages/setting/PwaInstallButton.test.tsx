@@ -7,7 +7,7 @@ const mockTrack = jest.fn();
 const mockInstall = jest.fn<() => Promise<void>>();
 let mockStatus: 'installable' | 'ios-guide' = 'installable';
 
-jest.mock('../../shared/useAnalytics', () => ({
+jest.mock('../../posthog/useAnalytics', () => ({
   useAnalytics: () => ({ track: mockTrack }),
 }));
 

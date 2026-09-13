@@ -12,7 +12,7 @@ jest.mock('react-router', () => ({
   useNavigate: () => mockNavigate,
 }));
 
-jest.mock('../../shared/useAnalytics', () => ({
+jest.mock('../../posthog/useAnalytics', () => ({
   useAnalytics: () => ({ resetUser: mockResetUser }),
 }));
 

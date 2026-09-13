@@ -1,12 +1,12 @@
 import { useEffect } from 'react';
 import useSharedDiary from './useSharedDiary';
-import { useAnalytics } from '../../shared/useAnalytics';
 import LoadingSpinner from '../../shared/LoadingSpinner';
 import SharedDiaryError from './SharedDiaryError';
 import { css } from '@emotion/react';
 import { theme } from '../../styles/theme';
 import { useNavigate } from 'react-router';
 import harudleLogo from '../../assets/images/harudle-logo.png';
+import { useAnalytics } from '../../posthog/useAnalytics';
 
 const SharedDiaryContent = ({ shareId }: { shareId: string }) => {
   const navigate = useNavigate();
