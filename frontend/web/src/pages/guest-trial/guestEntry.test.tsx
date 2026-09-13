@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { StrictMode } from 'react';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -145,7 +146,7 @@ describe('게스트 진입 초기화', () => {
 
     expect(await screen.findByText('error')).toBeInTheDocument();
     expect(
-      screen.getByText('게스트 체험을 준비하지 못했습니다'),
+      screen.getByText(ERROR_MESSAGES.GUEST_ENTRY_PREPARATION_FAILED),
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '재시도' }));

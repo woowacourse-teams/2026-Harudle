@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import {
   createContext,
   useCallback,
@@ -103,9 +104,7 @@ export const useDiaryGenerateContext = () => {
   const diaryGenerateContext = useContext(DiaryGenerateContext);
 
   if (!diaryGenerateContext) {
-    throw new Error(
-      'useDiaryGenerateContext는 DiaryGenerateProvider 내부에서만 사용할 수 있습니다.',
-    );
+    throw new Error(ERROR_MESSAGES.DIARY_GENERATE_PROVIDER_REQUIRED);
   }
 
   return diaryGenerateContext;

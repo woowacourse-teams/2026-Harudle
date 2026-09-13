@@ -1,5 +1,6 @@
 import { API_BASE_URL, isProblemDetails, RequestError } from '../../shared/api';
 import { authFetch } from '../../shared/auth';
+import { ERROR_MESSAGES } from '../../shared/errorMessage';
 
 export const generateDiary = async ({
   diaryDate,
@@ -25,13 +26,13 @@ export const generateDiary = async ({
       throw new RequestError(errorData);
     }
 
-    throw new Error('일기 생성 도중 문제가 발생했습니다. 다시 시도해주세요.');
+    throw new Error(ERROR_MESSAGES.DIARY_GENERATION_FAILED);
   }
 
   const data: unknown = await response.json();
 
   if (!isDiaryGenerateResponse(data)) {
-    throw new Error('DiaryGenerate 응답 형식이 일치하지 않습니다.');
+    throw new Error(ERROR_MESSAGES.INVALID_DIARY_GENERATION_RESPONSE);
   }
 
   return data;

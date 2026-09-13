@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '../../../shared/errorMessage';
 import { useSearchParams } from 'react-router';
 
 import { isMonth, type Month } from '../../../shared/utils';
@@ -10,7 +11,7 @@ const parseYearMonth = (
 } => {
   const [year, month] = yearMonth.split('-').map(Number);
   if (!Number.isInteger(year) || !isMonth(month)) {
-    throw new Error('month 변환에 실패했습니다. month 범위를 확인하세요');
+    throw new Error(ERROR_MESSAGES.MONTH_CONVERSION_FAILED);
   }
 
   return { year, month };

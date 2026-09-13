@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '../shared/errorMessage';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { RequestError, type ProblemDetails } from '../shared/api';
 import { getCurrentStreak } from './currentStreak';
@@ -24,8 +25,6 @@ const data = {
     },
   ],
 };
-
-const fallbackErrorMessage = '알 수 없는 에러가 발생했습니다.';
 
 const createJsonResponse = (data: unknown, status: number): Response =>
   ({
@@ -62,7 +61,7 @@ describe('연속 기록 조회 API', () => {
     );
 
     await expect(getCurrentStreak()).rejects.toThrow(
-      'CurrentStreak 응답 형식이 일치하지 않습니다.',
+      ERROR_MESSAGES.INVALID_CURRENT_STREAK_RESPONSE,
     );
   });
 
@@ -93,7 +92,9 @@ describe('연속 기록 조회 API', () => {
       createJsonResponse({ message: 'Internal Server Error' }, 500),
     );
 
-    await expect(getCurrentStreak()).rejects.toThrow(fallbackErrorMessage);
+    await expect(getCurrentStreak()).rejects.toThrow(
+      ERROR_MESSAGES.CURRENT_STREAK_FETCH_FAILED,
+    );
   });
 
   it('실패 응답을 JSON으로 파싱할 수 없으면 기본 오류를 던진다', async () => {
@@ -104,6 +105,8 @@ describe('연속 기록 조회 API', () => {
       },
     });
 
-    await expect(getCurrentStreak()).rejects.toThrow(fallbackErrorMessage);
+    await expect(getCurrentStreak()).rejects.toThrow(
+      ERROR_MESSAGES.CURRENT_STREAK_FETCH_FAILED,
+    );
   });
 });

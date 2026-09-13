@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   createGuestDiary,
@@ -162,7 +163,7 @@ const useGuestDiaryCreation = ({
             error:
               error instanceof Error
                 ? error
-                : new Error('게스트 일기 생성에 실패했습니다'),
+                : new Error(ERROR_MESSAGES.GUEST_DIARY_GENERATION_FAILED),
           });
         }
       }
@@ -197,7 +198,7 @@ const useGuestDiaryCreation = ({
         } catch {
           setCreationState({
             status: 'error',
-            error: new Error('생성 요청을 안전하게 저장하지 못했습니다'),
+            error: new Error(ERROR_MESSAGES.GUEST_DIARY_REQUEST_SAVE_FAILED),
           });
           return;
         }

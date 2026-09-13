@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { RequestError, type ProblemDetails } from '../../shared/api';
 import { logout } from './logout';
@@ -7,9 +8,6 @@ const mockAuthFetch = jest.fn<(...args: unknown[]) => Promise<Response>>();
 jest.mock('../../shared/auth', () => ({
   authFetch: (...args: unknown[]) => mockAuthFetch(...args),
 }));
-
-const fallbackErrorMessage =
-  '로그아웃하는 중 문제가 발생했습니다. 다시 시도해주세요.';
 
 const createJsonResponse = (data: unknown, status: number): Response =>
   ({
@@ -45,7 +43,7 @@ describe('로그아웃 API', () => {
     });
 
     await expect(logout({ csrfToken: 'csrf-token' })).rejects.toThrow(
-      fallbackErrorMessage,
+      ERROR_MESSAGES.LOGOUT_FAILED,
     );
   });
 
@@ -55,7 +53,7 @@ describe('로그아웃 API', () => {
     );
 
     await expect(logout({ csrfToken: 'csrf-token' })).rejects.toThrow(
-      fallbackErrorMessage,
+      ERROR_MESSAGES.LOGOUT_FAILED,
     );
   });
 

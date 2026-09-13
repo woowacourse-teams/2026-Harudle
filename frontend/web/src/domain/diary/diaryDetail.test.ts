@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { RequestError, type ProblemDetails } from '../../shared/api';
 import { getDiaryDetail } from './diaryDetail';
@@ -70,7 +71,7 @@ describe('일기 상세 API', () => {
     );
 
     await expect(getDiaryDetail({ diaryId: DIARY_ID })).rejects.toThrow(
-      'DiaryDetail 응답 형식이 일치하지 않습니다.',
+      ERROR_MESSAGES.INVALID_DIARY_DETAIL_RESPONSE,
     );
   });
 
@@ -90,7 +91,7 @@ describe('일기 상세 API', () => {
     );
 
     await expect(getDiaryDetail({ diaryId: DIARY_ID })).rejects.toThrow(
-      '알 수 없는 에러가 발생했습니다.',
+      ERROR_MESSAGES.DIARY_DETAIL_FETCH_FAILED,
     );
   });
 
@@ -103,7 +104,7 @@ describe('일기 상세 API', () => {
     });
 
     await expect(getDiaryDetail({ diaryId: DIARY_ID })).rejects.toThrow(
-      '알 수 없는 에러가 발생했습니다.',
+      ERROR_MESSAGES.DIARY_DETAIL_FETCH_FAILED,
     );
   });
 });

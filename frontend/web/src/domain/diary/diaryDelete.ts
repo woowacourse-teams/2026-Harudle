@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { API_BASE_URL, isProblemDetails, RequestError } from '../../shared/api';
 import { authFetch } from '../../shared/auth';
 
@@ -15,7 +16,7 @@ export const deleteDiary = async ({
       throw new RequestError(errorData);
     }
 
-    throw new Error('알 수 없는 에러가 발생했습니다.');
+    throw new Error(ERROR_MESSAGES.DIARY_DELETION_FAILED);
   }
 };
 

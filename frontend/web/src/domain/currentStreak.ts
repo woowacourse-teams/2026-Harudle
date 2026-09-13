@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '../shared/errorMessage';
 import { API_BASE_URL, isProblemDetails, RequestError } from '../shared/api';
 import { authFetch } from '../shared/auth';
 import { isNonNegativeInteger, isRecord } from '../shared/utils';
@@ -11,13 +12,13 @@ export const getCurrentStreak = async (): Promise<CurrentStreakResponse> => {
       throw new RequestError(errorData);
     }
 
-    throw new Error('알 수 없는 에러가 발생했습니다.');
+    throw new Error(ERROR_MESSAGES.CURRENT_STREAK_FETCH_FAILED);
   }
 
   const data: unknown = await response.json();
 
   if (!isCurrentStreakResponse(data)) {
-    throw new Error('CurrentStreak 응답 형식이 일치하지 않습니다.');
+    throw new Error(ERROR_MESSAGES.INVALID_CURRENT_STREAK_RESPONSE);
   }
 
   return data;
