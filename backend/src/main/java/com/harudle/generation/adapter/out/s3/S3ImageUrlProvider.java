@@ -36,6 +36,13 @@ public final class S3ImageUrlProvider implements ImageUrlProvider {
 
     @Override
     public ImageAccessUrl createAccessUrl(String imageObjectKey) {
+        validateObjectKey(imageObjectKey);
+        GetObjectPresignRequest request = preparePresignRequest(imageObjectKey);
+        PresignedGetObjectRequest response = presign(request, imageObjectKey);
+        return toImageAccessUrl(response, imageObjectKey);
+    }
+
+    private void validateObjectKey(String imageObjectKey) {
         try {
             S3ObjectKeyValidator.validate(imageObjectKey);
         } catch (IllegalArgumentException exception) {
@@ -46,14 +53,15 @@ public final class S3ImageUrlProvider implements ImageUrlProvider {
                     exception
             );
         }
+    }
 
-        GetObjectPresignRequest presignRequest;
+    private GetObjectPresignRequest preparePresignRequest(String imageObjectKey) {
         try {
             GetObjectRequest getObjectRequest = GetObjectRequest.builder()
                     .bucket(bucket)
                     .key(imageObjectKey)
                     .build();
-            presignRequest = GetObjectPresignRequest.builder()
+            return GetObjectPresignRequest.builder()
                     .signatureDuration(accessUrlTtl)
                     .getObjectRequest(getObjectRequest)
                     .build();
@@ -66,10 +74,11 @@ public final class S3ImageUrlProvider implements ImageUrlProvider {
                     exception
             );
         }
+    }
 
-        PresignedGetObjectRequest presignedRequest;
+    private PresignedGetObjectRequest presign(GetObjectPresignRequest request, String imageObjectKey) {
         try {
-            presignedRequest = s3Presigner.presignGetObject(presignRequest);
+            return s3Presigner.presignGetObject(request);
         } catch (Exception exception) {
             throw failureReporter.reportProviderFailure(
                     OPERATION,
@@ -79,11 +88,13 @@ public final class S3ImageUrlProvider implements ImageUrlProvider {
                     exception
             );
         }
+    }
 
+    private ImageAccessUrl toImageAccessUrl(PresignedGetObjectRequest response, String imageObjectKey) {
         try {
             return new ImageAccessUrl(
-                    presignedRequest.url().toURI(),
-                    presignedRequest.expiration()
+                    response.url().toURI(),
+                    response.expiration()
             );
         } catch (Exception exception) {
             throw failureReporter.reportInternalFailure(
