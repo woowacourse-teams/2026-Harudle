@@ -37,6 +37,8 @@ public final class DiaryImagePromptRenderer {
         addStoryOverview(lines, storyboard);
         addPanels(lines, storyboard.panels());
         addFinalStoryCheck(lines, storyboard);
+        addCanvasAndGridRules(lines);
+        addFooterRules(lines, storyboard.title());
         return String.join("\n", lines);
     }
 
@@ -69,6 +71,11 @@ public final class DiaryImagePromptRenderer {
     }
 
     private static void addPanel(List<String> lines, StoryPanel panel, int index) {
+        addPanelScene(lines, panel, index);
+        addPanelTextRules(lines, panel.caption());
+    }
+
+    private static void addPanelScene(List<String> lines, StoryPanel panel, int index) {
         lines.add(PANEL_HEADER_FORMAT.formatted(
                 panel.panelNumber(),
                 PANEL_POSITIONS.get(index),
@@ -78,11 +85,14 @@ public final class DiaryImagePromptRenderer {
         lines.add("Characters and action: " + panel.characters());
         lines.add("Visible emotion: " + panel.emotion());
         lines.add("Sparse symbolic props: " + renderProps(panel.props()));
+    }
+
+    private static void addPanelTextRules(List<String> lines, String caption) {
         lines.add("Do not add unrequested readable text, labels, logos, brands, model names, or UI words "
                 + "inside the scene. Preserve only source-required character marks, accessories, logos, "
                 + "or brands explicitly assigned in CAST AND CONTINUITY.");
         lines.add(SCENE_OBJECT_TEXT_RULE);
-        lines.add("Caption reads exactly: \"%s\"".formatted(panel.caption()));
+        lines.add("Caption reads exactly: \"%s\"".formatted(caption));
         lines.add(CAPTION_POSITION_RULE);
         lines.add("This panel contains exactly one readable text block: its assigned caption.");
         lines.add("Never place the comic title, footer title, creator handle, or any text beginning with \"#\" "
@@ -97,7 +107,6 @@ public final class DiaryImagePromptRenderer {
     }
 
     private static void addFinalStoryCheck(List<String> lines, Storyboard storyboard) {
-        String visibleTitle = TITLE_PREFIX + storyboard.title();
         lines.add("");
         lines.add("FINAL STORY CHECK:");
         lines.add("Exactly four equal 2x2 panels in top-left to bottom-right reading order. Follow "
@@ -118,6 +127,9 @@ public final class DiaryImagePromptRenderer {
                 + "blank or non-text visuals only, with no letters, numbers, pseudo-text, fake Korean glyphs, "
                 + "or readable UI.");
         lines.add("Keep the ending faithful to the diary.");
+    }
+
+    private static void addCanvasAndGridRules(List<String> lines) {
         lines.add("");
         lines.add("FINAL CANVAS AND GRID LOCK — HIGHEST LAYOUT PRIORITY:");
         lines.add("Use a square 1:1 canvas with one flat pure-white background and a small plain outer margin.");
@@ -127,6 +139,10 @@ public final class DiaryImagePromptRenderer {
                 + "vertical separator, and exactly one horizontal separator, forming four equal panels.");
         lines.add("Do not add another border, subdivision, banner, title box, or footer box. Keep every panel's "
                 + "characters, objects, motion marks, and caption fully inside that panel.");
+    }
+
+    private static void addFooterRules(List<String> lines, String title) {
+        String visibleTitle = TITLE_PREFIX + title;
         lines.add("");
         lines.add("FINAL FOOTER LOCK — HIGHEST LAYOUT PRIORITY:");
         lines.add("Create one separate white footer band below the complete four-panel grid.");
