@@ -165,21 +165,12 @@ public final class S3ImageStorage implements ImageStorage {
             }
             return preparedStore.objectKey();
         } catch (Exception exception) {
-            ImageStorageException storeException = putAttempted
-                    ? failureReporter.reportProviderFailure(
-                            PUT_OBJECT,
-                            STORE_TRANSLATION_OPERATION,
-                            preparedStore.objectKey(),
-                            false,
-                            exception
-                    )
-                    : failureReporter.reportInternalFailure(
-                            PUT_OBJECT,
-                            STORE_TRANSLATION_OPERATION,
-                            preparedStore.objectKey(),
-                            REQUEST_PREPARATION_ERROR,
-                            exception
-                    );
+            ImageStorageException storeException = translateStoreFailure(
+                    preparedStore.objectKey(),
+                    putAttempted,
+                    exception
+            );
+            // 업로드 결과가 불확실한 경우만 삭제하며, 성공 후 스트림 닫기 실패에는 저장 객체를 유지한다.
             boolean compensationRequired = putAttempted && !putCompleted;
             compensateStoreFailure(preparedStore.objectKey(), compensationRequired, storeException);
             throw storeException;
@@ -232,6 +223,29 @@ public final class S3ImageStorage implements ImageStorage {
                     exception
             );
         }
+    }
+
+    private ImageStorageException translateStoreFailure(
+            String imageObjectKey,
+            boolean putAttempted,
+            Exception exception
+    ) {
+        if (putAttempted) {
+            return failureReporter.reportProviderFailure(
+                    PUT_OBJECT,
+                    STORE_TRANSLATION_OPERATION,
+                    imageObjectKey,
+                    false,
+                    exception
+            );
+        }
+        return failureReporter.reportInternalFailure(
+                PUT_OBJECT,
+                STORE_TRANSLATION_OPERATION,
+                imageObjectKey,
+                REQUEST_PREPARATION_ERROR,
+                exception
+        );
     }
 
     private PreparedStore prepareStore(UUID generationId, GeneratedImage generatedImage) throws IOException {
