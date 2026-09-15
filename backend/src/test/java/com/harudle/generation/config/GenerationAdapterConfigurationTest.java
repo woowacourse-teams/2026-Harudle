@@ -1,6 +1,7 @@
 package com.harudle.generation.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 import com.google.genai.Client;
 import com.google.genai.Models;
@@ -13,6 +14,12 @@ import com.harudle.generation.adapter.out.s3.S3ImageStorage;
 import com.harudle.generation.adapter.out.s3.S3ImageUrlProvider;
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
 import com.harudle.generation.diary.service.port.ImageStorage;
+import com.harudle.generation.diary.service.port.GeneratedImageCatalog;
+import com.harudle.generation.diary.service.OrphanImageCleanupScheduler;
+import com.harudle.generation.diary.repository.DiaryGenerationRepository;
+import com.harudle.generation.prompt.repository.GenerationPromptRepository;
+import java.time.Clock;
+import java.time.Duration;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
 import org.junit.jupiter.api.DisplayName;
@@ -26,7 +33,10 @@ import tools.jackson.databind.ObjectMapper;
 class GenerationAdapterConfigurationTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
-            .withUserConfiguration(GenerationAdapterConfiguration.class)
+            .withUserConfiguration(GenerationAdapterConfiguration.class, OrphanImageCleanupScheduler.class)
+            .withBean("serviceClock", Clock.class, Clock::systemUTC)
+            .withBean(DiaryGenerationRepository.class, () -> mock(DiaryGenerationRepository.class))
+            .withBean(GenerationPromptRepository.class, () -> mock(GenerationPromptRepository.class))
             .withBean(ExternalApiLogger.class, ExternalApiLogger::new)
             .withBean(ObjectMapper.class, ObjectMapper::new);
 
@@ -44,6 +54,10 @@ class GenerationAdapterConfigurationTest {
             assertThat(context).hasSingleBean(StoryboardGenerator.class);
             assertThat(context).hasSingleBean(DiaryImageGenerator.class);
             assertThat(context).hasSingleBean(ImageStorage.class);
+            assertThat(context).hasSingleBean(GeneratedImageCatalog.class);
+            assertThat(context).hasSingleBean(OrphanImageCleanupScheduler.class);
+            assertThat(context.getBean(OrphanImageCleanupProperties.class).minimumAge())
+                    .isEqualTo(Duration.ofHours(1));
             assertThat(context).hasSingleBean(ImageUrlProvider.class);
             assertThat(context).doesNotHaveBean("generateDiaryImageService");
 
@@ -74,10 +88,22 @@ class GenerationAdapterConfigurationTest {
             assertThat(context).doesNotHaveBean(StoryboardGenerator.class);
             assertThat(context).doesNotHaveBean(DiaryImageGenerator.class);
             assertThat(context).doesNotHaveBean(ImageStorage.class);
+            assertThat(context).doesNotHaveBean(GeneratedImageCatalog.class);
+            assertThat(context).doesNotHaveBean(OrphanImageCleanupScheduler.class);
             assertThat(context).doesNotHaveBean(ImageUrlProvider.class);
             assertThat(context).doesNotHaveBean(GeminiGenerationProperties.class);
             assertThat(context).doesNotHaveBean(S3StorageProperties.class);
         });
+    }
+
+    @Test
+    void rejectsNonPositiveCleanupDurations() {
+        contextRunner.withPropertyValues(enabledAdapterProperties())
+                .withPropertyValues("harudle.generation.orphan-image-cleanup.minimum-age=0s")
+                .run(context -> assertThat(context).hasFailed());
+        contextRunner.withPropertyValues(enabledAdapterProperties())
+                .withPropertyValues("harudle.generation.orphan-image-cleanup.interval=-1s")
+                .run(context -> assertThat(context).hasFailed());
     }
 
     @Test

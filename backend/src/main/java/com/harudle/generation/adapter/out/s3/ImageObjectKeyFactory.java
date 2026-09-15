@@ -3,23 +3,41 @@ package com.harudle.generation.adapter.out.s3;
 import com.harudle.generation.config.S3StorageProperties;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import org.springframework.http.MediaType;
 import org.springframework.util.StringUtils;
 
 public final class ImageObjectKeyFactory {
 
     private final String generatedPrefix;
+    private final Pattern generatedKeyPattern;
 
     public ImageObjectKeyFactory(S3StorageProperties properties) {
         Objects.requireNonNull(properties, "S3 저장소 설정이 필요합니다.");
         this.generatedPrefix = normalizePrefix(properties.generatedPrefix());
+        String uuid = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+        this.generatedKeyPattern = Pattern.compile(Pattern.quote(listPrefix())
+                + "(" + uuid + ")/(?:" + uuid + "/)?image\\.(?:png|jpg|webp)");
     }
 
     public String create(UUID generationId, MediaType mediaType) {
         Objects.requireNonNull(generationId, "생성 작업 ID가 필요합니다.");
         String extension = resolveExtension(mediaType);
-        return "%s/%s/image.%s".formatted(generatedPrefix, generationId, extension);
+        return "%s/%s/%s/image.%s".formatted(generatedPrefix, generationId, UUID.randomUUID(), extension);
+    }
+
+    String listPrefix() {
+        return generatedPrefix + "/";
+    }
+
+    Optional<UUID> generationId(String objectKey) {
+        if (objectKey == null) {
+            return Optional.empty();
+        }
+        var matcher = generatedKeyPattern.matcher(objectKey);
+        return matcher.matches() ? Optional.of(UUID.fromString(matcher.group(1))) : Optional.empty();
     }
 
     private static String resolveExtension(MediaType mediaType) {

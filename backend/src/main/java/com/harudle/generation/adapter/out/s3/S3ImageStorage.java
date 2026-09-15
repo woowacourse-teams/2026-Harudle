@@ -152,7 +152,6 @@ public final class S3ImageStorage implements ImageStorage {
         }
 
         boolean putAttempted = false;
-        boolean putCompleted = false;
         try {
             try (InputStream inputStream = preparedStore.resource().getInputStream()) {
                 RequestBody requestBody = RequestBody.fromInputStream(
@@ -161,19 +160,15 @@ public final class S3ImageStorage implements ImageStorage {
                 );
                 putAttempted = true;
                 s3Client.putObject(preparedStore.request(), requestBody);
-                putCompleted = true;
             }
             return preparedStore.objectKey();
         } catch (Exception exception) {
-            ImageStorageException storeException = translateStoreFailure(
+            // 불확정 PUT은 나중에 완료될 수 있으므로 주기적인 고아 이미지 정리에 맡긴다.
+            throw translateStoreFailure(
                     preparedStore.objectKey(),
                     putAttempted,
                     exception
             );
-            // 업로드 결과가 불확실한 경우만 삭제하며, 성공 후 스트림 닫기 실패에는 저장 객체를 유지한다.
-            boolean compensationRequired = putAttempted && !putCompleted;
-            compensateStoreFailure(preparedStore.objectKey(), compensationRequired, storeException);
-            throw storeException;
         }
     }
 
@@ -267,32 +262,6 @@ public final class S3ImageStorage implements ImageStorage {
         byte[] imageBytes = response.readNBytes(maxObjectSizeBytes + 1);
         validateObjectSize(imageBytes.length);
         return imageBytes;
-    }
-
-    private void compensateStoreFailure(
-            String imageObjectKey,
-            boolean compensationRequired,
-            ImageStorageException storeException
-    ) {
-        if (!compensationRequired) {
-            return;
-        }
-
-        try {
-            DeleteObjectRequest request = DeleteObjectRequest.builder()
-                    .bucket(bucket)
-                    .key(imageObjectKey)
-                    .build();
-            s3Client.deleteObject(request);
-        } catch (Exception exception) {
-            ImageStorageException compensationException = failureReporter.reportCompensationFailure(
-                    DELETE_OBJECT,
-                    DELETE_TRANSLATION_OPERATION,
-                    imageObjectKey,
-                    exception
-            );
-            storeException.addSuppressed(compensationException);
-        }
     }
 
     private void validateObjectSize(Long contentLength) {
