@@ -17,6 +17,8 @@ public interface DiaryGenerationRepository extends
         JpaRepository<DiaryGeneration, UUID>,
         DiaryGenerationQueryRepository {
 
+    boolean existsByImageObjectKey(String imageObjectKey);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT generation FROM DiaryGeneration generation WHERE generation.diaryId = :diaryId")
     Optional<DiaryGeneration> findByDiaryIdForUpdate(@Param("diaryId") UUID diaryId);

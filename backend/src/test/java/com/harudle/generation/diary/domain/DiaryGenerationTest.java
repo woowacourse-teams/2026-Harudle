@@ -92,11 +92,45 @@ class DiaryGenerationTest {
                 currentTime.minus(Duration.ofMinutes(16))
         );
 
-        generation.interruptIfStale(currentTime, Duration.ofMinutes(15));
+        boolean interrupted = generation.interruptIfStale(currentTime, Duration.ofMinutes(15));
 
+        assertThat(interrupted).isTrue();
         assertThat(generation.getStatus()).isEqualTo(GenerationStatus.FAILED);
         assertThat(generation.getErrorCode()).isEqualTo(GenerationErrorCode.GENERATION_INTERRUPTED);
         assertThat(generation.getCompletedAt()).isEqualTo(currentTime);
+    }
+
+    @Test
+    @DisplayName("만료 경계에서는 한 번만 중단 성공을 반환한다")
+    void interruptAtTimeoutOnlyOnce() {
+        DiaryGeneration generation = startGeneration();
+        Instant currentTime = Instant.parse("2026-08-10T10:00:00Z");
+        Duration timeout = Duration.ofMinutes(15);
+        ReflectionTestUtils.setField(generation, "updatedAt", currentTime.minus(timeout));
+
+        assertThat(generation.interruptIfStale(currentTime, timeout)).isTrue();
+        assertThat(generation.interruptIfStale(currentTime, timeout)).isFalse();
+        assertThat(generation.getCompletedAt()).isEqualTo(currentTime);
+    }
+
+    @Test
+    @DisplayName("만료되지 않은 작업은 중단하지 않는다")
+    void doNotInterruptRecentGeneration() {
+        DiaryGeneration generation = startGeneration();
+        Instant currentTime = Instant.parse("2026-08-10T10:00:00Z");
+        ReflectionTestUtils.setField(generation, "updatedAt", currentTime.minus(Duration.ofMinutes(14)));
+
+        assertThat(generation.interruptIfStale(currentTime, Duration.ofMinutes(15))).isFalse();
+        assertThat(generation.getStatus()).isEqualTo(GenerationStatus.PROCESSING);
+    }
+
+    @Test
+    @DisplayName("갱신 시각이 없는 작업은 중단하지 않는다")
+    void doNotInterruptGenerationWithoutUpdatedAt() {
+        DiaryGeneration generation = startGeneration();
+
+        assertThat(generation.interruptIfStale(Instant.now(), Duration.ofMinutes(15))).isFalse();
+        assertThat(generation.getStatus()).isEqualTo(GenerationStatus.PROCESSING);
     }
 
     @Test

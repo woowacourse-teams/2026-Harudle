@@ -188,16 +188,18 @@ public class DiaryGeneration {
         fail(GenerationErrorCode.GENERATION_INTERRUPTED, completedAt);
     }
 
-    public void interruptIfStale(Instant currentTime, Duration processingTimeout) {
+    public boolean interruptIfStale(Instant currentTime, Duration processingTimeout) {
         validateCurrentTime(currentTime);
         validateProcessingTimeout(processingTimeout);
         if (status != GenerationStatus.PROCESSING || updatedAt == null) {
-            return;
+            return false;
         }
         Instant staleCutoff = currentTime.minus(processingTimeout);
-        if (!updatedAt.isAfter(staleCutoff)) {
-            interrupt(currentTime);
+        if (updatedAt.isAfter(staleCutoff)) {
+            return false;
         }
+        interrupt(currentTime);
+        return true;
     }
 
     private static String normalizeRequestFingerprint(String requestFingerprint) {

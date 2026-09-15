@@ -56,8 +56,12 @@ public final class GeminiDiaryImageGenerator implements DiaryImageGenerator {
 
     @Override
     public GeneratedImage generate(DiaryImageGenerationRequest request) {
-        Content content;
-        GenerateContentConfig config;
+        PreparedRequest preparedRequest = prepareRequest(request);
+        GenerateContentResponse response = callProvider(preparedRequest);
+        return processResponse(response);
+    }
+
+    private PreparedRequest prepareRequest(DiaryImageGenerationRequest request) {
         try {
             String finalTask = createFinalTask(request);
             String systemInstruction = request.imageStylePromptText();
@@ -66,8 +70,9 @@ public final class GeminiDiaryImageGenerator implements DiaryImageGenerator {
                     systemInstruction,
                     finalTask
             );
-            content = createContent(request.referenceImage(), referenceImageBytes, finalTask);
-            config = createGenerateContentConfig(systemInstruction);
+            Content content = createContent(request.referenceImage(), referenceImageBytes, finalTask);
+            GenerateContentConfig config = createGenerateContentConfig(systemInstruction);
+            return new PreparedRequest(content, config);
         } catch (Exception exception) {
             throw failureReporter.reportInternalFailure(
                     OPERATION,
@@ -76,18 +81,21 @@ public final class GeminiDiaryImageGenerator implements DiaryImageGenerator {
                     exception
             );
         }
+    }
 
-        GenerateContentResponse response;
+    private GenerateContentResponse callProvider(PreparedRequest request) {
         try {
-            response = models.generateContent(
+            return models.generateContent(
                     properties.imageModel(),
-                    content,
-                    config
+                    request.content(),
+                    request.config()
             );
         } catch (Exception exception) {
             throw failureReporter.reportProviderFailure(OPERATION, TRANSLATION_OPERATION, exception);
         }
+    }
 
+    private GeneratedImage processResponse(GenerateContentResponse response) {
         try {
             return extractGeneratedImage(response);
         } catch (Exception exception) {
@@ -98,6 +106,9 @@ public final class GeminiDiaryImageGenerator implements DiaryImageGenerator {
                     exception
             );
         }
+    }
+
+    private record PreparedRequest(Content content, GenerateContentConfig config) {
     }
 
     private String createFinalTask(DiaryImageGenerationRequest request) {
