@@ -12,7 +12,24 @@ import DiaryGeneratingError from './DiaryGeneratingError';
 import { useDiaryGenerateContext } from './DiaryGenerateContext';
 import PageHeader from '../../shared/PageHeader';
 import backIcon from '../../assets/icons/back.svg';
-import useGenerateLoading from './useGenerateLoading';
+import {
+  isDiaryGenerateRequest,
+  type DiaryGenerateRequest,
+} from '../../domain/diary/diaryGenerate';
+import useDiaryGenerationProgress from './useDiaryGenerationProgress';
+
+const DiaryGeneratingPage = () => {
+  const { state: diaryGenerateRequestBody } = useLocation();
+
+  if (!isDiaryGenerateRequest(diaryGenerateRequestBody)) {
+    alert('일기 생성 형식이 올바르지 않습니다.');
+    return <Navigate to="/" replace />;
+  }
+
+  return <DiaryGeneratingContent {...diaryGenerateRequestBody} />;
+};
+
+export default DiaryGeneratingPage;
 
 const generationSteps = [
   {
@@ -37,65 +54,30 @@ const generationSteps = [
   },
 ] as const;
 
-export interface DiaryGeneratingState {
-  diaryDate: string;
-  sourceText: string;
-  idempotencyKey: string;
-}
-
-const isDiaryGeneratingState = (
-  value: unknown,
-): value is DiaryGeneratingState => {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'diaryDate' in value &&
-    typeof value.diaryDate === 'string' &&
-    'sourceText' in value &&
-    typeof value.sourceText === 'string' &&
-    'idempotencyKey' in value &&
-    typeof value.idempotencyKey === 'string'
-  );
-};
-
-const DiaryGeneratingPage = () => {
-  const { state } = useLocation();
-
-  if (!isDiaryGeneratingState(state)) {
-    alert('일기 생성 형식이 올바르지 않습니다.');
-    return <Navigate to="/" replace />;
-  }
-
-  return <DiaryGeneratingContent {...state} />;
-};
-
-export default DiaryGeneratingPage;
-
-const DiaryGeneratingContent = (generateRequestBody: DiaryGeneratingState) => {
-  const { generateDiary, diaryGenerateRequest, resetDiaryGenerateRequest } =
-    useDiaryGenerateContext();
+const DiaryGeneratingContent = (generateRequestBody: DiaryGenerateRequest) => {
+  const { execute, request, resetRequest } = useDiaryGenerateContext();
   const { isGenerationComplete, displayedStep } =
-    useGenerateLoading(diaryGenerateRequest);
-
-  useEffect(() => {
-    void generateDiary(generateRequestBody);
-  }, [generateRequestBody]);
+    useDiaryGenerationProgress(request);
   const navigate = useNavigate();
 
+  useEffect(() => {
+    void execute(generateRequestBody);
+  }, [execute, generateRequestBody]);
+
   const handleReturnHome = useCallback(() => {
-    resetDiaryGenerateRequest();
+    resetRequest();
     navigate('/', { replace: true });
-  }, [resetDiaryGenerateRequest, navigate]);
+  }, [resetRequest, navigate]);
 
   const handleDairyWriteRetry = useCallback(() => {
-    resetDiaryGenerateRequest();
+    resetRequest();
     navigate('/diary-write');
-  }, [resetDiaryGenerateRequest, navigate]);
+  }, [resetRequest, navigate]);
 
-  if (diaryGenerateRequest.status === 'error') {
+  if (request.status === 'error') {
     return (
       <DiaryGeneratingError
-        error={diaryGenerateRequest.error}
+        error={request.error}
         onReturnHome={handleReturnHome}
         onDiaryWriteRetry={handleDairyWriteRetry}
       />
@@ -178,7 +160,7 @@ const messageStyle = css`
   width: 300px;
   min-height: 68px;
   margin-top: -40px;
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 22px;
   font-weight: 700;
   line-height: 34px;
@@ -197,8 +179,8 @@ const supportingMessageStyle = css`
   align-items: center;
   padding: 4px 20px;
   border-radius: 12px;
-  background-color: #f7f4ff;
-  color: ${theme.colors.text.brand};
+  background-color: ${theme.colors.background.brandWeak};
+  color: ${theme.colors.foreground.brand};
   font-size: 14px;
   font-weight: 600;
   line-height: 22px;

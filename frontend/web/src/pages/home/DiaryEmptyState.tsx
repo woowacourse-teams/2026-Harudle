@@ -81,7 +81,7 @@ const emptyStateDescriptionContentStyle = css`
 
 const emptyStateTitleStyle = css`
   width: 100%;
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 22px;
   font-weight: 700;
   line-height: 32px;
@@ -89,7 +89,7 @@ const emptyStateTitleStyle = css`
 
 const emptyStateDescriptionStyle = css`
   width: 100%;
-  color: ${theme.colors.text.secondary};
+  color: ${theme.colors.foreground.neutralMuted};
   font-size: 15px;
   font-weight: 400;
   word-break: keep-all;

@@ -1,88 +1,58 @@
-import { useCallback, useEffect, useState } from 'react';
-import {
-  API_BASE_URL,
-  isProblemDetails,
-  RequestError,
-  type ApiRequest,
-} from '../../../shared/api';
-import { authFetch } from '../../../shared/auth';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { type ApiRequest } from '../../../shared/api';
+import { getGenerationUsage } from '../../../domain/generationUsage';
 
-interface GenerationUsageResponse {
-  usageDate: string;
-  usedCount: number;
-  limitCount: number;
-  remainingCount: number;
-}
-
-const isGenerationUsageResponse = (
-  value: unknown,
-): value is GenerationUsageResponse => {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'usageDate' in value &&
-    typeof value.usageDate === 'string' &&
-    'usedCount' in value &&
-    typeof value.usedCount === 'number' &&
-    'limitCount' in value &&
-    typeof value.limitCount === 'number' &&
-    'remainingCount' in value &&
-    typeof value.remainingCount === 'number'
-  );
-};
-
-const useGenrationUsage = () => {
-  const [generationUsageRequest, setGenerationUsageRequest] = useState<
-    ApiRequest<number>
-  >({
+const useGenerationUsage = () => {
+  const [request, setRequest] = useState<ApiRequest<number>>({
     status: 'idle',
   });
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  const getRemainingGenerationUsageCard =
-    useCallback(async (): Promise<void> => {
-      setGenerationUsageRequest({
-        status: 'loading',
-      });
+  const execute = useCallback(async (): Promise<void> => {
+    // 최초 조회와 refetch가 겹쳐도 최신 요청만 반영하도록 이전 요청을 취소한다.
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = new AbortController();
+    const { signal } = abortControllerRef.current;
 
-      try {
-        const response = await authFetch(`${API_BASE_URL}/me/generation-usage`);
+    setRequest({
+      status: 'loading',
+    });
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          if (isProblemDetails(errorData)) {
-            throw new RequestError(errorData);
-          }
+    try {
+      const response = await getGenerationUsage({ signal });
 
-          throw new Error('알 수 없는 에러가 발생했습니다.');
-        }
-
-        const data: unknown = await response.json();
-
-        if (!isGenerationUsageResponse(data)) {
-          throw new Error('GenerationUsage 응답 형식이 일치하지 않습니다.');
-        }
-
-        setGenerationUsageRequest({
-          status: 'success',
-          data: data.remainingCount,
-        });
-      } catch (error: unknown) {
-        if (error instanceof Error) {
-          setGenerationUsageRequest({
-            status: 'error',
-            error: error,
-          });
-        }
+      if (signal.aborted) {
+        return;
       }
-    }, []);
+
+      setRequest({
+        status: 'success',
+        data: response.remainingCount,
+      });
+    } catch (error: unknown) {
+      if (signal.aborted) {
+        return;
+      }
+      if (error instanceof Error) {
+        setRequest({
+          status: 'error',
+          error: error,
+        });
+      }
+    }
+  }, []);
 
   useEffect(() => {
     // TODO: API 요청과 상태 갱신 책임을 분리해 lint 예외를 제거한다.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void getRemainingGenerationUsageCard();
-  }, [getRemainingGenerationUsageCard]);
+    void execute();
 
-  return { generationUsageRequest, getRemainingGenerationUsageCard };
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, [execute]);
+
+  return { request, execute };
 };
 
-export default useGenrationUsage;
+export default useGenerationUsage;

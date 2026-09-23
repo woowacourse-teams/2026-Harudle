@@ -56,13 +56,13 @@ const textAreaStyle = (hasError: boolean) => css`
   height: 100%;
   min-height: 210px;
   border: 1px solid
-    ${hasError ? theme.colors.text.danger : theme.colors.border.primary};
+    ${hasError ? theme.colors.stroke.critical : theme.colors.stroke.outline};
   border-radius: 20px;
   padding: 20px;
   outline: none;
   resize: none;
   background-color: transparent;
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 15px;
   font-weight: 400;
   line-height: 28px;
@@ -70,17 +70,17 @@ const textAreaStyle = (hasError: boolean) => css`
   transition: all 0.2s ease-in-out;
 
   &::placeholder {
-    color: ${theme.colors.text.secondary};
+    color: ${theme.colors.foreground.neutralMuted};
     opacity: 1;
   }
 
   &:focus {
-    border-color: ${hasError ? theme.colors.text.danger : theme.colors.bg.brand};
+    border-color: ${hasError ? theme.colors.stroke.critical : theme.colors.stroke.brandSolid};
   }
 `;
 
 const characterCountStyle = (hasError: boolean) => css`
-  color: ${hasError ? theme.colors.text.danger : theme.colors.text.secondary};
+  color: ${hasError ? theme.colors.foreground.critical : theme.colors.foreground.neutralMuted};
   font-size: 15px;
   font-weight: 400;
   line-height: 24px;
@@ -97,7 +97,7 @@ const errorMessageStyle = css`
   align-items: center;
   gap: 4px;
   height: 24px;
-  color: ${theme.colors.text.danger};
+  color: ${theme.colors.foreground.critical};
   font-size: 15px;
   font-weight: 400;
   line-height: 24px;

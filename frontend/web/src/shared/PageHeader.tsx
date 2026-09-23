@@ -32,7 +32,7 @@ const pageHeaderStyle = css`
 `;
 
 const titleStyle = css`
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 22px;
   font-weight: 700;
   line-height: 32px;

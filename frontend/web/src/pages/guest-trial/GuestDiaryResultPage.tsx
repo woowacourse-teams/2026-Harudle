@@ -136,7 +136,7 @@ const pageStyle = css`
   min-height: 100%;
   padding: 28px 20px 36px;
   overflow-y: auto;
-  background-color: #ffffff;
+  background-color: ${theme.colors.background.surface};
 `;
 
 const headerStyle = css`
@@ -147,13 +147,13 @@ const headerStyle = css`
 `;
 
 const dateStyle = css`
-  color: ${theme.colors.text.secondary};
+  color: ${theme.colors.foreground.neutralMuted};
   font-size: 14px;
   line-height: 22px;
 `;
 
 const titleStyle = css`
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 26px;
   font-weight: 700;
   line-height: 38px;
@@ -163,7 +163,7 @@ const titleStyle = css`
 const diaryImageStyle = css`
   width: 100%;
   aspect-ratio: 1;
-  border: 1px solid ${theme.colors.border.primary};
+  border: 1px solid ${theme.colors.stroke.outline};
   border-radius: 20px;
   object-fit: cover;
 `;
@@ -175,14 +175,14 @@ const storyStyle = css`
 `;
 
 const storyTitleStyle = css`
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 18px;
   font-weight: 700;
   line-height: 28px;
 `;
 
 const storyTextStyle = css`
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 16px;
   line-height: 26px;
   white-space: pre-wrap;
@@ -196,11 +196,11 @@ const ctaSectionStyle = css`
   gap: 12px;
   margin-top: 8px;
   padding-top: 20px;
-  border-top: 1px solid ${theme.colors.border.primary};
+  border-top: 1px solid ${theme.colors.stroke.divider};
 `;
 
 const ctaDescriptionStyle = css`
-  color: ${theme.colors.text.secondary};
+  color: ${theme.colors.foreground.neutralMuted};
   font-size: 14px;
   line-height: 22px;
   text-align: center;
@@ -216,7 +216,7 @@ const feedbackPageStyle = css`
   width: 100%;
   min-height: 100%;
   padding: 32px 24px;
-  background-color: #ffffff;
+  background-color: ${theme.colors.background.surface};
   text-align: center;
 `;
 
@@ -234,7 +234,7 @@ const preloadImageStyle = css`
 `;
 
 const feedbackTitleStyle = css`
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 22px;
   font-weight: 700;
   line-height: 34px;
@@ -242,7 +242,7 @@ const feedbackTitleStyle = css`
 `;
 
 const feedbackMessageStyle = css`
-  color: ${theme.colors.text.secondary};
+  color: ${theme.colors.foreground.neutralMuted};
   font-size: 15px;
   line-height: 24px;
   word-break: keep-all;
@@ -254,8 +254,8 @@ const feedbackRetryButtonStyle = css`
   padding: 12px 20px;
   border: none;
   border-radius: 14px;
-  background-color: ${theme.colors.bg.brand};
-  color: #ffffff;
+  background-color: ${theme.colors.background.brandSolid};
+  color: ${theme.colors.foreground.onBrand};
   font-size: 15px;
   font-weight: 700;
   line-height: 24px;

@@ -1,5 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
 import { AUTHENTICATED_STORAGE_STATE } from './auth';
+import {
+  MOCK_SCENARIO_HEADER,
+  MOCK_SCENARIOS,
+} from '../src/mocks/mockScenarios';
 
 test.use({ storageState: AUTHENTICATED_STORAGE_STATE });
 
@@ -21,11 +25,38 @@ test.describe('월별 일기 조회', () => {
 
     await expect(loadingSpinner).toBeVisible();
     await expect(page.getByLabel('조회할 월')).toHaveValue('2026-08');
-    await expect(page.getByText('6개의 기록')).toBeVisible();
+    await expect(page.getByText('총 6개')).toBeVisible();
     await expect(loadingSpinner).toBeHidden();
     await expect(getDiaryItems(page)).toHaveCount(6);
     await expect(
       page.getByText('비가 와도, 나는 괜찮았다.', { exact: true }),
+    ).toBeVisible();
+  });
+
+  test('월별 일기 조회 실패 응답이 JSON이 아니면 에러 화면과 안내 메시지를 보여준다', async ({
+    page,
+  }) => {
+    await page.setExtraHTTPHeaders({
+      [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.monthlyDiariesNonJsonError,
+    });
+    await goToHomeAt(page, '2026-08-30T12:00:00+09:00');
+
+    const errorScreen = page.getByRole('alert');
+
+    await expect(errorScreen).toBeVisible();
+    await expect(
+      errorScreen.getByRole('heading', {
+        name: '일기를 불러오지 못했어요',
+      }),
+    ).toBeVisible();
+    await expect(
+      errorScreen.getByText(
+        '월별 일기를 불러오는 중 문제가 발생했습니다. 다시 시도해주세요.',
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(
+      errorScreen.getByRole('button', { name: '다시 불러오기' }),
     ).toBeVisible();
   });
 
@@ -39,7 +70,7 @@ test.describe('월별 일기 조회', () => {
     await monthInput.fill('2026-08');
 
     await expect(monthInput).toHaveValue('2026-08');
-    await expect(page.getByText('6개의 기록')).toBeVisible();
+    await expect(page.getByText('총 6개')).toBeVisible();
     await expect(getDiaryItems(page)).toHaveCount(6);
   });
 
@@ -53,7 +84,6 @@ test.describe('월별 일기 조회', () => {
     await monthInput.fill('2025-12');
 
     await expect(monthInput).toHaveValue('2025-12');
-    await expect(page.getByText('0개의 기록')).toBeVisible();
     await expect(page.getByText('2025년 12월에는 기록이 없어요')).toBeVisible();
     await expect(
       page.getByText('다른 달을 살펴보거나 오늘의 이야기를 남겨보세요!'),

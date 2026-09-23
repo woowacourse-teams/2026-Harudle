@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { API_BASE_URL, isProblemDetails, RequestError } from '../../shared/api';
 import { isRefreshTokenResponse, setAccessToken } from '../../shared/auth';
 import { issueGuestSession, requestGuestCsrfToken } from './guestTrialApi';
@@ -32,13 +33,13 @@ export const checkGuestEntryAuthentication = async (): Promise<boolean> => {
       throw new RequestError(data);
     }
 
-    throw new Error('로그인 상태 확인에 실패했습니다');
+    throw new Error(ERROR_MESSAGES.GUEST_AUTHENTICATION_CHECK_FAILED);
   }
 
   const data: unknown = await response.json();
 
   if (!isRefreshTokenResponse(data)) {
-    throw new Error('RefreshToken 응답 형식이 일치하지 않습니다');
+    throw new Error(ERROR_MESSAGES.INVALID_GUEST_REFRESH_TOKEN_RESPONSE);
   }
 
   setAccessToken(data.accessToken);

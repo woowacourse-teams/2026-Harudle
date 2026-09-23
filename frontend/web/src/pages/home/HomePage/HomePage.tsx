@@ -1,20 +1,24 @@
 import BottomNavigation from '../../../shared/BottomNavigation';
 import DiaryItemList from '../DiaryItemList';
 import { useNavigate } from 'react-router';
-import type { YearMonth } from './model';
 import harudleLogo from '../../../assets/images/harudle-logo.png';
 import useSelectedYearMonth from './useSelectedYearMonth';
-import useMonthlyDiaries from './useMonthlyDiaries';
-import useGenrationUsage from './useGenrationUsage';
 import { css } from '@emotion/react';
 import { theme } from '../../../styles/theme';
-import { getToday } from '../../../shared/utils';
+import { getToday, type Month } from '../../../shared/utils';
 import { useDiaryGenerateContext } from '../../diary-generating/DiaryGenerateContext';
 import { useEffect } from 'react';
 import StreakSummaryCard from './StreakSummaryCard';
 import keyboardArrowDownIcon from '../../../assets/icons/keyboard_arrow_down.svg';
+import useGenerationUsage from './useGenrationUsage';
 
-const formatYearMonthToString = ({ year, month }: YearMonth): string => {
+const formatYearMonthToString = ({
+  year,
+  month,
+}: {
+  year: number;
+  month: Month;
+}): string => {
   return `${year}-${month.toString().padStart(2, '0')}`;
 };
 
@@ -24,17 +28,6 @@ const HomePage = () => {
     getToday().year,
     getToday().month,
   );
-  const { monthlyDiariesRequest, getMonthlyDiaries } = useMonthlyDiaries({
-    ...selectedYearMonth,
-  });
-
-  const monthlyDiaryCount =
-    monthlyDiariesRequest.status === 'success'
-      ? monthlyDiariesRequest.data.days.reduce(
-          (count, day) => count + day.items.length,
-          0,
-        )
-      : 0;
 
   return (
     <div css={homePageStyle}>
@@ -63,19 +56,13 @@ const HomePage = () => {
           </div>
           <div css={contentSummaryStyle}>
             <RemainingGenerationUsage />
-            <span css={monthlyDiaryCountStyle}>
-              {monthlyDiaryCount}개의 기록
-            </span>
           </div>
         </div>
 
         <StreakSummaryCard />
 
         <section css={diaryContentStyle}>
-          <DiaryItemList
-            monthlyDiariesRequest={monthlyDiariesRequest}
-            getMonthlyDiaries={getMonthlyDiaries}
-          />
+          <DiaryItemList {...selectedYearMonth} />
         </section>
       </main>
 
@@ -87,22 +74,18 @@ const HomePage = () => {
 export default HomePage;
 
 const RemainingGenerationUsage = () => {
-  const { generationUsageRequest, getRemainingGenerationUsageCard } =
-    useGenrationUsage();
+  const { request, execute } = useGenerationUsage();
 
-  const { diaryGenerateRequest } = useDiaryGenerateContext();
+  const { request: diaryGenerateRequest } = useDiaryGenerateContext();
 
   useEffect(() => {
     if (diaryGenerateRequest.status === 'success') {
-      void getRemainingGenerationUsageCard();
+      void execute();
     }
-  }, [diaryGenerateRequest.status, getRemainingGenerationUsageCard]);
+  }, [diaryGenerateRequest.status, execute]);
 
-  const remainingCount =
-    generationUsageRequest.status === 'success'
-      ? generationUsageRequest.data
-      : null;
-  const hasGenerationUsageError = generationUsageRequest.status === 'error';
+  const remainingCount = request.status === 'success' ? request.data : null;
+  const hasGenerationUsageError = request.status === 'error';
 
   return (
     <div css={remainingGenerationUsageStyle} aria-live="polite">
@@ -112,7 +95,7 @@ const RemainingGenerationUsage = () => {
           <button
             css={retryButtonStyle}
             type="button"
-            onClick={() => void getRemainingGenerationUsageCard()}
+            onClick={() => void execute()}
           >
             재시도
           </button>
@@ -184,12 +167,6 @@ const contentSummaryStyle = css`
   min-width: 0;
 `;
 
-const monthlyDiaryCountStyle = css`
-  color: ${theme.colors.text.secondary};
-  font-size: 14px;
-  font-weight: 500;
-`;
-
 const monthPickerStyle = css`
   position: relative;
   width: 135px;
@@ -204,7 +181,7 @@ const monthInputStyle = css`
   border: none;
   outline: none;
   background-color: transparent;
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 18px;
   font-weight: 700;
   line-height: 26px;
@@ -243,7 +220,7 @@ const diaryContentStyle = css`
 const remainingGenerationUsageStyle = css`
   display: flex;
   align-items: center;
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 15px;
   font-weight: 500;
   line-height: 22px;
@@ -253,10 +230,10 @@ const remainingGenerationUsageStyle = css`
 const generationUsageTextStyle = (remainingCount: number | null) => css`
   color: ${
     remainingCount === null
-      ? theme.colors.text.secondary
+      ? theme.colors.foreground.neutralMuted
       : remainingCount > 0
-        ? theme.colors.text.brand
-        : theme.colors.text.danger
+        ? theme.colors.foreground.brand
+        : theme.colors.foreground.critical
   };
   font-weight: 800;
 `;
@@ -266,7 +243,7 @@ const retryButtonStyle = css`
   padding: 0;
   border: none;
   background: none;
-  color: ${theme.colors.text.brand};
+  color: ${theme.colors.foreground.brand};
   font: inherit;
   cursor: pointer;
 `;

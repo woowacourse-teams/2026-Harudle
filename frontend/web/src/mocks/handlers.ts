@@ -488,6 +488,15 @@ export const handlers = [
       return unauthorizedResponse;
     }
 
+    if (
+      request.headers.get(MOCK_SCENARIO_HEADER) ===
+      MOCK_SCENARIOS.monthlyDiariesNonJsonError
+    ) {
+      return HttpResponse.html('<html><body>Bad Gateway</body></html>', {
+        status: 502,
+      });
+    }
+
     const url = new URL(request.url);
     const year = Number(url.searchParams.get('year'));
     const month = Number(url.searchParams.get('month'));

@@ -130,7 +130,7 @@ test.describe('일기 상세', () => {
     await deleteClickPromise;
 
     await expect(page).toHaveURL('/');
-    await expect(page.getByText('5개의 기록')).toBeVisible();
+    await expect(page.getByText('총 5개')).toBeVisible();
     await expect(
       page.getByText(SAMPLE_DIARY_TITLE, { exact: true }),
     ).toHaveCount(0);

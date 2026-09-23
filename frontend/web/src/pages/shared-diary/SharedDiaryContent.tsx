@@ -1,23 +1,24 @@
+import { useEffect } from 'react';
+import useSharedDiary from './useSharedDiary';
+import LoadingSpinner from '../../shared/LoadingSpinner';
+import DiaryImage from '../../shared/DiaryImage';
+import SharedDiaryError from './SharedDiaryError';
 import { css } from '@emotion/react';
 import { theme } from '../../styles/theme';
+import { useNavigate } from 'react-router';
 import harudleLogo from '../../assets/images/harudle-logo.png';
-import { useNavigate, useParams } from 'react-router';
-import useDiaryShare from './useDiaryShare';
-import loadingAnimation from '../../assets/images/loading-animation.webp';
-import { useEffect } from 'react';
-import { useAnalytics } from '../../shared/useAnalytics';
+import { useAnalytics } from '../../posthog/useAnalytics';
 
-const DiarySharePage = () => {
+const SharedDiaryContent = ({ shareId }: { shareId: string }) => {
   const navigate = useNavigate();
-  const { shareId } = useParams();
-  const { sharedDiaryRequest } = useDiaryShare({ shareId });
+  const { request } = useSharedDiary({ shareId });
   const { track } = useAnalytics();
 
   useEffect(() => {
-    if (sharedDiaryRequest.status === 'success' && shareId) {
+    if (request.status === 'success' && shareId) {
       track('diary_share_viewed', { share_id: shareId });
     }
-  }, [sharedDiaryRequest.status, shareId, track]);
+  }, [request.status, shareId, track]);
 
   const handleLandingClick = () => {
     if (shareId) {
@@ -27,40 +28,34 @@ const DiarySharePage = () => {
     navigate('/');
   };
 
-  if (
-    sharedDiaryRequest.status === 'idle' ||
-    sharedDiaryRequest.status === 'loading'
-  ) {
-    return (
-      <div css={loadingAnimationBoxStyle}>
-        <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
-      </div>
-    );
+  if (request.status === 'idle' || request.status === 'loading') {
+    return <LoadingSpinner />;
   }
 
-  if (sharedDiaryRequest.status === 'error') {
-    return <div>{sharedDiaryRequest.error.message}</div>;
+  if (request.status === 'error') {
+    return <SharedDiaryError errorMessage={request.error.message} />;
   }
-  const { title, imageUrl, diaryDate } = sharedDiaryRequest.data;
+  const { title, imageUrl, diaryDate } = request.data;
 
   return (
-    <div css={diarySharePageStyle}>
+    <div css={SharedDiaryPageStyle}>
       <button css={logoButtonStyle} onClick={handleLandingClick}>
         <img src={harudleLogo} alt="하루들" css={logoStyle} />
       </button>
+      <p css={logoHintStyle}>로고를 눌러 하루들을 시작해 보세요</p>
 
       <main css={sharedDiaryContentStyle}>
         <div css={diaryTitleStyle}>{title}</div>
-        <img src={imageUrl} alt={title} css={diaryImageStyle} />
+        <DiaryImage src={imageUrl} alt={title} css={diaryImageStyle} />
         <div css={diaryDateStyle}>{diaryDate}</div>
       </main>
     </div>
   );
 };
 
-export default DiarySharePage;
+export default SharedDiaryContent;
 
-const diarySharePageStyle = css`
+const SharedDiaryPageStyle = css`
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -69,7 +64,7 @@ const diarySharePageStyle = css`
   height: 100%;
   padding-top: 44px;
   overflow: auto;
-  background-color: #ffffff;
+  background-color: ${theme.colors.background.surface};
 `;
 
 const logoButtonStyle = css`
@@ -93,12 +88,21 @@ const logoStyle = css`
   object-fit: fill;
 `;
 
+const logoHintStyle = css`
+  margin: 0 0 24px;
+  color: ${theme.colors.foreground.neutralMuted};
+  font-size: 13px;
+  line-height: 20px;
+  text-align: center;
+`;
+
 const sharedDiaryContentStyle = css`
   display: flex;
   flex: 1;
   flex-direction: column;
   align-items: center;
   width: 390px;
+  padding-bottom: 32px;
 `;
 
 const diaryTitleStyle = css`
@@ -107,7 +111,7 @@ const diaryTitleStyle = css`
   justify-content: center;
   width: 374px;
   height: 72px;
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 26px;
   font-weight: 700;
   line-height: 36px;
@@ -121,29 +125,16 @@ const diaryImageStyle = css`
   margin-top: 20px;
   padding: 2px;
   border-radius: 16px;
-  background-color: #ffffff;
+  background-color: ${theme.colors.background.surface};
   object-fit: cover;
   box-sizing: border-box;
 `;
 
 const diaryDateStyle = css`
   width: 374px;
-  color: ${theme.colors.text.secondary};
+  color: ${theme.colors.foreground.neutralMuted};
   font-size: 15px;
   font-weight: 500;
   line-height: 24px;
   text-align: center;
-`;
-
-const loadingAnimationBoxStyle = css`
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 100%;
-  height: 100%;
-`;
-
-const loadingImageStyle = css`
-  width: 140px;
-  height: 140px;
 `;

@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import type { ApiRequest } from '../../shared/api';
-import type { DiaryGenerateResponse } from './DiaryGenerateContext';
+import type { DiaryGenerateResponse } from '../../domain/diary/diaryGenerate';
 
 export const FINAL_STEP = 5;
 
-const useGenerateLoading = (
+const useDiaryGenerationProgress = (
   diaryGenerateRequest: ApiRequest<DiaryGenerateResponse>,
 ) => {
   const [loadingStep, setLoadingStep] = useState<number>(1);
   const navigate = useNavigate();
+
   useEffect(() => {
     if (loadingStep >= FINAL_STEP - 1) {
       return;
@@ -36,11 +37,11 @@ const useGenerateLoading = (
     }, 2_000);
 
     return () => clearTimeout(timeoutId);
-  }, [isGenerationComplete, navigate]);
+  }, [isGenerationComplete, navigate, diaryGenerateRequest]);
 
   const displayedStep = isGenerationComplete ? FINAL_STEP : loadingStep;
 
   return { isGenerationComplete, displayedStep };
 };
 
-export default useGenerateLoading;
+export default useDiaryGenerationProgress;
