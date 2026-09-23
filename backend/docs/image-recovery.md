@@ -77,7 +77,6 @@ curl --fail-with-body -b recovery-cookies.txt -X POST "$BASE_URL/api/v1/admin/ge
 ~~~
 
 직접 업로드는 PNG/JPEG, 최대 20MiB 및 2500만 픽셀을 지원한다.
-운영 Nginx 설정에도 요청 본문 제한을 25m 이상으로 반영해야 한다. 저장소의 deploy/nginx 예시는 수정했지만 서버에 설치된 설정은 별도로 갱신해야 한다.
 서버가 파일 내용을 디코딩해 형식을 확인하고 S3 Content-Type을 설정한다.
 기존 키의 확장자와 형식이 다르면 409로 거절한다. 확장자만 바꾸지 말고 실제 이미지 형식을 변환해야 한다.
 WebP 직접 업로드는 현재 지원하지 않는다. S3 설정의 최대 객체 크기가 더 작다면 해당 제한도 적용된다.
