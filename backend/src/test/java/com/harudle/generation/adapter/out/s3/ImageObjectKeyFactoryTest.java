@@ -29,8 +29,8 @@ class ImageObjectKeyFactoryTest {
 
         String objectKey = factory.create(GENERATION_ID, MediaType.parseMediaType(mimeType));
 
-        assertThat(objectKey).isEqualTo(
-                "generated/diary-images/550e8400-e29b-41d4-a716-446655440000/image." + extension
+        assertThat(objectKey).matches(
+                "generated/diary-images/550e8400-e29b-41d4-a716-446655440000/[0-9a-f-]{36}/image[.]" + extension
         );
     }
 
@@ -41,8 +41,8 @@ class ImageObjectKeyFactoryTest {
 
         String objectKey = factory.create(GENERATION_ID, MediaType.IMAGE_PNG);
 
-        assertThat(objectKey).isEqualTo(
-                "generated/diary-images/550e8400-e29b-41d4-a716-446655440000/image.png"
+        assertThat(objectKey).matches(
+                "generated/diary-images/550e8400-e29b-41d4-a716-446655440000/[0-9a-f-]{36}/image[.]png"
         );
     }
 
@@ -57,6 +57,26 @@ class ImageObjectKeyFactoryTest {
         ))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("지원하지 않는 이미지 MediaType");
+    }
+
+    @Test
+    void eachUploadHasItsOwnKey() {
+        ImageObjectKeyFactory factory = createFactory("generated/diary-images");
+        String first = factory.create(GENERATION_ID, MediaType.IMAGE_PNG);
+        String second = factory.create(GENERATION_ID, MediaType.IMAGE_PNG);
+        assertThat(first).isNotEqualTo(second);
+        assertThat(factory.generationId(first)).contains(GENERATION_ID);
+        assertThat(factory.generationId(second)).contains(GENERATION_ID);
+    }
+
+    @Test
+    void recognizesLegacyKeysButRejectsUnknownPaths() {
+        ImageObjectKeyFactory factory = createFactory("generated/diary-images");
+        assertThat(factory.generationId("generated/diary-images/" + GENERATION_ID + "/image.png"))
+                .contains(GENERATION_ID);
+        assertThat(factory.generationId("generated/diary-images/" + GENERATION_ID + "/reference.png")).isEmpty();
+        assertThat(factory.generationId("generated/diary-images-other/" + GENERATION_ID + "/image.png")).isEmpty();
+        assertThat(factory.generationId("generated/diary-images/not-a-uuid/image.png")).isEmpty();
     }
 
     private static ImageObjectKeyFactory createFactory(String generatedPrefix) {

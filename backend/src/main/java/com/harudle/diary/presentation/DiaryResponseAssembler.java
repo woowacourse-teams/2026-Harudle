@@ -119,7 +119,8 @@ final class DiaryResponseAssembler {
                     result.title(),
                     null,
                     null,
-                    toServiceTime(result.completedAt())
+                    toServiceTime(result.completedAt()),
+                    result.tokenUsage()
             );
         }
         ImageAccessUrl imageAccessUrl = createImageAccessUrl(result.imageObjectKey());
@@ -129,7 +130,8 @@ final class DiaryResponseAssembler {
                 result.title(),
                 imageAccessUrl.url().toString(),
                 toServiceTime(imageAccessUrl.expiresAt()),
-                toServiceTime(result.completedAt())
+                toServiceTime(result.completedAt()),
+                result.tokenUsage()
         );
     }
 

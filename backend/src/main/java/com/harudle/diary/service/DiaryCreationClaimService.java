@@ -141,7 +141,8 @@ class DiaryCreationClaimService {
                 generation.getImageObjectKey(),
                 generation.getCompletedAt(),
                 generation.getErrorCode(),
-                newlyCreated
+                newlyCreated,
+                generation.getTokenUsage()
         );
     }
 

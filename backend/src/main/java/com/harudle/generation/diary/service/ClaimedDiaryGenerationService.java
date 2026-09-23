@@ -5,6 +5,7 @@ import com.harudle.generation.diary.domain.GenerationErrorCode;
 import com.harudle.generation.prompt.domain.GenerationPrompt;
 import com.harudle.generation.diary.domain.ImageObjectKeyPolicy;
 import com.harudle.generation.diary.domain.Storyboard;
+import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import com.harudle.generation.diary.service.dto.CompletedDiaryGeneration;
@@ -20,14 +21,12 @@ import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageStorageException;
 import com.harudle.generation.diary.service.port.dto.ReferenceImage;
 import com.harudle.generation.diary.service.port.dto.StoryboardGenerationRequest;
+import com.harudle.generation.diary.service.port.dto.GeneratedStoryboard;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public final class ClaimedDiaryGenerationService implements DiaryGenerationExecutor {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(ClaimedDiaryGenerationService.class);
     private final RequestFingerprintGenerator requestFingerprintGenerator;
     private final GenerationPromptRepository generationPromptRepository;
     private final DiaryGenerationRepository diaryGenerationRepository;
@@ -35,6 +34,7 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
     private final DiaryImageGenerator diaryImageGenerator;
     private final ImageStorage imageStorage;
     private final DiaryGenerationCompletionService completionService;
+    private final DiscardedGenerationImageCleaner imageCleaner;
 
     public ClaimedDiaryGenerationService(
             RequestFingerprintGenerator requestFingerprintGenerator,
@@ -52,6 +52,7 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
         this.diaryImageGenerator = diaryImageGenerator;
         this.imageStorage = imageStorage;
         this.completionService = completionService;
+        this.imageCleaner = new DiscardedGenerationImageCleaner(diaryGenerationRepository, imageStorage);
     }
 
     @Override
@@ -77,53 +78,19 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
             DiaryGeneration completedGeneration = completionService.succeed(
                     generationId,
                     generatedDiaryImage.storyboard(),
-                    generatedDiaryImage.imageObjectKey()
+                    generatedDiaryImage.imageObjectKey(),
+                    generatedDiaryImage.tokenUsage()
             );
-            if (completedGeneration.notUsesImageObjectKey(generatedDiaryImage.imageObjectKey())) {
-                deleteDiscardedImage(generatedDiaryImage.imageObjectKey());
-            }
+            imageCleaner.deleteIfUnused(completedGeneration, generatedDiaryImage.imageObjectKey());
             return completedGeneration;
         } catch (RuntimeException exception) {
-            deleteImageIfSafelyDiscardable(
+            imageCleaner.deleteIfSafelyDiscardable(
                     generationId,
                     generatedDiaryImage.imageObjectKey(),
                     exception
             );
             throw exception;
         }
-    }
-
-    private void deleteImageIfSafelyDiscardable(
-            UUID generationId,
-            String imageObjectKey,
-            RuntimeException completionException
-    ) {
-        try {
-            boolean deletable = diaryGenerationRepository.findById(generationId)
-                    .map(generation -> canDeleteImage(generation, imageObjectKey))
-                    .orElse(true);
-            if (deletable) {
-                deleteDiscardedImage(imageObjectKey);
-            }
-        } catch (RuntimeException verificationException) {
-            if (verificationException != completionException) {
-                completionException.addSuppressed(verificationException);
-            }
-            LOGGER.warn(
-                    "생성 완료 상태를 확인하지 못해 이미지 삭제를 보류합니다. generationId={}, objectKey={}",
-                    generationId,
-                    imageObjectKey,
-                    verificationException
-            );
-        }
-    }
-
-    private static boolean canDeleteImage(DiaryGeneration generation, String imageObjectKey) {
-        return switch (generation.getStatus()) {
-            case PROCESSING -> false;
-            case FAILED -> true;
-            case SUCCEEDED -> generation.notUsesImageObjectKey(imageObjectKey);
-        };
     }
 
     private DiaryGeneration findClaimedGeneration(GenerateDiaryImageCommand command, UUID generationId) {
@@ -153,10 +120,11 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
             UUID generationId
     ) {
         try {
-            Storyboard storyboard = storyboardGenerator.generate(new StoryboardGenerationRequest(
+            GeneratedStoryboard generatedStoryboard = storyboardGenerator.generate(new StoryboardGenerationRequest(
                     command.diaryText(),
                     prompt.getStoryboardPromptText()
             ));
+            Storyboard storyboard = generatedStoryboard.storyboard();
             ReferenceImage referenceImage = imageStorage.load(prompt.getImageAssetObjectKey());
             GeneratedImage generatedImage = diaryImageGenerator.generate(new DiaryImageGenerationRequest(
                     storyboard,
@@ -164,7 +132,7 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
                     referenceImage
             ));
             String imageObjectKey = storeImage(generationId, generatedImage);
-            return new GeneratedDiaryImage(storyboard, imageObjectKey);
+            return new GeneratedDiaryImage(storyboard, imageObjectKey, generatedStoryboard.tokenUsage());
         } catch (AiGenerationException exception) {
             failGeneration(generationId, mapAiGenerationErrorCode(exception.errorType()));
             throw exception;
@@ -187,7 +155,7 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
             return ImageObjectKeyPolicy.normalizeRequired(imageObjectKey, "생성 이미지 Object Key");
         } catch (IllegalArgumentException exception) {
             if (imageObjectKey != null) {
-                deleteDiscardedImage(imageObjectKey);
+                imageCleaner.deleteDiscardedImage(imageObjectKey);
             }
 
             throw new ImageStorageException(exception.getMessage(), exception);
@@ -201,24 +169,13 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
         }
     }
 
-    private void deleteDiscardedImage(String imageObjectKey) {
-        try {
-            imageStorage.delete(imageObjectKey);
-        } catch (RuntimeException exception) {
-            LOGGER.warn(
-                    "완료되지 못한 생성 이미지 삭제에 실패했습니다. objectKey={}",
-                    imageObjectKey,
-                    exception
-            );
-        }
-    }
-
     private CompletedDiaryGeneration createResult(DiaryGeneration generation) {
         return new CompletedDiaryGeneration(
                 generation.getId(),
                 generation.getTitle(),
                 generation.getImageObjectKey(),
-                generation.getCompletedAt()
+                generation.getCompletedAt(),
+                generation.getTokenUsage()
         );
     }
 
@@ -229,6 +186,10 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
         };
     }
 
-    private record GeneratedDiaryImage(Storyboard storyboard, String imageObjectKey) {
+    private record GeneratedDiaryImage(
+            Storyboard storyboard,
+            String imageObjectKey,
+            GenerationTokenUsage tokenUsage
+    ) {
     }
 }

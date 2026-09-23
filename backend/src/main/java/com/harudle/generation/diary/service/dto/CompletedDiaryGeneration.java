@@ -2,6 +2,7 @@ package com.harudle.generation.diary.service.dto;
 
 import com.harudle.common.validation.TextValidator;
 import com.harudle.generation.diary.domain.ImageObjectKeyPolicy;
+import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -9,8 +10,18 @@ public record CompletedDiaryGeneration(
         UUID generationId,
         String title,
         String imageObjectKey,
-        Instant completedAt
+        Instant completedAt,
+        GenerationTokenUsage tokenUsage
 ) {
+
+    public CompletedDiaryGeneration(
+            UUID generationId,
+            String title,
+            String imageObjectKey,
+            Instant completedAt
+    ) {
+        this(generationId, title, imageObjectKey, completedAt, null);
+    }
 
     public CompletedDiaryGeneration {
         validateGenerationId(generationId);

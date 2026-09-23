@@ -4,11 +4,12 @@ import com.harudle.diary.domain.Diary;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.generation.diary.domain.DiaryGeneration;
 import com.harudle.generation.diary.domain.GenerationErrorCode;
-import com.harudle.generation.diary.domain.GenerationStatus;
 import com.harudle.generation.diary.domain.Storyboard;
+import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -34,13 +35,18 @@ public class DiaryGenerationCompletionService {
     }
 
     @Transactional
-    DiaryGeneration succeed(UUID generationId, Storyboard storyboard, String imageObjectKey) {
+    DiaryGeneration succeed(
+            UUID generationId,
+            Storyboard storyboard,
+            String imageObjectKey,
+            GenerationTokenUsage tokenUsage
+    ) {
         DiaryGeneration generation = findForUpdate(generationId);
         return switch (generation.getStatus()) {
             case FAILED -> throw new DiaryGenerationFailedException(generation.getErrorCode());
             case SUCCEEDED -> generation;
             case PROCESSING -> {
-                generation.succeed(storyboard, imageObjectKey, clock.instant());
+                generation.succeed(storyboard, imageObjectKey, tokenUsage, clock.instant());
                 yield generation;
             }
         };
@@ -68,13 +74,9 @@ public class DiaryGenerationCompletionService {
     }
 
     @Transactional
-    boolean interruptIfStale(UUID generationId, Instant currentTime, java.time.Duration processingTimeout) {
+    boolean interruptIfStale(UUID generationId, Instant currentTime, Duration processingTimeout) {
         DiaryGeneration generation = findForUpdate(generationId);
-        if (generation.getStatus() != GenerationStatus.PROCESSING) {
-            return false;
-        }
-        generation.interruptIfStale(currentTime, processingTimeout);
-        if (generation.getStatus() != GenerationStatus.FAILED) {
+        if (!generation.interruptIfStale(currentTime, processingTimeout)) {
             return false;
         }
         Diary diary = findDiaryForUpdate(generation.getDiaryId());

@@ -27,6 +27,7 @@ import com.harudle.diary.service.dto.CreateGuestDiaryResult;
 import com.harudle.diary.service.dto.DiaryDetailResult;
 import com.harudle.diary.service.dto.DiaryGenerationResult;
 import com.harudle.generation.diary.domain.GenerationStatus;
+import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.guest.application.exception.GuestSessionExpiredException;
@@ -143,6 +144,8 @@ class GuestDiaryControllerTest {
         assertThat(response.jsonPath().getString("id")).isEqualTo(DIARY_ID.toString());
         assertThat(response.jsonPath().getString("generation.imageUrl"))
                 .isEqualTo("https://images.harudle.example/comic.png");
+        assertThat(response.jsonPath().getInt("generation.tokenUsage.totalTokenCount"))
+                .isEqualTo(550);
         assertThat(response.asString()).doesNotContain("usage", "imageObjectKey");
     }
 
@@ -353,7 +356,8 @@ class GuestDiaryControllerTest {
                 GenerationStatus.SUCCEEDED,
                 "친구와 보낸 하루",
                 "generated/comic.png",
-                COMPLETED_AT
+                COMPLETED_AT,
+                new GenerationTokenUsage(120, 350, 80, 550)
         );
     }
 

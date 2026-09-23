@@ -15,6 +15,8 @@ import com.harudle.generation.adapter.out.s3.ImageObjectKeyFactory;
 import com.harudle.generation.adapter.out.s3.S3ExceptionTranslator;
 import com.harudle.generation.adapter.out.s3.S3FailureReporter;
 import com.harudle.generation.adapter.out.s3.S3ImageStorage;
+import com.harudle.generation.adapter.out.s3.S3GeneratedImageCatalog;
+import com.harudle.generation.diary.service.port.GeneratedImageCatalog;
 import com.harudle.generation.adapter.out.s3.S3ImageUrlProvider;
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
 import com.harudle.generation.diary.service.port.ImageStorage;
@@ -161,6 +163,12 @@ public class GenerationAdapterConfiguration {
                 objectKeyFactory,
                 failureReporter
         );
+    }
+
+    @Bean
+    public GeneratedImageCatalog generatedImageCatalog(S3Client s3Client, S3StorageProperties properties,
+            ImageObjectKeyFactory objectKeyFactory, S3FailureReporter failureReporter) {
+        return new S3GeneratedImageCatalog(s3Client, properties, objectKeyFactory, failureReporter);
     }
 
     @Bean

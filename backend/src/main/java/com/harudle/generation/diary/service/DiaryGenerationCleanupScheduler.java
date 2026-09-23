@@ -5,6 +5,7 @@ import com.harudle.generation.diary.domain.GenerationStatus;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.slf4j.Logger;
@@ -42,17 +43,13 @@ public final class DiaryGenerationCleanupScheduler {
             initialDelayString = "${harudle.generation.lifecycle.cleanup-interval:1m}"
     )
     public void expireStaleProcessingGenerations() {
-        Instant completedAt = clock.instant();
-        Instant expiredBefore = completedAt.minus(generationLifecycleProperties.processingTimeout());
+        Instant currentTime = clock.instant();
+        List<UUID> generationIds = findStaleGenerationIds(currentTime);
         int expiredCount = 0;
-        for (UUID generationId : diaryGenerationRepository.findStaleProcessingIds(
-                GenerationStatus.PROCESSING,
-                expiredBefore,
-                PageRequest.of(0, CLEANUP_BATCH_SIZE)
-        )) {
+        for (UUID generationId : generationIds) {
             if (completionService.interruptIfStale(
                     generationId,
-                    completedAt,
+                    currentTime,
                     generationLifecycleProperties.processingTimeout()
             )) {
                 expiredCount++;
@@ -62,5 +59,14 @@ public final class DiaryGenerationCleanupScheduler {
         if (expiredCount > 0) {
             log.info("만료된 그림일기 생성 작업을 실패 처리했습니다. expiredCount={}", expiredCount);
         }
+    }
+
+    private List<UUID> findStaleGenerationIds(Instant currentTime) {
+        Instant expiredBefore = currentTime.minus(generationLifecycleProperties.processingTimeout());
+        return diaryGenerationRepository.findStaleProcessingIds(
+                GenerationStatus.PROCESSING,
+                expiredBefore,
+                PageRequest.of(0, CLEANUP_BATCH_SIZE)
+        );
     }
 }
