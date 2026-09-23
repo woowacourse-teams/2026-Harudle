@@ -59,11 +59,16 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
 
     @Override
     public Storyboard generate(StoryboardGenerationRequest request) {
-        String requestText;
-        GenerateContentConfig config;
+        PreparedRequest preparedRequest = prepareRequest(request);
+        GenerateContentResponse response = callProvider(preparedRequest);
+        return processResponse(response);
+    }
+
+    private PreparedRequest prepareRequest(StoryboardGenerationRequest request) {
         try {
-            requestText = createRequestText(request);
-            config = createGenerateContentConfig(request.storyboardPromptText());
+            String requestText = createRequestText(request);
+            GenerateContentConfig config = createGenerateContentConfig(request.storyboardPromptText());
+            return new PreparedRequest(requestText, config);
         } catch (Exception exception) {
             throw failureReporter.reportInternalFailure(
                     OPERATION,
@@ -72,18 +77,21 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
                     exception
             );
         }
+    }
 
-        GenerateContentResponse response;
+    private GenerateContentResponse callProvider(PreparedRequest request) {
         try {
-            response = models.generateContent(
+            return models.generateContent(
                     properties.storyboardModel(),
-                    requestText,
-                    config
+                    request.text(),
+                    request.config()
             );
         } catch (Exception exception) {
             throw failureReporter.reportProviderFailure(OPERATION, TRANSLATION_OPERATION, exception);
         }
+    }
 
+    private Storyboard processResponse(GenerateContentResponse response) {
         try {
             return mapResponse(response);
         } catch (Exception exception) {
@@ -94,6 +102,9 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
                     exception
             );
         }
+    }
+
+    private record PreparedRequest(String text, GenerateContentConfig config) {
     }
 
     private static String createRequestText(StoryboardGenerationRequest request) {

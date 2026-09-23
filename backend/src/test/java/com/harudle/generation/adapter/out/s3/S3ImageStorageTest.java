@@ -101,9 +101,10 @@ class S3ImageStorageTest {
         verify(s3Client).putObject(requestCaptor.capture(), bodyCaptor.capture());
 
         PutObjectRequest request = requestCaptor.getValue();
-        assertThat(storedObjectKey).isEqualTo(OBJECT_KEY);
+        assertThat(storedObjectKey).startsWith("generated/diary-images/" + GENERATION_ID + "/")
+                .endsWith("/image.png");
         assertThat(request.bucket()).isEqualTo("test-bucket");
-        assertThat(request.key()).isEqualTo(OBJECT_KEY);
+        assertThat(request.key()).isEqualTo(storedObjectKey);
         assertThat(request.contentType()).isEqualTo("image/png");
         assertThat(request.contentLength()).isEqualTo(imageBytes.length);
         assertThat(bodyCaptor.getValue().optionalContentLength()).contains((long) imageBytes.length);
@@ -143,16 +144,14 @@ class S3ImageStorageTest {
     }
 
     @Test
-    @DisplayName("S3 저장 결과를 확정할 수 없으면 결정된 Object Key를 보상 삭제한다")
-    void compensateUnknownStoreOutcome() {
+    @DisplayName("S3 저장 결과를 확정할 수 없으면 삭제를 주기적 정리에 맡긴다")
+    void deferUnknownStoreOutcomeCleanup() {
         GeneratedImage generatedImage = generatedImage();
         SdkClientException storeCause = SdkClientException.builder()
                 .message("unknown store outcome")
                 .build();
         when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
                 .thenThrow(storeCause);
-        when(s3Client.deleteObject(any(DeleteObjectRequest.class)))
-                .thenReturn(DeleteObjectResponse.builder().build());
 
         ImageStorageException thrown = catchThrowableOfType(
                 () -> imageStorage.store(GENERATION_ID, generatedImage),
@@ -161,32 +160,24 @@ class S3ImageStorageTest {
 
         assertThat(thrown)
                 .hasMessageContaining("S3 이미지 저장")
-                .hasMessageContaining(OBJECT_KEY)
+                .hasMessageContaining("generated/diary-images/" + GENERATION_ID)
                 .hasCause(storeCause);
         verify(externalApiLogger).warn(
                 eq(new ExternalApiFailure("s3", "put_object", "CLIENT_ERROR", null, null, null)),
                 eq(storeCause)
         );
-        ArgumentCaptor<DeleteObjectRequest> requestCaptor = ArgumentCaptor.forClass(DeleteObjectRequest.class);
-        verify(s3Client).deleteObject(requestCaptor.capture());
-        assertThat(requestCaptor.getValue().bucket()).isEqualTo("test-bucket");
-        assertThat(requestCaptor.getValue().key()).isEqualTo(OBJECT_KEY);
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
     }
 
     @Test
-    @DisplayName("보상 삭제까지 실패해도 원래 S3 저장 예외를 유지한다")
-    void preserveStoreExceptionWhenCompensationFails() {
+    @DisplayName("실패 후 다시 업로드하면 이전 PUT과 다른 키를 사용한다")
+    void retryUsesAnotherObjectKey() {
         GeneratedImage generatedImage = generatedImage();
         SdkClientException storeCause = SdkClientException.builder()
                 .message("unknown store outcome")
                 .build();
-        SdkClientException deleteCause = SdkClientException.builder()
-                .message("delete failure")
-                .build();
         when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
-                .thenThrow(storeCause);
-        when(s3Client.deleteObject(any(DeleteObjectRequest.class)))
-                .thenThrow(deleteCause);
+                .thenThrow(storeCause).thenReturn(PutObjectResponse.builder().build());
 
         ImageStorageException thrown = catchThrowableOfType(
                 () -> imageStorage.store(GENERATION_ID, generatedImage),
@@ -196,16 +187,12 @@ class S3ImageStorageTest {
         assertThat(thrown)
                 .hasMessageContaining("S3 이미지 저장")
                 .hasCause(storeCause);
-        assertThat(thrown.getSuppressed()).hasSize(1);
-        assertThat(thrown.getSuppressed()[0])
-                .isInstanceOf(ImageStorageException.class)
-                .hasMessageContaining("S3 이미지 삭제")
-                .hasCause(deleteCause);
-        verify(externalApiLogger).warnCompensation(
-                eq(new ExternalApiFailure("s3", "delete_object", "CLIENT_ERROR", null, null, null)),
-                eq(deleteCause)
-        );
-        verify(s3Client).deleteObject(any(DeleteObjectRequest.class));
+        String result = imageStorage.store(GENERATION_ID, generatedImage);
+        ArgumentCaptor<PutObjectRequest> requests = ArgumentCaptor.forClass(PutObjectRequest.class);
+        verify(s3Client, org.mockito.Mockito.times(2)).putObject(requests.capture(), any(RequestBody.class));
+        assertThat(requests.getAllValues().get(0).key()).isNotEqualTo(result);
+        assertThat(requests.getAllValues().get(1).key()).isEqualTo(result);
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
     }
 
     @Test

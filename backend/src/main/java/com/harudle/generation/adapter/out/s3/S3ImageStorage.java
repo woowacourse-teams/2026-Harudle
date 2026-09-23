@@ -54,6 +54,12 @@ public final class S3ImageStorage implements ImageStorage {
 
     @Override
     public ReferenceImage load(String imageObjectKey) {
+        GetObjectRequest request = prepareLoadRequest(imageObjectKey);
+        ResponseInputStream<GetObjectResponse> response = getObject(request);
+        return readReferenceImage(response, imageObjectKey);
+    }
+
+    private GetObjectRequest prepareLoadRequest(String imageObjectKey) {
         try {
             S3ObjectKeyValidator.validate(imageObjectKey);
         } catch (IllegalArgumentException exception) {
@@ -65,9 +71,8 @@ public final class S3ImageStorage implements ImageStorage {
             );
         }
 
-        GetObjectRequest request;
         try {
-            request = GetObjectRequest.builder()
+            return GetObjectRequest.builder()
                     .bucket(bucket)
                     .key(imageObjectKey)
                     .build();
@@ -80,20 +85,26 @@ public final class S3ImageStorage implements ImageStorage {
                     exception
             );
         }
+    }
 
-        ResponseInputStream<GetObjectResponse> response;
+    private ResponseInputStream<GetObjectResponse> getObject(GetObjectRequest request) {
         try {
-            response = s3Client.getObject(request);
+            return s3Client.getObject(request);
         } catch (Exception exception) {
             throw failureReporter.reportProviderFailure(
                     GET_OBJECT,
                     LOAD_TRANSLATION_OPERATION,
-                    imageObjectKey,
+                    request.key(),
                     false,
                     exception
             );
         }
+    }
 
+    private ReferenceImage readReferenceImage(
+            ResponseInputStream<GetObjectResponse> response,
+            String imageObjectKey
+    ) {
         try (response) {
             validateObjectSize(response.response().contentLength());
             MediaType mediaType = parseImageMediaType(response.response().contentType());
@@ -141,7 +152,6 @@ public final class S3ImageStorage implements ImageStorage {
         }
 
         boolean putAttempted = false;
-        boolean putCompleted = false;
         try {
             try (InputStream inputStream = preparedStore.resource().getInputStream()) {
                 RequestBody requestBody = RequestBody.fromInputStream(
@@ -150,33 +160,25 @@ public final class S3ImageStorage implements ImageStorage {
                 );
                 putAttempted = true;
                 s3Client.putObject(preparedStore.request(), requestBody);
-                putCompleted = true;
             }
             return preparedStore.objectKey();
         } catch (Exception exception) {
-            ImageStorageException storeException = putAttempted
-                    ? failureReporter.reportProviderFailure(
-                            PUT_OBJECT,
-                            STORE_TRANSLATION_OPERATION,
-                            preparedStore.objectKey(),
-                            false,
-                            exception
-                    )
-                    : failureReporter.reportInternalFailure(
-                            PUT_OBJECT,
-                            STORE_TRANSLATION_OPERATION,
-                            preparedStore.objectKey(),
-                            REQUEST_PREPARATION_ERROR,
-                            exception
-                    );
-            boolean compensationRequired = putAttempted && !putCompleted;
-            compensateStoreFailure(preparedStore.objectKey(), compensationRequired, storeException);
-            throw storeException;
+            // 불확정 PUT은 나중에 완료될 수 있으므로 주기적인 고아 이미지 정리에 맡긴다.
+            throw translateStoreFailure(
+                    preparedStore.objectKey(),
+                    putAttempted,
+                    exception
+            );
         }
     }
 
     @Override
     public void delete(String imageObjectKey) {
+        DeleteObjectRequest request = prepareDeleteRequest(imageObjectKey);
+        deleteObject(request);
+    }
+
+    private DeleteObjectRequest prepareDeleteRequest(String imageObjectKey) {
         try {
             S3ObjectKeyValidator.validate(imageObjectKey);
         } catch (IllegalArgumentException exception) {
@@ -188,9 +190,8 @@ public final class S3ImageStorage implements ImageStorage {
             );
         }
 
-        DeleteObjectRequest request;
         try {
-            request = DeleteObjectRequest.builder()
+            return DeleteObjectRequest.builder()
                     .bucket(bucket)
                     .key(imageObjectKey)
                     .build();
@@ -203,18 +204,43 @@ public final class S3ImageStorage implements ImageStorage {
                     exception
             );
         }
+    }
 
+    private void deleteObject(DeleteObjectRequest request) {
         try {
             s3Client.deleteObject(request);
         } catch (Exception exception) {
             throw failureReporter.reportProviderFailure(
                     DELETE_OBJECT,
                     DELETE_TRANSLATION_OPERATION,
+                    request.key(),
+                    false,
+                    exception
+            );
+        }
+    }
+
+    private ImageStorageException translateStoreFailure(
+            String imageObjectKey,
+            boolean putAttempted,
+            Exception exception
+    ) {
+        if (putAttempted) {
+            return failureReporter.reportProviderFailure(
+                    PUT_OBJECT,
+                    STORE_TRANSLATION_OPERATION,
                     imageObjectKey,
                     false,
                     exception
             );
         }
+        return failureReporter.reportInternalFailure(
+                PUT_OBJECT,
+                STORE_TRANSLATION_OPERATION,
+                imageObjectKey,
+                REQUEST_PREPARATION_ERROR,
+                exception
+        );
     }
 
     private PreparedStore prepareStore(UUID generationId, GeneratedImage generatedImage) throws IOException {
@@ -236,32 +262,6 @@ public final class S3ImageStorage implements ImageStorage {
         byte[] imageBytes = response.readNBytes(maxObjectSizeBytes + 1);
         validateObjectSize(imageBytes.length);
         return imageBytes;
-    }
-
-    private void compensateStoreFailure(
-            String imageObjectKey,
-            boolean compensationRequired,
-            ImageStorageException storeException
-    ) {
-        if (!compensationRequired) {
-            return;
-        }
-
-        try {
-            DeleteObjectRequest request = DeleteObjectRequest.builder()
-                    .bucket(bucket)
-                    .key(imageObjectKey)
-                    .build();
-            s3Client.deleteObject(request);
-        } catch (Exception exception) {
-            ImageStorageException compensationException = failureReporter.reportCompensationFailure(
-                    DELETE_OBJECT,
-                    DELETE_TRANSLATION_OPERATION,
-                    imageObjectKey,
-                    exception
-            );
-            storeException.addSuppressed(compensationException);
-        }
     }
 
     private void validateObjectSize(Long contentLength) {
