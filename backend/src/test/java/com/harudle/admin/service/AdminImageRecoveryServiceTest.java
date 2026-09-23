@@ -35,7 +35,8 @@ class AdminImageRecoveryServiceTest {
         ObjectProvider<DiaryImageGenerator> generators = mock(ObjectProvider.class);
         when(storages.getIfAvailable()).thenReturn(storage);
         when(generators.getIfAvailable()).thenReturn(generator);
-        service = new AdminImageRecoveryService(generations, prompts, generators, storages);
+        service = new AdminImageRecoveryService(generations, prompts, generators, storages,
+                new RecoveryExecutionGate(java.time.Duration.ZERO));
         generation.succeed(storyboard, "generated/original/image.png", Instant.EPOCH);
         when(generations.findById(generation.getId())).thenReturn(Optional.of(generation));
     }
@@ -103,66 +104,65 @@ class AdminImageRecoveryServiceTest {
         verifyNoInteractions(generator, prompts);
     }
 
+    private static final String UPLOAD_KEY =
+            "generated/diary-images/550e8400-e29b-41d4-a716-446655440000/image.png";
+
     @Test
-    void uploadsProvidedImageToOriginalKeyWithoutAi() throws Exception {
-        when(generations.findFirstByImageObjectKey(generation.getImageObjectKey())).thenReturn(Optional.of(generation));
+    void uploadsImageWhenS3KeyIsMissingWithoutDatabaseAccess() throws Exception {
         byte[] bytes = png();
-        when(storage.restoreIfMissing(eq(generation.getImageObjectKey()), any())).thenReturn(true);
-        assertThat(service.upload(generation.getImageObjectKey(), bytes).status()).isEqualTo("RESTORED");
+        when(storage.restoreIfMissing(eq(UPLOAD_KEY), any())).thenReturn(true);
+        var result = service.upload(UPLOAD_KEY, bytes);
+        assertThat(result.status()).isEqualTo("RESTORED");
+        assertThat(result.imageObjectKey()).isEqualTo(UPLOAD_KEY);
         var image = org.mockito.ArgumentCaptor.forClass(GeneratedImage.class);
-        verify(storage).restoreIfMissing(eq("generated/original/image.png"), image.capture());
+        verify(storage).restoreIfMissing(eq(UPLOAD_KEY), image.capture());
         assertThat(image.getValue().resource().getContentAsByteArray()).isEqualTo(bytes);
         assertThat(image.getValue().mediaType()).isEqualTo(MediaType.IMAGE_PNG);
-        verifyNoInteractions(generator, prompts);
-        verify(generations).findFirstByImageObjectKey(generation.getImageObjectKey());
-        verifyNoMoreInteractions(generations);
+        verifyNoInteractions(generations, prompts, generator);
         verify(storage, never()).delete(anyString());
     }
 
     @Test
-    void uploadSkipsExistingObject() throws Exception {
-        when(generations.findFirstByImageObjectKey(generation.getImageObjectKey())).thenReturn(Optional.of(generation));
-        when(storage.exists(generation.getImageObjectKey())).thenReturn(true);
-        assertThat(service.upload(generation.getImageObjectKey(), png()).status()).isEqualTo("ALREADY_EXISTS");
-        verify(storage, never()).restoreIfMissing(anyString(), any());
-        verifyNoInteractions(generator, prompts);
+    void existingS3ObjectIsKept() throws Exception {
+        when(storage.restoreIfMissing(eq(UPLOAD_KEY), any())).thenReturn(false);
+        assertThat(service.upload(UPLOAD_KEY, png()).status()).isEqualTo("ALREADY_EXISTS");
+        verify(storage).restoreIfMissing(eq(UPLOAD_KEY), any());
+        verifyNoInteractions(generations, prompts, generator);
     }
 
     @Test
-    void uploadRejectsNonImageBytes() {
-        when(generations.findFirstByImageObjectKey(generation.getImageObjectKey())).thenReturn(Optional.of(generation));
-        assertThatThrownBy(() -> service.upload(generation.getImageObjectKey(), new byte[]{1, 2, 3}))
+    void invalidImageIsRejectedBeforeUpload() {
+        assertThatThrownBy(() -> service.upload(UPLOAD_KEY, new byte[]{1, 2, 3}))
                 .isInstanceOf(ResponseStatusException.class);
         verify(storage, never()).restoreIfMissing(anyString(), any());
-        verifyNoInteractions(generator, prompts);
+        verifyNoInteractions(generations, prompts, generator);
+    }
+
+    @Test
+    void arbitraryImageKeyCanBeRestoredWithoutDatabaseLookup() throws Exception {
+        String key = "references/style.png";
+        when(storage.restoreIfMissing(eq(key), any())).thenReturn(true);
+        assertThat(service.upload(key, png()).status()).isEqualTo("RESTORED");
+        verify(storage).restoreIfMissing(eq(key), any());
+        verifyNoInteractions(generations, prompts, generator);
     }
 
     @Test
     void uploadRejectsFormatMismatch() throws Exception {
-        var jpegGeneration = DiaryGeneration.start(UUID.randomUUID(), 1L, UUID.randomUUID(), "c".repeat(64));
-        jpegGeneration.succeed(storyboard, "generated/original/image.jpg", Instant.EPOCH);
-        when(generations.findFirstByImageObjectKey(jpegGeneration.getImageObjectKey())).thenReturn(Optional.of(jpegGeneration));
-        byte[] bytes = png();
-        assertThatThrownBy(() -> service.upload(jpegGeneration.getImageObjectKey(), bytes))
-                .isInstanceOf(ResponseStatusException.class);
+        String jpegKey = UPLOAD_KEY.replace(".png", ".jpg");
+        assertThatThrownBy(() -> service.upload(jpegKey, png()))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        error -> assertThat(error.getStatusCode().value()).isEqualTo(409));
         verify(storage, never()).restoreIfMissing(anyString(), any());
+        verifyNoInteractions(generations, prompts, generator);
     }
 
     @Test
-    void uploadRejectsUnknownKeyBeforeAccessingStorage() {
-        when(generations.findFirstByImageObjectKey("unknown/image.png")).thenReturn(Optional.empty());
-        assertThatThrownBy(() -> service.upload("unknown/image.png", new byte[]{1}))
-                .isInstanceOfSatisfying(ResponseStatusException.class,
-                        error -> assertThat(error.getStatusCode().value()).isEqualTo(404));
-        verifyNoInteractions(storage, generator, prompts);
-    }
-
-    @Test
-    void uploadRejectsBlankKey() {
-        assertThatThrownBy(() -> service.upload(" ", new byte[]{1}))
-                .isInstanceOfSatisfying(ResponseStatusException.class,
-                        error -> assertThat(error.getStatusCode().value()).isEqualTo(400));
-        verifyNoInteractions(storage, generator, prompts);
+    void uploadPropagatesS3WriteFailure() throws Exception {
+        when(storage.restoreIfMissing(eq(UPLOAD_KEY), any()))
+                .thenThrow(new ImageStorageException("access denied"));
+        assertThatThrownBy(() -> service.upload(UPLOAD_KEY, png())).isInstanceOf(ImageStorageException.class);
+        verifyNoInteractions(generations, prompts, generator);
     }
 
     private static byte[] png() throws Exception {

@@ -20,45 +20,46 @@ public class AdminImageRecoveryService {
     private final GenerationPromptRepository prompts;
     private final ObjectProvider<DiaryImageGenerator> generators;
     private final ObjectProvider<ImageStorage> storages;
+    private final RecoveryExecutionGate executionGate;
 
     public AdminImageRecoveryService(DiaryGenerationRepository generations,
             GenerationPromptRepository prompts, ObjectProvider<DiaryImageGenerator> generators,
-            ObjectProvider<ImageStorage> storages) {
+            ObjectProvider<ImageStorage> storages, RecoveryExecutionGate executionGate) {
         this.generations = generations;
         this.prompts = prompts;
         this.generators = generators;
         this.storages = storages;
+        this.executionGate = executionGate;
     }
 
-    public Result upload(String imageObjectKey, byte[] bytes) {
+    public UploadResult upload(String imageObjectKey, byte[] bytes) {
+        return executionGate.execute(() -> uploadImage(imageObjectKey, bytes));
+    }
+
+    private UploadResult uploadImage(String imageObjectKey, byte[] bytes) {
         if (imageObjectKey == null || imageObjectKey.isBlank()
                 || imageObjectKey.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 1024) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "유효한 S3 이미지 키가 필요합니다.");
-        }
-        var generation = generations.findFirstByImageObjectKey(imageObjectKey)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "해당 S3 키의 생성 기록이 없습니다."));
-        UUID generationId = generation.getId();
-        String key = generation.getImageObjectKey();
-        if (generation.getStatus() != GenerationStatus.SUCCEEDED || key == null || key.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "기존 이미지 키가 있는 성공 기록만 복구할 수 있습니다.");
         }
         ImageStorage storage = storages.getIfAvailable();
         if (storage == null) {
             throw GenerationUnavailableException.adaptersNotConfigured();
         }
-        if (storage.exists(key)) {
-            return new Result(generationId, key, "ALREADY_EXISTS");
-        }
         var image = RecoveryImageUpload.decode(bytes);
-        if (!expectedContentType(key).equals(image.mediaType().toString())) {
+        if (!expectedContentType(imageObjectKey).equals(image.mediaType().toString())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "업로드 이미지 형식이 기존 키 확장자와 다릅니다. 필요한 형식: " + expectedContentType(key));
+                    "업로드 이미지 형식이 기존 키 확장자와 다릅니다. 필요한 형식: "
+                            + expectedContentType(imageObjectKey));
         }
-        boolean restored = storage.restoreIfMissing(key, image);
-        return new Result(generationId, key, restored ? "RESTORED" : "ALREADY_EXISTS");
+        boolean restored = storage.restoreIfMissing(imageObjectKey, image);
+        return new UploadResult(imageObjectKey, restored ? "RESTORED" : "ALREADY_EXISTS");
     }
 
     public Result restore(UUID generationId) {
+        return executionGate.execute(() -> restoreImage(generationId));
+    }
+
+    private Result restoreImage(UUID generationId) {
         var generation = generations.findById(generationId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "생성 기록이 없습니다."));
         String key = generation.getImageObjectKey();
@@ -97,4 +98,6 @@ public class AdminImageRecoveryService {
     }
 
     public record Result(UUID generationId, String imageObjectKey, String status) { }
+
+    public record UploadResult(String imageObjectKey, String status) { }
 }

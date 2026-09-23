@@ -41,10 +41,14 @@ curl --fail-with-body -b recovery-cookies.txt -X POST "$BASE_URL/api/v1/admin/ge
 같은 버킷과 prefix를 사용하는 모든 환경에서 고아 이미지 삭제 스케줄러 제거본을 배포해야 한다.
 기존 참조 이미지도 삭제된 경우에는 그 이미지를 먼저 복구해야 한다.
 실행 서버에는 Gemini 설정 및 S3 GetObject/PutObject 권한이 필요하다.
-누락 객체 HEAD가 404를 반환하려면 해당 버킷의 ListBucket 권한도 필요할 수 있다.
+자동 생성 복구는 누락 객체를 HEAD로 확인하므로 버킷의 ListBucket 권한도 필요할 수 있다. 파일 직접 업로드는 조건부 PUT으로 검사한다.
 
 API는 이미지 생성 완료까지 동기로 기다린다. 클라이언트와 프록시의 타임아웃을 고려해 한 건씩 실행한다.
-동시 요청은 Gemini를 중복 호출할 수 있지만 조건부 PUT이 덮어쓰기를 막는다.
+동일 서버 인스턴스에서는 자동 생성 복구와 파일 업로드 복구가 공통 실행 잠금을 사용한다.
+한 건이 성공하거나 실패한 시점부터 10초 후 다음 작업이 시작된다.
+ADMIN_IMAGE_RECOVERY_INTERVAL로 간격을 조절한다. 일반 사용자 생성에는 적용하지 않는다.
+대기 중인 요청도 HTTP 연결을 유지하므로 클라이언트에서 한 건 응답을 받은 뒤 다음 요청을 보내는 방식을 권장한다.
+인스턴스가 여러 개면 잠금을 공유하지 않으므로 복구 요청은 한 인스턴스로 보내야 한다. 재시작 시 대기 요청과 마지막 실행 시각은 유지되지 않는다.
 새 이미지 생성에는 공급자 비용이 발생하고 원본과 픽셀 단위로 동일한 이미지는 보장하지 않는다.
 이 구현 작업에서는 실제 Gemini 호출과 S3 복구를 실행하지 않았다.
 
@@ -52,14 +56,15 @@ API는 이미지 생성 완료까지 동기로 기다린다. 클라이언트와 
 
 POST /api/v1/admin/generations/restore-image/upload
 Content-Type: multipart/form-data
-텍스트 필드 이름: imageObjectKey (DB에 저장된 S3 키)
+텍스트 필드 이름: imageObjectKey (복구할 생성 이미지의 S3 키)
 파일 필드 이름: image
 
-imageObjectKey에 DB의 image_object_key 값을 그대로 전달한다. 예: generated/diary-images/.../image.png
+imageObjectKey에 복구할 생성 이미지의 S3 키를 전달한다. DB의 image_object_key 값이 있다면 그대로 사용한다.
 전체 URL이나 s3://버킷/ 경로가 아니라 버킷 내부 키만 입력한다.
-해당 키가 DB 생성 기록에 없으면 404로 거절한다. UUID는 입력하지 않는다.
+DB 생성 기록 조회는 하지 않는다. UUID는 입력하지 않는다.
+관리자 요청에 입력한 버킷 내부 키를 그대로 사용한다. DB의 존재 여부나 상태는 검사하지 않는다.
 기존 생성 API와 달리 스토리보드, 프롬프트, Gemini 호출이 필요하지 않다.
-SUCCEEDED 상태와 기존 이미지 키가 필요하다. 기존 파일은 덮어쓰지 않고 ALREADY_EXISTS로 응답한다.
+SUCCEEDED 상태 검사는 하지 않는다. S3 조건부 PUT이 기존 객체를 확인한다. 이미 있으면 ALREADY_EXISTS를 반환하고 덮어쓰지 않는다.
 
 위 절차로 관리자 토큰과 CSRF 쿠키/토큰을 준비한 뒤 호출한다:
 
@@ -75,4 +80,4 @@ curl --fail-with-body -b recovery-cookies.txt -X POST "$BASE_URL/api/v1/admin/ge
 서버가 파일 내용을 디코딩해 형식을 확인하고 S3 Content-Type을 설정한다.
 기존 키의 확장자와 형식이 다르면 409로 거절한다. 확장자만 바꾸지 말고 실제 이미지 형식을 변환해야 한다.
 WebP 직접 업로드는 현재 지원하지 않는다. S3 설정의 최대 객체 크기가 더 작다면 해당 제한도 적용된다.
-응답 형식과 RESTORED/ALREADY_EXISTS 상태는 위 자동 생성 복구 API와 같다.
+응답은 imageObjectKey와 status(RESTORED 또는 ALREADY_EXISTS)를 포함한다.

@@ -23,7 +23,7 @@ class AdminImageRecoveryController {
     }
 
     @PostMapping(value = "/restore-image/upload", consumes = "multipart/form-data")
-    AdminImageRecoveryService.Result upload(@RequestParam("imageObjectKey") String imageObjectKey,
+    AdminImageRecoveryService.UploadResult upload(@RequestParam("imageObjectKey") String imageObjectKey,
             @RequestPart("image") MultipartFile image) throws IOException {
         if (image.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "이미지 파일이 비어 있습니다.");
