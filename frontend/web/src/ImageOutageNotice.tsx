@@ -1,14 +1,16 @@
 import { css } from '@emotion/react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import ActionButton from './shared/ActionButton';
 import { theme } from './styles/theme';
 
 // 공지 내용을 갱신할 때 키도 변경하면 사용자에게 새 안내를 다시 표시합니다.
-const NOTICE_KEY = 'harudle:image-outage:2026-09-23:v1';
+const NOTICE_KEY = 'harudle:image-outage:2026-09-23:v2';
 
 const ImageOutageNotice = () => {
+  const [showPrevious, setShowPrevious] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const bannerRef = useRef<HTMLButtonElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -22,6 +24,13 @@ const ImageOutageNotice = () => {
     if (!acknowledged && dialog && !dialog.open) dialog.showModal();
     return () => dialog?.close();
   }, []);
+
+  useEffect(() => {
+    if (dialogRef.current?.open) {
+      titleRef.current?.focus({ preventScroll: true });
+      dialogRef.current.scrollTop = 0;
+    }
+  }, [showPrevious]);
 
   const acknowledge = () => {
     try {
@@ -40,9 +49,12 @@ const ImageOutageNotice = () => {
         type="button"
         css={bannerStyle}
         aria-haspopup="dialog"
-        onClick={() => dialogRef.current?.showModal()}
+        onClick={() => {
+          setShowPrevious(false);
+          dialogRef.current?.showModal();
+        }}
       >
-        <span>이미지 조회 장애 안내</span>
+        <span>일기 이미지 복구 및 지원 안내</span>
         <span css={bannerLinkStyle}>자세히 보기 ›</span>
       </button>
       <dialog
@@ -55,22 +67,79 @@ const ImageOutageNotice = () => {
           acknowledge();
         }}
       >
-        <span css={badgeStyle}>서비스 이용 안내</span>
-        <h2 id="image-outage-title" css={titleStyle}>
-          일기 이미지 조회 장애 안내
+        <span css={badgeStyle}>
+          {showPrevious
+            ? '이전 공지 · 9월 23일'
+            : '최신 공지 · 복구 및 지원 안내'}
+        </span>
+        <h2
+          ref={titleRef}
+          id="image-outage-title"
+          css={titleStyle}
+          tabIndex={-1}
+          autoFocus
+        >
+          {showPrevious
+            ? '일기 이미지 조회 장애 안내'
+            : '일기 이미지 복구 및 지원 안내'}
         </h2>
         <div id="image-outage-description" css={descriptionStyle}>
-          <p>
-            현재 일기 이미지가 표시되지 않는 문제가 발생하고 있습니다. 원인과
-            복구 가능 여부를 확인하고 있습니다.
-          </p>
-          <p>소중한 기록을 이용하는 데 불편과 걱정을 드려 죄송합니다.</p>
-          <p css={updateStyle}>
-            다음 안내
-            <span css={dateStyle}>한국시간 기준 9월 23일(수) 23시</span>
-          </p>
+          {showPrevious ? (
+            <>
+              <p>
+                현재 일기 이미지가 표시되지 않는 문제가 발생하고 있습니다.
+                원인과 복구 가능 여부를 확인하고 있습니다.
+              </p>
+              <p>소중한 기록을 이용하는 데 불편과 걱정을 드려 죄송합니다.</p>
+              <p>
+                다음 안내
+                <br />
+                한국시간 기준{' '}
+                <strong css={emphasisStyle}>9월 23일(수) 23시</strong>
+              </p>
+            </>
+          ) : (
+            <>
+              <p>
+                먼저 소중한 그림일기를 복구할 수 없는 점에 대해 진심으로
+                사과드립니다.
+              </p>
+              <p>
+                작성해주신 일기 내용은 남아 있지만, 이미지 파일은 완전히
+                삭제되어 원본을 되살릴 수 없는 상황입니다.
+              </p>
+              <p>
+                <strong css={emphasisStyle}>9월 27일(일)</strong>(한국시간
+                기준)까지 순차적으로 복구하겠습니다.
+              </p>
+              <p>
+                이번 복구는 저장된 일기 내용을 바탕으로 저희가 그림을 새로
+                생성하는 작업입니다. 이전 그림과는 달라질 수 있는 점 양해
+                부탁드립니다.
+              </p>
+              <p>
+                새 그림이 마음에 들지 않는 부분도 있을 수 있어, 원하시는
+                이야기를 다시 그림으로 남기실 수 있도록 다음 주 일요일인{' '}
+                <strong css={emphasisStyle}>10월 4일(일)</strong>까지 한국시간
+                기준 <strong css={emphasisStyle}>매일 10회</strong>의 일기 생성
+                기회를 제공하겠습니다.
+              </p>
+              <p>
+                앞으로는 주기적인 백업을 통해 같은 일이 다시 발생하지 않도록
+                하겠습니다. 소중한 기록을 믿고 맡기실 수 있도록 더 책임 있게
+                운영하고 발전하는 하루들이 되겠습니다.
+              </p>
+            </>
+          )}
         </div>
         <ActionButton label="확인했어요" onClick={acknowledge} />
+        <button
+          type="button"
+          css={historyButtonStyle}
+          onClick={() => setShowPrevious((previous) => !previous)}
+        >
+          {showPrevious ? '최신 공지로 돌아가기' : '이전 공지 보기'}
+        </button>
       </dialog>
     </>
   );
@@ -135,6 +204,7 @@ const badgeStyle = css`
 `;
 
 const titleStyle = css`
+  outline: none;
   margin-bottom: 16px;
   font-size: 22px;
   font-weight: 700;
@@ -153,19 +223,23 @@ const descriptionStyle = css`
   word-break: keep-all;
 `;
 
-const updateStyle = css`
-  padding: 14px 16px;
-  border-radius: 12px;
-  background: ${theme.colors.background.brandWeak};
-  color: ${theme.colors.foreground.brand};
+const emphasisStyle = css`
+  color: ${theme.colors.foreground.neutral};
   font-weight: 700;
 `;
 
-const dateStyle = css`
+const historyButtonStyle = css`
   display: block;
-  margin-top: 4px;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 8px;
+  padding: 10px;
+  border: none;
+  background: transparent;
   color: ${theme.colors.foreground.neutralMuted};
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 18px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  text-decoration: underline;
+  cursor: pointer;
 `;
