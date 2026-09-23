@@ -48,6 +48,10 @@ public class DiaryGeneration {
     @Column(name = "storyboard", columnDefinition = "jsonb")
     private Storyboard storyboard;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "token_usage", columnDefinition = "jsonb")
+    private GenerationTokenUsage tokenUsage;
+
     @Column(name = "title", length = Storyboard.MAX_TITLE_LENGTH)
     private String title;
 
@@ -127,6 +131,10 @@ public class DiaryGeneration {
         return title;
     }
 
+    public GenerationTokenUsage getTokenUsage() {
+        return tokenUsage;
+    }
+
     public String getImageObjectKey() {
         return imageObjectKey;
     }
@@ -161,12 +169,22 @@ public class DiaryGeneration {
     }
 
     public void succeed(Storyboard storyboard, String imageObjectKey, Instant completedAt) {
+        succeed(storyboard, imageObjectKey, null, completedAt);
+    }
+
+    public void succeed(
+            Storyboard storyboard,
+            String imageObjectKey,
+            GenerationTokenUsage tokenUsage,
+            Instant completedAt
+    ) {
         validateProcessingStatus();
         validateStoryboard(storyboard);
         validateCompletedAt(completedAt);
         String normalizedImageObjectKey = normalizeImageObjectKey(imageObjectKey);
 
         this.storyboard = storyboard;
+        this.tokenUsage = tokenUsage;
         this.title = storyboard.title();
         this.imageObjectKey = normalizedImageObjectKey;
         this.errorCode = null;

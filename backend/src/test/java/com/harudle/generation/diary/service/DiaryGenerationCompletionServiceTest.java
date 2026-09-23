@@ -11,6 +11,7 @@ import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.generation.diary.domain.DiaryGeneration;
 import com.harudle.generation.diary.domain.GenerationErrorCode;
 import com.harudle.generation.diary.domain.GenerationStatus;
+import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import com.harudle.generation.diary.domain.StoryPanel;
 import com.harudle.generation.diary.domain.Storyboard;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
@@ -58,17 +59,20 @@ class DiaryGenerationCompletionServiceTest {
     void succeedProcessingGeneration() {
         DiaryGeneration generation = createGeneration();
         Storyboard storyboard = createStoryboard();
+        GenerationTokenUsage tokenUsage = new GenerationTokenUsage(120, 350, 80, 550);
         when(diaryGenerationRepository.findByIdForUpdate(generation.getId()))
                 .thenReturn(Optional.of(generation));
 
         DiaryGeneration result = completionService.succeed(
                 generation.getId(),
                 storyboard,
-                "generated/comic.png"
+                "generated/comic.png",
+                tokenUsage
         );
 
         assertThat(result.getStatus()).isEqualTo(GenerationStatus.SUCCEEDED);
         assertThat(result.getCompletedAt()).isEqualTo(NOW);
+        assertThat(result.getTokenUsage()).isEqualTo(tokenUsage);
     }
 
     @Test
@@ -82,7 +86,8 @@ class DiaryGenerationCompletionServiceTest {
         assertThatThrownBy(() -> completionService.succeed(
                 generation.getId(),
                 createStoryboard(),
-                "generated/comic.png"
+                "generated/comic.png",
+                null
         )).isInstanceOfSatisfying(
                 DiaryGenerationFailedException.class,
                 exception -> assertThat(exception.errorCode())
@@ -103,7 +108,8 @@ class DiaryGenerationCompletionServiceTest {
         DiaryGeneration result = completionService.succeed(
                 generation.getId(),
                 createStoryboard(),
-                "generated/loser.png"
+                "generated/loser.png",
+                null
         );
 
         assertThat(result).isSameAs(generation);

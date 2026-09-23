@@ -1,15 +1,21 @@
 package com.harudle.generation.adapter.out.gemini;
 
 import com.google.genai.Models;
+import com.google.genai.types.Candidate;
 import com.google.genai.types.Content;
 import com.google.genai.types.GenerateContentConfig;
 import com.google.genai.types.GenerateContentResponse;
+import com.google.genai.types.GenerateContentResponseUsageMetadata;
 import com.google.genai.types.Part;
 import com.google.genai.types.ThinkingConfig;
+import com.harudle.common.logging.ExternalApiResponseDiagnostics;
 import com.harudle.generation.config.GeminiGenerationProperties;
 import com.harudle.generation.diary.domain.Storyboard;
+import com.harudle.generation.diary.domain.GenerationTokenUsage;
+import com.harudle.generation.diary.service.port.dto.GeneratedStoryboard;
 import com.harudle.generation.diary.service.port.dto.StoryboardGenerationRequest;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
+import java.util.Optional;
 import tools.jackson.databind.ObjectMapper;
 
 public final class GeminiStoryboardGenerator implements StoryboardGenerator {
@@ -17,7 +23,6 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
     private static final String OPERATION = "storyboard_generation";
     private static final String TRANSLATION_OPERATION = "스토리보드 생성";
     private static final String REQUEST_PREPARATION_ERROR = "REQUEST_PREPARATION_ERROR";
-    private static final String RESPONSE_PROCESSING_ERROR = "RESPONSE_PROCESSING_ERROR";
     private static final String JSON_RESPONSE_MIME_TYPE = "application/json";
     private static final String DIARY_REQUEST_TEMPLATE = """
             <context>
@@ -58,7 +63,7 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
     }
 
     @Override
-    public Storyboard generate(StoryboardGenerationRequest request) {
+    public GeneratedStoryboard generate(StoryboardGenerationRequest request) {
         PreparedRequest preparedRequest = prepareRequest(request);
         GenerateContentResponse response = callProvider(preparedRequest);
         return processResponse(response);
@@ -91,17 +96,63 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
         }
     }
 
-    private Storyboard processResponse(GenerateContentResponse response) {
+    private GeneratedStoryboard processResponse(GenerateContentResponse response) {
+        String responseText = null;
         try {
-            return mapResponse(response);
+            if (response != null) {
+                responseText = response.text();
+            }
+            Storyboard storyboard = mapResponse(response, responseText);
+            return new GeneratedStoryboard(storyboard, tokenUsage(response));
         } catch (Exception exception) {
-            throw failureReporter.reportInternalFailure(
+            throw failureReporter.reportStoryboardResponseFailure(
                     OPERATION,
                     TRANSLATION_OPERATION,
-                    RESPONSE_PROCESSING_ERROR,
+                    responseDiagnostics(response, responseText),
                     exception
             );
         }
+    }
+
+    private static GenerationTokenUsage tokenUsage(GenerateContentResponse response) {
+        return response.usageMetadata()
+                .map(metadata -> new GenerationTokenUsage(
+                        metadata.promptTokenCount().orElse(null),
+                        metadata.candidatesTokenCount().orElse(null),
+                        metadata.thoughtsTokenCount().orElse(null),
+                        metadata.totalTokenCount().orElse(null)
+                ))
+                .orElse(null);
+    }
+
+    private ExternalApiResponseDiagnostics responseDiagnostics(
+            GenerateContentResponse response,
+            String responseText
+    ) {
+        if (response == null) {
+            return new ExternalApiResponseDiagnostics(
+                    null, null, null, properties.maxOutputTokens(), null
+            );
+        }
+        String finishReason = response.candidates()
+                .flatMap(candidates -> candidates.stream().findFirst())
+                .flatMap(Candidate::finishReason)
+                .map(Object::toString)
+                .orElse(null);
+        Optional<GenerateContentResponseUsageMetadata> usageMetadata = response.usageMetadata();
+        Integer candidateTokenCount = usageMetadata
+                .flatMap(GenerateContentResponseUsageMetadata::candidatesTokenCount)
+                .orElse(null);
+        Integer thoughtTokenCount = usageMetadata
+                .flatMap(GenerateContentResponseUsageMetadata::thoughtsTokenCount)
+                .orElse(null);
+        return new ExternalApiResponseDiagnostics(
+                finishReason,
+                candidateTokenCount,
+                thoughtTokenCount,
+                properties.maxOutputTokens(),
+                responseText == null ? null : responseText.length()
+        );
     }
 
     private record PreparedRequest(String text, GenerateContentConfig config) {
@@ -126,12 +177,14 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
                 .build();
     }
 
-    private Storyboard mapResponse(GenerateContentResponse response) throws Exception {
+    private Storyboard mapResponse(
+            GenerateContentResponse response,
+            String responseText
+    ) throws Exception {
         if (response == null) {
             throw new IllegalStateException("Gemini 스토리보드 응답이 없습니다.");
         }
 
-        String responseText = response.text();
         if (responseText == null || responseText.isBlank()) {
             throw new IllegalStateException("Gemini 스토리보드 응답 본문이 비어 있습니다.");
         }

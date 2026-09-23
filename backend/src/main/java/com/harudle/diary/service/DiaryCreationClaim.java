@@ -2,6 +2,7 @@ package com.harudle.diary.service;
 
 import com.harudle.generation.diary.domain.GenerationErrorCode;
 import com.harudle.generation.diary.domain.GenerationStatus;
+import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -17,6 +18,23 @@ record DiaryCreationClaim(
         String imageObjectKey,
         Instant completedAt,
         GenerationErrorCode errorCode,
-        boolean newlyCreated
+        boolean newlyCreated,
+        GenerationTokenUsage tokenUsage
 ) {
+    DiaryCreationClaim(
+            UUID diaryId,
+            LocalDate diaryDate,
+            String sourceText,
+            Instant createdAt,
+            UUID generationId,
+            GenerationStatus generationStatus,
+            String title,
+            String imageObjectKey,
+            Instant completedAt,
+            GenerationErrorCode errorCode,
+            boolean newlyCreated
+    ) {
+        this(diaryId, diaryDate, sourceText, createdAt, generationId, generationStatus,
+                title, imageObjectKey, completedAt, errorCode, newlyCreated, null);
+    }
 }

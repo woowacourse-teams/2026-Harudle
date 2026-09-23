@@ -5,6 +5,7 @@ import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.generation.diary.domain.DiaryGeneration;
 import com.harudle.generation.diary.domain.GenerationErrorCode;
 import com.harudle.generation.diary.domain.Storyboard;
+import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
 import java.time.Clock;
@@ -34,13 +35,18 @@ public class DiaryGenerationCompletionService {
     }
 
     @Transactional
-    DiaryGeneration succeed(UUID generationId, Storyboard storyboard, String imageObjectKey) {
+    DiaryGeneration succeed(
+            UUID generationId,
+            Storyboard storyboard,
+            String imageObjectKey,
+            GenerationTokenUsage tokenUsage
+    ) {
         DiaryGeneration generation = findForUpdate(generationId);
         return switch (generation.getStatus()) {
             case FAILED -> throw new DiaryGenerationFailedException(generation.getErrorCode());
             case SUCCEEDED -> generation;
             case PROCESSING -> {
-                generation.succeed(storyboard, imageObjectKey, clock.instant());
+                generation.succeed(storyboard, imageObjectKey, tokenUsage, clock.instant());
                 yield generation;
             }
         };
