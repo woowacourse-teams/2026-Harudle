@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useSearchParams } from 'react-router';
 import type { YearMonth } from './model';
 import { isMonth, type Month } from '../../../shared/utils';
 
-const formatYearMonthToObject = (yearMonth: string): YearMonth => {
-  const [year, month] = yearMonth.split('-').map((string) => Number(string));
-  if (!isMonth(month)) {
+const parseYearMonth = (yearMonth: string): YearMonth => {
+  const [year, month] = yearMonth.split('-').map(Number);
+  if (!Number.isInteger(year) || !isMonth(month)) {
     throw new Error('month 변환에 실패했습니다. month 범위를 확인하세요');
   }
 
@@ -12,14 +12,14 @@ const formatYearMonthToObject = (yearMonth: string): YearMonth => {
 };
 
 const useSelectedYearMonth = (year: number, month: Month) => {
-  const [selectedYearMonth, setSelectedYearMonth] = useState<YearMonth>({
-    year,
-    month,
-  });
+  const [searchParams, setSearchParams] = useSearchParams();
+  const yearMonthParam = searchParams.get('yearMonth');
+  const selectedYearMonth = yearMonthParam
+    ? parseYearMonth(yearMonthParam)
+    : { year, month };
 
   const handleYearMonthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const stringYearMonth = e.target.value;
-    setSelectedYearMonth(formatYearMonthToObject(stringYearMonth));
+    setSearchParams({ yearMonth: e.target.value }, { replace: true });
   };
 
   return { selectedYearMonth, handleYearMonthChange };

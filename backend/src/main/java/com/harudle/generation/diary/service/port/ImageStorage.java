@@ -10,5 +10,9 @@ public interface ImageStorage {
 
     String store(UUID generationId, GeneratedImage generatedImage);
 
+    boolean exists(String imageObjectKey);
+
+    boolean restoreIfMissing(String imageObjectKey, GeneratedImage generatedImage);
+
     void delete(String imageObjectKey);
 }

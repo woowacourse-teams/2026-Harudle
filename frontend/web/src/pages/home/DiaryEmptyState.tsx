@@ -1,11 +1,19 @@
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import ActionButton from '../../shared/ActionButton';
 import emptyPersonAndDog from '../../assets/images/empty-person-and-dog.png';
 import { css } from '@emotion/react';
 import { theme } from '../../styles/theme';
+import { getToday } from '../../shared/utils';
 
 const DiaryEmptyState = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const yearMonthParam = searchParams.get('yearMonth');
+  const today = getToday();
+  const [year, month] = yearMonthParam
+    ? yearMonthParam.split('-').map(Number)
+    : [today.year, today.month];
+
   return (
     <div css={emptyStateStyle}>
       <div css={emptyStateContentStyle}>
@@ -16,9 +24,11 @@ const DiaryEmptyState = () => {
         />
 
         <div css={emptyStateDescriptionContentStyle}>
-          <div css={emptyStateTitleStyle}>아직 기록이 없어요</div>
+          <div css={emptyStateTitleStyle}>
+            {year}년 {month}월에는 기록이 없어요
+          </div>
           <div css={emptyStateDescriptionStyle}>
-            오늘의 이야기를 네컷 만화로 남겨보세요!
+            다른 달을 살펴보거나 오늘의 이야기를 남겨보세요!
           </div>
         </div>
       </div>
@@ -82,4 +92,5 @@ const emptyStateDescriptionStyle = css`
   color: ${theme.colors.text.secondary};
   font-size: 15px;
   font-weight: 400;
+  word-break: keep-all;
 `;

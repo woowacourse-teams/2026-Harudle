@@ -11,11 +11,14 @@ import DiarySharePage from './pages/diary-share/DiarySharePage';
 import AuthCallbackPage from './pages/login/AuthCallbackPage';
 import GuestTrialRoutes from './pages/guest-trial/GuestTrialRoutes';
 import LandingPage from './pages/landing/LandingPage';
+import AdminGuard from './pages/admin/AdminGuard';
 import NotFoundPage from './pages/not-found/NotFoundPage';
+import PwaAnalyticsTracker from './pages/setting/PwaAnalyticsTracker';
 
 const App = () => {
   return (
     <div css={appStyle}>
+      <PwaAnalyticsTracker />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
@@ -27,6 +30,7 @@ const App = () => {
         <Route path="/setting" element={<SettingPage />} />
         <Route path="/landing" element={<LandingPage />} />
         <Route path="/landing-try/*" element={<GuestTrialRoutes />} />
+        <Route path="/admin/*" element={<AdminGuard />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </div>

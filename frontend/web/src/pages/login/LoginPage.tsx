@@ -3,8 +3,47 @@ import harudleLogo from '../../assets/images/harudle-logo.png';
 import loginHero from '../../assets/images/login-hero.png';
 import kakaoIcon from '../../assets/icons/kakao.svg';
 import { theme } from '../../styles/theme';
+import { useEffect } from 'react';
+import { useNavigate } from 'react-router';
+import { restoreAccessToken } from '../../shared/auth';
 
 const LoginPage = () => {
+  const navigate = useNavigate();
+
+  const handleKakaoLogin = () => {
+    if (process.env.NODE_ENV === 'development') {
+      navigate('/auth/callback');
+      return;
+    }
+
+    window.location.assign('/oauth2/authorization/kakao');
+  };
+
+  useEffect(() => {
+    if (localStorage.getItem('harudle.has-completed-oauth') === null) {
+      return;
+    }
+
+    const tryRestoreAccessToken = async (): Promise<boolean> => {
+      try {
+        await restoreAccessToken();
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    const checkAuthentication = async () => {
+      const isAuthenticated = await tryRestoreAccessToken();
+
+      if (isAuthenticated) {
+        navigate('/', { replace: true });
+        return;
+      }
+    };
+
+    void checkAuthentication();
+  }, [navigate]);
   return (
     <div css={pageStyle}>
       <div css={heroStyle}>
@@ -19,23 +58,15 @@ const LoginPage = () => {
       </div>
 
       <div css={loginAreaStyle}>
-        <button
-          type="button"
-          css={kakaoButtonStyle}
-          onClick={() => {
-            window.location.assign('/oauth2/authorization/kakao');
-          }}
-        >
+        <button type="button" css={kakaoButtonStyle} onClick={handleKakaoLogin}>
           <img src={kakaoIcon} alt="" css={kakaoIconStyle} />
           카카오로 시작하기
         </button>
 
         <p css={noticeStyle}>
           로그인하면 이용약관 및{' '}
-          <a href="https://tecothon.notion.site/3c6d0505d9168025b01cdfa02d863a37?pvs=73">
-            개인정보처리방침
-          </a>
-          에 동의한 것으로 간주됩니다.
+          <a href="https://harudle.notion.site/">개인정보처리방침</a>에 동의한
+          것으로 간주됩니다.
         </p>
       </div>
     </div>
