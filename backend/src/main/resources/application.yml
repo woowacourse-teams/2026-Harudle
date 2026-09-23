@@ -14,6 +14,10 @@ logging:
     correlation: "[traceId=%X{traceId:-none}] "
 
 spring:
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 21MB
   application:
     name: harudle
   config:

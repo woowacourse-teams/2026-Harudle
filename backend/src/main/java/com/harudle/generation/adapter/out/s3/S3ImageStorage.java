@@ -20,6 +20,8 @@ import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 
 public final class S3ImageStorage implements ImageStorage {
 
@@ -169,6 +171,49 @@ public final class S3ImageStorage implements ImageStorage {
                     putAttempted,
                     exception
             );
+        }
+    }
+
+    @Override
+    public boolean exists(String imageObjectKey) {
+        S3ObjectKeyValidator.validate(imageObjectKey);
+        try {
+            s3Client.headObject(HeadObjectRequest.builder().bucket(bucket).key(imageObjectKey).build());
+            return true;
+        } catch (S3Exception exception) {
+            if (exception.statusCode() == 404) {
+                return false;
+            }
+            throw failureReporter.reportProviderFailure("head_object", LOAD_TRANSLATION_OPERATION,
+                    imageObjectKey, false, exception);
+        } catch (Exception exception) {
+            throw failureReporter.reportProviderFailure("head_object", LOAD_TRANSLATION_OPERATION,
+                    imageObjectKey, false, exception);
+        }
+    }
+
+    @Override
+    public boolean restoreIfMissing(String imageObjectKey, GeneratedImage generatedImage) {
+        S3ObjectKeyValidator.validate(imageObjectKey);
+        try {
+            long length = generatedImage.resource().contentLength();
+            validateObjectSize(length);
+            PutObjectRequest request = PutObjectRequest.builder()
+                    .bucket(bucket).key(imageObjectKey)
+                    .contentType(generatedImage.mediaType().toString())
+                    .contentLength(length).ifNoneMatch("*").build();
+            try (InputStream stream = generatedImage.resource().getInputStream()) {
+                s3Client.putObject(request, RequestBody.fromInputStream(stream, length));
+            }
+            return true;
+        } catch (S3Exception exception) {
+            if (exception.statusCode() == 412) {
+                return false;
+            }
+            throw translateStoreFailure(imageObjectKey, true, exception);
+        } catch (Exception exception) {
+            // PUT 결과가 불확실해도 기존 키의 객체를 삭제하지 않는다.
+            throw translateStoreFailure(imageObjectKey, true, exception);
         }
     }
 

@@ -66,6 +66,44 @@ class S3ImageStorageTest {
 
     private S3ImageStorage imageStorage;
 
+    @Test
+    void restoreUsesOriginalKeyAndConditionalWrite() {
+        assertThat(imageStorage.restoreIfMissing(OBJECT_KEY, generatedImage())).isTrue();
+        ArgumentCaptor<PutObjectRequest> request = ArgumentCaptor.forClass(PutObjectRequest.class);
+        verify(s3Client).putObject(request.capture(), any(RequestBody.class));
+        assertThat(request.getValue().key()).isEqualTo(OBJECT_KEY);
+        assertThat(request.getValue().bucket()).isEqualTo("test-bucket");
+        assertThat(request.getValue().contentType()).isEqualTo("image/png");
+        assertThat(request.getValue().ifNoneMatch()).isEqualTo("*");
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
+    }
+
+    @Test
+    void concurrentRecoveryDoesNotOverwriteOrDelete() {
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenThrow(S3Exception.builder().statusCode(412).build());
+        assertThat(imageStorage.restoreIfMissing(OBJECT_KEY, generatedImage())).isFalse();
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
+    }
+
+    @Test
+    void uncertainRecoveryNeverDeletesObject() {
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenThrow(S3Exception.builder().statusCode(503).build());
+        assertThatThrownBy(() -> imageStorage.restoreIfMissing(OBJECT_KEY, generatedImage()))
+                .isInstanceOf(ImageStorageException.class);
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
+    }
+
+    @Test
+    void onlyNotFoundIsTreatedAsMissing() {
+        when(s3Client.headObject(any(software.amazon.awssdk.services.s3.model.HeadObjectRequest.class)))
+                .thenThrow(S3Exception.builder().statusCode(404).build())
+                .thenThrow(S3Exception.builder().statusCode(403).build());
+        assertThat(imageStorage.exists(OBJECT_KEY)).isFalse();
+        assertThatThrownBy(() -> imageStorage.exists(OBJECT_KEY)).isInstanceOf(ImageStorageException.class);
+    }
+
     @BeforeEach
     void setUp() {
         S3StorageProperties properties = new S3StorageProperties(

@@ -127,6 +127,10 @@ public class DiaryGeneration {
         return status;
     }
 
+    public Storyboard getStoryboard() {
+        return storyboard;
+    }
+
     public String getTitle() {
         return title;
     }
