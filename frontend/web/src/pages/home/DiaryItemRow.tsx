@@ -1,6 +1,7 @@
 import { diaryTimelineColors } from './diaryTimelineColors';
 import { css } from '@emotion/react';
 import { theme } from '../../styles/theme';
+import DiaryImage from '../../shared/DiaryImage';
 import { formatDiaryDate } from '../../shared/utils';
 import type {
   MonthlyDiaryDay,
@@ -27,7 +28,11 @@ const DiaryItemRow = ({
 
       <span css={titleStyle}>{title}</span>
 
-      <img src={thumbnailUrl} alt={`그림일기 ${date}`} css={thumbnailStyle} />
+      <DiaryImage
+        src={thumbnailUrl}
+        alt={`그림일기 ${date}`}
+        css={thumbnailStyle}
+      />
     </button>
   );
 };

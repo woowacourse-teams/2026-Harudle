@@ -11,6 +11,7 @@ import { css } from '@emotion/react';
 import DiaryShareButton from './DiaryShareButton';
 import DiaryImageDownloadButton from './DiaryImageDownloadButton';
 import { theme } from '../../styles/theme';
+import DiaryImage from '../../shared/DiaryImage';
 
 const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
   const navigate = useNavigate();
@@ -81,7 +82,7 @@ const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
       <main css={contentStyle}>
         <div css={diaryTitleStyle}>{title}</div>
 
-        <img css={diaryImageStyle} src={imageUrl} alt="그림 일기" />
+        <DiaryImage css={diaryImageStyle} src={imageUrl} alt="그림 일기" />
 
         <div>
           <span css={storyTitleStyle}>오늘의 이야기</span>
