@@ -115,7 +115,6 @@ class AdminImageRecoveryServiceTest {
         assertThat(result.status()).isEqualTo("RESTORED");
         assertThat(result.imageObjectKey()).isEqualTo(UPLOAD_KEY);
         var image = org.mockito.ArgumentCaptor.forClass(GeneratedImage.class);
-        verify(storage).exists(UPLOAD_KEY);
         verify(storage).restoreIfMissing(eq(UPLOAD_KEY), image.capture());
         assertThat(image.getValue().resource().getContentAsByteArray()).isEqualTo(bytes);
         assertThat(image.getValue().mediaType()).isEqualTo(MediaType.IMAGE_PNG);
@@ -125,16 +124,9 @@ class AdminImageRecoveryServiceTest {
 
     @Test
     void existingS3ObjectIsKept() throws Exception {
-        when(storage.exists(UPLOAD_KEY)).thenReturn(true);
-        assertThat(service.upload(UPLOAD_KEY, png()).status()).isEqualTo("ALREADY_EXISTS");
-        verify(storage, never()).restoreIfMissing(anyString(), any());
-        verifyNoInteractions(generations, prompts, generator);
-    }
-
-    @Test
-    void concurrentPutKeepsExistingObject() throws Exception {
         when(storage.restoreIfMissing(eq(UPLOAD_KEY), any())).thenReturn(false);
         assertThat(service.upload(UPLOAD_KEY, png()).status()).isEqualTo("ALREADY_EXISTS");
+        verify(storage).restoreIfMissing(eq(UPLOAD_KEY), any());
         verifyNoInteractions(generations, prompts, generator);
     }
 
@@ -166,10 +158,10 @@ class AdminImageRecoveryServiceTest {
     }
 
     @Test
-    void uploadFailsClosedWhenS3ExistenceIsUnknown() throws Exception {
-        when(storage.exists(UPLOAD_KEY)).thenThrow(new ImageStorageException("access denied"));
+    void uploadPropagatesS3WriteFailure() throws Exception {
+        when(storage.restoreIfMissing(eq(UPLOAD_KEY), any()))
+                .thenThrow(new ImageStorageException("access denied"));
         assertThatThrownBy(() -> service.upload(UPLOAD_KEY, png())).isInstanceOf(ImageStorageException.class);
-        verify(storage, never()).restoreIfMissing(anyString(), any());
         verifyNoInteractions(generations, prompts, generator);
     }
 

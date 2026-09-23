@@ -45,9 +45,6 @@ public class AdminImageRecoveryService {
         if (storage == null) {
             throw GenerationUnavailableException.adaptersNotConfigured();
         }
-        if (storage.exists(imageObjectKey)) {
-            return new UploadResult(imageObjectKey, "ALREADY_EXISTS");
-        }
         var image = RecoveryImageUpload.decode(bytes);
         if (!expectedContentType(imageObjectKey).equals(image.mediaType().toString())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
