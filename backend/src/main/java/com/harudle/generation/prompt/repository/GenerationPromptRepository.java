@@ -8,8 +8,6 @@ import org.springframework.data.jpa.repository.Query;
 
 public interface GenerationPromptRepository extends JpaRepository<GenerationPrompt, Long> {
 
-    boolean existsByImageAssetObjectKey(String imageAssetObjectKey);
-
     Optional<GenerationPrompt> findFirstByOrderByIdDesc();
 
     @Modifying

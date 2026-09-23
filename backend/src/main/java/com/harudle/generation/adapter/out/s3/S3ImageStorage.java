@@ -163,7 +163,7 @@ public final class S3ImageStorage implements ImageStorage {
             }
             return preparedStore.objectKey();
         } catch (Exception exception) {
-            // 불확정 PUT은 나중에 완료될 수 있으므로 주기적인 고아 이미지 정리에 맡긴다.
+            // 불확정 PUT은 나중에 완료될 수 있으므로 객체를 삭제하지 않는다.
             throw translateStoreFailure(
                     preparedStore.objectKey(),
                     putAttempted,
