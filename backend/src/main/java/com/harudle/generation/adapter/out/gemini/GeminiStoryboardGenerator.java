@@ -11,6 +11,8 @@ import com.google.genai.types.ThinkingConfig;
 import com.harudle.common.logging.ExternalApiResponseDiagnostics;
 import com.harudle.generation.config.GeminiGenerationProperties;
 import com.harudle.generation.diary.domain.Storyboard;
+import com.harudle.generation.diary.domain.GenerationTokenUsage;
+import com.harudle.generation.diary.service.port.dto.GeneratedStoryboard;
 import com.harudle.generation.diary.service.port.dto.StoryboardGenerationRequest;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
 import java.util.Optional;
@@ -61,7 +63,7 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
     }
 
     @Override
-    public Storyboard generate(StoryboardGenerationRequest request) {
+    public GeneratedStoryboard generate(StoryboardGenerationRequest request) {
         PreparedRequest preparedRequest = prepareRequest(request);
         GenerateContentResponse response = callProvider(preparedRequest);
         return processResponse(response);
@@ -94,13 +96,14 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
         }
     }
 
-    private Storyboard processResponse(GenerateContentResponse response) {
+    private GeneratedStoryboard processResponse(GenerateContentResponse response) {
         String responseText = null;
         try {
             if (response != null) {
                 responseText = response.text();
             }
-            return mapResponse(response, responseText);
+            Storyboard storyboard = mapResponse(response, responseText);
+            return new GeneratedStoryboard(storyboard, tokenUsage(response));
         } catch (Exception exception) {
             throw failureReporter.reportStoryboardResponseFailure(
                     OPERATION,
@@ -109,6 +112,17 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
                     exception
             );
         }
+    }
+
+    private static GenerationTokenUsage tokenUsage(GenerateContentResponse response) {
+        return response.usageMetadata()
+                .map(metadata -> new GenerationTokenUsage(
+                        metadata.promptTokenCount().orElse(null),
+                        metadata.candidatesTokenCount().orElse(null),
+                        metadata.thoughtsTokenCount().orElse(null),
+                        metadata.totalTokenCount().orElse(null)
+                ))
+                .orElse(null);
     }
 
     private ExternalApiResponseDiagnostics responseDiagnostics(

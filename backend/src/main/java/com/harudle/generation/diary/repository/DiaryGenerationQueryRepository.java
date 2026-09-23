@@ -21,7 +21,8 @@ public interface DiaryGenerationQueryRepository extends Repository<DiaryGenerati
                 generation.status,
                 generation.title,
                 generation.imageObjectKey,
-                generation.completedAt
+                generation.completedAt,
+                generation.tokenUsage
             )
             FROM DiaryGeneration generation
             WHERE generation.diaryId = :diaryId
@@ -35,7 +36,8 @@ public interface DiaryGenerationQueryRepository extends Repository<DiaryGenerati
                 generation.status,
                 generation.title,
                 generation.imageObjectKey,
-                generation.completedAt
+                generation.completedAt,
+                generation.tokenUsage
             )
             FROM DiaryGeneration generation
             WHERE generation.diaryId IN :diaryIds

@@ -5,6 +5,7 @@ import com.harudle.generation.diary.domain.GenerationErrorCode;
 import com.harudle.generation.prompt.domain.GenerationPrompt;
 import com.harudle.generation.diary.domain.ImageObjectKeyPolicy;
 import com.harudle.generation.diary.domain.Storyboard;
+import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import com.harudle.generation.diary.service.dto.CompletedDiaryGeneration;
@@ -20,6 +21,7 @@ import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageStorageException;
 import com.harudle.generation.diary.service.port.dto.ReferenceImage;
 import com.harudle.generation.diary.service.port.dto.StoryboardGenerationRequest;
+import com.harudle.generation.diary.service.port.dto.GeneratedStoryboard;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
 import java.util.UUID;
 
@@ -76,7 +78,8 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
             DiaryGeneration completedGeneration = completionService.succeed(
                     generationId,
                     generatedDiaryImage.storyboard(),
-                    generatedDiaryImage.imageObjectKey()
+                    generatedDiaryImage.imageObjectKey(),
+                    generatedDiaryImage.tokenUsage()
             );
             imageCleaner.deleteIfUnused(completedGeneration, generatedDiaryImage.imageObjectKey());
             return completedGeneration;
@@ -117,10 +120,11 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
             UUID generationId
     ) {
         try {
-            Storyboard storyboard = storyboardGenerator.generate(new StoryboardGenerationRequest(
+            GeneratedStoryboard generatedStoryboard = storyboardGenerator.generate(new StoryboardGenerationRequest(
                     command.diaryText(),
                     prompt.getStoryboardPromptText()
             ));
+            Storyboard storyboard = generatedStoryboard.storyboard();
             ReferenceImage referenceImage = imageStorage.load(prompt.getImageAssetObjectKey());
             GeneratedImage generatedImage = diaryImageGenerator.generate(new DiaryImageGenerationRequest(
                     storyboard,
@@ -128,7 +132,7 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
                     referenceImage
             ));
             String imageObjectKey = storeImage(generationId, generatedImage);
-            return new GeneratedDiaryImage(storyboard, imageObjectKey);
+            return new GeneratedDiaryImage(storyboard, imageObjectKey, generatedStoryboard.tokenUsage());
         } catch (AiGenerationException exception) {
             failGeneration(generationId, mapAiGenerationErrorCode(exception.errorType()));
             throw exception;
@@ -170,7 +174,8 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
                 generation.getId(),
                 generation.getTitle(),
                 generation.getImageObjectKey(),
-                generation.getCompletedAt()
+                generation.getCompletedAt(),
+                generation.getTokenUsage()
         );
     }
 
@@ -181,6 +186,10 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
         };
     }
 
-    private record GeneratedDiaryImage(Storyboard storyboard, String imageObjectKey) {
+    private record GeneratedDiaryImage(
+            Storyboard storyboard,
+            String imageObjectKey,
+            GenerationTokenUsage tokenUsage
+    ) {
     }
 }

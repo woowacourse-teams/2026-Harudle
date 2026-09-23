@@ -183,7 +183,8 @@ public class DiaryQueryService {
                         generation.status(),
                         generation.title(),
                         generation.imageObjectKey(),
-                        generation.completedAt()
+                        generation.completedAt(),
+                        generation.tokenUsage()
                 )
         );
     }

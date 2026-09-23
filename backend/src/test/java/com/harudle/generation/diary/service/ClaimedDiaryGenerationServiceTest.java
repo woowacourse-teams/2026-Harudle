@@ -13,6 +13,7 @@ import com.harudle.generation.diary.domain.GenerationErrorCode;
 import com.harudle.generation.prompt.domain.GenerationPrompt;
 import com.harudle.generation.diary.domain.StoryPanel;
 import com.harudle.generation.diary.domain.Storyboard;
+import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import com.harudle.generation.diary.service.dto.CompletedDiaryGeneration;
@@ -27,6 +28,7 @@ import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageStorageException;
 import com.harudle.generation.diary.service.port.dto.ReferenceImage;
 import com.harudle.generation.diary.service.port.dto.StoryboardGenerationRequest;
+import com.harudle.generation.diary.service.port.dto.GeneratedStoryboard;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -92,22 +94,26 @@ class ClaimedDiaryGenerationServiceTest {
         DiaryGeneration generation = createGeneration(command);
         GenerationPrompt prompt = createPrompt();
         Storyboard storyboard = createStoryboard();
+        GenerationTokenUsage tokenUsage = new GenerationTokenUsage(120, 350, 80, 550);
         ReferenceImage referenceImage = createReferenceImage();
         GeneratedImage generatedImage = createGeneratedImage();
         DiaryGeneration completedGeneration = createGeneration(command);
-        completedGeneration.succeed(storyboard, "generated/comic.png", Instant.parse("2026-08-06T12:00:00Z"));
+        completedGeneration.succeed(storyboard, "generated/comic.png", tokenUsage,
+                Instant.parse("2026-08-06T12:00:00Z"));
         when(diaryGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
         when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
-        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenReturn(storyboard);
+        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class)))
+                .thenReturn(new GeneratedStoryboard(storyboard, tokenUsage));
         when(imageStorage.load("references/style.png")).thenReturn(referenceImage);
         when(diaryImageGenerator.generate(any(DiaryImageGenerationRequest.class))).thenReturn(generatedImage);
         when(imageStorage.store(generation.getId(), generatedImage)).thenReturn("generated/comic.png");
-        when(completionService.succeed(generation.getId(), storyboard, "generated/comic.png"))
+        when(completionService.succeed(generation.getId(), storyboard, "generated/comic.png", tokenUsage))
                 .thenReturn(completedGeneration);
 
         CompletedDiaryGeneration result = generationService.generate(command, generation.getId());
 
         assertThat(result.title()).isEqualTo("친구와 보낸 하루");
+        assertThat(result.tokenUsage()).isEqualTo(tokenUsage);
         verify(imageStorage, never()).delete(any(String.class));
     }
 
@@ -128,11 +134,12 @@ class ClaimedDiaryGenerationServiceTest {
         );
         when(diaryGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
         when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
-        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenReturn(storyboard);
+        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class)))
+                .thenReturn(new GeneratedStoryboard(storyboard, null));
         when(imageStorage.load("references/style.png")).thenReturn(referenceImage);
         when(diaryImageGenerator.generate(any(DiaryImageGenerationRequest.class))).thenReturn(generatedImage);
         when(imageStorage.store(generation.getId(), generatedImage)).thenReturn("generated/loser.png");
-        when(completionService.succeed(generation.getId(), storyboard, "generated/loser.png"))
+        when(completionService.succeed(generation.getId(), storyboard, "generated/loser.png", null))
                 .thenReturn(winningGeneration);
 
         CompletedDiaryGeneration result = generationService.generate(command, generation.getId());
@@ -210,11 +217,12 @@ class ClaimedDiaryGenerationServiceTest {
                     return Optional.of(generation);
                 });
         when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
-        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenReturn(storyboard);
+        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class)))
+                .thenReturn(new GeneratedStoryboard(storyboard, null));
         when(imageStorage.load("references/style.png")).thenReturn(referenceImage);
         when(diaryImageGenerator.generate(any(DiaryImageGenerationRequest.class))).thenReturn(generatedImage);
         when(imageStorage.store(generation.getId(), generatedImage)).thenReturn("generated/comic.png");
-        when(completionService.succeed(generation.getId(), storyboard, "generated/comic.png"))
+        when(completionService.succeed(generation.getId(), storyboard, "generated/comic.png", null))
                 .thenThrow(exception);
 
         assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
@@ -235,11 +243,12 @@ class ClaimedDiaryGenerationServiceTest {
         when(diaryGenerationRepository.findById(generation.getId()))
                 .thenReturn(Optional.of(generation));
         when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
-        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenReturn(storyboard);
+        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class)))
+                .thenReturn(new GeneratedStoryboard(storyboard, null));
         when(imageStorage.load("references/style.png")).thenReturn(referenceImage);
         when(diaryImageGenerator.generate(any(DiaryImageGenerationRequest.class))).thenReturn(generatedImage);
         when(imageStorage.store(generation.getId(), generatedImage)).thenReturn("generated/comic.png");
-        when(completionService.succeed(generation.getId(), storyboard, "generated/comic.png"))
+        when(completionService.succeed(generation.getId(), storyboard, "generated/comic.png", null))
                 .thenThrow(completionException);
 
         assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
@@ -268,11 +277,12 @@ class ClaimedDiaryGenerationServiceTest {
                     return Optional.of(generation);
                 });
         when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
-        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenReturn(storyboard);
+        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class)))
+                .thenReturn(new GeneratedStoryboard(storyboard, null));
         when(imageStorage.load("references/style.png")).thenReturn(referenceImage);
         when(diaryImageGenerator.generate(any(DiaryImageGenerationRequest.class))).thenReturn(generatedImage);
         when(imageStorage.store(generation.getId(), generatedImage)).thenReturn("generated/comic.png");
-        when(completionService.succeed(generation.getId(), storyboard, "generated/comic.png"))
+        when(completionService.succeed(generation.getId(), storyboard, "generated/comic.png", null))
                 .thenThrow(completionException);
 
         assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
@@ -295,11 +305,12 @@ class ClaimedDiaryGenerationServiceTest {
                 .thenReturn(Optional.of(generation))
                 .thenThrow(verificationException);
         when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
-        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenReturn(storyboard);
+        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class)))
+                .thenReturn(new GeneratedStoryboard(storyboard, null));
         when(imageStorage.load("references/style.png")).thenReturn(referenceImage);
         when(diaryImageGenerator.generate(any(DiaryImageGenerationRequest.class))).thenReturn(generatedImage);
         when(imageStorage.store(generation.getId(), generatedImage)).thenReturn("generated/comic.png");
-        when(completionService.succeed(generation.getId(), storyboard, "generated/comic.png"))
+        when(completionService.succeed(generation.getId(), storyboard, "generated/comic.png", null))
                 .thenThrow(completionException);
 
         assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
@@ -321,7 +332,8 @@ class ClaimedDiaryGenerationServiceTest {
         String invalidObjectKey = "   ";
         when(diaryGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
         when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
-        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenReturn(storyboard);
+        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class)))
+                .thenReturn(new GeneratedStoryboard(storyboard, null));
         when(imageStorage.load("references/style.png")).thenReturn(referenceImage);
         when(diaryImageGenerator.generate(any(DiaryImageGenerationRequest.class))).thenReturn(generatedImage);
         when(imageStorage.store(generation.getId(), generatedImage)).thenReturn(invalidObjectKey);

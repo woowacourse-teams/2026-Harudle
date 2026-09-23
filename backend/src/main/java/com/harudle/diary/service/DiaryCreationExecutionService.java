@@ -47,7 +47,8 @@ class DiaryCreationExecutionService {
                             claim.generationId(),
                             claim.title(),
                             claim.imageObjectKey(),
-                            claim.completedAt()
+                            claim.completedAt(),
+                            claim.tokenUsage()
                     ),
                     false
             );
@@ -82,7 +83,8 @@ class DiaryCreationExecutionService {
                         GenerationStatus.SUCCEEDED,
                         generationResult.title(),
                         generationResult.imageObjectKey(),
-                        generationResult.completedAt()
+                        generationResult.completedAt(),
+                        generationResult.tokenUsage()
                 ),
                 newlyCreated
         );

@@ -25,6 +25,8 @@ import com.harudle.common.logging.ExternalApiLogger;
 import com.harudle.common.logging.ExternalApiResponseDiagnostics;
 import com.harudle.generation.config.GeminiGenerationProperties;
 import com.harudle.generation.diary.domain.Storyboard;
+import com.harudle.generation.diary.domain.GenerationTokenUsage;
+import com.harudle.generation.diary.service.port.dto.GeneratedStoryboard;
 import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
 import com.harudle.generation.diary.service.port.dto.StoryboardGenerationRequest;
@@ -70,7 +72,7 @@ class GeminiStoryboardGeneratorTest {
                 "스토리보드 생성 규칙"
         );
 
-        Storyboard storyboard = generator.generate(request);
+        Storyboard storyboard = generator.generate(request).storyboard();
 
         assertThat(storyboard.title()).isEqualTo("카페에서 생긴 일");
         assertThat(storyboard.panels()).hasSize(4);
@@ -113,6 +115,23 @@ class GeminiStoryboardGeneratorTest {
                 .extracting(thinkingConfig -> thinkingConfig.thinkingLevel().orElseThrow().knownEnum())
                 .isEqualTo(ThinkingLevel.Known.HIGH);
         verifyNoInteractions(externalApiLogger);
+    }
+
+    @Test
+    @DisplayName("성공한 스토리보드와 Gemini 토큰 사용량을 함께 반환한다")
+    void returnTokenUsage() {
+        when(response.text()).thenReturn(validResponseJson());
+        GenerateContentResponseUsageMetadata usage = mock(GenerateContentResponseUsageMetadata.class);
+        when(usage.promptTokenCount()).thenReturn(Optional.of(120));
+        when(usage.candidatesTokenCount()).thenReturn(Optional.of(350));
+        when(usage.thoughtsTokenCount()).thenReturn(Optional.of(80));
+        when(usage.totalTokenCount()).thenReturn(Optional.of(550));
+        when(response.usageMetadata()).thenReturn(Optional.of(usage));
+
+        GeneratedStoryboard result = generator.generate(createRequest());
+
+        assertThat(result.tokenUsage()).isEqualTo(new GenerationTokenUsage(120, 350, 80, 550));
+        assertThat(result.storyboard().panels()).hasSize(4);
     }
 
     @Test
