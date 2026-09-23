@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import useSharedDiary from './useSharedDiary';
 import LoadingSpinner from '../../shared/LoadingSpinner';
+import DiaryImage from '../../shared/DiaryImage';
 import SharedDiaryError from './SharedDiaryError';
 import { css } from '@emotion/react';
 import { theme } from '../../styles/theme';
@@ -45,7 +46,7 @@ const SharedDiaryContent = ({ shareId }: { shareId: string }) => {
 
       <main css={sharedDiaryContentStyle}>
         <div css={diaryTitleStyle}>{title}</div>
-        <img src={imageUrl} alt={title} css={diaryImageStyle} />
+        <DiaryImage src={imageUrl} alt={title} css={diaryImageStyle} />
         <div css={diaryDateStyle}>{diaryDate}</div>
       </main>
     </div>
