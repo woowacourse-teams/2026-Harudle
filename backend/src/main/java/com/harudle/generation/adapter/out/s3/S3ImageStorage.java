@@ -8,6 +8,8 @@ import com.harudle.generation.diary.service.port.ImageStorageException;
 import com.harudle.generation.diary.service.port.dto.ReferenceImage;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import org.springframework.core.io.ByteArrayResource;
@@ -38,24 +40,21 @@ public final class S3ImageStorage implements ImageStorage {
     private final S3Client s3Client;
     private final String bucket;
     private final int maxObjectSizeBytes;
-    private final ImageObjectKeyFactory objectKeyFactory;
+    private final ImageUploadPreparer uploadPreparer;
     private final S3FailureReporter failureReporter;
-    private final ImageVariantEncoder variantEncoder;
 
     public S3ImageStorage(
             S3Client s3Client,
             S3StorageProperties properties,
-            ImageObjectKeyFactory objectKeyFactory,
-            S3FailureReporter failureReporter,
-            ImageVariantEncoder variantEncoder
+            ImageUploadPreparer uploadPreparer,
+            S3FailureReporter failureReporter
     ) {
         this.s3Client = Objects.requireNonNull(s3Client, "S3Client가 필요합니다.");
         Objects.requireNonNull(properties, "S3 저장소 설정이 필요합니다.");
         this.bucket = properties.bucket();
         this.maxObjectSizeBytes = resolveMaxObjectSizeBytes(properties);
-        this.objectKeyFactory = Objects.requireNonNull(objectKeyFactory, "Object Key 생성기가 필요합니다.");
+        this.uploadPreparer = Objects.requireNonNull(uploadPreparer, "이미지 업로드 준비기가 필요합니다.");
         this.failureReporter = Objects.requireNonNull(failureReporter, "S3 실패 리포터가 필요합니다.");
-        this.variantEncoder = Objects.requireNonNull(variantEncoder, "이미지 변환기가 필요합니다.");
     }
 
     @Override
@@ -137,6 +136,13 @@ public final class S3ImageStorage implements ImageStorage {
 
     @Override
     public String store(UUID generationId, GeneratedImage generatedImage) {
+        requireGeneratedImage(generatedImage);
+        PreparedStores prepared = prepareStores(generationId, generatedImage);
+        putAll(prepared.uploads());
+        return prepared.primaryKey();
+    }
+
+    private void requireGeneratedImage(GeneratedImage generatedImage) {
         if (generatedImage == null) {
             throw failureReporter.reportValidationFailure(
                     PUT_OBJECT,
@@ -145,58 +151,17 @@ public final class S3ImageStorage implements ImageStorage {
                     new IllegalArgumentException("저장할 생성 이미지가 필요합니다.")
             );
         }
-        if (isConvertible(generatedImage.mediaType())) {
-            return storeOptimized(generationId, generatedImage);
-        }
-        PreparedStore preparedStore;
-        try {
-            preparedStore = prepareStore(generationId, generatedImage);
-        } catch (IllegalArgumentException exception) {
-            throw failureReporter.reportValidationFailure(
-                    PUT_OBJECT,
-                    STORE_TRANSLATION_OPERATION,
-                    null,
-                    exception
-            );
-        } catch (Exception exception) {
-            throw failureReporter.reportInternalFailure(
-                    PUT_OBJECT,
-                    STORE_TRANSLATION_OPERATION,
-                    null,
-                    REQUEST_PREPARATION_ERROR,
-                    exception
-            );
-        }
-
-        putPrepared(preparedStore);
-        return preparedStore.objectKey();
     }
 
-    private String storeOptimized(UUID generationId, GeneratedImage generatedImage) {
-        PreparedImageVariants prepared = prepareOptimizedStores(generationId, generatedImage);
-
-        // 상세 키를 DB에 기록하기 전에 두 객체를 모두 저장한다.
-        putPrepared(prepared.thumbnail());
+    private PreparedStores prepareStores(UUID generationId, GeneratedImage generatedImage) {
         try {
-            putPrepared(prepared.detail());
-        } catch (ImageStorageException exception) {
-            deleteStoredThumbnail(prepared.thumbnail().objectKey(), exception);
-            throw exception;
-        }
-        return prepared.detail().objectKey();
-    }
-
-    private PreparedImageVariants prepareOptimizedStores(UUID generationId, GeneratedImage generatedImage) {
-        try {
-            Objects.requireNonNull(generatedImage, "저장할 생성 이미지가 필요합니다.");
             validateObjectSize(generatedImage.resource().contentLength());
-            ImageVariantEncoder.Variants variants = variantEncoder.encode(generatedImage);
-            String detailKey = objectKeyFactory.createOptimized(generationId);
-            PreparedStore detail = prepareStore(detailKey, variants.detail());
-            PreparedStore thumbnail = prepareStore(
-                    ImageVariantKeys.toThumbnailKeyIfOptimizedDetail(detailKey), variants.thumbnail()
-            );
-            return new PreparedImageVariants(thumbnail, detail);
+            ImageUploadPreparer.UploadPlan plan = uploadPreparer.prepare(generationId, generatedImage);
+            List<PreparedStore> uploads = new ArrayList<>();
+            for (ImageUploadPreparer.Upload upload : plan.uploads()) {
+                uploads.add(prepareStore(upload.objectKey(), upload.image()));
+            }
+            return new PreparedStores(plan.primaryKey(), List.copyOf(uploads));
         } catch (IllegalArgumentException exception) {
             throw failureReporter.reportValidationFailure(
                     PUT_OBJECT, STORE_TRANSLATION_OPERATION, null, exception
@@ -208,12 +173,27 @@ public final class S3ImageStorage implements ImageStorage {
         }
     }
 
-    private void deleteStoredThumbnail(String thumbnailKey, ImageStorageException storeException) {
-        // 첫 PUT은 성공이 확정됐으므로 상세 업로드가 실패하면 썸네일을 정리한다.
+    private void putAll(List<PreparedStore> uploads) {
+        List<String> storedKeys = new ArrayList<>();
         try {
-            deleteObject(prepareDeleteRequest(thumbnailKey));
-        } catch (ImageStorageException cleanupException) {
-            storeException.addSuppressed(cleanupException);
+            for (PreparedStore upload : uploads) {
+                putPrepared(upload);
+                storedKeys.add(upload.objectKey());
+            }
+        } catch (ImageStorageException exception) {
+            deleteStoredImages(storedKeys, exception);
+            throw exception;
+        }
+    }
+
+    private void deleteStoredImages(List<String> storedKeys, ImageStorageException storeException) {
+        // 성공이 확인된 객체만 정리하며, 삭제 실패가 원래 저장 오류를 가리지 않도록 한다.
+        for (String storedKey : storedKeys) {
+            try {
+                deleteObject(prepareDeleteRequest(storedKey));
+            } catch (ImageStorageException cleanupException) {
+                storeException.addSuppressed(cleanupException);
+            }
         }
     }
 
@@ -227,11 +207,6 @@ public final class S3ImageStorage implements ImageStorage {
             // PUT 결과가 불확실할 수 있으므로 이 객체는 여기서 삭제하지 않는다.
             throw translateStoreFailure(preparedStore.objectKey(), putAttempted, exception);
         }
-    }
-
-    private static boolean isConvertible(MediaType mediaType) {
-        return MediaType.IMAGE_PNG.isCompatibleWith(mediaType)
-                || MediaType.IMAGE_JPEG.isCompatibleWith(mediaType);
     }
 
     @Override
@@ -281,8 +256,8 @@ public final class S3ImageStorage implements ImageStorage {
     public void delete(String imageObjectKey) {
         DeleteObjectRequest request = prepareDeleteRequest(imageObjectKey);
         deleteObject(request);
-        if (ImageVariantKeys.isOptimizedDetailKey(imageObjectKey)) {
-            deleteObject(prepareDeleteRequest(ImageVariantKeys.toThumbnailKeyIfOptimizedDetail(imageObjectKey)));
+        for (String companionKey : ImageVariantKeys.companionKeys(imageObjectKey)) {
+            deleteObject(prepareDeleteRequest(companionKey));
         }
     }
 
@@ -351,11 +326,6 @@ public final class S3ImageStorage implements ImageStorage {
         );
     }
 
-    private PreparedStore prepareStore(UUID generationId, GeneratedImage generatedImage) throws IOException {
-        Objects.requireNonNull(generatedImage, "저장할 생성 이미지가 필요합니다.");
-        return prepareStore(objectKeyFactory.create(generationId, generatedImage.mediaType()), generatedImage);
-    }
-
     private PreparedStore prepareStore(String imageObjectKey, GeneratedImage generatedImage) throws IOException {
         Resource resource = generatedImage.resource();
         long contentLength = resource.contentLength();
@@ -416,6 +386,6 @@ public final class S3ImageStorage implements ImageStorage {
     ) {
     }
 
-    private record PreparedImageVariants(PreparedStore thumbnail, PreparedStore detail) {
+    private record PreparedStores(String primaryKey, List<PreparedStore> uploads) {
     }
 }

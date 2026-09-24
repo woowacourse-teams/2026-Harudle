@@ -17,6 +17,7 @@ import static org.mockito.Mockito.times;
 import com.harudle.common.logging.ExternalApiFailure;
 import com.harudle.common.logging.ExternalApiLogger;
 import com.harudle.generation.config.S3StorageProperties;
+import com.harudle.generation.diary.domain.ImageVariant;
 import com.harudle.generation.diary.service.port.dto.GeneratedImage;
 import com.harudle.generation.diary.service.port.ImageStorageException;
 import com.harudle.generation.diary.service.port.dto.ReferenceImage;
@@ -25,11 +26,15 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -120,9 +125,8 @@ class S3ImageStorageTest {
         imageStorage = new S3ImageStorage(
                 s3Client,
                 properties,
-                new ImageObjectKeyFactory(properties),
-                new S3FailureReporter(new S3ExceptionTranslator(), externalApiLogger),
-                variantEncoder
+                new ImageUploadPreparer(new ImageObjectKeyFactory(properties), variantEncoder),
+                new S3FailureReporter(new S3ExceptionTranslator(), externalApiLogger)
         );
     }
 
@@ -163,8 +167,9 @@ class S3ImageStorageTest {
         verifyNoInteractions(s3Client, variantEncoder);
     }
 
-    @Test
-    void storesBothOptimizedVariantsAndDeletesBoth() {
+    @ParameterizedTest
+    @ValueSource(strings = {"image/png", "image/jpeg"})
+    void storesBothOptimizedVariantsAndDeletesBoth(String mediaType) {
         GeneratedImage detail = new GeneratedImage(
                 new ByteArrayResource("detail".getBytes(StandardCharsets.UTF_8)),
                 MediaType.parseMediaType("image/webp")
@@ -174,9 +179,10 @@ class S3ImageStorageTest {
                 MediaType.parseMediaType("image/webp")
         );
         when(variantEncoder.encode(any(GeneratedImage.class)))
-                .thenReturn(new ImageVariantEncoder.Variants(detail, thumbnail));
+                .thenReturn(Map.of(ImageVariant.DETAIL, detail, ImageVariant.THUMBNAIL, thumbnail));
 
-        String detailKey = imageStorage.store(GENERATION_ID, generatedImage());
+        GeneratedImage source = new GeneratedImage(generatedImage().resource(), MediaType.parseMediaType(mediaType));
+        String detailKey = imageStorage.store(GENERATION_ID, source);
         ArgumentCaptor<PutObjectRequest> puts = ArgumentCaptor.forClass(PutObjectRequest.class);
         verify(s3Client, times(2)).putObject(puts.capture(), any(RequestBody.class));
         assertThat(detailKey).endsWith("/image-960.webp");
@@ -202,7 +208,7 @@ class S3ImageStorageTest {
                 MediaType.parseMediaType("image/webp")
         );
         when(variantEncoder.encode(any(GeneratedImage.class)))
-                .thenReturn(new ImageVariantEncoder.Variants(webp, webp));
+                .thenReturn(Map.of(ImageVariant.DETAIL, webp, ImageVariant.THUMBNAIL, webp));
         when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
                 .thenReturn(PutObjectResponse.builder().build())
                 .thenThrow(SdkClientException.builder().message("detail upload failed").build());
@@ -215,6 +221,91 @@ class S3ImageStorageTest {
         verify(s3Client, times(2)).putObject(puts.capture(), any(RequestBody.class));
         verify(s3Client).deleteObject(deletes.capture());
         assertThat(deletes.getValue().key()).isEqualTo(puts.getAllValues().get(0).key());
+    }
+
+    @Test
+    @DisplayName("저장소는 이미지 종류를 몰라도 세 파일을 순서대로 저장하고 대표 키를 반환한다")
+    void storesAllImagesInUploadPlan() {
+        List<String> keys = List.of("generated/small.webp", "generated/medium.webp", "generated/primary.webp");
+        S3ImageStorage storage = storageWithUploads(keys.stream()
+                .map(key -> new ImageUploadPreparer.Upload(key, unconvertedImage()))
+                .toList());
+
+        assertThat(storage.store(GENERATION_ID, generatedImage())).isEqualTo(keys.getLast());
+
+        ArgumentCaptor<PutObjectRequest> puts = ArgumentCaptor.forClass(PutObjectRequest.class);
+        verify(s3Client, times(3)).putObject(puts.capture(), any(RequestBody.class));
+        assertThat(puts.getAllValues()).extracting(PutObjectRequest::key).containsExactlyElementsOf(keys);
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
+    }
+
+    @Test
+    @DisplayName("세 번째 업로드 실패 시 앞서 저장한 두 파일만 정리한다")
+    void failedThirdUploadCleansUpOnlySuccessfulUploads() {
+        List<String> keys = List.of("generated/small.webp", "generated/medium.webp", "generated/primary.webp");
+        S3ImageStorage storage = storageWithUploads(keys.stream()
+                .map(key -> new ImageUploadPreparer.Upload(key, unconvertedImage()))
+                .toList());
+        SdkClientException cause = SdkClientException.builder().message("unknown third upload outcome").build();
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenReturn(PutObjectResponse.builder().build(), PutObjectResponse.builder().build())
+                .thenThrow(cause);
+
+        assertThatThrownBy(() -> storage.store(GENERATION_ID, generatedImage()))
+                .isInstanceOf(ImageStorageException.class)
+                .hasCause(cause);
+
+        ArgumentCaptor<DeleteObjectRequest> deletes = ArgumentCaptor.forClass(DeleteObjectRequest.class);
+        verify(s3Client, times(2)).deleteObject(deletes.capture());
+        assertThat(deletes.getAllValues()).extracting(DeleteObjectRequest::key)
+                .containsExactly(keys.get(0), keys.get(1));
+    }
+
+    @Test
+    @DisplayName("정리 중 삭제가 실패해도 나머지 파일을 정리하고 원래 업로드 오류를 유지한다")
+    void cleanupFailureDoesNotStopCleanupOrMaskUploadFailure() {
+        List<String> keys = List.of("generated/small.webp", "generated/medium.webp", "generated/primary.webp");
+        S3ImageStorage storage = storageWithUploads(keys.stream()
+                .map(key -> new ImageUploadPreparer.Upload(key, unconvertedImage()))
+                .toList());
+        SdkClientException uploadCause = SdkClientException.builder().message("upload failed").build();
+        SdkClientException cleanupCause = SdkClientException.builder().message("cleanup failed").build();
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenReturn(PutObjectResponse.builder().build(), PutObjectResponse.builder().build())
+                .thenThrow(uploadCause);
+        when(s3Client.deleteObject(any(DeleteObjectRequest.class)))
+                .thenThrow(cleanupCause)
+                .thenReturn(DeleteObjectResponse.builder().build());
+
+        ImageStorageException thrown = catchThrowableOfType(
+                () -> storage.store(GENERATION_ID, generatedImage()), ImageStorageException.class
+        );
+
+        assertThat(thrown).hasCause(uploadCause);
+        assertThat(thrown.getSuppressed()).hasSize(1);
+        assertThat(thrown.getSuppressed()[0]).hasCause(cleanupCause);
+        ArgumentCaptor<DeleteObjectRequest> deletes = ArgumentCaptor.forClass(DeleteObjectRequest.class);
+        verify(s3Client, times(2)).deleteObject(deletes.capture());
+        assertThat(deletes.getAllValues()).extracting(DeleteObjectRequest::key)
+                .containsExactly(keys.get(0), keys.get(1));
+    }
+
+    @Test
+    @DisplayName("목록 뒤쪽 이미지가 크기 제한을 넘으면 어떤 파일도 업로드하지 않는다")
+    void validatesEveryImageBeforeStartingUploads() {
+        GeneratedImage oversizedImage = new GeneratedImage(
+                new ByteArrayResource(new byte[MAX_OBJECT_SIZE_BYTES + 1]),
+                MediaType.parseMediaType("image/webp")
+        );
+        S3ImageStorage storage = storageWithUploads(List.of(
+                new ImageUploadPreparer.Upload("generated/small.webp", unconvertedImage()),
+                new ImageUploadPreparer.Upload("generated/primary.webp", oversizedImage)
+        ));
+
+        assertThatThrownBy(() -> storage.store(GENERATION_ID, generatedImage()))
+                .isInstanceOf(ImageStorageException.class)
+                .hasRootCauseMessage("S3 이미지 객체 크기가 허용 범위를 벗어났습니다.");
+        verifyNoInteractions(s3Client);
     }
 
     @Test
@@ -630,6 +721,20 @@ class S3ImageStorageTest {
         verify(externalApiLogger).warn(
                 eq(new ExternalApiFailure("s3", "delete_object", "CLIENT_ERROR", null, null, null)),
                 eq(cause)
+        );
+    }
+
+    private S3ImageStorage storageWithUploads(List<ImageUploadPreparer.Upload> uploads) {
+        ImageUploadPreparer preparer = mock(ImageUploadPreparer.class);
+        when(preparer.prepare(eq(GENERATION_ID), any(GeneratedImage.class)))
+                .thenReturn(new ImageUploadPreparer.UploadPlan(uploads.getLast().objectKey(), uploads));
+        S3StorageProperties properties = new S3StorageProperties(
+                "test-bucket", "ap-northeast-2", "generated/diary-images",
+                DataSize.ofBytes(MAX_OBJECT_SIZE_BYTES), Duration.ofMinutes(10)
+        );
+        return new S3ImageStorage(
+                s3Client, properties, preparer,
+                new S3FailureReporter(new S3ExceptionTranslator(), externalApiLogger)
         );
     }
 

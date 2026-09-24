@@ -10,6 +10,7 @@ import com.harudle.generation.adapter.out.gemini.GeminiFailureReporter;
 import com.harudle.generation.adapter.out.gemini.GeminiStoryboardGenerator;
 import com.harudle.generation.adapter.out.s3.S3FailureReporter;
 import com.harudle.generation.adapter.out.s3.ImageVariantEncoder;
+import com.harudle.generation.adapter.out.s3.ImageUploadPreparer;
 import com.harudle.generation.adapter.out.s3.S3ImageStorage;
 import com.harudle.generation.adapter.out.s3.S3ImageUrlProvider;
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
@@ -43,6 +44,7 @@ class GenerationAdapterConfigurationTest {
             assertThat(context).hasSingleBean(GeminiFailureReporter.class);
             assertThat(context).hasSingleBean(S3FailureReporter.class);
             assertThat(context).hasSingleBean(ImageVariantEncoder.class);
+            assertThat(context).hasSingleBean(ImageUploadPreparer.class);
             assertThat(context).hasSingleBean(StoryboardGenerator.class);
             assertThat(context).hasSingleBean(DiaryImageGenerator.class);
             assertThat(context).hasSingleBean(ImageStorage.class);

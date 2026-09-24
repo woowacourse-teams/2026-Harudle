@@ -1,10 +1,13 @@
 package com.harudle.generation.adapter.out.s3;
 
 import com.harudle.generation.diary.service.port.dto.GeneratedImage;
+import com.harudle.generation.diary.domain.ImageVariant;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.EnumMap;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
@@ -17,22 +20,25 @@ public final class CwebpImageVariantEncoder implements ImageVariantEncoder {
     private static final int COMPRESSION_METHOD = 6;
 
     @Override
-    public Variants encode(GeneratedImage image) {
+    public Map<ImageVariant, GeneratedImage> encode(GeneratedImage image) {
         Path directory = null;
         try {
             directory = Files.createTempDirectory("harudle-cwebp-");
             Path input = directory.resolve("input");
             Files.write(input, image.resource().getContentAsByteArray());
-            GeneratedImage detail = convert(input, directory.resolve("detail.webp"), 960);
-            GeneratedImage thumbnail = convert(input, directory.resolve("thumbnail.webp"), 240);
-            return new Variants(detail, thumbnail);
+            Map<ImageVariant, GeneratedImage> images = new EnumMap<>(ImageVariant.class);
+            for (ImageVariant variant : ImageVariant.values()) {
+                images.put(variant, convert(input, directory.resolve(variant.filename()), variant.width()));
+            }
+            return Map.copyOf(images);
         } catch (IOException exception) {
             throw new IllegalStateException("생성 이미지 WebP 변환에 실패했습니다.", exception);
         } finally {
             if (directory != null) {
                 deleteIfExists(directory.resolve("input"));
-                deleteIfExists(directory.resolve("detail.webp"));
-                deleteIfExists(directory.resolve("thumbnail.webp"));
+                for (ImageVariant variant : ImageVariant.values()) {
+                    deleteIfExists(directory.resolve(variant.filename()));
+                }
                 deleteIfExists(directory);
             }
         }
