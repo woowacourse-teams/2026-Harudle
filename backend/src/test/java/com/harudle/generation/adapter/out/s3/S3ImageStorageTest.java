@@ -12,6 +12,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 
 import com.harudle.common.logging.ExternalApiFailure;
 import com.harudle.common.logging.ExternalApiLogger;
@@ -63,6 +64,9 @@ class S3ImageStorageTest {
 
     @Mock
     private ExternalApiLogger externalApiLogger;
+
+    @Mock
+    private ImageVariantEncoder variantEncoder;
 
     private S3ImageStorage imageStorage;
 
@@ -117,17 +121,18 @@ class S3ImageStorageTest {
                 s3Client,
                 properties,
                 new ImageObjectKeyFactory(properties),
-                new S3FailureReporter(new S3ExceptionTranslator(), externalApiLogger)
+                new S3FailureReporter(new S3ExceptionTranslator(), externalApiLogger),
+                variantEncoder
         );
     }
 
     @Test
-    @DisplayName("생성 이미지를 정해진 Object Key와 Content-Type으로 저장한다")
+    @DisplayName("이미 WebP인 생성 이미지는 변환 없이 저장한다")
     void storeGeneratedImage() throws IOException {
         byte[] imageBytes = "generated".getBytes(StandardCharsets.UTF_8);
         GeneratedImage generatedImage = new GeneratedImage(
                 new ByteArrayResource(imageBytes),
-                MediaType.IMAGE_PNG
+                MediaType.parseMediaType("image/webp")
         );
         when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
                 .thenReturn(PutObjectResponse.builder().build());
@@ -140,14 +145,76 @@ class S3ImageStorageTest {
 
         PutObjectRequest request = requestCaptor.getValue();
         assertThat(storedObjectKey).startsWith("generated/diary-images/" + GENERATION_ID + "/")
-                .endsWith("/image.png");
+                .endsWith("/image.webp");
         assertThat(request.bucket()).isEqualTo("test-bucket");
         assertThat(request.key()).isEqualTo(storedObjectKey);
-        assertThat(request.contentType()).isEqualTo("image/png");
+        assertThat(request.contentType()).isEqualTo("image/webp");
         assertThat(request.contentLength()).isEqualTo(imageBytes.length);
         assertThat(bodyCaptor.getValue().optionalContentLength()).contains((long) imageBytes.length);
         assertThat(bodyCaptor.getValue().contentStreamProvider().newStream().readAllBytes())
                 .isEqualTo(imageBytes);
+    }
+
+    @Test
+    void rejectMissingGeneratedImageBeforeSelectingStoragePath() {
+        assertThatThrownBy(() -> imageStorage.store(GENERATION_ID, null))
+                .isInstanceOf(ImageStorageException.class)
+                .hasRootCauseMessage("저장할 생성 이미지가 필요합니다.");
+        verifyNoInteractions(s3Client, variantEncoder);
+    }
+
+    @Test
+    void storesBothOptimizedVariantsAndDeletesBoth() {
+        GeneratedImage detail = new GeneratedImage(
+                new ByteArrayResource("detail".getBytes(StandardCharsets.UTF_8)),
+                MediaType.parseMediaType("image/webp")
+        );
+        GeneratedImage thumbnail = new GeneratedImage(
+                new ByteArrayResource("thumb".getBytes(StandardCharsets.UTF_8)),
+                MediaType.parseMediaType("image/webp")
+        );
+        when(variantEncoder.encode(any(GeneratedImage.class)))
+                .thenReturn(new ImageVariantEncoder.Variants(detail, thumbnail));
+
+        String detailKey = imageStorage.store(GENERATION_ID, generatedImage());
+        ArgumentCaptor<PutObjectRequest> puts = ArgumentCaptor.forClass(PutObjectRequest.class);
+        verify(s3Client, times(2)).putObject(puts.capture(), any(RequestBody.class));
+        assertThat(detailKey).endsWith("/image-960.webp");
+        assertThat(puts.getAllValues().get(0).key()).isEqualTo(
+                detailKey.replace("image-960.webp", "image-240.webp")
+        );
+        assertThat(puts.getAllValues().get(1).key()).isEqualTo(detailKey);
+        assertThat(puts.getAllValues()).allSatisfy(request ->
+                assertThat(request.contentType()).isEqualTo("image/webp")
+        );
+
+        imageStorage.delete(detailKey);
+        ArgumentCaptor<DeleteObjectRequest> deletes = ArgumentCaptor.forClass(DeleteObjectRequest.class);
+        verify(s3Client, times(2)).deleteObject(deletes.capture());
+        assertThat(deletes.getAllValues().get(0).key()).isEqualTo(detailKey);
+        assertThat(deletes.getAllValues().get(1).key()).isEqualTo(puts.getAllValues().get(0).key());
+    }
+
+    @Test
+    void failedDetailUploadCleansUpStoredThumbnail() {
+        GeneratedImage webp = new GeneratedImage(
+                new ByteArrayResource("webp".getBytes(StandardCharsets.UTF_8)),
+                MediaType.parseMediaType("image/webp")
+        );
+        when(variantEncoder.encode(any(GeneratedImage.class)))
+                .thenReturn(new ImageVariantEncoder.Variants(webp, webp));
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenReturn(PutObjectResponse.builder().build())
+                .thenThrow(SdkClientException.builder().message("detail upload failed").build());
+
+        assertThatThrownBy(() -> imageStorage.store(GENERATION_ID, generatedImage()))
+                .isInstanceOf(ImageStorageException.class);
+
+        ArgumentCaptor<PutObjectRequest> puts = ArgumentCaptor.forClass(PutObjectRequest.class);
+        ArgumentCaptor<DeleteObjectRequest> deletes = ArgumentCaptor.forClass(DeleteObjectRequest.class);
+        verify(s3Client, times(2)).putObject(puts.capture(), any(RequestBody.class));
+        verify(s3Client).deleteObject(deletes.capture());
+        assertThat(deletes.getValue().key()).isEqualTo(puts.getAllValues().get(0).key());
     }
 
     @Test
@@ -163,7 +230,9 @@ class S3ImageStorageTest {
                 return inputStream;
             }
         };
-        GeneratedImage generatedImage = new GeneratedImage(closeFailingResource, MediaType.IMAGE_PNG);
+        GeneratedImage generatedImage = new GeneratedImage(
+                closeFailingResource, MediaType.parseMediaType("image/webp")
+        );
         when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
                 .thenReturn(PutObjectResponse.builder().build());
 
@@ -184,7 +253,7 @@ class S3ImageStorageTest {
     @Test
     @DisplayName("S3 저장 결과를 확정할 수 없으면 삭제를 주기적 정리에 맡긴다")
     void deferUnknownStoreOutcomeCleanup() {
-        GeneratedImage generatedImage = generatedImage();
+        GeneratedImage generatedImage = unconvertedImage();
         SdkClientException storeCause = SdkClientException.builder()
                 .message("unknown store outcome")
                 .build();
@@ -210,7 +279,7 @@ class S3ImageStorageTest {
     @Test
     @DisplayName("실패 후 다시 업로드하면 이전 PUT과 다른 키를 사용한다")
     void retryUsesAnotherObjectKey() {
-        GeneratedImage generatedImage = generatedImage();
+        GeneratedImage generatedImage = unconvertedImage();
         SdkClientException storeCause = SdkClientException.builder()
                 .message("unknown store outcome")
                 .build();
@@ -243,7 +312,9 @@ class S3ImageStorageTest {
                 throw new IOException("stream open failure");
             }
         };
-        GeneratedImage generatedImage = new GeneratedImage(unreadableOnOpenResource, MediaType.IMAGE_PNG);
+        GeneratedImage generatedImage = new GeneratedImage(
+                unreadableOnOpenResource, MediaType.parseMediaType("image/webp")
+        );
 
         assertThatThrownBy(() -> imageStorage.store(GENERATION_ID, generatedImage))
                 .isInstanceOf(ImageStorageException.class)
@@ -567,6 +638,13 @@ class S3ImageStorageTest {
         return new GeneratedImage(
                 new ByteArrayResource(imageBytes),
                 MediaType.IMAGE_PNG
+        );
+    }
+
+    private static GeneratedImage unconvertedImage() {
+        return new GeneratedImage(
+                new ByteArrayResource("generated".getBytes(StandardCharsets.UTF_8)),
+                MediaType.parseMediaType("image/webp")
         );
     }
 

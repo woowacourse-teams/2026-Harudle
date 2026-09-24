@@ -70,6 +70,18 @@ class ImageObjectKeyFactoryTest {
     }
 
     @Test
+    void optimizedKeyHasMatchingThumbnail() {
+        ImageObjectKeyFactory factory = createFactory("generated/diary-images");
+        String detailKey = factory.createOptimized(GENERATION_ID);
+
+        assertThat(detailKey).endsWith("/image-960.webp");
+        assertThat(factory.generationId(detailKey)).contains(GENERATION_ID);
+        assertThat(factory.generationId(
+                com.harudle.generation.diary.domain.ImageVariantKeys.toThumbnailKeyIfOptimizedDetail(detailKey)
+        )).contains(GENERATION_ID);
+    }
+
+    @Test
     void recognizesLegacyKeysButRejectsUnknownPaths() {
         ImageObjectKeyFactory factory = createFactory("generated/diary-images");
         assertThat(factory.generationId("generated/diary-images/" + GENERATION_ID + "/image.png"))
