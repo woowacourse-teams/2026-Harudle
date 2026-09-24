@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.harudle.generation.config.S3StorageProperties;
+import com.harudle.generation.diary.domain.ImageVariantKeys;
 import java.time.Duration;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -76,9 +77,20 @@ class ImageObjectKeyFactoryTest {
 
         assertThat(detailKey).endsWith("/image-960.webp");
         assertThat(factory.generationId(detailKey)).contains(GENERATION_ID);
+        String thumbnailKey = detailKey.replace("image-960.webp", "image-240.webp");
+        assertThat(ImageVariantKeys.toThumbnailKeyIfOptimizedDetail(detailKey)).isEqualTo(thumbnailKey);
+        assertThat(ImageVariantKeys.companionKeys(detailKey)).containsExactly(thumbnailKey);
         assertThat(factory.generationId(
-                com.harudle.generation.diary.domain.ImageVariantKeys.toThumbnailKeyIfOptimizedDetail(detailKey)
+                thumbnailKey
         )).contains(GENERATION_ID);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"image.png", "image.jpg", "image.webp"})
+    void legacyKeysDoNotAcquireNewCompanionImages(String filename) {
+        String key = "generated/diary-images/" + GENERATION_ID + "/" + filename;
+        assertThat(ImageVariantKeys.toThumbnailKeyIfOptimizedDetail(key)).isEqualTo(key);
+        assertThat(ImageVariantKeys.companionKeys(key)).isEmpty();
     }
 
     @Test

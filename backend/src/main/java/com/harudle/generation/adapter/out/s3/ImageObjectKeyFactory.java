@@ -1,12 +1,14 @@
 package com.harudle.generation.adapter.out.s3;
 
 import com.harudle.generation.config.S3StorageProperties;
-import com.harudle.generation.diary.domain.ImageVariantKeys;
+import com.harudle.generation.diary.domain.ImageVariant;
+import java.util.Arrays;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import org.springframework.http.MediaType;
 import org.springframework.util.StringUtils;
 
@@ -19,9 +21,10 @@ public final class ImageObjectKeyFactory {
         Objects.requireNonNull(properties, "S3 저장소 설정이 필요합니다.");
         this.generatedPrefix = normalizePrefix(properties.generatedPrefix());
         String uuid = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
-        String imageFilename = "(?:image\\.(?:png|jpg|webp)|"
-                + Pattern.quote(ImageVariantKeys.DETAIL_FILENAME) + "|"
-                + Pattern.quote(ImageVariantKeys.THUMBNAIL_FILENAME) + ")";
+        String optimizedFilenames = Arrays.stream(ImageVariant.values())
+                .map(variant -> Pattern.quote(variant.filename()))
+                .collect(Collectors.joining("|"));
+        String imageFilename = "(?:image\\.(?:png|jpg|webp)|" + optimizedFilenames + ")";
         this.generatedKeyPattern = Pattern.compile(Pattern.quote(listPrefix())
                 + "(" + uuid + ")/(?:" + uuid + "/)?" + imageFilename);
     }
@@ -35,7 +38,7 @@ public final class ImageObjectKeyFactory {
     public String createOptimized(UUID generationId) {
         Objects.requireNonNull(generationId, "생성 작업 ID가 필요합니다.");
         return "%s/%s/%s/%s".formatted(
-                generatedPrefix, generationId, UUID.randomUUID(), ImageVariantKeys.DETAIL_FILENAME
+                generatedPrefix, generationId, UUID.randomUUID(), ImageVariant.DETAIL.filename()
         );
     }
 
