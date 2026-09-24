@@ -228,6 +228,30 @@ class DiaryControllerTest {
     }
 
     @Test
+    void newWebpTimelineUsesThumbnailVariant() {
+        DiarySummaryResult summary = new DiarySummaryResult(
+                DIARY_ID, "새 일기", "generated/diary-images/id/image-960.webp"
+        );
+        when(diaryQueryService.getTimeline(USER_ID, 2026, 8))
+                .thenReturn(new DiaryTimelineResult(
+                        2026, 8, List.of(new DiaryDayResult(DIARY_DATE, List.of(summary)))
+                ));
+        when(imageUrlProvider.createAccessUrl("generated/diary-images/id/image-240.webp"))
+                .thenReturn(new ImageAccessUrl(
+                        URI.create("https://images.harudle.example/image-240.webp"), IMAGE_EXPIRES_AT
+                ));
+
+        MockMvcResponse response = authenticatedRequest()
+                .queryParam("year", 2026)
+                .queryParam("month", 8)
+                .get("/api/v1/diaries");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.jsonPath().getString("days[0].items[0].thumbnailUrl"))
+                .isEqualTo("https://images.harudle.example/image-240.webp");
+    }
+
+    @Test
     @DisplayName("현재 streak와 삭제되어 콘텐츠가 없는 연속 날짜를 조회한다")
     void getCurrentStreak() {
         DiarySummaryResult summary = new DiarySummaryResult(
