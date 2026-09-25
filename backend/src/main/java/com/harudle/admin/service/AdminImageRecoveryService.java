@@ -1,11 +1,14 @@
 package com.harudle.admin.service;
 
 import com.harudle.generation.diary.domain.GenerationStatus;
+import com.harudle.generation.diary.domain.DiaryGeneration;
+import com.harudle.generation.diary.domain.ImageVariantKeys;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
 import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.dto.DiaryImageGenerationRequest;
+import com.harudle.generation.diary.service.port.dto.GeneratedImage;
 import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import java.util.Locale;
 import java.util.UUID;
@@ -72,21 +75,40 @@ public class AdminImageRecoveryService {
         if (storage == null || generator == null) {
             throw GenerationUnavailableException.adaptersNotConfigured();
         }
+        if (ImageVariantKeys.isOptimizedDetailKey(key)) {
+            return restoreOptimizedImage(generationId, key, generation, storage, generator);
+        }
         if (storage.exists(key)) {
             return new Result(generationId, key, "ALREADY_EXISTS");
         }
         String expectedType = expectedContentType(key);
-        var prompt = prompts.findFirstByOrderByIdDesc()
-                .orElseThrow(GenerationUnavailableException::promptNotConfigured);
-        var reference = storage.load(prompt.getImageAssetObjectKey());
-        var image = generator.generate(new DiaryImageGenerationRequest(
-                generation.getStoryboard(), prompt.getImageStylePromptText(), reference));
+        var image = generateImage(generation, storage, generator);
         if (!expectedType.equals(image.mediaType().getType() + "/" + image.mediaType().getSubtype())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "생성 이미지 형식이 기존 키 확장자와 달라 업로드하지 않았습니다. 필요한 형식: " + expectedType);
         }
         boolean restored = storage.restoreIfMissing(key, image);
         return new Result(generationId, key, restored ? "RESTORED" : "ALREADY_EXISTS");
+    }
+
+    private Result restoreOptimizedImage(UUID generationId, String key,
+            DiaryGeneration generation, ImageStorage storage, DiaryImageGenerator generator) {
+        if (storage.exists(key)) {
+            boolean restored = storage.restoreThumbnailFromDetail(key);
+            return new Result(generationId, key, restored ? "RESTORED" : "ALREADY_EXISTS");
+        }
+        var image = generateImage(generation, storage, generator);
+        boolean restored = storage.restoreOptimizedIfMissing(key, image);
+        return new Result(generationId, key, restored ? "RESTORED" : "ALREADY_EXISTS");
+    }
+
+    private GeneratedImage generateImage(DiaryGeneration generation, ImageStorage storage,
+            DiaryImageGenerator generator) {
+        var prompt = prompts.findFirstByOrderByIdDesc()
+                .orElseThrow(GenerationUnavailableException::promptNotConfigured);
+        var reference = storage.load(prompt.getImageAssetObjectKey());
+        return generator.generate(new DiaryImageGenerationRequest(
+                generation.getStoryboard(), prompt.getImageStylePromptText(), reference));
     }
 
     private static String expectedContentType(String key) {

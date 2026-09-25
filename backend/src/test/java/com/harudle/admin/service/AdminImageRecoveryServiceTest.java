@@ -71,6 +71,46 @@ class AdminImageRecoveryServiceTest {
     }
 
     @Test
+    void repairsOnlyMissingThumbnailFromExistingDetail() {
+        DiaryGeneration optimized = optimizedGeneration();
+        when(storage.exists(optimized.getImageObjectKey())).thenReturn(true);
+        when(storage.restoreThumbnailFromDetail(optimized.getImageObjectKey())).thenReturn(true);
+
+        assertThat(service.restore(optimized.getId()).status()).isEqualTo("RESTORED");
+
+        verify(storage).restoreThumbnailFromDetail(optimized.getImageObjectKey());
+        verifyNoInteractions(generator, prompts);
+    }
+
+    @Test
+    void existingOptimizedImagesDoNotRegenerate() {
+        DiaryGeneration optimized = optimizedGeneration();
+        when(storage.exists(optimized.getImageObjectKey())).thenReturn(true);
+
+        assertThat(service.restore(optimized.getId()).status()).isEqualTo("ALREADY_EXISTS");
+
+        verify(storage).restoreThumbnailFromDetail(optimized.getImageObjectKey());
+        verifyNoInteractions(generator, prompts);
+    }
+
+    @Test
+    void missingDetailRegeneratesOptimizedVariants() {
+        DiaryGeneration optimized = optimizedGeneration();
+        var reference = new ReferenceImage(new ByteArrayResource(new byte[]{1}), MediaType.IMAGE_PNG);
+        var image = new GeneratedImage(new ByteArrayResource(new byte[]{2}), MediaType.IMAGE_PNG);
+        when(prompts.findFirstByOrderByIdDesc()).thenReturn(Optional.of(
+                new GenerationPrompt("story", "latest-style", "references/latest.png")));
+        when(storage.load("references/latest.png")).thenReturn(reference);
+        when(generator.generate(any())).thenReturn(image);
+        when(storage.restoreOptimizedIfMissing(optimized.getImageObjectKey(), image)).thenReturn(true);
+
+        assertThat(service.restore(optimized.getId()).status()).isEqualTo("RESTORED");
+
+        verify(storage).restoreOptimizedIfMissing(optimized.getImageObjectKey(), image);
+        verify(storage, never()).restoreIfMissing(eq(optimized.getImageObjectKey()), any());
+    }
+
+    @Test
     void refusesProcessingGeneration() {
         var processing = DiaryGeneration.start(UUID.randomUUID(), 1L, UUID.randomUUID(), "b".repeat(64));
         when(generations.findById(processing.getId())).thenReturn(Optional.of(processing));
@@ -174,5 +214,13 @@ class AdminImageRecoveryServiceTest {
 
     private static StoryPanel panel(int number) {
         return new StoryPanel(number, "장면 " + number, "공원", "주인공", "기쁨", List.of());
+    }
+
+    private DiaryGeneration optimizedGeneration() {
+        DiaryGeneration optimized = DiaryGeneration.start(UUID.randomUUID(), 1L,
+                UUID.randomUUID(), "c".repeat(64));
+        optimized.succeed(storyboard, "generated/diary-images/test/image-960.webp", Instant.EPOCH);
+        when(generations.findById(optimized.getId())).thenReturn(Optional.of(optimized));
+        return optimized;
     }
 }

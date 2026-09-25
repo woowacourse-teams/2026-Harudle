@@ -17,7 +17,7 @@ RUN ./gradlew --no-daemon clean bootJar -x test \
 
 FROM amazoncorretto:21-alpine3.22 AS runtime
 
-RUN apk add --no-cache curl tini \
+RUN apk add --no-cache curl tini libwebp-tools \
     && addgroup -S -g 10001 harudle \
     && adduser -S -D -H -u 10001 -G harudle harudle
 
