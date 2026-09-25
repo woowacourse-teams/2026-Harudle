@@ -1,6 +1,7 @@
 package com.harudle.generation.adapter.out.s3;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.harudle.generation.diary.service.port.dto.GeneratedImage;
@@ -10,6 +11,7 @@ import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.TimeUnit;
@@ -47,6 +49,25 @@ class CwebpImageVariantEncoderTest {
 
         assertDimensions(variants.get(ImageVariant.DETAIL), 960);
         assertDimensions(variants.get(ImageVariant.THUMBNAIL), 240);
+    }
+
+    @Test
+    void includesBoundedCwebpErrorWhenInputIsInvalid() {
+        assumeTrue(commandAvailable("cwebp"));
+
+        GeneratedImage invalidImage = new GeneratedImage(
+                new ByteArrayResource("not an image".getBytes(StandardCharsets.UTF_8)), MediaType.IMAGE_PNG
+        );
+
+        IllegalStateException exception = catchThrowableOfType(
+                () -> new CwebpImageVariantEncoder().encode(invalidImage), IllegalStateException.class
+        );
+
+        assertThat(exception.getCause()).isInstanceOf(CwebpConversionException.class);
+        assertThat(exception.getCause().getMessage())
+                .contains("Cannot read input picture file")
+                .contains("<input>")
+                .doesNotContain("harudle-cwebp-");
     }
 
     private static GeneratedImage sourceImage() throws IOException {

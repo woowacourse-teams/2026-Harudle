@@ -2,7 +2,10 @@ package com.harudle.generation.adapter.out.s3;
 
 import com.harudle.generation.diary.service.port.dto.GeneratedImage;
 import com.harudle.generation.diary.domain.ImageVariant;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -18,6 +21,7 @@ public final class CwebpImageVariantEncoder implements ImageVariantEncoder {
     private static final Duration TIMEOUT = Duration.ofSeconds(30);
     private static final int WEBP_QUALITY = 80;
     private static final int COMPRESSION_METHOD = 6;
+    private static final int MAX_ERROR_OUTPUT_BYTES = 4096;
 
     @Override
     public Map<ImageVariant, GeneratedImage> encode(GeneratedImage image) {
@@ -50,18 +54,23 @@ public final class CwebpImageVariantEncoder implements ImageVariantEncoder {
                 "-m", Integer.toString(COMPRESSION_METHOD), "-resize", Integer.toString(size), "0",
                 input.toString(), "-o", output.toString()
         ).redirectErrorStream(true).start();
+        ByteArrayOutputStream errorOutput = new ByteArrayOutputStream();
+        Thread outputReader = Thread.ofVirtual().start(() -> drainOutput(process.getInputStream(), errorOutput));
         try {
             if (!process.waitFor(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
                 process.destroyForcibly();
+                outputReader.interrupt();
                 throw new IOException("cwebp 변환 제한 시간을 초과했습니다.");
             }
+            outputReader.join();
         } catch (InterruptedException exception) {
             process.destroyForcibly();
+            outputReader.interrupt();
             Thread.currentThread().interrupt();
             throw new IOException("cwebp 변환이 중단됐습니다.", exception);
         }
         if (process.exitValue() != 0) {
-            throw new IOException("cwebp 변환 프로세스가 실패했습니다 (exit=" + process.exitValue() + ").");
+            throw new CwebpConversionException(process.exitValue(), normalizeErrorOutput(errorOutput, input, output));
         }
         byte[] bytes = Files.readAllBytes(output);
         if (bytes.length < 12 || bytes[0] != 'R' || bytes[1] != 'I' || bytes[2] != 'F'
@@ -70,6 +79,29 @@ public final class CwebpImageVariantEncoder implements ImageVariantEncoder {
             throw new IOException("cwebp 출력이 유효한 WebP가 아닙니다.");
         }
         return new GeneratedImage(new ByteArrayResource(bytes), WEBP);
+    }
+
+    private static void drainOutput(InputStream stream, ByteArrayOutputStream errorOutput) {
+        try (stream) {
+            byte[] chunk = new byte[1024];
+            int count;
+            while ((count = stream.read(chunk)) != -1) {
+                int retained = Math.min(count, MAX_ERROR_OUTPUT_BYTES - errorOutput.size());
+                if (retained > 0) {
+                    errorOutput.write(chunk, 0, retained);
+                }
+            }
+        } catch (IOException ignored) {
+            // 프로세스가 종료되면 출력 스트림도 닫힐 수 있다.
+        }
+    }
+
+    private static String normalizeErrorOutput(ByteArrayOutputStream errorOutput, Path input, Path output) {
+        return errorOutput.toString(StandardCharsets.UTF_8)
+                .replace(input.toString(), "<input>")
+                .replace(output.toString(), "<output>")
+                .replaceAll("\\p{Cntrl}+", " ")
+                .strip();
     }
 
     private static void deleteIfExists(Path path) {

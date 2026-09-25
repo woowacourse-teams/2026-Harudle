@@ -136,11 +136,19 @@ class S3ImageStorageTest {
 
     @Test
     void conversionFailureKeepsExistingThumbnail() {
-        when(variantEncoder.encode(any())).thenThrow(new IllegalStateException("conversion failed"));
+        CwebpConversionException conversionFailure = new CwebpConversionException(
+                1, "Error! Cannot read input picture file <input>"
+        );
+        when(variantEncoder.encode(any()))
+                .thenThrow(new IllegalStateException("conversion failed", conversionFailure));
 
         assertThatThrownBy(() -> imageStorage.restoreOptimizedIfMissing(DETAIL_KEY, generatedImage()))
                 .isInstanceOf(ImageStorageException.class);
 
+        verify(externalApiLogger).error(
+                eq(new ExternalApiFailure("s3", "put_object", "CWEBP_INPUT_ERROR", null, null, null)),
+                any(IllegalStateException.class)
+        );
         verifyNoInteractions(s3Client);
     }
 
