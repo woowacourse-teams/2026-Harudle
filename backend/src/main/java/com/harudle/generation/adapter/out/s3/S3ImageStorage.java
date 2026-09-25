@@ -254,10 +254,27 @@ public final class S3ImageStorage implements ImageStorage {
 
     @Override
     public void delete(String imageObjectKey) {
-        DeleteObjectRequest request = prepareDeleteRequest(imageObjectKey);
-        deleteObject(request);
-        for (String companionKey : ImageVariantKeys.companionKeys(imageObjectKey)) {
-            deleteObject(prepareDeleteRequest(companionKey));
+        List<String> keys = new ArrayList<>();
+        keys.add(imageObjectKey);
+        keys.addAll(ImageVariantKeys.companionKeys(imageObjectKey));
+        List<DeleteObjectRequest> requests = keys.stream()
+                .map(this::prepareDeleteRequest)
+                .toList();
+
+        ImageStorageException firstFailure = null;
+        for (DeleteObjectRequest request : requests) {
+            try {
+                deleteObject(request);
+            } catch (ImageStorageException exception) {
+                if (firstFailure == null) {
+                    firstFailure = exception;
+                } else {
+                    firstFailure.addSuppressed(exception);
+                }
+            }
+        }
+        if (firstFailure != null) {
+            throw firstFailure;
         }
     }
 

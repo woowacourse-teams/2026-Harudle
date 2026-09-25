@@ -528,6 +528,29 @@ class S3ImageStorageTest {
     }
 
     @Test
+    @DisplayName("상세 이미지 삭제가 실패해도 썸네일 삭제를 시도하고 두 오류를 보고한다")
+    void deleteAttemptsEveryVariantAfterFailure() {
+        String detailKey = "generated/diary-images/550e8400-e29b-41d4-a716-446655440000/image-960.webp";
+        SdkClientException detailFailure = SdkClientException.builder().message("detail delete failed").build();
+        SdkClientException thumbnailFailure = SdkClientException.builder().message("thumbnail delete failed").build();
+        when(s3Client.deleteObject(any(DeleteObjectRequest.class)))
+                .thenThrow(detailFailure)
+                .thenThrow(thumbnailFailure);
+
+        ImageStorageException exception = catchThrowableOfType(
+                () -> imageStorage.delete(detailKey), ImageStorageException.class
+        );
+
+        assertThat(exception).hasCause(detailFailure);
+        assertThat(exception.getSuppressed()).hasSize(1);
+        assertThat(exception.getSuppressed()[0]).hasCause(thumbnailFailure);
+        ArgumentCaptor<DeleteObjectRequest> requests = ArgumentCaptor.forClass(DeleteObjectRequest.class);
+        verify(s3Client, times(2)).deleteObject(requests.capture());
+        assertThat(requests.getAllValues()).extracting(DeleteObjectRequest::key)
+                .containsExactly(detailKey, detailKey.replace("image-960.webp", "image-240.webp"));
+    }
+
+    @Test
     @DisplayName("설정된 최대 크기를 넘는 생성 이미지는 S3에 저장하지 않는다")
     void rejectOversizedGeneratedImage() {
         byte[] oversizedImage = new byte[MAX_OBJECT_SIZE_BYTES + 1];
