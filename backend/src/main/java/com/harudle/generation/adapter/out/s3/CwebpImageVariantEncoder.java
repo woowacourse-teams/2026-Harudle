@@ -17,11 +17,42 @@ import org.springframework.http.MediaType;
 
 public final class CwebpImageVariantEncoder implements ImageVariantEncoder {
 
+    private static final String CWEBP_COMMAND = "cwebp";
     private static final MediaType WEBP = MediaType.parseMediaType("image/webp");
     private static final Duration TIMEOUT = Duration.ofSeconds(30);
+    private static final Duration AVAILABILITY_TIMEOUT = Duration.ofSeconds(5);
     private static final int WEBP_QUALITY = 80;
     private static final int COMPRESSION_METHOD = 6;
     private static final int MAX_ERROR_OUTPUT_BYTES = 4096;
+
+    public void verifyAvailable() {
+        verifyAvailable(CWEBP_COMMAND);
+    }
+
+    static void verifyAvailable(String command) {
+        Process process;
+        try {
+            process = new ProcessBuilder(command, "-version")
+                    .redirectErrorStream(true)
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                    .start();
+        } catch (IOException exception) {
+            throw new IllegalStateException("cwebp 실행 파일을 찾거나 실행할 수 없습니다.", exception);
+        }
+        try {
+            if (!process.waitFor(AVAILABILITY_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
+                process.destroyForcibly();
+                throw new IllegalStateException("cwebp 실행 확인 시간이 초과됐습니다.");
+            }
+        } catch (InterruptedException exception) {
+            process.destroyForcibly();
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("cwebp 실행 확인이 중단됐습니다.", exception);
+        }
+        if (process.exitValue() != 0) {
+            throw new IllegalStateException("cwebp 실행 확인에 실패했습니다 (exit=" + process.exitValue() + ").");
+        }
+    }
 
     @Override
     public Map<ImageVariant, GeneratedImage> encode(GeneratedImage image) {
@@ -50,7 +81,7 @@ public final class CwebpImageVariantEncoder implements ImageVariantEncoder {
 
     private static GeneratedImage convert(Path input, Path output, int size) throws IOException {
         Process process = new ProcessBuilder(
-                "cwebp", "-quiet", "-q", Integer.toString(WEBP_QUALITY),
+                CWEBP_COMMAND, "-quiet", "-q", Integer.toString(WEBP_QUALITY),
                 "-m", Integer.toString(COMPRESSION_METHOD), "-resize", Integer.toString(size), "0",
                 input.toString(), "-o", output.toString()
         ).redirectErrorStream(true).start();

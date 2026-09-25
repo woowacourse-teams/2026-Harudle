@@ -228,6 +228,7 @@ class DiaryControllerTest {
     }
 
     @Test
+    @DisplayName("WebP 일기 타임라인에서 썸네일 이미지를 사용한다")
     void newWebpTimelineUsesThumbnailVariant() {
         DiarySummaryResult summary = new DiarySummaryResult(
                 DIARY_ID, "새 일기", "generated/diary-images/id/image-960.webp"

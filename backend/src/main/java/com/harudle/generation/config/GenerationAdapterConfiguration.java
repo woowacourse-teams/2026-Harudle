@@ -153,7 +153,9 @@ public class GenerationAdapterConfiguration {
 
     @Bean
     public ImageVariantEncoder imageVariantEncoder() {
-        return new CwebpImageVariantEncoder();
+        CwebpImageVariantEncoder encoder = new CwebpImageVariantEncoder();
+        encoder.verifyAvailable();
+        return encoder;
     }
 
     @Bean

@@ -1,6 +1,7 @@
 package com.harudle.generation.adapter.out.s3;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -16,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.TimeUnit;
 import javax.imageio.ImageIO;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.core.io.ByteArrayResource;
@@ -25,6 +27,14 @@ class CwebpImageVariantEncoderTest {
 
     @TempDir
     Path directory;
+
+    @Test
+    @DisplayName("cwebp 실행 파일이 없으면 어댑터 활성화 전에 실패한다")
+    void failsAvailabilityCheckWhenExecutableIsMissing() {
+        assertThatThrownBy(() -> CwebpImageVariantEncoder.verifyAvailable("missing-cwebp-test-command"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("cwebp 실행 파일");
+    }
 
     @Test
     void createsTwoWebpVariantsFromPng() throws IOException {
