@@ -2,6 +2,7 @@ package com.harudle.generation.diary.domain;
 
 public enum ImageVariant {
 
+    // DETAIL 파일명을 바꿀 때는 기존 image-960.webp 키의 썸네일 조회와 삭제도 동작하도록 ImageVariantKeys를 수정한다.
     DETAIL(960, "image-960.webp"),
     THUMBNAIL(240, "image-240.webp");
 
@@ -17,7 +18,6 @@ public enum ImageVariant {
         return width;
     }
 
-    // 파일명은 DB에 저장한 키의 일부이므로 기존 규격 변경 시 이전 키의 호환성도 고려한다.
     public String filename() {
         return filename;
     }
