@@ -551,29 +551,39 @@ class S3ImageStorageTest {
     }
 
     @Test
-    @DisplayName("설정된 최대 크기를 넘는 생성 이미지는 S3에 저장하지 않는다")
-    void rejectOversizedGeneratedImage() {
-        byte[] oversizedImage = new byte[MAX_OBJECT_SIZE_BYTES + 1];
-        GeneratedImage generatedImage = new GeneratedImage(
-                new ByteArrayResource(oversizedImage),
-                MediaType.IMAGE_PNG
+    @DisplayName("원본이 S3 객체 크기 제한을 넘어도 변환된 파일이 제한 이내면 저장한다")
+    void storesVariantsSmallerThanObjectLimit() {
+        GeneratedImage source = new GeneratedImage(
+                new ByteArrayResource(new byte[MAX_OBJECT_SIZE_BYTES + 1]), MediaType.IMAGE_PNG
         );
+        GeneratedImage variant = new GeneratedImage(
+                new ByteArrayResource(new byte[MAX_OBJECT_SIZE_BYTES]), MediaType.parseMediaType("image/webp")
+        );
+        when(variantEncoder.encode(source)).thenReturn(Map.of(
+                ImageVariant.DETAIL, variant, ImageVariant.THUMBNAIL, variant
+        ));
 
-        assertThatThrownBy(() -> imageStorage.store(GENERATION_ID, generatedImage))
-                .isInstanceOf(ImageStorageException.class)
-                .hasMessageContaining("S3 이미지 저장")
-                .hasRootCauseMessage("S3 이미지 객체 크기가 허용 범위를 벗어났습니다.");
-        verify(externalApiLogger).warn(
-                eq(new ExternalApiFailure(
-                        "s3",
-                        "put_object",
-                        "REQUEST_VALIDATION_ERROR",
-                        null,
-                        null,
-                        null
-                )),
-                any(IllegalArgumentException.class)
+        imageStorage.store(GENERATION_ID, source);
+
+        ArgumentCaptor<PutObjectRequest> requests = ArgumentCaptor.forClass(PutObjectRequest.class);
+        verify(s3Client, times(2)).putObject(requests.capture(), any(RequestBody.class));
+        assertThat(requests.getAllValues()).allSatisfy(request ->
+                assertThat(request.contentLength()).isEqualTo((long) MAX_OBJECT_SIZE_BYTES)
         );
+    }
+
+    @Test
+    @DisplayName("변환 전 원본이 입력 크기 제한을 넘으면 이미지를 변환하거나 업로드하지 않는다")
+    void rejectsSourceImageAboveInputLimit() throws IOException {
+        Resource resource = mock(Resource.class);
+        when(resource.isReadable()).thenReturn(true);
+        when(resource.contentLength()).thenReturn(20L * 1024 * 1024 + 1);
+        GeneratedImage source = new GeneratedImage(resource, MediaType.IMAGE_PNG);
+
+        assertThatThrownBy(() -> imageStorage.store(GENERATION_ID, source))
+                .isInstanceOf(ImageStorageException.class)
+                .hasRootCauseMessage("입력 이미지 크기가 허용 범위를 벗어났습니다.");
+        verifyNoInteractions(variantEncoder);
         verifyNoInteractions(s3Client);
     }
 

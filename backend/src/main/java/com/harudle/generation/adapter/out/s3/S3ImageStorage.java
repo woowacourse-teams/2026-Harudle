@@ -155,7 +155,6 @@ public final class S3ImageStorage implements ImageStorage {
 
     private PreparedStores prepareStores(UUID generationId, GeneratedImage generatedImage) {
         try {
-            validateObjectSize(generatedImage.resource().contentLength());
             ImageUploadPreparer.UploadPlan plan = uploadPreparer.prepare(generationId, generatedImage);
             List<PreparedStore> uploads = new ArrayList<>();
             for (ImageUploadPreparer.Upload upload : plan.uploads()) {

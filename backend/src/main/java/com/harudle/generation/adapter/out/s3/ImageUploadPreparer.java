@@ -3,6 +3,7 @@ package com.harudle.generation.adapter.out.s3;
 import com.harudle.generation.diary.domain.ImageVariant;
 import com.harudle.generation.diary.domain.ImageVariantKeys;
 import com.harudle.generation.diary.service.port.dto.GeneratedImage;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -11,6 +12,8 @@ import java.util.UUID;
 import org.springframework.http.MediaType;
 
 public final class ImageUploadPreparer {
+
+    private static final int MAX_SOURCE_IMAGE_SIZE_BYTES = 20 * 1024 * 1024;
 
     private final ImageObjectKeyFactory objectKeyFactory;
     private final ImageVariantEncoder variantEncoder;
@@ -21,6 +24,7 @@ public final class ImageUploadPreparer {
     }
 
     public UploadPlan prepare(UUID generationId, GeneratedImage image) {
+        validateSourceImageSize(image);
         if (!isConvertible(image.mediaType())) {
             String key = objectKeyFactory.create(generationId, image.mediaType());
             return new UploadPlan(key, List.of(new Upload(key, image)));
@@ -36,6 +40,17 @@ public final class ImageUploadPreparer {
         }
         uploads.add(new Upload(primaryKey, images.get(ImageVariant.DETAIL)));
         return new UploadPlan(primaryKey, uploads);
+    }
+
+    private static void validateSourceImageSize(GeneratedImage image) {
+        try {
+            long size = image.resource().contentLength();
+            if (size <= 0 || size > MAX_SOURCE_IMAGE_SIZE_BYTES) {
+                throw new IllegalArgumentException("입력 이미지 크기가 허용 범위를 벗어났습니다.");
+            }
+        } catch (IOException exception) {
+            throw new IllegalStateException("입력 이미지 크기를 확인할 수 없습니다.", exception);
+        }
     }
 
     private static boolean isConvertible(MediaType mediaType) {
