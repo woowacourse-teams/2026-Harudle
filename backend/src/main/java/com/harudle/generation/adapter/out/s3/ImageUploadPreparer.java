@@ -34,7 +34,6 @@ public final class ImageUploadPreparer {
                 uploads.add(new Upload(ImageVariantKeys.forVariant(primaryKey, variant), images.get(variant)));
             }
         }
-        // 대표 이미지는 다른 이미지가 모두 저장된 뒤 마지막에 업로드한다.
         uploads.add(new Upload(primaryKey, images.get(ImageVariant.DETAIL)));
         return new UploadPlan(primaryKey, uploads);
     }
