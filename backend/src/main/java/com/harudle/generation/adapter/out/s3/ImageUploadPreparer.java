@@ -30,7 +30,23 @@ public final class ImageUploadPreparer {
             return new UploadPlan(key, List.of(new Upload(key, image)));
         }
 
-        String primaryKey = objectKeyFactory.createOptimized(generationId);
+        return prepareVariants(objectKeyFactory.createOptimized(generationId), image);
+    }
+
+    public UploadPlan prepareOptimized(String detailKey, GeneratedImage image) {
+        requireOptimizedDetailKey(detailKey);
+        validateSourceImageSize(image);
+        return prepareVariants(detailKey, image);
+    }
+
+    public Upload prepareThumbnailFromDetail(String detailKey, GeneratedImage detailImage) {
+        requireOptimizedDetailKey(detailKey);
+        validateSourceImageSize(detailImage);
+        GeneratedImage thumbnail = variantEncoder.encode(detailImage).get(ImageVariant.THUMBNAIL);
+        return new Upload(ImageVariantKeys.forVariant(detailKey, ImageVariant.THUMBNAIL), thumbnail);
+    }
+
+    private UploadPlan prepareVariants(String primaryKey, GeneratedImage image) {
         Map<ImageVariant, GeneratedImage> images = variantEncoder.encode(image);
         List<Upload> uploads = new ArrayList<>();
         for (ImageVariant variant : ImageVariant.values()) {
@@ -40,6 +56,12 @@ public final class ImageUploadPreparer {
         }
         uploads.add(new Upload(primaryKey, images.get(ImageVariant.DETAIL)));
         return new UploadPlan(primaryKey, uploads);
+    }
+
+    private static void requireOptimizedDetailKey(String detailKey) {
+        if (!ImageVariantKeys.isOptimizedDetailKey(detailKey)) {
+            throw new IllegalArgumentException("최적화된 상세 이미지 키가 필요합니다.");
+        }
     }
 
     private static void validateSourceImageSize(GeneratedImage image) {

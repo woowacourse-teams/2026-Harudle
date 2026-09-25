@@ -155,12 +155,7 @@ public final class S3ImageStorage implements ImageStorage {
 
     private PreparedStores prepareStores(UUID generationId, GeneratedImage generatedImage) {
         try {
-            ImageUploadPreparer.UploadPlan plan = uploadPreparer.prepare(generationId, generatedImage);
-            List<PreparedStore> uploads = new ArrayList<>();
-            for (ImageUploadPreparer.Upload upload : plan.uploads()) {
-                uploads.add(prepareStore(upload.objectKey(), upload.image()));
-            }
-            return new PreparedStores(plan.primaryKey(), List.copyOf(uploads));
+            return prepareStores(uploadPreparer.prepare(generationId, generatedImage));
         } catch (IllegalArgumentException exception) {
             throw failureReporter.reportValidationFailure(
                     PUT_OBJECT, STORE_TRANSLATION_OPERATION, null, exception
@@ -170,6 +165,14 @@ public final class S3ImageStorage implements ImageStorage {
                     PUT_OBJECT, STORE_TRANSLATION_OPERATION, null, REQUEST_PREPARATION_ERROR, exception
             );
         }
+    }
+
+    private PreparedStores prepareStores(ImageUploadPreparer.UploadPlan plan) throws IOException {
+        List<PreparedStore> uploads = new ArrayList<>();
+        for (ImageUploadPreparer.Upload upload : plan.uploads()) {
+            uploads.add(prepareStore(upload.objectKey(), upload.image()));
+        }
+        return new PreparedStores(plan.primaryKey(), List.copyOf(uploads));
     }
 
     private void putAll(List<PreparedStore> uploads) {
@@ -252,10 +255,83 @@ public final class S3ImageStorage implements ImageStorage {
     }
 
     @Override
+    public boolean restoreOptimizedIfMissing(String detailKey, GeneratedImage generatedImage) {
+        requireGeneratedImage(generatedImage);
+        PreparedStores prepared = prepareOptimizedStores(detailKey, generatedImage);
+        // 기존 썸네일이 다른 그림일 수 있으므로, 변환과 크기 검증이 끝난 뒤 제거한다.
+        deleteKeys(ImageVariantKeys.companionKeys(detailKey));
+        if (!restorePreparedIfMissing(prepared.uploads().getLast())) {
+            return restoreThumbnailFromDetail(detailKey);
+        }
+        for (PreparedStore upload : prepared.uploads()) {
+            if (!upload.objectKey().equals(detailKey)) {
+                restorePreparedIfMissing(upload);
+            }
+        }
+        return true;
+    }
+
+    private PreparedStores prepareOptimizedStores(String detailKey, GeneratedImage image) {
+        try {
+            return prepareStores(uploadPreparer.prepareOptimized(detailKey, image));
+        } catch (IllegalArgumentException exception) {
+            throw failureReporter.reportValidationFailure(
+                    PUT_OBJECT, STORE_TRANSLATION_OPERATION, detailKey, exception
+            );
+        } catch (Exception exception) {
+            throw failureReporter.reportInternalFailure(
+                    PUT_OBJECT, STORE_TRANSLATION_OPERATION, detailKey, REQUEST_PREPARATION_ERROR, exception
+            );
+        }
+    }
+
+    @Override
+    public boolean restoreThumbnailFromDetail(String detailKey) {
+        String thumbnailKey = ImageVariantKeys.toThumbnailKeyIfOptimizedDetail(detailKey);
+        if (thumbnailKey.equals(detailKey)) {
+            throw failureReporter.reportValidationFailure(
+                    PUT_OBJECT, STORE_TRANSLATION_OPERATION, detailKey,
+                    new IllegalArgumentException("최적화된 상세 이미지 키가 필요합니다.")
+            );
+        }
+        if (exists(thumbnailKey)) {
+            return false;
+        }
+        ReferenceImage detail = load(detailKey);
+        PreparedStore thumbnail = prepareThumbnailStore(detailKey, detail);
+        return restorePreparedIfMissing(thumbnail);
+    }
+
+    private PreparedStore prepareThumbnailStore(String detailKey, ReferenceImage detail) {
+        try {
+            GeneratedImage image = new GeneratedImage(detail.resource(), detail.mediaType());
+            ImageUploadPreparer.Upload thumbnail = uploadPreparer.prepareThumbnailFromDetail(detailKey, image);
+            return prepareStore(thumbnail.objectKey(), thumbnail.image());
+        } catch (IllegalArgumentException exception) {
+            throw failureReporter.reportValidationFailure(
+                    PUT_OBJECT, STORE_TRANSLATION_OPERATION, detailKey, exception
+            );
+        } catch (Exception exception) {
+            throw failureReporter.reportInternalFailure(
+                    PUT_OBJECT, STORE_TRANSLATION_OPERATION, detailKey, REQUEST_PREPARATION_ERROR, exception
+            );
+        }
+    }
+
+    private boolean restorePreparedIfMissing(PreparedStore prepared) {
+        return restoreIfMissing(prepared.objectKey(), new GeneratedImage(prepared.resource(),
+                MediaType.parseMediaType(prepared.request().contentType())));
+    }
+
+    @Override
     public void delete(String imageObjectKey) {
         List<String> keys = new ArrayList<>();
         keys.add(imageObjectKey);
         keys.addAll(ImageVariantKeys.companionKeys(imageObjectKey));
+        deleteKeys(keys);
+    }
+
+    private void deleteKeys(List<String> keys) {
         List<DeleteObjectRequest> requests = keys.stream()
                 .map(this::prepareDeleteRequest)
                 .toList();

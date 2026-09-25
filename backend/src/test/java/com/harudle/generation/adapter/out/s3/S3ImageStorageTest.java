@@ -62,6 +62,10 @@ class S3ImageStorageTest {
     private static final UUID GENERATION_ID = UUID.fromString("550e8400-e29b-41d4-a716-446655440000");
     private static final String OBJECT_KEY =
             "generated/diary-images/550e8400-e29b-41d4-a716-446655440000/image.png";
+    private static final String DETAIL_KEY =
+            "generated/diary-images/550e8400-e29b-41d4-a716-446655440000/image-960.webp";
+    private static final String THUMBNAIL_KEY =
+            "generated/diary-images/550e8400-e29b-41d4-a716-446655440000/image-240.webp";
     private static final int MAX_OBJECT_SIZE_BYTES = 10;
 
     @Mock
@@ -111,6 +115,102 @@ class S3ImageStorageTest {
                 .thenThrow(S3Exception.builder().statusCode(403).build());
         assertThat(imageStorage.exists(OBJECT_KEY)).isFalse();
         assertThatThrownBy(() -> imageStorage.exists(OBJECT_KEY)).isInstanceOf(ImageStorageException.class);
+    }
+
+    @Test
+    void missingDetailReplacesStaleThumbnailAfterPreparingBothImages() {
+        stubOptimizedImages("detail", "thumb");
+
+        assertThat(imageStorage.restoreOptimizedIfMissing(DETAIL_KEY, generatedImage())).isTrue();
+
+        var order = inOrder(s3Client);
+        order.verify(s3Client).deleteObject(org.mockito.ArgumentMatchers.<DeleteObjectRequest>argThat(
+                request -> request.key().equals(THUMBNAIL_KEY)));
+        order.verify(s3Client).putObject(org.mockito.ArgumentMatchers.<PutObjectRequest>argThat(
+                request -> request.key().equals(DETAIL_KEY) && request.ifNoneMatch().equals("*")),
+                any(RequestBody.class));
+        order.verify(s3Client).putObject(org.mockito.ArgumentMatchers.<PutObjectRequest>argThat(
+                request -> request.key().equals(THUMBNAIL_KEY) && request.ifNoneMatch().equals("*")),
+                any(RequestBody.class));
+    }
+
+    @Test
+    void conversionFailureKeepsExistingThumbnail() {
+        when(variantEncoder.encode(any())).thenThrow(new IllegalStateException("conversion failed"));
+
+        assertThatThrownBy(() -> imageStorage.restoreOptimizedIfMissing(DETAIL_KEY, generatedImage()))
+                .isInstanceOf(ImageStorageException.class);
+
+        verifyNoInteractions(s3Client);
+    }
+
+    @Test
+    void thumbnailIsRebuiltFromSavedDetailWithoutRegeneration() throws IOException {
+        when(s3Client.headObject(any(software.amazon.awssdk.services.s3.model.HeadObjectRequest.class)))
+                .thenThrow(S3Exception.builder().statusCode(404).build());
+        byte[] savedDetail = "saved".getBytes(StandardCharsets.UTF_8);
+        when(s3Client.getObject(any(GetObjectRequest.class)))
+                .thenReturn(responseStream(new ByteArrayInputStream(savedDetail), savedDetail.length, "image/webp"));
+        stubOptimizedImages("unused", "thumb");
+
+        assertThat(imageStorage.restoreThumbnailFromDetail(DETAIL_KEY)).isTrue();
+
+        ArgumentCaptor<GeneratedImage> encoderInput = ArgumentCaptor.forClass(GeneratedImage.class);
+        verify(variantEncoder).encode(encoderInput.capture());
+        assertThat(encoderInput.getValue().mediaType().toString()).isEqualTo("image/webp");
+        assertThat(encoderInput.getValue().resource().getContentAsByteArray()).isEqualTo(savedDetail);
+        ArgumentCaptor<PutObjectRequest> put = ArgumentCaptor.forClass(PutObjectRequest.class);
+        verify(s3Client).putObject(put.capture(), any(RequestBody.class));
+        assertThat(put.getValue().key()).isEqualTo(THUMBNAIL_KEY);
+        assertThat(put.getValue().ifNoneMatch()).isEqualTo("*");
+    }
+
+    @Test
+    void detailWriteConflictRepairsThumbnailFromStoredDetail() throws IOException {
+        stubOptimizedImages("new", "newthumb");
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenThrow(S3Exception.builder().statusCode(412).build())
+                .thenReturn(PutObjectResponse.builder().build());
+        when(s3Client.headObject(any(software.amazon.awssdk.services.s3.model.HeadObjectRequest.class)))
+                .thenThrow(S3Exception.builder().statusCode(404).build());
+        byte[] savedDetail = "saved".getBytes(StandardCharsets.UTF_8);
+        when(s3Client.getObject(any(GetObjectRequest.class)))
+                .thenReturn(responseStream(new ByteArrayInputStream(savedDetail), savedDetail.length, "image/webp"));
+
+        assertThat(imageStorage.restoreOptimizedIfMissing(DETAIL_KEY, generatedImage())).isTrue();
+
+        ArgumentCaptor<GeneratedImage> encoded = ArgumentCaptor.forClass(GeneratedImage.class);
+        verify(variantEncoder, times(2)).encode(encoded.capture());
+        assertThat(encoded.getAllValues().get(1).resource().getContentAsByteArray()).isEqualTo(savedDetail);
+        ArgumentCaptor<PutObjectRequest> puts = ArgumentCaptor.forClass(PutObjectRequest.class);
+        verify(s3Client, times(2)).putObject(puts.capture(), any(RequestBody.class));
+        assertThat(puts.getAllValues()).extracting(PutObjectRequest::key)
+                .containsExactly(DETAIL_KEY, THUMBNAIL_KEY);
+    }
+
+    @Test
+    void failedThumbnailWriteCanBeRetriedFromStoredDetail() {
+        stubOptimizedImages("detail", "thumb");
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenReturn(PutObjectResponse.builder().build())
+                .thenThrow(S3Exception.builder().statusCode(503).build())
+                .thenReturn(PutObjectResponse.builder().build());
+        when(s3Client.headObject(any(software.amazon.awssdk.services.s3.model.HeadObjectRequest.class)))
+                .thenThrow(S3Exception.builder().statusCode(404).build());
+        byte[] savedDetail = "detail".getBytes(StandardCharsets.UTF_8);
+        when(s3Client.getObject(any(GetObjectRequest.class)))
+                .thenReturn(responseStream(new ByteArrayInputStream(savedDetail), savedDetail.length, "image/webp"));
+
+        assertThatThrownBy(() -> imageStorage.restoreOptimizedIfMissing(DETAIL_KEY, generatedImage()))
+                .isInstanceOf(ImageStorageException.class);
+        assertThat(imageStorage.restoreThumbnailFromDetail(DETAIL_KEY)).isTrue();
+
+        ArgumentCaptor<PutObjectRequest> puts = ArgumentCaptor.forClass(PutObjectRequest.class);
+        verify(s3Client, times(3)).putObject(puts.capture(), any(RequestBody.class));
+        assertThat(puts.getAllValues()).extracting(PutObjectRequest::key)
+                .containsExactly(DETAIL_KEY, THUMBNAIL_KEY, THUMBNAIL_KEY);
+        verify(s3Client, never()).deleteObject(org.mockito.ArgumentMatchers.<DeleteObjectRequest>argThat(
+                request -> request.key().equals(DETAIL_KEY)));
     }
 
     @BeforeEach
@@ -777,6 +877,16 @@ class S3ImageStorageTest {
                 new ByteArrayResource(imageBytes),
                 MediaType.IMAGE_PNG
         );
+    }
+
+    private void stubOptimizedImages(String detail, String thumbnail) {
+        GeneratedImage detailImage = new GeneratedImage(new ByteArrayResource(detail.getBytes(StandardCharsets.UTF_8)),
+                MediaType.parseMediaType("image/webp"));
+        GeneratedImage thumbnailImage = new GeneratedImage(
+                new ByteArrayResource(thumbnail.getBytes(StandardCharsets.UTF_8)),
+                MediaType.parseMediaType("image/webp"));
+        when(variantEncoder.encode(any())).thenReturn(Map.of(
+                ImageVariant.DETAIL, detailImage, ImageVariant.THUMBNAIL, thumbnailImage));
     }
 
     private static GeneratedImage unconvertedImage() {
