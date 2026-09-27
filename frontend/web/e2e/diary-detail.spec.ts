@@ -210,8 +210,34 @@ test.describe('일기 상세', () => {
     await page.getByRole('button', { name: '이미지 저장' }).click();
     const download = await downloadPromise;
 
-    expect(download.suggestedFilename()).toBe('harudle-diary.png');
+    expect(download.suggestedFilename()).toBe(
+      '하루들_2026-08-12_비가 와도, 나는 괜찮았다.png',
+    );
   });
+
+  for (const [label, scenario, character] of [
+    ['한글', MOCK_SCENARIOS.diaryLongKoreanTitle, '가'],
+    ['이모지', MOCK_SCENARIOS.diaryLongEmojiTitle, '😀'],
+  ] as const) {
+    test(`긴 ${label} 제목은 이미지 저장 시 20 code point로 제한한다`, async ({
+      page,
+    }): Promise<void> => {
+      await setMockScenario(page, scenario);
+      await page.goto(SAMPLE_DIARY_URL);
+      await expect(
+        page.getByText(character.repeat(100), { exact: true }),
+      ).toBeVisible();
+
+      const downloadPromise = page.waitForEvent('download');
+      await page.getByRole('button', { name: '이미지 저장' }).click();
+      const download = await downloadPromise;
+      const fileName = download.suggestedFilename();
+
+      expect(fileName).toBe(`하루들_2026-08-12_${character.repeat(20)}.png`);
+      expect(Buffer.byteLength(fileName, 'utf8')).toBeLessThanOrEqual(127);
+      expect(await download.failure()).toBeNull();
+    });
+  }
 
   test('이미지 저장에 실패하면 에러 메시지를 보여준다', async ({ page }) => {
     await goToSampleDiaryDetail(page);
