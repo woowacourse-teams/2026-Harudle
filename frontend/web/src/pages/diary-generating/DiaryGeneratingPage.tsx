@@ -19,7 +19,7 @@ import {
 import useDiaryGenerationProgress from './useDiaryGenerationProgress';
 
 const DiaryGeneratingPage = () => {
-  const { state: diaryGenerateRequestBody } = useLocation();
+  const diaryGenerateRequestBody: unknown = useLocation().state;
 
   if (!isDiaryGenerateRequest(diaryGenerateRequestBody)) {
     alert('일기 생성 형식이 올바르지 않습니다.');

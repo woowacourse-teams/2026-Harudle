@@ -38,7 +38,15 @@ const mockFetch = (
   responses: Response[],
 ): jest.MockedFunction<typeof fetch> => {
   globalThis.fetch = fetchMock;
-  fetchMock.mockImplementation(() => Promise.resolve(responses.shift()!));
+  fetchMock.mockImplementation((): Promise<Response> => {
+    const response = responses.shift();
+
+    if (response === undefined) {
+      return Promise.reject(new Error('준비된 fetch 응답이 없습니다.'));
+    }
+
+    return Promise.resolve(response);
+  });
 
   return fetchMock;
 };
