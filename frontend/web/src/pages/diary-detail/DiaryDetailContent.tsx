@@ -88,9 +88,12 @@ const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
           <span css={storyTitleStyle}>오늘의 이야기</span>
           <p css={storyTextStyle}>{diaryDetail.sourceText}</p>
         </div>
-
         <DiaryShareButton diaryId={diaryId} diaryTitle={title} />
-        <DiaryImageDownloadButton imageUrl={imageUrl} />
+        <DiaryImageDownloadButton
+          imageUrl={imageUrl}
+          diaryDate={diaryDetail.diaryDate}
+          diaryTitle={diaryDetail.generation.title}
+        />
       </main>
     </div>
   );

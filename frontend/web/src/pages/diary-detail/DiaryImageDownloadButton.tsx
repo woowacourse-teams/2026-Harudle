@@ -5,7 +5,15 @@ import { useState } from 'react';
 import type { ApiRequest } from '../../shared/api';
 import { useAnalytics } from '../../posthog/useAnalytics';
 
-const DiaryImageDownloadButton = ({ imageUrl }: { imageUrl: string }) => {
+const DiaryImageDownloadButton = ({
+  imageUrl,
+  diaryDate,
+  diaryTitle,
+}: {
+  imageUrl: string;
+  diaryDate: string;
+  diaryTitle: string;
+}) => {
   const [downloadRequest, setDownloadRequest] = useState<ApiRequest<void>>({
     status: 'idle',
   });
@@ -25,9 +33,13 @@ const DiaryImageDownloadButton = ({ imageUrl }: { imageUrl: string }) => {
       const blob = await response.blob();
       const downloadUrl = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
+      const safeTitle = diaryTitle
+        .replace(/[<>:"/\\|?*]/g, '_')
+        .trim()
+        .replace(/\.+$/, '');
 
       anchor.href = downloadUrl;
-      anchor.download = 'harudle-diary.png';
+      anchor.download = `하루들_${diaryDate}_${safeTitle}.png`;
       anchor.click();
 
       URL.revokeObjectURL(downloadUrl);
