@@ -30,6 +30,7 @@ const SettingPage = () => {
       <main css={contentStyle}>
         <div css={pageTitleStyle}>설정</div>
         <SettingPageContent />
+        <p css={versionStyle}>버전 {__APP_VERSION__}</p>
       </main>
 
       <BottomNavigation />
@@ -161,6 +162,15 @@ const settingPageContentStyle = css`
   gap: 10px;
   min-height: 0;
   overflow-y: auto;
+`;
+
+const versionStyle = css`
+  margin: 0;
+  padding: 8px 0;
+  color: ${theme.colors.foreground.neutralMuted};
+  font-size: 13px;
+  line-height: 20px;
+  text-align: center;
 `;
 
 const settingCardStyle = css`

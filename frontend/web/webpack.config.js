@@ -1,11 +1,16 @@
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { readFileSync } from 'node:fs';
+import webpack from 'webpack';
+import { fileURLToPath, URL } from 'url';
 import HtmlWebpackPlugin from 'html-webpack-plugin';
 import Dotenv from 'dotenv-webpack';
 import CopyWebpackPlugin from 'copy-webpack-plugin';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const { version } = JSON.parse(
+  readFileSync(new URL('./package.json', import.meta.url), 'utf8'),
+);
 
 export default function createWebpackConfig(_env, argv) {
   const isProduction = argv.mode === 'production';
@@ -60,6 +65,9 @@ export default function createWebpackConfig(_env, argv) {
       extensions: ['.tsx', '.ts', '.js'],
     },
     plugins: [
+      new webpack.DefinePlugin({
+        __APP_VERSION__: JSON.stringify(version),
+      }),
       new HtmlWebpackPlugin({
         template: './index.html',
         favicon: './src/assets/images/favicon.png',
