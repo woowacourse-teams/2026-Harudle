@@ -149,7 +149,7 @@ const requestNewAccessToken = async (): Promise<void> => {
   });
 
   if (!response.ok) {
-    const errorData = await response.json();
+    const errorData: unknown = await response.json();
     if (isProblemDetails(errorData)) {
       throw new RequestError(errorData);
     }
