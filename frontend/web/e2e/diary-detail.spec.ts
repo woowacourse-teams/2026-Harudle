@@ -210,7 +210,9 @@ test.describe('일기 상세', () => {
     await page.getByRole('button', { name: '이미지 저장' }).click();
     const download = await downloadPromise;
 
-    expect(download.suggestedFilename()).toBe('harudle-diary.png');
+    expect(download.suggestedFilename()).toBe(
+      '하루들_2026-08-12_비가 와도, 나는 괜찮았다.png',
+    );
   });
 
   test('이미지 저장에 실패하면 에러 메시지를 보여준다', async ({ page }) => {
