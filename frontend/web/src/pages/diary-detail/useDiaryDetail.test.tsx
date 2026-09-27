@@ -6,7 +6,7 @@ import useDiaryDetail from './useDiaryDetail';
 const mockTrack = jest.fn<(...args: unknown[]) => void>();
 const mockAuthFetch = jest.fn<(...args: unknown[]) => Promise<Response>>();
 
-jest.mock('../../shared/useAnalytics', () => ({
+jest.mock('../../posthog/useAnalytics', () => ({
   useAnalytics: () => ({ track: mockTrack }),
 }));
 

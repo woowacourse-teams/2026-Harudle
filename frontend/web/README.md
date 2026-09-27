@@ -21,6 +21,29 @@ pnpm dev
 
 개발 서버는 `http://localhost:5173`에서 실행됩니다. 개발 환경에서는 MSW가 자동으로 활성화되며, Mock이 없는 요청은 그대로 서버로 전달됩니다.
 
+### Mock API 설정
+
+로컬 개발에서는 `.env`의 `USE_MSW` 값으로 MSW 사용 여부를 설정합니다.
+
+```text
+USE_MSW=true  # Mock API 사용
+USE_MSW=false # 실제 API 사용
+```
+
+설정을 변경한 뒤 개발 서버를 다시 실행해야 합니다.
+
+```bash
+pnpm dev
+```
+
+명령을 실행할 때 일시적으로 값을 변경할 수도 있습니다.
+
+```bash
+USE_MSW=false pnpm dev
+```
+
+`USE_MSW`는 development 빌드에서만 적용되며, production 빌드에서는 MSW가 실행되지 않습니다.
+
 ## 기술 스택
 
 | 구분      | 기술                             |

@@ -5,7 +5,7 @@ import GuestLoginCta from './GuestLoginCta';
 
 const mockTrack = jest.fn();
 
-jest.mock('../../shared/useAnalytics', () => ({
+jest.mock('../../posthog/useAnalytics', () => ({
   useAnalytics: () => ({ track: mockTrack }),
 }));
 jest.mock('../../assets/icons/kakao.svg', () => 'kakao.svg');

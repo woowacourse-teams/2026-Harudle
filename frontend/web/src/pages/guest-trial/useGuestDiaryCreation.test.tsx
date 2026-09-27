@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { RequestError, type ProblemDetails } from '../../shared/api';
@@ -225,7 +226,7 @@ describe('게스트 일기 생성 상태 머신', () => {
 
     expect(result.current.creationState).toEqual({
       status: 'error',
-      error: new Error('게스트 일기 생성에 실패했습니다'),
+      error: new Error(ERROR_MESSAGES.GUEST_DIARY_GENERATION_FAILED),
     });
   });
 

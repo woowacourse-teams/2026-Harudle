@@ -331,8 +331,8 @@ const pageStyle = (showIntro: boolean) => css`
   height: 100%;
   overflow-x: hidden;
   overflow-y: auto;
-  background-color: ${showIntro ? '#ffffff' : '#f8f6ff'};
-  color: ${theme.colors.text.primary};
+  background-color: ${showIntro ? theme.colors.background.surface : theme.colors.background.brandWeak};
+  color: ${theme.colors.foreground.neutral};
   overscroll-behavior-y: contain;
   scrollbar-width: none;
 
@@ -347,7 +347,7 @@ const topBarStyle = css`
   width: 100%;
   height: 72px;
   padding: 0 24px;
-  background-color: #ffffff;
+  background-color: ${theme.colors.background.surface};
 `;
 
 const logoStyle = css`
@@ -364,7 +364,7 @@ const heroSectionStyle = css`
   flex-direction: column;
   gap: 48px;
   padding: 32px 24px;
-  background-color: #ffffff;
+  background-color: ${theme.colors.background.surface};
 `;
 
 const heroCopyStyle = css`
@@ -376,7 +376,7 @@ const heroCopyStyle = css`
 
 const heroTitleStyle = css`
   margin: 0;
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: clamp(38px, 10.5vw, 46px);
   font-weight: 700;
   line-height: 1.24;
@@ -385,13 +385,13 @@ const heroTitleStyle = css`
 `;
 
 const accentStyle = css`
-  color: ${theme.colors.text.brand};
+  color: ${theme.colors.foreground.brand};
 `;
 
 const heroDescriptionStyle = css`
   max-width: 330px;
   margin: 0;
-  color: ${theme.colors.text.secondary};
+  color: ${theme.colors.foreground.neutralMuted};
   font-size: 16px;
   font-weight: 400;
   line-height: 26px;
@@ -417,16 +417,16 @@ const heroVisualStyle = css`
 
 const storyFlowStyle = css`
   position: relative;
-  background-color: #f8f6ff;
+  background-color: ${theme.colors.background.brandWeak};
 `;
 
 const showcaseSectionStyle = css`
   position: relative;
   height: 130vh;
   height: 130svh;
-  border-top: 1px solid #efebfa;
-  border-bottom: 1px solid #efebfa;
-  background-color: #f8f6ff;
+  border-top: 1px solid ${theme.colors.stroke.brandWeak};
+  border-bottom: 1px solid ${theme.colors.stroke.brandWeak};
+  background-color: ${theme.colors.background.brandWeak};
 
   @media (prefers-reduced-motion: reduce) {
     height: auto;
@@ -446,7 +446,7 @@ const showcaseStageStyle = css`
   align-items: stretch;
   padding: clamp(64px, 9.5svh, 80px) 24px 48px;
   overflow: hidden;
-  background-color: #f8f6ff;
+  background-color: ${theme.colors.background.brandWeak};
 
   @media (prefers-reduced-motion: reduce) {
     position: relative;
@@ -531,7 +531,7 @@ const diaryFrameStyle = css`
   overflow: hidden;
   border: 1px solid #2b2a31;
   border-radius: 12px;
-  background-color: ${theme.colors.text.primary};
+  background-color: ${theme.colors.background.neutralSolid};
   box-shadow: 0 18px 36px rgba(17, 17, 24, 0.12);
 
   @media (prefers-reduced-motion: reduce) {
@@ -560,7 +560,7 @@ const activeDiaryStoryStyle = css`
 
 const diaryCaptionStyle = css`
   margin: 0;
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: clamp(22px, 6.4vw, 28px);
   font-weight: 700;
   line-height: 1.38;
@@ -571,7 +571,7 @@ const diaryCaptionStyle = css`
 const reducedDiaryCaptionStyle = css`
   display: none;
   margin: 0;
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 19px;
   font-weight: 700;
   line-height: 28px;
@@ -598,7 +598,9 @@ const progressSegmentStyle = (isActive: boolean) => css`
   display: block;
   height: 3px;
   background-color: ${
-    isActive ? theme.colors.text.primary : theme.colors.border.primary
+    isActive
+      ? theme.colors.background.neutralSolid
+      : theme.colors.background.neutralWeak
   };
   transition: background-color 320ms ease;
 
@@ -616,7 +618,7 @@ const processSectionStyle = css`
   margin-top: clamp(-360px, -32svh, -240px);
   padding: 64px 24px 48px;
   border-radius: 24px 24px 0 0;
-  background-color: #ffffff;
+  background-color: ${theme.colors.background.surface};
 
   @media (prefers-reduced-motion: reduce) {
     margin-top: -24px;
@@ -645,7 +647,7 @@ const processIllustrationStyle = css`
 
 const sectionTitleStyle = css`
   margin: 0;
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 30px;
   font-weight: 700;
   line-height: 42px;
@@ -659,7 +661,7 @@ const processListStyle = css`
   margin: 0;
   padding: 0 18px;
   overflow: hidden;
-  border: 1px solid #efebfa;
+  border: 1px solid ${theme.colors.stroke.brandWeak};
   border-radius: 20px;
   background-color: #fbfaff;
   list-style: none;
@@ -671,7 +673,7 @@ const processStepStyle = (isVisible: boolean, index: number) => css`
   gap: 8px;
   padding: 20px 0;
   border-top: ${
-    index === 0 ? 'none' : `1px solid ${theme.colors.border.primary}`
+    index === 0 ? 'none' : `1px solid ${theme.colors.stroke.divider}`
   };
   opacity: ${isVisible ? 1 : 0};
   transform: translate3d(0, ${isVisible ? 0 : '22px'}, 0);
@@ -687,7 +689,7 @@ const processStepStyle = (isVisible: boolean, index: number) => css`
 `;
 
 const processStepNumberStyle = css`
-  color: ${theme.colors.text.brand};
+  color: ${theme.colors.foreground.brand};
   font-size: 13px;
   font-weight: 700;
   line-height: 24px;
@@ -702,7 +704,7 @@ const processStepCopyStyle = css`
 
 const processStepTitleStyle = css`
   margin: 0;
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 19px;
   font-weight: 700;
   line-height: 28px;
@@ -712,7 +714,7 @@ const processStepTitleStyle = css`
 
 const processStepDescriptionStyle = css`
   margin: 0;
-  color: ${theme.colors.text.secondary};
+  color: ${theme.colors.foreground.neutralMuted};
   font-size: 15px;
   font-weight: 400;
   line-height: 24px;
@@ -726,8 +728,8 @@ const finalCtaSectionStyle = (continuesToTrial: boolean) => css`
   align-items: center;
   gap: 20px;
   padding: 44px 24px ${continuesToTrial ? '28px' : '56px'};
-  border-top: ${continuesToTrial ? 'none' : '1px solid #efebfa'};
-  background-color: #f8f6ff;
+  border-top: ${continuesToTrial ? 'none' : `1px solid ${theme.colors.stroke.brandWeak}`};
+  background-color: ${theme.colors.background.brandWeak};
 
   & > a {
     width: 100%;
@@ -736,7 +738,7 @@ const finalCtaSectionStyle = (continuesToTrial: boolean) => css`
 
 const finalEyebrowStyle = css`
   margin: 0;
-  color: ${theme.colors.text.brand};
+  color: ${theme.colors.foreground.brand};
   font-size: 13px;
   font-weight: 700;
   line-height: 20px;
@@ -758,7 +760,7 @@ const finalIllustrationStyle = css`
 
 const finalTitleStyle = css`
   margin: 4px 0 8px;
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: clamp(31px, 8.2vw, 36px);
   font-weight: 700;
   line-height: 1.34;

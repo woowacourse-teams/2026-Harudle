@@ -1,7 +1,7 @@
 import { css } from '@emotion/react';
 import kakaoIcon from '../../assets/icons/kakao.svg';
-import { useAnalytics } from '../../shared/useAnalytics';
 import { theme } from '../../styles/theme';
+import { useAnalytics } from '../../posthog/useAnalytics';
 
 const KAKAO_OAUTH_PATH = '/oauth2/authorization/kakao';
 
@@ -50,8 +50,8 @@ const linkStyle = css`
   min-height: 56px;
   padding: 14px 20px;
   border-radius: 16px;
-  background-color: #ffd66b;
-  color: ${theme.colors.text.primary};
+  background-color: ${theme.colors.background.kakao};
+  color: ${theme.colors.foreground.neutral};
   font-size: 16px;
   font-weight: 700;
   line-height: 24px;

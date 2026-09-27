@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { useCallback, useEffect, useState } from 'react';
 import type { ApiRequest } from '../../shared/api';
 import { getGuestDiary, type GuestDiaryResponse } from './guestTrialApi';
@@ -45,7 +46,7 @@ const useGuestDiaryResult = ({
       if (!diaryId) {
         setResultRequest({
           status: 'error',
-          error: new Error('조회할 게스트 일기 ID가 없습니다'),
+          error: new Error(ERROR_MESSAGES.GUEST_DIARY_ID_REQUIRED),
         });
         return;
       }
@@ -65,7 +66,7 @@ const useGuestDiaryResult = ({
             error:
               error instanceof Error
                 ? error
-                : new Error('게스트 일기 결과를 불러오지 못했습니다'),
+                : new Error(ERROR_MESSAGES.GUEST_DIARY_RESULT_FETCH_FAILED),
           });
         }
       }

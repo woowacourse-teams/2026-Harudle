@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from './errorMessage';
 const WEEKDAYS = [
   '일요일',
   '월요일',
@@ -11,7 +12,7 @@ const WEEKDAYS = [
 export type Month = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 
 export const isMonth = (value: number): value is Month => {
-  return value >= 1 && value <= 12;
+  return Number.isInteger(value) && value >= 1 && value <= 12;
 };
 
 export const getToday = (): {
@@ -25,7 +26,7 @@ export const getToday = (): {
     .map(Number);
 
   if (!isMonth(month)) {
-    throw new Error('올바른 month가 아닙니다!');
+    throw new Error(ERROR_MESSAGES.INVALID_MONTH);
   }
 
   return {
@@ -43,4 +44,12 @@ export const formatDiaryDate = (date: string) => {
     date: `${String(month).padStart(2, '0')}.${String(day).padStart(2, '0')}`,
     weekday,
   };
+};
+
+export const isRecord = (value: unknown): value is Record<string, unknown> => {
+  return typeof value === 'object' && value !== null;
+};
+
+export const isNonNegativeInteger = (value: number) => {
+  return Number.isInteger(value) && value >= 0;
 };

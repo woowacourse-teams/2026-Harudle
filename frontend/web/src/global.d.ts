@@ -29,5 +29,6 @@ declare const process: {
   readonly env: {
     readonly NODE_ENV: string;
     readonly REACT_APP_POSTHOG_KEY: string | undefined;
+    readonly USE_MSW: string | undefined;
   };
 };

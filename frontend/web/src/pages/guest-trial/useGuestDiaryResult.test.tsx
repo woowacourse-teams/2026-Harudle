@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { StrictMode } from 'react';
 import { describe, expect, it, jest } from '@jest/globals';
 import { act, renderHook, waitFor } from '@testing-library/react';
@@ -67,7 +68,7 @@ describe('게스트 일기 결과 조회', () => {
     await waitFor(() => {
       expect(result.current.resultRequest).toEqual({
         status: 'error',
-        error: new Error('게스트 일기 결과를 불러오지 못했습니다'),
+        error: new Error(ERROR_MESSAGES.GUEST_DIARY_RESULT_FETCH_FAILED),
       });
     });
   });

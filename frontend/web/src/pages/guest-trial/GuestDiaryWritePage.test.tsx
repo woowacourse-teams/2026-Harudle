@@ -46,7 +46,7 @@ jest.mock('./useGuestDiaryCreation', () => ({
     retryDiary: mockRetryDiary.current,
   }),
 }));
-jest.mock('../../shared/useAnalytics', () => ({
+jest.mock('../../posthog/useAnalytics', () => ({
   useAnalytics: () => ({ track: mockTrack }),
 }));
 jest.mock('../diary-generating/DiaryGeneratingPage', () => ({

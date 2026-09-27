@@ -63,7 +63,7 @@ const feedbackPageStyle = css`
   width: 100%;
   min-height: 100%;
   padding: 32px 24px;
-  background-color: #ffffff;
+  background-color: ${theme.colors.background.surface};
   text-align: center;
 `;
 
@@ -73,7 +73,7 @@ const loadingImageStyle = css`
 `;
 
 const feedbackTitleStyle = css`
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 22px;
   font-weight: 700;
   line-height: 34px;
@@ -81,7 +81,7 @@ const feedbackTitleStyle = css`
 `;
 
 const feedbackMessageStyle = css`
-  color: ${theme.colors.text.secondary};
+  color: ${theme.colors.foreground.neutralMuted};
   font-size: 15px;
   line-height: 24px;
   word-break: keep-all;
@@ -93,8 +93,8 @@ const feedbackRetryButtonStyle = css`
   padding: 12px 20px;
   border: none;
   border-radius: 14px;
-  background-color: ${theme.colors.bg.brand};
-  color: #ffffff;
+  background-color: ${theme.colors.background.brandSolid};
+  color: ${theme.colors.foreground.onBrand};
   font-size: 15px;
   font-weight: 700;
   line-height: 24px;

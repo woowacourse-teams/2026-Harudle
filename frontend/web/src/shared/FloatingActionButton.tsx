@@ -32,7 +32,7 @@ const buttonStyle = () => css`
   border: none;
   border-radius: 50%;
 
-  background-color: ${theme.colors.bg.brand};
+  background-color: ${theme.colors.background.brandSolid};
   cursor: pointer;
 
   &:active {

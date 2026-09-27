@@ -1,8 +1,9 @@
+import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { RequestError } from '../../shared/api';
 
 export class GuestTrialAlreadyUsedError extends Error {
   constructor() {
-    super('게스트 체험을 이미 사용했습니다');
+    super(ERROR_MESSAGES.GUEST_TRIAL_ALREADY_USED);
     this.name = 'GuestTrialAlreadyUsedError';
   }
 }

@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import type { ApiRequest } from '../../shared/api';
@@ -42,7 +43,7 @@ const useGuestEntry = (
             error:
               error instanceof Error
                 ? error
-                : new Error('게스트 체험을 준비하지 못했습니다'),
+                : new Error(ERROR_MESSAGES.GUEST_ENTRY_PREPARATION_FAILED),
           });
         }
       });

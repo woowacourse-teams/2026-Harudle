@@ -22,5 +22,5 @@
 
     "jsxImportSource": "@emotion/react"
   },
-  "include": ["src"]
+  "include": ["src", "jest.setup.ts"]
 }

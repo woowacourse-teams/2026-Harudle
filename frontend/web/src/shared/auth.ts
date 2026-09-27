@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from './errorMessage';
 import { API_BASE_URL, isProblemDetails, RequestError } from './api';
 
 let accessToken: string | null = null;
@@ -22,7 +23,7 @@ export const authFetch = async (
   try {
     if (localStorage.getItem('harudle.has-completed-oauth') === null) {
       window.location.replace('/login');
-      throw new Error('OAuth 로그인 이력이 없습니다.');
+      throw new Error(ERROR_MESSAGES.OAUTH_LOGIN_HISTORY_REQUIRED);
     }
 
     if (!accessToken) {
@@ -30,7 +31,7 @@ export const authFetch = async (
     }
 
     if (!accessToken) {
-      throw new Error('Access Token 복구 실패');
+      throw new Error(ERROR_MESSAGES.ACCESS_TOKEN_RECOVERY_FAILED);
     }
 
     const usedToken = accessToken; // 액세스 토큰 race condition 문제 해결을 위해 복사
@@ -153,12 +154,12 @@ const requestNewAccessToken = async (): Promise<void> => {
       throw new RequestError(errorData);
     }
 
-    throw new Error('알 수 없는 에러가 발생했습니다.');
+    throw new Error(ERROR_MESSAGES.ACCESS_TOKEN_REFRESH_FAILED);
   }
 
   const data: unknown = await response.json();
   if (!isRefreshTokenResponse(data)) {
-    throw new Error('RefreshToken 응답 형식이 일치하지 않습니다.');
+    throw new Error(ERROR_MESSAGES.INVALID_REFRESH_TOKEN_RESPONSE);
   }
 
   setAccessToken(data.accessToken);
@@ -191,13 +192,13 @@ export const requestCsrfToken = async (): Promise<string> => {
       throw new RequestError(errorData);
     }
 
-    throw new Error('CSRF Token 발급에 실패했습니다.');
+    throw new Error(ERROR_MESSAGES.CSRF_TOKEN_ISSUANCE_FAILED);
   }
 
   const data: unknown = await response.json();
 
   if (!isCsrfTokenResponse(data)) {
-    throw new Error('CSRF Token 응답 형식이 일치하지 않습니다.');
+    throw new Error(ERROR_MESSAGES.INVALID_CSRF_TOKEN_RESPONSE);
   }
 
   return data.token;

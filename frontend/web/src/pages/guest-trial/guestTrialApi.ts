@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { API_BASE_URL, isProblemDetails, RequestError } from '../../shared/api';
 
 export interface GuestDiaryRequest {
@@ -76,13 +77,16 @@ export const requestGuestCsrfToken = async (): Promise<string> => {
   });
 
   if (!response.ok) {
-    return throwRequestError(response, 'CSRF Token 발급에 실패했습니다');
+    return throwRequestError(
+      response,
+      ERROR_MESSAGES.GUEST_CSRF_TOKEN_ISSUANCE_FAILED,
+    );
   }
 
   const data: unknown = await response.json();
 
   if (!isGuestCsrfTokenResponse(data)) {
-    throw new Error('CSRF Token 응답 형식이 일치하지 않습니다');
+    throw new Error(ERROR_MESSAGES.INVALID_GUEST_CSRF_TOKEN_RESPONSE);
   }
 
   return data.token;
@@ -99,7 +103,10 @@ export const issueGuestSession = async (): Promise<void> => {
   });
 
   if (!response.ok) {
-    return throwRequestError(response, '게스트 세션 발급에 실패했습니다');
+    return throwRequestError(
+      response,
+      ERROR_MESSAGES.GUEST_SESSION_ISSUANCE_FAILED,
+    );
   }
 };
 
@@ -127,13 +134,16 @@ export const createGuestDiary = async ({
   });
 
   if (!response.ok) {
-    return throwRequestError(response, '게스트 일기 생성에 실패했습니다');
+    return throwRequestError(
+      response,
+      ERROR_MESSAGES.GUEST_DIARY_GENERATION_FAILED,
+    );
   }
 
   const data: unknown = await response.json();
 
   if (!isGuestDiaryResponse(data)) {
-    throw new Error('게스트 일기 응답 형식이 일치하지 않습니다');
+    throw new Error(ERROR_MESSAGES.INVALID_GUEST_DIARY_RESPONSE);
   }
 
   return data;
@@ -147,13 +157,13 @@ export const getGuestDiary = async (
   });
 
   if (!response.ok) {
-    return throwRequestError(response, '게스트 일기 조회에 실패했습니다');
+    return throwRequestError(response, ERROR_MESSAGES.GUEST_DIARY_FETCH_FAILED);
   }
 
   const data: unknown = await response.json();
 
   if (!isGuestDiaryResponse(data)) {
-    throw new Error('게스트 일기 응답 형식이 일치하지 않습니다');
+    throw new Error(ERROR_MESSAGES.INVALID_GUEST_DIARY_RESPONSE);
   }
 
   return data;
