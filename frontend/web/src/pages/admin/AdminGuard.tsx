@@ -7,9 +7,9 @@ import AdminRoutes from './AdminRoutes';
 type AdminAccess =
   'checking' | 'allowed' | 'unauthenticated' | 'forbidden' | 'error';
 
-type CurrentUserAuthorization = {
+interface CurrentUserAuthorization {
   role: 'USER' | 'ADMIN';
-};
+}
 
 const isCurrentUserAuthorization = (
   value: unknown,

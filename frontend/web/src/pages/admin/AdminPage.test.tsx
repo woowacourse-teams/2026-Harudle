@@ -64,10 +64,10 @@ jest.mock('./assets/admin-nav-generations.png', () => 'generations.png');
 jest.mock('./assets/admin-nav-users.png', () => 'users.png');
 jest.mock('./assets/admin-search-icon.png', () => 'search-icon.png');
 
-type Deferred<T> = {
+interface Deferred<T> {
   promise: Promise<T>;
   resolve: (value: T) => void;
-};
+}
 
 const createDeferred = <T,>(): Deferred<T> => {
   let resolver: (value: T | PromiseLike<T>) => void = () => {};
