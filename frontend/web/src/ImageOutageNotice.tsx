@@ -4,7 +4,7 @@ import ActionButton from './shared/ActionButton';
 import { theme } from './styles/theme';
 
 // 공지 내용을 갱신할 때 키도 변경하면 사용자에게 새 안내를 다시 표시합니다.
-const NOTICE_KEY = 'harudle:image-outage:2026-09-23:v2';
+const NOTICE_KEY = 'harudle:image-outage:2026-09-27:v3';
 
 const ImageOutageNotice = () => {
   const [showPrevious, setShowPrevious] = useState(false);
@@ -54,7 +54,7 @@ const ImageOutageNotice = () => {
           dialogRef.current?.showModal();
         }}
       >
-        <span>일기 이미지 복구 및 지원 안내</span>
+        <span>일기 이미지 재생성 완료 및 지원 안내</span>
         <span css={bannerLinkStyle}>자세히 보기 ›</span>
       </button>
       <dialog
@@ -70,7 +70,7 @@ const ImageOutageNotice = () => {
         <span css={badgeStyle}>
           {showPrevious
             ? '이전 공지 · 9월 23일'
-            : '최신 공지 · 복구 및 지원 안내'}
+            : '최신 공지 · 9월 27일 재생성 완료'}
         </span>
         <h2
           ref={titleRef}
@@ -81,7 +81,7 @@ const ImageOutageNotice = () => {
         >
           {showPrevious
             ? '일기 이미지 조회 장애 안내'
-            : '일기 이미지 복구 및 지원 안내'}
+            : '일기 이미지 재생성 완료 및 지원 안내'}
         </h2>
         <div id="image-outage-description" css={descriptionStyle}>
           {showPrevious ? (
@@ -101,6 +101,12 @@ const ImageOutageNotice = () => {
           ) : (
             <>
               <p>
+                한국시간 기준{' '}
+                <strong css={emphasisStyle}>9월 27일(일) 14시 20분</strong>,
+                일기 이미지 <strong css={emphasisStyle}>1,148개</strong>의
+                재생성이 완료되었습니다.
+              </p>
+              <p>
                 먼저 소중한 그림일기를 복구할 수 없는 점에 대해 진심으로
                 사과드립니다.
               </p>
@@ -109,12 +115,8 @@ const ImageOutageNotice = () => {
                 삭제되어 원본을 되살릴 수 없는 상황입니다.
               </p>
               <p>
-                <strong css={emphasisStyle}>9월 27일(일)</strong>(한국시간
-                기준)까지 순차적으로 복구하겠습니다.
-              </p>
-              <p>
                 이번 복구는 저장된 일기 내용을 바탕으로 저희가 그림을 새로
-                생성하는 작업입니다. 이전 그림과는 달라질 수 있는 점 양해
+                생성한 작업입니다. 이전 그림과는 달라질 수 있는 점 양해
                 부탁드립니다.
               </p>
               <p>
