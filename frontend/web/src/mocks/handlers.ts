@@ -602,6 +602,13 @@ export const handlers = [
       },
     };
 
+    const scenario = request.headers.get(MOCK_SCENARIO_HEADER);
+    if (scenario === MOCK_SCENARIOS.diaryLongKoreanTitle) {
+      response.generation.title = '가'.repeat(100);
+    } else if (scenario === MOCK_SCENARIOS.diaryLongEmojiTitle) {
+      response.generation.title = '😀'.repeat(100);
+    }
+
     return HttpResponse.json(response);
   }),
 
