@@ -2,12 +2,12 @@ package com.harudle.diary.service;
 
 import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.dto.DiaryGenerationResult;
-import com.harudle.generation.domain.GenerationStatus;
-import com.harudle.generation.service.DiaryGenerationExecutor;
-import com.harudle.generation.service.dto.CompletedDiaryGeneration;
-import com.harudle.generation.service.dto.GenerateDiaryImageCommand;
-import com.harudle.generation.service.exception.DiaryGenerationFailedException;
-import com.harudle.generation.service.exception.GenerationInProgressException;
+import com.harudle.generation.diary.domain.GenerationStatus;
+import com.harudle.generation.diary.service.DiaryGenerationExecutor;
+import com.harudle.generation.diary.service.dto.CompletedDiaryGeneration;
+import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
+import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
+import com.harudle.generation.diary.service.exception.GenerationInProgressException;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -47,7 +47,8 @@ class DiaryCreationExecutionService {
                             claim.generationId(),
                             claim.title(),
                             claim.imageObjectKey(),
-                            claim.completedAt()
+                            claim.completedAt(),
+                            claim.tokenUsage()
                     ),
                     false
             );
@@ -82,7 +83,8 @@ class DiaryCreationExecutionService {
                         GenerationStatus.SUCCEEDED,
                         generationResult.title(),
                         generationResult.imageObjectKey(),
-                        generationResult.completedAt()
+                        generationResult.completedAt(),
+                        generationResult.tokenUsage()
                 ),
                 newlyCreated
         );

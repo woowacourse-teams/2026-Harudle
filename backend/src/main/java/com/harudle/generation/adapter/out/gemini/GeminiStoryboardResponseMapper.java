@@ -1,7 +1,7 @@
 package com.harudle.generation.adapter.out.gemini;
 
-import com.harudle.generation.domain.StoryPanel;
-import com.harudle.generation.domain.Storyboard;
+import com.harudle.generation.diary.domain.StoryPanel;
+import com.harudle.generation.diary.domain.Storyboard;
 import java.util.List;
 import java.util.stream.IntStream;
 

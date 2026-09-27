@@ -8,9 +8,9 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.harudle.diary.service.dto.CreateDiaryCommand;
-import com.harudle.generation.domain.GenerationStatus;
-import com.harudle.generation.domain.GenerationUsage;
-import com.harudle.generation.service.GenerationUsageService;
+import com.harudle.generation.diary.domain.GenerationStatus;
+import com.harudle.generation.usage.domain.GenerationUsage;
+import com.harudle.generation.usage.service.GenerationUsageService;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Optional;

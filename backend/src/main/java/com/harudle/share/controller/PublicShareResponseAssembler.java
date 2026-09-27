@@ -1,7 +1,7 @@
 package com.harudle.share.controller;
 
-import com.harudle.generation.service.port.ImageAccessUrl;
-import com.harudle.generation.service.port.ImageUrlProvider;
+import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
+import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.share.controller.dto.PublicShareResponse;
 import com.harudle.share.service.PublicShareResult;
 import java.time.Instant;

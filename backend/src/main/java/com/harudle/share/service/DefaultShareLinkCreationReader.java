@@ -4,8 +4,8 @@ import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.diary.repository.DiarySnapshot;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
-import com.harudle.generation.domain.DiaryGeneration;
-import com.harudle.generation.repository.DiaryGenerationRepository;
+import com.harudle.generation.diary.domain.DiaryGeneration;
+import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 

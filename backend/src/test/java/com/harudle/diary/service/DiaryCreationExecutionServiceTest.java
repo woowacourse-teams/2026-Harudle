@@ -9,13 +9,14 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.harudle.diary.service.dto.CreateDiaryCommand;
-import com.harudle.generation.domain.GenerationErrorCode;
-import com.harudle.generation.domain.GenerationStatus;
-import com.harudle.generation.service.DiaryGenerationExecutor;
-import com.harudle.generation.service.dto.CompletedDiaryGeneration;
-import com.harudle.generation.service.dto.GenerateDiaryImageCommand;
-import com.harudle.generation.service.exception.DiaryGenerationFailedException;
-import com.harudle.generation.service.exception.GenerationInProgressException;
+import com.harudle.generation.diary.domain.GenerationErrorCode;
+import com.harudle.generation.diary.domain.GenerationStatus;
+import com.harudle.generation.diary.domain.GenerationTokenUsage;
+import com.harudle.generation.diary.service.DiaryGenerationExecutor;
+import com.harudle.generation.diary.service.dto.CompletedDiaryGeneration;
+import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
+import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
+import com.harudle.generation.diary.service.exception.GenerationInProgressException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -68,6 +69,8 @@ class DiaryCreationExecutionServiceTest {
         assertThat(result.newlyCreated()).isTrue();
         assertThat(result.generation().status()).isEqualTo(GenerationStatus.SUCCEEDED);
         assertThat(result.generation().title()).isEqualTo("친구와 보낸 하루");
+        assertThat(result.generation().tokenUsage())
+                .isEqualTo(new GenerationTokenUsage(120, 350, 80, 550));
         verify(generationExecutor).generate(any(GenerateDiaryImageCommand.class), eq(GENERATION_ID));
     }
 
@@ -80,6 +83,8 @@ class DiaryCreationExecutionServiceTest {
 
         assertThat(result.newlyCreated()).isFalse();
         assertThat(result.generation().title()).isEqualTo("친구와 보낸 하루");
+        assertThat(result.generation().tokenUsage())
+                .isEqualTo(new GenerationTokenUsage(120, 350, 80, 550));
         verify(generationExecutor, never()).generate(any(), any());
     }
 
@@ -145,7 +150,10 @@ class DiaryCreationExecutionServiceTest {
                 imageObjectKey,
                 completedAt,
                 errorCode,
-                newlyCreated
+                newlyCreated,
+                status == GenerationStatus.SUCCEEDED
+                        ? new GenerationTokenUsage(120, 350, 80, 550)
+                        : null
         );
     }
 
@@ -154,7 +162,8 @@ class DiaryCreationExecutionServiceTest {
                 GENERATION_ID,
                 "친구와 보낸 하루",
                 "generated/comic.png",
-                COMPLETED_AT
+                COMPLETED_AT,
+                new GenerationTokenUsage(120, 350, 80, 550)
         );
     }
 }

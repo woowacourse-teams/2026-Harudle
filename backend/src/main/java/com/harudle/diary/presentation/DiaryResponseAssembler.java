@@ -9,9 +9,9 @@ import com.harudle.diary.service.dto.DiaryStreakDayResult;
 import com.harudle.diary.service.dto.DiaryStreakResult;
 import com.harudle.diary.service.dto.DiarySummaryResult;
 import com.harudle.diary.service.dto.DiaryTimelineResult;
-import com.harudle.generation.presentation.GenerationUsageResponse;
-import com.harudle.generation.service.port.ImageAccessUrl;
-import com.harudle.generation.service.port.ImageUrlProvider;
+import com.harudle.generation.usage.presentation.GenerationUsageResponse;
+import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
+import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -119,7 +119,8 @@ final class DiaryResponseAssembler {
                     result.title(),
                     null,
                     null,
-                    toServiceTime(result.completedAt())
+                    toServiceTime(result.completedAt()),
+                    result.tokenUsage()
             );
         }
         ImageAccessUrl imageAccessUrl = createImageAccessUrl(result.imageObjectKey());
@@ -129,7 +130,8 @@ final class DiaryResponseAssembler {
                 result.title(),
                 imageAccessUrl.url().toString(),
                 toServiceTime(imageAccessUrl.expiresAt()),
-                toServiceTime(result.completedAt())
+                toServiceTime(result.completedAt()),
+                result.tokenUsage()
         );
     }
 

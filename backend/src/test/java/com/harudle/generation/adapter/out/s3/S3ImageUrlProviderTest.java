@@ -10,9 +10,9 @@ import static org.mockito.Mockito.when;
 
 import com.harudle.common.logging.ExternalApiFailure;
 import com.harudle.common.logging.ExternalApiLogger;
-import com.harudle.generation.configuration.S3StorageProperties;
-import com.harudle.generation.service.port.ImageAccessUrl;
-import com.harudle.generation.service.port.ImageStorageException;
+import com.harudle.generation.config.S3StorageProperties;
+import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
+import com.harudle.generation.diary.service.port.ImageStorageException;
 import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;

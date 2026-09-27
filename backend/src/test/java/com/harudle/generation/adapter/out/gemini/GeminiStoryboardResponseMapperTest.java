@@ -3,7 +3,7 @@ package com.harudle.generation.adapter.out.gemini;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.harudle.generation.domain.Storyboard;
+import com.harudle.generation.diary.domain.Storyboard;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;

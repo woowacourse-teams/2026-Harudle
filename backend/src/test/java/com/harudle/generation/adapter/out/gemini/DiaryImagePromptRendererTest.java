@@ -2,8 +2,8 @@ package com.harudle.generation.adapter.out.gemini;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.harudle.generation.domain.StoryPanel;
-import com.harudle.generation.domain.Storyboard;
+import com.harudle.generation.diary.domain.StoryPanel;
+import com.harudle.generation.diary.domain.Storyboard;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -30,12 +30,57 @@ class DiaryImagePromptRendererTest {
                 .contains("- \"막상 먹어보면...\"")
                 .contains("- \"다신 안 속아\"")
                 .contains("- \"이번엔 다를지도?\"")
+                .contains("All four captions must appear at matching upper-left positions inside their assigned "
+                        + "panels. Never use bottom caption bands, external caption strips, or captions crossing "
+                        + "panel dividers.")
+                .contains("FINAL CANVAS AND GRID LOCK — HIGHEST LAYOUT PRIORITY:")
+                .contains("Use a square 1:1 canvas with one flat pure-white background")
+                .contains("exactly one vertical separator, and exactly one horizontal separator")
+                .contains("All phones, screens, chats, documents, signs, clocks, and packaging must remain "
+                        + "text-free: blank or non-text visuals only, with no letters, numbers, pseudo-text, "
+                        + "fake Korean glyphs, or readable UI.")
                 .doesNotContain("VISIBLE COMIC TITLE READS EXACTLY:")
                 .doesNotContain("FIXED CREATOR HANDLE READS EXACTLY:")
                 .doesNotContain("Render exactly these four Korean captions once each and no other readable text:");
 
         assertThat(renderedPrompt.lines()
                 .filter("This panel contains exactly one readable text block: its assigned caption."::equals)
+                .count())
+                .isEqualTo(4);
+
+        assertThat(renderedPrompt.lines()
+                .filter(line -> line.startsWith("Place this caption inside the upper-left area"))
+                .count())
+                .isEqualTo(4);
+
+        assertThat(renderedPrompt.lines()
+                .filter(line -> line.startsWith("Inside scene objects—including phones, screens"))
+                .count())
+                .isEqualTo(4);
+    }
+
+    @Test
+    void preserveExplicitCharacterLogoFromCastContinuity() {
+        Storyboard baseStoryboard = createStoryboard();
+        String annotatedCast = "The protagonist wears a shirt with a T1 logo in every panel where shown.";
+        Storyboard storyboard = new Storyboard(
+                baseStoryboard.title(),
+                annotatedCast,
+                baseStoryboard.panels()
+        );
+
+        String renderedPrompt = renderer.render(storyboard);
+
+        assertThat(renderedPrompt)
+                .contains("CAST AND CONTINUITY:\n" + annotatedCast)
+                .contains("Preserve source-required clothing marks, accessories, logos, or brands explicitly "
+                        + "defined in CAST AND CONTINUITY.")
+                .contains("Small source-required character marks or logos defined in "
+                        + "CAST AND CONTINUITY are visual identity details, not additional text blocks.")
+                .doesNotContain("Do not place readable text, labels, logos, brands, model names, or UI words");
+
+        assertThat(renderedPrompt.lines()
+                .filter(line -> line.startsWith("Do not add unrequested readable text"))
                 .count())
                 .isEqualTo(4);
     }

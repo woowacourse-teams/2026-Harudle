@@ -15,9 +15,10 @@ import com.harudle.diary.service.dto.DiaryStreakResult;
 import com.harudle.diary.service.dto.DiaryTimelineResult;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
-import com.harudle.generation.domain.GenerationStatus;
-import com.harudle.generation.repository.DiaryGenerationRepository;
-import com.harudle.generation.repository.DiaryGenerationSnapshot;
+import com.harudle.generation.diary.domain.GenerationStatus;
+import com.harudle.generation.diary.domain.GenerationTokenUsage;
+import com.harudle.generation.diary.repository.DiaryGenerationRepository;
+import com.harudle.generation.diary.repository.DiaryGenerationSnapshot;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -239,6 +240,8 @@ class DiaryQueryServiceTest {
         assertThat(result.id()).isEqualTo(DIARY_ID);
         assertThat(result.sourceText()).isEqualTo("오늘의 일기");
         assertThat(result.generation().title()).isEqualTo("친구와 보낸 하루");
+        assertThat(result.generation().tokenUsage())
+                .isEqualTo(new GenerationTokenUsage(120, 350, 80, 550));
     }
 
     @Test
@@ -290,7 +293,8 @@ class DiaryQueryServiceTest {
                 GenerationStatus.SUCCEEDED,
                 title,
                 imageObjectKey,
-                COMPLETED_AT
+                COMPLETED_AT,
+                new GenerationTokenUsage(120, 350, 80, 550)
         );
     }
 }

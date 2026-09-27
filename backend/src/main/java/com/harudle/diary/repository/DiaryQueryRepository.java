@@ -1,7 +1,7 @@
 package com.harudle.diary.repository;
 
 import com.harudle.diary.domain.Diary;
-import com.harudle.generation.domain.GenerationStatus;
+import com.harudle.generation.diary.domain.GenerationStatus;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;

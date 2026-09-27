@@ -20,14 +20,14 @@ import com.google.genai.types.GenerateContentResponse;
 import com.google.genai.types.Part;
 import com.harudle.common.logging.ExternalApiFailure;
 import com.harudle.common.logging.ExternalApiLogger;
-import com.harudle.generation.configuration.GeminiGenerationProperties;
-import com.harudle.generation.domain.StoryPanel;
-import com.harudle.generation.domain.Storyboard;
-import com.harudle.generation.service.exception.AiGenerationErrorType;
-import com.harudle.generation.service.exception.AiGenerationException;
-import com.harudle.generation.service.port.DiaryImageGenerationRequest;
-import com.harudle.generation.service.port.GeneratedImage;
-import com.harudle.generation.service.port.ReferenceImage;
+import com.harudle.generation.config.GeminiGenerationProperties;
+import com.harudle.generation.diary.domain.StoryPanel;
+import com.harudle.generation.diary.domain.Storyboard;
+import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
+import com.harudle.generation.diary.service.exception.AiGenerationException;
+import com.harudle.generation.diary.service.port.dto.DiaryImageGenerationRequest;
+import com.harudle.generation.diary.service.port.dto.GeneratedImage;
+import com.harudle.generation.diary.service.port.dto.ReferenceImage;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
@@ -96,7 +96,8 @@ class GeminiDiaryImageGeneratorTest {
             assertThat(inlineData.mimeType()).contains("image/png");
         });
         assertThat(parts.get(2).text()).get().asString()
-                .startsWith("[Final Task]\nIMAGE STYLE PROMPT\n\nSELECTED STORY:")
+                .startsWith("[Final Task]\nSELECTED STORY:")
+                .doesNotContain("IMAGE STYLE PROMPT")
                 .contains("Panel 1 — TOP LEFT — SETUP:")
                 .contains("Caption reads exactly: \"캡션 1\"")
                 .contains("This panel contains exactly one readable text block: its assigned caption.")
@@ -106,6 +107,8 @@ class GeminiDiaryImageGeneratorTest {
                 .contains("- right: \"@harudle.official\"");
 
         GenerateContentConfig config = configCaptor.getValue();
+        assertThat(config.systemInstruction())
+                .contains(Content.fromParts(Part.fromText("IMAGE STYLE PROMPT")));
         assertThat(config.responseModalities()).contains(List.of("TEXT", "IMAGE"));
         assertThat(config.imageConfig()).get()
                 .extracting(imageConfig -> imageConfig.aspectRatio().orElseThrow())

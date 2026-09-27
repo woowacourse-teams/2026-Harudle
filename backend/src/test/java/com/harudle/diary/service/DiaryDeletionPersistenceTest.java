@@ -4,11 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.harudle.diary.domain.Diary;
 import com.harudle.diary.repository.DiaryRepository;
-import com.harudle.generation.domain.DiaryGeneration;
-import com.harudle.generation.domain.GenerationPrompt;
-import com.harudle.generation.domain.GenerationStatus;
-import com.harudle.generation.repository.DiaryGenerationRepository;
-import com.harudle.generation.repository.GenerationPromptRepository;
+import com.harudle.generation.diary.domain.DiaryGeneration;
+import com.harudle.generation.prompt.domain.GenerationPrompt;
+import com.harudle.generation.diary.domain.GenerationStatus;
+import com.harudle.generation.diary.repository.DiaryGenerationRepository;
+import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import com.harudle.share.domain.ShareLink;
 import com.harudle.share.repository.ShareLinkRepository;
 import jakarta.persistence.EntityManager;

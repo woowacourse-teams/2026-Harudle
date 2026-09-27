@@ -1,6 +1,6 @@
 package com.harudle.generation.adapter.out.s3;
 
-import com.harudle.generation.service.port.ImageStorageException;
+import com.harudle.generation.diary.service.port.ImageStorageException;
 
 public final class S3ExceptionTranslator {
 

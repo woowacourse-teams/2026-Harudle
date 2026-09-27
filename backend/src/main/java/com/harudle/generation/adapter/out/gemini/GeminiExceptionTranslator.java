@@ -1,8 +1,8 @@
 package com.harudle.generation.adapter.out.gemini;
 
 import com.google.genai.errors.ApiException;
-import com.harudle.generation.service.exception.AiGenerationErrorType;
-import com.harudle.generation.service.exception.AiGenerationException;
+import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
+import com.harudle.generation.diary.service.exception.AiGenerationException;
 import java.net.SocketTimeoutException;
 import java.net.http.HttpTimeoutException;
 

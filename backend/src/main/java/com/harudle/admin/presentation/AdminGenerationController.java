@@ -3,7 +3,7 @@ package com.harudle.admin.presentation;
 import com.harudle.admin.presentation.dto.AdminGenerationHistoryResponse;
 import com.harudle.admin.query.AdminGenerationHistoryPage;
 import com.harudle.admin.service.AdminGenerationHistoryQueryService;
-import com.harudle.generation.domain.GenerationStatus;
+import com.harudle.generation.diary.domain.GenerationStatus;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import java.time.LocalDate;

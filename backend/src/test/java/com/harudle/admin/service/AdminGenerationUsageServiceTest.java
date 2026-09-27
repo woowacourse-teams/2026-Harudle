@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.harudle.admin.service.exception.AdminGenerationLimitBelowUsageException;
-import com.harudle.generation.domain.GenerationUsage;
-import com.harudle.generation.repository.GenerationUsageRepository;
+import com.harudle.generation.usage.domain.GenerationUsage;
+import com.harudle.generation.usage.repository.GenerationUsageRepository;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.UUID;

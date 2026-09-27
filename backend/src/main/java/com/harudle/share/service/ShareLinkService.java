@@ -1,7 +1,7 @@
 package com.harudle.share.service;
 
-import com.harudle.generation.domain.GenerationStatus;
-import com.harudle.generation.service.exception.GenerationInProgressException;
+import com.harudle.generation.diary.domain.GenerationStatus;
+import com.harudle.generation.diary.service.exception.GenerationInProgressException;
 import com.harudle.share.domain.ShareLink;
 import com.harudle.share.repository.ShareLinkRepository;
 import com.harudle.share.service.exception.ShareGenerationFailedException;

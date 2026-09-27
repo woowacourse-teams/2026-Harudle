@@ -1,6 +1,6 @@
 package com.harudle.generation.config;
 
-import com.harudle.generation.domain.GenerationPrompt;
+import com.harudle.generation.prompt.domain.GenerationPrompt;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties("harudle.generation.prompt-bootstrap")

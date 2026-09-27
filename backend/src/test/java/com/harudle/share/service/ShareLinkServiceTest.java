@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
-import com.harudle.generation.service.exception.GenerationInProgressException;
+import com.harudle.generation.diary.service.exception.GenerationInProgressException;
 import com.harudle.share.repository.ShareLinkRepository;
 import com.harudle.share.service.exception.ShareGenerationFailedException;
 import jakarta.persistence.EntityManager;

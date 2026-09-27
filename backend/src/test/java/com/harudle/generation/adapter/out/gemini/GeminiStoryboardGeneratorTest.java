@@ -12,21 +12,32 @@ import static org.mockito.Mockito.when;
 
 import com.google.genai.Models;
 import com.google.genai.errors.ClientException;
+import com.google.genai.types.Candidate;
+import com.google.genai.types.Content;
+import com.google.genai.types.FinishReason;
 import com.google.genai.types.GenerateContentConfig;
 import com.google.genai.types.GenerateContentResponse;
+import com.google.genai.types.GenerateContentResponseUsageMetadata;
+import com.google.genai.types.Part;
 import com.google.genai.types.ThinkingLevel;
 import com.harudle.common.logging.ExternalApiFailure;
 import com.harudle.common.logging.ExternalApiLogger;
-import com.harudle.generation.configuration.GeminiGenerationProperties;
-import com.harudle.generation.domain.Storyboard;
-import com.harudle.generation.service.exception.AiGenerationErrorType;
-import com.harudle.generation.service.exception.AiGenerationException;
-import com.harudle.generation.service.port.StoryboardGenerationRequest;
+import com.harudle.common.logging.ExternalApiResponseDiagnostics;
+import com.harudle.generation.config.GeminiGenerationProperties;
+import com.harudle.generation.diary.domain.Storyboard;
+import com.harudle.generation.diary.domain.GenerationTokenUsage;
+import com.harudle.generation.diary.service.port.dto.GeneratedStoryboard;
+import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
+import com.harudle.generation.diary.service.exception.AiGenerationException;
+import com.harudle.generation.diary.service.port.dto.StoryboardGenerationRequest;
 import java.time.Duration;
+import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import tools.jackson.core.exc.UnexpectedEndOfInputException;
 import tools.jackson.databind.json.JsonMapper;
 
 class GeminiStoryboardGeneratorTest {
@@ -61,7 +72,7 @@ class GeminiStoryboardGeneratorTest {
                 "스토리보드 생성 규칙"
         );
 
-        Storyboard storyboard = generator.generate(request);
+        Storyboard storyboard = generator.generate(request).storyboard();
 
         assertThat(storyboard.title()).isEqualTo("카페에서 생긴 일");
         assertThat(storyboard.panels()).hasSize(4);
@@ -75,12 +86,26 @@ class GeminiStoryboardGeneratorTest {
         );
 
         assertThat(requestTextCaptor.getValue()).isEqualTo("""
-                스토리보드 생성 규칙
-                
-                [SOURCE DIARY — preserve its meaning]
-                오늘 친구와 카페에 갔다.""");
+                <context>
+                <diary>
+                오늘 친구와 카페에 갔다.
+                </diary>
+                </context>
+
+                <task>
+                Based only on the diary above, create exactly one schema-compliant four-panel storyboard.
+                Before returning, verify:
+                - exactly four panels use setup → action → escalation → resolution in order
+                - one source-faithful central cause-and-effect chain preserves the actual outcome
+                - panel 3 contains the main turn and panel 4 completes or changes earlier meaning
+                - the four captions form one connected verbal routine rather than four event labels
+                - every valid character annotation is preserved consistently
+                Return only the JSON.
+                </task>""");
 
         GenerateContentConfig config = configCaptor.getValue();
+        assertThat(config.systemInstruction())
+                .contains(Content.fromParts(Part.fromText("스토리보드 생성 규칙")));
         assertThat(config.responseMimeType()).contains("application/json");
         assertThat(config.responseJsonSchema())
                 .contains(GeminiStoryboardResponseSchema.schema());
@@ -90,6 +115,23 @@ class GeminiStoryboardGeneratorTest {
                 .extracting(thinkingConfig -> thinkingConfig.thinkingLevel().orElseThrow().knownEnum())
                 .isEqualTo(ThinkingLevel.Known.HIGH);
         verifyNoInteractions(externalApiLogger);
+    }
+
+    @Test
+    @DisplayName("성공한 스토리보드와 Gemini 토큰 사용량을 함께 반환한다")
+    void returnTokenUsage() {
+        when(response.text()).thenReturn(validResponseJson());
+        GenerateContentResponseUsageMetadata usage = mock(GenerateContentResponseUsageMetadata.class);
+        when(usage.promptTokenCount()).thenReturn(Optional.of(120));
+        when(usage.candidatesTokenCount()).thenReturn(Optional.of(350));
+        when(usage.thoughtsTokenCount()).thenReturn(Optional.of(80));
+        when(usage.totalTokenCount()).thenReturn(Optional.of(550));
+        when(response.usageMetadata()).thenReturn(Optional.of(usage));
+
+        GeneratedStoryboard result = generator.generate(createRequest());
+
+        assertThat(result.tokenUsage()).isEqualTo(new GenerationTokenUsage(120, 350, 80, 550));
+        assertThat(result.storyboard().panels()).hasSize(4);
     }
 
     @Test
@@ -111,7 +153,35 @@ class GeminiStoryboardGeneratorTest {
                         null,
                         null
                 )),
-                any(IllegalStateException.class)
+                any(IllegalStateException.class),
+                eq(new ExternalApiResponseDiagnostics(null, null, null, 4096, 1))
+        );
+    }
+
+    @Test
+    @DisplayName("출력 토큰 한도로 잘린 JSON은 종료 사유와 사용량을 남긴다")
+    void reportTruncatedResponseWithDiagnostics() {
+        String truncatedJson = "{\"title\":\"unfinished\"";
+        when(response.text()).thenReturn(truncatedJson);
+        stubFinishReason(FinishReason.Known.MAX_TOKENS);
+        GenerateContentResponseUsageMetadata usage = mock(GenerateContentResponseUsageMetadata.class);
+        when(usage.candidatesTokenCount()).thenReturn(Optional.of(3000));
+        when(usage.thoughtsTokenCount()).thenReturn(Optional.of(900));
+        when(response.usageMetadata()).thenReturn(Optional.of(usage));
+
+        assertThatThrownBy(() -> generator.generate(createRequest()))
+                .isInstanceOfSatisfying(AiGenerationException.class, exception -> {
+                    assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.PROVIDER_ERROR);
+                    assertThat(exception.getCause()).isInstanceOf(UnexpectedEndOfInputException.class);
+                });
+        verify(externalApiLogger).error(
+                eq(new ExternalApiFailure(
+                        "gemini", "storyboard_generation", "OUTPUT_TRUNCATED", null, null, null
+                )),
+                any(UnexpectedEndOfInputException.class),
+                eq(new ExternalApiResponseDiagnostics(
+                        "MAX_TOKENS", 3000, 900, 4096, truncatedJson.length()
+                ))
         );
     }
 
@@ -119,6 +189,7 @@ class GeminiStoryboardGeneratorTest {
     @DisplayName("Gemini 응답 JSON이 올바르지 않으면 제공자 오류가 발생한다")
     void rejectInvalidResponseJson() {
         when(response.text()).thenReturn("{invalid-json}");
+        stubFinishReason(FinishReason.Known.STOP);
 
         assertThatThrownBy(() -> generator.generate(createRequest()))
                 .isInstanceOfSatisfying(
@@ -126,6 +197,13 @@ class GeminiStoryboardGeneratorTest {
                         exception -> assertThat(exception.errorType())
                                 .isEqualTo(AiGenerationErrorType.PROVIDER_ERROR)
                 );
+        verify(externalApiLogger).error(
+                eq(new ExternalApiFailure(
+                        "gemini", "storyboard_generation", "RESPONSE_PROCESSING_ERROR", null, null, null
+                )),
+                any(Exception.class),
+                eq(new ExternalApiResponseDiagnostics("STOP", null, null, 4096, 14))
+        );
     }
 
     @Test
@@ -170,6 +248,12 @@ class GeminiStoryboardGeneratorTest {
 
     private StoryboardGenerationRequest createRequest() {
         return new StoryboardGenerationRequest("오늘 친구와 카페에 갔다.", "스토리보드 생성 규칙");
+    }
+
+    private void stubFinishReason(FinishReason.Known reason) {
+        Candidate candidate = mock(Candidate.class);
+        when(candidate.finishReason()).thenReturn(Optional.of(new FinishReason(reason)));
+        when(response.candidates()).thenReturn(Optional.of(List.of(candidate)));
     }
 
     private static GeminiGenerationProperties createProperties() {

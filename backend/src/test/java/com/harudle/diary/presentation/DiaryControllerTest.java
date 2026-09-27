@@ -31,13 +31,14 @@ import com.harudle.diary.service.dto.DiarySummaryResult;
 import com.harudle.diary.service.dto.DiaryTimelineResult;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
-import com.harudle.generation.domain.GenerationStatus;
-import com.harudle.generation.domain.GenerationUsage;
-import com.harudle.generation.service.exception.DailyGenerationLimitExceededException;
-import com.harudle.generation.service.exception.GenerationUnavailableException;
-import com.harudle.generation.service.port.ImageAccessUrl;
-import com.harudle.generation.service.port.ImageStorageException;
-import com.harudle.generation.service.port.ImageUrlProvider;
+import com.harudle.generation.diary.domain.GenerationStatus;
+import com.harudle.generation.diary.domain.GenerationTokenUsage;
+import com.harudle.generation.usage.domain.GenerationUsage;
+import com.harudle.generation.usage.service.exception.DailyGenerationLimitExceededException;
+import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
+import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
+import com.harudle.generation.diary.service.port.ImageStorageException;
+import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import io.restassured.http.ContentType;
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
 import io.restassured.module.mockmvc.response.MockMvcResponse;
@@ -145,6 +146,14 @@ class DiaryControllerTest {
         assertThat(response.jsonPath().getString("id")).isEqualTo(DIARY_ID.toString());
         assertThat(response.jsonPath().getString("generation.imageUrl"))
                 .isEqualTo("https://images.harudle.example/comic.png");
+        assertThat(response.jsonPath().getInt("generation.tokenUsage.promptTokenCount"))
+                .isEqualTo(120);
+        assertThat(response.jsonPath().getInt("generation.tokenUsage.candidateTokenCount"))
+                .isEqualTo(350);
+        assertThat(response.jsonPath().getInt("generation.tokenUsage.thoughtTokenCount"))
+                .isEqualTo(80);
+        assertThat(response.jsonPath().getInt("generation.tokenUsage.totalTokenCount"))
+                .isEqualTo(550);
         assertThat(response.jsonPath().getInt("usage.remainingCount")).isEqualTo(2);
         assertThat(response.asString()).doesNotContain("imageObjectKey", "generated/comic.png");
     }
@@ -607,7 +616,8 @@ class DiaryControllerTest {
                 GenerationStatus.SUCCEEDED,
                 "친구와 보낸 하루",
                 "generated/comic.png",
-                COMPLETED_AT
+                COMPLETED_AT,
+                new GenerationTokenUsage(120, 350, 80, 550)
         );
     }
 

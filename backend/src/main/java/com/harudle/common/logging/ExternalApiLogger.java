@@ -20,6 +20,9 @@ public final class ExternalApiLogger {
     private static final String LOG_FORMAT =
             "event={} provider={} operation={} failureType={} providerStatus={} "
                     + "providerCode={} providerRequestId={} exceptionType={}";
+    private static final String RESPONSE_DIAGNOSTICS_FORMAT = LOG_FORMAT
+            + " finishReason={} candidateTokenCount={} thoughtTokenCount={}"
+            + " maxOutputTokens={} responseLength={}";
 
     public void warn(ExternalApiFailure failure, Throwable exception) {
         warn(EXTERNAL_API_FAILURE_EVENT, failure, exception);
@@ -57,6 +60,34 @@ public final class ExternalApiLogger {
                 exception.getClass().getSimpleName(),
                 sanitizedStackTrace(exception)
         );
+    }
+
+    public void error(
+            ExternalApiFailure failure,
+            Throwable exception,
+            ExternalApiResponseDiagnostics diagnostics
+    ) {
+        LOGGER.error(
+                RESPONSE_DIAGNOSTICS_FORMAT,
+                EXTERNAL_API_FAILURE_EVENT,
+                safe(failure.provider()),
+                safe(failure.operation()),
+                safe(failure.failureType()),
+                safe(failure.providerStatus()),
+                safe(failure.providerCode()),
+                safe(failure.providerRequestId()),
+                exception.getClass().getSimpleName(),
+                safe(diagnostics.finishReason()),
+                number(diagnostics.candidateTokenCount()),
+                number(diagnostics.thoughtTokenCount()),
+                diagnostics.maxOutputTokens(),
+                number(diagnostics.responseLength()),
+                sanitizedStackTrace(exception)
+        );
+    }
+
+    private static String number(@Nullable Integer value) {
+        return value == null ? EMPTY_FIELD_VALUE : value.toString();
     }
 
     private static String safe(@Nullable String value) {
