@@ -33,4 +33,15 @@ class FocalColorTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("중복 없이");
     }
+
+    @Test
+    @DisplayName("패널 번호 목록에 null이 있으면 잘못된 입력으로 거부한다")
+    void rejectNullPanelNumber() {
+        List<Integer> panelNumbers = new ArrayList<>(List.of(2));
+        panelNumbers.add(null);
+
+        assertThatThrownBy(() -> new FocalColor("umbrella", "canopy", "#A99BE8", panelNumbers))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("패널 번호");
+    }
 }

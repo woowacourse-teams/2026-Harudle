@@ -29,6 +29,9 @@ public final class GeminiStoryboardResponseMapper {
         if (visualPlan == null || visualPlan.focalColors() == null) {
             throw new IllegalArgumentException("Gemini 스토리보드 시각 계획은 필수입니다.");
         }
+        if (visualPlan.focalColors().stream().anyMatch(color -> color == null)) {
+            throw new IllegalArgumentException("Gemini 스토리보드 색상 계획에 null을 포함할 수 없습니다.");
+        }
         List<FocalColor> focalColors = visualPlan.focalColors().stream()
                 .map(color -> new FocalColor(
                         color.prop(), color.component(), color.colorHex(), color.panelNumbers()

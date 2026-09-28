@@ -23,6 +23,9 @@ public record FocalColor(
         if (panelNumbers == null || panelNumbers.isEmpty()) {
             throw new IllegalArgumentException("색상 대상의 패널 번호는 필수입니다.");
         }
+        if (panelNumbers.stream().anyMatch(panelNumber -> panelNumber == null)) {
+            throw new IllegalArgumentException("색상 대상의 패널 번호에 null을 포함할 수 없습니다.");
+        }
         panelNumbers = List.copyOf(panelNumbers);
         for (int index = 0; index < panelNumbers.size(); index++) {
             int panelNumber = panelNumbers.get(index);

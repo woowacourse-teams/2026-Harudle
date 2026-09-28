@@ -13,6 +13,9 @@ public record ScenePlan(String environmentRule, List<FocalColor> focalColors) {
         if (focalColors == null) {
             throw new IllegalArgumentException("색상 계획 목록은 필수입니다.");
         }
+        if (focalColors.stream().anyMatch(focalColor -> focalColor == null)) {
+            throw new IllegalArgumentException("색상 계획 목록에 null을 포함할 수 없습니다.");
+        }
         focalColors = List.copyOf(focalColors);
         Set<String> targets = new HashSet<>();
         for (FocalColor focalColor : focalColors) {

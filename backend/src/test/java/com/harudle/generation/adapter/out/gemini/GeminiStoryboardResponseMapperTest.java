@@ -60,6 +60,23 @@ class GeminiStoryboardResponseMapperTest {
                 .hasMessageContaining("시각 계획");
     }
 
+    @Test
+    @DisplayName("Gemini 색상 계획 목록에 null 요소가 있으면 잘못된 응답으로 거부한다")
+    void rejectNullColorTarget() {
+        List<GeminiStoryboardResponse.ColorTarget> focalColors = new ArrayList<>();
+        focalColors.add(null);
+        GeminiStoryboardResponse response = new GeminiStoryboardResponse(
+                "제목",
+                "One recurring protagonist.",
+                createPanels(),
+                new GeminiStoryboardResponse.VisualPlan("Keep the same location.", focalColors)
+        );
+
+        assertThatThrownBy(() -> mapper.map(response))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("색상 계획");
+    }
+
     private GeminiStoryboardResponse createResponse(List<GeminiStoryboardResponse.Panel> panels) {
         return new GeminiStoryboardResponse(
                 "인스타 맛집의 함정",
