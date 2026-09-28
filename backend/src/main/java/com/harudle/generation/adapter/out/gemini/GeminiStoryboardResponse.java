@@ -8,8 +8,17 @@ import tools.jackson.databind.annotation.JsonNaming;
 public record GeminiStoryboardResponse(
         String title,
         String castContinuity,
-        List<Panel> panels
+        List<Panel> panels,
+        VisualPlan visualPlan
 ) {
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record VisualPlan(String environmentRule, List<ColorTarget> focalColors) {
+    }
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record ColorTarget(String prop, String component, String colorHex, List<Integer> panelNumbers) {
+    }
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Panel(

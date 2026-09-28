@@ -27,7 +27,16 @@ class GeminiStoryboardResponseTest {
                       "emotion": "Visible excitement.",
                       "props": ["smartphone"]
                     }
-                  ]
+                  ],
+                  "visual_plan": {
+                    "environment_rule": "Keep the same cafe across the panels.",
+                    "focal_colors": [{
+                      "prop": "smartphone",
+                      "component": "phone case",
+                      "color_hex": "#A99BE8",
+                      "panel_numbers": [1]
+                    }]
+                  }
                 }
                 """;
 
@@ -38,6 +47,13 @@ class GeminiStoryboardResponseTest {
 
         assertThat(response.title()).isEqualTo("인스타 맛집의 함정");
         assertThat(response.castContinuity()).isEqualTo("One recurring protagonist.");
+        assertThat(response.visualPlan().environmentRule()).isEqualTo("Keep the same cafe across the panels.");
+        assertThat(response.visualPlan().focalColors()).singleElement().satisfies(color -> {
+            assertThat(color.prop()).isEqualTo("smartphone");
+            assertThat(color.component()).isEqualTo("phone case");
+            assertThat(color.colorHex()).isEqualTo("#A99BE8");
+            assertThat(color.panelNumbers()).containsExactly(1);
+        });
         assertThat(response.panels()).singleElement().satisfies(panel -> {
             assertThat(panel.panelNumber()).isEqualTo(1);
             assertThat(panel.storyRole()).isEqualTo("setup");
