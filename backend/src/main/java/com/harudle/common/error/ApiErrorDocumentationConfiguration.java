@@ -136,7 +136,7 @@ class ApiErrorDocumentationConfiguration {
     private static String errorResponseDescription(int status, List<ErrorExample> errors) {
         String summary = switch (status) {
             case 400 -> "잘못된 요청";
-            case 401 -> "인증 정보가 유효하지 않음";
+            case 401 -> "인증 정보가 없거나 유효하지 않음";
             case 403 -> "요청이 허용되지 않음";
             case 404 -> "요청한 대상을 찾을 수 없음";
             case 409 -> "요청이 현재 상태와 충돌함";

@@ -43,10 +43,10 @@ class AdminGenerationController {
             @RequestParam(required = false) UUID userId,
             @Parameter(description = "생성 상태 (PROCESSING, SUCCEEDED, FAILED)")
             @RequestParam(required = false) GenerationStatus status,
-            @Parameter(description = "생성 요청일 시작일 (포함, YYYY-MM-DD)")
+            @Parameter(description = "KST 기준 생성 요청일 시작일 (포함, YYYY-MM-DD)")
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-            @Parameter(description = "생성 요청일 종료일 (포함, YYYY-MM-DD)")
+            @Parameter(description = "KST 기준 생성 요청일 종료일 (포함, YYYY-MM-DD)")
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @Parameter(description = "페이지 번호 (0부터 시작)")

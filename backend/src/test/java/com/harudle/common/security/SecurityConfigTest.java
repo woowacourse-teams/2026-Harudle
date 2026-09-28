@@ -218,6 +218,8 @@ class SecurityConfigTest {
                         .value(containsString("| `VALIDATION_ERROR` | 요청 값이 올바르지 않습니다. |")))
                 .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['400'].description")
                         .value(containsString("| `INVALID_IDEMPOTENCY_KEY` | Idempotency-Key는 UUID 형식의 필수 헤더입니다. |")))
+                .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['401'].description")
+                        .value(startsWith("인증 정보가 없거나 유효하지 않음")))
                 .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['409'].description")
                         .value(startsWith("요청이 현재 상태와 충돌함")))
                 .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['409'].description")
@@ -270,7 +272,7 @@ class SecurityConfigTest {
                 .andExpect(jsonPath("$.components.schemas.AdminGenerationHistoryResponse.properties.page.description")
                         .value("32비트 정수"))
                 .andExpect(jsonPath("$.paths['/api/v1/admin/generations'].get.parameters"
-                        + "[?(@.name == 'from')].description").value(hasItem("생성 요청일 시작일 (포함, YYYY-MM-DD)")))
+                        + "[?(@.name == 'from')].description").value(hasItem("KST 기준 생성 요청일 시작일 (포함, YYYY-MM-DD)")))
                 .andExpect(jsonPath("$.paths['/api/v1/admin/generations'].get.parameters"
                         + "[?(@.name == 'page')].description").value(hasItem("페이지 번호 (0부터 시작)")));
     }
