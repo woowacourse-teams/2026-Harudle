@@ -1,6 +1,8 @@
 package com.harudle.share.controller;
 
 import com.harudle.auth.presentation.AuthenticatedUserIdResolver;
+import com.harudle.common.error.ApiErrorResponses;
+import com.harudle.common.error.ErrorType;
 import com.harudle.share.controller.dto.ShareLinkResponse;
 import com.harudle.share.service.ShareLinkCreationResult;
 import com.harudle.share.service.ShareLinkService;
@@ -47,6 +49,15 @@ class ShareLinkController {
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "새 공유 링크 생성 완료"),
             @ApiResponse(responseCode = "200", description = "기존 공유 링크 반환")
+    })
+    @ApiErrorResponses({
+            ErrorType.VALIDATION_ERROR,
+            ErrorType.UNAUTHORIZED,
+            ErrorType.FORBIDDEN,
+            ErrorType.INVALID_CSRF_TOKEN,
+            ErrorType.DIARY_NOT_FOUND,
+            ErrorType.GENERATION_IN_PROGRESS,
+            ErrorType.GENERATION_FAILED
     })
     @PutMapping("/{diaryId}/share-link")
     ResponseEntity<ShareLinkResponse> createOrGet(
