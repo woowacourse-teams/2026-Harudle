@@ -1,3 +1,4 @@
+import { useErrorTracking } from '../../posthog/useErrorTracking';
 import ActionButton from '../../shared/ActionButton';
 import shareIcon from '../../assets/icons/share.svg';
 import { useState } from 'react';
@@ -15,6 +16,7 @@ const DiaryShareButton = ({
   diaryId: string;
   diaryTitle: string;
 }) => {
+  const { captureError } = useErrorTracking();
   const [request, setRequest] = useState<ApiRequest<DiaryShareLinkResponse>>({
     status: 'idle',
   });
@@ -44,6 +46,11 @@ const DiaryShareButton = ({
       }
 
       if (error instanceof Error) {
+        captureError(error, {
+          feature: 'diary',
+          operation: 'share',
+          diary_id: diaryId,
+        });
         setRequest({
           status: 'error',
           error: error,

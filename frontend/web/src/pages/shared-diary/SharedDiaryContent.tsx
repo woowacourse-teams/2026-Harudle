@@ -46,7 +46,12 @@ const SharedDiaryContent = ({ shareId }: { shareId: string }) => {
 
       <main css={sharedDiaryContentStyle}>
         <div css={diaryTitleStyle}>{title}</div>
-        <DiaryImage src={imageUrl} alt={title} css={diaryImageStyle} />
+        <DiaryImage
+          imageRole="original"
+          src={imageUrl}
+          alt={title}
+          css={diaryImageStyle}
+        />
         <div css={diaryDateStyle}>{diaryDate}</div>
       </main>
     </div>

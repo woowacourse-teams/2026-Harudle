@@ -1,30 +1,38 @@
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import ActionButton from '../../shared/ActionButton';
 import downloadIcon from '../../assets/icons/download.svg';
-import { useState } from 'react';
+import { useState, type ReactElement } from 'react';
+import { useErrorTracking } from '../../posthog/useErrorTracking';
 import type { ApiRequest } from '../../shared/api';
 import { useAnalytics } from '../../posthog/useAnalytics';
 
+interface DiaryImageDownloadButtonProps {
+  readonly diaryId: string;
+  readonly imageUrl: string;
+  readonly diaryDate: string;
+  readonly diaryTitle: string;
+}
+
 const DiaryImageDownloadButton = ({
+  diaryId,
   imageUrl,
   diaryDate,
   diaryTitle,
-}: {
-  imageUrl: string;
-  diaryDate: string;
-  diaryTitle: string;
-}) => {
+}: DiaryImageDownloadButtonProps): ReactElement => {
   const [downloadRequest, setDownloadRequest] = useState<ApiRequest<void>>({
     status: 'idle',
   });
   const { track } = useAnalytics();
-  const handleImageDownload = async () => {
+  const { captureError } = useErrorTracking();
+  const handleImageDownload = async (): Promise<void> => {
+    let httpStatus: number | undefined;
     setDownloadRequest({
       status: 'loading',
     });
 
     try {
       const response = await fetch(imageUrl, { cache: 'no-store' });
+      httpStatus = response.status;
 
       if (!response.ok) {
         throw new Error(ERROR_MESSAGES.DIARY_IMAGE_SAVE_FAILED);
@@ -48,12 +56,18 @@ const DiaryImageDownloadButton = ({
 
       track('diary_image_downloaded');
       setDownloadRequest({ status: 'success', data: undefined });
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof Error) {
-        setDownloadRequest({
-          status: 'error',
-          error: error,
+        setDownloadRequest({ status: 'error', error });
+
+        captureError(error, {
+          feature: 'diary_image',
+          operation: 'download',
+          diary_id: diaryId,
+          image_role: 'original',
+          ...(httpStatus !== undefined ? { http_status: httpStatus } : {}),
         });
+
         alert(error.message);
       }
     }

@@ -5,6 +5,7 @@ import PageHeader from '../../shared/PageHeader';
 import backIcon from '../../assets/icons/back.svg';
 import { useEffect } from 'react';
 import { RequestError } from '../../shared/api';
+import { DIARY_GENERATION_ERROR_CODE } from '../../domain/diary/diaryGenerate';
 
 const DiaryGeneratingError = ({
   error,
@@ -17,7 +18,7 @@ const DiaryGeneratingError = ({
 }) => {
   const isGenerationInProgress =
     error instanceof RequestError &&
-    error.problem.code === 'GENERATION_IN_PROGRESS';
+    error.problem.code === DIARY_GENERATION_ERROR_CODE.IN_PROGRESS;
 
   useEffect(() => {
     if (!isGenerationInProgress) {

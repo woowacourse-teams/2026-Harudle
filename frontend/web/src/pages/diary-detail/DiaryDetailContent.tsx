@@ -82,7 +82,13 @@ const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
       <main css={contentStyle}>
         <div css={diaryTitleStyle}>{title}</div>
 
-        <DiaryImage css={diaryImageStyle} src={imageUrl} alt="그림 일기" />
+        <DiaryImage
+          diaryId={diaryId}
+          imageRole="original"
+          css={diaryImageStyle}
+          src={imageUrl}
+          alt="그림 일기"
+        />
 
         <div>
           <span css={storyTitleStyle}>오늘의 이야기</span>
@@ -90,6 +96,7 @@ const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
         </div>
         <DiaryShareButton diaryId={diaryId} diaryTitle={title} />
         <DiaryImageDownloadButton
+          diaryId={diaryId}
           imageUrl={imageUrl}
           diaryDate={diaryDetail.diaryDate}
           diaryTitle={diaryDetail.generation.title}
