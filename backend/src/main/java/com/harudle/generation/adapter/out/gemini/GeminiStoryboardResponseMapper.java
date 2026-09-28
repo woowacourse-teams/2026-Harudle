@@ -1,5 +1,7 @@
 package com.harudle.generation.adapter.out.gemini;
 
+import com.harudle.generation.diary.domain.FocalColor;
+import com.harudle.generation.diary.domain.ScenePlan;
 import com.harudle.generation.diary.domain.StoryPanel;
 import com.harudle.generation.diary.domain.Storyboard;
 import java.util.List;
@@ -19,9 +21,20 @@ public final class GeminiStoryboardResponseMapper {
         validatePanels(response.panels());
 
         List<StoryPanel> panels = mapPanels(response.panels());
-        Storyboard storyboard = new Storyboard(response.title(), response.castContinuity(), panels);
         validateStoryRoleOrder(response.panels());
-        return storyboard;
+        return new Storyboard(response.title(), response.castContinuity(), panels, mapVisualPlan(response.visualPlan()));
+    }
+
+    private static ScenePlan mapVisualPlan(GeminiStoryboardResponse.VisualPlan visualPlan) {
+        if (visualPlan == null || visualPlan.focalColors() == null) {
+            throw new IllegalArgumentException("Gemini 스토리보드 시각 계획은 필수입니다.");
+        }
+        List<FocalColor> focalColors = visualPlan.focalColors().stream()
+                .map(color -> new FocalColor(
+                        color.prop(), color.component(), color.colorHex(), color.panelNumbers()
+                ))
+                .toList();
+        return new ScenePlan(visualPlan.environmentRule(), focalColors);
     }
 
     private static List<StoryPanel> mapPanels(List<GeminiStoryboardResponse.Panel> panels) {

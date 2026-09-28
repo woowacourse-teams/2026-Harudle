@@ -7,6 +7,8 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 class StoryboardTest {
 
@@ -73,6 +75,57 @@ class StoryboardTest {
         ))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("100자");
+    }
+
+    @Test
+    @DisplayName("색상 계획이 없는 과거 스토리보드 JSON도 읽는다")
+    void readLegacyStoryboardWithoutScenePlan() throws Exception {
+        JsonMapper jsonMapper = JsonMapper.builder().build();
+        ObjectNode json = jsonMapper.valueToTree(new Storyboard("제목", "등장인물 연속성", validPanels()));
+        json.remove("scenePlan");
+
+        Storyboard storyboard = jsonMapper.treeToValue(json, Storyboard.class);
+
+        assertThat(storyboard.scenePlan()).isNull();
+        assertThat(storyboard.panels()).hasSize(4);
+    }
+
+    @Test
+    @DisplayName("색상 계획이 가리키는 소품은 등장하는 모든 패널과 일치해야 한다")
+    void rejectColorTargetWithMissingPanel() {
+        ScenePlan scenePlan = new ScenePlan(
+                "Keep the same place.",
+                List.of(new FocalColor("소품 2", "표지", "#A99BE8", List.of(1)))
+        );
+
+        assertThatThrownBy(() -> new Storyboard("제목", "등장인물 연속성", validPanels(), scenePlan))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("props와 일치");
+    }
+
+    @Test
+    @DisplayName("색상 계획은 색 대상이 없어도 배경 연속성을 담을 수 있다")
+    void allowScenePlanWithoutFocalColors() {
+        ScenePlan scenePlan = new ScenePlan("Keep the same place.", List.of());
+
+        Storyboard storyboard = new Storyboard("제목", "등장인물 연속성", validPanels(), scenePlan);
+
+        assertThat(storyboard.scenePlan()).isEqualTo(scenePlan);
+    }
+
+    @Test
+    @DisplayName("색상 계획은 스토리보드 JSON에 함께 저장되고 다시 읽힌다")
+    void roundTripStoryboardWithScenePlan() throws Exception {
+        JsonMapper jsonMapper = JsonMapper.builder().build();
+        ScenePlan scenePlan = new ScenePlan(
+                "Keep the same place.",
+                List.of(new FocalColor("소품 2", "표지", "#A99BE8", List.of(2)))
+        );
+        Storyboard original = new Storyboard("제목", "등장인물 연속성", validPanels(), scenePlan);
+
+        Storyboard restored = jsonMapper.readValue(jsonMapper.writeValueAsString(original), Storyboard.class);
+
+        assertThat(restored).isEqualTo(original);
     }
 
     private List<StoryPanel> validPanels() {
