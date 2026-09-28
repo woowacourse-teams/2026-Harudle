@@ -229,6 +229,8 @@ class SecurityConfigTest {
                 .andExpect(jsonPath("$.paths['/api/v1/admin/generations/restore-image/upload'].post"
                         + ".responses['413'].description")
                         .value(startsWith("요청 본문 크기 초과")))
+                .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['429'].description")
+                        .value(startsWith("오늘 이미지 생성 한도 초과")))
                 .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['400'].content"
                         + "['application/problem+json'].schema['$ref']")
                         .value("#/components/schemas/HarudleProblemDetail"))

@@ -142,7 +142,7 @@ class ApiErrorDocumentationConfiguration {
             case 409 -> "요청이 현재 상태와 충돌함";
             case 413 -> "요청 본문 크기 초과";
             case 415 -> "지원하지 않는 미디어 형식";
-            case 429 -> "요청 횟수 제한 초과";
+            case 429 -> "오늘 이미지 생성 한도 초과";
             case 500 -> "서버 내부 오류";
             case 502 -> "외부 서비스 오류";
             case 503 -> "서비스 이용 불가";
