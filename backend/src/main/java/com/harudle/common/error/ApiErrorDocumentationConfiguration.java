@@ -123,7 +123,7 @@ class ApiErrorDocumentationConfiguration {
                     .value(exampleValue(error)));
         }
         ApiResponse response = new ApiResponse()
-                .description(errorResponseDescription(status))
+                .description(errorResponseDescription(status, errors))
                 .content(new Content().addMediaType(org.springframework.http.MediaType.APPLICATION_PROBLEM_JSON_VALUE, mediaType));
         if (status == HttpStatus.TOO_MANY_REQUESTS.value()) {
             response.addHeaderObject("Retry-After", new Header()
@@ -133,8 +133,8 @@ class ApiErrorDocumentationConfiguration {
         return response;
     }
 
-    private static String errorResponseDescription(int status) {
-        return switch (status) {
+    private static String errorResponseDescription(int status, List<ErrorExample> errors) {
+        String summary = switch (status) {
             case 400 -> "잘못된 요청";
             case 401 -> "인증 정보가 유효하지 않음";
             case 403 -> "요청이 허용되지 않음";
@@ -149,6 +149,14 @@ class ApiErrorDocumentationConfiguration {
             case 504 -> "외부 서비스 응답 시간 초과";
             default -> "오류 응답";
         };
+        StringBuilder description = new StringBuilder(summary)
+                .append("\n\n| 오류 코드 | 예시 메시지 |\n| --- | --- |\n");
+        for (ErrorExample error : errors) {
+            description.append("| `").append(error.code()).append("` | ")
+                    .append(error.detail().replace("|", "\\|"))
+                    .append(" |\n");
+        }
+        return description.toString();
     }
 
     private static Map<String, Object> exampleValue(ErrorExample error) {

@@ -6,6 +6,7 @@ import com.harudle.admin.service.AdminGenerationHistoryQueryService;
 import com.harudle.common.error.ApiErrorResponses;
 import com.harudle.common.error.ErrorType;
 import com.harudle.generation.diary.domain.GenerationStatus;
+import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import java.time.LocalDate;
@@ -38,13 +39,19 @@ class AdminGenerationController {
             ErrorType.FORBIDDEN
     })
     AdminGenerationHistoryResponse search(
+            @Parameter(description = "조회할 사용자 ID (UUID)")
             @RequestParam(required = false) UUID userId,
+            @Parameter(description = "생성 상태 (PROCESSING, SUCCEEDED, FAILED)")
             @RequestParam(required = false) GenerationStatus status,
+            @Parameter(description = "생성 요청일 시작일 (포함, YYYY-MM-DD)")
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @Parameter(description = "생성 요청일 종료일 (포함, YYYY-MM-DD)")
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @Parameter(description = "페이지 번호 (0부터 시작)")
             @RequestParam(defaultValue = "0") @Min(0) @Max(MAX_PAGE) int page,
+            @Parameter(description = "페이지당 항목 수 (1~100)")
             @RequestParam(defaultValue = "20") @Min(1) @Max(MAX_PAGE_SIZE) int size
     ) {
         AdminGenerationHistoryPage result = generationHistoryQueryService.search(

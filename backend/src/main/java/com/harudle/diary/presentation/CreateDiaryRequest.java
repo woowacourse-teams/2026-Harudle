@@ -2,12 +2,14 @@ package com.harudle.diary.presentation;
 
 import com.harudle.common.validation.CodePointLength;
 import com.harudle.diary.domain.Diary;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.time.LocalDate;
 
 public record CreateDiaryRequest(
         @NotNull(message = "일기 날짜는 필수입니다.")
+        @Schema(description = "작성할 일기 날짜 (YYYY-MM-DD)")
         LocalDate diaryDate,
 
         @NotBlank(message = "일기 내용은 필수입니다.")
