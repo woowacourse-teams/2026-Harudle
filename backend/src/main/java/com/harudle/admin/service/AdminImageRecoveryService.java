@@ -94,17 +94,17 @@ public class AdminImageRecoveryService {
     private Result restoreOptimizedImage(UUID generationId, String key,
             DiaryGeneration generation, ImageStorage storage, DiaryImageGenerator generator) {
         if (storage.exists(key)) {
-            boolean restored = storage.restoreThumbnailFromDetail(key);
+            boolean restored = storage.restoreMissingThumbnail(key);
             return new Result(generationId, key, restored ? "RESTORED" : "ALREADY_EXISTS");
         }
-        var image = loadOriginalOrGenerate(key, generation, storage, generator);
+        var image = loadOriginalOrGenerateImage(key, generation, storage, generator);
         boolean restored = storage.restoreOptimizedIfMissing(key, image);
         return new Result(generationId, key, restored ? "RESTORED" : "ALREADY_EXISTS");
     }
 
-    private GeneratedImage loadOriginalOrGenerate(String detailKey, DiaryGeneration generation,
+    private GeneratedImage loadOriginalOrGenerateImage(String detailKey, DiaryGeneration generation,
             ImageStorage storage, DiaryImageGenerator generator) {
-        for (String originalKey : ImageVariantKeys.originalKeys(detailKey)) {
+        for (String originalKey : ImageVariantKeys.originalImageKeyCandidates(detailKey)) {
             if (storage.exists(originalKey)) {
                 var original = storage.load(originalKey);
                 return new GeneratedImage(original.resource(), original.mediaType());

@@ -74,11 +74,11 @@ class AdminImageRecoveryServiceTest {
     void repairsOnlyMissingThumbnailFromExistingDetail() {
         DiaryGeneration optimized = optimizedGeneration();
         when(storage.exists(optimized.getImageObjectKey())).thenReturn(true);
-        when(storage.restoreThumbnailFromDetail(optimized.getImageObjectKey())).thenReturn(true);
+        when(storage.restoreMissingThumbnail(optimized.getImageObjectKey())).thenReturn(true);
 
         assertThat(service.restore(optimized.getId()).status()).isEqualTo("RESTORED");
 
-        verify(storage).restoreThumbnailFromDetail(optimized.getImageObjectKey());
+        verify(storage).restoreMissingThumbnail(optimized.getImageObjectKey());
         verifyNoInteractions(generator, prompts);
     }
 
@@ -89,7 +89,7 @@ class AdminImageRecoveryServiceTest {
 
         assertThat(service.restore(optimized.getId()).status()).isEqualTo("ALREADY_EXISTS");
 
-        verify(storage).restoreThumbnailFromDetail(optimized.getImageObjectKey());
+        verify(storage).restoreMissingThumbnail(optimized.getImageObjectKey());
         verifyNoInteractions(generator, prompts);
     }
 
@@ -219,7 +219,7 @@ class AdminImageRecoveryServiceTest {
     @Test
     void missingDetailUsesStoredOriginalWithoutCallingGemini() {
         DiaryGeneration optimized = optimizedGeneration();
-        String originalKey = ImageVariantKeys.forOriginal(optimized.getImageObjectKey(), "png");
+        String originalKey = ImageVariantKeys.originalImageKey(optimized.getImageObjectKey(), "png");
         var original = new ReferenceImage(new ByteArrayResource(new byte[]{1, 2, 3}), MediaType.IMAGE_PNG);
         when(storage.exists(originalKey)).thenReturn(true);
         when(storage.load(originalKey)).thenReturn(original);

@@ -79,7 +79,7 @@ class ImageObjectKeyFactoryTest {
         assertThat(factory.generationId(detailKey)).contains(GENERATION_ID);
         String thumbnailKey = detailKey.replace("image-960.webp", "image-240.webp");
         assertThat(ImageVariantKeys.toThumbnailKeyIfOptimizedDetail(detailKey)).isEqualTo(thumbnailKey);
-        assertThat(ImageVariantKeys.companionKeys(detailKey)).containsExactly(thumbnailKey);
+        assertThat(ImageVariantKeys.derivedImageKeysExceptDetail(detailKey)).containsExactly(thumbnailKey);
         assertThat(factory.generationId(
                 thumbnailKey
         )).contains(GENERATION_ID);
@@ -90,7 +90,7 @@ class ImageObjectKeyFactoryTest {
     void legacyKeysDoNotAcquireNewCompanionImages(String filename) {
         String key = "generated/diary-images/" + GENERATION_ID + "/" + filename;
         assertThat(ImageVariantKeys.toThumbnailKeyIfOptimizedDetail(key)).isEqualTo(key);
-        assertThat(ImageVariantKeys.companionKeys(key)).isEmpty();
+        assertThat(ImageVariantKeys.derivedImageKeysExceptDetail(key)).isEmpty();
     }
 
     @Test

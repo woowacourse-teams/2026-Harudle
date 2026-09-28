@@ -26,7 +26,7 @@ public final class ImageVariantKeys {
         return detailKey.substring(0, detailKey.lastIndexOf('/') + 1) + variant.filename();
     }
 
-    public static List<String> companionKeys(String imageObjectKey) {
+    public static List<String> derivedImageKeysExceptDetail(String imageObjectKey) {
         if (!isOptimizedDetailKey(imageObjectKey)) {
             return List.of();
         }
@@ -36,7 +36,7 @@ public final class ImageVariantKeys {
                 .toList();
     }
 
-    public static String forOriginal(String detailKey, String subtype) {
+    public static String originalImageKey(String detailKey, String subtype) {
         if (!isOptimizedDetailKey(detailKey)) {
             throw new IllegalArgumentException("최적화된 상세 이미지 키가 필요합니다.");
         }
@@ -48,11 +48,11 @@ public final class ImageVariantKeys {
         return detailKey.substring(0, detailKey.lastIndexOf('/') + 1) + "image." + extension;
     }
 
-    public static List<String> originalKeys(String detailKey) {
+    public static List<String> originalImageKeyCandidates(String detailKey) {
         if (!isOptimizedDetailKey(detailKey)) {
             return List.of();
         }
-        return List.of(forOriginal(detailKey, "png"), forOriginal(detailKey, "jpeg"),
-                forOriginal(detailKey, "webp"));
+        return List.of(originalImageKey(detailKey, "png"), originalImageKey(detailKey, "jpeg"),
+                originalImageKey(detailKey, "webp"));
     }
 }

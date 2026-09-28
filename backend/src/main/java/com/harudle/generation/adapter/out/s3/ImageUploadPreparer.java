@@ -46,17 +46,17 @@ public final class ImageUploadPreparer {
         return new Upload(ImageVariantKeys.forVariant(detailKey, ImageVariant.THUMBNAIL), thumbnail);
     }
 
-    private UploadPlan prepareVariants(String primaryKey, GeneratedImage image) {
+    private UploadPlan prepareVariants(String detailImageKey, GeneratedImage image) {
         Map<ImageVariant, GeneratedImage> images = variantEncoder.encode(image);
         List<Upload> uploads = new ArrayList<>();
-        uploads.add(new Upload(ImageVariantKeys.forOriginal(primaryKey, image.mediaType().getSubtype()), image));
+        uploads.add(new Upload(ImageVariantKeys.originalImageKey(detailImageKey, image.mediaType().getSubtype()), image));
         for (ImageVariant variant : ImageVariant.values()) {
             if (variant != ImageVariant.DETAIL) {
-                uploads.add(new Upload(ImageVariantKeys.forVariant(primaryKey, variant), images.get(variant)));
+                uploads.add(new Upload(ImageVariantKeys.forVariant(detailImageKey, variant), images.get(variant)));
             }
         }
-        uploads.add(new Upload(primaryKey, images.get(ImageVariant.DETAIL)));
-        return new UploadPlan(primaryKey, uploads);
+        uploads.add(new Upload(detailImageKey, images.get(ImageVariant.DETAIL)));
+        return new UploadPlan(detailImageKey, uploads);
     }
 
     private static void requireOptimizedDetailKey(String detailKey) {
@@ -88,10 +88,10 @@ public final class ImageUploadPreparer {
         }
     }
 
-    public record UploadPlan(String primaryKey, List<Upload> uploads) {
+    public record UploadPlan(String detailImageKey, List<Upload> uploads) {
         public UploadPlan {
             uploads = List.copyOf(uploads);
-            if (uploads.isEmpty() || !uploads.getLast().objectKey().equals(primaryKey)) {
+            if (uploads.isEmpty() || !uploads.getLast().objectKey().equals(detailImageKey)) {
                 throw new IllegalArgumentException("대표 이미지는 업로드 목록의 마지막에 있어야 합니다.");
             }
             if (uploads.stream().map(Upload::objectKey).distinct().count() != uploads.size()) {

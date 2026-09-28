@@ -139,7 +139,7 @@ public final class S3ImageStorage implements ImageStorage {
         requireGeneratedImage(generatedImage);
         PreparedStores prepared = prepareStores(generationId, generatedImage);
         putAll(prepared.uploads());
-        return prepared.primaryKey();
+        return prepared.detailImageKey();
     }
 
     private void requireGeneratedImage(GeneratedImage generatedImage) {
@@ -172,7 +172,7 @@ public final class S3ImageStorage implements ImageStorage {
         for (ImageUploadPreparer.Upload upload : plan.uploads()) {
             uploads.add(prepareStore(upload.objectKey(), upload.image()));
         }
-        return new PreparedStores(plan.primaryKey(), List.copyOf(uploads));
+        return new PreparedStores(plan.detailImageKey(), List.copyOf(uploads));
     }
 
     private void putAll(List<PreparedStore> uploads) {
@@ -266,9 +266,9 @@ public final class S3ImageStorage implements ImageStorage {
                     new GeneratedImage(storedOriginal.resource(), storedOriginal.mediaType()));
         }
         // 기존 썸네일이 다른 그림일 수 있으므로, 변환과 크기 검증이 끝난 뒤 제거한다.
-        deleteKeys(ImageVariantKeys.companionKeys(detailKey));
+        deleteKeys(ImageVariantKeys.derivedImageKeysExceptDetail(detailKey));
         if (!restorePreparedIfMissing(prepared.uploads().getLast())) {
-            return restoreThumbnailFromDetail(detailKey);
+            return restoreMissingThumbnail(detailKey);
         }
         for (PreparedStore upload : prepared.uploads()) {
             if (!upload.objectKey().equals(detailKey) && !upload.objectKey().equals(original.objectKey())) {
@@ -293,7 +293,7 @@ public final class S3ImageStorage implements ImageStorage {
     }
 
     @Override
-    public boolean restoreThumbnailFromDetail(String detailKey) {
+    public boolean restoreMissingThumbnail(String detailKey) {
         String thumbnailKey = ImageVariantKeys.toThumbnailKeyIfOptimizedDetail(detailKey);
         if (thumbnailKey.equals(detailKey)) {
             throw failureReporter.reportValidationFailure(
@@ -310,7 +310,7 @@ public final class S3ImageStorage implements ImageStorage {
     }
 
     private ReferenceImage loadOriginalOrDetail(String detailKey) {
-        for (String originalKey : ImageVariantKeys.originalKeys(detailKey)) {
+        for (String originalKey : ImageVariantKeys.originalImageKeyCandidates(detailKey)) {
             if (exists(originalKey)) {
                 return load(originalKey);
             }
@@ -343,8 +343,8 @@ public final class S3ImageStorage implements ImageStorage {
     public void delete(String imageObjectKey) {
         List<String> keys = new ArrayList<>();
         keys.add(imageObjectKey);
-        keys.addAll(ImageVariantKeys.companionKeys(imageObjectKey));
-        keys.addAll(ImageVariantKeys.originalKeys(imageObjectKey));
+        keys.addAll(ImageVariantKeys.derivedImageKeysExceptDetail(imageObjectKey));
+        keys.addAll(ImageVariantKeys.originalImageKeyCandidates(imageObjectKey));
         deleteKeys(keys);
     }
 
@@ -495,6 +495,6 @@ public final class S3ImageStorage implements ImageStorage {
     ) {
     }
 
-    private record PreparedStores(String primaryKey, List<PreparedStore> uploads) {
+    private record PreparedStores(String detailImageKey, List<PreparedStore> uploads) {
     }
 }

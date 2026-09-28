@@ -16,7 +16,7 @@ public interface ImageStorage {
 
     boolean restoreOptimizedIfMissing(String detailKey, GeneratedImage generatedImage);
 
-    boolean restoreThumbnailFromDetail(String detailKey);
+    boolean restoreMissingThumbnail(String detailKey);
 
     void delete(String imageObjectKey);
 }

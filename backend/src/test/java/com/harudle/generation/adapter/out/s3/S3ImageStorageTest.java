@@ -187,7 +187,7 @@ class S3ImageStorageTest {
                 .thenReturn(responseStream(new ByteArrayInputStream(original), original.length, "image/png"));
         stubOptimizedImages("unused", "thumb");
 
-        assertThat(imageStorage.restoreThumbnailFromDetail(DETAIL_KEY)).isTrue();
+        assertThat(imageStorage.restoreMissingThumbnail(DETAIL_KEY)).isTrue();
 
         ArgumentCaptor<GetObjectRequest> get = ArgumentCaptor.forClass(GetObjectRequest.class);
         verify(s3Client).getObject(get.capture());
@@ -207,7 +207,7 @@ class S3ImageStorageTest {
                 .thenReturn(responseStream(new ByteArrayInputStream(savedDetail), savedDetail.length, "image/webp"));
         stubOptimizedImages("unused", "thumb");
 
-        assertThat(imageStorage.restoreThumbnailFromDetail(DETAIL_KEY)).isTrue();
+        assertThat(imageStorage.restoreMissingThumbnail(DETAIL_KEY)).isTrue();
 
         ArgumentCaptor<GeneratedImage> encoderInput = ArgumentCaptor.forClass(GeneratedImage.class);
         verify(variantEncoder).encode(encoderInput.capture());
@@ -258,7 +258,7 @@ class S3ImageStorageTest {
 
         assertThatThrownBy(() -> imageStorage.restoreOptimizedIfMissing(DETAIL_KEY, generatedImage()))
                 .isInstanceOf(ImageStorageException.class);
-        assertThat(imageStorage.restoreThumbnailFromDetail(DETAIL_KEY)).isTrue();
+        assertThat(imageStorage.restoreMissingThumbnail(DETAIL_KEY)).isTrue();
 
         ArgumentCaptor<PutObjectRequest> puts = ArgumentCaptor.forClass(PutObjectRequest.class);
         verify(s3Client, times(4)).putObject(puts.capture(), any(RequestBody.class));
