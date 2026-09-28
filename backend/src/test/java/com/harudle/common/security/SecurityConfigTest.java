@@ -198,6 +198,48 @@ class SecurityConfigTest {
     }
 
     @Test
+    @DisplayName("OpenAPI 문서에 API별 Problem Details 코드와 예시를 명시한다")
+    void documentsApiErrorResponses() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.components.schemas.HarudleProblemDetail.properties.code.type")
+                        .value("string"))
+                .andExpect(jsonPath("$.components.schemas.HarudleProblemDetail.properties.traceId.type")
+                        .value("string"))
+                .andExpect(jsonPath("$.components.schemas.HarudleProblemDetail.properties.errors.items['$ref']")
+                        .value("#/components/schemas/HarudleFieldValidationError"))
+                .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['400'].content"
+                        + "['application/problem+json'].schema['$ref']")
+                        .value("#/components/schemas/HarudleProblemDetail"))
+                .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['400'].content"
+                        + "['application/problem+json'].examples.VALIDATION_ERROR.value.code")
+                        .value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['400'].content"
+                        + "['application/problem+json'].examples.INVALID_IDEMPOTENCY_KEY.value.code")
+                        .value("INVALID_IDEMPOTENCY_KEY"))
+                .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['429'].headers"
+                        + "['Retry-After'].schema.type").value("integer"))
+                .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['500'].content"
+                        + "['application/problem+json'].examples.INTERNAL_SERVER_ERROR.value.code")
+                        .value("INTERNAL_SERVER_ERROR"))
+                .andExpect(jsonPath("$.paths['/api/v1/auth/csrf'].get.responses['500'].content"
+                        + "['application/problem+json'].examples.INTERNAL_SERVER_ERROR.value.code")
+                        .value("INTERNAL_SERVER_ERROR"))
+                .andExpect(jsonPath("$.paths['/api/v1/admin/generations/restore-image/upload'].post"
+                        + ".responses['413'].content['application/problem+json']"
+                        + ".examples['이미지 크기 초과'].value.code")
+                        .value("PAYLOAD_TOO_LARGE"))
+                .andExpect(jsonPath("$.paths['/api/v1/admin/generations/restore-image/upload'].post"
+                        + ".responses['503'].content['application/problem+json']"
+                        + ".examples['복구 작업 대기 중단'].value.code")
+                        .value("HTTP_503"))
+                .andExpect(jsonPath("$.paths['/api/v1/diaries/{diaryId}'].delete.responses['204']")
+                        .exists())
+                .andExpect(jsonPath("$.paths['/api/v1/diaries/{diaryId}'].delete.responses['404']")
+                        .doesNotExist());
+    }
+
+    @Test
     @DisplayName("등록하지 않은 경로는 접근할 수 없다")
     void rejectsUnregisteredPath() throws Exception {
         mockMvc.perform(get("/unregistered")

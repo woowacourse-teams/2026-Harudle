@@ -3,6 +3,8 @@ package com.harudle.admin.presentation;
 import com.harudle.admin.presentation.dto.AdminGenerationHistoryResponse;
 import com.harudle.admin.query.AdminGenerationHistoryPage;
 import com.harudle.admin.service.AdminGenerationHistoryQueryService;
+import com.harudle.common.error.ApiErrorResponses;
+import com.harudle.common.error.ErrorType;
 import com.harudle.generation.diary.domain.GenerationStatus;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -30,6 +32,11 @@ class AdminGenerationController {
     }
 
     @GetMapping
+    @ApiErrorResponses({
+            ErrorType.VALIDATION_ERROR,
+            ErrorType.UNAUTHORIZED,
+            ErrorType.FORBIDDEN
+    })
     AdminGenerationHistoryResponse search(
             @RequestParam(required = false) UUID userId,
             @RequestParam(required = false) GenerationStatus status,

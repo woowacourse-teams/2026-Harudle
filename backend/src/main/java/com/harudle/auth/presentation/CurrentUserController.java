@@ -3,6 +3,7 @@ package com.harudle.auth.presentation;
 import com.harudle.auth.application.CurrentUserResult;
 import com.harudle.auth.application.CurrentUserService;
 import com.harudle.auth.application.InvalidCurrentUserException;
+import com.harudle.common.error.ApiErrorResponses;
 import com.harudle.common.error.ErrorType;
 import com.harudle.common.error.ProblemDetailFactory;
 import io.swagger.v3.oas.annotations.Operation;
@@ -43,6 +44,10 @@ public class CurrentUserController {
             summary = "내 프로필 조회",
             description = "인증된 사용자의 프로필과 연결된 OAuth Provider를 조회합니다."
     )
+    @ApiErrorResponses({
+            ErrorType.UNAUTHORIZED,
+            ErrorType.INVALID_CURRENT_USER
+    })
     @GetMapping
     public ResponseEntity<CurrentUserResponse> find(
             @AuthenticationPrincipal Jwt jwt

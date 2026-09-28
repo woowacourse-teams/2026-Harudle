@@ -1,6 +1,8 @@
 package com.harudle.generation.usage.presentation;
 
 import com.harudle.auth.presentation.AuthenticatedUserIdResolver;
+import com.harudle.common.error.ApiErrorResponses;
+import com.harudle.common.error.ErrorType;
 import com.harudle.generation.usage.domain.GenerationUsage;
 import com.harudle.generation.usage.service.GenerationUsageService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -33,6 +35,7 @@ class GenerationUsageController {
             summary = "오늘 생성 사용량 조회",
             description = "KST 기준 오늘의 이미지 생성 사용량과 남은 횟수를 조회합니다."
     )
+    @ApiErrorResponses(ErrorType.UNAUTHORIZED)
     @GetMapping
     GenerationUsageResponse getTodayUsage(Authentication authentication) {
         UUID userId = authenticatedUserIdResolver.resolve(authentication);
