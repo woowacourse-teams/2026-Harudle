@@ -127,7 +127,9 @@ class DiaryController {
     @GetMapping
     public DiaryTimelineResponse getTimeline(
             Authentication authentication,
+            @Parameter(description = "조회할 연도 (1~9999)")
             @RequestParam @Min(MIN_API_YEAR) @Max(MAX_API_YEAR) int year,
+            @Parameter(description = "조회할 월 (1~12)")
             @RequestParam @Min(MIN_API_MONTH) @Max(MAX_API_MONTH) int month
     ) {
         UUID userId = authenticatedUserIdResolver.resolve(authentication);
