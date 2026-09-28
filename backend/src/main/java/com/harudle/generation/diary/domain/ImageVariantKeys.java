@@ -35,4 +35,24 @@ public final class ImageVariantKeys {
                 .map(variant -> forVariant(imageObjectKey, variant))
                 .toList();
     }
+
+    public static String forOriginal(String detailKey, String subtype) {
+        if (!isOptimizedDetailKey(detailKey)) {
+            throw new IllegalArgumentException("최적화된 상세 이미지 키가 필요합니다.");
+        }
+        String extension = switch (subtype) {
+            case "png", "webp" -> subtype;
+            case "jpeg" -> "jpg";
+            default -> throw new IllegalArgumentException("지원하지 않는 원본 이미지 형식입니다: " + subtype);
+        };
+        return detailKey.substring(0, detailKey.lastIndexOf('/') + 1) + "image." + extension;
+    }
+
+    public static List<String> originalKeys(String detailKey) {
+        if (!isOptimizedDetailKey(detailKey)) {
+            return List.of();
+        }
+        return List.of(forOriginal(detailKey, "png"), forOriginal(detailKey, "jpeg"),
+                forOriginal(detailKey, "webp"));
+    }
 }

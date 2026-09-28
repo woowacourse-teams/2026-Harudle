@@ -216,6 +216,24 @@ class AdminImageRecoveryServiceTest {
         return new StoryPanel(number, "장면 " + number, "공원", "주인공", "기쁨", List.of());
     }
 
+    @Test
+    void missingDetailUsesStoredOriginalWithoutCallingGemini() {
+        DiaryGeneration optimized = optimizedGeneration();
+        String originalKey = ImageVariantKeys.forOriginal(optimized.getImageObjectKey(), "png");
+        var original = new ReferenceImage(new ByteArrayResource(new byte[]{1, 2, 3}), MediaType.IMAGE_PNG);
+        when(storage.exists(originalKey)).thenReturn(true);
+        when(storage.load(originalKey)).thenReturn(original);
+        when(storage.restoreOptimizedIfMissing(eq(optimized.getImageObjectKey()), any())).thenReturn(true);
+
+        assertThat(service.restore(optimized.getId()).status()).isEqualTo("RESTORED");
+
+        var image = org.mockito.ArgumentCaptor.forClass(GeneratedImage.class);
+        verify(storage).restoreOptimizedIfMissing(eq(optimized.getImageObjectKey()), image.capture());
+        assertThat(image.getValue().resource()).isSameAs(original.resource());
+        assertThat(image.getValue().mediaType()).isEqualTo(MediaType.IMAGE_PNG);
+        verifyNoInteractions(generator, prompts);
+    }
+
     private DiaryGeneration optimizedGeneration() {
         DiaryGeneration optimized = DiaryGeneration.start(UUID.randomUUID(), 1L,
                 UUID.randomUUID(), "c".repeat(64));

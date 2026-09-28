@@ -153,6 +153,52 @@ class S3ImageStorageTest {
     }
 
     @Test
+    void recoveryKeepsStoredOriginalAndBuildsVariantsFromIt() throws IOException {
+        stubOptimizedImages("detail", "thumb");
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenThrow(S3Exception.builder().statusCode(412).build())
+                .thenReturn(PutObjectResponse.builder().build());
+        byte[] savedOriginal = "original".getBytes(StandardCharsets.UTF_8);
+        when(s3Client.getObject(any(GetObjectRequest.class)))
+                .thenReturn(responseStream(new ByteArrayInputStream(savedOriginal), savedOriginal.length, "image/png"));
+
+        assertThat(imageStorage.restoreOptimizedIfMissing(DETAIL_KEY, generatedImage())).isTrue();
+
+        ArgumentCaptor<GeneratedImage> encoded = ArgumentCaptor.forClass(GeneratedImage.class);
+        verify(variantEncoder, times(2)).encode(encoded.capture());
+        assertThat(encoded.getAllValues().getLast().resource().getContentAsByteArray()).isEqualTo(savedOriginal);
+        ArgumentCaptor<PutObjectRequest> puts = ArgumentCaptor.forClass(PutObjectRequest.class);
+        verify(s3Client, times(3)).putObject(puts.capture(), any(RequestBody.class));
+        assertThat(puts.getAllValues()).extracting(PutObjectRequest::key)
+                .containsExactly(OBJECT_KEY, DETAIL_KEY, THUMBNAIL_KEY);
+        assertThat(puts.getAllValues().getFirst().ifNoneMatch()).isEqualTo("*");
+        ArgumentCaptor<DeleteObjectRequest> deletes = ArgumentCaptor.forClass(DeleteObjectRequest.class);
+        verify(s3Client).deleteObject(deletes.capture());
+        assertThat(deletes.getValue().key()).isEqualTo(THUMBNAIL_KEY);
+    }
+
+    @Test
+    void thumbnailRecoveryPrefersOriginalToDetail() throws IOException {
+        when(s3Client.headObject(any(software.amazon.awssdk.services.s3.model.HeadObjectRequest.class)))
+                .thenThrow(S3Exception.builder().statusCode(404).build())
+                .thenReturn(software.amazon.awssdk.services.s3.model.HeadObjectResponse.builder().build());
+        byte[] original = "original".getBytes(StandardCharsets.UTF_8);
+        when(s3Client.getObject(any(GetObjectRequest.class)))
+                .thenReturn(responseStream(new ByteArrayInputStream(original), original.length, "image/png"));
+        stubOptimizedImages("unused", "thumb");
+
+        assertThat(imageStorage.restoreThumbnailFromDetail(DETAIL_KEY)).isTrue();
+
+        ArgumentCaptor<GetObjectRequest> get = ArgumentCaptor.forClass(GetObjectRequest.class);
+        verify(s3Client).getObject(get.capture());
+        assertThat(get.getValue().key()).isEqualTo(OBJECT_KEY);
+        ArgumentCaptor<GeneratedImage> encoded = ArgumentCaptor.forClass(GeneratedImage.class);
+        verify(variantEncoder).encode(encoded.capture());
+        assertThat(encoded.getValue().resource().getContentAsByteArray()).isEqualTo(original);
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
+    }
+
+    @Test
     void thumbnailIsRebuiltFromSavedDetailWithoutRegeneration() throws IOException {
         when(s3Client.headObject(any(software.amazon.awssdk.services.s3.model.HeadObjectRequest.class)))
                 .thenThrow(S3Exception.builder().statusCode(404).build());
@@ -177,6 +223,7 @@ class S3ImageStorageTest {
     void detailWriteConflictRepairsThumbnailFromStoredDetail() throws IOException {
         stubOptimizedImages("new", "newthumb");
         when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenReturn(PutObjectResponse.builder().build())
                 .thenThrow(S3Exception.builder().statusCode(412).build())
                 .thenReturn(PutObjectResponse.builder().build());
         when(s3Client.headObject(any(software.amazon.awssdk.services.s3.model.HeadObjectRequest.class)))
@@ -191,16 +238,16 @@ class S3ImageStorageTest {
         verify(variantEncoder, times(2)).encode(encoded.capture());
         assertThat(encoded.getAllValues().get(1).resource().getContentAsByteArray()).isEqualTo(savedDetail);
         ArgumentCaptor<PutObjectRequest> puts = ArgumentCaptor.forClass(PutObjectRequest.class);
-        verify(s3Client, times(2)).putObject(puts.capture(), any(RequestBody.class));
+        verify(s3Client, times(3)).putObject(puts.capture(), any(RequestBody.class));
         assertThat(puts.getAllValues()).extracting(PutObjectRequest::key)
-                .containsExactly(DETAIL_KEY, THUMBNAIL_KEY);
+                .containsExactly(OBJECT_KEY, DETAIL_KEY, THUMBNAIL_KEY);
     }
 
     @Test
     void failedThumbnailWriteCanBeRetriedFromStoredDetail() {
         stubOptimizedImages("detail", "thumb");
         when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
-                .thenReturn(PutObjectResponse.builder().build())
+                .thenReturn(PutObjectResponse.builder().build(), PutObjectResponse.builder().build())
                 .thenThrow(S3Exception.builder().statusCode(503).build())
                 .thenReturn(PutObjectResponse.builder().build());
         when(s3Client.headObject(any(software.amazon.awssdk.services.s3.model.HeadObjectRequest.class)))
@@ -214,9 +261,9 @@ class S3ImageStorageTest {
         assertThat(imageStorage.restoreThumbnailFromDetail(DETAIL_KEY)).isTrue();
 
         ArgumentCaptor<PutObjectRequest> puts = ArgumentCaptor.forClass(PutObjectRequest.class);
-        verify(s3Client, times(3)).putObject(puts.capture(), any(RequestBody.class));
+        verify(s3Client, times(4)).putObject(puts.capture(), any(RequestBody.class));
         assertThat(puts.getAllValues()).extracting(PutObjectRequest::key)
-                .containsExactly(DETAIL_KEY, THUMBNAIL_KEY, THUMBNAIL_KEY);
+                .containsExactly(OBJECT_KEY, DETAIL_KEY, THUMBNAIL_KEY, THUMBNAIL_KEY);
         verify(s3Client, never()).deleteObject(org.mockito.ArgumentMatchers.<DeleteObjectRequest>argThat(
                 request -> request.key().equals(DETAIL_KEY)));
     }
@@ -277,7 +324,7 @@ class S3ImageStorageTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"image/png", "image/jpeg"})
-    void storesBothOptimizedVariantsAndDeletesBoth(String mediaType) {
+    void storesOriginalAndVariantsAndDeletesAll(String mediaType) throws IOException {
         GeneratedImage detail = new GeneratedImage(
                 new ByteArrayResource("detail".getBytes(StandardCharsets.UTF_8)),
                 MediaType.parseMediaType("image/webp")
@@ -292,25 +339,32 @@ class S3ImageStorageTest {
         GeneratedImage source = new GeneratedImage(generatedImage().resource(), MediaType.parseMediaType(mediaType));
         String detailKey = imageStorage.store(GENERATION_ID, source);
         ArgumentCaptor<PutObjectRequest> puts = ArgumentCaptor.forClass(PutObjectRequest.class);
-        verify(s3Client, times(2)).putObject(puts.capture(), any(RequestBody.class));
+        verify(s3Client, times(3)).putObject(puts.capture(), any(RequestBody.class));
         assertThat(detailKey).endsWith("/image-960.webp");
-        assertThat(puts.getAllValues().get(0).key()).isEqualTo(
+        assertThat(puts.getAllValues().get(1).key()).isEqualTo(
                 detailKey.replace("image-960.webp", "image-240.webp")
         );
-        assertThat(puts.getAllValues().get(1).key()).isEqualTo(detailKey);
-        assertThat(puts.getAllValues()).allSatisfy(request ->
+        assertThat(puts.getAllValues().get(2).key()).isEqualTo(detailKey);
+        assertThat(puts.getAllValues().subList(1, 3)).allSatisfy(request ->
                 assertThat(request.contentType()).isEqualTo("image/webp")
         );
 
+        String originalKey = detailKey.replace("image-960.webp", mediaType.equals("image/png") ? "image.png" : "image.jpg");
+        assertThat(puts.getAllValues().getFirst().key()).isEqualTo(originalKey);
+        assertThat(puts.getAllValues().getFirst().contentType()).isEqualTo(mediaType);
+        ArgumentCaptor<RequestBody> bodies = ArgumentCaptor.forClass(RequestBody.class);
+        verify(s3Client, times(3)).putObject(any(PutObjectRequest.class), bodies.capture());
+        assertThat(bodies.getAllValues().getFirst().contentStreamProvider().newStream().readAllBytes())
+                .isEqualTo(source.resource().getContentAsByteArray());
         imageStorage.delete(detailKey);
         ArgumentCaptor<DeleteObjectRequest> deletes = ArgumentCaptor.forClass(DeleteObjectRequest.class);
-        verify(s3Client, times(2)).deleteObject(deletes.capture());
-        assertThat(deletes.getAllValues().get(0).key()).isEqualTo(detailKey);
-        assertThat(deletes.getAllValues().get(1).key()).isEqualTo(puts.getAllValues().get(0).key());
+        verify(s3Client, times(5)).deleteObject(deletes.capture());
+        assertThat(deletes.getAllValues().getFirst().key()).isEqualTo(detailKey);
+        assertThat(deletes.getAllValues()).extracting(DeleteObjectRequest::key).contains(originalKey, detailKey);
     }
 
     @Test
-    void failedDetailUploadCleansUpStoredThumbnail() {
+    void failedDetailUploadCleansUpOriginalAndThumbnail() {
         GeneratedImage webp = new GeneratedImage(
                 new ByteArrayResource("webp".getBytes(StandardCharsets.UTF_8)),
                 MediaType.parseMediaType("image/webp")
@@ -318,7 +372,7 @@ class S3ImageStorageTest {
         when(variantEncoder.encode(any(GeneratedImage.class)))
                 .thenReturn(Map.of(ImageVariant.DETAIL, webp, ImageVariant.THUMBNAIL, webp));
         when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
-                .thenReturn(PutObjectResponse.builder().build())
+                .thenReturn(PutObjectResponse.builder().build(), PutObjectResponse.builder().build())
                 .thenThrow(SdkClientException.builder().message("detail upload failed").build());
 
         assertThatThrownBy(() -> imageStorage.store(GENERATION_ID, generatedImage()))
@@ -326,9 +380,10 @@ class S3ImageStorageTest {
 
         ArgumentCaptor<PutObjectRequest> puts = ArgumentCaptor.forClass(PutObjectRequest.class);
         ArgumentCaptor<DeleteObjectRequest> deletes = ArgumentCaptor.forClass(DeleteObjectRequest.class);
-        verify(s3Client, times(2)).putObject(puts.capture(), any(RequestBody.class));
-        verify(s3Client).deleteObject(deletes.capture());
-        assertThat(deletes.getValue().key()).isEqualTo(puts.getAllValues().get(0).key());
+        verify(s3Client, times(3)).putObject(puts.capture(), any(RequestBody.class));
+        verify(s3Client, times(2)).deleteObject(deletes.capture());
+        assertThat(deletes.getAllValues()).extracting(DeleteObjectRequest::key)
+                .containsExactly(puts.getAllValues().get(0).key(), puts.getAllValues().get(1).key());
     }
 
     @Test
@@ -643,7 +698,8 @@ class S3ImageStorageTest {
         SdkClientException thumbnailFailure = SdkClientException.builder().message("thumbnail delete failed").build();
         when(s3Client.deleteObject(any(DeleteObjectRequest.class)))
                 .thenThrow(detailFailure)
-                .thenThrow(thumbnailFailure);
+                .thenThrow(thumbnailFailure)
+                .thenReturn(DeleteObjectResponse.builder().build());
 
         ImageStorageException exception = catchThrowableOfType(
                 () -> imageStorage.delete(detailKey), ImageStorageException.class
@@ -653,14 +709,17 @@ class S3ImageStorageTest {
         assertThat(exception.getSuppressed()).hasSize(1);
         assertThat(exception.getSuppressed()[0]).hasCause(thumbnailFailure);
         ArgumentCaptor<DeleteObjectRequest> requests = ArgumentCaptor.forClass(DeleteObjectRequest.class);
-        verify(s3Client, times(2)).deleteObject(requests.capture());
+        verify(s3Client, times(5)).deleteObject(requests.capture());
         assertThat(requests.getAllValues()).extracting(DeleteObjectRequest::key)
-                .containsExactly(detailKey, detailKey.replace("image-960.webp", "image-240.webp"));
+                .containsExactly(detailKey, detailKey.replace("image-960.webp", "image-240.webp"),
+                        detailKey.replace("image-960.webp", "image.png"),
+                        detailKey.replace("image-960.webp", "image.jpg"),
+                        detailKey.replace("image-960.webp", "image.webp"));
     }
 
     @Test
-    @DisplayName("원본이 S3 객체 크기 제한을 넘어도 변환된 파일이 제한 이내면 저장한다")
-    void storesVariantsSmallerThanObjectLimit() {
+    @DisplayName("보관할 원본이 S3 크기 제한을 넘으면 업로드를 시작하지 않는다")
+    void rejectsOriginalAboveObjectLimit() {
         GeneratedImage source = new GeneratedImage(
                 new ByteArrayResource(new byte[MAX_OBJECT_SIZE_BYTES + 1]), MediaType.IMAGE_PNG
         );
@@ -671,13 +730,10 @@ class S3ImageStorageTest {
                 ImageVariant.DETAIL, variant, ImageVariant.THUMBNAIL, variant
         ));
 
-        imageStorage.store(GENERATION_ID, source);
-
-        ArgumentCaptor<PutObjectRequest> requests = ArgumentCaptor.forClass(PutObjectRequest.class);
-        verify(s3Client, times(2)).putObject(requests.capture(), any(RequestBody.class));
-        assertThat(requests.getAllValues()).allSatisfy(request ->
-                assertThat(request.contentLength()).isEqualTo((long) MAX_OBJECT_SIZE_BYTES)
-        );
+        assertThatThrownBy(() -> imageStorage.store(GENERATION_ID, source))
+                .isInstanceOf(ImageStorageException.class)
+                .hasRootCauseMessage("S3 이미지 객체 크기가 허용 범위를 벗어났습니다.");
+        verifyNoInteractions(s3Client);
     }
 
     @Test

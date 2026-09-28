@@ -49,6 +49,7 @@ public final class ImageUploadPreparer {
     private UploadPlan prepareVariants(String primaryKey, GeneratedImage image) {
         Map<ImageVariant, GeneratedImage> images = variantEncoder.encode(image);
         List<Upload> uploads = new ArrayList<>();
+        uploads.add(new Upload(ImageVariantKeys.forOriginal(primaryKey, image.mediaType().getSubtype()), image));
         for (ImageVariant variant : ImageVariant.values()) {
             if (variant != ImageVariant.DETAIL) {
                 uploads.add(new Upload(ImageVariantKeys.forVariant(primaryKey, variant), images.get(variant)));

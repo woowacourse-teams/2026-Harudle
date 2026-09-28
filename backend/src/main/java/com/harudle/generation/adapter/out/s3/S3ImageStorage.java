@@ -258,13 +258,20 @@ public final class S3ImageStorage implements ImageStorage {
     public boolean restoreOptimizedIfMissing(String detailKey, GeneratedImage generatedImage) {
         requireGeneratedImage(generatedImage);
         PreparedStores prepared = prepareOptimizedStores(detailKey, generatedImage);
+        // 원본은 복구 중 실패해도 남겨 다음 요청에서 같은 그림으로 재시도한다.
+        PreparedStore original = prepared.uploads().getFirst();
+        if (!restorePreparedIfMissing(original)) {
+            ReferenceImage storedOriginal = load(original.objectKey());
+            prepared = prepareOptimizedStores(detailKey,
+                    new GeneratedImage(storedOriginal.resource(), storedOriginal.mediaType()));
+        }
         // 기존 썸네일이 다른 그림일 수 있으므로, 변환과 크기 검증이 끝난 뒤 제거한다.
         deleteKeys(ImageVariantKeys.companionKeys(detailKey));
         if (!restorePreparedIfMissing(prepared.uploads().getLast())) {
             return restoreThumbnailFromDetail(detailKey);
         }
         for (PreparedStore upload : prepared.uploads()) {
-            if (!upload.objectKey().equals(detailKey)) {
+            if (!upload.objectKey().equals(detailKey) && !upload.objectKey().equals(original.objectKey())) {
                 restorePreparedIfMissing(upload);
             }
         }
@@ -297,9 +304,18 @@ public final class S3ImageStorage implements ImageStorage {
         if (exists(thumbnailKey)) {
             return false;
         }
-        ReferenceImage detail = load(detailKey);
+        ReferenceImage detail = loadOriginalOrDetail(detailKey);
         PreparedStore thumbnail = prepareThumbnailStore(detailKey, detail);
         return restorePreparedIfMissing(thumbnail);
+    }
+
+    private ReferenceImage loadOriginalOrDetail(String detailKey) {
+        for (String originalKey : ImageVariantKeys.originalKeys(detailKey)) {
+            if (exists(originalKey)) {
+                return load(originalKey);
+            }
+        }
+        return load(detailKey);
     }
 
     private PreparedStore prepareThumbnailStore(String detailKey, ReferenceImage detail) {
@@ -328,6 +344,7 @@ public final class S3ImageStorage implements ImageStorage {
         List<String> keys = new ArrayList<>();
         keys.add(imageObjectKey);
         keys.addAll(ImageVariantKeys.companionKeys(imageObjectKey));
+        keys.addAll(ImageVariantKeys.originalKeys(imageObjectKey));
         deleteKeys(keys);
     }
 
