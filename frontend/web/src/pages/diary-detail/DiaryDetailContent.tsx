@@ -96,6 +96,7 @@ const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
         </div>
         <DiaryShareButton diaryId={diaryId} diaryTitle={title} />
         <DiaryImageDownloadButton
+          diaryId={diaryId}
           imageUrl={imageUrl}
           diaryDate={diaryDetail.diaryDate}
           diaryTitle={diaryDetail.generation.title}
