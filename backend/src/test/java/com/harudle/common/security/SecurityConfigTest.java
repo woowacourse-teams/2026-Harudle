@@ -208,6 +208,17 @@ class SecurityConfigTest {
                         .value("string"))
                 .andExpect(jsonPath("$.components.schemas.HarudleProblemDetail.properties.errors.items['$ref']")
                         .value("#/components/schemas/HarudleFieldValidationError"))
+                .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['200'].description")
+                        .value("멱등 재요청의 기존 일기 반환"))
+                .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['400'].description")
+                        .value("잘못된 요청"))
+                .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['409'].description")
+                        .value("요청이 현재 상태와 충돌함"))
+                .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['500'].description")
+                        .value("서버 내부 오류"))
+                .andExpect(jsonPath("$.paths['/api/v1/admin/generations/restore-image/upload'].post"
+                        + ".responses['413'].description")
+                        .value("요청 본문 크기 초과"))
                 .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['400'].content"
                         + "['application/problem+json'].schema['$ref']")
                         .value("#/components/schemas/HarudleProblemDetail"))

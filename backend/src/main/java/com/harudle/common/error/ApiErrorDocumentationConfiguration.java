@@ -123,7 +123,7 @@ class ApiErrorDocumentationConfiguration {
                     .value(exampleValue(error)));
         }
         ApiResponse response = new ApiResponse()
-                .description(errors.stream().map(ErrorExample::code).distinct().reduce((a, b) -> a + ", " + b).orElse("오류"))
+                .description(errorResponseDescription(status))
                 .content(new Content().addMediaType(org.springframework.http.MediaType.APPLICATION_PROBLEM_JSON_VALUE, mediaType));
         if (status == HttpStatus.TOO_MANY_REQUESTS.value()) {
             response.addHeaderObject("Retry-After", new Header()
@@ -131,6 +131,24 @@ class ApiErrorDocumentationConfiguration {
                     .schema(new IntegerSchema().format("int64")));
         }
         return response;
+    }
+
+    private static String errorResponseDescription(int status) {
+        return switch (status) {
+            case 400 -> "잘못된 요청";
+            case 401 -> "인증 정보가 유효하지 않음";
+            case 403 -> "요청이 허용되지 않음";
+            case 404 -> "요청한 대상을 찾을 수 없음";
+            case 409 -> "요청이 현재 상태와 충돌함";
+            case 413 -> "요청 본문 크기 초과";
+            case 415 -> "지원하지 않는 미디어 형식";
+            case 429 -> "요청 횟수 제한 초과";
+            case 500 -> "서버 내부 오류";
+            case 502 -> "외부 서비스 오류";
+            case 503 -> "서비스 이용 불가";
+            case 504 -> "외부 서비스 응답 시간 초과";
+            default -> "오류 응답";
+        };
     }
 
     private static Map<String, Object> exampleValue(ErrorExample error) {
