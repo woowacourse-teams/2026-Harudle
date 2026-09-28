@@ -1,9 +1,12 @@
 package com.harudle.generation.adapter.out.gemini;
 
+import com.harudle.generation.diary.domain.FocalColor;
+import com.harudle.generation.diary.domain.ScenePlan;
 import com.harudle.generation.diary.domain.StoryPanel;
 import com.harudle.generation.diary.domain.Storyboard;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public final class DiaryImagePromptRenderer {
 
@@ -35,11 +38,40 @@ public final class DiaryImagePromptRenderer {
     public String render(Storyboard storyboard) {
         List<String> lines = new ArrayList<>();
         addStoryOverview(lines, storyboard);
+        addScenePlan(lines, storyboard.scenePlan());
         addPanels(lines, storyboard.panels());
         addFinalStoryCheck(lines, storyboard);
         addCanvasAndGridRules(lines);
         addFooterRules(lines, storyboard.title());
         return String.join("\n", lines);
+    }
+
+    private static void addScenePlan(List<String> lines, ScenePlan scenePlan) {
+        if (scenePlan == null) {
+            return;
+        }
+        lines.add("ENVIRONMENT FOR THIS STORY:");
+        lines.add(scenePlan.environmentRule());
+        lines.add("");
+        lines.add("FOCAL COLOR SUGGESTIONS — NOT VISIBLE TEXT:");
+        if (scenePlan.focalColors().isEmpty()) {
+            lines.add("Do not introduce a colored prop; preserve the mostly black-and-white scene.");
+        } else {
+            scenePlan.focalColors().stream()
+                    .map(DiaryImagePromptRenderer::renderFocalColor)
+                    .forEach(lines::add);
+        }
+        lines.add("");
+    }
+
+    private static String renderFocalColor(FocalColor color) {
+        String panelLabel = color.panelNumbers().size() == 1 ? "Panel " : "Panels ";
+        String panelNumbers = color.panelNumbers().stream()
+                .map(String::valueOf)
+                .collect(Collectors.joining(", "));
+        return "- %s%s: fill the entire visible %s of the existing %s with uniform opaque %s; "
+                .formatted(panelLabel, panelNumbers, color.component(), color.prop(), color.colorHex())
+                + "keep the same color in every appearance.";
     }
 
     private static void addStoryOverview(List<String> lines, Storyboard storyboard) {

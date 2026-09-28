@@ -2,6 +2,8 @@ package com.harudle.generation.adapter.out.gemini;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.harudle.generation.diary.domain.FocalColor;
+import com.harudle.generation.diary.domain.ScenePlan;
 import com.harudle.generation.diary.domain.StoryPanel;
 import com.harudle.generation.diary.domain.Storyboard;
 import java.util.List;
@@ -41,7 +43,8 @@ class DiaryImagePromptRendererTest {
                         + "fake Korean glyphs, or readable UI.")
                 .doesNotContain("VISIBLE COMIC TITLE READS EXACTLY:")
                 .doesNotContain("FIXED CREATOR HANDLE READS EXACTLY:")
-                .doesNotContain("Render exactly these four Korean captions once each and no other readable text:");
+                .doesNotContain("Render exactly these four Korean captions once each and no other readable text:")
+                .doesNotContain("ENVIRONMENT FOR THIS STORY:", "FOCAL COLOR SUGGESTIONS");
 
         assertThat(renderedPrompt.lines()
                 .filter("This panel contains exactly one readable text block: its assigned caption."::equals)
@@ -57,6 +60,49 @@ class DiaryImagePromptRendererTest {
                 .filter(line -> line.startsWith("Inside scene objects—including phones, screens"))
                 .count())
                 .isEqualTo(4);
+    }
+
+    @Test
+    void renderScenePlanBeforePanelsWithConsistentColor() {
+        Storyboard baseStoryboard = createStoryboard();
+        Storyboard storyboard = new Storyboard(
+                baseStoryboard.title(),
+                baseStoryboard.castContinuity(),
+                baseStoryboard.panels(),
+                new ScenePlan(
+                        "Keep the same smartphone across panels 1 and 4.",
+                        List.of(new FocalColor("smartphone", "phone case", "#A99BE8", List.of(1, 4)))
+                )
+        );
+
+        String renderedPrompt = renderer.render(storyboard);
+
+        assertThat(renderedPrompt)
+                .contains("ENVIRONMENT FOR THIS STORY:\nKeep the same smartphone across panels 1 and 4.")
+                .contains("FOCAL COLOR SUGGESTIONS — NOT VISIBLE TEXT:\n"
+                        + "- Panels 1, 4: fill the entire visible phone case of the existing smartphone "
+                        + "with uniform opaque #A99BE8; keep the same color in every appearance.");
+        assertThat(renderedPrompt.indexOf("FOCAL COLOR SUGGESTIONS"))
+                .isLessThan(renderedPrompt.indexOf("Panel 1 — TOP LEFT — SETUP:"));
+    }
+
+    @Test
+    void renderScenePlanWithoutColorTarget() {
+        Storyboard baseStoryboard = createStoryboard();
+        Storyboard storyboard = new Storyboard(
+                baseStoryboard.title(),
+                baseStoryboard.castContinuity(),
+                baseStoryboard.panels(),
+                new ScenePlan("Keep the existing locations and time of day.", List.of())
+        );
+
+        String renderedPrompt = renderer.render(storyboard);
+
+        assertThat(renderedPrompt)
+                .contains("ENVIRONMENT FOR THIS STORY:\nKeep the existing locations and time of day.")
+                .contains("FOCAL COLOR SUGGESTIONS — NOT VISIBLE TEXT:\n"
+                        + "Do not introduce a colored prop; preserve the mostly black-and-white scene.")
+                .doesNotContain("fill the entire visible");
     }
 
     @Test
