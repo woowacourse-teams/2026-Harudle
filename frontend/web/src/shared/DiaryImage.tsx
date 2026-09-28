@@ -1,16 +1,24 @@
 import { css } from '@emotion/react';
-import { useState } from 'react';
+import { useState, type ReactElement } from 'react';
+import posthog from 'posthog-js';
+import { isPostHogEnabled } from '../posthog/posthog';
 import { theme } from '../styles/theme';
+
+interface DiaryImageProps {
+  readonly src: string;
+  readonly alt: string;
+  readonly className?: string;
+  readonly diaryId?: string;
+  readonly imageRole: 'thumbnail' | 'original';
+}
 
 const DiaryImage = ({
   src,
   alt,
   className,
-}: {
-  src: string;
-  alt: string;
-  className?: string;
-}) => {
+  diaryId,
+  imageRole,
+}: DiaryImageProps): ReactElement => {
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
 
   if (failedSrc === src) {
@@ -33,7 +41,18 @@ const DiaryImage = ({
       className={className}
       src={src}
       alt={alt}
-      onError={() => setFailedSrc(src)}
+      onError={(): void => {
+        setFailedSrc(src);
+
+        if (isPostHogEnabled) {
+          posthog.captureException(new Error('일기 이미지 로딩 실패'), {
+            feature: 'diary_image',
+            operation: 'load',
+            image_role: imageRole,
+            ...(diaryId !== undefined ? { diary_id: diaryId } : {}),
+          });
+        }
+      }}
     />
   );
 };
