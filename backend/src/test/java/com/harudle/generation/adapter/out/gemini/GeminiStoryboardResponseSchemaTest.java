@@ -16,8 +16,8 @@ class GeminiStoryboardResponseSchemaTest {
 
         assertThat(schema)
                 .containsEntry("type", "object")
-                .containsEntry("required", List.of("title", "cast_continuity", "panels"))
-                .containsEntry("propertyOrdering", List.of("title", "cast_continuity", "panels"))
+                .containsEntry("required", List.of("title", "cast_continuity", "panels", "visual_plan"))
+                .containsEntry("propertyOrdering", List.of("title", "cast_continuity", "panels", "visual_plan"))
                 .doesNotContainKey("additionalProperties");
 
         Map<String, Object> properties = mapValue(schema, "properties");
@@ -59,6 +59,19 @@ class GeminiStoryboardResponseSchemaTest {
                 .contains("never more than 24");
         assertThat(mapValue(panelProperties, "props"))
                 .containsEntry("maxItems", 3);
+
+        Map<String, Object> visualPlan = mapValue(properties, "visual_plan");
+        assertThat(visualPlan)
+                .containsEntry("required", List.of("environment_rule", "focal_colors"))
+                .containsEntry("propertyOrdering", List.of("environment_rule", "focal_colors"));
+        Map<String, Object> visualPlanProperties = mapValue(visualPlan, "properties");
+        Map<String, Object> focalColors = mapValue(visualPlanProperties, "focal_colors");
+        Map<String, Object> colorTarget = mapValue(focalColors, "items");
+        assertThat(colorTarget)
+                .containsEntry("required", List.of("prop", "component", "color_hex", "panel_numbers"));
+        assertThat(mapValue(mapValue(colorTarget, "properties"), "panel_numbers"))
+                .containsEntry("minItems", 1)
+                .containsEntry("maxItems", 4);
     }
 
     @SuppressWarnings("unchecked")

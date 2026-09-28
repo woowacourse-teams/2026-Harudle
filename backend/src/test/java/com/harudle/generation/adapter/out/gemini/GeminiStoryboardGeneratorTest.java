@@ -311,7 +311,16 @@ class GeminiStoryboardGeneratorTest {
                       "emotion": "Shared laughter.",
                       "props": []
                     }
-                  ]
+                  ],
+                  "visual_plan": {
+                    "environment_rule": "Keep the same cafe setting throughout.",
+                    "focal_colors": [{
+                      "prop": "menu",
+                      "component": "cover",
+                      "color_hex": "#A99BE8",
+                      "panel_numbers": [2]
+                    }]
+                  }
                 }
                 """;
     }
