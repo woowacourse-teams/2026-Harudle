@@ -1,3 +1,4 @@
+import { useErrorTracking } from '../../posthog/useErrorTracking';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type ApiRequest } from '../../shared/api';
 import {
@@ -9,6 +10,7 @@ import { useAnalytics } from '../../posthog/useAnalytics';
 
 const useMonthlyDiaries = ({ year, month }: { year: number; month: Month }) => {
   const { track } = useAnalytics();
+  const { captureError } = useErrorTracking();
   const [request, setRequest] = useState<ApiRequest<MonthlyDiariesResponse>>({
     status: 'idle',
   });
@@ -54,6 +56,12 @@ const useMonthlyDiaries = ({ year, month }: { year: number; month: Month }) => {
           return;
         }
         if (error instanceof Error) {
+          captureError(error, {
+            feature: 'diary',
+            operation: 'read_monthly',
+            year,
+            month,
+          });
           setRequest({
             status: 'error',
             error: error,
@@ -61,7 +69,7 @@ const useMonthlyDiaries = ({ year, month }: { year: number; month: Month }) => {
         }
       }
     },
-    [year, month, track],
+    [year, month, track, captureError],
   );
 
   useEffect(() => {
