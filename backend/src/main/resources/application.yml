@@ -88,6 +88,14 @@ app:
       ttl: 14d
 
 harudle:
+  image-integrity:
+    enabled: ${IMAGE_INTEGRITY_ENABLED:false}
+    interval: ${IMAGE_INTEGRITY_INTERVAL:1m}
+    initial-delay: ${IMAGE_INTEGRITY_INITIAL_DELAY:1m}
+    page-size: ${IMAGE_INTEGRITY_PAGE_SIZE:100}
+    max-checks-per-run: ${IMAGE_INTEGRITY_MAX_CHECKS_PER_RUN:500}
+    minimum-age: ${IMAGE_INTEGRITY_MINIMUM_AGE:5m}
+    max-run-duration: ${IMAGE_INTEGRITY_MAX_RUN_DURATION:1m}
   admin:
     image-recovery:
       interval: ${ADMIN_IMAGE_RECOVERY_INTERVAL:10s}
