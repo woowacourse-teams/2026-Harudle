@@ -163,6 +163,21 @@ class SecurityConfigTest {
     }
 
     @Test
+    @DisplayName("내부 Prometheus 수집 경로만 인증 없이 조회할 수 있다")
+    void exposesOnlyPrometheusActuatorEndpoint() throws Exception {
+        mockMvc.perform(get("/actuator/prometheus"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("jvm_memory_used_bytes")));
+
+        mockMvc.perform(get("/actuator/env"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/actuator/env")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + issueAccessToken(UUID.randomUUID())))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     @DisplayName("Scalar 문서는 Access Token 없이 접근할 수 있다")
     void allowsScalarWithoutAccessToken() throws Exception {
         mockMvc.perform(get("/scalar"))
