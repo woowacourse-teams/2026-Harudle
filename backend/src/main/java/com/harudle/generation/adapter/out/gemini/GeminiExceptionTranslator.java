@@ -10,10 +10,18 @@ public final class GeminiExceptionTranslator {
 
     private static final int REQUEST_TIMEOUT_STATUS_CODE = 408;
     private static final int GATEWAY_TIMEOUT_STATUS_CODE = 504;
+    private static final int TOO_MANY_REQUESTS_STATUS_CODE = 429;
     private static final String DEADLINE_EXCEEDED_STATUS = "DEADLINE_EXCEEDED";
 
     public AiGenerationException translate(String operation, Throwable cause) {
-        AiGenerationErrorType errorType = resolveErrorType(cause);
+        return translate(operation, cause, resolveErrorType(cause));
+    }
+
+    AiGenerationException translate(
+            String operation,
+            Throwable cause,
+            AiGenerationErrorType errorType
+    ) {
         String message = createMessage(operation, errorType);
 
         return new AiGenerationException(
@@ -33,6 +41,9 @@ public final class GeminiExceptionTranslator {
     }
 
     private static AiGenerationErrorType resolveApiErrorType(ApiException exception) {
+        if (exception.code() == TOO_MANY_REQUESTS_STATUS_CODE) {
+            return AiGenerationErrorType.RATE_LIMITED;
+        }
         if (isTimeoutApiException(exception)) {
             return AiGenerationErrorType.TIMEOUT;
         }

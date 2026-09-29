@@ -3,6 +3,7 @@ package com.harudle.generation.adapter.out.gemini;
 import com.harudle.common.logging.ExternalApiFailure;
 import com.harudle.common.logging.ExternalApiLogger;
 import com.harudle.common.logging.ExternalApiResponseDiagnostics;
+import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
 import org.jspecify.annotations.NullMarked;
 
@@ -50,9 +51,14 @@ public final class GeminiFailureReporter {
             String operation,
             String translationOperation,
             String failureType,
+            AiGenerationErrorType errorType,
             Exception exception
     ) {
-        AiGenerationException translated = exceptionTranslator.translate(translationOperation, exception);
+        AiGenerationException translated = exceptionTranslator.translate(
+                translationOperation,
+                exception,
+                errorType
+        );
         externalApiLogger.error(
                 new ExternalApiFailure(
                         PROVIDER,
@@ -73,10 +79,16 @@ public final class GeminiFailureReporter {
             ExternalApiResponseDiagnostics diagnostics,
             Exception exception
     ) {
-        AiGenerationException translated = exceptionTranslator.translate(translationOperation, exception);
-        String failureType = MAX_TOKENS.equals(diagnostics.finishReason())
-                ? OUTPUT_TRUNCATED
-                : RESPONSE_PROCESSING_ERROR;
+        boolean outputTruncated = MAX_TOKENS.equals(diagnostics.finishReason());
+        String failureType = outputTruncated ? OUTPUT_TRUNCATED : RESPONSE_PROCESSING_ERROR;
+        AiGenerationErrorType errorType = outputTruncated
+                ? AiGenerationErrorType.OUTPUT_TRUNCATED
+                : AiGenerationErrorType.RESPONSE_PROCESSING_ERROR;
+        AiGenerationException translated = exceptionTranslator.translate(
+                translationOperation,
+                exception,
+                errorType
+        );
         externalApiLogger.error(
                 new ExternalApiFailure(
                         PROVIDER,

@@ -43,9 +43,20 @@ class GeminiExceptionTranslatorTest {
     }
 
     @Test
-    @DisplayName("Gemini 응답 변환 오류를 제공자 오류로 변환한다")
-    void translateResponseMappingException() {
-        IllegalArgumentException cause = new IllegalArgumentException("invalid response");
+    @DisplayName("Gemini의 429 오류를 요청 제한 오류로 변환한다")
+    void translateRateLimitException() {
+        ClientException cause = new ClientException(429, "RESOURCE_EXHAUSTED", "rate limited");
+
+        AiGenerationException exception = translator.translate("스토리보드 생성", cause);
+
+        assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.RATE_LIMITED);
+        assertThat(exception).hasCause(cause);
+    }
+
+    @Test
+    @DisplayName("구체적으로 분류되지 않은 예외는 기본 제공자 오류로 변환한다")
+    void translateUnclassifiedException() {
+        IllegalArgumentException cause = new IllegalArgumentException("unclassified failure");
 
         AiGenerationException exception = translator.translate("스토리보드 생성", cause);
 
