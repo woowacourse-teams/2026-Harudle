@@ -8,7 +8,10 @@ import com.harudle.admin.presentation.dto.AdminUserSearchResponse;
 import com.harudle.admin.query.AdminUserPage;
 import com.harudle.admin.service.AdminGenerationUsageService;
 import com.harudle.admin.service.AdminUserQueryService;
+import com.harudle.common.error.ApiErrorResponses;
+import com.harudle.common.error.ErrorType;
 import com.harudle.common.validation.IdempotencyKeyParser;
+import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -45,9 +48,17 @@ class AdminUserController {
     }
 
     @GetMapping
+    @ApiErrorResponses({
+            ErrorType.VALIDATION_ERROR,
+            ErrorType.UNAUTHORIZED,
+            ErrorType.FORBIDDEN
+    })
     AdminUserSearchResponse search(
+            @Parameter(description = "사용자 이름 일부 또는 정확한 사용자 ID (UUID). 빈 값이면 전체 조회")
             @RequestParam(defaultValue = "") String query,
+            @Parameter(description = "페이지 번호 (0부터 시작)")
             @RequestParam(defaultValue = "0") @Min(0) @Max(MAX_PAGE) int page,
+            @Parameter(description = "페이지당 항목 수 (1~100)")
             @RequestParam(defaultValue = "20") @Min(1) @Max(MAX_PAGE_SIZE) int size
     ) {
         AdminUserPage result = adminUserQueryService.search(query, page, size);
@@ -55,11 +66,28 @@ class AdminUserController {
     }
 
     @GetMapping("/{userId}")
+    @ApiErrorResponses({
+            ErrorType.VALIDATION_ERROR,
+            ErrorType.UNAUTHORIZED,
+            ErrorType.FORBIDDEN,
+            ErrorType.USER_NOT_FOUND
+    })
     AdminUserDetailResponse findDetail(@PathVariable UUID userId) {
         return AdminUserDetailResponse.from(adminUserQueryService.findDetail(userId));
     }
 
     @PatchMapping("/{userId}/generation-usage/restore")
+    @ApiErrorResponses({
+            ErrorType.VALIDATION_ERROR,
+            ErrorType.INVALID_IDEMPOTENCY_KEY,
+            ErrorType.UNAUTHORIZED,
+            ErrorType.FORBIDDEN,
+            ErrorType.INVALID_CSRF_TOKEN,
+            ErrorType.USER_NOT_FOUND,
+            ErrorType.INACTIVE_USER,
+            ErrorType.GENERATION_USAGE_CONFLICT,
+            ErrorType.IDEMPOTENCY_KEY_CONFLICT
+    })
     AdminGenerationUsageResponse restoreGenerationUsage(
             @PathVariable UUID userId,
             @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
@@ -75,11 +103,28 @@ class AdminUserController {
     }
 
     @PutMapping("/{userId}/generation-usage/reset")
+    @ApiErrorResponses({
+            ErrorType.VALIDATION_ERROR,
+            ErrorType.UNAUTHORIZED,
+            ErrorType.FORBIDDEN,
+            ErrorType.INVALID_CSRF_TOKEN,
+            ErrorType.USER_NOT_FOUND,
+            ErrorType.INACTIVE_USER
+    })
     AdminGenerationUsageResponse resetGenerationUsage(@PathVariable UUID userId) {
         return AdminGenerationUsageResponse.from(adminGenerationUsageService.reset(userId));
     }
 
     @PutMapping("/{userId}/generation-limit")
+    @ApiErrorResponses({
+            ErrorType.VALIDATION_ERROR,
+            ErrorType.UNAUTHORIZED,
+            ErrorType.FORBIDDEN,
+            ErrorType.INVALID_CSRF_TOKEN,
+            ErrorType.USER_NOT_FOUND,
+            ErrorType.INACTIVE_USER,
+            ErrorType.GENERATION_LIMIT_BELOW_USAGE
+    })
     ResponseEntity<Void> changeGenerationLimit(
             @PathVariable UUID userId,
             @Valid @RequestBody AdminGenerationLimitRequest request

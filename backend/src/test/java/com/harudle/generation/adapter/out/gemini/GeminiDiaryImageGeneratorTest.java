@@ -21,6 +21,8 @@ import com.google.genai.types.Part;
 import com.harudle.common.logging.ExternalApiFailure;
 import com.harudle.common.logging.ExternalApiLogger;
 import com.harudle.generation.config.GeminiGenerationProperties;
+import com.harudle.generation.diary.domain.FocalColor;
+import com.harudle.generation.diary.domain.ScenePlan;
 import com.harudle.generation.diary.domain.StoryPanel;
 import com.harudle.generation.diary.domain.Storyboard;
 import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
@@ -98,6 +100,10 @@ class GeminiDiaryImageGeneratorTest {
         assertThat(parts.get(2).text()).get().asString()
                 .startsWith("[Final Task]\nSELECTED STORY:")
                 .doesNotContain("IMAGE STYLE PROMPT")
+                .contains("ENVIRONMENT FOR THIS STORY:\nKeep the same cafe across all panels.")
+                .contains("FOCAL COLOR SUGGESTIONS — NOT VISIBLE TEXT:\n"
+                        + "- Panel 2: fill the entire visible cover of the existing Prop 2 "
+                        + "with uniform opaque #A99BE8; keep the same color in every appearance.")
                 .contains("Panel 1 — TOP LEFT — SETUP:")
                 .contains("Caption reads exactly: \"캡션 1\"")
                 .contains("This panel contains exactly one readable text block: its assigned caption.")
@@ -232,6 +238,10 @@ class GeminiDiaryImageGeneratorTest {
                         createPanel(2, "캡션 2"),
                         createPanel(3, "캡션 3"),
                         createPanel(4, "캡션 4")
+                ),
+                new ScenePlan(
+                        "Keep the same cafe across all panels.",
+                        List.of(new FocalColor("Prop 2", "cover", "#A99BE8", List.of(2)))
                 )
         );
     }

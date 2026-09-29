@@ -1,6 +1,8 @@
 package com.harudle.diary.presentation;
 
 import com.harudle.auth.presentation.AuthenticatedUserIdResolver;
+import com.harudle.common.error.ApiErrorResponses;
+import com.harudle.common.error.ErrorType;
 import com.harudle.common.validation.IdempotencyKeyParser;
 import com.harudle.diary.service.DiaryCreationService;
 import com.harudle.diary.service.DiaryDeletionService;
@@ -72,6 +74,21 @@ class DiaryController {
             @ApiResponse(responseCode = "201", description = "새 일기 생성 완료"),
             @ApiResponse(responseCode = "200", description = "멱등 재요청의 기존 일기 반환")
     })
+    @ApiErrorResponses({
+            ErrorType.VALIDATION_ERROR,
+            ErrorType.INVALID_IDEMPOTENCY_KEY,
+            ErrorType.UNAUTHORIZED,
+            ErrorType.INVALID_CSRF_TOKEN,
+            ErrorType.DIARY_NOT_FOUND,
+            ErrorType.GENERATION_IN_PROGRESS,
+            ErrorType.IDEMPOTENCY_KEY_CONFLICT,
+            ErrorType.DAILY_GENERATION_LIMIT_EXCEEDED,
+            ErrorType.AI_PROVIDER_ERROR,
+            ErrorType.GENERATION_UNAVAILABLE,
+            ErrorType.GENERATION_INTERRUPTED,
+            ErrorType.IMAGE_STORAGE_ERROR,
+            ErrorType.AI_PROVIDER_TIMEOUT
+    })
     @PostMapping
     public ResponseEntity<CreateDiaryResponse> create(
             Authentication authentication,
@@ -102,10 +119,17 @@ class DiaryController {
             summary = "월간 일기 조회",
             description = "지정한 연·월의 모든 날짜와 일기 요약을 최신 날짜순으로 조회합니다."
     )
+    @ApiErrorResponses({
+            ErrorType.VALIDATION_ERROR,
+            ErrorType.UNAUTHORIZED,
+            ErrorType.IMAGE_STORAGE_ERROR
+    })
     @GetMapping
     public DiaryTimelineResponse getTimeline(
             Authentication authentication,
+            @Parameter(description = "조회할 연도 (1~9999)")
             @RequestParam @Min(MIN_API_YEAR) @Max(MAX_API_YEAR) int year,
+            @Parameter(description = "조회할 월 (1~12)")
             @RequestParam @Min(MIN_API_MONTH) @Max(MAX_API_MONTH) int month
     ) {
         UUID userId = authenticatedUserIdResolver.resolve(authentication);
@@ -116,6 +140,13 @@ class DiaryController {
             summary = "일기 상세 조회",
             description = "인증된 사용자가 소유한 삭제되지 않은 일기와 생성 결과를 조회합니다."
     )
+    @ApiErrorResponses({
+            ErrorType.VALIDATION_ERROR,
+            ErrorType.UNAUTHORIZED,
+            ErrorType.FORBIDDEN,
+            ErrorType.DIARY_NOT_FOUND,
+            ErrorType.IMAGE_STORAGE_ERROR
+    })
     @GetMapping("/{diaryId}")
     public DiaryDetailResponse getDetail(
             Authentication authentication,
@@ -130,6 +161,12 @@ class DiaryController {
             description = "본인 소유의 일기를 소프트 삭제합니다. 이미 없거나 삭제된 경우에도 성공합니다."
     )
     @ApiResponse(responseCode = "204", description = "일기 삭제 완료")
+    @ApiErrorResponses({
+            ErrorType.VALIDATION_ERROR,
+            ErrorType.UNAUTHORIZED,
+            ErrorType.FORBIDDEN,
+            ErrorType.INVALID_CSRF_TOKEN
+    })
     @DeleteMapping("/{diaryId}")
     public ResponseEntity<Void> delete(
             Authentication authentication,
@@ -144,6 +181,10 @@ class DiaryController {
             summary = "현재 연속 기록 조회",
             description = "성공한 생성 날짜를 기준으로 현재 연속 기록을 조회하며, 삭제된 일기의 날짜도 연속 기록에 유지합니다."
     )
+    @ApiErrorResponses({
+            ErrorType.UNAUTHORIZED,
+            ErrorType.IMAGE_STORAGE_ERROR
+    })
     @GetMapping("/current-streak")
     public DiaryStreakResponse getCurrentStreak(
             Authentication authentication

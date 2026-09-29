@@ -2,11 +2,13 @@ package com.harudle.generation.diary.domain;
 
 import com.harudle.common.validation.TextValidator;
 import java.util.List;
+import java.util.Locale;
 
 public record Storyboard(
         String title,
         String castContinuity,
-        List<StoryPanel> panels
+        List<StoryPanel> panels,
+        ScenePlan scenePlan
 ) {
 
     static final int PANEL_COUNT = 4;
@@ -19,6 +21,11 @@ public record Storyboard(
                 "등장인물 연속성은 필수입니다."
         );
         panels = copyAndValidatePanels(panels);
+        validateScenePlan(panels, scenePlan);
+    }
+
+    public Storyboard(String title, String castContinuity, List<StoryPanel> panels) {
+        this(title, castContinuity, panels, null);
     }
 
     private static String normalizeTitle(String title) {
@@ -70,6 +77,25 @@ public record Storyboard(
 
         if (distinctCaptionCount != PANEL_COUNT) {
             throw new IllegalArgumentException("각 패널의 캡션은 서로 달라야 합니다.");
+        }
+    }
+
+    private static void validateScenePlan(List<StoryPanel> panels, ScenePlan scenePlan) {
+        if (scenePlan == null) {
+            return;
+        }
+        for (FocalColor focalColor : scenePlan.focalColors()) {
+            List<Integer> actualPanels = panels.stream()
+                    .filter(panel -> panel.props().stream()
+                            .anyMatch(prop -> prop.toLowerCase(Locale.ROOT)
+                                    .equals(focalColor.prop().toLowerCase(Locale.ROOT))))
+                    .map(StoryPanel::panelNumber)
+                    .toList();
+            if (!actualPanels.equals(focalColor.panelNumbers())) {
+                throw new IllegalArgumentException(
+                        "색상 대상 소품은 등장하는 모든 패널의 props와 일치해야 합니다."
+                );
+            }
         }
     }
 }
