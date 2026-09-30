@@ -17,6 +17,46 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  monitoring-config:
+    name: Monitoring deployment config
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Validate environment separation
+        run: |
+          printf 'DEPLOY_ENV=dev\n' > deploy/.env
+          trap 'rm -f deploy/.env' EXIT
+
+          prod="$(docker compose -f deploy/compose.prod.yaml config --format json)"
+          dev="$(docker compose -f deploy/compose.prod.yaml -f deploy/compose.dev.yaml config --format json)"
+          jq -e '.services.backend.logging.options["awslogs-group"] == "/harudle/prod/backend"
+            and .services.backend.environment.CONSOLE_LOG_STRUCTURED_FORMAT == "logstash"
+            and .services.backend.logging.options["awslogs-multiline-pattern"] == null
+            and .services.backend.ports[0].host_ip == "127.0.0.1"
+            and .services.backend.ports[0].published == "19091"' <<<"${prod}"
+          jq -e '.services.backend.logging.options["awslogs-group"] == "/harudle/dev/backend"
+            and .services.frontend.logging.options["awslogs-group"] == "/harudle/dev/frontend-nginx"
+            and .services.backend.logging.options["awslogs-create-group"] == "false"
+            and .services.backend.ports[0].host_ip == "127.0.0.1"
+            and .services.backend.ports[0].published == "19091"' <<<"${dev}"
+
+          jq -e '.logs.metrics_collected.prometheus.emf_processor.metric_namespace == "Harudle/Dev"' \
+            deploy/monitoring/cloudwatch-agent.dev.json
+          jq -e '.logs.metrics_collected.prometheus.emf_processor.metric_namespace == "Harudle/Prod"' \
+            deploy/monitoring/cloudwatch-agent.prod.json
+
+          bash -c 'source deploy/scripts/compose_environment.sh; configure_compose "$PWD/deploy"; test "$DEPLOY_ENV_VALUE" = dev'
+          printf 'DEPLOY_ENV=prod\n' > deploy/.env
+          bash -c 'source deploy/scripts/compose_environment.sh; configure_compose "$PWD/deploy"; test "$DEPLOY_ENV_VALUE" = prod'
+          printf '\n' > deploy/.env
+          if bash -c 'source deploy/scripts/compose_environment.sh; configure_compose "$PWD/deploy"'; then
+            echo 'DEPLOY_ENV must not default to prod.' >&2
+            exit 1
+          fi
+
   backend-test:
     name: Backend Test
     if: github.base_ref != 'develop-frontend'

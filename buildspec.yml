@@ -52,6 +52,7 @@ artifacts:
     - appspec.yml
     - deploy/compose.dev.yaml
     - deploy/compose.prod.yaml
+    - deploy/monitoring/**/*
     - deploy/scripts/**/*
     - build-artifacts/*
   discard-paths: no
