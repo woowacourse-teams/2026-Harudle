@@ -1,13 +1,13 @@
 # dev/prod 관측 연결
 
-이 디렉터리의 설정은 CodeDeploy 아티팩트로 EC2의 `/opt/harudle/monitoring`에 복사된다. 애플리케이션 로그는 Docker `awslogs` 드라이버가 CloudWatch Logs에 직접 보내고, CloudWatch Agent는 호스트의 `127.0.0.1:19091/actuator/prometheus`를 1분마다 수집한다. Agent 설정은 기존 호스트 메트릭 구성을 지우지 않도록 **배포 후 별도로** 적용한다. PR 병합만으로 대시보드·Discord 알람이 완성되는 것은 아니다.
+이 디렉터리의 설정은 CodeDeploy 아티팩트로 EC2의 `/opt/harudle/monitoring`에 복사된다. 백엔드와 Nginx 로그는 Docker `awslogs` 드라이버가 CloudWatch Logs에 직접 보낸다. 이 CloudWatch Agent 설정은 호스트의 `127.0.0.1:19091/actuator/prometheus`를 1분마다 수집해 EMF 로그로 게시한다. Agent 설정은 기존 호스트 메트릭 구성을 지우지 않도록 **배포 후 별도로** 적용한다. PR 병합만으로 대시보드·Discord 알람이 완성되는 것은 아니다.
 
 실제 AWS 리소스 확인과 적용 순서는 [인프라 적용 계획](infrastructure-rollout.md)에 정리했다. S3 폴더(prefix) 분리는 다른 팀원이 담당하며, 병합 전에 그 작업의 저장·조회·삭제·기존 이미지 인수 조건을 확인한다.
 
 ## dev 배포 전에 확인
 
 1. S3 저장 경로 분리를 담당한 팀원에게 같은 버킷 안에서 dev/prod의 `S3_GENERATED_PREFIX`가 실제로 다른지, 새 이미지의 저장·조회·폐기 삭제가 기대한 경로에서 동작하는지 인수받는다. 이 설정은 **새 업로드의 객체 키 생성에만** 적용된다. 기존 DB 이미지 키와 프롬프트의 참조 이미지 키는 그대로 조회하며, 복구가 기존 키에 다시 저장할 수 있으므로 이동·권한 변경 전에 함께 검증한다. 폴더(prefix) 분리만으로 다른 환경 객체에 대한 삭제 권한이 차단되지는 않는다. 교차 prefix 쓰기·삭제의 IAM 제한은 우테코 공유 인프라에서 적용 가능한지 확인하고, 불가능하다면 잔여 위험과 삭제 범위 검증 결과를 기록한다. 경로 분리 인수가 끝나기 전에는 dev 자동 배포를 시작하지 않는다.
-2. dev 로그 그룹 `/harudle/dev/backend`, `/harudle/dev/frontend-nginx`, `/harudle/dev/prometheus-emf`를 미리 만들고 보존 기간을 정한다. dev는 14일, prod는 30일을 시작값으로 권장한다. 이미 있는 prod 로그 그룹의 보존 기간은 먼저 확인한다.
+2. 확인된 dev 로그 그룹 `/harudle/dev/backend`, `/harudle/dev/frontend-nginx`, `/harudle/dev/prometheus-emf`는 Standard 클래스·14일 보존이다. prod 백엔드·프론트 로그 그룹은 Standard 클래스·30일 보존으로 확인됐다. 배포 전 그룹과 보존 기간을 다시 확인한다.
 3. dev EC2의 **Docker daemon이 쓰는 인스턴스 역할**에 해당 로그 그룹의 `logs:CreateLogStream`, `logs:PutLogEvents` 권한이 있는지 확인한다. dev Compose는 그룹을 자동 생성하지 않는다. 그룹 또는 권한이 없으면 awslogs 초기화 실패로 컨테이너 배포가 실패한다.
 4. 호스트의 `19091` 포트가 비어 있는지, Docker 버전과 보안 그룹·방화벽에서 외부 접근이 차단되는지 확인한다. Compose와 Agent 수집 대상이 같은 고정 포트를 사용한다.
 5. `/opt/harudle/.env`에 `DEPLOY_ENV=dev`가 명시됐는지 확인한다. prod의 `.env`에도 `DEPLOY_ENV=prod`를 명시해야 한다. 값이 없으면 배포를 중단한다.
@@ -28,7 +28,7 @@ dev에서는 `compose.dev.yaml`을 추가하고 prod에서는 추가하지 않�
 
 ## CloudWatch Agent
 
-호스트에 Agent가 이미 설치되어 있다면 기존 활성 설정과 파일 이름을 먼저 기록한다. 이 파일은 추가 조각이므로 `fetch-config`로 기존 구성을 대체하지 않는다. 현재 환경에 해당하는 파일 **하나만** `append-config`로 적용한다.
+호스트에 Agent가 이미 설치되어 있다면 기존 활성 설정과 파일 이름을 먼저 기록한다. 이 파일은 추가 조각이므로 `fetch-config`로 기존 구성을 대체하지 않는다. 현재 환경에 해당하는 파일 **하나만** `append-config`로 적용한다. dev 호스트에서 이 명령을 실행할 접근 경로는 아직 확인되지 않았다.
 
 ```bash
 sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
@@ -48,9 +48,9 @@ prod에서는 위 명령의 파일명을 `cloudwatch-agent.prod.json`으로 바�
 | `harudle_image_load_failures_total` | 로그인 사용자 타임라인·상세 화면의 이미지 실패 신고를 받은 횟수. 프론트 팀원의 신고 코드가 별도 배포되기 전에는 0으로 유지됨 |
 | `http_server_requests_seconds_count`, `hikaricp_connections_pending` | API 전체 요청·5xx 수·오류 비율(`job`, `outcome`, `status` 차원)과 DB 연결 대기 |
 
-`/actuator/prometheus`의 `*_total`은 프로세스 시작부터 누적된 값이다. 다만 CloudWatch Agent는 Prometheus 카운터를 이전 스크레이프 대비 **증가분**으로 변환해 EMF/CloudWatch에 보낸다. 첫 스크레이프에는 이전 값이 없어 증가분을 내보내지 않는다. 따라서 Agent가 게시한 CloudWatch 카운터의 알람은 실제 dev 샘플을 확인한 뒤 5분 또는 10분 기간의 `Sum`으로 평가한다. 누적 원본에 쓰는 `DIFF`나 `RATE`를 CloudWatch 값에 다시 적용하지 않는다. [AWS 카운터 변환 설명](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/ContainerInsights-Prometheus-metrics-conversion.html)을 참고한다. `harudle_generation_executions_total{result="returned"}`는 실행기가 값을 반환했다는 뜻이며 DB 최종 성공이나 브라우저 표시 성공을 뜻하지 않는다. `GENERATION_INTERRUPTED`는 DB 상태가 아니라 실패 `errorCode`다. S3 `get_object`는 서버가 참조 이미지를 읽는 작업이지 브라우저의 완성 이미지 조회가 아니다. `head_object{result="missing"}`은 점검이나 복구 중 예상된 결과일 수 있으므로 그 값만으로 알리지 않는다.
+`/actuator/prometheus`의 `*_total`은 프로세스 시작부터 누적된 값이다. 다만 CloudWatch Agent는 Prometheus 카운터를 이전 스크레이프 대비 **증가분**으로 변환해 EMF/CloudWatch에 보낸다. 첫 스크레이프에는 이전 값이 없어 증가분을 내보내지 않는다. 따라서 Agent가 게시한 CloudWatch 카운터의 알람은 실제 dev 샘플을 확인한 뒤 5분 또는 15분 기간의 `Sum`으로 평가한다. 누적 원본에 쓰는 `DIFF`나 `RATE`를 CloudWatch 값에 다시 적용하지 않는다. [AWS 카운터 변환 설명](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/ContainerInsights-Prometheus-metrics-conversion.html)을 참고한다. `harudle_generation_executions_total{result="returned"}`는 실행기가 값을 반환했다는 뜻이며 DB 최종 성공이나 브라우저 표시 성공을 뜻하지 않는다. `GENERATION_INTERRUPTED`는 DB 상태가 아니라 실패 `errorCode`다. S3 `get_object`는 서버가 참조 이미지를 읽는 작업이지 브라우저의 완성 이미지 조회가 아니다. `head_object{result="missing"}`은 점검이나 복구 중 예상된 결과일 수 있으므로 그 값만으로 알리지 않는다.
 
-생성 최종 상태, 예상 밖 오류 단계, 로그인 사용자 이미지 표시 실패(`timeline`·`detail`) 카운터는 앱 시작 시 가능한 태그 조합을 0으로 등록한다. Agent가 오류 발생 **전**에 그 시계열을 한 번 수집하면 다음 수집에서 첫 오류의 증가분을 계산할 수 있다. 앱 시작 또는 Agent 재시작 뒤 첫 수집보다 먼저 발생한 오류는 여전히 CloudWatch 증가분에서 빠질 수 있다. 따라서 **생성 내부 오류와 만료 처리의 첫 건 알람은 카운터가 아닌 구조화 로그 지표 필터**로 집계한다. 필터 후보는 아래와 같으며, dev의 실제 JSON 로그로 일치 여부를 시험한다. 카운터는 추세 관찰과 로그 집계값 대조에 사용한다.
+생성 최종 상태, 예상 밖 오류 단계, 로그인 사용자 이미지 표시 실패(`timeline`·`detail`) 카운터는 앱 시작 시 가능한 태그 조합을 0으로 등록한다. Agent가 오류 발생 **전**에 그 시계열을 한 번 수집하면 다음 수집에서 첫 오류의 증가분을 계산할 수 있다. 앱 시작 또는 Agent 재시작 뒤 첫 수집보다 먼저 발생한 오류는 여전히 CloudWatch 증가분에서 빠질 수 있다. 따라서 **생성 내부 오류와 만료 처리의 첫 건 알람은 카운터가 아닌 구조화 로그 지표 필터**로 집계한다. 필터 패턴은 아래와 같으며, dev의 실제 JSON 로그로 일치 여부를 시험한다. 카운터는 추세 관찰과 로그 집계값 대조에 사용한다.
 
 ```text
 { $.event = "generation_unexpected_failure" }
@@ -59,9 +59,9 @@ prod에서는 위 명령의 파일명을 `cloudwatch-agent.prod.json`으로 바�
 
 두 번째 로그는 DB 커밋 뒤 애플리케이션의 콜백에서 기록된다. 커밋 직후 프로세스가 종료되면 해당 로그도 빠질 수 있으므로, 알람이 DB 상태 변경의 완전한 감사 기록을 보장하지는 않는다. [CloudWatch JSON 필터 구문](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/FilterAndPatternSyntax.html)을 참고한다.
 
-이미지 실패 신고 API는 `POST /api/v1/telemetry/image-load-failures/{timeline|detail}`이며 인증·CSRF가 필요한 본문 없는 요청에 204로 응답한다. 이번 PR에는 프론트 신고 코드가 포함되지 않는다. 담당 팀원의 프론트 작업이 dev에 합류하고 두 화면의 실제 실패 신고가 API·지표에 도착하는지 확인한 뒤에만 `image-load-failure` 알람을 활성화한다. 그전의 지표 0은 이미지 표시 성공을 뜻하지 않는다.
+이미지 실패 신고 API는 `POST /api/v1/telemetry/image-load-failures/{timeline|detail}`이며 인증·CSRF가 필요한 본문 없는 요청에 204로 응답한다. 수락한 신고마다 `image_load_failure_reported` 구조화 로그를 한 번 기록하고, dev에는 이 이벤트의 로그 지표 필터를 준비했다. 이번 PR에는 프론트 신고 코드가 포함되지 않는다. 담당 팀원의 프론트 작업이 dev에 합류하고 두 화면의 실제 실패 신고가 API·지표·로그 필터에 도착하는지 확인한 뒤에만 `image-load-failure` 알람을 만든다. 그전의 지표 0은 이미지 표시 성공을 뜻하지 않는다.
 
-Gemini 단계·S3 작업/URL 서명·HTTP 상태별 카운터는 새 태그 조합이 첫 이벤트에서 생성될 수 있어 같은 첫 수집 누락 위험이 있다. 첫 **한 건**부터 감지해야 하는 S3/Gemini 오류는 `event=external_api_failure`와 `provider`·`operation`·`failureType`을 사용하는 CloudWatch Logs 지표 필터로 세고, Agent 카운터는 추세 관찰과 대조에 쓴다. 필터가 원본 실패 로그 한 건을 정확히 한 번 세는지 dev에서 확인한다. 이 로그 지표 필터와 경보는 아직 AWS에 생성되지 않았으므로 적용·검증 전에는 첫 건 경보를 보장할 수 없다. 이미지 표시 실패에는 대응하는 구조화 실패 로그가 없어, 서버 또는 Agent 시작 직후 첫 수집 전의 보고는 증가분에서 빠질 수 있다.
+Gemini 단계·S3 작업/URL 서명·HTTP 상태별 카운터는 새 태그 조합이 첫 이벤트에서 생성될 수 있어 같은 첫 수집 누락 위험이 있다. 첫 **한 건**부터 감지해야 하는 S3/Gemini 오류는 `event=external_api_failure`와 `provider`·`operation`·`failureType`을 사용하는 CloudWatch Logs 지표 필터로 세고, Agent 카운터는 추세 관찰과 대조에 쓴다. 필터가 원본 실패 로그 한 건을 정확히 한 번 세는지 dev에서 확인한다. 2026-09-30 점검 시점 dev 로그 지표 필터 13개와 그중 12개에 대한 경보, EC2 상태 검사 경보 1개가 생성됐지만, dev 백엔드 로그 스트림은 0개이고 SNS 구독·Discord 전달도 연결 전이다. 앱 로그는 Docker `awslogs`가 직접 전송한다. 새 계측 코드는 아직 dev에 배포되지 않았고 Docker 로그 쓰기 권한도 미확인이므로, 스트림 0개만으로 수집 장애를 판단할 수 없다. 실제 로그 일치와 첫 건 알림은 아직 검증되지 않았다. [현재 AWS 현황](infrastructure-rollout.md#지금-확인된-것과-미확인인-것)을 참고한다. 이미지 신고도 구조화 로그와 필터는 준비됐지만, 프론트 연동과 실제 유입 전에는 첫 건 알림을 보장하지 않는다.
 
 dev에서 Agent 버전과 활성 설정을 기록하고, 안전한 테스트 요청 전후의 `/actuator/prometheus` 누적값·`/harudle/dev/prometheus-emf`의 증가분·CloudWatch 5분 `Sum`을 대조한다. 백엔드 재시작 뒤에도 큰 오탐 증가분이나 음수가 나오지 않는지 확인한 다음 알람을 활성화한다. 오류가 발생했을 때만 생성되는 시계열의 데이터 없음은 `notBreaching`으로 취급한다. 반대로 `hikaricp_connections_pending`처럼 매 수집 주기에 나오는 게이지가 dev에서 실제로 연속 게시되는지 확인한 뒤, 그 시계열의 무데이터를 `breaching`으로 보는 **별도 수집 중단 알람**을 둔다. Hikari가 연속 게시되지 않으면 Agent 상태를 나타내는 다른 지속 신호를 먼저 정한다. [CloudWatch 결측값 처리](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/alarms-and-missing-data.html)를 참고한다.
 
@@ -81,7 +81,7 @@ DB의 성공 이미지와 S3 객체를 주기적으로 대조하는 전체 점�
 
 CloudWatch Agent는 HTTP 완료 횟수를 전체(`job`), 결과군(`job`, `outcome`), 상태 코드(`job`, `status`) 차원으로 보낸다. Spring의 `outcome=SERVER_ERROR`는 5xx 응답이다. 5분 `Sum`으로 전체 요청 수 `T`와 서버 오류 수 `E`를 구하고 `IF(T >= 20, 100 * E / T, 0)`을 오류 비율(%)로 표시한다. 초기 경보는 **오류 비율 5% 초과가 5분 창 2회 연속**일 때다. 요청이 적어 비율이 불안정한 시간은 기존 **5xx 3건/5분** 경보가 보완한다. `outcome`과 전체 차원에서 같은 요청이 각각 한 번만 집계되는지 dev에서 먼저 확인하고, 재시작 직후 첫 수집 누락도 로그와 대조한다. [Spring HTTP 결과 태그](https://docs.spring.io/spring-boot/reference/actuator/metrics.html), [CloudWatch 지표 수식](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/using-metric-math.html)을 참고한다.
 
-부하 시험에서는 AI 작업 완료까지의 비동기 시간과 API 응답 시간을 별도로 측정한다. 우선 부하 시험 도구가 측정한 **요청별 P95·P99, 5xx 비율, 동시 사용자 수, 초당 요청 수**를 시나리오와 함께 보존한다. 대시보드에는 HTTP `count`와 `sum`으로 계산한 평균, 5xx 비율, Hikari pending, EC2/RDS 자원 지표를 같은 시간축에 놓아 지연 원인을 찾는다. 평균이나 `count`만으로 P95·P99를 계산하지 않는다.
+부하 시험에서는 AI 작업 완료까지의 비동기 시간과 API 응답 시간을 별도로 측정한다. 우선 부하 시험 도구가 측정한 **요청별 P95·P99, 평균 응답 시간, 5xx 비율, 동시 사용자 수, 초당 요청 수**를 시나리오와 함께 보존한다. 현재 Agent 설정은 HTTP `http_server_requests_seconds_count`만 CloudWatch에 보내고 `_sum`은 보내지 않으므로, CloudWatch 대시보드에서 평균 응답 시간을 계산할 수 없다. 지금은 HTTP 요청 수·5xx 비율, Hikari pending, EC2/RDS 자원 지표를 같은 시간축에 놓고 본다. 평균 응답 시간은 `_sum`의 수집 차원·시계열 수·비용을 dev에서 검증한 뒤 추가한다. 평균이나 `count`만으로 P95·P99를 계산하지 않는다.
 
 현재 CloudWatch Agent의 Prometheus 수집기는 **histogram을 버리므로**, 서버에 Micrometer histogram bucket만 켜고 CloudWatch P95·P99 알람을 만들 수 없다. 부하 시험 뒤 API 유형별 지연 목표와 최소 표본 수를 정한다. 운영 지연 경보가 필요하면 두 방식 중 하나를 선택해 dev에서 값과 비용을 검증한다: (1) Micrometer가 계산한 P95·P99 summary quantile을 Agent로 보내되, 이는 인스턴스·URI별 값이라 여러 시계열을 합쳐 전체 백분위를 만들 수 없다. (2) 장기 보존과 집계가 필요하면 Prometheus/AMP가 histogram bucket을 수집하도록 별도 경로를 둔다. 이후 `api-p95`·`api-p99`를 **5분 표본 20건 이상, 합의한 응답 시간 목표 초과가 2개 평가 창 연속**일 때만 활성화한다. [Agent의 지원 유형](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/ContainerInsights-Prometheus-metrics-conversion.html), [Micrometer 백분위의 집계 제한](https://docs.micrometer.io/micrometer/reference/concepts/histogram-quantiles.html)을 참고한다.
 
@@ -91,7 +91,7 @@ CloudWatch Agent는 HTTP 완료 횟수를 전체(`job`), 결과군(`job`, `outco
 
 | 경보 | 초기 조건 | 확인 목적 |
 |---|---|---|
-| EC2 상태 검사 | `StatusCheckFailed`의 `Maximum >= 1` 1분 | 인스턴스·기반 호스트 장애 |
+| EC2 상태 검사 | `StatusCheckFailed`의 `Average >= 1`, 1분 2회 연속 | 인스턴스·기반 호스트 장애 |
 | EC2 CPU·메모리 | CPU 평균 > 85% 또는 `mem_used_percent` 평균 > 90%, 각각 5분 3회 | API 지연·OOM 전 자원 압박 |
 | EC2 디스크 | 서비스 파일시스템 `disk_used_percent` > 85%, 5분 2회 | 로그·이미지 임시 파일로 인한 쓰기 실패 예방 |
 | RDS CPU | `CPUUtilization` 평균 > 85%, 5분 3회 | 쿼리 처리 포화 |
@@ -114,17 +114,19 @@ CloudWatch 알람은 dev/prod를 별도로 만들고, 환경별 SNS 주제를 �
 | 주의 | 로그인 사용자 이미지 표시 실패 증가 3건 | 5분 | 프론트 신고 연동 검증 후 활성화. 오프라인·URL 만료도 가능하므로 S3 누락으로 단정하지 않음 |
 | 즉시 | API 5xx 증가 3건 | 5분 | 사용자 요청 실패 증가 |
 | 주의 | API 5xx 비율 > 5%, 단 전체 요청 20건 이상 | 5분 창 2회 연속 | 요청량이 늘 때 지속되는 장애 감지 |
-| 주의 | 로그 지표 필터 `provider=gemini`, `operation=storyboard_generation\|image_generation`의 429/5xx/timeout 3건, 출력 한도/파싱 오류 2건 | 10분 | 공급자와 단계별 실패 구분 |
+| 주의 | 각 단계의 `RATE_LIMIT\|PROVIDER_5XX\|TIMEOUT` 로그 필터 3건 이상 | 15분, 1회 | Gemini 공급자의 일시 오류를 스토리보드와 이미지 단계별로 감지 |
+| 주의 | 스토리보드의 `OUTPUT_TOKEN_LIMIT\|EMPTY_RESPONSE\|INVALID_JSON\|SCHEMA_VIOLATION\|RESPONSE_PROCESSING_ERROR` 로그 필터 2건 이상 | 15분, 1회 | 스토리보드 응답 오류 감지 |
+| 주의 | 이미지의 `OUTPUT_TOKEN_LIMIT\|IMAGE_PART_MISSING\|IMAGE_PART_INVALID\|RESPONSE_PROCESSING_ERROR` 로그 필터 2건 이상 | 15분, 1회 | 이미지 응답 오류 감지 |
 | 주의 | Hikari pending 연결 지속(`Max` 또는 `Average` 게이지) | 부하 시험 기준 확정 후 | 다음 스프린트 병목 관찰 |
 | 즉시/주의 | EC2 상태 검사·CPU·메모리·디스크, RDS CPU·메모리·저장 공간·연결 수 | 위 자원 경보 표의 각 평가 창 | 앱 실패 전에 서버·DB 고갈 감지 |
 
-CloudWatch Agent가 게시한 카운터는 증가분이고 로그 지표 필터는 로그 발생 건수이므로 각 알람의 5분·10분 `Sum`을 사용한다. 여러 태그 조합을 하나의 조건으로 묶을 때만 metric math로 각 시계열을 합산한다. `DIFF`로 다시 증가량을 계산하지 않는다. 생성 첫 건 필터에는 위 `event`·`status`·`errorCode`를 지정하고, S3/Gemini 로그 필터에는 `event=external_api_failure`를 필수로 지정한다. S3 인증·권한·설정 오류에는 저장·참조 조회·URL 발급을 모두 포함한다. `head_object{result="missing"}`은 경보 대상에서 제외한다. 하나의 Gemini 장애가 생성 실패와 API 502까지 전파될 수 있으므로 Discord 중복 알람을 묶어 대응한다. 소비자 차감은 별도 팀원 작업이므로 공급자 토큰·생성 실행 수를 차감 수로 해석하지 않는다.
+CloudWatch Agent가 게시한 카운터는 증가분이고 로그 지표 필터는 로그 발생 건수이므로 각 알람의 5분·15분 `Sum`을 사용한다. 여러 태그 조합을 하나의 조건으로 묶을 때만 metric math로 각 시계열을 합산한다. `DIFF`로 다시 증가량을 계산하지 않는다. 생성 첫 건 필터에는 위 `event`·`status`·`errorCode`를 지정하고, S3/Gemini 로그 필터에는 `event=external_api_failure`를 필수로 지정한다. S3 인증·권한·설정 오류에는 저장·참조 조회·URL 발급을 모두 포함한다. `head_object{result="missing"}`은 경보 대상에서 제외한다. 하나의 Gemini 장애가 생성 실패와 API 502까지 전파될 수 있으므로 Discord 중복 알람을 묶어 대응한다. 소비자 차감은 별도 팀원 작업이므로 공급자 토큰·생성 실행 수를 차감 수로 해석하지 않는다.
 
 P95·P99 알람은 위의 수집 방식·목표·표본 수가 dev에서 검증되기 전에는 만들지 않는다. API 오류 비율과 EC2·RDS 자원 경보는 검증된 지표가 들어오는 즉시 dev에서 먼저 적용한다.
 
 Discord 전달 함수 `discord_forwarder.py`는 아래 이름만 허용한다. 각 환경에서 `harudle-{env}-{suffix}`로 경보를 만들고 환경별 SNS 주제 ARN, Secrets Manager Webhook ARN을 Lambda 환경 변수 `ALARM_TOPIC_ARN`, `WEBHOOK_SECRET_ARN`에 지정한다. Lambda의 `DEPLOY_ENV`도 해당 환경으로 설정한다. 함수는 CloudWatch의 자유 형식 오류 이유를 전달하지 않고, 환경·알람명·상태·고정 원인 문구만 Discord로 보낸다. `allowed_mentions`는 비활성화한다. 현재 Lambda·SNS·IAM·Webhook 비밀·알람은 저장소 배포에서 자동으로 생성하지 않는다.
 
-연결할 때 SNS 주제 정책은 같은 계정의 해당 환경 `harudle-{env}-*` CloudWatch 알람만 발행할 수 있게 제한한다. Lambda에는 지정한 비밀 하나의 `secretsmanager:GetSecretValue`와 자기 로그 그룹 쓰기만 허용하고, SNS 주제 하나에만 호출 권한을 준다. 비밀이 고객 관리 KMS 키로 암호화됐다면 그 키의 복호화 권한도 별도로 확인한다. Lambda 코드 ZIP의 루트에 `discord_forwarder.py`를 넣고, 배포 시 버전이 바뀌는 아티팩트 키를 사용한다. Lambda 실패 경보를 같은 SNS→Lambda 경로에 연결하면 전달 장애를 알 수 없으므로 독립된 연락 경로로 보낸다. SNS 재전달로 Discord 알림이 중복될 수 있다.
+연결할 때 SNS 주제 정책의 CloudWatch 서비스 Allow 문은 같은 계정의 해당 환경 `harudle-{env}-*` 알람 ARN으로 출처를 제한한다. 이 Allow 문만으로 같은 계정의 별도 identity policy를 통한 발행까지 차단되지는 않는다. Lambda에는 지정한 비밀 하나의 `secretsmanager:GetSecretValue`와 자기 로그 그룹 쓰기만 허용하고, SNS 주제 하나에만 호출 권한을 준다. 비밀이 고객 관리 KMS 키로 암호화됐다면 그 키의 복호화 권한도 별도로 확인한다. Lambda 코드 ZIP의 루트에 `discord_forwarder.py`를 넣고, 배포 시 버전이 바뀌는 아티팩트 키를 사용한다. Lambda 실패 경보를 같은 SNS→Lambda 경로에 연결하면 전달 장애를 알 수 없으므로 독립된 연락 경로로 보낸다. SNS 재전달로 Discord 알림이 중복될 수 있다.
 
 | 경보 이름 suffix | 연결할 조건 |
 |---|---|
@@ -137,8 +139,8 @@ Discord 전달 함수 `discord_forwarder.py`는 아래 이름만 허용한다. �
 | `image-load-failure` | 로그인 사용자 타임라인·상세 화면 이미지 표시 실패 5분간 3건. 프론트 팀원 코드의 신고 연동 검증 전에는 만들거나 활성화하지 않음 |
 | `api-5xx` | API 5xx 증가 |
 | `api-error-rate` | 표본 조건을 만족한 API 5xx 비율 증가 |
-| `gemini-storyboard-errors` | 스토리보드 단계 공급자·형식 오류 |
-| `gemini-image-errors` | 이미지 단계 공급자·형식 오류 |
+| `gemini-storyboard-transient`, `gemini-image-transient` | 각 단계의 공급자 일시 오류 15분간 3건 이상 |
+| `gemini-storyboard-response`, `gemini-image-response` | 각 단계의 응답 처리 오류 15분간 2건 이상 |
 | `hikari-pending` | DB 연결 대기 증가 |
 | `telemetry-stale` | 검증된 지속 게이지의 무데이터로 서버 지표 수집 중단 감지 |
 | `api-p95`, `api-p99` | 지연 수집 방식·목표·표본 수 검증 후 활성화 |

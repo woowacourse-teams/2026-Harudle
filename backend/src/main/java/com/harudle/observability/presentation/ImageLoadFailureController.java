@@ -4,6 +4,8 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -15,6 +17,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/telemetry/image-load-failures")
 class ImageLoadFailureController {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(ImageLoadFailureController.class);
+    private static final String REPORT_EVENT = "image_load_failure_reported";
 
     private final MeterRegistry meterRegistry;
 
@@ -40,5 +45,9 @@ class ImageLoadFailureController {
 
     private void record(String surface) {
         meterRegistry.counter("harudle.image.load.failures", "surface", surface).increment();
+        LOGGER.atInfo()
+                .addKeyValue("event", REPORT_EVENT)
+                .addKeyValue("surface", surface)
+                .log("event={} surface={}", REPORT_EVENT, surface);
     }
 }
