@@ -11,6 +11,7 @@ import com.harudle.generation.diary.service.port.dto.*;
 import java.time.Instant;
 import java.util.*;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.io.ByteArrayResource;
@@ -232,6 +233,24 @@ class AdminImageRecoveryServiceTest {
         assertThat(image.getValue().resource()).isSameAs(original.resource());
         assertThat(image.getValue().mediaType()).isEqualTo(MediaType.IMAGE_PNG);
         verifyNoInteractions(generator, prompts);
+    }
+
+    @Test
+    @DisplayName("썸네일만 남으면 생성이나 저장 없이 검수 대상으로 중단한다")
+    void thumbnailOnlyImageRequiresReviewBeforeRegeneration() {
+        DiaryGeneration optimized = optimizedGeneration();
+        String thumbnailKey = ImageVariantKeys.toThumbnailKeyIfOptimizedDetail(optimized.getImageObjectKey());
+        when(storage.exists(thumbnailKey)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.restore(optimized.getId()))
+                .isInstanceOfSatisfying(ResponseStatusException.class, error -> {
+                    assertThat(error.getStatusCode().value()).isEqualTo(409);
+                    assertThat(error.getReason()).contains("검수");
+                });
+        verifyNoInteractions(generator, prompts);
+        verify(storage, never()).restoreOptimizedIfMissing(anyString(), any());
+        verify(storage, never()).restoreIfMissing(anyString(), any());
+        verify(storage, never()).delete(anyString());
     }
 
     private DiaryGeneration optimizedGeneration() {

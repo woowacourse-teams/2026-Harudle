@@ -79,6 +79,81 @@ class S3ImageStorageTest {
 
     private S3ImageStorage imageStorage;
 
+    @ParameterizedTest
+    @ValueSource(ints = {409, 412})
+    @DisplayName("일반 저장이 기존 파일과 충돌하면 덮어쓰거나 삭제하지 않는다")
+    void storeConflictPreservesExistingObject(int status) {
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenThrow(S3Exception.builder().statusCode(status).build());
+
+        assertThatThrownBy(() -> imageStorage.store(GENERATION_ID, unconvertedImage()))
+                .isInstanceOf(ImageStorageException.class);
+
+        ArgumentCaptor<PutObjectRequest> request = ArgumentCaptor.forClass(PutObjectRequest.class);
+        verify(s3Client).putObject(request.capture(), any(RequestBody.class));
+        assertThat(request.getValue().ifNoneMatch()).isEqualTo("*");
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
+    }
+
+    @Test
+    @DisplayName("업로드 중 기존 파일과 충돌하면 이번 요청에서 새로 저장한 파일만 정리한다")
+    void storeConflictOnlyCleansNewlyCreatedObjects() {
+        List<ImageUploadPreparer.Upload> uploads = List.of(
+                new ImageUploadPreparer.Upload(OBJECT_KEY, generatedImage()),
+                new ImageUploadPreparer.Upload(THUMBNAIL_KEY, unconvertedImage()),
+                new ImageUploadPreparer.Upload(DETAIL_KEY, unconvertedImage())
+        );
+        S3ImageStorage storage = storageWithUploads(uploads);
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenReturn(PutObjectResponse.builder().build(), PutObjectResponse.builder().build())
+                .thenThrow(S3Exception.builder().statusCode(412).build());
+
+        assertThatThrownBy(() -> storage.store(GENERATION_ID, generatedImage()))
+                .isInstanceOf(ImageStorageException.class);
+
+        ArgumentCaptor<PutObjectRequest> puts = ArgumentCaptor.forClass(PutObjectRequest.class);
+        verify(s3Client, times(3)).putObject(puts.capture(), any(RequestBody.class));
+        assertThat(puts.getAllValues()).allSatisfy(request -> assertThat(request.ifNoneMatch()).isEqualTo("*"));
+        ArgumentCaptor<DeleteObjectRequest> deletes = ArgumentCaptor.forClass(DeleteObjectRequest.class);
+        verify(s3Client, times(2)).deleteObject(deletes.capture());
+        assertThat(deletes.getAllValues()).extracting(DeleteObjectRequest::key)
+                .containsExactly(OBJECT_KEY, THUMBNAIL_KEY).doesNotContain(DETAIL_KEY);
+    }
+
+    @Test
+    @DisplayName("상세 이미지 복구가 실패해도 원본과 기존 썸네일을 삭제하지 않는다")
+    void failedDetailRecoveryPreservesOriginalAndThumbnail() {
+        stubOptimizedImages("detail", "thumb");
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenReturn(PutObjectResponse.builder().build())
+                .thenThrow(S3Exception.builder().statusCode(503).build());
+
+        assertThatThrownBy(() -> imageStorage.restoreOptimizedIfMissing(DETAIL_KEY, generatedImage()))
+                .isInstanceOf(ImageStorageException.class);
+
+        ArgumentCaptor<PutObjectRequest> puts = ArgumentCaptor.forClass(PutObjectRequest.class);
+        verify(s3Client, times(2)).putObject(puts.capture(), any(RequestBody.class));
+        assertThat(puts.getAllValues()).extracting(PutObjectRequest::key).containsExactly(OBJECT_KEY, DETAIL_KEY);
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
+    }
+
+    @Test
+    @DisplayName("기존 썸네일이 있으면 복구 중 그 파일을 보존한다")
+    void recoveryPreservesExistingThumbnailOnConflict() {
+        stubOptimizedImages("detail", "thumb");
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenReturn(PutObjectResponse.builder().build(), PutObjectResponse.builder().build())
+                .thenThrow(S3Exception.builder().statusCode(412).build());
+
+        assertThat(imageStorage.restoreOptimizedIfMissing(DETAIL_KEY, generatedImage())).isTrue();
+
+        ArgumentCaptor<PutObjectRequest> puts = ArgumentCaptor.forClass(PutObjectRequest.class);
+        verify(s3Client, times(3)).putObject(puts.capture(), any(RequestBody.class));
+        assertThat(puts.getAllValues().getLast().key()).isEqualTo(THUMBNAIL_KEY);
+        assertThat(puts.getAllValues().getLast().ifNoneMatch()).isEqualTo("*");
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
+    }
+
     @Test
     void restoreUsesOriginalKeyAndConditionalWrite() {
         assertThat(imageStorage.restoreIfMissing(OBJECT_KEY, generatedImage())).isTrue();
@@ -118,17 +193,17 @@ class S3ImageStorageTest {
     }
 
     @Test
-    void missingDetailReplacesStaleThumbnailAfterPreparingBothImages() {
+    @DisplayName("상세 이미지와 썸네일은 기존 파일을 삭제하지 않고 누락분만 복구한다")
+    void missingDetailRestoresWithoutDeletingExistingThumbnail() {
         stubOptimizedImages("detail", "thumb");
 
         assertThat(imageStorage.restoreOptimizedIfMissing(DETAIL_KEY, generatedImage())).isTrue();
 
         var order = inOrder(s3Client);
-        order.verify(s3Client).deleteObject(org.mockito.ArgumentMatchers.<DeleteObjectRequest>argThat(
-                request -> request.key().equals(THUMBNAIL_KEY)));
         order.verify(s3Client).putObject(org.mockito.ArgumentMatchers.<PutObjectRequest>argThat(
                 request -> request.key().equals(DETAIL_KEY) && request.ifNoneMatch().equals("*")),
                 any(RequestBody.class));
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
         order.verify(s3Client).putObject(org.mockito.ArgumentMatchers.<PutObjectRequest>argThat(
                 request -> request.key().equals(THUMBNAIL_KEY) && request.ifNoneMatch().equals("*")),
                 any(RequestBody.class));
@@ -172,9 +247,7 @@ class S3ImageStorageTest {
         assertThat(puts.getAllValues()).extracting(PutObjectRequest::key)
                 .containsExactly(OBJECT_KEY, DETAIL_KEY, THUMBNAIL_KEY);
         assertThat(puts.getAllValues().getFirst().ifNoneMatch()).isEqualTo("*");
-        ArgumentCaptor<DeleteObjectRequest> deletes = ArgumentCaptor.forClass(DeleteObjectRequest.class);
-        verify(s3Client).deleteObject(deletes.capture());
-        assertThat(deletes.getValue().key()).isEqualTo(THUMBNAIL_KEY);
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
     }
 
     @Test
@@ -227,7 +300,14 @@ class S3ImageStorageTest {
                 .thenThrow(S3Exception.builder().statusCode(412).build())
                 .thenReturn(PutObjectResponse.builder().build());
         when(s3Client.headObject(any(software.amazon.awssdk.services.s3.model.HeadObjectRequest.class)))
-                .thenThrow(S3Exception.builder().statusCode(404).build());
+                .thenAnswer(invocation -> {
+                    var request = invocation.getArgument(0,
+                            software.amazon.awssdk.services.s3.model.HeadObjectRequest.class);
+                    if (request.key().equals(THUMBNAIL_KEY)) {
+                        throw S3Exception.builder().statusCode(404).build();
+                    }
+                    return software.amazon.awssdk.services.s3.model.HeadObjectResponse.builder().build();
+                });
         byte[] savedDetail = "saved".getBytes(StandardCharsets.UTF_8);
         when(s3Client.getObject(any(GetObjectRequest.class)))
                 .thenReturn(responseStream(new ByteArrayInputStream(savedDetail), savedDetail.length, "image/webp"));
@@ -237,6 +317,9 @@ class S3ImageStorageTest {
         ArgumentCaptor<GeneratedImage> encoded = ArgumentCaptor.forClass(GeneratedImage.class);
         verify(variantEncoder, times(2)).encode(encoded.capture());
         assertThat(encoded.getAllValues().get(1).resource().getContentAsByteArray()).isEqualTo(savedDetail);
+        ArgumentCaptor<GetObjectRequest> get = ArgumentCaptor.forClass(GetObjectRequest.class);
+        verify(s3Client).getObject(get.capture());
+        assertThat(get.getValue().key()).isEqualTo(DETAIL_KEY);
         ArgumentCaptor<PutObjectRequest> puts = ArgumentCaptor.forClass(PutObjectRequest.class);
         verify(s3Client, times(3)).putObject(puts.capture(), any(RequestBody.class));
         assertThat(puts.getAllValues()).extracting(PutObjectRequest::key)
@@ -402,6 +485,7 @@ class S3ImageStorageTest {
         ArgumentCaptor<PutObjectRequest> puts = ArgumentCaptor.forClass(PutObjectRequest.class);
         verify(s3Client, times(3)).putObject(puts.capture(), any(RequestBody.class));
         assertThat(puts.getAllValues()).extracting(PutObjectRequest::key).containsExactlyElementsOf(keys);
+        assertThat(puts.getAllValues()).allSatisfy(request -> assertThat(request.ifNoneMatch()).isEqualTo("*"));
         verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
     }
 

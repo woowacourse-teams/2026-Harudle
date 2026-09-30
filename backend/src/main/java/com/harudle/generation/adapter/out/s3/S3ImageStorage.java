@@ -270,17 +270,28 @@ public final class S3ImageStorage implements ImageStorage {
             prepared = prepareOptimizedStores(detailKey,
                     new GeneratedImage(storedOriginal.resource(), storedOriginal.mediaType()));
         }
-        // 기존 썸네일이 다른 그림일 수 있으므로, 변환과 크기 검증이 끝난 뒤 제거한다.
-        deleteKeys(ImageVariantKeys.derivedImageKeysExceptDetail(detailKey));
+
         if (!restorePreparedIfMissing(prepared.uploads().getLast())) {
-            return restoreMissingThumbnail(detailKey);
+            return restoreMissingThumbnailFromDetail(detailKey);
         }
+
         for (PreparedStore upload : prepared.uploads()) {
             if (!upload.objectKey().equals(detailKey) && !upload.objectKey().equals(original.objectKey())) {
                 restorePreparedIfMissing(upload);
             }
         }
         return true;
+    }
+
+    private boolean restoreMissingThumbnailFromDetail(String detailKey) {
+        String thumbnailKey = ImageVariantKeys.toThumbnailKeyIfOptimizedDetail(detailKey);
+        if (exists(thumbnailKey)) {
+            return false;
+        }
+
+        PreparedStore thumbnail = prepareThumbnailStore(detailKey, load(detailKey));
+
+        return restorePreparedIfMissing(thumbnail);
     }
 
     private PreparedStores prepareOptimizedStores(String detailKey, GeneratedImage image) {
@@ -455,6 +466,7 @@ public final class S3ImageStorage implements ImageStorage {
                 .key(imageObjectKey)
                 .contentType(generatedImage.mediaType().toString())
                 .contentLength(contentLength)
+                .ifNoneMatch("*")
                 .build();
         return new PreparedStore(imageObjectKey, resource, contentLength, request);
     }
