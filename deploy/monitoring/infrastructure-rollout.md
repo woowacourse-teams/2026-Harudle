@@ -27,7 +27,7 @@ dev 경보 **14개**의 생성과 목록을 확인했다. 로그 필터 경보�
 | ALARM 전달 | 2026-09-30 22:49 KST, SNS에 `AlarmName=harudle-dev-ec2-cpu-high`, `NewStateValue=ALARM`인 시험 메시지를 게시하고 `be-에러알림` 수신 확인 |
 | OK 전달 | 같은 시각대에 같은 이름의 `NewStateValue=OK` 시험 메시지를 게시하고 복귀 수신 확인 |
 | 전송 내용 | 환경·알람명·상태·고정 원인 네 필드. 실제 오류 이유·사용자 데이터·S3 키·서명 URL을 전달하지 않음 |
-| 태그 | Lambda와 SNS에 `Service=techcourse`, `Role=techcourse-etc`, `ProjectTeam=harudle` 저장 확인 |
+| 태그 | SNS·Lambda, dev 앱/EMF 로그 그룹 3개와 Lambda 로그 그룹 1개, dev CloudWatch 경보 14개에 `Service=techcourse`, `Role=techcourse-etc`, `ProjectTeam=harudle` 저장 확인 |
 
 이 시험에서는 **CloudWatch 경보의 실제 상태를 변경하지 않았다.** CPU 장애가 발생했다는 뜻이 아니라 SNS 이후 전달 경로가 작동한다는 증거다. 실제 앱 오류 로그 → 지표 집계 → 경보 상태 전환 → Discord 수신은 다음 dev 검증 대상이다.
 
@@ -49,7 +49,7 @@ dev 경보 **14개**의 생성과 목록을 확인했다. 로그 필터 경보�
 - [x] dev 로그 그룹 3개의 존재와 Standard 클래스·14일 보존을 확인했다. prod 백엔드·프론트 로그 그룹의 Standard 클래스·30일 보존도 확인했다. dev는 `awslogs-create-group=false`이므로 배포 전 그룹 존재를 다시 확인한다.
 - [ ] dev EC2의 Docker daemon이 사용하는 역할에 해당 로그 그룹의 `CreateLogStream`, `PutLogEvents`가 있는지 확인한다. Agent의 EMF 로그 쓰기 권한도 별도로 확인한다.
 - [ ] dev 호스트에 접근할 승인된 방법 또는 SSM 등록 경로를 확인하고 `DEPLOY_ENV=dev`, `19091` 포트 충돌·외부 접근 차단, Docker 버전, 기존 Agent 설정을 확인한다. `ec2-project` 역할은 prod와 공유하므로 권한 변경 전에 양쪽 영향을 검토한다. 호스트의 활성 Agent 설정은 기록·백업하고 새 Prometheus 조각은 `append-config`로만 추가한다.
-- [x] 제공 `techcourse-lambda-execution-role`로 Lambda를 생성하고 `WEBHOOK_URL` 방식·코드 ZIP을 적용했다. Lambda·SNS의 필수 태그를 저장하고 SNS → Lambda → Discord 시험 ALARM·OK 수신을 확인했다.
+- [x] 제공 `techcourse-lambda-execution-role`로 Lambda를 생성하고 `WEBHOOK_URL` 방식·코드 ZIP을 적용했다. SNS·Lambda·로그 그룹 4개·dev 경보 14개에 필수 태그 세 개를 저장하고 SNS → Lambda → Discord 시험 ALARM·OK 수신을 확인했다.
 - [ ] dev 배포 뒤 생성된 로그 지표 필터 13개를 실제 JSON 로그로 시험하고 필요한 대시보드를 준비한다. 생성 내부 오류·만료 처리의 첫 건은 Agent 카운터가 아닌 로그 필터로 경보를 건다. 이미지 신고 필터는 프론트 연동 뒤 실제 로그 유입을 확인하며 그전에는 경보를 만들지 않는다. 실제 로그 필터 경보와 EC2 경보의 상태 전환부터 Discord까지 검증하고, 한 번의 Gemini 장애가 여러 지표를 올릴 때 중복 대응을 묶을 운영 규칙을 정한다.
 - [ ] dev/prod EC2 InstanceId와 RDS DBInstanceIdentifier, EC2 Agent의 `mem_used_percent`·`disk_used_percent`, RDS 인스턴스 메모리·할당 스토리지·`max_connections`를 확인한다. CPU·상태 검사는 AWS 기본 지표로, 메모리·디스크가 없다면 기존 Agent 구성을 보존하며 수집을 추가한다. 실제 크기로 경보 임계값을 변환한다.
 
