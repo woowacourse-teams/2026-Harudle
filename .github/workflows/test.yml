@@ -48,6 +48,9 @@ jobs:
       - name: Verify Docker
         run: docker info
 
+      - name: Test deployment image environment
+        run: bash ../deploy/scripts/test_image_environment.sh
+
       - name: Install WebP tools
         run: |
           sudo apt-get update
