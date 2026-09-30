@@ -50,7 +50,14 @@ prod에서는 위 명령의 파일명을 `cloudwatch-agent.prod.json`으로 바�
 
 `/actuator/prometheus`의 `*_total`은 프로세스 시작부터 누적된 값이다. 다만 CloudWatch Agent는 Prometheus 카운터를 이전 스크레이프 대비 **증가분**으로 변환해 EMF/CloudWatch에 보낸다. 첫 스크레이프에는 이전 값이 없어 증가분을 내보내지 않는다. 따라서 Agent가 게시한 CloudWatch 카운터의 알람은 실제 dev 샘플을 확인한 뒤 5분 또는 10분 기간의 `Sum`으로 평가한다. 누적 원본에 쓰는 `DIFF`나 `RATE`를 CloudWatch 값에 다시 적용하지 않는다. [AWS 카운터 변환 설명](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/ContainerInsights-Prometheus-metrics-conversion.html)을 참고한다. `harudle_generation_executions_total{result="returned"}`는 실행기가 값을 반환했다는 뜻이며 DB 최종 성공이나 브라우저 표시 성공을 뜻하지 않는다. `GENERATION_INTERRUPTED`는 DB 상태가 아니라 실패 `errorCode`다. S3 `get_object`는 서버가 참조 이미지를 읽는 작업이지 브라우저의 완성 이미지 조회가 아니다. `head_object{result="missing"}`은 점검이나 복구 중 예상된 결과일 수 있으므로 그 값만으로 알리지 않는다.
 
-생성 최종 상태, 예상 밖 오류 단계, 로그인 사용자 이미지 표시 실패(`timeline`·`detail`) 카운터는 앱 시작 시 가능한 태그 조합을 0으로 등록한다. Agent가 오류 발생 **전**에 그 시계열을 한 번 수집하면 다음 수집에서 첫 오류의 증가분을 계산할 수 있다. 앱 시작 또는 Agent 재시작 뒤 첫 수집보다 먼저 발생한 오류는 여전히 CloudWatch 증가분에서 빠질 수 있으므로, 생성 오류는 같은 시점의 `generation_finalized`·`generation_unexpected_failure` 구조화 로그도 확인한다.
+생성 최종 상태, 예상 밖 오류 단계, 로그인 사용자 이미지 표시 실패(`timeline`·`detail`) 카운터는 앱 시작 시 가능한 태그 조합을 0으로 등록한다. Agent가 오류 발생 **전**에 그 시계열을 한 번 수집하면 다음 수집에서 첫 오류의 증가분을 계산할 수 있다. 앱 시작 또는 Agent 재시작 뒤 첫 수집보다 먼저 발생한 오류는 여전히 CloudWatch 증가분에서 빠질 수 있다. 따라서 **생성 내부 오류와 만료 처리의 첫 건 알람은 카운터가 아닌 구조화 로그 지표 필터**로 집계한다. 필터 후보는 아래와 같으며, dev의 실제 JSON 로그로 일치 여부를 시험한다. 카운터는 추세 관찰과 로그 집계값 대조에 사용한다.
+
+```text
+{ $.event = "generation_unexpected_failure" }
+{ $.event = "generation_finalized" && $.status = "FAILED" && $.errorCode = "GENERATION_INTERRUPTED" }
+```
+
+두 번째 로그는 DB 커밋 뒤 애플리케이션의 콜백에서 기록된다. 커밋 직후 프로세스가 종료되면 해당 로그도 빠질 수 있으므로, 알람이 DB 상태 변경의 완전한 감사 기록을 보장하지는 않는다. [CloudWatch JSON 필터 구문](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/FilterAndPatternSyntax.html)을 참고한다.
 
 이미지 실패 신고 API는 `POST /api/v1/telemetry/image-load-failures/{timeline|detail}`이며 인증·CSRF가 필요한 본문 없는 요청에 204로 응답한다. 이번 PR에는 프론트 신고 코드가 포함되지 않는다. 담당 팀원의 프론트 작업이 dev에 합류하고 두 화면의 실제 실패 신고가 API·지표에 도착하는지 확인한 뒤에만 `image-load-failure` 알람을 활성화한다. 그전의 지표 0은 이미지 표시 성공을 뜻하지 않는다.
 
@@ -61,8 +68,8 @@ dev에서 Agent 버전과 활성 설정을 기록하고, 안전한 테스트 요
 dev에서 단일 오류가 한 건으로 전달되는지 별도로 확인한다.
 
 1. 백엔드와 Agent가 정상 수집 중이고 다른 오류가 없는 상태에서 Agent의 정기 수집을 먼저 기다린다. `/actuator/prometheus`에 대상 `harudle_generation_unexpected_failures_total{phase="..."}` 시계열이 0으로 존재하는지 확인한다.
-2. 안전한 dev 테스트로 해당 단계의 예상 밖 오류를 **한 건만** 발생시키고 구조화 로그의 `generation_unexpected_failure` 한 건과 Prometheus 누적값 `0 → 1`을 확인한다.
-3. 다음 Agent 수집 뒤 `/harudle/dev/prometheus-emf`에서 같은 `phase`의 증가분 1건을 찾고, 다른 오류가 없는 CloudWatch 5분 평가 창에서 해당 시계열의 `Sum=1`을 확인한다. 이후 수집에서 같은 오류가 반복 집계되지 않는지도 확인한다.
+2. 안전한 dev 테스트로 해당 단계의 예상 밖 오류를 **한 건만** 발생시키고 구조화 로그의 `generation_unexpected_failure` 한 건, 해당 로그 지표 필터의 CloudWatch 5분 `Sum=1`, Prometheus 누적값 `0 → 1`을 확인한다. 만료 처리도 `generation_finalized`의 `status=FAILED`·`errorCode=GENERATION_INTERRUPTED` 로그 한 건과 필터 `Sum=1`을 별도로 확인한다.
+3. 다음 Agent 수집 뒤 `/harudle/dev/prometheus-emf`에서 같은 `phase`의 증가분 1건을 찾고, 다른 오류가 없는 CloudWatch 5분 평가 창에서 해당 카운터 시계열의 `Sum=1`을 확인한다. 이후 수집에서 같은 오류가 반복 집계되지 않는지도 확인한다. 첫 수집 전 오류의 카운터 증가분이 빠지더라도 구조화 로그가 수집됐다면 로그 필터의 첫 건 경보가 작동해야 한다.
 
 ## 후속: 이미지 전체 점검과 삭제 감사
 
@@ -99,8 +106,8 @@ CloudWatch 알람은 dev/prod를 별도로 만들고, 환경별 SNS 주제를 �
 
 | 우선순위 | 조건 | 평가 창 | 이유 |
 |---|---|---|---|
-| 즉시 | `harudle_generation_unexpected_failures_total` 증가 1건 | 5분 | 내부 예외의 발생 단계와 원인 확인 |
-| 즉시 | `harudle_generation_finalizations_total{status="FAILED",errorCode="GENERATION_INTERRUPTED"}` 증가 1건 | 5분 | 생성 작업이 중단되어 만료 처리됨 |
+| 즉시 | 로그 지표 필터 `event=generation_unexpected_failure` 1건 | 5분 | 내부 예외의 발생 단계와 원인 확인. Agent 첫 수집 전 오류도 탐지 |
+| 즉시 | 로그 지표 필터 `event=generation_finalized`, `status=FAILED`, `errorCode=GENERATION_INTERRUPTED` 1건 | 5분 | 생성 작업이 중단되어 만료 처리됨. Agent 첫 수집 전 오류도 탐지 |
 | 즉시 | 로그 지표 필터 `provider=s3`, `operation=put_object` 1건 | 5분 | 생성 이미지 저장 실패 |
 | 즉시 | 로그 지표 필터 `provider=s3`, `failureType=AUTHENTICATION_ERROR\|AUTHORIZATION_ERROR\|CONFIGURATION_ERROR` 1건 | 5분 | 자격 증명·권한·버킷 설정 장애 |
 | 주의 | 로그 지표 필터 `provider=s3`, `operation=get_object\|presign_get_object` 1건 | 5분 | 참조 이미지 조회 또는 접근 URL 발급 실패 |
@@ -111,7 +118,7 @@ CloudWatch 알람은 dev/prod를 별도로 만들고, 환경별 SNS 주제를 �
 | 주의 | Hikari pending 연결 지속(`Max` 또는 `Average` 게이지) | 부하 시험 기준 확정 후 | 다음 스프린트 병목 관찰 |
 | 즉시/주의 | EC2 상태 검사·CPU·메모리·디스크, RDS CPU·메모리·저장 공간·연결 수 | 위 자원 경보 표의 각 평가 창 | 앱 실패 전에 서버·DB 고갈 감지 |
 
-CloudWatch Agent가 게시한 카운터는 증가분이고 로그 지표 필터는 로그 발생 건수이므로 각 알람의 5분·10분 `Sum`을 사용한다. 여러 태그 조합을 하나의 조건으로 묶을 때만 metric math로 각 시계열을 합산한다. `DIFF`로 다시 증가량을 계산하지 않는다. S3/Gemini 로그 필터에는 `event=external_api_failure`를 필수로 지정하고, S3 인증·권한·설정 오류에는 저장·참조 조회·URL 발급을 모두 포함한다. `head_object{result="missing"}`은 경보 대상에서 제외한다. 하나의 Gemini 장애가 생성 실패와 API 502까지 전파될 수 있으므로 Discord 중복 알람을 묶어 대응한다. 소비자 차감은 별도 팀원 작업이므로 공급자 토큰·생성 실행 수를 차감 수로 해석하지 않는다.
+CloudWatch Agent가 게시한 카운터는 증가분이고 로그 지표 필터는 로그 발생 건수이므로 각 알람의 5분·10분 `Sum`을 사용한다. 여러 태그 조합을 하나의 조건으로 묶을 때만 metric math로 각 시계열을 합산한다. `DIFF`로 다시 증가량을 계산하지 않는다. 생성 첫 건 필터에는 위 `event`·`status`·`errorCode`를 지정하고, S3/Gemini 로그 필터에는 `event=external_api_failure`를 필수로 지정한다. S3 인증·권한·설정 오류에는 저장·참조 조회·URL 발급을 모두 포함한다. `head_object{result="missing"}`은 경보 대상에서 제외한다. 하나의 Gemini 장애가 생성 실패와 API 502까지 전파될 수 있으므로 Discord 중복 알람을 묶어 대응한다. 소비자 차감은 별도 팀원 작업이므로 공급자 토큰·생성 실행 수를 차감 수로 해석하지 않는다.
 
 P95·P99 알람은 위의 수집 방식·목표·표본 수가 dev에서 검증되기 전에는 만들지 않는다. API 오류 비율과 EC2·RDS 자원 경보는 검증된 지표가 들어오는 즉시 dev에서 먼저 적용한다.
 
