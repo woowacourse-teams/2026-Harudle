@@ -15,14 +15,15 @@ import com.harudle.diary.service.exception.DiaryNotFoundException;
 import com.harudle.generation.config.GenerationLifecycleProperties;
 import com.harudle.generation.diary.domain.DiaryGeneration;
 import com.harudle.generation.diary.domain.GenerationErrorCode;
-import com.harudle.generation.prompt.domain.GenerationPrompt;
 import com.harudle.generation.diary.domain.GenerationStatus;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
-import com.harudle.generation.prompt.repository.GenerationPromptRepository;
+import com.harudle.generation.diary.service.DiaryGenerationCompletionService;
 import com.harudle.generation.diary.service.RequestFingerprintGenerator;
 import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
 import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
 import com.harudle.generation.diary.service.exception.IdempotencyKeyConflictException;
+import com.harudle.generation.prompt.domain.GenerationPrompt;
+import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -34,6 +35,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -57,6 +59,9 @@ class DiaryCreationClaimServiceTest {
     private DiaryGenerationRepository diaryGenerationRepository;
 
     @Mock
+    private DiaryGenerationCompletionService completionService;
+
+    @Mock
     private RequestFingerprintGenerator requestFingerprintGenerator;
 
     private DiaryCreationClaimService claimService;
@@ -70,10 +75,11 @@ class DiaryCreationClaimServiceTest {
                 diaryRepository,
                 generationPromptRepository,
                 diaryGenerationRepository,
+                completionService,
                 requestFingerprintGenerator,
                 clock,
                 new GenerationLifecycleProperties(
-                        Duration.ofMinutes(15),
+                        Duration.ofMinutes(30),
                         Duration.ofMinutes(1)
                 )
         );
@@ -91,11 +97,14 @@ class DiaryCreationClaimServiceTest {
         when(diaryGenerationRepository.saveAndFlush(any(DiaryGeneration.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        DiaryCreationClaim claim = claimService.claim(command, true);
+        DiaryCreationClaim claim = claimService.claim(command, true, DIARY_DATE);
 
         assertThat(claim.newlyCreated()).isTrue();
         assertThat(claim.sourceText()).isEqualTo(command.sourceText());
         assertThat(claim.generationStatus()).isEqualTo(GenerationStatus.PROCESSING);
+        ArgumentCaptor<DiaryGeneration> generationCaptor = ArgumentCaptor.forClass(DiaryGeneration.class);
+        verify(diaryGenerationRepository).saveAndFlush(generationCaptor.capture());
+        assertThat(generationCaptor.getValue().getUsageDate()).isEqualTo(DIARY_DATE);
     }
 
     @Test
@@ -205,12 +214,17 @@ class DiaryCreationClaimServiceTest {
         ReflectionTestUtils.setField(
                 generation,
                 "updatedAt",
-                NOW.minus(Duration.ofMinutes(16))
+                NOW.minus(Duration.ofMinutes(31))
         );
         when(diaryGenerationRepository.findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY))
                 .thenReturn(Optional.of(generation));
         when(diaryRepository.findByIdIncludingDeletedForUpdate(diary.getId()))
                 .thenReturn(Optional.of(diary));
+        when(completionService.interruptIfStale(
+                generation.getId(),
+                NOW,
+                Duration.ofMinutes(30)
+        )).thenAnswer(invocation -> generation.interruptIfStale(NOW, Duration.ofMinutes(30)));
 
         DiaryCreationClaim claim = claimService.claim(command, true);
 
@@ -218,6 +232,7 @@ class DiaryCreationClaimServiceTest {
         assertThat(claim.errorCode()).isEqualTo(GenerationErrorCode.GENERATION_INTERRUPTED);
         assertThat(diary.isDeleted()).isTrue();
         assertThat(generation.getCompletedAt()).isEqualTo(NOW);
+        verify(completionService).interruptIfStale(generation.getId(), NOW, Duration.ofMinutes(30));
     }
 
     @Test

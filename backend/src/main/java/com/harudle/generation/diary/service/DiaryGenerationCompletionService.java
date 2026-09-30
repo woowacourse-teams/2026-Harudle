@@ -8,6 +8,7 @@ import com.harudle.generation.diary.domain.Storyboard;
 import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
+import com.harudle.generation.usage.service.GenerationUsageService;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -21,16 +22,19 @@ public class DiaryGenerationCompletionService {
 
     private final DiaryGenerationRepository diaryGenerationRepository;
     private final DiaryRepository diaryRepository;
+    private final GenerationUsageService generationUsageService;
     private final Clock clock;
 
     DiaryGenerationCompletionService(
             DiaryGenerationRepository diaryGenerationRepository,
             DiaryRepository diaryRepository,
+            GenerationUsageService generationUsageService,
             @Qualifier("serviceClock")
             Clock clock
     ) {
         this.diaryGenerationRepository = diaryGenerationRepository;
         this.diaryRepository = diaryRepository;
+        this.generationUsageService = generationUsageService;
         this.clock = clock;
     }
 
@@ -61,6 +65,7 @@ public class DiaryGenerationCompletionService {
                 Instant failedAt = clock.instant();
                 generation.fail(errorCode, failedAt);
                 diary.delete(failedAt);
+                restoreUsage(generation, diary);
                 yield errorCode;
             }
             case FAILED -> {
@@ -74,14 +79,21 @@ public class DiaryGenerationCompletionService {
     }
 
     @Transactional
-    boolean interruptIfStale(UUID generationId, Instant currentTime, Duration processingTimeout) {
+    public boolean interruptIfStale(UUID generationId, Instant currentTime, Duration processingTimeout) {
         DiaryGeneration generation = findForUpdate(generationId);
         if (!generation.interruptIfStale(currentTime, processingTimeout)) {
             return false;
         }
         Diary diary = findDiaryForUpdate(generation.getDiaryId());
         diary.delete(generation.getCompletedAt());
+        restoreUsage(generation, diary);
         return true;
+    }
+
+    private void restoreUsage(DiaryGeneration generation, Diary diary) {
+        if (generation.getUsageDate() != null) {
+            generationUsageService.restoreUsage(diary.getUserId(), generation.getUsageDate());
+        }
     }
 
     private DiaryGeneration findForUpdate(UUID generationId) {
