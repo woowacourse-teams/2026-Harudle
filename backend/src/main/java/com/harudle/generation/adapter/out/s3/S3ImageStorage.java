@@ -2,9 +2,9 @@ package com.harudle.generation.adapter.out.s3;
 
 import com.harudle.generation.config.S3StorageProperties;
 import com.harudle.generation.diary.domain.ImageVariantKeys;
-import com.harudle.generation.diary.service.port.dto.GeneratedImage;
 import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageStorageException;
+import com.harudle.generation.diary.service.port.dto.GeneratedImage;
 import com.harudle.generation.diary.service.port.dto.ReferenceImage;
 import java.io.IOException;
 import java.io.InputStream;
@@ -22,8 +22,8 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
-import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
 public final class S3ImageStorage implements ImageStorage {
@@ -42,6 +42,7 @@ public final class S3ImageStorage implements ImageStorage {
     private final int maxObjectSizeBytes;
     private final ImageUploadPreparer uploadPreparer;
     private final S3FailureReporter failureReporter;
+    private final S3ImageAccessPolicy accessPolicy;
 
     public S3ImageStorage(
             S3Client s3Client,
@@ -52,6 +53,7 @@ public final class S3ImageStorage implements ImageStorage {
         this.s3Client = Objects.requireNonNull(s3Client, "S3Client가 필요합니다.");
         Objects.requireNonNull(properties, "S3 저장소 설정이 필요합니다.");
         this.bucket = properties.bucket();
+        this.accessPolicy = new S3ImageAccessPolicy(properties);
         this.maxObjectSizeBytes = resolveMaxObjectSizeBytes(properties);
         this.uploadPreparer = Objects.requireNonNull(uploadPreparer, "이미지 업로드 준비기가 필요합니다.");
         this.failureReporter = Objects.requireNonNull(failureReporter, "S3 실패 리포터가 필요합니다.");
@@ -66,7 +68,7 @@ public final class S3ImageStorage implements ImageStorage {
 
     private GetObjectRequest prepareLoadRequest(String imageObjectKey) {
         try {
-            S3ObjectKeyValidator.validate(imageObjectKey);
+            accessPolicy.requireReadable(imageObjectKey);
         } catch (IllegalArgumentException exception) {
             throw failureReporter.reportValidationFailure(
                     GET_OBJECT,
@@ -213,7 +215,8 @@ public final class S3ImageStorage implements ImageStorage {
 
     @Override
     public boolean exists(String imageObjectKey) {
-        S3ObjectKeyValidator.validate(imageObjectKey);
+        requireReadable(imageObjectKey, "head_object", LOAD_TRANSLATION_OPERATION);
+
         try {
             s3Client.headObject(HeadObjectRequest.builder().bucket(bucket).key(imageObjectKey).build());
             return true;
@@ -231,7 +234,9 @@ public final class S3ImageStorage implements ImageStorage {
 
     @Override
     public boolean restoreIfMissing(String imageObjectKey, GeneratedImage generatedImage) {
-        S3ObjectKeyValidator.validate(imageObjectKey);
+        requireReadable(imageObjectKey, PUT_OBJECT, STORE_TRANSLATION_OPERATION);
+        requireGeneratedImage(generatedImage);
+
         try {
             long length = generatedImage.resource().contentLength();
             validateObjectSize(length);
@@ -280,6 +285,8 @@ public final class S3ImageStorage implements ImageStorage {
 
     private PreparedStores prepareOptimizedStores(String detailKey, GeneratedImage image) {
         try {
+            accessPolicy.requireGenerated(detailKey);
+
             return prepareStores(uploadPreparer.prepareOptimized(detailKey, image));
         } catch (IllegalArgumentException exception) {
             throw failureReporter.reportValidationFailure(
@@ -294,6 +301,8 @@ public final class S3ImageStorage implements ImageStorage {
 
     @Override
     public boolean restoreMissingThumbnail(String detailKey) {
+        requireGenerated(detailKey, PUT_OBJECT, STORE_TRANSLATION_OPERATION);
+
         String thumbnailKey = ImageVariantKeys.toThumbnailKeyIfOptimizedDetail(detailKey);
         if (thumbnailKey.equals(detailKey)) {
             throw failureReporter.reportValidationFailure(
@@ -372,7 +381,7 @@ public final class S3ImageStorage implements ImageStorage {
 
     private DeleteObjectRequest prepareDeleteRequest(String imageObjectKey) {
         try {
-            S3ObjectKeyValidator.validate(imageObjectKey);
+            accessPolicy.requireGenerated(imageObjectKey);
         } catch (IllegalArgumentException exception) {
             throw failureReporter.reportValidationFailure(
                     DELETE_OBJECT,
@@ -436,6 +445,8 @@ public final class S3ImageStorage implements ImageStorage {
     }
 
     private PreparedStore prepareStore(String imageObjectKey, GeneratedImage generatedImage) throws IOException {
+        accessPolicy.requireGenerated(imageObjectKey);
+
         Resource resource = generatedImage.resource();
         long contentLength = resource.contentLength();
         validateObjectSize(contentLength);
@@ -446,6 +457,22 @@ public final class S3ImageStorage implements ImageStorage {
                 .contentLength(contentLength)
                 .build();
         return new PreparedStore(imageObjectKey, resource, contentLength, request);
+    }
+
+    private void requireReadable(String objectKey, String operation, String translationOperation) {
+        try {
+            accessPolicy.requireReadable(objectKey);
+        } catch (IllegalArgumentException exception) {
+            throw failureReporter.reportValidationFailure(operation, translationOperation, objectKey, exception);
+        }
+    }
+
+    private void requireGenerated(String objectKey, String operation, String translationOperation) {
+        try {
+            accessPolicy.requireGenerated(objectKey);
+        } catch (IllegalArgumentException exception) {
+            throw failureReporter.reportValidationFailure(operation, translationOperation, objectKey, exception);
+        }
     }
 
     private byte[] readImageBytes(ResponseInputStream<GetObjectResponse> response) throws IOException {

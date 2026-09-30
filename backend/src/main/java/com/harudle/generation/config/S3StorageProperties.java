@@ -13,12 +13,21 @@ import org.springframework.validation.annotation.Validated;
 public record S3StorageProperties(
         @NotBlank String bucket,
         @NotBlank String region,
+        @NotBlank String environment,
         @NotBlank String generatedPrefix,
+        @NotBlank String referencePrefix,
         @NotNull DataSize maxObjectSize,
         @NotNull Duration accessUrlTtl
 ) {
 
     private static final Duration MAX_ACCESS_URL_TTL = Duration.ofDays(7);
+
+    @AssertTrue(message = "S3 이미지 경로는 dev 또는 prod 환경과 정확히 일치해야 합니다.")
+    public boolean isEnvironmentMatched() {
+        return ("dev".equals(environment) || "prod".equals(environment))
+                && ("harudle/generated/diary-images/" + environment).equals(generatedPrefix)
+                && ("harudle/references/generation/" + environment).equals(referencePrefix);
+    }
 
     @AssertTrue(message = "S3 객체 최대 크기는 양수여야 합니다.")
     public boolean isMaxObjectSizePositive() {

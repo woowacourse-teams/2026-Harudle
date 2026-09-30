@@ -21,6 +21,7 @@ public final class S3ImageUrlProvider implements ImageUrlProvider {
     private final String bucket;
     private final Duration accessUrlTtl;
     private final S3FailureReporter failureReporter;
+    private final S3ImageAccessPolicy accessPolicy;
 
     public S3ImageUrlProvider(
             S3Presigner s3Presigner,
@@ -30,6 +31,7 @@ public final class S3ImageUrlProvider implements ImageUrlProvider {
         this.s3Presigner = Objects.requireNonNull(s3Presigner, "S3 Presigner가 필요합니다.");
         Objects.requireNonNull(properties, "S3 저장소 설정이 필요합니다.");
         this.bucket = properties.bucket();
+        this.accessPolicy = new S3ImageAccessPolicy(properties);
         this.accessUrlTtl = properties.accessUrlTtl();
         this.failureReporter = Objects.requireNonNull(failureReporter, "S3 실패 리포터가 필요합니다.");
     }
@@ -44,7 +46,7 @@ public final class S3ImageUrlProvider implements ImageUrlProvider {
 
     private void validateObjectKey(String imageObjectKey) {
         try {
-            S3ObjectKeyValidator.validate(imageObjectKey);
+            accessPolicy.requireGenerated(imageObjectKey);
         } catch (IllegalArgumentException exception) {
             throw failureReporter.reportValidationFailure(
                     OPERATION,

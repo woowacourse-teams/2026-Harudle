@@ -107,7 +107,9 @@ class ImageObjectKeyFactoryTest {
         S3StorageProperties properties = new S3StorageProperties(
                 "test-bucket",
                 "ap-northeast-2",
+                "dev",
                 generatedPrefix,
+                "harudle/references/generation/dev",
                 DataSize.ofMegabytes(20),
                 Duration.ofMinutes(15)
         );
