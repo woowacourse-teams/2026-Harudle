@@ -71,10 +71,26 @@ class DiscordForwarderTest(unittest.TestCase):
         self.assertIn("원인: 서버 지표 수집 중단", payload["content"])
 
     def test_resource_and_error_rate_alarms_are_allowlisted(self):
-        for suffix in ("ec2-disk-high", "rds-memory-low", "api-error-rate"):
+        for suffix in ("ec2-status-check", "ec2-disk-high", "rds-memory-low", "api-error-rate"):
             record = sns_event(name=f"harudle-dev-{suffix}")["Records"][0]["Sns"]
             payload = forwarder._alarm_message(record, TOPIC, "dev")
             self.assertIn(f"알람: harudle-dev-{suffix}", payload["content"])
+
+    def test_each_gemini_filter_alarm_is_allowlisted(self):
+        for suffix in (
+            "gemini-storyboard-transient",
+            "gemini-storyboard-response",
+            "gemini-image-transient",
+            "gemini-image-response",
+        ):
+            record = sns_event(name=f"harudle-dev-{suffix}")["Records"][0]["Sns"]
+            payload = forwarder._alarm_message(record, TOPIC, "dev")
+            self.assertIn(f"알람: harudle-dev-{suffix}", payload["content"])
+
+        for obsolete_suffix in ("gemini-storyboard-errors", "gemini-image-errors"):
+            record = sns_event(name=f"harudle-dev-{obsolete_suffix}")["Records"][0]["Sns"]
+            with self.assertRaises(forwarder.DeliveryError):
+                forwarder._alarm_message(record, TOPIC, "dev")
 
     def test_unknown_alarm_or_topic_is_rejected(self):
         for event in (

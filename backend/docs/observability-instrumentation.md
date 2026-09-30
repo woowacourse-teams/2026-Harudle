@@ -26,7 +26,7 @@
 
 Actuator는 별도 코드 없이 HTTP 요청 상태·소요 시간, JVM·프로세스, HikariCP 풀 지표도 제공한다. DB 쿼리별 소요 시간은 이 지표에 포함되지 않는다. S3 `get_object`는 서버의 참조 이미지 조회이며, 완성 이미지의 브라우저 GET을 세지 않는다. 이미지 로드 실패 신고는 로그인 사용자 타임라인·상세 화면만 대상으로 설계했다. 네트워크 단절·URL 만료일 수도 있어 S3 객체 누락으로 단정할 수 없고, 열어보지 않은 이미지와 게스트·공유 화면은 관측하지 못한다.
 
-이번 PR은 `POST /api/v1/telemetry/image-load-failures/timeline`과 `/detail`의 인증된 신고 API, 본문 없는 요청과 204 응답, 고정 `surface` 지표만 제공한다. 프론트 신고 코드는 담당 팀원이 별도 반영한다. 실제 프론트 코드가 두 경로와 인증·CSRF 정책에 맞게 호출하는지 dev에서 확인하기 전에는 이 지표의 0을 이미지 정상으로 해석하거나 관련 알람을 활성화하지 않는다.
+이번 PR은 `POST /api/v1/telemetry/image-load-failures/timeline`과 `/detail`의 인증된 신고 API, 본문 없는 요청과 204 응답, 고정 `surface` 지표를 제공한다. 수락한 신고마다 `event=image_load_failure_reported`와 `surface=timeline|detail`만 구조화 INFO 로그로 한 번 기록한다. 이 로그의 CloudWatch 지표 필터는 첫 신고 감지용으로 준비할 수 있지만, 프론트 신고 코드는 담당 팀원이 별도 반영한다. 실제 프론트 코드가 두 경로와 인증·CSRF 정책에 맞게 호출하는지 dev에서 확인하기 전에는 지표와 로그의 0을 이미지 정상으로 해석하거나 관련 알람을 활성화하지 않는다. 신고에는 S3 응답 상태나 객체 키가 없어 404, URL 만료, 네트워크 오류를 구분할 수 없다.
 
 ## Gemini 실패 분류
 
@@ -44,7 +44,7 @@ DB가 참조하는 모든 완성 이미지를 S3 HEAD로 주기적으로 확인�
 
 요청의 `traceId`와 새 생성 실행의 `generationId`는 MDC에 넣고, 외부 API 실패 로그에는 안전한 고정 필드를 추가한다. 지표 태그에는 사용자 ID, 생성 ID, 일기 원문, 프롬프트, 응답 원문, S3 키 또는 서명 URL을 넣지 않는다. `generationId`는 실행이 끝나면 MDC에서 복원된다.
 
-완료되지 못한 생성 이미지의 삭제는 `discarded_image_deleted`, 실패는 `discarded_image_delete_failed`, 안전 여부를 판단하지 못해 보류한 경우는 `discarded_image_delete_deferred` 이벤트로 기록한다. 삭제 사유는 코드에서 정한 고정 값이고 `generationId`만 연결한다. 객체 키는 로그와 S3 예외 메시지에 남기지 않는다. 예상하지 못한 API 오류는 `api_exception` 이벤트에 상태 코드, 오류 코드, HTTP 메서드, 라우트 패턴을 구조화 필드로 남긴다. 라우트 패턴이 없으면 원본 URI 대신 `UNMATCHED`를 사용한다.
+완료되지 못한 생성 이미지의 삭제는 `discarded_image_deleted`, 실패는 `discarded_image_delete_failed`, 안전 여부를 판단하지 못해 보류한 경우는 `discarded_image_delete_deferred` 이벤트로 기록한다. 삭제 사유는 코드에서 정한 고정 값이고 `generationId`만 연결한다. 객체 키는 로그와 S3 예외 메시지에 남기지 않는다. 예상하지 못한 API 오류는 `api_exception` 이벤트에 상태 코드, 오류 코드, HTTP 메서드, 라우트 패턴을 구조화 필드로 남긴다. 라우트 패턴이 없으면 원본 URI 대신 `UNMATCHED`를 사용한다. 수락한 이미지 로드 실패 신고는 `image_load_failure_reported` 이벤트와 고정 `surface`만 기록하며 사용자·일기 식별자, S3 URL, HTTP 상태는 포함하지 않는다.
 
 Compose는 Spring Boot의 `CONSOLE_LOG_STRUCTURED_FORMAT=logstash`를 설정해 MDC와 SLF4J 필드를 한 줄 JSON 로그로 출력한다. JSON과 충돌하는 기존 운영 `awslogs-multiline-pattern`은 같은 변경에서 제거하고, dev/prod 로그 그룹을 분리했다. dev 그룹과 권한은 dev 배포 **전에** 준비해야 한다.
 
