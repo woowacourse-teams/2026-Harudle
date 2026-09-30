@@ -31,14 +31,15 @@ public final class S3FailureReporter {
             boolean configurationOperation,
             Exception exception
     ) {
-        ImageStorageException translated = exceptionTranslator.translate(
-                translationOperation,
-                objectKey,
-                exception
-        );
         S3ProviderErrorMetadata metadata = S3ProviderErrorMetadata.from(
                 exception,
                 configurationOperation
+        );
+        ImageStorageException translated = exceptionTranslator.translate(
+                translationOperation,
+                objectKey,
+                exception,
+                metadata.failureType()
         );
         ExternalApiFailure failure = new ExternalApiFailure(
                 PROVIDER,
@@ -66,7 +67,8 @@ public final class S3FailureReporter {
         ImageStorageException translated = exceptionTranslator.translate(
                 translationOperation,
                 objectKey,
-                exception
+                exception,
+                failureType
         );
         externalApiLogger.error(
                 new ExternalApiFailure(PROVIDER, operation, resolveFailureType(exception, failureType), null, null, null),
@@ -95,7 +97,8 @@ public final class S3FailureReporter {
         ImageStorageException translated = exceptionTranslator.translate(
                 translationOperation,
                 objectKey,
-                exception
+                exception,
+                REQUEST_VALIDATION_ERROR
         );
         externalApiLogger.warn(
                 new ExternalApiFailure(
@@ -117,12 +120,13 @@ public final class S3FailureReporter {
             @Nullable String objectKey,
             Exception exception
     ) {
+        S3ProviderErrorMetadata metadata = S3ProviderErrorMetadata.from(exception, false);
         ImageStorageException translated = exceptionTranslator.translate(
                 translationOperation,
                 objectKey,
-                exception
+                exception,
+                metadata.failureType()
         );
-        S3ProviderErrorMetadata metadata = S3ProviderErrorMetadata.from(exception, false);
         externalApiLogger.warnCompensation(
                 new ExternalApiFailure(
                         PROVIDER,

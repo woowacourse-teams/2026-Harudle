@@ -1,7 +1,6 @@
 package com.harudle.generation.adapter.out.gemini;
 
 import com.google.genai.Models;
-import com.google.genai.types.Candidate;
 import com.google.genai.types.Content;
 import com.google.genai.types.GenerateContentConfig;
 import com.google.genai.types.GenerateContentResponse;
@@ -16,6 +15,7 @@ import com.harudle.generation.diary.service.port.dto.GeneratedStoryboard;
 import com.harudle.generation.diary.service.port.dto.StoryboardGenerationRequest;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
 import java.util.Optional;
+import java.util.Objects;
 import tools.jackson.databind.ObjectMapper;
 
 public final class GeminiStoryboardGenerator implements StoryboardGenerator {
@@ -47,26 +47,47 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
     private final ObjectMapper objectMapper;
     private final GeminiStoryboardResponseMapper responseMapper;
     private final GeminiFailureReporter failureReporter;
+    private final GeminiStageMetrics stageMetrics;
 
     public GeminiStoryboardGenerator(
             Models models,
             GeminiGenerationProperties properties,
             ObjectMapper objectMapper,
             GeminiStoryboardResponseMapper responseMapper,
-            GeminiFailureReporter failureReporter
+            GeminiFailureReporter failureReporter,
+            GeminiStageMetrics stageMetrics
     ) {
         this.models = models;
         this.properties = properties;
         this.objectMapper = objectMapper;
         this.responseMapper = responseMapper;
         this.failureReporter = failureReporter;
+        this.stageMetrics = Objects.requireNonNull(stageMetrics);
     }
 
     @Override
     public GeneratedStoryboard generate(StoryboardGenerationRequest request) {
-        PreparedRequest preparedRequest = prepareRequest(request);
-        GenerateContentResponse response = callProvider(preparedRequest);
-        return processResponse(response);
+        long startedAt = System.nanoTime();
+        String phase = "preparation";
+        GenerateContentResponse response = null;
+        try {
+            PreparedRequest preparedRequest = prepareRequest(request);
+            phase = "provider";
+            response = callProvider(preparedRequest);
+            phase = "response";
+            GeneratedStoryboard storyboard = processResponse(response);
+            stageMetrics.record(OPERATION, null, System.nanoTime() - startedAt, response);
+            return storyboard;
+        } catch (com.harudle.generation.diary.service.exception.AiGenerationException exception) {
+            GeminiFailureType failureType = switch (phase) {
+                case "preparation" -> GeminiFailureType.preparation(exception.getCause());
+                case "provider" -> GeminiFailureType.provider(exception.getCause(), exception.errorType());
+                default -> GeminiFailureType.storyboardResponse(
+                        GeminiFailureType.finishReason(response), exception.getCause());
+            };
+            stageMetrics.record(OPERATION, failureType, System.nanoTime() - startedAt, response);
+            throw exception;
+        }
     }
 
     private PreparedRequest prepareRequest(StoryboardGenerationRequest request) {
@@ -134,20 +155,19 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
                     null, null, null, properties.maxOutputTokens(), null
             );
         }
-        String finishReason = response.candidates()
-                .flatMap(candidates -> candidates.stream().findFirst())
-                .flatMap(Candidate::finishReason)
-                .map(Object::toString)
-                .orElse(null);
-        Optional<GenerateContentResponseUsageMetadata> usageMetadata = response.usageMetadata();
-        Integer candidateTokenCount = usageMetadata
-                .flatMap(GenerateContentResponseUsageMetadata::candidatesTokenCount)
-                .orElse(null);
-        Integer thoughtTokenCount = usageMetadata
-                .flatMap(GenerateContentResponseUsageMetadata::thoughtsTokenCount)
-                .orElse(null);
+        Integer candidateTokenCount = null;
+        Integer thoughtTokenCount = null;
+        try {
+            Optional<GenerateContentResponseUsageMetadata> usageMetadata = response.usageMetadata();
+            if (usageMetadata != null && usageMetadata.isPresent()) {
+                candidateTokenCount = usageMetadata.get().candidatesTokenCount().orElse(null);
+                thoughtTokenCount = usageMetadata.get().thoughtsTokenCount().orElse(null);
+            }
+        } catch (RuntimeException ignored) {
+            // Response diagnostics must not replace the original response-processing failure.
+        }
         return new ExternalApiResponseDiagnostics(
-                finishReason,
+                GeminiFailureType.finishReason(response),
                 candidateTokenCount,
                 thoughtTokenCount,
                 properties.maxOutputTokens(),

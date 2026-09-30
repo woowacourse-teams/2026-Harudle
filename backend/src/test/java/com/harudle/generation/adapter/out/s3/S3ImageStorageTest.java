@@ -521,7 +521,7 @@ class S3ImageStorageTest {
 
         assertThat(thrown)
                 .hasMessageContaining("S3 이미지 저장")
-                .hasMessageContaining("generated/diary-images/" + GENERATION_ID)
+                .hasMessageNotContaining("generated/diary-images/" + GENERATION_ID)
                 .hasCause(storeCause);
         verify(externalApiLogger).warn(
                 eq(new ExternalApiFailure("s3", "put_object", "CLIENT_ERROR", null, null, null)),
@@ -806,7 +806,7 @@ class S3ImageStorageTest {
         assertThatThrownBy(() -> imageStorage.load("prompt-assets/reference.png"))
                 .isInstanceOf(ImageStorageException.class)
                 .hasMessageContaining("S3 이미지 조회")
-                .hasMessageContaining("prompt-assets/reference.png")
+                .hasMessageNotContaining("prompt-assets/reference.png")
                 .hasCause(cause);
         verify(externalApiLogger).warn(
                 eq(new ExternalApiFailure("s3", "get_object", "CLIENT_ERROR", null, null, null)),
@@ -913,7 +913,7 @@ class S3ImageStorageTest {
         assertThatThrownBy(() -> imageStorage.delete(OBJECT_KEY))
                 .isInstanceOf(ImageStorageException.class)
                 .hasMessageContaining("S3 이미지 삭제")
-                .hasMessageContaining(OBJECT_KEY)
+                .hasMessageNotContaining(OBJECT_KEY)
                 .hasCause(cause);
         verify(externalApiLogger).warn(
                 eq(new ExternalApiFailure("s3", "delete_object", "CLIENT_ERROR", null, null, null)),
