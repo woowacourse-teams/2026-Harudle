@@ -38,6 +38,7 @@ class DiscordForwarderTest(unittest.TestCase):
             "DEPLOY_ENV": "dev",
             "ALARM_TOPIC_ARN": TOPIC,
             "WEBHOOK_SECRET_ARN": SECRET,
+            "WEBHOOK_URL": "",
         })
         self.environment.start()
         self.addCleanup(self.environment.stop)
@@ -60,6 +61,56 @@ class DiscordForwarderTest(unittest.TestCase):
         self.assertNotIn("s3://", payload["content"])
         self.assertNotIn("private user data", payload["content"])
         self.assertNotIn(WEBHOOK, output.getvalue())
+
+    def test_environment_webhook_delivers_without_secret_lookup_or_leaking_url(self):
+        with mock.patch.dict(os.environ, {"WEBHOOK_SECRET_ARN": "", "WEBHOOK_URL": WEBHOOK}), \
+                mock.patch.object(forwarder, "_webhook_url") as secret_lookup, \
+                mock.patch.object(forwarder, "_post") as post:
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                result = forwarder.handler(sns_event(), None)
+
+        secret_lookup.assert_not_called()
+        self.assertEqual(result, {"delivered": True})
+        self.assertEqual(post.call_args.args[0], WEBHOOK)
+        self.assertEqual(post.call_args.args[1]["content"], (
+            "환경: dev\n알람: harudle-dev-s3-put-failure\n"
+            "상태: ALARM\n원인: 생성 이미지 S3 저장 실패"
+        ))
+        self.assertEqual(post.call_args.args[1]["allowed_mentions"], {"parse": []})
+        self.assertNotIn(WEBHOOK, output.getvalue())
+        self.assertNotIn("s3://", post.call_args.args[1]["content"])
+
+    def test_exactly_one_webhook_source_is_required_before_any_delivery(self):
+        for secret_arn, webhook_url in ((SECRET, WEBHOOK), ("", "")):
+            with self.subTest(secret_present=bool(secret_arn), env_present=bool(webhook_url)), \
+                    mock.patch.dict(os.environ, {"WEBHOOK_SECRET_ARN": secret_arn, "WEBHOOK_URL": webhook_url}), \
+                    mock.patch.object(forwarder, "_webhook_url") as secret_lookup, \
+                    mock.patch.object(forwarder, "_post") as post:
+                with self.assertRaises(forwarder.DeliveryError) as raised:
+                    forwarder.handler(sns_event(), None)
+                self.assertEqual(str(raised.exception), "forwarder configuration invalid")
+                secret_lookup.assert_not_called()
+                post.assert_not_called()
+
+    def test_environment_webhook_uses_the_same_strict_url_validation(self):
+        for unsafe in (
+            "https://discord.com.evil.example/api/webhooks/123456/secret-token",
+            "http://discord.com/api/webhooks/123456/secret-token",
+            "https://user:secret@discord.com/api/webhooks/123456/secret-token",
+            "https://discord.com:443/api/webhooks/123456/secret-token",
+            "https://discord.com/api/webhooks/not-an-id/secret-token",
+            WEBHOOK + "?wait=true",
+            WEBHOOK + "#secret-token",
+        ):
+            with self.subTest(case=unsafe.split('/')[2]), \
+                    mock.patch.dict(os.environ, {"WEBHOOK_SECRET_ARN": "", "WEBHOOK_URL": unsafe}), \
+                    mock.patch.object(forwarder, "_post") as post:
+                with self.assertRaises(forwarder.DeliveryError) as raised:
+                    forwarder.handler(sns_event(), None)
+                self.assertEqual(str(raised.exception), "webhook URL invalid")
+                self.assertNotIn(unsafe, str(raised.exception))
+                post.assert_not_called()
 
     def test_ok_uses_fixed_recovery_reason(self):
         payload = forwarder._alarm_message(sns_event(state="OK")["Records"][0]["Sns"], TOPIC, "dev")

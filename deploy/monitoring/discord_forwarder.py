@@ -1,6 +1,7 @@
 """Forward allowlisted CloudWatch alarm states to a team Discord webhook.
 
-The webhook secret is a raw URL or JSON containing ``webhook_url``. Alarm
+Set exactly one of ``WEBHOOK_URL`` or ``WEBHOOK_SECRET_ARN``. A Secrets
+Manager secret is a raw URL or JSON containing ``webhook_url``. Alarm
 reasons are fixed phrases: CloudWatch's NewStateReason is never forwarded.
 The function never logs its input, the webhook URL, or provider responses.
 """
@@ -79,14 +80,8 @@ def _alarm_message(sns_record, expected_topic, environment):
     }
 
 
-def _webhook_url(secret_arn):
+def _validate_webhook_url(value):
     try:
-        import boto3
-
-        secret = boto3.client("secretsmanager").get_secret_value(SecretId=secret_arn)
-        value = secret["SecretString"]
-        if value.lstrip().startswith("{"):
-            value = json.loads(value)["webhook_url"]
         parsed = parse.urlsplit(value)
         if (
             parsed.scheme != "https"
@@ -100,6 +95,20 @@ def _webhook_url(secret_arn):
         ):
             raise ValueError("invalid webhook")
         return value
+    except Exception:
+        # URL errors may contain secret material. Suppress context.
+        raise DeliveryError("webhook URL invalid") from None
+
+
+def _webhook_url(secret_arn):
+    try:
+        import boto3
+
+        secret = boto3.client("secretsmanager").get_secret_value(SecretId=secret_arn)
+        value = secret["SecretString"]
+        if value.lstrip().startswith("{"):
+            value = json.loads(value)["webhook_url"]
+        return _validate_webhook_url(value)
     except Exception:
         # AWS SDK and URL errors may contain secret material. Suppress context.
         raise DeliveryError("webhook secret unavailable") from None
@@ -129,7 +138,12 @@ def handler(event, _context):
     environment = os.environ.get("DEPLOY_ENV")
     topic_arn = os.environ.get("ALARM_TOPIC_ARN")
     secret_arn = os.environ.get("WEBHOOK_SECRET_ARN")
-    if environment not in ("dev", "prod") or not topic_arn or not secret_arn:
+    webhook_url = os.environ.get("WEBHOOK_URL")
+    if (
+        environment not in ("dev", "prod")
+        or not topic_arn
+        or bool(secret_arn) == bool(webhook_url)
+    ):
         raise DeliveryError("forwarder configuration invalid")
 
     try:
@@ -141,6 +155,7 @@ def handler(event, _context):
         raise DeliveryError("invalid SNS event") from None
 
     payload = _alarm_message(sns_record, topic_arn, environment)
-    _post(_webhook_url(secret_arn), payload)
+    destination = _webhook_url(secret_arn) if secret_arn else _validate_webhook_url(webhook_url)
+    _post(destination, payload)
     print(f"event=discord_alert_delivered environment={environment}")
     return {"delivered": True}

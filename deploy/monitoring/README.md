@@ -102,7 +102,7 @@ CloudWatch Agent는 HTTP 완료 횟수를 전체(`job`), 결과군(`job`, `outco
 
 ## 알람 설계
 
-CloudWatch 알람은 dev/prod를 별도로 만들고, 환경별 SNS 주제를 통해 Discord 전달 Lambda에 연결한다. Webhook은 Secrets Manager에 보관한다. 알람 상태 전환과 Lambda 전달 실패도 모니터링한다. 아래는 초기값이며 실제 트래픽을 1주일 관찰한 뒤 조정한다.
+CloudWatch 알람은 dev/prod를 별도로 만들고, 환경별 SNS 주제를 통해 Discord 전달 Lambda에 연결한다. 현재 우테코 제공 인프라에서는 Webhook을 Lambda의 `WEBHOOK_URL` 환경 변수에 보관한다. 알람 상태 전환과 Lambda 전달 실패도 모니터링한다. 아래는 초기값이며 실제 트래픽을 1주일 관찰한 뒤 조정한다.
 
 | 우선순위 | 조건 | 평가 창 | 이유 |
 |---|---|---|---|
@@ -124,9 +124,13 @@ CloudWatch Agent가 게시한 카운터는 증가분이고 로그 지표 필터�
 
 P95·P99 알람은 위의 수집 방식·목표·표본 수가 dev에서 검증되기 전에는 만들지 않는다. API 오류 비율과 EC2·RDS 자원 경보는 검증된 지표가 들어오는 즉시 dev에서 먼저 적용한다.
 
-Discord 전달 함수 `discord_forwarder.py`는 아래 이름만 허용한다. 각 환경에서 `harudle-{env}-{suffix}`로 경보를 만들고 환경별 SNS 주제 ARN, Secrets Manager Webhook ARN을 Lambda 환경 변수 `ALARM_TOPIC_ARN`, `WEBHOOK_SECRET_ARN`에 지정한다. Lambda의 `DEPLOY_ENV`도 해당 환경으로 설정한다. 함수는 CloudWatch의 자유 형식 오류 이유를 전달하지 않고, 환경·알람명·상태·고정 원인 문구만 Discord로 보낸다. `allowed_mentions`는 비활성화한다. 현재 Lambda·SNS·IAM·Webhook 비밀·알람은 저장소 배포에서 자동으로 생성하지 않는다.
+Discord 전달 함수 `discord_forwarder.py`는 아래 이름만 허용한다. 각 환경에서 `harudle-{env}-{suffix}`로 경보를 만들고 Lambda 환경 변수 `DEPLOY_ENV`에 해당 환경, `ALARM_TOPIC_ARN`에 환경별 SNS 주제 ARN을 지정한다. 함수는 CloudWatch의 자유 형식 오류 이유를 전달하지 않고, 환경·알람명·상태·고정 원인 문구만 Discord로 보낸다. `allowed_mentions`는 비활성화한다. 현재 Lambda·SNS·IAM·알람은 저장소 배포에서 자동으로 생성하지 않는다.
 
-연결할 때 SNS 주제 정책의 CloudWatch 서비스 Allow 문은 같은 계정의 해당 환경 `harudle-{env}-*` 알람 ARN으로 출처를 제한한다. 이 Allow 문만으로 같은 계정의 별도 identity policy를 통한 발행까지 차단되지는 않는다. Lambda에는 지정한 비밀 하나의 `secretsmanager:GetSecretValue`와 자기 로그 그룹 쓰기만 허용하고, SNS 주제 하나에만 호출 권한을 준다. 비밀이 고객 관리 KMS 키로 암호화됐다면 그 키의 복호화 권한도 별도로 확인한다. Lambda 코드 ZIP의 루트에 `discord_forwarder.py`를 넣고, 배포 시 버전이 바뀌는 아티팩트 키를 사용한다. Lambda 실패 경보를 같은 SNS→Lambda 경로에 연결하면 전달 장애를 알 수 없으므로 독립된 연락 경로로 보낸다. SNS 재전달로 Discord 알림이 중복될 수 있다.
+현재 우테코 제공 인프라에서는 **제공 역할 `techcourse-lambda-execution-role`**을 그대로 사용하고, Webhook은 Lambda 환경 변수 `WEBHOOK_URL`에 넣는다. 새 역할·관리형 정책·Secrets Manager 비밀 생성과 공유 역할의 정책 변경은 하지 않는다. `WEBHOOK_URL`과 `WEBHOOK_SECRET_ARN` 중 비어 있지 않은 값은 **정확히 하나**여야 한다. 둘 다 있거나 둘 다 없으면 호출 전에 설정 오류로 중단한다. 환경 변수 방식은 Secrets Manager API를 호출하지 않는다. 기존 Secret ARN 방식은 허용된 별도 운영 환경에서 계속 사용할 수 있으며, Secret 값은 URL 또는 `webhook_url`을 가진 JSON이다. 두 방식 모두 HTTPS Discord 호스트·Webhook 경로를 검증하고 사용자 정보·포트·query·fragment가 있는 URL을 거절한다.
+
+Lambda 환경 변수는 기본 AWS 관리 KMS 키로 [저장 암호화](https://docs.aws.amazon.com/lambda/latest/dg/configuration-envvars-encryption.html)되며 기본키 사용을 위한 추가 KMS 권한은 필요하지 않다. 환경 변수 조회 권한자는 값을 볼 수 있으므로 Webhook을 저장소·배포 ZIP·명령 인수·오류 로그·화면 캡처에 남기지 않고, SDK로 설정할 때도 응답의 환경 변수 값을 출력하지 않는다. 새 리소스에는 `Service=techcourse`, `Role=techcourse-etc`, `ProjectTeam=harudle` 태그를 적용한다. 제공 역할이 목록에 보여도 현재 사용자의 `iam:PassRole`과 함수 생성 권한이 허용됐다는 뜻은 아니므로 실제 연결 시 확인한다.
+
+연결할 때 SNS 주제 정책의 CloudWatch 서비스 Allow 문은 같은 계정의 해당 환경 `harudle-{env}-*` 알람 ARN으로 출처를 제한한다. 이 Allow 문만으로 같은 계정의 별도 identity policy를 통한 발행까지 차단되지는 않는다. SNS가 함수를 호출하는 권한은 **Lambda 리소스 정책**에서 SNS 서비스·주제 ARN·소유 계정 하나로 제한한다. 실행 역할에 SNS 발행 권한을 추가할 필요는 없다. Secret ARN 방식에서는 실행 역할에 지정한 비밀 하나의 `secretsmanager:GetSecretValue`와 필요한 KMS 복호화 권한이 있어야 한다. Lambda 코드 ZIP의 루트에 `discord_forwarder.py`를 넣고, 배포 시 버전이 바뀌는 아티팩트 키를 사용한다. Lambda 실패 경보를 같은 SNS→Lambda 경로에 연결하면 전달 장애를 알 수 없으므로 독립된 연락 경로로 보낸다. SNS 재전달로 Discord 알림이 중복될 수 있다.
 
 | 경보 이름 suffix | 연결할 조건 |
 |---|---|

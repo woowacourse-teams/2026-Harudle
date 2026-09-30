@@ -20,7 +20,7 @@ dev 경보 **14개**의 생성과 목록을 확인했다. 로그 필터 경보�
 | EMF 로그 | 확인: `/harudle/dev/prometheus-emf` (Standard, 14일) | 목표: `/harudle/prod/prometheus-emf` (존재·설정 미확인) | Agent 전송·쓰기 권한과 기존 호스트 지표 유지 |
 | 지표 | `Harudle/Dev` | `Harudle/Prod` | 9개 계열과 필요한 태그 조합만 게시 |
 | 알람·전달 | dev 로그 지표 필터/알람 → dev SNS → dev Lambda → 팀 Discord | prod 로그 지표 필터/알람 → prod SNS → prod Lambda → 팀 Discord | dev SNS 구독·Lambda 연결, 단일 실패 로그 집계, ALARM·OK 시험 |
-| Webhook | dev Secrets Manager 비밀 | prod Secrets Manager 비밀 | 값 출력 금지, 해당 Lambda만 읽기 |
+| Webhook | 제공 역할 + Lambda `WEBHOOK_URL` 환경 변수 | dev 검증 뒤 별도 prod Lambda 환경 변수 | 제공 `techcourse-lambda-execution-role`만 사용, 공유 역할 정책 변경 금지, 값 출력 금지 |
 
 ## S3 분리와 무관하게 지금 준비할 것
 
@@ -28,7 +28,7 @@ dev 경보 **14개**의 생성과 목록을 확인했다. 로그 필터 경보�
 - [x] dev 로그 그룹 3개의 존재와 Standard 클래스·14일 보존을 확인했다. prod 백엔드·프론트 로그 그룹의 Standard 클래스·30일 보존도 확인했다. dev는 `awslogs-create-group=false`이므로 배포 전 그룹 존재를 다시 확인한다.
 - [ ] dev EC2의 Docker daemon이 사용하는 역할에 해당 로그 그룹의 `CreateLogStream`, `PutLogEvents`가 있는지 확인한다. Agent의 EMF 로그 쓰기 권한도 별도로 확인한다.
 - [ ] dev 호스트에 접근할 승인된 방법 또는 SSM 등록 경로를 확인하고 `DEPLOY_ENV=dev`, `19091` 포트 충돌·외부 접근 차단, Docker 버전, 기존 Agent 설정을 확인한다. `ec2-project` 역할은 prod와 공유하므로 권한 변경 전에 양쪽 영향을 검토한다. 호스트의 활성 Agent 설정은 기록·백업하고 새 Prometheus 조각은 `append-config`로만 추가한다.
-- [ ] 생성된 dev 로그 지표 필터 13개를 실제 JSON 로그로 시험하고, Lambda 역할·Webhook 비밀·대시보드를 준비한다. 생성 내부 오류·만료 처리의 첫 건은 Agent 카운터가 아닌 로그 필터로 경보를 건다. 이미지 신고 필터는 프론트 연동 뒤 실제 신고 로그 유입을 확인하되, 그전에는 경보를 만들지 않는다. 로그 필터 경보 12개와 EC2 상태 검사·CPU 경보 각 1개의 ALARM·OK SNS 동작을 검증한다. 한 번의 Gemini 장애가 여러 지표를 올릴 수 있으므로 Discord에서 중복 대응을 묶을 운영 규칙을 정한다.
+- [ ] 생성된 dev 로그 지표 필터 13개를 실제 JSON 로그로 시험하고, 제공 `techcourse-lambda-execution-role`의 사용 권한을 확인한 뒤 Lambda `WEBHOOK_URL` 설정·대시보드를 준비한다. 새 리소스에는 `Service=techcourse`, `Role=techcourse-etc`, `ProjectTeam=harudle` 태그를 지정한다. 생성 내부 오류·만료 처리의 첫 건은 Agent 카운터가 아닌 로그 필터로 경보를 건다. 이미지 신고 필터는 프론트 연동 뒤 실제 신고 로그 유입을 확인하되, 그전에는 경보를 만들지 않는다. 로그 필터 경보 12개와 EC2 상태 검사·CPU 경보 각 1개의 ALARM·OK SNS 동작을 검증한다. 한 번의 Gemini 장애가 여러 지표를 올릴 수 있으므로 Discord에서 중복 대응을 묶을 운영 규칙을 정한다.
 - [ ] dev/prod EC2 InstanceId와 RDS DBInstanceIdentifier, EC2 Agent의 `mem_used_percent`·`disk_used_percent`, RDS 인스턴스 메모리·할당 스토리지·`max_connections`를 확인한다. CPU·상태 검사는 AWS 기본 지표로, 메모리·디스크가 없다면 기존 Agent 구성을 보존하며 수집을 추가한다. 실제 크기로 경보 임계값을 변환한다.
 
 ## S3 담당 팀원의 인수 조건
@@ -47,7 +47,7 @@ dev 경보 **14개**의 생성과 목록을 확인했다. 로그 필터 경보�
 3. 기존 Agent 설정을 유지한 채 dev 설정 파일 하나를 추가한다. EMF 로그와 `Harudle/Dev`의 9개 지표 계열을 확인한다. 새 설정 때문에 기존 CPU·메모리·디스크 지표가 사라지지 않아야 한다.
 4. 생성 최종화·예상 밖 오류·이미지 표시 실패 시계열이 첫 수집에 0으로 노출되는지 확인한다. 첫 정상 수집 뒤 안전한 dev 단일 생성 오류를 일으켜 `/actuator/prometheus` 누적값 `0 → 1`, EMF 증가분 `1`, CloudWatch 카운터 5분 `Sum=1`을 대조한다. 첫 수집 이전 이벤트는 카운터 증가분에서 빠질 수 있다. 백엔드 재시작 뒤에도 오탐 증가분이 없는지 검사한다. `hikaricp_connections_pending`은 증가분이 아닌 게이지이므로 `Max`·`Average`로 본다.
 5. dev에 생성된 생성 내부 오류(`generation_unexpected_failure`)·만료 처리(`generation_finalized`, `status=FAILED`, `errorCode=GENERATION_INTERRUPTED`)와 S3·Gemini의 `external_api_failure` JSON 로그 필터가 단일 실패 로그를 정확히 1건으로 집계하는지 시험하고, 12개 경보의 평가 결과를 확인한다. 이미지 신고 필터의 `image_load_failure_reported` 집계도 프론트 연동 후 실제 로그로 시험한다. Gemini 단계별 일시 오류(`transient`)는 15분 3건 이상, 응답 처리 오류(`response`)는 15분 2건 이상으로 설정했다. HTTP `job` 전체 수와 `outcome=SERVER_ERROR` 수로 5xx 비율을 대조한 뒤 오류율 경보를 켠다. 사용자 영향·원인·EC2/RDS 자원 영역으로 대시보드를 만들고 [운영 안내의 초기 임계값](README.md#알람-설계)을 dev 알람에 적용한다. EC2 메모리·디스크는 Agent가 실제 게시하는지 확인한 뒤 경보를 활성화한다. 오류 지표의 무데이터는 정상으로 두되, 매분 게시가 확인된 Hikari 같은 **지속 게이지의 무데이터**에는 별도 수집 중단 알람을 둔다.
-6. 환경별 SNS → Lambda → Discord로 **환경·알람명·상태·고정 원인** 네 필드만 보낸다. Lambda 요청의 `DiscordBot` User-Agent와 ALARM → OK 양쪽 상태 전환, 수신 시간, 중복·누락을 시험한다. Lambda 전달 실패는 동일 Discord 경로만으로 감시하지 않는다.
+6. 제공 역할 `techcourse-lambda-execution-role`을 변경 없이 사용해 환경별 SNS → Lambda → Discord로 **환경·알람명·상태·고정 원인** 네 필드만 보낸다. 현재 제공 가이드에 Secrets Manager가 포함되지 않으므로 `WEBHOOK_URL` 환경 변수 방식을 사용한다. `WEBHOOK_SECRET_ARN`과 동시에 설정하지 않으며 기본 저장 암호화가 환경 변수 조회권한자의 읽기를 차단하지는 않는다는 점을 기록한다. Lambda 요청의 `DiscordBot` User-Agent와 ALARM → OK 양쪽 상태 전환, 수신 시간, 중복·누락을 시험한다. Lambda 전달 실패는 동일 Discord 경로만으로 감시하지 않는다.
 
 프론트 이미지 실패 신고는 담당 팀원의 별도 작업이다. `POST /api/v1/telemetry/image-load-failures/{timeline|detail}`에 인증·CSRF를 갖춘 본문 없는 요청이 실제 화면 실패 때 도착하고 204로 끝나는지 dev에서 확인한다. 그 뒤 `harudle_image_load_failures_total` 증가와 `image_load_failure_reported` 로그 및 필터 집계를 대조한다. 연동 전에는 `image-load-failure` 알람을 만들거나 활성화하지 않는다.
 
