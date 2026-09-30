@@ -9,6 +9,7 @@ import com.harudle.diary.service.dto.DiaryStreakDayResult;
 import com.harudle.diary.service.dto.DiaryStreakResult;
 import com.harudle.diary.service.dto.DiarySummaryResult;
 import com.harudle.diary.service.dto.DiaryTimelineResult;
+import com.harudle.generation.diary.domain.ImageVariantKeys;
 import com.harudle.generation.usage.presentation.GenerationUsageResponse;
 import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
@@ -87,7 +88,9 @@ final class DiaryResponseAssembler {
     }
 
     private DiarySummaryResponse toSummaryResponse(DiarySummaryResult result) {
-        ImageAccessUrl imageAccessUrl = createImageAccessUrl(result.imageObjectKey());
+        ImageAccessUrl imageAccessUrl = createImageAccessUrl(
+                ImageVariantKeys.toThumbnailKeyIfOptimizedDetail(result.imageObjectKey())
+        );
         return new DiarySummaryResponse(
                 result.id(),
                 result.title(),

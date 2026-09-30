@@ -11,7 +11,10 @@ import com.harudle.generation.adapter.out.gemini.GeminiExceptionTranslator;
 import com.harudle.generation.adapter.out.gemini.GeminiFailureReporter;
 import com.harudle.generation.adapter.out.gemini.GeminiStoryboardGenerator;
 import com.harudle.generation.adapter.out.gemini.GeminiStoryboardResponseMapper;
+import com.harudle.generation.adapter.out.s3.CwebpImageVariantEncoder;
 import com.harudle.generation.adapter.out.s3.ImageObjectKeyFactory;
+import com.harudle.generation.adapter.out.s3.ImageVariantEncoder;
+import com.harudle.generation.adapter.out.s3.ImageUploadPreparer;
 import com.harudle.generation.adapter.out.s3.S3ExceptionTranslator;
 import com.harudle.generation.adapter.out.s3.S3FailureReporter;
 import com.harudle.generation.adapter.out.s3.S3ImageStorage;
@@ -149,16 +152,31 @@ public class GenerationAdapterConfiguration {
     }
 
     @Bean
+    public ImageVariantEncoder imageVariantEncoder() {
+        CwebpImageVariantEncoder encoder = new CwebpImageVariantEncoder();
+        encoder.verifyAvailable();
+        return encoder;
+    }
+
+    @Bean
+    public ImageUploadPreparer imageUploadPreparer(
+            ImageObjectKeyFactory objectKeyFactory,
+            ImageVariantEncoder variantEncoder
+    ) {
+        return new ImageUploadPreparer(objectKeyFactory, variantEncoder);
+    }
+
+    @Bean
     public ImageStorage imageStorage(
             S3Client s3Client,
             S3StorageProperties properties,
-            ImageObjectKeyFactory objectKeyFactory,
+            ImageUploadPreparer uploadPreparer,
             S3FailureReporter failureReporter
     ) {
         return new S3ImageStorage(
                 s3Client,
                 properties,
-                objectKeyFactory,
+                uploadPreparer,
                 failureReporter
         );
     }
