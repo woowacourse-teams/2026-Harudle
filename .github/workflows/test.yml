@@ -47,6 +47,12 @@ jobs:
             deploy/monitoring/cloudwatch-agent.dev.json
           jq -e '.logs.metrics_collected.prometheus.emf_processor.metric_namespace == "Harudle/Prod"' \
             deploy/monitoring/cloudwatch-agent.prod.json
+          for config in deploy/monitoring/cloudwatch-agent.dev.json deploy/monitoring/cloudwatch-agent.prod.json; do
+            jq -e 'any(.logs.metrics_collected.prometheus.emf_processor.metric_declaration[];
+              .metric_selectors == ["^http_server_requests_seconds_count$"]
+              and any(.dimensions[]; . == ["job"])
+              and any(.dimensions[]; . == ["job", "outcome"]))' "$config"
+          done
 
           bash -c 'source deploy/scripts/compose_environment.sh; configure_compose "$PWD/deploy"; test "$DEPLOY_ENV_VALUE" = dev'
           printf 'DEPLOY_ENV=prod\n' > deploy/.env
