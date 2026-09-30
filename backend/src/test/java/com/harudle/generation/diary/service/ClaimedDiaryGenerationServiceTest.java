@@ -74,6 +74,9 @@ class ClaimedDiaryGenerationServiceTest {
     @Mock
     private DiaryGenerationCompletionService completionService;
 
+    @Mock
+    private GenerationLifecycleMetrics lifecycleMetrics;
+
     private RequestFingerprintGenerator requestFingerprintGenerator;
     private ClaimedDiaryGenerationService generationService;
 
@@ -87,7 +90,8 @@ class ClaimedDiaryGenerationServiceTest {
                 storyboardGenerator,
                 diaryImageGenerator,
                 imageStorage,
-                completionService
+                completionService,
+                lifecycleMetrics
         );
     }
 
@@ -219,6 +223,55 @@ class ClaimedDiaryGenerationServiceTest {
     }
 
     @Test
+    @DisplayName("예상 밖 생성 오류의 원인과 발생 단계를 기록한다")
+    void recordUnexpectedStoryboardFailure() {
+        GenerateDiaryImageCommand command = createCommand();
+        DiaryGeneration generation = createGeneration(command);
+        GenerationPrompt prompt = mock(GenerationPrompt.class);
+        RuntimeException original = new IllegalStateException("민감한 사용자 원문");
+        when(prompt.getStoryboardPromptText()).thenReturn("스토리보드 프롬프트");
+        when(diaryGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenThrow(original);
+        when(completionService.fail(generation.getId(), GenerationErrorCode.GENERATION_INTERNAL_ERROR))
+                .thenReturn(GenerationErrorCode.GENERATION_INTERNAL_ERROR);
+
+        assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
+                .isSameAs(original);
+
+        verify(lifecycleMetrics).unexpectedFailure(
+                generation.getId(), GenerationLifecycleMetrics.Phase.STORYBOARD, original);
+        verify(completionService).fail(generation.getId(), GenerationErrorCode.GENERATION_INTERNAL_ERROR);
+    }
+
+    @Test
+    @DisplayName("예상 밖 참조 이미지 조회 오류를 저장소 실패로 기록한다")
+    void recordUnexpectedReferenceLoadFailure() {
+        GenerateDiaryImageCommand command = createCommand();
+        DiaryGeneration generation = createGeneration(command);
+        GenerationPrompt prompt = mock(GenerationPrompt.class);
+        Storyboard storyboard = createStoryboard();
+        RuntimeException original = new IllegalStateException("secret object key");
+        when(prompt.getStoryboardPromptText()).thenReturn("스토리보드 프롬프트");
+        when(prompt.getImageAssetObjectKey()).thenReturn("references/style.png");
+        when(diaryGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class)))
+                .thenReturn(new GeneratedStoryboard(storyboard, null));
+        when(imageStorage.load("references/style.png")).thenThrow(original);
+        when(completionService.fail(generation.getId(), GenerationErrorCode.IMAGE_STORAGE_ERROR))
+                .thenReturn(GenerationErrorCode.IMAGE_STORAGE_ERROR);
+
+        assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
+                .isInstanceOf(ImageStorageException.class)
+                .hasCause(original);
+
+        verify(lifecycleMetrics).unexpectedFailure(
+                generation.getId(), GenerationLifecycleMetrics.Phase.REFERENCE_LOAD, original);
+        verify(completionService).fail(generation.getId(), GenerationErrorCode.IMAGE_STORAGE_ERROR);
+    }
+
+    @Test
     @DisplayName("오래된 생성 복구와 AI 실패가 경합하면 저장된 오류를 반환한다")
     void generateClaimedDiaryImageKeepsInterruptedError() {
         GenerateDiaryImageCommand command = createCommand();
@@ -302,6 +355,8 @@ class ClaimedDiaryGenerationServiceTest {
         assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
                 .isSameAs(completionException);
         verify(imageStorage, never()).delete(any(String.class));
+        verify(lifecycleMetrics).unexpectedFailure(
+                generation.getId(), GenerationLifecycleMetrics.Phase.COMPLETION, completionException);
     }
 
     @Test

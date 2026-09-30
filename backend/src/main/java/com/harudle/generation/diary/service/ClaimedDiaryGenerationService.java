@@ -35,6 +35,7 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
     private final ImageStorage imageStorage;
     private final DiaryGenerationCompletionService completionService;
     private final DiscardedGenerationImageCleaner imageCleaner;
+    private final GenerationLifecycleMetrics lifecycleMetrics;
 
     public ClaimedDiaryGenerationService(
             RequestFingerprintGenerator requestFingerprintGenerator,
@@ -43,7 +44,8 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
             StoryboardGenerator storyboardGenerator,
             DiaryImageGenerator diaryImageGenerator,
             ImageStorage imageStorage,
-            DiaryGenerationCompletionService completionService
+            DiaryGenerationCompletionService completionService,
+            GenerationLifecycleMetrics lifecycleMetrics
     ) {
         this.requestFingerprintGenerator = requestFingerprintGenerator;
         this.generationPromptRepository = generationPromptRepository;
@@ -53,6 +55,7 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
         this.imageStorage = imageStorage;
         this.completionService = completionService;
         this.imageCleaner = new DiscardedGenerationImageCleaner(diaryGenerationRepository, imageStorage);
+        this.lifecycleMetrics = lifecycleMetrics;
     }
 
     @Override
@@ -66,7 +69,15 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
         GenerationPrompt prompt = generationPromptRepository.findById(generation.getGenerationPromptId())
                 .orElseThrow(GenerationUnavailableException::promptNotConfigured);
         GeneratedDiaryImage generatedDiaryImage = executeExternalGeneration(command, prompt, generationId);
-        DiaryGeneration completedGeneration = completeGeneration(generationId, generatedDiaryImage);
+        DiaryGeneration completedGeneration;
+        try {
+            completedGeneration = completeGeneration(generationId, generatedDiaryImage);
+        } catch (DiaryGenerationFailedException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            lifecycleMetrics.unexpectedFailure(generationId, GenerationLifecycleMetrics.Phase.COMPLETION, exception);
+            throw exception;
+        }
         return createResult(completedGeneration);
     }
 
@@ -119,18 +130,22 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
             GenerationPrompt prompt,
             UUID generationId
     ) {
+        GenerationLifecycleMetrics.Phase phase = GenerationLifecycleMetrics.Phase.STORYBOARD;
         try {
             GeneratedStoryboard generatedStoryboard = storyboardGenerator.generate(new StoryboardGenerationRequest(
                     command.diaryText(),
                     prompt.getStoryboardPromptText()
             ));
             Storyboard storyboard = generatedStoryboard.storyboard();
+            phase = GenerationLifecycleMetrics.Phase.REFERENCE_LOAD;
             ReferenceImage referenceImage = imageStorage.load(prompt.getImageAssetObjectKey());
+            phase = GenerationLifecycleMetrics.Phase.IMAGE_GENERATION;
             GeneratedImage generatedImage = diaryImageGenerator.generate(new DiaryImageGenerationRequest(
                     storyboard,
                     prompt.getImageStylePromptText(),
                     referenceImage
             ));
+            phase = GenerationLifecycleMetrics.Phase.IMAGE_STORE;
             String imageObjectKey = storeImage(generationId, generatedImage);
             return new GeneratedDiaryImage(storyboard, imageObjectKey, generatedStoryboard.tokenUsage());
         } catch (AiGenerationException exception) {
@@ -140,6 +155,12 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
             failGeneration(generationId, GenerationErrorCode.IMAGE_STORAGE_ERROR);
             throw exception;
         } catch (RuntimeException exception) {
+            lifecycleMetrics.unexpectedFailure(generationId, phase, exception);
+            if (phase == GenerationLifecycleMetrics.Phase.REFERENCE_LOAD
+                    || phase == GenerationLifecycleMetrics.Phase.IMAGE_STORE) {
+                failGeneration(generationId, GenerationErrorCode.IMAGE_STORAGE_ERROR);
+                throw new ImageStorageException("이미지 저장소 요청을 처리하지 못했습니다.", exception);
+            }
             failGeneration(generationId, GenerationErrorCode.GENERATION_INTERNAL_ERROR);
             throw exception;
         }
@@ -151,7 +172,7 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
             return ImageObjectKeyPolicy.normalizeRequired(imageObjectKey, "생성 이미지 Object Key");
         } catch (IllegalArgumentException exception) {
             if (imageObjectKey != null) {
-                imageCleaner.deleteDiscardedImage(imageObjectKey);
+                imageCleaner.deleteDiscardedImage(generationId, imageObjectKey, "invalid_object_key");
             }
 
             throw new ImageStorageException(exception.getMessage(), exception);

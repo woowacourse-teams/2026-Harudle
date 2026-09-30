@@ -44,20 +44,36 @@ public final class DiaryGenerationCleanupScheduler {
     )
     public void expireStaleProcessingGenerations() {
         Instant currentTime = clock.instant();
-        List<UUID> generationIds = findStaleGenerationIds(currentTime);
+        int candidateCount = 0;
         int expiredCount = 0;
-        for (UUID generationId : generationIds) {
-            if (completionService.interruptIfStale(
-                    generationId,
-                    currentTime,
-                    generationLifecycleProperties.processingTimeout()
-            )) {
-                expiredCount++;
+        try {
+            List<UUID> generationIds = findStaleGenerationIds(currentTime);
+            candidateCount = generationIds.size();
+            for (UUID generationId : generationIds) {
+                if (completionService.interruptIfStale(
+                        generationId,
+                        currentTime,
+                        generationLifecycleProperties.processingTimeout()
+                )) {
+                    expiredCount++;
+                }
             }
-        }
 
-        if (expiredCount > 0) {
-            log.info("만료된 그림일기 생성 작업을 실패 처리했습니다. expiredCount={}", expiredCount);
+            log.atInfo()
+                    .addKeyValue("event", "generation_cleanup_run")
+                    .addKeyValue("candidateCount", candidateCount)
+                    .addKeyValue("interruptedCount", expiredCount)
+                    .log("event=generation_cleanup_run candidateCount={} interruptedCount={}",
+                            candidateCount, expiredCount);
+        } catch (RuntimeException exception) {
+            log.atError()
+                    .addKeyValue("event", "generation_cleanup_failed")
+                    .addKeyValue("candidateCount", candidateCount)
+                    .addKeyValue("interruptedCount", expiredCount)
+                    .addKeyValue("exceptionType", exception.getClass().getSimpleName())
+                    .log("event=generation_cleanup_failed candidateCount={} interruptedCount={} exceptionType={}",
+                            candidateCount, expiredCount, exception.getClass().getSimpleName());
+            throw exception;
         }
     }
 

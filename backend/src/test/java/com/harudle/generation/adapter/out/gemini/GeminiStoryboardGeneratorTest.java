@@ -30,6 +30,7 @@ import com.harudle.generation.diary.service.port.dto.GeneratedStoryboard;
 import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
 import com.harudle.generation.diary.service.port.dto.StoryboardGenerationRequest;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
@@ -45,6 +46,7 @@ class GeminiStoryboardGeneratorTest {
     private final Models models = mock(Models.class);
     private final GenerateContentResponse response = mock(GenerateContentResponse.class);
     private final ExternalApiLogger externalApiLogger = mock(ExternalApiLogger.class);
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
     private final GeminiGenerationProperties properties = createProperties();
     private final GeminiStoryboardGenerator generator = new GeminiStoryboardGenerator(
             models,
@@ -54,7 +56,8 @@ class GeminiStoryboardGeneratorTest {
             new GeminiFailureReporter(
                     new GeminiExceptionTranslator(),
                     externalApiLogger
-            )
+            ),
+            new GeminiStageMetrics(meterRegistry)
     );
 
     @BeforeEach
@@ -115,6 +118,9 @@ class GeminiStoryboardGeneratorTest {
                 .extracting(thinkingConfig -> thinkingConfig.thinkingLevel().orElseThrow().knownEnum())
                 .isEqualTo(ThinkingLevel.Known.HIGH);
         verifyNoInteractions(externalApiLogger);
+        assertThat(meterRegistry.get("harudle.gemini.stage.calls")
+                .tags("stage", "storyboard_generation", "outcome", "success", "failureType", "none")
+                .counter().count()).isEqualTo(1);
     }
 
     @Test
@@ -132,6 +138,9 @@ class GeminiStoryboardGeneratorTest {
 
         assertThat(result.tokenUsage()).isEqualTo(new GenerationTokenUsage(120, 350, 80, 550));
         assertThat(result.storyboard().panels()).hasSize(4);
+        assertThat(meterRegistry.get("harudle.gemini.tokens")
+                .tags("stage", "storyboard_generation", "kind", "thought")
+                .counter().count()).isEqualTo(80);
     }
 
     @Test
@@ -148,7 +157,7 @@ class GeminiStoryboardGeneratorTest {
                 eq(new ExternalApiFailure(
                         "gemini",
                         "storyboard_generation",
-                        "RESPONSE_PROCESSING_ERROR",
+                        "EMPTY_RESPONSE",
                         null,
                         null,
                         null
@@ -176,13 +185,20 @@ class GeminiStoryboardGeneratorTest {
                 });
         verify(externalApiLogger).error(
                 eq(new ExternalApiFailure(
-                        "gemini", "storyboard_generation", "OUTPUT_TRUNCATED", null, null, null
+                        "gemini", "storyboard_generation", "OUTPUT_TOKEN_LIMIT", null, null, null
                 )),
                 any(UnexpectedEndOfInputException.class),
                 eq(new ExternalApiResponseDiagnostics(
                         "MAX_TOKENS", 3000, 900, 4096, truncatedJson.length()
                 ))
         );
+        assertThat(meterRegistry.get("harudle.gemini.stage.calls")
+                .tags("stage", "storyboard_generation", "outcome", "failure",
+                        "failureType", "OUTPUT_TOKEN_LIMIT")
+                .counter().count()).isEqualTo(1);
+        assertThat(meterRegistry.get("harudle.gemini.tokens")
+                .tags("stage", "storyboard_generation", "kind", "thought")
+                .counter().count()).isEqualTo(900);
     }
 
     @Test
@@ -199,7 +215,7 @@ class GeminiStoryboardGeneratorTest {
                 );
         verify(externalApiLogger).error(
                 eq(new ExternalApiFailure(
-                        "gemini", "storyboard_generation", "RESPONSE_PROCESSING_ERROR", null, null, null
+                        "gemini", "storyboard_generation", "INVALID_JSON", null, null, null
                 )),
                 any(Exception.class),
                 eq(new ExternalApiResponseDiagnostics("STOP", null, null, 4096, 14))
@@ -244,6 +260,59 @@ class GeminiStoryboardGeneratorTest {
                 ),
                 cause
         );
+    }
+
+    @Test
+    @DisplayName("429 요청 제한은 별도 실패 유형으로 집계한다")
+    void classifyRateLimit() {
+        ClientException cause = new ClientException(429, "RESOURCE_EXHAUSTED", "quota exceeded");
+        when(models.generateContent(anyString(), anyString(), any(GenerateContentConfig.class)))
+                .thenThrow(cause);
+
+        assertThatThrownBy(() -> generator.generate(createRequest()))
+                .isInstanceOf(AiGenerationException.class);
+
+        verify(externalApiLogger).warn(
+                new ExternalApiFailure("gemini", "storyboard_generation", "RATE_LIMIT",
+                        "RESOURCE_EXHAUSTED", "429", null),
+                cause
+        );
+        assertThat(meterRegistry.get("harudle.gemini.stage.calls")
+                .tags("stage", "storyboard_generation", "outcome", "failure",
+                        "failureType", "RATE_LIMIT")
+                .counter().count()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("503 공급자 장애는 429와 분리한다")
+    void classifyProviderUnavailable() {
+        ClientException cause = new ClientException(503, "UNAVAILABLE", "provider unavailable");
+        when(models.generateContent(anyString(), anyString(), any(GenerateContentConfig.class)))
+                .thenThrow(cause);
+
+        assertThatThrownBy(() -> generator.generate(createRequest()))
+                .isInstanceOf(AiGenerationException.class);
+
+        assertThat(meterRegistry.get("harudle.gemini.stage.calls")
+                .tags("stage", "storyboard_generation", "outcome", "failure",
+                        "failureType", "PROVIDER_5XX")
+                .counter().count()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("MAX_TOKENS여도 스키마에 맞는 응답은 성공으로 기록하고 종료 사유를 남긴다")
+    void validResponseAtOutputLimitIsNotCountedAsFailure() {
+        when(response.text()).thenReturn(validResponseJson());
+        stubFinishReason(FinishReason.Known.MAX_TOKENS);
+
+        generator.generate(createRequest());
+
+        assertThat(meterRegistry.get("harudle.gemini.stage.calls")
+                .tags("stage", "storyboard_generation", "outcome", "success", "failureType", "none")
+                .counter().count()).isEqualTo(1);
+        assertThat(meterRegistry.get("harudle.gemini.finish.reason")
+                .tags("stage", "storyboard_generation", "reason", "MAX_TOKENS")
+                .counter().count()).isEqualTo(1);
     }
 
     private StoryboardGenerationRequest createRequest() {

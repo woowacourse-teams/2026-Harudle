@@ -116,7 +116,7 @@ class S3ImageUrlProviderTest {
         assertThatThrownBy(() -> imageUrlProvider.createAccessUrl(OBJECT_KEY))
                 .isInstanceOf(ImageStorageException.class)
                 .hasMessageContaining("S3 이미지 접근 URL 발급")
-                .hasMessageContaining(OBJECT_KEY)
+                .hasMessageNotContaining(OBJECT_KEY)
                 .hasCause(cause);
         verify(externalApiLogger).error(
                 eq(new ExternalApiFailure(

@@ -13,11 +13,15 @@ configure_compose() {
       "${env_file}" || true
   } | tail -n 1 | tr -d '\r')"
 
-  deploy_env="${deploy_env:-prod}"
   deploy_env="${deploy_env%\"}"
   deploy_env="${deploy_env#\"}"
   deploy_env="${deploy_env%\'}"
   deploy_env="${deploy_env#\'}"
+
+  if [[ -z "${deploy_env}" ]]; then
+    echo "DEPLOY_ENV must be set to dev or prod in ${env_file}." >&2
+    return 1
+  fi
 
   COMPOSE_ARGS=(
     --project-name harudle

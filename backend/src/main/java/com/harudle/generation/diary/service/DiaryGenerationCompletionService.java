@@ -4,6 +4,7 @@ import com.harudle.diary.domain.Diary;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.generation.diary.domain.DiaryGeneration;
 import com.harudle.generation.diary.domain.GenerationErrorCode;
+import com.harudle.generation.diary.domain.GenerationStatus;
 import com.harudle.generation.diary.domain.Storyboard;
 import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
@@ -24,18 +25,21 @@ public class DiaryGenerationCompletionService {
     private final DiaryRepository diaryRepository;
     private final GenerationUsageService generationUsageService;
     private final Clock clock;
+    private final GenerationLifecycleMetrics lifecycleMetrics;
 
     DiaryGenerationCompletionService(
             DiaryGenerationRepository diaryGenerationRepository,
             DiaryRepository diaryRepository,
             GenerationUsageService generationUsageService,
             @Qualifier("serviceClock")
-            Clock clock
+            Clock clock,
+            GenerationLifecycleMetrics lifecycleMetrics
     ) {
         this.diaryGenerationRepository = diaryGenerationRepository;
         this.diaryRepository = diaryRepository;
         this.generationUsageService = generationUsageService;
         this.clock = clock;
+        this.lifecycleMetrics = lifecycleMetrics;
     }
 
     @Transactional
@@ -51,6 +55,7 @@ public class DiaryGenerationCompletionService {
             case SUCCEEDED -> generation;
             case PROCESSING -> {
                 generation.succeed(storyboard, imageObjectKey, tokenUsage, clock.instant());
+                lifecycleMetrics.finalizedAfterCommit(generationId, GenerationStatus.SUCCEEDED, null);
                 yield generation;
             }
         };
@@ -66,6 +71,7 @@ public class DiaryGenerationCompletionService {
                 generation.fail(errorCode, failedAt);
                 diary.delete(failedAt);
                 restoreUsage(generation, diary);
+                lifecycleMetrics.finalizedAfterCommit(generationId, GenerationStatus.FAILED, errorCode);
                 yield errorCode;
             }
             case FAILED -> {
@@ -87,6 +93,11 @@ public class DiaryGenerationCompletionService {
         Diary diary = findDiaryForUpdate(generation.getDiaryId());
         diary.delete(generation.getCompletedAt());
         restoreUsage(generation, diary);
+        lifecycleMetrics.finalizedAfterCommit(
+                generationId,
+                GenerationStatus.FAILED,
+                GenerationErrorCode.GENERATION_INTERRUPTED
+        );
         return true;
     }
 

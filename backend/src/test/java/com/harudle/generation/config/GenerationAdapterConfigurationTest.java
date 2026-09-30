@@ -7,14 +7,19 @@ import com.google.genai.Models;
 import com.harudle.common.logging.ExternalApiLogger;
 import com.harudle.generation.adapter.out.gemini.GeminiDiaryImageGenerator;
 import com.harudle.generation.adapter.out.gemini.GeminiFailureReporter;
+import com.harudle.generation.adapter.out.gemini.GeminiStageMetrics;
 import com.harudle.generation.adapter.out.gemini.GeminiStoryboardGenerator;
+import com.harudle.generation.adapter.out.s3.ObservedImageStorage;
+import com.harudle.generation.adapter.out.s3.ObservedImageUrlProvider;
 import com.harudle.generation.adapter.out.s3.S3FailureReporter;
-import com.harudle.generation.adapter.out.s3.S3ImageStorage;
-import com.harudle.generation.adapter.out.s3.S3ImageUrlProvider;
+import com.harudle.generation.adapter.out.s3.ImageVariantEncoder;
+import com.harudle.generation.adapter.out.s3.ImageUploadPreparer;
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
 import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -28,6 +33,7 @@ class GenerationAdapterConfigurationTest {
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
             .withUserConfiguration(GenerationAdapterConfiguration.class)
             .withBean(ExternalApiLogger.class, ExternalApiLogger::new)
+            .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
             .withBean(ObjectMapper.class, ObjectMapper::new);
 
     @Test
@@ -40,7 +46,10 @@ class GenerationAdapterConfigurationTest {
             assertThat(context).hasSingleBean(S3Client.class);
             assertThat(context).hasSingleBean(S3Presigner.class);
             assertThat(context).hasSingleBean(GeminiFailureReporter.class);
+            assertThat(context).hasSingleBean(GeminiStageMetrics.class);
             assertThat(context).hasSingleBean(S3FailureReporter.class);
+            assertThat(context).hasSingleBean(ImageVariantEncoder.class);
+            assertThat(context).hasSingleBean(ImageUploadPreparer.class);
             assertThat(context).hasSingleBean(StoryboardGenerator.class);
             assertThat(context).hasSingleBean(DiaryImageGenerator.class);
             assertThat(context).hasSingleBean(ImageStorage.class);
@@ -57,9 +66,9 @@ class GenerationAdapterConfigurationTest {
             assertThat(context.getBean(DiaryImageGenerator.class))
                     .isInstanceOf(GeminiDiaryImageGenerator.class);
             assertThat(context.getBean(ImageStorage.class))
-                    .isInstanceOf(S3ImageStorage.class);
+                    .isInstanceOf(ObservedImageStorage.class);
             assertThat(context.getBean(ImageUrlProvider.class))
-                    .isInstanceOf(S3ImageUrlProvider.class);
+                    .isInstanceOf(ObservedImageUrlProvider.class);
         });
     }
 

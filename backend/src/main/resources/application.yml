@@ -11,7 +11,18 @@ logging:
   level:
     root: INFO
   pattern:
-    correlation: "[traceId=%X{traceId:-none}] "
+    correlation: "[traceId=%X{traceId:-none} generationId=%X{generationId:-none}] "
+
+management:
+  endpoints:
+    access:
+      default: none
+    web:
+      exposure:
+        include: prometheus
+  endpoint:
+    prometheus:
+      access: read-only
 
 spring:
   servlet:
