@@ -5,6 +5,7 @@ import com.google.genai.types.GenerateContentResponseUsageMetadata;
 import com.harudle.common.logging.ExternalApiFailure;
 import com.harudle.common.logging.ExternalApiLogger;
 import com.harudle.common.logging.ExternalApiResponseDiagnostics;
+import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
 import java.util.Optional;
 import org.jspecify.annotations.NullMarked;
@@ -52,9 +53,14 @@ public final class GeminiFailureReporter {
             String operation,
             String translationOperation,
             String failureType,
+            AiGenerationErrorType errorType,
             Exception exception
     ) {
-        AiGenerationException translated = exceptionTranslator.translate(translationOperation, exception);
+        AiGenerationException translated = exceptionTranslator.translate(
+                translationOperation,
+                exception,
+                errorType
+        );
         String classifiedFailureType = REQUEST_PREPARATION_ERROR.equals(failureType)
                 ? GeminiFailureType.preparation(exception).name() : failureType;
         externalApiLogger.error(
@@ -77,7 +83,15 @@ public final class GeminiFailureReporter {
             ExternalApiResponseDiagnostics diagnostics,
             Exception exception
     ) {
-        AiGenerationException translated = exceptionTranslator.translate(translationOperation, exception);
+        boolean outputTruncated = "MAX_TOKENS".equals(diagnostics.finishReason());
+        AiGenerationErrorType errorType = outputTruncated
+                ? AiGenerationErrorType.OUTPUT_TRUNCATED
+                : AiGenerationErrorType.RESPONSE_PROCESSING_ERROR;
+        AiGenerationException translated = exceptionTranslator.translate(
+                translationOperation,
+                exception,
+                errorType
+        );
         String failureType = GeminiFailureType.storyboardResponse(
                 diagnostics.finishReason(), exception).name();
         externalApiLogger.error(
@@ -101,7 +115,11 @@ public final class GeminiFailureReporter {
             GenerateContentResponse response,
             Exception exception
     ) {
-        AiGenerationException translated = exceptionTranslator.translate(translationOperation, exception);
+        AiGenerationException translated = exceptionTranslator.translate(
+                translationOperation,
+                exception,
+                AiGenerationErrorType.RESPONSE_PROCESSING_ERROR
+        );
         String failureType = GeminiFailureType.imageResponse(response).name();
         Integer candidateTokenCount = null;
         Integer thoughtTokenCount = null;

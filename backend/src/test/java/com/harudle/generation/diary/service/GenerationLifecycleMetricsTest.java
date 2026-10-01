@@ -40,7 +40,9 @@ class GenerationLifecycleMetricsTest {
                     .counter()
                     .count()).isZero();
         }
-        assertThat(registry.getMeters()).hasSize(10);
+        assertThat(registry.getMeters()).hasSize(
+                GenerationLifecycleMetrics.Phase.values().length + 1 + GenerationErrorCode.values().length
+        );
     }
 
     @Test

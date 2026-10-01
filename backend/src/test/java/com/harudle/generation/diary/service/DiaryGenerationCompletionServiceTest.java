@@ -2,7 +2,9 @@ package com.harudle.generation.diary.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -16,10 +18,13 @@ import com.harudle.generation.diary.domain.StoryPanel;
 import com.harudle.generation.diary.domain.Storyboard;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
+import com.harudle.generation.usage.domain.GenerationUsage;
+import com.harudle.generation.usage.service.GenerationUsageService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
@@ -38,12 +43,17 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 class DiaryGenerationCompletionServiceTest {
 
     private static final Instant NOW = Instant.parse("2026-08-06T12:00:00Z");
+    private static final UUID USER_ID = UUID.randomUUID();
+    private static final LocalDate USAGE_DATE = LocalDate.of(2026, 8, 6);
 
     @Mock
     private DiaryGenerationRepository diaryGenerationRepository;
 
     @Mock
     private DiaryRepository diaryRepository;
+
+    @Mock
+    private GenerationUsageService generationUsageService;
 
     private DiaryGenerationCompletionService completionService;
     private SimpleMeterRegistry meterRegistry;
@@ -55,6 +65,7 @@ class DiaryGenerationCompletionServiceTest {
         completionService = new DiaryGenerationCompletionService(
                 diaryGenerationRepository,
                 diaryRepository,
+                generationUsageService,
                 clock,
                 new GenerationLifecycleMetrics(meterRegistry)
         );
@@ -127,12 +138,15 @@ class DiaryGenerationCompletionServiceTest {
     @Test
     @DisplayName("처리 중 생성을 실패 상태로 바꾸며 일기를 함께 폐기한다")
     void failProcessingGenerationAndDiscardDiary() {
-        DiaryGeneration generation = createGeneration();
+        DiaryGeneration generation = createGeneration(USAGE_DATE);
         Diary diary = mock(Diary.class);
+        when(diary.getUserId()).thenReturn(USER_ID);
         when(diaryGenerationRepository.findByIdForUpdate(generation.getId()))
                 .thenReturn(Optional.of(generation));
         when(diaryRepository.findByIdIncludingDeletedForUpdate(generation.getDiaryId()))
                 .thenReturn(Optional.of(diary));
+        when(generationUsageService.restoreUsage(USER_ID, USAGE_DATE))
+                .thenReturn(Optional.of(new GenerationUsage(USAGE_DATE, 0, 3)));
 
         GenerationErrorCode result = completionService.fail(
                 generation.getId(),
@@ -143,6 +157,7 @@ class DiaryGenerationCompletionServiceTest {
         assertThat(generation.getStatus()).isEqualTo(GenerationStatus.FAILED);
         assertThat(generation.getCompletedAt()).isEqualTo(NOW);
         verify(diary).delete(NOW);
+        verify(generationUsageService).restoreUsage(USER_ID, USAGE_DATE);
     }
 
     @Test
@@ -165,13 +180,14 @@ class DiaryGenerationCompletionServiceTest {
         assertThat(result).isEqualTo(GenerationErrorCode.GENERATION_INTERRUPTED);
         assertThat(generation.getErrorCode()).isEqualTo(GenerationErrorCode.GENERATION_INTERRUPTED);
         verify(diary).delete(failedAt);
+        verify(generationUsageService, never()).restoreUsage(any(), any());
         assertNoFinalizations();
     }
 
     @Test
     @DisplayName("처리 제한 시간을 지난 생성을 중단하며 일기를 함께 폐기한다")
     void interruptStaleGenerationAndDiscardDiary() {
-        DiaryGeneration generation = createGeneration();
+        DiaryGeneration generation = createGeneration(USAGE_DATE);
         Duration processingTimeout = Duration.ofMinutes(15);
         ReflectionTestUtils.setField(
                 generation,
@@ -179,10 +195,13 @@ class DiaryGenerationCompletionServiceTest {
                 NOW.minus(processingTimeout).minusSeconds(1)
         );
         Diary diary = mock(Diary.class);
+        when(diary.getUserId()).thenReturn(USER_ID);
         when(diaryGenerationRepository.findByIdForUpdate(generation.getId()))
                 .thenReturn(Optional.of(generation));
         when(diaryRepository.findByIdIncludingDeletedForUpdate(generation.getDiaryId()))
                 .thenReturn(Optional.of(diary));
+        when(generationUsageService.restoreUsage(USER_ID, USAGE_DATE))
+                .thenReturn(Optional.of(new GenerationUsage(USAGE_DATE, 0, 3)));
 
         boolean interrupted = completionService.interruptIfStale(
                 generation.getId(),
@@ -194,6 +213,7 @@ class DiaryGenerationCompletionServiceTest {
         assertThat(generation.getErrorCode())
                 .isEqualTo(GenerationErrorCode.GENERATION_INTERRUPTED);
         verify(diary).delete(NOW);
+        verify(generationUsageService).restoreUsage(USER_ID, USAGE_DATE);
     }
 
     @Test
@@ -267,11 +287,16 @@ class DiaryGenerationCompletionServiceTest {
     }
 
     private DiaryGeneration createGeneration() {
+        return createGeneration(null);
+    }
+
+    private DiaryGeneration createGeneration(LocalDate usageDate) {
         return DiaryGeneration.start(
                 UUID.randomUUID(),
                 1L,
                 UUID.randomUUID(),
-                "a".repeat(64)
+                "a".repeat(64),
+                usageDate
         );
     }
 

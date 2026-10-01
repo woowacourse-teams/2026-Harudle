@@ -12,6 +12,7 @@ import com.google.genai.types.Part;
 import com.harudle.generation.config.GeminiGenerationProperties;
 import com.harudle.generation.diary.service.port.dto.DiaryImageGenerationRequest;
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
+import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import com.harudle.generation.diary.service.port.dto.GeneratedImage;
 import com.harudle.generation.diary.service.port.dto.ReferenceImage;
 import java.io.IOException;
@@ -97,6 +98,7 @@ public final class GeminiDiaryImageGenerator implements DiaryImageGenerator {
                     OPERATION,
                     TRANSLATION_OPERATION,
                     REQUEST_PREPARATION_ERROR,
+                    AiGenerationErrorType.INTERNAL_ERROR,
                     exception
             );
         }

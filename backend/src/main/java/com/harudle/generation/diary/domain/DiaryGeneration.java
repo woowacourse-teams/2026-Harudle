@@ -8,6 +8,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import org.hibernate.annotations.CreationTimestamp;
@@ -73,6 +74,9 @@ public class DiaryGeneration {
     @Column(name = "completed_at")
     private Instant completedAt;
 
+    @Column(name = "usage_date")
+    private LocalDate usageDate;
+
     protected DiaryGeneration() {
     }
 
@@ -81,7 +85,8 @@ public class DiaryGeneration {
             UUID diaryId,
             Long generationPromptId,
             UUID idempotencyKey,
-            String requestFingerprint
+            String requestFingerprint,
+            LocalDate usageDate
     ) {
         validateId(id);
         validateDiaryId(diaryId);
@@ -93,6 +98,7 @@ public class DiaryGeneration {
         this.generationPromptId = generationPromptId;
         this.idempotencyKey = idempotencyKey;
         this.requestFingerprint = normalizeRequestFingerprint(requestFingerprint);
+        this.usageDate = usageDate;
         this.status = GenerationStatus.PROCESSING;
     }
 
@@ -102,12 +108,23 @@ public class DiaryGeneration {
             UUID idempotencyKey,
             String requestFingerprint
     ) {
+        return start(diaryId, generationPromptId, idempotencyKey, requestFingerprint, null);
+    }
+
+    public static DiaryGeneration start(
+            UUID diaryId,
+            Long generationPromptId,
+            UUID idempotencyKey,
+            String requestFingerprint,
+            LocalDate usageDate
+    ) {
         return new DiaryGeneration(
                 UUID.randomUUID(),
                 diaryId,
                 generationPromptId,
                 idempotencyKey,
-                requestFingerprint
+                requestFingerprint,
+                usageDate
         );
     }
 
@@ -149,6 +166,10 @@ public class DiaryGeneration {
 
     public Instant getCompletedAt() {
         return completedAt;
+    }
+
+    public LocalDate getUsageDate() {
+        return usageDate;
     }
 
     public boolean hasSameRequestFingerprint(String requestFingerprint) {

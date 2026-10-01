@@ -11,6 +11,7 @@ import com.harudle.common.logging.ExternalApiResponseDiagnostics;
 import com.harudle.generation.config.GeminiGenerationProperties;
 import com.harudle.generation.diary.domain.Storyboard;
 import com.harudle.generation.diary.domain.GenerationTokenUsage;
+import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import com.harudle.generation.diary.service.port.dto.GeneratedStoryboard;
 import com.harudle.generation.diary.service.port.dto.StoryboardGenerationRequest;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
@@ -100,6 +101,7 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
                     OPERATION,
                     TRANSLATION_OPERATION,
                     REQUEST_PREPARATION_ERROR,
+                    AiGenerationErrorType.INTERNAL_ERROR,
                     exception
             );
         }

@@ -161,12 +161,8 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
                 failGeneration(generationId, GenerationErrorCode.IMAGE_STORAGE_ERROR);
                 throw new ImageStorageException("이미지 저장소 요청을 처리하지 못했습니다.", exception);
             }
-            failGeneration(generationId, GenerationErrorCode.AI_PROVIDER_ERROR);
-            throw new AiGenerationException(
-                    AiGenerationErrorType.PROVIDER_ERROR,
-                    "AI 생성 결과를 처리하지 못했습니다.",
-                    exception
-            );
+            failGeneration(generationId, GenerationErrorCode.GENERATION_INTERNAL_ERROR);
+            throw exception;
         }
     }
 
@@ -203,7 +199,11 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
     private GenerationErrorCode mapAiGenerationErrorCode(AiGenerationErrorType errorType) {
         return switch (errorType) {
             case PROVIDER_ERROR -> GenerationErrorCode.AI_PROVIDER_ERROR;
+            case RATE_LIMITED -> GenerationErrorCode.AI_PROVIDER_RATE_LIMITED;
             case TIMEOUT -> GenerationErrorCode.AI_PROVIDER_TIMEOUT;
+            case OUTPUT_TRUNCATED -> GenerationErrorCode.AI_OUTPUT_TRUNCATED;
+            case RESPONSE_PROCESSING_ERROR -> GenerationErrorCode.AI_RESPONSE_PROCESSING_ERROR;
+            case INTERNAL_ERROR -> GenerationErrorCode.GENERATION_INTERNAL_ERROR;
         };
     }
 

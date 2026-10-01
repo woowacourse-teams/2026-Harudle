@@ -144,13 +144,13 @@ class GeminiStoryboardGeneratorTest {
     }
 
     @Test
-    @DisplayName("Gemini 응답 본문이 비어 있으면 제공자 오류가 발생한다")
+    @DisplayName("Gemini 응답 본문이 비어 있으면 응답 처리 오류가 발생한다")
     void rejectEmptyResponse() {
         when(response.text()).thenReturn(" ");
 
         assertThatThrownBy(() -> generator.generate(createRequest()))
                 .isInstanceOfSatisfying(AiGenerationException.class, exception -> {
-                    assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.PROVIDER_ERROR);
+                    assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.RESPONSE_PROCESSING_ERROR);
                     assertThat(exception.getCause()).isInstanceOf(IllegalStateException.class);
                 });
         verify(externalApiLogger).error(
@@ -180,7 +180,7 @@ class GeminiStoryboardGeneratorTest {
 
         assertThatThrownBy(() -> generator.generate(createRequest()))
                 .isInstanceOfSatisfying(AiGenerationException.class, exception -> {
-                    assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.PROVIDER_ERROR);
+                    assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.OUTPUT_TRUNCATED);
                     assertThat(exception.getCause()).isInstanceOf(UnexpectedEndOfInputException.class);
                 });
         verify(externalApiLogger).error(
@@ -202,7 +202,7 @@ class GeminiStoryboardGeneratorTest {
     }
 
     @Test
-    @DisplayName("Gemini 응답 JSON이 올바르지 않으면 제공자 오류가 발생한다")
+    @DisplayName("Gemini 응답 JSON이 올바르지 않으면 응답 처리 오류가 발생한다")
     void rejectInvalidResponseJson() {
         when(response.text()).thenReturn("{invalid-json}");
         stubFinishReason(FinishReason.Known.STOP);
@@ -211,7 +211,7 @@ class GeminiStoryboardGeneratorTest {
                 .isInstanceOfSatisfying(
                         AiGenerationException.class,
                         exception -> assertThat(exception.errorType())
-                                .isEqualTo(AiGenerationErrorType.PROVIDER_ERROR)
+                                .isEqualTo(AiGenerationErrorType.RESPONSE_PROCESSING_ERROR)
                 );
         verify(externalApiLogger).error(
                 eq(new ExternalApiFailure(
@@ -223,7 +223,7 @@ class GeminiStoryboardGeneratorTest {
     }
 
     @Test
-    @DisplayName("Gemini 응답이 스토리보드 규칙을 위반하면 제공자 오류가 발생한다")
+    @DisplayName("Gemini 응답이 스토리보드 규칙을 위반하면 응답 처리 오류가 발생한다")
     void rejectInvalidStoryboardResponse() {
         when(response.text()).thenReturn(validResponseJson().replace(
                 "\"story_role\": \"action\"",
@@ -232,7 +232,7 @@ class GeminiStoryboardGeneratorTest {
 
         assertThatThrownBy(() -> generator.generate(createRequest()))
                 .isInstanceOfSatisfying(AiGenerationException.class, exception -> {
-                    assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.PROVIDER_ERROR);
+                    assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.RESPONSE_PROCESSING_ERROR);
                     assertThat(exception.getCause()).isInstanceOf(IllegalArgumentException.class);
                 });
     }

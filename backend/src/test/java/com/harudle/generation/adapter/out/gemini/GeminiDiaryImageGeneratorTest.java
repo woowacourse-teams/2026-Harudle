@@ -132,13 +132,13 @@ class GeminiDiaryImageGeneratorTest {
     }
 
     @Test
-    @DisplayName("Gemini 응답에 이미지가 없으면 제공자 오류가 발생한다")
+    @DisplayName("Gemini 응답에 이미지가 없으면 응답 처리 오류가 발생한다")
     void rejectResponseWithoutImage() {
         when(response.parts()).thenReturn(ImmutableList.of(Part.fromText("no image")));
 
         assertThatThrownBy(() -> generator.generate(createRequest(createReferenceImage())))
                 .isInstanceOfSatisfying(AiGenerationException.class, exception -> {
-                    assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.PROVIDER_ERROR);
+                    assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.RESPONSE_PROCESSING_ERROR);
                     assertThat(exception.getCause()).isInstanceOf(IllegalStateException.class);
                 });
         verify(externalApiLogger).error(
@@ -161,7 +161,7 @@ class GeminiDiaryImageGeneratorTest {
 
     @ParameterizedTest
     @MethodSource("invalidImageParts")
-    @DisplayName("Gemini 응답 이미지가 유효하지 않으면 제공자 오류가 발생한다")
+    @DisplayName("Gemini 응답 이미지가 유효하지 않으면 응답 처리 오류가 발생한다")
     void rejectInvalidGeneratedImage(Part invalidImagePart) {
         when(response.parts()).thenReturn(ImmutableList.of(invalidImagePart));
 
@@ -169,7 +169,7 @@ class GeminiDiaryImageGeneratorTest {
                 .isInstanceOfSatisfying(
                         AiGenerationException.class,
                         exception -> assertThat(exception.errorType())
-                                .isEqualTo(AiGenerationErrorType.PROVIDER_ERROR)
+                                .isEqualTo(AiGenerationErrorType.RESPONSE_PROCESSING_ERROR)
                 );
     }
 
@@ -186,7 +186,7 @@ class GeminiDiaryImageGeneratorTest {
 
         assertThatThrownBy(() -> generator.generate(createRequest(referenceImage)))
                 .isInstanceOfSatisfying(AiGenerationException.class, exception -> {
-                    assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.PROVIDER_ERROR);
+                    assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.INTERNAL_ERROR);
                     assertThat(exception.getCause()).isInstanceOf(IllegalArgumentException.class);
                 });
         verify(models, never()).generateContent(anyString(), any(Content.class), any(GenerateContentConfig.class));

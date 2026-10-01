@@ -3,7 +3,11 @@ package com.harudle.generation.diary.domain;
 public enum GenerationErrorCode {
 
     AI_PROVIDER_ERROR,
+    AI_PROVIDER_RATE_LIMITED,
     AI_PROVIDER_TIMEOUT,
+    AI_OUTPUT_TRUNCATED,
+    AI_RESPONSE_PROCESSING_ERROR,
+    GENERATION_INTERNAL_ERROR,
     GENERATION_INTERRUPTED,
     IMAGE_STORAGE_ERROR
 }
