@@ -1,0 +1,81 @@
+{
+  "logs": {
+    "metrics_collected": {
+      "prometheus": {
+        "log_group_name": "/harudle/prod/prometheus-emf",
+        "prometheus_config_path": "/opt/harudle/monitoring/prometheus.yaml",
+        "emf_processor": {
+          "metric_declaration_dedup": true,
+          "metric_namespace": "Harudle/Prod",
+          "metric_unit": {
+            "harudle_generation_executions_total": "Count",
+            "harudle_generation_finalizations_total": "Count",
+            "harudle_generation_unexpected_failures_total": "Count",
+            "harudle_gemini_stage_calls_total": "Count",
+            "harudle_s3_operation_calls_total": "Count",
+            "harudle_s3_url_signs_total": "Count",
+            "harudle_image_load_failures_total": "Count",
+            "http_server_requests_seconds_count": "Count",
+            "hikaricp_connections_pending": "Count"
+          },
+          "metric_declaration": [
+            {
+              "source_labels": ["job"],
+              "label_matcher": "^harudle-backend$",
+              "dimensions": [["job", "result"]],
+              "metric_selectors": ["^harudle_generation_executions_total$"]
+            },
+            {
+              "source_labels": ["job"],
+              "label_matcher": "^harudle-backend$",
+              "dimensions": [["job", "status", "errorCode"]],
+              "metric_selectors": ["^harudle_generation_finalizations_total$"]
+            },
+            {
+              "source_labels": ["job"],
+              "label_matcher": "^harudle-backend$",
+              "dimensions": [["job", "phase"]],
+              "metric_selectors": ["^harudle_generation_unexpected_failures_total$"]
+            },
+            {
+              "source_labels": ["job"],
+              "label_matcher": "^harudle-backend$",
+              "dimensions": [["job", "stage", "outcome", "failureType"]],
+              "metric_selectors": ["^harudle_gemini_stage_calls_total$"]
+            },
+            {
+              "source_labels": ["job"],
+              "label_matcher": "^harudle-backend$",
+              "dimensions": [["job", "operation", "result", "failureType"]],
+              "metric_selectors": ["^harudle_s3_operation_calls_total$"]
+            },
+            {
+              "source_labels": ["job"],
+              "label_matcher": "^harudle-backend$",
+              "dimensions": [["job", "result", "failureType"]],
+              "metric_selectors": ["^harudle_s3_url_signs_total$"]
+            },
+            {
+              "source_labels": ["job"],
+              "label_matcher": "^harudle-backend$",
+              "dimensions": [["job", "surface"]],
+              "metric_selectors": ["^harudle_image_load_failures_total$"]
+            },
+            {
+              "source_labels": ["job"],
+              "label_matcher": "^harudle-backend$",
+              "dimensions": [["job"], ["job", "outcome"], ["job", "status"]],
+              "metric_selectors": ["^http_server_requests_seconds_count$"]
+            },
+            {
+              "source_labels": ["job"],
+              "label_matcher": "^harudle-backend$",
+              "dimensions": [["job", "pool"]],
+              "metric_selectors": ["^hikaricp_connections_pending$"]
+            }
+          ]
+        }
+      }
+    }
+  }
+}

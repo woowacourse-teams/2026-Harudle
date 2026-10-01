@@ -5,6 +5,7 @@ import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.spi.LoggingEventBuilder;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -33,8 +34,9 @@ public final class ExternalApiLogger {
     }
 
     private void warn(String event, ExternalApiFailure failure, Throwable exception) {
-        LOGGER.warn(
-                LOG_FORMAT,
+        withSafeFields(LOGGER.atWarn(), event, failure, exception)
+                .setCause(sanitizedStackTrace(exception))
+                .log(LOG_FORMAT,
                 event,
                 safe(failure.provider()),
                 safe(failure.operation()),
@@ -42,14 +44,14 @@ public final class ExternalApiLogger {
                 safe(failure.providerStatus()),
                 safe(failure.providerCode()),
                 safe(failure.providerRequestId()),
-                exception.getClass().getSimpleName(),
-                sanitizedStackTrace(exception)
+                exception.getClass().getSimpleName()
         );
     }
 
     public void error(ExternalApiFailure failure, Throwable exception) {
-        LOGGER.error(
-                LOG_FORMAT,
+        withSafeFields(LOGGER.atError(), EXTERNAL_API_FAILURE_EVENT, failure, exception)
+                .setCause(sanitizedStackTrace(exception))
+                .log(LOG_FORMAT,
                 EXTERNAL_API_FAILURE_EVENT,
                 safe(failure.provider()),
                 safe(failure.operation()),
@@ -57,8 +59,7 @@ public final class ExternalApiLogger {
                 safe(failure.providerStatus()),
                 safe(failure.providerCode()),
                 safe(failure.providerRequestId()),
-                exception.getClass().getSimpleName(),
-                sanitizedStackTrace(exception)
+                exception.getClass().getSimpleName()
         );
     }
 
@@ -67,8 +68,14 @@ public final class ExternalApiLogger {
             Throwable exception,
             ExternalApiResponseDiagnostics diagnostics
     ) {
-        LOGGER.error(
-                RESPONSE_DIAGNOSTICS_FORMAT,
+        withSafeFields(LOGGER.atError(), EXTERNAL_API_FAILURE_EVENT, failure, exception)
+                .addKeyValue("finishReason", safe(diagnostics.finishReason()))
+                .addKeyValue("candidateTokenCount", number(diagnostics.candidateTokenCount()))
+                .addKeyValue("thoughtTokenCount", number(diagnostics.thoughtTokenCount()))
+                .addKeyValue("maxOutputTokens", number(diagnostics.maxOutputTokens()))
+                .addKeyValue("responseLength", number(diagnostics.responseLength()))
+                .setCause(sanitizedStackTrace(exception))
+                .log(RESPONSE_DIAGNOSTICS_FORMAT,
                 EXTERNAL_API_FAILURE_EVENT,
                 safe(failure.provider()),
                 safe(failure.operation()),
@@ -80,10 +87,25 @@ public final class ExternalApiLogger {
                 safe(diagnostics.finishReason()),
                 number(diagnostics.candidateTokenCount()),
                 number(diagnostics.thoughtTokenCount()),
-                diagnostics.maxOutputTokens(),
-                number(diagnostics.responseLength()),
-                sanitizedStackTrace(exception)
+                number(diagnostics.maxOutputTokens()),
+                number(diagnostics.responseLength())
         );
+    }
+
+    private static LoggingEventBuilder withSafeFields(
+            LoggingEventBuilder builder,
+            String event,
+            ExternalApiFailure failure,
+            Throwable exception
+    ) {
+        return builder.addKeyValue("event", event)
+                .addKeyValue("provider", safe(failure.provider()))
+                .addKeyValue("operation", safe(failure.operation()))
+                .addKeyValue("failureType", safe(failure.failureType()))
+                .addKeyValue("providerStatus", safe(failure.providerStatus()))
+                .addKeyValue("providerCode", safe(failure.providerCode()))
+                .addKeyValue("providerRequestId", safe(failure.providerRequestId()))
+                .addKeyValue("exceptionType", exception.getClass().getSimpleName());
     }
 
     private static String number(@Nullable Integer value) {

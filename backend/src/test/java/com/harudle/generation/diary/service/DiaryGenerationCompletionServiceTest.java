@@ -16,6 +16,7 @@ import com.harudle.generation.diary.domain.StoryPanel;
 import com.harudle.generation.diary.domain.Storyboard;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -30,6 +31,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @ExtendWith(MockitoExtension.class)
 class DiaryGenerationCompletionServiceTest {
@@ -43,14 +46,17 @@ class DiaryGenerationCompletionServiceTest {
     private DiaryRepository diaryRepository;
 
     private DiaryGenerationCompletionService completionService;
+    private SimpleMeterRegistry meterRegistry;
 
     @BeforeEach
     void setUp() {
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
+        meterRegistry = new SimpleMeterRegistry();
         completionService = new DiaryGenerationCompletionService(
                 diaryGenerationRepository,
                 diaryRepository,
-                clock
+                clock,
+                new GenerationLifecycleMetrics(meterRegistry)
         );
     }
 
@@ -115,6 +121,7 @@ class DiaryGenerationCompletionServiceTest {
         assertThat(result).isSameAs(generation);
         assertThat(result.getImageObjectKey()).isEqualTo("generated/winner.png");
         assertThat(result.getCompletedAt()).isEqualTo(firstCompletedAt);
+        assertNoFinalizations();
     }
 
     @Test
@@ -158,6 +165,7 @@ class DiaryGenerationCompletionServiceTest {
         assertThat(result).isEqualTo(GenerationErrorCode.GENERATION_INTERRUPTED);
         assertThat(generation.getErrorCode()).isEqualTo(GenerationErrorCode.GENERATION_INTERRUPTED);
         verify(diary).delete(failedAt);
+        assertNoFinalizations();
     }
 
     @Test
@@ -186,6 +194,76 @@ class DiaryGenerationCompletionServiceTest {
         assertThat(generation.getErrorCode())
                 .isEqualTo(GenerationErrorCode.GENERATION_INTERRUPTED);
         verify(diary).delete(NOW);
+    }
+
+    @Test
+    @DisplayName("최종 상태 지표는 트랜잭션 커밋 뒤에만 기록한다")
+    void recordFinalizationAfterCommit() {
+        DiaryGeneration generation = createGeneration();
+        when(diaryGenerationRepository.findByIdForUpdate(generation.getId()))
+                .thenReturn(Optional.of(generation));
+        TransactionSynchronizationManager.initSynchronization();
+        TransactionSynchronizationManager.setActualTransactionActive(true);
+        try {
+            completionService.succeed(generation.getId(), createStoryboard(), "generated/comic.png", null);
+
+            assertNoFinalizations();
+            for (TransactionSynchronization synchronization : TransactionSynchronizationManager.getSynchronizations()) {
+                synchronization.afterCommit();
+            }
+            assertThat(finalizationCount("SUCCEEDED", "none")).isEqualTo(1.0);
+        } finally {
+            TransactionSynchronizationManager.setActualTransactionActive(false);
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    @Test
+    @DisplayName("실패 및 중단도 FAILED와 고정 오류 코드로 커밋 후 집계한다")
+    void recordFailedAndInterruptedFinalizationsAfterCommit() {
+        DiaryGeneration failedGeneration = createGeneration();
+        DiaryGeneration interruptedGeneration = createGeneration();
+        Diary failedDiary = mock(Diary.class);
+        Diary interruptedDiary = mock(Diary.class);
+        ReflectionTestUtils.setField(interruptedGeneration, "updatedAt", NOW.minus(Duration.ofMinutes(16)));
+        when(diaryGenerationRepository.findByIdForUpdate(failedGeneration.getId()))
+                .thenReturn(Optional.of(failedGeneration));
+        when(diaryGenerationRepository.findByIdForUpdate(interruptedGeneration.getId()))
+                .thenReturn(Optional.of(interruptedGeneration));
+        when(diaryRepository.findByIdIncludingDeletedForUpdate(failedGeneration.getDiaryId()))
+                .thenReturn(Optional.of(failedDiary));
+        when(diaryRepository.findByIdIncludingDeletedForUpdate(interruptedGeneration.getDiaryId()))
+                .thenReturn(Optional.of(interruptedDiary));
+        TransactionSynchronizationManager.initSynchronization();
+        TransactionSynchronizationManager.setActualTransactionActive(true);
+        try {
+            completionService.fail(failedGeneration.getId(), GenerationErrorCode.AI_PROVIDER_TIMEOUT);
+            completionService.interruptIfStale(interruptedGeneration.getId(), NOW, Duration.ofMinutes(15));
+
+            assertNoFinalizations();
+            for (TransactionSynchronization synchronization : TransactionSynchronizationManager.getSynchronizations()) {
+                synchronization.afterCommit();
+            }
+            assertThat(finalizationCount("FAILED", "AI_PROVIDER_TIMEOUT")).isEqualTo(1.0);
+            assertThat(finalizationCount("FAILED", "GENERATION_INTERRUPTED")).isEqualTo(1.0);
+        } finally {
+            TransactionSynchronizationManager.setActualTransactionActive(false);
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    private double finalizationCount(String status, String errorCode) {
+        return meterRegistry.get("harudle.generation.finalizations")
+                .tags("status", status, "errorCode", errorCode)
+                .counter()
+                .count();
+    }
+
+    private void assertNoFinalizations() {
+        assertThat(finalizationCount("SUCCEEDED", "none")).isZero();
+        for (GenerationErrorCode errorCode : GenerationErrorCode.values()) {
+            assertThat(finalizationCount("FAILED", errorCode.name())).isZero();
+        }
     }
 
     private DiaryGeneration createGeneration() {

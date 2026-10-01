@@ -8,6 +8,7 @@ import com.harudle.generation.diary.service.port.dto.GeneratedImage;
 import com.harudle.generation.diary.service.port.dto.ReferenceImage;
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -28,6 +29,7 @@ import software.amazon.awssdk.services.s3.model.S3Exception;
 
 public final class S3ImageStorage implements ImageStorage {
 
+    private static final Duration HEAD_REQUEST_TIMEOUT = Duration.ofSeconds(10);
     private static final String GET_OBJECT = "get_object";
     private static final String PUT_OBJECT = "put_object";
     private static final String DELETE_OBJECT = "delete_object";
@@ -218,7 +220,11 @@ public final class S3ImageStorage implements ImageStorage {
         requireReadable(imageObjectKey, "head_object", LOAD_TRANSLATION_OPERATION);
 
         try {
-            s3Client.headObject(HeadObjectRequest.builder().bucket(bucket).key(imageObjectKey).build());
+            s3Client.headObject(HeadObjectRequest.builder()
+                    .bucket(bucket)
+                    .key(imageObjectKey)
+                    .overrideConfiguration(config -> config.apiCallTimeout(HEAD_REQUEST_TIMEOUT))
+                    .build());
             return true;
         } catch (S3Exception exception) {
             if (exception.statusCode() == 404) {
