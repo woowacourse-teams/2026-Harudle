@@ -1,6 +1,6 @@
 # dev/prod 관측 인프라 적용 계획
 
-2026-09-30 KST 기준 준비·진행 기록이다. dev 로그 지표 필터 13개·경보 14개가 준비됐고, **SNS → Lambda → Discord의 ALARM·OK 전달 시험을 통과했다.** 앱의 실제 실패 로그가 지표와 CloudWatch 경보를 거쳐 도착하는 과정은 dev 배포 후 검증한다. 계측 코드는 [PR #280](https://github.com/woowacourse-teams/2026-Harudle/pull/280), 제공 역할을 사용하는 전달 함수 변경은 [PR #291](https://github.com/woowacourse-teams/2026-Harudle/pull/291)에 있다. S3 이미지 경로 분리는 다른 팀원의 작업이다. 환경별 설정·알람 상세는 [운영 안내](README.md)를 따른다.
+2026-10-01 정리 기록이다. 9월 30일 dev 로그 지표 필터 13개·경보 14개를 준비했고, **SNS → Lambda → Discord의 ALARM·OK 수신을 확인했다.** 이는 당시 ZIP의 성공 경로 시험이며, Discord 저장 확인·실패 재시도나 실제 앱 로그 → 경보 전환을 검증한 것은 아니다. 계측 코드는 [PR #280](https://github.com/woowacourse-teams/2026-Harudle/pull/280), 제공 역할을 사용하는 전달 함수 변경은 [PR #291](https://github.com/woowacourse-teams/2026-Harudle/pull/291)에 있다. S3 이미지 경로 분리는 다른 팀원의 작업이다. 환경별 설정·알람 상세는 [운영 안내](README.md)를 따른다.
 
 ## 지금 확인된 것과 미확인인 것
 
@@ -29,7 +29,9 @@ dev 경보 **14개**의 생성과 목록을 확인했다. 로그 필터 경보�
 | 전송 내용 | 환경·알람명·상태·고정 원인 네 필드. 실제 오류 이유·사용자 데이터·S3 키·서명 URL을 전달하지 않음 |
 | 태그 | SNS·Lambda, dev 앱/EMF 로그 그룹 3개와 Lambda 로그 그룹 1개, dev CloudWatch 경보 14개에 `Service=techcourse`, `Role=techcourse-etc`, `ProjectTeam=harudle` 저장 확인 |
 
-이 시험에서는 **CloudWatch 경보의 실제 상태를 변경하지 않았다.** CPU 장애가 발생했다는 뜻이 아니라 SNS 이후 전달 경로가 작동한다는 증거다. 실제 앱 오류 로그 → 지표 집계 → 경보 상태 전환 → Discord 수신은 다음 dev 검증 대상이다.
+이 시험에서는 **CloudWatch 경보의 실제 상태를 변경하지 않았다.** CPU 장애가 발생했다는 뜻이 아니라 SNS 이후 전달 경로의 당시 성공 사례다. 배포된 9월 30일 ZIP은 Discord 기본 `wait=false` 요청에서 200·204를 모두 성공으로 취급했다. Discord 공식 문서에 따르면 이 방식의 204만으로 메시지 저장을 확인할 수 없다. PR #291 보완 코드는 `wait=true`의 HTTP 200과 생성 메시지 ID를 확인하고, 429·일시적인 5xx·연결 오류는 제한된 시간에 재시도한 뒤 실패를 Lambda에 반환한다. **새 ZIP을 Lambda에 배포하고 성공·실패 양쪽을 시험하기 전에는 이 보완이 AWS에 적용됐다고 표시하지 않는다.** 실제 앱 오류 로그 → 지표 집계 → 경보 상태 전환 → Discord 수신도 다음 dev 검증 대상이다. [Discord 응답 규약](https://docs.discord.com/developers/resources/webhook#execute-webhook)
+
+SNS가 Lambda 호출을 수락받지 못할 때의 재시도와, 수락 후 함수가 실패할 때 Lambda 비동기 큐에서의 재시도는 별개다. Lambda는 기본적으로 함수 오류를 약 1분·2분 간격으로 두 번 더 실행한다. 기본 최대 이벤트 수명 6시간은 함수 오류의 재시도를 늘려주지 않으며, 최종 실패 시 전용 `OnFailure` 대상이나 DLQ가 없으면 이벤트를 버린다. 현재 제공 역할 `techcourse-lambda-execution-role`의 전용 SQS 대상에 대한 `sqs:SendMessage` 권한은 확인되지 않았고, 공유 역할 정책은 변경하지 않기로 했으므로 **실패 기록 보존은 미적용**이다. 추후 환경별 내부 전용 Standard SQS 큐의 권한·큐 정책·보존 기간·접근 범위를 승인받은 뒤 Lambda 비동기 `OnFailure` 대상으로 연결한다. 이 기록의 `requestPayload`에는 원본 SNS 이벤트가 포함될 수 있어, Discord로 승인된 네 필드와 달리 **원문을 Discord나 메일로 전달하지 않는다**. 제공 역할의 적합한 권한이 없으면 인프라 담당자의 별도 승인 없이는 이 단계가 진행되지 않는다. [SNS의 Lambda 비동기 호출](https://docs.aws.amazon.com/lambda/latest/dg/with-sns.html), [Lambda 실패 대상과 권한](https://docs.aws.amazon.com/lambda/latest/dg/invocation-async-retain-records.html)
 
 알림을 위해 상시 실행 서버를 추가하지 않았다. [Lambda 호출·실행 시간](https://aws.amazon.com/lambda/pricing/), SNS 게시와 기존 CloudWatch 로그·지표·경보에는 사용량에 따른 비용이 있고, 공유 계정의 무료 사용량 잔여치는 확인하지 않았으므로 비용이 0이라고 단정하지 않는다. [Lambda 환경 변수의 기본 AWS 관리 KMS 저장 암호화](https://docs.aws.amazon.com/lambda/latest/dg/configuration-envvars-encryption.html)에는 별도 키 비용이 없다. 새 관측 리소스의 필수 태그는 `Service=techcourse`, `Role=techcourse-etc`, `ProjectTeam=harudle`이다.
 
@@ -50,6 +52,8 @@ dev 경보 **14개**의 생성과 목록을 확인했다. 로그 필터 경보�
 - [ ] dev EC2의 Docker daemon이 사용하는 역할에 해당 로그 그룹의 `CreateLogStream`, `PutLogEvents`가 있는지 확인한다. Agent의 EMF 로그 쓰기 권한도 별도로 확인한다.
 - [ ] dev 호스트에 접근할 승인된 방법 또는 SSM 등록 경로를 확인하고 `DEPLOY_ENV=dev`, `19091` 포트 충돌·외부 접근 차단, Docker 버전, 기존 Agent 설정을 확인한다. `ec2-project` 역할은 prod와 공유하므로 권한 변경 전에 양쪽 영향을 검토한다. 호스트의 활성 Agent 설정은 기록·백업하고 새 Prometheus 조각은 `append-config`로만 추가한다.
 - [x] 제공 `techcourse-lambda-execution-role`로 Lambda를 생성하고 `WEBHOOK_URL` 방식·코드 ZIP을 적용했다. SNS·Lambda·로그 그룹 4개·dev 경보 14개에 필수 태그 세 개를 저장하고 SNS → Lambda → Discord 시험 ALARM·OK 수신을 확인했다.
+- [ ] PR #291 보완 코드를 새 버전 ZIP으로 Lambda에 적용하고 코드 해시를 대조한다. 시험 채널에서 `wait=true`의 생성 메시지 응답을 확인하며, 비밀·원본 SNS 메시지를 로그에 출력하지 않고 실패 시 `discord_alert_delivery_failed` 및 Lambda `Errors` 증가를 검증한다. 9월 30일 ZIP의 시험 결과를 새 코드 검증으로 재사용하지 않는다.
+- [ ] `AWS/Lambda`의 `Errors`, `Throttles`, `AsyncEventsDropped`를 전달기와 분리된 연락 경로에서 감시한다. 공유 역할의 해당 큐 쓰기 권한을 먼저 확인하고, 허용된 내부 전용 Standard SQS 큐를 Lambda 비동기 `OnFailure` 대상으로 연결한 후 `DestinationDeliveryFailures`도 감시한다. 실패 원문은 Discord·메일로 전달하지 않는다. 권한이 없다면 공유 역할을 임의 변경하지 않고 인프라 담당자에게 대상·권한을 요청한다. 같은 Discord 전달기로 실패 경보를 보내지 않는다.
 - [ ] dev 배포 뒤 생성된 로그 지표 필터 13개를 실제 JSON 로그로 시험하고 필요한 대시보드를 준비한다. 생성 내부 오류·만료 처리의 첫 건은 Agent 카운터가 아닌 로그 필터로 경보를 건다. 이미지 신고 필터는 프론트 연동 뒤 실제 로그 유입을 확인하며 그전에는 경보를 만들지 않는다. 실제 로그 필터 경보와 EC2 경보의 상태 전환부터 Discord까지 검증하고, 한 번의 Gemini 장애가 여러 지표를 올릴 때 중복 대응을 묶을 운영 규칙을 정한다.
 - [ ] dev/prod EC2 InstanceId와 RDS DBInstanceIdentifier, EC2 Agent의 `mem_used_percent`·`disk_used_percent`, RDS 인스턴스 메모리·할당 스토리지·`max_connections`를 확인한다. CPU·상태 검사는 AWS 기본 지표로, 메모리·디스크가 없다면 기존 Agent 구성을 보존하며 수집을 추가한다. 실제 크기로 경보 임계값을 변환한다.
 
@@ -69,7 +73,7 @@ dev 경보 **14개**의 생성과 목록을 확인했다. 로그 필터 경보�
 3. 기존 Agent 설정을 유지한 채 dev 설정 파일 하나를 추가한다. EMF 로그와 `Harudle/Dev`의 9개 지표 계열을 확인한다. 새 설정 때문에 기존 CPU·메모리·디스크 지표가 사라지지 않아야 한다.
 4. 생성 최종화·예상 밖 오류·이미지 표시 실패 시계열이 첫 수집에 0으로 노출되는지 확인한다. 첫 정상 수집 뒤 안전한 dev 단일 생성 오류를 일으켜 `/actuator/prometheus` 누적값 `0 → 1`, EMF 증가분 `1`, CloudWatch 카운터 5분 `Sum=1`을 대조한다. 첫 수집 이전 이벤트는 카운터 증가분에서 빠질 수 있다. 백엔드 재시작 뒤에도 오탐 증가분이 없는지 검사한다. `hikaricp_connections_pending`은 증가분이 아닌 게이지이므로 `Max`·`Average`로 본다.
 5. dev에 생성된 생성 내부 오류(`generation_unexpected_failure`)·만료 처리(`generation_finalized`, `status=FAILED`, `errorCode=GENERATION_INTERRUPTED`)와 S3·Gemini의 `external_api_failure` JSON 로그 필터가 단일 실패 로그를 정확히 1건으로 집계하는지 시험하고, 12개 경보의 평가 결과를 확인한다. 이미지 신고 필터의 `image_load_failure_reported` 집계도 프론트 연동 후 실제 로그로 시험한다. Gemini 단계별 일시 오류(`transient`)는 15분 3건 이상, 응답 처리 오류(`response`)는 15분 2건 이상으로 설정했다. HTTP `job` 전체 수와 `outcome=SERVER_ERROR` 수로 5xx 비율을 대조한 뒤 오류율 경보를 켠다. 사용자 영향·원인·EC2/RDS 자원 영역으로 대시보드를 만들고 [운영 안내의 초기 임계값](README.md#알람-설계)을 dev 알람에 적용한다. EC2 메모리·디스크는 Agent가 실제 게시하는지 확인한 뒤 경보를 활성화한다. 오류 지표의 무데이터는 정상으로 두되, 매분 게시가 확인된 Hikari 같은 **지속 게이지의 무데이터**에는 별도 수집 중단 알람을 둔다.
-6. 제공 역할 `techcourse-lambda-execution-role`을 변경 없이 사용해 환경별 SNS → Lambda → Discord로 **환경·알람명·상태·고정 원인** 네 필드만 보낸다. 현재 제공 가이드에 Secrets Manager가 포함되지 않으므로 `WEBHOOK_URL` 환경 변수 방식을 사용한다. `WEBHOOK_SECRET_ARN`과 동시에 설정하지 않으며 기본 저장 암호화가 환경 변수 조회권한자의 읽기를 차단하지는 않는다는 점을 기록한다. SNS 게시 기반 ALARM·OK 수신은 위 기록으로 확인했다. 다음에는 실제 CloudWatch 경보의 상태 전환과 수신 시간·중복·누락을 확인한다. Lambda 요청의 `DiscordBot` User-Agent도 배포 코드에 포함되어 있다. Lambda 전달 실패는 동일 Discord 경로만으로 감시하지 않는다.
+6. 제공 역할 `techcourse-lambda-execution-role`을 변경 없이 사용해 환경별 SNS → Lambda → Discord로 **환경·알람명·상태·고정 원인** 네 필드만 보낸다. 현재 제공 가이드에 Secrets Manager가 포함되지 않으므로 `WEBHOOK_URL` 환경 변수 방식을 사용한다. `WEBHOOK_SECRET_ARN`과 동시에 설정하지 않으며 기본 저장 암호화가 환경 변수 조회권한자의 읽기를 차단하지는 않는다는 점을 기록한다. SNS 게시 기반 ALARM·OK 수신은 9월 30일 ZIP에서 확인했다. PR #291 코드의 `wait=true` 응답 확인·안전한 실패 처리·Lambda 비동기 재시도는 새 ZIP 배포 후 따로 시험한다. 이후 실제 CloudWatch 경보의 상태 전환과 수신 시간·중복·누락을 확인한다. Lambda 전달 실패는 동일 Discord 경로만으로 감시하지 않는다.
 
 프론트 이미지 실패 신고는 담당 팀원의 별도 작업이다. `POST /api/v1/telemetry/image-load-failures/{timeline|detail}`에 인증·CSRF를 갖춘 본문 없는 요청이 실제 화면 실패 때 도착하고 204로 끝나는지 dev에서 확인한다. 그 뒤 `harudle_image_load_failures_total` 증가와 `image_load_failure_reported` 로그 및 필터 집계를 대조한다. 연동 전에는 `image-load-failure` 알람을 만들거나 활성화하지 않는다.
 

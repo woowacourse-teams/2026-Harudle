@@ -7,8 +7,11 @@ The function never logs its input, the webhook URL, or provider responses.
 """
 
 import json
+import math
 import os
 import re
+import time
+from http.client import HTTPException
 from urllib import error, parse, request
 
 
@@ -43,6 +46,11 @@ _ALARM_REASONS = {
 }
 _WEBHOOK_PATH = re.compile(r"/api/webhooks/[0-9]+/[A-Za-z0-9_-]+")
 _STATES = frozenset({"ALARM", "OK", "INSUFFICIENT_DATA"})
+_MAX_ATTEMPTS = 3
+_REQUEST_TIMEOUT_SECONDS = 3
+_DELIVERY_BUDGET_SECONDS = 10
+_MAX_RESPONSE_BYTES = 64 * 1024
+_RETRYABLE_HTTP_CODES = frozenset({429, 500, 502, 503, 504})
 _USER_AGENT = "DiscordBot (https://github.com/woowacourse-teams/2026-Harudle, 1.0)"
 
 
@@ -51,6 +59,7 @@ class DeliveryError(Exception):
 
 
 def _alarm_message(sns_record, expected_topic, environment):
+    """Build only the four approved fields from a trusted topic and alarm name."""
     if sns_record.get("TopicArn") != expected_topic:
         raise DeliveryError("unexpected notification topic")
     try:
@@ -62,7 +71,12 @@ def _alarm_message(sns_record, expected_topic, environment):
 
     name = alarm.get("AlarmName")
     state = alarm.get("NewStateValue")
-    if not isinstance(name, str) or len(name) > 96 or state not in _STATES:
+    if (
+        not isinstance(name, str)
+        or len(name) > 96
+        or not isinstance(state, str)
+        or state not in _STATES
+    ):
         raise DeliveryError("invalid alarm name or state")
     prefix = f"harudle-{environment}-"
     if not name.startswith(prefix) or name[len(prefix):] not in _ALARM_REASONS:
@@ -81,7 +95,10 @@ def _alarm_message(sns_record, expected_topic, environment):
 
 
 def _validate_webhook_url(value):
+    """Accept a bare Discord endpoint; reject secret-bearing error details."""
     try:
+        if not isinstance(value, str) or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in value):
+            raise ValueError("invalid webhook")
         parsed = parse.urlsplit(value)
         if (
             parsed.scheme != "https"
@@ -101,6 +118,7 @@ def _validate_webhook_url(value):
 
 
 def _webhook_url(secret_arn):
+    """Read and validate the optional secret without exposing SDK errors."""
     try:
         import boto3
 
@@ -114,27 +132,108 @@ def _webhook_url(secret_arn):
         raise DeliveryError("webhook secret unavailable") from None
 
 
-def _post(webhook_url, payload):
+class _NoRedirect(request.HTTPRedirectHandler):
+    """Keep alert contents on the validated Discord endpoint."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        """Reject redirects instead of issuing a request to another URL."""
+        return None
+
+
+_HTTP_CLIENT = request.build_opener(_NoRedirect())
+
+
+def _response_bytes(response):
+    """Bound provider data retained in memory; never include it in errors."""
+    body = response.read(_MAX_RESPONSE_BYTES + 1)
+    if len(body) > _MAX_RESPONSE_BYTES:
+        raise DeliveryError("discord response too large")
+    return body
+
+
+def _confirm_message(response):
+    """Require the message Discord returns after wait=true persistence."""
+    if response.status != 200:
+        raise DeliveryError("discord message not confirmed")
+    try:
+        message = json.loads(_response_bytes(response))
+        message_id = message.get("id") if isinstance(message, dict) else None
+        if not isinstance(message_id, str) or not re.fullmatch(r"[0-9]+", message_id):
+            raise ValueError("missing message id")
+    except (TypeError, ValueError):
+        raise DeliveryError("discord message not confirmed") from None
+
+
+def _retry_delay(exception, attempt):
+    """Honor Discord's numeric Retry-After without shortening its delay."""
+    delays = [float(attempt)]
+    values = [exception.headers.get("Retry-After") if exception.headers else None]
+    if exception.code == 429:
+        try:
+            body = json.loads(_response_bytes(exception))
+            if isinstance(body, dict):
+                values.append(body.get("retry_after"))
+        except (DeliveryError, HTTPException, OSError, TypeError, ValueError):
+            pass
+    for value in values:
+        try:
+            if isinstance(value, bool):
+                continue
+            delay = float(value)
+            if math.isfinite(delay) and delay >= 0:
+                delays.append(delay)
+        except (TypeError, ValueError, OverflowError):
+            pass
+    return max(delays)
+
+
+def _post(webhook_url, payload, context=None):
+    """Confirm delivery with bounded retries; propagate errors for Lambda retries."""
+    destination = _validate_webhook_url(webhook_url) + "?wait=true"
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     post = request.Request(
-        webhook_url,
+        destination,
         data=body,
         headers={"Content-Type": "application/json", "User-Agent": _USER_AGENT},
         method="POST",
     )
-    try:
-        with request.urlopen(post, timeout=5) as response:
-            if response.status not in (200, 204):
-                raise DeliveryError("discord rejected notification")
-    except error.HTTPError as exception:
-        raise DeliveryError(f"discord returned HTTP {exception.code}") from None
-    except DeliveryError:
-        raise
-    except Exception:
-        raise DeliveryError("discord transport failed") from None
+    budget = _DELIVERY_BUDGET_SECONDS
+    if context is not None:
+        budget = min(budget, context.get_remaining_time_in_millis() / 1000 - 1)
+    deadline = time.monotonic() + budget
+    for attempt in range(1, _MAX_ATTEMPTS + 1):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise DeliveryError("discord delivery budget exhausted")
+        delay = float(attempt)
+        try:
+            with _HTTP_CLIENT.open(post, timeout=min(_REQUEST_TIMEOUT_SECONDS, remaining)) as response:
+                _confirm_message(response)
+            return
+        except error.HTTPError as exception:
+            failure = DeliveryError(f"discord returned HTTP {exception.code}")
+            try:
+                if exception.code not in _RETRYABLE_HTTP_CODES:
+                    raise failure from None
+                delay = _retry_delay(exception, attempt)
+            finally:
+                exception.close()
+        except DeliveryError:
+            raise
+        except (error.URLError, HTTPException, OSError):
+            failure = DeliveryError("discord transport failed")
+        except Exception:
+            raise DeliveryError("discord transport failed") from None
+        if attempt == _MAX_ATTEMPTS:
+            raise failure from None
+        # Do not start another request at the deadline or shorten Retry-After.
+        if delay >= deadline - time.monotonic():
+            raise DeliveryError("discord retry exceeds delivery budget") from None
+        time.sleep(delay)
 
 
-def handler(event, _context):
+def handler(event, context):
+    """Forward one SNS record; log confirmed delivery or a fixed failure event."""
     environment = os.environ.get("DEPLOY_ENV")
     topic_arn = os.environ.get("ALARM_TOPIC_ARN")
     secret_arn = os.environ.get("WEBHOOK_SECRET_ARN")
@@ -147,15 +246,20 @@ def handler(event, _context):
         raise DeliveryError("forwarder configuration invalid")
 
     try:
-        records = event["Records"]
-        if len(records) != 1:
-            raise ValueError("one SNS record required")
-        sns_record = records[0]["Sns"]
-    except (KeyError, TypeError, ValueError):
-        raise DeliveryError("invalid SNS event") from None
+        if not isinstance(event, dict):
+            raise DeliveryError("invalid SNS event")
+        records = event.get("Records")
+        if not isinstance(records, list) or len(records) != 1 or not isinstance(records[0], dict):
+            raise DeliveryError("invalid SNS event")
+        sns_record = records[0].get("Sns")
+        if not isinstance(sns_record, dict):
+            raise DeliveryError("invalid SNS event")
 
-    payload = _alarm_message(sns_record, topic_arn, environment)
-    destination = _webhook_url(secret_arn) if secret_arn else _validate_webhook_url(webhook_url)
-    _post(destination, payload)
+        payload = _alarm_message(sns_record, topic_arn, environment)
+        destination = _webhook_url(secret_arn) if secret_arn else _validate_webhook_url(webhook_url)
+        _post(destination, payload, context)
+    except DeliveryError:
+        print(f"event=discord_alert_delivery_failed environment={environment}")
+        raise
     print(f"event=discord_alert_delivered environment={environment}")
     return {"delivered": True}
