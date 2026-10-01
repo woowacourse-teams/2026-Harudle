@@ -1,0 +1,16 @@
+global:
+  scrape_interval: 1m
+  scrape_timeout: 10s
+
+scrape_configs:
+  - job_name: harudle-backend
+    metrics_path: /actuator/prometheus
+    sample_limit: 5000
+    static_configs:
+      - targets:
+          - 127.0.0.1:19091
+    # Limit EMF log contents as well as the metrics extracted by the Agent.
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: '^(harudle_(generation_(executions|finalizations|unexpected_failures)|gemini_stage_calls|s3_operation_calls|s3_url_signs|image_load_failures)_total|http_server_requests_seconds_count|hikaricp_connections_pending)$'
+        action: keep

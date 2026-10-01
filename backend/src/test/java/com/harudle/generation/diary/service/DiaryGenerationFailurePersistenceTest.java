@@ -10,6 +10,7 @@ import com.harudle.generation.prompt.domain.GenerationPrompt;
 import com.harudle.generation.diary.domain.GenerationStatus;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.prompt.repository.GenerationPromptRepository;
+import com.harudle.generation.usage.repository.GenerationUsageRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
@@ -57,6 +58,9 @@ class DiaryGenerationFailurePersistenceTest {
 
     @Autowired
     private GenerationPromptRepository generationPromptRepository;
+
+    @Autowired
+    private GenerationUsageRepository generationUsageRepository;
 
     @Autowired
     private DiaryGenerationCompletionService completionService;
@@ -118,6 +122,31 @@ class DiaryGenerationFailurePersistenceTest {
                 DIARY_DATE.withDayOfMonth(1),
                 DIARY_DATE.withDayOfMonth(DIARY_DATE.lengthOfMonth())
         )).isEmpty();
+    }
+
+    @Test
+    @DisplayName("실패한 생성의 사용량을 생성 당시 날짜에 복구한다")
+    void restoreUsageAtGenerationUsageDate() {
+        LocalDate usageDate = DIARY_DATE.minusDays(1);
+        Diary diary = diaryRepository.saveAndFlush(Diary.create(
+                USER_ID,
+                DIARY_DATE,
+                "오늘 친구와 카페에 갔다."
+        ));
+        DiaryGeneration generation = diaryGenerationRepository.saveAndFlush(DiaryGeneration.start(
+                diary.getId(),
+                generationPrompt.getId(),
+                UUID.randomUUID(),
+                "b".repeat(64),
+                usageDate
+        ));
+        generationUsageRepository.tryIncrementWithinLimit(USER_ID, usageDate)
+                .orElseThrow();
+
+        completionService.fail(generation.getId(), GenerationErrorCode.AI_PROVIDER_TIMEOUT);
+
+        assertThat(generationUsageRepository.find(USER_ID, usageDate))
+                .hasValueSatisfying(usage -> assertThat(usage.usedCount()).isZero());
     }
 
     private void executeUpdate(String statement, Object... parameters) {

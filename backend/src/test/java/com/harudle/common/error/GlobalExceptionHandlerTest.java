@@ -6,13 +6,17 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.harudle.generation.diary.domain.GenerationErrorCode;
 import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
+import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
 import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
 import java.lang.reflect.Method;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.ConversionNotSupportedException;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.HttpMethod;
@@ -265,6 +269,70 @@ class GlobalExceptionHandlerTest {
                 .containsEntry("code", "AI_PROVIDER_ERROR")
                 .containsEntry("traceId", TRACE_ID);
         verifyNoInteractions(apiExceptionLogger);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = AiGenerationErrorType.class, names = {
+            "RATE_LIMITED", "OUTPUT_TRUNCATED", "RESPONSE_PROCESSING_ERROR"
+    })
+    @DisplayName("세부 AI 오류 분류는 사용자 API에서 기존 AI 제공자 오류로 반환한다")
+    void returnExistingApiErrorForDetailedAiFailure(AiGenerationErrorType errorType) {
+        AiGenerationException exception = new AiGenerationException(
+                errorType,
+                "Gemini 생성에 실패했습니다."
+        );
+
+        ResponseEntity<ProblemDetail> response = exceptionHandler.handleAiGeneration(exception, request);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(502);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getProperties()).containsEntry("code", "AI_PROVIDER_ERROR");
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = GenerationErrorCode.class, names = {
+            "AI_PROVIDER_RATE_LIMITED", "AI_OUTPUT_TRUNCATED", "AI_RESPONSE_PROCESSING_ERROR"
+    })
+    @DisplayName("저장된 세부 AI 오류 코드도 사용자 API에서는 기존 오류로 반환한다")
+    void returnExistingApiErrorForStoredAiFailure(GenerationErrorCode errorCode) {
+        DiaryGenerationFailedException exception = new DiaryGenerationFailedException(
+                errorCode
+        );
+
+        ResponseEntity<ProblemDetail> response = exceptionHandler.handleDiaryGenerationFailed(exception, request);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(502);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getProperties()).containsEntry("code", "AI_PROVIDER_ERROR");
+    }
+
+    @Test
+    @DisplayName("예상하지 못한 내부 오류는 기존 내부 서버 오류로 반환한다")
+    void returnInternalServerErrorForInternalAiFailure() {
+        AiGenerationException exception = new AiGenerationException(
+                AiGenerationErrorType.INTERNAL_ERROR,
+                "Gemini 요청을 준비하지 못했습니다."
+        );
+
+        ResponseEntity<ProblemDetail> response = exceptionHandler.handleAiGeneration(exception, request);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(500);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getProperties()).containsEntry("code", "INTERNAL_SERVER_ERROR");
+    }
+
+    @Test
+    @DisplayName("저장된 내부 생성 오류도 기존 내부 서버 오류로 반환한다")
+    void returnInternalServerErrorForStoredInternalFailure() {
+        DiaryGenerationFailedException exception = new DiaryGenerationFailedException(
+                GenerationErrorCode.GENERATION_INTERNAL_ERROR
+        );
+
+        ResponseEntity<ProblemDetail> response = exceptionHandler.handleDiaryGenerationFailed(exception, request);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(500);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getProperties()).containsEntry("code", "INTERNAL_SERVER_ERROR");
     }
 
     private ResponseEntity<Object> handleFrameworkException(Exception exception) throws Exception {

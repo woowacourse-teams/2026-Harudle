@@ -39,12 +39,19 @@ public class GenerationUsageService {
                 .orElseGet(() -> GenerationUsage.empty(usageDate, currentLimitCount(userId)));
     }
 
-    public GenerationUsage incrementTodayUsage(UUID userId) {
-        LocalDate usageDate = getUsageDate();
+    public LocalDate getCurrentUsageDate() {
+        return getUsageDate();
+    }
+
+    public GenerationUsage incrementUsage(UUID userId, LocalDate usageDate) {
         return generationUsageRepository.tryIncrementWithinLimit(userId, usageDate)
                 .orElseThrow(() -> new DailyGenerationLimitExceededException(
                         secondsUntilNextUsageDate(usageDate)
-        ));
+                ));
+    }
+
+    public Optional<GenerationUsage> restoreUsage(UUID userId, LocalDate usageDate) {
+        return generationUsageRepository.tryRestore(userId, usageDate, 1);
     }
 
     public Optional<GenerationUsage> restoreTodayUsage(UUID userId, int restoreCount) {

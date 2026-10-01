@@ -11,6 +11,7 @@ public final class S3FailureReporter {
 
     private static final String PROVIDER = "s3";
     private static final String REQUEST_VALIDATION_ERROR = "REQUEST_VALIDATION_ERROR";
+    private static final int MAX_CAUSE_DEPTH = 16;
 
     private final S3ExceptionTranslator exceptionTranslator;
     private final ExternalApiLogger externalApiLogger;
@@ -30,14 +31,15 @@ public final class S3FailureReporter {
             boolean configurationOperation,
             Exception exception
     ) {
-        ImageStorageException translated = exceptionTranslator.translate(
-                translationOperation,
-                objectKey,
-                exception
-        );
         S3ProviderErrorMetadata metadata = S3ProviderErrorMetadata.from(
                 exception,
                 configurationOperation
+        );
+        ImageStorageException translated = exceptionTranslator.translate(
+                translationOperation,
+                objectKey,
+                exception,
+                metadata.failureType()
         );
         ExternalApiFailure failure = new ExternalApiFailure(
                 PROVIDER,
@@ -65,13 +67,25 @@ public final class S3FailureReporter {
         ImageStorageException translated = exceptionTranslator.translate(
                 translationOperation,
                 objectKey,
-                exception
+                exception,
+                failureType
         );
         externalApiLogger.error(
-                new ExternalApiFailure(PROVIDER, operation, failureType, null, null, null),
+                new ExternalApiFailure(PROVIDER, operation, resolveFailureType(exception, failureType), null, null, null),
                 exception
         );
         return translated;
+    }
+
+    private static String resolveFailureType(Exception exception, String defaultFailureType) {
+        Throwable cause = exception;
+        for (int depth = 0; cause != null && depth < MAX_CAUSE_DEPTH; depth++) {
+            if (cause instanceof CwebpConversionException conversionException) {
+                return conversionException.failureType();
+            }
+            cause = cause.getCause();
+        }
+        return defaultFailureType;
     }
 
     ImageStorageException reportValidationFailure(
@@ -83,7 +97,8 @@ public final class S3FailureReporter {
         ImageStorageException translated = exceptionTranslator.translate(
                 translationOperation,
                 objectKey,
-                exception
+                exception,
+                REQUEST_VALIDATION_ERROR
         );
         externalApiLogger.warn(
                 new ExternalApiFailure(
@@ -105,12 +120,13 @@ public final class S3FailureReporter {
             @Nullable String objectKey,
             Exception exception
     ) {
+        S3ProviderErrorMetadata metadata = S3ProviderErrorMetadata.from(exception, false);
         ImageStorageException translated = exceptionTranslator.translate(
                 translationOperation,
                 objectKey,
-                exception
+                exception,
+                metadata.failureType()
         );
-        S3ProviderErrorMetadata metadata = S3ProviderErrorMetadata.from(exception, false);
         externalApiLogger.warnCompensation(
                 new ExternalApiFailure(
                         PROVIDER,

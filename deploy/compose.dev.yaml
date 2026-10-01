@@ -1,14 +1,16 @@
 services:
   backend:
     logging: !override
-      driver: json-file
+      driver: awslogs
       options:
-        max-size: "10m"
-        max-file: "3"
+        awslogs-region: "${AWS_REGION:-ap-northeast-2}"
+        awslogs-group: "/harudle/dev/backend"
+        awslogs-create-group: "false"
 
   frontend:
     logging: !override
-      driver: json-file
+      driver: awslogs
       options:
-        max-size: "10m"
-        max-file: "3"
+        awslogs-region: "${AWS_REGION:-ap-northeast-2}"
+        awslogs-group: "/harudle/dev/frontend-nginx"
+        awslogs-create-group: "false"
