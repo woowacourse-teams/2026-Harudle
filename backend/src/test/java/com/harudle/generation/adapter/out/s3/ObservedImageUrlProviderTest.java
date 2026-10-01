@@ -46,7 +46,7 @@ class ObservedImageUrlProviderTest {
 
     @Test
     void presignerIllegalStateFailureKeepsConfigurationClassificationInMetric() {
-        String objectKey = "private/image.png";
+        String objectKey = "harudle/generated/diary-images/dev/private/image.png";
         S3Presigner presigner = mock(S3Presigner.class);
         when(presigner.presignGetObject(any(GetObjectPresignRequest.class)))
                 .thenThrow(new IllegalStateException("presigner unavailable"));
@@ -103,7 +103,8 @@ class ObservedImageUrlProviderTest {
 
     private static S3StorageProperties properties() {
         return new S3StorageProperties(
-                "test-bucket", "ap-northeast-2", "generated/diary-images",
+                "test-bucket", "ap-northeast-2", "dev",
+                "harudle/generated/diary-images/dev", "harudle/references/generation/dev",
                 DataSize.ofMegabytes(20), Duration.ofMinutes(15));
     }
 }
