@@ -110,6 +110,10 @@ public class AdminImageRecoveryService {
                 return new GeneratedImage(original.resource(), original.mediaType());
             }
         }
+        if (storage.exists(ImageVariantKeys.toThumbnailKeyIfOptimizedDetail(detailKey))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "썸네일만 남아 있는 이미지는 자동 재생성하지 않습니다. 남은 이미지의 검수가 필요합니다.");
+        }
         return generateImage(generation, storage, generator);
     }
 

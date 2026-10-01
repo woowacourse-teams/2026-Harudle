@@ -104,7 +104,9 @@ class GenerationAdapterConfigurationTest {
                 "harudle.generation.gemini.request-timeout=180s",
                 "harudle.generation.storage.s3.bucket= ",
                 "harudle.generation.storage.s3.region=ap-northeast-2",
-                "harudle.generation.storage.s3.generated-prefix=generated/diary-images",
+                "harudle.generation.storage.s3.environment=dev",
+                "harudle.generation.storage.s3.reference-prefix=harudle/references/generation/dev",
+                "harudle.generation.storage.s3.generated-prefix=harudle/generated/diary-images/dev",
                 "harudle.generation.storage.s3.max-object-size=20MB",
                 "harudle.generation.storage.s3.access-url-ttl=15m"
         ).run(context -> assertThat(context).hasFailed());
@@ -123,7 +125,9 @@ class GenerationAdapterConfigurationTest {
                 "harudle.generation.gemini.request-timeout=180s",
                 "harudle.generation.storage.s3.bucket=test-bucket",
                 "harudle.generation.storage.s3.region=ap-northeast-2",
-                "harudle.generation.storage.s3.generated-prefix=generated/diary-images",
+                "harudle.generation.storage.s3.environment=dev",
+                "harudle.generation.storage.s3.reference-prefix=harudle/references/generation/dev",
+                "harudle.generation.storage.s3.generated-prefix=harudle/generated/diary-images/dev",
                 "harudle.generation.storage.s3.max-object-size=20MB",
                 "harudle.generation.storage.s3.access-url-ttl=15m"
         };

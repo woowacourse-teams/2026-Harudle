@@ -125,7 +125,9 @@ harudle:
       s3:
         bucket: ${S3_BUCKET:}
         region: ${AWS_REGION:ap-northeast-2}
-        generated-prefix: ${S3_GENERATED_PREFIX:generated/diary-images}
+        environment: ${DEPLOY_ENV:}
+        generated-prefix: ${S3_GENERATED_PREFIX:}
+        reference-prefix: ${S3_REFERENCE_PREFIX:}
         max-object-size: ${S3_MAX_OBJECT_SIZE:20MB}
         access-url-ttl: ${S3_ACCESS_URL_TTL:15m}
 

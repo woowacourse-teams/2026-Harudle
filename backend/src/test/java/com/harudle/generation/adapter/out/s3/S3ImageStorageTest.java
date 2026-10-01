@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -25,6 +24,9 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.Base64;
+import java.util.concurrent.atomic.AtomicReference;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -48,6 +50,10 @@ import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.ChecksumMode;
+import software.amazon.awssdk.services.s3.model.ChecksumType;
+import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectResponse;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
@@ -61,11 +67,11 @@ class S3ImageStorageTest {
 
     private static final UUID GENERATION_ID = UUID.fromString("550e8400-e29b-41d4-a716-446655440000");
     private static final String OBJECT_KEY =
-            "generated/diary-images/550e8400-e29b-41d4-a716-446655440000/image.png";
+            "harudle/generated/diary-images/dev/550e8400-e29b-41d4-a716-446655440000/image.png";
     private static final String DETAIL_KEY =
-            "generated/diary-images/550e8400-e29b-41d4-a716-446655440000/image-960.webp";
+            "harudle/generated/diary-images/dev/550e8400-e29b-41d4-a716-446655440000/image-960.webp";
     private static final String THUMBNAIL_KEY =
-            "generated/diary-images/550e8400-e29b-41d4-a716-446655440000/image-240.webp";
+            "harudle/generated/diary-images/dev/550e8400-e29b-41d4-a716-446655440000/image-240.webp";
     private static final int MAX_OBJECT_SIZE_BYTES = 10;
 
     @Mock
@@ -78,6 +84,84 @@ class S3ImageStorageTest {
     private ImageVariantEncoder variantEncoder;
 
     private S3ImageStorage imageStorage;
+
+    @ParameterizedTest
+    @ValueSource(ints = {409, 412})
+    @DisplayName("일반 저장이 기존 파일과 충돌하면 덮어쓰거나 삭제하지 않는다")
+    void storeConflictPreservesExistingObject(int status) {
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenThrow(S3Exception.builder().statusCode(status).build());
+
+        assertThatThrownBy(() -> imageStorage.store(GENERATION_ID, unconvertedImage()))
+                .isInstanceOf(ImageStorageException.class);
+
+        ArgumentCaptor<PutObjectRequest> request = ArgumentCaptor.forClass(PutObjectRequest.class);
+        verify(s3Client).putObject(request.capture(), any(RequestBody.class));
+        assertThat(request.getValue().ifNoneMatch()).isEqualTo("*");
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
+    }
+
+    @Test
+    @DisplayName("업로드 중 기존 파일과 충돌하면 이번 요청에서 새로 저장한 파일만 정리한다")
+    void storeConflictOnlyCleansNewlyCreatedObjects() {
+        List<ImageUploadPreparer.Upload> uploads = List.of(
+                new ImageUploadPreparer.Upload(OBJECT_KEY, generatedImage()),
+                new ImageUploadPreparer.Upload(THUMBNAIL_KEY, unconvertedImage()),
+                new ImageUploadPreparer.Upload(DETAIL_KEY, unconvertedImage())
+        );
+        S3ImageStorage storage = storageWithUploads(uploads);
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenReturn(PutObjectResponse.builder().build(), PutObjectResponse.builder().build())
+                .thenThrow(S3Exception.builder().statusCode(412).build());
+        when(s3Client.headObject(any(HeadObjectRequest.class)))
+                .thenReturn(HeadObjectResponse.builder().metadata(Map.of("harudle-upload-token", "another-upload"))
+                        .build());
+
+        assertThatThrownBy(() -> storage.store(GENERATION_ID, generatedImage()))
+                .isInstanceOf(ImageStorageException.class);
+
+        ArgumentCaptor<PutObjectRequest> puts = ArgumentCaptor.forClass(PutObjectRequest.class);
+        verify(s3Client, times(3)).putObject(puts.capture(), any(RequestBody.class));
+        assertThat(puts.getAllValues()).allSatisfy(request -> assertThat(request.ifNoneMatch()).isEqualTo("*"));
+        ArgumentCaptor<DeleteObjectRequest> deletes = ArgumentCaptor.forClass(DeleteObjectRequest.class);
+        verify(s3Client, times(2)).deleteObject(deletes.capture());
+        assertThat(deletes.getAllValues()).extracting(DeleteObjectRequest::key)
+                .containsExactly(OBJECT_KEY, THUMBNAIL_KEY).doesNotContain(DETAIL_KEY);
+    }
+
+    @Test
+    @DisplayName("상세 이미지 복구가 실패해도 원본과 기존 썸네일을 삭제하지 않는다")
+    void failedDetailRecoveryPreservesOriginalAndThumbnail() {
+        stubOptimizedImages("detail", "thumb");
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenReturn(PutObjectResponse.builder().build())
+                .thenThrow(S3Exception.builder().statusCode(503).build());
+
+        assertThatThrownBy(() -> imageStorage.restoreOptimizedIfMissing(DETAIL_KEY, generatedImage()))
+                .isInstanceOf(ImageStorageException.class);
+
+        ArgumentCaptor<PutObjectRequest> puts = ArgumentCaptor.forClass(PutObjectRequest.class);
+        verify(s3Client, times(2)).putObject(puts.capture(), any(RequestBody.class));
+        assertThat(puts.getAllValues()).extracting(PutObjectRequest::key).containsExactly(OBJECT_KEY, DETAIL_KEY);
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
+    }
+
+    @Test
+    @DisplayName("기존 썸네일이 있으면 복구 중 그 파일을 보존한다")
+    void recoveryPreservesExistingThumbnailOnConflict() {
+        stubOptimizedImages("detail", "thumb");
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenReturn(PutObjectResponse.builder().build(), PutObjectResponse.builder().build())
+                .thenThrow(S3Exception.builder().statusCode(412).build());
+
+        assertThat(imageStorage.restoreOptimizedIfMissing(DETAIL_KEY, generatedImage())).isTrue();
+
+        ArgumentCaptor<PutObjectRequest> puts = ArgumentCaptor.forClass(PutObjectRequest.class);
+        verify(s3Client, times(3)).putObject(puts.capture(), any(RequestBody.class));
+        assertThat(puts.getAllValues().getLast().key()).isEqualTo(THUMBNAIL_KEY);
+        assertThat(puts.getAllValues().getLast().ifNoneMatch()).isEqualTo("*");
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
+    }
 
     @Test
     void restoreUsesOriginalKeyAndConditionalWrite() {
@@ -118,17 +202,17 @@ class S3ImageStorageTest {
     }
 
     @Test
-    void missingDetailReplacesStaleThumbnailAfterPreparingBothImages() {
+    @DisplayName("상세 이미지와 썸네일은 기존 파일을 삭제하지 않고 누락분만 복구한다")
+    void missingDetailRestoresWithoutDeletingExistingThumbnail() {
         stubOptimizedImages("detail", "thumb");
 
         assertThat(imageStorage.restoreOptimizedIfMissing(DETAIL_KEY, generatedImage())).isTrue();
 
         var order = inOrder(s3Client);
-        order.verify(s3Client).deleteObject(org.mockito.ArgumentMatchers.<DeleteObjectRequest>argThat(
-                request -> request.key().equals(THUMBNAIL_KEY)));
         order.verify(s3Client).putObject(org.mockito.ArgumentMatchers.<PutObjectRequest>argThat(
                 request -> request.key().equals(DETAIL_KEY) && request.ifNoneMatch().equals("*")),
                 any(RequestBody.class));
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
         order.verify(s3Client).putObject(org.mockito.ArgumentMatchers.<PutObjectRequest>argThat(
                 request -> request.key().equals(THUMBNAIL_KEY) && request.ifNoneMatch().equals("*")),
                 any(RequestBody.class));
@@ -172,9 +256,7 @@ class S3ImageStorageTest {
         assertThat(puts.getAllValues()).extracting(PutObjectRequest::key)
                 .containsExactly(OBJECT_KEY, DETAIL_KEY, THUMBNAIL_KEY);
         assertThat(puts.getAllValues().getFirst().ifNoneMatch()).isEqualTo("*");
-        ArgumentCaptor<DeleteObjectRequest> deletes = ArgumentCaptor.forClass(DeleteObjectRequest.class);
-        verify(s3Client).deleteObject(deletes.capture());
-        assertThat(deletes.getValue().key()).isEqualTo(THUMBNAIL_KEY);
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
     }
 
     @Test
@@ -227,7 +309,14 @@ class S3ImageStorageTest {
                 .thenThrow(S3Exception.builder().statusCode(412).build())
                 .thenReturn(PutObjectResponse.builder().build());
         when(s3Client.headObject(any(software.amazon.awssdk.services.s3.model.HeadObjectRequest.class)))
-                .thenThrow(S3Exception.builder().statusCode(404).build());
+                .thenAnswer(invocation -> {
+                    var request = invocation.getArgument(0,
+                            software.amazon.awssdk.services.s3.model.HeadObjectRequest.class);
+                    if (request.key().equals(THUMBNAIL_KEY)) {
+                        throw S3Exception.builder().statusCode(404).build();
+                    }
+                    return software.amazon.awssdk.services.s3.model.HeadObjectResponse.builder().build();
+                });
         byte[] savedDetail = "saved".getBytes(StandardCharsets.UTF_8);
         when(s3Client.getObject(any(GetObjectRequest.class)))
                 .thenReturn(responseStream(new ByteArrayInputStream(savedDetail), savedDetail.length, "image/webp"));
@@ -237,6 +326,9 @@ class S3ImageStorageTest {
         ArgumentCaptor<GeneratedImage> encoded = ArgumentCaptor.forClass(GeneratedImage.class);
         verify(variantEncoder, times(2)).encode(encoded.capture());
         assertThat(encoded.getAllValues().get(1).resource().getContentAsByteArray()).isEqualTo(savedDetail);
+        ArgumentCaptor<GetObjectRequest> get = ArgumentCaptor.forClass(GetObjectRequest.class);
+        verify(s3Client).getObject(get.capture());
+        assertThat(get.getValue().key()).isEqualTo(DETAIL_KEY);
         ArgumentCaptor<PutObjectRequest> puts = ArgumentCaptor.forClass(PutObjectRequest.class);
         verify(s3Client, times(3)).putObject(puts.capture(), any(RequestBody.class));
         assertThat(puts.getAllValues()).extracting(PutObjectRequest::key)
@@ -273,7 +365,9 @@ class S3ImageStorageTest {
         S3StorageProperties properties = new S3StorageProperties(
                 "test-bucket",
                 "ap-northeast-2",
-                "generated/diary-images",
+                "dev",
+                "harudle/generated/diary-images/dev",
+                "harudle/references/generation/dev",
                 DataSize.ofBytes(MAX_OBJECT_SIZE_BYTES),
                 Duration.ofMinutes(10)
         );
@@ -287,7 +381,7 @@ class S3ImageStorageTest {
 
     @Test
     @DisplayName("이미 WebP인 생성 이미지는 변환 없이 저장한다")
-    void storeGeneratedImage() throws IOException {
+    void storeGeneratedImage() throws Exception {
         byte[] imageBytes = "generated".getBytes(StandardCharsets.UTF_8);
         GeneratedImage generatedImage = new GeneratedImage(
                 new ByteArrayResource(imageBytes),
@@ -303,15 +397,140 @@ class S3ImageStorageTest {
         verify(s3Client).putObject(requestCaptor.capture(), bodyCaptor.capture());
 
         PutObjectRequest request = requestCaptor.getValue();
-        assertThat(storedObjectKey).startsWith("generated/diary-images/" + GENERATION_ID + "/")
+        assertThat(storedObjectKey).startsWith("harudle/generated/diary-images/dev/" + GENERATION_ID + "/")
                 .endsWith("/image.webp");
         assertThat(request.bucket()).isEqualTo("test-bucket");
         assertThat(request.key()).isEqualTo(storedObjectKey);
         assertThat(request.contentType()).isEqualTo("image/webp");
         assertThat(request.contentLength()).isEqualTo(imageBytes.length);
+        String checksum = Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-256").digest(imageBytes));
+        assertThat(request.checksumSHA256()).isEqualTo(checksum);
+        assertThat(request.metadata()).containsEntry("harudle-content-sha256", checksum);
+        assertThat(UUID.fromString(request.metadata().get("harudle-upload-token"))).isNotNull();
         assertThat(bodyCaptor.getValue().optionalContentLength()).contains((long) imageBytes.length);
         assertThat(bodyCaptor.getValue().contentStreamProvider().newStream().readAllBytes())
                 .isEqualTo(imageBytes);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"precondition", "transport", "provider"})
+    @DisplayName("PUT 오류 후 동일 업로드와 실제 체크섬이 확인되면 저장을 성공으로 완료한다")
+    void verifiedUploadCompletesAfterPutFailure(String failure) {
+        Exception cause = switch (failure) {
+            case "precondition" -> S3Exception.builder().statusCode(412).build();
+            case "provider" -> S3Exception.builder().statusCode(503).build();
+            default -> SdkClientException.builder().message("lost response").build();
+        };
+        AtomicReference<PutObjectRequest> failedPut = stubFailedDetail(cause);
+        when(s3Client.headObject(any(HeadObjectRequest.class)))
+                .thenAnswer(invocation -> storedUpload(failedPut.get()).build());
+
+        assertThat(storageWithThreeUploads().store(GENERATION_ID, generatedImage())).isEqualTo(DETAIL_KEY);
+
+        ArgumentCaptor<HeadObjectRequest> head = ArgumentCaptor.forClass(HeadObjectRequest.class);
+        verify(s3Client).headObject(head.capture());
+        assertThat(head.getValue().key()).isEqualTo(DETAIL_KEY);
+        assertThat(head.getValue().checksumMode()).isEqualTo(ChecksumMode.ENABLED);
+        assertThat(head.getValue().overrideConfiguration().orElseThrow().apiCallTimeout())
+                .contains(Duration.ofSeconds(10));
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
+        verifyNoInteractions(externalApiLogger);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"missing-checksum", "different-checksum", "missing-token", "metadata-digest",
+            "length", "content-type", "composite"})
+    @DisplayName("동일 업로드의 내용까지 검증할 수 없으면 앞선 파일을 보존한다")
+    void insufficientUploadProofPreservesAllEarlierObjects(String mismatch) {
+        S3Exception cause = (S3Exception) S3Exception.builder().statusCode(412).build();
+        AtomicReference<PutObjectRequest> failedPut = stubFailedDetail(cause);
+        when(s3Client.headObject(any(HeadObjectRequest.class))).thenAnswer(invocation -> {
+            HeadObjectResponse.Builder head = storedUpload(failedPut.get());
+            switch (mismatch) {
+                case "missing-checksum" -> head.checksumSHA256((String) null);
+                case "different-checksum" -> head.checksumSHA256("different");
+                case "missing-token" -> head.metadata(Map.of("harudle-content-sha256",
+                        failedPut.get().checksumSHA256()));
+                case "metadata-digest" -> head.metadata(Map.of("harudle-upload-token",
+                        failedPut.get().metadata().get("harudle-upload-token"), "harudle-content-sha256", "different"));
+                case "length" -> head.contentLength(1L);
+                case "content-type" -> head.contentType("image/png");
+                case "composite" -> head.checksumType(ChecksumType.COMPOSITE);
+                default -> throw new IllegalArgumentException(mismatch);
+            }
+            return head.build();
+        });
+
+        assertThatThrownBy(() -> storageWithThreeUploads().store(GENERATION_ID, generatedImage()))
+                .isInstanceOf(ImageStorageException.class).hasCause(cause);
+
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {403, 404, 503})
+    @DisplayName("HEAD로 PUT 결과를 확인할 수 없으면 원본과 썸네일도 삭제하지 않는다")
+    void failedUploadVerificationPreservesEarlierObjects(int headStatus) {
+        SdkClientException putCause = SdkClientException.builder().message("lost response").build();
+        stubFailedDetail(putCause);
+        S3Exception headCause = (S3Exception) S3Exception.builder().statusCode(headStatus).build();
+        when(s3Client.headObject(any(HeadObjectRequest.class))).thenThrow(headCause);
+
+        assertThatThrownBy(() -> storageWithThreeUploads().store(GENERATION_ID, generatedImage()))
+                .isInstanceOf(ImageStorageException.class).hasCause(putCause);
+
+        assertThat(putCause.getSuppressed()).containsExactly(headCause);
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
+    }
+
+    @Test
+    @DisplayName("SDK 재시도 뒤의 권한 오류만으로 앞선 PUT이 실패했다고 판단하지 않는다")
+    void rejectionAfterSdkRetryDoesNotTriggerCleanupWithoutProof() {
+        S3Exception cause = (S3Exception) S3Exception.builder().statusCode(403).numAttempts(2).build();
+        stubFailedDetail(cause);
+        when(s3Client.headObject(any(HeadObjectRequest.class)))
+                .thenThrow(S3Exception.builder().statusCode(403).build());
+
+        assertThatThrownBy(() -> storageWithThreeUploads().store(GENERATION_ID, generatedImage()))
+                .isInstanceOf(ImageStorageException.class).hasCause(cause);
+
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {400, 403})
+    @DisplayName("첫 번째 시도가 명확히 거부되면 이번 요청에서 앞서 저장한 파일만 정리한다")
+    void singleAttemptRejectionCleansOnlyEarlierObjects(int status) {
+        S3Exception cause = (S3Exception) S3Exception.builder().statusCode(status).numAttempts(1)
+                .awsErrorDetails(AwsErrorDetails.builder()
+                        .errorCode(status == 403 ? "AccessDenied" : "InvalidArgument").build())
+                .build();
+        stubFailedDetail(cause);
+
+        assertThatThrownBy(() -> storageWithThreeUploads().store(GENERATION_ID, generatedImage()))
+                .isInstanceOf(ImageStorageException.class).hasCause(cause);
+
+        ArgumentCaptor<DeleteObjectRequest> deletes = ArgumentCaptor.forClass(DeleteObjectRequest.class);
+        verify(s3Client, times(2)).deleteObject(deletes.capture());
+        assertThat(deletes.getAllValues()).extracting(DeleteObjectRequest::key)
+                .containsExactly(OBJECT_KEY, THUMBNAIL_KEY);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"RequestTimeout", "RequestTimeoutException", "PriorRequestNotComplete",
+            "InternalError", "SlowDown", "Throttling"})
+    @DisplayName("HTTP 400이라도 타임아웃이나 throttling이면 앞선 파일을 삭제하지 않는다")
+    void transientErrorCodeDoesNotBecomeDefiniteRejection(String code) {
+        S3Exception cause = (S3Exception) S3Exception.builder().statusCode(400).numAttempts(1)
+                .awsErrorDetails(AwsErrorDetails.builder().errorCode(code).build()).build();
+        stubFailedDetail(cause);
+        when(s3Client.headObject(any(HeadObjectRequest.class)))
+                .thenThrow(S3Exception.builder().statusCode(403).build());
+
+        assertThatThrownBy(() -> storageWithThreeUploads().store(GENERATION_ID, generatedImage()))
+                .isInstanceOf(ImageStorageException.class).hasCause(cause);
+
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
     }
 
     @Test
@@ -320,6 +539,48 @@ class S3ImageStorageTest {
                 .isInstanceOf(ImageStorageException.class)
                 .hasRootCauseMessage("저장할 생성 이미지가 필요합니다.");
         verifyNoInteractions(s3Client, variantEncoder);
+    }
+
+    @Test
+    @DisplayName("내용을 준비한 뒤 원본 Resource가 바뀌어도 PUT 본문과 체크섬은 같은 스냅샷을 사용한다")
+    void requestBodyAndChecksumUseTheSameSnapshot() throws Exception {
+        byte[] imageBytes = "generated".getBytes(StandardCharsets.UTF_8);
+        int[] opens = {0};
+        Resource mutableResource = new ByteArrayResource(imageBytes) {
+            @Override
+            public ByteArrayInputStream getInputStream() {
+                opens[0]++;
+                return new ByteArrayInputStream(opens[0] == 1 ? imageBytes : "different".getBytes(StandardCharsets.UTF_8));
+            }
+        };
+
+        imageStorage.store(GENERATION_ID, new GeneratedImage(mutableResource, MediaType.parseMediaType("image/webp")));
+
+        ArgumentCaptor<PutObjectRequest> request = ArgumentCaptor.forClass(PutObjectRequest.class);
+        ArgumentCaptor<RequestBody> body = ArgumentCaptor.forClass(RequestBody.class);
+        verify(s3Client).putObject(request.capture(), body.capture());
+        assertThat(opens[0]).isEqualTo(1);
+        assertThat(body.getValue().contentStreamProvider().newStream().readAllBytes()).isEqualTo(imageBytes);
+        assertThat(request.getValue().checksumSHA256()).isEqualTo(
+                Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-256").digest(imageBytes)));
+    }
+
+    @Test
+    @DisplayName("선언된 Resource 크기와 실제 내용이 다르면 어떤 파일도 업로드하지 않는다")
+    void mismatchedSourceLengthPreventsAllUploads() {
+        Resource inconsistentResource = new ByteArrayResource("generated".getBytes(StandardCharsets.UTF_8)) {
+            @Override
+            public long contentLength() {
+                return 1;
+            }
+        };
+
+        assertThatThrownBy(() -> imageStorage.store(GENERATION_ID,
+                new GeneratedImage(inconsistentResource, MediaType.parseMediaType("image/webp"))))
+                .isInstanceOf(ImageStorageException.class)
+                .hasRootCauseMessage("S3 이미지 객체의 선언된 크기와 실제 크기가 일치하지 않습니다.");
+
+        verifyNoInteractions(s3Client);
     }
 
     @ParameterizedTest
@@ -364,7 +625,7 @@ class S3ImageStorageTest {
     }
 
     @Test
-    void failedDetailUploadCleansUpOriginalAndThumbnail() {
+    void uncertainDetailUploadPreservesOriginalAndThumbnail() {
         GeneratedImage webp = new GeneratedImage(
                 new ByteArrayResource("webp".getBytes(StandardCharsets.UTF_8)),
                 MediaType.parseMediaType("image/webp")
@@ -378,18 +639,16 @@ class S3ImageStorageTest {
         assertThatThrownBy(() -> imageStorage.store(GENERATION_ID, generatedImage()))
                 .isInstanceOf(ImageStorageException.class);
 
-        ArgumentCaptor<PutObjectRequest> puts = ArgumentCaptor.forClass(PutObjectRequest.class);
-        ArgumentCaptor<DeleteObjectRequest> deletes = ArgumentCaptor.forClass(DeleteObjectRequest.class);
-        verify(s3Client, times(3)).putObject(puts.capture(), any(RequestBody.class));
-        verify(s3Client, times(2)).deleteObject(deletes.capture());
-        assertThat(deletes.getAllValues()).extracting(DeleteObjectRequest::key)
-                .containsExactly(puts.getAllValues().get(0).key(), puts.getAllValues().get(1).key());
+        verify(s3Client, times(3)).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+        verify(s3Client).headObject(any(HeadObjectRequest.class));
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
     }
 
     @Test
     @DisplayName("저장소는 이미지 종류를 몰라도 세 파일을 순서대로 저장하고 대표 키를 반환한다")
     void storesAllImagesInUploadPlan() {
-        List<String> keys = List.of("generated/small.webp", "generated/medium.webp", "generated/primary.webp");
+        List<String> keys = List.of("small.webp", "medium.webp", "primary.webp").stream()
+                .map(filename -> "harudle/generated/diary-images/dev/" + filename).toList();
         S3ImageStorage storage = storageWithUploads(keys.stream()
                 .map(key -> new ImageUploadPreparer.Upload(key, unconvertedImage()))
                 .toList());
@@ -399,13 +658,15 @@ class S3ImageStorageTest {
         ArgumentCaptor<PutObjectRequest> puts = ArgumentCaptor.forClass(PutObjectRequest.class);
         verify(s3Client, times(3)).putObject(puts.capture(), any(RequestBody.class));
         assertThat(puts.getAllValues()).extracting(PutObjectRequest::key).containsExactlyElementsOf(keys);
+        assertThat(puts.getAllValues()).allSatisfy(request -> assertThat(request.ifNoneMatch()).isEqualTo("*"));
         verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
     }
 
     @Test
-    @DisplayName("세 번째 업로드 실패 시 앞서 저장한 두 파일만 정리한다")
-    void failedThirdUploadCleansUpOnlySuccessfulUploads() {
-        List<String> keys = List.of("generated/small.webp", "generated/medium.webp", "generated/primary.webp");
+    @DisplayName("세 번째 업로드 결과가 불확실하면 앞서 저장한 두 파일도 보존한다")
+    void uncertainThirdUploadPreservesSuccessfulUploads() {
+        List<String> keys = List.of("small.webp", "medium.webp", "primary.webp").stream()
+                .map(filename -> "harudle/generated/diary-images/dev/" + filename).toList();
         S3ImageStorage storage = storageWithUploads(keys.stream()
                 .map(key -> new ImageUploadPreparer.Upload(key, unconvertedImage()))
                 .toList());
@@ -418,20 +679,21 @@ class S3ImageStorageTest {
                 .isInstanceOf(ImageStorageException.class)
                 .hasCause(cause);
 
-        ArgumentCaptor<DeleteObjectRequest> deletes = ArgumentCaptor.forClass(DeleteObjectRequest.class);
-        verify(s3Client, times(2)).deleteObject(deletes.capture());
-        assertThat(deletes.getAllValues()).extracting(DeleteObjectRequest::key)
-                .containsExactly(keys.get(0), keys.get(1));
+        verify(s3Client).headObject(any(HeadObjectRequest.class));
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
     }
 
     @Test
     @DisplayName("정리 중 삭제가 실패해도 나머지 파일을 정리하고 원래 업로드 오류를 유지한다")
     void cleanupFailureDoesNotStopCleanupOrMaskUploadFailure() {
-        List<String> keys = List.of("generated/small.webp", "generated/medium.webp", "generated/primary.webp");
+        List<String> keys = List.of("small.webp", "medium.webp", "primary.webp").stream()
+                .map(filename -> "harudle/generated/diary-images/dev/" + filename).toList();
         S3ImageStorage storage = storageWithUploads(keys.stream()
                 .map(key -> new ImageUploadPreparer.Upload(key, unconvertedImage()))
                 .toList());
-        SdkClientException uploadCause = SdkClientException.builder().message("upload failed").build();
+        S3Exception uploadCause = (S3Exception) S3Exception.builder().statusCode(400).message("upload rejected")
+                .awsErrorDetails(AwsErrorDetails.builder().errorCode("InvalidArgument").build())
+                .numAttempts(1).build();
         SdkClientException cleanupCause = SdkClientException.builder().message("cleanup failed").build();
         when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
                 .thenReturn(PutObjectResponse.builder().build(), PutObjectResponse.builder().build())
@@ -461,8 +723,8 @@ class S3ImageStorageTest {
                 MediaType.parseMediaType("image/webp")
         );
         S3ImageStorage storage = storageWithUploads(List.of(
-                new ImageUploadPreparer.Upload("generated/small.webp", unconvertedImage()),
-                new ImageUploadPreparer.Upload("generated/primary.webp", oversizedImage)
+                new ImageUploadPreparer.Upload("harudle/generated/diary-images/dev/small.webp", unconvertedImage()),
+                new ImageUploadPreparer.Upload("harudle/generated/diary-images/dev/primary.webp", oversizedImage)
         ));
 
         assertThatThrownBy(() -> storage.store(GENERATION_ID, generatedImage()))
@@ -472,34 +734,31 @@ class S3ImageStorageTest {
     }
 
     @Test
-    @DisplayName("S3 저장 성공 후 입력 스트림 닫기에 실패해도 저장 객체를 삭제하지 않는다")
-    void doNotCompensateWhenInputStreamCloseFailsAfterSuccessfulPut() throws IOException {
+    @DisplayName("업로드 내용 준비 중 스트림 닫기에 실패하면 S3 업로드를 시작하지 않는다")
+    void closeFailureWhilePreparingSnapshotPreventsAllUploads() throws IOException {
         byte[] imageBytes = "generated".getBytes(StandardCharsets.UTF_8);
-        InputStream inputStream = mock(InputStream.class);
         IOException closeCause = new IOException("stream close failure");
-        doThrow(closeCause).when(inputStream).close();
         Resource closeFailingResource = new ByteArrayResource(imageBytes) {
             @Override
-            public InputStream getInputStream() {
-                return inputStream;
+            public ByteArrayInputStream getInputStream() {
+                return new ByteArrayInputStream(imageBytes) {
+                    @Override
+                    public void close() throws IOException {
+                        throw closeCause;
+                    }
+                };
             }
         };
-        GeneratedImage generatedImage = new GeneratedImage(
-                closeFailingResource, MediaType.parseMediaType("image/webp")
-        );
-        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
-                .thenReturn(PutObjectResponse.builder().build());
+        GeneratedImage generatedImage = new GeneratedImage(closeFailingResource,
+                MediaType.parseMediaType("image/webp"));
 
         assertThatThrownBy(() -> imageStorage.store(GENERATION_ID, generatedImage))
                 .isInstanceOf(ImageStorageException.class)
                 .hasCause(closeCause);
 
-        var callOrder = inOrder(s3Client, inputStream);
-        callOrder.verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
-        callOrder.verify(inputStream).close();
-        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
-        verify(externalApiLogger).warn(
-                eq(new ExternalApiFailure("s3", "put_object", "CLIENT_ERROR", null, null, null)),
+        verifyNoInteractions(s3Client);
+        verify(externalApiLogger).error(
+                eq(new ExternalApiFailure("s3", "put_object", "REQUEST_PREPARATION_ERROR", null, null, null)),
                 eq(closeCause)
         );
     }
@@ -521,7 +780,7 @@ class S3ImageStorageTest {
 
         assertThat(thrown)
                 .hasMessageContaining("S3 이미지 저장")
-                .hasMessageNotContaining("generated/diary-images/" + GENERATION_ID)
+                .hasMessageNotContaining("harudle/generated/diary-images/dev/" + GENERATION_ID)
                 .hasCause(storeCause);
         verify(externalApiLogger).warn(
                 eq(new ExternalApiFailure("s3", "put_object", "CLIENT_ERROR", null, null, null)),
@@ -596,12 +855,12 @@ class S3ImageStorageTest {
         when(s3Client.getObject(any(GetObjectRequest.class)))
                 .thenReturn(responseStream(inputStream, imageBytes.length, "image/png"));
 
-        ReferenceImage referenceImage = imageStorage.load("prompt-assets/reference.png");
+        ReferenceImage referenceImage = imageStorage.load("harudle/references/generation/dev/reference.png");
 
         ArgumentCaptor<GetObjectRequest> requestCaptor = ArgumentCaptor.forClass(GetObjectRequest.class);
         verify(s3Client).getObject(requestCaptor.capture());
         assertThat(requestCaptor.getValue().bucket()).isEqualTo("test-bucket");
-        assertThat(requestCaptor.getValue().key()).isEqualTo("prompt-assets/reference.png");
+        assertThat(requestCaptor.getValue().key()).isEqualTo("harudle/references/generation/dev/reference.png");
         assertThat(referenceImage.mediaType()).isEqualTo(MediaType.IMAGE_PNG);
         assertThat(referenceImage.resource().getContentAsByteArray()).isEqualTo(imageBytes);
         assertThat(inputStream.isClosed()).isTrue();
@@ -620,7 +879,7 @@ class S3ImageStorageTest {
         when(s3Client.getObject(any(GetObjectRequest.class)))
                 .thenReturn(responseStream(inputStream, 1, "image/png"));
 
-        assertThatThrownBy(() -> imageStorage.load("prompt-assets/reference.png"))
+        assertThatThrownBy(() -> imageStorage.load("harudle/references/generation/dev/reference.png"))
                 .isInstanceOf(ImageStorageException.class)
                 .hasCause(cause);
         verify(externalApiLogger).warn(
@@ -644,7 +903,7 @@ class S3ImageStorageTest {
         when(s3Client.getObject(any(GetObjectRequest.class)))
                 .thenReturn(responseStream(inputStream, 1, "image/png"));
 
-        assertThatThrownBy(() -> imageStorage.load("prompt-assets/reference.png"))
+        assertThatThrownBy(() -> imageStorage.load("harudle/references/generation/dev/reference.png"))
                 .isInstanceOf(ImageStorageException.class)
                 .hasCause(cause);
         verify(externalApiLogger).warn(
@@ -667,7 +926,7 @@ class S3ImageStorageTest {
         when(s3Client.getObject(any(GetObjectRequest.class)))
                 .thenReturn(responseStream(inputStream, imageBytes.length, "image/png"));
 
-        assertThatThrownBy(() -> imageStorage.load("prompt-assets/reference.png"))
+        assertThatThrownBy(() -> imageStorage.load("harudle/references/generation/dev/reference.png"))
                 .isInstanceOf(ImageStorageException.class)
                 .hasCause(cause);
         verify(externalApiLogger).warn(
@@ -693,7 +952,7 @@ class S3ImageStorageTest {
     @Test
     @DisplayName("상세 이미지 삭제가 실패해도 썸네일 삭제를 시도하고 두 오류를 보고한다")
     void deleteAttemptsEveryVariantAfterFailure() {
-        String detailKey = "generated/diary-images/550e8400-e29b-41d4-a716-446655440000/image-960.webp";
+        String detailKey = "harudle/generated/diary-images/dev/550e8400-e29b-41d4-a716-446655440000/image-960.webp";
         SdkClientException detailFailure = SdkClientException.builder().message("detail delete failed").build();
         SdkClientException thumbnailFailure = SdkClientException.builder().message("thumbnail delete failed").build();
         when(s3Client.deleteObject(any(DeleteObjectRequest.class)))
@@ -762,7 +1021,7 @@ class S3ImageStorageTest {
                         "image/png"
                 ));
 
-        assertThatThrownBy(() -> imageStorage.load("prompt-assets/reference.png"))
+        assertThatThrownBy(() -> imageStorage.load("harudle/references/generation/dev/reference.png"))
                 .isInstanceOf(ImageStorageException.class)
                 .hasRootCauseMessage("S3 이미지 객체 크기가 허용 범위를 벗어났습니다.");
         verify(externalApiLogger).error(
@@ -789,7 +1048,7 @@ class S3ImageStorageTest {
                         "text/plain"
                 ));
 
-        assertThatThrownBy(() -> imageStorage.load("prompt-assets/reference.txt"))
+        assertThatThrownBy(() -> imageStorage.load("harudle/references/generation/dev/reference.txt"))
                 .isInstanceOf(ImageStorageException.class)
                 .hasMessageContaining("S3 이미지 조회")
                 .hasRootCauseMessage("S3 객체의 Content-Type은 구체적인 image/* 타입이어야 합니다.");
@@ -803,10 +1062,10 @@ class S3ImageStorageTest {
                 .build();
         when(s3Client.getObject(any(GetObjectRequest.class))).thenThrow(cause);
 
-        assertThatThrownBy(() -> imageStorage.load("prompt-assets/reference.png"))
+        assertThatThrownBy(() -> imageStorage.load("harudle/references/generation/dev/reference.png"))
                 .isInstanceOf(ImageStorageException.class)
                 .hasMessageContaining("S3 이미지 조회")
-                .hasMessageNotContaining("prompt-assets/reference.png")
+                .hasMessageNotContaining("harudle/references/generation/dev/reference.png")
                 .hasCause(cause);
         verify(externalApiLogger).warn(
                 eq(new ExternalApiFailure("s3", "get_object", "CLIENT_ERROR", null, null, null)),
@@ -830,7 +1089,7 @@ class S3ImageStorageTest {
         );
         when(s3Client.getObject(any(GetObjectRequest.class))).thenThrow(cause);
 
-        assertThatThrownBy(() -> imageStorage.load("prompt-assets/reference.png"))
+        assertThatThrownBy(() -> imageStorage.load("harudle/references/generation/dev/reference.png"))
                 .isInstanceOf(ImageStorageException.class)
                 .hasCause(cause);
 
@@ -861,7 +1120,7 @@ class S3ImageStorageTest {
         S3Exception cause = (S3Exception) exceptionBuilder.build();
         when(s3Client.getObject(any(GetObjectRequest.class))).thenThrow(cause);
 
-        assertThatThrownBy(() -> imageStorage.load("prompt-assets/reference.png"))
+        assertThatThrownBy(() -> imageStorage.load("harudle/references/generation/dev/reference.png"))
                 .isInstanceOf(ImageStorageException.class)
                 .hasCause(cause);
 
@@ -885,7 +1144,7 @@ class S3ImageStorageTest {
         when(cause.statusCode()).thenReturn(503);
         when(s3Client.getObject(any(GetObjectRequest.class))).thenThrow(cause);
 
-        assertThatThrownBy(() -> imageStorage.load("prompt-assets/reference.png"))
+        assertThatThrownBy(() -> imageStorage.load("harudle/references/generation/dev/reference.png"))
                 .isInstanceOf(ImageStorageException.class)
                 .hasCause(cause);
 
@@ -926,13 +1185,44 @@ class S3ImageStorageTest {
         when(preparer.prepare(eq(GENERATION_ID), any(GeneratedImage.class)))
                 .thenReturn(new ImageUploadPreparer.UploadPlan(uploads.getLast().objectKey(), uploads));
         S3StorageProperties properties = new S3StorageProperties(
-                "test-bucket", "ap-northeast-2", "generated/diary-images",
+                "test-bucket", "ap-northeast-2", "dev",
+                "harudle/generated/diary-images/dev", "harudle/references/generation/dev",
                 DataSize.ofBytes(MAX_OBJECT_SIZE_BYTES), Duration.ofMinutes(10)
         );
         return new S3ImageStorage(
                 s3Client, properties, preparer,
                 new S3FailureReporter(new S3ExceptionTranslator(), externalApiLogger)
         );
+    }
+
+    private S3ImageStorage storageWithThreeUploads() {
+        return storageWithUploads(List.of(
+                new ImageUploadPreparer.Upload(OBJECT_KEY, generatedImage()),
+                new ImageUploadPreparer.Upload(THUMBNAIL_KEY, unconvertedImage()),
+                new ImageUploadPreparer.Upload(DETAIL_KEY, unconvertedImage())
+        ));
+    }
+
+    private AtomicReference<PutObjectRequest> stubFailedDetail(Exception exception) {
+        AtomicReference<PutObjectRequest> failedPut = new AtomicReference<>();
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class))).thenAnswer(invocation -> {
+            PutObjectRequest request = invocation.getArgument(0);
+            if (request.key().equals(DETAIL_KEY)) {
+                failedPut.set(request);
+                throw exception;
+            }
+            return PutObjectResponse.builder().build();
+        });
+        return failedPut;
+    }
+
+    private static HeadObjectResponse.Builder storedUpload(PutObjectRequest request) {
+        return HeadObjectResponse.builder()
+                .metadata(request.metadata())
+                .contentLength(request.contentLength())
+                .contentType(request.contentType())
+                .checksumSHA256(request.checksumSHA256())
+                .checksumType(ChecksumType.FULL_OBJECT);
     }
 
     private static GeneratedImage generatedImage() {

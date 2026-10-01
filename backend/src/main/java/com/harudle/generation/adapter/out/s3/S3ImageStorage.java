@@ -2,34 +2,47 @@ package com.harudle.generation.adapter.out.s3;
 
 import com.harudle.generation.config.S3StorageProperties;
 import com.harudle.generation.diary.domain.ImageVariantKeys;
-import com.harudle.generation.diary.service.port.dto.GeneratedImage;
 import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageStorageException;
+import com.harudle.generation.diary.service.port.dto.GeneratedImage;
 import com.harudle.generation.diary.service.port.dto.ReferenceImage;
 import java.io.IOException;
 import java.io.InputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.core.io.ByteArrayResource;
-import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.ChecksumMode;
+import software.amazon.awssdk.services.s3.model.ChecksumType;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
-import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
 public final class S3ImageStorage implements ImageStorage {
 
     private static final Duration HEAD_REQUEST_TIMEOUT = Duration.ofSeconds(10);
+    private static final String UPLOAD_TOKEN_METADATA = "harudle-upload-token";
+    private static final String CONTENT_SHA256_METADATA = "harudle-content-sha256";
+    private static final Set<String> DEFINITE_PUT_REJECTION_CODES = Set.of(
+            "AccessDenied", "AllAccessDisabled", "BadDigest", "EntityTooLarge",
+            "InvalidArgument", "InvalidBucketName", "InvalidDigest", "InvalidRequest", "NoSuchBucket"
+    );
     private static final String GET_OBJECT = "get_object";
     private static final String PUT_OBJECT = "put_object";
     private static final String DELETE_OBJECT = "delete_object";
@@ -44,6 +57,7 @@ public final class S3ImageStorage implements ImageStorage {
     private final int maxObjectSizeBytes;
     private final ImageUploadPreparer uploadPreparer;
     private final S3FailureReporter failureReporter;
+    private final S3ImageAccessPolicy accessPolicy;
 
     public S3ImageStorage(
             S3Client s3Client,
@@ -54,6 +68,7 @@ public final class S3ImageStorage implements ImageStorage {
         this.s3Client = Objects.requireNonNull(s3Client, "S3Client가 필요합니다.");
         Objects.requireNonNull(properties, "S3 저장소 설정이 필요합니다.");
         this.bucket = properties.bucket();
+        this.accessPolicy = new S3ImageAccessPolicy(properties);
         this.maxObjectSizeBytes = resolveMaxObjectSizeBytes(properties);
         this.uploadPreparer = Objects.requireNonNull(uploadPreparer, "이미지 업로드 준비기가 필요합니다.");
         this.failureReporter = Objects.requireNonNull(failureReporter, "S3 실패 리포터가 필요합니다.");
@@ -68,7 +83,7 @@ public final class S3ImageStorage implements ImageStorage {
 
     private GetObjectRequest prepareLoadRequest(String imageObjectKey) {
         try {
-            S3ObjectKeyValidator.validate(imageObjectKey);
+            accessPolicy.requireReadable(imageObjectKey);
         } catch (IllegalArgumentException exception) {
             throw failureReporter.reportValidationFailure(
                     GET_OBJECT,
@@ -179,14 +194,9 @@ public final class S3ImageStorage implements ImageStorage {
 
     private void putAll(List<PreparedStore> uploads) {
         List<String> storedKeys = new ArrayList<>();
-        try {
-            for (PreparedStore upload : uploads) {
-                putPrepared(upload);
-                storedKeys.add(upload.objectKey());
-            }
-        } catch (ImageStorageException exception) {
-            deleteStoredImages(storedKeys, exception);
-            throw exception;
+        for (PreparedStore upload : uploads) {
+            putPrepared(upload, storedKeys);
+            storedKeys.add(upload.objectKey());
         }
     }
 
@@ -201,21 +211,74 @@ public final class S3ImageStorage implements ImageStorage {
         }
     }
 
-    private void putPrepared(PreparedStore preparedStore) {
-        boolean putAttempted = false;
-        try (InputStream inputStream = preparedStore.resource().getInputStream()) {
-            RequestBody requestBody = RequestBody.fromInputStream(inputStream, preparedStore.contentLength());
-            putAttempted = true;
-            s3Client.putObject(preparedStore.request(), requestBody);
+    private void putPrepared(PreparedStore preparedStore, List<String> storedKeys) {
+        try {
+            s3Client.putObject(preparedStore.request(), RequestBody.fromBytes(preparedStore.resource().getByteArray()));
         } catch (Exception exception) {
-            // PUT 결과가 불확실할 수 있으므로 이 객체는 여기서 삭제하지 않는다.
-            throw translateStoreFailure(preparedStore.objectKey(), putAttempted, exception);
+            // SDK 재시도의 마지막 응답만으로 최초 PUT의 성공 여부를 판단하지 않는다.
+            StoreOutcome outcome = verifyStoreOutcome(preparedStore, exception);
+            if (outcome == StoreOutcome.STORED) {
+                return;
+            }
+            ImageStorageException translated = translateStoreFailure(preparedStore.objectKey(), true, exception);
+            if (outcome == StoreOutcome.CONFLICT || isSingleAttemptRejection(exception)) {
+                deleteStoredImages(storedKeys, translated);
+            }
+            // 결과가 불확실하면 앞선 원본과 파생 이미지까지 보존한다.
+            throw translated;
         }
+    }
+
+    private StoreOutcome verifyStoreOutcome(PreparedStore prepared, Exception putException) {
+        try {
+            HeadObjectResponse response = s3Client.headObject(HeadObjectRequest.builder()
+                    .bucket(bucket)
+                    .key(prepared.objectKey())
+                    .checksumMode(ChecksumMode.ENABLED)
+                    .overrideConfiguration(config -> config.apiCallTimeout(HEAD_REQUEST_TIMEOUT))
+                    .build());
+            if (response == null) {
+                return StoreOutcome.UNKNOWN;
+            }
+            String storedToken = response.metadata().get(UPLOAD_TOKEN_METADATA);
+            String expectedToken = prepared.request().metadata().get(UPLOAD_TOKEN_METADATA);
+            if (storedToken != null && !storedToken.isBlank() && !storedToken.equals(expectedToken)) {
+                return StoreOutcome.CONFLICT;
+            }
+            String expectedChecksum = prepared.request().checksumSHA256();
+            if (expectedToken.equals(storedToken)
+                    && expectedChecksum.equals(response.metadata().get(CONTENT_SHA256_METADATA))
+                    && expectedChecksum.equals(response.checksumSHA256())
+                    && response.checksumType() != ChecksumType.COMPOSITE
+                    && Objects.equals(prepared.contentLength(), response.contentLength())
+                    && prepared.request().contentType().equals(response.contentType())) {
+                return StoreOutcome.STORED;
+            }
+        } catch (Exception verificationException) {
+            // HEAD 404도 응답 유실된 PUT이 뒤늦게 완료되지 않는다는 증거는 아니다.
+            if (verificationException != putException) {
+                putException.addSuppressed(verificationException);
+            }
+        }
+        return StoreOutcome.UNKNOWN;
+    }
+
+    private boolean isSingleAttemptRejection(Exception exception) {
+        if (!(exception instanceof S3Exception s3Exception)
+                || !Integer.valueOf(1).equals(s3Exception.numAttempts())) {
+            return false;
+        }
+        int status = s3Exception.statusCode();
+        String code = s3Exception.awsErrorDetails() == null ? null : s3Exception.awsErrorDetails().errorCode();
+        return status >= 400 && status < 500
+                && status != 408 && status != 409 && status != 412 && status != 429
+                && code != null && DEFINITE_PUT_REJECTION_CODES.contains(code);
     }
 
     @Override
     public boolean exists(String imageObjectKey) {
-        S3ObjectKeyValidator.validate(imageObjectKey);
+        requireReadable(imageObjectKey, "head_object", LOAD_TRANSLATION_OPERATION);
+
         try {
             s3Client.headObject(HeadObjectRequest.builder()
                     .bucket(bucket)
@@ -237,7 +300,9 @@ public final class S3ImageStorage implements ImageStorage {
 
     @Override
     public boolean restoreIfMissing(String imageObjectKey, GeneratedImage generatedImage) {
-        S3ObjectKeyValidator.validate(imageObjectKey);
+        requireReadable(imageObjectKey, PUT_OBJECT, STORE_TRANSLATION_OPERATION);
+        requireGeneratedImage(generatedImage);
+
         try {
             long length = generatedImage.resource().contentLength();
             validateObjectSize(length);
@@ -271,11 +336,11 @@ public final class S3ImageStorage implements ImageStorage {
             prepared = prepareOptimizedStores(detailKey,
                     new GeneratedImage(storedOriginal.resource(), storedOriginal.mediaType()));
         }
-        // 기존 썸네일이 다른 그림일 수 있으므로, 변환과 크기 검증이 끝난 뒤 제거한다.
-        deleteKeys(ImageVariantKeys.derivedImageKeysExceptDetail(detailKey));
+
         if (!restorePreparedIfMissing(prepared.uploads().getLast())) {
-            return restoreMissingThumbnail(detailKey);
+            return restoreMissingThumbnailFromDetail(detailKey);
         }
+
         for (PreparedStore upload : prepared.uploads()) {
             if (!upload.objectKey().equals(detailKey) && !upload.objectKey().equals(original.objectKey())) {
                 restorePreparedIfMissing(upload);
@@ -284,8 +349,21 @@ public final class S3ImageStorage implements ImageStorage {
         return true;
     }
 
+    private boolean restoreMissingThumbnailFromDetail(String detailKey) {
+        String thumbnailKey = ImageVariantKeys.toThumbnailKeyIfOptimizedDetail(detailKey);
+        if (exists(thumbnailKey)) {
+            return false;
+        }
+
+        PreparedStore thumbnail = prepareThumbnailStore(detailKey, load(detailKey));
+
+        return restorePreparedIfMissing(thumbnail);
+    }
+
     private PreparedStores prepareOptimizedStores(String detailKey, GeneratedImage image) {
         try {
+            accessPolicy.requireGenerated(detailKey);
+
             return prepareStores(uploadPreparer.prepareOptimized(detailKey, image));
         } catch (IllegalArgumentException exception) {
             throw failureReporter.reportValidationFailure(
@@ -300,6 +378,8 @@ public final class S3ImageStorage implements ImageStorage {
 
     @Override
     public boolean restoreMissingThumbnail(String detailKey) {
+        requireGenerated(detailKey, PUT_OBJECT, STORE_TRANSLATION_OPERATION);
+
         String thumbnailKey = ImageVariantKeys.toThumbnailKeyIfOptimizedDetail(detailKey);
         if (thumbnailKey.equals(detailKey)) {
             throw failureReporter.reportValidationFailure(
@@ -378,7 +458,7 @@ public final class S3ImageStorage implements ImageStorage {
 
     private DeleteObjectRequest prepareDeleteRequest(String imageObjectKey) {
         try {
-            S3ObjectKeyValidator.validate(imageObjectKey);
+            accessPolicy.requireGenerated(imageObjectKey);
         } catch (IllegalArgumentException exception) {
             throw failureReporter.reportValidationFailure(
                     DELETE_OBJECT,
@@ -442,22 +522,62 @@ public final class S3ImageStorage implements ImageStorage {
     }
 
     private PreparedStore prepareStore(String imageObjectKey, GeneratedImage generatedImage) throws IOException {
-        Resource resource = generatedImage.resource();
-        long contentLength = resource.contentLength();
+        accessPolicy.requireGenerated(imageObjectKey);
+
+        long contentLength = generatedImage.resource().contentLength();
         validateObjectSize(contentLength);
+        byte[] imageBytes;
+        try (InputStream stream = generatedImage.resource().getInputStream()) {
+            imageBytes = readImageBytes(stream);
+        }
+        if (imageBytes.length != contentLength) {
+            throw new IllegalArgumentException("S3 이미지 객체의 선언된 크기와 실제 크기가 일치하지 않습니다.");
+        }
+        ByteArrayResource resource = new ByteArrayResource(imageBytes);
+        String checksum = sha256(imageBytes);
         PutObjectRequest request = PutObjectRequest.builder()
                 .bucket(bucket)
                 .key(imageObjectKey)
                 .contentType(generatedImage.mediaType().toString())
                 .contentLength(contentLength)
+                .ifNoneMatch("*")
+                .checksumSHA256(checksum)
+                .metadata(Map.of(
+                        UPLOAD_TOKEN_METADATA, UUID.randomUUID().toString(),
+                        CONTENT_SHA256_METADATA, checksum
+                ))
                 .build();
         return new PreparedStore(imageObjectKey, resource, contentLength, request);
     }
 
-    private byte[] readImageBytes(ResponseInputStream<GetObjectResponse> response) throws IOException {
+    private void requireReadable(String objectKey, String operation, String translationOperation) {
+        try {
+            accessPolicy.requireReadable(objectKey);
+        } catch (IllegalArgumentException exception) {
+            throw failureReporter.reportValidationFailure(operation, translationOperation, objectKey, exception);
+        }
+    }
+
+    private void requireGenerated(String objectKey, String operation, String translationOperation) {
+        try {
+            accessPolicy.requireGenerated(objectKey);
+        } catch (IllegalArgumentException exception) {
+            throw failureReporter.reportValidationFailure(operation, translationOperation, objectKey, exception);
+        }
+    }
+
+    private byte[] readImageBytes(InputStream response) throws IOException {
         byte[] imageBytes = response.readNBytes(maxObjectSizeBytes + 1);
         validateObjectSize(imageBytes.length);
         return imageBytes;
+    }
+
+    private static String sha256(byte[] imageBytes) {
+        try {
+            return Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-256").digest(imageBytes));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 체크섬을 계산할 수 없습니다.", exception);
+        }
     }
 
     private void validateObjectSize(Long contentLength) {
@@ -495,12 +615,18 @@ public final class S3ImageStorage implements ImageStorage {
 
     private record PreparedStore(
             String objectKey,
-            Resource resource,
+            ByteArrayResource resource,
             long contentLength,
             PutObjectRequest request
     ) {
     }
 
     private record PreparedStores(String detailImageKey, List<PreparedStore> uploads) {
+    }
+
+    private enum StoreOutcome {
+        STORED,
+        CONFLICT,
+        UNKNOWN
     }
 }
