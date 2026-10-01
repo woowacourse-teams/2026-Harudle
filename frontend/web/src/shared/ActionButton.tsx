@@ -10,16 +10,18 @@ const ActionButton = ({
   label,
   variant = 'primary',
   disabled = false,
+  type = 'button',
 }: {
-  onClick: () => void;
+  onClick?: () => void;
   icon?: ReactNode;
   label: string;
   variant?: ActionButtonVariant;
   disabled?: boolean;
+  type?: 'button' | 'submit';
 }) => {
   return (
     <button
-      type="button"
+      type={type}
       css={actionButtonStyle(variant)}
       onClick={onClick}
       disabled={disabled}
@@ -40,6 +42,7 @@ const ActionButton = ({
 export default ActionButton;
 
 const actionButtonStyle = (variant: ActionButtonVariant) => css`
+  word-break: keep-all;
   display: flex;
   justify-content: center;
   align-items: center;

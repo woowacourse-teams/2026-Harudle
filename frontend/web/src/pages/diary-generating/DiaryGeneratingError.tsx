@@ -1,3 +1,4 @@
+import { DIARY_GENERATING_COPY } from './copy';
 import { css } from '@emotion/react';
 import diaryGeneratingFailImage from '../../assets/images/diary-generating-fail.png';
 import { theme } from '../../styles/theme';
@@ -19,6 +20,9 @@ const DiaryGeneratingError = ({
   const isGenerationInProgress =
     error instanceof RequestError &&
     error.problem.code === DIARY_GENERATION_ERROR_CODE.IN_PROGRESS;
+  const isDailyLimitExceeded =
+    error instanceof RequestError &&
+    error.problem.code === DIARY_GENERATION_ERROR_CODE.DAILY_LIMIT_EXCEEDED;
 
   useEffect(() => {
     if (!isGenerationInProgress) {
@@ -26,7 +30,7 @@ const DiaryGeneratingError = ({
     }
 
     // alert를 렌더링 도중에 실행시키지 않기 위해 useEffect로 감싼다. (순수성 보장)
-    alert('이미 일기를 만들고 있어요. 완료되면 홈에 반영돼요.');
+    alert(DIARY_GENERATING_COPY.inProgress);
     onReturnHome();
   }, [isGenerationInProgress, onReturnHome]);
 
@@ -57,17 +61,22 @@ const DiaryGeneratingError = ({
 
       <img
         src={diaryGeneratingFailImage}
-        alt="일기 생성에 실패해 속상한 하루들 캐릭터"
+        alt="네컷만화를 완성하지 못해 속상한 하루들 캐릭터"
         css={illustrationStyle}
       />
 
       <div css={messageBoxStyle}>
-        <h2 css={titleStyle}>일기 생성 중 오류가 발생했어요</h2>
+        <h2 css={titleStyle}>{DIARY_GENERATING_COPY.errorTitle}</h2>
+        <p css={descriptionStyle}>
+          {isDailyLimitExceeded
+            ? DIARY_GENERATING_COPY.limitErrorDescription
+            : DIARY_GENERATING_COPY.errorDescription}
+        </p>
         <p css={descriptionStyle}>{error.message}</p>
       </div>
 
       <button type="button" css={retryButtonStyle} onClick={onDiaryWriteRetry}>
-        다시 작성하기
+        {DIARY_GENERATING_COPY.editAction}
       </button>
     </div>
   );
@@ -119,6 +128,7 @@ const messageBoxStyle = css`
 `;
 
 const titleStyle = css`
+  word-break: keep-all;
   color: ${theme.colors.foreground.neutral};
   font-size: 20px;
   font-weight: 700;
@@ -135,7 +145,8 @@ const descriptionStyle = css`
 `;
 
 const retryButtonStyle = css`
-  width: 144px;
+  word-break: keep-all;
+  min-width: 200px;
   height: 48px;
   border: none;
   border-radius: 18px;

@@ -32,7 +32,7 @@ const DiaryItemRow = ({
         diaryId={id}
         imageRole="thumbnail"
         src={thumbnailUrl}
-        alt={`그림일기 ${date}`}
+        alt={`네컷만화 ${date}`}
         css={thumbnailStyle}
       />
     </button>

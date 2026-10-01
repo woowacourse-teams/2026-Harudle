@@ -1,3 +1,4 @@
+import { DIARY_GENERATING_COPY } from '../diary-generating/copy';
 import {
   afterEach,
   beforeEach,
@@ -241,11 +242,21 @@ describe('게스트 체험 랜딩 작성 화면', () => {
     expect(
       screen.getByText('체험도, 로그인 후 이용도 전부 무료예요'),
     ).toBeInTheDocument();
-    expect(screen.getByText('이야기 분석 중')).toBeInTheDocument();
-    expect(screen.getByText('장면 구성 중')).toBeInTheDocument();
-    expect(screen.getByText('스케치 그리는 중')).toBeInTheDocument();
-    expect(screen.getByText('채색하고 마무리 중')).toBeInTheDocument();
-    expect(screen.getByText('완료')).toBeInTheDocument();
+    expect(
+      screen.getByText(DIARY_GENERATING_COPY.stepLabels[0]),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(DIARY_GENERATING_COPY.stepLabels[1]),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(DIARY_GENERATING_COPY.stepLabels[2]),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(DIARY_GENERATING_COPY.stepLabels[3]),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(DIARY_GENERATING_COPY.stepLabels[4]),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole('link', { name: '로그인하고 무료로 더 만들기' }),
     ).not.toBeInTheDocument();
