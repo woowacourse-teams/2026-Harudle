@@ -11,6 +11,8 @@ const useDiaryGenerationProgress = (
   const [loadingStep, setLoadingStep] = useState<number>(1);
   const navigate = useNavigate();
 
+  const isGenerationComplete = diaryGenerateRequest.status === 'success';
+
   useEffect(() => {
     if (loadingStep >= FINAL_STEP - 1) {
       return;
@@ -22,8 +24,6 @@ const useDiaryGenerationProgress = (
 
     return () => clearTimeout(timeoutId);
   }, [loadingStep]);
-
-  const isGenerationComplete = diaryGenerateRequest.status === 'success';
 
   useEffect(() => {
     if (!isGenerationComplete) {

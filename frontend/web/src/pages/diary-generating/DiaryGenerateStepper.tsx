@@ -1,15 +1,8 @@
+import { DIARY_GENERATING_COPY } from './copy';
 import { css } from '@emotion/react';
 import { theme } from '../../styles/theme';
 import checkIcon from '../../assets/icons/check.svg';
 import { FINAL_STEP } from './useDiaryGenerationProgress';
-
-const stepLabels = [
-  '이야기 분석 중',
-  '장면 구성 중',
-  '스케치 그리는 중',
-  '채색하고 마무리 중',
-  '완료',
-] as const;
 
 const DiaryGenerateStepper = ({ loadingStep }: { loadingStep: number }) => {
   const progress =
@@ -21,7 +14,7 @@ const DiaryGenerateStepper = ({ loadingStep }: { loadingStep: number }) => {
         <div css={progressBarStyle(progress)} />
       </div>
 
-      {stepLabels.map((label, index) => {
+      {DIARY_GENERATING_COPY.stepLabels.map((label, index) => {
         const step = index + 1;
         const isComplete =
           step === FINAL_STEP ? step === loadingStep : step < loadingStep;

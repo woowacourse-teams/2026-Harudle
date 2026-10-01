@@ -241,7 +241,7 @@ describe('게스트 체험 랜딩 작성 화면', () => {
     expect(
       screen.getByText('체험도, 로그인 후 이용도 전부 무료예요'),
     ).toBeInTheDocument();
-    expect(screen.getByText('이야기 분석 중')).toBeInTheDocument();
+    expect(screen.getByText('내용 살펴보는 중')).toBeInTheDocument();
     expect(screen.getByText('장면 구성 중')).toBeInTheDocument();
     expect(screen.getByText('스케치 그리는 중')).toBeInTheDocument();
     expect(screen.getByText('채색하고 마무리 중')).toBeInTheDocument();

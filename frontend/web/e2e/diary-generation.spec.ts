@@ -1,3 +1,6 @@
+import { DIARY_GENERATING_COPY } from '../src/pages/diary-generating/copy';
+import { DIARY_WRITE_COPY } from '../src/pages/diary-write/copy';
+import { HOME_COPY } from '../src/pages/home/copy';
 import { expect, test, type Page } from '@playwright/test';
 import {
   MOCK_SCENARIO_HEADER,
@@ -13,13 +16,6 @@ const VALID_DIARY_CONTENT =
 const GENERATED_DIARY_TITLE = '오늘 하루의 소중한 기록';
 const GENERATION_ERROR_MESSAGE =
   '일기를 만드는 중 문제가 발생했습니다. 다시 시도해주세요.';
-
-const generationStepMessages = [
-  '오늘의 이야기를 차근차근 읽고 있어요',
-  '기억에 남는 장면을 한 장면씩 적어보고 있어요',
-  '네 장면을 고르고 이야기의 흐름을 맞추고 있어요',
-  '색을 더하고 다듬어 네컷 만화를 완성하고 있어요',
-] as const;
 
 const goToDiaryWritePage = async (
   page: Page,
@@ -53,16 +49,16 @@ test.describe('일기 생성', () => {
     await submitDiary(page);
 
     await expect(page).toHaveURL('/diary-generating');
-    await expect(page.getByText(generationStepMessages[0])).toBeVisible();
+    await expect(page.getByText(DIARY_GENERATING_COPY.steps[0])).toBeVisible();
 
-    for (const message of generationStepMessages.slice(1)) {
-      await page.clock.fastForward(3_000);
-      await expect(page.getByText(message)).toBeVisible();
-    }
+    await page.clock.fastForward(3_000);
+    await expect(page.getByText(DIARY_GENERATING_COPY.steps[1])).toBeVisible();
+    await page.clock.fastForward(3_000);
+    await expect(page.getByText(DIARY_GENERATING_COPY.steps[2])).toBeVisible();
+    await page.clock.fastForward(3_000);
+    await expect(page.getByText(DIARY_GENERATING_COPY.steps[3])).toBeVisible();
 
-    await expect(
-      page.getByText('완성했어요! 2초 뒤에 앨범으로 이동해요'),
-    ).toBeVisible({
+    await expect(page.getByText(DIARY_GENERATING_COPY.steps[4])).toBeVisible({
       timeout: 12_000,
     });
     await page.clock.fastForward(2_000);
@@ -70,7 +66,7 @@ test.describe('일기 생성', () => {
     await expect(page).toHaveURL(/\/diary\/[0-9a-f-]+$/);
     await expect(page.getByText(GENERATED_DIARY_TITLE)).toBeVisible();
     await expect(page.getByText('2026-08-30')).toBeVisible();
-    await expect(page.getByRole('img', { name: '그림 일기' })).toBeVisible();
+    await expect(page.getByRole('img', { name: '네컷만화' })).toBeVisible();
     await expect(page.getByText(VALID_DIARY_CONTENT)).toBeVisible();
   });
 
@@ -78,7 +74,7 @@ test.describe('일기 생성', () => {
     await goToDiaryWritePage(page);
     await submitDiary(page, '123456789');
 
-    await expect(page.getByText('10자 이상으로 입력해주세요!')).toBeVisible();
+    await expect(page.getByText(DIARY_WRITE_COPY.minLengthError)).toBeVisible();
     await expect(page).toHaveURL('/diary-write');
     await expect(page.getByRole('textbox')).toHaveValue('123456789');
   });
@@ -92,11 +88,16 @@ test.describe('일기 생성', () => {
     await expect(page).toHaveURL('/diary-generating');
     const errorPage = page.getByRole('alert');
     await expect(
-      errorPage.getByText('일기 생성 중 오류가 발생했어요'),
+      errorPage.getByText(DIARY_GENERATING_COPY.errorTitle),
     ).toBeVisible();
     await expect(errorPage.getByText(GENERATION_ERROR_MESSAGE)).toBeVisible();
+    await expect(
+      errorPage.getByText(DIARY_GENERATING_COPY.errorDescription),
+    ).toBeVisible();
 
-    await page.getByRole('button', { name: '다시 작성하기' }).click();
+    await page
+      .getByRole('button', { name: DIARY_GENERATING_COPY.editAction })
+      .click();
 
     await expect(page).toHaveURL('/diary-write');
     await expect(page.getByRole('textbox')).toHaveValue(VALID_DIARY_CONTENT);
@@ -113,13 +114,21 @@ test.describe('일기 생성', () => {
 
     await expect(page).toHaveURL('/');
     await expect(page.getByTestId('diary-generation-skeleton')).toBeVisible();
-    await expect(page.getByText(/오늘 남은 생성\s*3\s*회/)).toBeVisible();
+    await expect(
+      page.getByText(
+        `${HOME_COPY.remainingUsage.before}3${HOME_COPY.remainingUsage.after}`,
+      ),
+    ).toBeVisible();
 
     await expect(page.getByTestId('diary-generation-skeleton')).toBeHidden({
       timeout: 12_000,
     });
     await expect(page.getByText(GENERATED_DIARY_TITLE)).toBeVisible();
-    await expect(page.getByText(/오늘 남은 생성\s*2\s*회/)).toBeVisible();
+    await expect(
+      page.getByText(
+        `${HOME_COPY.remainingUsage.before}2${HOME_COPY.remainingUsage.after}`,
+      ),
+    ).toBeVisible();
   });
 
   test('홈으로 이동한 뒤 생성이 실패하면 오류를 안내한다', async ({ page }) => {
