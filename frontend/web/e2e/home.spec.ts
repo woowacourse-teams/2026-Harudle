@@ -1,3 +1,5 @@
+import { HOME_COPY } from '../src/pages/home/copy';
+import { ERROR_MESSAGES } from '../src/shared/errorMessage';
 import { expect, test, type Page } from '@playwright/test';
 import { AUTHENTICATED_STORAGE_STATE } from './auth';
 import {
@@ -13,7 +15,7 @@ const goToHomeAt = async (page: Page, date: string) => {
 };
 
 const getDiaryItems = (page: Page) => {
-  return page.getByRole('button', { name: /그림일기 2026-08-/ });
+  return page.getByRole('button', { name: /네컷만화 2026-08-/ });
 };
 
 test.describe('월별 일기 조회', () => {
@@ -25,7 +27,11 @@ test.describe('월별 일기 조회', () => {
 
     await expect(loadingSpinner).toBeVisible();
     await expect(page.getByLabel('조회할 월')).toHaveValue('2026-08');
-    await expect(page.getByText('총 6개')).toBeVisible();
+    await expect(
+      page.getByText(
+        `${HOME_COPY.monthlyCount.before}6${HOME_COPY.monthlyCount.after}`,
+      ),
+    ).toBeVisible();
     await expect(loadingSpinner).toBeHidden();
     await expect(getDiaryItems(page)).toHaveCount(6);
     await expect(
@@ -46,17 +52,16 @@ test.describe('월별 일기 조회', () => {
     await expect(errorScreen).toBeVisible();
     await expect(
       errorScreen.getByRole('heading', {
-        name: '일기를 불러오지 못했어요',
+        name: HOME_COPY.loadErrorTitle,
       }),
     ).toBeVisible();
     await expect(
-      errorScreen.getByText(
-        '월별 일기를 불러오는 중 문제가 발생했습니다. 다시 시도해주세요.',
-        { exact: true },
-      ),
+      errorScreen.getByText(ERROR_MESSAGES.MONTHLY_DIARIES_FETCH_FAILED, {
+        exact: true,
+      }),
     ).toBeVisible();
     await expect(
-      errorScreen.getByRole('button', { name: '다시 불러오기' }),
+      errorScreen.getByRole('button', { name: HOME_COPY.reloadAction }),
     ).toBeVisible();
   });
 
@@ -66,11 +71,15 @@ test.describe('월별 일기 조회', () => {
     await goToHomeAt(page, '2026-07-30T12:00:00+09:00');
     const monthInput = page.getByLabel('조회할 월');
 
-    await expect(page.getByText('2026년 7월에는 기록이 없어요')).toBeVisible();
+    await expect(page.getByText(HOME_COPY.emptyCurrentMonth)).toBeVisible();
     await monthInput.fill('2026-08');
 
     await expect(monthInput).toHaveValue('2026-08');
-    await expect(page.getByText('총 6개')).toBeVisible();
+    await expect(
+      page.getByText(
+        `${HOME_COPY.monthlyCount.before}6${HOME_COPY.monthlyCount.after}`,
+      ),
+    ).toBeVisible();
     await expect(getDiaryItems(page)).toHaveCount(6);
   });
 
@@ -84,12 +93,12 @@ test.describe('월별 일기 조회', () => {
     await monthInput.fill('2025-12');
 
     await expect(monthInput).toHaveValue('2025-12');
-    await expect(page.getByText('2025년 12월에는 기록이 없어요')).toBeVisible();
     await expect(
-      page.getByText('다른 달을 살펴보거나 오늘의 이야기를 남겨보세요!'),
+      page.getByText(HOME_COPY.emptyOtherMonth(2025, 12)),
     ).toBeVisible();
+    await expect(page.getByText(HOME_COPY.emptyDescription)).toBeVisible();
     await expect(
-      page.getByRole('button', { name: '새 일기 쓰기' }),
+      page.getByRole('button', { name: HOME_COPY.createAction }),
     ).toBeVisible();
   });
 });
@@ -100,17 +109,22 @@ test.describe('남은 일기 생성량 조회', () => {
   }) => {
     await goToHomeAt(page, '2026-08-30T12:00:00+09:00');
 
-    await expect(page.getByText(/오늘 남은 생성\s*3\s*회/)).toBeVisible();
+    await expect(
+      page.getByText(
+        `${HOME_COPY.remainingUsage.before}3${HOME_COPY.remainingUsage.after}`,
+      ),
+    ).toBeVisible();
   });
 });
 
-test.describe('하단 네비게이션', () => {
-  test('홈 화면에서 설정 화면으로 이동할 수 있다', async ({ page }) => {
+test.describe('홈 카드', () => {
+  test('홈 화면에서 연속 기록과 공유 안내 카드를 숨긴다', async ({ page }) => {
     await goToHomeAt(page, '2026-08-30T12:00:00+09:00');
-
-    await page.getByRole('button', { name: '설정' }).click();
-
-    await expect(page).toHaveURL('/setting');
-    await expect(page.getByText('피드백 남기기')).toBeVisible();
+    await expect(page.getByRole('region', { name: '연속 기록' })).toHaveCount(
+      0,
+    );
+    await expect(
+      page.getByRole('region', { name: '이야기 공유 안내' }),
+    ).toHaveCount(0);
   });
 });

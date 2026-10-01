@@ -1,3 +1,4 @@
+import { HOME_COPY } from '../copy';
 import BottomNavigation from '../../../shared/BottomNavigation';
 import DiaryItemList from '../DiaryItemList';
 import { useNavigate } from 'react-router';
@@ -88,22 +89,22 @@ const RemainingGenerationUsage = () => {
     <div css={remainingGenerationUsageStyle} aria-live="polite">
       {hasGenerationUsageError ? (
         <>
-          <span>생성 횟수 조회 실패</span>
+          <span>{HOME_COPY.usageError}</span>
           <button
             css={retryButtonStyle}
             type="button"
             onClick={() => void execute()}
           >
-            재시도
+            {HOME_COPY.usageRetryAction}
           </button>
         </>
       ) : (
         <span>
-          오늘 남은 생성{' '}
+          {HOME_COPY.remainingUsage.before}
           <strong css={generationUsageTextStyle(remainingCount)}>
-            {remainingCount ?? '-'}
+            {remainingCount ?? HOME_COPY.usageLoadingCount}
           </strong>
-          회
+          {HOME_COPY.remainingUsage.after}
         </span>
       )}
     </div>
@@ -153,6 +154,7 @@ const contentHeaderStyle = css`
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
+  flex-wrap: wrap;
   width: 100%;
 `;
 
@@ -216,12 +218,13 @@ const diaryContentStyle = css`
 
 const remainingGenerationUsageStyle = css`
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   color: ${theme.colors.foreground.neutral};
   font-size: 15px;
   font-weight: 500;
   line-height: 22px;
-  white-space: nowrap;
+  word-break: keep-all;
 `;
 
 const generationUsageTextStyle = (remainingCount: number | null) => css`
