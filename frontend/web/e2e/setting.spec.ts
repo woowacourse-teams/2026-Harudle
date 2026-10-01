@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { devices, expect, test, type Page } from '@playwright/test';
 import {
   MOCK_SCENARIO_HEADER,
   MOCK_SCENARIOS,
@@ -76,5 +76,64 @@ test.describe('설정', () => {
       page.getByText('로그아웃에 실패했습니다. 다시 시도해주세요.'),
     ).toBeVisible();
     await expect(page).toHaveURL('/setting');
+  });
+});
+
+test.describe('작은 iOS 화면의 설정 목록', () => {
+  test.use({
+    viewport: { width: 402, height: 684 },
+    userAgent: devices['iPhone 13'].userAgent,
+  });
+
+  test('설치 안내가 있어도 카드 행이 잘리지 않고 목록을 스크롤할 수 있다', async ({
+    page,
+  }) => {
+    await goToSetting(page);
+    await expectProfile(page);
+    await expect(
+      page.getByRole('button', { name: /하루들을 홈 화면에 추가해 보세요/ }),
+    ).toBeVisible();
+
+    for (const label of ['소셜 계정', '개인정보 처리방침']) {
+      const bounds = await page
+        .getByText(label, { exact: true })
+        .evaluate((element): { rowBottom: number; cardBottom: number } => {
+          const row = element.parentElement;
+          const card = row?.parentElement;
+
+          if (!row || !card) {
+            throw new Error('설정 카드 행을 찾을 수 없습니다.');
+          }
+
+          return {
+            rowBottom: row.getBoundingClientRect().bottom,
+            cardBottom: card.getBoundingClientRect().bottom,
+          };
+        });
+
+      expect(bounds.rowBottom).toBeLessThanOrEqual(bounds.cardBottom);
+    }
+
+    const logoutButton = page.getByRole('button', { name: '로그아웃' });
+    const logoutBounds = await logoutButton.boundingBox();
+    expect(logoutBounds?.height).toBeGreaterThanOrEqual(56);
+
+    const navigationBeforeScroll = await page
+      .getByRole('navigation')
+      .boundingBox();
+    const list = page.locator('main > div').filter({
+      has: page.getByText('이름', { exact: true }),
+    });
+
+    const scrollTop = await list.evaluate((element): number => {
+      element.scrollTop = element.scrollHeight;
+      return element.scrollTop;
+    });
+
+    expect(scrollTop).toBeGreaterThan(0);
+    await expect(logoutButton).toBeInViewport();
+    expect(await page.getByRole('navigation').boundingBox()).toEqual(
+      navigationBeforeScroll,
+    );
   });
 });

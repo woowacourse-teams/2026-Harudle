@@ -2,6 +2,11 @@ import { API_BASE_URL, isProblemDetails, RequestError } from '../../shared/api';
 import { authFetch } from '../../shared/auth';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 
+export const DIARY_GENERATION_ERROR_CODE = {
+  DAILY_LIMIT_EXCEEDED: 'DAILY_GENERATION_LIMIT_EXCEEDED',
+  IN_PROGRESS: 'GENERATION_IN_PROGRESS',
+} as const;
+
 export const generateDiary = async ({
   diaryDate,
   sourceText,

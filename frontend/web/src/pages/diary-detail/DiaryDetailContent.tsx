@@ -1,3 +1,4 @@
+import { DIARY_DETAIL_COPY } from './copy';
 import { useEffect } from 'react';
 import useDiaryDelete from './useDiaryDelete';
 import useDiaryDetail from './useDiaryDetail';
@@ -61,10 +62,12 @@ const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
         right={
           <button
             type="button"
-            aria-label="더보기"
+            aria-label={DIARY_DETAIL_COPY.deleteAction}
             css={headerButtonStyle}
             onClick={() => {
-              const confirmDelete = window.confirm('일기를 삭제할까요?');
+              const confirmDelete = window.confirm(
+                DIARY_DETAIL_COPY.deleteConfirm,
+              );
               if (confirmDelete) {
                 void deleteDiary();
               }
@@ -82,15 +85,25 @@ const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
       <main css={contentStyle}>
         <div css={diaryTitleStyle}>{title}</div>
 
-        <DiaryImage css={diaryImageStyle} src={imageUrl} alt="그림 일기" />
+        <DiaryImage
+          diaryId={diaryId}
+          imageRole="original"
+          css={diaryImageStyle}
+          src={imageUrl}
+          alt="네컷만화"
+        />
 
         <div>
-          <span css={storyTitleStyle}>오늘의 이야기</span>
+          <span css={storyTitleStyle}>{DIARY_DETAIL_COPY.storyTitle}</span>
           <p css={storyTextStyle}>{diaryDetail.sourceText}</p>
         </div>
-
         <DiaryShareButton diaryId={diaryId} diaryTitle={title} />
-        <DiaryImageDownloadButton imageUrl={imageUrl} />
+        <DiaryImageDownloadButton
+          diaryId={diaryId}
+          imageUrl={imageUrl}
+          diaryDate={diaryDetail.diaryDate}
+          diaryTitle={diaryDetail.generation.title}
+        />
       </main>
     </div>
   );
@@ -153,6 +166,7 @@ const diaryImageStyle = css`
 `;
 
 const storyTitleStyle = css`
+  word-break: keep-all;
   text-align: center;
   color: ${theme.colors.foreground.neutral};
   font-size: 18px;
