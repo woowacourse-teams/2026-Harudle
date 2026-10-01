@@ -46,11 +46,11 @@ const DiaryImageDownloadButton = ({
         .replace(/[<>:"/\\|?*]/g, '_')
         .trim()
         .replace(/\.+$/, '');
-      // 제목 최대 80 bytes + 접두사·확장자 25 bytes로 Android 파일명 제한을 피한다.
+      // 제목 최대 80 bytes + 접두사·확장자 26 bytes로 Android 파일명 제한을 피한다.
       const shortTitle = Array.from(safeTitle).slice(0, 20).join('');
 
       anchor.href = downloadUrl;
-      anchor.download = `하루들_${diaryDate}_${shortTitle}.png`;
+      anchor.download = `하루들_${diaryDate}_${shortTitle}.webp`;
       anchor.click();
 
       URL.revokeObjectURL(downloadUrl);
