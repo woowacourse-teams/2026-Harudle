@@ -36,10 +36,14 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.io.ByteArrayResource;
@@ -70,6 +74,9 @@ class ClaimedDiaryGenerationServiceTest {
     @Mock
     private DiaryGenerationCompletionService completionService;
 
+    @Mock
+    private GenerationLifecycleMetrics lifecycleMetrics;
+
     private RequestFingerprintGenerator requestFingerprintGenerator;
     private ClaimedDiaryGenerationService generationService;
 
@@ -83,7 +90,8 @@ class ClaimedDiaryGenerationServiceTest {
                 storyboardGenerator,
                 diaryImageGenerator,
                 imageStorage,
-                completionService
+                completionService,
+                lifecycleMetrics
         );
     }
 
@@ -170,6 +178,99 @@ class ClaimedDiaryGenerationServiceTest {
         verify(completionService).fail(generation.getId(), GenerationErrorCode.AI_PROVIDER_TIMEOUT);
     }
 
+    @ParameterizedTest
+    @MethodSource("classifiedAiFailures")
+    @DisplayName("세분화한 AI 오류 유형을 해당 내부 생성 오류 코드로 저장한다")
+    void generateClaimedDiaryImageMarksClassifiedAiFailure(
+            AiGenerationErrorType errorType,
+            GenerationErrorCode expectedErrorCode
+    ) {
+        GenerateDiaryImageCommand command = createCommand();
+        DiaryGeneration generation = createGeneration(command);
+        GenerationPrompt prompt = mock(GenerationPrompt.class);
+        AiGenerationException exception = new AiGenerationException(
+                errorType,
+                "Gemini 생성에 실패했습니다."
+        );
+        when(prompt.getStoryboardPromptText()).thenReturn("스토리보드 프롬프트");
+        when(diaryGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenThrow(exception);
+        when(completionService.fail(generation.getId(), expectedErrorCode)).thenReturn(expectedErrorCode);
+
+        assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
+                .isSameAs(exception);
+        verify(completionService).fail(generation.getId(), expectedErrorCode);
+    }
+
+    @Test
+    @DisplayName("예상하지 못한 런타임 오류를 내부 생성 오류로 저장하고 원래 예외를 전달한다")
+    void generateClaimedDiaryImageMarksUnexpectedRuntimeFailure() {
+        GenerateDiaryImageCommand command = createCommand();
+        DiaryGeneration generation = createGeneration(command);
+        GenerationPrompt prompt = mock(GenerationPrompt.class);
+        IllegalStateException exception = new IllegalStateException("내부 처리 오류");
+        when(prompt.getStoryboardPromptText()).thenReturn("스토리보드 프롬프트");
+        when(diaryGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenThrow(exception);
+        when(completionService.fail(generation.getId(), GenerationErrorCode.GENERATION_INTERNAL_ERROR))
+                .thenReturn(GenerationErrorCode.GENERATION_INTERNAL_ERROR);
+
+        assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
+                .isSameAs(exception);
+        verify(completionService).fail(generation.getId(), GenerationErrorCode.GENERATION_INTERNAL_ERROR);
+    }
+
+    @Test
+    @DisplayName("예상 밖 생성 오류의 원인과 발생 단계를 기록한다")
+    void recordUnexpectedStoryboardFailure() {
+        GenerateDiaryImageCommand command = createCommand();
+        DiaryGeneration generation = createGeneration(command);
+        GenerationPrompt prompt = mock(GenerationPrompt.class);
+        RuntimeException original = new IllegalStateException("민감한 사용자 원문");
+        when(prompt.getStoryboardPromptText()).thenReturn("스토리보드 프롬프트");
+        when(diaryGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class))).thenThrow(original);
+        when(completionService.fail(generation.getId(), GenerationErrorCode.GENERATION_INTERNAL_ERROR))
+                .thenReturn(GenerationErrorCode.GENERATION_INTERNAL_ERROR);
+
+        assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
+                .isSameAs(original);
+
+        verify(lifecycleMetrics).unexpectedFailure(
+                generation.getId(), GenerationLifecycleMetrics.Phase.STORYBOARD, original);
+        verify(completionService).fail(generation.getId(), GenerationErrorCode.GENERATION_INTERNAL_ERROR);
+    }
+
+    @Test
+    @DisplayName("예상 밖 참조 이미지 조회 오류를 저장소 실패로 기록한다")
+    void recordUnexpectedReferenceLoadFailure() {
+        GenerateDiaryImageCommand command = createCommand();
+        DiaryGeneration generation = createGeneration(command);
+        GenerationPrompt prompt = mock(GenerationPrompt.class);
+        Storyboard storyboard = createStoryboard();
+        RuntimeException original = new IllegalStateException("secret object key");
+        when(prompt.getStoryboardPromptText()).thenReturn("스토리보드 프롬프트");
+        when(prompt.getImageAssetObjectKey()).thenReturn("references/style.png");
+        when(diaryGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(storyboardGenerator.generate(any(StoryboardGenerationRequest.class)))
+                .thenReturn(new GeneratedStoryboard(storyboard, null));
+        when(imageStorage.load("references/style.png")).thenThrow(original);
+        when(completionService.fail(generation.getId(), GenerationErrorCode.IMAGE_STORAGE_ERROR))
+                .thenReturn(GenerationErrorCode.IMAGE_STORAGE_ERROR);
+
+        assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
+                .isInstanceOf(ImageStorageException.class)
+                .hasCause(original);
+
+        verify(lifecycleMetrics).unexpectedFailure(
+                generation.getId(), GenerationLifecycleMetrics.Phase.REFERENCE_LOAD, original);
+        verify(completionService).fail(generation.getId(), GenerationErrorCode.IMAGE_STORAGE_ERROR);
+    }
+
     @Test
     @DisplayName("오래된 생성 복구와 AI 실패가 경합하면 저장된 오류를 반환한다")
     void generateClaimedDiaryImageKeepsInterruptedError() {
@@ -254,6 +355,8 @@ class ClaimedDiaryGenerationServiceTest {
         assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
                 .isSameAs(completionException);
         verify(imageStorage, never()).delete(any(String.class));
+        verify(lifecycleMetrics).unexpectedFailure(
+                generation.getId(), GenerationLifecycleMetrics.Phase.COMPLETION, completionException);
     }
 
     @Test
@@ -400,6 +503,18 @@ class ClaimedDiaryGenerationServiceTest {
         return new GeneratedImage(
                 new ByteArrayResource("generated".getBytes(StandardCharsets.UTF_8)),
                 MediaType.IMAGE_PNG
+        );
+    }
+
+    private static Stream<Arguments> classifiedAiFailures() {
+        return Stream.of(
+                Arguments.of(AiGenerationErrorType.RATE_LIMITED, GenerationErrorCode.AI_PROVIDER_RATE_LIMITED),
+                Arguments.of(AiGenerationErrorType.OUTPUT_TRUNCATED, GenerationErrorCode.AI_OUTPUT_TRUNCATED),
+                Arguments.of(
+                        AiGenerationErrorType.RESPONSE_PROCESSING_ERROR,
+                        GenerationErrorCode.AI_RESPONSE_PROCESSING_ERROR
+                ),
+                Arguments.of(AiGenerationErrorType.INTERNAL_ERROR, GenerationErrorCode.GENERATION_INTERNAL_ERROR)
         );
     }
 }

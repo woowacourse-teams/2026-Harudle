@@ -101,6 +101,9 @@ public class SecurityConfig {
                 )
                 .cors(Customizer.withDefaults())
                 .authorizeHttpRequests(auth -> auth
+                        // The frontend proxy does not route /actuator to this internal Docker service.
+                        .requestMatchers(HttpMethod.GET, "/actuator/prometheus").permitAll()
+                        .requestMatchers("/actuator/**").denyAll()
                         .requestMatchers(
                                 HttpMethod.POST,
                                 "/api/v1/guest/session",

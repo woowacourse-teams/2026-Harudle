@@ -20,7 +20,7 @@ final class DiscardedGenerationImageCleaner {
 
     void deleteIfUnused(DiaryGeneration generation, String imageObjectKey) {
         if (generation.notUsesImageObjectKey(imageObjectKey)) {
-            deleteDiscardedImage(imageObjectKey);
+            deleteDiscardedImage(generation.getId(), imageObjectKey, "completed_but_unused");
         }
     }
 
@@ -30,30 +30,37 @@ final class DiscardedGenerationImageCleaner {
                     .map(generation -> canDeleteImage(generation, imageObjectKey))
                     .orElse(true);
             if (deletable) {
-                deleteDiscardedImage(imageObjectKey);
+                deleteDiscardedImage(generationId, imageObjectKey, "completion_failed");
             }
         } catch (RuntimeException verificationException) {
             if (verificationException != completionException) {
                 completionException.addSuppressed(verificationException);
             }
-            LOGGER.warn(
-                    "생성 완료 상태를 확인하지 못해 이미지 삭제를 보류합니다. generationId={}, objectKey={}",
-                    generationId,
-                    imageObjectKey,
-                    verificationException
-            );
+            LOGGER.atWarn()
+                    .addKeyValue("event", "discarded_image_delete_deferred")
+                    .addKeyValue("generationId", generationId.toString())
+                    .addKeyValue("exceptionType", verificationException.getClass().getSimpleName())
+                    .log("event=discarded_image_delete_deferred generationId={} exceptionType={}",
+                            generationId, verificationException.getClass().getSimpleName());
         }
     }
 
-    void deleteDiscardedImage(String imageObjectKey) {
+    void deleteDiscardedImage(UUID generationId, String imageObjectKey, String reason) {
         try {
             imageStorage.delete(imageObjectKey);
+            LOGGER.atInfo()
+                    .addKeyValue("event", "discarded_image_deleted")
+                    .addKeyValue("generationId", generationId.toString())
+                    .addKeyValue("reason", reason)
+                    .log("event=discarded_image_deleted generationId={} reason={}", generationId, reason);
         } catch (RuntimeException exception) {
-            LOGGER.warn(
-                    "완료되지 못한 생성 이미지 삭제에 실패했습니다. objectKey={}",
-                    imageObjectKey,
-                    exception
-            );
+            LOGGER.atWarn()
+                    .addKeyValue("event", "discarded_image_delete_failed")
+                    .addKeyValue("generationId", generationId.toString())
+                    .addKeyValue("reason", reason)
+                    .addKeyValue("exceptionType", exception.getClass().getSimpleName())
+                    .log("event=discarded_image_delete_failed generationId={} reason={} exceptionType={}",
+                            generationId, reason, exception.getClass().getSimpleName());
         }
     }
 

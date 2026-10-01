@@ -1,0 +1,376 @@
+"""Offline tests: python3 -m unittest discover -s deploy/monitoring -p 'test_*.py'."""
+
+import contextlib
+import io
+import json
+import traceback
+from email.message import Message
+from http.client import IncompleteRead
+import ssl
+import os
+import sys
+import unittest
+from unittest import mock
+
+import discord_forwarder as forwarder
+
+
+TOPIC = "arn:aws:sns:ap-northeast-2:123456789012:harudle-dev-alerts"
+SECRET = "arn:aws:secretsmanager:ap-northeast-2:123456789012:secret:test"
+WEBHOOK = "https://discord.com/api/webhooks/123456/secret-token"
+
+
+def discord_response(status=200, body=b'{"id":"123456789"}'):
+    response = mock.MagicMock()
+    response.__enter__.return_value = response
+    response.status = status
+    response.read.side_effect = lambda size: body[:size]
+    return response
+
+
+def http_failure(status, body=b'{}', retry_after=None):
+    headers = {} if retry_after is None else {"Retry-After": retry_after}
+    return forwarder.error.HTTPError(WEBHOOK, status, "provider error", headers, io.BytesIO(body))
+
+
+def sns_event(name="harudle-dev-s3-put-failure", state="ALARM", reason="s3://private/key"):
+    return {
+        "Records": [{
+            "Sns": {
+                "TopicArn": TOPIC,
+                "Message": json.dumps({
+                    "AlarmName": name,
+                    "NewStateValue": state,
+                    "NewStateReason": reason,
+                    "AlarmDescription": "private user data",
+                }),
+            },
+        }],
+    }
+
+
+class DiscordForwarderTest(unittest.TestCase):
+    def setUp(self):
+        self.now = 0.0
+        self.clock = mock.patch.object(forwarder.time, "monotonic", side_effect=lambda: self.now)
+        self.clock.start()
+        self.addCleanup(self.clock.stop)
+        self.sleeper = mock.patch.object(forwarder.time, "sleep", side_effect=self.advance_time)
+        self.sleep = self.sleeper.start()
+        self.addCleanup(self.sleeper.stop)
+        self.environment = mock.patch.dict(os.environ, {
+            "DEPLOY_ENV": "dev",
+            "ALARM_TOPIC_ARN": TOPIC,
+            "WEBHOOK_SECRET_ARN": SECRET,
+            "WEBHOOK_URL": "",
+        })
+        self.environment.start()
+        self.addCleanup(self.environment.stop)
+
+    def advance_time(self, seconds):
+        self.now += seconds
+
+    def test_only_four_allowlisted_fields_leave_the_function(self):
+        with mock.patch.object(forwarder, "_webhook_url", return_value=WEBHOOK), \
+                mock.patch.object(forwarder, "_post") as post:
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                result = forwarder.handler(sns_event(), None)
+
+        self.assertEqual(result, {"delivered": True})
+        self.assertEqual(post.call_args.args[0], WEBHOOK)
+        payload = post.call_args.args[1]
+        self.assertEqual(payload["allowed_mentions"], {"parse": []})
+        self.assertEqual(payload["content"], (
+            "환경: dev\n알람: harudle-dev-s3-put-failure\n"
+            "상태: ALARM\n원인: 생성 이미지 S3 저장 실패"
+        ))
+        self.assertNotIn("s3://", payload["content"])
+        self.assertNotIn("private user data", payload["content"])
+        self.assertNotIn(WEBHOOK, output.getvalue())
+
+    def test_environment_webhook_delivers_without_secret_lookup_or_leaking_url(self):
+        with mock.patch.dict(os.environ, {"WEBHOOK_SECRET_ARN": "", "WEBHOOK_URL": WEBHOOK}), \
+                mock.patch.object(forwarder, "_webhook_url") as secret_lookup, \
+                mock.patch.object(forwarder, "_post") as post:
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                result = forwarder.handler(sns_event(), None)
+
+        secret_lookup.assert_not_called()
+        self.assertEqual(result, {"delivered": True})
+        self.assertEqual(post.call_args.args[0], WEBHOOK)
+        self.assertEqual(post.call_args.args[1]["content"], (
+            "환경: dev\n알람: harudle-dev-s3-put-failure\n"
+            "상태: ALARM\n원인: 생성 이미지 S3 저장 실패"
+        ))
+        self.assertEqual(post.call_args.args[1]["allowed_mentions"], {"parse": []})
+        self.assertNotIn(WEBHOOK, output.getvalue())
+        self.assertNotIn("s3://", post.call_args.args[1]["content"])
+
+    def test_exactly_one_webhook_source_is_required_before_any_delivery(self):
+        for secret_arn, webhook_url in ((SECRET, WEBHOOK), ("", "")):
+            with self.subTest(secret_present=bool(secret_arn), env_present=bool(webhook_url)), \
+                    mock.patch.dict(os.environ, {"WEBHOOK_SECRET_ARN": secret_arn, "WEBHOOK_URL": webhook_url}), \
+                    mock.patch.object(forwarder, "_webhook_url") as secret_lookup, \
+                    mock.patch.object(forwarder, "_post") as post:
+                with self.assertRaises(forwarder.DeliveryError) as raised:
+                    forwarder.handler(sns_event(), None)
+                self.assertEqual(str(raised.exception), "forwarder configuration invalid")
+                secret_lookup.assert_not_called()
+                post.assert_not_called()
+
+    def test_environment_webhook_uses_the_same_strict_url_validation(self):
+        for unsafe in (
+            "https://discord.com.evil.example/api/webhooks/123456/secret-token",
+            "http://discord.com/api/webhooks/123456/secret-token",
+            "https://user:secret@discord.com/api/webhooks/123456/secret-token",
+            "https://discord.com:443/api/webhooks/123456/secret-token",
+            "https://discord.com/api/webhooks/not-an-id/secret-token",
+            WEBHOOK + "?wait=true",
+            WEBHOOK + "#secret-token",
+            " " + WEBHOOK,
+            WEBHOOK + "\n",
+            WEBHOOK.replace("discord.com", "dis\tcord.com"),
+            WEBHOOK + "\x7f",
+        ):
+            with self.subTest(case=type(unsafe).__name__), \
+                    mock.patch.dict(os.environ, {"WEBHOOK_SECRET_ARN": "", "WEBHOOK_URL": unsafe}), \
+                    mock.patch.object(forwarder, "_post") as post:
+                with self.assertRaises(forwarder.DeliveryError) as raised:
+                    forwarder.handler(sns_event(), None)
+                self.assertEqual(str(raised.exception), "webhook URL invalid")
+                if isinstance(unsafe, str):
+                    self.assertNotIn(unsafe, str(raised.exception))
+                post.assert_not_called()
+
+    def test_ok_uses_fixed_recovery_reason(self):
+        payload = forwarder._alarm_message(sns_event(state="OK")["Records"][0]["Sns"], TOPIC, "dev")
+        self.assertIn("원인: 생성 이미지 S3 저장 실패 해소", payload["content"])
+
+    def test_collection_stale_alarm_is_allowlisted(self):
+        record = sns_event(name="harudle-dev-telemetry-stale")["Records"][0]["Sns"]
+        payload = forwarder._alarm_message(record, TOPIC, "dev")
+        self.assertIn("원인: 서버 지표 수집 중단", payload["content"])
+
+    def test_resource_and_error_rate_alarms_are_allowlisted(self):
+        for suffix in ("ec2-status-check", "ec2-disk-high", "rds-memory-low", "api-error-rate"):
+            record = sns_event(name=f"harudle-dev-{suffix}")["Records"][0]["Sns"]
+            payload = forwarder._alarm_message(record, TOPIC, "dev")
+            self.assertIn(f"알람: harudle-dev-{suffix}", payload["content"])
+
+    def test_each_gemini_filter_alarm_is_allowlisted(self):
+        for suffix in (
+            "gemini-storyboard-transient",
+            "gemini-storyboard-response",
+            "gemini-image-transient",
+            "gemini-image-response",
+        ):
+            record = sns_event(name=f"harudle-dev-{suffix}")["Records"][0]["Sns"]
+            payload = forwarder._alarm_message(record, TOPIC, "dev")
+            self.assertIn(f"알람: harudle-dev-{suffix}", payload["content"])
+
+        for obsolete_suffix in ("gemini-storyboard-errors", "gemini-image-errors"):
+            record = sns_event(name=f"harudle-dev-{obsolete_suffix}")["Records"][0]["Sns"]
+            with self.assertRaises(forwarder.DeliveryError):
+                forwarder._alarm_message(record, TOPIC, "dev")
+
+    def test_unknown_alarm_or_topic_is_rejected(self):
+        for event in (
+            sns_event(name="harudle-dev-user-1234"),
+            sns_event(name="harudle-prod-s3-put-failure"),
+        ):
+            with self.assertRaises(forwarder.DeliveryError):
+                forwarder.handler(event, None)
+        wrong_topic = sns_event()
+        wrong_topic["Records"][0]["Sns"]["TopicArn"] = "other-topic"
+        with self.assertRaises(forwarder.DeliveryError):
+            forwarder.handler(wrong_topic, None)
+
+    def test_transport_error_does_not_expose_webhook(self):
+        with mock.patch.object(forwarder._HTTP_CLIENT, "open", side_effect=RuntimeError(WEBHOOK)):
+            with self.assertRaises(forwarder.DeliveryError) as raised:
+                forwarder._post(WEBHOOK, {"content": "safe"})
+        self.assertEqual(str(raised.exception), "discord transport failed")
+        self.assertNotIn(WEBHOOK, str(raised.exception))
+
+    def test_post_identifies_client_to_discord(self):
+        with mock.patch.object(forwarder._HTTP_CLIENT, "open", return_value=discord_response()) as urlopen:
+            forwarder._post(WEBHOOK, {"content": "safe"})
+
+        outgoing = urlopen.call_args.args[0]
+        self.assertEqual(outgoing.full_url, WEBHOOK + "?wait=true")
+        self.assertEqual(outgoing.method, "POST")
+        self.assertEqual(json.loads(outgoing.data), {"content": "safe"})
+        self.assertEqual(urlopen.call_args.kwargs["timeout"], 3)
+        self.assertEqual(outgoing.get_header("Content-type"), "application/json")
+        self.assertEqual(
+            outgoing.get_header("User-agent"),
+            "DiscordBot (https://github.com/woowacourse-teams/2026-Harudle, 1.0)",
+        )
+
+    def test_unconfirmed_or_oversized_response_is_not_success(self):
+        cases = (
+            (204, b""), (200, b"{}"), (200, b'{"id":123}'),
+            (200, b'{"id":"not-an-id"}'), (200, b'{"id":""}'),
+            (200, b'[]'), (200, b'not-json'),
+            (200, b"x" * (forwarder._MAX_RESPONSE_BYTES + 1)),
+        )
+        for status, body in cases:
+            with self.subTest(status=status, size=len(body)), \
+                    mock.patch.object(forwarder._HTTP_CLIENT, "open", return_value=discord_response(status, body)) as client:
+                with self.assertRaises(forwarder.DeliveryError):
+                    forwarder._post(WEBHOOK, {"content": "safe"})
+                self.assertEqual(client.call_count, 1)
+        self.sleep.assert_not_called()
+
+    def test_retry_after_and_transient_error_recover_only_after_confirmation(self):
+        responses = [
+            http_failure(429, b'{"retry_after":2.5}', retry_after="1"),
+            http_failure(503), discord_response(),
+        ]
+        with mock.patch.object(forwarder._HTTP_CLIENT, "open", side_effect=responses) as client:
+            forwarder._post(WEBHOOK, {"content": "safe"})
+        self.assertEqual(client.call_count, 3)
+        self.assertEqual(self.sleep.call_args_list, [mock.call(2.5), mock.call(2.0)])
+
+    def test_all_retryable_http_statuses_can_recover(self):
+        for status in (429, 500, 502, 503, 504):
+            with self.subTest(status=status), \
+                    mock.patch.object(forwarder._HTTP_CLIENT, "open", side_effect=[http_failure(status), discord_response()]) as client:
+                forwarder._post(WEBHOOK, {"content": "safe"})
+                self.assertEqual(client.call_count, 2)
+
+    def test_permanent_http_error_is_sanitized_and_never_retried(self):
+        for status in (400, 401, 403, 404):
+            with self.subTest(status=status), \
+                    mock.patch.object(forwarder._HTTP_CLIENT, "open", side_effect=http_failure(status, WEBHOOK.encode())) as client:
+                with self.assertRaises(forwarder.DeliveryError) as raised:
+                    forwarder._post(WEBHOOK, {"content": "safe"})
+                self.assertEqual(str(raised.exception), f"discord returned HTTP {status}")
+                self.assertNotIn(WEBHOOK, "".join(traceback.format_exception(raised.exception)))
+                self.assertEqual(client.call_count, 1)
+        self.sleep.assert_not_called()
+
+    def test_retry_exhaustion_is_an_error_for_lambda_not_a_delivered_result(self):
+        with mock.patch.object(forwarder._HTTP_CLIENT, "open", side_effect=[http_failure(503) for _ in range(3)]) as client:
+            with self.assertRaisesRegex(forwarder.DeliveryError, "discord returned HTTP 503"):
+                forwarder._post(WEBHOOK, {"content": "safe"})
+        self.assertEqual(client.call_count, 3)
+        self.assertEqual(self.sleep.call_args_list, [mock.call(1.0), mock.call(2.0)])
+
+    def test_network_failure_retries_and_recovers(self):
+        with mock.patch.object(forwarder._HTTP_CLIENT, "open", side_effect=[forwarder.error.URLError(WEBHOOK), discord_response()]) as client:
+            forwarder._post(WEBHOOK, {"content": "safe"})
+        self.assertEqual(client.call_count, 2)
+        self.sleep.assert_called_once_with(1.0)
+
+    def test_interrupted_http_response_and_tls_connection_are_retried_safely(self):
+        interrupted = discord_response()
+        interrupted.read.side_effect = IncompleteRead(WEBHOOK.encode(), 42)
+        interrupted_rate_limit = http_failure(429)
+        interrupted_rate_limit.read = mock.Mock(side_effect=IncompleteRead(WEBHOOK.encode(), 42))
+        for first in (interrupted, ssl.SSLError(WEBHOOK), interrupted_rate_limit):
+            with self.subTest(failure_type=type(first).__name__), \
+                    mock.patch.object(forwarder._HTTP_CLIENT, "open", side_effect=[first, discord_response()]) as client:
+                forwarder._post(WEBHOOK, {"content": "safe"})
+                self.assertEqual(client.call_count, 2)
+
+    def test_long_retry_after_is_not_shortened_to_fit_budget(self):
+        with mock.patch.object(forwarder._HTTP_CLIENT, "open", side_effect=http_failure(429, b'{"retry_after":30}', retry_after="2")) as client:
+            with self.assertRaisesRegex(forwarder.DeliveryError, "retry exceeds delivery budget"):
+                forwarder._post(WEBHOOK, {"content": "safe"})
+        self.assertEqual(client.call_count, 1)
+        self.sleep.assert_not_called()
+
+    def test_invalid_retry_after_values_cannot_disable_the_bounded_retry(self):
+        for header, body in (("NaN", b'{"retry_after":true}'), ("Infinity", b'{"retry_after":-1}'), ("invalid", b'not-json')):
+            with self.subTest(header=header), \
+                    mock.patch.object(forwarder._HTTP_CLIENT, "open", side_effect=[http_failure(429, body, header), discord_response()]) as client:
+                forwarder._post(WEBHOOK, {"content": "safe"})
+                self.assertEqual(client.call_count, 2)
+        self.assertEqual(self.sleep.call_args_list, [mock.call(1.0)] * 3)
+
+    def test_lambda_remaining_time_limits_request_and_preserves_one_second(self):
+        context = mock.Mock()
+        context.get_remaining_time_in_millis.return_value = 1500
+        with mock.patch.object(forwarder._HTTP_CLIENT, "open", side_effect=http_failure(503)) as client:
+            with self.assertRaisesRegex(forwarder.DeliveryError, "retry exceeds delivery budget"):
+                forwarder._post(WEBHOOK, {"content": "safe"}, context)
+        self.assertEqual(client.call_args.kwargs["timeout"], 0.5)
+        self.sleep.assert_not_called()
+        context.get_remaining_time_in_millis.return_value = 900
+        with mock.patch.object(forwarder._HTTP_CLIENT, "open") as client:
+            with self.assertRaisesRegex(forwarder.DeliveryError, "delivery budget exhausted"):
+                forwarder._post(WEBHOOK, {"content": "safe"}, context)
+        client.assert_not_called()
+
+    def test_request_time_and_retry_delay_share_the_same_budget(self):
+        def slow_failure(*_args, **kwargs):
+            self.advance_time(kwargs["timeout"])
+            raise http_failure(503)
+        with mock.patch.object(forwarder._HTTP_CLIENT, "open", side_effect=slow_failure) as client:
+            with self.assertRaisesRegex(forwarder.DeliveryError, "discord returned HTTP 503"):
+                forwarder._post(WEBHOOK, {"content": "safe"})
+        self.assertEqual([c.kwargs["timeout"] for c in client.call_args_list], [3, 3, 1])
+        self.assertEqual(self.now, 10)
+
+    def test_redirects_are_rejected_without_following_another_destination(self):
+        self.assertTrue(any(isinstance(h, forwarder._NoRedirect) for h in forwarder._HTTP_CLIENT.handlers))
+        headers = Message()
+        headers["Location"] = "https://example.org/alert"
+        outgoing = forwarder.request.Request(WEBHOOK, data=b"safe", method="POST")
+        for status in (301, 302, 303, 307, 308):
+            with self.subTest(status=status), mock.patch.object(forwarder._HTTP_CLIENT, "open") as follow:
+                with self.assertRaises(forwarder.error.HTTPError):
+                    forwarder._HTTP_CLIENT.error("http", outgoing, io.BytesIO(), status, "redirect", headers)
+                follow.assert_not_called()
+
+    def test_malformed_event_types_are_safe_errors_before_secret_lookup(self):
+        events = [None, [], {}, {"Records": {}}, {"Records": []}, {"Records": [None]},
+                  {"Records": [{"Sns": None}]}, sns_event(state=[]), sns_event(state={})]
+        with mock.patch.object(forwarder, "_webhook_url") as lookup, \
+                mock.patch.object(forwarder, "_post") as post, \
+                contextlib.redirect_stdout(io.StringIO()):
+            for event in events:
+                with self.subTest(event_type=type(event).__name__), self.assertRaises(forwarder.DeliveryError):
+                    forwarder.handler(event, None)
+        lookup.assert_not_called()
+        post.assert_not_called()
+
+    def test_failed_delivery_logs_failure_without_claiming_success_or_leaking_input(self):
+        output = io.StringIO()
+        with mock.patch.object(forwarder, "_webhook_url", return_value=WEBHOOK), \
+                mock.patch.object(forwarder._HTTP_CLIENT, "open", side_effect=http_failure(403, WEBHOOK.encode())), \
+                contextlib.redirect_stdout(output):
+            with self.assertRaises(forwarder.DeliveryError):
+                forwarder.handler(sns_event(), None)
+        self.assertEqual(output.getvalue(), "event=discord_alert_delivery_failed environment=dev\n")
+        self.assertNotIn(WEBHOOK, output.getvalue())
+        self.assertNotIn("s3://", output.getvalue())
+
+    def test_non_string_secret_urls_are_rejected_with_a_fixed_error(self):
+        for value in (None, 123, []):
+            with self.subTest(value_type=type(value).__name__), self.assertRaisesRegex(forwarder.DeliveryError, "webhook URL invalid"):
+                forwarder._validate_webhook_url(value)
+
+    def test_secret_must_contain_a_discord_webhook_without_query_parameters(self):
+        client = mock.Mock()
+        boto3 = mock.Mock()
+        boto3.client.return_value = client
+        with mock.patch.dict(sys.modules, {"boto3": boto3}):
+            client.get_secret_value.return_value = {"SecretString": WEBHOOK}
+            self.assertEqual(forwarder._webhook_url(SECRET), WEBHOOK)
+            for unsafe in (
+                "https://discord.com.evil.example/api/webhooks/123456/secret-token",
+                WEBHOOK + "?wait=true",
+            ):
+                client.get_secret_value.return_value = {"SecretString": unsafe}
+                with self.assertRaises(forwarder.DeliveryError) as raised:
+                    forwarder._webhook_url(SECRET)
+                self.assertEqual(str(raised.exception), "webhook secret unavailable")
+                self.assertNotIn(unsafe, str(raised.exception))
+
+
+if __name__ == "__main__":
+    unittest.main()

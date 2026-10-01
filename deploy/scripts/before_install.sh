@@ -23,7 +23,12 @@ docker compose version >/dev/null 2>&1 || {
   exit 1
 }
 
-install -d -m 0755 "${APP_DIR}" "${IMAGE_DIR}"
+command -v jq >/dev/null 2>&1 || {
+  echo "jq is not installed. Install jq before deployment." >&2
+  exit 1
+}
+
+install -d -m 0755 "${APP_DIR}" "${IMAGE_DIR}" "${APP_DIR}/monitoring"
 
 if [[ ! -s "${APP_DIR}/.env" ]]; then
   echo "Create ${APP_DIR}/.env before the first deployment." >&2
@@ -35,6 +40,9 @@ fi
 rm -f \
   "${APP_DIR}/compose.dev.yaml" \
   "${APP_DIR}/compose.prod.yaml" \
+  "${APP_DIR}/monitoring/prometheus.yaml" \
+  "${APP_DIR}/monitoring/cloudwatch-agent.dev.json" \
+  "${APP_DIR}/monitoring/cloudwatch-agent.prod.json" \
   "${IMAGE_DIR}/backend-image.tar.gz" \
   "${IMAGE_DIR}/frontend-image.tar.gz" \
   "${IMAGE_DIR}/image-checksums.sha256"

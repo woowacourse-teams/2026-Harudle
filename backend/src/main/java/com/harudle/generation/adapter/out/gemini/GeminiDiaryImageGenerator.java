@@ -12,6 +12,7 @@ import com.google.genai.types.Part;
 import com.harudle.generation.config.GeminiGenerationProperties;
 import com.harudle.generation.diary.service.port.dto.DiaryImageGenerationRequest;
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
+import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import com.harudle.generation.diary.service.port.dto.GeneratedImage;
 import com.harudle.generation.diary.service.port.dto.ReferenceImage;
 import java.io.IOException;
@@ -26,7 +27,6 @@ public final class GeminiDiaryImageGenerator implements DiaryImageGenerator {
     private static final String OPERATION = "image_generation";
     private static final String TRANSLATION_OPERATION = "그림일기 이미지 생성";
     private static final String REQUEST_PREPARATION_ERROR = "REQUEST_PREPARATION_ERROR";
-    private static final String RESPONSE_PROCESSING_ERROR = "RESPONSE_PROCESSING_ERROR";
     private static final String FINAL_TASK_HEADER = "[Final Task]";
     private static final String REFERENCE_IMAGE_INSTRUCTION = """
             [The Only Style Reference]
@@ -41,24 +41,44 @@ public final class GeminiDiaryImageGenerator implements DiaryImageGenerator {
     private final GeminiGenerationProperties properties;
     private final DiaryImagePromptRenderer promptRenderer;
     private final GeminiFailureReporter failureReporter;
+    private final GeminiStageMetrics stageMetrics;
 
     public GeminiDiaryImageGenerator(
             Models models,
             GeminiGenerationProperties properties,
             DiaryImagePromptRenderer promptRenderer,
-            GeminiFailureReporter failureReporter
+            GeminiFailureReporter failureReporter,
+            GeminiStageMetrics stageMetrics
     ) {
         this.models = models;
         this.properties = properties;
         this.promptRenderer = promptRenderer;
         this.failureReporter = failureReporter;
+        this.stageMetrics = Objects.requireNonNull(stageMetrics);
     }
 
     @Override
     public GeneratedImage generate(DiaryImageGenerationRequest request) {
-        PreparedRequest preparedRequest = prepareRequest(request);
-        GenerateContentResponse response = callProvider(preparedRequest);
-        return processResponse(response);
+        long startedAt = System.nanoTime();
+        String phase = "preparation";
+        GenerateContentResponse response = null;
+        try {
+            PreparedRequest preparedRequest = prepareRequest(request);
+            phase = "provider";
+            response = callProvider(preparedRequest);
+            phase = "response";
+            GeneratedImage image = processResponse(response);
+            stageMetrics.record(OPERATION, null, System.nanoTime() - startedAt, response);
+            return image;
+        } catch (com.harudle.generation.diary.service.exception.AiGenerationException exception) {
+            GeminiFailureType failureType = switch (phase) {
+                case "preparation" -> GeminiFailureType.preparation(exception.getCause());
+                case "provider" -> GeminiFailureType.provider(exception.getCause(), exception.errorType());
+                default -> GeminiFailureType.imageResponse(response);
+            };
+            stageMetrics.record(OPERATION, failureType, System.nanoTime() - startedAt, response);
+            throw exception;
+        }
     }
 
     private PreparedRequest prepareRequest(DiaryImageGenerationRequest request) {
@@ -78,6 +98,7 @@ public final class GeminiDiaryImageGenerator implements DiaryImageGenerator {
                     OPERATION,
                     TRANSLATION_OPERATION,
                     REQUEST_PREPARATION_ERROR,
+                    AiGenerationErrorType.INTERNAL_ERROR,
                     exception
             );
         }
@@ -99,16 +120,19 @@ public final class GeminiDiaryImageGenerator implements DiaryImageGenerator {
         try {
             return extractGeneratedImage(response);
         } catch (Exception exception) {
-            throw failureReporter.reportInternalFailure(
-                    OPERATION,
-                    TRANSLATION_OPERATION,
-                    RESPONSE_PROCESSING_ERROR,
-                    exception
+            throw failureReporter.reportImageResponseFailure(
+                    OPERATION, TRANSLATION_OPERATION, response, exception
             );
         }
     }
 
     private record PreparedRequest(Content content, GenerateContentConfig config) {
+    }
+
+    static final class InlineRequestTooLargeException extends IllegalArgumentException {
+        InlineRequestTooLargeException() {
+            super("Gemini inline 요청은 20MiB 미만이어야 합니다.");
+        }
     }
 
     private String createFinalTask(DiaryImageGenerationRequest request) {
@@ -142,7 +166,7 @@ public final class GeminiDiaryImageGenerator implements DiaryImageGenerator {
                 + INLINE_REQUEST_OVERHEAD_BYTES
                 + encodedReferenceImageSize;
         if (estimatedRequestSize >= INLINE_REQUEST_LIMIT_BYTES) {
-            throw new IllegalArgumentException("Gemini inline 요청은 20MiB 미만이어야 합니다.");
+            throw new InlineRequestTooLargeException();
         }
     }
 

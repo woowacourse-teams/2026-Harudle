@@ -178,7 +178,9 @@ public enum ErrorType {
 
     static ErrorType from(GenerationErrorCode errorCode) {
         return switch (errorCode) {
-            case AI_PROVIDER_ERROR -> AI_PROVIDER_ERROR;
+            case AI_PROVIDER_ERROR, AI_PROVIDER_RATE_LIMITED, AI_OUTPUT_TRUNCATED,
+                    AI_RESPONSE_PROCESSING_ERROR -> AI_PROVIDER_ERROR;
+            case GENERATION_INTERNAL_ERROR -> INTERNAL_SERVER_ERROR;
             case AI_PROVIDER_TIMEOUT -> AI_PROVIDER_TIMEOUT;
             case GENERATION_INTERRUPTED -> GENERATION_INTERRUPTED;
             case IMAGE_STORAGE_ERROR -> IMAGE_STORAGE_ERROR;
@@ -187,8 +189,9 @@ public enum ErrorType {
 
     static ErrorType from(AiGenerationErrorType errorType) {
         return switch (errorType) {
-            case PROVIDER_ERROR -> AI_PROVIDER_ERROR;
+            case PROVIDER_ERROR, RATE_LIMITED, OUTPUT_TRUNCATED, RESPONSE_PROCESSING_ERROR -> AI_PROVIDER_ERROR;
             case TIMEOUT -> AI_PROVIDER_TIMEOUT;
+            case INTERNAL_ERROR -> INTERNAL_SERVER_ERROR;
         };
     }
 }
