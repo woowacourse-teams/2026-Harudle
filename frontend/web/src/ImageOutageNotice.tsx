@@ -1,12 +1,32 @@
 import { css } from '@emotion/react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type JSX } from 'react';
+import { useLocation } from 'react-router';
 import ActionButton from './shared/ActionButton';
 import { theme } from './styles/theme';
 
 // 공지 내용을 갱신할 때 키도 변경하면 사용자에게 새 안내를 다시 표시합니다.
 const NOTICE_KEY = 'harudle:image-outage:2026-09-27:v3';
 
-const ImageOutageNotice = () => {
+const ImageOutageNotice = (): JSX.Element | null => {
+  const { pathname } = useLocation();
+  const isExcludedPage = ['/landing', '/login', '/auth', '/admin'].some(
+    (path): boolean => pathname === path || pathname.startsWith(`${path}/`),
+  );
+
+  if (isExcludedPage) return null;
+
+  // 로그인 콜백과 로그아웃에서 관리하는 기존 완료 표시를 사용한다.
+  try {
+    if (localStorage.getItem('harudle.has-completed-oauth') === null)
+      return null;
+  } catch {
+    return null;
+  }
+
+  return <ImageOutageNoticeContent />;
+};
+
+const ImageOutageNoticeContent = (): JSX.Element => {
   const [showPrevious, setShowPrevious] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const bannerRef = useRef<HTMLButtonElement>(null);
@@ -22,7 +42,9 @@ const ImageOutageNotice = () => {
       // 저장소 접근이 제한돼도 공지는 표시합니다.
     }
     if (!acknowledged && dialog && !dialog.open) dialog.showModal();
-    return () => dialog?.close();
+    return (): void => {
+      dialog?.close();
+    };
   }, []);
 
   useEffect(() => {
@@ -32,7 +54,7 @@ const ImageOutageNotice = () => {
     }
   }, [showPrevious]);
 
-  const acknowledge = () => {
+  const acknowledge = (): void => {
     try {
       localStorage.setItem(NOTICE_KEY, 'acknowledged');
     } catch {

@@ -17,7 +17,7 @@ import {
 import {
   isGuestDiaryResponse,
   type GuestDiaryResponse,
-} from '../pages/guest-trial/guestTrialApi';
+} from '../pages/landing/guestTrialApi';
 import { isRecord } from '../shared/utils';
 
 jest.mock('msw', () => {
