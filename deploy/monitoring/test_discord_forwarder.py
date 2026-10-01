@@ -5,7 +5,7 @@ import io
 import json
 import traceback
 from email.message import Message
-from http.client import IncompleteRead
+from http.client import HTTPResponse, IncompleteRead
 import ssl
 import os
 import sys
@@ -25,6 +25,17 @@ def discord_response(status=200, body=b'{"id":"123456789"}'):
     response.__enter__.return_value = response
     response.status = status
     response.read.side_effect = lambda size: body[:size]
+    return response
+
+
+
+def framed_discord_response(body, headers):
+    """Exercise real HTTP framing with an in-memory connection."""
+    header_bytes = "".join(f"{name}: {value}\r\n" for name, value in headers.items()).encode("ascii")
+    socket = mock.Mock()
+    socket.makefile.return_value = io.BytesIO(b"HTTP/1.1 200 OK\r\n" + header_bytes + b"\r\n" + body)
+    response = HTTPResponse(socket)
+    response.begin()
     return response
 
 
@@ -81,12 +92,19 @@ class DiscordForwarderTest(unittest.TestCase):
         self.assertEqual(post.call_args.args[0], WEBHOOK)
         payload = post.call_args.args[1]
         self.assertEqual(payload["allowed_mentions"], {"parse": []})
-        self.assertEqual(payload["content"], (
-            "환경: dev\n알람: harudle-dev-s3-put-failure\n"
-            "상태: ALARM\n원인: 생성 이미지 S3 저장 실패"
-        ))
-        self.assertNotIn("s3://", payload["content"])
-        self.assertNotIn("private user data", payload["content"])
+        self.assertEqual(set(payload), {"embeds", "allowed_mentions"})
+        self.assertEqual(len(payload["embeds"]), 1)
+        embed = payload["embeds"][0]
+        self.assertEqual(embed["description"], "생성 이미지 S3 저장 실패")
+        self.assertEqual(embed["fields"], [
+            {"name": "환경", "value": "`dev`", "inline": True},
+            {"name": "상태", "value": "`ALARM`", "inline": True},
+            {"name": "알람", "value": "`harudle-dev-s3-put-failure`", "inline": False},
+        ])
+        serialized = json.dumps(payload, ensure_ascii=False)
+        self.assertNotIn("s3://", serialized)
+        self.assertNotIn("private user data", serialized)
+        self.assertNotIn(WEBHOOK, serialized)
         self.assertNotIn(WEBHOOK, output.getvalue())
 
     def test_environment_webhook_delivers_without_secret_lookup_or_leaking_url(self):
@@ -100,13 +118,13 @@ class DiscordForwarderTest(unittest.TestCase):
         secret_lookup.assert_not_called()
         self.assertEqual(result, {"delivered": True})
         self.assertEqual(post.call_args.args[0], WEBHOOK)
-        self.assertEqual(post.call_args.args[1]["content"], (
-            "환경: dev\n알람: harudle-dev-s3-put-failure\n"
-            "상태: ALARM\n원인: 생성 이미지 S3 저장 실패"
-        ))
+        self.assertEqual(
+            post.call_args.args[1]["embeds"][0]["description"],
+            "생성 이미지 S3 저장 실패",
+        )
         self.assertEqual(post.call_args.args[1]["allowed_mentions"], {"parse": []})
         self.assertNotIn(WEBHOOK, output.getvalue())
-        self.assertNotIn("s3://", post.call_args.args[1]["content"])
+        self.assertNotIn("s3://", json.dumps(post.call_args.args[1]))
 
     def test_exactly_one_webhook_source_is_required_before_any_delivery(self):
         for secret_arn, webhook_url in ((SECRET, WEBHOOK), ("", "")):
@@ -128,6 +146,9 @@ class DiscordForwarderTest(unittest.TestCase):
             "https://discord.com:443/api/webhooks/123456/secret-token",
             "https://discord.com/api/webhooks/not-an-id/secret-token",
             WEBHOOK + "?wait=true",
+            WEBHOOK + "?",
+            WEBHOOK + "#",
+            WEBHOOK + "?#",
             WEBHOOK + "#secret-token",
             " " + WEBHOOK,
             WEBHOOK + "\n",
@@ -146,18 +167,79 @@ class DiscordForwarderTest(unittest.TestCase):
 
     def test_ok_uses_fixed_recovery_reason(self):
         payload = forwarder._alarm_message(sns_event(state="OK")["Records"][0]["Sns"], TOPIC, "dev")
-        self.assertIn("원인: 생성 이미지 S3 저장 실패 해소", payload["content"])
+        self.assertEqual(
+            payload["embeds"][0]["description"],
+            "생성 이미지 S3 저장 실패 (현재 경보 상태: OK)",
+        )
+        self.assertNotIn("복구", payload["embeds"][0]["title"])
+        self.assertNotIn("해결", payload["embeds"][0]["title"])
+
+    def test_embeds_distinguish_alarm_states_and_environments(self):
+        presentations = {
+            "ALARM": ("🔴 백엔드 경보가 발생했어요", 0xED4245),
+            "OK": ("🟢 백엔드 경보가 정상 상태예요", 0x57F287),
+            "INSUFFICIENT_DATA": ("🟡 지표 데이터가 부족해요", 0xFEE75C),
+        }
+        for environment in ("dev", "prod"):
+            topic = TOPIC.replace("-dev-", f"-{environment}-")
+            for state, (title, color) in presentations.items():
+                with self.subTest(environment=environment, state=state):
+                    record = sns_event(
+                        name=f"harudle-{environment}-s3-put-failure", state=state,
+                    )["Records"][0]["Sns"]
+                    record["TopicArn"] = topic
+                    payload = forwarder._alarm_message(record, topic, environment)
+                    embed = payload["embeds"][0]
+                    self.assertEqual(embed["title"], title)
+                    self.assertEqual(embed["color"], color)
+                    fields = {field["name"]: field["value"] for field in embed["fields"]}
+                    self.assertEqual(fields["환경"], f"`{environment}`")
+                    self.assertEqual(fields["상태"], f"`{state}`")
+                    if state == "INSUFFICIENT_DATA":
+                        self.assertEqual(embed["description"], "지표 데이터 부족")
+                    self.assertEqual(payload["allowed_mentions"], {"parse": []})
+
+    def test_all_allowlisted_embeds_fit_discord_limits_without_raw_details(self):
+        for suffix in forwarder._ALARM_REASONS:
+            for state in ("ALARM", "OK", "INSUFFICIENT_DATA"):
+                with self.subTest(suffix=suffix, state=state):
+                    record = sns_event(name=f"harudle-dev-{suffix}", state=state)["Records"][0]["Sns"]
+                    payload = forwarder._alarm_message(record, TOPIC, "dev")
+                    embed = payload["embeds"][0]
+                    self.assertEqual(set(embed), {"title", "description", "color", "fields"})
+                    self.assertLessEqual(len(embed["title"]), 256)
+                    self.assertLessEqual(len(embed["description"]), 4096)
+                    self.assertEqual(len(embed["fields"]), 3)
+                    total = len(embed["title"]) + len(embed["description"])
+                    for field in embed["fields"]:
+                        self.assertLessEqual(len(field["name"]), 256)
+                        self.assertLessEqual(len(field["value"]), 1024)
+                        total += len(field["name"]) + len(field["value"])
+                    self.assertLessEqual(total, 6000)
+                    serialized = json.dumps(payload, ensure_ascii=False)
+                    self.assertNotIn("s3://private/key", serialized)
+                    self.assertNotIn("private user data", serialized)
+
+    def test_embed_payload_is_posted_as_utf8_and_confirmed(self):
+        record = sns_event()["Records"][0]["Sns"]
+        payload = forwarder._alarm_message(record, TOPIC, "dev")
+        with mock.patch.object(forwarder._HTTP_CLIENT, "open", return_value=discord_response()) as client:
+            forwarder._post(WEBHOOK, payload)
+        outgoing = client.call_args.args[0]
+        self.assertEqual(outgoing.full_url, WEBHOOK + "?wait=true")
+        self.assertEqual(json.loads(outgoing.data.decode("utf-8")), payload)
+        self.assertIn("생성 이미지 S3 저장 실패", outgoing.data.decode("utf-8"))
 
     def test_collection_stale_alarm_is_allowlisted(self):
         record = sns_event(name="harudle-dev-telemetry-stale")["Records"][0]["Sns"]
         payload = forwarder._alarm_message(record, TOPIC, "dev")
-        self.assertIn("원인: 서버 지표 수집 중단", payload["content"])
+        self.assertEqual(payload["embeds"][0]["description"], "서버 지표 수집 중단")
 
     def test_resource_and_error_rate_alarms_are_allowlisted(self):
         for suffix in ("ec2-status-check", "ec2-disk-high", "rds-memory-low", "api-error-rate"):
             record = sns_event(name=f"harudle-dev-{suffix}")["Records"][0]["Sns"]
             payload = forwarder._alarm_message(record, TOPIC, "dev")
-            self.assertIn(f"알람: harudle-dev-{suffix}", payload["content"])
+            self.assertEqual(payload["embeds"][0]["fields"][2]["value"], f"`harudle-dev-{suffix}`")
 
     def test_each_gemini_filter_alarm_is_allowlisted(self):
         for suffix in (
@@ -168,7 +250,7 @@ class DiscordForwarderTest(unittest.TestCase):
         ):
             record = sns_event(name=f"harudle-dev-{suffix}")["Records"][0]["Sns"]
             payload = forwarder._alarm_message(record, TOPIC, "dev")
-            self.assertIn(f"알람: harudle-dev-{suffix}", payload["content"])
+            self.assertEqual(payload["embeds"][0]["fields"][2]["value"], f"`harudle-dev-{suffix}`")
 
         for obsolete_suffix in ("gemini-storyboard-errors", "gemini-image-errors"):
             record = sns_event(name=f"harudle-dev-{obsolete_suffix}")["Records"][0]["Sns"]
@@ -276,6 +358,53 @@ class DiscordForwarderTest(unittest.TestCase):
                 forwarder._post(WEBHOOK, {"content": "safe"})
                 self.assertEqual(client.call_count, 2)
 
+    def test_short_content_length_response_retries_even_when_json_is_valid(self):
+        for partial_body in (b'{"id":', b'{"id":"123456789"}'):
+            with self.subTest(valid_json=partial_body.endswith(b"}")):
+                first = framed_discord_response(partial_body, {"Content-Length": len(partial_body) + 20})
+                with mock.patch.object(forwarder._HTTP_CLIENT, "open", side_effect=[first, discord_response()]) as client:
+                    forwarder._post(WEBHOOK, {"content": "safe"})
+                self.assertEqual(client.call_count, 2)
+        self.assertEqual(self.sleep.call_args_list, [mock.call(1.0)] * 2)
+
+    def test_short_response_retry_exhaustion_is_sanitized(self):
+        partial_body = WEBHOOK.encode()
+        responses = [framed_discord_response(partial_body, {"Content-Length": len(partial_body) + 20}) for _ in range(3)]
+        with mock.patch.object(forwarder._HTTP_CLIENT, "open", side_effect=responses) as client:
+            with self.assertRaises(forwarder.DeliveryError) as raised:
+                forwarder._post(WEBHOOK, {"content": "safe"})
+        self.assertEqual(str(raised.exception), "discord transport failed")
+        self.assertNotIn(WEBHOOK, "".join(traceback.format_exception(raised.exception)))
+        self.assertEqual(client.call_count, 3)
+        self.assertEqual(self.sleep.call_args_list, [mock.call(1.0), mock.call(2.0)])
+
+    def test_complete_http_framing_confirms_delivery(self):
+        body = b'{"id":"123456789"}'
+        chunked_body = f"{len(body):X}\r\n".encode() + body + b"\r\n0\r\n\r\n"
+        cases = (
+            (body, {"Content-Length": len(body)}),
+            (body, {}),
+            (chunked_body, {"Transfer-Encoding": "chunked", "Content-Length": len(body) + 20}),
+        )
+        for framed_body, headers in cases:
+            with self.subTest(headers=headers):
+                response = framed_discord_response(framed_body, headers)
+                with mock.patch.object(forwarder._HTTP_CLIENT, "open", return_value=response) as client:
+                    forwarder._post(WEBHOOK, {"content": "safe"})
+                self.assertEqual(client.call_count, 1)
+        self.sleep.assert_not_called()
+
+    def test_http_response_size_limit_is_preserved(self):
+        body = b"x" * (forwarder._MAX_RESPONSE_BYTES + 100)
+        response = framed_discord_response(body, {"Content-Length": len(body)})
+        with mock.patch.object(response, "read", wraps=response.read) as read, \
+                mock.patch.object(forwarder._HTTP_CLIENT, "open", return_value=response) as client:
+            with self.assertRaisesRegex(forwarder.DeliveryError, "discord response too large"):
+                forwarder._post(WEBHOOK, {"content": "safe"})
+        read.assert_called_once_with(forwarder._MAX_RESPONSE_BYTES + 1)
+        self.assertEqual(client.call_count, 1)
+        self.sleep.assert_not_called()
+
     def test_long_retry_after_is_not_shortened_to_fit_budget(self):
         with mock.patch.object(forwarder._HTTP_CLIENT, "open", side_effect=http_failure(429, b'{"retry_after":30}', retry_after="2")) as client:
             with self.assertRaisesRegex(forwarder.DeliveryError, "retry exceeds delivery budget"):
@@ -364,6 +493,9 @@ class DiscordForwarderTest(unittest.TestCase):
             for unsafe in (
                 "https://discord.com.evil.example/api/webhooks/123456/secret-token",
                 WEBHOOK + "?wait=true",
+                WEBHOOK + "?",
+                WEBHOOK + "#",
+                WEBHOOK + "?#",
             ):
                 client.get_secret_value.return_value = {"SecretString": unsafe}
                 with self.assertRaises(forwarder.DeliveryError) as raised:
