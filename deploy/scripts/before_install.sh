@@ -23,6 +23,11 @@ docker compose version >/dev/null 2>&1 || {
   exit 1
 }
 
+command -v jq >/dev/null 2>&1 || {
+  echo "jq is not installed. Install jq before deployment." >&2
+  exit 1
+}
+
 install -d -m 0755 "${APP_DIR}" "${IMAGE_DIR}" "${APP_DIR}/monitoring"
 
 if [[ ! -s "${APP_DIR}/.env" ]]; then
