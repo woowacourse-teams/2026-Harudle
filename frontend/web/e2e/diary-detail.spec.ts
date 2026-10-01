@@ -226,7 +226,7 @@ test.describe('일기 상세', () => {
     const download = await downloadPromise;
 
     expect(download.suggestedFilename()).toBe(
-      '하루들_2026-08-12_비가 와도, 나는 괜찮았다.png',
+      '하루들_2026-08-12_비가 와도, 나는 괜찮았다.webp',
     );
   });
 
@@ -250,7 +250,7 @@ test.describe('일기 상세', () => {
       const download = await downloadPromise;
       const fileName = download.suggestedFilename();
 
-      expect(fileName).toBe(`하루들_2026-08-12_${character.repeat(20)}.png`);
+      expect(fileName).toBe(`하루들_2026-08-12_${character.repeat(20)}.webp`);
       expect(Buffer.byteLength(fileName, 'utf8')).toBeLessThanOrEqual(127);
       expect(await download.failure()).toBeNull();
     });
