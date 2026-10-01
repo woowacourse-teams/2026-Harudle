@@ -1,6 +1,6 @@
 const DIARY_GENERATE = {
   DIARY_GENERATION_FAILED:
-    '일기 생성 도중 문제가 발생했습니다. 다시 시도해주세요.',
+    '네컷만화를 만드는 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요.',
   INVALID_DIARY_GENERATION_RESPONSE:
     'DiaryGenerate 응답 형식이 일치하지 않습니다.',
   DIARY_GENERATE_PROVIDER_REQUIRED:
@@ -8,42 +8,41 @@ const DIARY_GENERATE = {
 } as const;
 
 const DIARY_DELETE = {
-  DIARY_DELETION_FAILED:
-    '일기 삭제 도중 문제가 발생했습니다. 다시 시도해주세요.',
+  DIARY_DELETION_FAILED: '네컷만화를 삭제하지 못했어요. 다시 시도해 주세요.',
 } as const;
 
 const DIARY_SHARE_LINK = {
   DIARY_SHARE_LINK_CREATION_FAILED:
-    '일기 공유 링크 생성 도중 문제가 발생했습니다. 다시 시도해주세요.',
+    '공유 링크를 만들지 못했어요. 다시 시도해 주세요.',
   INVALID_DIARY_SHARE_RESPONSE: 'DiaryShare 응답 형식이 일치하지 않습니다.',
 } as const;
 
 const DIARY_DETAIL = {
   DIARY_DETAIL_FETCH_FAILED:
-    '일기 상세 정보를 불러오는 중 문제가 발생했습니다. 다시 시도해주세요.',
+    '네컷만화를 불러오지 못했어요. 다시 시도해 주세요.',
   INVALID_DIARY_DETAIL_RESPONSE: 'DiaryDetail 응답 형식이 일치하지 않습니다.',
 } as const;
 
 const SHARED_DIARY = {
   SHARED_DIARY_FETCH_FAILED:
-    '공유된 일기를 불러오는 중 문제가 발생했습니다. 다시 시도해주세요.',
+    '공유된 네컷만화를 불러오지 못했어요. 다시 시도해 주세요.',
   INVALID_SHARED_DIARY_RESPONSE: 'SharedDiary 응답 형식이 일치하지 않습니다.',
 } as const;
 
 const MONTHLY_DIARIES = {
   MONTHLY_DIARIES_FETCH_FAILED:
-    '월별 일기를 불러오는 중 문제가 발생했습니다. 다시 시도해주세요.',
+    '이 달의 네컷만화를 불러오지 못했어요. 다시 시도해 주세요.',
   INVALID_MONTHLY_DIARIES_RESPONSE:
     'MonthlyDiaries 응답 형식이 일치하지 않습니다.',
 } as const;
 
 const DIARY_IMAGE_DOWNLOAD = {
-  DIARY_IMAGE_SAVE_FAILED: '이미지 저장에 실패했습니다.',
+  DIARY_IMAGE_SAVE_FAILED: '이미지를 저장하지 못했어요. 다시 시도해 주세요.',
 } as const;
 
 const GENERATION_USAGE = {
   GENERATION_USAGE_FETCH_FAILED:
-    '남은 생성 횟수를 조회하는 중 에러가 발생했습니다. 다시 시도해주세요.',
+    '남은 만들기 횟수를 불러오지 못했어요. 다시 확인해 주세요.',
   INVALID_GENERATION_USAGE_RESPONSE:
     'GenerationUsage 응답 형식이 일치하지 않습니다.',
 } as const;

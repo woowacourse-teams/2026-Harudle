@@ -128,6 +128,7 @@ const messageBoxStyle = css`
 `;
 
 const titleStyle = css`
+  word-break: keep-all;
   color: ${theme.colors.foreground.neutral};
   font-size: 20px;
   font-weight: 700;
@@ -144,6 +145,7 @@ const descriptionStyle = css`
 `;
 
 const retryButtonStyle = css`
+  word-break: keep-all;
   min-width: 200px;
   height: 48px;
   border: none;
