@@ -1,3 +1,4 @@
+import { DIARY_DETAIL_COPY } from './copy';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import ActionButton from '../../shared/ActionButton';
 import downloadIcon from '../../assets/icons/download.svg';
@@ -76,7 +77,7 @@ const DiaryImageDownloadButton = ({
   return (
     <ActionButton
       icon={<img src={downloadIcon} alt="저장 아이콘" />}
-      label="이미지 저장"
+      label={DIARY_DETAIL_COPY.downloadAction}
       variant="secondary"
       onClick={handleImageDownload}
       disabled={downloadRequest.status === 'loading'}

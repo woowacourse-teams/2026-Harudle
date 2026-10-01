@@ -1,3 +1,4 @@
+import { DIARY_DETAIL_COPY } from './copy';
 import { useErrorTracking } from '../../posthog/useErrorTracking';
 import ActionButton from '../../shared/ActionButton';
 import shareIcon from '../../assets/icons/share.svg';
@@ -63,7 +64,7 @@ const DiaryShareButton = ({
   return (
     <ActionButton
       icon={<img src={shareIcon} alt="공유하기 아이콘" />}
-      label="공유하기"
+      label={DIARY_DETAIL_COPY.shareAction}
       onClick={execute}
       disabled={request.status === 'loading'}
     />
