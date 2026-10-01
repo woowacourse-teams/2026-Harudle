@@ -1,5 +1,5 @@
 import { delay, http, HttpResponse } from 'msw';
-import { isGuestTrialPath } from '../pages/guest-trial/guestTrialPaths';
+import { isLandingPath } from '../pages/landing/landingPaths';
 import { MOCK_SCENARIO_HEADER, MOCK_SCENARIOS } from './mockScenarios';
 
 interface CreateDiaryRequest {
@@ -392,7 +392,7 @@ export const handlers = [
       });
     }
 
-    if (isGuestTrialPath(globalThis.location.pathname)) {
+    if (isLandingPath(globalThis.location.pathname)) {
       return createProblemDetails({
         status: 401,
         code: 'INVALID_REFRESH_TOKEN',

@@ -3,10 +3,11 @@ import { useState } from 'react';
 import { useParams } from 'react-router';
 import loadingAnimation from '../../assets/images/loading-animation.webp';
 import { theme } from '../../styles/theme';
-import GuestLoginCta from './GuestLoginCta';
+import LandingLoginCta from './LandingLoginCta';
 import { isGuestTrialAlreadyUsedError } from './guestTrialErrors';
 import type { GuestDiaryResponse } from './guestTrialApi';
 import useGuestDiaryResult from './useGuestDiaryResult';
+import { GUEST_TRIAL_COPY } from './trialCopy';
 
 const GuestDiaryResultPage = () => {
   const { diaryId } = useParams();
@@ -16,7 +17,7 @@ const GuestDiaryResultPage = () => {
     return (
       <div css={feedbackPageStyle}>
         <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
-        <p css={feedbackTitleStyle}>완성된 그림 일기를 불러오고 있어요</p>
+        <p css={feedbackTitleStyle}>{GUEST_TRIAL_COPY.resultLoading}</p>
       </div>
     );
   }
@@ -27,11 +28,11 @@ const GuestDiaryResultPage = () => {
         <h1 css={feedbackTitleStyle}>
           {isGuestTrialAlreadyUsedError(resultRequest.error)
             ? '게스트 체험을 이미 사용했어요'
-            : '그림 일기를 불러오지 못했어요'}
+            : GUEST_TRIAL_COPY.resultFailure}
         </h1>
         <p css={feedbackMessageStyle}>{resultRequest.error.message}</p>
         {isGuestTrialAlreadyUsedError(resultRequest.error) ? (
-          <GuestLoginCta
+          <LandingLoginCta
             label="카카오로 로그인하기"
             analyticsEvent="landing_trial_login_clicked"
             location="already_used"
@@ -76,7 +77,7 @@ const GuestDiaryResult = ({
           onError={() => setImageStatus('error')}
         />
         <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
-        <p css={feedbackTitleStyle}>완성된 그림 일기를 불러오고 있어요</p>
+        <p css={feedbackTitleStyle}>{GUEST_TRIAL_COPY.resultLoading}</p>
       </div>
     );
   }
@@ -102,21 +103,19 @@ const GuestDiaryResult = ({
 
       <img
         src={diary.generation.imageUrl}
-        alt={`${diary.generation.title} 그림 일기`}
+        alt={`${diary.generation.title} 네컷만화`}
         css={diaryImageStyle}
         onError={() => setImageStatus('error')}
       />
 
       <section css={storyStyle}>
-        <h2 css={storyTitleStyle}>오늘의 이야기</h2>
+        <h2 css={storyTitleStyle}>{GUEST_TRIAL_COPY.resultContentTitle}</h2>
         <p css={storyTextStyle}>{diary.sourceText}</p>
       </section>
 
       <section css={ctaSectionStyle}>
-        <p css={ctaDescriptionStyle}>
-          로그인하고 오늘의 이야기를 계속 그림 일기로 만들어보세요
-        </p>
-        <GuestLoginCta
+        <p css={ctaDescriptionStyle}>{GUEST_TRIAL_COPY.loginNotice}</p>
+        <LandingLoginCta
           label="카카오로 로그인하기"
           analyticsEvent="landing_trial_login_clicked"
           location="result"

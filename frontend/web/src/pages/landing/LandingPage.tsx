@@ -1,770 +1,658 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { css } from '@emotion/react';
-import emptyPersonAndDog from '../../assets/images/empty-person-and-dog.png';
-import harudleLogo from '../../assets/images/harudle-logo.png';
-import loginHero from '../../assets/images/login-hero.png';
-import writingScene from '../../assets/images/writing-scene.png';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type JSX,
+  type ReactNode,
+  type RefObject,
+} from 'react';
+import { css, type SerializedStyles } from '@emotion/react';
+import generationStep1Image from '../../assets/images/generation-step-1-reading.png';
+import generationStep2Image from '../../assets/images/generation-step-2-writing.png';
+import generationStep3Image from '../../assets/images/generation-step-3-selecting-panels.png';
+import generationStep4Image from '../../assets/images/generation-step-4-painting.png';
+import generationCompleteImage from '../../assets/images/generation-step-5-complete.png';
 import { theme } from '../../styles/theme';
-import GuestLoginCta from '../guest-trial/GuestLoginCta';
-import catKeyboardDiary from './assets/guest-diary-cat-keyboard.png';
-import friendDiary from './assets/guest-diary-friend.jpg';
-import workoutDiary from './assets/guest-diary-workout.png';
-
-const diaryExamples = [
-  {
-    image: workoutDiary,
-    alt: '러닝머신을 타고 야식을 먹은 하루를 담은 네컷 그림 일기',
-    caption: '5분 운동하고 야식먹기',
-  },
-  {
-    image: catKeyboardDiary,
-    alt: '마감 직전 키보드를 차지한 고양이의 모습을 담은 네컷 그림 일기',
-    caption: '마감 직전 키보드를 차지한 고양이',
-  },
-  {
-    image: friendDiary,
-    alt: '게임 속 친구와의 하루를 담은 네컷 그림 일기',
-    caption: '게임 친구와 투닥거리던 밤',
-  },
-];
-
-const processSteps = [
-  {
-    title: '있었던 일들을 적어요',
-    description: '사진이 없어도 괜찮아요\n편하게 적어주세요',
-  },
-  {
-    title: '그림 일기를 그려드릴게요!',
-    description: '귀여운 그림일기로 만나보세요',
-  },
-  {
-    title: '친구에게 공유해서 함께 즐겨보세요',
-    description: '놓쳤던 일상을 친구에게 공유하고\n재밌게 즐겨보세요',
-  },
-];
+import DiaryGenerateStepper from '../diary-generating/DiaryGenerateStepper';
+import LandingContent from './LandingContent';
+import LandingLoginCta from './LandingLoginCta';
+import { getKoreanToday, validateGuestDiary } from './guestDiaryValidation';
+import { isGuestTrialAlreadyUsedError } from './guestTrialErrors';
+import type { GuestDiaryResponse } from './guestTrialApi';
+import useGuestDiaryCreation, {
+  type GuestDiaryCreationState,
+} from './useGuestDiaryCreation';
+import { useAnalytics } from '../../posthog/useAnalytics';
+import { GUEST_TRIAL_COPY } from './trialCopy';
 
 interface LandingPageProps {
-  heroAction?: ReactNode;
-  finalAction?: ReactNode;
-  trialSection?: ReactNode;
-  showIntro?: boolean;
+  entryFeedback?: ReactNode;
 }
 
 const LandingPage = ({
-  heroAction = (
-    <GuestLoginCta
-      label="카카오로 시작하기"
-      analyticsEvent="landing_direct_login_clicked"
-      location="hero"
-    />
-  ),
-  finalAction = (
-    <GuestLoginCta
-      label="카카오로 시작하기"
-      analyticsEvent="landing_direct_login_clicked"
-      location="final"
-    />
-  ),
-  trialSection,
-  showIntro = true,
-}: LandingPageProps) => {
-  const pageRef = useRef<HTMLElement>(null);
-  const showcaseRef = useRef<HTMLElement>(null);
-  const processRef = useRef<HTMLElement>(null);
-  const [activeDiaryIndex, setActiveDiaryIndex] = useState(0);
-  const [visibleProcessStepCount, setVisibleProcessStepCount] = useState(0);
+  entryFeedback = null,
+}: LandingPageProps): JSX.Element => {
+  const { track } = useAnalytics();
+  const { creationState, submitDiary, retryDiary } = useGuestDiaryCreation({
+    enabled: entryFeedback === null,
+  });
+  const sourceTextRef = useRef<HTMLTextAreaElement>(null);
+  const [sourceText, setSourceText] = useState('');
+  const [sourceTextError, setSourceTextError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!showIntro) {
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>): void => {
+    event.preventDefault();
+    const request = { diaryDate: getKoreanToday(), sourceText };
+    const errors = validateGuestDiary(request);
+
+    setSourceTextError(
+      errors.sourceText
+        ? sourceText.trim()
+          ? errors.sourceText
+          : GUEST_TRIAL_COPY.emptyInputError
+        : null,
+    );
+
+    if (errors.sourceText) {
+      sourceTextRef.current?.focus({ preventScroll: true });
       return;
     }
 
-    const scrollContainer = pageRef.current;
-    const showcase = showcaseRef.current;
-    const processSection = processRef.current;
-
-    if (!scrollContainer || !showcase || !processSection) {
-      return;
-    }
-
-    let animationFrameId = 0;
-
-    const updateScrollStory = () => {
-      animationFrameId = 0;
-
-      const viewportHeight = Math.max(
-        scrollContainer.clientHeight,
-        window.innerHeight,
-        1,
-      );
-      const showcaseRect = showcase.getBoundingClientRect();
-      const showcaseDistance = Math.max(
-        showcase.offsetHeight - viewportHeight,
-        1,
-      );
-      const showcaseProgress = Math.min(
-        1,
-        Math.max(0, -showcaseRect.top / showcaseDistance),
-      );
-      const nextDiaryIndex = Math.min(
-        diaryExamples.length - 1,
-        Math.round(showcaseProgress * (diaryExamples.length - 1)),
-      );
-
-      setActiveDiaryIndex((currentIndex) =>
-        currentIndex === nextDiaryIndex ? currentIndex : nextDiaryIndex,
-      );
-
-      const processRect = processSection.getBoundingClientRect();
-      const processRevealProgress = Math.min(
-        1,
-        Math.max(
-          0,
-          (viewportHeight * 0.84 - processRect.top) / (viewportHeight * 0.5),
-        ),
-      );
-      const nextVisibleStepCount = Math.min(
-        processSteps.length,
-        Math.ceil(processRevealProgress * processSteps.length),
-      );
-
-      setVisibleProcessStepCount((currentCount) =>
-        currentCount === nextVisibleStepCount
-          ? currentCount
-          : nextVisibleStepCount,
-      );
-    };
-
-    const requestScrollUpdate = () => {
-      if (animationFrameId === 0) {
-        animationFrameId = window.requestAnimationFrame(updateScrollStory);
-      }
-    };
-
-    updateScrollStory();
-    scrollContainer.addEventListener('scroll', requestScrollUpdate, {
-      passive: true,
-    });
-    window.addEventListener('resize', requestScrollUpdate);
-    const resizeObserver =
-      typeof ResizeObserver === 'undefined'
-        ? null
-        : new ResizeObserver(requestScrollUpdate);
-
-    resizeObserver?.observe(scrollContainer);
-    resizeObserver?.observe(showcase);
-    resizeObserver?.observe(processSection);
-
-    return () => {
-      scrollContainer.removeEventListener('scroll', requestScrollUpdate);
-      window.removeEventListener('resize', requestScrollUpdate);
-      resizeObserver?.disconnect();
-
-      if (animationFrameId !== 0) {
-        window.cancelAnimationFrame(animationFrameId);
-      }
-    };
-  }, [showIntro]);
+    track('landing_trial_diary_create_clicked');
+    void submitDiary(request);
+  };
 
   return (
-    <main ref={pageRef} css={pageStyle(showIntro)}>
-      {showIntro ? (
-        <>
-          <header css={topBarStyle}>
-            <img src={harudleLogo} alt="하루들" css={logoStyle} />
-          </header>
-
-          <section css={heroSectionStyle} aria-labelledby="landing-hero-title">
-            <div css={heroCopyStyle}>
-              <h1 id="landing-hero-title" css={heroTitleStyle}>
-                일상을 <span css={accentStyle}>그림으로</span>
-                <br />
-                만들어드려요
-              </h1>
-              <p css={heroDescriptionStyle}>
-                찍지 못했던 일상을 그림으로 만들어드립니다
-              </p>
-            </div>
-
-            <div css={heroVisualStyle}>
-              <img
-                src={loginHero}
-                alt="사람들과 강아지가 함께 하루를 시작하는 모습"
-                loading="eager"
-                decoding="async"
-                css={heroIllustrationStyle}
-              />
-              {heroAction}
-            </div>
-          </section>
-
-          <section css={storyFlowStyle} aria-label="하루가 네컷이 되는 흐름">
-            <section
-              ref={showcaseRef}
-              css={showcaseSectionStyle}
-              aria-label="완성된 네컷 그림 일기 예시"
-            >
-              <div css={showcaseStageStyle}>
-                <div css={showcaseCopyStyle}>
-                  <div
-                    role="group"
-                    aria-label="현재 네컷을 만든 이야기"
-                    css={activeDiaryStoryStyle}
-                  >
-                    <p css={diaryCaptionStyle}>
-                      {diaryExamples[activeDiaryIndex].caption}
-                    </p>
-                    <div css={progressStyle} aria-hidden="true">
-                      {diaryExamples.map((diary, index) => (
-                        <span
-                          key={diary.alt}
-                          css={progressSegmentStyle(index <= activeDiaryIndex)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div css={diaryStackStyle}>
-                  {diaryExamples.map((diary, index) => (
-                    <figure
-                      key={diary.alt}
-                      css={diaryStoryStyle(index, activeDiaryIndex)}
-                      data-diary-active={index === activeDiaryIndex}
-                    >
-                      <figcaption css={reducedDiaryCaptionStyle}>
-                        {diary.caption}
-                      </figcaption>
-                      <div css={diaryFrameStyle}>
-                        <img
-                          src={diary.image}
-                          alt={diary.alt}
-                          loading={index === 0 ? 'eager' : 'lazy'}
-                          decoding="async"
-                          css={diaryImageStyle}
-                        />
-                      </div>
-                    </figure>
-                  ))}
-                </div>
-              </div>
-            </section>
-
-            <section
-              ref={processRef}
-              css={processSectionStyle}
-              aria-labelledby="landing-process-title"
-            >
-              <header css={processHeadingStyle}>
-                <div css={processHeadingCopyStyle}>
-                  <h2 id="landing-process-title" css={sectionTitleStyle}>
-                    이렇게 하루를 남겨요
-                  </h2>
-                </div>
-                <img
-                  src={writingScene}
-                  alt="사람이 강아지와 함께 오늘의 이야기를 기록하는 모습"
-                  loading="lazy"
-                  decoding="async"
-                  css={processIllustrationStyle}
-                />
-              </header>
-
-              <ol css={processListStyle}>
-                {processSteps.map((step, index) => (
-                  <li
-                    key={step.title}
-                    css={processStepStyle(
-                      index < visibleProcessStepCount,
-                      index,
-                    )}
-                  >
-                    <span css={processStepNumberStyle} aria-hidden="true">
-                      {String(index + 1).padStart(2, '0')}
-                    </span>
-                    <div css={processStepCopyStyle}>
-                      <h3 css={processStepTitleStyle}>{step.title}</h3>
-                      <p css={processStepDescriptionStyle}>
-                        {step.description}
-                      </p>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            </section>
-          </section>
-        </>
-      ) : null}
-
-      <section
-        css={finalCtaSectionStyle(trialSection !== undefined)}
-        aria-labelledby="landing-final-title"
-      >
-        {showIntro ? (
-          <p css={finalEyebrowStyle}>이제, 당신의 차례예요</p>
-        ) : null}
-        <div css={finalIllustrationFrameStyle}>
-          <img
-            src={emptyPersonAndDog}
-            alt="사람과 강아지가 함께 새로운 네컷을 시작하는 모습"
-            loading="lazy"
-            decoding="async"
-            css={finalIllustrationStyle}
-          />
-        </div>
-        <h2 id="landing-final-title" css={finalTitleStyle}>
-          재밌는 이야기를 만들어
-          <br />
-          친구에게 공유해보세요
-        </h2>
-        {finalAction}
-      </section>
-      {trialSection}
-    </main>
+    <LandingContent
+      trialActionLabel={
+        creationState.status === 'success'
+          ? GUEST_TRIAL_COPY.resultAction
+          : creationState.status === 'generating'
+            ? GUEST_TRIAL_COPY.generatingAction
+            : creationState.status === 'error' &&
+                isGuestTrialAlreadyUsedError(creationState.error)
+              ? GUEST_TRIAL_COPY.usedAction
+              : undefined
+      }
+      trialSection={
+        <section
+          css={trialFormSectionStyle}
+          aria-label="로그인 없이 1회 네컷만화 체험"
+        >
+          {entryFeedback ?? (
+            <LandingTrialCard
+              creationState={creationState}
+              sourceText={sourceText}
+              sourceTextError={sourceTextError}
+              sourceTextRef={sourceTextRef}
+              onSourceTextChange={(value) => {
+                setSourceText(value);
+                setSourceTextError(null);
+              }}
+              onSubmit={handleSubmit}
+              onRetry={() => void retryDiary()}
+            />
+          )}
+        </section>
+      }
+    />
   );
 };
 
 export default LandingPage;
 
-const pageStyle = (showIntro: boolean) => css`
-  width: 100%;
-  height: 100%;
-  overflow-x: hidden;
-  overflow-y: auto;
-  background-color: ${showIntro ? theme.colors.background.surface : theme.colors.background.brandWeak};
-  color: ${theme.colors.foreground.neutral};
-  overscroll-behavior-y: contain;
-  scrollbar-width: none;
+const generationSteps = [
+  {
+    message: GUEST_TRIAL_COPY.generationMessages[0],
+    image: generationStep1Image,
+  },
+  {
+    message: GUEST_TRIAL_COPY.generationMessages[1],
+    image: generationStep2Image,
+  },
+  {
+    message: GUEST_TRIAL_COPY.generationMessages[2],
+    image: generationStep3Image,
+  },
+  {
+    message: GUEST_TRIAL_COPY.generationMessages[3],
+    image: generationStep4Image,
+  },
+] as const;
 
-  &::-webkit-scrollbar {
-    display: none;
+interface LandingTrialCardProps {
+  creationState: GuestDiaryCreationState;
+  sourceText: string;
+  sourceTextError: string | null;
+  sourceTextRef: RefObject<HTMLTextAreaElement | null>;
+  onSourceTextChange: (value: string) => void;
+  onSubmit: React.FormEventHandler<HTMLFormElement>;
+  onRetry: () => void;
+}
+
+const LandingTrialCard = ({
+  creationState,
+  sourceText,
+  sourceTextError,
+  sourceTextRef,
+  onSourceTextChange,
+  onSubmit,
+  onRetry,
+}: LandingTrialCardProps): JSX.Element => {
+  const [placeholderIndex, setPlaceholderIndex] = useState(0);
+  const [focused, setFocused] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    if (
+      creationState.status !== 'writing' ||
+      sourceText ||
+      focused ||
+      media?.matches
+    )
+      return;
+    const timer = window.setInterval((): void => {
+      setPlaceholderIndex(
+        (current): number =>
+          (current + 1) % GUEST_TRIAL_COPY.placeholders.length,
+      );
+    }, 5000);
+    const handleMotionChange = (): void => {
+      if (media?.matches) window.clearInterval(timer);
+    };
+    media?.addEventListener('change', handleMotionChange);
+    return (): void => {
+      window.clearInterval(timer);
+      media?.removeEventListener('change', handleMotionChange);
+    };
+  }, [creationState.status, sourceText, focused]);
+
+  if (creationState.status === 'generating') {
+    return <LandingTrialGeneratingCard />;
   }
-`;
 
-const topBarStyle = css`
-  display: flex;
-  align-items: center;
-  width: 100%;
-  height: 72px;
-  padding: 0 24px;
-  background-color: ${theme.colors.background.surface};
-`;
-
-const logoStyle = css`
-  display: block;
-  width: 104px;
-  height: 56px;
-  object-fit: contain;
-`;
-
-const heroSectionStyle = css`
-  position: relative;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  gap: 48px;
-  padding: 32px 24px;
-  background-color: ${theme.colors.background.surface};
-`;
-
-const heroCopyStyle = css`
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  margin: 0;
-`;
-
-const heroTitleStyle = css`
-  margin: 0;
-  color: ${theme.colors.foreground.neutral};
-  font-size: clamp(38px, 10.5vw, 46px);
-  font-weight: 700;
-  line-height: 1.24;
-  letter-spacing: -1.4px;
-  word-break: keep-all;
-`;
-
-const accentStyle = css`
-  color: ${theme.colors.foreground.brand};
-`;
-
-const heroDescriptionStyle = css`
-  max-width: 330px;
-  margin: 0;
-  color: ${theme.colors.foreground.neutralMuted};
-  font-size: 16px;
-  font-weight: 400;
-  line-height: 26px;
-  word-break: keep-all;
-`;
-
-const heroIllustrationStyle = css`
-  display: block;
-  align-self: center;
-  width: min(100%, 252px);
-  max-height: 168px;
-  object-fit: contain;
-`;
-
-const heroVisualStyle = css`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 18px;
-  width: 100%;
-  margin-bottom: 0;
-`;
-
-const storyFlowStyle = css`
-  position: relative;
-  background-color: ${theme.colors.background.brandWeak};
-`;
-
-const showcaseSectionStyle = css`
-  position: relative;
-  height: 130vh;
-  height: 130svh;
-  border-top: 1px solid ${theme.colors.stroke.brandWeak};
-  border-bottom: 1px solid ${theme.colors.stroke.brandWeak};
-  background-color: ${theme.colors.background.brandWeak};
-
-  @media (prefers-reduced-motion: reduce) {
-    height: auto;
+  if (creationState.status === 'success') {
+    return (
+      <LandingTrialResultCard
+        key={creationState.data.generation.imageUrl}
+        diary={creationState.data}
+      />
+    );
   }
-`;
 
-const showcaseStageStyle = css`
-  position: sticky;
-  top: 0;
-  display: grid;
-  width: 100%;
-  height: 100vh;
-  height: 100svh;
-  grid-template-rows: auto auto;
-  gap: 28px;
-  align-content: start;
-  align-items: stretch;
-  padding: clamp(64px, 9.5svh, 80px) 24px 48px;
-  overflow: hidden;
-  background-color: ${theme.colors.background.brandWeak};
-
-  @media (prefers-reduced-motion: reduce) {
-    position: relative;
-    height: auto;
-    gap: 28px;
-    padding: 64px 24px 56px;
-    overflow: visible;
+  if (creationState.status === 'error') {
+    return (
+      <LandingTrialErrorCard error={creationState.error} onRetry={onRetry} />
+    );
   }
-`;
 
-const showcaseCopyStyle = css`
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-`;
+  return (
+    <form
+      css={trialCardStyle}
+      aria-labelledby="landing-final-title"
+      onSubmit={onSubmit}
+    >
+      <div css={fieldStyle}>
+        <textarea
+          ref={sourceTextRef}
+          id="guest-diary-source-text"
+          aria-label={GUEST_TRIAL_COPY.inputLabel}
+          value={sourceText}
+          maxLength={300}
+          rows={4}
+          css={textAreaStyle(sourceTextError !== null)}
+          aria-describedby={
+            sourceTextError ? 'guest-diary-source-text-error' : undefined
+          }
+          placeholder={GUEST_TRIAL_COPY.placeholders[placeholderIndex]}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          aria-invalid={sourceTextError !== null}
+          onChange={(event) => onSourceTextChange(event.target.value)}
+        />
+        <span css={descriptionRowStyle}>
+          {sourceTextError && (
+            <span
+              id="guest-diary-source-text-error"
+              role="alert"
+              css={errorStyle}
+            >
+              {sourceTextError}
+            </span>
+          )}
+          <span css={countStyle} data-has-content={sourceText.length > 0}>
+            {Array.from(sourceText).length} / 300
+          </span>
+        </span>
+      </div>
 
-const diaryStackStyle = css`
-  position: relative;
-  align-self: center;
-  width: 100%;
-  max-width: 336px;
-  aspect-ratio: 1;
-  margin: 0 auto;
-
-  @media (prefers-reduced-motion: reduce) {
-    display: grid;
-    max-width: none;
-    grid-template-columns: 1fr;
-    gap: 32px;
-    aspect-ratio: auto;
-    align-self: stretch;
-    margin: 0;
-  }
-`;
-
-const diaryStoryStyle = (index: number, activeIndex: number) => {
-  const isActive = index === activeIndex;
-  const isPast = index < activeIndex;
-  const distance = Math.max(1, activeIndex - index);
-  const pastDirection = index % 2 === 0 ? -1 : 1;
-  const opacity = isActive ? 1 : isPast ? 0.7 : 0;
-  const transform = isActive
-    ? 'translate3d(0, 0, 0) scale(1) rotate(0deg)'
-    : isPast
-      ? `translate3d(${pastDirection * distance * 18}px, ${distance * -12}px, 0) scale(${1 - distance * 0.035}) rotate(${pastDirection * distance * 2.4}deg)`
-      : 'translate3d(0, 52px, 0) scale(0.96) rotate(0deg)';
-  const zIndex = isActive
-    ? diaryExamples.length
-    : isPast
-      ? diaryExamples.length - distance
-      : 0;
-
-  return css`
-    position: absolute;
-    inset: 0;
-    z-index: ${zIndex};
-    margin: 0;
-    opacity: ${opacity};
-    transform: ${transform};
-    transform-origin: 50% 88%;
-    transition:
-      opacity 420ms ease,
-      transform 680ms cubic-bezier(0.22, 1, 0.36, 1);
-    will-change: opacity, transform;
-
-    @media (prefers-reduced-motion: reduce) {
-      position: relative;
-      inset: auto;
-      display: grid;
-      gap: 12px;
-      opacity: 1;
-      transform: none;
-      transition: none;
-      will-change: auto;
-    }
-  `;
+      <button type="submit" css={primaryButtonStyle}>
+        {GUEST_TRIAL_COPY.createAction}
+      </button>
+      <p css={hintStyle}>{GUEST_TRIAL_COPY.usageNotice}</p>
+    </form>
+  );
 };
 
-const diaryFrameStyle = css`
+const LandingTrialGeneratingCard = (): JSX.Element => {
+  const [stepIndex, setStepIndex] = useState(0);
+  const [showExtendedWaitMessage, setShowExtendedWaitMessage] = useState(false);
+
+  useEffect(() => {
+    if (stepIndex >= generationSteps.length - 1) {
+      const timeoutId = window.setTimeout(() => {
+        setShowExtendedWaitMessage(true);
+      }, 6_000);
+
+      return () => window.clearTimeout(timeoutId);
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setStepIndex((currentStep) => currentStep + 1);
+    }, 3_000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [stepIndex]);
+
+  const currentStep = generationSteps[stepIndex];
+
+  return (
+    <div
+      css={trialCardStyle}
+      role="status"
+      aria-live="polite"
+      aria-labelledby="landing-trial-generating-title"
+    >
+      <header css={[formHeaderStyle, centeredHeaderStyle]}>
+        <p css={formEyebrowStyle}>잠시만 기다려주세요</p>
+        <h2 id="landing-trial-generating-title" css={formTitleStyle}>
+          {GUEST_TRIAL_COPY.generatingTitle}
+        </h2>
+      </header>
+
+      <img src={currentStep.image} alt="" css={generationImageStyle} />
+      <p css={generationMessageStyle}>{currentStep.message}</p>
+      {showExtendedWaitMessage ? (
+        <p css={extendedWaitMessageStyle}>{GUEST_TRIAL_COPY.extendedWait}</p>
+      ) : null}
+
+      <div css={generationStepperWrapperStyle}>
+        <DiaryGenerateStepper loadingStep={stepIndex + 1} />
+      </div>
+
+      <p css={freeNoticeStyle}>{GUEST_TRIAL_COPY.generatingNotice}</p>
+    </div>
+  );
+};
+
+const LandingTrialResultCard = ({
+  diary,
+}: {
+  diary: GuestDiaryResponse;
+}): JSX.Element => {
+  const [imageStatus, setImageStatus] = useState<
+    'loading' | 'loaded' | 'error'
+  >('loading');
+
+  if (imageStatus === 'loading') {
+    return (
+      <>
+        <img
+          src={diary.generation.imageUrl}
+          alt=""
+          aria-hidden="true"
+          data-testid="landing-trial-result-preload"
+          css={resultPreloadImageStyle}
+          onLoad={() => setImageStatus('loaded')}
+          onError={() => setImageStatus('error')}
+        />
+        <div
+          css={trialCardStyle}
+          role="status"
+          aria-live="polite"
+          aria-labelledby="landing-trial-result-loading-title"
+        >
+          <header css={[formHeaderStyle, centeredHeaderStyle]}>
+            <p css={formEyebrowStyle}>거의 다 됐어요</p>
+            <h2 id="landing-trial-result-loading-title" css={formTitleStyle}>
+              완성한 네컷을 불러오고 있어요
+            </h2>
+          </header>
+          <img
+            src={generationCompleteImage}
+            alt=""
+            css={generationImageStyle}
+          />
+          <p css={generationMessageStyle}>
+            결과 사진이 모두 준비되면 바로 보여드릴게요
+          </p>
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <article css={trialCardStyle} aria-labelledby="landing-trial-result-title">
+      <header css={[formHeaderStyle, centeredHeaderStyle]}>
+        <p css={formEyebrowStyle}>네컷이 완성됐어요!</p>
+        <h2 id="landing-trial-result-title" css={formTitleStyle}>
+          {diary.generation.title}
+        </h2>
+      </header>
+
+      {imageStatus === 'loaded' ? (
+        <img
+          src={diary.generation.imageUrl}
+          alt={`${diary.generation.title} 네컷만화`}
+          css={resultImageStyle}
+          onError={() => setImageStatus('error')}
+        />
+      ) : (
+        <p role="alert" css={resultImageErrorStyle}>
+          결과 이미지를 불러오지 못했어요
+        </p>
+      )}
+
+      <section css={resultCtaStyle} aria-labelledby="landing-trial-login-title">
+        <h3 id="landing-trial-login-title" css={resultCtaTitleStyle}>
+          더 만들어보고 싶나요?
+        </h3>
+        <p css={freeNoticeStyle}>{GUEST_TRIAL_COPY.loginNotice}</p>
+        <LandingLoginCta
+          label={GUEST_TRIAL_COPY.loginAction}
+          analyticsEvent="landing_trial_login_clicked"
+          location="result"
+        />
+      </section>
+    </article>
+  );
+};
+
+const LandingTrialErrorCard = ({
+  error,
+  onRetry,
+}: {
+  error: Error;
+  onRetry: () => void;
+}): JSX.Element => {
+  const trialAlreadyUsed = isGuestTrialAlreadyUsedError(error);
+
+  return (
+    <div css={trialCardStyle} role="alert">
+      <header css={[formHeaderStyle, centeredHeaderStyle]}>
+        <h2 css={formTitleStyle}>
+          {trialAlreadyUsed
+            ? '게스트 체험을 이미 사용했어요'
+            : GUEST_TRIAL_COPY.failureTitle}
+        </h2>
+      </header>
+
+      {!trialAlreadyUsed && <p css={errorMessageStyle}>{error.message}</p>}
+
+      {trialAlreadyUsed ? (
+        <>
+          <p css={freeNoticeStyle}>{GUEST_TRIAL_COPY.loginNotice}</p>
+          <LandingLoginCta
+            label={GUEST_TRIAL_COPY.loginAction}
+            analyticsEvent="landing_trial_login_clicked"
+            location="already_used"
+          />
+        </>
+      ) : (
+        <button type="button" css={primaryButtonStyle} onClick={onRetry}>
+          같은 내용으로 다시 시도하기
+        </button>
+      )}
+    </div>
+  );
+};
+
+const trialFormSectionStyle = css`
   width: 100%;
-  height: 100%;
-  overflow: hidden;
-  border: 1px solid #2b2a31;
-  border-radius: 12px;
-  background-color: ${theme.colors.background.neutralSolid};
-  box-shadow: 0 18px 36px rgba(17, 17, 24, 0.12);
-
-  @media (prefers-reduced-motion: reduce) {
-    height: auto;
-    aspect-ratio: 1;
-  }
-`;
-
-const diaryImageStyle = css`
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-`;
-
-const activeDiaryStoryStyle = css`
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  width: 100%;
-
-  @media (prefers-reduced-motion: reduce) {
-    display: none;
-  }
-`;
-
-const diaryCaptionStyle = css`
-  margin: 0;
-  color: ${theme.colors.foreground.neutral};
-  font-size: clamp(22px, 6.4vw, 28px);
-  font-weight: 700;
-  line-height: 1.38;
-  letter-spacing: -0.6px;
-  word-break: keep-all;
-`;
-
-const reducedDiaryCaptionStyle = css`
-  display: none;
-  margin: 0;
-  color: ${theme.colors.foreground.neutral};
-  font-size: 19px;
-  font-weight: 700;
-  line-height: 28px;
-  letter-spacing: -0.3px;
-  word-break: keep-all;
-
-  @media (prefers-reduced-motion: reduce) {
-    display: block;
-  }
-`;
-
-const progressStyle = css`
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  width: 100%;
-
-  @media (prefers-reduced-motion: reduce) {
-    display: none;
-  }
-`;
-
-const progressSegmentStyle = (isActive: boolean) => css`
-  display: block;
-  height: 3px;
-  background-color: ${
-    isActive
-      ? theme.colors.background.neutralSolid
-      : theme.colors.background.neutralWeak
-  };
-  transition: background-color 320ms ease;
-
-  @media (prefers-reduced-motion: reduce) {
-    transition: none;
-  }
-`;
-
-const processSectionStyle = css`
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 28px;
-  margin-top: clamp(-360px, -32svh, -240px);
-  padding: 64px 24px 48px;
-  border-radius: 24px 24px 0 0;
-  background-color: ${theme.colors.background.surface};
-
-  @media (prefers-reduced-motion: reduce) {
-    margin-top: -24px;
-  }
-`;
-
-const processHeadingStyle = css`
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 16px;
-  align-items: center;
-`;
-
-const processHeadingCopyStyle = css`
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-`;
-
-const processIllustrationStyle = css`
-  display: block;
-  width: clamp(88px, 25vw, 104px);
-  height: auto;
-  object-fit: contain;
-`;
-
-const sectionTitleStyle = css`
-  margin: 0;
-  color: ${theme.colors.foreground.neutral};
-  font-size: 30px;
-  font-weight: 700;
-  line-height: 42px;
-  letter-spacing: -0.8px;
-  word-break: keep-all;
-`;
-
-const processListStyle = css`
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0 18px;
-  overflow: hidden;
-  border: 1px solid ${theme.colors.stroke.brandWeak};
-  border-radius: 20px;
-  background-color: #fbfaff;
-  list-style: none;
-`;
-
-const processStepStyle = (isVisible: boolean, index: number) => css`
-  display: grid;
-  grid-template-columns: 40px minmax(0, 1fr);
-  gap: 8px;
-  padding: 20px 0;
-  border-top: ${
-    index === 0 ? 'none' : `1px solid ${theme.colors.stroke.divider}`
-  };
-  opacity: ${isVisible ? 1 : 0};
-  transform: translate3d(0, ${isVisible ? 0 : '22px'}, 0);
-  transition:
-    opacity 420ms ease ${index * 55}ms,
-    transform 560ms cubic-bezier(0.22, 1, 0.36, 1) ${index * 55}ms;
-
-  @media (prefers-reduced-motion: reduce) {
-    opacity: 1;
-    transform: none;
-    transition: none;
-  }
-`;
-
-const processStepNumberStyle = css`
-  color: ${theme.colors.foreground.brand};
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 24px;
-  letter-spacing: 0.2px;
-`;
-
-const processStepCopyStyle = css`
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-`;
-
-const processStepTitleStyle = css`
-  margin: 0;
-  color: ${theme.colors.foreground.neutral};
-  font-size: 19px;
-  font-weight: 700;
-  line-height: 28px;
-  letter-spacing: -0.3px;
-  word-break: keep-all;
-`;
-
-const processStepDescriptionStyle = css`
-  margin: 0;
-  color: ${theme.colors.foreground.neutralMuted};
-  font-size: 15px;
-  font-weight: 400;
-  line-height: 24px;
-  white-space: pre-line;
-  word-break: keep-all;
-`;
-
-const finalCtaSectionStyle = (continuesToTrial: boolean) => css`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 20px;
-  padding: 44px 24px ${continuesToTrial ? '28px' : '56px'};
-  border-top: ${continuesToTrial ? 'none' : `1px solid ${theme.colors.stroke.brandWeak}`};
+  padding: 0;
   background-color: ${theme.colors.background.brandWeak};
-
-  & > a {
-    width: 100%;
-  }
 `;
 
-const finalEyebrowStyle = css`
+const trialCardStyle = css`
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  padding: 28px 20px 24px;
+  border: 1px solid ${theme.colors.stroke.brandWeak};
+  border-radius: 24px;
+  background-color: ${theme.colors.background.surface};
+  box-shadow: 0 18px 40px rgb(47 40 77 / 8%);
+`;
+
+const formHeaderStyle = css`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 4px;
+`;
+
+const centeredHeaderStyle = css`
+  align-items: center;
+  text-align: center;
+`;
+
+const formEyebrowStyle = css`
   margin: 0;
   color: ${theme.colors.foreground.brand};
   font-size: 13px;
   font-weight: 700;
   line-height: 20px;
-  letter-spacing: 0.2px;
 `;
 
-const finalIllustrationFrameStyle = css`
-  width: min(220px, 68vw);
-  height: 148px;
-  overflow: hidden;
-`;
-
-const finalIllustrationStyle = css`
-  display: block;
-  width: 100%;
-  height: auto;
-  transform: translateY(-23%);
-`;
-
-const finalTitleStyle = css`
-  margin: 4px 0 8px;
+const formTitleStyle = css`
+  margin: 0;
   color: ${theme.colors.foreground.neutral};
-  font-size: clamp(31px, 8.2vw, 36px);
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 34px;
+  letter-spacing: -0.02em;
+  word-break: keep-all;
+`;
+
+const fieldStyle = css`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`;
+
+const textAreaStyle = (hasError: boolean): SerializedStyles => css`
+  width: 100%;
+  min-height: 136px;
+  padding: 16px;
+  border: 1px solid
+    ${hasError ? theme.colors.stroke.critical : theme.colors.stroke.outline};
+  border-radius: 16px;
+  outline: none;
+  resize: none;
+  background-color: ${theme.colors.background.surface};
+  color: ${theme.colors.foreground.neutral};
+  font-size: 16px;
+  line-height: 26px;
+
+  &::placeholder {
+    color: ${theme.colors.foreground.placeholder};
+  }
+
+  &:focus {
+    border-color: ${
+      hasError ? theme.colors.stroke.critical : theme.colors.stroke.brandStrong
+    };
+    background-color: ${theme.colors.background.surface};
+    box-shadow: 0 0 0 3px rgb(115 85 218 / 10%);
+  }
+`;
+
+const descriptionRowStyle = css`
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 20px;
+`;
+
+const errorStyle = css`
+  color: ${theme.colors.foreground.critical};
+  font-size: 13px;
+  line-height: 20px;
+`;
+
+const hintStyle = css`
+  margin: 0;
+  color: ${theme.colors.foreground.neutralMuted};
+  font-size: 13px;
+  line-height: 20px;
+  text-align: center;
+  white-space: pre-line;
+  word-break: keep-all;
+`;
+
+const countStyle = css`
+  margin-left: auto;
+  flex-shrink: 0;
+  color: ${theme.colors.foreground.neutralMuted};
+  font-size: 13px;
+  line-height: 20px;
+  &[data-has-content='true'] {
+    color: ${theme.colors.foreground.brand};
+  }
+`;
+
+const primaryButtonStyle = css`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 56px;
+  padding: 14px 20px;
+  border: none;
+  border-radius: 16px;
+  background-color: ${theme.colors.background.brandStrong};
+  color: ${theme.colors.foreground.onBrand};
+  font-size: 16px;
   font-weight: 700;
-  line-height: 1.34;
-  letter-spacing: -1px;
+  line-height: 24px;
+  cursor: pointer;
+  transition: transform 180ms ease;
+
+  &:active {
+    transform: scale(0.99);
+  }
+
+  &:focus-visible {
+    outline: 3px solid ${theme.colors.stroke.focusRing};
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition-duration: 1ms;
+  }
+`;
+
+const generationImageStyle = css`
+  width: min(100%, 260px);
+  margin: -8px auto -20px;
+  aspect-ratio: 1;
+  object-fit: contain;
+`;
+
+const generationMessageStyle = css`
+  min-height: 52px;
+  margin: 0;
+  color: ${theme.colors.foreground.neutral};
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 26px;
+  text-align: center;
+  word-break: keep-all;
+`;
+
+const extendedWaitMessageStyle = css`
+  margin: -12px 0 0;
+  color: ${theme.colors.foreground.neutralMuted};
+  font-size: 14px;
+  line-height: 22px;
+  text-align: center;
+  word-break: keep-all;
+`;
+
+const generationStepperWrapperStyle = css`
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  overflow-x: auto;
+`;
+
+const freeNoticeStyle = css`
+  width: 100%;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background-color: #f5f1ff;
+  color: ${theme.colors.foreground.brand};
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 22px;
+  text-align: center;
+  word-break: keep-all;
+`;
+
+const resultPreloadImageStyle = css`
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+`;
+
+const resultImageStyle = css`
+  width: 100%;
+  aspect-ratio: 1;
+  border: 1px solid ${theme.colors.stroke.outline};
+  border-radius: 18px;
+  background-color: ${theme.colors.background.brandWeak};
+  object-fit: cover;
+`;
+
+const resultImageErrorStyle = css`
+  margin: 0;
+  padding: 24px 16px;
+  border-radius: 18px;
+  background-color: ${theme.colors.background.brandWeak};
+  color: ${theme.colors.foreground.neutralMuted};
+  font-size: 15px;
+  line-height: 24px;
+  text-align: center;
+`;
+
+const resultCtaStyle = css`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  padding-top: 20px;
+  border-top: 1px solid ${theme.colors.stroke.divider};
+  text-align: center;
+`;
+
+const resultCtaTitleStyle = css`
+  margin: 0;
+  color: ${theme.colors.foreground.neutral};
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 30px;
+  word-break: keep-all;
+`;
+
+const errorMessageStyle = css`
+  margin: 0;
+  color: ${theme.colors.foreground.neutralMuted};
+  font-size: 15px;
+  line-height: 24px;
   text-align: center;
   word-break: keep-all;
 `;

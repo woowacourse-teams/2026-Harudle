@@ -1,6 +1,6 @@
 import { delay, http, HttpResponse } from 'msw';
 import diaryImage from '../assets/images/diary-four-panel.png';
-import { isCanonicalUuid } from '../pages/guest-trial/guestTrialUuid';
+import { isCanonicalUuid } from '../pages/landing/guestTrialUuid';
 
 interface GuestDiaryRequest {
   diaryDate: string;

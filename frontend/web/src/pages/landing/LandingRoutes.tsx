@@ -1,13 +1,14 @@
-import { useEffect } from 'react';
+import { useEffect, type JSX } from 'react';
 import { css } from '@emotion/react';
 import { Route, Routes } from 'react-router';
 import loadingAnimation from '../../assets/images/loading-animation.webp';
 import { theme } from '../../styles/theme';
 import GuestDiaryResultPage from './GuestDiaryResultPage';
-import GuestDiaryWritePage from './GuestDiaryWritePage';
+import LandingPage from './LandingPage';
 import useGuestEntry from './useGuestEntry';
+import NotFoundPage from '../not-found/NotFoundPage';
 
-const GuestTrialRoutes = () => {
+const LandingRoutes = (): JSX.Element => {
   const { guestEntryRequest, retryGuestEntry } = useGuestEntry();
 
   useEffect(() => {
@@ -16,22 +17,16 @@ const GuestTrialRoutes = () => {
     }
   }, [guestEntryRequest]);
 
-  if (
+  const entryFeedback =
     guestEntryRequest.status === 'idle' ||
-    guestEntryRequest.status === 'loading'
-  ) {
-    return (
+    guestEntryRequest.status === 'loading' ? (
       <div css={feedbackPageStyle}>
         <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
         <p css={feedbackTitleStyle}>게스트 체험을 준비하고 있어요</p>
       </div>
-    );
-  }
-
-  if (guestEntryRequest.status === 'error') {
-    return (
+    ) : guestEntryRequest.status === 'error' ? (
       <div css={feedbackPageStyle}>
-        <h1 css={feedbackTitleStyle}>게스트 체험을 시작하지 못했어요</h1>
+        <h2 css={feedbackTitleStyle}>게스트 체험을 시작하지 못했어요</h2>
         <p css={feedbackMessageStyle}>잠시 후 다시 시도해주세요</p>
         <button
           type="button"
@@ -41,18 +36,21 @@ const GuestTrialRoutes = () => {
           다시 시도
         </button>
       </div>
-    );
-  }
+    ) : null;
 
   return (
     <Routes>
-      <Route index element={<GuestDiaryWritePage />} />
-      <Route path="result/:diaryId" element={<GuestDiaryResultPage />} />
+      <Route index element={<LandingPage entryFeedback={entryFeedback} />} />
+      <Route
+        path="result/:diaryId"
+        element={entryFeedback ?? <GuestDiaryResultPage />}
+      />
+      <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );
 };
 
-export default GuestTrialRoutes;
+export default LandingRoutes;
 
 const feedbackPageStyle = css`
   display: flex;

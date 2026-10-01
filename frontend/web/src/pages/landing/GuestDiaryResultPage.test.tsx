@@ -56,9 +56,9 @@ describe('게스트 일기 결과 화면', () => {
     render(<GuestDiaryResultPage />);
 
     expect(
-      screen.getByText('완성된 그림 일기를 불러오고 있어요'),
+      screen.getByText('완성된 네컷만화를 불러오고 있어요'),
     ).toBeInTheDocument();
-    expect(screen.queryByText('오늘의 이야기')).not.toBeInTheDocument();
+    expect(screen.queryByText('내용')).not.toBeInTheDocument();
     expect(
       screen.queryByRole('link', { name: '카카오로 로그인하기' }),
     ).not.toBeInTheDocument();
@@ -68,7 +68,7 @@ describe('게스트 일기 결과 화면', () => {
     expect(
       screen.getByRole('heading', { name: '비에 흠뻑 젖은 하루' }),
     ).toBeInTheDocument();
-    expect(screen.getByText('오늘의 이야기')).toBeInTheDocument();
+    expect(screen.getByText('내용')).toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: '카카오로 로그인하기' }),
     ).toBeInTheDocument();
@@ -105,7 +105,7 @@ describe('게스트 일기 결과 화면', () => {
 
     expect(
       screen.getByRole('heading', {
-        name: '그림 일기를 불러오지 못했어요',
+        name: '네컷만화를 불러오지 못했어요',
       }),
     ).toBeInTheDocument();
 

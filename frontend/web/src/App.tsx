@@ -8,8 +8,7 @@ import SettingPage from './pages/setting/SettingPage';
 import LoginPage from './pages/login/LoginPage';
 import DiaryDetailPage from './pages/diary-detail/DiaryDetailPage';
 import AuthCallbackPage from './pages/login/AuthCallbackPage';
-import GuestTrialRoutes from './pages/guest-trial/GuestTrialRoutes';
-import LandingPage from './pages/landing/LandingPage';
+import LandingRoutes from './pages/landing/LandingRoutes';
 import AdminGuard from './pages/admin/AdminGuard';
 import NotFoundPage from './pages/not-found/NotFoundPage';
 import PwaAnalyticsTracker from './pages/setting/PwaAnalyticsTracker';
@@ -31,8 +30,7 @@ const App = () => {
           <Route path="/diary/:diaryId" element={<DiaryDetailPage />} />
           <Route path="/shares/:shareId" element={<SharedDiaryPage />} />
           <Route path="/setting" element={<SettingPage />} />
-          <Route path="/landing" element={<LandingPage />} />
-          <Route path="/landing-try/*" element={<GuestTrialRoutes />} />
+          <Route path="/landing/*" element={<LandingRoutes />} />
           <Route path="/admin/*" element={<AdminGuard />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
