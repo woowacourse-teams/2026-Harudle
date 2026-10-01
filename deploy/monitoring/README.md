@@ -38,8 +38,25 @@ sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
 
 prod에서는 위 명령의 파일명을 `cloudwatch-agent.prod.json`으로 바꾼다. 활성 Agent 조각에 같은 이름의 파일이 없는지 확인하고, 기존 호스트 CPU·메모리·디스크 지표가 계속 들어오는지 검사한다. `/harudle/{env}/prometheus-emf`에 새 이벤트가 생기고 `Harudle/Dev` 또는 `Harudle/Prod` 네임스페이스에 아래 지표가 나타나야 한다. Agent 수집·EMF 로그는 CloudWatch 비용이 발생하므로 필요한 계열만 선택했다.
 
+`prometheus.yaml`의 `metric_relabel_configs`는 아래 9개 계열만 Agent에 전달한다. `metric_declaration`만 지정하면 선택하지 않은 JVM·보안·저장소 지표도 EMF 로그 본문에 남을 수 있어, 수집 단계에서도 제외한다. 지표를 추가할 때는 이 허용 목록과 dev/prod의 `metric_declaration`을 함께 수정한다. 적용 뒤 새 EMF 로그에 허용한 계열만 들어오는지 확인한다.
+
+### 선택형 호스트 메모리·디스크 수집
+
+기존 Agent에 해당 지표가 없다면 `cloudwatch-agent.host.json`을 별도로 추가한다. `CWAgent`에 `mem_used_percent`와 루트 파일시스템(`/`)의 `disk_used_percent`를 60초마다 게시한다. 메모리는 `InstanceId`, 디스크는 `InstanceId`·`path`·`fstype` 차원을 사용한다. 디스크 경로를 `/` 하나로 제한하고 별도 집계 시계열을 만들지 않아 인스턴스당 2개 시계열만 보낸다. 메모리의 원본 차원이 이미 `InstanceId`이므로 집계와 원본 제외를 함께 적용하지 않는다. Docker·로그 저장 위치가 다른 파일시스템이라면 `resources`를 그 경로로 바꾼 뒤 확인한다.
+
+```bash
+sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+  -a append-config -m ec2 -s \
+  -c file:/opt/harudle/monitoring/cloudwatch-agent.host.json
+```
+
+이 조각은 직접 지표를 보내므로 `cloudwatch:PutMetricData` 권한이 필요하다. 공유 `ec2-project` 역할은 수정하지 않고 실제 게시 결과를 확인한다. 권한이 거절되면 호스트 조각만 제거하고 기존 앱 EMF 수집을 유지한다. 두 지표의 `InstanceId`·단위·수집 간격과 Agent 메모리 사용량·앱 health를 확인한 뒤 대시보드와 경보에 연결한다. 설정 파일은 다음 배포에서도 복사되지만 Agent 적용은 별도다.
+
+### 앱 지표
+
 | 지표 | 확인 목적 |
 |---|---|
+| `harudle_generation_executions_total` | 생성 실행기의 반환·예외 횟수(`result`). 반환은 DB 최종 성공을 뜻하지 않음 |
 | `harudle_generation_finalizations_total` | DB에 확정된 생성 결과(`status=SUCCEEDED\|FAILED`, `errorCode`) |
 | `harudle_generation_unexpected_failures_total` | 예상하지 못한 생성 내부 오류의 단계(`phase`) |
 | `harudle_gemini_stage_calls_total` | 스토리보드/이미지 단계별 성공·실패 종류 |
@@ -79,6 +96,8 @@ DB의 성공 이미지와 S3 객체를 주기적으로 대조하는 전체 점�
 
 ## API 오류 비율과 지연 시간
 
+`api-5xx` 건수 경보는 `ApiExceptionLogger`의 `{ $.event = "api_exception" && $.httpStatus >= 500 && $.httpStatus < 600 }` 로그 지표 필터를 사용한다. 일치하는 로그마다 `Api5xxFailureLogs`에 `Count` 1을 게시하고, 5분 `Sum >= 3`이면 알린다. 새 HTTP 상태·결과 태그의 첫 수집에서 Prometheus 카운터 증가분이 빠지는 상황을 보완한다. 이 필터는 해당 로거가 기록한 API 예외만 세므로, Nginx·게이트웨이 또는 다른 처리 경로의 모든 5xx를 포괄하지는 않는다.
+
 CloudWatch Agent는 HTTP 완료 횟수를 전체(`job`), 결과군(`job`, `outcome`), 상태 코드(`job`, `status`) 차원으로 보낸다. Spring의 `outcome=SERVER_ERROR`는 5xx 응답이다. 5분 `Sum`으로 전체 요청 수 `T`와 서버 오류 수 `E`를 구하고 `IF(T >= 20, 100 * E / T, 0)`을 오류 비율(%)로 표시한다. 초기 경보는 **오류 비율 5% 초과가 5분 창 2회 연속**일 때다. 요청이 적어 비율이 불안정한 시간은 기존 **5xx 3건/5분** 경보가 보완한다. `outcome`과 전체 차원에서 같은 요청이 각각 한 번만 집계되는지 dev에서 먼저 확인하고, 재시작 직후 첫 수집 누락도 로그와 대조한다. [Spring HTTP 결과 태그](https://docs.spring.io/spring-boot/reference/actuator/metrics.html), [CloudWatch 지표 수식](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/using-metric-math.html)을 참고한다.
 
 부하 시험에서는 AI 작업 완료까지의 비동기 시간과 API 응답 시간을 별도로 측정한다. 우선 부하 시험 도구가 측정한 **요청별 P95·P99, 평균 응답 시간, 5xx 비율, 동시 사용자 수, 초당 요청 수**를 시나리오와 함께 보존한다. 현재 Agent 설정은 HTTP `http_server_requests_seconds_count`만 CloudWatch에 보내고 `_sum`은 보내지 않으므로, CloudWatch 대시보드에서 평균 응답 시간을 계산할 수 없다. 지금은 HTTP 요청 수·5xx 비율, Hikari pending, EC2/RDS 자원 지표를 같은 시간축에 놓고 본다. 평균 응답 시간은 `_sum`의 수집 차원·시계열 수·비용을 dev에서 검증한 뒤 추가한다. 평균이나 `count`만으로 P95·P99를 계산하지 않는다.
@@ -87,7 +106,7 @@ CloudWatch Agent는 HTTP 완료 횟수를 전체(`job`), 결과군(`job`, `outco
 
 ## EC2·RDS 자원 경보
 
-각 환경의 **실제 EC2 InstanceId와 RDS DBInstanceIdentifier**로 경보를 분리한다. EC2 `CPUUtilization`·`StatusCheckFailed`는 `AWS/EC2`, RDS `CPUUtilization`·`FreeableMemory`·`FreeStorageSpace`·`DatabaseConnections`는 `AWS/RDS`에서 확인한다. EC2 `mem_used_percent`·`disk_used_percent`는 CloudWatch Agent의 `CWAgent` 지표로, 기존 호스트 설정에 없다면 별도 조각을 추가하고 수집을 검증한다. 디스크는 컨테이너·로그가 실제로 저장되는 파일시스템의 `path`·`device` 차원만 고른다. Agent 메모리·디스크 수집이 없는데 무데이터를 정상으로 처리하는 경보를 만들어 두지 않는다. [EC2 기본 지표](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/viewing_metrics_with_cloudwatch.html), [Agent 호스트 지표](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/metrics-collected-by-CloudWatch-agent.html), [RDS 지표](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-metrics.html)를 참고한다.
+각 환경의 **실제 EC2 InstanceId와 RDS DBInstanceIdentifier**로 경보를 분리한다. EC2 `CPUUtilization`·`StatusCheckFailed`는 `AWS/EC2`, RDS `CPUUtilization`·`FreeableMemory`·`FreeStorageSpace`·`DatabaseConnections`는 `AWS/RDS`에서 확인한다. EC2 `mem_used_percent`·`disk_used_percent`는 CloudWatch Agent의 `CWAgent` 지표로, 기존 호스트 설정에 없다면 위의 선택형 조각을 추가하고 수집을 검증한다. 이 조각의 디스크 지표는 `InstanceId`·`path=/`·실제 `fstype` 차원으로 선택한다. 기존 설정을 쓰는 경우에도 컨테이너·로그가 실제로 저장되는 파일시스템의 차원을 확인한다. Agent 메모리·디스크 수집이 없는데 무데이터를 정상으로 처리하는 경보를 만들어 두지 않는다. [EC2 기본 지표](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/viewing_metrics_with_cloudwatch.html), [Agent 호스트 지표](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/metrics-collected-by-CloudWatch-agent.html), [RDS 지표](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-metrics.html)를 참고한다.
 
 | 경보 | 초기 조건 | 확인 목적 |
 |---|---|---|
@@ -112,7 +131,7 @@ CloudWatch 알람은 dev/prod를 별도로 만들고, 환경별 SNS 주제를 �
 | 즉시 | 로그 지표 필터 `provider=s3`, `failureType=AUTHENTICATION_ERROR\|AUTHORIZATION_ERROR\|CONFIGURATION_ERROR` 1건 | 5분 | 자격 증명·권한·버킷 설정 장애 |
 | 주의 | 로그 지표 필터 `provider=s3`, `operation=get_object\|presign_get_object` 1건 | 5분 | 참조 이미지 조회 또는 접근 URL 발급 실패 |
 | 주의 | 로그인 사용자 이미지 표시 실패 증가 3건 | 5분 | 프론트 신고 연동 검증 후 활성화. 오프라인·URL 만료도 가능하므로 S3 누락으로 단정하지 않음 |
-| 즉시 | API 5xx 증가 3건 | 5분 | 사용자 요청 실패 증가 |
+| 즉시 | API 예외 로그의 `Api5xxFailureLogs` 3건 이상 | 5분 | `api_exception`·5xx 로그의 첫 건부터 집계. 다른 계층의 5xx는 별도 관측 |
 | 주의 | API 5xx 비율 > 5%, 단 전체 요청 20건 이상 | 5분 창 2회 연속 | 요청량이 늘 때 지속되는 장애 감지 |
 | 주의 | 각 단계의 `RATE_LIMIT\|PROVIDER_5XX\|TIMEOUT` 로그 필터 3건 이상 | 15분, 1회 | Gemini 공급자의 일시 오류를 스토리보드와 이미지 단계별로 감지 |
 | 주의 | 스토리보드의 `OUTPUT_TOKEN_LIMIT\|EMPTY_RESPONSE\|INVALID_JSON\|SCHEMA_VIOLATION\|RESPONSE_PROCESSING_ERROR` 로그 필터 2건 이상 | 15분, 1회 | 스토리보드 응답 오류 감지 |
@@ -151,7 +170,7 @@ Discord의 일반 Execute Webhook은 `wait` 기본값이 `false`다. 이때 메�
 | `s3-url-sign-failure` | 이미지 접근 URL 발급 실패 1건 |
 | `s3-authentication`, `s3-authorization`, `s3-configuration` | 각 S3 실패 유형 1건 |
 | `image-load-failure` | 로그인 사용자 타임라인·상세 화면 이미지 표시 실패 5분간 3건. 프론트 팀원 코드의 신고 연동 검증 전에는 만들거나 활성화하지 않음 |
-| `api-5xx` | API 5xx 증가 |
+| `api-5xx` | `api_exception`의 5xx 로그 `Api5xxFailureLogs`가 5분간 3건 이상 |
 | `api-error-rate` | 표본 조건을 만족한 API 5xx 비율 증가 |
 | `gemini-storyboard-transient`, `gemini-image-transient` | 각 단계의 공급자 일시 오류 15분간 3건 이상 |
 | `gemini-storyboard-response`, `gemini-image-response` | 각 단계의 응답 처리 오류 15분간 2건 이상 |
