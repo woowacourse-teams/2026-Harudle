@@ -42,6 +42,8 @@ prod에서는 위 명령의 파일명을 `cloudwatch-agent.prod.json`으로 바�
 
 ### 선택형 호스트 메모리·디스크 수집
 
+prod 적용 전에 `/etc/os-release`와 `uname -m`으로 OS 버전·아키텍처를 확인하고 [AWS의 Agent 지원 조합](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/supported-operating-systems.html)과 대조한다. 2026-10-01 기준 Ubuntu 26.04 ARM64는 공식 지원 목록에 없다. dev에서 전송을 확인했더라도 prod의 호환성을 보장하지 않으므로, 지원 목록 밖의 호스트에서는 실제 수집 검증을 먼저 진행한다.
+
 기존 Agent에 해당 지표가 없다면 `cloudwatch-agent.host.json`을 별도로 추가한다. `CWAgent`에 `mem_used_percent`와 루트 파일시스템(`/`)의 `disk_used_percent`를 60초마다 게시한다. 메모리는 `InstanceId`, 디스크는 `InstanceId`·`path`·`fstype` 차원을 사용한다. 디스크 경로를 `/` 하나로 제한하고 별도 집계 시계열을 만들지 않아 인스턴스당 2개 시계열만 보낸다. 메모리의 원본 차원이 이미 `InstanceId`이므로 집계와 원본 제외를 함께 적용하지 않는다. Docker·로그 저장 위치가 다른 파일시스템이라면 `resources`를 그 경로로 바꾼 뒤 확인한다.
 
 ```bash
@@ -50,7 +52,7 @@ sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
   -c file:/opt/harudle/monitoring/cloudwatch-agent.host.json
 ```
 
-이 조각은 직접 지표를 보내므로 `cloudwatch:PutMetricData` 권한이 필요하다. 공유 `ec2-project` 역할은 수정하지 않고 실제 게시 결과를 확인한다. 권한이 거절되면 호스트 조각만 제거하고 기존 앱 EMF 수집을 유지한다. 두 지표의 `InstanceId`·단위·수집 간격과 Agent 메모리 사용량·앱 health를 확인한 뒤 대시보드와 경보에 연결한다. 설정 파일은 다음 배포에서도 복사되지만 Agent 적용은 별도다.
+이 조각은 직접 지표를 보내므로 `cloudwatch:PutMetricData` 권한이 필요하다. 공유 `ec2-project` 역할은 수정하지 않고 실제 게시 결과를 확인한다. 권한이 거절되면 호스트 조각만 제거하고 기존 앱 EMF 수집을 유지한다. CloudWatch `CWAgent`에서 해당 인스턴스의 `mem_used_percent`와 `disk_used_percent`가 모두 최근 시각의 데이터로 연속 게시되는지 확인한다. 두 지표의 `InstanceId`·단위·60초 수집 간격과 Agent 메모리 사용량·앱 health를 확인한 뒤 대시보드에 연결하고 경보를 활성화한다. 둘 중 하나라도 게시되지 않으면 해당 지표 경보를 활성화하지 않는다. 설정 파일은 다음 배포에서도 복사되지만 Agent 적용은 별도다.
 
 ### 앱 지표
 

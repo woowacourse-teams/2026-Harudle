@@ -112,7 +112,7 @@ def _alarm_message(sns_record, expected_topic, environment):
 def _validate_webhook_url(value):
     """Accept a bare Discord endpoint; reject secret-bearing error details."""
     try:
-        if not isinstance(value, str) or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in value):
+        if not isinstance(value, str) or "?" in value or "#" in value or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in value):
             raise ValueError("invalid webhook")
         parsed = parse.urlsplit(value)
         if (
@@ -163,6 +163,11 @@ def _response_bytes(response):
     body = response.read(_MAX_RESPONSE_BYTES + 1)
     if len(body) > _MAX_RESPONSE_BYTES:
         raise DeliveryError("discord response too large")
+    # Bounded HTTPResponse.read() can return early without raising IncompleteRead.
+    # Its remaining length respects HTTP framing, including chunked responses.
+    remaining = getattr(response, "length", None)
+    if isinstance(remaining, int) and remaining > 0:
+        raise HTTPException("discord response incomplete")
     return body
 
 

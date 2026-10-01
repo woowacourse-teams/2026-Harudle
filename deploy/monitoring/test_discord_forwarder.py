@@ -5,7 +5,7 @@ import io
 import json
 import traceback
 from email.message import Message
-from http.client import IncompleteRead
+from http.client import HTTPResponse, IncompleteRead
 import ssl
 import os
 import sys
@@ -25,6 +25,17 @@ def discord_response(status=200, body=b'{"id":"123456789"}'):
     response.__enter__.return_value = response
     response.status = status
     response.read.side_effect = lambda size: body[:size]
+    return response
+
+
+
+def framed_discord_response(body, headers):
+    """Exercise real HTTP framing with an in-memory connection."""
+    header_bytes = "".join(f"{name}: {value}\r\n" for name, value in headers.items()).encode("ascii")
+    socket = mock.Mock()
+    socket.makefile.return_value = io.BytesIO(b"HTTP/1.1 200 OK\r\n" + header_bytes + b"\r\n" + body)
+    response = HTTPResponse(socket)
+    response.begin()
     return response
 
 
@@ -135,6 +146,9 @@ class DiscordForwarderTest(unittest.TestCase):
             "https://discord.com:443/api/webhooks/123456/secret-token",
             "https://discord.com/api/webhooks/not-an-id/secret-token",
             WEBHOOK + "?wait=true",
+            WEBHOOK + "?",
+            WEBHOOK + "#",
+            WEBHOOK + "?#",
             WEBHOOK + "#secret-token",
             " " + WEBHOOK,
             WEBHOOK + "\n",
@@ -344,6 +358,53 @@ class DiscordForwarderTest(unittest.TestCase):
                 forwarder._post(WEBHOOK, {"content": "safe"})
                 self.assertEqual(client.call_count, 2)
 
+    def test_short_content_length_response_retries_even_when_json_is_valid(self):
+        for partial_body in (b'{"id":', b'{"id":"123456789"}'):
+            with self.subTest(valid_json=partial_body.endswith(b"}")):
+                first = framed_discord_response(partial_body, {"Content-Length": len(partial_body) + 20})
+                with mock.patch.object(forwarder._HTTP_CLIENT, "open", side_effect=[first, discord_response()]) as client:
+                    forwarder._post(WEBHOOK, {"content": "safe"})
+                self.assertEqual(client.call_count, 2)
+        self.assertEqual(self.sleep.call_args_list, [mock.call(1.0)] * 2)
+
+    def test_short_response_retry_exhaustion_is_sanitized(self):
+        partial_body = WEBHOOK.encode()
+        responses = [framed_discord_response(partial_body, {"Content-Length": len(partial_body) + 20}) for _ in range(3)]
+        with mock.patch.object(forwarder._HTTP_CLIENT, "open", side_effect=responses) as client:
+            with self.assertRaises(forwarder.DeliveryError) as raised:
+                forwarder._post(WEBHOOK, {"content": "safe"})
+        self.assertEqual(str(raised.exception), "discord transport failed")
+        self.assertNotIn(WEBHOOK, "".join(traceback.format_exception(raised.exception)))
+        self.assertEqual(client.call_count, 3)
+        self.assertEqual(self.sleep.call_args_list, [mock.call(1.0), mock.call(2.0)])
+
+    def test_complete_http_framing_confirms_delivery(self):
+        body = b'{"id":"123456789"}'
+        chunked_body = f"{len(body):X}\r\n".encode() + body + b"\r\n0\r\n\r\n"
+        cases = (
+            (body, {"Content-Length": len(body)}),
+            (body, {}),
+            (chunked_body, {"Transfer-Encoding": "chunked", "Content-Length": len(body) + 20}),
+        )
+        for framed_body, headers in cases:
+            with self.subTest(headers=headers):
+                response = framed_discord_response(framed_body, headers)
+                with mock.patch.object(forwarder._HTTP_CLIENT, "open", return_value=response) as client:
+                    forwarder._post(WEBHOOK, {"content": "safe"})
+                self.assertEqual(client.call_count, 1)
+        self.sleep.assert_not_called()
+
+    def test_http_response_size_limit_is_preserved(self):
+        body = b"x" * (forwarder._MAX_RESPONSE_BYTES + 100)
+        response = framed_discord_response(body, {"Content-Length": len(body)})
+        with mock.patch.object(response, "read", wraps=response.read) as read, \
+                mock.patch.object(forwarder._HTTP_CLIENT, "open", return_value=response) as client:
+            with self.assertRaisesRegex(forwarder.DeliveryError, "discord response too large"):
+                forwarder._post(WEBHOOK, {"content": "safe"})
+        read.assert_called_once_with(forwarder._MAX_RESPONSE_BYTES + 1)
+        self.assertEqual(client.call_count, 1)
+        self.sleep.assert_not_called()
+
     def test_long_retry_after_is_not_shortened_to_fit_budget(self):
         with mock.patch.object(forwarder._HTTP_CLIENT, "open", side_effect=http_failure(429, b'{"retry_after":30}', retry_after="2")) as client:
             with self.assertRaisesRegex(forwarder.DeliveryError, "retry exceeds delivery budget"):
@@ -432,6 +493,9 @@ class DiscordForwarderTest(unittest.TestCase):
             for unsafe in (
                 "https://discord.com.evil.example/api/webhooks/123456/secret-token",
                 WEBHOOK + "?wait=true",
+                WEBHOOK + "?",
+                WEBHOOK + "#",
+                WEBHOOK + "?#",
             ):
                 client.get_secret_value.return_value = {"SecretString": unsafe}
                 with self.assertRaises(forwarder.DeliveryError) as raised:
