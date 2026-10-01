@@ -8,7 +8,7 @@ public record ExternalApiResponseDiagnostics(
         @Nullable String finishReason,
         @Nullable Integer candidateTokenCount,
         @Nullable Integer thoughtTokenCount,
-        int maxOutputTokens,
+        @Nullable Integer maxOutputTokens,
         @Nullable Integer responseLength
 ) {
 }

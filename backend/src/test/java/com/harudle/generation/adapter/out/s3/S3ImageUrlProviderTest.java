@@ -32,7 +32,7 @@ import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequ
 @ExtendWith(MockitoExtension.class)
 class S3ImageUrlProviderTest {
 
-    private static final String OBJECT_KEY = "generated/diary-images/diary-id/image.png";
+    private static final String OBJECT_KEY = "harudle/generated/diary-images/dev/diary-id/image.png";
     private static final Duration ACCESS_URL_TTL = Duration.ofMinutes(15);
 
     @Mock
@@ -51,7 +51,9 @@ class S3ImageUrlProviderTest {
         S3StorageProperties properties = new S3StorageProperties(
                 "test-bucket",
                 "ap-northeast-2",
-                "generated/diary-images",
+                "dev",
+                "harudle/generated/diary-images/dev",
+                "harudle/references/generation/dev",
                 DataSize.ofMegabytes(20),
                 ACCESS_URL_TTL
         );
@@ -116,7 +118,7 @@ class S3ImageUrlProviderTest {
         assertThatThrownBy(() -> imageUrlProvider.createAccessUrl(OBJECT_KEY))
                 .isInstanceOf(ImageStorageException.class)
                 .hasMessageContaining("S3 이미지 접근 URL 발급")
-                .hasMessageContaining(OBJECT_KEY)
+                .hasMessageNotContaining(OBJECT_KEY)
                 .hasCause(cause);
         verify(externalApiLogger).error(
                 eq(new ExternalApiFailure(

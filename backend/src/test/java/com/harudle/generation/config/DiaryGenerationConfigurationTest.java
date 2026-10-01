@@ -8,10 +8,13 @@ import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import com.harudle.generation.diary.service.DiaryGenerationCompletionService;
 import com.harudle.generation.diary.service.DiaryGenerationExecutor;
+import com.harudle.generation.diary.service.GenerationLifecycleMetrics;
 import com.harudle.generation.diary.service.RequestFingerprintGenerator;
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
 import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.NoUniqueBeanDefinitionException;
@@ -97,6 +100,8 @@ class DiaryGenerationConfigurationTest {
                 DiaryGenerationCompletionService.class,
                 () -> mock(DiaryGenerationCompletionService.class)
         );
+        context.registerBean(MeterRegistry.class, SimpleMeterRegistry::new);
+        context.registerBean(GenerationLifecycleMetrics.class, () -> mock(GenerationLifecycleMetrics.class));
         context.register(DiaryGenerationConfiguration.class);
         return context;
     }

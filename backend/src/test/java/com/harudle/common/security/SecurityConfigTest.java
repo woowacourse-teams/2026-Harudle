@@ -5,6 +5,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -13,6 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.harudle.auth.application.AccessTokenService;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.UserRepository;
+import jakarta.servlet.http.Cookie;
 import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -163,6 +165,40 @@ class SecurityConfigTest {
     }
 
     @Test
+    @DisplayName("이미지 로드 실패 집계는 Access Token이 필요하다")
+    void protectsImageLoadFailureTelemetry() throws Exception {
+        String path = "/api/v1/telemetry/image-load-failures/timeline";
+        Cookie csrfCookie = new Cookie("XSRF-TOKEN", "test-csrf-token");
+
+        mockMvc.perform(post(path)
+                        .cookie(csrfCookie)
+                        .header("X-XSRF-TOKEN", csrfCookie.getValue()))
+                .andExpect(status().isUnauthorized());
+
+        String accessToken = issueAccessToken(UUID.randomUUID());
+        mockMvc.perform(post(path)
+                        .cookie(csrfCookie)
+                        .header("X-XSRF-TOKEN", csrfCookie.getValue())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    @DisplayName("내부 Prometheus 수집 경로만 인증 없이 조회할 수 있다")
+    void exposesOnlyPrometheusActuatorEndpoint() throws Exception {
+        mockMvc.perform(get("/actuator/prometheus"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("jvm_memory_used_bytes")));
+
+        mockMvc.perform(get("/actuator/env"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/actuator/env")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + issueAccessToken(UUID.randomUUID())))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     @DisplayName("Scalar 문서는 Access Token 없이 접근할 수 있다")
     void allowsScalarWithoutAccessToken() throws Exception {
         mockMvc.perform(get("/scalar"))
@@ -188,6 +224,8 @@ class SecurityConfigTest {
                 .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.security[0].bearerAuth").isArray())
                 .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.security[0].csrfToken").isArray())
                 .andExpect(jsonPath("$.paths['/api/v1/guest/session'].post.security[0].csrfToken").isArray())
+                .andExpect(jsonPath("$.paths['/api/v1/telemetry/image-load-failures/timeline'].post"
+                        + ".security[0].bearerAuth").isArray())
                 .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['200']").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['201']").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/guest/diaries'].post.responses['200']").exists())

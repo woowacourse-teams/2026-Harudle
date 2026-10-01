@@ -54,14 +54,15 @@ class MemberDiaryCreationTransactionServiceTest {
         CreateDiaryCommand command = createCommand();
         DiaryCreationClaim claim = createClaim(true);
         GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
-        when(claimService.claim(command, true)).thenReturn(claim);
-        when(generationUsageService.incrementTodayUsage(USER_ID)).thenReturn(usage);
+        when(generationUsageService.getCurrentUsageDate()).thenReturn(DIARY_DATE);
+        when(claimService.claim(command, true, DIARY_DATE)).thenReturn(claim);
+        when(generationUsageService.incrementUsage(USER_ID, DIARY_DATE)).thenReturn(usage);
 
         MemberDiaryCreationClaim memberClaim = transactionService.claim(command, true);
 
         assertThat(memberClaim.claim()).isSameAs(claim);
         assertThat(memberClaim.usage()).isEqualTo(usage);
-        verify(generationUsageService).incrementTodayUsage(USER_ID);
+        verify(generationUsageService).incrementUsage(USER_ID, DIARY_DATE);
         verify(generationUsageService, never()).getTodayUsage(USER_ID);
     }
 
@@ -71,7 +72,8 @@ class MemberDiaryCreationTransactionServiceTest {
         CreateDiaryCommand command = createCommand();
         DiaryCreationClaim claim = createClaim(false);
         GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
-        when(claimService.claim(command, false)).thenReturn(claim);
+        when(generationUsageService.getCurrentUsageDate()).thenReturn(DIARY_DATE);
+        when(claimService.claim(command, false, DIARY_DATE)).thenReturn(claim);
         when(generationUsageService.getTodayUsage(USER_ID)).thenReturn(usage);
 
         MemberDiaryCreationClaim memberClaim = transactionService.claim(command, false);
@@ -79,7 +81,7 @@ class MemberDiaryCreationTransactionServiceTest {
         assertThat(memberClaim.claim()).isSameAs(claim);
         assertThat(memberClaim.usage()).isEqualTo(usage);
         verify(generationUsageService).getTodayUsage(USER_ID);
-        verify(generationUsageService, never()).incrementTodayUsage(USER_ID);
+        verify(generationUsageService, never()).incrementUsage(USER_ID, DIARY_DATE);
     }
 
     @Test
@@ -95,7 +97,7 @@ class MemberDiaryCreationTransactionServiceTest {
 
         assertThat(memberClaim).contains(new MemberDiaryCreationClaim(claim, usage));
         verify(generationUsageService).getTodayUsage(USER_ID);
-        verify(generationUsageService, never()).incrementTodayUsage(USER_ID);
+        verify(generationUsageService, never()).incrementUsage(USER_ID, DIARY_DATE);
     }
 
     @Test
@@ -115,12 +117,15 @@ class MemberDiaryCreationTransactionServiceTest {
     void doNotChangeUsageWhenClaimFails() {
         CreateDiaryCommand command = createCommand();
         IllegalStateException exception = new IllegalStateException("생성 선점 실패");
-        when(claimService.claim(command, true)).thenThrow(exception);
+        when(generationUsageService.getCurrentUsageDate()).thenReturn(DIARY_DATE);
+        when(claimService.claim(command, true, DIARY_DATE)).thenThrow(exception);
 
         assertThatThrownBy(() -> transactionService.claim(command, true))
                 .isSameAs(exception);
 
-        verifyNoInteractions(generationUsageService);
+        verify(generationUsageService).getCurrentUsageDate();
+        verify(generationUsageService, never()).incrementUsage(USER_ID, DIARY_DATE);
+        verify(generationUsageService, never()).getTodayUsage(USER_ID);
     }
 
     private CreateDiaryCommand createCommand() {

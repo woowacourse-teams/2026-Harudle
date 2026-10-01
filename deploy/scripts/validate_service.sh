@@ -36,9 +36,15 @@ for ((attempt = 1; attempt <= MAX_ATTEMPTS; attempt++)); do
       frontend_address="$(compose port frontend 80 | tail -n 1)"
 
       if curl --fail --silent --show-error "http://${frontend_address}/health" >/dev/null; then
-        compose ps
-        docker image prune --force >/dev/null
-        exit 0
+        metrics_address="$(compose port backend 8081 | tail -n 1)"
+        if [[ "${metrics_address}" == 127.0.0.1:* ]] &&
+          metrics_response="$(curl --fail --silent --show-error --max-time 10 \
+            "http://${metrics_address}/actuator/prometheus")" &&
+          grep -q '^# HELP jvm_memory_used_bytes' <<<"${metrics_response}"; then
+          compose ps
+          docker image prune --force >/dev/null
+          exit 0
+        fi
       fi
     fi
   fi
