@@ -104,20 +104,6 @@ test.describe('남은 일기 생성량 조회', () => {
   });
 });
 
-test.describe('스트릭', () => {
-  test('홈 화면에 처음 진입하면 연속 기록 일수를 보여준다', async ({
-    page,
-  }) => {
-    await goToHomeAt(page, '2026-08-30T12:00:00+09:00');
-    const streakCard = page.getByRole('region', { name: '연속 기록' });
-
-    await expect(streakCard.getByText('6일째')).toBeVisible();
-    await expect(
-      streakCard.getByText('오늘도 기록을 이어갔어요!'),
-    ).toBeVisible();
-  });
-});
-
 test.describe('하단 네비게이션', () => {
   test('홈 화면에서 설정 화면으로 이동할 수 있다', async ({ page }) => {
     await goToHomeAt(page, '2026-08-30T12:00:00+09:00');

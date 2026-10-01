@@ -37,13 +37,6 @@ const MONTHLY_DIARIES = {
     'MonthlyDiaries 응답 형식이 일치하지 않습니다.',
 } as const;
 
-const CURRENT_STREAK = {
-  CURRENT_STREAK_FETCH_FAILED:
-    '연속 일기 기록을 조회하는 중 문제가 발생했습니다. 다시 시도해주세요.',
-  INVALID_CURRENT_STREAK_RESPONSE:
-    'CurrentStreak 응답 형식이 일치하지 않습니다.',
-} as const;
-
 const DIARY_IMAGE_DOWNLOAD = {
   DIARY_IMAGE_SAVE_FAILED: '이미지 저장에 실패했습니다.',
 } as const;
@@ -116,7 +109,6 @@ export const ERROR_MESSAGES = {
   ...DIARY_DETAIL,
   ...SHARED_DIARY,
   ...MONTHLY_DIARIES,
-  ...CURRENT_STREAK,
   ...DIARY_IMAGE_DOWNLOAD,
   ...GENERATION_USAGE,
   ...AUTH,

@@ -8,7 +8,6 @@ import { theme } from '../../../styles/theme';
 import { getToday, type Month } from '../../../shared/utils';
 import { useDiaryGenerateContext } from '../../diary-generating/DiaryGenerateContext';
 import { useEffect } from 'react';
-import StreakSummaryCard from './StreakSummaryCard';
 import keyboardArrowDownIcon from '../../../assets/icons/keyboard_arrow_down.svg';
 import useGenerationUsage from './useGenrationUsage';
 
@@ -58,8 +57,6 @@ const HomePage = () => {
             <RemainingGenerationUsage />
           </div>
         </div>
-
-        <StreakSummaryCard />
 
         <section css={diaryContentStyle}>
           <DiaryItemList {...selectedYearMonth} />
