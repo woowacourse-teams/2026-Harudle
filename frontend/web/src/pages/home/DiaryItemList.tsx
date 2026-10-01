@@ -1,3 +1,4 @@
+import { HOME_COPY } from './copy';
 import { useNavigate } from 'react-router';
 
 import FloatingActionButton from '../../shared/FloatingActionButton';
@@ -71,8 +72,12 @@ const DiaryItemList = ({ year, month }: { year: number; month: Month }) => {
       {isMonthlyDiaryExist(days) ? (
         <>
           <header css={diaryListHeaderStyle}>
-            <h2 css={diaryListTitleStyle}>기록</h2>
-            <span css={monthlyDiaryCountStyle}>총 {monthlyDiaryCount}개</span>
+            <h2 css={diaryListTitleStyle}>{HOME_COPY.listTitle}</h2>
+            <span css={monthlyDiaryCountStyle}>
+              {HOME_COPY.monthlyCount.before}
+              {monthlyDiaryCount}
+              {HOME_COPY.monthlyCount.after}
+            </span>
           </header>
           <div css={diaryListStyle}>
             {showSkeleton && <DiaryItemRowSkeleton />}
@@ -118,6 +123,7 @@ const diaryListHeaderStyle = css`
 `;
 
 const diaryListTitleStyle = css`
+  word-break: keep-all;
   color: ${theme.colors.foreground.neutral};
   font-size: 15px;
   font-weight: 600;
@@ -125,6 +131,7 @@ const diaryListTitleStyle = css`
 `;
 
 const monthlyDiaryCountStyle = css`
+  word-break: keep-all;
   color: ${theme.colors.foreground.neutralMuted};
   font-size: 13px;
   font-weight: 400;

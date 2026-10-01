@@ -162,6 +162,10 @@ const settingPageContentStyle = css`
   gap: 10px;
   min-height: 0;
   overflow-y: auto;
+
+  & > * {
+    flex-shrink: 0;
+  }
 `;
 
 const versionStyle = css`
@@ -174,7 +178,6 @@ const versionStyle = css`
 `;
 
 const settingCardStyle = css`
-  height: 120px;
   overflow: hidden;
   border: 1px solid ${theme.colors.stroke.outline};
   border-radius: 16px;

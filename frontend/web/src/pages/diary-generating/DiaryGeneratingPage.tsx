@@ -1,3 +1,4 @@
+import { DIARY_GENERATING_COPY } from './copy';
 import { useCallback, useEffect } from 'react';
 import DiaryGenerateStepper from './DiaryGenerateStepper';
 import { Navigate, useLocation, useNavigate } from 'react-router';
@@ -19,10 +20,10 @@ import {
 import useDiaryGenerationProgress from './useDiaryGenerationProgress';
 
 const DiaryGeneratingPage = () => {
-  const { state: diaryGenerateRequestBody } = useLocation();
+  const diaryGenerateRequestBody: unknown = useLocation().state;
 
   if (!isDiaryGenerateRequest(diaryGenerateRequestBody)) {
-    alert('일기 생성 형식이 올바르지 않습니다.');
+    alert(DIARY_GENERATING_COPY.invalidRequest);
     return <Navigate to="/" replace />;
   }
 
@@ -33,23 +34,23 @@ export default DiaryGeneratingPage;
 
 const generationSteps = [
   {
-    message: '오늘의 이야기를 차근차근 읽고 있어요',
+    message: DIARY_GENERATING_COPY.steps[0],
     image: generationStep1Image,
   },
   {
-    message: '기억에 남는 장면을 한 장면씩 적어보고 있어요',
+    message: DIARY_GENERATING_COPY.steps[1],
     image: generationStep2Image,
   },
   {
-    message: '네 장면을 고르고 이야기의 흐름을 맞추고 있어요',
+    message: DIARY_GENERATING_COPY.steps[2],
     image: generationStep3Image,
   },
   {
-    message: '색을 더하고 다듬어 네컷 만화를 완성하고 있어요',
+    message: DIARY_GENERATING_COPY.steps[3],
     image: generationStep4Image,
   },
   {
-    message: '완성했어요! 2초 뒤에 앨범으로 이동해요',
+    message: DIARY_GENERATING_COPY.steps[4],
     image: generationCompleteImage,
   },
 ] as const;
@@ -113,7 +114,7 @@ const DiaryGeneratingContent = (generateRequestBody: DiaryGenerateRequest) => {
       <div css={supportingMessageSlotStyle}>
         {!isGenerationComplete && (
           <p css={supportingMessageStyle}>
-            다른 화면으로 이동해도 일기는 계속 만들어요!
+            {DIARY_GENERATING_COPY.backgroundMessage}
           </p>
         )}
       </div>

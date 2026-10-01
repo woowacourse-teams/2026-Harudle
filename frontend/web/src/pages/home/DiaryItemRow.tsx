@@ -17,7 +17,7 @@ const DiaryItemRow = ({
   date: MonthlyDiaryDay['date'];
   onClick: () => void;
 }) => {
-  const { title, thumbnailUrl } = monthlyDiary;
+  const { id, title, thumbnailUrl } = monthlyDiary;
   const { date: formattedDate, weekday } = formatDiaryDate(date);
   return (
     <button css={diaryItemRowStyle} onClick={onClick}>
@@ -29,8 +29,10 @@ const DiaryItemRow = ({
       <span css={titleStyle}>{title}</span>
 
       <DiaryImage
+        diaryId={id}
+        imageRole="thumbnail"
         src={thumbnailUrl}
-        alt={`그림일기 ${date}`}
+        alt={`네컷만화 ${date}`}
         css={thumbnailStyle}
       />
     </button>

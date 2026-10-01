@@ -1,3 +1,4 @@
+import { useErrorTracking } from '../../posthog/useErrorTracking';
 import { useCallback, useEffect, useState } from 'react';
 import type { ApiRequest } from '../../shared/api';
 import {
@@ -8,6 +9,7 @@ import { useAnalytics } from '../../posthog/useAnalytics';
 
 const useDiaryDetail = ({ diaryId }: { diaryId: string }) => {
   const { track } = useAnalytics();
+  const { captureError } = useErrorTracking();
   const [request, setRequest] = useState<ApiRequest<DiaryDetailResponse>>({
     status: 'idle',
   });
@@ -30,13 +32,18 @@ const useDiaryDetail = ({ diaryId }: { diaryId: string }) => {
       });
     } catch (error: unknown) {
       if (error instanceof Error) {
+        captureError(error, {
+          feature: 'diary',
+          operation: 'read',
+          diary_id: diaryId,
+        });
         setRequest({
           status: 'error',
           error: error,
         });
       }
     }
-  }, [diaryId, track]);
+  }, [diaryId, track, captureError]);
 
   useEffect(() => {
     // TODO: API 요청과 상태 갱신 책임을 분리해 lint 예외를 제거한다.

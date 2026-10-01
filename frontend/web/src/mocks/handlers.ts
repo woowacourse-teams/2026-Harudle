@@ -527,25 +527,6 @@ export const handlers = [
     });
   }),
 
-  http.get('/api/v1/diaries/current-streak', async ({ request }) => {
-    const unauthorizedResponse = validateAccessToken(request);
-
-    if (unauthorizedResponse) {
-      return unauthorizedResponse;
-    }
-
-    await delay(1_500);
-
-    return HttpResponse.json({
-      streakCount: 6,
-      recordedToday: true,
-      days: augustDiaries.slice(0, 5).map(({ date, items }) => ({
-        date,
-        items,
-      })),
-    });
-  }),
-
   http.get('/api/v1/diaries/:diaryId', async ({ params, request }) => {
     const unauthorizedResponse = validateAccessToken(request);
 
@@ -601,6 +582,13 @@ export const handlers = [
         completedAt: `${diaryDay.date}T20:11:42+09:00`,
       },
     };
+
+    const scenario = request.headers.get(MOCK_SCENARIO_HEADER);
+    if (scenario === MOCK_SCENARIOS.diaryLongKoreanTitle) {
+      response.generation.title = '가'.repeat(100);
+    } else if (scenario === MOCK_SCENARIOS.diaryLongEmojiTitle) {
+      response.generation.title = '😀'.repeat(100);
+    }
 
     return HttpResponse.json(response);
   }),
