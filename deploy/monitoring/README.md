@@ -61,7 +61,7 @@ prod에서는 위 명령의 파일명을 `cloudwatch-agent.prod.json`으로 바�
 
 이미지 실패 신고 API는 `POST /api/v1/telemetry/image-load-failures/{timeline|detail}`이며 인증·CSRF가 필요한 본문 없는 요청에 204로 응답한다. 수락한 신고마다 `image_load_failure_reported` 구조화 로그를 한 번 기록하고, dev에는 이 이벤트의 로그 지표 필터를 준비했다. 이번 PR에는 프론트 신고 코드가 포함되지 않는다. 담당 팀원의 프론트 작업이 dev에 합류하고 두 화면의 실제 실패 신고가 API·지표·로그 필터에 도착하는지 확인한 뒤에만 `image-load-failure` 알람을 만든다. 그전의 지표 0은 이미지 표시 성공을 뜻하지 않는다.
 
-Gemini 단계·S3 작업/URL 서명·HTTP 상태별 카운터는 새 태그 조합이 첫 이벤트에서 생성될 수 있어 같은 첫 수집 누락 위험이 있다. 첫 **한 건**부터 감지해야 하는 S3/Gemini 오류는 `event=external_api_failure`와 `provider`·`operation`·`failureType`을 사용하는 CloudWatch Logs 지표 필터로 세고, Agent 카운터는 추세 관찰과 대조에 쓴다. 필터가 원본 실패 로그 한 건을 정확히 한 번 세는지 dev에서 확인한다. 2026-09-30 점검 시점 dev 로그 지표 필터 13개와 그중 12개에 대한 경보, EC2 상태 검사·CPU 경보 각 1개가 생성됐지만, dev 백엔드 로그 스트림은 0개이고 SNS 구독·Discord 전달도 연결 전이다. 앱 로그는 Docker `awslogs`가 직접 전송한다. 새 계측 코드는 아직 dev에 배포되지 않았고 Docker 로그 쓰기 권한도 미확인이므로, 스트림 0개만으로 수집 장애를 판단할 수 없다. 실제 로그 일치와 첫 건 알림은 아직 검증되지 않았다. [현재 AWS 현황](infrastructure-rollout.md#지금-확인된-것과-미확인인-것)을 참고한다. 이미지 신고도 구조화 로그와 필터는 준비됐지만, 프론트 연동과 실제 유입 전에는 첫 건 알림을 보장하지 않는다.
+Gemini 단계·S3 작업/URL 서명·HTTP 상태별 카운터는 새 태그 조합이 첫 이벤트에서 생성될 수 있어 같은 첫 수집 누락 위험이 있다. 첫 **한 건**부터 감지해야 하는 S3/Gemini 오류는 `event=external_api_failure`와 `provider`·`operation`·`failureType`을 사용하는 CloudWatch Logs 지표 필터로 세고, Agent 카운터는 추세 관찰과 대조에 쓴다. 필터가 원본 실패 로그 한 건을 정확히 한 번 세는지 dev에서 확인한다. 2026-09-30 점검 시점 dev 로그 지표 필터 13개와 그중 12개에 대한 경보, EC2 상태 검사·CPU 경보 각 1개가 생성됐지만, 초기 점검의 dev 백엔드 로그 스트림은 0개였다. 이후 제공 역할로 Lambda·SNS를 연결하고 2026-09-30 22:49 KST에 시험 ALARM·OK의 Discord 수신을 확인했다. 이 시험은 SNS 게시부터의 전달을 검증했으며 실제 앱 실패 로그·CloudWatch 경보 상태 전환은 아직 검증 전이다. 앱 로그는 Docker `awslogs`가 직접 전송한다. 새 계측 코드는 아직 dev에 배포되지 않았고 Docker 로그 쓰기 권한도 미확인이므로, 스트림 0개만으로 수집 장애를 판단할 수 없다. 실제 로그 일치와 첫 건 알림은 아직 검증되지 않았다. [현재 AWS 현황](infrastructure-rollout.md#지금-확인된-것과-미확인인-것)을 참고한다. 이미지 신고도 구조화 로그와 필터는 준비됐지만, 프론트 연동과 실제 유입 전에는 첫 건 알림을 보장하지 않는다.
 
 dev에서 Agent 버전과 활성 설정을 기록하고, 안전한 테스트 요청 전후의 `/actuator/prometheus` 누적값·`/harudle/dev/prometheus-emf`의 증가분·CloudWatch 5분 `Sum`을 대조한다. 백엔드 재시작 뒤에도 큰 오탐 증가분이나 음수가 나오지 않는지 확인한 다음 알람을 활성화한다. 오류가 발생했을 때만 생성되는 시계열의 데이터 없음은 `notBreaching`으로 취급한다. 반대로 `hikaricp_connections_pending`처럼 매 수집 주기에 나오는 게이지가 dev에서 실제로 연속 게시되는지 확인한 뒤, 그 시계열의 무데이터를 `breaching`으로 보는 **별도 수집 중단 알람**을 둔다. Hikari가 연속 게시되지 않으면 Agent 상태를 나타내는 다른 지속 신호를 먼저 정한다. [CloudWatch 결측값 처리](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/alarms-and-missing-data.html)를 참고한다.
 
@@ -102,7 +102,7 @@ CloudWatch Agent는 HTTP 완료 횟수를 전체(`job`), 결과군(`job`, `outco
 
 ## 알람 설계
 
-CloudWatch 알람은 dev/prod를 별도로 만들고, 환경별 SNS 주제를 통해 Discord 전달 Lambda에 연결한다. Webhook은 Secrets Manager에 보관한다. 알람 상태 전환과 Lambda 전달 실패도 모니터링한다. 아래는 초기값이며 실제 트래픽을 1주일 관찰한 뒤 조정한다.
+CloudWatch 알람은 dev/prod를 별도로 만들고, 환경별 SNS 주제를 통해 Discord 전달 Lambda에 연결한다. 현재 우테코 제공 인프라에서는 Webhook을 Lambda의 `WEBHOOK_URL` 환경 변수에 보관한다. 알람 상태 전환과 Lambda 전달 실패도 모니터링한다. 아래는 초기값이며 실제 트래픽을 1주일 관찰한 뒤 조정한다.
 
 | 우선순위 | 조건 | 평가 창 | 이유 |
 |---|---|---|---|
@@ -124,9 +124,23 @@ CloudWatch Agent가 게시한 카운터는 증가분이고 로그 지표 필터�
 
 P95·P99 알람은 위의 수집 방식·목표·표본 수가 dev에서 검증되기 전에는 만들지 않는다. API 오류 비율과 EC2·RDS 자원 경보는 검증된 지표가 들어오는 즉시 dev에서 먼저 적용한다.
 
-Discord 전달 함수 `discord_forwarder.py`는 아래 이름만 허용한다. 각 환경에서 `harudle-{env}-{suffix}`로 경보를 만들고 환경별 SNS 주제 ARN, Secrets Manager Webhook ARN을 Lambda 환경 변수 `ALARM_TOPIC_ARN`, `WEBHOOK_SECRET_ARN`에 지정한다. Lambda의 `DEPLOY_ENV`도 해당 환경으로 설정한다. 함수는 CloudWatch의 자유 형식 오류 이유를 전달하지 않고, 환경·알람명·상태·고정 원인 문구만 Discord로 보낸다. `allowed_mentions`는 비활성화한다. 현재 Lambda·SNS·IAM·Webhook 비밀·알람은 저장소 배포에서 자동으로 생성하지 않는다.
+Discord 전달 함수 `discord_forwarder.py`는 아래 이름만 허용한다. 각 환경에서 `harudle-{env}-{suffix}`로 경보를 만들고 Lambda 환경 변수 `DEPLOY_ENV`에 해당 환경, `ALARM_TOPIC_ARN`에 환경별 SNS 주제 ARN을 지정한다. 함수는 CloudWatch의 자유 형식 오류 이유를 전달하지 않고, 환경·알람명·상태·고정 원인 문구만 Discord로 보낸다. `allowed_mentions`는 비활성화한다. 현재 Lambda·SNS·IAM·알람은 저장소 배포에서 자동으로 생성하지 않는다.
 
-연결할 때 SNS 주제 정책의 CloudWatch 서비스 Allow 문은 같은 계정의 해당 환경 `harudle-{env}-*` 알람 ARN으로 출처를 제한한다. 이 Allow 문만으로 같은 계정의 별도 identity policy를 통한 발행까지 차단되지는 않는다. Lambda에는 지정한 비밀 하나의 `secretsmanager:GetSecretValue`와 자기 로그 그룹 쓰기만 허용하고, SNS 주제 하나에만 호출 권한을 준다. 비밀이 고객 관리 KMS 키로 암호화됐다면 그 키의 복호화 권한도 별도로 확인한다. Lambda 코드 ZIP의 루트에 `discord_forwarder.py`를 넣고, 배포 시 버전이 바뀌는 아티팩트 키를 사용한다. Lambda 실패 경보를 같은 SNS→Lambda 경로에 연결하면 전달 장애를 알 수 없으므로 독립된 연락 경로로 보낸다. SNS 재전달로 Discord 알림이 중복될 수 있다.
+현재 우테코 제공 인프라에서는 **제공 역할 `techcourse-lambda-execution-role`**을 그대로 사용하고, Webhook은 Lambda 환경 변수 `WEBHOOK_URL`에 넣는다. 새 역할·관리형 정책·Secrets Manager 비밀 생성과 공유 역할의 정책 변경은 하지 않는다. `WEBHOOK_URL`과 `WEBHOOK_SECRET_ARN` 중 비어 있지 않은 값은 **정확히 하나**여야 한다. 둘 다 있거나 둘 다 없으면 호출 전에 설정 오류로 중단한다. 환경 변수 방식은 Secrets Manager API를 호출하지 않는다. 기존 Secret ARN 방식은 허용된 별도 운영 환경에서 계속 사용할 수 있으며, Secret 값은 URL 또는 `webhook_url`을 가진 JSON이다. 두 방식 모두 HTTPS Discord 호스트·Webhook 경로를 검증하고 사용자 정보·포트·query·fragment가 있는 URL을 거절한다.
+
+Lambda 환경 변수는 기본 AWS 관리 KMS 키로 [저장 암호화](https://docs.aws.amazon.com/lambda/latest/dg/configuration-envvars-encryption.html)되며 기본키 사용을 위한 추가 KMS 권한은 필요하지 않다. 환경 변수 조회 권한자는 값을 볼 수 있으므로 Webhook을 저장소·배포 ZIP·명령 인수·오류 로그·화면 캡처에 남기지 않고, SDK로 설정할 때도 응답의 환경 변수 값을 출력하지 않는다. 새 리소스에는 `Service=techcourse`, `Role=techcourse-etc`, `ProjectTeam=harudle` 태그를 적용한다. 제공 역할이 목록에 보여도 현재 사용자의 `iam:PassRole`과 함수 생성 권한이 허용됐다는 뜻은 아니므로 실제 연결 시 확인한다.
+
+연결할 때 SNS 주제 정책의 CloudWatch 서비스 Allow 문은 같은 계정의 해당 환경 `harudle-{env}-*` 알람 ARN으로 출처를 제한한다. 이 Allow 문만으로 같은 계정의 별도 identity policy를 통한 발행까지 차단되지는 않는다. SNS가 함수를 호출하는 권한은 **Lambda 리소스 정책**에서 SNS 서비스·주제 ARN·소유 계정 하나로 제한한다. 실행 역할에 SNS 발행 권한을 추가할 필요는 없다. Secret ARN 방식에서는 실행 역할에 지정한 비밀 하나의 `secretsmanager:GetSecretValue`와 필요한 KMS 복호화 권한이 있어야 한다. Lambda 코드 ZIP의 루트에 `discord_forwarder.py`를 넣고, 배포 시 버전이 바뀌는 아티팩트 키를 사용한다.
+
+### Discord 전달 실패와 재시도
+
+전달 경로는 `CloudWatch 경보 → SNS → Lambda 비동기 큐 → 함수 실행 → Discord`다. SNS가 Lambda에 도달하지 못하거나 호출이 거절되면 SNS가 재시도한다. **Lambda가 이벤트를 수락한 뒤 함수가 Discord 전송에 실패한 경우는 SNS 재시도가 아니라 Lambda 비동기 실행 재시도 대상**이다. 기본 설정에서는 함수 오류를 약 1분·2분 간격으로 두 번 더 실행한 뒤 소진한다. 기본 최대 이벤트 수명 6시간은 Discord 전송 실패를 6시간 동안 계속 재시도한다는 뜻이 아니다. 중복 실행이 가능하므로 같은 경보가 Discord에 두 번 이상 보일 수 있다. [SNS·Lambda 연동](https://docs.aws.amazon.com/lambda/latest/dg/with-sns.html), [Lambda 비동기 오류 처리](https://docs.aws.amazon.com/lambda/latest/dg/invocation-async-error-handling.html)
+
+Discord의 일반 Execute Webhook은 `wait` 기본값이 `false`다. 이때 메시지가 저장되지 않아도 오류 응답이 없을 수 있다. PR #291의 보완 코드는 원본 Webhook 비밀에는 query를 허용하지 않고 요청 시에만 `wait=true`를 붙여, HTTP 200과 생성된 메시지의 숫자 문자열 `id`를 확인한 경우에만 `discord_alert_delivered`를 기록한다. 204·응답 형식 오류는 실패로 처리한다. HTTP 429·일시적인 5xx·연결 오류는 HTTP 타임아웃을 최대 3초로 설정하고 10초의 재시도 예산 안에서 최대 3회 시도한다. Lambda 잔여 시간에서도 1초를 제외해 다음 요청·대기를 시작할 수 있는지 확인한다. HTTP 타임아웃은 각 소켓 I/O의 제한이므로 호출 전체를 정확히 10초 이내에 끝낸다는 보장은 아니다. 함수 내부에서는 Discord의 `Retry-After` 헤더와 `retry_after` 응답값 중 긴 대기 시간보다 일찍 재시도하지 않고, 기다릴 시간이 부족하면 `discord_alert_delivery_failed`를 남기고 오류를 반환한다. **긴 429 대기 시간을 Lambda의 다음 비동기 재시도까지 전달하지는 못한다.** 따라서 Lambda의 기본 재시도가 Discord가 요청한 대기보다 빨리 일어날 수 있고, 이 경우 별도 지연 큐 같은 인프라 설계가 필요하다. 메시지가 실제 저장된 뒤 응답만 유실될 수도 있으므로 **중복 없는 정확히 한 번 전달은 보장하지 않는다**. 2026-09-30에 배포한 ZIP은 이 변경 이전 코드이므로, 당시 ALARM·OK 수신 시험은 새 코드의 성공·실패 처리를 검증하지 않는다. [Discord Execute Webhook](https://docs.discord.com/developers/resources/webhook#execute-webhook), [Discord Rate Limits](https://docs.discord.com/developers/topics/rate-limits)
+
+재시도가 모두 실패하거나 이벤트가 만료되면, 별도 실패 보존 설정이 없는 Lambda는 이벤트를 버린다. 실패 기록은 **환경별 내부 전용 Standard SQS 큐를 `OnFailure` 대상으로 지정하는 방안**을 우선 검토한다. `OnFailure` 기록의 `requestPayload`에는 원본 SNS 이벤트가 포함될 수 있어 Discord로 보낼 네 필드보다 정보가 많다. 이 원문을 기존 Discord 주제나 메일로 전달하지 않고, 접근·보존 기간을 제한한 내부 큐에만 보관한다. Lambda 실행 역할에 해당 큐의 `sqs:SendMessage` 권한이 있어야 하며, 필요하면 큐 정책과 암호화 키 권한도 확인한다. 현재 제공 공유 역할의 해당 권한은 확인되지 않았고 역할 정책 변경은 금지되어 있으므로 **실패 대상·DLQ는 아직 적용하지 않았다**. 권한과 전용 대상이 승인되기 전에는 코드 수정만으로 최종 실패 기록 보존을 해결할 수 없다. [Lambda 실패 대상과 권한](https://docs.aws.amazon.com/lambda/latest/dg/invocation-async-retain-records.html)
+
+독립된 연락 경로로 Lambda의 `Errors`, `Throttles`, `AsyncEventsDropped`를 감시한다. 초기 조건은 함수 이름별 5분 `Sum > 0`, 무데이터 `notBreaching`으로 두고, 실패 대상을 연결한 뒤에는 `DestinationDeliveryFailures`도 감시한다. 이 경보를 같은 SNS → 같은 Lambda → Discord 경로로 보내면 전달기 자체의 고장을 알릴 수 없다. [Lambda 지표](https://docs.aws.amazon.com/lambda/latest/dg/monitoring-metrics-types.html)
 
 | 경보 이름 suffix | 연결할 조건 |
 |---|---|

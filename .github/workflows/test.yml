@@ -25,6 +25,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Test Discord forwarder (offline)
+        run: python3 -m unittest discover -s deploy/monitoring -p 'test_*.py'
+
       - name: Validate environment separation
         run: |
           printf 'DEPLOY_ENV=dev\n' > deploy/.env
