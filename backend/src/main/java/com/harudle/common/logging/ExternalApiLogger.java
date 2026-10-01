@@ -16,6 +16,7 @@ public final class ExternalApiLogger {
     private static final Pattern SAFE_FIELD_VALUE_PATTERN = Pattern.compile("[A-Za-z0-9_.:/+\\-]{1,128}");
     private static final String EMPTY_FIELD_VALUE = "none";
     private static final String INVALID_FIELD_VALUE = "invalid";
+    private static final int MAX_CAUSE_DEPTH = 16;
     private static final String EXTERNAL_API_FAILURE_EVENT = "external_api_failure";
     private static final String COMPENSATION_FAILURE_EVENT = "compensation_failure";
     private static final String LOG_FORMAT =
@@ -26,6 +27,10 @@ public final class ExternalApiLogger {
             + " maxOutputTokens={} responseLength={}";
 
     public void warn(ExternalApiFailure failure, Throwable exception) {
+        if ("gemini".equals(failure.provider())) {
+            warnWithRootCause(failure, exception);
+            return;
+        }
         warn(EXTERNAL_API_FAILURE_EVENT, failure, exception);
     }
 
@@ -46,6 +51,23 @@ public final class ExternalApiLogger {
                 safe(failure.providerRequestId()),
                 exception.getClass().getSimpleName()
         );
+    }
+
+    private void warnWithRootCause(ExternalApiFailure failure, Throwable exception) {
+        withSafeFields(LOGGER.atWarn(), EXTERNAL_API_FAILURE_EVENT, failure, exception)
+                .addKeyValue("rootCauseType", rootCauseType(exception))
+                .setCause(sanitizedStackTrace(exception))
+                .log(LOG_FORMAT + " rootCauseType={}",
+                        EXTERNAL_API_FAILURE_EVENT,
+                        safe(failure.provider()),
+                        safe(failure.operation()),
+                        safe(failure.failureType()),
+                        safe(failure.providerStatus()),
+                        safe(failure.providerCode()),
+                        safe(failure.providerRequestId()),
+                        exception.getClass().getSimpleName(),
+                        rootCauseType(exception)
+                );
     }
 
     public void error(ExternalApiFailure failure, Throwable exception) {
@@ -106,6 +128,17 @@ public final class ExternalApiLogger {
                 .addKeyValue("providerCode", safe(failure.providerCode()))
                 .addKeyValue("providerRequestId", safe(failure.providerRequestId()))
                 .addKeyValue("exceptionType", exception.getClass().getSimpleName());
+    }
+
+    private static String rootCauseType(Throwable exception) {
+        Throwable cause = exception;
+        for (int depth = 0; depth < MAX_CAUSE_DEPTH && cause.getCause() != null; depth++) {
+            if (cause.getCause() == cause) {
+                break;
+            }
+            cause = cause.getCause();
+        }
+        return safe(cause.getClass().getSimpleName());
     }
 
     private static String number(@Nullable Integer value) {
