@@ -45,7 +45,12 @@ _ALARM_REASONS = {
     "rds-connections-high": "RDS 연결 수 증가",
 }
 _WEBHOOK_PATH = re.compile(r"/api/webhooks/[0-9]+/[A-Za-z0-9_-]+")
-_STATES = frozenset({"ALARM", "OK", "INSUFFICIENT_DATA"})
+_ALERT_STYLES = {
+    "ALARM": ("🔴 백엔드 경보가 발생했어요", 0xED4245),
+    "OK": ("🟢 백엔드 경보가 정상 상태예요", 0x57F287),
+    "INSUFFICIENT_DATA": ("🟡 지표 데이터가 부족해요", 0xFEE75C),
+}
+_STATES = frozenset(_ALERT_STYLES)
 _MAX_ATTEMPTS = 3
 _REQUEST_TIMEOUT_SECONDS = 3
 _DELIVERY_BUDGET_SECONDS = 10
@@ -85,11 +90,21 @@ def _alarm_message(sns_record, expected_topic, environment):
     if state == "INSUFFICIENT_DATA":
         reason = "지표 데이터 부족"
     elif state == "OK":
-        reason = _ALARM_REASONS[name[len(prefix):]] + " 해소"
+        reason = _ALARM_REASONS[name[len(prefix):]] + " (현재 경보 상태: OK)"
     else:
         reason = _ALARM_REASONS[name[len(prefix):]]
+    title, color = _ALERT_STYLES[state]
     return {
-        "content": f"환경: {environment}\n알람: {name}\n상태: {state}\n원인: {reason}",
+        "embeds": [{
+            "title": title,
+            "description": reason,
+            "color": color,
+            "fields": [
+                {"name": "환경", "value": f"`{environment}`", "inline": True},
+                {"name": "상태", "value": f"`{state}`", "inline": True},
+                {"name": "알람", "value": f"`{name}`", "inline": False},
+            ],
+        }],
         "allowed_mentions": {"parse": []},
     }
 

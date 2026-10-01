@@ -145,6 +145,8 @@ P95·P99 알람은 위의 수집 방식·목표·표본 수가 dev에서 검증�
 
 Discord 전달 함수 `discord_forwarder.py`는 아래 이름만 허용한다. 각 환경에서 `harudle-{env}-{suffix}`로 경보를 만들고 Lambda 환경 변수 `DEPLOY_ENV`에 해당 환경, `ALARM_TOPIC_ARN`에 환경별 SNS 주제 ARN을 지정한다. 함수는 CloudWatch의 자유 형식 오류 이유를 전달하지 않고, 환경·알람명·상태·고정 원인 문구만 Discord로 보낸다. `allowed_mentions`는 비활성화한다. 현재 Lambda·SNS·IAM·알람은 저장소 배포에서 자동으로 생성하지 않는다.
 
+알림은 Discord Embed 카드 한 개로 표시한다. ALARM은 빨강·경보 발생 제목, OK는 초록·정상 상태 제목, INSUFFICIENT_DATA는 노랑·지표 부족 제목으로 구분한다. 고정 원인을 본문에 먼저 보여주고 환경·상태는 나란히, 알람명은 별도 행에 표시한다. OK는 경보 생성 직후에도 발생할 수 있으므로 실제 장애 복구를 단정하지 않고 ‘현재 경보 상태: OK’로 표시한다. 전송 데이터는 기존 네 필드이며 원본 오류 이유·URL·추가 측정값을 포함하지 않는다. 이 함수 코드는 EC2 배포와 별도로 Lambda ZIP을 갱신해야 반영된다. [Discord Embed](https://docs.discord.com/developers/resources/message#embed-object)
+
 현재 우테코 제공 인프라에서는 **제공 역할 `techcourse-lambda-execution-role`**을 그대로 사용하고, Webhook은 Lambda 환경 변수 `WEBHOOK_URL`에 넣는다. 새 역할·관리형 정책·Secrets Manager 비밀 생성과 공유 역할의 정책 변경은 하지 않는다. `WEBHOOK_URL`과 `WEBHOOK_SECRET_ARN` 중 비어 있지 않은 값은 **정확히 하나**여야 한다. 둘 다 있거나 둘 다 없으면 호출 전에 설정 오류로 중단한다. 환경 변수 방식은 Secrets Manager API를 호출하지 않는다. 기존 Secret ARN 방식은 허용된 별도 운영 환경에서 계속 사용할 수 있으며, Secret 값은 URL 또는 `webhook_url`을 가진 JSON이다. 두 방식 모두 HTTPS Discord 호스트·Webhook 경로를 검증하고 사용자 정보·포트·query·fragment가 있는 URL을 거절한다.
 
 Lambda 환경 변수는 기본 AWS 관리 KMS 키로 [저장 암호화](https://docs.aws.amazon.com/lambda/latest/dg/configuration-envvars-encryption.html)되며 기본키 사용을 위한 추가 KMS 권한은 필요하지 않다. 환경 변수 조회 권한자는 값을 볼 수 있으므로 Webhook을 저장소·배포 ZIP·명령 인수·오류 로그·화면 캡처에 남기지 않고, SDK로 설정할 때도 응답의 환경 변수 값을 출력하지 않는다. 새 리소스에는 `Service=techcourse`, `Role=techcourse-etc`, `ProjectTeam=harudle` 태그를 적용한다. 제공 역할이 목록에 보여도 현재 사용자의 `iam:PassRole`과 함수 생성 권한이 허용됐다는 뜻은 아니므로 실제 연결 시 확인한다.
