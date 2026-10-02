@@ -3,22 +3,25 @@ package com.harudle.generation.config;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import java.net.URI;
 import java.time.Duration;
 import org.jspecify.annotations.NonNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.util.unit.DataSize;
 import org.springframework.validation.annotation.Validated;
 
 @Validated
 @ConfigurationProperties("harudle.generation.storage.r2")
 public record R2StorageProperties(
         boolean enabled,
-        @NotBlank String environment,
+        @NotBlank @Pattern(regexp = "dev|prod", message = "R2 실행 환경은 dev 또는 prod여야 합니다.") String environment,
         @NotNull URI endpoint,
         @NotBlank String bucket,
         @NotBlank String accessKeyId,
         @NotBlank String secretAccessKey,
-        @NotNull Duration accessUrlTtl
+        @NotNull Duration accessUrlTtl,
+        @NotNull DataSize maxObjectSize
 ) {
 
     private static final Duration MIN_ACCESS_URL_TTL = Duration.ofSeconds(1);
@@ -42,11 +45,17 @@ public record R2StorageProperties(
                 && accessUrlTtl.compareTo(MAX_ACCESS_URL_TTL) <= 0;
     }
 
+    @AssertTrue(message = "R2 객체 최대 크기는 2GiB 미만의 양수여야 합니다.")
+    public boolean isMaxObjectSizeValid() {
+        return maxObjectSize != null && maxObjectSize.toBytes() > 0
+                && maxObjectSize.toBytes() < Integer.MAX_VALUE;
+    }
+
     @Override
     public @NonNull String toString() {
         return ("R2StorageProperties[enabled=%s, environment=%s, endpoint=%s, bucket=%s, "
-                + "accessKeyId=***, secretAccessKey=***, accessUrlTtl=%s]").formatted(
-                enabled, environment, endpoint, bucket, accessUrlTtl
+                + "accessKeyId=***, secretAccessKey=***, accessUrlTtl=%s, maxObjectSize=%s]").formatted(
+                enabled, environment, endpoint, bucket, accessUrlTtl, maxObjectSize
         );
     }
 }

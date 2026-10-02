@@ -15,6 +15,7 @@ import com.harudle.generation.adapter.out.s3.S3FailureReporter;
 import com.harudle.generation.adapter.out.s3.ImageVariantEncoder;
 import com.harudle.generation.adapter.out.s3.ImageUploadPreparer;
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
+import com.harudle.generation.diary.service.port.BackupObjectStorage;
 import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
@@ -92,7 +93,8 @@ class GenerationAdapterConfigurationTest {
                         "harudle.generation.storage.r2.bucket=test-backup",
                         "harudle.generation.storage.r2.access-key-id=r2-test-access-key",
                         "harudle.generation.storage.r2.secret-access-key=r2-test-secret-key",
-                        "harudle.generation.storage.r2.access-url-ttl=15m"
+                        "harudle.generation.storage.r2.access-url-ttl=15m",
+                        "harudle.generation.storage.r2.max-object-size=20MB"
                 ).run(context -> {
                     assertThat(context).hasNotFailed();
                     assertThat(context.getBeansOfType(S3Client.class))
@@ -101,6 +103,7 @@ class GenerationAdapterConfigurationTest {
                             .containsOnlyKeys("s3Presigner", "r2S3Presigner");
                     assertThat(context).hasSingleBean(ImageStorage.class);
                     assertThat(context).hasSingleBean(ImageUrlProvider.class);
+                    assertThat(context).hasSingleBean(BackupObjectStorage.class);
 
                     ImageAccessUrl accessUrl = context.getBean(ImageUrlProvider.class)
                             .createAccessUrl("harudle/generated/diary-images/prod/diary-id/image.png");
@@ -108,6 +111,12 @@ class GenerationAdapterConfigurationTest {
                     assertThat(accessUrl.url().getQuery())
                             .contains("s3-test-access-key")
                             .doesNotContain("r2-test-access-key");
+
+                    ImageAccessUrl backupUrl = context.getBean(BackupObjectStorage.class)
+                            .createAccessUrl("harudle/generated/diary-images/prod/diary-id/image.png");
+                    assertThat(backupUrl.url().getHost()).endsWith(".r2.cloudflarestorage.com");
+                    assertThat(backupUrl.url().getQuery())
+                            .contains("r2-test-access-key").doesNotContain("s3-test-access-key");
                 });
     }
 

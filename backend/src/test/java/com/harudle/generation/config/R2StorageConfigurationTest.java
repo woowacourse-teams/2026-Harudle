@@ -2,6 +2,10 @@ package com.harudle.generation.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.harudle.common.logging.ExternalApiLogger;
+import com.harudle.generation.adapter.out.r2.R2BackupObjectStorage;
+import com.harudle.generation.diary.service.port.BackupObjectStorage;
+import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
 import java.net.URI;
 import java.time.Duration;
 import org.junit.jupiter.api.DisplayName;
@@ -9,7 +13,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.util.unit.DataSize;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.core.checksums.RequestChecksumCalculation;
+import software.amazon.awssdk.core.checksums.ResponseChecksumValidation;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
@@ -22,7 +29,8 @@ class R2StorageConfigurationTest {
     private static final String ENDPOINT = "https://00000000000000000000000000000000.r2.cloudflarestorage.com";
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
-            .withUserConfiguration(R2StorageConfiguration.class);
+            .withUserConfiguration(R2StorageConfiguration.class)
+            .withBean(ExternalApiLogger.class, ExternalApiLogger::new);
 
     @Test
     @DisplayName("기본값에서는 자격 증명 없이 R2 클라이언트를 등록하지 않는다")
@@ -32,6 +40,7 @@ class R2StorageConfigurationTest {
             assertThat(context).doesNotHaveBean(R2StorageProperties.class);
             assertThat(context).doesNotHaveBean(S3Client.class);
             assertThat(context).doesNotHaveBean(S3Presigner.class);
+            assertThat(context).doesNotHaveBean(BackupObjectStorage.class);
         });
     }
 
@@ -48,6 +57,7 @@ class R2StorageConfigurationTest {
             assertThat(context).doesNotHaveBean(R2StorageProperties.class);
             assertThat(context).doesNotHaveBean("r2S3Client");
             assertThat(context).doesNotHaveBean("r2S3Presigner");
+            assertThat(context).doesNotHaveBean(BackupObjectStorage.class);
         });
     }
 
@@ -64,6 +74,9 @@ class R2StorageConfigurationTest {
             assertThat(properties.endpoint()).isEqualTo(URI.create(ENDPOINT));
             assertThat(properties.bucket()).isEqualTo("test-backup");
             assertThat(properties.accessUrlTtl()).isEqualTo(Duration.ofMinutes(15));
+            assertThat(properties.maxObjectSize()).isEqualTo(DataSize.ofMegabytes(20));
+            assertThat(context).hasSingleBean(BackupObjectStorage.class);
+            assertThat(context.getBean(BackupObjectStorage.class)).isInstanceOf(R2BackupObjectStorage.class);
             assertThat(properties.toString())
                     .contains("accessKeyId=***", "secretAccessKey=***")
                     .doesNotContain("r2-test-access-key", "r2-test-secret-key");
@@ -72,6 +85,10 @@ class R2StorageConfigurationTest {
             assertThat(client.serviceClientConfiguration().region()).isEqualTo(Region.of("auto"));
             assertThat(client.serviceClientConfiguration().endpointOverride())
                     .contains(URI.create(ENDPOINT));
+            assertThat(client.serviceClientConfiguration().requestChecksumCalculation())
+                    .isEqualTo(RequestChecksumCalculation.WHEN_REQUIRED);
+            assertThat(client.serviceClientConfiguration().responseChecksumValidation())
+                    .isEqualTo(ResponseChecksumValidation.WHEN_REQUIRED);
             assertThat(client.serviceClientConfiguration().credentialsProvider())
                     .isInstanceOfSatisfying(StaticCredentialsProvider.class, provider ->
                             assertThat(provider.resolveCredentials().accessKeyId()).isEqualTo("r2-test-access-key"));
@@ -87,11 +104,20 @@ class R2StorageConfigurationTest {
                     .isEqualTo("/test-backup/harudle/generated/diary-images/" + environment + "/diary-id/image.png");
             assertThat(signed.url().getQuery())
                     .contains("X-Amz-Expires=900", "r2-test-access-key");
+
+            ImageAccessUrl accessUrl = context.getBean(BackupObjectStorage.class).createAccessUrl(
+                    "harudle/generated/diary-images/" + environment + "/diary-id/image.png"
+            );
+            assertThat(accessUrl.url().getHost()).isEqualTo(URI.create(ENDPOINT).getHost());
+            assertThat(accessUrl.url().getPath()).isEqualTo(signed.url().getPath());
+            assertThat(accessUrl.url().getQuery()).contains("X-Amz-Expires=900", "r2-test-access-key");
         });
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"environment", "endpoint", "bucket", "access-key-id", "secret-access-key", "access-url-ttl"})
+    @ValueSource(strings = {
+            "environment", "endpoint", "bucket", "access-key-id", "secret-access-key", "access-url-ttl", "max-object-size"
+    })
     @DisplayName("R2를 활성화하면 필수 설정 누락을 서버 시작 단계에서 거절한다")
     void rejectMissingRequiredProperty(String property) {
         contextRunner.withPropertyValues(enabledProperties())
@@ -133,6 +159,24 @@ class R2StorageConfigurationTest {
                 .run(context -> assertThat(context).hasNotFailed());
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"local", "staging", "production"})
+    @DisplayName("이미지 경로에 대응하지 않는 실행 환경은 시작 단계에서 거절한다")
+    void rejectUnknownEnvironment(String environment) {
+        contextRunner.withPropertyValues(enabledProperties())
+                .withPropertyValues(PREFIX + "environment=" + environment)
+                .run(context -> assertThat(context).hasFailed());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0B", "-1B", "2GB"})
+    @DisplayName("객체 최대 크기가 양수가 아니거나 2GiB 이상이면 거절한다")
+    void rejectInvalidMaxObjectSize(String size) {
+        contextRunner.withPropertyValues(enabledProperties())
+                .withPropertyValues(PREFIX + "max-object-size=" + size)
+                .run(context -> assertThat(context).hasFailed());
+    }
+
     private static String[] enabledProperties() {
         return new String[]{
                 PREFIX + "enabled=true",
@@ -141,7 +185,8 @@ class R2StorageConfigurationTest {
                 PREFIX + "bucket=test-backup",
                 PREFIX + "access-key-id=r2-test-access-key",
                 PREFIX + "secret-access-key=r2-test-secret-key",
-                PREFIX + "access-url-ttl=15m"
+                PREFIX + "access-url-ttl=15m",
+                PREFIX + "max-object-size=20MB"
         };
     }
 }
