@@ -1,0 +1,30 @@
+export const GUEST_TRIAL_COPY = {
+  usageNotice:
+    '로그인 없이 한 번 만들어 볼 수 있어요.\n만들 수 있는 횟수에는 제한이 있어요.',
+  inputLabel: '네컷만화로 만들 내용',
+  emptyInputError: '있었던 순간을 적어주세요',
+  placeholders: [
+    '예) 친구 생일에 숨어 있다가 축하를 외쳤는데, 문을 연 사람은 배달 기사님이었다.',
+    '예) 동료와 한참 토론했는데 알고 보니 서로 다른 페이지를 보고 있었다.',
+    '예) 발표 직전에 노트북이 업데이트를 시작해서 친구와 휴대폰으로 발표했다.',
+  ],
+  createAction: '네컷만화 만들기',
+  generatingAction: '만들고 있는 네컷만화 보기',
+  resultAction: '완성한 네컷만화 보기',
+  usedAction: '로그인하고 계속 만들기',
+  generatingTitle: '네컷만화를 만들고 있어요',
+  generationMessages: [
+    '남겨주신 순간을 차근차근 살펴보고 있어요',
+    '기억에 남는 장면을 한 장면씩 적어보고 있어요',
+    '네 장면을 고르고 자연스럽게 이어지도록 맞추고 있어요',
+    '색을 더하고 다듬어 네컷만화를 완성하고 있어요',
+  ],
+  extendedWait: '예상보다 시간이 걸리고 있어요. 조금만 더 기다려주세요.',
+  generatingNotice: '완성되면 이곳에서 네컷만화를 보여드릴게요.',
+  loginNotice: '카카오로 로그인하면 다른 순간도 네컷만화로 만들 수 있어요.',
+  loginAction: '카카오로 시작하고 계속 만들기',
+  resultLoading: '완성된 네컷만화를 불러오고 있어요',
+  resultFailure: '네컷만화를 불러오지 못했어요',
+  resultContentTitle: '내용',
+  failureTitle: '네컷만화를 완성하지 못했어요',
+} as const;

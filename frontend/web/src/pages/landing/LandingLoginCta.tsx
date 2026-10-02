@@ -1,12 +1,14 @@
 import { css } from '@emotion/react';
+import type { JSX } from 'react';
 import kakaoIcon from '../../assets/icons/kakao.svg';
 import { theme } from '../../styles/theme';
 import { useAnalytics } from '../../posthog/useAnalytics';
 
 const KAKAO_OAUTH_PATH = '/oauth2/authorization/kakao';
 
-type GuestLoginCtaProps = {
+type LandingLoginCtaProps = {
   label: string;
+  appearance?: 'button' | 'text';
 } & (
   | {
       analyticsEvent: 'landing_direct_login_clicked';
@@ -18,10 +20,10 @@ type GuestLoginCtaProps = {
     }
 );
 
-const GuestLoginCta = (props: GuestLoginCtaProps) => {
+const LandingLoginCta = (props: LandingLoginCtaProps): JSX.Element => {
   const { track } = useAnalytics();
 
-  const handleClick = () => {
+  const handleClick = (): void => {
     if (props.analyticsEvent === 'landing_direct_login_clicked') {
       track('landing_direct_login_clicked', { location: props.location });
       return;
@@ -31,14 +33,24 @@ const GuestLoginCta = (props: GuestLoginCtaProps) => {
   };
 
   return (
-    <a href={KAKAO_OAUTH_PATH} css={linkStyle} onClick={handleClick}>
-      <img src={kakaoIcon} alt="" css={iconStyle} />
+    <a
+      href={KAKAO_OAUTH_PATH}
+      css={
+        props.appearance === 'text'
+          ? [textLinkStyle, props.location === 'final' && finalTextLinkStyle]
+          : linkStyle
+      }
+      onClick={handleClick}
+    >
+      {props.appearance !== 'text' && (
+        <img src={kakaoIcon} alt="" css={iconStyle} />
+      )}
       {props.label}
     </a>
   );
 };
 
-export default GuestLoginCta;
+export default LandingLoginCta;
 
 const linkStyle = css`
   display: flex;
@@ -65,4 +77,26 @@ const linkStyle = css`
 const iconStyle = css`
   width: 24px;
   height: 24px;
+`;
+
+const textLinkStyle = css`
+  padding: 12px 0;
+  color: ${theme.colors.foreground.neutralMuted};
+  font-size: 12px;
+  line-height: 22px;
+  text-decoration: none;
+
+  &:focus-visible {
+    outline: 3px solid ${theme.colors.stroke.focusRing};
+    outline-offset: 4px;
+  }
+`;
+
+const finalTextLinkStyle = css`
+  padding: 8px 0;
+  color: ${theme.colors.foreground.brand};
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 4px;
 `;
