@@ -27,6 +27,7 @@ import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -181,7 +182,7 @@ public class GenerationAdapterConfiguration {
 
     @Bean
     public ImageStorage imageStorage(
-            S3Client s3Client,
+            @Qualifier("s3Client") S3Client s3Client,
             S3StorageProperties properties,
             ImageUploadPreparer uploadPreparer,
             S3FailureReporter failureReporter,
@@ -198,7 +199,7 @@ public class GenerationAdapterConfiguration {
 
     @Bean
     public ImageUrlProvider imageUrlProvider(
-            S3Presigner s3Presigner,
+            @Qualifier("s3Presigner") S3Presigner s3Presigner,
             S3StorageProperties properties,
             S3FailureReporter failureReporter,
             MeterRegistry meterRegistry

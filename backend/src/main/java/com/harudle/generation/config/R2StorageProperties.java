@@ -1,0 +1,52 @@
+package com.harudle.generation.config;
+
+import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import java.net.URI;
+import java.time.Duration;
+import org.jspecify.annotations.NonNull;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.validation.annotation.Validated;
+
+@Validated
+@ConfigurationProperties("harudle.generation.storage.r2")
+public record R2StorageProperties(
+        boolean enabled,
+        @NotBlank String environment,
+        @NotNull URI endpoint,
+        @NotBlank String bucket,
+        @NotBlank String accessKeyId,
+        @NotBlank String secretAccessKey,
+        @NotNull Duration accessUrlTtl
+) {
+
+    private static final Duration MIN_ACCESS_URL_TTL = Duration.ofSeconds(1);
+    private static final Duration MAX_ACCESS_URL_TTL = Duration.ofDays(7);
+
+    @AssertTrue(message = "R2 endpoint는 경로, 인증 정보, 쿼리, 프래그먼트가 없는 HTTPS API 주소여야 합니다.")
+    public boolean isEndpointValid() {
+        return endpoint != null
+                && "https".equalsIgnoreCase(endpoint.getScheme())
+                && endpoint.getHost() != null
+                && endpoint.getUserInfo() == null
+                && endpoint.getQuery() == null
+                && endpoint.getFragment() == null
+                && (endpoint.getPath().isEmpty() || "/".equals(endpoint.getPath()));
+    }
+
+    @AssertTrue(message = "R2 접근 URL 유효 시간은 1초 이상 7일 이하여야 합니다.")
+    public boolean isAccessUrlTtlValid() {
+        return accessUrlTtl != null
+                && accessUrlTtl.compareTo(MIN_ACCESS_URL_TTL) >= 0
+                && accessUrlTtl.compareTo(MAX_ACCESS_URL_TTL) <= 0;
+    }
+
+    @Override
+    public @NonNull String toString() {
+        return ("R2StorageProperties[enabled=%s, environment=%s, endpoint=%s, bucket=%s, "
+                + "accessKeyId=***, secretAccessKey=***, accessUrlTtl=%s]").formatted(
+                enabled, environment, endpoint, bucket, accessUrlTtl
+        );
+    }
+}

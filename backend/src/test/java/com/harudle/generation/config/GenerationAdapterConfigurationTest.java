@@ -18,6 +18,7 @@ import com.harudle.generation.diary.service.port.DiaryImageGenerator;
 import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
+import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.DisplayName;
@@ -70,6 +71,44 @@ class GenerationAdapterConfigurationTest {
             assertThat(context.getBean(ImageUrlProvider.class))
                     .isInstanceOf(ObservedImageUrlProvider.class);
         });
+    }
+
+    @Test
+    @DisplayName("R2를 함께 활성화해도 기본 이미지 저장과 URL 발급은 S3를 사용한다")
+    void keepS3AsDefaultStorageWhenR2IsEnabled() {
+        contextRunner.withUserConfiguration(R2StorageConfiguration.class)
+                .withSystemProperties(
+                        "aws.accessKeyId=s3-test-access-key",
+                        "aws.secretAccessKey=s3-test-secret-key"
+                )
+                .withPropertyValues(enabledAdapterProperties())
+                .withPropertyValues(
+                        "harudle.generation.storage.s3.environment=prod",
+                        "harudle.generation.storage.s3.generated-prefix=harudle/generated/diary-images/prod",
+                        "harudle.generation.storage.s3.reference-prefix=harudle/references/generation/prod",
+                        "harudle.generation.storage.r2.enabled=true",
+                        "harudle.generation.storage.r2.environment=prod",
+                        "harudle.generation.storage.r2.endpoint=https://00000000000000000000000000000000.r2.cloudflarestorage.com",
+                        "harudle.generation.storage.r2.bucket=test-backup",
+                        "harudle.generation.storage.r2.access-key-id=r2-test-access-key",
+                        "harudle.generation.storage.r2.secret-access-key=r2-test-secret-key",
+                        "harudle.generation.storage.r2.access-url-ttl=15m"
+                ).run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context.getBeansOfType(S3Client.class))
+                            .containsOnlyKeys("s3Client", "r2S3Client");
+                    assertThat(context.getBeansOfType(S3Presigner.class))
+                            .containsOnlyKeys("s3Presigner", "r2S3Presigner");
+                    assertThat(context).hasSingleBean(ImageStorage.class);
+                    assertThat(context).hasSingleBean(ImageUrlProvider.class);
+
+                    ImageAccessUrl accessUrl = context.getBean(ImageUrlProvider.class)
+                            .createAccessUrl("harudle/generated/diary-images/prod/diary-id/image.png");
+                    assertThat(accessUrl.url().getHost()).endsWith(".amazonaws.com");
+                    assertThat(accessUrl.url().getQuery())
+                            .contains("s3-test-access-key")
+                            .doesNotContain("r2-test-access-key");
+                });
     }
 
     @Test
