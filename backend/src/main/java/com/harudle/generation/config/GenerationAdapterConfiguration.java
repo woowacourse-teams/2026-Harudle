@@ -10,8 +10,14 @@ import com.harudle.generation.adapter.out.gemini.GeminiDiaryImageGenerator;
 import com.harudle.generation.adapter.out.gemini.GeminiExceptionTranslator;
 import com.harudle.generation.adapter.out.gemini.GeminiFailureReporter;
 import com.harudle.generation.adapter.out.gemini.GeminiStoryboardGenerator;
+import com.harudle.generation.adapter.out.gemini.GeminiStageMetrics;
 import com.harudle.generation.adapter.out.gemini.GeminiStoryboardResponseMapper;
+import com.harudle.generation.adapter.out.s3.CwebpImageVariantEncoder;
 import com.harudle.generation.adapter.out.s3.ImageObjectKeyFactory;
+import com.harudle.generation.adapter.out.s3.ImageVariantEncoder;
+import com.harudle.generation.adapter.out.s3.ImageUploadPreparer;
+import com.harudle.generation.adapter.out.s3.ObservedImageStorage;
+import com.harudle.generation.adapter.out.s3.ObservedImageUrlProvider;
 import com.harudle.generation.adapter.out.s3.S3ExceptionTranslator;
 import com.harudle.generation.adapter.out.s3.S3FailureReporter;
 import com.harudle.generation.adapter.out.s3.S3ImageStorage;
@@ -20,6 +26,7 @@ import com.harudle.generation.diary.service.port.DiaryImageGenerator;
 import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -94,6 +101,11 @@ public class GenerationAdapterConfiguration {
     }
 
     @Bean
+    public GeminiStageMetrics geminiStageMetrics(MeterRegistry meterRegistry) {
+        return new GeminiStageMetrics(meterRegistry);
+    }
+
+    @Bean
     public DiaryImagePromptRenderer diaryImagePromptRenderer() {
         return new DiaryImagePromptRenderer();
     }
@@ -104,14 +116,16 @@ public class GenerationAdapterConfiguration {
             GeminiGenerationProperties properties,
             ObjectMapper objectMapper,
             GeminiStoryboardResponseMapper responseMapper,
-            GeminiFailureReporter failureReporter
+            GeminiFailureReporter failureReporter,
+            GeminiStageMetrics stageMetrics
     ) {
         return new GeminiStoryboardGenerator(
                 geminiModels,
                 properties,
                 objectMapper,
                 responseMapper,
-                failureReporter
+                failureReporter,
+                stageMetrics
         );
     }
 
@@ -120,13 +134,15 @@ public class GenerationAdapterConfiguration {
             Models geminiModels,
             GeminiGenerationProperties properties,
             DiaryImagePromptRenderer promptRenderer,
-            GeminiFailureReporter failureReporter
+            GeminiFailureReporter failureReporter,
+            GeminiStageMetrics stageMetrics
     ) {
         return new GeminiDiaryImageGenerator(
                 geminiModels,
                 properties,
                 promptRenderer,
-                failureReporter
+                failureReporter,
+                stageMetrics
         );
     }
 
@@ -149,26 +165,47 @@ public class GenerationAdapterConfiguration {
     }
 
     @Bean
+    public ImageVariantEncoder imageVariantEncoder() {
+        CwebpImageVariantEncoder encoder = new CwebpImageVariantEncoder();
+        encoder.verifyAvailable();
+        return encoder;
+    }
+
+    @Bean
+    public ImageUploadPreparer imageUploadPreparer(
+            ImageObjectKeyFactory objectKeyFactory,
+            ImageVariantEncoder variantEncoder
+    ) {
+        return new ImageUploadPreparer(objectKeyFactory, variantEncoder);
+    }
+
+    @Bean
     public ImageStorage imageStorage(
             S3Client s3Client,
             S3StorageProperties properties,
-            ImageObjectKeyFactory objectKeyFactory,
-            S3FailureReporter failureReporter
+            ImageUploadPreparer uploadPreparer,
+            S3FailureReporter failureReporter,
+            MeterRegistry meterRegistry
     ) {
-        return new S3ImageStorage(
+        ImageStorage storage = new S3ImageStorage(
                 s3Client,
                 properties,
-                objectKeyFactory,
+                uploadPreparer,
                 failureReporter
         );
+        return new ObservedImageStorage(storage, meterRegistry);
     }
 
     @Bean
     public ImageUrlProvider imageUrlProvider(
             S3Presigner s3Presigner,
             S3StorageProperties properties,
-            S3FailureReporter failureReporter
+            S3FailureReporter failureReporter,
+            MeterRegistry meterRegistry
     ) {
-        return new S3ImageUrlProvider(s3Presigner, properties, failureReporter);
+        return new ObservedImageUrlProvider(
+                new S3ImageUrlProvider(s3Presigner, properties, failureReporter),
+                meterRegistry
+        );
     }
 }

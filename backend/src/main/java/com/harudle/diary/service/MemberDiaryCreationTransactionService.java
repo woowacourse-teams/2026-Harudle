@@ -3,6 +3,7 @@ package com.harudle.diary.service;
 import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.generation.usage.domain.GenerationUsage;
 import com.harudle.generation.usage.service.GenerationUsageService;
+import java.time.LocalDate;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,8 +24,9 @@ class MemberDiaryCreationTransactionService {
 
     @Transactional
     MemberDiaryCreationClaim claim(CreateDiaryCommand command, boolean generationAvailable) {
-        DiaryCreationClaim claim = claimService.claim(command, generationAvailable);
-        GenerationUsage usage = applyUsagePolicy(command, claim);
+        LocalDate usageDate = generationUsageService.getCurrentUsageDate();
+        DiaryCreationClaim claim = claimService.claim(command, generationAvailable, usageDate);
+        GenerationUsage usage = applyUsagePolicy(command, claim, usageDate);
         return new MemberDiaryCreationClaim(claim, usage);
     }
 
@@ -39,10 +41,11 @@ class MemberDiaryCreationTransactionService {
 
     private GenerationUsage applyUsagePolicy(
             CreateDiaryCommand command,
-            DiaryCreationClaim claim
+            DiaryCreationClaim claim,
+            LocalDate usageDate
     ) {
         if (claim.newlyCreated()) {
-            return generationUsageService.incrementTodayUsage(command.userId());
+            return generationUsageService.incrementUsage(command.userId(), usageDate);
         }
         return generationUsageService.getTodayUsage(command.userId());
     }

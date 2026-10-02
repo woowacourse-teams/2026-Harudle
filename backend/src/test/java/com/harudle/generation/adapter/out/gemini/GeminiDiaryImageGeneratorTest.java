@@ -17,9 +17,11 @@ import com.google.genai.errors.ClientException;
 import com.google.genai.types.Content;
 import com.google.genai.types.GenerateContentConfig;
 import com.google.genai.types.GenerateContentResponse;
+import com.google.genai.types.GenerateContentResponseUsageMetadata;
 import com.google.genai.types.Part;
 import com.harudle.common.logging.ExternalApiFailure;
 import com.harudle.common.logging.ExternalApiLogger;
+import com.harudle.common.logging.ExternalApiResponseDiagnostics;
 import com.harudle.generation.config.GeminiGenerationProperties;
 import com.harudle.generation.diary.domain.FocalColor;
 import com.harudle.generation.diary.domain.ScenePlan;
@@ -30,9 +32,11 @@ import com.harudle.generation.diary.service.exception.AiGenerationException;
 import com.harudle.generation.diary.service.port.dto.DiaryImageGenerationRequest;
 import com.harudle.generation.diary.service.port.dto.GeneratedImage;
 import com.harudle.generation.diary.service.port.dto.ReferenceImage;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -50,6 +54,7 @@ class GeminiDiaryImageGeneratorTest {
     private final GenerateContentResponse response = mock(GenerateContentResponse.class);
     private final DiaryImagePromptRenderer promptRenderer = new DiaryImagePromptRenderer();
     private final ExternalApiLogger externalApiLogger = mock(ExternalApiLogger.class);
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
     private final GeminiDiaryImageGenerator generator = new GeminiDiaryImageGenerator(
             models,
             createProperties(),
@@ -57,7 +62,8 @@ class GeminiDiaryImageGeneratorTest {
             new GeminiFailureReporter(
                     new GeminiExceptionTranslator(),
                     externalApiLogger
-            )
+            ),
+            new GeminiStageMetrics(meterRegistry)
     );
 
     @BeforeEach
@@ -120,34 +126,42 @@ class GeminiDiaryImageGeneratorTest {
                 .extracting(imageConfig -> imageConfig.aspectRatio().orElseThrow())
                 .isEqualTo("1:1");
         verifyNoInteractions(externalApiLogger);
+        assertThat(meterRegistry.get("harudle.gemini.stage.calls")
+                .tags("stage", "image_generation", "outcome", "success", "failureType", "none")
+                .counter().count()).isEqualTo(1);
     }
 
     @Test
-    @DisplayName("Gemini 응답에 이미지가 없으면 제공자 오류가 발생한다")
+    @DisplayName("Gemini 응답에 이미지가 없으면 응답 처리 오류가 발생한다")
     void rejectResponseWithoutImage() {
         when(response.parts()).thenReturn(ImmutableList.of(Part.fromText("no image")));
 
         assertThatThrownBy(() -> generator.generate(createRequest(createReferenceImage())))
                 .isInstanceOfSatisfying(AiGenerationException.class, exception -> {
-                    assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.PROVIDER_ERROR);
+                    assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.RESPONSE_PROCESSING_ERROR);
                     assertThat(exception.getCause()).isInstanceOf(IllegalStateException.class);
                 });
         verify(externalApiLogger).error(
                 eq(new ExternalApiFailure(
                         "gemini",
                         "image_generation",
-                        "RESPONSE_PROCESSING_ERROR",
+                        "IMAGE_PART_MISSING",
                         null,
                         null,
                         null
                 )),
-                any(IllegalStateException.class)
+                any(IllegalStateException.class),
+                eq(new ExternalApiResponseDiagnostics(null, null, null, null, null))
         );
+        assertThat(meterRegistry.get("harudle.gemini.stage.calls")
+                .tags("stage", "image_generation", "outcome", "failure",
+                        "failureType", "IMAGE_PART_MISSING")
+                .counter().count()).isEqualTo(1);
     }
 
     @ParameterizedTest
     @MethodSource("invalidImageParts")
-    @DisplayName("Gemini 응답 이미지가 유효하지 않으면 제공자 오류가 발생한다")
+    @DisplayName("Gemini 응답 이미지가 유효하지 않으면 응답 처리 오류가 발생한다")
     void rejectInvalidGeneratedImage(Part invalidImagePart) {
         when(response.parts()).thenReturn(ImmutableList.of(invalidImagePart));
 
@@ -155,7 +169,7 @@ class GeminiDiaryImageGeneratorTest {
                 .isInstanceOfSatisfying(
                         AiGenerationException.class,
                         exception -> assertThat(exception.errorType())
-                                .isEqualTo(AiGenerationErrorType.PROVIDER_ERROR)
+                                .isEqualTo(AiGenerationErrorType.RESPONSE_PROCESSING_ERROR)
                 );
     }
 
@@ -172,7 +186,7 @@ class GeminiDiaryImageGeneratorTest {
 
         assertThatThrownBy(() -> generator.generate(createRequest(referenceImage)))
                 .isInstanceOfSatisfying(AiGenerationException.class, exception -> {
-                    assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.PROVIDER_ERROR);
+                    assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.INTERNAL_ERROR);
                     assertThat(exception.getCause()).isInstanceOf(IllegalArgumentException.class);
                 });
         verify(models, never()).generateContent(anyString(), any(Content.class), any(GenerateContentConfig.class));
@@ -180,13 +194,17 @@ class GeminiDiaryImageGeneratorTest {
                 eq(new ExternalApiFailure(
                         "gemini",
                         "image_generation",
-                        "REQUEST_PREPARATION_ERROR",
+                        "INLINE_REQUEST_TOO_LARGE",
                         null,
                         null,
                         null
                 )),
                 any(IllegalArgumentException.class)
         );
+        assertThat(meterRegistry.get("harudle.gemini.stage.calls")
+                .tags("stage", "image_generation", "outcome", "failure",
+                        "failureType", "INLINE_REQUEST_TOO_LARGE")
+                .counter().count()).isEqualTo(1);
     }
 
     @Test
@@ -212,6 +230,25 @@ class GeminiDiaryImageGeneratorTest {
                 ),
                 cause
         );
+    }
+
+    @Test
+    @DisplayName("이미지 단계의 공급자 토큰 사용량은 전체 생성 성공 여부와 독립적으로 집계한다")
+    void recordImageStageTokenUsage() {
+        when(response.parts()).thenReturn(ImmutableList.of(Part.fromBytes("image".getBytes(), "image/png")));
+        GenerateContentResponseUsageMetadata usage = mock(GenerateContentResponseUsageMetadata.class);
+        when(usage.promptTokenCount()).thenReturn(Optional.of(250));
+        when(usage.totalTokenCount()).thenReturn(Optional.of(900));
+        when(response.usageMetadata()).thenReturn(Optional.of(usage));
+
+        generator.generate(createRequest(createReferenceImage()));
+
+        assertThat(meterRegistry.get("harudle.gemini.tokens")
+                .tags("stage", "image_generation", "kind", "prompt")
+                .counter().count()).isEqualTo(250);
+        assertThat(meterRegistry.get("harudle.gemini.tokens")
+                .tags("stage", "image_generation", "kind", "total")
+                .counter().count()).isEqualTo(900);
     }
 
     private DiaryImageGenerationRequest createRequest(ReferenceImage referenceImage) {
