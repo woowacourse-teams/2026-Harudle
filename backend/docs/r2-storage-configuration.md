@@ -40,13 +40,26 @@ R2 설정, 전용 SDK 클라이언트와 원본 접근 어댑터를 구성한다
 | `uploadIfAbsent(key, original)` | 키·MIME·바이트를 유지해 조건부 PUT. `UPLOADED` 또는 `ALREADY_EXISTS` |
 | `createAccessUrl(key)` | 설정한 유효기간의 GET 서명 URL과 만료 시각을 반환한다. 존재 확인 요청은 하지 않는다 |
 
-`DEPLOY_ENV=dev`이면 `harudle/generated/diary-images/dev/`, `prod`이면 `harudle/generated/diary-images/prod/` 아래 원본만 허용한다. 폴더 구조는 변경하지 않는다. 파일명은 기존 키 규칙의 `image.png`, `image.jpg`, `image.webp`를 허용하며 MIME이 확장자와 일치해야 한다. 참조 이미지, `image-960.webp`, `image-240.webp`, 다른 환경의 키와 잘못된 경로는 SDK 호출 전에 거절한다. 대표 이미지 키에서 원본 키를 찾는 로직은 다음 단계에서 추가한다.
+`DEPLOY_ENV=dev`이면 `harudle/generated/diary-images/dev/`, `prod`이면 `harudle/generated/diary-images/prod/` 아래 원본만 허용한다. 폴더 구조는 변경하지 않는다. 파일명은 기존 키 규칙의 `image.png`, `image.jpg`, `image.webp`를 허용하며 MIME이 확장자와 일치해야 한다. 참조 이미지, `image-960.webp`, `image-240.webp`, 다른 환경의 키와 잘못된 경로는 SDK 호출 전에 거절한다.
 
 업로드는 존재 확인 후 일반 PUT을 보내는 대신 `If-None-Match: *`를 포함한 PUT 한 번으로 시작한다. 동시에 같은 키를 저장해도 기존 객체를 덮어쓰지 않는다. 412는 `ALREADY_EXISTS`로 처리한다. 409, 권한 오류와 통신 실패는 예외로 전달하며 실패 후 삭제하지 않는다. SDK가 첫 PUT의 응답을 잃고 재시도에서 412를 받았을 수도 있으므로, `ALREADY_EXISTS`를 내용 일치 또는 검증 성공으로 취급하면 안 된다. 원본과 백업의 SHA-256 비교는 백업 실행기의 책임이다. ETag도 SHA-256으로 취급하지 않는다.
 
 본문 없는 HEAD 404는 HeadBucket으로 버킷 존재를 한 번 확인한다. 버킷도 없으면 설정 오류, 확인 권한이 없으면 권한 오류로 전달한다. 자격 증명에는 대상 버킷의 객체 읽기·쓰기와 HeadBucket에 필요한 권한을 부여한다. 버킷이나 객체를 공개로 만드는 요청은 보내지 않는다.
 
 다운로드는 Content-Length와 실제 읽은 크기 모두 제한하고 잘못된 응답 스트림을 중단한다. 업로드도 실제 읽은 바이트를 제한한다. 원본을 재인코딩하거나 파생 이미지를 생성하지 않는다.
+
+## 백업용 원본 키 변환
+
+`ImageVariantKeys.originalImageKeyCandidatesForBackup(imageObjectKey)`로 DB의 이미지 키에서 원본 후보 목록을 만든다. 원본과 백업의 폴더 경로와 파일명이 같다는 전제로 마지막 파일명만 처리한다.
+
+| 입력 파일명 | 반환 후보 |
+| --- | --- |
+| `image.png`, `image.jpg`, `image.webp` | 입력 키 하나를 그대로 반환 |
+| `image-960.webp` | 같은 폴더의 `image.png`, `image.jpg`, `image.webp` 순서로 반환 |
+
+UUID 폴더가 하나인 기존 경로와 두 개인 현재 경로를 모두 유지한다. 키가 비어 있거나 파일명이 지원 대상이 아니면 `IllegalArgumentException`을 발생시킨다. 이 함수의 입력은 DB 대표 이미지 키이므로 썸네일 `image-240.webp`는 지원하지 않는다.
+
+변환 함수는 키 후보만 반환한다. 환경·경로 검증은 저장소에서 수행하고, 실제 후보 중 존재하는 파일 확인은 이후 백업·R2 조회 로직에서 처리한다. `image-960.webp`만으로 원본 확장자를 확정하거나 원본 존재를 보장하지 않는다.
 
 ## 오류와 로그
 
