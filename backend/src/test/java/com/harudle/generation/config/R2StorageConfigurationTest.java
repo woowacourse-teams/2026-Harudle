@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.harudle.common.logging.ExternalApiLogger;
 import com.harudle.generation.adapter.out.r2.R2BackupObjectStorage;
 import com.harudle.generation.diary.service.port.BackupObjectStorage;
+import com.harudle.generation.diary.service.ImageBackupService;
 import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
 import java.net.URI;
 import java.time.Duration;
@@ -29,7 +30,7 @@ class R2StorageConfigurationTest {
     private static final String ENDPOINT = "https://00000000000000000000000000000000.r2.cloudflarestorage.com";
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
-            .withUserConfiguration(R2StorageConfiguration.class)
+            .withUserConfiguration(R2StorageConfiguration.class, ImageBackupConfiguration.class)
             .withBean(ExternalApiLogger.class, ExternalApiLogger::new);
 
     @Test
@@ -77,6 +78,7 @@ class R2StorageConfigurationTest {
             assertThat(properties.maxObjectSize()).isEqualTo(DataSize.ofMegabytes(20));
             assertThat(context).hasSingleBean(BackupObjectStorage.class);
             assertThat(context.getBean(BackupObjectStorage.class)).isInstanceOf(R2BackupObjectStorage.class);
+            assertThat(context).doesNotHaveBean(ImageBackupService.class);
             assertThat(properties.toString())
                     .contains("accessKeyId=***", "secretAccessKey=***")
                     .doesNotContain("r2-test-access-key", "r2-test-secret-key");

@@ -20,6 +20,8 @@ import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
 import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
+import com.harudle.generation.diary.service.ImageBackupService;
+import java.time.Clock;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.DisplayName;
@@ -33,8 +35,9 @@ import tools.jackson.databind.ObjectMapper;
 class GenerationAdapterConfigurationTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
-            .withUserConfiguration(GenerationAdapterConfiguration.class)
+            .withUserConfiguration(GenerationAdapterConfiguration.class, ImageBackupConfiguration.class)
             .withBean(ExternalApiLogger.class, ExternalApiLogger::new)
+            .withBean("serviceClock", Clock.class, Clock::systemUTC)
             .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
             .withBean(ObjectMapper.class, ObjectMapper::new);
 
@@ -56,6 +59,7 @@ class GenerationAdapterConfigurationTest {
             assertThat(context).hasSingleBean(DiaryImageGenerator.class);
             assertThat(context).hasSingleBean(ImageStorage.class);
             assertThat(context).hasSingleBean(ImageUrlProvider.class);
+            assertThat(context).doesNotHaveBean(ImageBackupService.class);
             assertThat(context).doesNotHaveBean("generateDiaryImageService");
 
             Client client = context.getBean(Client.class);
@@ -104,6 +108,7 @@ class GenerationAdapterConfigurationTest {
                     assertThat(context).hasSingleBean(ImageStorage.class);
                     assertThat(context).hasSingleBean(ImageUrlProvider.class);
                     assertThat(context).hasSingleBean(BackupObjectStorage.class);
+                    assertThat(context).hasSingleBean(ImageBackupService.class);
 
                     ImageAccessUrl accessUrl = context.getBean(ImageUrlProvider.class)
                             .createAccessUrl("harudle/generated/diary-images/prod/diary-id/image.png");

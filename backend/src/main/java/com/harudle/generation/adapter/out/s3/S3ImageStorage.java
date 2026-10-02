@@ -31,6 +31,7 @@ import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
+import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
@@ -287,8 +288,17 @@ public final class S3ImageStorage implements ImageStorage {
                     .build());
             return true;
         } catch (S3Exception exception) {
-            if (exception.statusCode() == 404) {
-                return false;
+            String code = exception.awsErrorDetails() == null ? null : exception.awsErrorDetails().errorCode();
+            if (exception.statusCode() == 404 && !"NoSuchBucket".equals(code)) {
+                // HEAD 404는 존재하지 않는 버킷에서도 발생한다. 조회 상태가 불명확하면 쓰지 않는다.
+                try {
+                    s3Client.headBucket(HeadBucketRequest.builder().bucket(bucket)
+                            .overrideConfiguration(config -> config.apiCallTimeout(HEAD_REQUEST_TIMEOUT)).build());
+                    return false;
+                } catch (Exception bucketException) {
+                    throw failureReporter.reportProviderFailure("head_bucket", LOAD_TRANSLATION_OPERATION,
+                            imageObjectKey, false, bucketException);
+                }
             }
             throw failureReporter.reportProviderFailure("head_object", LOAD_TRANSLATION_OPERATION,
                     imageObjectKey, false, exception);

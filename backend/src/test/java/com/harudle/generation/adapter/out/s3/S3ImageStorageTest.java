@@ -54,6 +54,7 @@ import software.amazon.awssdk.services.s3.model.ChecksumMode;
 import software.amazon.awssdk.services.s3.model.ChecksumType;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
+import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectResponse;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
@@ -377,6 +378,27 @@ class S3ImageStorageTest {
                 new ImageUploadPreparer(new ImageObjectKeyFactory(properties), variantEncoder),
                 new S3FailureReporter(new S3ExceptionTranslator(), externalApiLogger)
         );
+    }
+
+    @Test
+    @DisplayName("객체 HEAD 404 후 버킷 조회 권한 오류가 나면 누락으로 간주하지 않는다")
+    void rejectsUnknownStateAfterHeadNotFound() {
+        when(s3Client.headObject(any(HeadObjectRequest.class)))
+                .thenThrow(S3Exception.builder().statusCode(404).build());
+        when(s3Client.headBucket(any(HeadBucketRequest.class)))
+                .thenThrow(S3Exception.builder().statusCode(403).build());
+        assertThatThrownBy(() -> imageStorage.exists(OBJECT_KEY)).isInstanceOf(ImageStorageException.class);
+        verify(s3Client, never()).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+    }
+
+    @Test
+    @DisplayName("NoSuchBucket는 객체 누락이 아닌 조회 실패로 처리한다")
+    void rejectsMissingBucket() {
+        when(s3Client.headObject(any(HeadObjectRequest.class)))
+                .thenThrow(S3Exception.builder().statusCode(404).awsErrorDetails(
+                        AwsErrorDetails.builder().errorCode("NoSuchBucket").build()).build());
+        assertThatThrownBy(() -> imageStorage.exists(OBJECT_KEY)).isInstanceOf(ImageStorageException.class);
+        verify(s3Client, never()).headBucket(any(HeadBucketRequest.class));
     }
 
     @Test
