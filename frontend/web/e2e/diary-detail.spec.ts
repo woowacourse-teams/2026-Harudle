@@ -17,6 +17,10 @@ const SAMPLE_DIARY_TITLE = '비가 와도, 나는 괜찮았다.';
 const SAMPLE_DIARY_DATE = '2026-08-12';
 const SAMPLE_DIARY_STORY = '오늘 친구와 카페에 가서 오래 이야기했다.';
 
+test.beforeEach(async ({ page }): Promise<void> => {
+  await page.clock.setFixedTime(TODAY);
+});
+
 const setMockScenario = async (
   page: Page,
   scenario?: (typeof MOCK_SCENARIOS)[keyof typeof MOCK_SCENARIOS],
@@ -106,8 +110,7 @@ test.describe('일기 상세', () => {
   test('다른 월에서 상세 화면에 진입한 뒤 돌아가면 선택한 월을 유지한다', async ({
     page,
   }) => {
-    await page.clock.setFixedTime(new Date('2026-07-30T12:00:00+09:00'));
-    await page.goto('/');
+    await page.goto('/?yearMonth=2026-07');
 
     const monthInput = page.getByLabel('조회할 월');
     await monthInput.fill('2026-08');
