@@ -29,6 +29,9 @@ interface AnalyticsEventMap {
     share_id: string;
   };
   diary_image_downloaded: undefined;
+  diary_image_copied: {
+    diary_id: string;
+  };
   landing_direct_login_clicked: {
     location: 'hero' | 'final';
   };

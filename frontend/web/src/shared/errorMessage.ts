@@ -40,6 +40,12 @@ const DIARY_IMAGE_DOWNLOAD = {
   DIARY_IMAGE_SAVE_FAILED: '이미지를 저장하지 못했어요. 다시 시도해 주세요.',
 } as const;
 
+const DIARY_IMAGE_COPY = {
+  DIARY_IMAGE_COPY_FAILED: '이미지를 복사하지 못했어요. 다시 시도해 주세요.',
+  DIARY_IMAGE_COPY_UNSUPPORTED:
+    '이 브라우저에서는 이미지 복사를 지원하지 않아요. 이미지 저장을 이용해 주세요.',
+} as const;
+
 const GENERATION_USAGE = {
   GENERATION_USAGE_FETCH_FAILED:
     '남은 만들기 횟수를 불러오지 못했어요. 다시 확인해 주세요.',
@@ -109,6 +115,7 @@ export const ERROR_MESSAGES = {
   ...SHARED_DIARY,
   ...MONTHLY_DIARIES,
   ...DIARY_IMAGE_DOWNLOAD,
+  ...DIARY_IMAGE_COPY,
   ...GENERATION_USAGE,
   ...AUTH,
   ...USER,
