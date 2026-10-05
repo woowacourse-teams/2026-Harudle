@@ -5,6 +5,13 @@ let accessToken: string | null = null;
 let refreshRequest: Promise<void> | null = null; // Single-Flight 패턴
 let isHandlingAuthFailure = false;
 
+export class AuthenticationRequiredError extends Error {
+  constructor() {
+    super(ERROR_MESSAGES.OAUTH_LOGIN_HISTORY_REQUIRED);
+    this.name = 'AuthenticationRequiredError';
+  }
+}
+
 export const setAccessToken = (token: string | null): void => {
   accessToken = token;
 };
@@ -23,7 +30,7 @@ export const authFetch = async (
   try {
     if (localStorage.getItem('harudle.has-completed-oauth') === null) {
       window.location.replace('/login');
-      throw new Error(ERROR_MESSAGES.OAUTH_LOGIN_HISTORY_REQUIRED);
+      throw new AuthenticationRequiredError();
     }
 
     if (!accessToken) {

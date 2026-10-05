@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { usePostHog } from '@posthog/react';
 import type { PostHog } from 'posthog-js';
 import { RequestError } from '../shared/api';
+import { AuthenticationRequiredError } from '../shared/auth';
 import { isPostHogEnabled } from './posthog';
 
 interface ErrorTracking {
@@ -16,7 +17,7 @@ export const useErrorTracking = (): ErrorTracking => {
 
   const captureError = useCallback<ErrorTracking['captureError']>(
     (error, properties): void => {
-      if (!isPostHogEnabled) {
+      if (!isPostHogEnabled || error instanceof AuthenticationRequiredError) {
         return;
       }
 
