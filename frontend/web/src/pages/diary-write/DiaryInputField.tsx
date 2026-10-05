@@ -69,7 +69,7 @@ const textAreaStyle = (hasError: boolean) => css`
   resize: none;
   background-color: transparent;
   color: ${theme.colors.foreground.neutral};
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 400;
   line-height: 28px;
 
