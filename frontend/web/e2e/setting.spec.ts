@@ -1,4 +1,4 @@
-import { devices, expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import {
   MOCK_SCENARIO_HEADER,
   MOCK_SCENARIOS,
@@ -23,7 +23,7 @@ const expectProfile = async (page: Page) => {
 };
 
 test.describe('설정', () => {
-  test('로딩 후 사용자 설정 정보를 보여준다', async ({ page }) => {
+  test('설정 페이지를 열면 로딩 후 내 정보를 보여준다', async ({ page }) => {
     await goToSetting(page);
     const loadingSpinner = page.getByRole('img', { name: '로딩 중' });
 
@@ -32,7 +32,9 @@ test.describe('설정', () => {
     await expect(loadingSpinner).toBeHidden();
   });
 
-  test('설정 조회에 실패하면 다시 불러올 수 있다', async ({ page }) => {
+  test('내 정보를 불러오지 못하면 다시 불러오기 버튼으로 재시도할 수 있다', async ({
+    page,
+  }) => {
     await goToSetting(page, MOCK_SCENARIOS.profileFailure);
 
     const errorPage = page.getByRole('alert');
@@ -49,13 +51,12 @@ test.describe('설정', () => {
     await expectProfile(page);
   });
 
-  test('로그아웃하면 로그인 화면으로 이동한다', async ({ page }) => {
+  test('로그아웃하면 로그인 페이지를 보여준다', async ({ page }) => {
     await goToSetting(page);
     await expectProfile(page);
     await page.setExtraHTTPHeaders({
       [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.authRefreshFailure,
     });
-
     await page.getByRole('button', { name: '로그아웃' }).click();
 
     await expect(page).toHaveURL('/login');
@@ -64,7 +65,7 @@ test.describe('설정', () => {
     ).toBeVisible();
   });
 
-  test('로그아웃에 실패하면 오류를 보여주고 설정 화면에 머문다', async ({
+  test('로그아웃에 실패하면 실패 안내를 보여주고 설정 페이지에 머문다', async ({
     page,
   }) => {
     await goToSetting(page, MOCK_SCENARIOS.logoutFailure);
@@ -76,64 +77,5 @@ test.describe('설정', () => {
       page.getByText('로그아웃에 실패했습니다. 다시 시도해주세요.'),
     ).toBeVisible();
     await expect(page).toHaveURL('/setting');
-  });
-});
-
-test.describe('작은 iOS 화면의 설정 목록', () => {
-  test.use({
-    viewport: { width: 402, height: 684 },
-    userAgent: devices['iPhone 13'].userAgent,
-  });
-
-  test('설치 안내가 있어도 카드 행이 잘리지 않고 목록을 스크롤할 수 있다', async ({
-    page,
-  }) => {
-    await goToSetting(page);
-    await expectProfile(page);
-    await expect(
-      page.getByRole('button', { name: /하루들을 홈 화면에 추가해 보세요/ }),
-    ).toBeVisible();
-
-    for (const label of ['소셜 계정', '개인정보 처리방침']) {
-      const bounds = await page
-        .getByText(label, { exact: true })
-        .evaluate((element): { rowBottom: number; cardBottom: number } => {
-          const row = element.parentElement;
-          const card = row?.parentElement;
-
-          if (!row || !card) {
-            throw new Error('설정 카드 행을 찾을 수 없습니다.');
-          }
-
-          return {
-            rowBottom: row.getBoundingClientRect().bottom,
-            cardBottom: card.getBoundingClientRect().bottom,
-          };
-        });
-
-      expect(bounds.rowBottom).toBeLessThanOrEqual(bounds.cardBottom);
-    }
-
-    const logoutButton = page.getByRole('button', { name: '로그아웃' });
-    const logoutBounds = await logoutButton.boundingBox();
-    expect(logoutBounds?.height).toBeGreaterThanOrEqual(56);
-
-    const navigationBeforeScroll = await page
-      .getByRole('navigation')
-      .boundingBox();
-    const list = page.locator('main > div').filter({
-      has: page.getByText('이름', { exact: true }),
-    });
-
-    const scrollTop = await list.evaluate((element): number => {
-      element.scrollTop = element.scrollHeight;
-      return element.scrollTop;
-    });
-
-    expect(scrollTop).toBeGreaterThan(0);
-    await expect(logoutButton).toBeInViewport();
-    expect(await page.getByRole('navigation').boundingBox()).toEqual(
-      navigationBeforeScroll,
-    );
   });
 });

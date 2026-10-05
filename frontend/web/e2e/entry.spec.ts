@@ -4,8 +4,10 @@ import {
   MOCK_SCENARIOS,
 } from '../src/mocks/mockScenarios';
 
-test.describe('로그인 경험에 따른 기본 주소 진입', () => {
-  test('로그인 경험이 없으면 재방문해도 랜딩을 연다', async ({ page }) => {
+test.describe('하루들 접속', () => {
+  test('localStorage에 로그인 이력이 없으면, 랜딩 페이지를 보여준다', async ({
+    page,
+  }) => {
     await page.goto('/');
     await expect(page).toHaveURL('/landing');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(
@@ -17,7 +19,7 @@ test.describe('로그인 경험에 따른 기본 주소 진입', () => {
     await expect(page).toHaveURL('/landing');
   });
 
-  test('기존 로그인 사용자는 세션을 한 번 확인하고 홈을 연다', async ({
+  test('localStorage에 로그인 이력이 있고 세션이 유효하면 홈 화면을 보여준다', async ({
     page,
   }) => {
     await page.addInitScript(() => {
@@ -36,7 +38,7 @@ test.describe('로그인 경험에 따른 기본 주소 진입', () => {
     expect(refreshRequests).toHaveLength(1);
   });
 
-  test('로그아웃 후 재방문은 로그인으로 이동하고 다시 로그인하면 홈을 연다', async ({
+  test('로그아웃 후 다시 접속하면 로그인 페이지를 보여주고, 다시 로그인하면 홈 화면을 보여준다', async ({
     page,
   }) => {
     await page.goto('/login');
@@ -65,7 +67,7 @@ test.describe('로그인 경험에 따른 기본 주소 진입', () => {
     await expect(page.getByLabel('조회할 월')).toBeVisible();
   });
 
-  test('세션 만료는 한 번 확인하고 로그인 화면으로 이동한다', async ({
+  test('세션이 만료된 상태로 접속하면 경고창 없이 로그인 페이지를 보여준다', async ({
     page,
   }) => {
     await page.addInitScript(() => {
@@ -95,7 +97,7 @@ test.describe('로그인 경험에 따른 기본 주소 진입', () => {
     expect(dialogs).toEqual([]);
   });
 
-  test('보호된 주소에 처음 접근하면 기본 주소를 거쳐 랜딩으로 이동한다', async ({
+  test('로그인 이력 없이 설정 페이지를 열면 랜딩 페이지를 보여준다', async ({
     page,
   }) => {
     await page.goto('/setting');
@@ -103,7 +105,7 @@ test.describe('로그인 경험에 따른 기본 주소 진입', () => {
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   });
 
-  test('로그인 화면을 직접 열 수 있고 로그인 경험이 없으면 기본 주소는 랜딩을 연다', async ({
+  test('로그인 이력이 없어도 URL을 통해 로그인 페이지에 직접 접속할 수 있다', async ({
     page,
   }) => {
     await page.goto('/login');
@@ -111,11 +113,9 @@ test.describe('로그인 경험에 따른 기본 주소 진입', () => {
     await expect(
       page.getByRole('button', { name: '카카오로 시작하기' }),
     ).toBeVisible();
-    await page.goto('/');
-    await expect(page).toHaveURL('/landing');
   });
 
-  test('공유 링크를 바로 열고 로그인 경험 없이 기본 주소로 돌아오면 랜딩을 연다', async ({
+  test('로그인 이력 없이 공유받은 만화를 볼 수 있고, 하루들 버튼을 누르면 랜딩 페이지를 보여준다', async ({
     page,
   }) => {
     const sharedPath = '/shares/06ed972e-0b79-4da0-9716-c9bd8faec85d';

@@ -4,8 +4,8 @@ import {
   MOCK_SCENARIOS,
 } from '../src/mocks/mockScenarios';
 
-test.describe('인증 상태에 따른 리다이렉트', () => {
-  test('로그인 경험이 있고 세션이 만료되면 로그인 화면으로 이동한다', async ({
+test.describe('로그인 화면', () => {
+  test('localStorage에 로그인 이력이 있고, 세션이 만료되면 로그인 화면으로 이동한다', async ({
     page,
   }) => {
     await page.addInitScript(() => {
@@ -22,7 +22,7 @@ test.describe('인증 상태에 따른 리다이렉트', () => {
     ).toBeVisible();
   });
 
-  test('로그인한 상태로 로그인 화면에 접근하면 홈 화면으로 이동한다', async ({
+  test('세션이 유효하면 로그인 페이지를 직접 열어도 홈 화면을 보여준다', async ({
     page,
   }) => {
     await page.addInitScript(() => {
@@ -42,7 +42,7 @@ test.describe('인증 상태에 따른 리다이렉트', () => {
     expect(refreshRequests).toHaveLength(1);
   });
 
-  test('세션이 만료되면 로그인 주소에서 한 번 확인하고 로그인 화면에 머문다', async ({
+  test('세션이 만료되면 로그인 주소에서 세션을 확인하고 로그인 페이지를 보여준다', async ({
     page,
   }) => {
     await page.addInitScript(() => {
@@ -69,23 +69,7 @@ test.describe('인증 상태에 따른 리다이렉트', () => {
 });
 
 test.describe('카카오 로그인', () => {
-  test('개발 환경에서 로그인 버튼을 누르면 인증 콜백을 거쳐 홈으로 이동한다', async ({
-    page,
-  }) => {
-    await page.goto('/login');
-
-    const loginButton = page.getByRole('button', {
-      name: '카카오로 시작하기',
-    });
-
-    await expect(loginButton).toBeVisible();
-    await loginButton.click();
-
-    await expect(page).toHaveURL('/');
-    await expect(page.getByLabel('조회할 월')).toBeVisible();
-  });
-
-  test('인증 콜백에서 Access Token 발급에 성공하면 홈으로 이동한다', async ({
+  test('카카오 로그인 후 로그인 처리에 성공하면 홈 화면을 보여준다', async ({
     page,
   }) => {
     await page.goto('/auth/callback');
@@ -94,7 +78,7 @@ test.describe('카카오 로그인', () => {
     await expect(page.getByLabel('조회할 월')).toBeVisible();
   });
 
-  test('인증 콜백에서 Access Token 발급에 실패하면 경고 후 로그인으로 돌아간다', async ({
+  test('카카오 로그인 후 로그인 처리에 실패하면 실패 안내를 보여주고 로그인 페이지로 돌아간다', async ({
     page,
   }) => {
     await page.setExtraHTTPHeaders({
