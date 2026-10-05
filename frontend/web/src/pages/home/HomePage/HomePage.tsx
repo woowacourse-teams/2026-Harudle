@@ -2,7 +2,7 @@ import { HOME_COPY } from '../copy';
 import BottomNavigation from '../../../shared/BottomNavigation';
 import DiaryItemList from '../DiaryItemList';
 import { useNavigate } from 'react-router';
-import harudleLogo from '../../../assets/images/harudle-logo.png';
+import harudleLogo from '../../../assets/images/harudle-logo.webp';
 import useSelectedYearMonth from './useSelectedYearMonth';
 import { css } from '@emotion/react';
 import { theme } from '../../../styles/theme';

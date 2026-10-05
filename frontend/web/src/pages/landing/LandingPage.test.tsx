@@ -72,7 +72,7 @@ jest.mock(
   () => 'work-different-pages.png',
 );
 jest.mock('./assets/school-presentation.png', () => 'school-presentation.png');
-jest.mock('../../assets/images/harudle-logo.png', () => 'harudle-logo.png');
+jest.mock('../../assets/images/harudle-logo.webp', () => 'harudle-logo.webp');
 jest.mock('../../assets/icons/kakao.svg', () => 'kakao.svg');
 jest.mock('../../assets/icons/check.svg', () => 'check.svg');
 jest.mock(

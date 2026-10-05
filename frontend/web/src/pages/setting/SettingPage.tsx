@@ -1,6 +1,6 @@
 import { css } from '@emotion/react';
 import BottomNavigation from '../../shared/BottomNavigation';
-import harudleLogo from '../../assets/images/harudle-logo.png';
+import harudleLogo from '../../assets/images/harudle-logo.webp';
 import { useNavigate } from 'react-router';
 import useProfile from './useProfile';
 import { theme } from '../../styles/theme';
