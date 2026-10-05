@@ -119,7 +119,7 @@ const homePageStyle = css`
 
 const pageHeaderStyle = css`
   width: 100%;
-  height: 71px;
+  height: 56px;
   box-sizing: border-box;
 `;
 
@@ -146,7 +146,7 @@ const homePageContentStyle = css`
   flex-direction: column;
   gap: 12px;
   min-height: 0px;
-  padding: 20px 20px 0 20px;
+  padding: 4px 20px 0 20px;
 `;
 
 const contentHeaderStyle = css`
