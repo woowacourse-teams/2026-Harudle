@@ -73,7 +73,7 @@ const AdminGuard = () => {
   }
 
   if (access === 'unauthenticated') {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/" replace />;
   }
 
   if (access === 'forbidden') {

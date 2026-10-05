@@ -5,9 +5,15 @@ import {
 } from '../src/mocks/mockScenarios';
 
 test.describe('인증 상태에 따른 리다이렉트', () => {
-  test('로그인하지 않은 상태로 홈 화면에 접근하면 로그인 화면으로 이동한다', async ({
+  test('로그인 경험이 있고 세션이 만료되면 로그인 화면으로 이동한다', async ({
     page,
   }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('harudle.has-completed-oauth', 'true');
+    });
+    await page.setExtraHTTPHeaders({
+      [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.authRefreshFailure,
+    });
     await page.goto('/');
 
     await expect(page).toHaveURL('/login');
@@ -23,10 +29,42 @@ test.describe('인증 상태에 따른 리다이렉트', () => {
       localStorage.setItem('harudle.has-completed-oauth', 'true');
     });
 
+    const refreshRequests: string[] = [];
+    page.on('request', (request) => {
+      if (request.url().endsWith('/api/v1/auth/refresh')) {
+        refreshRequests.push(request.url());
+      }
+    });
     await page.goto('/login');
 
     await expect(page).toHaveURL('/');
     await expect(page.getByLabel('조회할 월')).toBeVisible();
+    expect(refreshRequests).toHaveLength(1);
+  });
+
+  test('세션이 만료되면 로그인 주소에서 한 번 확인하고 로그인 화면에 머문다', async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('harudle.has-completed-oauth', 'true');
+    });
+    await page.setExtraHTTPHeaders({
+      [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.authRefreshFailure,
+    });
+    const refreshRequests: string[] = [];
+    page.on('request', (request) => {
+      if (request.url().endsWith('/api/v1/auth/refresh')) {
+        refreshRequests.push(request.url());
+      }
+    });
+
+    await page.goto('/login');
+
+    await expect(
+      page.getByRole('button', { name: '카카오로 시작하기' }),
+    ).toBeVisible();
+    await expect(page).toHaveURL('/login');
+    expect(refreshRequests).toHaveLength(1);
   });
 });
 

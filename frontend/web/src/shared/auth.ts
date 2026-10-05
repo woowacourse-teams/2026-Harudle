@@ -29,7 +29,7 @@ export const authFetch = async (
 ) => {
   try {
     if (localStorage.getItem('harudle.has-completed-oauth') === null) {
-      window.location.replace('/login');
+      window.location.replace('/');
       throw new AuthenticationRequiredError();
     }
 
@@ -80,7 +80,7 @@ export const authFetch = async (
         isHandlingAuthFailure = true;
 
         alert('세션이 만료되었습니다. 다시 로그인 해주세요.');
-        window.location.href = '/login';
+        window.location.href = '/';
       }
     }
 
@@ -129,6 +129,10 @@ export const isRefreshTokenResponse = (
 };
 
 export const restoreAccessToken = async (): Promise<void> => {
+  // 로그인 콜백이나 앞선 진입 확인에서 이미 확보한 토큰은 재사용한다.
+  // API에서 401을 받으면 authFetch가 토큰을 비운 뒤 다시 갱신한다.
+  if (accessToken) return;
+
   if (refreshRequest) {
     await refreshRequest;
     return;
