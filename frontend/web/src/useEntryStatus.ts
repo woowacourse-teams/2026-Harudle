@@ -16,7 +16,8 @@ const useEntryStatus = (): EntryState => {
 
   try {
     hasLoginHistory =
-      localStorage.getItem('harudle.has-ever-logged-in') !== null;
+      localStorage.getItem('harudle.has-ever-logged-in') !== null ||
+      localStorage.getItem('harudle.has-completed-oauth') !== null;
   } catch {
     // 저장소에 접근할 수 없으면 랜딩을 보여준다.
   }
@@ -49,7 +50,18 @@ const useEntryStatus = (): EntryState => {
   }, [captureError]);
 
   useEffect(() => {
-    if (hasLoginHistory) void checkSession();
+    if (!hasLoginHistory) return;
+
+    try {
+      // 기존 사용자의 이력을 옮겨 로그아웃 후에도 로그인 경험을 유지한다.
+      if (localStorage.getItem('harudle.has-ever-logged-in') === null) {
+        localStorage.setItem('harudle.has-ever-logged-in', 'true');
+      }
+    } catch {
+      // 이력 저장 실패가 세션 복원을 막지 않게 한다.
+    }
+
+    void checkSession();
   }, [hasLoginHistory, checkSession]);
 
   const retry = (): void => {
