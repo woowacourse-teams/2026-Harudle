@@ -3,9 +3,7 @@ import harudleLogo from '../../assets/images/harudle-logo.webp';
 import loginHero from '../../assets/images/login-shared-comic.png';
 import kakaoIcon from '../../assets/icons/kakao.svg';
 import { theme } from '../../styles/theme';
-import { useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { restoreAccessToken } from '../../shared/auth';
 import { isMswEnabled } from '../../shared/environment';
 import { LOGIN_COPY } from './copy';
 
@@ -21,31 +19,6 @@ const LoginPage = () => {
     window.location.assign('/oauth2/authorization/kakao');
   };
 
-  useEffect(() => {
-    if (localStorage.getItem('harudle.has-completed-oauth') === null) {
-      return;
-    }
-
-    const tryRestoreAccessToken = async (): Promise<boolean> => {
-      try {
-        await restoreAccessToken();
-        return true;
-      } catch {
-        return false;
-      }
-    };
-
-    const checkAuthentication = async () => {
-      const isAuthenticated = await tryRestoreAccessToken();
-
-      if (isAuthenticated) {
-        navigate('/', { replace: true });
-        return;
-      }
-    };
-
-    void checkAuthentication();
-  }, [navigate]);
   return (
     <div css={pageStyle}>
       <div css={topSpaceStyle} aria-hidden="true" />

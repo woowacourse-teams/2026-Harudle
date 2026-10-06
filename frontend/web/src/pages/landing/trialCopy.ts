@@ -1,6 +1,6 @@
 export const GUEST_TRIAL_COPY = {
   usageNotice:
-    '로그인 없이 한 번 만들어 볼 수 있어요.\n만들 수 있는 횟수에는 제한이 있어요.',
+    '로그인 없이 한 장 먼저 만들어 보세요!\n로그인하면, 하루 3장까지 무료로 이용할 수 있어요.',
   inputLabel: '네컷만화로 만들 내용',
   emptyInputError: '있었던 순간을 적어주세요',
   placeholders: [

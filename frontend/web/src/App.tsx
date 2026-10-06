@@ -1,4 +1,5 @@
 import { css } from '@emotion/react';
+import EntryRoute from './EntryRoute';
 import HomePage from './pages/home/HomePage/HomePage';
 import { Route, Routes } from 'react-router';
 import DiaryWritePage from './pages/diary-write/DiaryWritePage';
@@ -19,9 +20,11 @@ const App = () => {
     <div css={appStyle}>
       <PwaAnalyticsTracker />
       <Routes>
-        <Route path="/login" element={<LoginPage />} />
+        <Route element={<EntryRoute />}>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/login" element={<LoginPage />} />
+        </Route>
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
-        <Route path="/" element={<HomePage />} />
         <Route path="/diary-write" element={<DiaryWritePage />} />
         <Route path="/diary-generating" element={<DiaryGeneratingPage />} />
         <Route path="/diary/:diaryId" element={<DiaryDetailPage />} />

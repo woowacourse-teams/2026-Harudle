@@ -1,6 +1,7 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import { act, renderHook } from '@testing-library/react';
 import { RequestError, type ProblemDetails } from '../shared/api';
+import { AuthenticationRequiredError } from '../shared/auth';
 import { useErrorTracking } from './useErrorTracking';
 
 const mockCaptureException =
@@ -28,6 +29,16 @@ const createRequestError = (code: string): RequestError => {
 };
 
 describe('useErrorTracking', () => {
+  it('로그인 경험이 없어 기본 주소로 이동하는 경우는 수집하지 않는다', () => {
+    const { result } = renderHook(() => useErrorTracking());
+
+    act(() => {
+      result.current.captureError(new AuthenticationRequiredError());
+    });
+
+    expect(mockCaptureException).not.toHaveBeenCalled();
+  });
+
   it.each(['INVALID_REFRESH_TOKEN', 'SHARE_NOT_FOUND'])(
     '%s는 수집하지 않는다',
     (code) => {
