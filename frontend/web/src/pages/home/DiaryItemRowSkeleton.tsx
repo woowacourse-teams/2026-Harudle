@@ -42,7 +42,7 @@ const skeletonRowStyle = css`
   justify-content: space-between;
   align-items: center;
   width: 100%;
-  height: 82px;
+  height: 98px;
   padding: 0 6px 0 45px;
 
   &::before {
@@ -58,7 +58,7 @@ const skeletonRowStyle = css`
   &::after {
     content: '';
     position: absolute;
-    top: 32px;
+    top: 40px;
     left: 26px;
     width: 12px;
     height: 12px;
@@ -100,8 +100,8 @@ const titleSkeletonStyle = css`
 
 const thumbnailSkeletonStyle = css`
   ${skeletonStyle};
-  flex: 0 0 130px;
-  width: 130px;
-  height: 80px;
-  border-radius: 12px;
+  flex: 0 0 96px;
+  width: 96px;
+  height: 96px;
+  border-radius: 4px;
 `;

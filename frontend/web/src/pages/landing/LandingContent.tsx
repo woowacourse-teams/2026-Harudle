@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react';
 import { css, type SerializedStyles } from '@emotion/react';
-import harudleLogo from '../../assets/images/harudle-logo.png';
+import harudleLogo from '../../assets/images/harudle-logo.webp';
 import loginHero from '../../assets/images/login-shared-comic.png';
 import chatMeImage from './assets/chat-me.png';
 import chatFriendImage from './assets/chat-friend.png';

@@ -1,6 +1,6 @@
 import { css } from '@emotion/react';
 import BottomNavigation from '../../shared/BottomNavigation';
-import harudleLogo from '../../assets/images/harudle-logo.png';
+import harudleLogo from '../../assets/images/harudle-logo.webp';
 import { useNavigate } from 'react-router';
 import useProfile from './useProfile';
 import { theme } from '../../styles/theme';
@@ -118,7 +118,7 @@ const pageStyle = css`
 
 const pageHeaderStyle = css`
   width: 100%;
-  height: 71px;
+  height: 56px;
   box-sizing: border-box;
 `;
 
@@ -145,7 +145,7 @@ const contentStyle = css`
   flex-direction: column;
   gap: 8px;
   min-height: 0px;
-  padding: 20px 20px 0 20px;
+  padding: 4px 20px 0 20px;
 `;
 
 const pageTitleStyle = css`

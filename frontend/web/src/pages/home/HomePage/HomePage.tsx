@@ -2,7 +2,7 @@ import { HOME_COPY } from '../copy';
 import BottomNavigation from '../../../shared/BottomNavigation';
 import DiaryItemList from '../DiaryItemList';
 import { useNavigate } from 'react-router';
-import harudleLogo from '../../../assets/images/harudle-logo.png';
+import harudleLogo from '../../../assets/images/harudle-logo.webp';
 import useSelectedYearMonth from './useSelectedYearMonth';
 import { css } from '@emotion/react';
 import { theme } from '../../../styles/theme';
@@ -119,7 +119,7 @@ const homePageStyle = css`
 
 const pageHeaderStyle = css`
   width: 100%;
-  height: 71px;
+  height: 56px;
   box-sizing: border-box;
 `;
 
@@ -146,7 +146,7 @@ const homePageContentStyle = css`
   flex-direction: column;
   gap: 12px;
   min-height: 0px;
-  padding: 20px 20px 0 20px;
+  padding: 4px 20px 0 20px;
 `;
 
 const contentHeaderStyle = css`
