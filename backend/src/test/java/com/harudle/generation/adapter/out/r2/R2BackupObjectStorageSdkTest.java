@@ -47,7 +47,8 @@ class R2BackupObjectStorageSdkTest {
     private static final byte[] BYTES = "original-png".getBytes(StandardCharsets.UTF_8);
     private static final R2StorageProperties PROPERTIES = new R2StorageProperties(
             true, "dev", URI.create("https://example.r2.cloudflarestorage.com"), "test-backup",
-            "test-key", "test-secret", Duration.ofMinutes(15), DataSize.ofMegabytes(20), Duration.ofSeconds(2)
+            "test-key", "test-secret", Duration.ofMinutes(15), DataSize.ofMegabytes(20),
+            Duration.ofSeconds(2), Duration.ofSeconds(2)
     );
 
     @Test

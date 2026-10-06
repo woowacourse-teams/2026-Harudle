@@ -800,7 +800,8 @@ class DiaryControllerTest {
                 "harudle/generated/diary-images/dev", "harudle/references/generation/dev",
                 DataSize.ofMegabytes(20), Duration.ofMinutes(15));
         R2StorageProperties r2 = new R2StorageProperties(true, "dev", URI.create("https://backup.example"),
-                "test-backup", "fake-key", "fake-secret", Duration.ofMinutes(15), DataSize.ofMegabytes(20), Duration.ofSeconds(2));
+                "test-backup", "fake-key", "fake-secret", Duration.ofMinutes(15), DataSize.ofMegabytes(20),
+                Duration.ofSeconds(2), Duration.ofSeconds(2));
         ImageUrlProvider primary = mock(ImageUrlProvider.class);
         when(primary.createAccessUrl(anyString())).thenAnswer(invocation -> new ImageAccessUrl(
                 URI.create(sourceUrlFor(invocation.getArgument(0))), IMAGE_EXPIRES_AT));

@@ -52,7 +52,8 @@ class R2StorageConfigurationTest {
                 PREFIX + "enabled=false",
                 PREFIX + "environment=dev",
                 PREFIX + "endpoint=invalid URI",
-                PREFIX + "access-url-ttl=invalid duration"
+                PREFIX + "access-url-ttl=invalid duration",
+                PREFIX + "single-lookup-budget=invalid duration"
         ).run(context -> {
             assertThat(context).hasNotFailed();
             assertThat(context).doesNotHaveBean(R2StorageProperties.class);
@@ -77,6 +78,7 @@ class R2StorageConfigurationTest {
             assertThat(properties.accessUrlTtl()).isEqualTo(Duration.ofMinutes(15));
             assertThat(properties.maxObjectSize()).isEqualTo(DataSize.ofMegabytes(20));
             assertThat(properties.listLookupBudget()).isEqualTo(Duration.ofSeconds(2));
+            assertThat(properties.singleLookupBudget()).isEqualTo(Duration.ofSeconds(2));
             assertThat(context).hasSingleBean(BackupObjectStorage.class);
             assertThat(context.getBean(BackupObjectStorage.class)).isInstanceOf(R2BackupObjectStorage.class);
             assertThat(context).doesNotHaveBean(ImageBackupService.class);
@@ -187,6 +189,36 @@ class R2StorageConfigurationTest {
                     assertThat(context).hasNotFailed();
                     assertThat(context.getBean(R2StorageProperties.class).listLookupBudget())
                             .isEqualTo(Duration.ofMillis(500));
+                    assertThat(context.getBean(R2StorageProperties.class).singleLookupBudget())
+                            .isEqualTo(Duration.ofSeconds(2));
+                });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0ms", "-1s", "500ns", "11s"})
+    void rejectInvalidSingleLookupBudget(String budget) {
+        contextRunner.withPropertyValues(enabledProperties())
+                .withPropertyValues(PREFIX + "single-lookup-budget=" + budget)
+                .run(context -> assertThat(context).hasFailed());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"1ms", "10s"})
+    void acceptSingleLookupBudgetBounds(String budget) {
+        contextRunner.withPropertyValues(enabledProperties())
+                .withPropertyValues(PREFIX + "single-lookup-budget=" + budget)
+                .run(context -> assertThat(context).hasNotFailed());
+    }
+
+    @Test
+    void bindConfiguredSingleLookupBudgetIndependentlyOfListBudget() {
+        contextRunner.withPropertyValues(enabledProperties())
+                .withPropertyValues(PREFIX + "single-lookup-budget=500ms")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    R2StorageProperties properties = context.getBean(R2StorageProperties.class);
+                    assertThat(properties.singleLookupBudget()).isEqualTo(Duration.ofMillis(500));
+                    assertThat(properties.listLookupBudget()).isEqualTo(Duration.ofSeconds(2));
                 });
     }
 

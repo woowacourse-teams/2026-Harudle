@@ -76,6 +76,7 @@ class ImageBackupConfigurationTest {
                         DataSize.ofMegabytes(20), Duration.ofMinutes(15)))
                 .withBean(R2StorageProperties.class, () -> new R2StorageProperties(
                         true, backupEnvironment, URI.create("https://example.r2.cloudflarestorage.com"),
-                        "test-backup", "test-key", "test-secret", Duration.ofMinutes(15), DataSize.ofMegabytes(20), Duration.ofSeconds(2)));
+                        "test-backup", "test-key", "test-secret", Duration.ofMinutes(15), DataSize.ofMegabytes(20),
+                        Duration.ofSeconds(2), Duration.ofSeconds(2)));
     }
 }

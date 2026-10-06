@@ -23,7 +23,8 @@ public record R2StorageProperties(
         @NotBlank String secretAccessKey,
         @NotNull Duration accessUrlTtl,
         @NotNull DataSize maxObjectSize,
-        @DefaultValue("2s") @NotNull Duration listLookupBudget
+        @DefaultValue("2s") @NotNull Duration listLookupBudget,
+        @DefaultValue("2s") @NotNull Duration singleLookupBudget
 ) {
 
     private static final Duration MIN_ACCESS_URL_TTL = Duration.ofSeconds(1);
@@ -34,6 +35,13 @@ public record R2StorageProperties(
         return listLookupBudget != null
                 && listLookupBudget.compareTo(Duration.ofMillis(1)) >= 0
                 && listLookupBudget.compareTo(Duration.ofSeconds(10)) <= 0;
+    }
+
+    @AssertTrue(message = "단일 이미지 조회 시간 예산은 1ms 이상 10초 이하여야 합니다.")
+    public boolean isSingleLookupBudgetValid() {
+        return singleLookupBudget != null
+                && singleLookupBudget.compareTo(Duration.ofMillis(1)) >= 0
+                && singleLookupBudget.compareTo(Duration.ofSeconds(10)) <= 0;
     }
 
     @AssertTrue(message = "R2 endpoint는 경로, 인증 정보, 쿼리, 프래그먼트가 없는 HTTPS API 주소여야 합니다.")
@@ -63,8 +71,9 @@ public record R2StorageProperties(
     @Override
     public @NonNull String toString() {
         return ("R2StorageProperties[enabled=%s, environment=%s, endpoint=%s, bucket=%s, "
-                + "accessKeyId=***, secretAccessKey=***, accessUrlTtl=%s, maxObjectSize=%s, listLookupBudget=%s]").formatted(
-                enabled, environment, endpoint, bucket, accessUrlTtl, maxObjectSize, listLookupBudget
+                + "accessKeyId=***, secretAccessKey=***, accessUrlTtl=%s, maxObjectSize=%s, "
+                + "listLookupBudget=%s, singleLookupBudget=%s]").formatted(
+                enabled, environment, endpoint, bucket, accessUrlTtl, maxObjectSize, listLookupBudget, singleLookupBudget
         );
     }
 }

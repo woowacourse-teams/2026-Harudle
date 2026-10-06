@@ -430,6 +430,7 @@ class R2BackupObjectStorageTest {
 
     private static R2StorageProperties properties() {
         return new R2StorageProperties(true, "dev", URI.create("https://example.r2.cloudflarestorage.com"),
-                "test-backup", "r2-test-key", "r2-test-secret", Duration.ofMinutes(15), DataSize.ofBytes(8), Duration.ofSeconds(2));
+                "test-backup", "r2-test-key", "r2-test-secret", Duration.ofMinutes(15), DataSize.ofBytes(8),
+                Duration.ofSeconds(2), Duration.ofSeconds(2));
     }
 }

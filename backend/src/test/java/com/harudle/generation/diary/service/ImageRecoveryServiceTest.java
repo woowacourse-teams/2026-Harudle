@@ -281,7 +281,8 @@ class ImageRecoveryServiceTest {
 
     private static R2StorageProperties r2(String environment) {
         return new R2StorageProperties(true, environment, URI.create("https://example.r2.cloudflarestorage.com"),
-                "test-backup", "fake-key", "fake-secret", Duration.ofMinutes(15), DataSize.ofMegabytes(20), Duration.ofSeconds(2));
+                "test-backup", "fake-key", "fake-secret", Duration.ofMinutes(15), DataSize.ofMegabytes(20),
+                Duration.ofSeconds(2), Duration.ofSeconds(2));
     }
 
     private static void assertFailure(org.assertj.core.api.ThrowableAssert.ThrowingCallable call, String reason) {

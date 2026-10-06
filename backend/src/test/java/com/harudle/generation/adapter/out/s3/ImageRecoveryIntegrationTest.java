@@ -68,7 +68,8 @@ class ImageRecoveryIntegrationTest {
                 new ImageUploadPreparer(new ImageObjectKeyFactory(properties), encoder),
                 new S3FailureReporter(new S3ExceptionTranslator(), mock(ExternalApiLogger.class)));
         var backupProperties = new R2StorageProperties(true, "dev", URI.create("https://example.r2.cloudflarestorage.com"),
-                "test-backup", "fake-key", "fake-secret", Duration.ofMinutes(15), DataSize.ofMegabytes(20), Duration.ofSeconds(2));
+                "test-backup", "fake-key", "fake-secret", Duration.ofMinutes(15), DataSize.ofMegabytes(20),
+                Duration.ofSeconds(2), Duration.ofSeconds(2));
         service = new ImageRecoveryService(storage, backup, properties, backupProperties, Clock.systemUTC());
         backupService = new ImageBackupService(storage, backup, properties, backupProperties, Clock.systemUTC());
         when(backup.findMetadata(anyString())).thenAnswer(invocation -> {

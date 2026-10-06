@@ -50,7 +50,8 @@ class DiaryResponseAssemblerTest {
                 "harudle/generated/diary-images/dev", "harudle/references/generation/dev",
                 DataSize.ofMegabytes(20), Duration.ofMinutes(15));
         R2StorageProperties r2 = new R2StorageProperties(true, "dev", URI.create("https://backup.example"),
-                "backup", "key", "secret", Duration.ofMinutes(15), DataSize.ofMegabytes(20), Duration.ofSeconds(2));
+                "backup", "key", "secret", Duration.ofMinutes(15), DataSize.ofMegabytes(20),
+                Duration.ofSeconds(2), Duration.ofSeconds(2));
         when(source.exists(anyString(), any(ImageLookupBudget.class))).thenAnswer(invocation -> {
             ImageLookupBudget budget = invocation.getArgument(1);
             assertThat(budget.requestTimeout(Duration.ofSeconds(10))).isEqualTo(Duration.ofSeconds(2));
