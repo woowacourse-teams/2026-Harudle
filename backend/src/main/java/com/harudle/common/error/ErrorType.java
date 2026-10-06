@@ -123,6 +123,11 @@ public enum ErrorType {
             "Generation interrupted",
             "생성 처리가 완료되지 못했습니다."
     ),
+    IMAGE_BACKUP_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "Image backup not found",
+            "이미지 원본 백업을 찾을 수 없습니다."
+    ),
     IMAGE_STORAGE_ERROR(
             HttpStatus.SERVICE_UNAVAILABLE,
             "Image storage error",

@@ -1,6 +1,7 @@
 package com.harudle.share.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.harudle.auth.infrastructure.UserRepository;
@@ -132,6 +133,7 @@ class PublicShareControllerTest {
         assertThat(response.statusCode()).isEqualTo(404);
         assertThat(response.contentType()).startsWith("application/problem+json");
         assertThat(response.jsonPath().getString("code")).isEqualTo("SHARE_NOT_FOUND");
+        verifyNoInteractions(imageUrlProvider);
     }
 
     @Test

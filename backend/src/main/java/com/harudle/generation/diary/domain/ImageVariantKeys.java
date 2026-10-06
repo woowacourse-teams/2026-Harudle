@@ -71,4 +71,14 @@ public final class ImageVariantKeys {
             default -> throw new IllegalArgumentException("백업할 원본 또는 최적화된 상세 이미지 키가 필요합니다.");
         };
     }
+
+    /** 화면 표시용 상세·썸네일 키를 같은 폴더의 R2 원본 후보로 변환한다. */
+    public static List<String> originalImageKeyCandidatesForLookup(String imageObjectKey) {
+        if (imageObjectKey != null && imageObjectKey.endsWith("/" + ImageVariant.THUMBNAIL.filename())) {
+            String detailKey = imageObjectKey.substring(0, imageObjectKey.lastIndexOf('/') + 1)
+                    + ImageVariant.DETAIL.filename();
+            return originalImageKeyCandidates(detailKey);
+        }
+        return originalImageKeyCandidatesForBackup(imageObjectKey);
+    }
 }

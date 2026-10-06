@@ -16,6 +16,19 @@ class ImageVariantKeysTest {
     private static final String FOLDER = "harudle/generated/diary-images/dev/" + GENERATION_ID + "/" + IMAGE_ID + "/";
 
     @ParameterizedTest
+    @ValueSource(strings = {"image-960.webp", "image-240.webp"})
+    void displayVariantsUseSameOriginalCandidates(String filename) {
+        assertThat(ImageVariantKeys.originalImageKeyCandidatesForLookup(FOLDER + filename))
+                .containsExactly(FOLDER + "image.png", FOLDER + "image.jpg", FOLDER + "image.webp");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"image.png", "image.jpg", "image.webp"})
+    void originalLookupPreservesKey(String filename) {
+        assertThat(ImageVariantKeys.originalImageKeyCandidatesForLookup(FOLDER + filename)).containsExactly(FOLDER + filename);
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {"image.png", "image.jpg", "image.webp"})
     @DisplayName("원본 이미지 키는 백업 후보로 그대로 반환한다")
     void keepOriginalKey(String filename) {

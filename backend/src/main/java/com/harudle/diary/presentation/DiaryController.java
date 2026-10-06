@@ -86,6 +86,7 @@ class DiaryController {
             ErrorType.AI_PROVIDER_ERROR,
             ErrorType.GENERATION_UNAVAILABLE,
             ErrorType.GENERATION_INTERRUPTED,
+            ErrorType.IMAGE_BACKUP_NOT_FOUND,
             ErrorType.IMAGE_STORAGE_ERROR,
             ErrorType.AI_PROVIDER_TIMEOUT
     })
@@ -122,6 +123,7 @@ class DiaryController {
     @ApiErrorResponses({
             ErrorType.VALIDATION_ERROR,
             ErrorType.UNAUTHORIZED,
+            ErrorType.IMAGE_BACKUP_NOT_FOUND,
             ErrorType.IMAGE_STORAGE_ERROR
     })
     @GetMapping
@@ -145,6 +147,7 @@ class DiaryController {
             ErrorType.UNAUTHORIZED,
             ErrorType.FORBIDDEN,
             ErrorType.DIARY_NOT_FOUND,
+            ErrorType.IMAGE_BACKUP_NOT_FOUND,
             ErrorType.IMAGE_STORAGE_ERROR
     })
     @GetMapping("/{diaryId}")
@@ -183,6 +186,7 @@ class DiaryController {
     )
     @ApiErrorResponses({
             ErrorType.UNAUTHORIZED,
+            ErrorType.IMAGE_BACKUP_NOT_FOUND,
             ErrorType.IMAGE_STORAGE_ERROR
     })
     @GetMapping("/current-streak")

@@ -13,6 +13,7 @@ import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
 import com.harudle.generation.diary.service.port.dto.ReferenceImage;
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.Duration;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -37,6 +38,7 @@ import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignReques
 import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest;
 
 public final class R2BackupObjectStorage implements BackupObjectStorage {
+    private static final Duration HEAD_REQUEST_TIMEOUT = Duration.ofSeconds(10);
 
     private static final Logger LOGGER = LoggerFactory.getLogger(R2BackupObjectStorage.class);
     private static final Set<String> AUTHENTICATION_CODES = Set.of(
@@ -76,7 +78,8 @@ public final class R2BackupObjectStorage implements BackupObjectStorage {
         HeadObjectResponse response;
         try {
             response = client.headObject(HeadObjectRequest.builder()
-                    .bucket(properties.bucket()).key(objectKey).build());
+                    .bucket(properties.bucket()).key(objectKey)
+                    .overrideConfiguration(config -> config.apiCallTimeout(HEAD_REQUEST_TIMEOUT)).build());
         } catch (S3Exception exception) {
             if (isMissingObject("head_object", objectKey, exception)) {
                 return Optional.empty();
@@ -201,7 +204,8 @@ public final class R2BackupObjectStorage implements BackupObjectStorage {
         }
         // HEAD에는 오류 본문이 없다. 버킷 404를 객체 없음으로 오인하지 않도록 한 번 확인한다.
         try {
-            client.headBucket(HeadBucketRequest.builder().bucket(properties.bucket()).build());
+            client.headBucket(HeadBucketRequest.builder().bucket(properties.bucket())
+                    .overrideConfiguration(config -> config.apiCallTimeout(HEAD_REQUEST_TIMEOUT)).build());
         } catch (S3Exception bucketException) {
             FailureType type = bucketException.statusCode() == 404
                     ? FailureType.CONFIGURATION_ERROR : failureType(bucketException);

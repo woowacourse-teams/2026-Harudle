@@ -1,6 +1,10 @@
 package com.harudle.generation.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 import com.google.genai.Client;
 import com.google.genai.Models;
@@ -11,6 +15,7 @@ import com.harudle.generation.adapter.out.gemini.GeminiStageMetrics;
 import com.harudle.generation.adapter.out.gemini.GeminiStoryboardGenerator;
 import com.harudle.generation.adapter.out.s3.ObservedImageStorage;
 import com.harudle.generation.adapter.out.s3.ObservedImageUrlProvider;
+import com.harudle.generation.adapter.out.s3.R2FallbackImageUrlProvider;
 import com.harudle.generation.adapter.out.s3.S3FailureReporter;
 import com.harudle.generation.adapter.out.s3.ImageVariantEncoder;
 import com.harudle.generation.adapter.out.s3.ImageUploadPreparer;
@@ -29,6 +34,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import tools.jackson.databind.ObjectMapper;
 
@@ -81,7 +88,11 @@ class GenerationAdapterConfigurationTest {
     @Test
     @DisplayName("R2를 함께 활성화해도 기본 이미지 저장과 URL 발급은 S3를 사용한다")
     void keepS3AsDefaultStorageWhenR2IsEnabled() {
-        contextRunner.withUserConfiguration(R2StorageConfiguration.class)
+        S3Client sourceClient = mock(S3Client.class);
+        when(sourceClient.headObject(any(HeadObjectRequest.class))).thenReturn(HeadObjectResponse.builder().build());
+        contextRunner.withInitializer(context -> context.addBeanFactoryPostProcessor(
+                        beanFactory -> beanFactory.registerSingleton("s3Client", sourceClient)))
+                .withUserConfiguration(R2StorageConfiguration.class)
                 .withSystemProperties(
                         "aws.accessKeyId=s3-test-access-key",
                         "aws.secretAccessKey=s3-test-secret-key"
@@ -107,6 +118,7 @@ class GenerationAdapterConfigurationTest {
                             .containsOnlyKeys("s3Presigner", "r2S3Presigner");
                     assertThat(context).hasSingleBean(ImageStorage.class);
                     assertThat(context).hasSingleBean(ImageUrlProvider.class);
+                    assertThat(context.getBean(ImageUrlProvider.class)).isInstanceOf(R2FallbackImageUrlProvider.class);
                     assertThat(context).hasSingleBean(BackupObjectStorage.class);
                     assertThat(context).hasSingleBean(ImageBackupService.class);
 
@@ -116,6 +128,7 @@ class GenerationAdapterConfigurationTest {
                     assertThat(accessUrl.url().getQuery())
                             .contains("s3-test-access-key")
                             .doesNotContain("r2-test-access-key");
+                    verify(sourceClient).headObject(any(HeadObjectRequest.class));
 
                     ImageAccessUrl backupUrl = context.getBean(BackupObjectStorage.class)
                             .createAccessUrl("harudle/generated/diary-images/prod/diary-id/image.png");

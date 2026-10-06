@@ -1,6 +1,6 @@
 # R2 저장소 설정
 
-R2 설정, 전용 SDK 클라이언트, 원본 접근 어댑터, 이미지 한 장의 백업·검증 서비스와 관리자 수동 복구 API를 구성한다. 전체 백업 대상 순회, 스케줄과 조회 재시도는 이후 단계에서 연결한다.
+R2 설정, 전용 SDK 클라이언트, 원본 접근 어댑터, 이미지 한 장의 백업·검증 서비스, 관리자 수동 복구 API와 이미지 URL 발급 시 대체 조회를 구성한다. 전체 백업 대상 순회와 12시간 스케줄은 이후 단계에서 연결한다.
 
 ## 환경 변수
 
@@ -21,17 +21,17 @@ R2 설정, 전용 SDK 클라이언트, 원본 접근 어댑터, 이미지 한 �
 
 - 기본 S3: `s3Client`, `s3Presigner`. 기존 AWS 자격 증명 체계를 사용한다.
 - R2: `r2S3Client`, `r2S3Presigner`. R2 endpoint와 명시적인 R2 자격 증명을 사용한다.
-- 소비하는 코드에서 `@Qualifier`로 클라이언트를 선택한다. 기본 이미지 저장과 URL 발급은 기존 S3를 사용한다.
+- 소비하는 코드에서 `@Qualifier`로 클라이언트를 선택한다. 이미지 저장은 기존 S3를 사용한다. URL 발급은 S3를 우선 사용하고, R2 활성 상태에서 S3 확인이 실패하면 R2 원본으로 전환한다.
 - R2는 `auto` region, path style 접근과 업로드 chunked encoding 비활성화를 적용한다. [Cloudflare Java SDK 가이드](https://developers.cloudflare.com/r2/examples/aws/aws-sdk-java/)
 - R2 클라이언트의 선택적 요청 체크섬 계산과 응답 체크섬 검증을 `WHEN_REQUIRED`로 설정한다. SDK가 기본으로 추가하는 전체 객체 CRC32 등을 보내지 않는다. 원본의 SHA-256 비교는 이후 백업 실행기에서 수행한다. [R2 S3 호환 목록](https://developers.cloudflare.com/r2/api/s3/api/)
-- R2 SDK 호출 전체 제한은 60초, 개별 시도 제한은 20초다.
+- R2 SDK 호출 전체 제한은 60초, 개별 시도 제한은 20초다. HEAD 객체·버킷 조회의 전체 제한은 요청당 10초다.
 - 두 종류의 클라이언트는 애플리케이션 컨텍스트 종료 시 닫힌다.
 
 클라이언트와 어댑터를 만드는 과정에서는 R2에 요청하지 않는다. 실제 작업을 호출하면 버킷·권한·통신 오류를 전달한다. 테스트에서는 가짜 자격 증명과 HTTP 전송 대역을 사용하며 실제 계정의 접근 권한은 배포 환경에서 별도로 확인해야 한다. R2 버킷은 비공개로 유지하며, 공개 접근이나 IAM 정책을 변경하는 기능은 포함하지 않는다.
 
 ## 원본 접근
 
-`BackupObjectStorage`를 주입해 사용한다. `R2_ENABLED=true`일 때 `R2BackupObjectStorage`가 등록되며, R2 전용 `r2S3Client`와 `r2S3Presigner`를 사용한다. 기존 `ImageStorage`와 `ImageUrlProvider`는 계속 S3를 사용한다.
+`BackupObjectStorage`를 주입해 사용한다. `R2_ENABLED=true`일 때 `R2BackupObjectStorage`가 등록되며, R2 전용 `r2S3Client`와 `r2S3Presigner`를 사용한다. `ImageStorage`는 계속 S3를 사용한다. `ImageUrlProvider`는 S3/R2가 모두 활성화되면 S3 확인 후 R2 원본으로 전환할 수 있다. 동작과 제약은 [이미지 URL 대체 조회](image-url-fallback.md)를 따른다.
 
 | 메서드 | 동작 |
 | --- | --- |

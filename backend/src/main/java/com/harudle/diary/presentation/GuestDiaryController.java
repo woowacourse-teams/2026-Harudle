@@ -74,6 +74,7 @@ class GuestDiaryController {
             ErrorType.AI_PROVIDER_ERROR,
             ErrorType.GENERATION_UNAVAILABLE,
             ErrorType.GENERATION_INTERRUPTED,
+            ErrorType.IMAGE_BACKUP_NOT_FOUND,
             ErrorType.IMAGE_STORAGE_ERROR,
             ErrorType.AI_PROVIDER_TIMEOUT
     })
@@ -120,6 +121,7 @@ class GuestDiaryController {
             ErrorType.GUEST_SESSION_REQUIRED,
             ErrorType.GUEST_SESSION_EXPIRED,
             ErrorType.DIARY_NOT_FOUND,
+            ErrorType.IMAGE_BACKUP_NOT_FOUND,
             ErrorType.IMAGE_STORAGE_ERROR
     })
     @GetMapping("/{diaryId}")
