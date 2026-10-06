@@ -13,7 +13,6 @@ import static org.mockito.Mockito.when;
 
 import com.harudle.generation.config.R2StorageProperties;
 import com.harudle.generation.config.S3StorageProperties;
-import com.harudle.generation.diary.service.exception.ImageBackupNotFoundException;
 import com.harudle.generation.diary.service.port.BackupObjectStorage;
 import com.harudle.generation.diary.service.port.BackupStorageException;
 import com.harudle.generation.diary.service.port.ImageStorage;
@@ -119,36 +118,108 @@ class R2FallbackImageUrlProviderTest {
         verify(backup).createAccessUrl(ORIGINAL);
     }
 
-    @Test
-    void noBackupFailsAfterOneCandidateSearchWithoutSigningOrReturningToS3() {
-        assertThatThrownBy(() -> provider.createAccessUrl(THUMBNAIL)).isInstanceOf(ImageBackupNotFoundException.class);
+    @ParameterizedTest
+    @ValueSource(strings = {"MISSING", "ERROR"})
+    void noBackupReturnsS3UrlWithoutRepeatingHead(String sourceResult) {
+        if ("ERROR".equals(sourceResult)) {
+            when(storage.exists(THUMBNAIL)).thenThrow(new ImageStorageException("S3 HEAD timeout", null,
+                    DiagnosticType.CLIENT_ERROR));
+        }
+        when(primary.createAccessUrl(THUMBNAIL)).thenReturn(S3_URL);
+
+        assertThat(provider.createAccessUrl(THUMBNAIL)).isSameAs(S3_URL);
+
+        verify(storage).exists(THUMBNAIL);
+        verifyNoMoreInteractions(storage);
         verify(backup).findMetadata(ORIGINAL);
         verify(backup).findMetadata(ROOT + "image.jpg");
         verify(backup).findMetadata(ROOT + "image.webp");
         verify(backup, never()).createAccessUrl(anyString());
-        verifyNoInteractions(primary);
+        verify(primary).createAccessUrl(THUMBNAIL);
+        verifyNoMoreInteractions(primary);
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"AUTHENTICATION_ERROR", "AUTHORIZATION_ERROR", "CLIENT_ERROR", "CONFIGURATION_ERROR"})
-    void backupErrorIsNotTreatedAsAbsenceAndDoesNotTryNextCandidate(String type) {
+    @ValueSource(strings = {"AUTHENTICATION_ERROR", "AUTHORIZATION_ERROR", "CLIENT_ERROR", "CONFIGURATION_ERROR",
+            "PROVIDER_ERROR", "REQUEST_PREPARATION_ERROR", "RESPONSE_PROCESSING_ERROR"})
+    void backupErrorReturnsS3UrlWithoutTryingNextCandidate(String type) {
+        when(primary.createAccessUrl(DETAIL)).thenReturn(S3_URL);
         when(backup.findMetadata(ORIGINAL)).thenThrow(new BackupStorageException(
                 BackupStorageException.FailureType.valueOf(type), new RuntimeException("provider error")));
-        assertThatThrownBy(() -> provider.createAccessUrl(DETAIL)).isInstanceOf(ImageStorageException.class)
-                .extracting(exception -> ((ImageStorageException) exception).diagnosticType().name()).isEqualTo(type);
+
+        assertThat(provider.createAccessUrl(DETAIL)).isSameAs(S3_URL);
+
         verify(backup).findMetadata(ORIGINAL);
         verifyNoMoreInteractions(backup);
-        verifyNoInteractions(primary);
+        verify(primary).createAccessUrl(DETAIL);
+        verify(storage).exists(DETAIL);
+        verifyNoMoreInteractions(storage);
     }
 
     @Test
-    void backupSigningFailureIsNotRetried() {
+    void backupSigningFailureReturnsS3UrlWithoutRetryingR2() {
         found(ORIGINAL, MediaType.IMAGE_PNG);
+        when(primary.createAccessUrl(DETAIL)).thenReturn(S3_URL);
         when(backup.createAccessUrl(ORIGINAL)).thenThrow(new BackupStorageException(
                 BackupStorageException.FailureType.CLIENT_ERROR, new RuntimeException("timeout")));
-        assertThatThrownBy(() -> provider.createAccessUrl(DETAIL)).isInstanceOf(ImageStorageException.class);
+
+        assertThat(provider.createAccessUrl(DETAIL)).isSameAs(S3_URL);
+
         verify(backup).createAccessUrl(ORIGINAL);
         verify(backup, never()).findMetadata(ROOT + "image.jpg");
+        verify(primary).createAccessUrl(DETAIL);
+    }
+
+    @Test
+    void mismatchedBackupMetadataCannotSignAnotherObject() {
+        when(primary.createAccessUrl(DETAIL)).thenReturn(S3_URL);
+        when(backup.findMetadata(ORIGINAL)).thenReturn(Optional.of(new BackupObjectMetadata(
+                ROOT + "image.jpg", MediaType.IMAGE_JPEG, 123, null)));
+
+        assertThat(provider.createAccessUrl(DETAIL)).isSameAs(S3_URL);
+
+        verify(backup).findMetadata(ORIGINAL);
+        verifyNoMoreInteractions(backup);
+    }
+
+    @Test
+    void failedS3SigningIsNotRepeatedWhenBackupIsMissing() {
+        ImageStorageException signingFailure = new ImageStorageException("S3 signing failure", null,
+                DiagnosticType.AUTHENTICATION_ERROR);
+        when(storage.exists(DETAIL)).thenReturn(true);
+        when(primary.createAccessUrl(DETAIL)).thenThrow(signingFailure);
+
+        assertThatThrownBy(() -> provider.createAccessUrl(DETAIL)).isSameAs(signingFailure);
+
+        verify(primary).createAccessUrl(DETAIL);
+        verifyNoMoreInteractions(primary);
+        verify(storage).exists(DETAIL);
+        verifyNoMoreInteractions(storage);
+    }
+
+    @Test
+    void finalS3SigningFailureStillFailsAsStorageError() {
+        ImageStorageException signingFailure = new ImageStorageException("S3 signing failure", null,
+                DiagnosticType.CLIENT_ERROR);
+        when(primary.createAccessUrl(DETAIL)).thenThrow(signingFailure);
+
+        assertThatThrownBy(() -> provider.createAccessUrl(DETAIL)).isSameAs(signingFailure);
+
+        verify(primary).createAccessUrl(DETAIL);
+    }
+
+    @Test
+    void backupKeyValidationCannotBeBypassedByReturningS3Url() {
+        when(backup.findMetadata(ORIGINAL)).thenThrow(new BackupStorageException(
+                BackupStorageException.FailureType.REQUEST_VALIDATION_ERROR, new IllegalArgumentException("invalid")));
+
+        assertThatThrownBy(() -> provider.createAccessUrl(DETAIL)).isInstanceOf(ImageStorageException.class)
+                .extracting(exception -> ((ImageStorageException) exception).diagnosticType())
+                .isEqualTo(DiagnosticType.REQUEST_VALIDATION_ERROR);
+
+        verifyNoInteractions(primary);
+        verify(backup).findMetadata(ORIGINAL);
+        verifyNoMoreInteractions(backup);
     }
 
     @Test
@@ -186,6 +257,26 @@ class R2FallbackImageUrlProviderTest {
                 "https://example.r2.cloudflarestorage.com/image?X-Amz-Signature=private-signature"), Instant.MAX));
         provider.createAccessUrl(DETAIL);
         assertThat(output.getOut()).contains("image_url_selected", "s3Result=ERROR", "result=R2")
+                .doesNotContain("fake-secret", "X-Amz-Signature", "private-signature");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"MISSING", "ERROR"})
+    void logsBackupAbsenceSeparatelyFromErrorsWhenReturningS3Url(String backupResult, CapturedOutput output) {
+        String sensitive = "fake-secret https://example/image?X-Amz-Signature=private-signature";
+        when(storage.exists(DETAIL)).thenThrow(new ImageStorageException(sensitive, null, DiagnosticType.CLIENT_ERROR));
+        when(primary.createAccessUrl(DETAIL)).thenReturn(new ImageAccessUrl(URI.create(
+                "https://example.s3.amazonaws.com/image?X-Amz-Signature=private-signature"), Instant.MAX));
+        if ("ERROR".equals(backupResult)) {
+            when(backup.findMetadata(ORIGINAL)).thenThrow(new BackupStorageException(
+                    BackupStorageException.FailureType.AUTHORIZATION_ERROR, new RuntimeException(sensitive)));
+        }
+
+        provider.createAccessUrl(DETAIL);
+
+        assertThat(output.getOut()).contains("image_url_selected", "s3Result=ERROR", "result=S3_FALLBACK",
+                "r2Result=" + backupResult,
+                "r2FailureType=" + ("ERROR".equals(backupResult) ? "AUTHORIZATION_ERROR" : "none"))
                 .doesNotContain("fake-secret", "X-Amz-Signature", "private-signature");
     }
 

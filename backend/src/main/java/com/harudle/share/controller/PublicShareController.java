@@ -36,7 +36,6 @@ class PublicShareController {
     @ApiErrorResponses({
             ErrorType.VALIDATION_ERROR,
             ErrorType.SHARE_NOT_FOUND,
-            ErrorType.IMAGE_BACKUP_NOT_FOUND,
             ErrorType.IMAGE_STORAGE_ERROR
     })
     @GetMapping("/{shareId}")

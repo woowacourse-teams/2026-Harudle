@@ -63,6 +63,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -94,6 +96,10 @@ class DiaryControllerTest {
     private static final UUID IDEMPOTENCY_KEY = UUID.fromString("7e5cc251-fdde-4cc0-a54e-2c8142750609");
     private static final String BACKUP_FOLDER = "harudle/generated/diary-images/dev/" + DIARY_ID + "/" + GENERATION_ID + "/";
     private static final String BACKUP_DETAIL_KEY = BACKUP_FOLDER + "image-960.webp";
+    private static final String BACKUP_THUMBNAIL_KEY = BACKUP_FOLDER + "image-240.webp";
+    private static final String HEALTHY_FOLDER = "harudle/generated/diary-images/dev/" + SECOND_DIARY_ID + "/" + GENERATION_ID + "/";
+    private static final String HEALTHY_DETAIL_KEY = HEALTHY_FOLDER + "image-960.webp";
+    private static final String HEALTHY_THUMBNAIL_KEY = HEALTHY_FOLDER + "image-240.webp";
     private static final LocalDate DIARY_DATE = LocalDate.of(2026, 8, 6);
     private static final Instant CREATED_AT = Instant.parse("2026-08-06T11:10:23Z");
     private static final Instant COMPLETED_AT = Instant.parse("2026-08-06T11:11:42Z");
@@ -682,20 +688,22 @@ class DiaryControllerTest {
     }
 
     @Test
-    @DisplayName("S3와 R2 원본이 모두 없으면 404 백업 없음 오류로 종료한다")
-    void detailReturnsBackupNotFoundWhenBothStoragesHaveNoImage() {
+    @DisplayName("S3와 R2 원본이 모두 없더라도 상세 응답에 기존 S3 URL을 반환한다")
+    void detailReturnsS3UrlWhenBackupIsMissing() {
         configureFallbackDiary();
         configureR2Fallback();
 
         MockMvcResponse response = authenticatedRequest().get("/api/v1/diaries/{diaryId}", DIARY_ID);
 
-        assertThat(response.statusCode()).isEqualTo(404);
-        assertThat(response.jsonPath().getString("code")).isEqualTo("IMAGE_BACKUP_NOT_FOUND");
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.jsonPath().getString("generation.imageUrl")).isEqualTo(sourceUrlFor(BACKUP_DETAIL_KEY));
+        assertThat(response.jsonPath().getString("generation.imageUrlExpiresAt"))
+                .isEqualTo("2026-08-06T20:20:23+09:00");
     }
 
     @Test
-    @DisplayName("R2 권한 오류는 파일 부재와 구분해 503 저장소 오류로 종료한다")
-    void detailReturnsStorageErrorWhenR2AccessFails() {
+    @DisplayName("R2 권한 오류가 발생해도 상세 응답에 기존 S3 URL을 반환한다")
+    void detailReturnsS3UrlWhenR2AccessFails() {
         configureFallbackDiary();
         BackupObjectStorage backup = configureR2Fallback();
         when(backup.findMetadata(BACKUP_FOLDER + "image.png")).thenThrow(new BackupStorageException(
@@ -703,9 +711,74 @@ class DiaryControllerTest {
 
         MockMvcResponse response = authenticatedRequest().get("/api/v1/diaries/{diaryId}", DIARY_ID);
 
-        assertThat(response.statusCode()).isEqualTo(503);
-        assertThat(response.jsonPath().getString("code")).isEqualTo("IMAGE_STORAGE_ERROR");
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.jsonPath().getString("generation.imageUrl")).isEqualTo(sourceUrlFor(BACKUP_DETAIL_KEY));
         assertThat(response.asString()).doesNotContain("private-secret");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"MISSING,MISSING", "ERROR,MISSING", "MISSING,ERROR", "ERROR,ERROR"})
+    @DisplayName("한 썸네일의 S3 누락·오류와 R2 백업 부재·오류가 월간 목록 전체를 실패시키지 않는다")
+    void timelineKeepsEveryDiaryWhenOneImageCannotUseBackup(String sourceResult, String backupResult) {
+        when(diaryQueryService.getTimeline(USER_ID, 2026, 8)).thenReturn(new DiaryTimelineResult(
+                2026, 8, List.of(new DiaryDayResult(DIARY_DATE, List.of(
+                        new DiarySummaryResult(DIARY_ID, "누락된 이미지", BACKUP_DETAIL_KEY),
+                        new DiarySummaryResult(SECOND_DIARY_ID, "정상 이미지", HEALTHY_DETAIL_KEY))))));
+        ImageStorage source = configureMixedImageFallback(sourceResult, backupResult);
+
+        MockMvcResponse response = authenticatedRequest().queryParam("year", 2026).queryParam("month", 8)
+                .get("/api/v1/diaries");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.jsonPath().getList("days[0].items.id", String.class))
+                .containsExactly(DIARY_ID.toString(), SECOND_DIARY_ID.toString());
+        assertThat(response.jsonPath().getString("days[0].items[0].thumbnailUrl"))
+                .isEqualTo(sourceUrlFor(BACKUP_THUMBNAIL_KEY));
+        assertThat(response.jsonPath().getString("days[0].items[1].thumbnailUrl"))
+                .isEqualTo(sourceUrlFor(HEALTHY_THUMBNAIL_KEY));
+        verify(source).exists(BACKUP_THUMBNAIL_KEY);
+        verify(source).exists(HEALTHY_THUMBNAIL_KEY);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"MISSING,MISSING", "ERROR,MISSING", "MISSING,ERROR", "ERROR,ERROR"})
+    @DisplayName("한 썸네일의 S3 누락·오류와 R2 백업 부재·오류가 연속 기록 응답을 실패시키지 않는다")
+    void streakKeepsEveryDayWhenOneImageCannotUseBackup(String sourceResult, String backupResult) {
+        when(diaryQueryService.getCurrentStreak(USER_ID)).thenReturn(new DiaryStreakResult(true, List.of(
+                new DiaryStreakDayResult(DIARY_DATE,
+                        List.of(new DiarySummaryResult(DIARY_ID, "누락된 이미지", BACKUP_DETAIL_KEY))),
+                new DiaryStreakDayResult(DIARY_DATE.minusDays(1),
+                        List.of(new DiarySummaryResult(SECOND_DIARY_ID, "정상 이미지", HEALTHY_DETAIL_KEY))))));
+        ImageStorage source = configureMixedImageFallback(sourceResult, backupResult);
+
+        MockMvcResponse response = authenticatedRequest().get("/api/v1/diaries/current-streak");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.jsonPath().getInt("streakCount")).isEqualTo(2);
+        assertThat(response.jsonPath().getBoolean("recordedToday")).isTrue();
+        assertThat(response.jsonPath().getString("days[0].items[0].id")).isEqualTo(DIARY_ID.toString());
+        assertThat(response.jsonPath().getString("days[1].items[0].id")).isEqualTo(SECOND_DIARY_ID.toString());
+        assertThat(response.jsonPath().getString("days[0].items[0].thumbnailUrl"))
+                .isEqualTo(sourceUrlFor(BACKUP_THUMBNAIL_KEY));
+        assertThat(response.jsonPath().getString("days[1].items[0].thumbnailUrl"))
+                .isEqualTo(sourceUrlFor(HEALTHY_THUMBNAIL_KEY));
+        verify(source).exists(BACKUP_THUMBNAIL_KEY);
+        verify(source).exists(HEALTHY_THUMBNAIL_KEY);
+    }
+
+    private ImageStorage configureMixedImageFallback(String sourceResult, String backupResult) {
+        ImageStorage source = mock(ImageStorage.class);
+        when(source.exists(HEALTHY_THUMBNAIL_KEY)).thenReturn(true);
+        if ("ERROR".equals(sourceResult)) {
+            when(source.exists(BACKUP_THUMBNAIL_KEY)).thenThrow(new ImageStorageException("S3 HEAD timeout", null,
+                    ImageStorageException.DiagnosticType.CLIENT_ERROR));
+        }
+        BackupObjectStorage backup = configureR2Fallback(source);
+        if ("ERROR".equals(backupResult)) {
+            when(backup.findMetadata(BACKUP_FOLDER + "image.png")).thenThrow(new BackupStorageException(
+                    BackupStorageException.FailureType.AUTHORIZATION_ERROR, new RuntimeException("R2 access denied")));
+        }
+        return source;
     }
 
     private void configureFallbackDiary() {
@@ -716,17 +789,27 @@ class DiaryControllerTest {
     }
 
     private BackupObjectStorage configureR2Fallback() {
+        return configureR2Fallback(mock(ImageStorage.class));
+    }
+
+    private BackupObjectStorage configureR2Fallback(ImageStorage source) {
         BackupObjectStorage backup = mock(BackupObjectStorage.class);
         S3StorageProperties s3 = new S3StorageProperties("test-source", "ap-northeast-2", "dev",
                 "harudle/generated/diary-images/dev", "harudle/references/generation/dev",
                 DataSize.ofMegabytes(20), Duration.ofMinutes(15));
         R2StorageProperties r2 = new R2StorageProperties(true, "dev", URI.create("https://backup.example"),
                 "test-backup", "fake-key", "fake-secret", Duration.ofMinutes(15), DataSize.ofMegabytes(20));
-        ImageUrlProvider fallback = new R2FallbackImageUrlProvider(mock(ImageUrlProvider.class),
-                mock(ImageStorage.class), backup, s3, r2);
+        ImageUrlProvider primary = mock(ImageUrlProvider.class);
+        when(primary.createAccessUrl(anyString())).thenAnswer(invocation -> new ImageAccessUrl(
+                URI.create(sourceUrlFor(invocation.getArgument(0))), IMAGE_EXPIRES_AT));
+        ImageUrlProvider fallback = new R2FallbackImageUrlProvider(primary, source, backup, s3, r2);
         when(imageUrlProvider.createAccessUrl(anyString())).thenAnswer(
                 invocation -> fallback.createAccessUrl(invocation.getArgument(0)));
         return backup;
+    }
+
+    private String sourceUrlFor(String key) {
+        return "https://source.example/" + key + "?signature=test";
     }
 
     private io.restassured.module.mockmvc.specification.MockMvcRequestSpecification authenticatedRequest() {

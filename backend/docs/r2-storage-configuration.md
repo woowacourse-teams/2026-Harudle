@@ -31,7 +31,7 @@ R2 설정, 전용 SDK 클라이언트, 원본 접근 어댑터, 이미지 한 �
 
 ## 원본 접근
 
-`BackupObjectStorage`를 주입해 사용한다. `R2_ENABLED=true`일 때 `R2BackupObjectStorage`가 등록되며, R2 전용 `r2S3Client`와 `r2S3Presigner`를 사용한다. `ImageStorage`는 계속 S3를 사용한다. `ImageUrlProvider`는 S3/R2가 모두 활성화되면 S3 확인 후 R2 원본으로 전환할 수 있다. 동작과 제약은 [이미지 URL 대체 조회](image-url-fallback.md)를 따른다.
+`BackupObjectStorage`를 주입해 사용한다. `R2_ENABLED=true`일 때 `R2BackupObjectStorage`가 등록되며, R2 전용 `r2S3Client`와 `r2S3Presigner`를 사용한다. `ImageStorage`는 계속 S3를 사용한다. `ImageUrlProvider`는 S3/R2가 모두 활성화되면 S3 확인 후 R2 원본으로 전환할 수 있다. R2 백업 부재나 조회 오류에서는 기존 S3 서명 URL 발급을 유지한다. 동작과 제약은 [이미지 URL 대체 조회](image-url-fallback.md)를 따른다.
 
 | 메서드 | 동작 |
 | --- | --- |

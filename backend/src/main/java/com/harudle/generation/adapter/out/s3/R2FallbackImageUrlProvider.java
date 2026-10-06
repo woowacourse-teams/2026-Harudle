@@ -3,7 +3,6 @@ package com.harudle.generation.adapter.out.s3;
 import com.harudle.generation.config.R2StorageProperties;
 import com.harudle.generation.config.S3StorageProperties;
 import com.harudle.generation.diary.domain.ImageVariantKeys;
-import com.harudle.generation.diary.service.exception.ImageBackupNotFoundException;
 import com.harudle.generation.diary.service.port.BackupObjectStorage;
 import com.harudle.generation.diary.service.port.BackupStorageException;
 import com.harudle.generation.diary.service.port.ImageStorage;
@@ -16,7 +15,7 @@ import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** 접근 권한이 확인된 DB 키에 대해 S3를 우선 조회하고, 실패하면 R2 원본 URL을 발급한다. */
+/** S3를 우선 확인하고 R2 원본을 조회하되, 백업 부재·조회 오류에서는 기존 S3 URL 발급을 유지한다. */
 public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
     private static final Logger LOGGER = LoggerFactory.getLogger(R2FallbackImageUrlProvider.class);
     private final ImageUrlProvider primary;
@@ -45,10 +44,13 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
         String originalKey = "none";
         String s3Result = "NOT_CHECKED";
         String s3FailureType = "none";
+        String r2Result = "NOT_CHECKED";
+        String r2FailureType = "none";
         String result = "FAILED";
         String failureType = "none";
         String mime = "none";
         long size = 0;
+        ImageStorageException signingFailure = null;
         long startedAt = System.nanoTime();
         try {
             try {
@@ -60,10 +62,15 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
             loggedKey = imageObjectKey;
             try {
                 if (storage.exists(imageObjectKey)) {
-                    ImageAccessUrl url = primary.createAccessUrl(imageObjectKey);
                     s3Result = "AVAILABLE";
-                    result = "S3";
-                    return url;
+                    try {
+                        ImageAccessUrl url = primary.createAccessUrl(imageObjectKey);
+                        result = "S3";
+                        return url;
+                    } catch (ImageStorageException exception) {
+                        signingFailure = exception;
+                        throw exception;
+                    }
                 }
                 s3Result = "MISSING";
             } catch (ImageStorageException exception) {
@@ -76,32 +83,43 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
                         : exception.diagnosticType().name();
             }
 
-            // 원본 후보 탐색을 한 번 수행한다. R2 오류를 후보 부재로 처리하거나 S3로 되돌리지 않는다.
-            for (String candidate : ImageVariantKeys.originalImageKeyCandidatesForLookup(imageObjectKey)) {
-                var found = backup.findMetadata(candidate);
-                if (found.isEmpty()) {
-                    continue;
+            // R2 후보 탐색은 한 번만 수행하고, 조회 오류와 백업 부재를 별도로 기록한다.
+            try {
+                for (String candidate : ImageVariantKeys.originalImageKeyCandidatesForLookup(imageObjectKey)) {
+                    var found = backup.findMetadata(candidate);
+                    if (found.isEmpty()) {
+                        continue;
+                    }
+                    BackupObjectMetadata metadata = found.orElseThrow();
+                    if (!candidate.equals(metadata.objectKey())) {
+                        throw new BackupStorageException(BackupStorageException.FailureType.RESPONSE_PROCESSING_ERROR,
+                                new IllegalArgumentException("R2 원본 응답 키가 일치하지 않습니다."));
+                    }
+                    originalKey = candidate;
+                    mime = metadata.mediaType().getType() + "/" + metadata.mediaType().getSubtype();
+                    size = metadata.size();
+                    ImageAccessUrl url = backup.createAccessUrl(candidate);
+                    r2Result = "AVAILABLE";
+                    result = "R2";
+                    return url;
                 }
-                BackupObjectMetadata metadata = found.orElseThrow();
-                if (!candidate.equals(metadata.objectKey())) {
-                    throw new ImageStorageException("R2 원본 응답 키가 일치하지 않습니다.", null,
-                            DiagnosticType.RESPONSE_PROCESSING_ERROR);
+                r2Result = "MISSING";
+            } catch (BackupStorageException exception) {
+                r2Result = "ERROR";
+                r2FailureType = exception.failureType().name();
+                if (exception.failureType() == BackupStorageException.FailureType.REQUEST_VALIDATION_ERROR) {
+                    throw new ImageStorageException("현재 환경의 유효한 R2 원본 키가 필요합니다.", exception,
+                            DiagnosticType.REQUEST_VALIDATION_ERROR);
                 }
-                originalKey = candidate;
-                mime = metadata.mediaType().getType() + "/" + metadata.mediaType().getSubtype();
-                size = metadata.size();
-                ImageAccessUrl url = backup.createAccessUrl(candidate);
-                result = "R2";
-                return url;
             }
-            throw new ImageBackupNotFoundException();
-        } catch (BackupStorageException exception) {
-            failureType = "R2_" + exception.failureType().name();
-            throw new ImageStorageException("R2 이미지 원본을 조회하거나 URL을 발급하지 못했습니다.", exception,
-                    DiagnosticType.valueOf(exception.failureType().name()));
-        } catch (ImageBackupNotFoundException exception) {
-            failureType = "BACKUP_NOT_FOUND";
-            throw exception;
+
+            // 이미 실패한 서명 발급은 반복하지 않는다. HEAD 실패와 서명 발급 실패는 별개다.
+            if (signingFailure != null) {
+                throw signingFailure;
+            }
+            ImageAccessUrl url = primary.createAccessUrl(imageObjectKey);
+            result = "S3_FALLBACK";
+            return url;
         } catch (ImageStorageException exception) {
             failureType = exception.diagnosticType() == null ? "OTHER" : exception.diagnosticType().name();
             throw exception;
@@ -113,16 +131,18 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
             failureType = "OTHER";
             throw exception;
         } finally {
-            var event = "FAILED".equals(result) ? LOGGER.atWarn() : LOGGER.atInfo();
+            var event = "FAILED".equals(result) || "S3_FALLBACK".equals(result) ? LOGGER.atWarn() : LOGGER.atInfo();
             event.addKeyValue("event", "image_url_selected").addKeyValue("environment", s3.environment())
                     .addKeyValue("s3Bucket", s3.bucket()).addKeyValue("r2Bucket", r2.bucket())
                     .addKeyValue("representativeKey", loggedKey).addKeyValue("originalKey", originalKey)
                     .addKeyValue("s3Result", s3Result).addKeyValue("result", result)
                     .addKeyValue("s3FailureType", s3FailureType)
+                    .addKeyValue("r2Result", r2Result).addKeyValue("r2FailureType", r2FailureType)
                     .addKeyValue("failureType", failureType).addKeyValue("mime", mime).addKeyValue("size", size)
                     .addKeyValue("durationMs", (System.nanoTime() - startedAt) / 1_000_000)
-                    .log("event=image_url_selected representativeKey={} originalKey={} s3Result={} result={} failureType={}",
-                            loggedKey, originalKey, s3Result, result, failureType);
+                    .log("event=image_url_selected representativeKey={} originalKey={} s3Result={} r2Result={} "
+                                    + "r2FailureType={} result={} failureType={}",
+                            loggedKey, originalKey, s3Result, r2Result, r2FailureType, result, failureType);
         }
     }
 }
