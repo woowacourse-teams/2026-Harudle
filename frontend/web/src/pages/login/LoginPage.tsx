@@ -1,5 +1,5 @@
 import { css } from '@emotion/react';
-import harudleLogo from '../../assets/images/harudle-logo.png';
+import harudleLogo from '../../assets/images/harudle-logo.webp';
 import loginHero from '../../assets/images/login-shared-comic.png';
 import kakaoIcon from '../../assets/icons/kakao.svg';
 import { theme } from '../../styles/theme';

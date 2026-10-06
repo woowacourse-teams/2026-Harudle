@@ -75,6 +75,10 @@ export default function createWebpackConfig(_env, argv) {
       new CopyWebpackPlugin({
         patterns: [
           {
+            from: path.resolve(__dirname, 'public/robots.txt'),
+            to: 'robots.txt',
+          },
+          {
             from: path.resolve(__dirname, 'manifest.json'),
             to: 'manifest.json',
           },

@@ -1,5 +1,5 @@
 import { delay, http, HttpResponse } from 'msw';
-import diaryImage from '../assets/images/diary-four-panel.png';
+import diaryImage from '../assets/images/diary-four-panel.webp';
 import { isCanonicalUuid } from '../pages/landing/guestTrialUuid';
 
 interface GuestDiaryRequest {

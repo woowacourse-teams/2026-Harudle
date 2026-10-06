@@ -2,7 +2,7 @@ import { css } from '@emotion/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useSearchParams } from 'react-router';
-import logo from '../../assets/images/harudle-logo.png';
+import logo from '../../assets/images/harudle-logo.webp';
 import { theme } from '../../styles/theme';
 import adminCharacterGenerationHistory from './assets/admin-character-generation-history.png';
 import adminCharacterUserDetail from './assets/admin-character-user-detail.png';
