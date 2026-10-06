@@ -28,7 +28,7 @@ describe('useEntryStatus', () => {
   });
 
   it('세션 복구 중 상태를 유지하고 성공하면 홈을 선택한다', async () => {
-    localStorage.setItem('harudle.has-completed-oauth', 'true');
+    localStorage.setItem('harudle.has-ever-logged-in', 'true');
     let finishRestore: (() => void) | undefined;
     mockRestoreAccessToken.mockImplementationOnce(
       () =>
@@ -48,7 +48,7 @@ describe('useEntryStatus', () => {
   });
 
   it('세션 만료 시 로그인 경험을 유지하고 로그인을 선택한다', async () => {
-    localStorage.setItem('harudle.has-completed-oauth', 'true');
+    localStorage.setItem('harudle.has-ever-logged-in', 'true');
     mockRestoreAccessToken.mockRejectedValueOnce(
       new RequestError({
         type: 'about:blank',
@@ -62,7 +62,7 @@ describe('useEntryStatus', () => {
     const { result } = renderHook(() => useEntryStatus());
 
     await waitFor(() => expect(result.current.status).toBe('login'));
-    expect(localStorage.getItem('harudle.has-completed-oauth')).toBe('true');
+    expect(localStorage.getItem('harudle.has-ever-logged-in')).toBe('true');
     expect(mockCaptureError).not.toHaveBeenCalled();
   });
 
@@ -79,7 +79,7 @@ describe('useEntryStatus', () => {
   ])(
     '네트워크·서버 실패는 로그인 이동 대신 재시도할 수 있다: %s',
     async (error) => {
-      localStorage.setItem('harudle.has-completed-oauth', 'true');
+      localStorage.setItem('harudle.has-ever-logged-in', 'true');
       mockRestoreAccessToken
         .mockRejectedValueOnce(error)
         .mockResolvedValueOnce();

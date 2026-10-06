@@ -9,6 +9,7 @@ test.describe('로그인 화면', () => {
     page,
   }) => {
     await page.addInitScript(() => {
+      localStorage.setItem('harudle.has-ever-logged-in', 'true');
       localStorage.setItem('harudle.has-completed-oauth', 'true');
     });
     await page.setExtraHTTPHeaders({
@@ -26,6 +27,7 @@ test.describe('로그인 화면', () => {
     page,
   }) => {
     await page.addInitScript(() => {
+      localStorage.setItem('harudle.has-ever-logged-in', 'true');
       localStorage.setItem('harudle.has-completed-oauth', 'true');
     });
 
@@ -46,6 +48,7 @@ test.describe('로그인 화면', () => {
     page,
   }) => {
     await page.addInitScript(() => {
+      localStorage.setItem('harudle.has-ever-logged-in', 'true');
       localStorage.setItem('harudle.has-completed-oauth', 'true');
     });
     await page.setExtraHTTPHeaders({

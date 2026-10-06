@@ -23,6 +23,7 @@ test.describe('하루들 접속', () => {
     page,
   }) => {
     await page.addInitScript(() => {
+      localStorage.setItem('harudle.has-ever-logged-in', 'true');
       localStorage.setItem('harudle.has-completed-oauth', 'true');
     });
     const refreshRequests: string[] = [];
@@ -58,6 +59,11 @@ test.describe('하루들 접속', () => {
       await page.evaluate(() =>
         localStorage.getItem('harudle.has-completed-oauth'),
       ),
+    ).toBeNull();
+    expect(
+      await page.evaluate(() =>
+        localStorage.getItem('harudle.has-ever-logged-in'),
+      ),
     ).toBe('true');
 
     await page.goto('/');
@@ -71,6 +77,7 @@ test.describe('하루들 접속', () => {
     page,
   }) => {
     await page.addInitScript(() => {
+      localStorage.setItem('harudle.has-ever-logged-in', 'true');
       localStorage.setItem('harudle.has-completed-oauth', 'true');
     });
     await page.setExtraHTTPHeaders({

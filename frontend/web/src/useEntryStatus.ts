@@ -13,7 +13,7 @@ interface EntryState {
 const useEntryStatus = (): EntryState => {
   const { captureError } = useErrorTracking();
   const hasLoginHistory =
-    localStorage.getItem('harudle.has-completed-oauth') !== null;
+    localStorage.getItem('harudle.has-ever-logged-in') !== null;
   const [status, setStatus] = useState<EntryStatus>(
     hasLoginHistory ? 'restoringSession' : 'landing',
   );

@@ -65,6 +65,35 @@ test.describe('설정', () => {
     ).toBeVisible();
   });
 
+  test('다른 탭에서 로그아웃하면 기존 토큰이 있어도 다음 인증 요청을 차단한다', async ({
+    page,
+    context,
+  }) => {
+    await goToSetting(page);
+    await expectProfile(page);
+    const otherPage = await context.newPage();
+    await goToSetting(otherPage);
+    await expectProfile(otherPage);
+
+    await context.setExtraHTTPHeaders({
+      [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.authRefreshFailure,
+    });
+    await page.getByRole('button', { name: '로그아웃' }).click();
+    await expect(page).toHaveURL('/login');
+
+    const logoutRequests: string[] = [];
+    otherPage.on('request', (request) => {
+      if (request.url().endsWith('/api/v1/auth/logout')) {
+        logoutRequests.push(request.url());
+      }
+    });
+    await otherPage.getByRole('button', { name: '로그아웃' }).click();
+
+    await expect(otherPage).toHaveURL('/login');
+    expect(logoutRequests).toEqual([]);
+    await otherPage.close();
+  });
+
   test('로그아웃에 실패하면 실패 안내를 보여주고 설정 페이지에 머문다', async ({
     page,
   }) => {

@@ -29,6 +29,7 @@ const useLogout = () => {
       });
 
       setAccessToken(null);
+      localStorage.removeItem('harudle.has-completed-oauth');
       navigate('/');
     } catch (error: unknown) {
       if (error instanceof Error) {
