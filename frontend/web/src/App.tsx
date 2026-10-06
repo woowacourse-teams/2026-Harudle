@@ -19,21 +19,21 @@ const App = () => {
   return (
     <div css={appStyle}>
       <PwaAnalyticsTracker />
-        <Routes>
-          <Route element={<EntryRoute />}>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/login" element={<LoginPage />} />
-          </Route>
-          <Route path="/auth/callback" element={<AuthCallbackPage />} />
-          <Route path="/diary-write" element={<DiaryWritePage />} />
-          <Route path="/diary-generating" element={<DiaryGeneratingPage />} />
-          <Route path="/diary/:diaryId" element={<DiaryDetailPage />} />
-          <Route path="/shares/:shareId" element={<SharedDiaryPage />} />
-          <Route path="/setting" element={<SettingPage />} />
-          <Route path="/landing/*" element={<LandingRoutes />} />
-          <Route path="/admin/*" element={<AdminGuard />} />
-          <Route path="*" element={<NotFoundPage />} />
-        </Routes>
+      <Routes>
+        <Route element={<EntryRoute />}>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/login" element={<LoginPage />} />
+        </Route>
+        <Route path="/auth/callback" element={<AuthCallbackPage />} />
+        <Route path="/diary-write" element={<DiaryWritePage />} />
+        <Route path="/diary-generating" element={<DiaryGeneratingPage />} />
+        <Route path="/diary/:diaryId" element={<DiaryDetailPage />} />
+        <Route path="/shares/:shareId" element={<SharedDiaryPage />} />
+        <Route path="/setting" element={<SettingPage />} />
+        <Route path="/landing/*" element={<LandingRoutes />} />
+        <Route path="/admin/*" element={<AdminGuard />} />
+        <Route path="*" element={<NotFoundPage />} />
+      </Routes>
     </div>
   );
 };
