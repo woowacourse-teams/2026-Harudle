@@ -42,6 +42,10 @@ export const checkGuestEntryAuthentication = async (): Promise<boolean> => {
     throw new Error(ERROR_MESSAGES.INVALID_GUEST_REFRESH_TOKEN_RESPONSE);
   }
 
+  // 저장소를 비워도 유효한 쿠키가 남아 있다면 확인된 로그인 상태를 복구한다.
+  if (localStorage.getItem('harudle.has-completed-oauth') === null) {
+    localStorage.setItem('harudle.has-completed-oauth', 'true');
+  }
   setAccessToken(data.accessToken);
   return true;
 };
