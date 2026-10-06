@@ -12,8 +12,14 @@ interface EntryState {
 
 const useEntryStatus = (): EntryState => {
   const { captureError } = useErrorTracking();
-  const hasLoginHistory =
-    localStorage.getItem('harudle.has-ever-logged-in') !== null;
+  let hasLoginHistory = false;
+
+  try {
+    hasLoginHistory =
+      localStorage.getItem('harudle.has-ever-logged-in') !== null;
+  } catch {
+    // 저장소에 접근할 수 없으면 랜딩을 보여준다.
+  }
   const [status, setStatus] = useState<EntryStatus>(
     hasLoginHistory ? 'restoringSession' : 'landing',
   );
