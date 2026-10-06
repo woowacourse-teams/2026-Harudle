@@ -1,4 +1,5 @@
 import { DIARY_DETAIL_COPY } from './copy';
+import { css } from '@emotion/react';
 import { useErrorTracking } from '../../posthog/useErrorTracking';
 import ActionButton from '../../shared/ActionButton';
 import shareIcon from '../../assets/icons/share.svg';
@@ -63,8 +64,9 @@ const DiaryShareButton = ({
 
   return (
     <ActionButton
-      icon={<img src={shareIcon} alt="공유하기 아이콘" />}
+      icon={<span css={shareIconStyle} />}
       label={DIARY_DETAIL_COPY.shareAction}
+      variant="secondary"
       onClick={execute}
       disabled={request.status === 'loading'}
     />
@@ -72,3 +74,11 @@ const DiaryShareButton = ({
 };
 
 export default DiaryShareButton;
+
+const shareIconStyle = css`
+  display: block;
+  width: 100%;
+  height: 100%;
+  background-color: currentColor;
+  mask: url(${shareIcon}) center / contain no-repeat;
+`;

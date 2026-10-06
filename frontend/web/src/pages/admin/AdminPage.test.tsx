@@ -48,7 +48,7 @@ jest.mock('./adminApi', () => ({
     mockSetAdminGenerationLimit(userId, limitCount),
 }));
 
-jest.mock('../../assets/images/harudle-logo.png', () => 'harudle-logo.png');
+jest.mock('../../assets/images/harudle-logo.webp', () => 'harudle-logo.webp');
 jest.mock('./assets/admin-character-default-admin-dog.png', () => 'dog.png');
 jest.mock(
   './assets/admin-character-generation-history.png',

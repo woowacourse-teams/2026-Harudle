@@ -7,6 +7,10 @@ const SAMPLE_SHARE_ID = '06ed972e-0b79-4da0-9716-c9bd8faec85d';
 const UNKNOWN_SHARE_ID = '00000000-0000-4000-8000-000000000999';
 const SHARED_DIARY_TITLE = '비가 와도, 나는 괜찮았다.';
 
+test.beforeEach(async ({ page }): Promise<void> => {
+  await page.clock.setFixedTime(new Date('2026-08-30T12:00:00+09:00'));
+});
+
 const goToSharedDiary = async (page: Page) => {
   await page.goto(`/shares/${SAMPLE_SHARE_ID}`);
 };

@@ -136,14 +136,21 @@ test.describe('일기 생성', () => {
     await submitDiary(page);
 
     await expect(page).toHaveURL('/diary-generating');
-    const dialogPromise = page.waitForEvent('dialog');
-    await page.getByRole('button', { name: '뒤로 가기' }).click();
+    // 클릭 완료를 기다리는 동안 알림이 떠도 즉시 닫아 페이지 실행을 막지 않는다.
+    const dialogMessagePromise = page
+      .waitForEvent('dialog')
+      .then(async (dialog): Promise<string> => {
+        const message = dialog.message();
+        await dialog.accept();
+        return message;
+      });
+    const [dialogMessage] = await Promise.all([
+      dialogMessagePromise,
+      page.getByRole('button', { name: '뒤로 가기' }).click(),
+    ]);
 
+    expect(dialogMessage).toBe(GENERATION_ERROR_MESSAGE);
     await expect(page).toHaveURL('/');
-
-    const dialog = await dialogPromise;
-    expect(dialog.message()).toBe(GENERATION_ERROR_MESSAGE);
-    await dialog.accept();
 
     await expect(page.getByText(GENERATED_DIARY_TITLE)).toHaveCount(0);
   });

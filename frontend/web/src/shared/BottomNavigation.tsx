@@ -31,7 +31,7 @@ const bottomNavigationStyle = css`
   right: 0;
   bottom: 0;
   width: 100%;
-  height: 80px;
+  height: 64px;
   background-color: ${theme.colors.background.surface};
   box-shadow: 0 -1px 2px rgba(17, 17, 24, 0.04);
 `;

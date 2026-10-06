@@ -13,6 +13,7 @@ import DiaryShareButton from './DiaryShareButton';
 import DiaryImageDownloadButton from './DiaryImageDownloadButton';
 import { theme } from '../../styles/theme';
 import DiaryImage from '../../shared/DiaryImage';
+import DiaryImageCopyButton from './DiaryImageCopyButton';
 
 const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
   const navigate = useNavigate();
@@ -97,13 +98,18 @@ const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
           <span css={storyTitleStyle}>{DIARY_DETAIL_COPY.storyTitle}</span>
           <p css={storyTextStyle}>{diaryDetail.sourceText}</p>
         </div>
-        <DiaryShareButton diaryId={diaryId} diaryTitle={title} />
-        <DiaryImageDownloadButton
-          diaryId={diaryId}
-          imageUrl={imageUrl}
-          diaryDate={diaryDetail.diaryDate}
-          diaryTitle={diaryDetail.generation.title}
-        />
+        <div css={diaryActionsStyle}>
+          <DiaryImageCopyButton diaryId={diaryId} imageUrl={imageUrl} />
+          <div css={imageActionsStyle}>
+            <DiaryImageDownloadButton
+              diaryId={diaryId}
+              imageUrl={imageUrl}
+              diaryDate={diaryDetail.diaryDate}
+              diaryTitle={diaryDetail.generation.title}
+            />
+            <DiaryShareButton diaryId={diaryId} diaryTitle={title} />
+          </div>
+        </div>
       </main>
     </div>
   );
@@ -154,6 +160,25 @@ const diaryTitleStyle = css`
   line-height: 36px;
   text-align: center;
   overflow-wrap: break-word;
+`;
+
+const diaryActionsStyle = css`
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 12px;
+`;
+
+const imageActionsStyle = css`
+  display: flex;
+  gap: 12px;
+
+  & > button {
+    flex: 1;
+    min-width: 0;
+    padding-inline: 8px;
+    border-color: ${theme.colors.stroke.brandSolid}55;
+  }
 `;
 
 const diaryImageStyle = css`

@@ -48,7 +48,7 @@ const diaryItemRowStyle = css`
   justify-content: space-between;
   align-items: center;
   width: 100%;
-  height: 82px;
+  height: 98px;
   padding-left: 45px;
   border: none;
   background: none;
@@ -71,7 +71,7 @@ const diaryItemRowStyle = css`
   &::after {
     content: '';
     position: absolute;
-    top: 32px;
+    top: 40px;
     left: 26px;
     width: 12px;
     height: 12px;
@@ -125,10 +125,10 @@ const titleStyle = css`
 `;
 
 const thumbnailStyle = css`
-  flex: 0 0 130px;
-  width: 130px;
-  height: 80px;
-  border-radius: 12px;
-  object-fit: cover;
+  flex: 0 0 96px;
+  width: 96px;
+  height: 96px;
+  border-radius: 4px;
+  object-fit: contain;
   box-sizing: border-box;
 `;
