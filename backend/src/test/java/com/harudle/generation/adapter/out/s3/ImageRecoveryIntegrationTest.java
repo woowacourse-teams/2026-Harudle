@@ -9,6 +9,7 @@ import com.harudle.generation.config.R2StorageProperties;
 import com.harudle.generation.config.S3StorageProperties;
 import com.harudle.generation.diary.domain.ImageVariant;
 import com.harudle.generation.diary.service.ImageRecoveryService;
+import com.harudle.generation.diary.service.ImageBackupService;
 import com.harudle.generation.diary.service.port.BackupObjectStorage;
 import com.harudle.generation.diary.service.port.ImageStorageException;
 import com.harudle.generation.diary.service.port.dto.*;
@@ -26,6 +27,7 @@ import javax.imageio.ImageIO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
@@ -52,6 +54,7 @@ class ImageRecoveryIntegrationTest {
     private final AtomicReference<String> loseResponseOnce = new AtomicReference<>();
     private final CwebpImageVariantEncoder encoder = new CwebpImageVariantEncoder();
     private ImageRecoveryService service;
+    private ImageBackupService backupService;
     private byte[] original;
 
     @BeforeEach
@@ -64,10 +67,10 @@ class ImageRecoveryIntegrationTest {
         var storage = new S3ImageStorage(client, properties,
                 new ImageUploadPreparer(new ImageObjectKeyFactory(properties), encoder),
                 new S3FailureReporter(new S3ExceptionTranslator(), mock(ExternalApiLogger.class)));
-        service = new ImageRecoveryService(storage, backup, properties,
-                new R2StorageProperties(true, "dev", URI.create("https://example.r2.cloudflarestorage.com"),
-                        "test-backup", "fake-key", "fake-secret", Duration.ofMinutes(15), DataSize.ofMegabytes(20), Duration.ofSeconds(2)),
-                Clock.systemUTC());
+        var backupProperties = new R2StorageProperties(true, "dev", URI.create("https://example.r2.cloudflarestorage.com"),
+                "test-backup", "fake-key", "fake-secret", Duration.ofMinutes(15), DataSize.ofMegabytes(20), Duration.ofSeconds(2));
+        service = new ImageRecoveryService(storage, backup, properties, backupProperties, Clock.systemUTC());
+        backupService = new ImageBackupService(storage, backup, properties, backupProperties, Clock.systemUTC());
         when(backup.findMetadata(anyString())).thenAnswer(invocation -> {
             String key = invocation.getArgument(0);
             Stored value = backups.get(key);
@@ -116,6 +119,55 @@ class ImageRecoveryIntegrationTest {
             }
             return PutObjectResponse.builder().build();
         });
+    }
+
+    @ParameterizedTest
+    @CsvSource({"png,false", "jpg,false", "webp,false", "png,true", "jpg,true", "webp,true"})
+    void backsUpAndRestoresRealImagesWithMimeParameters(String extension, boolean optimized) throws Exception {
+        String key = root + "image." + extension;
+        String representativeKey = optimized ? detailKey : key;
+        String contentType = switch (extension) {
+            case "png" -> "image/png";
+            case "jpg" -> "image/jpeg";
+            default -> "image/webp";
+        };
+        MediaType mime = MediaType.parseMediaType(contentType + ";charset=UTF-8");
+        byte[] bytes = extension.equals("webp")
+                ? encoder.encode(new GeneratedImage(new ByteArrayResource(original), MediaType.IMAGE_PNG))
+                        .get(ImageVariant.DETAIL).resource().getContentAsByteArray()
+                : sourceImage(extension, Color.ORANGE);
+        objects.put(key, new Stored(bytes, mime));
+        backups.clear();
+        when(backup.uploadIfAbsent(eq(key), any(GeneratedImage.class))).thenAnswer(invocation -> {
+            GeneratedImage image = invocation.getArgument(1);
+            Stored value = new Stored(image.resource().getContentAsByteArray(), image.mediaType());
+            return backups.putIfAbsent(key, value) == null
+                    ? BackupUploadResult.UPLOADED : BackupUploadResult.ALREADY_EXISTS;
+        });
+
+        var verified = backupService.backup(representativeKey).orElseThrow();
+        assertThat(verified.originalKey()).isEqualTo(key);
+        assertThat(verified.mediaType()).isEqualTo(mime);
+        assertThat(backups.get(key).bytes()).isEqualTo(bytes);
+        assertThat(backups.get(key).mime()).isEqualTo(mime);
+        objects.remove(key);
+
+        assertThat(service.recover(representativeKey, true).status()).isEqualTo("WOULD_RESTORE");
+        assertThat(objects).isEmpty();
+        var restored = service.recover(representativeKey, false);
+        assertThat(restored.status()).isEqualTo("RESTORED");
+        assertThat(restored.mime()).isEqualTo(mime.toString());
+        assertThat(restored.sha256()).isEqualTo(verified.sha256());
+        assertThat(objects.get(key).bytes()).isEqualTo(bytes);
+        assertThat(objects.get(key).mime()).isEqualTo(mime);
+        if (optimized) {
+            assertWebp(objects.get(detailKey), 960);
+            assertWebp(objects.get(thumbnailKey), 240);
+        }
+        int putCount = puts.size();
+        assertThat(service.recover(representativeKey, false).status()).isEqualTo("ALREADY_EXISTS");
+        assertThat(puts).hasSize(putCount);
+        verify(client, never()).deleteObject(any(DeleteObjectRequest.class));
     }
 
     @Test

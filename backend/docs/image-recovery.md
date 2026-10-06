@@ -90,6 +90,10 @@ curl --fail-with-body -b recovery-cookies.txt \
 
 모든 복구 PUT에 `If-None-Match: *`를 사용한다. 이미 존재하는 원본·상세·썸네일은 덮어쓰지 않는다.
 PNG/JPEG는 원래 `.png`/`.jpg` 키에 올바른 MIME과 동일한 바이트로 복구한다.
+PNG/JPEG/WebP 형식 판정은 `image/png;charset=UTF-8`처럼 매개변수가 있는 MIME도 허용한다.
+와일드카드 MIME과 확장자에 맞지 않는 형식은 거절하고, 원본의 MIME 매개변수도 그대로 복구한다.
+백업 메타데이터와 다운로드한 원본은 매개변수를 포함한 전체 MIME·크기를 비교한다.
+기존 S3 원본과 R2 원본의 동일성은 전체 MIME·크기·SHA-256으로 확인한다.
 DB 대표 키가 `image-960.webp`이면 누락 상세·썸네일을 cwebp로 만든다. 기존 상세가 있으면 누락 썸네일은 그 상세에서 만든다.
 원본 WebP 대표 키는 동일한 `.webp` 경로에 그대로 복구한다. UUID 폴더 하나인 기존 구조와 두 개인 현재 구조를 모두 지원한다.
 PNG/JPEG 바이트를 `.webp` 상세 키에 그대로 복사하지 않는다.

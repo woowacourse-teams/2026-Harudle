@@ -193,13 +193,16 @@ public final class ImageRecoveryService {
     }
 
     private void validateOriginal(String key, Snapshot image) {
+        if (image.mime().isWildcardType() || image.mime().isWildcardSubtype()) {
+            throw new ImageRecoveryException(INVALID_CONTENT);
+        }
         byte[] bytes = image.bytes();
         boolean valid = switch (key.substring(key.lastIndexOf('/') + 1)) {
-            case "image.png" -> MediaType.IMAGE_PNG.equals(image.mime()) && bytes.length >= 8
+            case "image.png" -> MediaType.IMAGE_PNG.isCompatibleWith(image.mime()) && bytes.length >= 8
                     && Arrays.equals(Arrays.copyOf(bytes, 8), new byte[]{(byte) 137, 80, 78, 71, 13, 10, 26, 10});
-            case "image.jpg" -> MediaType.IMAGE_JPEG.equals(image.mime()) && bytes.length >= 3
+            case "image.jpg" -> MediaType.IMAGE_JPEG.isCompatibleWith(image.mime()) && bytes.length >= 3
                     && bytes[0] == (byte) 255 && bytes[1] == (byte) 216 && bytes[2] == (byte) 255;
-            case "image.webp" -> MediaType.parseMediaType("image/webp").equals(image.mime()) && bytes.length >= 12
+            case "image.webp" -> MediaType.parseMediaType("image/webp").isCompatibleWith(image.mime()) && bytes.length >= 12
                     && "RIFF".equals(new String(bytes, 0, 4, UTF_8))
                     && "WEBP".equals(new String(bytes, 8, 4, UTF_8));
             default -> false;

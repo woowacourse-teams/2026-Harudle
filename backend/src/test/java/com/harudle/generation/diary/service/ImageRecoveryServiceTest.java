@@ -114,6 +114,50 @@ class ImageRecoveryServiceTest {
     }
 
     @Test
+    void stillRejectsBackupMetadataWithDifferentMimeParameters() {
+        MediaType mime = MediaType.parseMediaType("image/png;charset=UTF-8");
+        when(backup.findMetadata(PNG)).thenReturn(Optional.of(
+                new BackupObjectMetadata(PNG, mime, PNG_BYTES.length, null)));
+        assertFailure(() -> service.recover(PNG, false), "BACKUP_CHANGED");
+        verifyNoInteractions(storage);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void preservesExistingOriginalWhenOnlyMimeParametersDiffer(boolean dryRun) {
+        MediaType mime = MediaType.parseMediaType("image/png;charset=UTF-8");
+        when(backup.findMetadata(PNG)).thenReturn(Optional.of(
+                new BackupObjectMetadata(PNG, mime, PNG_BYTES.length, null)));
+        when(backup.download(PNG)).thenReturn(Optional.of(image(PNG_BYTES, mime)));
+        when(storage.exists(PNG)).thenReturn(true);
+        when(storage.load(PNG)).thenReturn(image(PNG_BYTES, MediaType.IMAGE_PNG));
+        assertFailure(() -> service.recover(PNG, dryRun), "ORIGINAL_CONFLICT");
+        verify(storage, never()).restoreIfMissing(anyString(), any());
+        verify(storage, never()).delete(anyString());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"image/jpeg;charset=UTF-8", "image/svg+xml", "image/gif"})
+    void rejectsMismatchedMimeBeforeDestinationAccess(String contentType) {
+        MediaType mime = MediaType.parseMediaType(contentType);
+        ReferenceImage original = image(PNG_BYTES, mime);
+        when(backup.findMetadata(PNG)).thenReturn(Optional.of(
+                new BackupObjectMetadata(PNG, mime, PNG_BYTES.length, null)));
+        when(backup.download(PNG)).thenReturn(Optional.of(original));
+        assertFailure(() -> service.recover(PNG, false), "INVALID_CONTENT");
+        verifyNoInteractions(storage);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"image/*", "*/*", "image/*+xml"})
+    void rejectsWildcardBackupMetadataBeforeDestinationAccess(String contentType) {
+        when(backup.findMetadata(PNG)).thenReturn(Optional.of(new BackupObjectMetadata(
+                PNG, MediaType.parseMediaType(contentType), PNG_BYTES.length, null)));
+        assertFailure(() -> service.recover(PNG, false), "BACKUP_CHANGED");
+        verifyNoInteractions(storage);
+    }
+
+    @Test
     void rejectsNonImageBytesEvenWithPngMime() {
         byte[] bytes = new byte[PNG_BYTES.length];
         when(backup.download(PNG)).thenReturn(Optional.of(image(bytes, MediaType.IMAGE_PNG)));
