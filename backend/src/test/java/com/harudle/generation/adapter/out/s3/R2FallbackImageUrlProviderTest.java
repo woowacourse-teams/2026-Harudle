@@ -4,8 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
@@ -16,6 +18,8 @@ import com.harudle.generation.config.S3StorageProperties;
 import com.harudle.generation.diary.service.port.BackupObjectStorage;
 import com.harudle.generation.diary.service.port.BackupStorageException;
 import com.harudle.generation.diary.service.port.ImageStorage;
+import com.harudle.generation.diary.service.port.ImageLookupBudget;
+import com.harudle.generation.diary.service.port.ImageLookupBudgetExceededException;
 import com.harudle.generation.diary.service.port.ImageStorageException;
 import com.harudle.generation.diary.service.port.ImageStorageException.DiagnosticType;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
@@ -25,6 +29,8 @@ import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -54,6 +60,101 @@ class R2FallbackImageUrlProviderTest {
     @BeforeEach
     void setUp() {
         provider = new R2FallbackImageUrlProvider(primary, storage, backup, s3("dev"), r2("dev"));
+    }
+
+    @Test
+    void oneSlowS3HeadStopsAllFurtherHeadsForThirtyImages(CapturedOutput output) {
+        AtomicLong time = useFakeTime();
+        when(storage.exists(eq(THUMBNAIL), any(ImageLookupBudget.class))).thenAnswer(invocation -> {
+            ImageLookupBudget budget = invocation.getArgument(1);
+            assertThat(budget.requestTimeout(Duration.ofSeconds(10))).isEqualTo(Duration.ofSeconds(2));
+            time.addAndGet(Duration.ofSeconds(20).toNanos()); // SDK가 예산을 초과해 종료한 경우도 허용한다.
+            throw new ImageStorageException("timeout", null, DiagnosticType.CLIENT_ERROR);
+        });
+        when(primary.createAccessUrl(THUMBNAIL)).thenReturn(S3_URL);
+        ImageUrlProvider response = provider.forResponse();
+
+        assertThat(IntStream.range(0, 30).mapToObj(i -> response.createAccessUrl(THUMBNAIL)).toList())
+                .hasSize(30).allMatch(url -> url == S3_URL);
+
+        verify(storage).exists(eq(THUMBNAIL), any(ImageLookupBudget.class));
+        verifyNoMoreInteractions(storage);
+        verifyNoInteractions(backup);
+        verify(primary, times(30)).createAccessUrl(THUMBNAIL);
+        assertThat(output.getOut()).contains("r2Result=BUDGET_EXHAUSTED", "result=S3_FALLBACK");
+    }
+
+    @Test
+    void exhaustedR2CandidateStopsOtherFormatsAndNextImageHeads() {
+        AtomicLong time = useFakeTime();
+        when(backup.findMetadata(eq(ORIGINAL), any(ImageLookupBudget.class))).thenAnswer(invocation -> {
+            time.addAndGet(Duration.ofSeconds(2).toNanos());
+            return Optional.empty();
+        });
+        when(primary.createAccessUrl(DETAIL)).thenReturn(S3_URL);
+        ImageUrlProvider response = provider.forResponse();
+        assertThat(response.createAccessUrl(DETAIL)).isSameAs(S3_URL);
+        assertThat(response.createAccessUrl(DETAIL)).isSameAs(S3_URL);
+        verify(storage).exists(eq(DETAIL), any(ImageLookupBudget.class));
+        verifyNoMoreInteractions(storage);
+        verify(backup).findMetadata(eq(ORIGINAL), any(ImageLookupBudget.class));
+        verifyNoMoreInteractions(backup);
+    }
+
+    @Test
+    void remainingBudgetStillAllowsR2AndIsSharedWithNextImage() {
+        AtomicLong time = useFakeTime();
+        when(storage.exists(eq(DETAIL), any(ImageLookupBudget.class))).thenAnswer(invocation -> {
+            time.addAndGet(Duration.ofMillis(500).toNanos());
+            return false;
+        });
+        when(backup.findMetadata(eq(ORIGINAL), any(ImageLookupBudget.class))).thenAnswer(invocation -> {
+            ImageLookupBudget budget = invocation.getArgument(1);
+            assertThat(budget.requestTimeout(Duration.ofSeconds(10))).isEqualTo(Duration.ofMillis(1500));
+            time.addAndGet(Duration.ofMillis(1500).toNanos());
+            return Optional.of(new BackupObjectMetadata(ORIGINAL, MediaType.IMAGE_PNG, 123, null));
+        });
+        when(backup.createAccessUrl(ORIGINAL)).thenReturn(R2_URL);
+        when(primary.createAccessUrl(DETAIL)).thenReturn(S3_URL);
+        ImageUrlProvider response = provider.forResponse();
+        assertThat(response.createAccessUrl(DETAIL)).isSameAs(R2_URL);
+        assertThat(response.createAccessUrl(DETAIL)).isSameAs(S3_URL);
+        verify(storage).exists(eq(DETAIL), any(ImageLookupBudget.class));
+        verify(backup).findMetadata(eq(ORIGINAL), any(ImageLookupBudget.class));
+        verify(backup).createAccessUrl(ORIGINAL);
+        verifyNoMoreInteractions(storage, backup);
+    }
+
+    @Test
+    void newResponsesReceiveIndependentBudgets() {
+        AtomicLong time = useFakeTime();
+        when(storage.exists(eq(DETAIL), any(ImageLookupBudget.class))).thenAnswer(invocation -> {
+            ImageLookupBudget budget = invocation.getArgument(1);
+            assertThat(budget.requestTimeout(Duration.ofSeconds(10))).isEqualTo(Duration.ofSeconds(2));
+            time.addAndGet(Duration.ofSeconds(2).toNanos());
+            throw new ImageLookupBudgetExceededException();
+        });
+        when(primary.createAccessUrl(DETAIL)).thenReturn(S3_URL);
+        assertThat(provider.forResponse().createAccessUrl(DETAIL)).isSameAs(S3_URL);
+        assertThat(provider.forResponse().createAccessUrl(DETAIL)).isSameAs(S3_URL);
+        verify(storage, times(2)).exists(eq(DETAIL), any(ImageLookupBudget.class));
+        verifyNoInteractions(backup);
+    }
+
+    @Test
+    void exhaustedBudgetStillRejectsOtherEnvironmentBeforeSigning() {
+        AtomicLong time = useFakeTime();
+        ImageUrlProvider response = provider.forResponse();
+        time.addAndGet(Duration.ofSeconds(2).toNanos());
+        assertThatThrownBy(() -> response.createAccessUrl(DETAIL.replace("/dev/", "/prod/")))
+                .isInstanceOf(ImageStorageException.class);
+        verifyNoInteractions(storage, backup, primary);
+    }
+
+    private AtomicLong useFakeTime() {
+        AtomicLong time = new AtomicLong();
+        provider = new R2FallbackImageUrlProvider(primary, storage, backup, s3("dev"), r2("dev"), time::get);
+        return time;
     }
 
     @Test
@@ -293,6 +394,6 @@ class R2FallbackImageUrlProviderTest {
 
     private R2StorageProperties r2(String environment) {
         return new R2StorageProperties(true, environment, URI.create("https://example.r2.cloudflarestorage.com"),
-                "test-backup", "fake-key", "fake-secret", Duration.ofMinutes(15), DataSize.ofMegabytes(20));
+                "test-backup", "fake-key", "fake-secret", Duration.ofMinutes(15), DataSize.ofMegabytes(20), Duration.ofSeconds(2));
     }
 }

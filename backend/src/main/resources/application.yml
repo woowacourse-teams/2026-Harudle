@@ -139,6 +139,7 @@ harudle:
         secret-access-key: ${R2_SECRET_ACCESS_KEY:}
         access-url-ttl: ${R2_ACCESS_URL_TTL:15m}
         max-object-size: ${R2_MAX_OBJECT_SIZE:20MB}
+        list-lookup-budget: ${R2_LIST_LOOKUP_BUDGET:2s}
 
 springdoc:
   api-docs:

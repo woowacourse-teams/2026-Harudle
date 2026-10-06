@@ -22,6 +22,11 @@ public final class ObservedImageUrlProvider implements ImageUrlProvider {
     }
 
     @Override
+    public ImageUrlProvider forResponse() {
+        return new ObservedImageUrlProvider(delegate.forResponse(), meterRegistry);
+    }
+
+    @Override
     public ImageAccessUrl createAccessUrl(String imageObjectKey) {
         long startedAt = System.nanoTime();
         String result = "failure";

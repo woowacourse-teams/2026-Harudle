@@ -1,6 +1,7 @@
 package com.harudle.generation.adapter.out.s3;
 
 import com.harudle.generation.diary.service.port.ImageStorage;
+import com.harudle.generation.diary.service.port.ImageLookupBudget;
 import com.harudle.generation.diary.service.port.dto.GeneratedImage;
 import com.harudle.generation.diary.service.port.dto.ReferenceImage;
 import io.micrometer.core.instrument.Counter;
@@ -39,6 +40,12 @@ public final class ObservedImageStorage implements ImageStorage {
     @Override
     public boolean exists(String imageObjectKey) {
         return observe("head_object", () -> delegate.exists(imageObjectKey),
+                exists -> exists ? "present" : "missing");
+    }
+
+    @Override
+    public boolean exists(String imageObjectKey, ImageLookupBudget budget) {
+        return observe("head_object", () -> delegate.exists(imageObjectKey, budget),
                 exists -> exists ? "present" : "missing");
     }
 

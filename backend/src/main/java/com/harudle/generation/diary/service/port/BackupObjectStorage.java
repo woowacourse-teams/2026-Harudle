@@ -13,6 +13,8 @@ public interface BackupObjectStorage {
     /** 파일이 없을 때만 empty를 반환하며, 권한과 통신 오류는 예외로 전달한다. */
     Optional<BackupObjectMetadata> findMetadata(String objectKey);
 
+    Optional<BackupObjectMetadata> findMetadata(String objectKey, ImageLookupBudget budget);
+
     Optional<ReferenceImage> download(String objectKey);
 
     /** 기존 객체를 덮어쓰지 않는다. ALREADY_EXISTS는 내용 일치나 검증 성공을 의미하지 않는다. */

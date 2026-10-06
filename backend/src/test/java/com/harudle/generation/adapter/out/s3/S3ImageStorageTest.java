@@ -19,6 +19,8 @@ import com.harudle.generation.config.S3StorageProperties;
 import com.harudle.generation.diary.domain.ImageVariant;
 import com.harudle.generation.diary.service.port.dto.GeneratedImage;
 import com.harudle.generation.diary.service.port.ImageStorageException;
+import com.harudle.generation.diary.service.port.ImageLookupBudget;
+import com.harudle.generation.diary.service.port.ImageLookupBudgetExceededException;
 import com.harudle.generation.diary.service.port.dto.ReferenceImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -28,6 +30,7 @@ import java.security.MessageDigest;
 import java.util.Base64;
 import java.util.concurrent.atomic.AtomicReference;
 import java.time.Duration;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -378,6 +381,50 @@ class S3ImageStorageTest {
                 new ImageUploadPreparer(new ImageObjectKeyFactory(properties), variantEncoder),
                 new S3FailureReporter(new S3ExceptionTranslator(), externalApiLogger)
         );
+    }
+
+    @Test
+    void objectAndBucketHeadShareRemainingBudget() {
+        AtomicLong time = new AtomicLong();
+        ImageLookupBudget budget = new ImageLookupBudget(Duration.ofSeconds(2), time::get);
+        when(s3Client.headObject(any(HeadObjectRequest.class))).thenAnswer(invocation -> {
+            time.addAndGet(Duration.ofMillis(1500).toNanos());
+            throw S3Exception.builder().statusCode(404).build();
+        });
+
+        assertThat(imageStorage.exists(OBJECT_KEY, budget)).isFalse();
+
+        ArgumentCaptor<HeadObjectRequest> object = ArgumentCaptor.forClass(HeadObjectRequest.class);
+        ArgumentCaptor<HeadBucketRequest> bucket = ArgumentCaptor.forClass(HeadBucketRequest.class);
+        verify(s3Client).headObject(object.capture());
+        verify(s3Client).headBucket(bucket.capture());
+        assertThat(object.getValue().overrideConfiguration().orElseThrow().apiCallTimeout())
+                .contains(Duration.ofSeconds(2));
+        assertThat(bucket.getValue().overrideConfiguration().orElseThrow().apiCallTimeout())
+                .contains(Duration.ofMillis(500));
+    }
+
+    @Test
+    void expiredObjectHeadCannotStartBucketHead() {
+        AtomicLong time = new AtomicLong();
+        ImageLookupBudget budget = new ImageLookupBudget(Duration.ofSeconds(2), time::get);
+        when(s3Client.headObject(any(HeadObjectRequest.class))).thenAnswer(invocation -> {
+            time.addAndGet(Duration.ofSeconds(2).toNanos());
+            throw S3Exception.builder().statusCode(404).build();
+        });
+        assertThatThrownBy(() -> imageStorage.exists(OBJECT_KEY, budget))
+                .isInstanceOf(ImageLookupBudgetExceededException.class);
+        verify(s3Client, never()).headBucket(any(HeadBucketRequest.class));
+    }
+
+    @Test
+    void expiredBudgetCannotStartObjectHead() {
+        AtomicLong time = new AtomicLong();
+        ImageLookupBudget budget = new ImageLookupBudget(Duration.ofSeconds(2), time::get);
+        time.addAndGet(Duration.ofSeconds(2).toNanos());
+        assertThatThrownBy(() -> imageStorage.exists(OBJECT_KEY, budget))
+                .isInstanceOf(ImageLookupBudgetExceededException.class);
+        verifyNoInteractions(s3Client);
     }
 
     @Test

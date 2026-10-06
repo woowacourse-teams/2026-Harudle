@@ -76,6 +76,7 @@ class R2StorageConfigurationTest {
             assertThat(properties.bucket()).isEqualTo("test-backup");
             assertThat(properties.accessUrlTtl()).isEqualTo(Duration.ofMinutes(15));
             assertThat(properties.maxObjectSize()).isEqualTo(DataSize.ofMegabytes(20));
+            assertThat(properties.listLookupBudget()).isEqualTo(Duration.ofSeconds(2));
             assertThat(context).hasSingleBean(BackupObjectStorage.class);
             assertThat(context.getBean(BackupObjectStorage.class)).isInstanceOf(R2BackupObjectStorage.class);
             assertThat(context).doesNotHaveBean(ImageBackupService.class);
@@ -168,6 +169,25 @@ class R2StorageConfigurationTest {
         contextRunner.withPropertyValues(enabledProperties())
                 .withPropertyValues(PREFIX + "environment=" + environment)
                 .run(context -> assertThat(context).hasFailed());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0ms", "-1s", "500ns", "11s"})
+    void rejectInvalidListLookupBudget(String budget) {
+        contextRunner.withPropertyValues(enabledProperties())
+                .withPropertyValues(PREFIX + "list-lookup-budget=" + budget)
+                .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    void bindConfiguredListLookupBudget() {
+        contextRunner.withPropertyValues(enabledProperties())
+                .withPropertyValues(PREFIX + "list-lookup-budget=500ms")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context.getBean(R2StorageProperties.class).listLookupBudget())
+                            .isEqualTo(Duration.ofMillis(500));
+                });
     }
 
     @ParameterizedTest

@@ -3,6 +3,8 @@ package com.harudle.generation.adapter.out.s3;
 import com.harudle.generation.config.S3StorageProperties;
 import com.harudle.generation.diary.domain.ImageVariantKeys;
 import com.harudle.generation.diary.service.port.ImageStorage;
+import com.harudle.generation.diary.service.port.ImageLookupBudget;
+import com.harudle.generation.diary.service.port.ImageLookupBudgetExceededException;
 import com.harudle.generation.diary.service.port.ImageStorageException;
 import com.harudle.generation.diary.service.port.dto.GeneratedImage;
 import com.harudle.generation.diary.service.port.dto.ReferenceImage;
@@ -278,13 +280,18 @@ public final class S3ImageStorage implements ImageStorage {
 
     @Override
     public boolean exists(String imageObjectKey) {
+        return exists(imageObjectKey, ImageLookupBudget.unlimited());
+    }
+
+    @Override
+    public boolean exists(String imageObjectKey, ImageLookupBudget budget) {
         requireReadable(imageObjectKey, "head_object", LOAD_TRANSLATION_OPERATION);
 
         try {
             s3Client.headObject(HeadObjectRequest.builder()
                     .bucket(bucket)
                     .key(imageObjectKey)
-                    .overrideConfiguration(config -> config.apiCallTimeout(HEAD_REQUEST_TIMEOUT))
+                    .overrideConfiguration(config -> config.apiCallTimeout(budget.requestTimeout(HEAD_REQUEST_TIMEOUT)))
                     .build());
             return true;
         } catch (S3Exception exception) {
@@ -293,8 +300,11 @@ public final class S3ImageStorage implements ImageStorage {
                 // HEAD 404는 존재하지 않는 버킷에서도 발생한다. 조회 상태가 불명확하면 쓰지 않는다.
                 try {
                     s3Client.headBucket(HeadBucketRequest.builder().bucket(bucket)
-                            .overrideConfiguration(config -> config.apiCallTimeout(HEAD_REQUEST_TIMEOUT)).build());
+                            .overrideConfiguration(config -> config.apiCallTimeout(budget.requestTimeout(HEAD_REQUEST_TIMEOUT)))
+                            .build());
                     return false;
+                } catch (ImageLookupBudgetExceededException exhausted) {
+                    throw exhausted;
                 } catch (Exception bucketException) {
                     throw failureReporter.reportProviderFailure("head_bucket", LOAD_TRANSLATION_OPERATION,
                             imageObjectKey, false, bucketException);
@@ -302,6 +312,8 @@ public final class S3ImageStorage implements ImageStorage {
             }
             throw failureReporter.reportProviderFailure("head_object", LOAD_TRANSLATION_OPERATION,
                     imageObjectKey, false, exception);
+        } catch (ImageLookupBudgetExceededException exhausted) {
+            throw exhausted;
         } catch (Exception exception) {
             throw failureReporter.reportProviderFailure("head_object", LOAD_TRANSLATION_OPERATION,
                     imageObjectKey, false, exception);

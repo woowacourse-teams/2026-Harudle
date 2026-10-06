@@ -8,6 +8,7 @@ import java.net.URI;
 import java.time.Duration;
 import org.jspecify.annotations.NonNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.DefaultValue;
 import org.springframework.util.unit.DataSize;
 import org.springframework.validation.annotation.Validated;
 
@@ -21,11 +22,19 @@ public record R2StorageProperties(
         @NotBlank String accessKeyId,
         @NotBlank String secretAccessKey,
         @NotNull Duration accessUrlTtl,
-        @NotNull DataSize maxObjectSize
+        @NotNull DataSize maxObjectSize,
+        @DefaultValue("2s") @NotNull Duration listLookupBudget
 ) {
 
     private static final Duration MIN_ACCESS_URL_TTL = Duration.ofSeconds(1);
     private static final Duration MAX_ACCESS_URL_TTL = Duration.ofDays(7);
+
+    @AssertTrue(message = "목록 이미지 조회 시간 예산은 1ms 이상 10초 이하여야 합니다.")
+    public boolean isListLookupBudgetValid() {
+        return listLookupBudget != null
+                && listLookupBudget.compareTo(Duration.ofMillis(1)) >= 0
+                && listLookupBudget.compareTo(Duration.ofSeconds(10)) <= 0;
+    }
 
     @AssertTrue(message = "R2 endpoint는 경로, 인증 정보, 쿼리, 프래그먼트가 없는 HTTPS API 주소여야 합니다.")
     public boolean isEndpointValid() {
@@ -54,8 +63,8 @@ public record R2StorageProperties(
     @Override
     public @NonNull String toString() {
         return ("R2StorageProperties[enabled=%s, environment=%s, endpoint=%s, bucket=%s, "
-                + "accessKeyId=***, secretAccessKey=***, accessUrlTtl=%s, maxObjectSize=%s]").formatted(
-                enabled, environment, endpoint, bucket, accessUrlTtl, maxObjectSize
+                + "accessKeyId=***, secretAccessKey=***, accessUrlTtl=%s, maxObjectSize=%s, listLookupBudget=%s]").formatted(
+                enabled, environment, endpoint, bucket, accessUrlTtl, maxObjectSize, listLookupBudget
         );
     }
 }

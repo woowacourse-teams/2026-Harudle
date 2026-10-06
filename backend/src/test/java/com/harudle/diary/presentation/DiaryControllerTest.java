@@ -47,6 +47,7 @@ import com.harudle.generation.diary.service.port.dto.BackupObjectMetadata;
 import com.harudle.generation.diary.service.port.BackupObjectStorage;
 import com.harudle.generation.diary.service.port.BackupStorageException;
 import com.harudle.generation.diary.service.port.ImageStorage;
+import com.harudle.generation.diary.service.port.ImageLookupBudget;
 import com.harudle.generation.diary.service.port.ImageStorageException;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import io.restassured.http.ContentType;
@@ -137,6 +138,7 @@ class DiaryControllerTest {
 
     @BeforeEach
     void setUp() {
+        when(imageUrlProvider.forResponse()).thenCallRealMethod();
         RestAssuredMockMvc.mockMvc(mockMvc);
     }
 
@@ -683,7 +685,7 @@ class DiaryControllerTest {
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.jsonPath().getString("days[0].items[0].thumbnailUrl"))
                 .isEqualTo("https://backup.example/image.jpg?signature=test");
-        verify(imageUrlProvider).createAccessUrl(BACKUP_FOLDER + "image-240.webp");
+        verify(imageUrlProvider).forResponse();
         verify(backup).createAccessUrl(originalKey);
     }
 
@@ -798,11 +800,16 @@ class DiaryControllerTest {
                 "harudle/generated/diary-images/dev", "harudle/references/generation/dev",
                 DataSize.ofMegabytes(20), Duration.ofMinutes(15));
         R2StorageProperties r2 = new R2StorageProperties(true, "dev", URI.create("https://backup.example"),
-                "test-backup", "fake-key", "fake-secret", Duration.ofMinutes(15), DataSize.ofMegabytes(20));
+                "test-backup", "fake-key", "fake-secret", Duration.ofMinutes(15), DataSize.ofMegabytes(20), Duration.ofSeconds(2));
         ImageUrlProvider primary = mock(ImageUrlProvider.class);
         when(primary.createAccessUrl(anyString())).thenAnswer(invocation -> new ImageAccessUrl(
                 URI.create(sourceUrlFor(invocation.getArgument(0))), IMAGE_EXPIRES_AT));
-        ImageUrlProvider fallback = new R2FallbackImageUrlProvider(primary, source, backup, s3, r2);
+        ImageUrlProvider fallback = new R2FallbackImageUrlProvider(primary, source, backup, s3, r2, () -> 0);
+        when(source.exists(anyString(), any(ImageLookupBudget.class)))
+                .thenAnswer(invocation -> source.exists(invocation.getArgument(0)));
+        when(backup.findMetadata(anyString(), any(ImageLookupBudget.class)))
+                .thenAnswer(invocation -> backup.findMetadata(invocation.getArgument(0)));
+        when(imageUrlProvider.forResponse()).thenAnswer(invocation -> fallback.forResponse());
         when(imageUrlProvider.createAccessUrl(anyString())).thenAnswer(
                 invocation -> fallback.createAccessUrl(invocation.getArgument(0)));
         return backup;

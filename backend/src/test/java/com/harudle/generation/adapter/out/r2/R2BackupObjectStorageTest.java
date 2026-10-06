@@ -1,6 +1,7 @@
 package com.harudle.generation.adapter.out.r2;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -18,6 +19,8 @@ import ch.qos.logback.core.read.ListAppender;
 import com.harudle.common.logging.ExternalApiLogger;
 import com.harudle.generation.config.R2StorageProperties;
 import com.harudle.generation.diary.service.port.BackupStorageException;
+import com.harudle.generation.diary.service.port.ImageLookupBudget;
+import com.harudle.generation.diary.service.port.ImageLookupBudgetExceededException;
 import com.harudle.generation.diary.service.port.BackupStorageException.FailureType;
 import com.harudle.generation.diary.service.port.dto.BackupObjectMetadata;
 import com.harudle.generation.diary.service.port.dto.BackupUploadResult;
@@ -29,6 +32,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.concurrent.atomic.AtomicLong;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
@@ -133,6 +137,49 @@ class R2BackupObjectStorageTest {
         assertFailure(() -> storage.uploadIfAbsent(KEY, image(BYTES, "image/png")), FailureType.PROVIDER_ERROR);
         verify(client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
         verifyNoMoreInteractions(client);
+    }
+
+    @Test
+    void objectAndBucketHeadShareRemainingBudget() {
+        AtomicLong time = new AtomicLong();
+        ImageLookupBudget budget = new ImageLookupBudget(Duration.ofSeconds(2), time::get);
+        when(client.headObject(any(HeadObjectRequest.class))).thenAnswer(invocation -> {
+            time.addAndGet(Duration.ofMillis(1500).toNanos());
+            throw S3Exception.builder().statusCode(404).build();
+        });
+        assertThat(storage.findMetadata(KEY, budget)).isEmpty();
+
+        ArgumentCaptor<HeadObjectRequest> object = ArgumentCaptor.forClass(HeadObjectRequest.class);
+        ArgumentCaptor<HeadBucketRequest> bucket = ArgumentCaptor.forClass(HeadBucketRequest.class);
+        verify(client).headObject(object.capture());
+        verify(client).headBucket(bucket.capture());
+        assertThat(object.getValue().overrideConfiguration().orElseThrow().apiCallTimeout())
+                .contains(Duration.ofSeconds(2));
+        assertThat(bucket.getValue().overrideConfiguration().orElseThrow().apiCallTimeout())
+                .contains(Duration.ofMillis(500));
+    }
+
+    @Test
+    void expiredObjectHeadCannotStartBucketHead() {
+        AtomicLong time = new AtomicLong();
+        ImageLookupBudget budget = new ImageLookupBudget(Duration.ofSeconds(2), time::get);
+        when(client.headObject(any(HeadObjectRequest.class))).thenAnswer(invocation -> {
+            time.addAndGet(Duration.ofSeconds(2).toNanos());
+            throw S3Exception.builder().statusCode(404).build();
+        });
+        assertThatThrownBy(() -> storage.findMetadata(KEY, budget))
+                .isInstanceOf(ImageLookupBudgetExceededException.class);
+        verify(client, never()).headBucket(any(HeadBucketRequest.class));
+    }
+
+    @Test
+    void expiredBudgetCannotStartObjectHead() {
+        AtomicLong time = new AtomicLong();
+        ImageLookupBudget budget = new ImageLookupBudget(Duration.ofSeconds(2), time::get);
+        time.addAndGet(Duration.ofSeconds(2).toNanos());
+        assertThatThrownBy(() -> storage.findMetadata(KEY, budget))
+                .isInstanceOf(ImageLookupBudgetExceededException.class);
+        verifyNoInteractions(client);
     }
 
     @Test
@@ -383,6 +430,6 @@ class R2BackupObjectStorageTest {
 
     private static R2StorageProperties properties() {
         return new R2StorageProperties(true, "dev", URI.create("https://example.r2.cloudflarestorage.com"),
-                "test-backup", "r2-test-key", "r2-test-secret", Duration.ofMinutes(15), DataSize.ofBytes(8));
+                "test-backup", "r2-test-key", "r2-test-secret", Duration.ofMinutes(15), DataSize.ofBytes(8), Duration.ofSeconds(2));
     }
 }

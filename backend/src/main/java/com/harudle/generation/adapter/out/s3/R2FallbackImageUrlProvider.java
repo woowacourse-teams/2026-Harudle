@@ -6,12 +6,16 @@ import com.harudle.generation.diary.domain.ImageVariantKeys;
 import com.harudle.generation.diary.service.port.BackupObjectStorage;
 import com.harudle.generation.diary.service.port.BackupStorageException;
 import com.harudle.generation.diary.service.port.ImageStorage;
+import com.harudle.generation.diary.service.port.ImageLookupBudget;
+import com.harudle.generation.diary.service.port.ImageLookupBudgetExceededException;
 import com.harudle.generation.diary.service.port.ImageStorageException;
 import com.harudle.generation.diary.service.port.ImageStorageException.DiagnosticType;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.generation.diary.service.port.dto.BackupObjectMetadata;
 import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
 import java.util.Objects;
+import java.util.function.LongSupplier;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,22 +28,42 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
     private final S3StorageProperties s3;
     private final R2StorageProperties r2;
     private final S3ImageAccessPolicy accessPolicy;
+    private final LongSupplier nanoTime;
 
     public R2FallbackImageUrlProvider(ImageUrlProvider primary, ImageStorage storage, BackupObjectStorage backup,
             S3StorageProperties s3, R2StorageProperties r2) {
+        this(primary, storage, backup, s3, r2, System::nanoTime);
+    }
+
+    public R2FallbackImageUrlProvider(ImageUrlProvider primary, ImageStorage storage, BackupObjectStorage backup,
+            S3StorageProperties s3, R2StorageProperties r2, LongSupplier nanoTime) {
         this.primary = Objects.requireNonNull(primary);
         this.storage = Objects.requireNonNull(storage);
         this.backup = Objects.requireNonNull(backup);
         this.s3 = Objects.requireNonNull(s3);
         this.r2 = Objects.requireNonNull(r2);
         this.accessPolicy = new S3ImageAccessPolicy(s3);
+        this.nanoTime = Objects.requireNonNull(nanoTime);
+        if (!r2.isListLookupBudgetValid()) {
+            throw new IllegalArgumentException("유효한 목록 이미지 조회 시간 예산이 필요합니다.");
+        }
         if (!s3.environment().equals(r2.environment())) {
             throw new IllegalArgumentException("이미지 URL 발급의 S3와 R2 환경이 일치해야 합니다.");
         }
     }
 
     @Override
+    public ImageUrlProvider forResponse() {
+        ImageLookupBudget budget = new ImageLookupBudget(r2.listLookupBudget(), nanoTime);
+        return key -> createAccessUrl(key, budget);
+    }
+
+    @Override
     public ImageAccessUrl createAccessUrl(String imageObjectKey) {
+        return createAccessUrl(imageObjectKey, null);
+    }
+
+    private ImageAccessUrl createAccessUrl(String imageObjectKey, @Nullable ImageLookupBudget budget) {
         String loggedKey = "invalid";
         String originalKey = "none";
         String s3Result = "NOT_CHECKED";
@@ -60,8 +84,16 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
                         DiagnosticType.REQUEST_VALIDATION_ERROR);
             }
             loggedKey = imageObjectKey;
+            if (budget != null && budget.isExhausted()) {
+                s3Result = "BUDGET_EXHAUSTED";
+                r2Result = "BUDGET_EXHAUSTED";
+                ImageAccessUrl url = primary.createAccessUrl(imageObjectKey);
+                result = "S3_FALLBACK";
+                return url;
+            }
             try {
-                if (storage.exists(imageObjectKey)) {
+                boolean exists = budget == null ? storage.exists(imageObjectKey) : storage.exists(imageObjectKey, budget);
+                if (exists) {
                     s3Result = "AVAILABLE";
                     try {
                         ImageAccessUrl url = primary.createAccessUrl(imageObjectKey);
@@ -73,6 +105,8 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
                     }
                 }
                 s3Result = "MISSING";
+            } catch (ImageLookupBudgetExceededException exhausted) {
+                s3Result = "BUDGET_EXHAUSTED";
             } catch (ImageStorageException exception) {
                 // 잘못된 요청을 다른 저장소로 우회시키지 않는다.
                 if (exception.diagnosticType() == DiagnosticType.REQUEST_VALIDATION_ERROR) {
@@ -86,7 +120,10 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
             // R2 후보 탐색은 한 번만 수행하고, 조회 오류와 백업 부재를 별도로 기록한다.
             try {
                 for (String candidate : ImageVariantKeys.originalImageKeyCandidatesForLookup(imageObjectKey)) {
-                    var found = backup.findMetadata(candidate);
+                    if (budget != null && budget.isExhausted()) {
+                        throw new ImageLookupBudgetExceededException();
+                    }
+                    var found = budget == null ? backup.findMetadata(candidate) : backup.findMetadata(candidate, budget);
                     if (found.isEmpty()) {
                         continue;
                     }
@@ -104,6 +141,8 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
                     return url;
                 }
                 r2Result = "MISSING";
+            } catch (ImageLookupBudgetExceededException exhausted) {
+                r2Result = "BUDGET_EXHAUSTED";
             } catch (BackupStorageException exception) {
                 r2Result = "ERROR";
                 r2FailureType = exception.failureType().name();

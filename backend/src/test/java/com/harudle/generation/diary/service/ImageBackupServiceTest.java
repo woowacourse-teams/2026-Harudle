@@ -437,6 +437,6 @@ class ImageBackupServiceTest {
 
     private static R2StorageProperties backupProperties(String environment, int maxSize) {
         return new R2StorageProperties(true, environment, URI.create("https://example.r2.cloudflarestorage.com"),
-                "test-backup", "test-key", "test-secret", Duration.ofMinutes(15), DataSize.ofBytes(maxSize));
+                "test-backup", "test-key", "test-secret", Duration.ofMinutes(15), DataSize.ofBytes(maxSize), Duration.ofSeconds(2));
     }
 }

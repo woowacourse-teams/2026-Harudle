@@ -4,6 +4,8 @@ import com.harudle.common.logging.ExternalApiFailure;
 import com.harudle.common.logging.ExternalApiLogger;
 import com.harudle.generation.config.R2StorageProperties;
 import com.harudle.generation.diary.service.port.BackupObjectStorage;
+import com.harudle.generation.diary.service.port.ImageLookupBudget;
+import com.harudle.generation.diary.service.port.ImageLookupBudgetExceededException;
 import com.harudle.generation.diary.service.port.BackupStorageException;
 import com.harudle.generation.diary.service.port.BackupStorageException.FailureType;
 import com.harudle.generation.diary.service.port.dto.BackupObjectMetadata;
@@ -74,17 +76,25 @@ public final class R2BackupObjectStorage implements BackupObjectStorage {
 
     @Override
     public Optional<BackupObjectMetadata> findMetadata(String objectKey) {
+        return findMetadata(objectKey, ImageLookupBudget.unlimited());
+    }
+
+    @Override
+    public Optional<BackupObjectMetadata> findMetadata(String objectKey, ImageLookupBudget budget) {
         requireKey("head_object", objectKey);
         HeadObjectResponse response;
         try {
             response = client.headObject(HeadObjectRequest.builder()
                     .bucket(properties.bucket()).key(objectKey)
-                    .overrideConfiguration(config -> config.apiCallTimeout(HEAD_REQUEST_TIMEOUT)).build());
+                    .overrideConfiguration(config -> config.apiCallTimeout(budget.requestTimeout(HEAD_REQUEST_TIMEOUT)))
+                    .build());
         } catch (S3Exception exception) {
-            if (isMissingObject("head_object", objectKey, exception)) {
+            if (isMissingObject("head_object", objectKey, exception, budget)) {
                 return Optional.empty();
             }
             throw providerFailure("head_object", objectKey, exception);
+        } catch (ImageLookupBudgetExceededException exhausted) {
+            throw exhausted;
         } catch (Exception exception) {
             throw providerFailure("head_object", objectKey, exception);
         }
@@ -191,6 +201,10 @@ public final class R2BackupObjectStorage implements BackupObjectStorage {
     }
 
     private boolean isMissingObject(String operation, String objectKey, S3Exception exception) {
+        return isMissingObject(operation, objectKey, exception, ImageLookupBudget.unlimited());
+    }
+
+    private boolean isMissingObject(String operation, String objectKey, S3Exception exception, ImageLookupBudget budget) {
         if (exception.statusCode() != 404) {
             return false;
         }
@@ -205,7 +219,10 @@ public final class R2BackupObjectStorage implements BackupObjectStorage {
         // HEAD에는 오류 본문이 없다. 버킷 404를 객체 없음으로 오인하지 않도록 한 번 확인한다.
         try {
             client.headBucket(HeadBucketRequest.builder().bucket(properties.bucket())
-                    .overrideConfiguration(config -> config.apiCallTimeout(HEAD_REQUEST_TIMEOUT)).build());
+                    .overrideConfiguration(config -> config.apiCallTimeout(budget.requestTimeout(HEAD_REQUEST_TIMEOUT)))
+                    .build());
+        } catch (ImageLookupBudgetExceededException exhausted) {
+            throw exhausted;
         } catch (S3Exception bucketException) {
             FailureType type = bucketException.statusCode() == 404
                     ? FailureType.CONFIGURATION_ERROR : failureType(bucketException);
