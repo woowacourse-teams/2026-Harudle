@@ -47,7 +47,7 @@ jest.mock('msw', () => {
   };
 });
 
-jest.mock('../assets/images/diary-four-panel.png', () => 'guest-diary.png');
+jest.mock('../assets/images/diary-four-panel.webp', () => 'guest-diary.webp');
 
 const API_ORIGIN = 'http://localhost';
 const DIARY_REQUEST = {

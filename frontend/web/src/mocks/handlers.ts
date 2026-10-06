@@ -1,6 +1,8 @@
 import { delay, http, HttpResponse } from 'msw';
 import { isLandingPath } from '../pages/landing/landingPaths';
 import { MOCK_SCENARIO_HEADER, MOCK_SCENARIOS } from './mockScenarios';
+import { getToday } from '../shared/utils';
+import diaryImage from '../assets/images/diary-four-panel.webp';
 
 interface CreateDiaryRequest {
   diaryDate: string;
@@ -62,7 +64,11 @@ interface ValidationError {
   reason: string;
 }
 
-const MOCK_USAGE_DATE = '2026-08-12';
+const mockToday = getToday();
+const mockYearMonth = `${mockToday.year}-${String(mockToday.month).padStart(2, '0')}`;
+const getMockDate = (day: number): string =>
+  `${mockYearMonth}-${String(day).padStart(2, '0')}`;
+const MOCK_USAGE_DATE = getMockDate(mockToday.day);
 const DAILY_GENERATION_LIMIT = 3;
 const MOCK_ACCESS_TOKEN = 'mock-access-token';
 const MOCK_CSRF_TOKEN = 'mock-csrf-token';
@@ -78,10 +84,7 @@ const createdDiaryRequests = new Map<
 const createdDiaryDetails = new Map<string, DiaryDetailResponse>();
 const mockDiaryShareLinks = new Map<string, DiaryShareLinkResponse>();
 
-const diaryThumbnailUrl = new URL(
-  '../assets/images/diary-four-panel.png',
-  import.meta.url,
-).href;
+const diaryThumbnailUrl = diaryImage;
 
 const SAMPLE_DIARY_ID = '00000000-0000-4000-8000-000000000001';
 const SAMPLE_SHARE_ID = '06ed972e-0b79-4da0-9716-c9bd8faec85d';
@@ -91,10 +94,10 @@ const mockPublicDiaryShares = new Map<string, PublicDiaryShareResponse>([
     SAMPLE_SHARE_ID,
     {
       title: '비가 와도, 나는 괜찮았다.',
-      diaryDate: '2026-08-12',
+      diaryDate: getMockDate(12),
       imageUrl: diaryThumbnailUrl,
-      imageUrlExpiresAt: '2026-08-12T20:25:00+09:00',
-      createdAt: '2026-08-12T20:10:23+09:00',
+      imageUrlExpiresAt: `${getMockDate(12)}T20:25:00+09:00`,
+      createdAt: `${getMockDate(12)}T20:10:23+09:00`,
     },
   ],
 ]);
@@ -247,9 +250,9 @@ const isUuid = (value: string | null): value is string => {
   );
 };
 
-const augustDiaries = [
+const mockDiaryDays = [
   {
-    date: '2026-08-12',
+    date: getMockDate(12),
     exist: true,
     items: [
       {
@@ -260,7 +263,7 @@ const augustDiaries = [
     ],
   },
   {
-    date: '2026-08-11',
+    date: getMockDate(11),
     exist: true,
     items: [
       {
@@ -271,7 +274,7 @@ const augustDiaries = [
     ],
   },
   {
-    date: '2026-08-10',
+    date: getMockDate(10),
     exist: true,
     items: [
       {
@@ -282,7 +285,7 @@ const augustDiaries = [
     ],
   },
   {
-    date: '2026-08-09',
+    date: getMockDate(9),
     exist: true,
     items: [
       {
@@ -293,7 +296,7 @@ const augustDiaries = [
     ],
   },
   {
-    date: '2026-08-08',
+    date: getMockDate(8),
     exist: true,
     items: [
       {
@@ -304,7 +307,7 @@ const augustDiaries = [
     ],
   },
   {
-    date: '2026-08-06',
+    date: getMockDate(6),
     exist: true,
     items: [
       {
@@ -315,23 +318,19 @@ const augustDiaries = [
     ],
   },
   {
-    date: '2026-08-05',
+    date: getMockDate(5),
     exist: false,
     items: [],
   },
 ];
 
-const addDiaryToAugustDiaries = (diary: CreateDiaryResponse) => {
-  if (!diary.diaryDate.startsWith('2026-08-')) {
-    return;
-  }
-
+const addDiaryToMockDiaries = (diary: CreateDiaryResponse): void => {
   const diaryItem = {
     id: diary.id,
     title: diary.generation.title,
     thumbnailUrl: diary.generation.imageUrl,
   };
-  const diaryDay = augustDiaries.find((day) => day.date === diary.diaryDate);
+  const diaryDay = mockDiaryDays.find((day) => day.date === diary.diaryDate);
 
   if (diaryDay) {
     diaryDay.exist = true;
@@ -339,12 +338,12 @@ const addDiaryToAugustDiaries = (diary: CreateDiaryResponse) => {
     return;
   }
 
-  augustDiaries.push({
+  mockDiaryDays.push({
     date: diary.diaryDate,
     exist: true,
     items: [diaryItem],
   });
-  augustDiaries.sort((a, b) => b.date.localeCompare(a.date));
+  mockDiaryDays.sort((a, b) => b.date.localeCompare(a.date));
 };
 
 // 홈 - 월간 일기 조회
@@ -506,7 +505,9 @@ export const handlers = [
     return HttpResponse.json({
       year,
       month,
-      days: year === 2026 && month === 8 ? augustDiaries : [],
+      days: mockDiaryDays.filter((day) =>
+        day.date.startsWith(`${year}-${String(month).padStart(2, '0')}-`),
+      ),
     });
   }),
 
@@ -536,7 +537,7 @@ export const handlers = [
 
     const diaryId = String(params.diaryId);
     const createdDiaryDetail = createdDiaryDetails.get(diaryId);
-    const diaryDay = augustDiaries.find((day) =>
+    const diaryDay = mockDiaryDays.find((day) =>
       day.items.some((diary) => diary.id === diaryId),
     );
     const diary = diaryDay?.items.find((item) => item.id === diaryId);
@@ -616,7 +617,7 @@ export const handlers = [
       });
     }
 
-    for (const day of augustDiaries) {
+    for (const day of mockDiaryDays) {
       const diaryIndex = day.items.findIndex((diary) => diary.id === diaryId);
 
       if (diaryIndex !== -1) {
@@ -653,7 +654,7 @@ export const handlers = [
 
       const diaryId = String(params.diaryId);
       const createdDiaryDetail = createdDiaryDetails.get(diaryId);
-      const diaryDay = augustDiaries.find((day) =>
+      const diaryDay = mockDiaryDays.find((day) =>
         day.items.some((diary) => diary.id === diaryId),
       );
       const diary = diaryDay?.items.find((item) => item.id === diaryId);
@@ -715,7 +716,7 @@ export const handlers = [
       const response: DiaryShareLinkResponse = {
         shareId,
         shareUrl: `${new URL(request.url).origin}/shares/${shareId}`,
-        createdAt: '2026-08-12T20:15:00+09:00',
+        createdAt: `${MOCK_USAGE_DATE}T20:15:00+09:00`,
       };
 
       mockDiaryShareLinks.set(diaryId, response);
@@ -861,7 +862,7 @@ export const handlers = [
       createdAt: response.createdAt,
       generation: response.generation,
     });
-    addDiaryToAugustDiaries(response);
+    addDiaryToMockDiaries(response);
 
     return HttpResponse.json(response, {
       status: 201,
