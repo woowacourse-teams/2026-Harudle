@@ -75,24 +75,38 @@ class GenerationUsageServiceTest {
     }
 
     @Test
-    @DisplayName("일일 생성 한도 안에서 사용량을 원자적으로 증가시킨다")
-    void incrementTodayUsage() {
-        GenerationUsage expected = new GenerationUsage(USAGE_DATE, 3, 3);
-        when(generationUsageRepository.tryIncrementWithinLimit(USER_ID, USAGE_DATE))
+    @DisplayName("호출자가 전달한 사용일의 사용량을 증가시킨다")
+    void incrementUsageAtProvidedDate() {
+        LocalDate usageDate = USAGE_DATE.minusDays(1);
+        GenerationUsage expected = new GenerationUsage(usageDate, 1, 3);
+        when(generationUsageRepository.tryIncrementWithinLimit(USER_ID, usageDate))
                 .thenReturn(Optional.of(expected));
 
-        GenerationUsage actual = generationUsageService.incrementTodayUsage(USER_ID);
+        GenerationUsage actual = generationUsageService.incrementUsage(USER_ID, usageDate);
 
         assertThat(actual).isEqualTo(expected);
     }
 
     @Test
+    @DisplayName("실패한 생성의 원래 사용일에서 한 번 복구한다")
+    void restoreUsageAtProvidedDate() {
+        LocalDate usageDate = USAGE_DATE.minusDays(1);
+        GenerationUsage expected = new GenerationUsage(usageDate, 0, 3);
+        when(generationUsageRepository.tryRestore(USER_ID, usageDate, 1))
+                .thenReturn(Optional.of(expected));
+
+        Optional<GenerationUsage> actual = generationUsageService.restoreUsage(USER_ID, usageDate);
+
+        assertThat(actual).contains(expected);
+    }
+
+    @Test
     @DisplayName("일일 생성 한도를 초과하면 다음 KST 자정까지 재시도할 수 없다")
-    void incrementTodayUsageRejectsExceededLimit() {
+    void incrementUsageRejectsExceededLimit() {
         when(generationUsageRepository.tryIncrementWithinLimit(USER_ID, USAGE_DATE))
                 .thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> generationUsageService.incrementTodayUsage(USER_ID))
+        assertThatThrownBy(() -> generationUsageService.incrementUsage(USER_ID, USAGE_DATE))
                 .isInstanceOfSatisfying(
                         DailyGenerationLimitExceededException.class,
                         exception -> assertThat(exception.retryAfterSeconds()).isEqualTo(1L)
@@ -103,11 +117,9 @@ class GenerationUsageServiceTest {
     @DisplayName("증가 시도 중 자정이 지나도 시도한 사용일의 다음 자정 기준으로 재시도 시간을 계산한다")
     void calculateRetryAfterFromAttemptedUsageDate() {
         Instant beforeMidnight = Instant.parse("2026-08-06T14:59:59Z");
-        Instant afterMidnight = Instant.parse("2026-08-06T15:00:00Z");
         Clock crossingMidnightClock = mock(Clock.class);
         when(crossingMidnightClock.getZone()).thenReturn(SERVICE_ZONE_ID);
-        when(crossingMidnightClock.instant())
-                .thenReturn(beforeMidnight, afterMidnight, afterMidnight);
+        when(crossingMidnightClock.instant()).thenReturn(beforeMidnight);
         GenerationUsageService service = new GenerationUsageService(
                 generationUsageRepository,
                 userRepository,
@@ -116,7 +128,7 @@ class GenerationUsageServiceTest {
         when(generationUsageRepository.tryIncrementWithinLimit(USER_ID, USAGE_DATE))
                 .thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.incrementTodayUsage(USER_ID))
+        assertThatThrownBy(() -> service.incrementUsage(USER_ID, USAGE_DATE))
                 .isInstanceOfSatisfying(
                         DailyGenerationLimitExceededException.class,
                         exception -> assertThat(exception.retryAfterSeconds()).isEqualTo(1L)

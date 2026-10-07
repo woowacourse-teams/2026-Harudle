@@ -19,6 +19,7 @@ export const initializePostHog = (): boolean => {
     api_host: 'https://e.harudle.com',
     ui_host: 'https://us.posthog.com',
     defaults: '2026-01-30',
+    capture_exceptions: true,
   });
 
   return true;

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -41,6 +42,23 @@ class DiaryGenerationTest {
         assertThat(generation.getImageObjectKey()).isNull();
         assertThat(generation.getErrorCode()).isNull();
         assertThat(generation.getCompletedAt()).isNull();
+        assertThat(generation.getUsageDate()).isNull();
+    }
+
+    @Test
+    @DisplayName("생성 요청의 사용량 날짜를 함께 보존한다")
+    void startDiaryGenerationWithUsageDate() {
+        LocalDate usageDate = LocalDate.of(2026, 8, 6);
+
+        DiaryGeneration generation = DiaryGeneration.start(
+                UUID.randomUUID(),
+                GENERATION_PROMPT_ID,
+                UUID.randomUUID(),
+                REQUEST_FINGERPRINT,
+                usageDate
+        );
+
+        assertThat(generation.getUsageDate()).isEqualTo(usageDate);
     }
 
     @Test

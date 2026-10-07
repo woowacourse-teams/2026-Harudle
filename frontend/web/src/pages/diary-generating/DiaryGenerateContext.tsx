@@ -1,3 +1,4 @@
+import { useErrorTracking } from '../../posthog/useErrorTracking';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import {
   createContext,
@@ -6,10 +7,11 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { type ApiRequest } from '../../shared/api';
+import { RequestError, type ApiRequest } from '../../shared/api';
 import { DIARY_CONTENT_SESSION_KEY } from '../../shared/constants';
 import {
   generateDiary,
+  DIARY_GENERATION_ERROR_CODE,
   type DiaryGenerateRequest,
   type DiaryGenerateResponse,
 } from '../../domain/diary/diaryGenerate';
@@ -34,6 +36,7 @@ export const DiaryGenerateProvider = ({
   children: ReactNode;
 }) => {
   const { track } = useAnalytics();
+  const { captureError } = useErrorTracking();
   const [request, setRequest] = useState<ApiRequest<DiaryGenerateResponse>>({
     status: 'idle',
   });
@@ -77,6 +80,15 @@ export const DiaryGenerateProvider = ({
         });
       } catch (error: unknown) {
         if (error instanceof Error) {
+          const isExpectedGenerationError =
+            error instanceof RequestError &&
+            (error.problem.code ===
+              DIARY_GENERATION_ERROR_CODE.DAILY_LIMIT_EXCEEDED ||
+              error.problem.code === DIARY_GENERATION_ERROR_CODE.IN_PROGRESS);
+
+          if (!isExpectedGenerationError) {
+            captureError(error, { feature: 'diary', operation: 'create' });
+          }
           setRequest({
             status: 'error',
             error: error,
@@ -84,7 +96,7 @@ export const DiaryGenerateProvider = ({
         }
       }
     },
-    [track],
+    [track, captureError],
   );
 
   return (

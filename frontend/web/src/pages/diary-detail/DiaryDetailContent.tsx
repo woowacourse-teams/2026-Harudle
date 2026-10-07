@@ -1,3 +1,4 @@
+import { DIARY_DETAIL_COPY } from './copy';
 import { useEffect } from 'react';
 import useDiaryDelete from './useDiaryDelete';
 import useDiaryDetail from './useDiaryDetail';
@@ -12,6 +13,7 @@ import DiaryShareButton from './DiaryShareButton';
 import DiaryImageDownloadButton from './DiaryImageDownloadButton';
 import { theme } from '../../styles/theme';
 import DiaryImage from '../../shared/DiaryImage';
+import DiaryImageCopyButton from './DiaryImageCopyButton';
 
 const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
   const navigate = useNavigate();
@@ -61,10 +63,12 @@ const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
         right={
           <button
             type="button"
-            aria-label="더보기"
+            aria-label={DIARY_DETAIL_COPY.deleteAction}
             css={headerButtonStyle}
             onClick={() => {
-              const confirmDelete = window.confirm('일기를 삭제할까요?');
+              const confirmDelete = window.confirm(
+                DIARY_DETAIL_COPY.deleteConfirm,
+              );
               if (confirmDelete) {
                 void deleteDiary();
               }
@@ -82,15 +86,30 @@ const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
       <main css={contentStyle}>
         <div css={diaryTitleStyle}>{title}</div>
 
-        <DiaryImage css={diaryImageStyle} src={imageUrl} alt="그림 일기" />
+        <DiaryImage
+          diaryId={diaryId}
+          imageRole="original"
+          css={diaryImageStyle}
+          src={imageUrl}
+          alt="네컷만화"
+        />
 
         <div>
-          <span css={storyTitleStyle}>오늘의 이야기</span>
+          <span css={storyTitleStyle}>{DIARY_DETAIL_COPY.storyTitle}</span>
           <p css={storyTextStyle}>{diaryDetail.sourceText}</p>
         </div>
-
-        <DiaryShareButton diaryId={diaryId} diaryTitle={title} />
-        <DiaryImageDownloadButton imageUrl={imageUrl} />
+        <div css={diaryActionsStyle}>
+          <DiaryImageCopyButton diaryId={diaryId} imageUrl={imageUrl} />
+          <div css={imageActionsStyle}>
+            <DiaryImageDownloadButton
+              diaryId={diaryId}
+              imageUrl={imageUrl}
+              diaryDate={diaryDetail.diaryDate}
+              diaryTitle={diaryDetail.generation.title}
+            />
+            <DiaryShareButton diaryId={diaryId} diaryTitle={title} />
+          </div>
+        </div>
       </main>
     </div>
   );
@@ -143,6 +162,25 @@ const diaryTitleStyle = css`
   overflow-wrap: break-word;
 `;
 
+const diaryActionsStyle = css`
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 12px;
+`;
+
+const imageActionsStyle = css`
+  display: flex;
+  gap: 12px;
+
+  & > button {
+    flex: 1;
+    min-width: 0;
+    padding-inline: 8px;
+    border-color: ${theme.colors.stroke.brandSolid}55;
+  }
+`;
+
 const diaryImageStyle = css`
   width: 100%;
   aspect-ratio: 1;
@@ -153,6 +191,7 @@ const diaryImageStyle = css`
 `;
 
 const storyTitleStyle = css`
+  word-break: keep-all;
   text-align: center;
   color: ${theme.colors.foreground.neutral};
   font-size: 18px;

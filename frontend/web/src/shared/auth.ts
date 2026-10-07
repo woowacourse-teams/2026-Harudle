@@ -5,6 +5,13 @@ let accessToken: string | null = null;
 let refreshRequest: Promise<void> | null = null; // Single-Flight 패턴
 let isHandlingAuthFailure = false;
 
+export class AuthenticationRequiredError extends Error {
+  constructor() {
+    super(ERROR_MESSAGES.OAUTH_LOGIN_HISTORY_REQUIRED);
+    this.name = 'AuthenticationRequiredError';
+  }
+}
+
 export const setAccessToken = (token: string | null): void => {
   accessToken = token;
 };
@@ -22,8 +29,8 @@ export const authFetch = async (
 ) => {
   try {
     if (localStorage.getItem('harudle.has-completed-oauth') === null) {
-      window.location.replace('/login');
-      throw new Error(ERROR_MESSAGES.OAUTH_LOGIN_HISTORY_REQUIRED);
+      window.location.replace('/');
+      throw new AuthenticationRequiredError();
     }
 
     if (!accessToken) {
@@ -73,7 +80,7 @@ export const authFetch = async (
         isHandlingAuthFailure = true;
 
         alert('세션이 만료되었습니다. 다시 로그인 해주세요.');
-        window.location.href = '/login';
+        window.location.href = '/';
       }
     }
 
@@ -122,6 +129,10 @@ export const isRefreshTokenResponse = (
 };
 
 export const restoreAccessToken = async (): Promise<void> => {
+  // 로그인 콜백이나 앞선 진입 확인에서 이미 확보한 토큰은 재사용한다.
+  // API에서 401을 받으면 authFetch가 토큰을 비운 뒤 다시 갱신한다.
+  if (accessToken) return;
+
   if (refreshRequest) {
     await refreshRequest;
     return;
@@ -149,7 +160,7 @@ const requestNewAccessToken = async (): Promise<void> => {
   });
 
   if (!response.ok) {
-    const errorData = await response.json();
+    const errorData: unknown = await response.json();
     if (isProblemDetails(errorData)) {
       throw new RequestError(errorData);
     }
@@ -162,6 +173,10 @@ const requestNewAccessToken = async (): Promise<void> => {
     throw new Error(ERROR_MESSAGES.INVALID_REFRESH_TOKEN_RESPONSE);
   }
 
+  // 서버가 세션을 확인한 뒤 누락된 인증 완료 표시를 복구한다.
+  if (localStorage.getItem('harudle.has-completed-oauth') === null) {
+    localStorage.setItem('harudle.has-completed-oauth', 'true');
+  }
   setAccessToken(data.accessToken);
 };
 

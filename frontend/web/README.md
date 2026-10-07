@@ -21,6 +21,8 @@ pnpm dev
 
 개발 서버는 `http://localhost:5173`에서 실행됩니다. 개발 환경에서는 MSW가 자동으로 활성화되며, Mock이 없는 요청은 그대로 서버로 전달됩니다.
 
+브랜드 소개와 로그인 없는 1회 네컷만화 체험은 `/landing`에서 제공합니다. 게스트 체험 결과 조회는 `/landing/result/:diaryId`를 사용합니다. 관련 UI와 체험 코드는 `src/pages/landing/`에 함께 둡니다.
+
 ### Mock API 설정
 
 로컬 개발에서는 `.env`의 `USE_MSW` 값으로 MSW 사용 여부를 설정합니다.
@@ -163,3 +165,5 @@ OAuth 로그인 진입점과 실패 시 오류 메시지를 추가한다.
 PR을 올리기 전 `pnpm check`를 실행합니다.
 
 결정의 배경과 세부 기준은 [ADR](./docs/adr/README.md)에서 확인할 수 있습니다.
+
+화면 문구는 각 페이지의 `copy.ts`에서 수정합니다. 문구를 바꾸면 [UX 라이팅 가이드](./docs/ux-writing.md)도 함께 갱신합니다.

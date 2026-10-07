@@ -1,3 +1,4 @@
+import { HOME_COPY } from './copy';
 import { useNavigate, useSearchParams } from 'react-router';
 import ActionButton from '../../shared/ActionButton';
 import emptyPersonAndDog from '../../assets/images/empty-person-and-dog.png';
@@ -13,6 +14,7 @@ const DiaryEmptyState = () => {
   const [year, month] = yearMonthParam
     ? yearMonthParam.split('-').map(Number)
     : [today.year, today.month];
+  const isCurrentMonth = year === today.year && month === today.month;
 
   return (
     <div css={emptyStateStyle}>
@@ -25,16 +27,18 @@ const DiaryEmptyState = () => {
 
         <div css={emptyStateDescriptionContentStyle}>
           <div css={emptyStateTitleStyle}>
-            {year}년 {month}월에는 기록이 없어요
+            {isCurrentMonth
+              ? HOME_COPY.emptyCurrentMonth
+              : HOME_COPY.emptyOtherMonth(year, month)}
           </div>
           <div css={emptyStateDescriptionStyle}>
-            다른 달을 살펴보거나 오늘의 이야기를 남겨보세요!
+            {HOME_COPY.emptyDescription}
           </div>
         </div>
       </div>
 
       <ActionButton
-        label="새 일기 쓰기"
+        label={HOME_COPY.createAction}
         onClick={() => {
           navigate('/diary-write');
         }}
@@ -80,6 +84,7 @@ const emptyStateDescriptionContentStyle = css`
 `;
 
 const emptyStateTitleStyle = css`
+  word-break: keep-all;
   width: 100%;
   color: ${theme.colors.foreground.neutral};
   font-size: 22px;

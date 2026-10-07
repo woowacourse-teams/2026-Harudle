@@ -61,6 +61,10 @@ public class Diary {
         return id;
     }
 
+    public UUID getUserId() {
+        return userId;
+    }
+
     public LocalDate getDiaryDate() {
         return diaryDate;
     }

@@ -1,14 +1,14 @@
+import { HOME_COPY } from '../copy';
 import BottomNavigation from '../../../shared/BottomNavigation';
 import DiaryItemList from '../DiaryItemList';
 import { useNavigate } from 'react-router';
-import harudleLogo from '../../../assets/images/harudle-logo.png';
+import harudleLogo from '../../../assets/images/harudle-logo.webp';
 import useSelectedYearMonth from './useSelectedYearMonth';
 import { css } from '@emotion/react';
 import { theme } from '../../../styles/theme';
 import { getToday, type Month } from '../../../shared/utils';
 import { useDiaryGenerateContext } from '../../diary-generating/DiaryGenerateContext';
 import { useEffect } from 'react';
-import StreakSummaryCard from './StreakSummaryCard';
 import keyboardArrowDownIcon from '../../../assets/icons/keyboard_arrow_down.svg';
 import useGenerationUsage from './useGenrationUsage';
 
@@ -59,8 +59,6 @@ const HomePage = () => {
           </div>
         </div>
 
-        <StreakSummaryCard />
-
         <section css={diaryContentStyle}>
           <DiaryItemList {...selectedYearMonth} />
         </section>
@@ -91,22 +89,22 @@ const RemainingGenerationUsage = () => {
     <div css={remainingGenerationUsageStyle} aria-live="polite">
       {hasGenerationUsageError ? (
         <>
-          <span>생성 횟수 조회 실패</span>
+          <span>{HOME_COPY.usageError}</span>
           <button
             css={retryButtonStyle}
             type="button"
             onClick={() => void execute()}
           >
-            재시도
+            {HOME_COPY.usageRetryAction}
           </button>
         </>
       ) : (
         <span>
-          오늘 남은 생성{' '}
+          {HOME_COPY.remainingUsage.before}
           <strong css={generationUsageTextStyle(remainingCount)}>
-            {remainingCount ?? '-'}
+            {remainingCount ?? HOME_COPY.usageLoadingCount}
           </strong>
-          회
+          {HOME_COPY.remainingUsage.after}
         </span>
       )}
     </div>
@@ -121,7 +119,7 @@ const homePageStyle = css`
 
 const pageHeaderStyle = css`
   width: 100%;
-  height: 71px;
+  height: 56px;
   box-sizing: border-box;
 `;
 
@@ -148,7 +146,7 @@ const homePageContentStyle = css`
   flex-direction: column;
   gap: 12px;
   min-height: 0px;
-  padding: 20px 20px 0 20px;
+  padding: 4px 20px 0 20px;
 `;
 
 const contentHeaderStyle = css`
@@ -156,6 +154,7 @@ const contentHeaderStyle = css`
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
+  flex-wrap: wrap;
   width: 100%;
 `;
 
@@ -219,12 +218,13 @@ const diaryContentStyle = css`
 
 const remainingGenerationUsageStyle = css`
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   color: ${theme.colors.foreground.neutral};
   font-size: 15px;
   font-weight: 500;
   line-height: 22px;
-  white-space: nowrap;
+  word-break: keep-all;
 `;
 
 const generationUsageTextStyle = (remainingCount: number | null) => css`

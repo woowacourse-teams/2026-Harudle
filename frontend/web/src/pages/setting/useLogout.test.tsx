@@ -30,9 +30,10 @@ describe('useLogout', () => {
     localStorage.clear();
   });
 
-  it('로그아웃에 성공하면 클라이언트 인증 상태를 정리하고 로그인 화면으로 이동한다', async () => {
+  it('로그아웃에 성공하면 로그인 경험은 유지하고 인증 완료 표시를 삭제한 뒤 / 주소로 이동시킨다', async () => {
     mockRequestCsrfToken.mockResolvedValueOnce('csrf-token');
     mockLogout.mockResolvedValueOnce();
+    localStorage.setItem('harudle.has-ever-logged-in', 'true');
     localStorage.setItem('harudle.has-completed-oauth', 'true');
     const { result } = renderHook(() => useLogout());
 
@@ -42,7 +43,8 @@ describe('useLogout', () => {
 
     expect(mockResetUser).toHaveBeenCalledTimes(1);
     expect(mockSetAccessToken).toHaveBeenCalledWith(null);
+    expect(localStorage.getItem('harudle.has-ever-logged-in')).toBe('true');
     expect(localStorage.getItem('harudle.has-completed-oauth')).toBeNull();
-    expect(mockNavigate).toHaveBeenCalledWith('/login');
+    expect(mockNavigate).toHaveBeenCalledWith('/');
   });
 });

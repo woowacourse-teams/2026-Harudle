@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.harudle.generation.config.S3StorageProperties;
+import com.harudle.generation.diary.domain.ImageVariantKeys;
 import java.time.Duration;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -70,6 +71,29 @@ class ImageObjectKeyFactoryTest {
     }
 
     @Test
+    void optimizedKeyHasMatchingThumbnail() {
+        ImageObjectKeyFactory factory = createFactory("generated/diary-images");
+        String detailKey = factory.createOptimized(GENERATION_ID);
+
+        assertThat(detailKey).endsWith("/image-960.webp");
+        assertThat(factory.generationId(detailKey)).contains(GENERATION_ID);
+        String thumbnailKey = detailKey.replace("image-960.webp", "image-240.webp");
+        assertThat(ImageVariantKeys.toThumbnailKeyIfOptimizedDetail(detailKey)).isEqualTo(thumbnailKey);
+        assertThat(ImageVariantKeys.derivedImageKeysExceptDetail(detailKey)).containsExactly(thumbnailKey);
+        assertThat(factory.generationId(
+                thumbnailKey
+        )).contains(GENERATION_ID);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"image.png", "image.jpg", "image.webp"})
+    void legacyKeysDoNotAcquireNewCompanionImages(String filename) {
+        String key = "generated/diary-images/" + GENERATION_ID + "/" + filename;
+        assertThat(ImageVariantKeys.toThumbnailKeyIfOptimizedDetail(key)).isEqualTo(key);
+        assertThat(ImageVariantKeys.derivedImageKeysExceptDetail(key)).isEmpty();
+    }
+
+    @Test
     void recognizesLegacyKeysButRejectsUnknownPaths() {
         ImageObjectKeyFactory factory = createFactory("generated/diary-images");
         assertThat(factory.generationId("generated/diary-images/" + GENERATION_ID + "/image.png"))
@@ -83,7 +107,9 @@ class ImageObjectKeyFactoryTest {
         S3StorageProperties properties = new S3StorageProperties(
                 "test-bucket",
                 "ap-northeast-2",
+                "dev",
                 generatedPrefix,
+                "harudle/references/generation/dev",
                 DataSize.ofMegabytes(20),
                 Duration.ofMinutes(15)
         );

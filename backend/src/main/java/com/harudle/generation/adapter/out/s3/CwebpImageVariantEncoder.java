@@ -1,0 +1,145 @@
+package com.harudle.generation.adapter.out.s3;
+
+import com.harudle.generation.diary.service.port.dto.GeneratedImage;
+import com.harudle.generation.diary.domain.ImageVariant;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.EnumMap;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.MediaType;
+
+public final class CwebpImageVariantEncoder implements ImageVariantEncoder {
+
+    private static final String CWEBP_COMMAND = "cwebp";
+    private static final MediaType WEBP = MediaType.parseMediaType("image/webp");
+    private static final Duration TIMEOUT = Duration.ofSeconds(30);
+    private static final Duration AVAILABILITY_TIMEOUT = Duration.ofSeconds(5);
+    private static final int WEBP_QUALITY = 80;
+    private static final int COMPRESSION_METHOD = 6;
+    private static final int MAX_ERROR_OUTPUT_BYTES = 4096;
+
+    public void verifyAvailable() {
+        verifyAvailable(CWEBP_COMMAND);
+    }
+
+    static void verifyAvailable(String command) {
+        Process process;
+        try {
+            process = new ProcessBuilder(command, "-version")
+                    .redirectErrorStream(true)
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                    .start();
+        } catch (IOException exception) {
+            throw new IllegalStateException("cwebp 실행 파일을 찾거나 실행할 수 없습니다.", exception);
+        }
+        try {
+            if (!process.waitFor(AVAILABILITY_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
+                process.destroyForcibly();
+                throw new IllegalStateException("cwebp 실행 확인 시간이 초과됐습니다.");
+            }
+        } catch (InterruptedException exception) {
+            process.destroyForcibly();
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("cwebp 실행 확인이 중단됐습니다.", exception);
+        }
+        if (process.exitValue() != 0) {
+            throw new IllegalStateException("cwebp 실행 확인에 실패했습니다 (exit=" + process.exitValue() + ").");
+        }
+    }
+
+    @Override
+    public Map<ImageVariant, GeneratedImage> encode(GeneratedImage image) {
+        Path directory = null;
+        try {
+            directory = Files.createTempDirectory("harudle-cwebp-");
+            Path input = directory.resolve("input");
+            Files.write(input, image.resource().getContentAsByteArray());
+            Map<ImageVariant, GeneratedImage> images = new EnumMap<>(ImageVariant.class);
+            for (ImageVariant variant : ImageVariant.values()) {
+                images.put(variant, convert(input, directory.resolve(variant.filename()), variant.width()));
+            }
+            return Map.copyOf(images);
+        } catch (IOException exception) {
+            throw new IllegalStateException("생성 이미지 WebP 변환에 실패했습니다.", exception);
+        } finally {
+            if (directory != null) {
+                deleteIfExists(directory.resolve("input"));
+                for (ImageVariant variant : ImageVariant.values()) {
+                    deleteIfExists(directory.resolve(variant.filename()));
+                }
+                deleteIfExists(directory);
+            }
+        }
+    }
+
+    private static GeneratedImage convert(Path input, Path output, int size) throws IOException {
+        Process process = new ProcessBuilder(
+                CWEBP_COMMAND, "-quiet", "-q", Integer.toString(WEBP_QUALITY),
+                "-m", Integer.toString(COMPRESSION_METHOD), "-resize", Integer.toString(size), "0",
+                input.toString(), "-o", output.toString()
+        ).redirectErrorStream(true).start();
+        ByteArrayOutputStream errorOutput = new ByteArrayOutputStream();
+        Thread outputReader = Thread.ofVirtual().start(() -> drainOutput(process.getInputStream(), errorOutput));
+        try {
+            if (!process.waitFor(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
+                process.destroyForcibly();
+                outputReader.interrupt();
+                throw new IOException("cwebp 변환 제한 시간을 초과했습니다.");
+            }
+            outputReader.join();
+        } catch (InterruptedException exception) {
+            process.destroyForcibly();
+            outputReader.interrupt();
+            Thread.currentThread().interrupt();
+            throw new IOException("cwebp 변환이 중단됐습니다.", exception);
+        }
+        if (process.exitValue() != 0) {
+            throw new CwebpConversionException(process.exitValue(), normalizeErrorOutput(errorOutput, input, output));
+        }
+        byte[] bytes = Files.readAllBytes(output);
+        if (bytes.length < 12 || bytes[0] != 'R' || bytes[1] != 'I' || bytes[2] != 'F'
+                || bytes[3] != 'F' || bytes[8] != 'W' || bytes[9] != 'E'
+                || bytes[10] != 'B' || bytes[11] != 'P') {
+            throw new IOException("cwebp 출력이 유효한 WebP가 아닙니다.");
+        }
+        return new GeneratedImage(new ByteArrayResource(bytes), WEBP);
+    }
+
+    private static void drainOutput(InputStream stream, ByteArrayOutputStream errorOutput) {
+        try (stream) {
+            byte[] chunk = new byte[1024];
+            int count;
+            while ((count = stream.read(chunk)) != -1) {
+                int retained = Math.min(count, MAX_ERROR_OUTPUT_BYTES - errorOutput.size());
+                if (retained > 0) {
+                    errorOutput.write(chunk, 0, retained);
+                }
+            }
+        } catch (IOException ignored) {
+            // 프로세스가 종료되면 출력 스트림도 닫힐 수 있다.
+        }
+    }
+
+    private static String normalizeErrorOutput(ByteArrayOutputStream errorOutput, Path input, Path output) {
+        return errorOutput.toString(StandardCharsets.UTF_8)
+                .replace(input.toString(), "<input>")
+                .replace(output.toString(), "<output>")
+                .replaceAll("\\p{Cntrl}+", " ")
+                .strip();
+    }
+
+    private static void deleteIfExists(Path path) {
+        try {
+            Files.deleteIfExists(path);
+        } catch (IOException ignored) {
+            // 임시 파일 정리 실패는 원래 변환 오류를 가리지 않는다.
+        }
+    }
+}
