@@ -36,7 +36,6 @@ import io.micrometer.core.instrument.MeterRegistry;
 import java.io.IOException;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -56,26 +55,20 @@ import tools.jackson.databind.ObjectMapper;
 public class GenerationAdapterConfiguration {
 
     @Bean
-    @ConditionalOnProperty(prefix = "harudle.generation.gemini", name = "auth-mode",
-            havingValue = "express", matchIfMissing = true)
-    public GeminiClientFactory expressGeminiClientFactory(GeminiClientProperties properties) {
-        return new ExpressGeminiClientFactory(properties.apiKey());
-    }
-
-    @Bean
-    @ConditionalOnProperty(prefix = "harudle.generation.gemini", name = "auth-mode", havingValue = "vertex")
-    @ConditionalOnMissingBean(name = "geminiCredentials")
-    public GoogleCredentials geminiCredentials() throws IOException {
-        return GoogleCredentials.getApplicationDefault();
-    }
-
-    @Bean
-    @ConditionalOnProperty(prefix = "harudle.generation.gemini", name = "auth-mode", havingValue = "vertex")
-    public GeminiClientFactory vertexGeminiClientFactory(
+    public GeminiClientFactory geminiClientFactory(
             GeminiClientProperties properties,
-            @Qualifier("geminiCredentials") GoogleCredentials credentials
-    ) {
-        return new VertexGeminiClientFactory(properties.projectId(), properties.location(), credentials);
+            @Qualifier("geminiCredentials") ObjectProvider<GoogleCredentials> credentialsProvider
+    ) throws IOException {
+        return switch (properties.authMode()) {
+            case EXPRESS -> new ExpressGeminiClientFactory(properties.apiKey());
+            case VERTEX -> {
+                GoogleCredentials credentials = credentialsProvider.getIfAvailable();
+                if (credentials == null) {
+                    credentials = GoogleCredentials.getApplicationDefault();
+                }
+                yield new VertexGeminiClientFactory(properties.projectId(), properties.location(), credentials);
+            }
+        };
     }
 
     @Bean(destroyMethod = "close")

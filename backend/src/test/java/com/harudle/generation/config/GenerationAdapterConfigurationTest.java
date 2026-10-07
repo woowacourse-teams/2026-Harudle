@@ -34,11 +34,15 @@ import com.harudle.generation.diary.service.ImageBackupService;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Date;
+import java.util.Map;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.core.env.MapPropertySource;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
@@ -97,6 +101,52 @@ class GenerationAdapterConfigurationTest {
         });
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"", " ", "   ", "express", " EXPRESS ", "ExPrEsS"})
+    @DisplayName("빈 값과 공백을 포함한 Express 설정은 바인딩된 인증 모드와 같은 Factory를 선택한다")
+    void normalizeExpressAuthMode(String authMode) {
+        withRawAuthMode(contextRunner.withPropertyValues(enabledAdapterProperties()), authMode)
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context.getBean(GeminiClientProperties.class).authMode())
+                            .isEqualTo(GeminiClientProperties.AuthMode.EXPRESS);
+                    assertThat(context).hasSingleBean(GeminiClientFactory.class);
+                    assertThat(context.getBean(GeminiClientFactory.class)).isInstanceOf(ExpressGeminiClientFactory.class);
+                    assertThat(context).doesNotHaveBean(GoogleCredentials.class);
+                    assertThat(context.getBean(Client.class).apiKey()).isEqualTo("test-api-key");
+                });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"vertex", " vertex ", " VERTEX ", "VeRtEx"})
+    @DisplayName("앞뒤 공백과 대소문자가 다른 Vertex 설정도 바인딩된 인증 모드와 같은 Factory를 선택한다")
+    void normalizeVertexAuthMode(String authMode) {
+        withRawAuthMode(vertexContextRunner(), authMode).run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context.getBean(GeminiClientProperties.class).authMode())
+                    .isEqualTo(GeminiClientProperties.AuthMode.VERTEX);
+            assertThat(context).hasSingleBean(GeminiClientFactory.class);
+            assertThat(context.getBean(GeminiClientFactory.class)).isInstanceOf(VertexGeminiClientFactory.class);
+            Client client = context.getBean(Client.class);
+            assertThat(client.apiKey()).isNull();
+            assertThat(client.project()).isEqualTo("test-project");
+            assertThat(client.location()).isEqualTo("global");
+        });
+    }
+
+    @Test
+    @DisplayName("Express 모드에서는 등록된 ADC 자격 증명도 초기화하지 않는다")
+    void skipCredentialsInExpressMode() {
+        contextRunner.withPropertyValues(enabledAdapterProperties())
+                .withBean("geminiCredentials", GoogleCredentials.class, () -> {
+                    throw new AssertionError("Express 모드에서는 ADC를 조회하면 안 됩니다.");
+                }, beanDefinition -> beanDefinition.setLazyInit(true))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context.getBean(GeminiClientFactory.class)).isInstanceOf(ExpressGeminiClientFactory.class);
+                });
+    }
+
     @Test
     @DisplayName("Vertex 모드는 API Key 없이 ADC와 프로젝트·global로 기존 생성 어댑터를 구성한다")
     void configureVertexAdaptersWithoutApiKey() {
@@ -105,7 +155,6 @@ class GenerationAdapterConfigurationTest {
                     assertThat(context).hasNotFailed();
                     assertThat(context).hasSingleBean(GeminiClientFactory.class);
                     assertThat(context.getBean(GeminiClientFactory.class)).isInstanceOf(VertexGeminiClientFactory.class);
-                    assertThat(context).doesNotHaveBean("expressGeminiClientFactory");
                     assertThat(context).hasSingleBean(Client.class);
                     Client client = context.getBean(Client.class);
                     assertThat(client.vertexAI()).isTrue();
@@ -222,6 +271,11 @@ class GenerationAdapterConfigurationTest {
                 "harudle.generation.storage.s3.max-object-size=20MB",
                 "harudle.generation.storage.s3.access-url-ttl=15m"
         ).run(context -> assertThat(context).hasFailed());
+    }
+
+    private ApplicationContextRunner withRawAuthMode(ApplicationContextRunner runner, String authMode) {
+        return runner.withInitializer(context -> context.getEnvironment().getPropertySources().addFirst(
+                new MapPropertySource("auth-mode-test", Map.of("harudle.generation.gemini.auth-mode", authMode))));
     }
 
     private ApplicationContextRunner vertexContextRunner() {

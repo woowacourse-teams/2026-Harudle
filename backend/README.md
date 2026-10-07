@@ -114,6 +114,8 @@ docker compose up -d
 외부 생성 어댑터를 활성화하면 `GEMINI_AUTH_MODE`로 Client 생성 방식을 선택합니다.
 기본값인 `express`는 기존 Vertex AI Express API Key 방식을 사용합니다. `vertex`는 GCP 프로젝트와
 위치를 지정하고 Application Default Credentials(ADC)로 인증합니다.
+인증 모드를 생략하거나 빈 값·공백으로 설정하면 `express`를 사용합니다. 모드 이름의 앞뒤 공백과
+대소문자 차이는 허용하며, 지원하지 않는 이름은 애플리케이션 시작 시 설정 오류로 거절합니다.
 
 | 설정 | `express` | `vertex` |
 | --- | --- | --- |
@@ -155,9 +157,29 @@ EC2에서는 기존 인스턴스 역할을 허용하는 GCP Workload Identity Fe
 private key를 넣지 않습니다. Java Google Auth 라이브러리가 ADC 파일을 읽어 AWS 임시 자격 증명을
 교환하고 GCP 액세스 토큰을 갱신합니다. 별도의 토큰 저장·갱신 코드는 필요하지 않습니다.
 
+EC2 IMDSv2용 파일은 `--aws`와 `--enable-imdsv2`를 함께 지정해 생성합니다.
+아래 `PROJECT_NUMBER`는 프로젝트 ID가 아닌 숫자 프로젝트 번호이며, 나머지 자리에는 구성한
+Pool·Provider ID와 서비스 계정 이메일을 넣습니다.
+
+```bash
+gcloud iam workload-identity-pools create-cred-config \
+  "projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/POOL_ID/providers/PROVIDER_ID" \
+  --service-account="SERVICE_ACCOUNT_EMAIL" \
+  --aws \
+  --enable-imdsv2 \
+  --output-file="gcp-wif.json"
+```
+
+생성된 JSON의 `credential_source.imdsv2_session_token_url` 값이
+`http://169.254.169.254/latest/api/token`인지 확인합니다. 이 항목이 없으면 IMDSv2 토큰 없이
+메타데이터를 조회하므로 `Http tokens=required`인 EC2에서 401 응답으로 인증에 실패할 수 있습니다.
+파일 생성 옵션은 [Google의 AWS WIF 공식 안내](https://docs.cloud.google.com/iam/docs/workload-identity-federation-with-other-clouds)를 참고합니다.
+
 컨테이너에서는 호스트의 credential configuration 파일을 읽기 전용으로 마운트하고
 `GOOGLE_APPLICATION_CREDENTIALS`를 컨테이너 내부 경로로 지정합니다. 현재 Compose에는 이
 마운트가 없으므로 배포할 때 추가해야 합니다. 컨테이너에서 EC2 IMDS에 접근할 수 있어야 합니다.
+Docker bridge 네트워크에서는 [배포 가이드의 EC2 IMDSv2 설정](../deploy/README.md)에 따라
+`Metadata response hop limit`을 `2`로 설정하고 `Http tokens=required`를 유지합니다.
 GCP WIF 리소스 생성과 운영 Compose 변경은 이 Client 구현에 포함하지 않습니다.
 
 `backend/.env`를 Spring 설정으로 읽는 것만으로는 ADC의 환경 변수가 설정되지 않습니다.
