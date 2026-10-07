@@ -1,5 +1,6 @@
 package com.harudle.generation.config;
 
+import com.google.auth.oauth2.GoogleCredentials;
 import com.google.genai.Client;
 import com.google.genai.Models;
 import com.google.genai.types.HttpOptions;
@@ -12,6 +13,9 @@ import com.harudle.generation.adapter.out.gemini.GeminiFailureReporter;
 import com.harudle.generation.adapter.out.gemini.GeminiStoryboardGenerator;
 import com.harudle.generation.adapter.out.gemini.GeminiStageMetrics;
 import com.harudle.generation.adapter.out.gemini.GeminiStoryboardResponseMapper;
+import com.harudle.generation.adapter.out.gemini.client.ExpressGeminiClientFactory;
+import com.harudle.generation.adapter.out.gemini.client.GeminiClientFactory;
+import com.harudle.generation.adapter.out.gemini.client.VertexGeminiClientFactory;
 import com.harudle.generation.adapter.out.s3.CwebpImageVariantEncoder;
 import com.harudle.generation.adapter.out.s3.ImageObjectKeyFactory;
 import com.harudle.generation.adapter.out.s3.ImageVariantEncoder;
@@ -22,11 +26,16 @@ import com.harudle.generation.adapter.out.s3.S3ExceptionTranslator;
 import com.harudle.generation.adapter.out.s3.S3FailureReporter;
 import com.harudle.generation.adapter.out.s3.S3ImageStorage;
 import com.harudle.generation.adapter.out.s3.S3ImageUrlProvider;
+import com.harudle.generation.adapter.out.s3.R2FallbackImageUrlProvider;
+import com.harudle.generation.diary.service.port.BackupObjectStorage;
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
 import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
 import io.micrometer.core.instrument.MeterRegistry;
+import java.io.IOException;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -42,11 +51,28 @@ import tools.jackson.databind.ObjectMapper;
         name = "enabled",
         havingValue = "true"
 )
-@EnableConfigurationProperties({GeminiGenerationProperties.class, S3StorageProperties.class})
+@EnableConfigurationProperties({GeminiClientProperties.class, GeminiGenerationProperties.class, S3StorageProperties.class})
 public class GenerationAdapterConfiguration {
 
+    @Bean
+    public GeminiClientFactory geminiClientFactory(
+            GeminiClientProperties properties,
+            @Qualifier("geminiCredentials") ObjectProvider<GoogleCredentials> credentialsProvider
+    ) throws IOException {
+        return switch (properties.authMode()) {
+            case EXPRESS -> new ExpressGeminiClientFactory(properties.apiKey());
+            case VERTEX -> {
+                GoogleCredentials credentials = credentialsProvider.getIfAvailable();
+                if (credentials == null) {
+                    credentials = GoogleCredentials.getApplicationDefault();
+                }
+                yield new VertexGeminiClientFactory(properties.projectId(), properties.location(), credentials);
+            }
+        };
+    }
+
     @Bean(destroyMethod = "close")
-    public Client geminiClient(GeminiGenerationProperties properties) {
+    public Client geminiClient(GeminiGenerationProperties properties, GeminiClientFactory clientFactory) {
         int requestTimeoutMillis = Math.toIntExact(properties.requestTimeout().toMillis());
         HttpRetryOptions retryOptions = HttpRetryOptions.builder()
                 .attempts(properties.retryAttempts())
@@ -56,11 +82,7 @@ public class GenerationAdapterConfiguration {
                 .retryOptions(retryOptions)
                 .build();
 
-        return Client.builder()
-                .apiKey(properties.apiKey())
-                .vertexAI(true)
-                .httpOptions(httpOptions)
-                .build();
+        return clientFactory.create(httpOptions);
     }
 
     @Bean
@@ -181,7 +203,7 @@ public class GenerationAdapterConfiguration {
 
     @Bean
     public ImageStorage imageStorage(
-            S3Client s3Client,
+            @Qualifier("s3Client") S3Client s3Client,
             S3StorageProperties properties,
             ImageUploadPreparer uploadPreparer,
             S3FailureReporter failureReporter,
@@ -198,14 +220,23 @@ public class GenerationAdapterConfiguration {
 
     @Bean
     public ImageUrlProvider imageUrlProvider(
-            S3Presigner s3Presigner,
+            @Qualifier("s3Presigner") S3Presigner s3Presigner,
             S3StorageProperties properties,
             S3FailureReporter failureReporter,
-            MeterRegistry meterRegistry
+            MeterRegistry meterRegistry,
+            @Qualifier("imageStorage") ImageStorage imageStorage,
+            ObjectProvider<BackupObjectStorage> backupStorages,
+            ObjectProvider<R2StorageProperties> backupProperties
     ) {
-        return new ObservedImageUrlProvider(
+        ImageUrlProvider primary = new ObservedImageUrlProvider(
                 new S3ImageUrlProvider(s3Presigner, properties, failureReporter),
                 meterRegistry
         );
+        BackupObjectStorage backup = backupStorages.getIfAvailable();
+        if (backup == null) {
+            return primary;
+        }
+        return new R2FallbackImageUrlProvider(primary, imageStorage, backup, properties,
+                java.util.Objects.requireNonNull(backupProperties.getIfAvailable(), "R2 저장소 설정이 필요합니다."));
     }
 }

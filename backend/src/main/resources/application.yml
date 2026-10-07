@@ -113,7 +113,10 @@ harudle:
     adapters:
       enabled: ${HARUDLE_GENERATION_ADAPTERS_ENABLED:false}
     gemini:
+      auth-mode: ${GEMINI_AUTH_MODE:express}
       api-key: ${GOOGLE_API_KEY:${GEMINI_API_KEY:}}
+      project-id: ${GOOGLE_CLOUD_PROJECT:}
+      location: ${GOOGLE_CLOUD_LOCATION:global}
       storyboard-model: ${GEMINI_STORYBOARD_MODEL:gemini-3.5-flash}
       image-model: ${GEMINI_IMAGE_MODEL:gemini-3.1-flash-image}
       storyboard-thinking-level: ${GEMINI_STORYBOARD_THINKING_LEVEL:high}
@@ -130,6 +133,22 @@ harudle:
         reference-prefix: ${S3_REFERENCE_PREFIX:}
         max-object-size: ${S3_MAX_OBJECT_SIZE:20MB}
         access-url-ttl: ${S3_ACCESS_URL_TTL:15m}
+      r2:
+        enabled: ${R2_ENABLED:false}
+        environment: ${DEPLOY_ENV:}
+        endpoint: ${R2_ENDPOINT:}
+        bucket: ${R2_BUCKET:}
+        access-key-id: ${R2_ACCESS_KEY_ID:}
+        secret-access-key: ${R2_SECRET_ACCESS_KEY:}
+        access-url-ttl: ${R2_ACCESS_URL_TTL:15m}
+        max-object-size: ${R2_MAX_OBJECT_SIZE:20MB}
+        list-lookup-budget: ${R2_LIST_LOOKUP_BUDGET:2s}
+        single-lookup-budget: ${R2_SINGLE_LOOKUP_BUDGET:2s}
+        backup-scheduler:
+          enabled: ${R2_BACKUP_SCHEDULER_ENABLED:false}
+          cron: "${R2_BACKUP_CRON:0 0 0 * * *}"
+          zone: ${R2_BACKUP_ZONE:Asia/Seoul}
+          batch-size: ${R2_BACKUP_BATCH_SIZE:100}
 
 springdoc:
   api-docs:

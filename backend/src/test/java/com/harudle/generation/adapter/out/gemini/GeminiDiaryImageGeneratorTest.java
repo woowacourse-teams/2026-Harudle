@@ -296,7 +296,6 @@ class GeminiDiaryImageGeneratorTest {
 
     private static GeminiGenerationProperties createProperties() {
         return new GeminiGenerationProperties(
-                "test-api-key",
                 "gemini-3.5-flash-lite",
                 "gemini-3.1-flash-image",
                 "high",
