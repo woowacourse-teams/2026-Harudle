@@ -5,6 +5,70 @@ import {
 } from '../src/mocks/mockScenarios';
 
 test.describe('하루들 접속', () => {
+  for (const entryPath of ['/', '/landing']) {
+    test(`저장소가 비어 있어도 세션이 유효하면 ${entryPath}에서 홈에 도착하고 새로고침 후 유지한다`, async ({
+      page,
+    }) => {
+      await page.setExtraHTTPHeaders({
+        [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.authRefreshSuccess,
+      });
+      let refreshCount = 0;
+      let guestSessionCount = 0;
+      page.on('request', (request): void => {
+        if (request.url().endsWith('/api/v1/auth/refresh')) refreshCount += 1;
+        if (request.url().endsWith('/api/v1/guest/session'))
+          guestSessionCount += 1;
+      });
+
+      await page.goto(entryPath);
+
+      await expect(page.getByLabel('조회할 월')).toBeVisible();
+      await expect(page).toHaveURL('/');
+      expect(
+        await page.evaluate(() => [
+          localStorage.getItem('harudle.has-ever-logged-in'),
+          localStorage.getItem('harudle.has-completed-oauth'),
+        ]),
+      ).toEqual(['true', 'true']);
+      // 이전 문제는 홈 도착 직후 재이동했으므로 안정된 뒤 요청 횟수를 확인한다.
+      await page.waitForTimeout(1000);
+      expect(refreshCount).toBe(1);
+      expect(guestSessionCount).toBe(0);
+
+      await page.evaluate((): void => localStorage.clear());
+      await page.reload();
+
+      await expect(page.getByLabel('조회할 월')).toBeVisible();
+      await expect(page).toHaveURL('/');
+      await page.waitForTimeout(1000);
+      expect(refreshCount).toBe(2);
+      expect(guestSessionCount).toBe(0);
+    });
+  }
+
+  test('로그인 이력만 남아 있어도 유효한 세션으로 인증 표시를 복구한다', async ({
+    page,
+  }) => {
+    await page.addInitScript((): void => {
+      localStorage.setItem('harudle.has-ever-logged-in', 'true');
+    });
+    let refreshCount = 0;
+    page.on('request', (request): void => {
+      if (request.url().endsWith('/api/v1/auth/refresh')) refreshCount += 1;
+    });
+
+    await page.goto('/');
+
+    await expect(page.getByLabel('조회할 월')).toBeVisible();
+    expect(
+      await page.evaluate(() =>
+        localStorage.getItem('harudle.has-completed-oauth'),
+      ),
+    ).toBe('true');
+    await page.waitForTimeout(1000);
+    expect(refreshCount).toBe(1);
+  });
+
   test('localStorage에 로그인 이력이 없으면, 랜딩 페이지를 보여준다', async ({
     page,
   }) => {

@@ -173,6 +173,10 @@ const requestNewAccessToken = async (): Promise<void> => {
     throw new Error(ERROR_MESSAGES.INVALID_REFRESH_TOKEN_RESPONSE);
   }
 
+  // 서버가 세션을 확인한 뒤 누락된 인증 완료 표시를 복구한다.
+  if (localStorage.getItem('harudle.has-completed-oauth') === null) {
+    localStorage.setItem('harudle.has-completed-oauth', 'true');
+  }
   setAccessToken(data.accessToken);
 };
 

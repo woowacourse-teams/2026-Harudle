@@ -391,7 +391,11 @@ export const handlers = [
       });
     }
 
-    if (isLandingPath(globalThis.location.pathname)) {
+    if (
+      isLandingPath(globalThis.location.pathname) &&
+      request.headers.get(MOCK_SCENARIO_HEADER) !==
+        MOCK_SCENARIOS.authRefreshSuccess
+    ) {
       return createProblemDetails({
         status: 401,
         code: 'INVALID_REFRESH_TOKEN',
