@@ -59,12 +59,12 @@ SNS가 Lambda 호출을 수락받지 못할 때의 재시도와, 수락 후 함�
 
 ## S3 담당 팀원의 인수 조건
 
-같은 버킷의 dev/prod 폴더(prefix) 분리는 이번 관측 인프라 작업의 범위 밖이다. 현재 캡처상 생성 이미지가 `harudle/generated/diary-images/` 아래에 있으므로, 그 하위에 `dev/`, `prod/`를 두는 방식이 예상된다. 정확한 경로는 담당 팀원이 전달한 설정으로 확정한다. dev 병합이 자동 배포를 시작하므로 **병합 전** 다음 증거를 확인한다.
+이미지 파일 복사와 DB key 전환은 S3 담당 팀원의 작업이다. 현재 코드의 생성 경로는 `harudle/generated/diary-images/{dev|prod}`, 기준 이미지 경로는 `harudle/references/generation/{dev|prod}`다. [이미지 저장소 전환 안내](../../docs/image-storage-isolation.md)에 따라 파일 복사·검증, DB 이미지·프롬프트 key와 서버 `.env` 전환을 같은 배포 구간에 완료한다. dev와 main 병합은 각 환경의 자동 배포를 시작하므로 **병합 전** 다음 증거를 확인한다.
 
 - [ ] 실제 dev/prod의 `S3_GENERATED_PREFIX`가 다르고, 새 이미지 저장 키가 각각 기대한 prefix에 생긴다.
-- [ ] 새 생성 이미지의 URL 조회와 실패 후 폐기 이미지 삭제가 각 환경에서 동작한다. `S3_GENERATED_PREFIX`는 새 업로드 키 생성에만 적용되고, 조회·삭제 코드는 전달받은 전체 키의 prefix를 검증하지 않는다는 점을 확인한다.
+- [ ] 기존 이미지와 새 생성 이미지의 URL 조회, 실패 후 폐기 이미지 삭제가 각 환경에서 동작한다. `S3ImageAccessPolicy`가 조회·저장·삭제·복구·URL 발급 전에 해당 환경의 전체 key를 검증하므로 공용 DB key와 프롬프트 참조는 전환해야 한다.
 - [ ] 기존 DB 이미지 키의 객체와 프롬프트 DB의 참조 이미지 키가 계속 읽힌다. 참조 이미지를 이동한다면 환경 변수만 수정해서는 이미 저장된 프롬프트 키가 바뀌지 않는다. 과거 키의 복구 PUT 정책도 결정한다.
-- [ ] 교차 prefix 쓰기·삭제를 IAM/버킷 정책으로 제한할 수 있는지 인프라 담당자와 확인한다. [AWS 자체는 prefix별 객체 정책을 지원](https://docs.aws.amazon.com/AmazonS3/latest/userguide/security_iam_service-with-iam.html)하지만 공유 인프라에서 역할·정책 변경 권한이 없을 수 있다. 지금 불가능하다면 **권한 차단은 미적용**으로 명시하고, 생성·폐기 삭제가 해당 작업의 키에만 적용되는지 확인한다. 현재 코드에는 버킷 전체를 순회하는 고아 이미지 삭제기가 없지만, prefix 설정만으로 잘못 전달된 키의 삭제를 막지는 못한다.
+- [ ] 교차 prefix 쓰기·삭제를 IAM/버킷 정책으로 제한할 수 있는지 인프라 담당자와 확인한다. [AWS 자체는 prefix별 객체 정책을 지원](https://docs.aws.amazon.com/AmazonS3/latest/userguide/security_iam_service-with-iam.html)하지만 공유 인프라에서 역할·정책 변경 권한이 없을 수 있다. 지금 불가능하다면 **권한 차단은 미적용**으로 명시하고, 생성·폐기 삭제가 해당 작업의 키에만 적용되는지 확인한다. 현재 코드는 버킷 전체를 순회하는 고아 이미지 삭제기 없이 해당 환경의 key만 삭제하도록 검증한다. 이 애플리케이션 경계는 공유 역할로 콘솔·CLI에서 수행하는 교차 환경 삭제를 막지 못한다.
 
 ## dev 배포 뒤 관측 연결
 
