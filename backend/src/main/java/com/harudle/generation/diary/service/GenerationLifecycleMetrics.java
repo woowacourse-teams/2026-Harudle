@@ -70,15 +70,14 @@ public final class GenerationLifecycleMetrics {
         RuntimeException safeTrace = new RuntimeException("Unexpected generation failure");
         safeTrace.setStackTrace(exception.getStackTrace());
         try {
-            LOGGER.atError()
+            GenerationLogContext.withGenerationId(generationId, () -> LOGGER.atError()
                     .addKeyValue("event", "generation_unexpected_failure")
-                    .addKeyValue("generationId", generationId.toString())
                     .addKeyValue("phase", phase.tag)
                     .addKeyValue("exceptionType", exceptionType)
                     .addKeyValue("causeType", causeType)
                     .setCause(safeTrace)
                     .log("event=generation_unexpected_failure generationId={} phase={} exceptionType={} causeType={}",
-                            generationId, phase.tag, exceptionType, causeType);
+                            generationId, phase.tag, exceptionType, causeType));
             unexpectedFailureCounter(phase).increment();
         } catch (RuntimeException metricsException) {
             warnRecordingFailure("generation_unexpected_failure", metricsException);
@@ -87,13 +86,12 @@ public final class GenerationLifecycleMetrics {
 
     private void recordFinalization(UUID generationId, GenerationStatus status, GenerationErrorCode errorCode) {
         String error = errorCode == null ? "none" : errorCode.name();
-        LOGGER.atInfo()
+        GenerationLogContext.withGenerationId(generationId, () -> LOGGER.atInfo()
                 .addKeyValue("event", "generation_finalized")
-                .addKeyValue("generationId", generationId.toString())
                 .addKeyValue("status", status.name())
                 .addKeyValue("errorCode", error)
                 .log("event=generation_finalized generationId={} status={} errorCode={}",
-                        generationId, status, error);
+                        generationId, status, error));
         finalizationCounter(status, error).increment();
     }
 
