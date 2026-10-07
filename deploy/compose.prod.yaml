@@ -6,6 +6,13 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    volumes:
+      - type: bind
+        source: /etc/harudle/gcp/gcp-wif.json
+        target: /var/run/harudle/gcp-wif.json
+        read_only: true
+        bind:
+          create_host_path: false
     environment:
       SERVER_PORT: 8080
       SERVER_FORWARD_HEADERS_STRATEGY: framework
