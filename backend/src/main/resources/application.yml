@@ -113,7 +113,10 @@ harudle:
     adapters:
       enabled: ${HARUDLE_GENERATION_ADAPTERS_ENABLED:false}
     gemini:
+      auth-mode: ${GEMINI_AUTH_MODE:express}
       api-key: ${GOOGLE_API_KEY:${GEMINI_API_KEY:}}
+      project-id: ${GOOGLE_CLOUD_PROJECT:}
+      location: ${GOOGLE_CLOUD_LOCATION:global}
       storyboard-model: ${GEMINI_STORYBOARD_MODEL:gemini-3.5-flash}
       image-model: ${GEMINI_IMAGE_MODEL:gemini-3.1-flash-image}
       storyboard-thinking-level: ${GEMINI_STORYBOARD_THINKING_LEVEL:high}

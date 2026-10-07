@@ -1,5 +1,6 @@
 package com.harudle.generation.config;
 
+import com.google.auth.oauth2.GoogleCredentials;
 import com.google.genai.Client;
 import com.google.genai.Models;
 import com.google.genai.types.HttpOptions;
@@ -12,6 +13,9 @@ import com.harudle.generation.adapter.out.gemini.GeminiFailureReporter;
 import com.harudle.generation.adapter.out.gemini.GeminiStoryboardGenerator;
 import com.harudle.generation.adapter.out.gemini.GeminiStageMetrics;
 import com.harudle.generation.adapter.out.gemini.GeminiStoryboardResponseMapper;
+import com.harudle.generation.adapter.out.gemini.client.ExpressGeminiClientFactory;
+import com.harudle.generation.adapter.out.gemini.client.GeminiClientFactory;
+import com.harudle.generation.adapter.out.gemini.client.VertexGeminiClientFactory;
 import com.harudle.generation.adapter.out.s3.CwebpImageVariantEncoder;
 import com.harudle.generation.adapter.out.s3.ImageObjectKeyFactory;
 import com.harudle.generation.adapter.out.s3.ImageVariantEncoder;
@@ -29,6 +33,7 @@ import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
 import io.micrometer.core.instrument.MeterRegistry;
+import java.io.IOException;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -46,11 +51,28 @@ import tools.jackson.databind.ObjectMapper;
         name = "enabled",
         havingValue = "true"
 )
-@EnableConfigurationProperties({GeminiGenerationProperties.class, S3StorageProperties.class})
+@EnableConfigurationProperties({GeminiClientProperties.class, GeminiGenerationProperties.class, S3StorageProperties.class})
 public class GenerationAdapterConfiguration {
 
+    @Bean
+    public GeminiClientFactory geminiClientFactory(
+            GeminiClientProperties properties,
+            @Qualifier("geminiCredentials") ObjectProvider<GoogleCredentials> credentialsProvider
+    ) throws IOException {
+        return switch (properties.authMode()) {
+            case EXPRESS -> new ExpressGeminiClientFactory(properties.apiKey());
+            case VERTEX -> {
+                GoogleCredentials credentials = credentialsProvider.getIfAvailable();
+                if (credentials == null) {
+                    credentials = GoogleCredentials.getApplicationDefault();
+                }
+                yield new VertexGeminiClientFactory(properties.projectId(), properties.location(), credentials);
+            }
+        };
+    }
+
     @Bean(destroyMethod = "close")
-    public Client geminiClient(GeminiGenerationProperties properties) {
+    public Client geminiClient(GeminiGenerationProperties properties, GeminiClientFactory clientFactory) {
         int requestTimeoutMillis = Math.toIntExact(properties.requestTimeout().toMillis());
         HttpRetryOptions retryOptions = HttpRetryOptions.builder()
                 .attempts(properties.retryAttempts())
@@ -60,11 +82,7 @@ public class GenerationAdapterConfiguration {
                 .retryOptions(retryOptions)
                 .build();
 
-        return Client.builder()
-                .apiKey(properties.apiKey())
-                .vertexAI(true)
-                .httpOptions(httpOptions)
-                .build();
+        return clientFactory.create(httpOptions);
     }
 
     @Bean
