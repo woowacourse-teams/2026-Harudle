@@ -78,6 +78,8 @@ sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
 
 두 번째 로그는 DB 커밋 뒤 애플리케이션의 콜백에서 기록된다. 커밋 직후 프로세스가 종료되면 해당 로그도 빠질 수 있으므로, 알람이 DB 상태 변경의 완전한 감사 기록을 보장하지는 않는다. [CloudWatch JSON 필터 구문](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/FilterAndPatternSyntax.html)을 참고한다.
 
+`generationId`는 MDC 한 곳에서 기록한다. 요청 처리 중 이미 MDC에 있는 키를 SLF4J `addKeyValue`에도 넣으면 Spring Boot의 구조화 JSON 인코더가 중복 필드를 거절해 로그가 누락된다. 최종 상태·예상 밖 오류·이미지 폐기 로그는 생성 ID를 잠시 MDC에 설정하고 기존 값을 복원한다. 스케줄러처럼 요청 MDC가 없는 경로에서도 같은 방식으로 기록한다. 카운터만 증가하고 로그가 없다면 JSON 인코딩 실패도 확인한다. 회귀 검증에는 실제 `StructuredLogEncoder`를 사용해 JSON 출력과 후속 로그까지 검사한다.
+
 이미지 실패 신고 API는 `POST /api/v1/telemetry/image-load-failures/{timeline|detail}`이며 인증·CSRF가 필요한 본문 없는 요청에 204로 응답한다. 수락한 신고마다 `image_load_failure_reported` 구조화 로그를 한 번 기록하고, dev에는 이 이벤트의 로그 지표 필터를 준비했다. 이번 PR에는 프론트 신고 코드가 포함되지 않는다. 담당 팀원의 프론트 작업이 dev에 합류하고 두 화면의 실제 실패 신고가 API·지표·로그 필터에 도착하는지 확인한 뒤에만 `image-load-failure` 알람을 만든다. 그전의 지표 0은 이미지 표시 성공을 뜻하지 않는다.
 
 Gemini 단계·S3 작업/URL 서명·HTTP 상태별 카운터는 새 태그 조합이 첫 이벤트에서 생성될 수 있어 같은 첫 수집 누락 위험이 있다. 첫 **한 건**부터 감지해야 하는 S3/Gemini 오류는 `event=external_api_failure`와 `provider`·`operation`·`failureType`을 사용하는 CloudWatch Logs 지표 필터로 세고, Agent 카운터는 추세 관찰과 대조에 쓴다. 필터가 원본 실패 로그 한 건을 정확히 한 번 세는지 dev에서 확인한다. 2026-09-30 점검 시점 dev 로그 지표 필터 13개와 그중 12개에 대한 경보, EC2 상태 검사·CPU 경보 각 1개가 생성됐지만, 초기 점검의 dev 백엔드 로그 스트림은 0개였다. 이후 제공 역할로 Lambda·SNS를 연결하고 2026-09-30 22:49 KST에 시험 ALARM·OK의 Discord 수신을 확인했다. 이 시험은 SNS 게시부터의 전달을 검증했으며 실제 앱 실패 로그·CloudWatch 경보 상태 전환은 아직 검증 전이다. 앱 로그는 Docker `awslogs`가 직접 전송한다. 새 계측 코드는 아직 dev에 배포되지 않았고 Docker 로그 쓰기 권한도 미확인이므로, 스트림 0개만으로 수집 장애를 판단할 수 없다. 실제 로그 일치와 첫 건 알림은 아직 검증되지 않았다. [현재 AWS 현황](infrastructure-rollout.md#지금-확인된-것과-미확인인-것)을 참고한다. 이미지 신고도 구조화 로그와 필터는 준비됐지만, 프론트 연동과 실제 유입 전에는 첫 건 알림을 보장하지 않는다.
@@ -100,7 +102,7 @@ DB의 성공 이미지와 S3 객체를 주기적으로 대조하는 전체 점�
 
 `api-5xx` 건수 경보는 `ApiExceptionLogger`의 `{ $.event = "api_exception" && $.httpStatus >= 500 && $.httpStatus < 600 }` 로그 지표 필터를 사용한다. 일치하는 로그마다 `Api5xxFailureLogs`에 `Count` 1을 게시하고, 5분 `Sum >= 3`이면 알린다. 새 HTTP 상태·결과 태그의 첫 수집에서 Prometheus 카운터 증가분이 빠지는 상황을 보완한다. 이 필터는 해당 로거가 기록한 API 예외만 세므로, Nginx·게이트웨이 또는 다른 처리 경로의 모든 5xx를 포괄하지는 않는다.
 
-CloudWatch Agent는 HTTP 완료 횟수를 전체(`job`), 결과군(`job`, `outcome`), 상태 코드(`job`, `status`) 차원으로 보낸다. Spring의 `outcome=SERVER_ERROR`는 5xx 응답이다. 5분 `Sum`으로 전체 요청 수 `T`와 서버 오류 수 `E`를 구하고 `IF(T >= 20, 100 * E / T, 0)`을 오류 비율(%)로 표시한다. 초기 경보는 **오류 비율 5% 초과가 5분 창 2회 연속**일 때다. 요청이 적어 비율이 불안정한 시간은 기존 **5xx 3건/5분** 경보가 보완한다. `outcome`과 전체 차원에서 같은 요청이 각각 한 번만 집계되는지 dev에서 먼저 확인하고, 재시작 직후 첫 수집 누락도 로그와 대조한다. [Spring HTTP 결과 태그](https://docs.spring.io/spring-boot/reference/actuator/metrics.html), [CloudWatch 지표 수식](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/using-metric-math.html)을 참고한다.
+CloudWatch Agent는 HTTP 완료 횟수를 전체(`job`), 결과군(`job`, `outcome`), 상태 코드(`job`, `status`) 차원으로 보낸다. Spring의 `outcome=SERVER_ERROR`는 5xx 응답이다. 5분 `Sum`으로 전체 요청 수 `T`와 서버 오류 수 `E`를 구하고 `IF(T >= 20, 100 * E / T, 0)`을 오류 비율(%)로 표시한다. 초기 경보는 **오류 비율 5% 초과가 5분 창 2회 연속**일 때다. 기존 **5xx 3건/5분** 경보는 `ApiExceptionLogger`가 기록한 오류를 보완한다. Gemini 예외 처리의 502 응답처럼 `api_exception`을 남기지 않는 경로는 이 건수 경보에 포함되지 않으므로, 요청이 적을 때는 Gemini 단계별 로그 경보도 함께 확인한다. `outcome`과 전체 차원에서 같은 요청이 각각 한 번만 집계되는지 dev에서 먼저 확인하고, 재시작 직후 첫 수집 누락도 로그와 대조한다. [Spring HTTP 결과 태그](https://docs.spring.io/spring-boot/reference/actuator/metrics.html), [CloudWatch 지표 수식](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/using-metric-math.html)을 참고한다.
 
 부하 시험에서는 AI 작업 완료까지의 비동기 시간과 API 응답 시간을 별도로 측정한다. 우선 부하 시험 도구가 측정한 **요청별 P95·P99, 평균 응답 시간, 5xx 비율, 동시 사용자 수, 초당 요청 수**를 시나리오와 함께 보존한다. 현재 Agent 설정은 HTTP `http_server_requests_seconds_count`만 CloudWatch에 보내고 `_sum`은 보내지 않으므로, CloudWatch 대시보드에서 평균 응답 시간을 계산할 수 없다. 지금은 HTTP 요청 수·5xx 비율, Hikari pending, EC2/RDS 자원 지표를 같은 시간축에 놓고 본다. 평균 응답 시간은 `_sum`의 수집 차원·시계열 수·비용을 dev에서 검증한 뒤 추가한다. 평균이나 `count`만으로 P95·P99를 계산하지 않는다.
 
@@ -135,13 +137,15 @@ CloudWatch 알람은 dev/prod를 별도로 만들고, 환경별 SNS 주제를 �
 | 주의 | 로그인 사용자 이미지 표시 실패 증가 3건 | 5분 | 프론트 신고 연동 검증 후 활성화. 오프라인·URL 만료도 가능하므로 S3 누락으로 단정하지 않음 |
 | 즉시 | API 예외 로그의 `Api5xxFailureLogs` 3건 이상 | 5분 | `api_exception`·5xx 로그의 첫 건부터 집계. 다른 계층의 5xx는 별도 관측 |
 | 주의 | API 5xx 비율 > 5%, 단 전체 요청 20건 이상 | 5분 창 2회 연속 | 요청량이 늘 때 지속되는 장애 감지 |
-| 주의 | 각 단계의 `RATE_LIMIT\|PROVIDER_5XX\|TIMEOUT` 로그 필터 3건 이상 | 15분, 1회 | Gemini 공급자의 일시 오류를 스토리보드와 이미지 단계별로 감지 |
+| 주의 | 각 단계의 `RATE_LIMIT\|PROVIDER_5XX\|TIMEOUT` 또는 `PROVIDER_ERROR`이면서 `exceptionType=GenAiIOException`인 로그 3건 이상 | 15분, 1회 | Gemini 공급자·SDK 통신 오류를 스토리보드와 이미지 단계별로 감지 |
 | 주의 | 스토리보드의 `OUTPUT_TOKEN_LIMIT\|EMPTY_RESPONSE\|INVALID_JSON\|SCHEMA_VIOLATION\|RESPONSE_PROCESSING_ERROR` 로그 필터 2건 이상 | 15분, 1회 | 스토리보드 응답 오류 감지 |
 | 주의 | 이미지의 `OUTPUT_TOKEN_LIMIT\|IMAGE_PART_MISSING\|IMAGE_PART_INVALID\|RESPONSE_PROCESSING_ERROR` 로그 필터 2건 이상 | 15분, 1회 | 이미지 응답 오류 감지 |
 | 주의 | Hikari pending 연결 지속(`Max` 또는 `Average` 게이지) | 부하 시험 기준 확정 후 | 다음 스프린트 병목 관찰 |
 | 즉시/주의 | EC2 상태 검사·CPU·메모리·디스크, RDS CPU·메모리·저장 공간·연결 수 | 위 자원 경보 표의 각 평가 창 | 앱 실패 전에 서버·DB 고갈 감지 |
 
 CloudWatch Agent가 게시한 카운터는 증가분이고 로그 지표 필터는 로그 발생 건수이므로 각 알람의 5분·15분 `Sum`을 사용한다. 여러 태그 조합을 하나의 조건으로 묶을 때만 metric math로 각 시계열을 합산한다. `DIFF`로 다시 증가량을 계산하지 않는다. 생성 첫 건 필터에는 위 `event`·`status`·`errorCode`를 지정하고, S3/Gemini 로그 필터에는 `event=external_api_failure`를 필수로 지정한다. S3 인증·권한·설정 오류에는 저장·참조 조회·URL 발급을 모두 포함한다. `head_object{result="missing"}`은 경보 대상에서 제외한다. 하나의 Gemini 장애가 생성 실패와 API 502까지 전파될 수 있으므로 Discord 중복 알람을 묶어 대응한다. 소비자 차감은 별도 팀원 작업이므로 공급자 토큰·생성 실행 수를 차감 수로 해석하지 않는다.
+
+2026-10-07 prod 배포 뒤 `failureType=PROVIDER_ERROR`, `exceptionType=GenAiIOException`, `rootCauseType=IOException`인 실제 실패 로그를 확인해 prod의 두 Gemini 통신 오류 필터에 위 조건을 추가했다. HTTP 상태를 알 수 없는 SDK I/O 예외이므로 RPM 제한이나 공급자 5xx로 단정하지 않는다. 다른 `PROVIDER_ERROR` 전체를 이 필터에 넣지는 않는다. dev에 같은 조건을 적용할 때도 실제 로그로 양성·음성 일치 시험을 진행한다.
 
 P95·P99 알람은 위의 수집 방식·목표·표본 수가 dev에서 검증되기 전에는 만들지 않는다. API 오류 비율과 EC2·RDS 자원 경보는 검증된 지표가 들어오는 즉시 dev에서 먼저 적용한다.
 
