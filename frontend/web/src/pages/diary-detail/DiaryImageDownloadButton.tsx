@@ -1,22 +1,39 @@
+import { DIARY_DETAIL_COPY } from './copy';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import ActionButton from '../../shared/ActionButton';
 import downloadIcon from '../../assets/icons/download.svg';
-import { useState } from 'react';
+import { useState, type ReactElement } from 'react';
+import { useErrorTracking } from '../../posthog/useErrorTracking';
 import type { ApiRequest } from '../../shared/api';
 import { useAnalytics } from '../../posthog/useAnalytics';
 
-const DiaryImageDownloadButton = ({ imageUrl }: { imageUrl: string }) => {
+interface DiaryImageDownloadButtonProps {
+  readonly diaryId: string;
+  readonly imageUrl: string;
+  readonly diaryDate: string;
+  readonly diaryTitle: string;
+}
+
+const DiaryImageDownloadButton = ({
+  diaryId,
+  imageUrl,
+  diaryDate,
+  diaryTitle,
+}: DiaryImageDownloadButtonProps): ReactElement => {
   const [downloadRequest, setDownloadRequest] = useState<ApiRequest<void>>({
     status: 'idle',
   });
   const { track } = useAnalytics();
-  const handleImageDownload = async () => {
+  const { captureError } = useErrorTracking();
+  const handleImageDownload = async (): Promise<void> => {
+    let httpStatus: number | undefined;
     setDownloadRequest({
       status: 'loading',
     });
 
     try {
       const response = await fetch(imageUrl, { cache: 'no-store' });
+      httpStatus = response.status;
 
       if (!response.ok) {
         throw new Error(ERROR_MESSAGES.DIARY_IMAGE_SAVE_FAILED);
@@ -25,21 +42,33 @@ const DiaryImageDownloadButton = ({ imageUrl }: { imageUrl: string }) => {
       const blob = await response.blob();
       const downloadUrl = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
+      const safeTitle = diaryTitle
+        .replace(/[<>:"/\\|?*]/g, '_')
+        .trim()
+        .replace(/\.+$/, '');
+      // 제목 최대 80 bytes + 접두사·확장자 26 bytes로 Android 파일명 제한을 피한다.
+      const shortTitle = Array.from(safeTitle).slice(0, 20).join('');
 
       anchor.href = downloadUrl;
-      anchor.download = 'harudle-diary.png';
+      anchor.download = `하루들_${diaryDate}_${shortTitle}.webp`;
       anchor.click();
 
       URL.revokeObjectURL(downloadUrl);
 
       track('diary_image_downloaded');
       setDownloadRequest({ status: 'success', data: undefined });
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof Error) {
-        setDownloadRequest({
-          status: 'error',
-          error: error,
+        setDownloadRequest({ status: 'error', error });
+
+        captureError(error, {
+          feature: 'diary_image',
+          operation: 'download',
+          diary_id: diaryId,
+          image_role: 'original',
+          ...(httpStatus !== undefined ? { http_status: httpStatus } : {}),
         });
+
         alert(error.message);
       }
     }
@@ -48,7 +77,7 @@ const DiaryImageDownloadButton = ({ imageUrl }: { imageUrl: string }) => {
   return (
     <ActionButton
       icon={<img src={downloadIcon} alt="저장 아이콘" />}
-      label="이미지 저장"
+      label={DIARY_DETAIL_COPY.downloadAction}
       variant="secondary"
       onClick={handleImageDownload}
       disabled={downloadRequest.status === 'loading'}

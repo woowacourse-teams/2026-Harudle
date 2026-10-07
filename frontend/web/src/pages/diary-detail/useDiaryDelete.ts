@@ -1,9 +1,11 @@
+import { useErrorTracking } from '../../posthog/useErrorTracking';
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { deleteDiary } from '../../domain/diary/diaryDelete';
 import type { ApiRequest } from '../../shared/api';
 
 const useDiaryDelete = ({ diaryId }: { diaryId: string }) => {
+  const { captureError } = useErrorTracking();
   const [request, setRequest] = useState<ApiRequest<void>>({
     status: 'idle',
   });
@@ -19,13 +21,18 @@ const useDiaryDelete = ({ diaryId }: { diaryId: string }) => {
       navigate('/');
     } catch (error: unknown) {
       if (error instanceof Error) {
+        captureError(error, {
+          feature: 'diary',
+          operation: 'delete',
+          diary_id: diaryId,
+        });
         setRequest({
           status: 'error',
           error: error,
         });
       }
     }
-  }, [diaryId, navigate]);
+  }, [diaryId, navigate, captureError]);
 
   return { request, execute };
 };

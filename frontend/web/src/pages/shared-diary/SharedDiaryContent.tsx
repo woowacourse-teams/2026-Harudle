@@ -6,7 +6,7 @@ import SharedDiaryError from './SharedDiaryError';
 import { css } from '@emotion/react';
 import { theme } from '../../styles/theme';
 import { useNavigate } from 'react-router';
-import harudleLogo from '../../assets/images/harudle-logo.png';
+import harudleLogo from '../../assets/images/harudle-logo.webp';
 import { useAnalytics } from '../../posthog/useAnalytics';
 
 const SharedDiaryContent = ({ shareId }: { shareId: string }) => {
@@ -46,7 +46,12 @@ const SharedDiaryContent = ({ shareId }: { shareId: string }) => {
 
       <main css={sharedDiaryContentStyle}>
         <div css={diaryTitleStyle}>{title}</div>
-        <DiaryImage src={imageUrl} alt={title} css={diaryImageStyle} />
+        <DiaryImage
+          imageRole="original"
+          src={imageUrl}
+          alt={title}
+          css={diaryImageStyle}
+        />
         <div css={diaryDateStyle}>{diaryDate}</div>
       </main>
     </div>

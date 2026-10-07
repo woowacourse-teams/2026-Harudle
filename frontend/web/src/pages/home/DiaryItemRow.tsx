@@ -17,7 +17,7 @@ const DiaryItemRow = ({
   date: MonthlyDiaryDay['date'];
   onClick: () => void;
 }) => {
-  const { title, thumbnailUrl } = monthlyDiary;
+  const { id, title, thumbnailUrl } = monthlyDiary;
   const { date: formattedDate, weekday } = formatDiaryDate(date);
   return (
     <button css={diaryItemRowStyle} onClick={onClick}>
@@ -29,8 +29,10 @@ const DiaryItemRow = ({
       <span css={titleStyle}>{title}</span>
 
       <DiaryImage
+        diaryId={id}
+        imageRole="thumbnail"
         src={thumbnailUrl}
-        alt={`그림일기 ${date}`}
+        alt={`네컷만화 ${date}`}
         css={thumbnailStyle}
       />
     </button>
@@ -46,7 +48,7 @@ const diaryItemRowStyle = css`
   justify-content: space-between;
   align-items: center;
   width: 100%;
-  height: 82px;
+  height: 98px;
   padding-left: 45px;
   border: none;
   background: none;
@@ -69,7 +71,7 @@ const diaryItemRowStyle = css`
   &::after {
     content: '';
     position: absolute;
-    top: 32px;
+    top: 40px;
     left: 26px;
     width: 12px;
     height: 12px;
@@ -123,10 +125,10 @@ const titleStyle = css`
 `;
 
 const thumbnailStyle = css`
-  flex: 0 0 130px;
-  width: 130px;
-  height: 80px;
-  border-radius: 12px;
-  object-fit: cover;
+  flex: 0 0 96px;
+  width: 96px;
+  height: 96px;
+  border-radius: 4px;
+  object-fit: contain;
   box-sizing: border-box;
 `;

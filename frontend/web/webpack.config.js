@@ -30,15 +30,15 @@ export default function createWebpackConfig(_env, argv) {
     module: {
       rules: [
         {
-          test: /harudle-intro\.jpg$/i,
+          test: /harudle-og\.jpg$/i,
           type: 'asset/resource',
           generator: {
-            filename: 'harudle-intro.jpg',
+            filename: '[name][ext]',
           },
         },
         {
           test: /\.(png|svg|jpg|jpeg|webp)$/i,
-          exclude: /harudle-intro\.jpg$/i,
+          exclude: /harudle-og\.jpg$/i,
           type: 'asset/resource',
         },
         {
@@ -74,6 +74,10 @@ export default function createWebpackConfig(_env, argv) {
       }),
       new CopyWebpackPlugin({
         patterns: [
+          {
+            from: path.resolve(__dirname, 'public/robots.txt'),
+            to: 'robots.txt',
+          },
           {
             from: path.resolve(__dirname, 'manifest.json'),
             to: 'manifest.json',

@@ -36,6 +36,7 @@ const AuthCallbackPage = () => {
         }
 
         setAccessToken(data.accessToken);
+        localStorage.setItem('harudle.has-ever-logged-in', 'true');
         localStorage.setItem('harudle.has-completed-oauth', 'true');
 
         void identifyCurrentUser(data.accessToken);

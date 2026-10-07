@@ -1,3 +1,6 @@
+import { DIARY_DETAIL_COPY } from './copy';
+import { css } from '@emotion/react';
+import { useErrorTracking } from '../../posthog/useErrorTracking';
 import ActionButton from '../../shared/ActionButton';
 import shareIcon from '../../assets/icons/share.svg';
 import { useState } from 'react';
@@ -15,6 +18,7 @@ const DiaryShareButton = ({
   diaryId: string;
   diaryTitle: string;
 }) => {
+  const { captureError } = useErrorTracking();
   const [request, setRequest] = useState<ApiRequest<DiaryShareLinkResponse>>({
     status: 'idle',
   });
@@ -44,6 +48,11 @@ const DiaryShareButton = ({
       }
 
       if (error instanceof Error) {
+        captureError(error, {
+          feature: 'diary',
+          operation: 'share',
+          diary_id: diaryId,
+        });
         setRequest({
           status: 'error',
           error: error,
@@ -55,8 +64,9 @@ const DiaryShareButton = ({
 
   return (
     <ActionButton
-      icon={<img src={shareIcon} alt="공유하기 아이콘" />}
-      label="공유하기"
+      icon={<span css={shareIconStyle} />}
+      label={DIARY_DETAIL_COPY.shareAction}
+      variant="secondary"
       onClick={execute}
       disabled={request.status === 'loading'}
     />
@@ -64,3 +74,11 @@ const DiaryShareButton = ({
 };
 
 export default DiaryShareButton;
+
+const shareIconStyle = css`
+  display: block;
+  width: 100%;
+  height: 100%;
+  background-color: currentColor;
+  mask: url(${shareIcon}) center / contain no-repeat;
+`;

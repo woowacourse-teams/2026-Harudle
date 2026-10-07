@@ -1,295 +1,426 @@
-import { afterEach, describe, expect, it, jest } from '@jest/globals';
-import { render, screen, within } from '@testing-library/react';
+import { DIARY_GENERATING_COPY } from '../diary-generating/copy';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  jest,
+} from '@jest/globals';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import LandingPage from './LandingPage';
+import { GuestTrialAlreadyUsedError } from './guestTrialErrors';
+import type { GuestDiaryRequest, GuestDiaryResponse } from './guestTrialApi';
+import { getKoreanToday } from './guestDiaryValidation';
+import type { GuestDiaryCreationState } from './useGuestDiaryCreation';
 
+type SubmitGuestDiary = (request: GuestDiaryRequest) => Promise<void>;
+
+const mockSubmitDiary = { current: jest.fn<SubmitGuestDiary>() };
+const mockRetryDiary = { current: jest.fn(async () => {}) };
+const mockTrack = jest.fn();
+const mockCreationState = {
+  current: { status: 'writing' } as GuestDiaryCreationState,
+};
+
+const guestDiaryResponse: GuestDiaryResponse = {
+  id: 'guest-diary-id',
+  diaryDate: '2026-08-21',
+  sourceText: '친구와 산책하며 오래 웃었던 하루였다.',
+  createdAt: '2026-08-21T03:00:00Z',
+  generation: {
+    id: 'guest-generation-id',
+    status: 'SUCCEEDED',
+    title: '비에 흠뻑 젖은 하루',
+    imageUrl: 'guest-result.png',
+    imageUrlExpiresAt: '2026-08-21T04:00:00Z',
+    completedAt: '2026-08-21T03:01:00Z',
+  },
+};
+
+jest.mock('./useGuestDiaryCreation', () => ({
+  __esModule: true,
+  default: () => ({
+    creationState: mockCreationState.current,
+    submitDiary: mockSubmitDiary.current,
+    retryDiary: mockRetryDiary.current,
+  }),
+}));
+jest.mock('../../posthog/useAnalytics', () => ({
+  useAnalytics: () => ({ track: mockTrack }),
+}));
+jest.mock('../diary-generating/DiaryGeneratingPage', () => ({
+  FINAL_STEP: 5,
+}));
+jest.mock('react-router', () => ({
+  useLocation: () => ({ state: null }),
+  useNavigate: () => jest.fn(),
+}));
+
+jest.mock('./assets/chat-me.png', () => 'chat-me.png');
+jest.mock('./assets/chat-friend.png', () => 'chat-friend.png');
+jest.mock('./assets/slack-toothpaste.png', () => 'slack-toothpaste.png');
+jest.mock('./assets/slack-favorite.png', () => 'slack-favorite.png');
+jest.mock('./assets/slack-song-quiz.png', () => 'slack-song-quiz.png');
+jest.mock('./assets/slack-chorok.png', () => 'slack-chorok.png');
+jest.mock('./assets/slack-iq.png', () => 'slack-iq.png');
+jest.mock('./assets/slack-ihyun.png', () => 'slack-ihyun.png');
+jest.mock('./assets/friends-birthday.png', () => 'friends-birthday.png');
+jest.mock(
+  './assets/work-different-pages.png',
+  () => 'work-different-pages.png',
+);
+jest.mock('./assets/school-presentation.png', () => 'school-presentation.png');
+jest.mock('../../assets/images/harudle-logo.webp', () => 'harudle-logo.webp');
 jest.mock('../../assets/icons/kakao.svg', () => 'kakao.svg');
-jest.mock('../../assets/images/harudle-logo.png', () => 'harudle-logo.png');
-jest.mock('../../assets/images/login-hero.png', () => 'login-hero.png');
-jest.mock('../../assets/images/writing-scene.png', () => 'writing-scene.png');
+jest.mock('../../assets/icons/check.svg', () => 'check.svg');
+jest.mock(
+  '../../assets/images/login-shared-comic.png',
+  () => 'login-shared-comic.png',
+);
 jest.mock(
   '../../assets/images/empty-person-and-dog.png',
   () => 'empty-person-and-dog.png',
 );
 jest.mock(
-  './assets/guest-diary-cat-keyboard.png',
-  () => 'guest-diary-cat-keyboard.png',
+  '../../assets/images/loading-animation.webp',
+  () => 'loading-animation.webp',
 );
-jest.mock('./assets/guest-diary-friend.jpg', () => 'guest-diary-friend.jpg');
-jest.mock('./assets/guest-diary-workout.png', () => 'guest-diary-workout.png');
-
-const originalResizeObserver = globalThis.ResizeObserver;
-
-afterEach(() => {
-  globalThis.ResizeObserver = originalResizeObserver;
+jest.mock(
+  '../../assets/images/generation-step-1-reading.png',
+  () => 'generation-step-1-reading.png',
+);
+jest.mock(
+  '../../assets/images/generation-step-2-writing.png',
+  () => 'generation-step-2-writing.png',
+);
+jest.mock(
+  '../../assets/images/generation-step-3-selecting-panels.png',
+  () => 'generation-step-3-selecting-panels.png',
+);
+jest.mock(
+  '../../assets/images/generation-step-4-painting.png',
+  () => 'generation-step-4-painting.png',
+);
+jest.mock(
+  '../../assets/images/generation-step-5-complete.png',
+  () => 'generation-step-5-complete.png',
+);
+beforeEach(() => {
+  mockCreationState.current = { status: 'writing' };
+  mockSubmitDiary.current = jest.fn<SubmitGuestDiary>();
+  mockRetryDiary.current = jest.fn(async () => {});
+  mockTrack.mockReset();
 });
 
-describe('로그인 유도 랜딩 페이지', () => {
-  it('호출부가 히어로 액션과 마지막 콘텐츠를 명시적으로 구성할 수 있다', () => {
-    render(
-      <LandingPage
-        heroAction={<button type="button">무료로 사용해보기</button>}
-        finalAction={null}
-        trialSection={<section aria-label="무료 네컷 체험" />}
-      />,
+afterEach(() => {
+  jest.clearAllTimers();
+  jest.useRealTimers();
+});
+
+describe('게스트 체험 랜딩 작성 화면', () => {
+  it('브랜드 소개와 1회 체험 입력을 같은 랜딩에 보여준다', () => {
+    render(<LandingPage />);
+    expect(
+      screen.getByRole('heading', {
+        level: 1,
+        name: /우리끼리 통하는\s*네컷만화/,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('form', { name: /최근에 같이 웃었던\s*순간이 있나요/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('textbox', { name: '네컷만화로 만들 내용' }),
+    ).toHaveAttribute('maxLength', '300');
+    expect(
+      screen.getByRole('button', { name: '네컷만화 만들기' }),
+    ).toBeInTheDocument();
+    expect(document.querySelector('input[type="date"]')).toBeNull();
+  });
+
+  it('체험 준비 중에는 소개를 유지하면서 작성과 생성은 노출하지 않는다', () => {
+    render(<LandingPage entryFeedback={<p>체험을 준비하고 있어요</p>} />);
+    expect(
+      screen.getByRole('heading', {
+        level: 1,
+        name: /우리끼리 통하는\s*네컷만화/,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('체험을 준비하고 있어요')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(mockSubmitDiary.current).not.toHaveBeenCalled();
+  });
+
+  it('입력한 내용을 별도 작성 페이지 이동 없이 바로 생성한다', async () => {
+    const user = userEvent.setup();
+    render(<LandingPage />);
+
+    await user.type(
+      screen.getByRole('textbox', { name: '네컷만화로 만들 내용' }),
+      '친구와 산책하며 오래 웃었던 하루였다.',
+    );
+    await user.click(screen.getByRole('button', { name: '네컷만화 만들기' }));
+
+    expect(mockSubmitDiary.current).toHaveBeenCalledWith({
+      diaryDate: getKoreanToday(),
+      sourceText: '친구와 산책하며 오래 웃었던 하루였다.',
+    });
+    expect(mockTrack).toHaveBeenCalledWith(
+      'landing_trial_diary_create_clicked',
+    );
+  });
+
+  it('빈 내용으로 누르면 생성하지 않고 입력창에 초점을 주며 안내한다', async () => {
+    const user = userEvent.setup();
+    render(<LandingPage />);
+    const textbox = screen.getByRole('textbox', {
+      name: '네컷만화로 만들 내용',
+    });
+
+    await user.click(screen.getByRole('button', { name: '네컷만화 만들기' }));
+
+    expect(mockSubmitDiary.current).not.toHaveBeenCalled();
+    expect(textbox).toHaveFocus();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      '있었던 순간을 적어주세요',
+    );
+    expect(textbox).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('10자 미만 입력은 생성하지 않고 다시 입력하면 오류 안내를 해제한다', async () => {
+    const user = userEvent.setup();
+    render(<LandingPage />);
+    const textbox = screen.getByRole('textbox', {
+      name: '네컷만화로 만들 내용',
+    });
+
+    await user.type(textbox, '짧은 일기');
+    await user.click(screen.getByRole('button', { name: '네컷만화 만들기' }));
+
+    expect(mockSubmitDiary.current).not.toHaveBeenCalled();
+    expect(mockTrack).not.toHaveBeenCalled();
+    expect(textbox).toHaveFocus();
+    expect(
+      screen.getByText('오늘의 이야기를 10자 이상 적어주세요'),
+    ).toBeInTheDocument();
+    expect(textbox).toHaveAttribute(
+      'aria-describedby',
+      'guest-diary-source-text-error',
     );
 
+    await user.clear(textbox);
+    await user.type(textbox, '친구와 함께 오래 산책했던 하루였다');
+
     expect(
-      screen.getByRole('button', { name: '무료로 사용해보기' }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('link', { name: '카카오로 시작하기' }),
+      screen.queryByText('오늘의 이야기를 10자 이상 적어주세요'),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole('region', { name: '무료 네컷 체험' }),
-    ).toBeInTheDocument();
+      screen.queryByText('10자 이상 300자 이하로 적어주세요'),
+    ).not.toBeInTheDocument();
+    expect(textbox).not.toHaveAttribute('aria-describedby');
   });
 
-  it('랜딩 내부 레이아웃 변화를 관찰하고 언마운트 시 해제한다', () => {
-    const observe = jest.fn();
-    const disconnect = jest.fn();
+  it('생성 중에는 랜딩을 유지한 채 작성 카드만 대기 화면으로 바꾼다', () => {
+    mockCreationState.current = { status: 'generating' };
 
-    globalThis.ResizeObserver = jest.fn(() => ({
-      observe,
-      unobserve: jest.fn(),
-      disconnect,
-    })) as unknown as typeof ResizeObserver;
-
-    const { unmount } = render(<LandingPage />);
-
-    expect(observe).toHaveBeenCalledTimes(3);
-
-    unmount();
-
-    expect(disconnect).toHaveBeenCalledTimes(1);
-  });
-
-  it('일상을 그림으로 만드는 핵심 가치를 안내한다', () => {
     render(<LandingPage />);
 
     expect(
       screen.getByRole('heading', {
-        name: /일상을 그림으로\s*만들어드려요/,
+        level: 1,
+        name: /우리끼리 통하는\s*네컷만화/,
       }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText('찍지 못했던 일상을 그림으로 만들어드립니다'),
-    ).toBeInTheDocument();
-  });
-
-  it('네컷 예시와 과정 위의 중간 연결 문구를 표시하지 않는다', () => {
-    render(<LandingPage />);
-
-    expect(screen.queryByText('하루를 적으면')).not.toBeInTheDocument();
-    expect(screen.queryByText('네컷이 되는 과정')).not.toBeInTheDocument();
-  });
-
-  it('네컷 예시와 사용 방법을 하나의 연속된 흐름으로 묶는다', () => {
-    render(<LandingPage />);
-
-    const storyFlow = screen.getByRole('region', {
-      name: '하루가 네컷이 되는 흐름',
-    });
-
-    expect(
-      within(storyFlow).getByRole('region', {
-        name: '완성된 네컷 그림 일기 예시',
+      screen.queryByRole('form', {
+        name: /최근에 같이 웃었던\s*순간이 있나요/,
       }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('status', { name: '네컷만화를 만들고 있어요' }),
     ).toBeInTheDocument();
     expect(
-      within(storyFlow).getByRole('region', {
-        name: '이렇게 하루를 남겨요',
-      }),
-    ).toBeInTheDocument();
-  });
-
-  it('하루들 손그림 캐릭터가 기록부터 시작까지의 흐름을 안내한다', () => {
-    render(<LandingPage />);
-
-    const hero = screen.getByRole('region', {
-      name: /일상을 그림으로\s*만들어드려요/,
-    });
-    const process = screen.getByRole('region', {
-      name: '이렇게 하루를 남겨요',
-    });
-    const finalCta = screen.getByRole('region', {
-      name: /재밌는 이야기를 만들어\s*친구에게 공유해보세요/,
-    });
-
-    expect(
-      within(hero).getByRole('img', {
-        name: '사람들과 강아지가 함께 하루를 시작하는 모습',
-      }),
-    ).toHaveAttribute('src', 'login-hero.png');
-    expect(
-      within(process).getByRole('img', {
-        name: '사람이 강아지와 함께 오늘의 이야기를 기록하는 모습',
-      }),
-    ).toHaveAttribute('src', 'writing-scene.png');
-    expect(
-      within(finalCta).getByRole('img', {
-        name: '사람과 강아지가 함께 새로운 네컷을 시작하는 모습',
-      }),
-    ).toHaveAttribute('src', 'empty-person-and-dog.png');
-  });
-
-  it('첫 화면 마스코트 바로 아래에서 카카오 로그인을 시작할 수 있다', () => {
-    render(<LandingPage />);
-
-    const hero = screen.getByRole('region', {
-      name: /일상을 그림으로\s*만들어드려요/,
-    });
-    const mascot = within(hero).getByRole('img', {
-      name: '사람들과 강아지가 함께 하루를 시작하는 모습',
-    });
-    const loginLink = within(hero).getByRole('link', {
-      name: '카카오로 시작하기',
-    });
-
-    expect(
-      mascot.compareDocumentPosition(loginLink) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(loginLink).toHaveAttribute('href', '/oauth2/authorization/kakao');
-  });
-
-  it('카카오 로그인 아래에서 흰색 히어로가 끝나고 연보라 구간이 시작된다', () => {
-    render(<LandingPage />);
-
-    const hero = screen.getByRole('region', {
-      name: /일상을 그림으로\s*만들어드려요/,
-    });
-    const loginLink = within(hero).getByRole('link', {
-      name: '카카오로 시작하기',
-    });
-    const heroVisual = loginLink.parentElement;
-
-    expect(hero).toHaveStyle({ paddingBottom: '32px' });
-    expect(heroVisual).not.toBeNull();
-    expect(heroVisual).toHaveStyle({ marginBottom: '0' });
-  });
-
-  it('별도 가로 조작 없이 세로 흐름에서 이용 과정을 모두 설명한다', () => {
-    render(<LandingPage />);
-
-    const process = screen.getByRole('region', {
-      name: '이렇게 하루를 남겨요',
-    });
-    const processSteps = within(process).getAllByRole('listitem');
-
-    expect(processSteps).toHaveLength(3);
-    expect(
-      within(process).getByText('있었던 일들을 적어요'),
+      screen.getByText('완성되면 이곳에서 네컷만화를 보여드릴게요.'),
     ).toBeInTheDocument();
     expect(
-      within(process).getByText('그림 일기를 그려드릴게요!'),
+      screen.getByText(DIARY_GENERATING_COPY.stepLabels[0]),
     ).toBeInTheDocument();
     expect(
-      within(process).getByText('친구에게 공유해서 함께 즐겨보세요'),
+      screen.getByText(DIARY_GENERATING_COPY.stepLabels[1]),
     ).toBeInTheDocument();
-    expect(within(process).queryByRole('button')).not.toBeInTheDocument();
-  });
-
-  it('버튼 조작 없이 스크롤 흐름에서 세 개의 네컷 예시를 제공한다', () => {
-    render(<LandingPage />);
-
-    const diaryImages = [
-      screen.getByRole('img', {
-        name: '러닝머신을 타고 야식을 먹은 하루를 담은 네컷 그림 일기',
-      }),
-      screen.getByRole('img', {
-        name: '마감 직전 키보드를 차지한 고양이의 모습을 담은 네컷 그림 일기',
-        hidden: true,
-      }),
-      screen.getByRole('img', {
-        name: '게임 속 친구와의 하루를 담은 네컷 그림 일기',
-        hidden: true,
-      }),
-    ];
-
-    diaryImages.forEach((image) => {
-      expect(image).toHaveAttribute('decoding', 'async');
-    });
-    expect(diaryImages[0]).toHaveAttribute('loading', 'eager');
-    expect(diaryImages[1]).toHaveAttribute('loading', 'lazy');
-    expect(diaryImages[2]).toHaveAttribute('loading', 'lazy');
     expect(
-      screen.queryByRole('button', { name: '네컷 그림으로 보기' }),
+      screen.getByText(DIARY_GENERATING_COPY.stepLabels[2]),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(DIARY_GENERATING_COPY.stepLabels[3]),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(DIARY_GENERATING_COPY.stepLabels[4]),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: '카카오로 시작하고 계속 만들기' }),
     ).not.toBeInTheDocument();
   });
 
-  it('입력한 하루를 각 네컷보다 먼저 보여주고 불필요한 안내는 제거한다', () => {
+  it('마지막 생성 단계가 길어지면 추가 대기 안내를 보여준다', () => {
+    jest.useFakeTimers();
+    mockCreationState.current = { status: 'generating' };
+
     render(<LandingPage />);
 
-    const showcase = screen.getByRole('region', {
-      name: '완성된 네컷 그림 일기 예시',
-    });
-    const activeStory = within(showcase).getByRole('group', {
-      name: '현재 네컷을 만든 이야기',
-    });
-    const diaryPairs = [
-      {
-        caption: '5분 운동하고 야식먹기',
-        alt: '러닝머신을 타고 야식을 먹은 하루를 담은 네컷 그림 일기',
-        src: 'guest-diary-workout.png',
-      },
-      {
-        caption: '마감 직전 키보드를 차지한 고양이',
-        alt: '마감 직전 키보드를 차지한 고양이의 모습을 담은 네컷 그림 일기',
-        src: 'guest-diary-cat-keyboard.png',
-      },
-      {
-        caption: '게임 친구와 투닥거리던 밤',
-        alt: '게임 속 친구와의 하루를 담은 네컷 그림 일기',
-        src: 'guest-diary-friend.jpg',
-      },
-    ];
+    for (let step = 0; step < 3; step += 1) {
+      act(() => {
+        jest.advanceTimersByTime(3_000);
+      });
+    }
 
     expect(
-      within(activeStory).getByText('5분 운동하고 야식먹기'),
+      screen.getByText('색을 더하고 다듬어 네컷만화를 완성하고 있어요'),
     ).toBeInTheDocument();
-    expect(activeStory).not.toHaveAttribute('aria-live');
     expect(
-      screen.queryByText('아래로 내려 세 개의 하루를 만나보세요'),
+      screen.queryByText(
+        '예상보다 시간이 걸리고 있어요. 조금만 더 기다려주세요.',
+      ),
     ).not.toBeInTheDocument();
-    expect(
-      within(showcase).queryByText('네컷으로 남은 하루'),
-    ).not.toBeInTheDocument();
-    expect(showcase).not.toHaveTextContent(/\d{2}\s*\/\s*03/);
 
-    diaryPairs.forEach(({ caption, alt, src }) => {
-      const image = screen.getByRole('img', { name: alt, hidden: true });
-      const figure = image.closest('figure');
-
-      expect(figure).not.toBeNull();
-
-      const pairedCaption = within(figure as HTMLElement).getByText(caption);
-
-      expect(
-        pairedCaption.compareDocumentPosition(image) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-      expect(image).toHaveAttribute('src', src);
+    act(() => {
+      jest.advanceTimersByTime(6_000);
     });
+
+    expect(
+      screen.getByText(
+        '예상보다 시간이 걸리고 있어요. 조금만 더 기다려주세요.',
+      ),
+    ).toBeInTheDocument();
   });
 
-  it('첫 화면과 마지막 CTA가 모두 기존 카카오 OAuth 경로로 연결된다', () => {
+  it('이미 사용한 상태에서는 체험 입력을 숨기고 CTA를 로그인 안내로 바꾼다', () => {
+    mockCreationState.current = {
+      status: 'error',
+      error: new GuestTrialAlreadyUsedError(),
+    };
+
     render(<LandingPage />);
 
-    const finalCta = screen.getByRole('region', {
-      name: /재밌는 이야기를 만들어\s*친구에게 공유해보세요/,
-    });
-    const finalLoginLink = within(finalCta).getByRole('link', {
-      name: '카카오로 시작하기',
-    });
+    expect(
+      screen.getByRole('heading', { name: '게스트 체험을 이미 사용했어요' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '로그인하고 계속 만들기' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('form', {
+        name: /최근에 같이 웃었던\s*순간이 있나요/,
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('textbox', { name: '네컷만화로 만들 내용' }),
+    ).toBeNull();
+    expect(
+      screen.queryByText('이 체험은 한 번만 사용할 수 있어요.'),
+    ).not.toBeInTheDocument();
+  });
 
-    const ctaLinks = screen.getAllByRole('link', {
-      name: '카카오로 시작하기',
-    });
+  it('결과 사진이 모두 로드된 뒤에만 네컷만화와 로그인 안내를 보여준다', () => {
+    mockCreationState.current = {
+      status: 'success',
+      data: guestDiaryResponse,
+    };
 
-    expect(ctaLinks).toHaveLength(2);
-    expect(finalLoginLink).toHaveAttribute(
-      'href',
-      '/oauth2/authorization/kakao',
+    render(<LandingPage />);
+
+    expect(
+      screen.getByRole('heading', {
+        level: 1,
+        name: /우리끼리 통하는\s*네컷만화/,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('form', {
+        name: /최근에 같이 웃었던\s*순간이 있나요/,
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('status', { name: '완성한 네컷을 불러오고 있어요' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: '카카오로 시작하고 계속 만들기' }),
+    ).not.toBeInTheDocument();
+
+    const preloadedResultImage = screen.getByTestId(
+      'landing-trial-result-preload',
     );
+
+    fireEvent.load(preloadedResultImage);
+
+    const resultCard = screen.getByRole('article', {
+      name: '비에 흠뻑 젖은 하루',
+    });
+
+    expect(
+      within(resultCard).getByRole('heading', {
+        name: '비에 흠뻑 젖은 하루',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(resultCard).getByRole('img', {
+        name: '비에 흠뻑 젖은 하루 네컷만화',
+      }),
+    ).toHaveAttribute('src', 'guest-result.png');
+    expect(
+      within(resultCard).getByText(
+        '카카오로 로그인하면 다른 순간도 네컷만화로 만들 수 있어요.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(resultCard).queryByText(
+        '로그인하면 네컷 그림을 계속 만들 수 있어요.',
+      ),
+    ).not.toBeInTheDocument();
+    expect(
+      within(resultCard).getByRole('link', {
+        name: '카카오로 시작하고 계속 만들기',
+      }),
+    ).toHaveAttribute('href', '/oauth2/authorization/kakao');
+  });
+
+  it('결과 이미지 로드가 실패하면 제목과 로그인 안내를 보여준다', () => {
+    mockCreationState.current = {
+      status: 'success',
+      data: guestDiaryResponse,
+    };
+
+    render(<LandingPage />);
+
+    const preloadedResultImage = screen.getByTestId(
+      'landing-trial-result-preload',
+    );
+
+    fireEvent.error(preloadedResultImage);
+
+    const resultCard = screen.getByRole('article', {
+      name: '비에 흠뻑 젖은 하루',
+    });
+
+    expect(
+      within(resultCard).getByRole('heading', {
+        name: '비에 흠뻑 젖은 하루',
+      }),
+    ).toBeInTheDocument();
+    expect(within(resultCard).getByRole('alert')).toHaveTextContent(
+      '결과 이미지를 불러오지 못했어요',
+    );
+    expect(
+      within(resultCard).queryByRole('img', {
+        name: '비에 흠뻑 젖은 하루 네컷만화',
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(resultCard).getByRole('link', {
+        name: '카카오로 시작하고 계속 만들기',
+      }),
+    ).toBeInTheDocument();
   });
 });
