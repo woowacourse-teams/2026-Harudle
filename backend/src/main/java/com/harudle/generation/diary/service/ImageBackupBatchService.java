@@ -27,6 +27,7 @@ public final class ImageBackupBatchService {
     private final ImageBackupScheduleProperties schedule;
     private final S3StorageProperties source;
     private final Clock clock;
+    private volatile boolean stopRequested;
 
     public ImageBackupBatchService(DiaryGenerationRepository generations, ImageBackupService backups,
             ImageBackupScheduleProperties schedule, S3StorageProperties source, Clock clock) {
@@ -46,13 +47,13 @@ public final class ImageBackupBatchService {
         String failureType = "none";
         try {
             ImageBackupTarget cursor = null;
-            while (!Thread.currentThread().isInterrupted()) {
+            while (!isStopRequested()) {
                 List<ImageBackupTarget> page = nextPage(cutoff, cursor);
                 if (page.isEmpty()) {
                     break;
                 }
                 for (ImageBackupTarget target : page) {
-                    if (Thread.currentThread().isInterrupted()) {
+                    if (isStopRequested()) {
                         break;
                     }
                     processed++;
@@ -79,7 +80,7 @@ public final class ImageBackupBatchService {
                     break;
                 }
             }
-            status = Thread.currentThread().isInterrupted() ? Status.INTERRUPTED
+            status = isStopRequested() ? Status.INTERRUPTED
                     : (missing + failed > 0 ? Status.PARTIAL_FAILURE : Status.COMPLETED);
             return new ImageBackupBatchResult(runId, cutoff, status, processed, uploaded, existing, missing, failed);
         } catch (RuntimeException exception) {
@@ -98,6 +99,15 @@ public final class ImageBackupBatchService {
                                     + "uploadedCount={} existingVerifiedCount={} originalMissingCount={} failedCount={}",
                             runId, status, processed, uploaded, existing, missing, failed);
         }
+    }
+
+    /** 서버 종료 요청 이후 새 조회나 대상 처리를 시작하지 않는다. */
+    public void requestStop() {
+        stopRequested = true;
+    }
+
+    private boolean isStopRequested() {
+        return stopRequested || Thread.currentThread().isInterrupted();
     }
 
     private List<ImageBackupTarget> nextPage(Instant cutoff, ImageBackupTarget cursor) {

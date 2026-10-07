@@ -17,6 +17,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.util.unit.DataSize;
 
@@ -85,6 +86,20 @@ class ImageBackupSchedulerConfigurationTest {
             assertThat(settings.cron()).isEqualTo("0 0 3 * * *");
             assertThat(settings.zone()).isEqualTo("UTC");
             assertThat(settings.batchSize()).isEqualTo(10);
+        });
+    }
+
+    @Test
+    void closingChildContextDoesNotStopOwningContextsBackupBatch() {
+        enabled("prod", "prod").run(context -> {
+            assertThat(context).hasNotFailed();
+            try (var child = new AnnotationConfigApplicationContext()) {
+                child.setParent(context.getSourceApplicationContext());
+                child.refresh();
+            }
+            assertThat(context.getBean(ImageBackupBatchService.class).backupAll().status())
+                    .isEqualTo(com.harudle.generation.diary.service.dto.ImageBackupBatchResult.Status.COMPLETED);
+            verifyNoInteractions(backups);
         });
     }
 

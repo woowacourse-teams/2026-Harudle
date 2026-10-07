@@ -146,6 +146,53 @@ class ImageBackupBatchServiceTest {
     }
 
     @Test
+    void shutdownRequestBeforeExecutionDoesNotQueryOrWrite() {
+        service.requestStop();
+
+        var report = service.backupAll();
+
+        assertThat(report.status()).isEqualTo(Status.INTERRUPTED);
+        assertThat(report.processedCount()).isZero();
+        assertThat(Thread.currentThread().isInterrupted()).isFalse();
+        verifyNoInteractions(generations, backups);
+    }
+
+    @Test
+    void shutdownRequestDuringFirstBackupFinishesItWithoutStartingNextTargetOrPage(CapturedOutput output) {
+        ImageBackupTarget first = target(1), second = target(2);
+        when(generations.findImageBackupTargets(any(), any(), anyString(), any())).thenReturn(List.of(first, second));
+        when(backups.backup(first.imageObjectKey())).thenAnswer(invocation -> {
+            service.requestStop();
+            return Optional.of(result(BackupUploadResult.UPLOADED));
+        });
+
+        var report = service.backupAll();
+
+        assertThat(report.status()).isEqualTo(Status.INTERRUPTED);
+        assertThat(report.processedCount()).isEqualTo(1);
+        assertThat(report.uploadedCount()).isEqualTo(1);
+        assertThat(Thread.currentThread().isInterrupted()).isFalse();
+        verify(backups, never()).backup(second.imageObjectKey());
+        verify(generations, never()).findImageBackupTargetsAfter(any(), any(), anyString(), any(), any(), any());
+        assertThat(output).contains("status=INTERRUPTED", "processedCount=1", "uploadedCount=1");
+    }
+
+    @Test
+    void shutdownRequestDuringPageQueryDoesNotStartFirstTarget() {
+        when(generations.findImageBackupTargets(any(), any(), anyString(), any())).thenAnswer(invocation -> {
+            service.requestStop();
+            return List.of(target(1), target(2));
+        });
+
+        var report = service.backupAll();
+
+        assertThat(report.status()).isEqualTo(Status.INTERRUPTED);
+        assertThat(report.processedCount()).isZero();
+        verifyNoInteractions(backups);
+        verify(generations, never()).findImageBackupTargetsAfter(any(), any(), anyString(), any(), any(), any());
+    }
+
+    @Test
     void queryFailureAbortsBatchAndDoesNotLeakExceptionMessage(CapturedOutput output) {
         when(generations.findImageBackupTargets(any(), any(), anyString(), any()))
                 .thenThrow(new DataAccessResourceFailureException("fake-secret"));

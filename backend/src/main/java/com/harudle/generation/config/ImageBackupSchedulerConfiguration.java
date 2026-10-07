@@ -11,6 +11,9 @@ import javax.sql.DataSource;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationListener;
+import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
@@ -28,6 +31,16 @@ public class ImageBackupSchedulerConfiguration {
             throw new IllegalStateException("자동 R2 백업은 S3와 R2가 활성화된 prod 환경에서만 실행할 수 있습니다.");
         }
         return new ImageBackupBatchService(generations, backups, schedule, s3, clock);
+    }
+
+    @Bean
+    ApplicationListener<ContextClosedEvent> imageBackupShutdownListener(
+            ApplicationContext applicationContext, ImageBackupBatchService batches) {
+        return event -> {
+            if (event.getApplicationContext() == applicationContext) {
+                batches.requestStop();
+            }
+        };
     }
 
     @Bean
