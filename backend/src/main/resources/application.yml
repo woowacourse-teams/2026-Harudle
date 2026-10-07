@@ -141,6 +141,11 @@ harudle:
         max-object-size: ${R2_MAX_OBJECT_SIZE:20MB}
         list-lookup-budget: ${R2_LIST_LOOKUP_BUDGET:2s}
         single-lookup-budget: ${R2_SINGLE_LOOKUP_BUDGET:2s}
+        backup-scheduler:
+          enabled: ${R2_BACKUP_SCHEDULER_ENABLED:false}
+          cron: "${R2_BACKUP_CRON:0 0 0 * * *}"
+          zone: ${R2_BACKUP_ZONE:Asia/Seoul}
+          batch-size: ${R2_BACKUP_BATCH_SIZE:100}
 
 springdoc:
   api-docs:

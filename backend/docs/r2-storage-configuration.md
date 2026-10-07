@@ -1,6 +1,6 @@
 # R2 저장소 설정
 
-R2 설정, 전용 SDK 클라이언트, 원본 접근 어댑터, 이미지 한 장의 백업·검증 서비스, 관리자 수동 복구 API와 이미지 URL 발급 시 대체 조회를 구성한다. 전체 백업 대상 순회와 12시간 스케줄은 이후 단계에서 연결한다.
+R2 설정, 전용 SDK 클라이언트, 원본 접근 어댑터, 이미지 한 장의 백업·검증 서비스, 운영 원본의 24시간 주기 백업, 관리자 수동 복구 API와 이미지 URL 발급 시 대체 조회를 구성한다. 자동 백업은 기본 비활성화 상태이며 운영에서 명시적으로 켠다.
 
 ## 환경 변수
 
@@ -83,7 +83,7 @@ S3 생성 어댑터(`HARUDLE_GENERATION_ADAPTERS_ENABLED=true`)와 R2(`R2_ENABLE
 Optional<ImageBackupResult> result = imageBackupService.backup(generation.imageObjectKey());
 ```
 
-이 단계는 한 장을 처리하는 서비스다. 백업 대상 DB 조회, 12시간 스케줄러와 수동 백업 실행 API는 이후 단계에서 연결한다.
+한 장의 백업 서비스를 [일일 운영 백업 스케줄러](image-backup-scheduler.md)에서 재사용한다. 기본 예약은 한국 시간 매일 00시이며 24시간 주기로 운영 대상 전체를 순회한다. 수동 백업 실행 API는 추가하지 않는다.
 
 ## R2 원본 수동 복구
 
