@@ -1,6 +1,10 @@
 package com.harudle.generation.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 import com.google.genai.Client;
 import com.google.genai.Models;
@@ -11,13 +15,18 @@ import com.harudle.generation.adapter.out.gemini.GeminiStageMetrics;
 import com.harudle.generation.adapter.out.gemini.GeminiStoryboardGenerator;
 import com.harudle.generation.adapter.out.s3.ObservedImageStorage;
 import com.harudle.generation.adapter.out.s3.ObservedImageUrlProvider;
+import com.harudle.generation.adapter.out.s3.R2FallbackImageUrlProvider;
 import com.harudle.generation.adapter.out.s3.S3FailureReporter;
 import com.harudle.generation.adapter.out.s3.ImageVariantEncoder;
 import com.harudle.generation.adapter.out.s3.ImageUploadPreparer;
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
+import com.harudle.generation.diary.service.port.BackupObjectStorage;
 import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
+import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
+import com.harudle.generation.diary.service.ImageBackupService;
+import java.time.Clock;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.DisplayName;
@@ -25,14 +34,17 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import tools.jackson.databind.ObjectMapper;
 
 class GenerationAdapterConfigurationTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
-            .withUserConfiguration(GenerationAdapterConfiguration.class)
+            .withUserConfiguration(GenerationAdapterConfiguration.class, ImageBackupConfiguration.class)
             .withBean(ExternalApiLogger.class, ExternalApiLogger::new)
+            .withBean("serviceClock", Clock.class, Clock::systemUTC)
             .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
             .withBean(ObjectMapper.class, ObjectMapper::new);
 
@@ -54,6 +66,7 @@ class GenerationAdapterConfigurationTest {
             assertThat(context).hasSingleBean(DiaryImageGenerator.class);
             assertThat(context).hasSingleBean(ImageStorage.class);
             assertThat(context).hasSingleBean(ImageUrlProvider.class);
+            assertThat(context).doesNotHaveBean(ImageBackupService.class);
             assertThat(context).doesNotHaveBean("generateDiaryImageService");
 
             Client client = context.getBean(Client.class);
@@ -70,6 +83,59 @@ class GenerationAdapterConfigurationTest {
             assertThat(context.getBean(ImageUrlProvider.class))
                     .isInstanceOf(ObservedImageUrlProvider.class);
         });
+    }
+
+    @Test
+    @DisplayName("R2를 함께 활성화해도 기본 이미지 저장과 URL 발급은 S3를 사용한다")
+    void keepS3AsDefaultStorageWhenR2IsEnabled() {
+        S3Client sourceClient = mock(S3Client.class);
+        when(sourceClient.headObject(any(HeadObjectRequest.class))).thenReturn(HeadObjectResponse.builder().build());
+        contextRunner.withInitializer(context -> context.addBeanFactoryPostProcessor(
+                        beanFactory -> beanFactory.registerSingleton("s3Client", sourceClient)))
+                .withUserConfiguration(R2StorageConfiguration.class)
+                .withSystemProperties(
+                        "aws.accessKeyId=s3-test-access-key",
+                        "aws.secretAccessKey=s3-test-secret-key"
+                )
+                .withPropertyValues(enabledAdapterProperties())
+                .withPropertyValues(
+                        "harudle.generation.storage.s3.environment=prod",
+                        "harudle.generation.storage.s3.generated-prefix=harudle/generated/diary-images/prod",
+                        "harudle.generation.storage.s3.reference-prefix=harudle/references/generation/prod",
+                        "harudle.generation.storage.r2.enabled=true",
+                        "harudle.generation.storage.r2.environment=prod",
+                        "harudle.generation.storage.r2.endpoint=https://00000000000000000000000000000000.r2.cloudflarestorage.com",
+                        "harudle.generation.storage.r2.bucket=test-backup",
+                        "harudle.generation.storage.r2.access-key-id=r2-test-access-key",
+                        "harudle.generation.storage.r2.secret-access-key=r2-test-secret-key",
+                        "harudle.generation.storage.r2.access-url-ttl=15m",
+                        "harudle.generation.storage.r2.max-object-size=20MB"
+                ).run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context.getBeansOfType(S3Client.class))
+                            .containsOnlyKeys("s3Client", "r2S3Client");
+                    assertThat(context.getBeansOfType(S3Presigner.class))
+                            .containsOnlyKeys("s3Presigner", "r2S3Presigner");
+                    assertThat(context).hasSingleBean(ImageStorage.class);
+                    assertThat(context).hasSingleBean(ImageUrlProvider.class);
+                    assertThat(context.getBean(ImageUrlProvider.class)).isInstanceOf(R2FallbackImageUrlProvider.class);
+                    assertThat(context).hasSingleBean(BackupObjectStorage.class);
+                    assertThat(context).hasSingleBean(ImageBackupService.class);
+
+                    ImageAccessUrl accessUrl = context.getBean(ImageUrlProvider.class)
+                            .createAccessUrl("harudle/generated/diary-images/prod/diary-id/image.png");
+                    assertThat(accessUrl.url().getHost()).endsWith(".amazonaws.com");
+                    assertThat(accessUrl.url().getQuery())
+                            .contains("s3-test-access-key")
+                            .doesNotContain("r2-test-access-key");
+                    verify(sourceClient).headObject(any(HeadObjectRequest.class));
+
+                    ImageAccessUrl backupUrl = context.getBean(BackupObjectStorage.class)
+                            .createAccessUrl("harudle/generated/diary-images/prod/diary-id/image.png");
+                    assertThat(backupUrl.url().getHost()).endsWith(".r2.cloudflarestorage.com");
+                    assertThat(backupUrl.url().getQuery())
+                            .contains("r2-test-access-key").doesNotContain("s3-test-access-key");
+                });
     }
 
     @Test

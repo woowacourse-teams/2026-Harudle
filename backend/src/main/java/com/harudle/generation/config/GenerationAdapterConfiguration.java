@@ -22,11 +22,15 @@ import com.harudle.generation.adapter.out.s3.S3ExceptionTranslator;
 import com.harudle.generation.adapter.out.s3.S3FailureReporter;
 import com.harudle.generation.adapter.out.s3.S3ImageStorage;
 import com.harudle.generation.adapter.out.s3.S3ImageUrlProvider;
+import com.harudle.generation.adapter.out.s3.R2FallbackImageUrlProvider;
+import com.harudle.generation.diary.service.port.BackupObjectStorage;
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
 import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -181,7 +185,7 @@ public class GenerationAdapterConfiguration {
 
     @Bean
     public ImageStorage imageStorage(
-            S3Client s3Client,
+            @Qualifier("s3Client") S3Client s3Client,
             S3StorageProperties properties,
             ImageUploadPreparer uploadPreparer,
             S3FailureReporter failureReporter,
@@ -198,14 +202,23 @@ public class GenerationAdapterConfiguration {
 
     @Bean
     public ImageUrlProvider imageUrlProvider(
-            S3Presigner s3Presigner,
+            @Qualifier("s3Presigner") S3Presigner s3Presigner,
             S3StorageProperties properties,
             S3FailureReporter failureReporter,
-            MeterRegistry meterRegistry
+            MeterRegistry meterRegistry,
+            @Qualifier("imageStorage") ImageStorage imageStorage,
+            ObjectProvider<BackupObjectStorage> backupStorages,
+            ObjectProvider<R2StorageProperties> backupProperties
     ) {
-        return new ObservedImageUrlProvider(
+        ImageUrlProvider primary = new ObservedImageUrlProvider(
                 new S3ImageUrlProvider(s3Presigner, properties, failureReporter),
                 meterRegistry
         );
+        BackupObjectStorage backup = backupStorages.getIfAvailable();
+        if (backup == null) {
+            return primary;
+        }
+        return new R2FallbackImageUrlProvider(primary, imageStorage, backup, properties,
+                java.util.Objects.requireNonNull(backupProperties.getIfAvailable(), "R2 저장소 설정이 필요합니다."));
     }
 }

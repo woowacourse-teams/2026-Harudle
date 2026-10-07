@@ -74,21 +74,22 @@ final class DiaryResponseAssembler {
     }
 
     DiaryTimelineResponse toTimelineResponse(DiaryTimelineResult result) {
+        ImageUrlProvider responseUrls = imageUrlProvider.forResponse();
         List<DiaryDayResponse> days = result.days().stream()
-                .map(this::toDayResponse)
+                .map(day -> toDayResponse(day, responseUrls))
                 .toList();
         return new DiaryTimelineResponse(result.year(), result.month(), days);
     }
 
-    private DiaryDayResponse toDayResponse(DiaryDayResult result) {
+    private DiaryDayResponse toDayResponse(DiaryDayResult result, ImageUrlProvider responseUrls) {
         List<DiarySummaryResponse> items = result.items().stream()
-                .map(this::toSummaryResponse)
+                .map(item -> toSummaryResponse(item, responseUrls))
                 .toList();
         return new DiaryDayResponse(result.date(), result.hasItems(), items);
     }
 
-    private DiarySummaryResponse toSummaryResponse(DiarySummaryResult result) {
-        ImageAccessUrl imageAccessUrl = createImageAccessUrl(
+    private DiarySummaryResponse toSummaryResponse(DiarySummaryResult result, ImageUrlProvider responseUrls) {
+        ImageAccessUrl imageAccessUrl = responseUrls.createAccessUrl(
                 ImageVariantKeys.toThumbnailKeyIfOptimizedDetail(result.imageObjectKey())
         );
         return new DiarySummaryResponse(
@@ -139,8 +140,9 @@ final class DiaryResponseAssembler {
     }
 
     DiaryStreakResponse toStreakResponse(DiaryStreakResult result) {
+        ImageUrlProvider responseUrls = imageUrlProvider.forResponse();
         List<DiaryStreakDayResponse> days = result.days().stream()
-                .map(this::toStreakDayResponse)
+                .map(day -> toStreakDayResponse(day, responseUrls))
                 .toList();
 
         return new DiaryStreakResponse(
@@ -150,9 +152,9 @@ final class DiaryResponseAssembler {
         );
     }
 
-    private DiaryStreakDayResponse toStreakDayResponse(DiaryStreakDayResult result) {
+    private DiaryStreakDayResponse toStreakDayResponse(DiaryStreakDayResult result, ImageUrlProvider responseUrls) {
         List<DiarySummaryResponse> items = result.items().stream()
-                .map(this::toSummaryResponse)
+                .map(item -> toSummaryResponse(item, responseUrls))
                 .toList();
 
         return new DiaryStreakDayResponse(result.date(), items);
