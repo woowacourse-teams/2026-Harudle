@@ -1,12 +1,5 @@
 services:
   backend:
-    volumes:
-      - type: bind
-        source: /etc/harudle/gcp/gcp-wif.json
-        target: /var/run/harudle/gcp-wif.json
-        read_only: true
-        bind:
-          create_host_path: false
     logging: !override
       driver: awslogs
       options:
