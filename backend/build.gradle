@@ -21,6 +21,7 @@ repositories {
 
 dependencies {
     implementation 'com.google.genai:google-genai:1.65.0'
+    implementation 'com.google.auth:google-auth-library-oauth2-http:1.33.0'
     implementation platform('software.amazon.awssdk:bom:2.48.0')
     implementation 'software.amazon.awssdk:s3'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'

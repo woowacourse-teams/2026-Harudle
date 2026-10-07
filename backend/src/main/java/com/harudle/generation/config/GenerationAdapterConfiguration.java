@@ -1,5 +1,6 @@
 package com.harudle.generation.config;
 
+import com.google.auth.oauth2.GoogleCredentials;
 import com.google.genai.Client;
 import com.google.genai.Models;
 import com.google.genai.types.HttpOptions;
@@ -12,6 +13,9 @@ import com.harudle.generation.adapter.out.gemini.GeminiFailureReporter;
 import com.harudle.generation.adapter.out.gemini.GeminiStoryboardGenerator;
 import com.harudle.generation.adapter.out.gemini.GeminiStageMetrics;
 import com.harudle.generation.adapter.out.gemini.GeminiStoryboardResponseMapper;
+import com.harudle.generation.adapter.out.gemini.client.ExpressGeminiClientFactory;
+import com.harudle.generation.adapter.out.gemini.client.GeminiClientFactory;
+import com.harudle.generation.adapter.out.gemini.client.VertexGeminiClientFactory;
 import com.harudle.generation.adapter.out.s3.CwebpImageVariantEncoder;
 import com.harudle.generation.adapter.out.s3.ImageObjectKeyFactory;
 import com.harudle.generation.adapter.out.s3.ImageVariantEncoder;
@@ -29,8 +33,10 @@ import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
 import io.micrometer.core.instrument.MeterRegistry;
+import java.io.IOException;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -46,11 +52,34 @@ import tools.jackson.databind.ObjectMapper;
         name = "enabled",
         havingValue = "true"
 )
-@EnableConfigurationProperties({GeminiGenerationProperties.class, S3StorageProperties.class})
+@EnableConfigurationProperties({GeminiClientProperties.class, GeminiGenerationProperties.class, S3StorageProperties.class})
 public class GenerationAdapterConfiguration {
 
+    @Bean
+    @ConditionalOnProperty(prefix = "harudle.generation.gemini", name = "auth-mode",
+            havingValue = "express", matchIfMissing = true)
+    public GeminiClientFactory expressGeminiClientFactory(GeminiClientProperties properties) {
+        return new ExpressGeminiClientFactory(properties.apiKey());
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "harudle.generation.gemini", name = "auth-mode", havingValue = "vertex")
+    @ConditionalOnMissingBean(name = "geminiCredentials")
+    public GoogleCredentials geminiCredentials() throws IOException {
+        return GoogleCredentials.getApplicationDefault();
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "harudle.generation.gemini", name = "auth-mode", havingValue = "vertex")
+    public GeminiClientFactory vertexGeminiClientFactory(
+            GeminiClientProperties properties,
+            @Qualifier("geminiCredentials") GoogleCredentials credentials
+    ) {
+        return new VertexGeminiClientFactory(properties.projectId(), properties.location(), credentials);
+    }
+
     @Bean(destroyMethod = "close")
-    public Client geminiClient(GeminiGenerationProperties properties) {
+    public Client geminiClient(GeminiGenerationProperties properties, GeminiClientFactory clientFactory) {
         int requestTimeoutMillis = Math.toIntExact(properties.requestTimeout().toMillis());
         HttpRetryOptions retryOptions = HttpRetryOptions.builder()
                 .attempts(properties.retryAttempts())
@@ -60,11 +89,7 @@ public class GenerationAdapterConfiguration {
                 .retryOptions(retryOptions)
                 .build();
 
-        return Client.builder()
-                .apiKey(properties.apiKey())
-                .vertexAI(true)
-                .httpOptions(httpOptions)
-                .build();
+        return clientFactory.create(httpOptions);
     }
 
     @Bean

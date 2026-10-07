@@ -6,6 +6,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 
+import com.google.auth.oauth2.AccessToken;
+import com.google.auth.oauth2.GoogleCredentials;
 import com.google.genai.Client;
 import com.google.genai.Models;
 import com.harudle.common.logging.ExternalApiLogger;
@@ -13,6 +15,9 @@ import com.harudle.generation.adapter.out.gemini.GeminiDiaryImageGenerator;
 import com.harudle.generation.adapter.out.gemini.GeminiFailureReporter;
 import com.harudle.generation.adapter.out.gemini.GeminiStageMetrics;
 import com.harudle.generation.adapter.out.gemini.GeminiStoryboardGenerator;
+import com.harudle.generation.adapter.out.gemini.client.ExpressGeminiClientFactory;
+import com.harudle.generation.adapter.out.gemini.client.GeminiClientFactory;
+import com.harudle.generation.adapter.out.gemini.client.VertexGeminiClientFactory;
 import com.harudle.generation.adapter.out.s3.ObservedImageStorage;
 import com.harudle.generation.adapter.out.s3.ObservedImageUrlProvider;
 import com.harudle.generation.adapter.out.s3.R2FallbackImageUrlProvider;
@@ -27,6 +32,8 @@ import com.harudle.generation.diary.service.port.StoryboardGenerator;
 import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
 import com.harudle.generation.diary.service.ImageBackupService;
 import java.time.Clock;
+import java.time.Instant;
+import java.util.Date;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.DisplayName;
@@ -43,6 +50,8 @@ class GenerationAdapterConfigurationTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
             .withUserConfiguration(GenerationAdapterConfiguration.class, ImageBackupConfiguration.class)
+            .withInitializer(context -> context.addBeanFactoryPostProcessor(
+                    beanFactory -> beanFactory.registerSingleton("imageVariantEncoder", mock(ImageVariantEncoder.class))))
             .withBean(ExternalApiLogger.class, ExternalApiLogger::new)
             .withBean("serviceClock", Clock.class, Clock::systemUTC)
             .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
@@ -54,6 +63,9 @@ class GenerationAdapterConfigurationTest {
         contextRunner.withPropertyValues(enabledAdapterProperties()).run(context -> {
             assertThat(context).hasNotFailed();
             assertThat(context).hasSingleBean(Client.class);
+            assertThat(context).hasSingleBean(GeminiClientFactory.class);
+            assertThat(context.getBean(GeminiClientFactory.class)).isInstanceOf(ExpressGeminiClientFactory.class);
+            assertThat(context).doesNotHaveBean(GoogleCredentials.class);
             assertThat(context).hasSingleBean(Models.class);
             assertThat(context).hasSingleBean(S3Client.class);
             assertThat(context).hasSingleBean(S3Presigner.class);
@@ -82,6 +94,37 @@ class GenerationAdapterConfigurationTest {
                     .isInstanceOf(ObservedImageStorage.class);
             assertThat(context.getBean(ImageUrlProvider.class))
                     .isInstanceOf(ObservedImageUrlProvider.class);
+        });
+    }
+
+    @Test
+    @DisplayName("Vertex 모드는 API Key 없이 ADC와 프로젝트·global로 기존 생성 어댑터를 구성한다")
+    void configureVertexAdaptersWithoutApiKey() {
+        vertexContextRunner().withPropertyValues("harudle.generation.gemini.api-key=")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).hasSingleBean(GeminiClientFactory.class);
+                    assertThat(context.getBean(GeminiClientFactory.class)).isInstanceOf(VertexGeminiClientFactory.class);
+                    assertThat(context).doesNotHaveBean("expressGeminiClientFactory");
+                    assertThat(context).hasSingleBean(Client.class);
+                    Client client = context.getBean(Client.class);
+                    assertThat(client.vertexAI()).isTrue();
+                    assertThat(client.apiKey()).isNull();
+                    assertThat(client.project()).isEqualTo("test-project");
+                    assertThat(client.location()).isEqualTo("global");
+                    assertThat(context.getBean(GeminiGenerationProperties.class).imageModel())
+                            .isEqualTo("gemini-nano-banana-2.1");
+                    assertThat(context.getBean(StoryboardGenerator.class)).isInstanceOf(GeminiStoryboardGenerator.class);
+                    assertThat(context.getBean(DiaryImageGenerator.class)).isInstanceOf(GeminiDiaryImageGenerator.class);
+                });
+    }
+
+    @Test
+    @DisplayName("Vertex 모드에서는 기존 API Key 설정이 남아 있어도 사용하지 않는다")
+    void ignoreApiKeyInVertexMode() {
+        vertexContextRunner().run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context.getBean(Client.class).apiKey()).isNull();
         });
     }
 
@@ -144,6 +187,8 @@ class GenerationAdapterConfigurationTest {
         contextRunner.run(context -> {
             assertThat(context).hasNotFailed();
             assertThat(context).doesNotHaveBean(Client.class);
+            assertThat(context).doesNotHaveBean(GeminiClientFactory.class);
+            assertThat(context).doesNotHaveBean(GoogleCredentials.class);
             assertThat(context).doesNotHaveBean(S3Client.class);
             assertThat(context).doesNotHaveBean(S3Presigner.class);
             assertThat(context).doesNotHaveBean(StoryboardGenerator.class);
@@ -151,6 +196,7 @@ class GenerationAdapterConfigurationTest {
             assertThat(context).doesNotHaveBean(ImageStorage.class);
             assertThat(context).doesNotHaveBean(ImageUrlProvider.class);
             assertThat(context).doesNotHaveBean(GeminiGenerationProperties.class);
+            assertThat(context).doesNotHaveBean(GeminiClientProperties.class);
             assertThat(context).doesNotHaveBean(S3StorageProperties.class);
         });
     }
@@ -176,6 +222,18 @@ class GenerationAdapterConfigurationTest {
                 "harudle.generation.storage.s3.max-object-size=20MB",
                 "harudle.generation.storage.s3.access-url-ttl=15m"
         ).run(context -> assertThat(context).hasFailed());
+    }
+
+    private ApplicationContextRunner vertexContextRunner() {
+        return contextRunner.withBean("geminiCredentials", GoogleCredentials.class, () -> GoogleCredentials.create(
+                        new AccessToken("test-access-token", Date.from(Instant.now().plusSeconds(3600)))))
+                .withPropertyValues(enabledAdapterProperties())
+                .withPropertyValues(
+                        "harudle.generation.gemini.auth-mode=vertex",
+                        "harudle.generation.gemini.project-id=test-project",
+                        "harudle.generation.gemini.location=global",
+                        "harudle.generation.gemini.image-model=gemini-nano-banana-2.1"
+                );
     }
 
     private static String[] enabledAdapterProperties() {

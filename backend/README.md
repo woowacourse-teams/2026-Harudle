@@ -109,6 +109,73 @@ docker compose up -d
 
 이 명령은 기존 로컬 데이터베이스 데이터를 삭제하므로 필요한 데이터가 있다면 먼저 백업합니다.
 
+## Gemini Client 인증
+
+외부 생성 어댑터를 활성화하면 `GEMINI_AUTH_MODE`로 Client 생성 방식을 선택합니다.
+기본값인 `express`는 기존 Vertex AI Express API Key 방식을 사용합니다. `vertex`는 GCP 프로젝트와
+위치를 지정하고 Application Default Credentials(ADC)로 인증합니다.
+
+| 설정 | `express` | `vertex` |
+| --- | --- | --- |
+| `GOOGLE_API_KEY` (또는 `GEMINI_API_KEY`) | 필수 | 사용하지 않음 |
+| `GOOGLE_CLOUD_PROJECT` | 사용하지 않음 | 필수 |
+| `GOOGLE_CLOUD_LOCATION` | 사용하지 않음 | 기본값 `global` |
+| `GOOGLE_APPLICATION_CREDENTIALS` | 사용하지 않음 | WIF credential configuration 파일의 절대 경로 |
+
+`GeminiClientFactory`의 구현체만 교체되며, 기존 생성 서비스의 `ObjectProvider`와
+`StoryboardGenerator` / `DiaryImageGenerator` 인터페이스는 유지됩니다. 모델, 요청 제한 시간,
+SDK 재시도 횟수는 기존 설정을 그대로 사용합니다.
+
+```mermaid
+flowchart LR
+    A[GEMINI_AUTH_MODE] --> B{인증 모드}
+    B -->|express| C[ExpressGeminiClientFactory / API Key]
+    B -->|vertex| D[VertexGeminiClientFactory / project + location + ADC]
+    C --> E[공용 Client와 Models]
+    D --> E
+    E --> F[기존 StoryboardGenerator / DiaryImageGenerator]
+```
+
+Nano Banana 2.1을 표준 Vertex AI에서 사용하려면 다음 환경 변수를 설정합니다. 기존 S3 및 생성
+프롬프트 설정도 필요합니다.
+
+```dotenv
+HARUDLE_GENERATION_ADAPTERS_ENABLED=true
+GEMINI_AUTH_MODE=vertex
+GOOGLE_CLOUD_PROJECT=your-gcp-project-id
+GOOGLE_CLOUD_LOCATION=global
+GOOGLE_APPLICATION_CREDENTIALS=/var/run/harudle/gcp-wif.json
+GEMINI_IMAGE_MODEL=gemini-nano-banana-2.1
+```
+
+EC2에서는 기존 인스턴스 역할을 허용하는 GCP Workload Identity Federation 공급자와 서비스 계정
+권한을 구성하고, AWS용 `external_account` credential configuration 파일을 생성합니다.
+프로젝트의 서비스 계정에는 Vertex AI 호출 권한(예: `roles/aiplatform.user`), 허용한 외부 주체에는
+해당 서비스 계정의 `roles/iam.workloadIdentityUser` 권한이 필요합니다. 이 파일에는 서비스 계정의
+private key를 넣지 않습니다. Java Google Auth 라이브러리가 ADC 파일을 읽어 AWS 임시 자격 증명을
+교환하고 GCP 액세스 토큰을 갱신합니다. 별도의 토큰 저장·갱신 코드는 필요하지 않습니다.
+
+컨테이너에서는 호스트의 credential configuration 파일을 읽기 전용으로 마운트하고
+`GOOGLE_APPLICATION_CREDENTIALS`를 컨테이너 내부 경로로 지정합니다. 현재 Compose에는 이
+마운트가 없으므로 배포할 때 추가해야 합니다. 컨테이너에서 EC2 IMDS에 접근할 수 있어야 합니다.
+GCP WIF 리소스 생성과 운영 Compose 변경은 이 Client 구현에 포함하지 않습니다.
+
+`backend/.env`를 Spring 설정으로 읽는 것만으로는 ADC의 환경 변수가 설정되지 않습니다.
+`GOOGLE_APPLICATION_CREDENTIALS`는 Java **프로세스 환경 변수**로 주입해야 합니다. IntelliJ에서는
+Run Configuration에 지정하고, PowerShell에서는 다음과 같이 실행합니다.
+
+```powershell
+$env:GOOGLE_APPLICATION_CREDENTIALS='C:\credentials\gcp-wif.json'
+.\gradlew.bat bootRun
+```
+
+Docker의 `env_file`에 지정한 변수는 프로세스 환경으로 전달됩니다. WIF 파일 없이 로컬 개발을 할
+때는 `gcloud auth application-default login`으로 생성한 ADC를 사용할 수도 있습니다. Vertex 모드에서
+ADC를 찾을 수 없으면 애플리케이션 시작에 실패하며 Express 인증으로 전환하지 않습니다.
+
+공식 안내: [AWS 연동 WIF](https://docs.cloud.google.com/iam/docs/workload-identity-federation-with-other-clouds),
+[Nano Banana 2.1 모델](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/nano-banana-2-1).
+
 ## 테스트
 
 ```shell
