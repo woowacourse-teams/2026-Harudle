@@ -36,31 +36,28 @@ final class DiscardedGenerationImageCleaner {
             if (verificationException != completionException) {
                 completionException.addSuppressed(verificationException);
             }
-            LOGGER.atWarn()
+            GenerationLogContext.withGenerationId(generationId, () -> LOGGER.atWarn()
                     .addKeyValue("event", "discarded_image_delete_deferred")
-                    .addKeyValue("generationId", generationId.toString())
                     .addKeyValue("exceptionType", verificationException.getClass().getSimpleName())
                     .log("event=discarded_image_delete_deferred generationId={} exceptionType={}",
-                            generationId, verificationException.getClass().getSimpleName());
+                            generationId, verificationException.getClass().getSimpleName()));
         }
     }
 
     void deleteDiscardedImage(UUID generationId, String imageObjectKey, String reason) {
         try {
             imageStorage.delete(imageObjectKey);
-            LOGGER.atInfo()
+            GenerationLogContext.withGenerationId(generationId, () -> LOGGER.atInfo()
                     .addKeyValue("event", "discarded_image_deleted")
-                    .addKeyValue("generationId", generationId.toString())
                     .addKeyValue("reason", reason)
-                    .log("event=discarded_image_deleted generationId={} reason={}", generationId, reason);
+                    .log("event=discarded_image_deleted generationId={} reason={}", generationId, reason));
         } catch (RuntimeException exception) {
-            LOGGER.atWarn()
+            GenerationLogContext.withGenerationId(generationId, () -> LOGGER.atWarn()
                     .addKeyValue("event", "discarded_image_delete_failed")
-                    .addKeyValue("generationId", generationId.toString())
                     .addKeyValue("reason", reason)
                     .addKeyValue("exceptionType", exception.getClass().getSimpleName())
                     .log("event=discarded_image_delete_failed generationId={} reason={} exceptionType={}",
-                            generationId, reason, exception.getClass().getSimpleName());
+                            generationId, reason, exception.getClass().getSimpleName()));
         }
     }
 
