@@ -18,7 +18,9 @@ BEGIN
         SELECT ARRAY(
             SELECT member.id
             FROM public.users AS member
-            WHERE (last_user_id IS NULL OR member.id > last_user_id)
+            -- Keep an indexable lower bound even when PL/pgSQL reuses a generic plan.
+            WHERE member.id >= COALESCE(last_user_id, '00000000-0000-0000-0000-000000000000'::UUID)
+              AND (last_user_id IS NULL OR member.id > last_user_id)
               AND member.profile_image_code IS NULL
               AND member.deleted_at IS NULL
               AND NOT EXISTS (

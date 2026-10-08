@@ -325,6 +325,8 @@ class FeedNotificationSchemaMigrationTest {
     @Test
     @DisplayName("이미지 백필은 회원만 처리하고 기존 설정·탈퇴·체험 사용자를 보존하며 재실행할 수 있다")
     void backfillProfilesWithoutOverwritingAssignedImages() throws Exception {
+        UUID firstUser = UUID.fromString("00000000-0000-0000-0000-000000000000");
+        execute("INSERT INTO users (id, name) VALUES (?, ?)", firstUser, "첫UUID회원");
         UUID deletedUser = UUID.fromString("00000000-0000-0000-0000-000000000005");
         execute("INSERT INTO users (id, name, deleted_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
                 deletedUser, "탈퇴회원");
@@ -332,6 +334,7 @@ class FeedNotificationSchemaMigrationTest {
         try (Connection connection = openConnection()) {
             loadProfileBackfill(connection);
             callProfileBackfill(connection, 1);
+            assertThat(queryLong("SELECT profile_image_code FROM users WHERE id = ?", firstUser)).isEqualTo(1);
             assertThat(queryLong("SELECT profile_image_code FROM users WHERE id = ?", AUTHOR)).isEqualTo(5);
             assertThat(queryLong("SELECT profile_image_code FROM users WHERE id = ?", READER)).isEqualTo(3);
             assertThat(queryLong("SELECT profile_image_code FROM users WHERE id = ?", LONG_NAME_USER)).isEqualTo(4);
@@ -390,6 +393,7 @@ class FeedNotificationSchemaMigrationTest {
                 .getResourceAsStream("/db/maintenance/backfill_user_profile_images.sql")) {
             assertThat(resource).isNotNull();
             try (var statement = connection.createStatement()) {
+                statement.execute("SET plan_cache_mode = force_generic_plan");
                 statement.execute(new String(resource.readAllBytes(), StandardCharsets.UTF_8));
             }
         }
