@@ -16,7 +16,10 @@
             "harudle_s3_url_signs_total": "Count",
             "harudle_image_load_failures_total": "Count",
             "http_server_requests_seconds_count": "Count",
-            "hikaricp_connections_pending": "Count"
+            "hikaricp_connections_pending": "Count",
+            "harudle_generation_duration_seconds_sum": "Seconds",
+            "harudle_generation_duration_seconds_count": "Count",
+            "harudle_gemini_tokens_total": "Count"
           },
           "metric_declaration": [
             {
@@ -72,6 +75,18 @@
               "label_matcher": "^harudle-backend$",
               "dimensions": [["job", "pool"]],
               "metric_selectors": ["^hikaricp_connections_pending$"]
+            },
+            {
+              "source_labels": ["job"],
+              "label_matcher": "^harudle-backend$",
+              "dimensions": [["job", "result"]],
+              "metric_selectors": ["^harudle_generation_duration_seconds_(sum|count)$"]
+            },
+            {
+              "source_labels": ["job"],
+              "label_matcher": "^harudle-backend$",
+              "dimensions": [["job", "stage", "kind"]],
+              "metric_selectors": ["^harudle_gemini_tokens_total$"]
             }
           ]
         }

@@ -269,6 +269,67 @@ class DiscordForwarderTest(unittest.TestCase):
         with self.assertRaises(forwarder.DeliveryError):
             forwarder.handler(wrong_topic, None)
 
+    def test_cleanup_alarms_keep_fixed_four_fields_in_both_environments(self):
+        reasons = {
+            "s3-delete-failure": "S3 이미지 삭제 실패",
+            "image-cleanup-deferred": "이미지 정리를 위한 상태 확인 실패",
+            "generation-cleanup-failure": "만료된 생성 작업 정리 실패",
+        }
+        for environment in ("dev", "prod"):
+            topic = TOPIC.replace("-dev-", f"-{environment}-")
+            for suffix, reason in reasons.items():
+                for state in ("ALARM", "OK", "INSUFFICIENT_DATA"):
+                    with self.subTest(environment=environment, suffix=suffix, state=state), \
+                            mock.patch.dict(os.environ, {"DEPLOY_ENV": environment, "ALARM_TOPIC_ARN": topic}), \
+                            mock.patch.object(forwarder, "_webhook_url", return_value=WEBHOOK), \
+                            mock.patch.object(forwarder, "_post") as post, \
+                            contextlib.redirect_stdout(io.StringIO()):
+                        name = f"harudle-{environment}-{suffix}"
+                        event = sns_event(name=name, state=state)
+                        event["Records"][0]["Sns"]["TopicArn"] = topic
+                        self.assertEqual(forwarder.handler(event, None), {"delivered": True})
+                        payload = post.call_args.args[1]
+                        expected_reason = (
+                            "지표 데이터 부족" if state == "INSUFFICIENT_DATA"
+                            else reason + " (현재 경보 상태: OK)" if state == "OK" else reason
+                        )
+                        self.assertEqual(set(payload), {"embeds", "allowed_mentions"})
+                        self.assertEqual(payload["allowed_mentions"], {"parse": []})
+                        self.assertEqual(len(payload["embeds"]), 1)
+                        embed = payload["embeds"][0]
+                        self.assertEqual(set(embed), {"title", "description", "color", "fields"})
+                        self.assertEqual(embed["description"], expected_reason)
+                        self.assertEqual(embed["fields"], [
+                            {"name": "환경", "value": f"`{environment}`", "inline": True},
+                            {"name": "상태", "value": f"`{state}`", "inline": True},
+                            {"name": "알람", "value": f"`{name}`", "inline": False},
+                        ])
+                        serialized = json.dumps(payload, ensure_ascii=False)
+                        for private in ("s3://private/key", "private user data", WEBHOOK):
+                            self.assertNotIn(private, serialized)
+
+    def test_cleanup_alarms_reject_wrong_topic_environment_and_unknown_suffix(self):
+        suffixes = ("s3-delete-failure", "image-cleanup-deferred", "generation-cleanup-failure")
+        for environment in ("dev", "prod"):
+            topic = TOPIC.replace("-dev-", f"-{environment}-")
+            other_environment = "prod" if environment == "dev" else "dev"
+            other_topic = TOPIC.replace("-dev-", f"-{other_environment}-")
+            for suffix in suffixes:
+                for case in ("wrong_topic", "wrong_environment", "unknown_suffix"):
+                    with self.subTest(environment=environment, suffix=suffix, case=case), \
+                            mock.patch.dict(os.environ, {"DEPLOY_ENV": environment, "ALARM_TOPIC_ARN": topic}), \
+                            mock.patch.object(forwarder, "_webhook_url") as lookup, \
+                            mock.patch.object(forwarder, "_post") as post, \
+                            contextlib.redirect_stdout(io.StringIO()):
+                        name_environment = other_environment if case == "wrong_environment" else environment
+                        name_suffix = suffix + "-unknown" if case == "unknown_suffix" else suffix
+                        event = sns_event(name=f"harudle-{name_environment}-{name_suffix}")
+                        event["Records"][0]["Sns"]["TopicArn"] = other_topic if case == "wrong_topic" else topic
+                        with self.assertRaises(forwarder.DeliveryError):
+                            forwarder.handler(event, None)
+                        lookup.assert_not_called()
+                        post.assert_not_called()
+
     def test_transport_error_does_not_expose_webhook(self):
         with mock.patch.object(forwarder._HTTP_CLIENT, "open", side_effect=RuntimeError(WEBHOOK)):
             with self.assertRaises(forwarder.DeliveryError) as raised:
