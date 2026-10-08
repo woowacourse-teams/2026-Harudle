@@ -16,6 +16,7 @@ const palette = {
 export const theme = {
   colors: {
     background: {
+      backdrop: 'rgb(17 17 24 / 40%)',
       surface: palette.white,
       neutralSolid: palette.gray[900],
       neutralWeak: palette.gray[100],
