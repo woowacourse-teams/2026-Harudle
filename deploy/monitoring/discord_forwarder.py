@@ -34,6 +34,8 @@ _ALARM_REASONS = {
     "gemini-storyboard-response": "스토리보드 응답 처리 오류 증가",
     "gemini-image-transient": "네컷 이미지 공급자 일시 오류 증가",
     "gemini-image-response": "네컷 이미지 응답 처리 오류 증가",
+    "gemini-request-failure": "Gemini 인증·요청 구성 또는 요청 거절 오류",
+    "image-fallback-unavailable": "S3 이미지 누락·대체 URL 확보 실패",
     "hikari-pending": "데이터베이스 연결 대기 증가",
     "telemetry-stale": "서버 지표 수집 중단",
     "api-p95": "API 응답 시간 P95 증가",
@@ -54,6 +56,18 @@ _ALERT_STYLES = {
     "INSUFFICIENT_DATA": ("🟡 지표 데이터가 부족해요", 0xFEE75C),
 }
 _STATES = frozenset(_ALERT_STYLES)
+# These count failure events, not outstanding work or successful repairs.
+_FAILURE_EVENT_ALARMS = frozenset({
+    "s3-delete-failure",
+    "image-cleanup-deferred",
+    "generation-cleanup-failure",
+    "gemini-request-failure",
+    "image-fallback-unavailable",
+})
+_FAILURE_EVENT_OK_NOTE = (
+    "현재 평가에서 새 실패 로그가 감지되지 않았어요(데이터 없음 포함).\n"
+    "이전 실패 건이 해결됐다는 뜻은 아니니 별도로 확인해 주세요."
+)
 _MAX_ATTEMPTS = 3
 _REQUEST_TIMEOUT_SECONDS = 3
 _DELIVERY_BUDGET_SECONDS = 10
@@ -87,16 +101,20 @@ def _alarm_message(sns_record, expected_topic, environment):
     ):
         raise DeliveryError("invalid alarm name or state")
     prefix = f"harudle-{environment}-"
-    if not name.startswith(prefix) or name[len(prefix):] not in _ALARM_REASONS:
+    suffix = name[len(prefix):]
+    if not name.startswith(prefix) or suffix not in _ALARM_REASONS:
         raise DeliveryError("alarm not allowlisted")
 
+    title, color = _ALERT_STYLES[state]
     if state == "INSUFFICIENT_DATA":
         reason = "지표 데이터 부족"
     elif state == "OK":
-        reason = _ALARM_REASONS[name[len(prefix):]] + " (현재 경보 상태: OK)"
+        reason = _ALARM_REASONS[suffix] + " (현재 경보 상태: OK)"
+        if suffix in _FAILURE_EVENT_ALARMS:
+            title = "🟢 현재 경보 상태: OK"
+            reason += "\n" + _FAILURE_EVENT_OK_NOTE
     else:
-        reason = _ALARM_REASONS[name[len(prefix):]]
-    title, color = _ALERT_STYLES[state]
+        reason = _ALARM_REASONS[suffix]
     return {
         "embeds": [{
             "title": title,

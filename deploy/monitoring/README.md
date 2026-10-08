@@ -155,7 +155,9 @@ P95·P99 알람은 위의 수집 방식·목표·표본 수가 dev에서 검증�
 
 Discord 전달 함수 `discord_forwarder.py`는 아래 이름만 허용한다. 각 환경에서 `harudle-{env}-{suffix}`로 경보를 만들고 Lambda 환경 변수 `DEPLOY_ENV`에 해당 환경, `ALARM_TOPIC_ARN`에 환경별 SNS 주제 ARN을 지정한다. 함수는 CloudWatch의 자유 형식 오류 이유를 전달하지 않고, 환경·알람명·상태·고정 원인 문구만 Discord로 보낸다. `allowed_mentions`는 비활성화한다. 현재 Lambda·SNS·IAM·알람은 저장소 배포에서 자동으로 생성하지 않는다.
 
-알림은 Discord Embed 카드 한 개로 표시한다. ALARM은 빨강·경보 발생 제목, OK는 초록·정상 상태 제목, INSUFFICIENT_DATA는 노랑·지표 부족 제목으로 구분한다. 고정 원인을 본문에 먼저 보여주고 환경·상태는 나란히, 알람명은 별도 행에 표시한다. OK는 경보 생성 직후에도 발생할 수 있으므로 실제 장애 복구를 단정하지 않고 ‘현재 경보 상태: OK’로 표시한다. 전송 데이터는 기존 네 필드이며 원본 오류 이유·URL·추가 측정값을 포함하지 않는다. 이 함수 코드는 EC2 배포와 별도로 Lambda ZIP을 갱신해야 반영된다. [Discord Embed](https://docs.discord.com/developers/resources/message#embed-object)
+알림은 Discord Embed 카드 한 개로 표시한다. ALARM은 빨강·경보 발생 제목, OK는 초록, INSUFFICIENT_DATA는 노랑·지표 부족 제목으로 구분한다. 고정 원인을 본문에 먼저 보여주고 환경·상태는 나란히, 알람명은 별도 행에 표시한다. 정리 실패 3종과 이번 Gemini 요청 실패·이미지 대체 실패의 OK 제목은 `현재 경보 상태: OK`로 표시하고, 데이터가 없어도 OK가 될 수 있으며 이전 실패 건은 별도 확인해야 한다고 안내한다. 이 경보들은 실패 발생 건수를 세므로 이전 작업의 정리 완료나 이미지 복원을 증명하지 않는다. 다른 경보의 표현은 유지한다. 전송 데이터는 기존 네 필드이며 원본 오류 이유·URL·추가 측정값을 포함하지 않는다. 이 함수 코드는 EC2 배포와 별도로 Lambda ZIP을 갱신해야 반영된다. [Discord Embed](https://docs.discord.com/developers/resources/message#embed-object), [CloudWatch 결측값 처리](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/alarms-and-missing-data.html)
+
+PR #330의 추가 검토에서는 **Gemini 인증·요청 오류, 확인된 S3 부재와 대체 URL 미확보**만 환경별 두 경보로 준비한다. 기존 통신/응답 처리 경보를 유지하며 세부 원인은 로그에서 조사한다. 추가 API·Gemini 지연, DB 풀 세부 지표와 일반 R2 오류 알림은 이번 범위에 넣지 않는다. 새 두 경보는 저장소 설정만 준비한 상태이며 AWS 적용·필터 검증·전달기 배포·활성화 순서를 따른다. 조건과 보류 이유는 [최소 보완 범위](generation-observation.md#꼭-필요한-보완만-추가)를 참고한다.
 
 현재 우테코 제공 인프라에서는 **제공 역할 `techcourse-lambda-execution-role`**을 그대로 사용하고, Webhook은 Lambda 환경 변수 `WEBHOOK_URL`에 넣는다. 새 역할·관리형 정책·Secrets Manager 비밀 생성과 공유 역할의 정책 변경은 하지 않는다. `WEBHOOK_URL`과 `WEBHOOK_SECRET_ARN` 중 비어 있지 않은 값은 **정확히 하나**여야 한다. 둘 다 있거나 둘 다 없으면 호출 전에 설정 오류로 중단한다. 환경 변수 방식은 Secrets Manager API를 호출하지 않는다. 기존 Secret ARN 방식은 허용된 별도 운영 환경에서 계속 사용할 수 있으며, Secret 값은 URL 또는 `webhook_url`을 가진 JSON이다. 두 방식 모두 HTTPS Discord 호스트·Webhook 경로를 검증하고 사용자 정보·포트·query·fragment가 있는 URL을 거절한다.
 
@@ -189,6 +191,8 @@ Discord의 일반 Execute Webhook은 `wait` 기본값이 `false`다. 이때 메�
 | `api-error-rate` | 표본 조건을 만족한 API 5xx 비율 증가 |
 | `gemini-storyboard-transient`, `gemini-image-transient` | 각 단계의 공급자 일시 오류 15분간 3건 이상 |
 | `gemini-storyboard-response`, `gemini-image-response` | 각 단계의 응답 처리 오류 15분간 2건 이상 |
+| `gemini-request-failure` | 인증·권한/요청 거절/요청 준비/인라인 크기 초과 오류 5분 1건. **저장소 설정만 준비, AWS 미적용** |
+| `image-fallback-unavailable` | S3 부재 확인 후 대체 URL 미확보 5분 1건. R2 대체 제공 경로 활성화 전제. **저장소 설정만 준비, AWS 미적용** |
 | `hikari-pending` | DB 연결 대기 증가 |
 | `telemetry-stale` | 검증된 지속 게이지의 무데이터로 서버 지표 수집 중단 감지 |
 | `api-p95`, `api-p99` | 지연 수집 방식·목표·표본 수 검증 후 활성화 |
