@@ -55,12 +55,19 @@ class HarudleApplicationTests {
 
         assertThat(tableNames).containsExactly(
                 "admin_generation_usage_restores",
+                "categories",
+                "comments",
                 "daily_generation_usage",
                 "diaries",
                 "diary_generations",
+                "feed_likes",
+                "feeds",
                 "generation_prompts",
                 "guest_sessions",
+                "notification_outbox",
+                "notifications",
                 "oauth_accounts",
+                "push_registrations",
                 "refresh_tokens",
                 "share_links",
                 "users"
