@@ -12,5 +12,5 @@ scrape_configs:
     # Limit EMF log contents as well as the metrics extracted by the Agent.
     metric_relabel_configs:
       - source_labels: [__name__]
-        regex: '^(harudle_(generation_(executions|finalizations|unexpected_failures)|gemini_stage_calls|s3_operation_calls|s3_url_signs|image_load_failures)_total|http_server_requests_seconds_count|hikaricp_connections_pending)$'
+        regex: '^(harudle_(generation_(executions|finalizations|unexpected_failures)|gemini_stage_calls|s3_operation_calls|s3_url_signs|image_load_failures)_total|harudle_generation_duration_seconds_(sum|count)|harudle_gemini_tokens_total|http_server_requests_seconds_count|hikaricp_connections_pending)$'
         action: keep
