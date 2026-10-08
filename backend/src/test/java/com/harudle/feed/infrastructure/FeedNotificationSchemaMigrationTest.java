@@ -3,19 +3,26 @@ package com.harudle.feed.infrastructure;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Types;
 import java.time.OffsetDateTime;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -37,6 +44,10 @@ class FeedNotificationSchemaMigrationTest {
 
     @BeforeEach
     void upgradeExistingSchema() throws SQLException {
+        migrateExistingSchemaTo("18");
+    }
+
+    private void migrateExistingSchemaTo(String target) throws SQLException {
         flyway().clean();
         Flyway.configure()
                 .dataSource(POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
@@ -51,18 +62,18 @@ class FeedNotificationSchemaMigrationTest {
                 INSERT INTO guest_sessions (id, guest_user_id, token_hash, expires_at)
                 VALUES (?, ?, ?, CURRENT_TIMESTAMP + INTERVAL '1 day')
                 """, UUID.randomUUID(), GUEST, "a".repeat(64));
-        flyway().migrate();
+        flyway(target).migrate();
     }
 
     @Test
-    @DisplayName("V13 업그레이드는 중복·긴 기존 이름을 보존하고 회원 기본 이미지만 배정한다")
+    @DisplayName("V13 업그레이드는 기존 이름을 보존하고 이미지 백필은 별도 작업으로 남긴다")
     void preserveLegacyProfiles() throws SQLException {
         assertThat(queryLong("SELECT count(*) FROM users WHERE name = ? AND nickname IS NULL", "중복이름"))
                 .isEqualTo(2);
         assertThat(queryLong("SELECT count(*) FROM users WHERE id = ? AND name = ? AND nickname IS NULL",
                 LONG_NAME_USER, LONG_NAME)).isEqualTo(1);
-        assertThat(queryLong("SELECT count(*) FROM users WHERE profile_image_code BETWEEN 1 AND 5"))
-                .isEqualTo(3);
+        assertThat(queryLong("SELECT count(*) FROM users WHERE profile_image_code IS NULL"))
+                .isEqualTo(4);
         assertThat(queryLong("SELECT count(*) FROM users WHERE id = ? AND profile_image_code IS NULL", GUEST))
                 .isEqualTo(1);
         assertThat(queryLong("SELECT count(*) FROM pg_tables WHERE schemaname = 'public' "
@@ -75,7 +86,7 @@ class FeedNotificationSchemaMigrationTest {
     @DisplayName("빈 PostgreSQL에도 전체 마이그레이션과 카테고리 시드를 적용할 수 있다")
     void migrateEmptyDatabase() throws SQLException {
         flyway().clean();
-        assertThat(flyway().migrate().migrationsExecuted).isEqualTo(16);
+        assertThat(flyway().migrate().migrationsExecuted).isEqualTo(18);
         flyway().validate();
         assertThat(queryLong("SELECT count(*) FROM categories WHERE is_active")).isEqualTo(2);
         assertThat(queryLong("""
@@ -238,6 +249,159 @@ class FeedNotificationSchemaMigrationTest {
         }
     }
 
+    @Test
+    @DisplayName("V14는 기존 행 검사와 백필 없이 커밋하고 V18에서 CHECK 검증을 완료한다")
+    void validateProfileConstraintsInSeparateMigration() throws SQLException {
+        migrateExistingSchemaTo("14");
+        assertThat(queryLong("""
+                SELECT count(*) FROM pg_constraint
+                WHERE conrelid = 'users'::regclass
+                  AND conname IN ('ck_users_nickname', 'ck_users_profile_image_code')
+                  AND NOT convalidated
+                """)).isEqualTo(2);
+        assertThat(queryLong("SELECT count(*) FROM users WHERE profile_image_code IS NULL")).isEqualTo(4);
+        reject("23514", "UPDATE users SET nickname = ? WHERE id = ?", " 잘못된이름", AUTHOR);
+        reject("23514", "UPDATE users SET profile_image_code = 6 WHERE id = ?", AUTHOR);
+
+        flyway().migrate();
+
+        assertThat(queryLong("""
+                SELECT count(*) FROM pg_constraint
+                WHERE conrelid = 'users'::regclass
+                  AND conname IN ('ck_users_nickname', 'ck_users_profile_image_code')
+                  AND convalidated
+                """)).isEqualTo(2);
+        assertThat(queryLong("""
+                SELECT count(*) FROM pg_index
+                WHERE indexrelid = 'uq_users_active_nickname'::regclass AND indisvalid
+                """)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("닉네임 인덱스 생성이 기존 쓰기를 기다리는 동안 사용자 조회·쓰기를 허용한다")
+    void allowReadsAndWritesDuringConcurrentIndexBuild() throws Exception {
+        migrateExistingSchemaTo("16");
+        var executor = Executors.newSingleThreadExecutor();
+        try (Connection blocker = openConnection()) {
+            blocker.setAutoCommit(false);
+            try (var statement = blocker.prepareStatement("UPDATE users SET name = ? WHERE id = ?")) {
+                statement.setString(1, "진행중트랜잭션");
+                statement.setObject(2, AUTHOR);
+                statement.executeUpdate();
+            }
+            var migration = executor.submit(() -> flyway("17").migrate());
+            try {
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+                while (queryLong("SELECT count(*) FROM pg_stat_progress_create_index "
+                        + "WHERE relid = 'users'::regclass") == 0 && System.nanoTime() < deadline) {
+                    if (migration.isDone()) {
+                        migration.get(1, TimeUnit.SECONDS);
+                        throw new AssertionError("인덱스 생성이 기존 트랜잭션을 기다리지 않았습니다");
+                    }
+                    Thread.sleep(25);
+                }
+                assertThat(queryLong("SELECT count(*) FROM pg_stat_progress_create_index "
+                        + "WHERE relid = 'users'::regclass")).isEqualTo(1);
+                try (Connection probe = openConnection(); var statement = probe.createStatement()) {
+                    statement.setQueryTimeout(5);
+                    statement.execute("SET lock_timeout = '1s'");
+                    try (ResultSet rows = statement.executeQuery("SELECT count(*) FROM users")) {
+                        assertThat(rows.next()).isTrue();
+                        assertThat(rows.getLong(1)).isEqualTo(4);
+                    }
+                    assertThat(statement.executeUpdate("UPDATE users SET nickname = '인덱스생성중' "
+                            + "WHERE id = '" + READER + "'")).isEqualTo(1);
+                }
+                blocker.rollback();
+                assertThat(migration.get(20, TimeUnit.SECONDS).migrationsExecuted).isEqualTo(1);
+            } finally {
+                blocker.rollback();
+            }
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    @DisplayName("이미지 백필은 회원만 처리하고 기존 설정·탈퇴·체험 사용자를 보존하며 재실행할 수 있다")
+    void backfillProfilesWithoutOverwritingAssignedImages() throws Exception {
+        UUID deletedUser = UUID.fromString("00000000-0000-0000-0000-000000000005");
+        execute("INSERT INTO users (id, name, deleted_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+                deletedUser, "탈퇴회원");
+        execute("UPDATE users SET profile_image_code = 5 WHERE id = ?", AUTHOR);
+        try (Connection connection = openConnection()) {
+            loadProfileBackfill(connection);
+            callProfileBackfill(connection, 1);
+            assertThat(queryLong("SELECT profile_image_code FROM users WHERE id = ?", AUTHOR)).isEqualTo(5);
+            assertThat(queryLong("SELECT profile_image_code FROM users WHERE id = ?", READER)).isEqualTo(3);
+            assertThat(queryLong("SELECT profile_image_code FROM users WHERE id = ?", LONG_NAME_USER)).isEqualTo(4);
+            assertThat(queryLong("SELECT count(*) FROM users WHERE id IN (?, ?) "
+                    + "AND profile_image_code IS NULL", GUEST, deletedUser)).isEqualTo(2);
+
+            execute("UPDATE users SET profile_image_code = 1 WHERE id = ?", READER);
+            callProfileBackfill(connection, 1);
+            assertThat(queryLong("SELECT profile_image_code FROM users WHERE id = ?", READER)).isEqualTo(1);
+        }
+    }
+
+    @Test
+    @DisplayName("백필 중간 실패는 앞선 배치의 커밋을 보존하고 재실행하면 남은 회원을 처리한다")
+    void resumeBackfillAfterCommittedBatchAndFailure() throws Exception {
+        execute("""
+                ALTER TABLE users ADD CONSTRAINT test_backfill_failure
+                CHECK (id <> '00000000-0000-0000-0000-000000000002' OR profile_image_code IS NULL)
+                """);
+        try (Connection connection = openConnection()) {
+            loadProfileBackfill(connection);
+            SQLException failure = catchThrowableOfType(SQLException.class, () -> callProfileBackfill(connection, 1));
+            assertThat((Throwable) failure).isNotNull();
+            assertThat(failure.getSQLState()).isEqualTo("23514");
+            assertThat(queryLong("SELECT profile_image_code FROM users WHERE id = ?", AUTHOR)).isEqualTo(2);
+            assertThat(queryLong("SELECT count(*) FROM users WHERE id IN (?, ?) "
+                    + "AND profile_image_code IS NULL", READER, LONG_NAME_USER)).isEqualTo(2);
+
+            execute("ALTER TABLE users DROP CONSTRAINT test_backfill_failure");
+            callProfileBackfill(connection, 1);
+            assertThat(queryLong("SELECT profile_image_code FROM users WHERE id = ?", AUTHOR)).isEqualTo(2);
+            assertThat(queryLong("SELECT profile_image_code FROM users WHERE id = ?", READER)).isEqualTo(3);
+            assertThat(queryLong("SELECT profile_image_code FROM users WHERE id = ?", LONG_NAME_USER)).isEqualTo(4);
+            assertThat(queryLong("SELECT count(*) FROM users WHERE id = ? AND profile_image_code IS NULL", GUEST))
+                    .isEqualTo(1);
+        }
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(ints = {0, -1, 10001})
+    @DisplayName("백필은 NULL 또는 범위를 벗어난 배치 크기를 거절한다")
+    void rejectInvalidBackfillBatchSize(Integer batchSize) throws Exception {
+        try (Connection connection = openConnection()) {
+            loadProfileBackfill(connection);
+            SQLException failure = catchThrowableOfType(SQLException.class,
+                    () -> callProfileBackfill(connection, batchSize));
+            assertThat((Throwable) failure).isNotNull();
+            assertThat(failure.getSQLState()).isEqualTo("22023");
+            assertThat(queryLong("SELECT count(*) FROM users WHERE profile_image_code IS NULL")).isEqualTo(4);
+        }
+    }
+
+    private static void loadProfileBackfill(Connection connection) throws IOException, SQLException {
+        try (var resource = FeedNotificationSchemaMigrationTest.class
+                .getResourceAsStream("/db/maintenance/backfill_user_profile_images.sql")) {
+            assertThat(resource).isNotNull();
+            try (var statement = connection.createStatement()) {
+                statement.execute(new String(resource.readAllBytes(), StandardCharsets.UTF_8));
+            }
+        }
+    }
+
+    private static void callProfileBackfill(Connection connection, Integer batchSize) throws SQLException {
+        try (var statement = connection.prepareStatement("CALL pg_temp.backfill_user_profile_images(?)")) {
+            statement.setObject(1, batchSize, Types.INTEGER);
+            statement.execute();
+        }
+    }
+
     private UUID createDiary() throws SQLException {
         UUID diary = UUID.randomUUID();
         execute("""
@@ -300,8 +464,15 @@ class FeedNotificationSchemaMigrationTest {
     }
 
     private static Flyway flyway() {
+        return flyway("18");
+    }
+
+    private static Flyway flyway(String target) {
         return Flyway.configure()
                 .dataSource(POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                .configuration(Map.of("flyway.postgresql.transactional.lock", "false"))
+                .group(false)
+                .target(target)
                 .cleanDisabled(false)
                 .load();
     }

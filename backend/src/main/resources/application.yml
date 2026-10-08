@@ -37,6 +37,10 @@ spring:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:harudle}
     username: ${DB_USERNAME:harudle}
     password: ${DB_PASSWORD}
+  flyway:
+    group: false
+    postgresql:
+      transactional-lock: false
   jpa:
     open-in-view: false
     hibernate:
