@@ -20,6 +20,8 @@ export const theme = {
       surface: palette.white,
       neutralSolid: palette.gray[900],
       neutralWeak: palette.gray[100],
+      neutralSubtle: '#F5F4F7',
+      criticalSolid: palette.red,
       brandSolid: palette.purple[500],
       brandStrong: palette.purple[600],
       brandWeak: '#F8F6FF',
