@@ -14,6 +14,7 @@ import com.harudle.feed.service.port.FeedInteractionPort.CounterChange;
 import com.harudle.feed.service.port.FeedInteractionPort.CounterKind;
 import com.harudle.feed.service.port.FeedLikeReader;
 import com.harudle.profile.service.port.PublicProfileReader;
+import com.harudle.push.service.port.FeedPushOutbox;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
@@ -28,6 +29,7 @@ import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -61,10 +63,12 @@ class FeedListAndInteractionPersistenceTest {
     @Autowired private TransactionTemplate transactions;
     @Autowired private FeedListService lists;
     @Autowired private FeedInteractionPort interactions;
+    @Autowired private FeedDeletionService deletion;
     @Autowired private DiaryLifecycleRepository diaryLifecycle;
     @MockitoBean private CategoryReader categories;
     @MockitoBean private PublicProfileReader profiles;
     @MockitoBean private FeedLikeReader likes;
+    @MockitoBean private FeedPushOutbox outbox;
     @MockitoBean private JwtDecoder jwtDecoder;
     private final Map<UUID, UUID> diaryIds = new HashMap<>();
     private long dailyCategory;
@@ -229,6 +233,79 @@ class FeedListAndInteractionPersistenceTest {
             } finally {
                 executor.shutdownNow();
             }
+        }
+    }
+
+    @Test
+    void deletionWaitsForCounterTransactionAndPreservesItsCommittedCount() throws Exception {
+        var executor = Executors.newFixedThreadPool(2);
+        var held = new CountDownLatch(1);
+        var started = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        try {
+            var counter = executor.submit(() -> transactions.executeWithoutResult(status -> {
+                interactions.lockActive(THIRD);
+                interactions.adjustCounter(THIRD, CounterKind.LIKE, CounterChange.ADDED);
+                held.countDown();
+                awaitRelease(release);
+            }));
+            assertThat(held.await(5, TimeUnit.SECONDS)).isTrue();
+            var removal = executor.submit(() -> {
+                started.countDown();
+                deletion.delete(AUTHOR, THIRD);
+            });
+            assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThatThrownBy(() -> removal.get(300, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+            release.countDown();
+            counter.get(10, TimeUnit.SECONDS);
+            removal.get(10, TimeUnit.SECONDS);
+            assertThat(number("SELECT like_count FROM feeds WHERE id = ?", THIRD)).isEqualTo(4);
+            assertThat(number("SELECT COUNT(*) FROM feeds WHERE id = ? AND deleted_at IS NOT NULL", THIRD))
+                    .isEqualTo(1);
+            assertThatThrownBy(() -> transactions.execute(status ->
+                    interactions.adjustCounter(THIRD, CounterKind.LIKE, CounterChange.ADDED)))
+                    .isInstanceOf(FeedNotFoundException.class);
+        } finally {
+            release.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void deletionHoldsFeedLockWithoutLockingOriginalDiary() throws Exception {
+        var executor = Executors.newSingleThreadExecutor();
+        var held = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        when(outbox.cancelUnsentByFeed(THIRD)).thenAnswer(invocation -> {
+            held.countDown();
+            awaitRelease(release);
+            return 0;
+        });
+        var removal = executor.submit(() -> deletion.delete(AUTHOR, THIRD));
+        try {
+            assertThat(held.await(5, TimeUnit.SECONDS)).isTrue();
+            transactions.executeWithoutResult(status -> {
+                executeUpdate("SET LOCAL lock_timeout = '1s'");
+                assertThat(diaryLifecycle.findByIdIncludingDeletedForUpdate(diaryIds.get(THIRD))).isPresent();
+            });
+        } finally {
+            release.countDown();
+            try {
+                removal.get(10, TimeUnit.SECONDS);
+            } finally {
+                executor.shutdownNow();
+            }
+        }
+    }
+
+    private static void awaitRelease(CountDownLatch release) {
+        try {
+            if (!release.await(10, TimeUnit.SECONDS)) {
+                throw new AssertionError("잠금 해제 대기 초과");
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(exception);
         }
     }
 

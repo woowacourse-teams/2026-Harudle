@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Objects;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 
 @Entity
 @Table(name = "feeds")
@@ -78,6 +79,17 @@ public class Feed {
 
     public boolean isDeleted() {
         return deletedAt != null;
+    }
+
+    public @Nullable Instant getDeletedAt() {
+        return deletedAt;
+    }
+
+    public void delete(Instant deletedAt) {
+        Objects.requireNonNull(deletedAt, "삭제 시각은 필수입니다.");
+        if (!isDeleted()) {
+            this.deletedAt = deletedAt.truncatedTo(ChronoUnit.MICROS);
+        }
     }
 
     public void increaseLikeCount() {

@@ -3,10 +3,12 @@ package com.harudle.feed.presentation;
 import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -32,12 +34,14 @@ import com.harudle.diary.service.exception.DiaryNotFoundException;
 import com.harudle.diary.service.exception.DiaryNotPublishableException;
 import com.harudle.feed.configuration.FeedConfiguration;
 import com.harudle.feed.query.FeedSort;
+import com.harudle.feed.service.FeedDeletionService;
 import com.harudle.feed.service.FeedListService;
 import com.harudle.feed.service.FeedPublicationService;
 import com.harudle.feed.service.FeedQueryService;
 import com.harudle.feed.service.dto.FeedPageResult;
 import com.harudle.feed.service.dto.FeedResult;
 import com.harudle.feed.service.exception.DiaryAlreadyPublishedException;
+import com.harudle.feed.service.exception.FeedAccessDeniedException;
 import com.harudle.feed.service.exception.FeedIntegrationUnavailableException;
 import com.harudle.feed.service.exception.FeedNotFoundException;
 import com.harudle.feed.service.exception.InvalidFeedCursorException;
@@ -88,6 +92,7 @@ class FeedControllerTest {
     @MockitoBean private FeedPublicationService publicationService;
     @MockitoBean private FeedQueryService queryService;
     @MockitoBean private FeedListService listService;
+    @MockitoBean private FeedDeletionService deletionService;
     @MockitoBean private ImageUrlProvider imageUrlProvider;
     @MockitoBean private JwtDecoder jwtDecoder;
     @MockitoBean private UserRepository userRepository;
@@ -350,6 +355,85 @@ class FeedControllerTest {
                 Arguments.of(new DiaryNotPublishableException(), 409, "DIARY_NOT_PUBLISHABLE"),
                 Arguments.of(new DiaryAlreadyPublishedException(), 409, "DIARY_ALREADY_PUBLISHED"),
                 Arguments.of(new FeedIntegrationUnavailableException(CategoryReader.class), 503, "FEED_UNAVAILABLE")
+        );
+    }
+
+    @Test
+    void deletesWithRealBearerAndMatchingCsrfCookieAndHeader() throws Exception {
+        when(jwtDecoder.decode("valid")).thenReturn(Jwt.withTokenValue("valid")
+                .header("alg", "RS256").subject(ACTOR.toString()).build());
+        mockMvc.perform(delete("/api/v1/feeds/{feedId}", FEED).header("Authorization", "Bearer valid")
+                        .cookie(csrfCookie()).header("X-XSRF-TOKEN", "feed-test-csrf"))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
+        verify(deletionService).delete(ACTOR, FEED);
+        verifyNoInteractions(imageUrlProvider, publicationService, queryService, listService);
+    }
+
+    @Test
+    void requiresAuthenticationOnDeletion() throws Exception {
+        mockMvc.perform(delete("/api/v1/feeds/{feedId}", FEED)
+                        .cookie(csrfCookie()).header("X-XSRF-TOKEN", "feed-test-csrf"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+        verifyNoInteractions(deletionService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"NONE", "COOKIE_ONLY", "HEADER_ONLY", "MISMATCHED"})
+    void requiresMatchingCsrfCookieAndHeaderForBearerDeletion(String suppliedToken) throws Exception {
+        var request = delete("/api/v1/feeds/{feedId}", FEED).header("Authorization", "Bearer valid");
+        if ("COOKIE_ONLY".equals(suppliedToken) || "MISMATCHED".equals(suppliedToken)) {
+            request.cookie(csrfCookie());
+        }
+        if ("HEADER_ONLY".equals(suppliedToken) || "MISMATCHED".equals(suppliedToken)) {
+            request.header("X-XSRF-TOKEN", "MISMATCHED".equals(suppliedToken) ? "wrong-token" : "feed-test-csrf");
+        }
+        mockMvc.perform(request).andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("INVALID_CSRF_TOKEN"));
+        verifyNoInteractions(deletionService);
+    }
+
+    @Test
+    void rejectsExpiredBearerOnDeletion() throws Exception {
+        when(jwtDecoder.decode("expired")).thenThrow(new BadJwtException("expired"));
+        mockMvc.perform(delete("/api/v1/feeds/{feedId}", FEED).header("Authorization", "Bearer expired")
+                        .cookie(csrfCookie()).header("X-XSRF-TOKEN", "feed-test-csrf"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string("WWW-Authenticate", startsWith("Bearer")));
+        verifyNoInteractions(deletionService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"invalid", "1-1-1-1-1"})
+    void validatesCanonicalFeedUuidOnDeletion(String feedId) throws Exception {
+        mockMvc.perform(delete("/api/v1/feeds/{feedId}", feedId)
+                        .with(jwt().jwt(token -> token.subject(ACTOR.toString()))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        verifyNoInteractions(deletionService);
+    }
+
+    @ParameterizedTest
+    @MethodSource("deletionFailures")
+    void mapsDeletionFailuresToProblemDetails(RuntimeException error, int statusCode, String code) throws Exception {
+        doThrow(error).when(deletionService).delete(ACTOR, FEED);
+        mockMvc.perform(delete("/api/v1/feeds/{feedId}", FEED)
+                        .with(jwt().jwt(token -> token.subject(ACTOR.toString()))))
+                .andExpect(status().is(statusCode))
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.code").value(code))
+                .andExpect(jsonPath("$.traceId").isNotEmpty())
+                .andExpect(jsonPath("$.instance").value("/api/v1/feeds/" + FEED));
+    }
+
+    private static Stream<Arguments> deletionFailures() {
+        return Stream.of(
+                Arguments.of(new FeedAccessDeniedException(), 403, "FORBIDDEN"),
+                Arguments.of(new FeedNotFoundException(), 404, "FEED_NOT_FOUND"),
+                Arguments.of(new FeedIntegrationUnavailableException(com.harudle.push.service.port.FeedPushOutbox.class),
+                        503, "FEED_UNAVAILABLE"),
+                Arguments.of(new IllegalStateException("푸시 취소 저장 실패"), 500, "INTERNAL_SERVER_ERROR")
         );
     }
 

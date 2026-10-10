@@ -128,6 +128,7 @@ Idempotency-Key: 7e5cc251-fdde-4cc0-a54e-2c8142750609
 | `POST` | `/api/v1/feeds` | 필요 | 기존 일기의 만화를 카테고리에 공개 게시 |
 | `GET` | `/api/v1/feeds` | 선택 | 최신순·인기순, 카테고리 필터와 커서로 공개 목록 조회 |
 | `GET` | `/api/v1/feeds/{feedId}` | 선택 | 공개 피드 상세 조회 |
+| `DELETE` | `/api/v1/feeds/{feedId}` | 필요 | 본인 피드 소프트 삭제 및 미발송 푸시 취소 |
 
 ## 4. 인증 및 사용자 API
 
@@ -606,6 +607,22 @@ GET /api/v1/feeds?sort=LATEST&categoryId=1&size=20
 마지막 페이지의 `nextCursor`는 null입니다. 커서 형식 오류와 정렬·카테고리 조건 불일치는 `400 INVALID_CURSOR`입니다.
 인기순은 기간 제한 없이 현재 좋아요 수를 기준으로 정렬하므로 페이지 사이의 좋아요 변경에 따른 중복·누락이 허용됩니다.
 자세한 정렬·필터·개인화 규칙은 [피드 API 명세](feed-api-spec.md#공개-목록-조회)를 참고합니다.
+
+### 7.4 피드 삭제
+
+```http
+DELETE /api/v1/feeds/{feedId}
+Authorization: Bearer {accessToken}
+Cookie: XSRF-TOKEN={csrfToken}
+X-XSRF-TOKEN: {csrfToken}
+```
+
+본문 없이 본인 피드를 소프트 삭제하며 성공하면 `204 No Content`를 반환합니다.
+타인의 활성 피드는 `403 FORBIDDEN`, 없거나 이미 삭제된 피드는 `404 FEED_NOT_FOUND`입니다. 반복 삭제에도 404를 반환합니다.
+원본 일기·생성 기록·이미지와 기존 반응·인앱 알림 행은 유지합니다. 삭제된 피드는 공개 조회와 반응 쓰기에서 제외하며, 연결 데이터 조회·알림 미읽음 수의 제외는 각 담당 영역에서 처리합니다.
+개인 일기 상세의 `publishedFeedId`는 null이 됩니다. 재게시하면 새 피드 ID·게시 시각·이벤트를 사용하고 반응 수는 0부터 시작합니다.
+피드 상태 변경과 미발송 푸시 취소는 같은 트랜잭션입니다. 취소 실패 시 삭제도 롤백하며 푸시 포트 구현이 없으면 `503 FEED_UNAVAILABLE`입니다.
+`FeedLifecycle` 구현은 제공하며 개인 일기 삭제 서비스에서 호출하는 연동은 5번 단계에서 구현합니다.
 
 ## 8. Problem Details 오류 명세
 

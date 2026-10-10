@@ -4,6 +4,7 @@ import com.harudle.auth.presentation.AuthenticatedUserIdResolver;
 import com.harudle.common.error.ApiErrorResponses;
 import com.harudle.common.error.ErrorType;
 import com.harudle.feed.query.FeedSort;
+import com.harudle.feed.service.FeedDeletionService;
 import com.harudle.feed.service.FeedListService;
 import com.harudle.feed.service.FeedPublicationService;
 import com.harudle.feed.service.FeedQueryService;
@@ -23,6 +24,7 @@ import java.net.URI;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -43,6 +45,7 @@ class FeedController {
     private final FeedPublicationService publicationService;
     private final FeedQueryService queryService;
     private final FeedListService listService;
+    private final FeedDeletionService deletionService;
     private final AuthenticatedUserIdResolver userIds;
     private final FeedResponseAssembler responseAssembler;
 
@@ -50,12 +53,14 @@ class FeedController {
             FeedPublicationService publicationService,
             FeedQueryService queryService,
             FeedListService listService,
+            FeedDeletionService deletionService,
             AuthenticatedUserIdResolver userIds,
             FeedResponseAssembler responseAssembler
     ) {
         this.publicationService = publicationService;
         this.queryService = queryService;
         this.listService = listService;
+        this.deletionService = deletionService;
         this.userIds = userIds;
         this.responseAssembler = responseAssembler;
     }
@@ -112,4 +117,21 @@ class FeedController {
         return responseAssembler.toResponse(queryService.getDetail(viewerId, UUID.fromString(feedId)));
     }
 
+    @Operation(summary = "피드 삭제", description = "본인 피드를 소프트 삭제하고 미발송 푸시를 취소합니다. 원본 일기는 유지합니다.")
+    @SecurityRequirement(name = "bearerAuth")
+    @ApiResponse(responseCode = "204", description = "피드 삭제 완료")
+    @ApiErrorResponses({
+            ErrorType.VALIDATION_ERROR, ErrorType.UNAUTHORIZED, ErrorType.FORBIDDEN,
+            ErrorType.INVALID_CSRF_TOKEN, ErrorType.FEED_NOT_FOUND, ErrorType.FEED_UNAVAILABLE
+    })
+    @DeleteMapping("/{feedId}")
+    ResponseEntity<Void> delete(
+            Authentication authentication,
+            @Parameter(schema = @Schema(type = "string", format = "uuid"))
+            @PathVariable @Pattern(regexp = UUID_PATTERN) String feedId
+    ) {
+        UUID actorId = userIds.resolve(authentication);
+        deletionService.delete(actorId, UUID.fromString(feedId));
+        return ResponseEntity.noContent().build();
+    }
 }

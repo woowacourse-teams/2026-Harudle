@@ -1,7 +1,7 @@
-# 피드 게시·조회 및 개인 일기 연동 API
+# 피드 게시·조회·삭제 및 개인 일기 연동 API
 
-1~3번 구현은 기존 일기의 공개 게시, 공개 목록·상세 조회, 댓글·좋아요 영역의 피드 연동 포트와 개인 일기 상세의 `publishedFeedId` 연동이다.
-댓글·좋아요 HTTP API는 각 담당 영역에서 구현한다. 피드 삭제 및 일기 삭제 시 연결 데이터 정리는 후속 단계에서 구현한다.
+1~4번 구현은 기존 일기의 공개 게시, 공개 목록·상세 조회, 댓글·좋아요 영역의 피드 연동 포트, 개인 일기 상세의 `publishedFeedId` 연동과 피드 소프트 삭제다.
+댓글·좋아요 HTTP API는 각 담당 영역에서 구현한다. 개인 일기 삭제 서비스에서 `FeedLifecycle`을 호출하는 연동은 5번 단계에서 구현한다.
 기존 포트의 메서드·입력·반환 타입은 변경하지 않는다. 기존 V15 피드 스키마를 사용하므로 추가 마이그레이션은 없다.
 
 ## API
@@ -11,10 +11,11 @@
 | POST | `/api/v1/feeds` | Bearer + CSRF Cookie/Header | 201, Feed |
 | GET | `/api/v1/feeds` | 선택 | 200, Feed Page |
 | GET | `/api/v1/feeds/{feedId}` | 선택 | 200, Feed |
+| DELETE | `/api/v1/feeds/{feedId}` | Bearer + CSRF Cookie/Header | 204, 본문 없음 |
 | GET | `/api/v1/diaries/{diaryId}` | Bearer | 200, 기존 Diary Detail + `publishedFeedId` |
 
-게시 요청에는 `Authorization: Bearer {accessToken}`, `XSRF-TOKEN` Cookie와 같은 값을 가진 `X-XSRF-TOKEN` Header가 필요하다.
-CSRF는 Bearer 인증 요청에도 적용한다. 정상 응답은 `application/json`, 오류는 기존 `application/problem+json` 형식과 `code`, `traceId`를 사용한다.
+게시·삭제 요청에는 `Authorization: Bearer {accessToken}`, `XSRF-TOKEN` Cookie와 같은 값을 가진 `X-XSRF-TOKEN` Header가 필요하다.
+CSRF는 Bearer 인증 요청에도 적용한다. 조회·게시 응답은 `application/json`, 오류는 기존 `application/problem+json` 형식과 `code`, `traceId`를 사용한다. 삭제 성공 응답에는 본문이 없다.
 
 ### 게시
 
@@ -106,6 +107,29 @@ GET /api/v1/feeds?sort=LATEST&categoryId=1&size=20
 비활성 카테고리의 기존 피드는 조회할 수 있다.
 삭제된 피드·원본 일기, 공개 프로필을 조회할 수 없는 작성자의 피드는 404다.
 
+### 피드 삭제
+
+```http
+DELETE /api/v1/feeds/{feedId}
+Authorization: Bearer {accessToken}
+Cookie: XSRF-TOKEN={csrfToken}
+X-XSRF-TOKEN: {csrfToken}
+```
+
+요청 본문 없이 본인 피드를 삭제한다. 성공하면 `204 No Content`를 반환한다.
+피드 행을 잠근 뒤 원본 일기의 작성자를 확인한다. 타인의 활성 피드는 `403 FORBIDDEN`, 없거나 이미 삭제된 피드는 `404 FEED_NOT_FOUND`다.
+원본 일기나 작성자가 삭제된 피드도 `404 FEED_NOT_FOUND`다. 반복 삭제는 404이며 최초 삭제 시각을 변경하지 않는다.
+
+`Feed.deletedAt`을 기록하는 소프트 삭제를 사용한다. 삭제 후 공개 목록에서 제외하고 상세 조회·댓글/좋아요 쓰기 연동 포트는 `404 FEED_NOT_FOUND`로 처리한다.
+원본 일기·생성 기록·이미지와 기존 댓글·좋아요·인앱 알림 행은 유지하며 반응 수도 초기화하지 않는다.
+댓글·좋아요·알림 담당은 각 조회와 알림 미읽음 수에도 활성 피드 조건을 적용해야 한다.
+개인 일기 상세의 `publishedFeedId`는 null이 된다. 같은 일기를 재게시하면 새 피드 ID·게시 시각·게시 이벤트를 만들고 반응 수는 0에서 시작한다.
+
+피드 상태 변경과 `FeedPushOutbox.cancelUnsentByFeed(feedId)`는 같은 트랜잭션에서 수행한다.
+푸시 담당 구현은 `PENDING`·`PROCESSING` 작업을 `CANCELLED`로 바꾸고 잠금 정보와 `sent_at`을 비운다. 완료·실패·취소 이력은 유지한다.
+취소 저장이 실패하면 피드 삭제도 롤백한다. 푸시 포트 구현이 없으면 상태 변경 전에 `503 FEED_UNAVAILABLE`로 실패한다.
+자세한 정책은 [피드 삭제 ADR](adr/feed-deletion-policy/2026-10-11_피드와%20연결%20데이터의%20삭제%20방식을%20어떻게%20정할%20것인가_캐모.md)을 따른다.
+
 ### 개인 일기 상세의 게시 여부
 
 `GET /api/v1/diaries/{diaryId}`의 기존 응답에 `publishedFeedId: UUID | null`을 추가한다.
@@ -128,12 +152,12 @@ GET /api/v1/feeds?sort=LATEST&categoryId=1&size=20
 | --- | --- | --- |
 | 400 | `VALIDATION_ERROR` | 필수 값 누락, 잘못된 UUID·카테고리 ID·정렬·페이지 크기 |
 | 400 | `INVALID_CURSOR` | 잘못된 커서 또는 정렬·카테고리 조건 불일치 |
-| 401 | `UNAUTHORIZED` | 게시 인증 누락 또는 유효하지 않은 Bearer 토큰 |
-| 403 | `INVALID_CSRF_TOKEN` | 게시 CSRF 검증 실패 |
-| 403 | `FORBIDDEN` | 다른 사용자의 일기 게시 |
+| 401 | `UNAUTHORIZED` | 게시·삭제 인증 누락 또는 유효하지 않은 Bearer 토큰 |
+| 403 | `INVALID_CSRF_TOKEN` | 게시·삭제 CSRF 검증 실패 |
+| 403 | `FORBIDDEN` | 다른 사용자의 일기 게시 또는 피드 삭제 |
 | 404 | `DIARY_NOT_FOUND` | 게시할 일기가 없거나 삭제됨 |
 | 404 | `CATEGORY_NOT_FOUND` | 카테고리가 없음 |
-| 404 | `FEED_NOT_FOUND` | 공개 상세 조회 대상이 없거나 삭제됨 |
+| 404 | `FEED_NOT_FOUND` | 공개 상세 조회·삭제 대상이 없거나 피드·원본 일기·작성자가 삭제됨 |
 | 409 | `DIARY_NOT_PUBLISHABLE` | 이미지 생성이 완료되지 않음 |
 | 409 | `DIARY_ALREADY_PUBLISHED` | 해당 일기의 활성 피드가 이미 있음 |
 | 409 | `CATEGORY_INACTIVE` | 비활성 카테고리에 신규 게시 |
@@ -147,22 +171,23 @@ GET /api/v1/feeds?sort=LATEST&categoryId=1&size=20
 | `CategoryReader` | 호출: 게시 시 활성 카테고리 잠금, 조회 시 비활성 포함 조회 | 카테고리 |
 | `PublicProfileReader` | 호출: 공개 작성자 정보 일괄 조회 | 프로필 |
 | `FeedLikeReader` | 호출: 로그인 사용자의 목록·상세 좋아요 여부 일괄 조회 | 좋아요 |
-| `FeedPushOutbox` | 호출: 게시 트랜잭션에서 이벤트 예약 | 푸시 |
+| `FeedPushOutbox` | 호출: 게시 트랜잭션에서 이벤트 예약, 삭제 트랜잭션에서 미발송 작업 취소 | 푸시 |
 | `FeedInteractionPort` | 구현: 활성 피드 잠금, 작성자·반응 수 반환, 반응 수 증감 | 피드 |
+| `FeedLifecycle` | 구현: 호출자의 일기 삭제 트랜잭션에서 연결 피드 소프트 삭제와 푸시 취소 | 피드 |
 | `PublishedFeedReader` | 구현: 여러 일기의 활성 피드 ID를 일괄 조회, 개인 일기 상세에서 호출 | 피드 |
 | `PushClient` | 이번 범위에 없음 | 외부 연동/푸시 워커 |
 
 역할 표의 `FeedAccess`와 `FeedCounterWriter`는 현재 저장소에서 `FeedInteractionPort` 하나로 합쳐져 있다.
 이를 분리하거나 인터페이스 구조를 바꾸지 않는다.
 타 영역의 실제 어댑터는 이번 브랜치에서 만들지 않으며 테스트에서는 해당 포트에 대역을 연결한다.
-포트가 없더라도 기존 애플리케이션을 시작할 수 있다. 해당 포트가 필요한 피드 요청은 503으로 실패하며 피드나 이벤트를 저장하지 않는다.
+포트가 없더라도 기존 애플리케이션을 시작할 수 있다. 해당 포트가 필요한 피드 요청은 503으로 실패하며 피드·이벤트를 저장하거나 삭제 상태를 변경하지 않는다.
 카테고리 담당은 `CategoryNotFoundException`, `CategoryInactiveException`으로 실패를 알려야 위 오류 코드로 변환된다.
 
 기존 `share_links` 테이블과 일기 삭제 시의 공유 링크 정리는 기존 데이터 처리를 위해 유지한다.
 공유 API 컨트롤러·응답 조립·URL 설정은 제거하며 기존 공유 관련 인터페이스는 변경하지 않는다.
 프론트의 기존 `/shares/{shareId}` 화면과 `share-link` 호출은 피드 게시 및 `/feeds/{feedId}` 화면으로 전환해야 한다.
 
-`Feed`는 게시 데이터의 생성과 반응 수의 증감·음수 방지 규칙을 담당하고, 서비스가 검증과 트랜잭션 흐름을 조합한다.
+`Feed`는 게시 데이터의 생성, 반응 수의 증감·음수 방지와 삭제 상태·최초 삭제 시각을 담당하고, 서비스가 검증과 트랜잭션 흐름을 조합한다.
 Repository는 잠금·저장·조회만 수행한다. `DiaryPublicationReader`는 일기만 잠그고 생성 기록은 조회해 기존 생성 처리와 잠금 순서가 역전되지 않게 한다.
 중복 게시에는 일기 잠금과 `uq_feeds_active_diary` 부분 유니크 인덱스를 함께 사용한다.
 
@@ -178,6 +203,12 @@ Repository는 잠금·저장·조회만 수행한다. `DiaryPublicationReader`�
 반응 저장, 카운터 변경과 인앱 알림 저장은 호출자의 같은 트랜잭션에서 처리해 함께 커밋하거나 롤백한다.
 카운터는 잠근 `Feed` 도메인을 변경하고 JPA 변경 감지로 저장한다. 0에서 감소하거나 정수 범위를 넘는 증가는 실패한다.
 
+피드 삭제도 반응 쓰기와 같은 피드 행 잠금을 사용한다. 원본 일기는 조회만 하므로 일기→피드 잠금 순서와 역전되지 않는다.
+삭제 Repository는 연결된 활성 피드를 조회하고 잠그며 소유권 검증·삭제 상태 변경·푸시 취소를 수행하지 않는다.
+`FeedLifecycle.deleteByDiary(UUID, Instant)`는 호출자가 일기를 잠그고 소유권을 확인한 뒤 같은 트랜잭션에서 호출한다(`MANDATORY`).
+전달받은 시각으로 연결 피드를 삭제하고, 연결이 없거나 이미 삭제됐으면 아무것도 하지 않는다. 호출자가 먼저 일기에 삭제 시각을 기록해도 연결 피드를 찾는다.
+개인 일기 삭제 서비스에서 이 포트를 호출하는 작업은 5번 단계에 남아 있다.
+
 `PublishedFeedReader`는 기존 `findByDiaryIds(Set<UUID>)` 계약을 유지한다.
 피드 Repository는 삭제되지 않은 일기·피드의 ID 쌍을 `IN` 조건으로 한 번에 조회하고, 피드 서비스 구현체가 일기 ID를 키로 하는 Map을 만든다.
 빈 입력은 DB 조회 없이 빈 Map을 반환한다. 일기 서비스는 본인 소유 확인 후 이 포트를 호출하며 결과가 없으면 응답에 null을 넣는다.
@@ -191,8 +222,11 @@ Repository는 잠금·저장·조회만 수행한다. `DiaryPublicationReader`�
 단위·MVC 테스트는 게시 조건, 중복 게시, 공개 응답의 비공개 필드 제외, 익명/로그인 조회, 오류 코드, 실제 Bearer 요청의 CSRF Cookie/Header를 검증한다.
 목록 테스트는 요청 조건 검증, 커서 왕복과 조건 불일치, 다음 페이지 판단, 개인화 일괄 조회와 프로필 누락 시 페이지 보충을 검증한다.
 개인 일기 테스트는 게시 여부의 UUID/null 응답, 기존 이미지·생성 정보, 권한 검증 전에 피드 조회가 실행되지 않는 동작을 검증한다.
+삭제 단위·MVC 테스트는 소유권·존재 여부, 최초 삭제 시각 유지, 반응 수 보존, 푸시 포트 호출·실패, 204 본문 없음과 인증·CSRF를 검증한다.
 `FeedPublicationPersistenceTest`는 PostgreSQL에서 저장·조회, 동시 게시, 푸시 예약 실패 시 롤백, 삭제된 대상 제외·재게시 및 개인 일기의 활성 피드 ID 반영과 일괄 조회를 검증한다.
-`FeedListAndInteractionPersistenceTest`는 PostgreSQL의 정렬·UUID 동률 처리·커서, 삭제 대상 제외, 반응과 카운터의 동시 롤백·동시 증감, 원본 일기를 잠그지 않는 동작을 검증한다.
+`FeedListAndInteractionPersistenceTest`는 PostgreSQL의 정렬·UUID 동률 처리·커서, 삭제 대상 제외, 반응과 카운터의 동시 롤백·동시 증감, 삭제와 카운터의 잠금 경합 및 원본 일기를 잠그지 않는 동작을 검증한다.
+`FeedDeletionPersistenceTest`는 소프트 삭제·원본과 연결 행 유지, 공개 조회 제외·게시 여부 반영·재게시, 호출자 트랜잭션 참여와 실패 시 롤백을 검증한다.
+푸시 상태 전환·롤백 테스트는 같은 DB 트랜잭션에서 SQL을 실행하는 포트 대역을 사용한다. 실제 푸시 어댑터와 워커 검증은 푸시 담당 범위다.
 Testcontainers 테스트는 Docker가 없는 환경에서 건너뛰므로 Docker 사용 환경에서 실행해야 한다.
 
 ```powershell

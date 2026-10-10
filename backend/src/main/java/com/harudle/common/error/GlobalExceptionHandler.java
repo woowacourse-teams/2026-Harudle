@@ -13,6 +13,7 @@ import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
 import com.harudle.diary.service.exception.DiaryNotPublishableException;
 import com.harudle.feed.service.exception.DiaryAlreadyPublishedException;
+import com.harudle.feed.service.exception.FeedAccessDeniedException;
 import com.harudle.feed.service.exception.FeedIntegrationUnavailableException;
 import com.harudle.feed.service.exception.FeedNotFoundException;
 import com.harudle.feed.service.exception.InvalidFeedCursorException;
@@ -171,6 +172,11 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(FeedNotFoundException.class)
     ResponseEntity<ProblemDetail> handleFeedNotFound(HttpServletRequest request) {
         return createResponse(ErrorType.FEED_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(FeedAccessDeniedException.class)
+    ResponseEntity<ProblemDetail> handleFeedAccessDenied(HttpServletRequest request) {
+        return createResponse(ErrorType.FORBIDDEN, request);
     }
 
     @ExceptionHandler(InvalidFeedCursorException.class)
