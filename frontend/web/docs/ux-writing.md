@@ -11,7 +11,7 @@
 화면 문구는 각 페이지의 `copy.ts`에서 관리합니다.
 
 - [로그인 문구](../src/pages/login/copy.ts): 태그라인
-- [홈 문구](../src/pages/home/copy.ts): 목록, 빈 화면, 생성량 안내
+- [앨범 문구](../src/pages/album/copy.ts): 목록, 빈 화면, 생성량 안내
 - [작성 문구](../src/pages/diary-write/copy.ts): 질문, 입력 예시, 안내, 팁, 입력 오류
 - [생성 문구](../src/pages/diary-generating/copy.ts): 단계별 안내, 완료, 실패, 생성 제한
 - [상세 문구](../src/pages/diary-detail/copy.ts): 줄거리, 공유, 저장, 삭제

@@ -1,6 +1,6 @@
 import { DIARY_GENERATING_COPY } from '../src/pages/diary-generating/copy';
 import { DIARY_WRITE_COPY } from '../src/pages/diary-write/copy';
-import { HOME_COPY } from '../src/pages/home/copy';
+import { ALBUM_COPY } from '../src/pages/album/copy';
 import { expect, test, type Page } from '@playwright/test';
 import {
   MOCK_SCENARIO_HEADER,
@@ -103,7 +103,7 @@ test.describe('일기 생성', () => {
     await expect(page.getByRole('textbox')).toHaveValue(VALID_DIARY_CONTENT);
   });
 
-  test('생성 중 홈으로 이동해도 생성 상태와 결과가 반영된다', async ({
+  test('생성 중 앨범으로 이동해도 생성 상태와 결과가 반영된다', async ({
     page,
   }) => {
     await goToDiaryWritePage(page);
@@ -112,11 +112,11 @@ test.describe('일기 생성', () => {
     await expect(page).toHaveURL('/diary-generating');
     await page.getByRole('button', { name: '뒤로 가기' }).click();
 
-    await expect(page).toHaveURL('/');
+    await expect(page).toHaveURL('/album');
     await expect(page.getByTestId('diary-generation-skeleton')).toBeVisible();
     await expect(
       page.getByText(
-        `${HOME_COPY.remainingUsage.before}3${HOME_COPY.remainingUsage.after}`,
+        `${ALBUM_COPY.remainingUsage.before}3${ALBUM_COPY.remainingUsage.after}`,
       ),
     ).toBeVisible();
 
@@ -126,12 +126,14 @@ test.describe('일기 생성', () => {
     await expect(page.getByText(GENERATED_DIARY_TITLE)).toBeVisible();
     await expect(
       page.getByText(
-        `${HOME_COPY.remainingUsage.before}2${HOME_COPY.remainingUsage.after}`,
+        `${ALBUM_COPY.remainingUsage.before}2${ALBUM_COPY.remainingUsage.after}`,
       ),
     ).toBeVisible();
   });
 
-  test('홈으로 이동한 뒤 생성이 실패하면 오류를 안내한다', async ({ page }) => {
+  test('앨범으로 이동한 뒤 생성이 실패하면 오류를 안내한다', async ({
+    page,
+  }) => {
     await goToDiaryWritePage(page, { generationFailure: true });
     await submitDiary(page);
 
@@ -150,7 +152,7 @@ test.describe('일기 생성', () => {
     ]);
 
     expect(dialogMessage).toBe(GENERATION_ERROR_MESSAGE);
-    await expect(page).toHaveURL('/');
+    await expect(page).toHaveURL('/album');
 
     await expect(page.getByText(GENERATED_DIARY_TITLE)).toHaveCount(0);
   });

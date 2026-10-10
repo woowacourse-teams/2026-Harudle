@@ -1,4 +1,4 @@
-import { HOME_COPY } from './copy';
+import { ALBUM_COPY } from './copy';
 import { css } from '@emotion/react';
 import requestFailImage from '../../assets/images/request-fail.png';
 import { theme } from '../../styles/theme';
@@ -13,7 +13,7 @@ const DiaryError = ({ errorMessage }: { errorMessage: string }) => {
       />
 
       <div css={messageBoxStyle}>
-        <h2 css={titleStyle}>{HOME_COPY.loadErrorTitle}</h2>
+        <h2 css={titleStyle}>{ALBUM_COPY.loadErrorTitle}</h2>
         <p css={descriptionStyle}>{errorMessage}</p>
       </div>
 
@@ -24,7 +24,7 @@ const DiaryError = ({ errorMessage }: { errorMessage: string }) => {
           window.location.reload();
         }}
       >
-        {HOME_COPY.reloadAction}
+        {ALBUM_COPY.reloadAction}
       </button>
     </div>
   );

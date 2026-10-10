@@ -1,6 +1,7 @@
 import { css } from '@emotion/react';
 import EntryRoute from './EntryRoute';
-import HomePage from './pages/home/HomePage/HomePage';
+import AlbumPage from './pages/album/AlbumPage/AlbumPage';
+import FeedPage from './pages/feed/FeedPage';
 import { Route, Routes } from 'react-router';
 import DiaryWritePage from './pages/diary-write/DiaryWritePage';
 import DiaryGeneratingPage from './pages/diary-generating/DiaryGeneratingPage';
@@ -21,7 +22,8 @@ const App = () => {
       <PwaAnalyticsTracker />
       <Routes>
         <Route element={<EntryRoute />}>
-          <Route path="/" element={<HomePage />} />
+          <Route path="/" element={<FeedPage />} />
+          <Route path="/album" element={<AlbumPage />} />
           <Route path="/login" element={<LoginPage />} />
         </Route>
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
