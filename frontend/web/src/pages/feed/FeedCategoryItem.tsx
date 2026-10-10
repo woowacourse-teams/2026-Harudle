@@ -49,6 +49,7 @@ const feedCategoryItemStyle = (
   font-weight: ${isSelected ? 500 : 400};
   white-space: nowrap;
   cursor: pointer;
+  transition: color 180ms ease;
 
   &::after {
     content: '';
@@ -57,8 +58,16 @@ const feedCategoryItemStyle = (
     bottom: 0;
     left: 0;
     height: 2px;
-    background-color: ${
-      isSelected ? theme.colors.background.brandSolid : 'transparent'
-    };
+    background-color: ${theme.colors.background.brandSolid};
+    transform: scaleX(${isSelected ? 1 : 0});
+    transition: transform 180ms ease;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+
+    &::after {
+      transition: none;
+    }
   }
 `;
