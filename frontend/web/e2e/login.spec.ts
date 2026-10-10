@@ -23,7 +23,7 @@ test.describe('로그인 화면', () => {
     ).toBeVisible();
   });
 
-  test('세션이 유효하면 로그인 페이지를 직접 열어도 홈 화면을 보여준다', async ({
+  test('세션이 유효하면 로그인 페이지를 직접 열어도 피드 화면을 보여준다', async ({
     page,
   }) => {
     await page.addInitScript(() => {
@@ -40,7 +40,7 @@ test.describe('로그인 화면', () => {
     await page.goto('/login');
 
     await expect(page).toHaveURL('/');
-    await expect(page.getByLabel('조회할 월')).toBeVisible();
+    await expect(page.getByText('피드 화면', { exact: true })).toBeVisible();
     expect(refreshRequests).toHaveLength(1);
   });
 
@@ -72,13 +72,13 @@ test.describe('로그인 화면', () => {
 });
 
 test.describe('카카오 로그인', () => {
-  test('카카오 로그인 후 로그인 처리에 성공하면 홈 화면을 보여준다', async ({
+  test('카카오 로그인 후 로그인 처리에 성공하면 피드 화면을 보여준다', async ({
     page,
   }) => {
     await page.goto('/auth/callback');
 
-    await expect(page).toHaveURL(/^http:\/\/localhost:5173\/$/);
-    await expect(page.getByLabel('조회할 월')).toBeVisible();
+    await expect(page).toHaveURL('/');
+    await expect(page.getByText('피드 화면', { exact: true })).toBeVisible();
   });
 
   test('카카오 로그인 후 로그인 처리에 실패하면 실패 안내를 보여주고 로그인 페이지로 돌아간다', async ({

@@ -10,11 +10,11 @@ import { DIARY_GENERATION_ERROR_CODE } from '../../domain/diary/diaryGenerate';
 
 const DiaryGeneratingError = ({
   error,
-  onReturnHome,
+  onReturnAlbum,
   onDiaryWriteRetry,
 }: {
   error: Error;
-  onReturnHome: () => void;
+  onReturnAlbum: () => void;
   onDiaryWriteRetry: () => void;
 }) => {
   const isGenerationInProgress =
@@ -31,8 +31,8 @@ const DiaryGeneratingError = ({
 
     // alert를 렌더링 도중에 실행시키지 않기 위해 useEffect로 감싼다. (순수성 보장)
     alert(DIARY_GENERATING_COPY.inProgress);
-    onReturnHome();
-  }, [isGenerationInProgress, onReturnHome]);
+    onReturnAlbum();
+  }, [isGenerationInProgress, onReturnAlbum]);
 
   if (isGenerationInProgress) {
     return null;
@@ -46,7 +46,7 @@ const DiaryGeneratingError = ({
             type="button"
             aria-label="뒤로 가기"
             css={headerButtonStyle}
-            onClick={onReturnHome}
+            onClick={onReturnAlbum}
           >
             <img
               src={backIcon}

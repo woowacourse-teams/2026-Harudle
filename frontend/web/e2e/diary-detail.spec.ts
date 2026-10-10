@@ -1,5 +1,5 @@
 import { DIARY_DETAIL_COPY } from '../src/pages/diary-detail/copy';
-import { HOME_COPY } from '../src/pages/home/copy';
+import { ALBUM_COPY } from '../src/pages/album/copy';
 import { ERROR_MESSAGES } from '../src/shared/errorMessage';
 import { expect, test, type Page } from '@playwright/test';
 import {
@@ -30,9 +30,9 @@ const setMockScenario = async (
   );
 };
 
-const goToHome = async (page: Page) => {
+const goToAlbum = async (page: Page) => {
   await page.clock.setFixedTime(TODAY);
-  await page.goto('/');
+  await page.goto('/album');
 };
 
 const clickSampleDiary = async (page: Page) => {
@@ -62,10 +62,10 @@ const goToSampleDiaryDetail = async (
 };
 
 test.describe('일기 상세', () => {
-  test('홈에서 일기를 클릭하면 로딩 후 상세 정보를 확인할 수 있다', async ({
+  test('앨범에서 일기를 클릭하면 로딩 후 상세 정보를 확인할 수 있다', async ({
     page,
   }) => {
-    await goToHome(page);
+    await goToAlbum(page);
     await clickSampleDiary(page);
     const loadingSpinner = page.getByRole('img', { name: '로딩 중' });
 
@@ -76,7 +76,7 @@ test.describe('일기 상세', () => {
 
   test('상세 정보 조회에 실패하면 다시 불러올 수 있다', async ({ page }) => {
     await setMockScenario(page, MOCK_SCENARIOS.diaryDetailFailure);
-    await goToHome(page);
+    await goToAlbum(page);
     await clickSampleDiary(page);
 
     const errorPage = page.getByRole('alert');
@@ -97,33 +97,35 @@ test.describe('일기 상세', () => {
     await expectSampleDiaryDetail(page);
   });
 
-  test('상단 뒤로가기 버튼을 누르면 홈 화면으로 이동한다', async ({ page }) => {
-    await goToHome(page);
+  test('상단 뒤로가기 버튼을 누르면 앨범 화면으로 이동한다', async ({
+    page,
+  }) => {
+    await goToAlbum(page);
     await clickSampleDiary(page);
 
     await page.getByRole('button', { name: '뒤로 가기' }).click();
 
-    await expect(page).toHaveURL('/');
+    await expect(page).toHaveURL('/album');
     await expect(page.getByLabel('조회할 월')).toBeVisible();
   });
 
   test('다른 월에서 상세 화면에 진입한 뒤 돌아가면 선택한 월을 유지한다', async ({
     page,
   }) => {
-    await page.goto('/?yearMonth=2026-07');
+    await page.goto('/album?yearMonth=2026-07');
 
     const monthInput = page.getByLabel('조회할 월');
     await monthInput.fill('2026-08');
-    await expect(page).toHaveURL('/?yearMonth=2026-08');
+    await expect(page).toHaveURL('/album?yearMonth=2026-08');
 
     await clickSampleDiary(page);
     await page.getByRole('button', { name: '뒤로 가기' }).click();
 
-    await expect(page).toHaveURL('/?yearMonth=2026-08');
+    await expect(page).toHaveURL('/album?yearMonth=2026-08');
     await expect(monthInput).toHaveValue('2026-08');
   });
 
-  test('삭제를 확인하면 일기를 삭제하고 홈 화면으로 이동한다', async ({
+  test('삭제를 확인하면 일기를 삭제하고 앨범 화면으로 이동한다', async ({
     page,
   }) => {
     await goToSampleDiaryDetail(page);
@@ -139,10 +141,10 @@ test.describe('일기 상세', () => {
     await confirmDialog.accept();
     await deleteClickPromise;
 
-    await expect(page).toHaveURL('/');
+    await expect(page).toHaveURL('/album');
     await expect(
       page.getByText(
-        `${HOME_COPY.monthlyCount.before}5${HOME_COPY.monthlyCount.after}`,
+        `${ALBUM_COPY.monthlyCount.before}5${ALBUM_COPY.monthlyCount.after}`,
       ),
     ).toBeVisible();
     await expect(

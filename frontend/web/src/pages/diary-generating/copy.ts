@@ -17,7 +17,7 @@ export const DIARY_GENERATING_COPY = {
   ],
   backgroundMessage: '다른 화면으로 이동해도 네컷만화는 계속 만들고 있어요.',
   inProgress:
-    '만들고 있는 네컷만화가 있어요. 완성되면 홈에서 확인할 수 있어요.',
+    '만들고 있는 네컷만화가 있어요. 완성되면 앨범에서 확인할 수 있어요.',
   errorTitle: '네컷만화를 완성하지 못했어요.',
   errorDescription: '작성한 내용은 그대로 남아 있어요. 다시 시도해 주세요.',
   limitErrorDescription: '작성한 내용은 그대로 남아 있어요.',

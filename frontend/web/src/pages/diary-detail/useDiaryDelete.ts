@@ -18,7 +18,7 @@ const useDiaryDelete = ({ diaryId }: { diaryId: string }) => {
       await deleteDiary({ diaryId });
 
       setRequest({ status: 'success', data: undefined });
-      navigate('/');
+      navigate('/album');
     } catch (error: unknown) {
       if (error instanceof Error) {
         captureError(error, {

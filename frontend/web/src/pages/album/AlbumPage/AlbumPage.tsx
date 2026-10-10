@@ -1,4 +1,4 @@
-import { HOME_COPY } from '../copy';
+import { ALBUM_COPY } from '../copy';
 import BottomNavigationLayout from '../../../shared/BottomNavigationLayout';
 import DiaryItemList from '../DiaryItemList';
 import useSelectedYearMonth from './useSelectedYearMonth';
@@ -20,7 +20,7 @@ const formatYearMonthToString = ({
   return `${year}-${month.toString().padStart(2, '0')}`;
 };
 
-const HomePage = () => {
+const AlbumPage = () => {
   const { selectedYearMonth, handleYearMonthChange } = useSelectedYearMonth(
     getToday().year,
     getToday().month,
@@ -28,7 +28,7 @@ const HomePage = () => {
 
   return (
     <BottomNavigationLayout>
-      <main css={homePageContentStyle}>
+      <main css={albumPageContentStyle}>
         <div css={contentHeaderStyle}>
           <div css={monthPickerStyle}>
             <input
@@ -58,7 +58,7 @@ const HomePage = () => {
   );
 };
 
-export default HomePage;
+export default AlbumPage;
 
 const RemainingGenerationUsage = () => {
   const { request, execute } = useGenerationUsage();
@@ -78,29 +78,29 @@ const RemainingGenerationUsage = () => {
     <div css={remainingGenerationUsageStyle} aria-live="polite">
       {hasGenerationUsageError ? (
         <>
-          <span>{HOME_COPY.usageError}</span>
+          <span>{ALBUM_COPY.usageError}</span>
           <button
             css={retryButtonStyle}
             type="button"
             onClick={() => void execute()}
           >
-            {HOME_COPY.usageRetryAction}
+            {ALBUM_COPY.usageRetryAction}
           </button>
         </>
       ) : (
         <span>
-          {HOME_COPY.remainingUsage.before}
+          {ALBUM_COPY.remainingUsage.before}
           <strong css={generationUsageTextStyle(remainingCount)}>
-            {remainingCount ?? HOME_COPY.usageLoadingCount}
+            {remainingCount ?? ALBUM_COPY.usageLoadingCount}
           </strong>
-          {HOME_COPY.remainingUsage.after}
+          {ALBUM_COPY.remainingUsage.after}
         </span>
       )}
     </div>
   );
 };
 
-const homePageContentStyle = css`
+const albumPageContentStyle = css`
   position: relative;
   flex: 1;
   display: flex;

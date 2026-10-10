@@ -20,7 +20,7 @@ const EntryRoute = (): JSX.Element => {
     );
   }
 
-  if (pathname === '/') {
+  if (pathname === '/' || pathname === '/album') {
     if (status === 'landing') return <Navigate to="/landing" replace />;
     if (status === 'login') return <Navigate to="/login" replace />;
   }

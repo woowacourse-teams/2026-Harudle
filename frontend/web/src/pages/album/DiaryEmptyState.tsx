@@ -1,4 +1,4 @@
-import { HOME_COPY } from './copy';
+import { ALBUM_COPY } from './copy';
 import { useNavigate, useSearchParams } from 'react-router';
 import ActionButton from '../../shared/ActionButton';
 import emptyPersonAndDog from '../../assets/images/empty-person-and-dog.png';
@@ -28,17 +28,17 @@ const DiaryEmptyState = () => {
         <div css={emptyStateDescriptionContentStyle}>
           <div css={emptyStateTitleStyle}>
             {isCurrentMonth
-              ? HOME_COPY.emptyCurrentMonth
-              : HOME_COPY.emptyOtherMonth(year, month)}
+              ? ALBUM_COPY.emptyCurrentMonth
+              : ALBUM_COPY.emptyOtherMonth(year, month)}
           </div>
           <div css={emptyStateDescriptionStyle}>
-            {HOME_COPY.emptyDescription}
+            {ALBUM_COPY.emptyDescription}
           </div>
         </div>
       </div>
 
       <ActionButton
-        label={HOME_COPY.createAction}
+        label={ALBUM_COPY.createAction}
         onClick={() => {
           navigate('/diary-write');
         }}
