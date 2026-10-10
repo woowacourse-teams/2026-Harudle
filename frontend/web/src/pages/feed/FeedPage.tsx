@@ -1,17 +1,21 @@
 import { css } from '@emotion/react';
 import type { Category } from '../../domain/category/categoryList';
+import { isFeedSort, type FeedSort } from '../../domain/feeds/feedList';
 import BottomNavigationLayout from '../../shared/BottomNavigationLayout';
 import FeedFilterBar from './FeedFilterBar';
 import { useSearchParams } from 'react-router';
 
 const FEED_QUERY_KEYS = {
   CATEGORY_ID: 'categoryId',
+  SORT: 'sort',
 } as const;
 
 const FeedPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const categoryId = searchParams.get(FEED_QUERY_KEYS.CATEGORY_ID) ?? undefined;
+  const rawSort = searchParams.get(FEED_QUERY_KEYS.SORT);
+  const sort = isFeedSort(rawSort) ? rawSort : 'LATEST';
 
   const handleCategoryChange = (
     nextCategoryId: Category['id'] | undefined,
@@ -27,12 +31,26 @@ const FeedPage = () => {
     });
   };
 
+  const handleSortChange = (nextSort: FeedSort): void => {
+    setSearchParams((previous): URLSearchParams => {
+      const next = new URLSearchParams(previous);
+      if (nextSort === 'LATEST') {
+        next.delete(FEED_QUERY_KEYS.SORT);
+      } else {
+        next.set(FEED_QUERY_KEYS.SORT, nextSort);
+      }
+      return next;
+    });
+  };
+
   return (
     <BottomNavigationLayout>
       <main css={feedPageContentStyle}>
         <FeedFilterBar
           selectedCategoryId={categoryId}
           onCategoryChange={handleCategoryChange}
+          sort={sort}
+          onSortChange={handleSortChange}
         />
       </main>
     </BottomNavigationLayout>

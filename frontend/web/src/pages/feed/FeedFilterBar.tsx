@@ -1,5 +1,6 @@
 import { css } from '@emotion/react';
 import feedSortDownIcon from '../../assets/icons/feed-sort-down.svg';
+import { isFeedSort, type FeedSort } from '../../domain/feeds/feedList';
 import { theme } from '../../styles/theme';
 import { FEED_COPY } from './copy';
 import FeedCategoryList, {
@@ -9,11 +10,15 @@ import FeedCategoryList, {
 interface FeedFilterBarProps {
   readonly selectedCategoryId: FeedCategoryListProps['selectedCategoryId'];
   readonly onCategoryChange: FeedCategoryListProps['onCategoryChange'];
+  readonly sort: FeedSort;
+  readonly onSortChange: (sort: FeedSort) => void;
 }
 
 const FeedFilterBar = ({
   selectedCategoryId,
   onCategoryChange,
+  sort,
+  onSortChange,
 }: FeedFilterBarProps) => {
   return (
     <div css={feedFilterBarStyle}>
@@ -21,12 +26,19 @@ const FeedFilterBar = ({
         selectedCategoryId={selectedCategoryId}
         onCategoryChange={onCategoryChange}
       />
-      <button type="button" css={feedSortSelectStyle}>
-        <span>{FEED_COPY.latestSort}</span>
-        <span css={sortIconSlotStyle}>
-          <img src={feedSortDownIcon} alt="" />
-        </span>
-      </button>
+      <select
+        css={feedSortSelectStyle}
+        value={sort}
+        onChange={(event): void => {
+          const nextSort = event.currentTarget.value;
+
+          // 검증된 select 옵션만 전달되지만, DOM의 value 타입은 string이므로 타입을 좁혀준다.
+          if (isFeedSort(nextSort)) onSortChange(nextSort);
+        }}
+      >
+        <option value="LATEST">{FEED_COPY.latestSort}</option>
+        <option value="POPULAR">{FEED_COPY.popularSort}</option>
+      </select>
     </div>
   );
 };
@@ -42,40 +54,31 @@ const feedFilterBarStyle = css`
   height: 48px;
   flex-shrink: 0;
   border-bottom: 1px solid ${theme.colors.stroke.divider};
-  letter-spacing: -0.35px;
 `;
 
 const feedSortSelectStyle = css`
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 3px;
+  appearance: none;
   flex-shrink: 0;
   width: 72px;
   height: 40px;
-  padding: 0;
+  padding: 0 21px 0 0;
   border: none;
-  background: none;
+  background-color: transparent;
+  background-image: url(${feedSortDownIcon});
+  background-repeat: no-repeat;
+  background-position: right -3px center;
+  background-size: 24px 24px;
   color: ${theme.colors.foreground.neutralMuted};
   font-family: inherit;
   font-size: 12px;
   font-weight: 400;
   line-height: 20px;
-  letter-spacing: inherit;
+  text-align: right;
+  text-align-last: right;
   cursor: pointer;
-`;
 
-const sortIconSlotStyle = css`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 18px;
-  height: 18px;
-  overflow: hidden;
-
-  img {
-    display: block;
-    flex-shrink: 0;
+  &:focus-visible {
+    outline: 2px solid ${theme.colors.stroke.focusRing};
+    outline-offset: -2px;
   }
 `;
