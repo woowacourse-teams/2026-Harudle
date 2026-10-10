@@ -3,6 +3,7 @@ import type { Category } from '../../domain/category/categoryList';
 import { isFeedSort, type FeedSort } from '../../domain/feeds/feedList';
 import BottomNavigationLayout from '../../shared/BottomNavigationLayout';
 import FeedFilterBar from './FeedFilterBar';
+import FeedItemList from './FeedItemList';
 import { useSearchParams } from 'react-router';
 
 const FEED_QUERY_KEYS = {
@@ -52,6 +53,7 @@ const FeedPage = () => {
           sort={sort}
           onSortChange={handleSortChange}
         />
+        <FeedItemList categoryId={categoryId} sort={sort} />
       </main>
     </BottomNavigationLayout>
   );
