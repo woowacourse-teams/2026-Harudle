@@ -123,7 +123,7 @@ public class SecurityConfig {
                         "/error"
                         ).permitAll()
                         .requestMatchers("/api/v1/admin/**").access(adminAuthorizationManager)
-                        .requestMatchers(HttpMethod.GET, "/api/v1/feeds/*").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/feeds", "/api/v1/feeds/*").permitAll()
                         .requestMatchers(
                                 "/scalar",
                                 "/scalar/**",

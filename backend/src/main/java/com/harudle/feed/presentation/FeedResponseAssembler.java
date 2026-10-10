@@ -1,6 +1,7 @@
 package com.harudle.feed.presentation;
 
 import com.harudle.feed.configuration.FeedUrlProperties;
+import com.harudle.feed.service.dto.FeedPageResult;
 import com.harudle.feed.service.dto.FeedResult;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
@@ -35,5 +36,10 @@ class FeedResponseAssembler {
                 result.likeCount(), result.commentCount(), result.likedByMe(), result.isMine(),
                 urls.shareUrl(result.id())
         );
+    }
+
+    FeedPageResponse toResponse(FeedPageResult page) {
+        return new FeedPageResponse(page.items().stream().map(this::toResponse).toList(),
+                page.nextCursor(), page.hasNext());
     }
 }

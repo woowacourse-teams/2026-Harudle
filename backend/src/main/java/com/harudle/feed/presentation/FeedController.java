@@ -3,6 +3,8 @@ package com.harudle.feed.presentation;
 import com.harudle.auth.presentation.AuthenticatedUserIdResolver;
 import com.harudle.common.error.ApiErrorResponses;
 import com.harudle.common.error.ErrorType;
+import com.harudle.feed.query.FeedSort;
+import com.harudle.feed.service.FeedListService;
 import com.harudle.feed.service.FeedPublicationService;
 import com.harudle.feed.service.FeedQueryService;
 import com.harudle.feed.service.dto.FeedResult;
@@ -13,7 +15,10 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
 import java.net.URI;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
@@ -23,6 +28,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @Tag(name = "Feed")
@@ -36,17 +42,20 @@ class FeedController {
 
     private final FeedPublicationService publicationService;
     private final FeedQueryService queryService;
+    private final FeedListService listService;
     private final AuthenticatedUserIdResolver userIds;
     private final FeedResponseAssembler responseAssembler;
 
     FeedController(
             FeedPublicationService publicationService,
             FeedQueryService queryService,
+            FeedListService listService,
             AuthenticatedUserIdResolver userIds,
             FeedResponseAssembler responseAssembler
     ) {
         this.publicationService = publicationService;
         this.queryService = queryService;
+        this.listService = listService;
         this.userIds = userIds;
         this.responseAssembler = responseAssembler;
     }
@@ -68,6 +77,23 @@ class FeedController {
                 .body(responseAssembler.toResponse(result));
     }
 
+    @Operation(summary = "공개 피드 목록 조회", description = "최신순 또는 현재 좋아요 수 기준 인기순으로 조회합니다.")
+    @ApiErrorResponses({
+            ErrorType.VALIDATION_ERROR, ErrorType.INVALID_CURSOR, ErrorType.UNAUTHORIZED,
+            ErrorType.CATEGORY_NOT_FOUND, ErrorType.FEED_UNAVAILABLE, ErrorType.IMAGE_STORAGE_ERROR
+    })
+    @GetMapping
+    FeedPageResponse getList(
+            Authentication authentication,
+            @RequestParam(defaultValue = "LATEST") FeedSort sort,
+            @RequestParam(required = false) @Positive Long categoryId,
+            @RequestParam(required = false) String cursor,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size
+    ) {
+        UUID viewerId = userIds.resolveOptional(authentication).orElse(null);
+        return responseAssembler.toResponse(listService.getList(viewerId, sort, categoryId, cursor, size));
+    }
+
     @Operation(
             summary = "공개 피드 상세 조회",
             description = "로그인 없이 조회할 수 있습니다. 유효한 Bearer 토큰이 있으면 내 좋아요와 소유 여부를 반환합니다."
@@ -85,4 +111,5 @@ class FeedController {
         UUID viewerId = userIds.resolveOptional(authentication).orElse(null);
         return responseAssembler.toResponse(queryService.getDetail(viewerId, UUID.fromString(feedId)));
     }
+
 }

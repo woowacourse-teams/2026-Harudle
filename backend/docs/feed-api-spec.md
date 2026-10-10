@@ -1,7 +1,7 @@
-# 피드 게시·상세 조회 API
+# 피드 게시·조회 API
 
-이번 1번 구현은 기존 일기를 공개 피드에 게시하고 게시한 피드를 상세 조회하는 범위다.
-목록/커서/정렬, 반응 쓰기, 개인 일기의 `publishedFeedId`, 피드 삭제 및 일기 삭제 시 연결 데이터 정리는 후속 단계에서 구현한다.
+1~2번 구현은 기존 일기의 공개 게시, 공개 목록·상세 조회와 댓글·좋아요 영역의 피드 연동 포트다.
+개인 일기의 `publishedFeedId`, 피드 삭제 및 일기 삭제 시 연결 데이터 정리는 후속 단계에서 구현한다.
 기존 포트의 메서드·입력·반환 타입은 변경하지 않는다. 기존 V15 피드 스키마를 사용하므로 추가 마이그레이션은 없다.
 
 ## API
@@ -9,6 +9,7 @@
 | 메서드 | 경로 | 인증 | 성공 응답 |
 | --- | --- | --- | --- |
 | POST | `/api/v1/feeds` | Bearer + CSRF Cookie/Header | 201, Feed |
+| GET | `/api/v1/feeds` | 선택 | 200, Feed Page |
 | GET | `/api/v1/feeds/{feedId}` | 선택 | 200, Feed |
 
 게시 요청에는 `Authorization: Bearer {accessToken}`, `XSRF-TOKEN` Cookie와 같은 값을 가진 `X-XSRF-TOKEN` Header가 필요하다.
@@ -31,6 +32,43 @@ CSRF는 Bearer 인증 요청에도 적용한다. 정상 응답은 `application/j
 성공하면 `Location: /api/v1/feeds/{feedId}`와 Feed를 반환한다.
 일기 잠금, 카테고리 잠금, 피드 저장, 게시 이벤트 예약은 같은 트랜잭션에서 수행한다.
 푸시 예약 저장 실패 시 피드도 롤백한다. 실제 FCM 발송은 푸시 담당의 워커가 수행한다.
+
+### 공개 목록 조회
+
+```http
+GET /api/v1/feeds?sort=LATEST&categoryId=1&size=20
+```
+
+| 파라미터 | 기본값 | 규칙 |
+| --- | --- | --- |
+| `sort` | `LATEST` | `LATEST` 또는 `POPULAR` |
+| `categoryId` | 생략 | 양수 정수. 생략하면 모든 카테고리 |
+| `size` | `20` | 1~50 |
+| `cursor` | 생략 | 이전 응답의 `nextCursor`를 그대로 전달 |
+
+`LATEST`는 게시 시각 내림차순, 같은 시각이면 피드 UUID 내림차순이다.
+`POPULAR`는 현재 좋아요 수, 게시 시각, 피드 UUID 순으로 내림차순이며 기간 제한은 없다.
+인기순은 페이지 사이에 좋아요 수가 바뀌면 중복·누락이 발생할 수 있으므로 클라이언트는 피드 ID로 중복을 제거한다.
+
+응답의 `items`는 아래 Feed 응답과 같은 형식이다.
+
+```json
+{
+  "items": [],
+  "nextCursor": null,
+  "hasNext": false
+}
+```
+
+다음 페이지가 있으면 `hasNext: true`와 마지막 반환 항목 기준의 `nextCursor`를 제공한다.
+마지막 페이지와 빈 목록은 `nextCursor: null`, `hasNext: false`다.
+커서는 정렬·카테고리 조건에 묶인다. 조건을 바꾸면 커서를 생략하고 첫 페이지부터 조회한다.
+페이지 크기는 커서를 유지한 채 바꿀 수 있다. 잘못된 커서나 조건 불일치는 `400 INVALID_CURSOR`다.
+
+삭제된 피드·원본 일기, 생성이 완료되지 않은 일기와 탈퇴한 작성자는 목록에서 제외한다.
+공개 프로필이 없는 항목도 제외하고, 가능한 경우 뒤의 항목으로 페이지를 채운다.
+카테고리는 비활성이어도 기존 피드를 조회할 수 있다. 존재하지 않는 카테고리 필터는 빈 목록 대신 `404 CATEGORY_NOT_FOUND`다.
+익명 조회와 로그인 조회의 개인화 규칙은 상세 조회와 같다.
 
 ### 상세 조회와 Feed 응답
 
@@ -71,7 +109,8 @@ CSRF는 Bearer 인증 요청에도 적용한다. 정상 응답은 `application/j
 
 | 상태 | code | 조건 |
 | --- | --- | --- |
-| 400 | `VALIDATION_ERROR` | 필수 값 누락, 잘못된 UUID, 잘못된 카테고리 ID |
+| 400 | `VALIDATION_ERROR` | 필수 값 누락, 잘못된 UUID·카테고리 ID·정렬·페이지 크기 |
+| 400 | `INVALID_CURSOR` | 잘못된 커서 또는 정렬·카테고리 조건 불일치 |
 | 401 | `UNAUTHORIZED` | 게시 인증 누락 또는 유효하지 않은 Bearer 토큰 |
 | 403 | `INVALID_CSRF_TOKEN` | 게시 CSRF 검증 실패 |
 | 403 | `FORBIDDEN` | 다른 사용자의 일기 게시 |
@@ -89,10 +128,10 @@ CSRF는 Bearer 인증 요청에도 적용한다. 정상 응답은 `application/j
 | --- | --- | --- |
 | `DiaryPublicationReader` | 구현: 일기 소유·삭제·생성 성공 검증, 일기 잠금 | 일기 |
 | `CategoryReader` | 호출: 게시 시 활성 카테고리 잠금, 조회 시 비활성 포함 조회 | 카테고리 |
-| `PublicProfileReader` | 호출: 공개 작성자 정보 조회 | 프로필 |
-| `FeedLikeReader` | 호출: 로그인 사용자의 상세 좋아요 여부 | 좋아요 |
+| `PublicProfileReader` | 호출: 공개 작성자 정보 일괄 조회 | 프로필 |
+| `FeedLikeReader` | 호출: 로그인 사용자의 목록·상세 좋아요 여부 일괄 조회 | 좋아요 |
 | `FeedPushOutbox` | 호출: 게시 트랜잭션에서 이벤트 예약 | 푸시 |
-| `FeedInteractionPort` | 2번 단계에서 구현 | 피드 |
+| `FeedInteractionPort` | 구현: 활성 피드 잠금, 작성자·반응 수 반환, 반응 수 증감 | 피드 |
 | `PushClient` | 이번 범위에 없음 | 외부 연동/푸시 워커 |
 
 역할 표의 `FeedAccess`와 `FeedCounterWriter`는 현재 저장소에서 `FeedInteractionPort` 하나로 합쳐져 있다.
@@ -105,9 +144,21 @@ CSRF는 Bearer 인증 요청에도 적용한다. 정상 응답은 `application/j
 공유 API 컨트롤러·응답 조립·URL 설정은 제거하며 기존 공유 관련 인터페이스는 변경하지 않는다.
 프론트의 기존 `/shares/{shareId}` 화면과 `share-link` 호출은 피드 게시 및 `/feeds/{feedId}` 화면으로 전환해야 한다.
 
-`Feed`는 게시 데이터의 생성 규칙을 담당하고, 서비스가 검증과 트랜잭션 흐름을 조합한다.
+`Feed`는 게시 데이터의 생성과 반응 수의 증감·음수 방지 규칙을 담당하고, 서비스가 검증과 트랜잭션 흐름을 조합한다.
 Repository는 잠금·저장·조회만 수행한다. `DiaryPublicationReader`는 일기만 잠그고 생성 기록은 조회해 기존 생성 처리와 잠금 순서가 역전되지 않게 한다.
 중복 게시에는 일기 잠금과 `uq_feeds_active_diary` 부분 유니크 인덱스를 함께 사용한다.
+
+목록 Repository는 필요한 필드를 한 번에 조회하고 커서 조건과 `size + 1` 제한을 적용한다. 전체 개수를 세는 쿼리는 실행하지 않는다.
+서비스는 작성자와 로그인 사용자의 좋아요 정보를 일괄 조회한다. 카테고리는 기존 단건 인터페이스를 유지하고 페이지 내 같은 ID를 한 번만 조회한다.
+조회 중 공개 프로필이 사라져 항목을 제외한 경우에는 마지막으로 읽은 DB 경계 뒤의 목록을 추가로 조회한다.
+이미지 접근 URL은 목록에서도 DB 트랜잭션 이후에 발급한다.
+
+`FeedInteractionPort` 구현은 호출자의 쓰기 트랜잭션에 반드시 참여한다(`MANDATORY`). 트랜잭션 없는 호출은 거부한다.
+피드 행만 비관적 쓰기 잠금으로 잠그고 원본 일기와 작성자의 삭제 여부를 조회한다. 원본 일기는 잠그지 않는다.
+삭제된 피드·원본 일기·작성자는 `FEED_NOT_FOUND`로 처리한다.
+좋아요·댓글 담당은 실제 반응이 추가되거나 제거될 때만 카운터를 변경해야 한다. 중복 요청의 멱등 처리는 각 담당이 수행한다.
+반응 저장, 카운터 변경과 인앱 알림 저장은 호출자의 같은 트랜잭션에서 처리해 함께 커밋하거나 롤백한다.
+카운터는 잠근 `Feed` 도메인을 변경하고 JPA 변경 감지로 저장한다. 0에서 감소하거나 정수 범위를 넘는 증가는 실패한다.
 
 푸시 수신자 정책에는 확인이 필요하다. 기존 `FeedPushOutbox` 설명은 작성자를 포함하고, 전달받은 정책 수정안은 작성자를 제외한다.
 인터페이스를 그대로 유지하므로 이번 구현에서는 이벤트만 전달한다. 수신자 선정은 푸시 담당 구현에서 최신 정책에 맞춰 처리해야 한다.
@@ -115,7 +166,9 @@ Repository는 잠금·저장·조회만 수행한다. `DiaryPublicationReader`�
 ## 검증
 
 단위·MVC 테스트는 게시 조건, 중복 게시, 공개 응답의 비공개 필드 제외, 익명/로그인 조회, 오류 코드, 실제 Bearer 요청의 CSRF Cookie/Header를 검증한다.
+목록 테스트는 요청 조건 검증, 커서 왕복과 조건 불일치, 다음 페이지 판단, 개인화 일괄 조회와 프로필 누락 시 페이지 보충을 검증한다.
 `FeedPublicationPersistenceTest`는 PostgreSQL에서 저장·조회, 동시 게시, 푸시 예약 실패 시 롤백, 삭제된 대상 제외와 재게시를 검증한다.
+`FeedListAndInteractionPersistenceTest`는 PostgreSQL의 정렬·UUID 동률 처리·커서, 삭제 대상 제외, 반응과 카운터의 동시 롤백·동시 증감, 원본 일기를 잠그지 않는 동작을 검증한다.
 Testcontainers 테스트는 Docker가 없는 환경에서 건너뛰므로 Docker 사용 환경에서 실행해야 한다.
 
 ```powershell

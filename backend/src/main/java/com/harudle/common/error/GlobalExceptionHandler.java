@@ -15,6 +15,7 @@ import com.harudle.diary.service.exception.DiaryNotPublishableException;
 import com.harudle.feed.service.exception.DiaryAlreadyPublishedException;
 import com.harudle.feed.service.exception.FeedIntegrationUnavailableException;
 import com.harudle.feed.service.exception.FeedNotFoundException;
+import com.harudle.feed.service.exception.InvalidFeedCursorException;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
 import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
 import com.harudle.generation.usage.service.exception.DailyGenerationLimitExceededException;
@@ -170,6 +171,11 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(FeedNotFoundException.class)
     ResponseEntity<ProblemDetail> handleFeedNotFound(HttpServletRequest request) {
         return createResponse(ErrorType.FEED_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(InvalidFeedCursorException.class)
+    ResponseEntity<ProblemDetail> handleInvalidFeedCursor(HttpServletRequest request) {
+        return createResponse(ErrorType.INVALID_CURSOR, request);
     }
 
     @ExceptionHandler(CategoryNotFoundException.class)

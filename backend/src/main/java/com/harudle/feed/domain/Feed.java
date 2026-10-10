@@ -79,4 +79,37 @@ public class Feed {
     public boolean isDeleted() {
         return deletedAt != null;
     }
+
+    public void increaseLikeCount() {
+        ensureActive();
+        likeCount = Math.incrementExact(likeCount);
+    }
+
+    public void decreaseLikeCount() {
+        ensureActive();
+        likeCount = decrease(likeCount);
+    }
+
+    public void increaseCommentCount() {
+        ensureActive();
+        commentCount = Math.incrementExact(commentCount);
+    }
+
+    public void decreaseCommentCount() {
+        ensureActive();
+        commentCount = decrease(commentCount);
+    }
+
+    private void ensureActive() {
+        if (isDeleted()) {
+            throw new IllegalStateException("삭제된 피드의 반응 수를 변경할 수 없습니다.");
+        }
+    }
+
+    private static int decrease(int count) {
+        if (count == 0) {
+            throw new IllegalStateException("피드 반응 수는 0보다 작아질 수 없습니다.");
+        }
+        return count - 1;
+    }
 }

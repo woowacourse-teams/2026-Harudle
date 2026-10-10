@@ -21,4 +21,27 @@ class FeedTest {
         Feed feed = Feed.publish(UUID.randomUUID(), 1, now);
         assertThat(feed.getPublishedAt()).isEqualTo(Instant.parse("2026-10-11T01:00:00.123456Z"));
     }
+
+    @Test
+    void independentlyAdjustsLikeAndCommentCounts() {
+        Feed feed = Feed.publish(UUID.randomUUID(), 1, Instant.now());
+        feed.increaseLikeCount();
+        feed.increaseLikeCount();
+        feed.increaseCommentCount();
+        feed.decreaseLikeCount();
+        assertThat(feed.getLikeCount()).isEqualTo(1);
+        assertThat(feed.getCommentCount()).isEqualTo(1);
+        feed.decreaseCommentCount();
+        assertThat(feed.getCommentCount()).isZero();
+    }
+
+    @Test
+    void refusesToDecreaseCountersBelowZero() {
+        Feed feed = Feed.publish(UUID.randomUUID(), 1, Instant.now());
+        assertThatThrownBy(feed::decreaseLikeCount).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(feed::decreaseCommentCount).isInstanceOf(IllegalStateException.class);
+        assertThat(feed.getLikeCount()).isZero();
+        assertThat(feed.getCommentCount()).isZero();
+    }
+
 }

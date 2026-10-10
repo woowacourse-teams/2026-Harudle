@@ -31,18 +31,23 @@ import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
 import com.harudle.diary.service.exception.DiaryNotPublishableException;
 import com.harudle.feed.configuration.FeedConfiguration;
+import com.harudle.feed.query.FeedSort;
+import com.harudle.feed.service.FeedListService;
 import com.harudle.feed.service.FeedPublicationService;
 import com.harudle.feed.service.FeedQueryService;
+import com.harudle.feed.service.dto.FeedPageResult;
 import com.harudle.feed.service.dto.FeedResult;
 import com.harudle.feed.service.exception.DiaryAlreadyPublishedException;
 import com.harudle.feed.service.exception.FeedIntegrationUnavailableException;
 import com.harudle.feed.service.exception.FeedNotFoundException;
+import com.harudle.feed.service.exception.InvalidFeedCursorException;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
 import com.harudle.profile.service.port.PublicProfileReader;
 import jakarta.servlet.http.Cookie;
 import java.net.URI;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
@@ -82,6 +87,7 @@ class FeedControllerTest {
     @Autowired private MockMvc mockMvc;
     @MockitoBean private FeedPublicationService publicationService;
     @MockitoBean private FeedQueryService queryService;
+    @MockitoBean private FeedListService listService;
     @MockitoBean private ImageUrlProvider imageUrlProvider;
     @MockitoBean private JwtDecoder jwtDecoder;
     @MockitoBean private UserRepository userRepository;
@@ -138,6 +144,79 @@ class FeedControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.likedByMe").value(true))
                 .andExpect(jsonPath("$.isMine").value(true));
+    }
+
+    @Test
+    void publiclyListsWithDefaultSortAndSizeWithoutCsrf() throws Exception {
+        when(listService.getList(null, FeedSort.LATEST, null, null, 20))
+                .thenReturn(new FeedPageResult(List.of(result(false, false)), "next-page", true));
+        mockMvc.perform(get("/api/v1/feeds"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].id").value(FEED.toString()))
+                .andExpect(jsonPath("$.items[0].likedByMe").value(false))
+                .andExpect(jsonPath("$.items[0].shareUrl").value("https://harudle.example/feeds/" + FEED))
+                .andExpect(jsonPath("$.items[0].sourceText").doesNotExist())
+                .andExpect(jsonPath("$.items[0].imageObjectKey").doesNotExist())
+                .andExpect(jsonPath("$.nextCursor").value("next-page"))
+                .andExpect(jsonPath("$.hasNext").value(true));
+        verify(listService).getList(null, FeedSort.LATEST, null, null, 20);
+    }
+
+    @Test
+    void acceptsAuthenticatedPopularListAndCategoryCursorParameters() throws Exception {
+        when(listService.getList(ACTOR, FeedSort.POPULAR, 1L, "previous-page", 50))
+                .thenReturn(new FeedPageResult(List.of(result(true, true)), null, false));
+        mockMvc.perform(get("/api/v1/feeds").param("sort", "POPULAR").param("categoryId", "1")
+                        .param("cursor", "previous-page").param("size", "50")
+                        .with(jwt().jwt(token -> token.subject(ACTOR.toString()))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].likedByMe").value(true))
+                .andExpect(jsonPath("$.items[0].isMine").value(true))
+                .andExpect(jsonPath("$.hasNext").value(false));
+        verify(listService).getList(ACTOR, FeedSort.POPULAR, 1L, "previous-page", 50);
+    }
+
+    @Test
+    void returnsEmptyListWithNullCursor() throws Exception {
+        when(listService.getList(null, FeedSort.LATEST, null, null, 20))
+                .thenReturn(new FeedPageResult(List.of(), null, false));
+        mockMvc.perform(get("/api/v1/feeds")).andExpect(status().isOk())
+                .andExpect(content().json("{\"items\":[],\"nextCursor\":null,\"hasNext\":false}"));
+    }
+
+    @ParameterizedTest
+    @MethodSource("invalidListParameters")
+    void validatesListQueryParameters(String parameter, String value) throws Exception {
+        mockMvc.perform(get("/api/v1/feeds").param(parameter, value))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        verifyNoInteractions(listService);
+    }
+
+    private static Stream<Arguments> invalidListParameters() {
+        return Stream.of(Arguments.of("sort", "UNKNOWN"), Arguments.of("size", "0"),
+                Arguments.of("size", "51"), Arguments.of("size", "bad"),
+                Arguments.of("categoryId", "0"), Arguments.of("categoryId", "-1"),
+                Arguments.of("categoryId", "UUID"));
+    }
+
+    @Test
+    void mapsInvalidCursorToProblemDetails() throws Exception {
+        when(listService.getList(null, FeedSort.LATEST, null, "invalid", 20))
+                .thenThrow(new InvalidFeedCursorException());
+        mockMvc.perform(get("/api/v1/feeds").param("cursor", "invalid"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_CURSOR"))
+                .andExpect(jsonPath("$.traceId").isNotEmpty());
+    }
+
+    @Test
+    void mapsMissingCategoryOnEmptyList() throws Exception {
+        when(listService.getList(null, FeedSort.LATEST, 99L, null, 20))
+                .thenThrow(new CategoryNotFoundException());
+        mockMvc.perform(get("/api/v1/feeds").param("categoryId", "99"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CATEGORY_NOT_FOUND"));
     }
 
     @Test
