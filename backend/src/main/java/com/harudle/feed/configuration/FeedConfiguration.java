@@ -1,9 +1,9 @@
-package com.harudle.share.configuration;
+package com.harudle.feed.configuration;
 
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(ShareUrlProperties.class)
-public class ShareConfiguration {
+@EnableConfigurationProperties(FeedUrlProperties.class)
+public class FeedConfiguration {
 }

@@ -6,9 +6,15 @@ import com.harudle.admin.service.exception.AdminGenerationUsageConflictException
 import com.harudle.admin.service.exception.AdminGenerationHistoryDateRangeException;
 import com.harudle.admin.service.exception.AdminInactiveUserException;
 import com.harudle.auth.presentation.AuthenticationRequiredException;
+import com.harudle.category.service.exception.CategoryInactiveException;
+import com.harudle.category.service.exception.CategoryNotFoundException;
 import com.harudle.common.validation.InvalidIdempotencyKeyException;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
+import com.harudle.diary.service.exception.DiaryNotPublishableException;
+import com.harudle.feed.service.exception.DiaryAlreadyPublishedException;
+import com.harudle.feed.service.exception.FeedIntegrationUnavailableException;
+import com.harudle.feed.service.exception.FeedNotFoundException;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
 import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
 import com.harudle.generation.usage.service.exception.DailyGenerationLimitExceededException;
@@ -159,6 +165,40 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(ShareNotFoundException.class)
     ResponseEntity<ProblemDetail> handleShareNotFound(HttpServletRequest request) {
         return createResponse(ErrorType.SHARE_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(FeedNotFoundException.class)
+    ResponseEntity<ProblemDetail> handleFeedNotFound(HttpServletRequest request) {
+        return createResponse(ErrorType.FEED_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(CategoryNotFoundException.class)
+    ResponseEntity<ProblemDetail> handleCategoryNotFound(HttpServletRequest request) {
+        return createResponse(ErrorType.CATEGORY_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(CategoryInactiveException.class)
+    ResponseEntity<ProblemDetail> handleCategoryInactive(HttpServletRequest request) {
+        return createResponse(ErrorType.CATEGORY_INACTIVE, request);
+    }
+
+    @ExceptionHandler(DiaryNotPublishableException.class)
+    ResponseEntity<ProblemDetail> handleDiaryNotPublishable(HttpServletRequest request) {
+        return createResponse(ErrorType.DIARY_NOT_PUBLISHABLE, request);
+    }
+
+    @ExceptionHandler(DiaryAlreadyPublishedException.class)
+    ResponseEntity<ProblemDetail> handleDiaryAlreadyPublished(HttpServletRequest request) {
+        return createResponse(ErrorType.DIARY_ALREADY_PUBLISHED, request);
+    }
+
+    @ExceptionHandler(FeedIntegrationUnavailableException.class)
+    ResponseEntity<ProblemDetail> handleFeedUnavailable(
+            FeedIntegrationUnavailableException exception,
+            HttpServletRequest request
+    ) {
+        apiExceptionLogger.error(ErrorType.FEED_UNAVAILABLE, exception, request);
+        return createResponse(ErrorType.FEED_UNAVAILABLE, request);
     }
 
     @ExceptionHandler(AdminUserNotFoundException.class)

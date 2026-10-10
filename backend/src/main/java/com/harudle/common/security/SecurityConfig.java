@@ -13,10 +13,12 @@ import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationTrustResolver;
 import org.springframework.security.authentication.AuthenticationTrustResolverImpl;
 import org.springframework.security.config.Customizer;
+import org.springframework.security.config.ObjectPostProcessor;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import tools.jackson.databind.ObjectMapper;
 
@@ -121,6 +123,7 @@ public class SecurityConfig {
                         "/error"
                         ).permitAll()
                         .requestMatchers("/api/v1/admin/**").access(adminAuthorizationManager)
+                        .requestMatchers(HttpMethod.GET, "/api/v1/feeds/*").permitAll()
                         .requestMatchers(
                                 "/scalar",
                                 "/scalar/**",
@@ -133,6 +136,15 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(csrfTokenRepository)
                         .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
+                        .withObjectPostProcessor(new ObjectPostProcessor<CsrfFilter>() {
+                            @Override
+                            public <O extends CsrfFilter> O postProcess(O filter) {
+                                // Resource Server의 Bearer 요청 제외 규칙보다 API의 CSRF 정책을 우선한다.
+                                filter.setRequireCsrfProtectionMatcher(CsrfFilter.DEFAULT_CSRF_MATCHER);
+                                filter.setAccessDeniedHandler(apiAccessDeniedHandler);
+                                return filter;
+                            }
+                        })
                 )
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint(apiAuthenticationEntryPoint)

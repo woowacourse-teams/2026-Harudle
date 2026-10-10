@@ -26,7 +26,7 @@ import org.springframework.context.annotation.Configuration;
                 @Tag(name = "Guest", description = "로그인 전 체험"),
                 @Tag(name = "Diary", description = "일기 및 히스토리"),
                 @Tag(name = "Generation", description = "AI 생성 및 사용량"),
-                @Tag(name = "Share", description = "공유 링크")
+                @Tag(name = "Feed", description = "피드 게시·조회·공유")
         }
 )
 @SecurityScheme(

@@ -58,6 +58,36 @@ public enum ErrorType {
             "Diary not found",
             "일기를 찾을 수 없습니다."
     ),
+    FEED_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "Feed not found",
+            "피드를 찾을 수 없습니다."
+    ),
+    CATEGORY_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "Category not found",
+            "카테고리를 찾을 수 없습니다."
+    ),
+    DIARY_NOT_PUBLISHABLE(
+            HttpStatus.CONFLICT,
+            "Diary not publishable",
+            "이미지 생성이 완료된 일기만 게시할 수 있습니다."
+    ),
+    DIARY_ALREADY_PUBLISHED(
+            HttpStatus.CONFLICT,
+            "Diary already published",
+            "이미 피드로 게시된 일기입니다."
+    ),
+    CATEGORY_INACTIVE(
+            HttpStatus.CONFLICT,
+            "Category inactive",
+            "비활성 카테고리에는 게시할 수 없습니다."
+    ),
+    FEED_UNAVAILABLE(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "Feed unavailable",
+            "피드 연동 기능이 아직 구성되지 않았습니다."
+    ),
     SHARE_NOT_FOUND(
             HttpStatus.NOT_FOUND,
             "Share not found",

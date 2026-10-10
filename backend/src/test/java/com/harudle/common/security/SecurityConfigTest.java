@@ -231,8 +231,12 @@ class SecurityConfigTest {
                 .andExpect(jsonPath("$.paths['/api/v1/guest/diaries'].post.responses['200']").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/guest/diaries'].post.responses['201']").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/diaries/{diaryId}'].delete.responses['204']").exists())
-                .andExpect(jsonPath("$.paths['/api/v1/diaries/{diaryId}/share-link'].put.responses['200']").exists())
-                .andExpect(jsonPath("$.paths['/api/v1/diaries/{diaryId}/share-link'].put.responses['201']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/feeds'].post.responses['201']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/feeds'].post.security[0].bearerAuth").isArray())
+                .andExpect(jsonPath("$.paths['/api/v1/feeds'].post.security[0].csrfToken").isArray())
+                .andExpect(jsonPath("$.paths['/api/v1/feeds/{feedId}'].get").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/diaries/{diaryId}/share-link']").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/v1/public/shares/{shareId}']").doesNotExist())
                 .andExpect(jsonPath("$.paths['/api/v1/auth/logout'].post.responses['204']").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/guest/session'].post.responses['204']").exists());
     }
