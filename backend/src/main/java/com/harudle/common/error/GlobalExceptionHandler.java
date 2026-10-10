@@ -5,6 +5,7 @@ import com.harudle.admin.service.exception.AdminGenerationLimitBelowUsageExcepti
 import com.harudle.admin.service.exception.AdminGenerationUsageConflictException;
 import com.harudle.admin.service.exception.AdminGenerationHistoryDateRangeException;
 import com.harudle.admin.service.exception.AdminInactiveUserException;
+import com.harudle.auth.domain.exception.InvalidNicknameException;
 import com.harudle.auth.presentation.AuthenticationRequiredException;
 import com.harudle.common.validation.InvalidIdempotencyKeyException;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
@@ -119,6 +120,18 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(ConstraintViolationException.class)
     ResponseEntity<ProblemDetail> handleValidation(HttpServletRequest request) {
         return createResponse(ErrorType.VALIDATION_ERROR, request);
+    }
+
+    @ExceptionHandler(InvalidNicknameException.class)
+    ResponseEntity<ProblemDetail> handleInvalidNickname(
+            InvalidNicknameException exception,
+            HttpServletRequest request
+    ) {
+        return createResponse(
+                ErrorType.VALIDATION_ERROR,
+                request,
+                List.of(new FieldValidationError("nickname", exception.getMessage()))
+        );
     }
 
     @ExceptionHandler(InvalidIdempotencyKeyException.class)
