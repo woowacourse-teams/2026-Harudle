@@ -103,7 +103,8 @@ class GuestDiaryQueryServiceTest {
                         "친구와 보낸 하루",
                         "generated/comic.png",
                         NOW
-                )
+                ),
+                null
         );
     }
 }

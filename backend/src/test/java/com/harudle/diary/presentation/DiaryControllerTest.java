@@ -66,6 +66,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -327,15 +328,18 @@ class DiaryControllerTest {
         assertThat(response.jsonPath().getList("days")).isEmpty();
     }
 
-    @Test
-    @DisplayName("본인 일기와 생성 결과 상세를 조회한다")
-    void getDetail() {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    @DisplayName("본인 일기 상세에 publishedFeedId를 UUID 또는 null로 반환한다")
+    void getDetail(boolean published) {
+        UUID feedId = UUID.randomUUID();
         DiaryDetailResult result = new DiaryDetailResult(
                 DIARY_ID,
                 DIARY_DATE,
                 "오늘 친구와 카페에 갔다.",
                 CREATED_AT,
-                createGenerationResult()
+                createGenerationResult(),
+                published ? feedId : null
         );
         when(diaryQueryService.getDetail(USER_ID, DIARY_ID)).thenReturn(result);
         configureImageUrl();
@@ -344,6 +348,8 @@ class DiaryControllerTest {
                 .get("/api/v1/diaries/{diaryId}", DIARY_ID);
 
         assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.jsonPath().getMap(""))
+                .containsEntry("publishedFeedId", published ? feedId.toString() : null);
         assertThat(response.jsonPath().getString("sourceText"))
                 .isEqualTo("오늘 친구와 카페에 갔다.");
         assertThat(response.jsonPath().getString("createdAt"))
@@ -630,7 +636,8 @@ class DiaryControllerTest {
                 DIARY_DATE,
                 "오늘 친구와 카페에 갔다.",
                 CREATED_AT,
-                createGenerationResult()
+                createGenerationResult(),
+                null
         );
         when(diaryQueryService.getDetail(USER_ID, DIARY_ID)).thenReturn(result);
         when(imageUrlProvider.createAccessUrl("generated/comic.png"))
@@ -787,7 +794,7 @@ class DiaryControllerTest {
         when(diaryQueryService.getDetail(USER_ID, DIARY_ID)).thenReturn(new DiaryDetailResult(
                 DIARY_ID, DIARY_DATE, "오늘 친구와 카페에 갔다.", CREATED_AT,
                 new DiaryGenerationResult(GENERATION_ID, GenerationStatus.SUCCEEDED, "새 일기",
-                        BACKUP_DETAIL_KEY, COMPLETED_AT)));
+                        BACKUP_DETAIL_KEY, COMPLETED_AT), null));
     }
 
     private BackupObjectStorage configureR2Fallback() {

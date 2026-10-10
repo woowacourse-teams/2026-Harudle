@@ -118,7 +118,7 @@ Idempotency-Key: 7e5cc251-fdde-4cc0-a54e-2c8142750609
 | `GET` | `/api/v1/guest/diaries/{diaryId}` | 게스트 세션 | 게스트 세션에 연결된 일기 생성 결과 조회 |
 | `GET` | `/api/v1/me/generation-usage` | 필요 | 오늘 생성 사용량 조회 |
 | `GET` | `/api/v1/diaries` | 필요 | 연·월 기준 내 일기 조회 |
-| `GET` | `/api/v1/diaries/{diaryId}` | 필요 | 일기 및 생성 결과 상세 조회 |
+| `GET` | `/api/v1/diaries/{diaryId}` | 필요 | 일기·생성 결과 및 연결된 활성 피드 ID 상세 조회 |
 | `DELETE` | `/api/v1/diaries/{diaryId}` | 필요 | 일기 삭제 |
 
 ### 3.3 피드 게시 및 공유
@@ -522,11 +522,14 @@ HTTP/1.1 200 OK
     "imageUrl": "https://presigned-s3-url.example/...",
     "imageUrlExpiresAt": "2026-08-06T20:20:23+09:00",
     "completedAt": "2026-08-06T20:11:42+09:00"
-  }
+  },
+  "publishedFeedId": null
 }
 ```
 
 일기가 없거나 삭제된 경우 `404 DIARY_NOT_FOUND`를 반환합니다.
+`publishedFeedId`는 연결된 활성 피드의 UUID입니다. 게시 전 또는 피드 삭제 후에는 null, 삭제 후 재게시하면 새 피드 ID를 반환합니다.
+본인 소유 확인 후 게시 여부를 조회합니다. 다른 사용자의 일기는 `403 FORBIDDEN`입니다.
 
 ### 6.3 일기 삭제
 

@@ -8,12 +8,15 @@ import static org.mockito.Mockito.when;
 
 import com.harudle.category.service.port.CategoryReader;
 import com.harudle.diary.service.DiaryDeletionService;
+import com.harudle.diary.service.DiaryQueryService;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
+import com.harudle.diary.service.exception.DiaryNotFoundException;
 import com.harudle.diary.service.exception.DiaryNotPublishableException;
 import com.harudle.feed.repository.FeedRepository;
 import com.harudle.feed.service.dto.FeedResult;
 import com.harudle.feed.service.exception.DiaryAlreadyPublishedException;
 import com.harudle.feed.service.exception.FeedNotFoundException;
+import com.harudle.feed.service.port.PublishedFeedReader;
 import com.harudle.profile.service.port.PublicProfileReader;
 import com.harudle.push.service.port.FeedPushOutbox;
 import jakarta.persistence.EntityManager;
@@ -60,6 +63,8 @@ class FeedPublicationPersistenceTest {
     @Autowired private FeedQueryService queries;
     @Autowired private FeedRepository feeds;
     @Autowired private DiaryDeletionService diaryDeletion;
+    @Autowired private DiaryQueryService diaryQueries;
+    @Autowired private PublishedFeedReader publishedFeeds;
     @MockitoBean private CategoryReader categories;
     @MockitoBean private PublicProfileReader profiles;
     @MockitoBean private FeedPushOutbox outbox;
@@ -107,6 +112,33 @@ class FeedPublicationPersistenceTest {
         assertThat(detail.isMine()).isFalse();
         assertThat(detail.likedByMe()).isFalse();
         assertThat(feeds.existsByDiaryIdAndDeletedAtIsNull(DIARY)).isTrue();
+        assertThat(diaryQueries.getDetail(ACTOR, DIARY).publishedFeedId()).isEqualTo(created.id());
+        assertThat(publishedFeeds.findByDiaryIds(Set.of(DIARY))).containsEntry(DIARY, created.id());
+    }
+
+    @Test
+    void unpublishedDiaryReturnsNullFeedId() {
+        assertThat(diaryQueries.getDetail(ACTOR, DIARY).publishedFeedId()).isNull();
+        assertThat(publishedFeeds.findByDiaryIds(Set.of(DIARY))).isEmpty();
+        assertThat(publishedFeeds.findByDiaryIds(Set.of())).isEmpty();
+    }
+
+    @Test
+    void bulkPublicationLookupExcludesDeletedAndUnrequestedDiaries() {
+        UUID firstFeed = publication.publish(ACTOR, DIARY, categoryId).id();
+        UUID secondDiary = UUID.randomUUID();
+        UUID secondFeed = insertAdditionalFeed(secondDiary);
+        UUID deletedDiary = UUID.randomUUID();
+        insertAdditionalFeed(deletedDiary);
+        update("UPDATE diaries SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", deletedDiary);
+        UUID diaryWithDeletedFeed = UUID.randomUUID();
+        UUID deletedFeed = insertAdditionalFeed(diaryWithDeletedFeed);
+        update("UPDATE feeds SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", deletedFeed);
+        insertAdditionalFeed(UUID.randomUUID());
+
+        assertThat(publishedFeeds.findByDiaryIds(Set.of(
+                DIARY, secondDiary, deletedDiary, diaryWithDeletedFeed, UUID.randomUUID()
+        ))).isEqualTo(Map.of(DIARY, firstFeed, secondDiary, secondFeed));
     }
 
     @Test
@@ -154,6 +186,8 @@ class FeedPublicationPersistenceTest {
         FeedResult created = publication.publish(ACTOR, DIARY, categoryId);
         diaryDeletion.delete(ACTOR, DIARY);
         assertThatThrownBy(() -> queries.getDetail(null, created.id())).isInstanceOf(FeedNotFoundException.class);
+        assertThat(publishedFeeds.findByDiaryIds(Set.of(DIARY))).isEmpty();
+        assertThatThrownBy(() -> diaryQueries.getDetail(ACTOR, DIARY)).isInstanceOf(DiaryNotFoundException.class);
     }
 
     @Test
@@ -161,9 +195,12 @@ class FeedPublicationPersistenceTest {
         FeedResult first = publication.publish(ACTOR, DIARY, categoryId);
         update("UPDATE feeds SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", first.id());
         assertThatThrownBy(() -> queries.getDetail(null, first.id())).isInstanceOf(FeedNotFoundException.class);
+        assertThat(diaryQueries.getDetail(ACTOR, DIARY).publishedFeedId()).isNull();
         FeedResult second = publication.publish(ACTOR, DIARY, categoryId);
         assertThat(second.id()).isNotEqualTo(first.id());
         assertThat(feeds.count()).isEqualTo(2);
+        assertThat(diaryQueries.getDetail(ACTOR, DIARY).publishedFeedId()).isEqualTo(second.id());
+        assertThat(publishedFeeds.findByDiaryIds(Set.of(DIARY))).isEqualTo(Map.of(DIARY, second.id()));
     }
 
     @Test
@@ -179,6 +216,14 @@ class FeedPublicationPersistenceTest {
         assertThatThrownBy(() -> publication.publish(ACTOR, DIARY, categoryId))
                 .isInstanceOf(DiaryNotPublishableException.class);
         assertThat(feeds.count()).isZero();
+    }
+
+    private UUID insertAdditionalFeed(UUID diaryId) {
+        update("INSERT INTO diaries (id, user_id, diary_date, source_text) VALUES (?, ?, ?, ?)",
+                diaryId, ACTOR, LocalDate.of(2026, 10, 11), "개인 일기 원문");
+        UUID feedId = UUID.randomUUID();
+        update("INSERT INTO feeds (id, diary_id, category_id) VALUES (?, ?, ?)", feedId, diaryId, categoryId);
+        return feedId;
     }
 
     private void update(String sql, Object... parameters) {

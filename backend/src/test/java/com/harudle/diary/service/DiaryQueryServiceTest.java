@@ -15,6 +15,7 @@ import com.harudle.diary.service.dto.DiaryStreakResult;
 import com.harudle.diary.service.dto.DiaryTimelineResult;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
+import com.harudle.feed.service.port.PublishedFeedReader;
 import com.harudle.generation.diary.domain.GenerationStatus;
 import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
@@ -25,12 +26,16 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -55,6 +60,9 @@ class DiaryQueryServiceTest {
     @Mock
     private DiaryGenerationRepository diaryGenerationRepository;
 
+    @Mock
+    private PublishedFeedReader publishedFeedReader;
+
     private DiaryQueryService diaryQueryService;
 
     @BeforeEach
@@ -63,6 +71,7 @@ class DiaryQueryServiceTest {
         diaryQueryService = new DiaryQueryService(
                 diaryRepository,
                 diaryGenerationRepository,
+                publishedFeedReader,
                 clock
         );
     }
@@ -125,6 +134,7 @@ class DiaryQueryServiceTest {
                 );
         assertThat(result.days().getFirst().date()).isEqualTo(LocalDate.of(2028, 2, 29));
         assertThat(result.days().getLast().date()).isEqualTo(LocalDate.of(2028, 2, 1));
+        verifyNoInteractions(publishedFeedReader);
     }
 
     @Test
@@ -222,9 +232,11 @@ class DiaryQueryServiceTest {
         verifyNoInteractions(diaryGenerationRepository);
     }
 
-    @Test
-    @DisplayName("본인 소유의 삭제되지 않은 일기 상세를 조회한다")
-    void getDetail() {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    @DisplayName("본인 일기 상세에 게시된 피드 ID 또는 null을 반영한다")
+    void getDetail(boolean published) {
+        UUID feedId = UUID.randomUUID();
         when(diaryRepository.findActiveSnapshotById(DIARY_ID))
                 .thenReturn(Optional.of(createDiarySnapshot(DIARY_ID, USER_ID)));
         when(diaryGenerationRepository.findSnapshotByDiaryId(DIARY_ID))
@@ -234,11 +246,14 @@ class DiaryQueryServiceTest {
                         "친구와 보낸 하루",
                         "generated/comic.png"
                 )));
+        when(publishedFeedReader.findByDiaryIds(Set.of(DIARY_ID)))
+                .thenReturn(published ? Map.of(DIARY_ID, feedId) : Map.of());
 
         DiaryDetailResult result = diaryQueryService.getDetail(USER_ID, DIARY_ID);
 
         assertThat(result.id()).isEqualTo(DIARY_ID);
         assertThat(result.sourceText()).isEqualTo("오늘의 일기");
+        assertThat(result.publishedFeedId()).isEqualTo(published ? feedId : null);
         assertThat(result.generation().title()).isEqualTo("친구와 보낸 하루");
         assertThat(result.generation().tokenUsage())
                 .isEqualTo(new GenerationTokenUsage(120, 350, 80, 550));
@@ -251,6 +266,7 @@ class DiaryQueryServiceTest {
 
         assertThatThrownBy(() -> diaryQueryService.getDetail(USER_ID, DIARY_ID))
                 .isInstanceOf(DiaryNotFoundException.class);
+        verifyNoInteractions(publishedFeedReader);
     }
 
     @Test
@@ -261,6 +277,7 @@ class DiaryQueryServiceTest {
 
         assertThatThrownBy(() -> diaryQueryService.getDetail(USER_ID, DIARY_ID))
                 .isInstanceOf(DiaryAccessDeniedException.class);
+        verifyNoInteractions(diaryGenerationRepository, publishedFeedReader);
     }
 
     private DiarySnapshot createDiarySnapshot(UUID diaryId, UUID userId) {
