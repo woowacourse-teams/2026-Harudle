@@ -1,7 +1,5 @@
 import { css } from '@emotion/react';
-import BottomNavigation from '../../shared/BottomNavigation';
-import harudleLogo from '../../assets/images/harudle-logo.webp';
-import { useNavigate } from 'react-router';
+import BottomNavigationLayout from '../../shared/BottomNavigationLayout';
 import useProfile from './useProfile';
 import { theme } from '../../styles/theme';
 import useLogout from './useLogout';
@@ -17,24 +15,14 @@ const PRIVACY_POLICY_URL = 'https://harudle.notion.site/';
 const GOOGLE_FROM_URL = 'https://forms.gle/8DMM4L835Esxk7BE6';
 
 const SettingPage = () => {
-  const navigate = useNavigate();
-
   return (
-    <div css={pageStyle}>
-      <header css={pageHeaderStyle}>
-        <button css={logoButtonStyle} onClick={() => navigate('/')}>
-          <img css={logoStyle} src={harudleLogo} alt="하루들" />
-        </button>
-      </header>
-
+    <BottomNavigationLayout>
       <main css={contentStyle}>
         <div css={pageTitleStyle}>설정</div>
         <SettingPageContent />
         <p css={versionStyle}>버전 {__APP_VERSION__}</p>
       </main>
-
-      <BottomNavigation />
-    </div>
+    </BottomNavigationLayout>
   );
 };
 
@@ -109,34 +97,6 @@ const SettingPageContent = () => {
     </div>
   );
 };
-
-const pageStyle = css`
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-`;
-
-const pageHeaderStyle = css`
-  width: 100%;
-  height: 56px;
-  box-sizing: border-box;
-`;
-
-const logoButtonStyle = css`
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 100%;
-  height: 100%;
-  border: none;
-  background: none;
-  cursor: pointer;
-`;
-
-const logoStyle = css`
-  width: 106px;
-  height: 71px;
-`;
 
 const contentStyle = css`
   position: relative;

@@ -1,8 +1,6 @@
 import { HOME_COPY } from '../copy';
-import BottomNavigation from '../../../shared/BottomNavigation';
+import BottomNavigationLayout from '../../../shared/BottomNavigationLayout';
 import DiaryItemList from '../DiaryItemList';
-import { useNavigate } from 'react-router';
-import harudleLogo from '../../../assets/images/harudle-logo.webp';
 import useSelectedYearMonth from './useSelectedYearMonth';
 import { css } from '@emotion/react';
 import { theme } from '../../../styles/theme';
@@ -23,20 +21,13 @@ const formatYearMonthToString = ({
 };
 
 const HomePage = () => {
-  const navigate = useNavigate();
   const { selectedYearMonth, handleYearMonthChange } = useSelectedYearMonth(
     getToday().year,
     getToday().month,
   );
 
   return (
-    <div css={homePageStyle}>
-      <header css={pageHeaderStyle}>
-        <button css={logoButtonStyle} onClick={() => navigate('/')}>
-          <img css={logoStyle} src={harudleLogo} alt="하루들" />
-        </button>
-      </header>
-
+    <BottomNavigationLayout>
       <main css={homePageContentStyle}>
         <div css={contentHeaderStyle}>
           <div css={monthPickerStyle}>
@@ -63,9 +54,7 @@ const HomePage = () => {
           <DiaryItemList {...selectedYearMonth} />
         </section>
       </main>
-
-      <BottomNavigation />
-    </div>
+    </BottomNavigationLayout>
   );
 };
 
@@ -110,34 +99,6 @@ const RemainingGenerationUsage = () => {
     </div>
   );
 };
-
-const homePageStyle = css`
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-`;
-
-const pageHeaderStyle = css`
-  width: 100%;
-  height: 56px;
-  box-sizing: border-box;
-`;
-
-const logoButtonStyle = css`
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 100%;
-  height: 100%;
-  border: none;
-  background: none;
-  cursor: pointer;
-`;
-
-const logoStyle = css`
-  width: 106px;
-  height: 71px;
-`;
 
 const homePageContentStyle = css`
   position: relative;
