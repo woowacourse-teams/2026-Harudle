@@ -231,6 +231,7 @@ class SecurityConfigTest {
                 .andExpect(jsonPath("$.paths['/api/v1/guest/diaries'].post.responses['200']").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/guest/diaries'].post.responses['201']").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/diaries/{diaryId}'].delete.responses['204']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/diaries/{diaryId}'].delete.responses['503']").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/feeds'].post.responses['201']").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/feeds'].get").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/feeds'].post.security[0].bearerAuth").isArray())

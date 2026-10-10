@@ -158,14 +158,15 @@ class DiaryController {
 
     @Operation(
             summary = "일기 삭제",
-            description = "본인 소유의 일기를 소프트 삭제합니다. 이미 없거나 삭제된 경우에도 성공합니다."
+            description = "본인 일기와 연결 피드를 소프트 삭제하고 미발송 푸시를 취소합니다. 이미 없거나 삭제된 일기도 성공합니다."
     )
     @ApiResponse(responseCode = "204", description = "일기 삭제 완료")
     @ApiErrorResponses({
             ErrorType.VALIDATION_ERROR,
             ErrorType.UNAUTHORIZED,
             ErrorType.FORBIDDEN,
-            ErrorType.INVALID_CSRF_TOKEN
+            ErrorType.INVALID_CSRF_TOKEN,
+            ErrorType.FEED_UNAVAILABLE
     })
     @DeleteMapping("/{diaryId}")
     public ResponseEntity<Void> delete(

@@ -10,7 +10,9 @@ import static org.mockito.Mockito.when;
 
 import com.harudle.category.service.port.CategoryReader;
 import com.harudle.diary.repository.DiaryLifecycleRepository;
+import com.harudle.diary.service.DiaryDeletionService;
 import com.harudle.diary.service.DiaryQueryService;
+import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
 import com.harudle.feed.query.FeedSort;
 import com.harudle.feed.repository.FeedRepository;
@@ -20,6 +22,7 @@ import com.harudle.feed.service.port.FeedInteractionPort;
 import com.harudle.feed.service.port.FeedInteractionPort.CounterChange;
 import com.harudle.feed.service.port.FeedInteractionPort.CounterKind;
 import com.harudle.feed.service.port.FeedLifecycle;
+import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.profile.service.port.PublicProfileReader;
 import com.harudle.push.service.port.FeedPushOutbox;
 import jakarta.persistence.EntityManager;
@@ -31,6 +34,10 @@ import java.time.LocalDate;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -71,6 +78,8 @@ class FeedDeletionPersistenceTest {
     @Autowired private FeedQueryService queries;
     @Autowired private FeedListService lists;
     @Autowired private DiaryQueryService diaryQueries;
+    @Autowired private DiaryDeletionService diaryDeletion;
+    @Autowired private DiaryGenerationRepository generations;
     @Autowired private DiaryLifecycleRepository diaryLifecycle;
     @Autowired private FeedInteractionPort interactions;
     @MockitoBean private CategoryReader categories;
@@ -268,6 +277,197 @@ class FeedDeletionPersistenceTest {
         verify(outbox).cancelUnsentByFeed(feedId);
     }
 
+    @Test
+    void diaryDeletionDeletesConnectedFeedAndJobsWhileRetainingGenerationUsageAndReactions() {
+        UUID feedId = publish();
+        UUID pending = insertPushJob(feedId, "PENDING");
+        UUID processing = insertPushJob(feedId, "PROCESSING");
+        insertReactions(feedId);
+        insertShareLink();
+        update("""
+                INSERT INTO daily_generation_usage (user_id, usage_date, used_count, limit_count)
+                VALUES (?, ?, 2, 3)
+                """, AUTHOR, LocalDate.of(2026, 10, 11));
+
+        diaryDeletion.delete(AUTHOR, DIARY);
+
+        var feed = feeds.findById(feedId).orElseThrow();
+        assertThat(feed.isDeleted()).isTrue();
+        assertThat(feed.getLikeCount()).isEqualTo(1);
+        assertThat(feed.getCommentCount()).isEqualTo(1);
+        assertThat(number("""
+                SELECT COUNT(*) FROM feeds feed JOIN diaries diary ON diary.id = feed.diary_id
+                WHERE feed.id = ? AND feed.deleted_at = diary.deleted_at
+                """, feedId)).isEqualTo(1);
+        assertThat(jobStatus(pending)).isEqualTo("CANCELLED");
+        assertThat(jobStatus(processing)).isEqualTo("CANCELLED");
+        assertThat(number("SELECT COUNT(*) FROM share_links WHERE generation_id = ?", GENERATION)).isZero();
+        assertThat(number("SELECT used_count FROM daily_generation_usage WHERE user_id = ?", AUTHOR)).isEqualTo(2);
+        assertThat(generations.findSnapshotByDiaryId(DIARY))
+                .hasValueSatisfying(generation -> assertThat(generation.imageObjectKey()).isEqualTo(IMAGE));
+        assertThat(number("SELECT COUNT(*) FROM comments WHERE feed_id = ?", feedId)).isEqualTo(1);
+        assertThat(number("SELECT COUNT(*) FROM feed_likes WHERE feed_id = ?", feedId)).isEqualTo(1);
+        assertThat(number("SELECT COUNT(*) FROM notifications WHERE feed_id = ?", feedId)).isEqualTo(1);
+        assertThat(lists.getList(null, FeedSort.LATEST, null, null, 20).items()).isEmpty();
+        assertThatThrownBy(() -> queries.getDetail(null, feedId)).isInstanceOf(FeedNotFoundException.class);
+        assertThatThrownBy(() -> diaryQueries.getDetail(AUTHOR, DIARY)).isInstanceOf(DiaryNotFoundException.class);
+        assertThatThrownBy(() -> transactions.execute(status -> interactions.lockActive(feedId)))
+                .isInstanceOf(FeedNotFoundException.class);
+        assertThatThrownBy(() -> publication.publish(AUTHOR, DIARY, categoryId))
+                .isInstanceOf(DiaryNotFoundException.class);
+    }
+
+    @Test
+    void diaryDeletionFailureRollsBackDiaryFeedJobsAndLegacyShareLinks() {
+        UUID feedId = publish();
+        UUID jobId = insertPushJob(feedId, "PENDING");
+        insertShareLink();
+        failAfterCancellingJobs();
+
+        assertThatThrownBy(() -> diaryDeletion.delete(AUTHOR, DIARY)).isInstanceOf(IllegalStateException.class);
+
+        assertThat(feeds.findById(feedId).orElseThrow().isDeleted()).isFalse();
+        assertThat(jobStatus(jobId)).isEqualTo("PENDING");
+        assertThat(number("SELECT COUNT(*) FROM share_links WHERE generation_id = ?", GENERATION)).isEqualTo(1);
+        var diary = diaryQueries.getDetail(AUTHOR, DIARY);
+        assertThat(diary.publishedFeedId()).isEqualTo(feedId);
+        assertThat(diary.sourceText()).isEqualTo(SOURCE);
+        assertThat(diary.generation().imageObjectKey()).isEqualTo(IMAGE);
+    }
+
+    @Test
+    void diaryDeletionRejectsAnotherOwnerBeforeChangingFeedJobsOrShareLinks() {
+        UUID feedId = publish();
+        UUID jobId = insertPushJob(feedId, "PENDING");
+        insertShareLink();
+
+        assertThatThrownBy(() -> diaryDeletion.delete(REACTOR, DIARY)).isInstanceOf(DiaryAccessDeniedException.class);
+
+        assertThat(feeds.findById(feedId).orElseThrow().isDeleted()).isFalse();
+        assertThat(jobStatus(jobId)).isEqualTo("PENDING");
+        assertThat(number("SELECT COUNT(*) FROM share_links WHERE generation_id = ?", GENERATION)).isEqualTo(1);
+        assertThat(diaryQueries.getDetail(AUTHOR, DIARY).publishedFeedId()).isEqualTo(feedId);
+        verify(outbox, never()).cancelUnsentByFeed(any());
+    }
+
+    @Test
+    void repeatedDiaryDeletionCancelsJobsOnlyOnce() {
+        UUID feedId = publish();
+        UUID jobId = insertPushJob(feedId, "PENDING");
+        diaryDeletion.delete(AUTHOR, DIARY);
+        Instant firstDeletionTime = feeds.findById(feedId).orElseThrow().getDeletedAt();
+
+        diaryDeletion.delete(AUTHOR, DIARY);
+
+        assertThat(feeds.findById(feedId).orElseThrow().getDeletedAt()).isEqualTo(firstDeletionTime);
+        assertThat(jobStatus(jobId)).isEqualTo("CANCELLED");
+        verify(outbox).cancelUnsentByFeed(feedId);
+    }
+
+    @Test
+    void diaryDeletionAfterFeedDeletionDoesNotCancelAgainOrChangeFeedTimestamp() {
+        UUID feedId = publish();
+        deletion.delete(AUTHOR, feedId);
+        Instant feedDeletionTime = feeds.findById(feedId).orElseThrow().getDeletedAt();
+
+        diaryDeletion.delete(AUTHOR, DIARY);
+
+        assertThat(feeds.findById(feedId).orElseThrow().getDeletedAt()).isEqualTo(feedDeletionTime);
+        assertThatThrownBy(() -> diaryQueries.getDetail(AUTHOR, DIARY)).isInstanceOf(DiaryNotFoundException.class);
+        verify(outbox).cancelUnsentByFeed(feedId);
+    }
+
+    @Test
+    void deletesUnpublishedAndMissingDiariesWithoutCallingPushAdapter() {
+        diaryDeletion.delete(AUTHOR, DIARY);
+        diaryDeletion.delete(AUTHOR, DIARY);
+        diaryDeletion.delete(AUTHOR, UUID.randomUUID());
+
+        assertThat(number("SELECT COUNT(*) FROM diaries WHERE id = ? AND deleted_at IS NOT NULL", DIARY))
+                .isEqualTo(1);
+        assertThat(feeds.existsByDiaryIdAndDeletedAtIsNull(DIARY)).isFalse();
+        verify(outbox, never()).cancelUnsentByFeed(any());
+    }
+
+    @Test
+    void diaryDeletionWaitsForPublicationAndDeletesItsNewFeed() throws Exception {
+        var executor = Executors.newFixedThreadPool(2);
+        var held = new CountDownLatch(1);
+        var started = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        try {
+            var publisher = executor.submit(() -> transactions.execute(status -> {
+                UUID feedId = publish();
+                held.countDown();
+                awaitRelease(release);
+                return feedId;
+            }));
+            assertThat(held.await(5, TimeUnit.SECONDS)).isTrue();
+            var removal = executor.submit(() -> {
+                started.countDown();
+                diaryDeletion.delete(AUTHOR, DIARY);
+            });
+            assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThatThrownBy(() -> removal.get(300, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+            release.countDown();
+            UUID feedId = publisher.get(10, TimeUnit.SECONDS);
+            removal.get(10, TimeUnit.SECONDS);
+
+            assertThat(feeds.findById(feedId).orElseThrow().isDeleted()).isTrue();
+            assertThat(feeds.existsByDiaryIdAndDeletedAtIsNull(DIARY)).isFalse();
+            assertThatThrownBy(() -> queries.getDetail(null, feedId)).isInstanceOf(FeedNotFoundException.class);
+            verify(outbox).cancelUnsentByFeed(feedId);
+        } finally {
+            release.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void publicationWaitsForDiaryDeletionAndCannotLeaveNewActiveFeed() throws Exception {
+        UUID feedId = publish();
+        var executor = Executors.newFixedThreadPool(2);
+        var held = new CountDownLatch(1);
+        var started = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        try {
+            var removal = executor.submit(() -> transactions.executeWithoutResult(status -> {
+                diaryDeletion.delete(AUTHOR, DIARY);
+                held.countDown();
+                awaitRelease(release);
+            }));
+            assertThat(held.await(5, TimeUnit.SECONDS)).isTrue();
+            var publisher = executor.submit(() -> {
+                started.countDown();
+                return publish();
+            });
+            assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThatThrownBy(() -> publisher.get(300, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+            release.countDown();
+            removal.get(10, TimeUnit.SECONDS);
+            assertThatThrownBy(() -> publisher.get(10, TimeUnit.SECONDS)).hasCauseInstanceOf(DiaryNotFoundException.class);
+
+            assertThat(feeds.findById(feedId).orElseThrow().isDeleted()).isTrue();
+            assertThat(number("SELECT COUNT(*) FROM feeds WHERE diary_id = ?", DIARY)).isEqualTo(1);
+            assertThat(feeds.existsByDiaryIdAndDeletedAtIsNull(DIARY)).isFalse();
+            verify(outbox).cancelUnsentByFeed(feedId);
+        } finally {
+            release.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    private static void awaitRelease(CountDownLatch release) {
+        try {
+            if (!release.await(10, TimeUnit.SECONDS)) {
+                throw new AssertionError("트랜잭션 완료 대기 초과");
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(exception);
+        }
+    }
+
     private void insertReactions(UUID feedId) {
         UUID commentId = UUID.randomUUID();
         update("INSERT INTO comments (id, feed_id, author_id, content) VALUES (?, ?, ?, '댓글')",
@@ -278,6 +478,10 @@ class FeedDeletionPersistenceTest {
                 VALUES (?, ?, ?, ?, 'COMMENT', ?)
                 """, UUID.randomUUID(), AUTHOR, REACTOR, feedId, commentId);
         update("UPDATE feeds SET like_count = 1, comment_count = 1 WHERE id = ?", feedId);
+    }
+
+    private void insertShareLink() {
+        update("INSERT INTO share_links (id, generation_id) VALUES (?, ?)", UUID.randomUUID(), GENERATION);
     }
 
     private UUID publish() {

@@ -185,6 +185,9 @@ class FeedPublicationPersistenceTest {
     void hidesFeedAfterOriginalDiaryDeletion() {
         FeedResult created = publication.publish(ACTOR, DIARY, categoryId);
         diaryDeletion.delete(ACTOR, DIARY);
+        assertThat(feeds.findById(created.id()))
+                .hasValueSatisfying(feed -> assertThat(feed.isDeleted()).isTrue());
+        verify(outbox).cancelUnsentByFeed(created.id());
         assertThatThrownBy(() -> queries.getDetail(null, created.id())).isInstanceOf(FeedNotFoundException.class);
         assertThat(publishedFeeds.findByDiaryIds(Set.of(DIARY))).isEmpty();
         assertThatThrownBy(() -> diaryQueries.getDetail(ACTOR, DIARY)).isInstanceOf(DiaryNotFoundException.class);

@@ -3,8 +3,11 @@ package com.harudle.diary.service;
 import com.harudle.diary.domain.Diary;
 import com.harudle.diary.repository.DiaryDeletionRepository;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
+import com.harudle.feed.service.port.FeedLifecycle;
 import com.harudle.share.repository.ShareLinkDeletionRepository;
 import java.time.Clock;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -15,16 +18,19 @@ public class DiaryDeletionService {
 
     private final DiaryDeletionRepository diaryDeletionRepository;
     private final ShareLinkDeletionRepository shareLinkDeletionRepository;
+    private final FeedLifecycle feedLifecycle;
     private final Clock clock;
 
     DiaryDeletionService(
             DiaryDeletionRepository diaryDeletionRepository,
             ShareLinkDeletionRepository shareLinkDeletionRepository,
+            FeedLifecycle feedLifecycle,
             @Qualifier("serviceClock")
             Clock clock
     ) {
         this.diaryDeletionRepository = diaryDeletionRepository;
         this.shareLinkDeletionRepository = shareLinkDeletionRepository;
+        this.feedLifecycle = feedLifecycle;
         this.clock = clock;
     }
 
@@ -40,7 +46,9 @@ public class DiaryDeletionService {
             throw new DiaryAccessDeniedException();
         }
         shareLinkDeletionRepository.deleteAllByDiaryId(diaryId);
-        diary.delete(clock.instant());
+        Instant deletedAt = clock.instant().truncatedTo(ChronoUnit.MICROS);
+        diary.delete(deletedAt);
+        feedLifecycle.deleteByDiary(diaryId, deletedAt);
     }
 
     private static void validateParameters(UUID userId, UUID diaryId) {
