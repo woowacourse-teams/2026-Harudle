@@ -1,23 +1,39 @@
 import { css } from '@emotion/react';
+import { useRef } from 'react';
 import { theme } from '../styles/theme';
 import { useLocation, useNavigate } from 'react-router';
+import type { BottomSheetHandle } from './BottomSheet';
+import NeedLoginBottomSheet from './NeedLoginBottomSheet';
+import { NEED_LOGIN_COPY } from './needLoginCopy';
 import type { NavigationItem } from './BottomNavigation';
 
-type BottomNavigationItemProps = NavigationItem;
-
-const BottomNavigationItem = ({
-  path,
-  iconSrc,
-  label,
-}: BottomNavigationItemProps) => {
+const BottomNavigationItem = ({ path, iconSrc, label }: NavigationItem) => {
   const { pathname: nowPath } = useLocation();
   const navigate = useNavigate();
+  const loginSheetRef = useRef<BottomSheetHandle>(null);
+
+  const handleClick = (): void => {
+    if (
+      (path === '/album' || path === '/setting') &&
+      localStorage.getItem('harudle.has-completed-oauth') === null
+    ) {
+      loginSheetRef.current?.open();
+      return;
+    }
+    void navigate(path);
+  };
 
   return (
-    <button type="button" css={buttonStyle} onClick={() => void navigate(path)}>
-      <span css={iconStyle(iconSrc, nowPath === path)} />
-      <span css={labelStyle(nowPath === path)}>{label}</span>
-    </button>
+    <>
+      <button type="button" css={buttonStyle} onClick={handleClick}>
+        <span css={iconStyle(iconSrc, nowPath === path)} />
+        <span css={labelStyle(nowPath === path)}>{label}</span>
+      </button>
+      <NeedLoginBottomSheet
+        ref={loginSheetRef}
+        description={NEED_LOGIN_COPY.navigationDescription}
+      />
+    </>
   );
 };
 
