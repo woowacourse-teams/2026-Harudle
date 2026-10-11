@@ -173,11 +173,12 @@ class FeedPublicationPersistenceTest {
 
     @Test
     void rollsBackFeedWhenPushReservationFailsAndAllowsRetry() {
-        when(outbox.enqueuePublished(any())).thenThrow(new IllegalStateException("예약 저장 실패"));
+        when(outbox.enqueuePublished(any()))
+                .thenThrow(new IllegalStateException("예약 저장 실패"))
+                .thenReturn(0);
         assertThatThrownBy(() -> publication.publish(ACTOR, DIARY, categoryId))
                 .isInstanceOf(IllegalStateException.class);
         assertThat(feeds.existsByDiaryIdAndDeletedAtIsNull(DIARY)).isFalse();
-        when(outbox.enqueuePublished(any())).thenReturn(0);
         assertThat(publication.publish(ACTOR, DIARY, categoryId).id()).isNotNull();
     }
 
