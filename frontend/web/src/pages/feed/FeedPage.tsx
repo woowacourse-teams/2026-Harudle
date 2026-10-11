@@ -69,7 +69,6 @@ const feedPageContentStyle = css`
   gap: 12px;
   min-height: 0px;
   padding: 4px 20px 0 20px;
-  overflow-y: auto;
   font-size: 12px;
   line-height: 1.5;
 `;

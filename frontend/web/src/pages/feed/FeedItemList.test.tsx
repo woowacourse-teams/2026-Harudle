@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import userEvent from '@testing-library/user-event';
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import type {
   Feed,
   FeedListResponse,
@@ -12,6 +12,14 @@ import FeedItemList from './FeedItemList';
 jest.mock('../../assets/images/loading-animation.webp', () => 'loading.webp');
 jest.mock('../../assets/images/empty-person-and-dog.png', () => 'empty.png');
 jest.mock('../../assets/images/request-fail.png', () => 'error.png');
+jest.mock(
+  '../../assets/icons/feed-category-chevron.svg',
+  () => 'feed-category-chevron.svg',
+);
+jest.mock(
+  '../../assets/images/profile-fallback.svg',
+  () => 'profile-fallback.svg',
+);
 const mockNavigate = jest.fn();
 jest.mock('react-router', () => ({ useNavigate: () => mockNavigate }));
 
@@ -72,6 +80,17 @@ describe('피드 목록 조회 상태', () => {
       size: 20,
       signal: expect.any(AbortSignal),
     });
+  });
+
+  it('프로필 이미지 로딩에 실패하면 기본 이미지로 대체한다', async () => {
+    render(<FeedItemList sort="LATEST" />);
+    const article = await screen.findByRole('article');
+    const image = article.querySelector('header img');
+    if (!image) throw new Error('프로필 이미지가 없습니다.');
+
+    expect(image).toHaveAttribute('src', '/profile.svg');
+    fireEvent.error(image);
+    expect(image).toHaveAttribute('src', 'profile-fallback.svg');
   });
 
   it('빈 응답은 FeedEmpty를 표시한다', async (): Promise<void> => {

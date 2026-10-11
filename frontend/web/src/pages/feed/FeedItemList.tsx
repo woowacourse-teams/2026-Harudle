@@ -4,7 +4,6 @@ import LoadingSpinner from '../../shared/LoadingSpinner';
 import FeedEmpty from './FeedEmpty';
 import FeedError from './FeedError';
 import useFeedList from './useFeedList';
-import { theme } from '../../styles/theme';
 import FeedItem from './FeedItem';
 
 const FeedItemList = ({
@@ -26,9 +25,8 @@ const FeedItemList = ({
 
   return (
     <div css={feedItemListStyle}>
-      <span>FeedItemList</span>
       {items.map((item) => (
-        <FeedItem key={item.id} />
+        <FeedItem key={item.id} feed={item} />
       ))}
     </div>
   );
@@ -39,7 +37,5 @@ export default FeedItemList;
 const feedItemListStyle = css`
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px;
-  border: 2px solid ${theme.colors.stroke.brandSolid};
+  overflow-y: auto;
 `;

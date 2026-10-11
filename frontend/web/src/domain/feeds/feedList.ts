@@ -1,4 +1,5 @@
 import { API_BASE_URL, isProblemDetails, RequestError } from '../../shared/api';
+import { publicFetch } from '../../shared/auth';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import type { DeepReadonly } from '../../shared/typeUtils';
 import { isNonNegativeInteger, isRecord } from '../../shared/utils';
@@ -58,7 +59,7 @@ export const getFeedList = async ({
   if (size !== undefined) params.set('size', String(size));
   const query = params.toString();
 
-  const response = await fetch(
+  const response = await publicFetch(
     `${API_BASE_URL}/feeds${query ? `?${query}` : ''}`,
     { signal },
   );
