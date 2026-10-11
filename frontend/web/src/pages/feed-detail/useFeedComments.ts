@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   getFeedComments,
   type FeedCommentsResponse,
+  type FeedComment,
 } from '../../domain/feeds/feedComments';
 import type { ApiRequest } from '../../shared/api';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
@@ -9,6 +10,7 @@ import { useErrorTracking } from '../../posthog/useErrorTracking';
 
 interface FeedCommentsState {
   readonly request: ApiRequest<FeedCommentsResponse>;
+  readonly addComment: (comment: FeedComment) => void;
   readonly execute: () => Promise<FeedCommentsResponse | null>;
 }
 
@@ -57,7 +59,16 @@ const useFeedComments = ({
     return (): void => abortControllerRef.current?.abort();
   }, [execute]);
 
-  return { request, execute };
+  const addComment = useCallback((comment: FeedComment): void => {
+    setRequest((previous) => {
+      if (previous.status !== 'success') return previous;
+      return {
+        ...previous,
+        data: { ...previous.data, items: [...previous.data.items, comment] },
+      };
+    });
+  }, []);
+  return { request, execute, addComment };
 };
 
 export default useFeedComments;

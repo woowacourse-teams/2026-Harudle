@@ -2,27 +2,21 @@ import FeedCommentItem from './FeedCommentItem';
 import FeedCommentEmpty from './FeedCommentEmpty';
 import FeedCommentError from './FeedCommentError';
 import LoadingSpinner from '../../shared/LoadingSpinner';
-import useFeedComments from './useFeedComments';
+import type { ApiRequest } from '../../shared/api';
+import type { FeedCommentsResponse } from '../../domain/feeds/feedComments';
 
 interface FeedCommentListProps {
-  readonly feedId: string;
+  readonly request: ApiRequest<FeedCommentsResponse>;
+  readonly onRetry: () => void;
 }
 
-const FeedCommentList = ({ feedId }: FeedCommentListProps) => {
-  const { request, execute } = useFeedComments({ feedId });
-
+const FeedCommentList = ({ request, onRetry }: FeedCommentListProps) => {
   if (request.status === 'idle' || request.status === 'loading') {
     return <LoadingSpinner />;
   }
 
   if (request.status === 'error') {
-    return (
-      <FeedCommentError
-        onRetry={() => {
-          void execute();
-        }}
-      />
-    );
+    return <FeedCommentError onRetry={onRetry} />;
   }
 
   const { items } = request.data;

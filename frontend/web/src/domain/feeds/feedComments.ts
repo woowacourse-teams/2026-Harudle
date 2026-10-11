@@ -21,6 +21,7 @@ export interface FeedCommentsResponse {
 interface FeedCommentsRequest {
   readonly feedId: Feed['id'];
   readonly size?: number;
+  readonly cursor?: string;
   readonly signal?: AbortSignal;
 }
 

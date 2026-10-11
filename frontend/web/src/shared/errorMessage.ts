@@ -37,6 +37,10 @@ const MONTHLY_DIARIES = {
 } as const;
 
 const FEED_COMMENTS = {
+  FEED_COMMENT_CREATION_FAILED:
+    '댓글을 남기지 못했어요. 작성 여부를 확인한 뒤 다시 시도해 주세요.',
+  INVALID_FEED_COMMENT_RESPONSE: 'FeedComment 응답 형식이 일치하지 않습니다.',
+  INVALID_COMMENT_CONTENT: '댓글은 1자 이상 100자 이하로 입력해 주세요.',
   FEED_COMMENTS_FETCH_FAILED: '댓글을 불러오지 못했어요. 다시 시도해 주세요.',
   INVALID_FEED_COMMENTS_RESPONSE: 'FeedComments 응답 형식이 일치하지 않습니다.',
 } as const;

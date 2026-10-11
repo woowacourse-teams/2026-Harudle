@@ -1,6 +1,7 @@
 import { delay, http, HttpResponse } from 'msw';
 import diaryImage from '../assets/images/diary-four-panel.webp';
 import profileImage from '../assets/icons/article_person.svg';
+import { isRecord } from '../shared/utils';
 import { isCanonicalUuid } from '../pages/landing/guestTrialUuid';
 
 interface MockCategory {
@@ -393,6 +394,49 @@ export const feedHandlers = [
             : null,
         hasNext,
       });
+    },
+  ),
+
+  http.post(
+    '/api/v1/feeds/:feedId/comments',
+    async ({ request, params }): Promise<Response> => {
+      await delay(300);
+      const error = validateMutation(request);
+      if (error) return error;
+      const feedId = String(params.feedId);
+      if (!isCanonicalUuid(feedId))
+        return problem(request, 400, 'VALIDATION_ERROR');
+      const feed = feeds.find(({ id }): boolean => id === feedId);
+      if (!feed) return problem(request, 404, 'FEED_NOT_FOUND');
+      const data: unknown = await request.json().catch((): null => null);
+      if (!isRecord(data) || typeof data.content !== 'string')
+        return problem(request, 400, 'VALIDATION_ERROR');
+      const content = data.content.trim();
+      if ([...content].length < 1 || [...content].length > 100)
+        return problem(request, 400, 'VALIDATION_ERROR');
+      const comment: MockComment = {
+        id: crypto.randomUUID(),
+        feedId,
+        author: {
+          id: MOCK_USER_ID,
+          nickname: '하루들',
+          profileImageUrl: profileImage,
+        },
+        content,
+        createdAt: new Date().toISOString(),
+      };
+      comments.push(comment);
+      feed.commentCount += 1;
+      return HttpResponse.json(
+        {
+          id: comment.id,
+          author: comment.author,
+          content,
+          createdAt: comment.createdAt,
+          isMine: true,
+        },
+        { status: 201 },
+      );
     },
   ),
 
