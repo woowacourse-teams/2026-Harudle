@@ -21,6 +21,8 @@ jest.mock('msw', () => {
     delay: () => Promise.resolve(),
     http: {
       get: createHandler('GET'),
+      put: createHandler('PUT'),
+      delete: createHandler('DELETE'),
     },
     HttpResponse: MockHttpResponse,
   };
@@ -40,6 +42,10 @@ interface MockHandler {
 
 // jest.mock에서 만든 핸들러의 내부 형태를 테스트에서만 사용한다.
 const handlers = feedHandlers as unknown as MockHandler[];
+const memberHeaders = {
+  Authorization: 'Bearer mock-access-token',
+  'X-XSRF-TOKEN': 'mock-csrf-token',
+};
 const ownFeedId = '00000000-0000-4000-8000-000000000001';
 const otherFeedId = '00000000-0000-4000-8000-000000000002';
 
@@ -172,10 +178,97 @@ describe('피드 페이지 MSW', () => {
     expect((await requestApi('/api/v1/feeds?cursor=broken')).status).toBe(400);
   });
 
-  it('잘못된 인증 정보로 목록을 조회하면 401을 반환한다', async (): Promise<void> => {
-    const response = await requestApi('/api/v1/feeds', {
-      headers: { Authorization: 'Bearer expired' },
+  it('반복 좋아요가 중복 증감하지 않고 로그인 목록에 반영된다', async () => {
+    const path = `/api/v1/feeds/${ownFeedId}/like`;
+    for (let i = 0; i < 2; i += 1) {
+      const response = await requestApi(path, {
+        method: 'PUT',
+        headers: memberHeaders,
+      });
+      await expect(response.json()).resolves.toEqual({
+        likedByMe: true,
+        likeCount: 1,
+      });
+    }
+    const member = await listFeeds('', memberHeaders);
+    expect(
+      member.items.find((feed): boolean => feed.id === ownFeedId),
+    ).toMatchObject({ likedByMe: true, isMine: true, likeCount: 1 });
+    const guest = await listFeeds();
+    expect(
+      guest.items.find((feed): boolean => feed.id === ownFeedId),
+    ).toMatchObject({ likedByMe: false, isMine: false, likeCount: 1 });
+    for (let i = 0; i < 2; i += 1) {
+      const response = await requestApi(path, {
+        method: 'DELETE',
+        headers: memberHeaders,
+      });
+      await expect(response.json()).resolves.toEqual({
+        likedByMe: false,
+        likeCount: 0,
+      });
+    }
+  });
+
+  it('인기순에 좋아요 수 변경과 동점 정렬을 반영한다', async () => {
+    const first = await listFeeds('?sort=POPULAR&size=2');
+    const secondId = first.items[1].id;
+    if (typeof secondId !== 'string') throw new Error('피드 ID가 없습니다.');
+    expect(first.items.map((feed) => feed.likeCount)).toEqual([12, 12]);
+    await requestApi(`/api/v1/feeds/${secondId}/like`, {
+      method: 'PUT',
+      headers: memberHeaders,
     });
-    expect(response.status).toBe(401);
+    const updated = await listFeeds('?sort=POPULAR&size=1');
+    expect(updated.items[0]).toMatchObject({ id: secondId, likeCount: 13 });
+  });
+
+  it('인증, CSRF, 소유권을 검사하고 본인 피드만 삭제한다', async () => {
+    expect(
+      (
+        await requestApi('/api/v1/feeds', {
+          headers: { Authorization: 'Bearer expired' },
+        })
+      ).status,
+    ).toBe(401);
+    expect(
+      (await requestApi(`/api/v1/feeds/${ownFeedId}/like`, { method: 'PUT' }))
+        .status,
+    ).toBe(401);
+    expect(
+      (
+        await requestApi(`/api/v1/feeds/${ownFeedId}`, {
+          method: 'DELETE',
+          headers: { Authorization: memberHeaders.Authorization },
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await requestApi(`/api/v1/feeds/${otherFeedId}`, {
+          method: 'DELETE',
+          headers: memberHeaders,
+        })
+      ).status,
+    ).toBe(403);
+    const deleted = await requestApi(`/api/v1/feeds/${ownFeedId}`, {
+      method: 'DELETE',
+      headers: memberHeaders,
+    });
+    expect(deleted.status).toBe(204);
+    expect(await deleted.text()).toBe('');
+    expect(
+      (await listFeeds('?size=50')).items.some(
+        (feed): boolean => feed.id === ownFeedId,
+      ),
+    ).toBe(false);
+    const missing = await requestApi(`/api/v1/feeds/${ownFeedId}/like`, {
+      method: 'PUT',
+      headers: memberHeaders,
+    });
+    expect(missing.status).toBe(404);
+    await expect(missing.json()).resolves.toMatchObject({
+      code: 'FEED_NOT_FOUND',
+    });
   });
 });
