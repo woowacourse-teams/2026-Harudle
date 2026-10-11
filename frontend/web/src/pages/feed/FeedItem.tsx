@@ -39,12 +39,14 @@ const FeedItem = ({ feed }: FeedItemProps) => {
           </time>
         </div>
       </header>
-      <DiaryImage
-        src={imageUrl}
-        alt={`${author.nickname}의 만화 피드`}
-        imageRole="feed"
-        css={comicImageStyle}
-      />
+      <div onContextMenu={(event) => event.preventDefault()}>
+        <DiaryImage
+          src={imageUrl}
+          alt={`${author.nickname}의 만화 피드`}
+          imageRole="feed"
+          css={comicImageStyle}
+        />
+      </div>
       <FeedItemActions />
     </article>
   );
