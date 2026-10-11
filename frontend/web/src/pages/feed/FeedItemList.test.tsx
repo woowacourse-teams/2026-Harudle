@@ -21,6 +21,7 @@ import type { deleteFeed } from '../../domain/feeds/feedDelete';
 jest.mock('../../assets/images/loading-animation.webp', () => 'loading.webp');
 jest.mock('../../assets/images/empty-person-and-dog.png', () => 'empty.png');
 jest.mock('../../assets/images/request-fail.png', () => 'error.png');
+jest.mock('../../assets/icons/kakao.svg', () => 'kakao.svg');
 jest.mock('../../assets/icons/feed-heart.svg', () => 'feed-heart.svg');
 jest.mock(
   '../../assets/icons/feed-heart-filled.svg',
@@ -97,6 +98,7 @@ const emptyResponse: FeedListResponse = {
 };
 
 beforeEach((): void => {
+  localStorage.setItem('harudle.has-completed-oauth', 'true');
   mockGetFeedList.mockReset();
   mockGetFeedList.mockResolvedValue(response);
   mockSetFeedLike.mockReset();
@@ -104,6 +106,8 @@ beforeEach((): void => {
 });
 
 afterEach((): void => {
+  localStorage.removeItem('harudle.has-completed-oauth');
+  localStorage.removeItem('harudle.has-ever-logged-in');
   jest.restoreAllMocks();
 });
 
@@ -118,28 +122,62 @@ const prepareDialogs = (): void => {
 };
 
 describe('피드 카드 액션', (): void => {
+  it('비로그인 좋아요는 요청 없이 로그인 안내를 열고 닫거나 로그인 페이지로 이동한다', async (): Promise<void> => {
+    localStorage.removeItem('harudle.has-completed-oauth');
+    // 과거 로그인 경험만 있어도 현재 로그아웃 상태면 안내한다.
+    localStorage.setItem('harudle.has-ever-logged-in', 'true');
+    const alert = jest.spyOn(window, 'alert').mockImplementation(() => {});
+    const user = userEvent.setup();
+    render(<FeedItemList sort="LATEST" />);
+    const button = await screen.findByRole('button', { name: '12' });
+    prepareDialogs();
+
+    await user.click(button);
+    const sheet = screen.getByRole('dialog');
+    expect(sheet).toHaveTextContent('로그인하고 계속할까요?');
+    expect(sheet).toHaveTextContent('좋아요를 누르려면 로그인해 주세요.');
+    expect(mockSetFeedLike).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(alert).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: '계속 둘러보기' }));
+    expect(sheet).not.toHaveAttribute('open');
+    expect(screen.getByRole('article')).toBeInTheDocument();
+    expect(button).toHaveTextContent('12');
+
+    await user.click(button);
+    expect(sheet).toHaveAttribute('open');
+    await user.click(screen.getByRole('button', { name: '카카오로 로그인' }));
+    expect(sheet).not.toHaveAttribute('open');
+    expect(mockNavigate).toHaveBeenCalledWith('/login');
+    expect(mockSetFeedLike).not.toHaveBeenCalled();
+  });
+
   it('좋아요와 취소의 서버 응답을 반영하고 목록은 다시 조회하지 않는다', async (): Promise<void> => {
     const user = userEvent.setup();
     mockSetFeedLike.mockResolvedValueOnce({ likedByMe: true, likeCount: 13 });
     mockSetFeedLike.mockResolvedValueOnce({ likedByMe: false, likeCount: 12 });
     render(<FeedItemList sort="LATEST" />);
 
-    await user.click(
-      await screen.findByRole('button', { name: '좋아요 12개' }),
-    );
+    await user.click(await screen.findByRole('button', { name: '12' }));
     const liked = await screen.findByRole('button', {
-      name: '좋아요 취소 13개',
+      name: '13',
     });
-    expect(liked).toHaveAttribute('aria-pressed', 'true');
+    expect(liked.querySelector('img')).toHaveAttribute(
+      'src',
+      'feed-heart-filled.svg',
+    );
     expect(mockSetFeedLike).toHaveBeenNthCalledWith(1, {
       feedId: feed.id,
       likedByMe: true,
     });
 
     await user.click(liked);
-    expect(
-      await screen.findByRole('button', { name: '좋아요 12개' }),
-    ).toHaveAttribute('aria-pressed', 'false');
+    const unliked = await screen.findByRole('button', { name: '12' });
+    expect(unliked.querySelector('img')).toHaveAttribute(
+      'src',
+      'feed-heart.svg',
+    );
     expect(mockSetFeedLike).toHaveBeenNthCalledWith(2, {
       feedId: feed.id,
       likedByMe: false,
@@ -161,7 +199,7 @@ describe('피드 카드 액션', (): void => {
     );
     mockSetFeedLike.mockResolvedValueOnce({ likedByMe: true, likeCount: 13 });
     render(<FeedItemList sort="LATEST" />);
-    const button = await screen.findByRole('button', { name: '좋아요 12개' });
+    const button = await screen.findByRole('button', { name: '12' });
     await user.click(button);
     expect(button).toBeDisabled();
     await user.click(button);
@@ -175,7 +213,7 @@ describe('피드 카드 액션', (): void => {
     expect(alert).toHaveBeenCalledWith('좋아요 변경 실패');
     await user.click(button);
     expect(
-      await screen.findByRole('button', { name: '좋아요 취소 13개' }),
+      await screen.findByRole('button', { name: '13' }),
     ).toBeInTheDocument();
     alert.mockRestore();
   });
@@ -281,9 +319,7 @@ describe('피드 목록 조회 상태', () => {
     await screen.findByRole('article');
 
     expect(screen.queryByText('FeedItemActions')).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: '좋아요 12개' }),
-    ).toHaveTextContent('12');
+    expect(screen.getByRole('button', { name: '12' })).toHaveTextContent('12');
     expect(screen.getByRole('button', { name: '댓글 3개' })).toHaveTextContent(
       '3',
     );

@@ -1,4 +1,6 @@
 export const FEED_COPY = {
+  likeLoginDescription:
+    '피드는 로그인 없이 볼 수 있어요.\n좋아요를 누르려면 로그인해 주세요.',
   allCategories: '전체',
   categoryGroupLabel: '피드 카테고리',
   categoryLoadError: '카테고리를 불러오지 못했어요. 다시 시도해 주세요.',

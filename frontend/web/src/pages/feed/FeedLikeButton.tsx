@@ -1,9 +1,12 @@
 import { css, keyframes } from '@emotion/react';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import heartIcon from '../../assets/icons/feed-heart.svg';
 import filledHeartIcon from '../../assets/icons/feed-heart-filled.svg';
 import type { Feed } from '../../domain/feeds/feedList';
 import type { FeedLikeResponse } from '../../domain/feeds/feedLike';
+import type { BottomSheetHandle } from '../../shared/BottomSheet';
+import NeedLoginBottomSheet from '../../shared/NeedLoginBottomSheet';
+import { FEED_COPY } from './copy';
 import { theme } from '../../styles/theme';
 import useFeedLike from './useFeedLike';
 
@@ -19,6 +22,7 @@ const FeedLikeButton = ({
   onLikeChange,
 }: FeedLikeButtonProps) => {
   const { request, execute } = useFeedLike({ feedId });
+  const loginSheetRef = useRef<BottomSheetHandle>(null);
 
   useEffect(() => {
     if (request.status === 'error') {
@@ -27,6 +31,11 @@ const FeedLikeButton = ({
   }, [request]);
 
   const handleLike = (): void => {
+    if (localStorage.getItem('harudle.has-completed-oauth') === null) {
+      loginSheetRef.current?.open();
+      return;
+    }
+
     void execute({
       likedByMe: !likedByMe,
       onSuccess: (like) => onLikeChange(feedId, like),
@@ -34,26 +43,32 @@ const FeedLikeButton = ({
   };
 
   return (
-    <button
-      type="button"
-      disabled={request.status === 'loading'}
-      css={likeButtonStyle}
-      onClick={handleLike}
-    >
-      <img
-        src={likedByMe ? filledHeartIcon : heartIcon}
-        alt=""
-        width={24}
-        height={24}
-        css={
-          likedByMe &&
-          request.status === 'success' &&
-          request.data.likedByMe &&
-          likedHeartStyle
-        }
+    <>
+      <button
+        type="button"
+        disabled={request.status === 'loading'}
+        css={likeButtonStyle}
+        onClick={handleLike}
+      >
+        <img
+          src={likedByMe ? filledHeartIcon : heartIcon}
+          alt=""
+          width={24}
+          height={24}
+          css={
+            likedByMe &&
+            request.status === 'success' &&
+            request.data.likedByMe &&
+            likedHeartStyle
+          }
+        />
+        <span>{likeCount}</span>
+      </button>
+      <NeedLoginBottomSheet
+        description={FEED_COPY.likeLoginDescription}
+        ref={loginSheetRef}
       />
-      <span>{likeCount}</span>
-    </button>
+    </>
   );
 };
 
