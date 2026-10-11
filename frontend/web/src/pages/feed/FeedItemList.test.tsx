@@ -38,6 +38,8 @@ jest.mock('../../assets/icons/feed-comment.svg', () => 'feed-comment.svg');
 jest.mock('../../assets/icons/feed-send.svg', () => 'feed-send.svg');
 jest.mock('../../assets/icons/feed-more.svg', () => 'feed-more.svg');
 jest.mock('../../assets/icons/delete.svg', () => 'delete.svg');
+jest.mock('../../assets/icons/link.svg', () => 'link.svg');
+jest.mock('../../assets/icons/check.svg', () => 'check.svg');
 jest.mock(
   '../../assets/icons/feed-category-chevron.svg',
   () => 'feed-category-chevron.svg',
@@ -109,6 +111,7 @@ afterEach((): void => {
   localStorage.removeItem('harudle.has-completed-oauth');
   localStorage.removeItem('harudle.has-ever-logged-in');
   jest.restoreAllMocks();
+  jest.useRealTimers();
 });
 
 const prepareDialogs = (): void => {
@@ -218,6 +221,149 @@ describe('피드 카드 액션', (): void => {
     alert.mockRestore();
   });
 
+  it('링크 복사 성공 후 2초 동안 완료 아이콘과 복사됨을 표시한다', async () => {
+    const user = userEvent.setup();
+    const writeText = jest
+      .spyOn(navigator.clipboard, 'writeText')
+      .mockResolvedValue(undefined);
+    const alert = jest.spyOn(window, 'alert').mockImplementation(() => {});
+    render(<FeedItemList sort="LATEST" />);
+    await screen.findByRole('article');
+    prepareDialogs();
+    await user.click(screen.getByRole('button', { name: '공유 아이콘' }));
+    const sheet = screen.getByRole('dialog');
+    expect(sheet).toHaveAttribute('open');
+    const copyButton = screen.getByRole('button', { name: '링크 복사' });
+    expect(copyButton.querySelector('span')).toHaveStyle({
+      mask: 'url(link.svg) center/contain no-repeat',
+    });
+    jest.useFakeTimers();
+    await act(async () => {
+      fireEvent.click(copyButton);
+    });
+    expect(writeText).toHaveBeenCalledWith(feed.shareUrl);
+    expect(alert).not.toHaveBeenCalled();
+    expect(sheet).toHaveAttribute('open');
+    const copiedButton = screen.getByRole('button', { name: '복사됨' });
+    expect(copiedButton.querySelector('span')).toHaveStyle({
+      mask: 'url(check.svg) center/contain no-repeat',
+    });
+    await act(async () => {
+      fireEvent.click(copiedButton);
+    });
+    expect(writeText).toHaveBeenCalledTimes(2);
+    act(() => {
+      jest.advanceTimersByTime(1_999);
+    });
+    expect(copiedButton).toHaveTextContent('복사됨');
+    act(() => {
+      jest.advanceTimersByTime(1);
+    });
+    expect(
+      screen.getByRole('button', { name: '링크 복사' }).querySelector('span'),
+    ).toHaveStyle({ mask: 'url(link.svg) center/contain no-repeat' });
+    expect(mockSetFeedLike).not.toHaveBeenCalled();
+    writeText.mockRestore();
+    alert.mockRestore();
+  });
+
+  it('링크 복사에 실패하면 바텀시트를 유지하고 재시도할 수 있다', async () => {
+    const user = userEvent.setup();
+    const writeText = jest
+      .spyOn(navigator.clipboard, 'writeText')
+      .mockRejectedValueOnce(
+        new DOMException('권한이 없습니다.', 'NotAllowedError'),
+      )
+      .mockResolvedValueOnce(undefined);
+    const alert = jest.spyOn(window, 'alert').mockImplementation(() => {});
+    render(<FeedItemList sort="LATEST" />);
+    await screen.findByRole('article');
+    prepareDialogs();
+    await user.click(screen.getByRole('button', { name: '공유 아이콘' }));
+    const sheet = screen.getByRole('dialog');
+    await user.click(screen.getByRole('button', { name: '링크 복사' }));
+    expect(sheet).toHaveAttribute('open');
+    expect(alert).toHaveBeenCalledWith(ERROR_MESSAGES.FEED_LINK_COPY_FAILED);
+
+    await user.click(screen.getByRole('button', { name: '링크 복사' }));
+    expect(writeText).toHaveBeenCalledTimes(2);
+    expect(sheet).toHaveAttribute('open');
+    expect(screen.getByRole('button', { name: '복사됨' })).toBeInTheDocument();
+    writeText.mockRestore();
+    alert.mockRestore();
+  });
+
+  it('비로그인도 선택한 피드의 링크를 복사한다', async () => {
+    localStorage.removeItem('harudle.has-completed-oauth');
+    const user = userEvent.setup();
+    const writeText = jest
+      .spyOn(navigator.clipboard, 'writeText')
+      .mockResolvedValue(undefined);
+    const secondFeed = {
+      ...feed,
+      id: 'second',
+      shareUrl: 'https://harudle.com/feeds/second',
+    };
+    mockGetFeedList.mockResolvedValue({
+      ...response,
+      items: [feed, secondFeed],
+    });
+    render(<FeedItemList sort="LATEST" />);
+    const shareButtons = await screen.findAllByRole('button', {
+      name: '공유 아이콘',
+    });
+    prepareDialogs();
+    await user.click(shareButtons[1]);
+    await user.click(screen.getByRole('button', { name: '링크 복사' }));
+    expect(writeText).toHaveBeenCalledWith(secondFeed.shareUrl);
+    expect(mockSetFeedLike).not.toHaveBeenCalled();
+  });
+
+  it('복사 완료 후 화면을 떠나면 초기화 타이머를 정리한다', async () => {
+    const user = userEvent.setup();
+    jest.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
+    const { unmount } = render(<FeedItemList sort="LATEST" />);
+    await screen.findByRole('article');
+    prepareDialogs();
+    await user.click(screen.getByRole('button', { name: '공유 아이콘' }));
+    jest.useFakeTimers();
+    const setTimeout = jest.spyOn(window, 'setTimeout');
+    const clearTimeout = jest.spyOn(window, 'clearTimeout');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '링크 복사' }));
+    });
+    const timerIndex = setTimeout.mock.calls.findIndex(
+      ([, delay]) => delay === 2_000,
+    );
+    expect(timerIndex).toBeGreaterThanOrEqual(0);
+    const timer = setTimeout.mock.results[timerIndex].value;
+    if (typeof timer !== 'number') throw new Error('초기화 타이머가 없습니다.');
+    unmount();
+    expect(clearTimeout).toHaveBeenCalledWith(timer);
+  });
+
+  it('클립보드가 없으면 실패 안내를 표시하고 바텀시트를 유지한다', async () => {
+    const user = userEvent.setup();
+    const descriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: undefined,
+    });
+    const alert = jest.spyOn(window, 'alert').mockImplementation(() => {});
+    try {
+      render(<FeedItemList sort="LATEST" />);
+      await screen.findByRole('article');
+      prepareDialogs();
+      await user.click(screen.getByRole('button', { name: '공유 아이콘' }));
+      await user.click(screen.getByRole('button', { name: '링크 복사' }));
+      expect(alert).toHaveBeenCalledWith(ERROR_MESSAGES.FEED_LINK_COPY_FAILED);
+      expect(screen.getByRole('dialog')).toHaveAttribute('open');
+      expect(screen.getByRole('button', { name: '링크 복사' })).toBeEnabled();
+    } finally {
+      if (descriptor) Object.defineProperty(navigator, 'clipboard', descriptor);
+    }
+  });
+
   it('삭제 실패와 중복 클릭은 카드를 유지하고 재시도 성공 후 제거한다', async (): Promise<void> => {
     const user = userEvent.setup();
     const alert = jest
@@ -324,7 +470,7 @@ describe('피드 목록 조회 상태', () => {
       '3',
     );
     expect(
-      screen.getByRole('button', { name: '피드 공유' }),
+      screen.getByRole('button', { name: '공유 아이콘' }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: '옵션 더보기 아이콘' }),

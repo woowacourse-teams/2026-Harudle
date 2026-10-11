@@ -53,6 +53,7 @@ const FeedItem = ({ feed, onLikeChange, onDelete }: FeedItemProps) => {
         />
       </div>
       <FeedItemActions
+        shareUrl={feed.shareUrl}
         feedId={feed.id}
         commentCount={feed.commentCount}
         likeCount={feed.likeCount}
