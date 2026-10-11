@@ -1,6 +1,7 @@
 package com.harudle.feed.infrastructure;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
 import java.io.IOException;
@@ -17,6 +18,7 @@ import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.FlywayException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -44,7 +46,7 @@ class FeedNotificationSchemaMigrationTest {
 
     @BeforeEach
     void upgradeExistingSchema() throws SQLException {
-        migrateExistingSchemaTo("18");
+        migrateExistingSchemaTo("19");
     }
 
     private void migrateExistingSchemaTo(String target) throws SQLException {
@@ -86,7 +88,7 @@ class FeedNotificationSchemaMigrationTest {
     @DisplayName("빈 PostgreSQL에도 전체 마이그레이션과 카테고리 시드를 적용할 수 있다")
     void migrateEmptyDatabase() throws SQLException {
         flyway().clean();
-        assertThat(flyway().migrate().migrationsExecuted).isEqualTo(18);
+        assertThat(flyway().migrate().migrationsExecuted).isEqualTo(19);
         flyway().validate();
         assertThat(queryLong("SELECT count(*) FROM categories WHERE is_active")).isEqualTo(2);
         assertThat(queryLong("""
@@ -175,28 +177,50 @@ class FeedNotificationSchemaMigrationTest {
     @DisplayName("푸시 등록의 계정·기기는 고정하고 폐기 후 새 등록으로 키를 재사용한다")
     void keepRegistrationOwnershipImmutable() throws SQLException {
         UUID device = UUID.randomUUID();
-        UUID registration = createRegistration(AUTHOR, device, "token-original");
+        UUID registration = createRegistration(AUTHOR, device, "fid-original");
+        assertThat(queryLong("SELECT count(*) FROM push_registrations "
+                + "WHERE id = ? AND recipient_kind = 'FID' AND recipient_value = ?",
+                registration, "fid-original")).isEqualTo(1);
+        reject("23514", """
+                INSERT INTO push_registrations (id, user_id, device_id, recipient_kind, recipient_value)
+                VALUES (?, ?, ?, 'FCM_TOKEN', ?)
+                """, UUID.randomUUID(), READER, UUID.randomUUID(), "legacy-token");
         reject("23505", """
                 INSERT INTO push_registrations (id, user_id, device_id, recipient_value)
                 VALUES (?, ?, ?, ?)
-                """, UUID.randomUUID(), READER, device, "token-other");
+                """, UUID.randomUUID(), READER, device, "fid-other");
         reject("23505", """
                 INSERT INTO push_registrations (id, user_id, device_id, recipient_value)
                 VALUES (?, ?, ?, ?)
-                """, UUID.randomUUID(), READER, UUID.randomUUID(), "token-original");
-        execute("UPDATE push_registrations SET recipient_value = ? WHERE id = ?", "token-refreshed", registration);
+                """, UUID.randomUUID(), READER, UUID.randomUUID(), "fid-original");
+        execute("UPDATE push_registrations SET recipient_value = ? WHERE id = ?", "fid-refreshed", registration);
         reject("23514", "UPDATE push_registrations SET user_id = ? WHERE id = ?", READER, registration);
         reject("23514", "UPDATE push_registrations SET device_id = ? WHERE id = ?", UUID.randomUUID(), registration);
         execute("UPDATE push_registrations SET revoked_at = CURRENT_TIMESTAMP WHERE id = ?", registration);
-        createRegistration(READER, device, "token-refreshed");
+        createRegistration(READER, device, "fid-refreshed");
         reject("23514", "UPDATE push_registrations SET revoked_at = NULL WHERE id = ?", registration);
+    }
+
+    @Test
+    @DisplayName("기존 토큰 등록은 FID로 오인해 이관하지 않는다")
+    void rejectLegacyTokenRowsDuringFidMigration() throws SQLException {
+        migrateExistingSchemaTo("18");
+        UUID registration = UUID.randomUUID();
+        execute("""
+                INSERT INTO push_registrations (id, user_id, device_id, recipient_value)
+                VALUES (?, ?, ?, ?)
+                """, registration, AUTHOR, UUID.randomUUID(), "legacy-token");
+
+        assertThatThrownBy(() -> flyway("19").migrate()).isInstanceOf(FlywayException.class);
+        assertThat(queryLong("SELECT count(*) FROM push_registrations WHERE id = ? "
+                + "AND recipient_kind = 'FCM_TOKEN'", registration)).isEqualTo(1);
     }
 
     @Test
     @DisplayName("Outbox는 등록 소유자에게만 연결되고 같은 이벤트·기기의 중복 작업을 거부한다")
     void constrainOutboxRecipientAndDeduplication() throws SQLException {
         UUID feed = createFeed(createDiary());
-        UUID registration = createRegistration(READER, UUID.randomUUID(), "token-one");
+        UUID registration = createRegistration(READER, UUID.randomUUID(), "fid-one");
         UUID event = UUID.randomUUID();
         String sql = """
                 INSERT INTO notification_outbox (id, event_id, feed_id, recipient_user_id, push_registration_id)
@@ -205,7 +229,7 @@ class FeedNotificationSchemaMigrationTest {
         reject("23503", sql, UUID.randomUUID(), event, feed, AUTHOR, registration);
         execute(sql, UUID.randomUUID(), event, feed, READER, registration);
         reject("23505", sql, UUID.randomUUID(), event, feed, READER, registration);
-        UUID otherDevice = createRegistration(READER, UUID.randomUUID(), "token-two");
+        UUID otherDevice = createRegistration(READER, UUID.randomUUID(), "fid-two");
         execute(sql, UUID.randomUUID(), event, feed, READER, otherDevice);
         assertThat(queryLong("SELECT count(*) FROM notification_outbox WHERE event_id = ?", event)).isEqualTo(2);
     }
@@ -231,7 +255,7 @@ class FeedNotificationSchemaMigrationTest {
     void validateOutboxStateFields(String status, boolean locked, boolean lease, boolean sent, boolean valid)
             throws SQLException {
         UUID feed = createFeed(createDiary());
-        UUID registration = createRegistration(READER, UUID.randomUUID(), "token-state");
+        UUID registration = createRegistration(READER, UUID.randomUUID(), "fid-state");
         Object[] values = {UUID.randomUUID(), UUID.randomUUID(), feed, READER, registration, status,
                 locked ? UUID.randomUUID() : null,
                 lease ? OffsetDateTime.now().plusMinutes(1) : null,
@@ -421,12 +445,12 @@ class FeedNotificationSchemaMigrationTest {
         return feed;
     }
 
-    private UUID createRegistration(UUID user, UUID device, String token) throws SQLException {
+    private UUID createRegistration(UUID user, UUID device, String fid) throws SQLException {
         UUID registration = UUID.randomUUID();
         execute("""
                 INSERT INTO push_registrations (id, user_id, device_id, recipient_value)
                 VALUES (?, ?, ?, ?)
-                """, registration, user, device, token);
+                """, registration, user, device, fid);
         return registration;
     }
 
@@ -468,7 +492,7 @@ class FeedNotificationSchemaMigrationTest {
     }
 
     private static Flyway flyway() {
-        return flyway("18");
+        return flyway("19");
     }
 
     private static Flyway flyway(String target) {
