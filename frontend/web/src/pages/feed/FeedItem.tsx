@@ -1,6 +1,7 @@
 import { css } from '@emotion/react';
 import categoryChevronIcon from '../../assets/icons/feed-category-chevron.svg';
 import profileFallbackImage from '../../assets/images/profile-fallback.svg';
+import moreIcon from '../../assets/icons/feed-more.svg';
 import type { Feed } from '../../domain/feeds/feedList';
 import DiaryImage from '../../shared/DiaryImage';
 import { theme } from '../../styles/theme';
@@ -11,7 +12,7 @@ interface FeedItemProps {
 }
 
 const FeedItem = ({ feed }: FeedItemProps) => {
-  const { author, category, publishedAt, imageUrl } = feed;
+  const { author, category, publishedAt, imageUrl, isMine } = feed;
 
   return (
     <article css={feedItemStyle}>
@@ -38,6 +39,16 @@ const FeedItem = ({ feed }: FeedItemProps) => {
             {formatPublishedAt(publishedAt)}
           </time>
         </div>
+        {isMine && (
+          <button
+            type="button"
+            aria-label="피드 더보기 (준비 중)"
+            disabled
+            css={moreButtonStyle}
+          >
+            <img src={moreIcon} alt="" />
+          </button>
+        )}
       </header>
       <div onContextMenu={(event) => event.preventDefault()}>
         <DiaryImage
@@ -47,7 +58,10 @@ const FeedItem = ({ feed }: FeedItemProps) => {
           css={comicImageStyle}
         />
       </div>
-      <FeedItemActions />
+      <FeedItemActions
+        likeCount={feed.likeCount}
+        commentCount={feed.commentCount}
+      />
     </article>
   );
 };
@@ -137,7 +151,20 @@ const publishedAtStyle = css`
   line-height: 18px;
 `;
 
+const moreButtonStyle = css`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: default;
+`;
+
 const comicImageStyle = css`
+  -webkit-touch-callout: none;
   display: block;
   width: 100%;
   aspect-ratio: 1;

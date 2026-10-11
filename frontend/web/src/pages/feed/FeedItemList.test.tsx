@@ -12,6 +12,10 @@ import FeedItemList from './FeedItemList';
 jest.mock('../../assets/images/loading-animation.webp', () => 'loading.webp');
 jest.mock('../../assets/images/empty-person-and-dog.png', () => 'empty.png');
 jest.mock('../../assets/images/request-fail.png', () => 'error.png');
+jest.mock('../../assets/icons/feed-heart.svg', () => 'feed-heart.svg');
+jest.mock('../../assets/icons/feed-comment.svg', () => 'feed-comment.svg');
+jest.mock('../../assets/icons/feed-send.svg', () => 'feed-send.svg');
+jest.mock('../../assets/icons/feed-more.svg', () => 'feed-more.svg');
 jest.mock(
   '../../assets/icons/feed-category-chevron.svg',
   () => 'feed-category-chevron.svg',
@@ -80,6 +84,37 @@ describe('피드 목록 조회 상태', () => {
       size: 20,
       signal: expect.any(AbortSignal),
     });
+  });
+
+  it('조회한 반응 수를 표시하고 연결 전 액션 버튼은 비활성화한다', async (): Promise<void> => {
+    render(<FeedItemList sort="LATEST" />);
+    await screen.findByRole('article');
+
+    expect(screen.queryByText('FeedItemActions')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '좋아요 12개 (준비 중)' }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: '댓글 3개 (준비 중)' }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: '피드 공유 (준비 중)' }),
+    ).toBeDisabled();
+    expect(
+      screen.queryByRole('button', { name: '피드 더보기 (준비 중)' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('본인 피드에만 연결 전 더보기 버튼을 표시한다', async (): Promise<void> => {
+    mockGetFeedList.mockResolvedValue({
+      ...response,
+      items: [{ ...feed, isMine: true }],
+    });
+    render(<FeedItemList sort="LATEST" />);
+
+    expect(
+      await screen.findByRole('button', { name: '피드 더보기 (준비 중)' }),
+    ).toBeDisabled();
   });
 
   it('프로필 이미지 로딩에 실패하면 기본 이미지로 대체한다', async () => {
