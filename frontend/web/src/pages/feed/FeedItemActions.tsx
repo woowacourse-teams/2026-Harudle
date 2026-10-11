@@ -13,8 +13,7 @@ const FeedItemActions = ({
     <div css={feedItemActionsStyle}>
       <button
         type="button"
-        aria-label={`좋아요 ${likeCount}개 (준비 중)`}
-        disabled
+        aria-label={`좋아요 ${likeCount}개`}
         css={reactionButtonStyle}
       >
         <span css={reactionIconStyle}>
@@ -24,8 +23,7 @@ const FeedItemActions = ({
       </button>
       <button
         type="button"
-        aria-label={`댓글 ${commentCount}개 (준비 중)`}
-        disabled
+        aria-label={`댓글 ${commentCount}개`}
         css={reactionButtonStyle}
       >
         <span css={reactionIconStyle}>
@@ -33,12 +31,7 @@ const FeedItemActions = ({
         </span>
         <span>{commentCount}</span>
       </button>
-      <button
-        type="button"
-        aria-label="피드 공유 (준비 중)"
-        disabled
-        css={shareButtonStyle}
-      >
+      <button type="button" aria-label="피드 공유" css={shareButtonStyle}>
         <span css={reactionIconStyle}>
           <img src={sendIcon} alt="" />
         </span>
@@ -69,7 +62,7 @@ const reactionButtonStyle = css`
   font-size: 12px;
   font-weight: 400;
   line-height: 20px;
-  cursor: default;
+  cursor: pointer;
 `;
 
 const shareButtonStyle = css`
@@ -82,7 +75,7 @@ const shareButtonStyle = css`
   padding: 0;
   border: none;
   background: none;
-  cursor: default;
+  cursor: pointer;
 `;
 
 const reactionIconStyle = css`

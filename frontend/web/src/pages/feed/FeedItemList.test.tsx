@@ -86,26 +86,26 @@ describe('피드 목록 조회 상태', () => {
     });
   });
 
-  it('조회한 반응 수를 표시하고 연결 전 액션 버튼은 비활성화한다', async (): Promise<void> => {
+  it('조회한 반응 수와 카드 액션 UI를 표시한다', async (): Promise<void> => {
     render(<FeedItemList sort="LATEST" />);
     await screen.findByRole('article');
 
     expect(screen.queryByText('FeedItemActions')).not.toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: '좋아요 12개 (준비 중)' }),
-    ).toBeDisabled();
+      screen.getByRole('button', { name: '좋아요 12개' }),
+    ).toHaveTextContent('12');
+    expect(screen.getByRole('button', { name: '댓글 3개' })).toHaveTextContent(
+      '3',
+    );
     expect(
-      screen.getByRole('button', { name: '댓글 3개 (준비 중)' }),
-    ).toBeDisabled();
+      screen.getByRole('button', { name: '피드 공유' }),
+    ).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: '피드 공유 (준비 중)' }),
-    ).toBeDisabled();
-    expect(
-      screen.queryByRole('button', { name: '피드 더보기 (준비 중)' }),
+      screen.queryByRole('button', { name: '피드 더보기' }),
     ).not.toBeInTheDocument();
   });
 
-  it('본인 피드에만 연결 전 더보기 버튼을 표시한다', async (): Promise<void> => {
+  it('본인 피드에만 더보기 버튼을 표시한다', async (): Promise<void> => {
     mockGetFeedList.mockResolvedValue({
       ...response,
       items: [{ ...feed, isMine: true }],
@@ -113,8 +113,8 @@ describe('피드 목록 조회 상태', () => {
     render(<FeedItemList sort="LATEST" />);
 
     expect(
-      await screen.findByRole('button', { name: '피드 더보기 (준비 중)' }),
-    ).toBeDisabled();
+      await screen.findByRole('button', { name: '피드 더보기' }),
+    ).toBeInTheDocument();
   });
 
   it('프로필 이미지 로딩에 실패하면 기본 이미지로 대체한다', async () => {

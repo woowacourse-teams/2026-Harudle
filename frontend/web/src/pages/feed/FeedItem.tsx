@@ -40,12 +40,7 @@ const FeedItem = ({ feed }: FeedItemProps) => {
           </time>
         </div>
         {isMine && (
-          <button
-            type="button"
-            aria-label="피드 더보기 (준비 중)"
-            disabled
-            css={moreButtonStyle}
-          >
+          <button type="button" aria-label="피드 더보기" css={moreButtonStyle}>
             <img src={moreIcon} alt="" />
           </button>
         )}
@@ -160,7 +155,7 @@ const moreButtonStyle = css`
   padding: 0;
   border: none;
   background: none;
-  cursor: default;
+  cursor: pointer;
 `;
 
 const comicImageStyle = css`
