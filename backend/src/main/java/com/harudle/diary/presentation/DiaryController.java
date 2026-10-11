@@ -78,7 +78,6 @@ class DiaryController {
             ErrorType.VALIDATION_ERROR,
             ErrorType.INVALID_IDEMPOTENCY_KEY,
             ErrorType.UNAUTHORIZED,
-            ErrorType.INVALID_CSRF_TOKEN,
             ErrorType.DIARY_NOT_FOUND,
             ErrorType.GENERATION_IN_PROGRESS,
             ErrorType.IDEMPOTENCY_KEY_CONFLICT,
@@ -165,7 +164,6 @@ class DiaryController {
             ErrorType.VALIDATION_ERROR,
             ErrorType.UNAUTHORIZED,
             ErrorType.FORBIDDEN,
-            ErrorType.INVALID_CSRF_TOKEN,
             ErrorType.FEED_UNAVAILABLE
     })
     @DeleteMapping("/{diaryId}")

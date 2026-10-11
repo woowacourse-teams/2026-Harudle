@@ -42,6 +42,10 @@ Authorization: Bearer {accessToken}
 - 서버는 Refresh Token의 해시만 저장합니다.
 - OAuth Provider 토큰과 서비스 Access/Refresh Token은 구분합니다.
 - 로그아웃은 만료되지 않은 Access Token을 요구하지 않으며 Refresh Token Cookie로 현재 세션을 식별합니다.
+- Bearer 인증 API의 POST·PUT·PATCH·DELETE에는 CSRF Cookie/Header를 요구하지 않습니다. 기존에 보내던 CSRF 값이 있어도 Bearer 요청에는 영향을 주지 않습니다.
+- 쿠키를 사용하는 `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout`, `POST /api/v1/guest/session`, `POST /api/v1/guest/diaries`는 `XSRF-TOKEN` Cookie와 같은 값의 `X-XSRF-TOKEN` Header가 필요합니다. Bearer Header를 함께 보내도 CSRF 검증을 생략하지 않습니다.
+- 새 쿠키 기반 변경 API를 추가하면 `CookieApiCsrfProtectionMatcher`의 대상 경로에도 등록합니다. 이 경로 목록을 보안 필터와 OpenAPI가 함께 사용합니다.
+- 소유권 확인과 `/api/v1/admin/**`의 ADMIN 권한 검증은 서버에서 수행합니다.
 
 ### 2.3 Content Type
 
@@ -537,8 +541,6 @@ HTTP/1.1 200 OK
 ```http
 DELETE /api/v1/diaries/{diaryId}
 Authorization: Bearer {accessToken}
-Cookie: XSRF-TOKEN={csrfToken}
-X-XSRF-TOKEN: {csrfToken}
 ```
 
 ```http
@@ -568,8 +570,6 @@ HTTP/1.1 204 No Content
 ```http
 POST /api/v1/feeds
 Authorization: Bearer {accessToken}
-Cookie: XSRF-TOKEN={csrfToken}
-X-XSRF-TOKEN: {csrfToken}
 Content-Type: application/json
 ```
 
@@ -618,8 +618,6 @@ GET /api/v1/feeds?sort=LATEST&categoryId=1&size=20
 ```http
 DELETE /api/v1/feeds/{feedId}
 Authorization: Bearer {accessToken}
-Cookie: XSRF-TOKEN={csrfToken}
-X-XSRF-TOKEN: {csrfToken}
 ```
 
 본문 없이 본인 피드를 소프트 삭제하며 성공하면 `204 No Content`를 반환합니다.
@@ -699,7 +697,7 @@ Retry-After: 13800
 | `401` | `INVALID_REFRESH_TOKEN` | Refresh Token 만료 또는 폐기 |
 | `401` | `INVALID_CURRENT_USER` | Access Token은 유효하지만 현재 사용자를 확인할 수 없음 |
 | `403` | `FORBIDDEN` | 다른 사용자의 리소스 접근 |
-| `403` | `INVALID_CSRF_TOKEN` | CSRF Token 누락 또는 불일치 |
+| `403` | `INVALID_CSRF_TOKEN` | 쿠키를 사용하는 인증·게스트 변경 요청의 CSRF Token 누락 또는 불일치 |
 | `404` | `API_NOT_FOUND` | 존재하지 않는 API 경로 요청 |
 | `404` | `DIARY_NOT_FOUND` | 상세 조회·피드 게시 대상 일기가 없거나 삭제됨 |
 | `404` | `FEED_NOT_FOUND` | 공개 피드가 없거나 피드/원본 일기가 삭제됨 |

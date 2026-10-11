@@ -139,8 +139,8 @@ public class SecurityConfig {
                         .withObjectPostProcessor(new ObjectPostProcessor<CsrfFilter>() {
                             @Override
                             public <O extends CsrfFilter> O postProcess(O filter) {
-                                // Resource Server의 Bearer 요청 제외 규칙보다 API의 CSRF 정책을 우선한다.
-                                filter.setRequireCsrfProtectionMatcher(CsrfFilter.DEFAULT_CSRF_MATCHER);
+                                // 쿠키 API는 Bearer 헤더가 함께 있어도 CSRF 검증을 생략하지 않는다.
+                                filter.setRequireCsrfProtectionMatcher(new CookieApiCsrfProtectionMatcher());
                                 filter.setAccessDeniedHandler(apiAccessDeniedHandler);
                                 return filter;
                             }

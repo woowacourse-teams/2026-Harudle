@@ -8,15 +8,15 @@
 
 | 메서드 | 경로 | 인증 | 성공 응답 |
 | --- | --- | --- | --- |
-| POST | `/api/v1/feeds` | Bearer + CSRF Cookie/Header | 201, Feed |
+| POST | `/api/v1/feeds` | Bearer | 201, Feed |
 | GET | `/api/v1/feeds` | 선택 | 200, Feed Page |
 | GET | `/api/v1/feeds/{feedId}` | 선택 | 200, Feed |
-| DELETE | `/api/v1/feeds/{feedId}` | Bearer + CSRF Cookie/Header | 204, 본문 없음 |
+| DELETE | `/api/v1/feeds/{feedId}` | Bearer | 204, 본문 없음 |
 | GET | `/api/v1/diaries/{diaryId}` | Bearer | 200, 기존 Diary Detail + `publishedFeedId` |
-| DELETE | `/api/v1/diaries/{diaryId}` | Bearer + CSRF Cookie/Header | 204, 본문 없음 |
+| DELETE | `/api/v1/diaries/{diaryId}` | Bearer | 204, 본문 없음 |
 
-게시·삭제 요청에는 `Authorization: Bearer {accessToken}`, `XSRF-TOKEN` Cookie와 같은 값을 가진 `X-XSRF-TOKEN` Header가 필요하다.
-CSRF는 Bearer 인증 요청에도 적용한다. 조회·게시 응답은 `application/json`, 오류는 기존 `application/problem+json` 형식과 `code`, `traceId`를 사용한다. 삭제 성공 응답에는 본문이 없다.
+게시·삭제 요청에는 `Authorization: Bearer {accessToken}`이 필요하며 CSRF Cookie/Header는 요구하지 않는다. 기존에 CSRF 값을 보내던 요청도 그대로 사용할 수 있다.
+쿠키를 사용하는 인증·게스트 변경 API의 CSRF 보호는 유지한다. 조회·게시 응답은 `application/json`, 오류는 기존 `application/problem+json` 형식과 `code`, `traceId`를 사용한다. 삭제 성공 응답에는 본문이 없다.
 
 ### 게시
 
@@ -113,8 +113,6 @@ GET /api/v1/feeds?sort=LATEST&categoryId=1&size=20
 ```http
 DELETE /api/v1/feeds/{feedId}
 Authorization: Bearer {accessToken}
-Cookie: XSRF-TOKEN={csrfToken}
-X-XSRF-TOKEN: {csrfToken}
 ```
 
 요청 본문 없이 본인 피드를 삭제한다. 성공하면 `204 No Content`를 반환한다.
@@ -170,7 +168,6 @@ X-XSRF-TOKEN: {csrfToken}
 | 400 | `VALIDATION_ERROR` | 필수 값 누락, 잘못된 UUID·카테고리 ID·정렬·페이지 크기 |
 | 400 | `INVALID_CURSOR` | 잘못된 커서 또는 정렬·카테고리 조건 불일치 |
 | 401 | `UNAUTHORIZED` | 게시·삭제 인증 누락 또는 유효하지 않은 Bearer 토큰 |
-| 403 | `INVALID_CSRF_TOKEN` | 게시·삭제 CSRF 검증 실패 |
 | 403 | `FORBIDDEN` | 다른 사용자의 일기 게시·삭제 또는 피드 삭제 |
 | 404 | `DIARY_NOT_FOUND` | 게시할 일기가 없거나 삭제됨 |
 | 404 | `CATEGORY_NOT_FOUND` | 카테고리가 없음 |
@@ -236,10 +233,11 @@ Repository는 잠금·저장·조회만 수행한다. `DiaryPublicationReader`�
 
 ## 검증
 
-단위·MVC 테스트는 게시 조건, 중복 게시, 공개 응답의 비공개 필드 제외, 익명/로그인 조회, 오류 코드, 실제 Bearer 요청의 CSRF Cookie/Header를 검증한다.
+단위·MVC 테스트는 게시 조건, 중복 게시, 공개 응답의 비공개 필드 제외, 익명/로그인 조회, 오류 코드와 CSRF 없이 호출하는 실제 Bearer 요청을 검증한다.
 목록 테스트는 요청 조건 검증, 커서 왕복과 조건 불일치, 다음 페이지 판단, 개인화 일괄 조회와 프로필 누락 시 페이지 보충을 검증한다.
 개인 일기 테스트는 게시 여부의 UUID/null 응답, 기존 이미지·생성 정보, 권한 검증 전에 피드 조회가 실행되지 않는 동작과 삭제 시 같은 시각 전달·멱등 처리·피드 실패 전파를 검증한다.
-삭제 단위·MVC 테스트는 소유권·존재 여부, 최초 삭제 시각 유지, 반응 수 보존, 푸시 포트 호출·실패, 204 본문 없음과 인증·CSRF를 검증한다.
+삭제 단위·MVC 테스트는 소유권·존재 여부, 최초 삭제 시각 유지, 반응 수 보존, 푸시 포트 호출·실패, 204 본문 없음과 Bearer 인증을 검증한다.
+공통 보안 테스트는 회원·관리자의 POST·PUT·PATCH·DELETE를 CSRF 없이 허용하고, 쿠키를 사용하는 4개 API는 Bearer 유무와 관계없이 CSRF 누락·불일치를 거부하는지 검증한다. OpenAPI에서도 같은 인증 요구를 검증한다.
 `FeedPublicationPersistenceTest`는 PostgreSQL에서 저장·조회, 동시 게시, 푸시 예약 실패 시 롤백, 삭제된 대상 제외·재게시 및 개인 일기의 활성 피드 ID 반영과 일괄 조회를 검증한다.
 `FeedListAndInteractionPersistenceTest`는 PostgreSQL의 정렬·UUID 동률 처리·커서, 삭제 대상 제외, 반응과 카운터의 동시 롤백·동시 증감, 삭제와 카운터의 잠금 경합 및 원본 일기를 잠그지 않는 동작을 검증한다.
 `FeedDeletionPersistenceTest`는 소프트 삭제·원본과 연결 행 유지, 공개 조회 제외·게시 여부 반영·재게시, 호출자 트랜잭션 참여와 실패 시 롤백을 검증한다.

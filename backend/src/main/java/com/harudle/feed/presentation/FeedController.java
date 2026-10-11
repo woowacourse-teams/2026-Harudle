@@ -70,7 +70,7 @@ class FeedController {
     @ApiResponse(responseCode = "201", description = "피드 게시 완료")
     @ApiErrorResponses({
             ErrorType.VALIDATION_ERROR, ErrorType.UNAUTHORIZED, ErrorType.FORBIDDEN,
-            ErrorType.INVALID_CSRF_TOKEN, ErrorType.DIARY_NOT_FOUND, ErrorType.CATEGORY_NOT_FOUND,
+            ErrorType.DIARY_NOT_FOUND, ErrorType.CATEGORY_NOT_FOUND,
             ErrorType.DIARY_NOT_PUBLISHABLE, ErrorType.DIARY_ALREADY_PUBLISHED, ErrorType.CATEGORY_INACTIVE,
             ErrorType.FEED_UNAVAILABLE, ErrorType.IMAGE_STORAGE_ERROR
     })
@@ -122,7 +122,7 @@ class FeedController {
     @ApiResponse(responseCode = "204", description = "피드 삭제 완료")
     @ApiErrorResponses({
             ErrorType.VALIDATION_ERROR, ErrorType.UNAUTHORIZED, ErrorType.FORBIDDEN,
-            ErrorType.INVALID_CSRF_TOKEN, ErrorType.FEED_NOT_FOUND, ErrorType.FEED_UNAVAILABLE
+            ErrorType.FEED_NOT_FOUND, ErrorType.FEED_UNAVAILABLE
     })
     @DeleteMapping("/{feedId}")
     ResponseEntity<Void> delete(

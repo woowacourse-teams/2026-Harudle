@@ -44,7 +44,6 @@ class AdminUserControllerTest {
     private static final ZoneId SERVICE_ZONE = ZoneId.of("Asia/Seoul");
     private static final String IDEMPOTENCY_KEY = "b7a8a9aa-0b1c-4d2e-8f3a-4b5c6d7e8f90";
     private static final String ANOTHER_IDEMPOTENCY_KEY = "c8b9baab-1c2d-4e3f-9a4b-5c6d7e8f9012";
-    private static final String CSRF_TOKEN = "admin-user-test-csrf";
 
     @Container
     @ServiceConnection
@@ -742,9 +741,7 @@ class AdminUserControllerTest {
             User admin
     ) {
         return RestAssuredMockMvc.given()
-                .header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
-                .cookie("XSRF-TOKEN", CSRF_TOKEN)
-                .header("X-XSRF-TOKEN", CSRF_TOKEN);
+                .header(HttpHeaders.AUTHORIZATION, bearerToken(admin));
     }
 
     private User saveUser(String name) {

@@ -22,6 +22,7 @@ import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockServletContext;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
@@ -85,12 +86,15 @@ class AdminR2ImageRecoveryControllerTest {
     }
 
     @Test
-    void adminWithoutCsrfCannotWrite() throws Exception {
-        // jwt() 테스트 도우미는 CSRF 필터를 건너뛰므로 이 검증에서는 일반 인증 도우미를 사용한다.
-        mvc.perform(post(ENDPOINT).with(user(USER_ID.toString()))
+    void adminWithBearerCanWriteWithoutCsrf() throws Exception {
+        when(context.getBean(JwtDecoder.class).decode("valid")).thenReturn(Jwt.withTokenValue("valid")
+                .header("alg", "RS256").subject(USER_ID.toString()).build());
+        when(service.recover("dev", List.of(GENERATION_ID), false)).thenReturn(
+                new AdminR2ImageRecoveryService.BatchResult(UUID.randomUUID(), "dev", false, List.of()));
+        mvc.perform(post(ENDPOINT).header("Authorization", "Bearer valid")
                         .contentType(MediaType.APPLICATION_JSON).content(body("false")))
-                .andExpect(status().isForbidden());
-        verifyNoInteractions(service);
+                .andExpect(status().isOk()).andExpect(jsonPath("$.dryRun").value(false));
+        verify(service).recover("dev", List.of(GENERATION_ID), false);
     }
 
     @Test

@@ -227,7 +227,6 @@ class FeedControllerTest {
     @Test
     void rejectsMissingAuthenticationOnPublication() throws Exception {
         mockMvc.perform(post("/api/v1/feeds")
-                        .cookie(csrfCookie()).header("X-XSRF-TOKEN", "feed-test-csrf")
                         .contentType(MediaType.APPLICATION_JSON).content(REQUEST))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
@@ -235,49 +234,23 @@ class FeedControllerTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"COOKIE_ONLY", "HEADER_ONLY"})
-    void requiresBothCsrfCookieAndHeader(String suppliedToken) throws Exception {
-        var request = post("/api/v1/feeds").header("Authorization", "Bearer valid")
-                .contentType(MediaType.APPLICATION_JSON).content(REQUEST);
-        if ("COOKIE_ONLY".equals(suppliedToken)) {
-            request.cookie(csrfCookie());
-        } else {
-            request.header("X-XSRF-TOKEN", "feed-test-csrf");
-        }
-        mockMvc.perform(request)
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("INVALID_CSRF_TOKEN"));
-        verifyNoInteractions(publicationService);
-    }
-
-    @Test
-    void requiresCsrfEvenWhenAuthorizationContainsBearerToken() throws Exception {
-        mockMvc.perform(post("/api/v1/feeds").header("Authorization", "Bearer valid")
-                        .contentType(MediaType.APPLICATION_JSON).content(REQUEST))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("INVALID_CSRF_TOKEN"));
-        verifyNoInteractions(publicationService);
-    }
-
-    @Test
-    void rejectsMismatchedCsrfCookieAndHeader() throws Exception {
-        mockMvc.perform(post("/api/v1/feeds").header("Authorization", "Bearer valid")
-                        .cookie(csrfCookie()).header("X-XSRF-TOKEN", "wrong-token")
-                        .contentType(MediaType.APPLICATION_JSON).content(REQUEST))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("INVALID_CSRF_TOKEN"));
-        verifyNoInteractions(publicationService);
-    }
-
-    @Test
-    void publishesWithRealBearerAndMatchingCsrfCookieAndHeader() throws Exception {
+    @ValueSource(strings = {"NONE", "COOKIE_ONLY", "HEADER_ONLY", "MISMATCHED", "MATCHED"})
+    void publishesWithBearerRegardlessOfCsrfTokens(String suppliedToken) throws Exception {
         when(jwtDecoder.decode("valid")).thenReturn(Jwt.withTokenValue("valid")
                 .header("alg", "RS256").subject(ACTOR.toString()).build());
         when(publicationService.publish(ACTOR, DIARY, 1)).thenReturn(result(false, true));
-        mockMvc.perform(post("/api/v1/feeds").header("Authorization", "Bearer valid")
-                        .cookie(csrfCookie()).header("X-XSRF-TOKEN", "feed-test-csrf")
-                        .contentType(MediaType.APPLICATION_JSON).content(REQUEST))
-                .andExpect(status().isCreated());
+        var request = post("/api/v1/feeds").header("Authorization", "Bearer valid")
+                .contentType(MediaType.APPLICATION_JSON).content(REQUEST);
+        if ("COOKIE_ONLY".equals(suppliedToken) || "MISMATCHED".equals(suppliedToken)
+                || "MATCHED".equals(suppliedToken)) {
+            request.cookie(csrfCookie());
+        }
+        if ("HEADER_ONLY".equals(suppliedToken) || "MISMATCHED".equals(suppliedToken)
+                || "MATCHED".equals(suppliedToken)) {
+            request.header("X-XSRF-TOKEN", "MISMATCHED".equals(suppliedToken) ? "wrong-token" : "feed-test-csrf");
+        }
+        mockMvc.perform(request).andExpect(status().isCreated());
+        verify(publicationService).publish(ACTOR, DIARY, 1);
     }
 
     @ParameterizedTest
@@ -359,11 +332,10 @@ class FeedControllerTest {
     }
 
     @Test
-    void deletesWithRealBearerAndMatchingCsrfCookieAndHeader() throws Exception {
+    void deletesWithRealBearerWithoutCsrf() throws Exception {
         when(jwtDecoder.decode("valid")).thenReturn(Jwt.withTokenValue("valid")
                 .header("alg", "RS256").subject(ACTOR.toString()).build());
-        mockMvc.perform(delete("/api/v1/feeds/{feedId}", FEED).header("Authorization", "Bearer valid")
-                        .cookie(csrfCookie()).header("X-XSRF-TOKEN", "feed-test-csrf"))
+        mockMvc.perform(delete("/api/v1/feeds/{feedId}", FEED).header("Authorization", "Bearer valid"))
                 .andExpect(status().isNoContent())
                 .andExpect(content().string(""));
         verify(deletionService).delete(ACTOR, FEED);
@@ -372,26 +344,28 @@ class FeedControllerTest {
 
     @Test
     void requiresAuthenticationOnDeletion() throws Exception {
-        mockMvc.perform(delete("/api/v1/feeds/{feedId}", FEED)
-                        .cookie(csrfCookie()).header("X-XSRF-TOKEN", "feed-test-csrf"))
+        mockMvc.perform(delete("/api/v1/feeds/{feedId}", FEED))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
         verifyNoInteractions(deletionService);
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"NONE", "COOKIE_ONLY", "HEADER_ONLY", "MISMATCHED"})
-    void requiresMatchingCsrfCookieAndHeaderForBearerDeletion(String suppliedToken) throws Exception {
+    @ValueSource(strings = {"NONE", "COOKIE_ONLY", "HEADER_ONLY", "MISMATCHED", "MATCHED"})
+    void deletesWithBearerRegardlessOfCsrfTokens(String suppliedToken) throws Exception {
+        when(jwtDecoder.decode("valid")).thenReturn(Jwt.withTokenValue("valid")
+                .header("alg", "RS256").subject(ACTOR.toString()).build());
         var request = delete("/api/v1/feeds/{feedId}", FEED).header("Authorization", "Bearer valid");
-        if ("COOKIE_ONLY".equals(suppliedToken) || "MISMATCHED".equals(suppliedToken)) {
+        if ("COOKIE_ONLY".equals(suppliedToken) || "MISMATCHED".equals(suppliedToken)
+                || "MATCHED".equals(suppliedToken)) {
             request.cookie(csrfCookie());
         }
-        if ("HEADER_ONLY".equals(suppliedToken) || "MISMATCHED".equals(suppliedToken)) {
+        if ("HEADER_ONLY".equals(suppliedToken) || "MISMATCHED".equals(suppliedToken)
+                || "MATCHED".equals(suppliedToken)) {
             request.header("X-XSRF-TOKEN", "MISMATCHED".equals(suppliedToken) ? "wrong-token" : "feed-test-csrf");
         }
-        mockMvc.perform(request).andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("INVALID_CSRF_TOKEN"));
-        verifyNoInteractions(deletionService);
+        mockMvc.perform(request).andExpect(status().isNoContent()).andExpect(content().string(""));
+        verify(deletionService).delete(ACTOR, FEED);
     }
 
     @Test
