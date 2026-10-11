@@ -98,6 +98,7 @@ GET /api/v1/feeds?sort=LATEST&categoryId=1&size=20
 원본 일기 내용·제목·일기 ID·작성자의 이메일·이미지 Object Key는 공개 응답에 포함하지 않는다.
 기존 `ImageUrlProvider`로 DB 트랜잭션 이후에 S3/R2 접근 URL을 발급한다.
 `shareUrl`은 `FEED_PUBLIC_BASE_URL` 뒤에 피드 ID를 붙인 주소다. 로컬 기본값은 `http://localhost:5173/feeds`다.
+`prod` 프로필에서는 기본값을 사용하지 않으며 `FEED_PUBLIC_BASE_URL`이 없거나 비어 있거나 URL 형식이 올바르지 않으면 애플리케이션 시작이 실패한다.
 피드 공유는 기존 일기 공유 API를 대체한다. 공유 버튼은 게시된 피드의 주소를 복사하거나 기기의 공유 기능을 사용한다.
 기존 `PUT /api/v1/diaries/{diaryId}/share-link`와 `GET /api/v1/public/shares/{shareId}`는 제거한다.
 게시하지 않은 개인 일기를 공개하거나 새 `shareId`를 만드는 경로는 제공하지 않는다.
