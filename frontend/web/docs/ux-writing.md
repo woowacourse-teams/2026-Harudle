@@ -16,6 +16,7 @@
 - [작성 문구](../src/pages/diary-write/copy.ts): 질문, 입력 예시, 안내, 팁, 입력 오류
 - [생성 문구](../src/pages/diary-generating/copy.ts): 단계별 안내, 완료, 실패, 생성 제한
 - [상세 문구](../src/pages/diary-detail/copy.ts): 줄거리, 공유, 저장, 삭제
+- [피드 상세 문구](../src/pages/feed-detail/copy.ts): 조회 실패는 `피드를 불러오지 못했어요`와 오류 메시지, `다시 불러오기` 버튼을 표시하고, URL에 피드 ID가 없으면 `삭제되었거나 존재하지 않는 피드예요.`를 표시합니다.
 - [랜딩 문구](../src/pages/landing/copy.ts): 브랜드 소개, 결과 예시, 공유 경험, 체험 안내
 - [게스트 체험 문구](../src/pages/landing/trialCopy.ts): 1회 체험 작성, 생성, 결과, 로그인 유도
 

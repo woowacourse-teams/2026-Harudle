@@ -77,7 +77,7 @@ export const getFeedList = async ({
   return data;
 };
 
-const isFeed = (value: unknown): value is Feed => {
+export const isFeed = (value: unknown): value is Feed => {
   return (
     isRecord(value) &&
     typeof value.id === 'string' &&

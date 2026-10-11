@@ -1,3 +1,4 @@
+import { formatPublishedAt } from '../../shared/feed/formatPublishedAt';
 import { css } from '@emotion/react';
 import categoryChevronIcon from '../../assets/icons/feed-category-chevron.svg';
 import profileFallbackImage from '../../assets/images/profile-fallback.svg';
@@ -6,6 +7,7 @@ import type { FeedLikeResponse } from '../../domain/feeds/feedLike';
 import DiaryImage from '../../shared/DiaryImage';
 import { theme } from '../../styles/theme';
 import FeedActions from '../../shared/feed/FeedActions';
+import { useNavigate } from 'react-router';
 import FeedOptionsButton from '../../shared/feed/FeedOptionsButton';
 
 interface FeedItemProps {
@@ -15,6 +17,7 @@ interface FeedItemProps {
 }
 
 const FeedItem = ({ feed, onLikeChange, onDelete }: FeedItemProps) => {
+  const navigate = useNavigate();
   const { author, category, publishedAt, imageUrl, isMine } = feed;
 
   return (
@@ -53,7 +56,9 @@ const FeedItem = ({ feed, onLikeChange, onDelete }: FeedItemProps) => {
         />
       </div>
       <FeedActions
-        onCommentClick={(): void => {}}
+        onCommentClick={() => {
+          void navigate(`/feeds/${feed.id}`);
+        }}
         shareUrl={feed.shareUrl}
         feedId={feed.id}
         commentCount={feed.commentCount}
@@ -66,17 +71,6 @@ const FeedItem = ({ feed, onLikeChange, onDelete }: FeedItemProps) => {
 };
 
 export default FeedItem;
-
-const formatPublishedAt = (publishedAt: string): string => {
-  const elapsed = Date.now() - new Date(publishedAt).getTime();
-  if (!Number.isFinite(elapsed)) return '';
-  const minutes = Math.max(0, Math.floor(elapsed / 60_000));
-  if (minutes < 1) return '방금 전';
-  if (minutes < 60) return `${minutes}분 전`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}시간 전`;
-  return `${Math.floor(hours / 24)}일 전`;
-};
 
 const feedItemStyle = css`
   display: flex;

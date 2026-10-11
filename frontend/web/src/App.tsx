@@ -2,6 +2,7 @@ import { css } from '@emotion/react';
 import EntryRoute from './EntryRoute';
 import AlbumPage from './pages/album/AlbumPage/AlbumPage';
 import FeedPage from './pages/feed/FeedPage';
+import FeedDetailPage from './pages/feed-detail/FeedDetailPage';
 import { Route, Routes } from 'react-router';
 import DiaryWritePage from './pages/diary-write/DiaryWritePage';
 import DiaryGeneratingPage from './pages/diary-generating/DiaryGeneratingPage';
@@ -25,6 +26,7 @@ const App = () => {
           <Route path="/" element={<FeedPage />} />
         </Route>
         <Route path="/album" element={<AlbumPage />} />
+        <Route path="/feeds/:feedId" element={<FeedDetailPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
         <Route path="/diary-write" element={<DiaryWritePage />} />

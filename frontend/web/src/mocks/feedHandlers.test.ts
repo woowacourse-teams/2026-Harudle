@@ -22,6 +22,7 @@ jest.mock('msw', () => {
     http: {
       get: createHandler('GET'),
       put: createHandler('PUT'),
+      post: createHandler('POST'),
       delete: createHandler('DELETE'),
     },
     HttpResponse: MockHttpResponse,

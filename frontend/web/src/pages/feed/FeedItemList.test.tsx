@@ -125,6 +125,15 @@ const prepareDialogs = (): void => {
 };
 
 describe('피드 카드 액션', (): void => {
+  it('댓글을 누르면 해당 피드 상세 페이지로 이동한다', async (): Promise<void> => {
+    const user = userEvent.setup();
+    render(<FeedItemList sort="LATEST" />);
+
+    await user.click(await screen.findByRole('button', { name: '3' }));
+
+    expect(mockNavigate).toHaveBeenCalledWith(`/feeds/${feed.id}`);
+  });
+
   it('비로그인 좋아요는 요청 없이 로그인 안내를 열고 닫거나 로그인 페이지로 이동한다', async (): Promise<void> => {
     localStorage.removeItem('harudle.has-completed-oauth');
     // 과거 로그인 경험만 있어도 현재 로그아웃 상태면 안내한다.
