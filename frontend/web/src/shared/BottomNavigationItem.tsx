@@ -14,7 +14,7 @@ const BottomNavigationItem = ({
   const navigate = useNavigate();
 
   return (
-    <button css={buttonStyle} onClick={() => navigate(path)}>
+    <button type="button" css={buttonStyle} onClick={() => void navigate(path)}>
       <span css={iconStyle(iconSrc, nowPath === path)} />
       <span css={labelStyle(nowPath === path)}>{label}</span>
     </button>
