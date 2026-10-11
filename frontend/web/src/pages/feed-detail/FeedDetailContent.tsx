@@ -9,6 +9,7 @@ import backIcon from '../../assets/icons/back.svg';
 import harudleLogo from '../../assets/images/harudle-logo.webp';
 import LoadingSpinner from '../../shared/LoadingSpinner';
 import FeedDetailError from './FeedDetailError';
+import FeedComments from './FeedComments';
 import useFeedDetail from './useFeedDetail';
 import { formatPublishedAt } from '../../shared/feed/formatPublishedAt';
 import DiaryImage from '../../shared/DiaryImage';
@@ -111,9 +112,9 @@ const FeedDetailContent = ({ feedId }: FeedDetailContentProps) => {
             commentCount={feed.commentCount}
             shareUrl={feed.shareUrl}
             onLikeChange={updateLike}
-            onCommentClick={() => {}}
           />
         </article>
+        <FeedComments feedId={feedId} />
       </main>
     </div>
   );

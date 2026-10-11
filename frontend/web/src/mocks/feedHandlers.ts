@@ -21,7 +21,7 @@ interface MockFeed {
   readonly imageUrl: string;
   readonly publishedAt: string;
   likeCount: number;
-  readonly commentCount: number;
+  commentCount: number;
 }
 
 interface MockFeedResponse extends MockFeed {
@@ -71,16 +71,50 @@ const createInitialFeeds = (): MockFeed[] => {
         now - Math.floor(index / 2) * 3_600_000,
       ).toISOString(),
       likeCount: (index % 5) * 3,
-      commentCount: index % 4,
+      commentCount: index === 0 ? 24 : index % 4,
     };
   });
 };
 
+interface MockComment {
+  readonly id: string;
+  readonly feedId: string;
+  readonly author: MockFeed['author'];
+  readonly content: string;
+  readonly createdAt: string;
+}
+
+const createInitialComments = (
+  initialFeeds: readonly MockFeed[],
+): MockComment[] => {
+  return initialFeeds.flatMap((feed, feedIndex) =>
+    Array.from({ length: feed.commentCount }, (_, index): MockComment => ({
+      id: `10000000-0000-4000-8000-${String(feedIndex * 100 + index + 1).padStart(12, '0')}`,
+      feedId: feed.id,
+      author: {
+        id:
+          index % 2 === 0
+            ? MOCK_USER_ID
+            : '00000000-0000-4000-8000-000000000100',
+        nickname: index % 2 === 0 ? '하루들' : '네오',
+        profileImageUrl: profileImage,
+      },
+      content:
+        index % 2 === 0 ? '오늘도 수고했어요!' : '마지막 장면 너무 공감돼요!',
+      createdAt: new Date(
+        Date.now() - (feed.commentCount - index) * 60_000,
+      ).toISOString(),
+    })),
+  );
+};
+
 let feeds = createInitialFeeds();
+let comments = createInitialComments(feeds);
 const likedFeedIds = new Set<string>();
 
 export const resetFeedMockState = (): void => {
   feeds = createInitialFeeds();
+  comments = createInitialComments(feeds);
   likedFeedIds.clear();
 };
 
@@ -285,6 +319,84 @@ export const feedHandlers = [
   }),
 
   http.get(
+    '/api/v1/feeds/:feedId/comments',
+    async ({ request, params }): Promise<Response> => {
+      await delay(300);
+      const error = validateAuthentication(request);
+      if (error) return error;
+      const feedId = String(params.feedId);
+      if (!isCanonicalUuid(feedId))
+        return problem(request, 400, 'VALIDATION_ERROR');
+      if (!feeds.some(({ id }): boolean => id === feedId))
+        return problem(request, 404, 'FEED_NOT_FOUND');
+      const url = new URL(request.url);
+      const sizeValue = url.searchParams.get('size');
+      const size = sizeValue === null ? 20 : Number(sizeValue);
+      if (
+        (sizeValue !== null && !/^\d+$/.test(sizeValue)) ||
+        !Number.isInteger(size) ||
+        size < 1 ||
+        size > 50
+      )
+        return problem(request, 400, 'VALIDATION_ERROR');
+      let cursor: { readonly id: string; readonly createdAt: string } | null =
+        null;
+      const cursorValue = url.searchParams.get('cursor');
+      if (cursorValue !== null) {
+        try {
+          const value: unknown = JSON.parse(cursorValue);
+          if (
+            typeof value !== 'object' ||
+            value === null ||
+            !('feedId' in value) ||
+            value.feedId !== feedId ||
+            !('id' in value) ||
+            typeof value.id !== 'string' ||
+            !isCanonicalUuid(value.id) ||
+            !('createdAt' in value) ||
+            typeof value.createdAt !== 'string' ||
+            !Number.isFinite(Date.parse(value.createdAt))
+          )
+            return problem(request, 400, 'INVALID_CURSOR');
+          cursor = { id: value.id, createdAt: value.createdAt };
+        } catch {
+          return problem(request, 400, 'INVALID_CURSOR');
+        }
+      }
+      const sorted = comments
+        .filter((comment): boolean => comment.feedId === feedId)
+        .sort(
+          (a, b): number =>
+            a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id),
+        )
+        .filter(
+          (comment): boolean =>
+            cursor === null ||
+            comment.createdAt > cursor.createdAt ||
+            (comment.createdAt === cursor.createdAt && comment.id > cursor.id),
+        );
+      const page = sorted.slice(0, size);
+      const last = page.at(-1);
+      const hasNext = sorted.length > size;
+      return HttpResponse.json({
+        items: page.map((comment) => ({
+          id: comment.id,
+          author: comment.author,
+          content: comment.content,
+          createdAt: comment.createdAt,
+          isMine:
+            isAuthenticated(request) && comment.author.id === MOCK_USER_ID,
+        })),
+        nextCursor:
+          hasNext && last
+            ? JSON.stringify({ feedId, id: last.id, createdAt: last.createdAt })
+            : null,
+        hasNext,
+      });
+    },
+  ),
+
+  http.get(
     '/api/v1/feeds/:feedId',
     async ({ request, params }): Promise<Response> => {
       await delay(300);
@@ -338,6 +450,9 @@ export const feedHandlers = [
 
       feeds = feeds.filter(({ id }): boolean => id !== feedId);
       likedFeedIds.delete(feedId);
+      comments = comments.filter(
+        (comment): boolean => comment.feedId !== feedId,
+      );
       return new HttpResponse(null, { status: 204 });
     },
   ),
