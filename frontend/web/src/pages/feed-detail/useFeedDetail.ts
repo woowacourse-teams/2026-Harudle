@@ -9,7 +9,8 @@ import { useErrorTracking } from '../../posthog/useErrorTracking';
 interface FeedDetailState {
   readonly request: ApiRequest<Feed>;
   readonly execute: () => Promise<void>;
-  readonly updateCommentCount: (delta: number) => void;
+  readonly increaseCommentCount: () => void;
+  readonly decreaseCommentCount: () => void;
   readonly updateLike: (feedId: Feed['id'], like: FeedLikeResponse) => void;
 }
 
@@ -72,20 +73,40 @@ const useFeedDetail = ({
     [],
   );
 
-  const updateCommentCount = useCallback((delta: number): void => {
+  const increaseCommentCount = useCallback((): void => {
     setRequest((previous) =>
       previous.status === 'success'
         ? {
             ...previous,
             data: {
               ...previous.data,
-              commentCount: Math.max(0, previous.data.commentCount + delta),
+              commentCount: previous.data.commentCount + 1,
             },
           }
         : previous,
     );
   }, []);
-  return { request, execute, updateLike, updateCommentCount };
+
+  const decreaseCommentCount = useCallback((): void => {
+    setRequest((previous) =>
+      previous.status === 'success'
+        ? {
+            ...previous,
+            data: {
+              ...previous.data,
+              commentCount: Math.max(0, previous.data.commentCount - 1),
+            },
+          }
+        : previous,
+    );
+  }, []);
+  return {
+    request,
+    execute,
+    updateLike,
+    increaseCommentCount,
+    decreaseCommentCount,
+  };
 };
 
 export default useFeedDetail;

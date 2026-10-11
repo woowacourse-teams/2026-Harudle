@@ -11,6 +11,7 @@ import { useErrorTracking } from '../../posthog/useErrorTracking';
 interface FeedCommentsState {
   readonly request: ApiRequest<FeedCommentsResponse>;
   readonly addComment: (comment: FeedComment) => void;
+  readonly removeComment: (commentId: FeedComment['id']) => void;
   readonly execute: () => Promise<FeedCommentsResponse | null>;
 }
 
@@ -68,7 +69,22 @@ const useFeedComments = ({
       };
     });
   }, []);
-  return { request, execute, addComment };
+  const removeComment = useCallback((commentId: FeedComment['id']): void => {
+    setRequest((previous) => {
+      if (previous.status !== 'success') return previous;
+      return {
+        ...previous,
+        data: {
+          ...previous.data,
+          items: previous.data.items.filter(
+            ({ id }): boolean => id !== commentId,
+          ),
+        },
+      };
+    });
+  }, []);
+
+  return { request, execute, addComment, removeComment };
 };
 
 export default useFeedComments;

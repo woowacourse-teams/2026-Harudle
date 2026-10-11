@@ -1,20 +1,28 @@
 import { css } from '@emotion/react';
 import FeedCommentList from './FeedCommentList';
 import type { ApiRequest } from '../../shared/api';
-import type { FeedCommentsResponse } from '../../domain/feeds/feedComments';
+import type {
+  FeedComment,
+  FeedCommentsResponse,
+} from '../../domain/feeds/feedComments';
 import { FEED_DETAIL_COPY } from './copy';
 import { theme } from '../../styles/theme';
 
 interface FeedCommentsProps {
   readonly request: ApiRequest<FeedCommentsResponse>;
   readonly onRetry: () => void;
+  readonly onDelete: (commentId: FeedComment['id']) => void;
 }
 
-const FeedComments = ({ request, onRetry }: FeedCommentsProps) => {
+const FeedComments = ({ request, onRetry, onDelete }: FeedCommentsProps) => {
   return (
     <section css={sectionStyle}>
       <h2 css={headingStyle}>{FEED_DETAIL_COPY.commentsHeading}</h2>
-      <FeedCommentList request={request} onRetry={onRetry} />
+      <FeedCommentList
+        request={request}
+        onRetry={onRetry}
+        onDelete={onDelete}
+      />
     </section>
   );
 };

@@ -39,7 +39,8 @@ type FeedProblemCode =
   | 'UNAUTHORIZED'
   | 'FORBIDDEN'
   | 'CATEGORY_NOT_FOUND'
-  | 'FEED_NOT_FOUND';
+  | 'FEED_NOT_FOUND'
+  | 'COMMENT_NOT_FOUND';
 
 const MOCK_USER_ID = '08d69a34-6d70-4d42-a158-671bc67733c9';
 const MOCK_ACCESS_TOKEN = 'mock-access-token';
@@ -459,6 +460,26 @@ export const feedHandlers = [
         isMine: authenticated && feed.author.id === MOCK_USER_ID,
         shareUrl: `${new URL(request.url).origin}/feeds/${feed.id}`,
       });
+    },
+  ),
+
+  http.delete(
+    '/api/v1/comments/:commentId',
+    async ({ request, params }): Promise<Response> => {
+      await delay(300);
+      const error = validateMutation(request);
+      if (error) return error;
+      const commentId = String(params.commentId);
+      if (!isCanonicalUuid(commentId))
+        return problem(request, 400, 'VALIDATION_ERROR');
+      const comment = comments.find(({ id }): boolean => id === commentId);
+      if (!comment) return problem(request, 404, 'COMMENT_NOT_FOUND');
+      if (comment.author.id !== MOCK_USER_ID)
+        return problem(request, 403, 'FORBIDDEN');
+      comments = comments.filter(({ id }): boolean => id !== commentId);
+      const feed = feeds.find(({ id }): boolean => id === comment.feedId);
+      if (feed) feed.commentCount -= 1;
+      return new HttpResponse(null, { status: 204 });
     },
   ),
 

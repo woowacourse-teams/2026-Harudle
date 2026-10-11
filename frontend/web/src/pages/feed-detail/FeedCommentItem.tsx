@@ -1,5 +1,5 @@
 import { css } from '@emotion/react';
-import moreIcon from '../../assets/icons/feed-more.svg';
+import FeedCommentOptionsButton from './FeedCommentOptionsButton';
 import { theme } from '../../styles/theme';
 import type { FeedComment } from '../../domain/feeds/feedComments';
 import profileFallbackImage from '../../assets/images/profile-fallback.svg';
@@ -7,9 +7,10 @@ import { formatPublishedAt } from '../../shared/feed/formatPublishedAt';
 
 interface FeedCommentItemProps {
   readonly comment: FeedComment;
+  readonly onDelete: (commentId: FeedComment['id']) => void;
 }
 
-const FeedCommentItem = ({ comment }: FeedCommentItemProps) => {
+const FeedCommentItem = ({ comment, onDelete }: FeedCommentItemProps) => {
   return (
     <li css={commentStyle}>
       <div css={avatarStyle}>
@@ -35,9 +36,7 @@ const FeedCommentItem = ({ comment }: FeedCommentItemProps) => {
         <p css={textStyle}>{comment.content}</p>
       </div>
       {comment.isMine && (
-        <button type="button" css={moreButtonStyle}>
-          <img src={moreIcon} alt="댓글 옵션 아이콘" />
-        </button>
+        <FeedCommentOptionsButton commentId={comment.id} onDelete={onDelete} />
       )}
     </li>
   );
@@ -93,19 +92,6 @@ const textStyle = css`
   font-size: 14px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-`;
-
-const moreButtonStyle = css`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 28px;
-  height: 24px;
-  padding: 0;
-  border: none;
-  background: none;
-  cursor: pointer;
 `;
 
 const profileImageStyle = css`

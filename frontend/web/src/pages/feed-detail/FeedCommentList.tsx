@@ -3,14 +3,22 @@ import FeedCommentEmpty from './FeedCommentEmpty';
 import FeedCommentError from './FeedCommentError';
 import LoadingSpinner from '../../shared/LoadingSpinner';
 import type { ApiRequest } from '../../shared/api';
-import type { FeedCommentsResponse } from '../../domain/feeds/feedComments';
+import type {
+  FeedComment,
+  FeedCommentsResponse,
+} from '../../domain/feeds/feedComments';
 
 interface FeedCommentListProps {
   readonly request: ApiRequest<FeedCommentsResponse>;
   readonly onRetry: () => void;
+  readonly onDelete: (commentId: FeedComment['id']) => void;
 }
 
-const FeedCommentList = ({ request, onRetry }: FeedCommentListProps) => {
+const FeedCommentList = ({
+  request,
+  onRetry,
+  onDelete,
+}: FeedCommentListProps) => {
   if (request.status === 'idle' || request.status === 'loading') {
     return <LoadingSpinner />;
   }
@@ -25,7 +33,11 @@ const FeedCommentList = ({ request, onRetry }: FeedCommentListProps) => {
   return (
     <ul>
       {items.map((comment) => (
-        <FeedCommentItem key={comment.id} comment={comment} />
+        <FeedCommentItem
+          key={comment.id}
+          comment={comment}
+          onDelete={onDelete}
+        />
       ))}
     </ul>
   );

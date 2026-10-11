@@ -26,7 +26,8 @@ const FeedDetailContent = ({ feedId }: FeedDetailContentProps) => {
   const {
     request: feedDetailRequest,
     updateLike,
-    updateCommentCount,
+    increaseCommentCount,
+    decreaseCommentCount,
   } = useFeedDetail({ feedId });
   const comments = useFeedComments({ feedId });
 
@@ -123,6 +124,10 @@ const FeedDetailContent = ({ feedId }: FeedDetailContentProps) => {
         </article>
         <FeedComments
           request={comments.request}
+          onDelete={(commentId): void => {
+            comments.removeComment(commentId);
+            decreaseCommentCount();
+          }}
           onRetry={() => {
             void comments.execute();
           }}
@@ -133,7 +138,7 @@ const FeedDetailContent = ({ feedId }: FeedDetailContentProps) => {
           feedId={feedId}
           onCommentCreated={(comment) => {
             comments.addComment(comment);
-            updateCommentCount(1);
+            increaseCommentCount();
           }}
         />
       )}
