@@ -44,7 +44,6 @@ interface MockHandler {
 const handlers = feedHandlers as unknown as MockHandler[];
 const memberHeaders = {
   Authorization: 'Bearer mock-access-token',
-  'X-XSRF-TOKEN': 'mock-csrf-token',
 };
 const ownFeedId = '00000000-0000-4000-8000-000000000001';
 const otherFeedId = '00000000-0000-4000-8000-000000000002';
@@ -223,7 +222,7 @@ describe('피드 페이지 MSW', () => {
     expect(updated.items[0]).toMatchObject({ id: secondId, likeCount: 13 });
   });
 
-  it('인증, CSRF, 소유권을 검사하고 본인 피드만 삭제한다', async () => {
+  it('Bearer 인증과 소유권을 검사하고 본인 피드만 삭제한다', async () => {
     expect(
       (
         await requestApi('/api/v1/feeds', {
@@ -239,10 +238,10 @@ describe('피드 페이지 MSW', () => {
       (
         await requestApi(`/api/v1/feeds/${ownFeedId}`, {
           method: 'DELETE',
-          headers: { Authorization: memberHeaders.Authorization },
+          headers: { Authorization: 'Bearer expired' },
         })
       ).status,
-    ).toBe(403);
+    ).toBe(401);
     expect(
       (
         await requestApi(`/api/v1/feeds/${otherFeedId}`, {

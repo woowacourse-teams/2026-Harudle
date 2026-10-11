@@ -1,4 +1,11 @@
-import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  jest,
+} from '@jest/globals';
 import userEvent from '@testing-library/user-event';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import type {
@@ -8,14 +15,23 @@ import type {
 } from '../../domain/feeds/feedList';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import FeedItemList from './FeedItemList';
+import type { deleteFeed } from '../../domain/feeds/feedDelete';
 
 jest.mock('../../assets/images/loading-animation.webp', () => 'loading.webp');
 jest.mock('../../assets/images/empty-person-and-dog.png', () => 'empty.png');
 jest.mock('../../assets/images/request-fail.png', () => 'error.png');
 jest.mock('../../assets/icons/feed-heart.svg', () => 'feed-heart.svg');
+jest.mock(
+  '../../assets/icons/bottom-sheet-close.svg',
+  () => 'bottom-sheet-close.svg',
+);
+jest.mock('../../posthog/useErrorTracking', () => ({
+  useErrorTracking: () => ({ captureError: jest.fn() }),
+}));
 jest.mock('../../assets/icons/feed-comment.svg', () => 'feed-comment.svg');
 jest.mock('../../assets/icons/feed-send.svg', () => 'feed-send.svg');
 jest.mock('../../assets/icons/feed-more.svg', () => 'feed-more.svg');
+jest.mock('../../assets/icons/delete.svg', () => 'delete.svg');
 jest.mock(
   '../../assets/icons/feed-category-chevron.svg',
   () => 'feed-category-chevron.svg',
@@ -28,6 +44,12 @@ const mockNavigate = jest.fn();
 jest.mock('react-router', () => ({ useNavigate: () => mockNavigate }));
 
 const mockGetFeedList = jest.fn<typeof getFeedList>();
+const mockDeleteFeed = jest.fn<typeof deleteFeed>();
+jest.mock('../../domain/feeds/feedDelete', () => ({
+  deleteFeed: (
+    ...args: Parameters<typeof deleteFeed>
+  ): ReturnType<typeof deleteFeed> => mockDeleteFeed(...args),
+}));
 jest.mock('../../domain/feeds/feedList', () => ({
   getFeedList: (
     ...args: Parameters<typeof getFeedList>
@@ -66,6 +88,94 @@ const emptyResponse: FeedListResponse = {
 beforeEach((): void => {
   mockGetFeedList.mockReset();
   mockGetFeedList.mockResolvedValue(response);
+  mockDeleteFeed.mockReset();
+});
+
+afterEach((): void => {
+  jest.restoreAllMocks();
+});
+
+const prepareDialogs = (): void => {
+  // JSDOM에 없는 dialog API를 렌더링된 요소에만 보완한다.
+  document.querySelectorAll('dialog').forEach((dialog): void => {
+    Object.defineProperties(dialog, {
+      showModal: { value: (): void => dialog.setAttribute('open', '') },
+      close: { value: (): void => dialog.removeAttribute('open') },
+    });
+  });
+};
+
+describe('피드 카드 액션', (): void => {
+  it('삭제 실패와 중복 클릭은 카드를 유지하고 재시도 성공 후 제거한다', async (): Promise<void> => {
+    const user = userEvent.setup();
+    const alert = jest
+      .spyOn(window, 'alert')
+      .mockImplementation((): void => {});
+    let rejectDelete: ((reason: Error) => void) | undefined;
+    mockGetFeedList.mockResolvedValue({
+      ...response,
+      items: [{ ...feed, isMine: true }],
+    });
+    mockDeleteFeed.mockImplementationOnce(
+      (): Promise<void> =>
+        new Promise((_resolve, reject): void => {
+          rejectDelete = reject;
+        }),
+    );
+    mockDeleteFeed.mockResolvedValueOnce(undefined);
+    render(<FeedItemList sort="LATEST" />);
+    await screen.findByRole('article');
+    prepareDialogs();
+    await user.click(screen.getByRole('button', { name: '' }));
+    await user.click(screen.getByRole('button', { name: /피드 삭제$/ }));
+    await user.click(screen.getByRole('button', { name: /피드 삭제$/ }));
+    await user.click(screen.getByRole('button', { name: '삭제 중...' }));
+    expect(mockDeleteFeed).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('article')).toBeInTheDocument();
+
+    await act(async (): Promise<void> => {
+      rejectDelete?.(new Error('피드 삭제 실패'));
+    });
+    expect(screen.getByRole('dialog')).toHaveAttribute('open');
+    expect(screen.getByRole('article')).toBeInTheDocument();
+    expect(alert).toHaveBeenCalledWith('피드 삭제 실패');
+    await user.click(screen.getByRole('button', { name: /피드 삭제$/ }));
+    expect(
+      await screen.findByText('아직 이 카테고리에 공유된 피드가 없어요.'),
+    ).toBeInTheDocument();
+    expect(mockDeleteFeed).toHaveBeenCalledTimes(2);
+    alert.mockRestore();
+  });
+
+  it('삭제 취소는 피드를 유지하고 확인 성공 후에만 목록에서 제거한다', async (): Promise<void> => {
+    const user = userEvent.setup();
+    mockGetFeedList.mockResolvedValue({
+      ...response,
+      items: [{ ...feed, isMine: true }],
+    });
+    mockDeleteFeed.mockResolvedValue(undefined);
+    render(<FeedItemList sort="LATEST" />);
+    await screen.findByRole('article');
+    prepareDialogs();
+
+    await user.click(screen.getByRole('button', { name: '' }));
+    await user.click(screen.getByRole('button', { name: /피드 삭제$/ }));
+    expect(screen.getByRole('dialog')).toHaveTextContent(
+      '앨범의 원본 네컷만화는 그대로 남아요.',
+    );
+    await user.click(screen.getByRole('button', { name: '취소' }));
+    expect(mockDeleteFeed).not.toHaveBeenCalled();
+    expect(screen.getByRole('article')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '' }));
+    await user.click(screen.getByRole('button', { name: /피드 삭제$/ }));
+    await user.click(screen.getByRole('button', { name: /피드 삭제$/ }));
+    expect(
+      await screen.findByText('아직 이 카테고리에 공유된 피드가 없어요.'),
+    ).toBeInTheDocument();
+    expect(mockDeleteFeed).toHaveBeenCalledWith({ feedId: feed.id });
+    expect(screen.queryByRole('article')).not.toBeInTheDocument();
+  });
 });
 
 describe('피드 목록 조회 상태', () => {
@@ -100,9 +210,7 @@ describe('피드 목록 조회 상태', () => {
     expect(
       screen.getByRole('button', { name: '피드 공유' }),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: '피드 더보기' }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '' })).not.toBeInTheDocument();
   });
 
   it('본인 피드에만 더보기 버튼을 표시한다', async (): Promise<void> => {
@@ -112,9 +220,7 @@ describe('피드 목록 조회 상태', () => {
     });
     render(<FeedItemList sort="LATEST" />);
 
-    expect(
-      await screen.findByRole('button', { name: '피드 더보기' }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '' })).toBeInTheDocument();
   });
 
   it('프로필 이미지 로딩에 실패하면 기본 이미지로 대체한다', async () => {

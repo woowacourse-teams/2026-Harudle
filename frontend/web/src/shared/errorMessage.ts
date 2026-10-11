@@ -41,6 +41,10 @@ const FEED_LIST = {
   INVALID_FEED_LIST_RESPONSE: 'FeedList 응답 형식이 일치하지 않습니다.',
 } as const;
 
+const FEED_ACTIONS = {
+  FEED_DELETION_FAILED: '피드를 삭제하지 못했어요. 다시 시도해 주세요.',
+} as const;
+
 const CATEGORY_LIST = {
   CATEGORY_LIST_FETCH_FAILED:
     '카테고리를 불러오지 못했어요. 다시 시도해 주세요.',
@@ -126,6 +130,7 @@ export const ERROR_MESSAGES = {
   ...SHARED_DIARY,
   ...MONTHLY_DIARIES,
   ...FEED_LIST,
+  ...FEED_ACTIONS,
   ...CATEGORY_LIST,
   ...DIARY_IMAGE_DOWNLOAD,
   ...DIARY_IMAGE_COPY,

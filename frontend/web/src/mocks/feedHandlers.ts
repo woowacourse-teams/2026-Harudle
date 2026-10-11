@@ -36,14 +36,12 @@ type FeedProblemCode =
   | 'VALIDATION_ERROR'
   | 'INVALID_CURSOR'
   | 'UNAUTHORIZED'
-  | 'INVALID_CSRF_TOKEN'
   | 'FORBIDDEN'
   | 'CATEGORY_NOT_FOUND'
   | 'FEED_NOT_FOUND';
 
 const MOCK_USER_ID = '08d69a34-6d70-4d42-a158-671bc67733c9';
 const MOCK_ACCESS_TOKEN = 'mock-access-token';
-const MOCK_CSRF_TOKEN = 'mock-csrf-token';
 
 // 카테고리 개별 명세의 auto increment ID를 문자열로 반환한다.
 const categories: readonly MockCategory[] = [
@@ -121,11 +119,6 @@ const validateAuthentication = (request: Request): Response | null => {
 const validateMutation = (request: Request): Response | null => {
   if (!isAuthenticated(request)) {
     return problem(request, 401, 'UNAUTHORIZED');
-  }
-
-  // 기존 MSW의 CSRF 발급 방식에 맞춰 헤더 토큰을 확인한다.
-  if (request.headers.get('X-XSRF-TOKEN') !== MOCK_CSRF_TOKEN) {
-    return problem(request, 403, 'INVALID_CSRF_TOKEN');
   }
 
   return null;

@@ -1,17 +1,18 @@
 import { css } from '@emotion/react';
 import categoryChevronIcon from '../../assets/icons/feed-category-chevron.svg';
 import profileFallbackImage from '../../assets/images/profile-fallback.svg';
-import moreIcon from '../../assets/icons/feed-more.svg';
 import type { Feed } from '../../domain/feeds/feedList';
 import DiaryImage from '../../shared/DiaryImage';
 import { theme } from '../../styles/theme';
 import FeedItemActions from './FeedItemActions';
+import FeedOptionsButton from './FeedOptionsButton';
 
 interface FeedItemProps {
   readonly feed: Feed;
+  readonly onDelete: (feedId: Feed['id']) => void;
 }
 
-const FeedItem = ({ feed }: FeedItemProps) => {
+const FeedItem = ({ feed, onDelete }: FeedItemProps) => {
   const { author, category, publishedAt, imageUrl, isMine } = feed;
 
   return (
@@ -39,11 +40,7 @@ const FeedItem = ({ feed }: FeedItemProps) => {
             {formatPublishedAt(publishedAt)}
           </time>
         </div>
-        {isMine && (
-          <button type="button" aria-label="피드 더보기" css={moreButtonStyle}>
-            <img src={moreIcon} alt="" />
-          </button>
-        )}
+        {isMine && <FeedOptionsButton feedId={feed.id} onDelete={onDelete} />}
       </header>
       <div onContextMenu={(event) => event.preventDefault()}>
         <DiaryImage
@@ -144,18 +141,6 @@ const publishedAtStyle = css`
   font-size: 12px;
   font-weight: 400;
   line-height: 18px;
-`;
-
-const moreButtonStyle = css`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 32px;
-  padding: 0;
-  border: none;
-  background: none;
-  cursor: pointer;
 `;
 
 const comicImageStyle = css`

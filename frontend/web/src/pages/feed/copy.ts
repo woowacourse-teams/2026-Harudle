@@ -11,4 +11,11 @@ export const FEED_COPY = {
   chooseAction: '네컷만화 고르기',
   loadErrorTitle: '피드를 불러오지 못했어요',
   reloadAction: '다시 불러오기',
+  manageTitle: '피드 관리',
+  moreAction: '피드 더보기',
+  deleteAction: '피드 삭제',
+  deleteConfirmTitle: '이 피드를 삭제할까요?',
+  deleteConfirmDescription:
+    '피드에서만 삭제돼요. 앨범의 원본 네컷만화는 그대로 남아요.',
+  deletingAction: '삭제 중...',
 } as const;
