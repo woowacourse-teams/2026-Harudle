@@ -1,8 +1,6 @@
-import { HOME_COPY } from '../copy';
-import BottomNavigation from '../../../shared/BottomNavigation';
+import { ALBUM_COPY } from '../copy';
+import BottomNavigationLayout from '../../../shared/BottomNavigationLayout';
 import DiaryItemList from '../DiaryItemList';
-import { useNavigate } from 'react-router';
-import harudleLogo from '../../../assets/images/harudle-logo.webp';
 import useSelectedYearMonth from './useSelectedYearMonth';
 import { css } from '@emotion/react';
 import { theme } from '../../../styles/theme';
@@ -22,22 +20,15 @@ const formatYearMonthToString = ({
   return `${year}-${month.toString().padStart(2, '0')}`;
 };
 
-const HomePage = () => {
-  const navigate = useNavigate();
+const AlbumPage = () => {
   const { selectedYearMonth, handleYearMonthChange } = useSelectedYearMonth(
     getToday().year,
     getToday().month,
   );
 
   return (
-    <div css={homePageStyle}>
-      <header css={pageHeaderStyle}>
-        <button css={logoButtonStyle} onClick={() => navigate('/')}>
-          <img css={logoStyle} src={harudleLogo} alt="하루들" />
-        </button>
-      </header>
-
-      <main css={homePageContentStyle}>
+    <BottomNavigationLayout>
+      <main css={albumPageContentStyle}>
         <div css={contentHeaderStyle}>
           <div css={monthPickerStyle}>
             <input
@@ -63,13 +54,11 @@ const HomePage = () => {
           <DiaryItemList {...selectedYearMonth} />
         </section>
       </main>
-
-      <BottomNavigation />
-    </div>
+    </BottomNavigationLayout>
   );
 };
 
-export default HomePage;
+export default AlbumPage;
 
 const RemainingGenerationUsage = () => {
   const { request, execute } = useGenerationUsage();
@@ -89,57 +78,29 @@ const RemainingGenerationUsage = () => {
     <div css={remainingGenerationUsageStyle} aria-live="polite">
       {hasGenerationUsageError ? (
         <>
-          <span>{HOME_COPY.usageError}</span>
+          <span>{ALBUM_COPY.usageError}</span>
           <button
             css={retryButtonStyle}
             type="button"
             onClick={() => void execute()}
           >
-            {HOME_COPY.usageRetryAction}
+            {ALBUM_COPY.usageRetryAction}
           </button>
         </>
       ) : (
         <span>
-          {HOME_COPY.remainingUsage.before}
+          {ALBUM_COPY.remainingUsage.before}
           <strong css={generationUsageTextStyle(remainingCount)}>
-            {remainingCount ?? HOME_COPY.usageLoadingCount}
+            {remainingCount ?? ALBUM_COPY.usageLoadingCount}
           </strong>
-          {HOME_COPY.remainingUsage.after}
+          {ALBUM_COPY.remainingUsage.after}
         </span>
       )}
     </div>
   );
 };
 
-const homePageStyle = css`
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-`;
-
-const pageHeaderStyle = css`
-  width: 100%;
-  height: 56px;
-  box-sizing: border-box;
-`;
-
-const logoButtonStyle = css`
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 100%;
-  height: 100%;
-  border: none;
-  background: none;
-  cursor: pointer;
-`;
-
-const logoStyle = css`
-  width: 106px;
-  height: 71px;
-`;
-
-const homePageContentStyle = css`
+const albumPageContentStyle = css`
   position: relative;
   flex: 1;
   display: flex;

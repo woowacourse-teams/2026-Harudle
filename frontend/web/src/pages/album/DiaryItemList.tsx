@@ -1,4 +1,4 @@
-import { HOME_COPY } from './copy';
+import { ALBUM_COPY } from './copy';
 import { useNavigate } from 'react-router';
 
 import FloatingActionButton from '../../shared/FloatingActionButton';
@@ -26,8 +26,8 @@ const DiaryItemList = ({ year, month }: { year: number; month: Month }) => {
   } = useDiaryGenerateContext();
 
   /**
-   * 일기 생성 중 홈 화면으로 이동했을 떄
-   * 홈 화면에서는 최초 1번만 일기 생성 성공 또는 실패 후처리를 하면 되므로
+   * 일기 생성 중 앨범 화면으로 이동했을 떄
+   * 앨범 화면에서는 최초 1번만 일기 생성 성공 또는 실패 후처리를 하면 되므로
    * 비동기 상태를 초기화한다.
    */
   const initialDiaryGenerateStatusRef = useRef(diaryGenerateRequest.status);
@@ -72,11 +72,11 @@ const DiaryItemList = ({ year, month }: { year: number; month: Month }) => {
       {isMonthlyDiaryExist(days) ? (
         <>
           <header css={diaryListHeaderStyle}>
-            <h2 css={diaryListTitleStyle}>{HOME_COPY.listTitle}</h2>
+            <h2 css={diaryListTitleStyle}>{ALBUM_COPY.listTitle}</h2>
             <span css={monthlyDiaryCountStyle}>
-              {HOME_COPY.monthlyCount.before}
+              {ALBUM_COPY.monthlyCount.before}
               {monthlyDiaryCount}
-              {HOME_COPY.monthlyCount.after}
+              {ALBUM_COPY.monthlyCount.after}
             </span>
           </header>
           <div css={diaryListStyle}>

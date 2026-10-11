@@ -6,7 +6,7 @@ import {
 
 test.describe('하루들 접속', () => {
   for (const entryPath of ['/', '/landing']) {
-    test(`저장소가 비어 있어도 세션이 유효하면 ${entryPath}에서 홈에 도착하고 새로고침 후 유지한다`, async ({
+    test(`저장소가 비어 있어도 세션이 유효하면 ${entryPath}에서 피드에 도착하고 새로고침 후 유지한다`, async ({
       page,
     }) => {
       await page.setExtraHTTPHeaders({
@@ -22,7 +22,7 @@ test.describe('하루들 접속', () => {
 
       await page.goto(entryPath);
 
-      await expect(page.getByLabel('조회할 월')).toBeVisible();
+      await expect(page.getByText('피드 화면', { exact: true })).toBeVisible();
       await expect(page).toHaveURL('/');
       expect(
         await page.evaluate(() => [
@@ -30,7 +30,7 @@ test.describe('하루들 접속', () => {
           localStorage.getItem('harudle.has-completed-oauth'),
         ]),
       ).toEqual(['true', 'true']);
-      // 이전 문제는 홈 도착 직후 재이동했으므로 안정된 뒤 요청 횟수를 확인한다.
+      // 이전 문제는 화면 도착 직후 재이동했으므로 안정된 뒤 요청 횟수를 확인한다.
       await page.waitForTimeout(1000);
       expect(refreshCount).toBe(1);
       expect(guestSessionCount).toBe(0);
@@ -38,7 +38,7 @@ test.describe('하루들 접속', () => {
       await page.evaluate((): void => localStorage.clear());
       await page.reload();
 
-      await expect(page.getByLabel('조회할 월')).toBeVisible();
+      await expect(page.getByText('피드 화면', { exact: true })).toBeVisible();
       await expect(page).toHaveURL('/');
       await page.waitForTimeout(1000);
       expect(refreshCount).toBe(2);
@@ -59,7 +59,7 @@ test.describe('하루들 접속', () => {
 
     await page.goto('/');
 
-    await expect(page.getByLabel('조회할 월')).toBeVisible();
+    await expect(page.getByText('피드 화면', { exact: true })).toBeVisible();
     expect(
       await page.evaluate(() =>
         localStorage.getItem('harudle.has-completed-oauth'),
@@ -83,7 +83,7 @@ test.describe('하루들 접속', () => {
     await expect(page).toHaveURL('/landing');
   });
 
-  test('localStorage에 로그인 이력이 있고 세션이 유효하면 홈 화면을 보여준다', async ({
+  test('localStorage에 로그인 이력이 있고 세션이 유효하면 피드 화면을 보여준다', async ({
     page,
   }) => {
     await page.addInitScript(() => {
@@ -98,17 +98,17 @@ test.describe('하루들 접속', () => {
 
     await page.goto('/');
 
-    await expect(page.getByLabel('조회할 월')).toBeVisible();
+    await expect(page.getByText('피드 화면', { exact: true })).toBeVisible();
     await expect(page).toHaveURL('/');
     expect(refreshRequests).toHaveLength(1);
   });
 
-  test('로그아웃 후 다시 접속하면 로그인 페이지를 보여주고, 다시 로그인하면 홈 화면을 보여준다', async ({
+  test('로그아웃 후 다시 접속하면 로그인 페이지를 보여주고, 다시 로그인하면 피드 화면을 보여준다', async ({
     page,
   }) => {
     await page.goto('/login');
     await page.getByRole('button', { name: '카카오로 시작하기' }).click();
-    await expect(page.getByLabel('조회할 월')).toBeVisible();
+    await expect(page.getByText('피드 화면', { exact: true })).toBeVisible();
     await page.goto('/setting');
     await expect(page.getByText('kakao', { exact: true })).toBeVisible();
 
@@ -134,7 +134,7 @@ test.describe('하루들 접속', () => {
     await expect(page).toHaveURL('/login');
     await page.setExtraHTTPHeaders({});
     await page.getByRole('button', { name: '카카오로 시작하기' }).click();
-    await expect(page.getByLabel('조회할 월')).toBeVisible();
+    await expect(page.getByText('피드 화면', { exact: true })).toBeVisible();
   });
 
   test('세션이 만료된 상태로 접속하면 경고창 없이 로그인 페이지를 보여준다', async ({

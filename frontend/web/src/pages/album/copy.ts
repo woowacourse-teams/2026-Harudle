@@ -1,4 +1,4 @@
-export const HOME_COPY = {
+export const ALBUM_COPY = {
   listTitle: '네컷 모아보기',
   monthlyCount: { before: '총 ', after: '편' },
   createAction: '네컷만화 만들기',

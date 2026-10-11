@@ -42,7 +42,7 @@ test.describe('공유된 일기 조회', () => {
     ).toHaveCount(0);
   });
 
-  test('하루들 로고를 누르면 홈 화면으로 이동한다', async ({ page }) => {
+  test('하루들 로고를 누르면 피드 화면으로 이동한다', async ({ page }) => {
     await goToSharedDiary(page);
     await expect(
       page.getByText(SHARED_DIARY_TITLE, { exact: true }),
@@ -51,6 +51,6 @@ test.describe('공유된 일기 조회', () => {
     await page.getByRole('button', { name: '하루들' }).click();
 
     await expect(page).toHaveURL('/');
-    await expect(page.getByLabel('조회할 월')).toBeVisible();
+    await expect(page.getByText('피드 화면', { exact: true })).toBeVisible();
   });
 });
