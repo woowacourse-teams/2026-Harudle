@@ -8,7 +8,7 @@ import { useErrorTracking } from '../../posthog/useErrorTracking';
 import BottomSheet, { type BottomSheetHandle } from '../../shared/BottomSheet';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { theme } from '../../styles/theme';
-import { FEED_COPY } from './copy';
+import { FEED_ACTION_COPY } from './copy';
 
 const SHOW_COPIED_DURATION_MS = 2_000;
 
@@ -51,7 +51,7 @@ const FeedShareButton = ({ shareUrl }: Pick<Feed, 'shareUrl'>) => {
       >
         <img src={sendIcon} alt="공유 아이콘" width={24} height={24} />
       </button>
-      <BottomSheet title={FEED_COPY.shareSheetTitle} ref={sheetRef}>
+      <BottomSheet title={FEED_ACTION_COPY.shareSheetTitle} ref={sheetRef}>
         <CopyLinkButton isCopied={isCopied} onCopy={handleCopyLink} />
       </BottomSheet>
     </>
@@ -69,7 +69,11 @@ const CopyLinkButton = ({ isCopied, onCopy }: CopyLinkButtonProps) => {
   return (
     <button type="button" css={copyLinkButtonStyle} onClick={onCopy}>
       <span css={[iconStyle, isCopied ? checkIconStyle : linkIconStyle]} />
-      <span>{isCopied ? FEED_COPY.copySuccess : FEED_COPY.copyShareLink}</span>
+      <span>
+        {isCopied
+          ? FEED_ACTION_COPY.copySuccess
+          : FEED_ACTION_COPY.copyShareLink}
+      </span>
     </button>
   );
 };

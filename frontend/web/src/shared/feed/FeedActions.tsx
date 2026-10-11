@@ -6,22 +6,24 @@ import FeedLikeButton from './FeedLikeButton';
 import FeedShareButton from './FeedShareButton';
 import { theme } from '../../styles/theme';
 
-interface FeedItemActionsProps extends Pick<
+interface FeedActionsProps extends Pick<
   Feed,
   'likeCount' | 'likedByMe' | 'commentCount' | 'shareUrl'
 > {
   readonly feedId: Feed['id'];
+  readonly onCommentClick: () => void;
   readonly onLikeChange: (feedId: Feed['id'], like: FeedLikeResponse) => void;
 }
 
-const FeedItemActions = ({
+const FeedActions = ({
   likeCount,
   commentCount,
   feedId,
   likedByMe,
   onLikeChange,
   shareUrl,
-}: FeedItemActionsProps) => {
+  onCommentClick,
+}: FeedActionsProps) => {
   return (
     <div css={feedItemActionsStyle}>
       <FeedLikeButton
@@ -30,11 +32,7 @@ const FeedItemActions = ({
         likedByMe={likedByMe}
         onLikeChange={onLikeChange}
       />
-      <button
-        type="button"
-        aria-label={`댓글 ${commentCount}개`}
-        css={reactionButtonStyle}
-      >
+      <button type="button" css={reactionButtonStyle} onClick={onCommentClick}>
         <span css={reactionIconStyle}>
           <img src={commentIcon} alt="" />
         </span>
@@ -45,7 +43,7 @@ const FeedItemActions = ({
   );
 };
 
-export default FeedItemActions;
+export default FeedActions;
 
 const feedItemActionsStyle = css`
   display: flex;

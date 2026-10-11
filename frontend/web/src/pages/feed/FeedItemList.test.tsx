@@ -466,9 +466,7 @@ describe('피드 목록 조회 상태', () => {
 
     expect(screen.queryByText('FeedItemActions')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '12' })).toHaveTextContent('12');
-    expect(screen.getByRole('button', { name: '댓글 3개' })).toHaveTextContent(
-      '3',
-    );
+    expect(screen.getByRole('button', { name: '3' })).toHaveTextContent('3');
     expect(
       screen.getByRole('button', { name: '공유 아이콘' }),
     ).toBeInTheDocument();

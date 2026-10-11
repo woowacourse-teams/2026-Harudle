@@ -5,8 +5,8 @@ import type { Feed } from '../../domain/feeds/feedList';
 import type { FeedLikeResponse } from '../../domain/feeds/feedLike';
 import DiaryImage from '../../shared/DiaryImage';
 import { theme } from '../../styles/theme';
-import FeedItemActions from './FeedItemActions';
-import FeedOptionsButton from './FeedOptionsButton';
+import FeedActions from '../../shared/feed/FeedActions';
+import FeedOptionsButton from '../../shared/feed/FeedOptionsButton';
 
 interface FeedItemProps {
   readonly feed: Feed;
@@ -52,7 +52,8 @@ const FeedItem = ({ feed, onLikeChange, onDelete }: FeedItemProps) => {
           css={comicImageStyle}
         />
       </div>
-      <FeedItemActions
+      <FeedActions
+        onCommentClick={(): void => {}}
         shareUrl={feed.shareUrl}
         feedId={feed.id}
         commentCount={feed.commentCount}
