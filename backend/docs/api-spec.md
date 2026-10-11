@@ -5,12 +5,14 @@
 이 문서는 사용자가 작성한 일기를 AI가 하나의 4컷 이미지로 생성하고, 결과를 히스토리에 저장·조회·공유하는
 MVP의 HTTP API 명세입니다.
 
+피드 게시·공개 목록/상세·삭제 및 개인 일기 연동의 추가 명세는 [피드 API 명세](feed-api-spec.md)를 참고합니다.
+
 현재 버전은 다음 조건을 전제로 합니다.
 
 - Kakao OAuth2 로그인 지원
 - 이미지 생성은 동기 방식으로 처리
 - FE는 생성 API 응답을 기다리는 동안 단계 애니메이션 표시
-- 별도의 생성 상태 조회 API, SQS 및 Outbox는 사용하지 않음
+- 별도의 생성 상태 조회 API와 SQS는 사용하지 않음. 새 피드의 푸시 예약은 피드 명세의 Outbox 계약을 따름
 - 하나의 일기당 하나의 4컷 이미지 생성
 - 사용자당 KST 기준 하루 최대 3회 생성
 - 동일한 일기 텍스트도 다시 생성할 수 있으며 각 요청은 일일 생성 횟수에 포함
@@ -40,6 +42,10 @@ Authorization: Bearer {accessToken}
 - 서버는 Refresh Token의 해시만 저장합니다.
 - OAuth Provider 토큰과 서비스 Access/Refresh Token은 구분합니다.
 - 로그아웃은 만료되지 않은 Access Token을 요구하지 않으며 Refresh Token Cookie로 현재 세션을 식별합니다.
+- Bearer 인증 API의 POST·PUT·PATCH·DELETE에는 CSRF Cookie/Header를 요구하지 않습니다. 기존에 보내던 CSRF 값이 있어도 Bearer 요청에는 영향을 주지 않습니다.
+- 쿠키를 사용하는 `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout`, `POST /api/v1/guest/session`, `POST /api/v1/guest/diaries`는 `XSRF-TOKEN` Cookie와 같은 값의 `X-XSRF-TOKEN` Header가 필요합니다. Bearer Header를 함께 보내도 CSRF 검증을 생략하지 않습니다.
+- 새 쿠키 기반 변경 API를 추가하면 `CookieApiCsrfProtectionMatcher`의 대상 경로에도 등록합니다. 이 경로 목록을 보안 필터와 OpenAPI가 함께 사용합니다.
+- 소유권 확인과 `/api/v1/admin/**`의 ADMIN 권한 검증은 서버에서 수행합니다.
 
 ### 2.3 Content Type
 
@@ -90,7 +96,7 @@ Idempotency-Key: 7e5cc251-fdde-4cc0-a54e-2c8142750609
 ### 2.6 이미지 URL
 
 - DB의 S3 Object Key는 외부에 노출하지 않습니다.
-- 인증된 조회 및 공개 공유 조회 시 만료 시간이 있는 Presigned URL을 반환합니다.
+- 인증된 일기 조회 및 공개 피드 조회 시 만료 시간이 있는 Presigned URL을 반환합니다.
 - 안정적인 공유 주소와 만료되는 실제 이미지 URL은 구분합니다.
 
 ## 3. API 목록
@@ -116,15 +122,17 @@ Idempotency-Key: 7e5cc251-fdde-4cc0-a54e-2c8142750609
 | `GET` | `/api/v1/guest/diaries/{diaryId}` | 게스트 세션 | 게스트 세션에 연결된 일기 생성 결과 조회 |
 | `GET` | `/api/v1/me/generation-usage` | 필요 | 오늘 생성 사용량 조회 |
 | `GET` | `/api/v1/diaries` | 필요 | 연·월 기준 내 일기 조회 |
-| `GET` | `/api/v1/diaries/{diaryId}` | 필요 | 일기 및 생성 결과 상세 조회 |
+| `GET` | `/api/v1/diaries/{diaryId}` | 필요 | 일기·생성 결과 및 연결된 활성 피드 ID 상세 조회 |
 | `DELETE` | `/api/v1/diaries/{diaryId}` | 필요 | 일기 삭제 |
 
-### 3.3 공유
+### 3.3 피드 게시 및 공유
 
 | Method | Endpoint | 인증 | 설명 |
 | --- | --- | ---: | --- |
-| `PUT` | `/api/v1/diaries/{diaryId}/share-link` | 필요 | 공유 링크 생성 또는 기존 링크 조회 |
-| `GET` | `/api/v1/public/shares/{shareId}` | 불필요 | 공개 공유 결과 조회 |
+| `POST` | `/api/v1/feeds` | 필요 | 기존 일기의 만화를 카테고리에 공개 게시 |
+| `GET` | `/api/v1/feeds` | 선택 | 최신순·인기순, 카테고리 필터와 커서로 공개 목록 조회 |
+| `GET` | `/api/v1/feeds/{feedId}` | 선택 | 공개 피드 상세 조회 |
+| `DELETE` | `/api/v1/feeds/{feedId}` | 필요 | 본인 피드 소프트 삭제 및 미발송 푸시 취소 |
 
 ## 4. 인증 및 사용자 API
 
@@ -519,11 +527,14 @@ HTTP/1.1 200 OK
     "imageUrl": "https://presigned-s3-url.example/...",
     "imageUrlExpiresAt": "2026-08-06T20:20:23+09:00",
     "completedAt": "2026-08-06T20:11:42+09:00"
-  }
+  },
+  "publishedFeedId": null
 }
 ```
 
 일기가 없거나 삭제된 경우 `404 DIARY_NOT_FOUND`를 반환합니다.
+`publishedFeedId`는 연결된 활성 피드의 UUID입니다. 게시 전 또는 피드 삭제 후에는 null, 삭제 후 재게시하면 새 피드 ID를 반환합니다.
+본인 소유 확인 후 게시 여부를 조회합니다. 다른 사용자의 일기는 `403 FORBIDDEN`입니다.
 
 ### 6.3 일기 삭제
 
@@ -539,79 +550,82 @@ HTTP/1.1 204 No Content
 처리 규칙:
 
 - 본인 소유의 일기가 존재하면 소프트 삭제합니다.
-- 연결된 공유 링크를 같은 트랜잭션에서 삭제합니다.
+- 기존 공유 링크 데이터가 있으면 같은 트랜잭션에서 정리합니다.
+- 일기와 연결된 활성 피드에 같은 삭제 시각을 기록하고 미발송 푸시를 취소합니다. 기존 공유 링크 정리와 함께 같은 트랜잭션에서 처리하며 하나라도 실패하면 모두 롤백합니다.
+- 연결 피드가 없거나 이미 삭제됐으면 일기만 삭제하며 푸시 포트를 호출하지 않습니다. 활성 피드의 푸시 구현이 없으면 `503 FEED_UNAVAILABLE`로 실패하고 일기 삭제도 롤백합니다.
+- 삭제된 일기와 피드는 각각 상세 조회에서 `404 DIARY_NOT_FOUND`, `404 FEED_NOT_FOUND`입니다. 공개 목록과 반응 쓰기에서도 제외합니다.
+- 생성 기록·이미지 객체와 기존 반응·인앱 알림 행은 유지합니다. 연결 데이터 조회와 알림 미읽음 수의 제외는 각 담당 영역에서 처리합니다.
 - 이미 사용한 일일 생성 횟수는 복구하지 않습니다.
 - 일기가 이미 삭제됐거나 존재하지 않아도 `204 No Content`를 반환합니다.
 - 동일한 일기 텍스트로 다시 생성할 수 있으며 생성 횟수는 새로 차감됩니다.
 
-## 7. 공유 API
+## 7. 피드 공유
 
-SNS마다 별도의 백엔드 API를 제공하지 않습니다. 백엔드는 공유 URL을 발급하고 FE가 Web Share API 또는 SNS SDK를 사용해
-해당 URL을 공유합니다.
+기존 일기 공유 API를 피드 게시·공개 목록·상세 조회로 대체합니다.
+작성자는 완성된 만화를 확인하고 카테고리를 선택해 게시합니다. 게시된 피드만 공개 주소로 공유할 수 있습니다.
+요청·응답 및 오류의 상세 명세는 [피드 API 명세](feed-api-spec.md)를 참고합니다.
 
-### 7.1 공유 링크 생성 또는 조회
+### 7.1 공개 게시
 
 ```http
-PUT /api/v1/diaries/{diaryId}/share-link
+POST /api/v1/feeds
+Authorization: Bearer {accessToken}
+Content-Type: application/json
+```
+
+```json
+{
+  "diaryId": "550e8400-e29b-41d4-a716-446655440002",
+  "categoryId": 1
+}
+```
+
+본인의 삭제되지 않은 일기이고 이미지 생성이 완료됐으며 선택한 카테고리가 활성 상태여야 합니다.
+성공하면 `201 Created`, `Location: /api/v1/feeds/{feedId}`와 `shareUrl`을 포함한 Feed 응답을 반환합니다.
+같은 일기의 중복 게시는 `409 DIARY_ALREADY_PUBLISHED`를 반환합니다.
+
+### 7.2 공개 상세 조회와 주소 공유
+
+```http
+GET /api/v1/feeds/{feedId}
+```
+
+비로그인 상태에서도 조회할 수 있습니다. 로그인 사용자는 좋아요 여부와 소유 여부도 확인할 수 있습니다.
+공개 응답에는 만화 이미지·공개 작성자 정보·카테고리·반응 수·게시 시각·`shareUrl`이 포함됩니다.
+개인 일기 원문·제목·이메일·OAuth 정보는 포함하지 않습니다.
+
+`shareUrl`은 환경별 프론트 도메인의 `/feeds/{feedId}` 주소입니다.
+FE는 이 주소를 복사하거나 Web Share API로 공유합니다. SNS별 백엔드 API나 별도 공유 링크 생성 API는 제공하지 않습니다.
+피드나 원본 일기가 삭제됐거나 공개 작성자를 조회할 수 없으면 `404 FEED_NOT_FOUND`를 반환합니다.
+
+기존 `PUT /api/v1/diaries/{diaryId}/share-link`와 `GET /api/v1/public/shares/{shareId}`는 제거합니다.
+기존 공유 링크는 피드로 자동 변환하지 않으며 프론트는 게시/상세 조회 API와 `/feeds/{feedId}` 화면으로 전환해야 합니다.
+
+### 7.3 공개 목록 조회
+
+```http
+GET /api/v1/feeds?sort=LATEST&categoryId=1&size=20
+```
+
+인증은 선택이며 `sort`는 `LATEST`(기본값) 또는 `POPULAR`입니다. `categoryId` 생략 시 모든 카테고리, `size`는 기본 20이며 1~50입니다.
+응답은 `items`, `nextCursor`, `hasNext`를 반환합니다. 다음 페이지는 같은 정렬·카테고리 조건에 이전 `nextCursor`를 `cursor`로 전달합니다.
+마지막 페이지의 `nextCursor`는 null입니다. 커서 형식 오류와 정렬·카테고리 조건 불일치는 `400 INVALID_CURSOR`입니다.
+인기순은 기간 제한 없이 현재 좋아요 수를 기준으로 정렬하므로 페이지 사이의 좋아요 변경에 따른 중복·누락이 허용됩니다.
+자세한 정렬·필터·개인화 규칙은 [피드 API 명세](feed-api-spec.md#공개-목록-조회)를 참고합니다.
+
+### 7.4 피드 삭제
+
+```http
+DELETE /api/v1/feeds/{feedId}
 Authorization: Bearer {accessToken}
 ```
 
-공유 링크가 없으면 생성하고 이미 존재하면 기존 링크를 반환합니다.
-
-신규 생성:
-
-```http
-HTTP/1.1 201 Created
-```
-
-기존 링크 반환:
-
-```http
-HTTP/1.1 200 OK
-```
-
-```json
-{
-  "shareId": "06ed972e-0b79-4da0-9716-c9bd8faec85d",
-  "shareUrl": "https://harudle.example/shares/06ed972e-0b79-4da0-9716-c9bd8faec85d",
-  "createdAt": "2026-08-06T20:15:00+09:00"
-}
-```
-
-대상 일기가 없거나 삭제된 경우 `404 DIARY_NOT_FOUND`를 반환합니다.
-
-처리 규칙:
-
-- 생성 상태가 `SUCCEEDED`인 경우에만 공유 링크를 생성하거나 기존 링크를 반환합니다.
-- 생성 상태가 `PROCESSING`이면 `409 GENERATION_IN_PROGRESS`를 반환합니다.
-- 생성 상태가 `FAILED`이면 `409 GENERATION_FAILED`를 반환합니다.
-- 기존 공유 링크가 있더라도 생성 상태를 확인한 뒤 반환합니다.
-
-### 7.2 공개 공유 결과 조회
-
-```http
-GET /api/v1/public/shares/{shareId}
-```
-
-인증이 필요하지 않습니다.
-
-```http
-HTTP/1.1 200 OK
-```
-
-```json
-{
-  "title": "친구와 보낸 카페 시간",
-  "diaryDate": "2026-08-06",
-  "imageUrl": "https://presigned-s3-url.example/...",
-  "imageUrlExpiresAt": "2026-08-06T20:25:00+09:00",
-  "createdAt": "2026-08-06T20:10:23+09:00"
-}
-```
-
-공개 응답에는 사용자의 이메일과 원본 `sourceText`를 포함하지 않습니다.
-
-공유 링크가 없거나 연결된 일기가 삭제된 경우 `404 SHARE_NOT_FOUND`를 반환합니다.
+본문 없이 본인 피드를 소프트 삭제하며 성공하면 `204 No Content`를 반환합니다.
+타인의 활성 피드는 `403 FORBIDDEN`, 없거나 이미 삭제된 피드는 `404 FEED_NOT_FOUND`입니다. 반복 삭제에도 404를 반환합니다.
+원본 일기·생성 기록·이미지와 기존 반응·인앱 알림 행은 유지합니다. 삭제된 피드는 공개 조회와 반응 쓰기에서 제외하며, 연결 데이터 조회·알림 미읽음 수의 제외는 각 담당 영역에서 처리합니다.
+개인 일기 상세의 `publishedFeedId`는 null이 됩니다. 재게시하면 새 피드 ID·게시 시각·이벤트를 사용하고 반응 수는 0부터 시작합니다.
+피드 상태 변경과 미발송 푸시 취소는 같은 트랜잭션입니다. 취소 실패 시 삭제도 롤백하며 푸시 포트 구현이 없으면 `503 FEED_UNAVAILABLE`입니다.
+개인 일기 삭제 서비스는 `FeedLifecycle`을 호출해 연결된 활성 피드를 같은 트랜잭션에서 삭제합니다. 프론트에서 피드 삭제 API를 별도로 호출하지 않습니다.
 
 ## 8. Problem Details 오류 명세
 
@@ -676,20 +690,26 @@ Retry-After: 13800
 | ---: | --- | --- |
 | `400` | `VALIDATION_ERROR` | 요청 형식 또는 필드 검증 실패 |
 | `400` | `INVALID_IDEMPOTENCY_KEY` | 멱등성 키 누락 또는 형식 오류 |
+| `400` | `INVALID_CURSOR` | 잘못된 피드 커서 또는 정렬·카테고리 조건 불일치 |
 | `401` | `UNAUTHORIZED` | 인증 정보 없음 또는 Access Token 만료 |
 | `401` | `GUEST_SESSION_REQUIRED` | 게스트 세션 Cookie가 없거나 저장된 세션과 일치하지 않음 |
 | `401` | `GUEST_SESSION_EXPIRED` | 게스트 세션이 만료됨 |
 | `401` | `INVALID_REFRESH_TOKEN` | Refresh Token 만료 또는 폐기 |
 | `401` | `INVALID_CURRENT_USER` | Access Token은 유효하지만 현재 사용자를 확인할 수 없음 |
 | `403` | `FORBIDDEN` | 다른 사용자의 리소스 접근 |
-| `403` | `INVALID_CSRF_TOKEN` | CSRF Token 누락 또는 불일치 |
+| `403` | `INVALID_CSRF_TOKEN` | 쿠키를 사용하는 인증·게스트 변경 요청의 CSRF Token 누락 또는 불일치 |
 | `404` | `API_NOT_FOUND` | 존재하지 않는 API 경로 요청 |
-| `404` | `DIARY_NOT_FOUND` | 상세 조회·공유 링크 생성 대상 일기가 없거나 삭제됨 |
-| `404` | `SHARE_NOT_FOUND` | 공개 공유 링크가 없거나 연결된 일기가 삭제됨 |
+| `404` | `DIARY_NOT_FOUND` | 상세 조회·피드 게시 대상 일기가 없거나 삭제됨 |
+| `404` | `FEED_NOT_FOUND` | 공개 피드가 없거나 피드/원본 일기가 삭제됨 |
+| `404` | `CATEGORY_NOT_FOUND` | 게시하거나 목록을 조회할 카테고리가 없음 |
 | `405` | `METHOD_NOT_ALLOWED` | 지원하지 않는 HTTP 메서드 요청 |
 | `406` | `NOT_ACCEPTABLE` | 생성할 수 없는 응답 미디어 타입 요청 |
 | `409` | `GENERATION_IN_PROGRESS` | 동일 멱등 요청이 아직 처리 중 |
-| `409` | `GENERATION_FAILED` | 공유할 생성 결과가 실패 상태임 |
+| `409` | `GENERATION_FAILED` | 생성 결과가 실패 상태임 |
+| `409` | `DIARY_NOT_PUBLISHABLE` | 피드에 게시할 만화 생성이 완료되지 않음 |
+| `409` | `DIARY_ALREADY_PUBLISHED` | 일기의 활성 피드가 이미 존재함 |
+| `409` | `CATEGORY_INACTIVE` | 비활성 카테고리에 신규 게시 |
+| `503` | `FEED_UNAVAILABLE` | 필요한 피드 협업 포트가 아직 연결되지 않음 |
 | `409` | `IDEMPOTENCY_KEY_CONFLICT` | 동일 키를 다른 요청 본문에 사용 |
 | `409` | `GUEST_TRIAL_ALREADY_USED` | 게스트 세션의 로그인 전 1회 사용권을 이미 사용함 |
 | `413` | `PAYLOAD_TOO_LARGE` | 허용 크기를 초과한 요청 본문 |
@@ -705,7 +725,8 @@ Retry-After: 13800
 표에 별도 코드가 없는 Spring 표준 오류는 HTTP 상태를 유지하고 `HTTP_{status}` 형식의 `code`를 반환합니다.
 모든 API 오류 응답에는 `code`와 `traceId`가 포함되며, FE는 `type`이나 `detail` 문자열 대신 `code`로 분기합니다.
 
-DELETE API는 대상이 없거나 이미 삭제된 경우에도 `204 No Content`를 반환하므로 `DIARY_NOT_FOUND`를 사용하지 않습니다.
+일기 삭제 API (`DELETE /api/v1/diaries/{diaryId}`)는 대상이 없거나 이미 삭제된 경우에도 `204 No Content`를 반환하므로 `DIARY_NOT_FOUND`를 사용하지 않습니다.
+피드 삭제 API (`DELETE /api/v1/feeds/{feedId}`)는 대상이 없거나 이미 삭제된 경우 `404 FEED_NOT_FOUND`를 반환하며, 반복 삭제도 동일합니다.
 
 ## 9. 생성 실패 처리
 

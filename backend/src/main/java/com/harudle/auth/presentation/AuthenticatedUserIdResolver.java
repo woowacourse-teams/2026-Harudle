@@ -17,9 +17,14 @@ public class AuthenticatedUserIdResolver {
     }
 
     public UUID resolve(Authentication authentication) {
-        return authenticatedPrincipalName(authentication)
-                .flatMap(CanonicalUuidParser::parse)
+        return resolveOptional(authentication)
                 .orElseThrow(AuthenticationRequiredException::new);
+    }
+
+    public Optional<UUID> resolveOptional(Authentication authentication) {
+        return authenticatedPrincipalName(authentication)
+                .map(name -> CanonicalUuidParser.parse(name)
+                        .orElseThrow(AuthenticationRequiredException::new));
     }
 
     private Optional<String> authenticatedPrincipalName(Authentication authentication) {

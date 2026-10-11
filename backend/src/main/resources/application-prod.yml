@@ -1,0 +1,3 @@
+harudle:
+  feed:
+    public-base-url: ${FEED_PUBLIC_BASE_URL}

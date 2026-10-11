@@ -27,8 +27,7 @@ class AdminR2ImageRecoveryController {
     }
 
     @PostMapping
-    @ApiErrorResponses(value = {ErrorType.VALIDATION_ERROR, ErrorType.UNAUTHORIZED, ErrorType.FORBIDDEN,
-            ErrorType.INVALID_CSRF_TOKEN}, framework = {
+    @ApiErrorResponses(value = {ErrorType.VALIDATION_ERROR, ErrorType.UNAUTHORIZED, ErrorType.FORBIDDEN}, framework = {
             @ApiFrameworkError(status = 400, name = "잘못된 복구 목록", detail = "중복 없는 생성 기록 UUID를 1~100개 지정하세요."),
             @ApiFrameworkError(status = 409, name = "복구 환경 불일치", detail = "요청 환경과 서버의 복구 환경이 다릅니다."),
             @ApiFrameworkError(status = 503, name = "복구 설정 없음", detail = "S3와 R2 복구 설정이 필요합니다."),

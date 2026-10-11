@@ -13,10 +13,12 @@ import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationTrustResolver;
 import org.springframework.security.authentication.AuthenticationTrustResolverImpl;
 import org.springframework.security.config.Customizer;
+import org.springframework.security.config.ObjectPostProcessor;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import tools.jackson.databind.ObjectMapper;
 
@@ -121,6 +123,7 @@ public class SecurityConfig {
                         "/error"
                         ).permitAll()
                         .requestMatchers("/api/v1/admin/**").access(adminAuthorizationManager)
+                        .requestMatchers(HttpMethod.GET, "/api/v1/feeds", "/api/v1/feeds/*").permitAll()
                         .requestMatchers(
                                 "/scalar",
                                 "/scalar/**",
@@ -133,6 +136,15 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(csrfTokenRepository)
                         .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
+                        .withObjectPostProcessor(new ObjectPostProcessor<CsrfFilter>() {
+                            @Override
+                            public <O extends CsrfFilter> O postProcess(O filter) {
+                                // 쿠키 API는 Bearer 헤더가 함께 있어도 CSRF 검증을 생략하지 않는다.
+                                filter.setRequireCsrfProtectionMatcher(new CookieApiCsrfProtectionMatcher());
+                                filter.setAccessDeniedHandler(apiAccessDeniedHandler);
+                                return filter;
+                            }
+                        })
                 )
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint(apiAuthenticationEntryPoint)
