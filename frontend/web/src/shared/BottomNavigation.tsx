@@ -33,7 +33,7 @@ const BottomNavigation = () => {
   return (
     <nav css={bottomNavigationStyle}>
       {navigationItemList.map((item) => (
-        <BottomNavigationItem {...item} />
+        <BottomNavigationItem {...item} key={item.label} />
       ))}
     </nav>
   );
