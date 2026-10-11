@@ -1,0 +1,95 @@
+import { css, keyframes } from '@emotion/react';
+import { useEffect } from 'react';
+import heartIcon from '../../assets/icons/feed-heart.svg';
+import filledHeartIcon from '../../assets/icons/feed-heart-filled.svg';
+import type { Feed } from '../../domain/feeds/feedList';
+import type { FeedLikeResponse } from '../../domain/feeds/feedLike';
+import { theme } from '../../styles/theme';
+import useFeedLike from './useFeedLike';
+
+interface FeedLikeButtonProps extends Pick<Feed, 'likeCount' | 'likedByMe'> {
+  readonly feedId: Feed['id'];
+  readonly onLikeChange: (feedId: Feed['id'], like: FeedLikeResponse) => void;
+}
+
+const FeedLikeButton = ({
+  feedId,
+  likeCount,
+  likedByMe,
+  onLikeChange,
+}: FeedLikeButtonProps) => {
+  const { request, execute } = useFeedLike({ feedId });
+
+  useEffect(() => {
+    if (request.status === 'error') {
+      window.alert(request.error.message);
+    }
+  }, [request]);
+
+  const handleLike = (): void => {
+    void execute({
+      likedByMe: !likedByMe,
+      onSuccess: (like) => onLikeChange(feedId, like),
+    });
+  };
+
+  return (
+    <button
+      type="button"
+      disabled={request.status === 'loading'}
+      css={likeButtonStyle}
+      onClick={handleLike}
+    >
+      <img
+        src={likedByMe ? filledHeartIcon : heartIcon}
+        alt=""
+        width={24}
+        height={24}
+        css={
+          likedByMe &&
+          request.status === 'success' &&
+          request.data.likedByMe &&
+          likedHeartStyle
+        }
+      />
+      <span>{likeCount}</span>
+    </button>
+  );
+};
+
+export default FeedLikeButton;
+
+const heartPop = keyframes`
+  0% { transform: scale(1); }
+  35% { transform: scale(1.1) rotate(-4deg); }
+  65% { transform: scale(0.8) rotate(4deg); }
+  100% { transform: scale(1); }
+`;
+
+const likedHeartStyle = css`
+  animation: ${heartPop} 350ms ease-out;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+`;
+
+const likeButtonStyle = css`
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: ${theme.colors.foreground.neutralMuted};
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 20px;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.6;
+  }
+`;

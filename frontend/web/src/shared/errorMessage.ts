@@ -42,6 +42,8 @@ const FEED_LIST = {
 } as const;
 
 const FEED_ACTIONS = {
+  FEED_LIKE_FAILED: '좋아요를 반영하지 못했어요. 다시 시도해 주세요.',
+  INVALID_FEED_LIKE_RESPONSE: 'FeedLike 응답 형식이 일치하지 않습니다.',
   FEED_DELETION_FAILED: '피드를 삭제하지 못했어요. 다시 시도해 주세요.',
 } as const;
 

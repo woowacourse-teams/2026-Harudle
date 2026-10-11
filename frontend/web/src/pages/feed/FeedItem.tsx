@@ -2,6 +2,7 @@ import { css } from '@emotion/react';
 import categoryChevronIcon from '../../assets/icons/feed-category-chevron.svg';
 import profileFallbackImage from '../../assets/images/profile-fallback.svg';
 import type { Feed } from '../../domain/feeds/feedList';
+import type { FeedLikeResponse } from '../../domain/feeds/feedLike';
 import DiaryImage from '../../shared/DiaryImage';
 import { theme } from '../../styles/theme';
 import FeedItemActions from './FeedItemActions';
@@ -9,10 +10,11 @@ import FeedOptionsButton from './FeedOptionsButton';
 
 interface FeedItemProps {
   readonly feed: Feed;
+  readonly onLikeChange: (feedId: Feed['id'], like: FeedLikeResponse) => void;
   readonly onDelete: (feedId: Feed['id']) => void;
 }
 
-const FeedItem = ({ feed, onDelete }: FeedItemProps) => {
+const FeedItem = ({ feed, onLikeChange, onDelete }: FeedItemProps) => {
   const { author, category, publishedAt, imageUrl, isMine } = feed;
 
   return (
@@ -51,8 +53,11 @@ const FeedItem = ({ feed, onDelete }: FeedItemProps) => {
         />
       </div>
       <FeedItemActions
-        likeCount={feed.likeCount}
+        feedId={feed.id}
         commentCount={feed.commentCount}
+        likeCount={feed.likeCount}
+        likedByMe={feed.likedByMe}
+        onLikeChange={onLikeChange}
       />
     </article>
   );

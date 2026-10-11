@@ -1,26 +1,34 @@
 import { css } from '@emotion/react';
-import heartIcon from '../../assets/icons/feed-heart.svg';
 import commentIcon from '../../assets/icons/feed-comment.svg';
 import sendIcon from '../../assets/icons/feed-send.svg';
 import type { Feed } from '../../domain/feeds/feedList';
+import type { FeedLikeResponse } from '../../domain/feeds/feedLike';
+import FeedLikeButton from './FeedLikeButton';
 import { theme } from '../../styles/theme';
+
+interface FeedItemActionsProps extends Pick<
+  Feed,
+  'likeCount' | 'likedByMe' | 'commentCount'
+> {
+  readonly feedId: Feed['id'];
+  readonly onLikeChange: (feedId: Feed['id'], like: FeedLikeResponse) => void;
+}
 
 const FeedItemActions = ({
   likeCount,
   commentCount,
-}: Pick<Feed, 'likeCount' | 'commentCount'>) => {
+  feedId,
+  likedByMe,
+  onLikeChange,
+}: FeedItemActionsProps) => {
   return (
     <div css={feedItemActionsStyle}>
-      <button
-        type="button"
-        aria-label={`좋아요 ${likeCount}개`}
-        css={reactionButtonStyle}
-      >
-        <span css={reactionIconStyle}>
-          <img src={heartIcon} alt="" />
-        </span>
-        <span>{likeCount}</span>
-      </button>
+      <FeedLikeButton
+        feedId={feedId}
+        likeCount={likeCount}
+        likedByMe={likedByMe}
+        onLikeChange={onLikeChange}
+      />
       <button
         type="button"
         aria-label={`댓글 ${commentCount}개`}

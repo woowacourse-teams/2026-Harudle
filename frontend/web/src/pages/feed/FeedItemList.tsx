@@ -10,7 +10,10 @@ const FeedItemList = ({
   categoryId,
   sort,
 }: Pick<FeedListRequest, 'categoryId' | 'sort'>) => {
-  const { request, removeFeedFromList } = useFeedList({ categoryId, sort });
+  const { request, updateLike, removeFeedFromList } = useFeedList({
+    categoryId,
+    sort,
+  });
 
   if (request.status === 'idle' || request.status === 'loading') {
     return <LoadingSpinner />;
@@ -26,7 +29,12 @@ const FeedItemList = ({
   return (
     <div css={feedItemListStyle}>
       {items.map((item) => (
-        <FeedItem key={item.id} feed={item} onDelete={removeFeedFromList} />
+        <FeedItem
+          key={item.id}
+          feed={item}
+          onLikeChange={updateLike}
+          onDelete={removeFeedFromList}
+        />
       ))}
     </div>
   );

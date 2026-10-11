@@ -15,12 +15,17 @@ import type {
 } from '../../domain/feeds/feedList';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import FeedItemList from './FeedItemList';
+import type { setFeedLike } from '../../domain/feeds/feedLike';
 import type { deleteFeed } from '../../domain/feeds/feedDelete';
 
 jest.mock('../../assets/images/loading-animation.webp', () => 'loading.webp');
 jest.mock('../../assets/images/empty-person-and-dog.png', () => 'empty.png');
 jest.mock('../../assets/images/request-fail.png', () => 'error.png');
 jest.mock('../../assets/icons/feed-heart.svg', () => 'feed-heart.svg');
+jest.mock(
+  '../../assets/icons/feed-heart-filled.svg',
+  () => 'feed-heart-filled.svg',
+);
 jest.mock(
   '../../assets/icons/bottom-sheet-close.svg',
   () => 'bottom-sheet-close.svg',
@@ -44,7 +49,13 @@ const mockNavigate = jest.fn();
 jest.mock('react-router', () => ({ useNavigate: () => mockNavigate }));
 
 const mockGetFeedList = jest.fn<typeof getFeedList>();
+const mockSetFeedLike = jest.fn<typeof setFeedLike>();
 const mockDeleteFeed = jest.fn<typeof deleteFeed>();
+jest.mock('../../domain/feeds/feedLike', () => ({
+  setFeedLike: (
+    ...args: Parameters<typeof setFeedLike>
+  ): ReturnType<typeof setFeedLike> => mockSetFeedLike(...args),
+}));
 jest.mock('../../domain/feeds/feedDelete', () => ({
   deleteFeed: (
     ...args: Parameters<typeof deleteFeed>
@@ -88,6 +99,7 @@ const emptyResponse: FeedListResponse = {
 beforeEach((): void => {
   mockGetFeedList.mockReset();
   mockGetFeedList.mockResolvedValue(response);
+  mockSetFeedLike.mockReset();
   mockDeleteFeed.mockReset();
 });
 
@@ -106,6 +118,68 @@ const prepareDialogs = (): void => {
 };
 
 describe('피드 카드 액션', (): void => {
+  it('좋아요와 취소의 서버 응답을 반영하고 목록은 다시 조회하지 않는다', async (): Promise<void> => {
+    const user = userEvent.setup();
+    mockSetFeedLike.mockResolvedValueOnce({ likedByMe: true, likeCount: 13 });
+    mockSetFeedLike.mockResolvedValueOnce({ likedByMe: false, likeCount: 12 });
+    render(<FeedItemList sort="LATEST" />);
+
+    await user.click(
+      await screen.findByRole('button', { name: '좋아요 12개' }),
+    );
+    const liked = await screen.findByRole('button', {
+      name: '좋아요 취소 13개',
+    });
+    expect(liked).toHaveAttribute('aria-pressed', 'true');
+    expect(mockSetFeedLike).toHaveBeenNthCalledWith(1, {
+      feedId: feed.id,
+      likedByMe: true,
+    });
+
+    await user.click(liked);
+    expect(
+      await screen.findByRole('button', { name: '좋아요 12개' }),
+    ).toHaveAttribute('aria-pressed', 'false');
+    expect(mockSetFeedLike).toHaveBeenNthCalledWith(2, {
+      feedId: feed.id,
+      likedByMe: false,
+    });
+    expect(mockGetFeedList).toHaveBeenCalledTimes(1);
+  });
+
+  it('좋아요 처리 중 중복 요청을 막고 실패하면 기존 수를 유지한 채 재시도한다', async (): Promise<void> => {
+    const alert = jest
+      .spyOn(window, 'alert')
+      .mockImplementation((): void => {});
+    const user = userEvent.setup();
+    let rejectLike: ((reason: Error) => void) | undefined;
+    mockSetFeedLike.mockImplementationOnce(
+      (): ReturnType<typeof setFeedLike> =>
+        new Promise((_resolve, reject): void => {
+          rejectLike = reject;
+        }),
+    );
+    mockSetFeedLike.mockResolvedValueOnce({ likedByMe: true, likeCount: 13 });
+    render(<FeedItemList sort="LATEST" />);
+    const button = await screen.findByRole('button', { name: '좋아요 12개' });
+    await user.click(button);
+    expect(button).toBeDisabled();
+    await user.click(button);
+    expect(mockSetFeedLike).toHaveBeenCalledTimes(1);
+
+    await act(async (): Promise<void> => {
+      rejectLike?.(new Error('좋아요 변경 실패'));
+    });
+    expect(button).toBeEnabled();
+    expect(button).toHaveTextContent('12');
+    expect(alert).toHaveBeenCalledWith('좋아요 변경 실패');
+    await user.click(button);
+    expect(
+      await screen.findByRole('button', { name: '좋아요 취소 13개' }),
+    ).toBeInTheDocument();
+    alert.mockRestore();
+  });
+
   it('삭제 실패와 중복 클릭은 카드를 유지하고 재시도 성공 후 제거한다', async (): Promise<void> => {
     const user = userEvent.setup();
     const alert = jest
@@ -126,7 +200,9 @@ describe('피드 카드 액션', (): void => {
     render(<FeedItemList sort="LATEST" />);
     await screen.findByRole('article');
     prepareDialogs();
-    await user.click(screen.getByRole('button', { name: '' }));
+    await user.click(
+      screen.getByRole('button', { name: '옵션 더보기 아이콘' }),
+    );
     await user.click(screen.getByRole('button', { name: /피드 삭제$/ }));
     await user.click(screen.getByRole('button', { name: /피드 삭제$/ }));
     await user.click(screen.getByRole('button', { name: '삭제 중...' }));
@@ -158,7 +234,9 @@ describe('피드 카드 액션', (): void => {
     await screen.findByRole('article');
     prepareDialogs();
 
-    await user.click(screen.getByRole('button', { name: '' }));
+    await user.click(
+      screen.getByRole('button', { name: '옵션 더보기 아이콘' }),
+    );
     await user.click(screen.getByRole('button', { name: /피드 삭제$/ }));
     expect(screen.getByRole('dialog')).toHaveTextContent(
       '앨범의 원본 네컷만화는 그대로 남아요.',
@@ -167,7 +245,9 @@ describe('피드 카드 액션', (): void => {
     expect(mockDeleteFeed).not.toHaveBeenCalled();
     expect(screen.getByRole('article')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: '' }));
+    await user.click(
+      screen.getByRole('button', { name: '옵션 더보기 아이콘' }),
+    );
     await user.click(screen.getByRole('button', { name: /피드 삭제$/ }));
     await user.click(screen.getByRole('button', { name: /피드 삭제$/ }));
     expect(
@@ -210,7 +290,9 @@ describe('피드 목록 조회 상태', () => {
     expect(
       screen.getByRole('button', { name: '피드 공유' }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '옵션 더보기 아이콘' }),
+    ).not.toBeInTheDocument();
   });
 
   it('본인 피드에만 더보기 버튼을 표시한다', async (): Promise<void> => {
@@ -220,7 +302,9 @@ describe('피드 목록 조회 상태', () => {
     });
     render(<FeedItemList sort="LATEST" />);
 
-    expect(await screen.findByRole('button', { name: '' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: '옵션 더보기 아이콘' }),
+    ).toBeInTheDocument();
   });
 
   it('프로필 이미지 로딩에 실패하면 기본 이미지로 대체한다', async () => {

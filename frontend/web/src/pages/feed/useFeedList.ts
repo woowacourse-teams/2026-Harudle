@@ -7,9 +7,11 @@ import {
 } from '../../domain/feeds/feedList';
 import type { ApiRequest } from '../../shared/api';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
+import type { FeedLikeResponse } from '../../domain/feeds/feedLike';
 
 interface FeedListState {
   readonly request: ApiRequest<FeedListResponse>;
+  readonly updateLike: (feedId: Feed['id'], like: FeedLikeResponse) => void;
   readonly removeFeedFromList: (feedId: Feed['id']) => void;
 }
 
@@ -60,22 +62,38 @@ const useFeedList = ({
     return (): void => abortControllerRef.current?.abort();
   }, [execute]);
 
+  const updateLike = useCallback(
+    (feedId: Feed['id'], like: FeedLikeResponse): void => {
+      setRequest((previous) => {
+        if (previous.status !== 'success') return previous;
+        return {
+          ...previous,
+          data: {
+            ...previous.data,
+            items: previous.data.items.map((feed) =>
+              feed.id === feedId ? { ...feed, ...like } : feed,
+            ),
+          },
+        };
+      });
+    },
+    [],
+  );
+
   const removeFeedFromList = useCallback((feedId: Feed['id']): void => {
-    setRequest((previous): ApiRequest<FeedListResponse> => {
+    setRequest((previous) => {
       if (previous.status !== 'success') return previous;
       return {
         ...previous,
         data: {
           ...previous.data,
-          items: previous.data.items.filter(
-            (feed): boolean => feed.id !== feedId,
-          ),
+          items: previous.data.items.filter((feed) => feed.id !== feedId),
         },
       };
     });
   }, []);
 
-  return { request, removeFeedFromList };
+  return { request, updateLike, removeFeedFromList };
 };
 
 export default useFeedList;
