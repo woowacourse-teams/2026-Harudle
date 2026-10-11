@@ -10,6 +10,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.harudle.auth.domain.policy.NicknamePolicy;
+import com.harudle.category.service.exception.CategoryInactiveException;
+import com.harudle.category.service.exception.CategoryNotFoundException;
 import com.harudle.generation.diary.domain.GenerationErrorCode;
 import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
@@ -63,6 +65,22 @@ class GlobalExceptionHandlerTest {
             HttpMethod.GET.name(),
             "/api/v1/test"
     );
+
+    @ParameterizedTest
+    @CsvSource({"missing, 404, CATEGORY_NOT_FOUND", "inactive, 409, CATEGORY_INACTIVE"})
+    @DisplayName("카테고리 조회와 게시 오류는 공통 오류 응답과 상태 코드로 전달한다")
+    void returnsCategoryError(String error, int expectedStatus, String expectedCode) throws Exception {
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new CategoryErrorController())
+                .setControllerAdvice(exceptionHandler)
+                .build();
+
+        mockMvc.perform(get("/api/v1/test/category").param("error", error))
+                .andExpect(status().is(expectedStatus))
+                .andExpect(jsonPath("$.code").value(expectedCode))
+                .andExpect(jsonPath("$.traceId").value(TRACE_ID))
+                .andExpect(jsonPath("$.detail").value(ErrorType.valueOf(expectedCode).detail()));
+        verifyNoInteractions(apiExceptionLogger);
+    }
 
     @Test
     @DisplayName("지원하지 않는 HTTP 메서드 오류에 공통 필드와 Allow 헤더를 보존한다")
@@ -406,6 +424,18 @@ class GlobalExceptionHandlerTest {
     private static final class ValidationRequest {
 
         private String content;
+    }
+
+    @RestController
+    private static final class CategoryErrorController {
+
+        @GetMapping("/api/v1/test/category")
+        String categoryError(@RequestParam("error") String error) {
+            if ("missing".equals(error)) {
+                throw new CategoryNotFoundException();
+            }
+            throw new CategoryInactiveException();
+        }
     }
 
     @RestController

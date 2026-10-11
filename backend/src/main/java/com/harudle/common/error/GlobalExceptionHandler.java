@@ -7,6 +7,8 @@ import com.harudle.admin.service.exception.AdminGenerationHistoryDateRangeExcept
 import com.harudle.admin.service.exception.AdminInactiveUserException;
 import com.harudle.auth.domain.exception.InvalidNicknameException;
 import com.harudle.auth.presentation.AuthenticationRequiredException;
+import com.harudle.category.service.exception.CategoryInactiveException;
+import com.harudle.category.service.exception.CategoryNotFoundException;
 import com.harudle.common.validation.InvalidIdempotencyKeyException;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
@@ -167,6 +169,16 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(DiaryNotFoundException.class)
     ResponseEntity<ProblemDetail> handleDiaryNotFound(HttpServletRequest request) {
         return createResponse(ErrorType.DIARY_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(CategoryNotFoundException.class)
+    ResponseEntity<ProblemDetail> handleCategoryNotFound(HttpServletRequest request) {
+        return createResponse(ErrorType.CATEGORY_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(CategoryInactiveException.class)
+    ResponseEntity<ProblemDetail> handleCategoryInactive(HttpServletRequest request) {
+        return createResponse(ErrorType.CATEGORY_INACTIVE, request);
     }
 
     @ExceptionHandler(ShareNotFoundException.class)

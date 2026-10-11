@@ -58,6 +58,16 @@ public enum ErrorType {
             "Diary not found",
             "일기를 찾을 수 없습니다."
     ),
+    CATEGORY_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "Category not found",
+            "카테고리를 찾을 수 없습니다."
+    ),
+    CATEGORY_INACTIVE(
+            HttpStatus.CONFLICT,
+            "Inactive category",
+            "비활성 카테고리에는 피드를 게시할 수 없습니다."
+    ),
     SHARE_NOT_FOUND(
             HttpStatus.NOT_FOUND,
             "Share not found",
