@@ -110,6 +110,15 @@ const dialogStyle = css`
       opacity: 0;
     }
   }
+
+  @media (prefers-reduced-motion: reduce) {
+    &,
+    &[open],
+    &::backdrop,
+    &[open]::backdrop {
+      transition: none;
+    }
+  }
 `;
 
 const headerStyle = css`
