@@ -725,7 +725,8 @@ Retry-After: 13800
 표에 별도 코드가 없는 Spring 표준 오류는 HTTP 상태를 유지하고 `HTTP_{status}` 형식의 `code`를 반환합니다.
 모든 API 오류 응답에는 `code`와 `traceId`가 포함되며, FE는 `type`이나 `detail` 문자열 대신 `code`로 분기합니다.
 
-DELETE API는 대상이 없거나 이미 삭제된 경우에도 `204 No Content`를 반환하므로 `DIARY_NOT_FOUND`를 사용하지 않습니다.
+일기 삭제 API (`DELETE /api/v1/diaries/{diaryId}`)는 대상이 없거나 이미 삭제된 경우에도 `204 No Content`를 반환하므로 `DIARY_NOT_FOUND`를 사용하지 않습니다.
+피드 삭제 API (`DELETE /api/v1/feeds/{feedId}`)는 대상이 없거나 이미 삭제된 경우 `404 FEED_NOT_FOUND`를 반환하며, 반복 삭제도 동일합니다.
 
 ## 9. 생성 실패 처리
 
