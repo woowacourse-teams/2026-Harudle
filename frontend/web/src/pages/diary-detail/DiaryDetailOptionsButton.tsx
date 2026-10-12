@@ -9,11 +9,13 @@ import { theme } from '../../styles/theme';
 import { DIARY_DETAIL_COPY } from './copy';
 import useDiaryDelete from './useDiaryDelete';
 
-interface DiaryMenuButtonProps {
+interface DiaryDetailOptionsButtonProps {
   readonly diaryId: string;
 }
 
-const DiaryMenuButton = ({ diaryId }: DiaryMenuButtonProps) => {
+const DiaryDetailOptionsButton = ({
+  diaryId,
+}: DiaryDetailOptionsButtonProps) => {
   const menuRef = useRef<BottomSheetHandle>(null);
   const confirmRef = useRef<ModalHandle>(null);
   const { request, execute: deleteDiary } = useDiaryDelete({ diaryId });
@@ -42,7 +44,6 @@ const DiaryMenuButton = ({ diaryId }: DiaryMenuButtonProps) => {
     <>
       <button
         type="button"
-        aria-label={DIARY_DETAIL_COPY.menuAction}
         css={menuButtonStyle}
         disabled={request.status === 'loading'}
         onClick={() => menuRef.current?.open()}
@@ -71,7 +72,7 @@ const DiaryMenuButton = ({ diaryId }: DiaryMenuButtonProps) => {
   );
 };
 
-export default DiaryMenuButton;
+export default DiaryDetailOptionsButton;
 
 const menuButtonStyle = css`
   display: flex;

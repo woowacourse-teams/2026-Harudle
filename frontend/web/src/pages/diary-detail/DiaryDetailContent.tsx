@@ -5,6 +5,7 @@ import DiaryDetailError from './DiaryDetailError';
 import PageHeader from '../../shared/PageHeader';
 import backIcon from '../../assets/icons/back.svg';
 import sendIcon from '../../assets/icons/feed-send.svg';
+import deleteIcon from '../../assets/icons/delete.svg';
 import { useNavigate } from 'react-router';
 import { css } from '@emotion/react';
 import DiaryImageDownloadButton from './DiaryImageDownloadButton';
@@ -12,7 +13,13 @@ import { theme } from '../../styles/theme';
 import DiaryImage from '../../shared/DiaryImage';
 import DiaryImageCopyButton from './DiaryImageCopyButton';
 import ActionButton from '../../shared/ActionButton';
-import DiaryMenuButton from './DiaryMenuButton';
+import DiaryDetailOptionsButton from './DiaryDetailOptionsButton';
+import { useEffect, useRef } from 'react';
+import ConfirmModal from '../../shared/ConfirmModal';
+import type { ModalHandle } from '../../shared/Modal';
+import { FEED_ACTION_COPY } from '../../shared/feed/copy';
+import useFeedDelete from '../../shared/feed/useFeedDelete';
+import type { Feed } from '../../domain/feeds/feedList';
 
 const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
   const navigate = useNavigate();
@@ -30,7 +37,12 @@ const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
   }
 
   const diaryDetail = diaryDetailRequest.data;
+  const { publishedFeedId } = diaryDetail;
   const { imageUrl, title } = diaryDetail.generation;
+
+  const handleFeedAction = (): void => {
+    void navigate(`/diary/${diaryId}/feed-post`);
+  };
 
   return (
     <div css={pageStyle}>
@@ -50,7 +62,7 @@ const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
           </button>
         }
         title={diaryDetail.diaryDate}
-        right={<DiaryMenuButton diaryId={diaryId} />}
+        right={<DiaryDetailOptionsButton diaryId={diaryId} />}
       />
 
       <main css={contentStyle}>
@@ -69,13 +81,15 @@ const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
           <p css={storyTextStyle}>{diaryDetail.sourceText}</p>
         </section>
         <div css={diaryActionsStyle}>
-          <ActionButton
-            icon={<span css={sendIconStyle} />}
-            label={DIARY_DETAIL_COPY.feedPostAction}
-            onClick={(): void => {
-              void navigate(`/diary/${diaryId}/feed-post`);
-            }}
-          />
+          {publishedFeedId === null ? (
+            <ActionButton
+              icon={<span css={sendIconStyle} />}
+              label={DIARY_DETAIL_COPY.feedPostAction}
+              onClick={handleFeedAction}
+            />
+          ) : (
+            <DiaryFeedDeleteAction feedId={publishedFeedId} />
+          )}
           <div css={imageActionsStyle}>
             <DiaryImageDownloadButton
               diaryId={diaryId}
@@ -92,6 +106,51 @@ const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
 };
 
 export default DiaryDetailContent;
+
+const DiaryFeedDeleteAction = ({ feedId }: { feedId: Feed['id'] }) => {
+  const navigate = useNavigate();
+  const confirmRef = useRef<ModalHandle>(null);
+  const { request: feedDeleteRequest, execute: deleteFeed } = useFeedDelete({
+    feedId,
+  });
+
+  useEffect((): void => {
+    if (feedDeleteRequest.status === 'error') {
+      window.alert(feedDeleteRequest.error.message);
+    }
+  }, [feedDeleteRequest]);
+
+  const handleFeedDeleteConfirm = (): void => {
+    void deleteFeed({
+      onSuccess: (): void => {
+        confirmRef.current?.close();
+        void navigate('/');
+      },
+    });
+  };
+
+  return (
+    <>
+      <ActionButton
+        icon={<span css={deleteIconStyle} />}
+        label={DIARY_DETAIL_COPY.feedDeleteAction}
+        disabled={feedDeleteRequest.status === 'loading'}
+        onClick={(): void => confirmRef.current?.open()}
+      />
+      <ConfirmModal
+        ref={confirmRef}
+        title={FEED_ACTION_COPY.deleteConfirmTitle}
+        description={FEED_ACTION_COPY.deleteConfirmDescription}
+        confirmLabel={
+          feedDeleteRequest.status === 'loading'
+            ? FEED_ACTION_COPY.deletingAction
+            : DIARY_DETAIL_COPY.feedDeleteAction
+        }
+        onConfirm={handleFeedDeleteConfirm}
+      />
+    </>
+  );
+};
 
 const pageStyle = css`
   display: flex;
@@ -200,4 +259,12 @@ const storyTextStyle = css`
   line-height: 26px;
   white-space: pre-wrap;
   overflow-wrap: break-word;
+`;
+
+const deleteIconStyle = css`
+  display: block;
+  width: 24px;
+  height: 24px;
+  background-color: currentColor;
+  mask: url(${deleteIcon}) center / contain no-repeat;
 `;

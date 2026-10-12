@@ -3,6 +3,7 @@ import { isLandingPath } from '../pages/landing/landingPaths';
 import { MOCK_SCENARIO_HEADER, MOCK_SCENARIOS } from './mockScenarios';
 import { getToday } from '../shared/utils';
 import diaryImage from '../assets/images/diary-four-panel.webp';
+import { hasMockFeed } from './feedHandlers';
 
 interface CreateDiaryRequest {
   diaryDate: string;
@@ -32,6 +33,7 @@ interface CreateDiaryResponse {
 
 interface DiaryDetailResponse {
   id: string;
+  publishedFeedId: string | null;
   diaryDate: string;
   sourceText: string;
   createdAt: string;
@@ -87,6 +89,8 @@ const mockDiaryShareLinks = new Map<string, DiaryShareLinkResponse>();
 const diaryThumbnailUrl = diaryImage;
 
 const SAMPLE_DIARY_ID = '00000000-0000-4000-8000-000000000001';
+const PUBLISHED_DIARY_ID = '00000000-0000-4000-8000-000000000031';
+const SAMPLE_PUBLISHED_FEED_ID = '00000000-0000-4000-8000-000000000001';
 const SAMPLE_SHARE_ID = '06ed972e-0b79-4da0-9716-c9bd8faec85d';
 
 const mockPublicDiaryShares = new Map<string, PublicDiaryShareResponse>([
@@ -267,7 +271,7 @@ const mockDiaryDays = [
     exist: true,
     items: [
       {
-        id: createMockUuid(3, 1),
+        id: PUBLISHED_DIARY_ID,
         title: '회사에서 칭찬받은 날!',
         thumbnailUrl: diaryThumbnailUrl,
       },
@@ -575,6 +579,10 @@ export const handlers = [
 
     const response: DiaryDetailResponse = {
       id: diaryId,
+      publishedFeedId:
+        diaryId === PUBLISHED_DIARY_ID && hasMockFeed(SAMPLE_PUBLISHED_FEED_ID)
+          ? SAMPLE_PUBLISHED_FEED_ID
+          : null,
       diaryDate: diaryDay.date,
       sourceText: '오늘 친구와 카페에 가서 오래 이야기했다.',
       createdAt: `${diaryDay.date}T20:10:23+09:00`,
@@ -861,6 +869,7 @@ export const handlers = [
     });
     createdDiaryDetails.set(diaryId, {
       id: response.id,
+      publishedFeedId: null,
       diaryDate: response.diaryDate,
       sourceText: response.sourceText,
       createdAt: response.createdAt,

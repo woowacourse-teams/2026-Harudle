@@ -32,6 +32,7 @@ export interface DiaryDetailRequest {
 
 export interface DiaryDetailResponse {
   id: string;
+  publishedFeedId: string | null;
   diaryDate: string;
   sourceText: string;
   createdAt: string;
@@ -53,6 +54,9 @@ const isDiaryDetailResponse = (
     value !== null &&
     'id' in value &&
     typeof value.id === 'string' &&
+    'publishedFeedId' in value &&
+    (value.publishedFeedId === null ||
+      typeof value.publishedFeedId === 'string') &&
     'diaryDate' in value &&
     typeof value.diaryDate === 'string' &&
     'sourceText' in value &&

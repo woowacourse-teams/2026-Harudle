@@ -114,6 +114,9 @@ let feeds = createInitialFeeds();
 let comments = createInitialComments(feeds);
 const likedFeedIds = new Set<string>();
 
+export const hasMockFeed = (feedId: string): boolean =>
+  feeds.some((feed): boolean => feed.id === feedId);
+
 export const resetFeedMockState = (): void => {
   feeds = createInitialFeeds();
   comments = createInitialComments(feeds);

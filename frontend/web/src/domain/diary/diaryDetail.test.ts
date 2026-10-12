@@ -13,6 +13,7 @@ const DIARY_ID = '00000000-0000-4000-8000-000000000001';
 
 const diaryDetail = {
   id: DIARY_ID,
+  publishedFeedId: null,
   diaryDate: '2026-08-12',
   sourceText: '오늘 친구와 카페에 가서 오래 이야기했다.',
   createdAt: '2026-08-12T20:10:23+09:00',
