@@ -198,6 +198,37 @@ ADC를 찾을 수 없으면 애플리케이션 시작에 실패하며 Express �
 공식 안내: [AWS 연동 WIF](https://docs.cloud.google.com/iam/docs/workload-identity-federation-with-other-clouds),
 [Nano Banana 2.1 모델](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/nano-banana-2-1).
 
+## Qwen 스토리보드 어댑터
+
+`QwenStoryboardGenerator`는 기존 `StoryboardGenerator`를 구현합니다. Gemini와 Qwen 모두
+`StoryboardResponseSchema`, `StoryboardJsonCodec`, `StoryboardResponseMapper`로 네 컷 JSON을 검증하고
+같은 `GeneratedStoryboard`를 반환합니다. 따라서 생성된 스토리보드는 기존 이미지 프롬프트 렌더러로
+전달할 수 있습니다. Gemini SDK의 `propertyOrdering` 변환은 Gemini 어댑터에서 처리합니다.
+
+Qwen HTTP 호출과 SSE 파싱은 별도 구현체인 `QwenChatClient`가 담당합니다. 현재는 공통
+`ChatCompletionClient` 인터페이스를 추가하지 않습니다. 다른 Provider는 `StoryboardGenerator` 구현을
+추가하고, 같은 호출 규격을 공유할 실제 구현체가 생기면 클라이언트 인터페이스를 추출할 수 있습니다.
+
+기본 설정은 `qwen3.8-max`, 추론 활성화, `thinking_budget=1024`, `max_tokens=8192`, `json_object`,
+요청 전체 제한 시간 180초입니다. `QwenStoryboardSettings`로 모델명, 추론 예산, 출력 한도와 제한 시간을
+변경합니다. `json_object`에서는 기존 시스템 프롬프트 뒤에 공통 출력 스키마를 붙입니다.
+
+```java
+QwenStoryboardSettings settings = QwenStoryboardSettings.defaults();
+StoryboardJsonCodec codec = new StoryboardJsonCodec(objectMapper, new StoryboardResponseMapper());
+QwenChatClient client = new QwenChatClient(
+        QwenChatClient.httpClient(settings.requestTimeout()), objectMapper, tokenPlanApiKey);
+StoryboardGenerator generator = new QwenStoryboardGenerator(client, settings, codec, externalApiLogger);
+```
+
+기본 클라이언트는 Token Plan 전용 엔드포인트와 `sk-sp-` 키를 사용합니다. 키는 실행 환경에서 주입하며
+예외와 로그에 응답 원문이나 키를 남기지 않습니다. HTTP 상태, 타임아웃, 통신 실패, 잘린 출력과 응답
+검증 실패를 기존 `AiGenerationErrorType`으로 변환합니다. 클라이언트 자동 재시도는 비활성화되어 있습니다.
+추론 토큰이 응답에 없으면 알 수 없는 값으로 유지하며 최종 답변 토큰을 임의로 계산하지 않습니다.
+
+이번 단계에서는 어댑터와 공통 계약을 구현했습니다. 애플리케이션의 Provider 선택 Bean과 서버 환경 변수는
+후속 연결 단계에서 구성합니다.
+
 ## 테스트
 
 ```shell

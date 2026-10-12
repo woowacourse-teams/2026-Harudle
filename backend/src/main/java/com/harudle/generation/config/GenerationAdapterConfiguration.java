@@ -10,23 +10,23 @@ import com.harudle.generation.adapter.out.gemini.DiaryImagePromptRenderer;
 import com.harudle.generation.adapter.out.gemini.GeminiDiaryImageGenerator;
 import com.harudle.generation.adapter.out.gemini.GeminiExceptionTranslator;
 import com.harudle.generation.adapter.out.gemini.GeminiFailureReporter;
-import com.harudle.generation.adapter.out.gemini.GeminiStoryboardGenerator;
 import com.harudle.generation.adapter.out.gemini.GeminiStageMetrics;
-import com.harudle.generation.adapter.out.gemini.GeminiStoryboardResponseMapper;
+import com.harudle.generation.adapter.out.gemini.GeminiStoryboardGenerator;
 import com.harudle.generation.adapter.out.gemini.client.ExpressGeminiClientFactory;
 import com.harudle.generation.adapter.out.gemini.client.GeminiClientFactory;
 import com.harudle.generation.adapter.out.gemini.client.VertexGeminiClientFactory;
 import com.harudle.generation.adapter.out.s3.CwebpImageVariantEncoder;
 import com.harudle.generation.adapter.out.s3.ImageObjectKeyFactory;
-import com.harudle.generation.adapter.out.s3.ImageVariantEncoder;
 import com.harudle.generation.adapter.out.s3.ImageUploadPreparer;
+import com.harudle.generation.adapter.out.s3.ImageVariantEncoder;
 import com.harudle.generation.adapter.out.s3.ObservedImageStorage;
 import com.harudle.generation.adapter.out.s3.ObservedImageUrlProvider;
+import com.harudle.generation.adapter.out.s3.R2FallbackImageUrlProvider;
 import com.harudle.generation.adapter.out.s3.S3ExceptionTranslator;
 import com.harudle.generation.adapter.out.s3.S3FailureReporter;
 import com.harudle.generation.adapter.out.s3.S3ImageStorage;
 import com.harudle.generation.adapter.out.s3.S3ImageUrlProvider;
-import com.harudle.generation.adapter.out.s3.R2FallbackImageUrlProvider;
+import com.harudle.generation.adapter.out.storyboard.StoryboardResponseMapper;
 import com.harudle.generation.diary.service.port.BackupObjectStorage;
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
 import com.harudle.generation.diary.service.port.ImageStorage;
@@ -105,8 +105,8 @@ public class GenerationAdapterConfiguration {
     }
 
     @Bean
-    public GeminiStoryboardResponseMapper geminiStoryboardResponseMapper() {
-        return new GeminiStoryboardResponseMapper();
+    public StoryboardResponseMapper storyboardResponseMapper() {
+        return new StoryboardResponseMapper();
     }
 
     @Bean
@@ -137,7 +137,7 @@ public class GenerationAdapterConfiguration {
             Models geminiModels,
             GeminiGenerationProperties properties,
             ObjectMapper objectMapper,
-            GeminiStoryboardResponseMapper responseMapper,
+            StoryboardResponseMapper responseMapper,
             GeminiFailureReporter failureReporter,
             GeminiStageMetrics stageMetrics
     ) {

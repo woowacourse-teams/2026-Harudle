@@ -2,6 +2,7 @@ package com.harudle.generation.adapter.out.gemini;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.harudle.generation.adapter.out.storyboard.StoryboardResponse;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -40,9 +41,9 @@ class GeminiStoryboardResponseTest {
                 }
                 """;
 
-        GeminiStoryboardResponse response = jsonMapper.readValue(
+        StoryboardResponse response = jsonMapper.readValue(
                 responseJson,
-                GeminiStoryboardResponse.class
+                StoryboardResponse.class
         );
 
         assertThat(response.title()).isEqualTo("인스타 맛집의 함정");

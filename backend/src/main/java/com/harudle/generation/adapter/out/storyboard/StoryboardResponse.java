@@ -1,11 +1,11 @@
-package com.harudle.generation.adapter.out.gemini;
+package com.harudle.generation.adapter.out.storyboard;
 
 import java.util.List;
 import tools.jackson.databind.PropertyNamingStrategies;
 import tools.jackson.databind.annotation.JsonNaming;
 
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-public record GeminiStoryboardResponse(
+public record StoryboardResponse(
         String title,
         String castContinuity,
         List<Panel> panels,
