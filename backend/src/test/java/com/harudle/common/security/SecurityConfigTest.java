@@ -14,7 +14,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.harudle.auth.application.AccessTokenService;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.UserRepository;
-import jakarta.servlet.http.Cookie;
 import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -168,17 +167,12 @@ class SecurityConfigTest {
     @DisplayName("이미지 로드 실패 집계는 Access Token이 필요하다")
     void protectsImageLoadFailureTelemetry() throws Exception {
         String path = "/api/v1/telemetry/image-load-failures/timeline";
-        Cookie csrfCookie = new Cookie("XSRF-TOKEN", "test-csrf-token");
 
-        mockMvc.perform(post(path)
-                        .cookie(csrfCookie)
-                        .header("X-XSRF-TOKEN", csrfCookie.getValue()))
+        mockMvc.perform(post(path))
                 .andExpect(status().isUnauthorized());
 
         String accessToken = issueAccessToken(UUID.randomUUID());
         mockMvc.perform(post(path)
-                        .cookie(csrfCookie)
-                        .header("X-XSRF-TOKEN", csrfCookie.getValue())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
                 .andExpect(status().isNoContent());
     }
@@ -222,8 +216,11 @@ class SecurityConfigTest {
                 .andExpect(jsonPath("$.components.securitySchemes.csrfToken.in").value("header"))
                 .andExpect(jsonPath("$.components.securitySchemes.csrfToken.name").value("X-XSRF-TOKEN"))
                 .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.security[0].bearerAuth").isArray())
-                .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.security[0].csrfToken").isArray())
+                .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.security[0].csrfToken").doesNotExist())
                 .andExpect(jsonPath("$.paths['/api/v1/guest/session'].post.security[0].csrfToken").isArray())
+                .andExpect(jsonPath("$.paths['/api/v1/guest/diaries'].post.security[0].csrfToken").isArray())
+                .andExpect(jsonPath("$.paths['/api/v1/auth/refresh'].post.security[0].csrfToken").isArray())
+                .andExpect(jsonPath("$.paths['/api/v1/auth/logout'].post.security[0].csrfToken").isArray())
                 .andExpect(jsonPath("$.paths['/api/v1/telemetry/image-load-failures/timeline'].post"
                         + ".security[0].bearerAuth").isArray())
                 .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['200']").exists())
@@ -231,8 +228,18 @@ class SecurityConfigTest {
                 .andExpect(jsonPath("$.paths['/api/v1/guest/diaries'].post.responses['200']").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/guest/diaries'].post.responses['201']").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/diaries/{diaryId}'].delete.responses['204']").exists())
-                .andExpect(jsonPath("$.paths['/api/v1/diaries/{diaryId}/share-link'].put.responses['200']").exists())
-                .andExpect(jsonPath("$.paths['/api/v1/diaries/{diaryId}/share-link'].put.responses['201']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/diaries/{diaryId}'].delete.responses['503']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/feeds'].post.responses['201']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/feeds'].get").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/feeds'].post.security[0].bearerAuth").isArray())
+                .andExpect(jsonPath("$.paths['/api/v1/feeds'].post.security[0].csrfToken").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/v1/feeds/{feedId}'].get").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/feeds/{feedId}'].delete.responses['204']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/feeds/{feedId}'].delete.security[0].bearerAuth").isArray())
+                .andExpect(jsonPath("$.paths['/api/v1/feeds/{feedId}'].delete.security[0].csrfToken").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/v1/diaries/{diaryId}'].delete.security[0].csrfToken").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/v1/diaries/{diaryId}/share-link']").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/v1/public/shares/{shareId}']").doesNotExist())
                 .andExpect(jsonPath("$.paths['/api/v1/auth/logout'].post.responses['204']").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/guest/session'].post.responses['204']").exists());
     }

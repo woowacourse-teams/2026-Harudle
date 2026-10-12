@@ -49,7 +49,8 @@ final class DiaryResponseAssembler {
                 result.diaryDate(),
                 result.sourceText(),
                 toServiceTime(result.createdAt()),
-                toGenerationResponse(result.generation())
+                toGenerationResponse(result.generation()),
+                result.publishedFeedId()
         );
     }
 

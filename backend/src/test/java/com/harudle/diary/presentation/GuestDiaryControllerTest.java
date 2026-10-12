@@ -347,7 +347,8 @@ class GuestDiaryControllerTest {
                 DIARY_DATE,
                 "오늘 친구와 카페에 갔다.",
                 CREATED_AT,
-                createGenerationResult()
+                createGenerationResult(),
+                null
         );
     }
 

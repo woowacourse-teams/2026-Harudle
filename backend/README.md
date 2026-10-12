@@ -43,7 +43,8 @@ com.harudle
 | `auth` | 사용자 조회, 카카오 OAuth 로그인, Access/Refresh Token 발급·갱신·폐기 | `users`, `oauth_accounts`, `refresh_tokens` |
 | `diary` | 일기 저장, 월간 히스토리와 상세 조회, 소프트 삭제 | `diaries` |
 | `generation` | 일일 생성 횟수, 멱등성, AI 생성 상태, 실패 및 고아 작업 복구 | `daily_generation_usage`, `generation_prompts`, `comic_generations` |
-| `share` | 성공한 생성 결과의 공유 링크 생성과 인증 없는 공개 조회 | `share_links` |
+| `feed` | 완성된 만화의 공개 게시·상세 조회와 피드 주소 공유 | `feeds` |
+| `share` | 기존 공유 링크 데이터와 일기 삭제 시 정리 코드 | `share_links` |
 
 각 도메인은 구현 규모에 따라 `domain`, `application`, `presentation`, `infrastructure` 하위 패키지로 확장합니다.
 AI와 S3 같은 외부 시스템 연동은 독립 도메인으로 만들지 않고 `generation.infrastructure`의 어댑터로 둡니다. 보안 설정,

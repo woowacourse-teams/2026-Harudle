@@ -103,8 +103,8 @@ harudle:
       path: /api/v1/guest
       secure: ${GUEST_COOKIE_SECURE:false}
       same-site: Lax
-  share:
-    public-base-url: ${SHARE_PUBLIC_BASE_URL:http://localhost:3000/shares}
+  feed:
+    public-base-url: ${FEED_PUBLIC_BASE_URL:http://localhost:5173/feeds}
   generation:
     lifecycle:
       processing-timeout: ${GENERATION_PROCESSING_TIMEOUT:30m}
