@@ -92,13 +92,14 @@ class QwenStoryboardGeneratorTest {
         assertThat(json.path("thinking_budget").asInt()).isEqualTo(1024);
         assertThat(json.path("enable_thinking").asBoolean()).isTrue();
         assertThat(json.path("messages").path(0).path("content").asString())
-                .startsWith(input.storyboardPromptText()).contains("<output_schema>");
+                .startsWith(input.storyboardPromptText()).contains("<output_schema>", "<qwen_caption_focus>");
         assertThat(mapper.writeValueAsString(request.payload())).doesNotContain(KEY, "propertyOrdering");
         var future = new QwenStoryboardSettings("qwen-future-model", 4096, true, 2048, true,
                 Duration.ofSeconds(90));
         var futureRequest = new QwenStoryboardRequestFactory(future, codec).create(input);
         assertThat(futureRequest.model()).isEqualTo("qwen-future-model");
-        assertThat(futureRequest.systemPrompt()).isEqualTo(input.storyboardPromptText());
+        assertThat(futureRequest.systemPrompt()).startsWith(input.storyboardPromptText())
+                .contains("<qwen_caption_focus>").doesNotContain("<output_schema>");
         assertThat(mapper.valueToTree(futureRequest.payload()).path("response_format").path("type").asString())
                 .isEqualTo("json_schema");
     }
