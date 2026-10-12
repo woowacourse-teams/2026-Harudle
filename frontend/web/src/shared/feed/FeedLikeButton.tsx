@@ -6,7 +6,7 @@ import type { Feed } from '../../domain/feeds/feedList';
 import type { FeedLikeResponse } from '../../domain/feeds/feedLike';
 import type { BottomSheetHandle } from '../../shared/BottomSheet';
 import NeedLoginBottomSheet from '../../shared/NeedLoginBottomSheet';
-import { FEED_COPY } from './copy';
+import { FEED_ACTION_COPY } from './copy';
 import { theme } from '../../styles/theme';
 import useFeedLike from './useFeedLike';
 
@@ -65,7 +65,7 @@ const FeedLikeButton = ({
         <span>{likeCount}</span>
       </button>
       <NeedLoginBottomSheet
-        description={FEED_COPY.likeLoginDescription}
+        description={FEED_ACTION_COPY.likeLoginDescription}
         ref={loginSheetRef}
       />
     </>

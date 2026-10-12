@@ -284,6 +284,28 @@ export const feedHandlers = [
     });
   }),
 
+  http.get(
+    '/api/v1/feeds/:feedId',
+    async ({ request, params }): Promise<Response> => {
+      await delay(300);
+      const error = validateAuthentication(request);
+      if (error) return error;
+      const feedId = String(params.feedId);
+      if (!isCanonicalUuid(feedId))
+        return problem(request, 400, 'VALIDATION_ERROR');
+      const feed = feeds.find(({ id }): boolean => id === feedId);
+      if (!feed) return problem(request, 404, 'FEED_NOT_FOUND');
+      const authenticated = isAuthenticated(request);
+      return HttpResponse.json({
+        ...feed,
+        imageUrlExpiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+        likedByMe: authenticated && likedFeedIds.has(feed.id),
+        isMine: authenticated && feed.author.id === MOCK_USER_ID,
+        shareUrl: `${new URL(request.url).origin}/feeds/${feed.id}`,
+      });
+    },
+  ),
+
   http.put(
     '/api/v1/feeds/:feedId/like',
     async ({ request, params }): Promise<Response> => {

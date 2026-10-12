@@ -1,26 +1,29 @@
 import { css } from '@emotion/react';
 import commentIcon from '../../assets/icons/feed-comment.svg';
-import sendIcon from '../../assets/icons/feed-send.svg';
 import type { Feed } from '../../domain/feeds/feedList';
 import type { FeedLikeResponse } from '../../domain/feeds/feedLike';
 import FeedLikeButton from './FeedLikeButton';
+import FeedShareButton from './FeedShareButton';
 import { theme } from '../../styles/theme';
 
-interface FeedItemActionsProps extends Pick<
+interface FeedActionsProps extends Pick<
   Feed,
-  'likeCount' | 'likedByMe' | 'commentCount'
+  'likeCount' | 'likedByMe' | 'commentCount' | 'shareUrl'
 > {
   readonly feedId: Feed['id'];
+  readonly onCommentClick: () => void;
   readonly onLikeChange: (feedId: Feed['id'], like: FeedLikeResponse) => void;
 }
 
-const FeedItemActions = ({
+const FeedActions = ({
   likeCount,
   commentCount,
   feedId,
   likedByMe,
   onLikeChange,
-}: FeedItemActionsProps) => {
+  shareUrl,
+  onCommentClick,
+}: FeedActionsProps) => {
   return (
     <div css={feedItemActionsStyle}>
       <FeedLikeButton
@@ -29,26 +32,18 @@ const FeedItemActions = ({
         likedByMe={likedByMe}
         onLikeChange={onLikeChange}
       />
-      <button
-        type="button"
-        aria-label={`댓글 ${commentCount}개`}
-        css={reactionButtonStyle}
-      >
+      <button type="button" css={reactionButtonStyle} onClick={onCommentClick}>
         <span css={reactionIconStyle}>
           <img src={commentIcon} alt="" />
         </span>
         <span>{commentCount}</span>
       </button>
-      <button type="button" aria-label="피드 공유" css={shareButtonStyle}>
-        <span css={reactionIconStyle}>
-          <img src={sendIcon} alt="" />
-        </span>
-      </button>
+      <FeedShareButton shareUrl={shareUrl} />
     </div>
   );
 };
 
-export default FeedItemActions;
+export default FeedActions;
 
 const feedItemActionsStyle = css`
   display: flex;
@@ -70,19 +65,6 @@ const reactionButtonStyle = css`
   font-size: 12px;
   font-weight: 400;
   line-height: 20px;
-  cursor: pointer;
-`;
-
-const shareButtonStyle = css`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border: none;
-  background: none;
   cursor: pointer;
 `;
 

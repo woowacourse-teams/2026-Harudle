@@ -51,7 +51,9 @@ test.describe('설정', () => {
     await expectProfile(page);
   });
 
-  test('로그아웃하면 로그인 페이지를 보여준다', async ({ page }) => {
+  test('로그아웃하면 공개 피드를 보여주고 설정 클릭 시 로그인 안내를 보여준다', async ({
+    page,
+  }) => {
     await goToSetting(page);
     await expectProfile(page);
     await page.setExtraHTTPHeaders({
@@ -59,10 +61,15 @@ test.describe('설정', () => {
     });
     await page.getByRole('button', { name: '로그아웃' }).click();
 
-    await expect(page).toHaveURL('/login');
-    await expect(
-      page.getByRole('button', { name: '카카오로 시작하기' }),
-    ).toBeVisible();
+    await expect(page).toHaveURL('/');
+    await expect(page.getByRole('combobox')).toBeVisible();
+    await page
+      .getByRole('navigation')
+      .getByRole('button', { name: '설정' })
+      .click();
+    await expect(page.getByRole('dialog')).toContainText(
+      '로그인하고 계속할까요?',
+    );
   });
 
   test('다른 탭에서 로그아웃하면 기존 토큰이 있어도 다음 인증 요청을 차단한다', async ({
@@ -79,7 +86,8 @@ test.describe('설정', () => {
       [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.authRefreshFailure,
     });
     await page.getByRole('button', { name: '로그아웃' }).click();
-    await expect(page).toHaveURL('/login');
+    await expect(page).toHaveURL('/');
+    await expect(page.getByRole('combobox')).toBeVisible();
 
     const logoutRequests: string[] = [];
     otherPage.on('request', (request) => {
@@ -89,7 +97,8 @@ test.describe('설정', () => {
     });
     await otherPage.getByRole('button', { name: '로그아웃' }).click();
 
-    await expect(otherPage).toHaveURL('/login');
+    await expect(otherPage).toHaveURL('/');
+    await expect(otherPage.getByRole('combobox')).toBeVisible();
     expect(logoutRequests).toEqual([]);
     await otherPage.close();
   });

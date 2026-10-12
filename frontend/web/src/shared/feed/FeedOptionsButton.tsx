@@ -7,7 +7,7 @@ import BottomSheet, { type BottomSheetHandle } from '../../shared/BottomSheet';
 import ConfirmModal from '../../shared/ConfirmModal';
 import type { ModalHandle } from '../../shared/Modal';
 import { theme } from '../../styles/theme';
-import { FEED_COPY } from './copy';
+import { FEED_ACTION_COPY } from './copy';
 import useFeedDelete from './useFeedDelete';
 
 interface FeedOptionsButtonProps {
@@ -51,24 +51,24 @@ const FeedOptionsButton = ({ feedId, onDelete }: FeedOptionsButtonProps) => {
         <img src={moreIcon} alt="옵션 더보기 아이콘" />
       </button>
 
-      <BottomSheet title={FEED_COPY.manageTitle} ref={menuRef}>
+      <BottomSheet title={FEED_ACTION_COPY.manageTitle} ref={menuRef}>
         <button
           type="button"
           css={deleteButtonStyle}
           onClick={handleDeleteClick}
         >
           <img src={deleteIcon} alt="휴지통 아이콘" width={24} height={24} />
-          {FEED_COPY.deleteAction}
+          {FEED_ACTION_COPY.deleteAction}
         </button>
       </BottomSheet>
 
       <ConfirmModal
-        title={FEED_COPY.deleteConfirmTitle}
-        description={FEED_COPY.deleteConfirmDescription}
+        title={FEED_ACTION_COPY.deleteConfirmTitle}
+        description={FEED_ACTION_COPY.deleteConfirmDescription}
         confirmLabel={
           request.status === 'loading'
-            ? FEED_COPY.deletingAction
-            : FEED_COPY.deleteAction
+            ? FEED_ACTION_COPY.deletingAction
+            : FEED_ACTION_COPY.deleteAction
         }
         ref={confirmRef}
         onConfirm={handleDeleteConfirm}
