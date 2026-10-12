@@ -89,19 +89,25 @@ const inputStyle = css`
   word-break: keep-all;
   width: 100%;
   min-height: 42px;
+  max-height: calc(24px * 3 + 16px + 2px);
   field-sizing: content;
   padding: 8px 44px 8px 14px;
   border: 1px solid ${theme.colors.stroke.outline};
   border-radius: 21px;
   outline: none;
   resize: none;
-  overflow-y: hidden;
+  overflow-y: auto;
   background-color: ${theme.colors.background.neutralSubtle};
   color: ${theme.colors.foreground.neutral};
   font-size: 16px;
   font-weight: 400;
   line-height: 24px;
   transition: all 0.2s ease-in-out;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
 
   &::placeholder {
     color: ${theme.colors.foreground.placeholder};
