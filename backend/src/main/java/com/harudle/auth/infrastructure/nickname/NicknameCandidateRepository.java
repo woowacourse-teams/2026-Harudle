@@ -1,5 +1,6 @@
 package com.harudle.auth.infrastructure.nickname;
 
+import com.harudle.auth.domain.exception.NicknameAlreadyInUseException;
 import com.harudle.auth.domain.exception.NicknamePoolBusyException;
 import com.harudle.auth.domain.exception.NicknamePoolExhaustedException;
 import com.harudle.auth.domain.policy.NicknamePolicy;
@@ -31,6 +32,18 @@ public class NicknameCandidateRepository {
         }
 
         throw new NicknamePoolExhaustedException();
+    }
+
+    public boolean lockForChange(String rawNickname, UUID userId) {
+        String nickname = NicknamePolicy.normalizeAndValidate(rawNickname);
+        Objects.requireNonNull(userId, "회원 ID는 필수입니다.");
+        if (jpaRepository.lockNicknameForChange(nickname, userId).isPresent()) {
+            return true;
+        }
+        if (jpaRepository.existsByNickname(nickname)) {
+            throw new NicknameAlreadyInUseException();
+        }
+        return false;
     }
 
     public void assignToUser(String rawNickname, UUID userId) {

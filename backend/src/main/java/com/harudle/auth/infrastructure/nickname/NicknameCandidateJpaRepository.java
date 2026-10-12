@@ -35,6 +35,16 @@ public interface NicknameCandidateJpaRepository extends Repository<NicknameCandi
             + AVAILABLE_CONDITION + ")", nativeQuery = true)
     boolean existsAvailableNickname();
 
+    @Query(value = """
+            SELECT c.nickname FROM nickname_candidates c
+            WHERE c.nickname = :nickname
+              AND (c.assigned_user_id IS NULL OR c.assigned_user_id = :userId)
+            FOR UPDATE OF c
+            """, nativeQuery = true)
+    Optional<String> lockNicknameForChange(@Param("nickname") String nickname, @Param("userId") UUID userId);
+
+    boolean existsByNickname(String nickname);
+
     @Modifying(flushAutomatically = true)
     @Query(value = """
             UPDATE nickname_candidates c SET assigned_user_id = :userId

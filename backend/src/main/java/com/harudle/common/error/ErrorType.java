@@ -33,6 +33,16 @@ public enum ErrorType {
             "Invalid current user",
             "현재 로그인 사용자를 확인할 수 없습니다."
     ),
+    NICKNAME_ALREADY_IN_USE(
+            HttpStatus.CONFLICT,
+            "Nickname already in use",
+            "이미 사용 중인 닉네임입니다."
+    ),
+    PUBLIC_PROFILE_NOT_ASSIGNED(
+            HttpStatus.CONFLICT,
+            "Public profile not assigned",
+            "공개 프로필을 먼저 배정해야 합니다."
+    ),
     GUEST_SESSION_REQUIRED(
             HttpStatus.UNAUTHORIZED,
             "Guest session required",

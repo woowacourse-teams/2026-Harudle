@@ -1,6 +1,7 @@
 package com.harudle.auth.presentation;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 
 import com.harudle.auth.application.AccessTokenService;
 import com.harudle.auth.domain.OAuthAccount;
@@ -11,6 +12,7 @@ import com.harudle.auth.infrastructure.UserRepository;
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
 import io.restassured.module.mockmvc.response.MockMvcResponse;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -172,6 +174,96 @@ class CurrentUserControllerTest {
         assertThat(response.statusCode()).isEqualTo(401);
         assertThat(response.jsonPath().getString("code")).isEqualTo("INVALID_CURRENT_USER");
         assertThat(response.jsonPath().getString("traceId")).isNotBlank();
+    }
+
+    @Test
+    @DisplayName("닉네임 변경 후 내 정보 조회에서 새 닉네임과 기존 이미지를 반환한다")
+    void changesNickname() {
+        User user = saveProfileUser();
+        String previousNickname = user.getNickname();
+
+        MockMvcResponse response = changeNickname(user, "초록");
+
+        assertThat(response.statusCode()).isEqualTo(204);
+        assertThat(response.body().asString()).isEmpty();
+        assertThat(response.header(HttpHeaders.CACHE_CONTROL)).isEqualTo("no-store");
+        MockMvcResponse profile = RestAssuredMockMvc.given()
+                .header(HttpHeaders.AUTHORIZATION, bearerToken(user.getId()))
+                .get("/api/v1/me");
+        assertThat(profile.jsonPath().getString("nickname")).isEqualTo("초록");
+        assertThat(profile.jsonPath().getString("name")).isEqualTo("원래이름");
+        assertThat(profile.jsonPath().getString("profileImageUrl"))
+                .isEqualTo("https://www.harudle.com/profile-images/v1/3.png");
+        assertThat(jdbcTemplate.queryForObject("SELECT assigned_user_id FROM nickname_candidates WHERE nickname = ?",
+                UUID.class, previousNickname)).isNull();
+    }
+
+    @Test
+    @DisplayName("잘못된 닉네임·중복·공개 프로필 미배정은 각각 오류로 안내한다")
+    void rejectsInvalidNicknameChanges() {
+        User user = saveProfileUser();
+        User other = saveProfileUser();
+
+        MockMvcResponse invalid = changeNickname(user, "연속  공백");
+        assertThat(invalid.statusCode()).isEqualTo(400);
+        assertThat(invalid.jsonPath().getString("code")).isEqualTo("VALIDATION_ERROR");
+        assertThat(invalid.jsonPath().getString("errors[0].field")).isEqualTo("nickname");
+
+        MockMvcResponse duplicate = changeNickname(user, other.getNickname());
+        assertThat(duplicate.statusCode()).isEqualTo(409);
+        assertThat(duplicate.jsonPath().getString("code")).isEqualTo("NICKNAME_ALREADY_IN_USE");
+
+        User legacy = saveUser("nickname-legacy@example.com", "기존회원");
+        saveOAuthAccount(legacy, legacy.getId().toString(), null);
+        MockMvcResponse unassigned = changeNickname(legacy, "새별명");
+        assertThat(unassigned.statusCode()).isEqualTo(409);
+        assertThat(unassigned.jsonPath().getString("code")).isEqualTo("PUBLIC_PROFILE_NOT_ASSIGNED");
+        assertThat(userRepository.findById(user.getId()).orElseThrow().getNickname()).isEqualTo(user.getNickname());
+    }
+
+    @Test
+    @DisplayName("닉네임 변경은 기존 Bearer 인증과 CSRF 정책을 따른다")
+    void requiresAuthenticationAndCsrfForNicknameChange() {
+        User user = saveProfileUser();
+        MockMvcResponse unauthenticated = RestAssuredMockMvc.given()
+                .postProcessors(csrf())
+                .contentType(MediaType.APPLICATION_JSON_VALUE)
+                .body(Map.of("nickname", "새별명"))
+                .patch("/api/v1/me/nickname");
+        assertThat(unauthenticated.statusCode()).isEqualTo(401);
+
+        MockMvcResponse missingCsrf = RestAssuredMockMvc.given()
+                .contentType(MediaType.APPLICATION_JSON_VALUE)
+                .body(Map.of("nickname", "새별명"))
+                .patch("/api/v1/me/nickname");
+        assertThat(missingCsrf.statusCode()).isEqualTo(403);
+        assertThat(missingCsrf.jsonPath().getString("code")).isEqualTo("INVALID_CSRF_TOKEN");
+
+        assertThat(changeNickname(user, "새별명").statusCode()).isEqualTo(204);
+    }
+
+    private MockMvcResponse changeNickname(User user, String nickname) {
+        return RestAssuredMockMvc.given()
+                .header(HttpHeaders.AUTHORIZATION, bearerToken(user.getId()))
+                .contentType(MediaType.APPLICATION_JSON_VALUE)
+                .body(Map.of("nickname", nickname))
+                .patch("/api/v1/me/nickname");
+    }
+
+    private User saveProfileUser() {
+        String nickname = jdbcTemplate.queryForObject("""
+                SELECT c.nickname FROM nickname_candidates c
+                WHERE c.assigned_user_id IS NULL
+                  AND NOT EXISTS (SELECT 1 FROM users u WHERE u.nickname = c.nickname AND u.deleted_at IS NULL)
+                ORDER BY c.allocation_order LIMIT 1
+                """, String.class);
+        User user = new User(null, "원래이름", CREATED_AT);
+        user.assignInitialPublicProfile(nickname, 3, CREATED_AT);
+        user = userRepository.save(user);
+        saveOAuthAccount(user, user.getId().toString(), null);
+        jdbcTemplate.update("UPDATE nickname_candidates SET assigned_user_id = ? WHERE nickname = ?",
+                user.getId(), nickname);
+        return user;
     }
 
     private User saveUser(String email, String name) {

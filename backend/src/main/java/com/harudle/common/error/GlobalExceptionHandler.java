@@ -6,6 +6,8 @@ import com.harudle.admin.service.exception.AdminGenerationUsageConflictException
 import com.harudle.admin.service.exception.AdminGenerationHistoryDateRangeException;
 import com.harudle.admin.service.exception.AdminInactiveUserException;
 import com.harudle.auth.domain.exception.InvalidNicknameException;
+import com.harudle.auth.domain.exception.NicknameAlreadyInUseException;
+import com.harudle.auth.domain.exception.PublicProfileNotAssignedException;
 import com.harudle.auth.presentation.AuthenticationRequiredException;
 import com.harudle.category.service.exception.CategoryInactiveException;
 import com.harudle.category.service.exception.CategoryNotFoundException;
@@ -134,6 +136,16 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 request,
                 List.of(new FieldValidationError("nickname", exception.getMessage()))
         );
+    }
+
+    @ExceptionHandler(NicknameAlreadyInUseException.class)
+    ResponseEntity<ProblemDetail> handleNicknameAlreadyInUse(HttpServletRequest request) {
+        return createResponse(ErrorType.NICKNAME_ALREADY_IN_USE, request);
+    }
+
+    @ExceptionHandler(PublicProfileNotAssignedException.class)
+    ResponseEntity<ProblemDetail> handlePublicProfileNotAssigned(HttpServletRequest request) {
+        return createResponse(ErrorType.PUBLIC_PROFILE_NOT_ASSIGNED, request);
     }
 
     @ExceptionHandler(InvalidIdempotencyKeyException.class)
