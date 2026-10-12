@@ -192,6 +192,17 @@ class NotificationControllerTest {
     }
 
     @Test
+    void cancelledLikeReadReturns404WithoutAReadResponseBody() throws Exception {
+        doThrow(new NotificationNotFoundException()).when(service).markRead(USER, NOTIFICATION);
+
+        mockMvc.perform(readRequest("{\"read\":true}"))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.code").value("NOTIFICATION_NOT_FOUND"))
+                .andExpect(jsonPath("$.type").value("urn:harudle:problem:notification-not-found"));
+    }
+
+    @Test
     void inactiveMemberOrGuestActorReturns401() throws Exception {
         when(service.list(USER, null, 20)).thenThrow(new AuthenticationRequiredException());
         mockMvc.perform(bearer(get(LIST))).andExpect(status().isUnauthorized())

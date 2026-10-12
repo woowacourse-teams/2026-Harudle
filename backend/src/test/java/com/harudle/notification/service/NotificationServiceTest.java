@@ -212,6 +212,18 @@ class NotificationServiceTest {
     }
 
     @Test
+    void cancelledLikeNotificationIsNotReadableEvenWhileDatabaseHistoryRemains() {
+        when(repository.isActiveMember(RECIPIENT)).thenReturn(true);
+        when(repository.findVisibleById(FIRST)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.markRead(RECIPIENT, FIRST))
+                .isInstanceOf(NotificationNotFoundException.class);
+
+        verify(repository, never()).markRead(any(), any(), any());
+        verifyNoInteractions(profileProvider, profiles, codec);
+    }
+
+    @Test
     void updateLosingVisibilityRaceReturns404RatherThanPretendingSuccess() {
         when(repository.isActiveMember(RECIPIENT)).thenReturn(true);
         when(repository.findVisibleById(FIRST)).thenReturn(Optional.of(new NotificationReadTarget(FIRST, RECIPIENT)));

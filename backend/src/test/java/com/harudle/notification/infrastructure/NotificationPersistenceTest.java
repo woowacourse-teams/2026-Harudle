@@ -204,7 +204,7 @@ class NotificationPersistenceTest {
     @DisplayName("기본 20개 목록은 size+1로 다음 페이지를 확인하고 마지막 커서는 null이다")
     void useDefaultSizeAndCorrectFinalCursor() throws Exception {
         for (int index = 0; index < 21; index++) {
-            insertNotification(recipientId, actorId, feedId, "LIKE", FIXTURE_TIME.plusSeconds(index));
+            insertNotification(recipientId, actorId, feedId, "COMMENT", FIXTURE_TIME.plusSeconds(index));
         }
         mockMvc.perform(recipient(get(listPath())))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.items", hasSize(20)))
@@ -280,20 +280,102 @@ class NotificationPersistenceTest {
     }
 
     @Test
-    @DisplayName("좋아요 취소로 행동 행을 물리 삭제해도 인앱 알림 이력과 원인 행동 ID를 보존한다")
-    void preserveHistoryAfterUnlike() {
+    @DisplayName("취소한 좋아요 알림은 이력만 남기고 숨기며 재좋아요의 새 알림 하나만 노출한다")
+    void hideCanceledLikeAndExposeOnlyNewRelikeNotification() throws Exception {
         likes.like(actorId, feedId);
         UUID sourceAction = uuidValue("SELECT id FROM feed_likes WHERE feed_id = ? AND user_id = ?", feedId, actorId);
+        UUID oldNotice = uuidValue("SELECT id FROM notifications WHERE source_action_id = ?", sourceAction);
         likes.unlike(actorId, feedId);
 
         var page = service.list(recipientId, null, 20);
 
         assertThat(intValue("SELECT count(*) FROM feed_likes WHERE id = ?", sourceAction)).isZero();
-        assertThat(page.items()).hasSize(1);
-        assertThat(page.items().getFirst().type().name()).isEqualTo("LIKE");
-        assertThat(page.unreadCount()).isEqualTo(1);
+        assertThat(page.items()).isEmpty();
+        assertThat(page.unreadCount()).isZero();
         assertThat(uuidValue("SELECT source_action_id FROM notifications WHERE feed_id = ?", feedId))
                 .isEqualTo(sourceAction);
+        mockMvc.perform(withCsrf(recipient(patch(readPath(oldNotice))))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"read\":true}"))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("NOTIFICATION_NOT_FOUND"));
+        assertThat(readAt(oldNotice)).isNull();
+
+        likes.like(actorId, feedId);
+        UUID newSourceAction = uuidValue("SELECT id FROM feed_likes WHERE feed_id = ? AND user_id = ?", feedId, actorId);
+        UUID newNotice = uuidValue("SELECT id FROM notifications WHERE source_action_id = ?", newSourceAction);
+        likes.like(actorId, feedId);
+        var afterRelike = service.list(recipientId, null, 20);
+        assertThat(newSourceAction).isNotEqualTo(sourceAction);
+        assertThat(newNotice).isNotEqualTo(oldNotice);
+        assertThat(afterRelike.items()).hasSize(1);
+        assertThat(afterRelike.items().getFirst().id()).isEqualTo(newNotice);
+        assertThat(afterRelike.items().getFirst().read()).isFalse();
+        assertThat(afterRelike.unreadCount()).isEqualTo(1);
+        assertThat(intValue("SELECT count(*) FROM notifications WHERE feed_id = ?", feedId)).isEqualTo(2);
+        mockMvc.perform(withCsrf(recipient(patch(readPath(oldNotice))))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"read\":true}"))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("NOTIFICATION_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("읽었던 좋아요를 취소 후 다시 누르면 새 알림만 미읽음이고 과거 read_at은 보존한다")
+    void createUnreadNotificationAfterReadLikeWasCanceledAndReliked() {
+        likes.like(actorId, feedId);
+        UUID oldNotice = service.list(recipientId, null, 20).items().getFirst().id();
+        service.markRead(recipientId, oldNotice);
+        Instant originalReadAt = readAt(oldNotice);
+        likes.unlike(actorId, feedId);
+        likes.like(actorId, feedId);
+
+        var page = service.list(recipientId, null, 20);
+
+        assertThat(page.items()).hasSize(1);
+        assertThat(page.items().getFirst().id()).isNotEqualTo(oldNotice);
+        assertThat(page.items().getFirst().read()).isFalse();
+        assertThat(page.unreadCount()).isEqualTo(1);
+        assertThat(readAt(oldNotice)).isEqualTo(originalReadAt);
+        assertThat(intValue("SELECT count(*) FROM notifications WHERE feed_id = ?", feedId)).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("여러 행위자의 좋아요 중 하나만 취소하면 다른 사람의 알림과 미읽음 수는 유지한다")
+    void hideOnlyNotificationOfCanceledActor() {
+        likes.like(actorId, feedId);
+        UUID canceledNotice = service.list(recipientId, null, 20).items().getFirst().id();
+        likes.like(otherRecipientId, feedId);
+        UUID remainingAction = uuidValue("SELECT id FROM feed_likes WHERE feed_id = ? AND user_id = ?",
+                feedId, otherRecipientId);
+        UUID remainingNotice = uuidValue("SELECT id FROM notifications WHERE source_action_id = ?", remainingAction);
+        likes.unlike(actorId, feedId);
+
+        var page = service.list(recipientId, null, 20);
+
+        assertThat(page.items()).hasSize(1);
+        assertThat(page.items().getFirst().id()).isEqualTo(remainingNotice);
+        assertThat(page.items().getFirst().actor().id()).isEqualTo(otherRecipientId);
+        assertThat(page.unreadCount()).isEqualTo(1);
+        assertThatThrownBy(() -> service.markRead(recipientId, canceledNotice))
+                .isInstanceOf(NotificationNotFoundException.class);
+        service.markRead(recipientId, remainingNotice);
+        assertThat(service.list(recipientId, null, 20).unreadCount()).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"FEED", "ACTOR", "MISSING"})
+    @DisplayName("좋아요 원인 ID뿐 아니라 피드와 행위자도 일치해야 알림을 노출하고 읽을 수 있다")
+    void rejectMismatchedOrMissingLikeSource(String mismatch) {
+        UUID sourceAction = mismatch.equals("MISSING") ? UUID.randomUUID() : validLikeSource(actorId, feedId, FIXTURE_TIME);
+        UUID targetFeed = mismatch.equals("FEED") ? createFeed(createDiary(recipientId)) : feedId;
+        UUID targetActor = mismatch.equals("ACTOR") ? otherRecipientId : actorId;
+        UUID notice = UUID.randomUUID();
+        insertNotificationWithSource(notice, recipientId, targetActor, targetFeed, "LIKE", sourceAction, FIXTURE_TIME);
+
+        var page = service.list(recipientId, null, 20);
+
+        assertThat(page.items()).isEmpty();
+        assertThat(page.unreadCount()).isZero();
+        assertThatThrownBy(() -> service.markRead(recipientId, notice)).isInstanceOf(NotificationNotFoundException.class);
+        assertThat(readAt(notice)).isNull();
+        assertThat(profiles.callCount()).isZero();
     }
 
     @Test
@@ -470,9 +552,9 @@ class NotificationPersistenceTest {
     }
 
     @Test
-    @DisplayName("행위자가 물리 삭제되면 FK가 null로 바뀌며 프로필 조회 없이 탈퇴한 회원으로 이력을 보여준다")
+    @DisplayName("댓글 알림은 행위자가 물리 삭제돼도 FK만 null로 바뀌며 탈퇴한 회원으로 이력을 보여준다")
     void retainNotificationAfterActorWasHardDeleted() throws Exception {
-        UUID notice = insertNotification(recipientId, actorId, feedId, "LIKE", FIXTURE_TIME);
+        UUID notice = insertNotification(recipientId, actorId, feedId, "COMMENT", FIXTURE_TIME);
         jdbc.update("DELETE FROM users WHERE id = ?", actorId);
         profiles.resetCallCount();
 
@@ -486,9 +568,28 @@ class NotificationPersistenceTest {
     }
 
     @Test
-    @DisplayName("행위자가 논리 탈퇴하면 DB actor ID는 보존하되 공개 응답에는 null과 탈퇴 안내를 반환한다")
+    @DisplayName("행위자 물리 삭제로 좋아요 원인 행이 함께 사라지면 LIKE 알림은 이력만 남기고 숨긴다")
+    void hideLikeNotificationWhenActorAndLikeWereHardDeleted() {
+        UUID notice = insertNotification(recipientId, actorId, feedId, "LIKE", FIXTURE_TIME);
+        UUID sourceAction = uuidValue("SELECT source_action_id FROM notifications WHERE id = ?", notice);
+        jdbc.update("DELETE FROM users WHERE id = ?", actorId);
+        profiles.resetCallCount();
+
+        var page = service.list(recipientId, null, 20);
+
+        assertThat(page.items()).isEmpty();
+        assertThat(page.unreadCount()).isZero();
+        assertThat(profiles.callCount()).isZero();
+        assertThat(intValue("SELECT count(*) FROM feed_likes WHERE id = ?", sourceAction)).isZero();
+        assertThat(intValue("SELECT count(*) FROM notifications WHERE id = ?", notice)).isEqualTo(1);
+        assertThat(uuidValue("SELECT actor_user_id FROM notifications WHERE id = ?", notice)).isNull();
+        assertThatThrownBy(() -> service.markRead(recipientId, notice)).isInstanceOf(NotificationNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("좋아요 행위자가 논리 탈퇴해 원인 행은 남으면 actor ID는 보존하고 null과 탈퇴 안내를 반환한다")
     void retainNotificationAfterActorWasSoftDeleted() {
-        UUID notice = insertNotification(recipientId, actorId, feedId, "COMMENT", FIXTURE_TIME);
+        UUID notice = insertNotification(recipientId, actorId, feedId, "LIKE", FIXTURE_TIME);
         jdbc.update("UPDATE users SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", actorId);
         profiles.resetCallCount();
 
@@ -539,7 +640,7 @@ class NotificationPersistenceTest {
                 assertThat(pageRead.await(5, TimeUnit.SECONDS)).isTrue();
                 service.markRead(recipientId, first);
                 service.markRead(recipientId, second);
-                insertNotification(recipientId, actorId, feedId, "LIKE", FIXTURE_TIME.plusSeconds(2));
+                insertNotification(recipientId, actorId, feedId, "COMMENT", FIXTURE_TIME.plusSeconds(2));
                 jdbc.update("UPDATE users SET nickname = ? WHERE id = ?", "변경후이름", actorId);
                 continueRead.countDown();
 
@@ -617,6 +718,56 @@ class NotificationPersistenceTest {
                 assertThat(service.list(recipientId, null, 20).unreadCount()).isEqualTo(1);
             } finally {
                 releaseRemoval.countDown();
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("겹친 취소와 읽음은 교착하지 않고 취소 커밋 이후의 새 조회·개수·읽음은 숨김 정책을 따른다")
+    void overlapUnlikeAndReadWithoutDeadlockThenHideCanceledNotice() throws Exception {
+        likes.like(actorId, feedId);
+        UUID notice = service.list(recipientId, null, 20).items().getFirst().id();
+        CountDownLatch noticeLocked = new CountDownLatch(1);
+        CountDownLatch releaseNotice = new CountDownLatch(1);
+        AtomicInteger readingPid = new AtomicInteger();
+        try (ExecutorService executor = Executors.newFixedThreadPool(3)) {
+            Future<?> locker = executor.submit(() -> transactions.executeWithoutResult(status -> {
+                uuidValue("SELECT id FROM notifications WHERE id = ? FOR UPDATE", notice);
+                noticeLocked.countDown();
+                await(releaseNotice);
+            }));
+            try {
+                assertThat(noticeLocked.await(5, TimeUnit.SECONDS)).isTrue();
+                Future<Throwable> reading = executor.submit(() -> catchThrowable(() ->
+                        transactions.executeWithoutResult(status -> {
+                            readingPid.set(intValue("SELECT pg_backend_pid()"));
+                            service.markRead(recipientId, notice);
+                        })));
+                awaitBlockedBackend(readingPid);
+
+                // The read UPDATE already started before cancellation. Its MVCC
+                // snapshot may still see the source like, so overlapping reads
+                // may succeed or fail. This policy does not introduce a shared
+                // feed/like lock or claim that EXISTS serializes both actions.
+                Future<?> cancellation = executor.submit(() -> likes.unlike(actorId, feedId));
+                cancellation.get(5, TimeUnit.SECONDS);
+                releaseNotice.countDown();
+                locker.get(10, TimeUnit.SECONDS);
+                Throwable outcome = reading.get(10, TimeUnit.SECONDS);
+                assertThat(outcome == null || outcome instanceof NotificationNotFoundException)
+                        .as("겹친 읽음은 성공 또는 취소된 대상의 404이며 교착/다른 실패는 없다")
+                        .isTrue();
+
+                var afterCancellation = service.list(recipientId, null, 20);
+                assertThat(afterCancellation.items()).isEmpty();
+                assertThat(afterCancellation.unreadCount()).isZero();
+                assertThatThrownBy(() -> service.markRead(recipientId, notice))
+                        .isInstanceOf(NotificationNotFoundException.class);
+                assertThat(intValue("SELECT count(*) FROM notifications WHERE id = ?", notice)).isEqualTo(1);
+                assertThat(intValue("SELECT count(*) FROM feed_likes WHERE feed_id = ? AND user_id = ?", feedId, actorId))
+                        .isZero();
+            } finally {
+                releaseNotice.countDown();
             }
         }
     }
@@ -705,11 +856,30 @@ class NotificationPersistenceTest {
     }
 
     private void insertNotification(UUID id, UUID recipient, UUID actor, UUID feed, String type, Instant time) {
+        UUID sourceAction = type.equals("LIKE") ? validLikeSource(actor, feed, time) : UUID.randomUUID();
+        insertNotificationWithSource(id, recipient, actor, feed, type, sourceAction, time);
+    }
+
+    private UUID validLikeSource(UUID actor, UUID feed, Instant time) {
+        List<UUID> existing = jdbc.queryForList("SELECT id FROM feed_likes WHERE feed_id = ? AND user_id = ?",
+                UUID.class, feed, actor);
+        if (!existing.isEmpty()) {
+            return existing.getFirst();
+        }
+        UUID id = UUID.randomUUID();
+        jdbc.update("INSERT INTO feed_likes (id, feed_id, user_id, created_at) VALUES (?, ?, ?, ?)",
+                id, feed, actor, Timestamp.from(time));
+        jdbc.update("UPDATE feeds SET like_count = like_count + 1 WHERE id = ?", feed);
+        return id;
+    }
+
+    private void insertNotificationWithSource(UUID id, UUID recipient, UUID actor, UUID feed, String type,
+            UUID sourceAction, Instant time) {
         jdbc.update("""
                 INSERT INTO notifications
                     (id, recipient_user_id, actor_user_id, feed_id, type, source_action_id, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, id, recipient, actor, feed, type, UUID.randomUUID(), Timestamp.from(time));
+                """, id, recipient, actor, feed, type, sourceAction, Timestamp.from(time));
     }
 
     private Instant readAt(UUID id) {
@@ -866,7 +1036,7 @@ class NotificationWithoutProfilePersistenceTest {
             jdbc.update("""
                     INSERT INTO notifications
                         (id, recipient_user_id, actor_user_id, feed_id, type, source_action_id)
-                    VALUES (?, ?, ?, ?, 'LIKE', ?)
+                    VALUES (?, ?, ?, ?, 'COMMENT', ?)
                     """, notice, recipient, actor, feed, UUID.randomUUID());
             mockMvc.perform(authenticated(get("/api/v1/notifications")))
                     .andExpect(status().isServiceUnavailable())
