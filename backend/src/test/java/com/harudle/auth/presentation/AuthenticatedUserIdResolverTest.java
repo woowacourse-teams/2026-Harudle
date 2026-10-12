@@ -72,6 +72,25 @@ class AuthenticatedUserIdResolverTest {
                 .isInstanceOf(AuthenticationRequiredException.class);
     }
 
+    @Test
+    void optionallyResolvesAuthenticatedUser() {
+        assertThat(resolver.resolveOptional(authenticated(USER_ID.toString()))).contains(USER_ID);
+    }
+
+    @Test
+    void treatsMissingAndAnonymousViewerAsEmpty() {
+        assertThat(resolver.resolveOptional(null)).isEmpty();
+        assertThat(resolver.resolveOptional(new AnonymousAuthenticationToken(
+                "anonymous-key", "anonymousUser", AuthorityUtils.createAuthorityList("ROLE_ANONYMOUS"))))
+                .isEmpty();
+    }
+
+    @Test
+    void rejectsMalformedAuthenticatedViewerInsteadOfTreatingAsAnonymous() {
+        assertThatThrownBy(() -> resolver.resolveOptional(authenticated("1-1-1-1-1")))
+                .isInstanceOf(AuthenticationRequiredException.class);
+    }
+
     private Authentication authenticated(String principalName) {
         return UsernamePasswordAuthenticationToken.authenticated(
                 principalName,

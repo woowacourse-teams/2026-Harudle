@@ -23,12 +23,13 @@ import com.google.genai.types.ThinkingLevel;
 import com.harudle.common.logging.ExternalApiFailure;
 import com.harudle.common.logging.ExternalApiLogger;
 import com.harudle.common.logging.ExternalApiResponseDiagnostics;
+import com.harudle.generation.adapter.out.storyboard.StoryboardResponseMapper;
 import com.harudle.generation.config.GeminiGenerationProperties;
-import com.harudle.generation.diary.domain.Storyboard;
 import com.harudle.generation.diary.domain.GenerationTokenUsage;
-import com.harudle.generation.diary.service.port.dto.GeneratedStoryboard;
+import com.harudle.generation.diary.domain.Storyboard;
 import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
+import com.harudle.generation.diary.service.port.dto.GeneratedStoryboard;
 import com.harudle.generation.diary.service.port.dto.StoryboardGenerationRequest;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
@@ -52,7 +53,7 @@ class GeminiStoryboardGeneratorTest {
             models,
             properties,
             JsonMapper.builder().build(),
-            new GeminiStoryboardResponseMapper(),
+            new StoryboardResponseMapper(),
             new GeminiFailureReporter(
                     new GeminiExceptionTranslator(),
                     externalApiLogger

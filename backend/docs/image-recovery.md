@@ -22,12 +22,7 @@ R2 복구는 대상 백업의 HEAD/GET만 사용한다. R2를 공개로 변경�
 
 ### 2. 목록을 고정하고 dry-run
 
-관리자 토큰과 CSRF 쿠키/토큰을 준비한다. 토큰과 서명 URL을 저장소에 커밋하지 않는다.
-
-```sh
-curl --fail-with-body -c recovery-cookies.txt "$BASE_URL/api/v1/auth/csrf"
-# XSRF-TOKEN 쿠키 값을 CSRF_TOKEN에 설정한다.
-```
+관리자 Access Token을 준비한다. Bearer 인증이므로 CSRF 쿠키/토큰은 필요하지 않다. 토큰과 서명 URL을 저장소에 커밋하지 않는다.
 
 `r2-recovery-plan.json`을 만든다. 요청은 환경, 중복 없는 UUID 1~100개와 명시적인 `dryRun` 값을 요구한다.
 처음에는 dev에서 한 건으로 확인한다.
@@ -41,10 +36,9 @@ curl --fail-with-body -c recovery-cookies.txt "$BASE_URL/api/v1/auth/csrf"
 ```
 
 ```sh
-curl --fail-with-body -b recovery-cookies.txt \
+curl --fail-with-body \
   -X POST "$BASE_URL/api/v1/admin/generations/restore-image/r2" \
   -H "Authorization: Bearer $ADMIN_ACCESS_TOKEN" \
-  -H "X-XSRF-TOKEN: $CSRF_TOKEN" \
   -H "Content-Type: application/json" \
   --data-binary @r2-recovery-plan.json > r2-recovery-plan-result.json
 ```
@@ -80,10 +74,9 @@ R2 백업이 없으면 정상 S3 파일이 있더라도 이 절차의 검증에 
 배포의 프록시/클라이언트 타임아웃을 고려한다. 인스턴스 간 공통 잠금은 없지만 객체별 조건부 PUT은 모든 인스턴스의 경합에 적용된다.
 
 ```sh
-curl --fail-with-body -b recovery-cookies.txt \
+curl --fail-with-body \
   -X POST "$BASE_URL/api/v1/admin/generations/restore-image/r2" \
   -H "Authorization: Bearer $ADMIN_ACCESS_TOKEN" \
-  -H "X-XSRF-TOKEN: $CSRF_TOKEN" \
   -H "Content-Type: application/json" \
   --data-binary @r2-recovery-apply.json > r2-recovery-apply-result.json
 ```
@@ -133,11 +126,8 @@ POST /api/v1/admin/generations/{generationId}/restore-image
 예시 (운영 주소 및 관리자 액세스 토큰은 실제 값으로 지정):
 
 ~~~sh
-curl --fail-with-body -c recovery-cookies.txt "$BASE_URL/api/v1/auth/csrf"
-# 발급된 XSRF-TOKEN 쿠키 값을 CSRF_TOKEN에 설정한다.
-curl --fail-with-body -b recovery-cookies.txt -X POST "$BASE_URL/api/v1/admin/generations/$GENERATION_ID/restore-image" \
-  -H "Authorization: Bearer $ADMIN_ACCESS_TOKEN" \
-  -H "X-XSRF-TOKEN: $CSRF_TOKEN"
+curl --fail-with-body -X POST "$BASE_URL/api/v1/admin/generations/$GENERATION_ID/restore-image" \
+  -H "Authorization: Bearer $ADMIN_ACCESS_TOKEN"
 ~~~
 
 응답:
@@ -192,12 +182,11 @@ DB 생성 기록 조회는 하지 않는다. UUID는 입력하지 않는다.
 기존 생성 API와 달리 스토리보드, 프롬프트, Gemini 호출이 필요하지 않다.
 SUCCEEDED 상태 검사는 하지 않는다. S3 조건부 PUT이 기존 객체를 확인한다. 이미 있으면 ALREADY_EXISTS를 반환하고 덮어쓰지 않는다.
 
-위 절차로 관리자 토큰과 CSRF 쿠키/토큰을 준비한 뒤 호출한다:
+관리자 Access Token을 준비한 뒤 호출한다:
 
 ~~~sh
-curl --fail-with-body -b recovery-cookies.txt -X POST "$BASE_URL/api/v1/admin/generations/restore-image/upload" \
+curl --fail-with-body -X POST "$BASE_URL/api/v1/admin/generations/restore-image/upload" \
   -H "Authorization: Bearer $ADMIN_ACCESS_TOKEN" \
-  -H "X-XSRF-TOKEN: $CSRF_TOKEN" \
   -F "imageObjectKey=generated/diary-images/기존경로/image.png" \
   -F "image=@recovered.png"
 ~~~
