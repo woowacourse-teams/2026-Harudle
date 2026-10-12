@@ -12,11 +12,17 @@ import FeedOptionsButton from '../../shared/feed/FeedOptionsButton';
 
 interface FeedItemProps {
   readonly feed: Feed;
+  readonly onCategoryClick: (categoryId: Feed['category']['id']) => void;
   readonly onLikeChange: (feedId: Feed['id'], like: FeedLikeResponse) => void;
   readonly onDelete: (feedId: Feed['id']) => void;
 }
 
-const FeedItem = ({ feed, onLikeChange, onDelete }: FeedItemProps) => {
+const FeedItem = ({
+  feed,
+  onCategoryClick,
+  onLikeChange,
+  onDelete,
+}: FeedItemProps) => {
   const navigate = useNavigate();
   const { author, category, publishedAt, imageUrl, isMine } = feed;
 
@@ -37,10 +43,14 @@ const FeedItem = ({ feed, onLikeChange, onDelete }: FeedItemProps) => {
         </div>
         <div css={authorInformationStyle}>
           <span css={authorNameStyle}>{author.nickname}</span>
-          <span css={categoryStyle}>
-            <img src={categoryChevronIcon} />
+          <button
+            type="button"
+            css={categoryStyle}
+            onClick={() => onCategoryClick(category.id)}
+          >
+            <img src={categoryChevronIcon} alt="" />
             <span>{category.name}</span>
-          </span>
+          </button>
           <time css={publishedAtStyle} dateTime={publishedAt}>
             {formatPublishedAt(publishedAt)}
           </time>
@@ -131,9 +141,21 @@ const categoryStyle = css`
   gap: 4px;
   flex-shrink: 0;
   height: 32px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font-family: inherit;
   font-size: 16px;
   font-weight: 600;
   line-height: 22px;
+  cursor: pointer;
+
+  &:hover span {
+    text-decoration: underline;
+    text-decoration-color: ${theme.colors.foreground.neutral};
+    text-underline-offset: 3px;
+  }
 `;
 
 const publishedAtStyle = css`

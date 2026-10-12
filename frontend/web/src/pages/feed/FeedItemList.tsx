@@ -1,19 +1,35 @@
 import { css } from '@emotion/react';
-import type { FeedListRequest } from '../../domain/feeds/feedList';
+import { useEffect } from 'react';
+import type { Feed, FeedListRequest } from '../../domain/feeds/feedList';
 import LoadingSpinner from '../../shared/LoadingSpinner';
 import FeedEmpty from './FeedEmpty';
 import FeedError from './FeedError';
 import useFeedList from './useFeedList';
 import FeedItem from './FeedItem';
+import ActionButton from '../../shared/ActionButton';
+import { FEED_COPY } from './copy';
+
+interface FeedItemListProps extends Pick<
+  FeedListRequest,
+  'categoryId' | 'sort'
+> {
+  readonly onCategoryClick: (categoryId: Feed['category']['id']) => void;
+}
 
 const FeedItemList = ({
   categoryId,
   sort,
-}: Pick<FeedListRequest, 'categoryId' | 'sort'>) => {
-  const { request, updateLike, removeFeedFromList } = useFeedList({
-    categoryId,
-    sort,
-  });
+  onCategoryClick,
+}: FeedItemListProps) => {
+  const { request, loadMoreRequest, loadMore, updateLike, removeFeedFromList } =
+    useFeedList({ categoryId, sort });
+  const isLoadingMore = loadMoreRequest.status === 'loading';
+
+  useEffect((): void => {
+    if (loadMoreRequest.status === 'error') {
+      window.alert(FEED_COPY.loadMoreError);
+    }
+  }, [loadMoreRequest]);
 
   if (request.status === 'idle' || request.status === 'loading') {
     return <LoadingSpinner />;
@@ -23,8 +39,8 @@ const FeedItemList = ({
     return <FeedError errorMessage={request.error.message} />;
   }
 
-  const { items } = request.data;
-  if (items.length === 0) return <FeedEmpty />;
+  const { items, hasNext } = request.data;
+  if (items.length === 0 && !hasNext) return <FeedEmpty />;
 
   return (
     <div css={feedItemListStyle}>
@@ -32,10 +48,27 @@ const FeedItemList = ({
         <FeedItem
           key={item.id}
           feed={item}
+          onCategoryClick={onCategoryClick}
           onLikeChange={updateLike}
           onDelete={removeFeedFromList}
         />
       ))}
+      {hasNext && (
+        <div css={loadMoreStyle}>
+          <ActionButton
+            variant="secondary"
+            label={
+              isLoadingMore
+                ? FEED_COPY.loadingMoreAction
+                : FEED_COPY.loadMoreAction
+            }
+            disabled={isLoadingMore}
+            onClick={() => {
+              void loadMore();
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 };
@@ -46,4 +79,9 @@ const feedItemListStyle = css`
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+`;
+
+const loadMoreStyle = css`
+  flex-shrink: 0;
+  padding: 16px 0 24px;
 `;

@@ -32,6 +32,14 @@ const FeedPage = () => {
     });
   };
 
+  const handleCategoryClick = (nextCategoryId: Category['id']): void => {
+    setSearchParams((previous): URLSearchParams => {
+      const next = new URLSearchParams(previous);
+      next.set(FEED_QUERY_KEYS.CATEGORY_ID, nextCategoryId);
+      return next;
+    });
+  };
+
   const handleSortChange = (nextSort: FeedSort): void => {
     setSearchParams((previous): URLSearchParams => {
       const next = new URLSearchParams(previous);
@@ -53,7 +61,11 @@ const FeedPage = () => {
           sort={sort}
           onSortChange={handleSortChange}
         />
-        <FeedItemList categoryId={categoryId} sort={sort} />
+        <FeedItemList
+          categoryId={categoryId}
+          sort={sort}
+          onCategoryClick={handleCategoryClick}
+        />
       </main>
     </BottomNavigationLayout>
   );
