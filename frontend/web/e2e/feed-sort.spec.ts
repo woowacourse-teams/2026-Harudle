@@ -32,8 +32,12 @@ test.describe('피드 URL 정렬', () => {
     await expect(page).toHaveURL(/categoryId=1&other=keep$/);
 
     await select.selectOption('POPULAR');
+    await expect(page).toHaveURL(/sort=POPULAR/);
     await page.getByRole('button', { name: '우테코', exact: true }).click();
     await expect(page).toHaveURL(/categoryId=2/);
+    await expect(
+      page.getByRole('button', { name: '우테코', exact: true }),
+    ).toHaveCSS('font-weight', '500');
     expect(new URL(page.url()).searchParams.get('sort')).toBe('POPULAR');
     await select.selectOption('LATEST');
     await expect(select).toHaveValue('LATEST');

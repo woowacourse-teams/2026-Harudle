@@ -36,9 +36,21 @@ const MONTHLY_DIARIES = {
     'MonthlyDiaries 응답 형식이 일치하지 않습니다.',
 } as const;
 
+const FEED_DETAIL = {
+  FEED_DETAIL_FETCH_FAILED: '피드를 불러오지 못했어요. 다시 시도해 주세요.',
+  INVALID_FEED_DETAIL_RESPONSE: 'FeedDetail 응답 형식이 일치하지 않습니다.',
+} as const;
+
 const FEED_LIST = {
   FEED_LIST_FETCH_FAILED: '피드를 불러오지 못했어요. 다시 시도해 주세요.',
   INVALID_FEED_LIST_RESPONSE: 'FeedList 응답 형식이 일치하지 않습니다.',
+} as const;
+
+const FEED_ACTIONS = {
+  FEED_LINK_COPY_FAILED: '링크를 복사하지 못했어요. 다시 시도해 주세요.',
+  FEED_LIKE_FAILED: '좋아요를 반영하지 못했어요. 다시 시도해 주세요.',
+  INVALID_FEED_LIKE_RESPONSE: 'FeedLike 응답 형식이 일치하지 않습니다.',
+  FEED_DELETION_FAILED: '피드를 삭제하지 못했어요. 다시 시도해 주세요.',
 } as const;
 
 const CATEGORY_LIST = {
@@ -126,6 +138,8 @@ export const ERROR_MESSAGES = {
   ...SHARED_DIARY,
   ...MONTHLY_DIARIES,
   ...FEED_LIST,
+  ...FEED_DETAIL,
+  ...FEED_ACTIONS,
   ...CATEGORY_LIST,
   ...DIARY_IMAGE_DOWNLOAD,
   ...DIARY_IMAGE_COPY,

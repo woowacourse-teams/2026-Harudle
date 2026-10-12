@@ -51,6 +51,6 @@ test.describe('공유된 일기 조회', () => {
     await page.getByRole('button', { name: '하루들' }).click();
 
     await expect(page).toHaveURL('/');
-    await expect(page.getByText('피드 화면', { exact: true })).toBeVisible();
+    await expect(page.getByRole('combobox')).toBeVisible();
   });
 });

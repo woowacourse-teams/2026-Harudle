@@ -1,21 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   getFeedList,
+  type Feed,
   type FeedListRequest,
   type FeedListResponse,
 } from '../../domain/feeds/feedList';
 import type { ApiRequest } from '../../shared/api';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
+import type { FeedLikeResponse } from '../../domain/feeds/feedLike';
+
+interface FeedListState {
+  readonly request: ApiRequest<FeedListResponse>;
+  readonly updateLike: (feedId: Feed['id'], like: FeedLikeResponse) => void;
+  readonly removeFeedFromList: (feedId: Feed['id']) => void;
+}
 
 const FEED_SIZE = 20;
 
 const useFeedList = ({
   categoryId,
   sort,
-}: Pick<
-  FeedListRequest,
-  'categoryId' | 'sort'
->): ApiRequest<FeedListResponse> => {
+}: Pick<FeedListRequest, 'categoryId' | 'sort'>): FeedListState => {
   const [request, setRequest] = useState<ApiRequest<FeedListResponse>>({
     status: 'idle',
   });
@@ -57,7 +62,38 @@ const useFeedList = ({
     return (): void => abortControllerRef.current?.abort();
   }, [execute]);
 
-  return request;
+  const updateLike = useCallback(
+    (feedId: Feed['id'], like: FeedLikeResponse): void => {
+      setRequest((previous) => {
+        if (previous.status !== 'success') return previous;
+        return {
+          ...previous,
+          data: {
+            ...previous.data,
+            items: previous.data.items.map((feed) =>
+              feed.id === feedId ? { ...feed, ...like } : feed,
+            ),
+          },
+        };
+      });
+    },
+    [],
+  );
+
+  const removeFeedFromList = useCallback((feedId: Feed['id']): void => {
+    setRequest((previous) => {
+      if (previous.status !== 'success') return previous;
+      return {
+        ...previous,
+        data: {
+          ...previous.data,
+          items: previous.data.items.filter((feed) => feed.id !== feedId),
+        },
+      };
+    });
+  }, []);
+
+  return { request, updateLike, removeFeedFromList };
 };
 
 export default useFeedList;

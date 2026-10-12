@@ -33,7 +33,12 @@ interface MockFeedResponse extends MockFeed {
 
 type FeedSort = 'LATEST' | 'POPULAR';
 type FeedProblemCode =
-  'VALIDATION_ERROR' | 'INVALID_CURSOR' | 'UNAUTHORIZED' | 'CATEGORY_NOT_FOUND';
+  | 'VALIDATION_ERROR'
+  | 'INVALID_CURSOR'
+  | 'UNAUTHORIZED'
+  | 'FORBIDDEN'
+  | 'CATEGORY_NOT_FOUND'
+  | 'FEED_NOT_FOUND';
 
 const MOCK_USER_ID = '08d69a34-6d70-4d42-a158-671bc67733c9';
 const MOCK_ACCESS_TOKEN = 'mock-access-token';
@@ -72,9 +77,11 @@ const createInitialFeeds = (): MockFeed[] => {
 };
 
 let feeds = createInitialFeeds();
+const likedFeedIds = new Set<string>();
 
 export const resetFeedMockState = (): void => {
   feeds = createInitialFeeds();
+  likedFeedIds.clear();
 };
 
 const problem = (
@@ -104,6 +111,14 @@ const validateAuthentication = (request: Request): Response | null => {
     const response = problem(request, 401, 'UNAUTHORIZED');
     response.headers.set('WWW-Authenticate', 'Bearer');
     return response;
+  }
+
+  return null;
+};
+
+const validateMutation = (request: Request): Response | null => {
+  if (!isAuthenticated(request)) {
+    return problem(request, 401, 'UNAUTHORIZED');
   }
 
   return null;
@@ -175,6 +190,30 @@ const readCursor = (
   }
 };
 
+const changeLike = (
+  request: Request,
+  feedId: string,
+  likedByMe: boolean,
+): Response => {
+  const error = validateMutation(request);
+  if (error) return error;
+  if (!isCanonicalUuid(feedId))
+    return problem(request, 400, 'VALIDATION_ERROR');
+
+  const feed = feeds.find(({ id }): boolean => id === feedId);
+  if (!feed) return problem(request, 404, 'FEED_NOT_FOUND');
+
+  if (likedByMe && !likedFeedIds.has(feedId)) {
+    likedFeedIds.add(feedId);
+    feed.likeCount += 1;
+  } else if (!likedByMe && likedFeedIds.has(feedId)) {
+    likedFeedIds.delete(feedId);
+    feed.likeCount -= 1;
+  }
+
+  return HttpResponse.json({ likedByMe, likeCount: feed.likeCount });
+};
+
 export const feedHandlers = [
   http.get('/api/v1/categories', async ({ request }): Promise<Response> => {
     await delay(300);
@@ -235,7 +274,7 @@ export const feedHandlers = [
       items: page.map((feed): MockFeedResponse => ({
         ...feed,
         imageUrlExpiresAt: new Date(Date.now() + 3_600_000).toISOString(),
-        likedByMe: false,
+        likedByMe: authenticated && likedFeedIds.has(feed.id),
         isMine: authenticated && feed.author.id === MOCK_USER_ID,
         shareUrl: `${url.origin}/feeds/${feed.id}`,
       })),
@@ -244,4 +283,62 @@ export const feedHandlers = [
       hasNext,
     });
   }),
+
+  http.get(
+    '/api/v1/feeds/:feedId',
+    async ({ request, params }): Promise<Response> => {
+      await delay(300);
+      const error = validateAuthentication(request);
+      if (error) return error;
+      const feedId = String(params.feedId);
+      if (!isCanonicalUuid(feedId))
+        return problem(request, 400, 'VALIDATION_ERROR');
+      const feed = feeds.find(({ id }): boolean => id === feedId);
+      if (!feed) return problem(request, 404, 'FEED_NOT_FOUND');
+      const authenticated = isAuthenticated(request);
+      return HttpResponse.json({
+        ...feed,
+        imageUrlExpiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+        likedByMe: authenticated && likedFeedIds.has(feed.id),
+        isMine: authenticated && feed.author.id === MOCK_USER_ID,
+        shareUrl: `${new URL(request.url).origin}/feeds/${feed.id}`,
+      });
+    },
+  ),
+
+  http.put(
+    '/api/v1/feeds/:feedId/like',
+    async ({ request, params }): Promise<Response> => {
+      await delay(300);
+      return changeLike(request, String(params.feedId), true);
+    },
+  ),
+
+  http.delete(
+    '/api/v1/feeds/:feedId/like',
+    async ({ request, params }): Promise<Response> => {
+      await delay(300);
+      return changeLike(request, String(params.feedId), false);
+    },
+  ),
+
+  http.delete(
+    '/api/v1/feeds/:feedId',
+    async ({ request, params }): Promise<Response> => {
+      await delay(300);
+      const error = validateMutation(request);
+      if (error) return error;
+      const feedId = String(params.feedId);
+      if (!isCanonicalUuid(feedId))
+        return problem(request, 400, 'VALIDATION_ERROR');
+      const feed = feeds.find(({ id }): boolean => id === feedId);
+      if (!feed) return problem(request, 404, 'FEED_NOT_FOUND');
+      if (feed.author.id !== MOCK_USER_ID)
+        return problem(request, 403, 'FORBIDDEN');
+
+      feeds = feeds.filter(({ id }): boolean => id !== feedId);
+      likedFeedIds.delete(feedId);
+      return new HttpResponse(null, { status: 204 });
+    },
+  ),
 ];
