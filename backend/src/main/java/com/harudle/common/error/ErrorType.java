@@ -18,6 +18,11 @@ public enum ErrorType {
             "Invalid idempotency key",
             "Idempotency-Key는 UUID 형식의 필수 헤더입니다."
     ),
+    INVALID_CURSOR(
+            HttpStatus.BAD_REQUEST,
+            "Invalid cursor",
+            "페이지 커서가 올바르지 않거나 조회 조건과 일치하지 않습니다."
+    ),
     UNAUTHORIZED(
             HttpStatus.UNAUTHORIZED,
             "Unauthorized",
@@ -62,6 +67,16 @@ public enum ErrorType {
             HttpStatus.NOT_FOUND,
             "Feed not found",
             "피드를 찾을 수 없습니다."
+    ),
+    COMMENT_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "Comment not found",
+            "댓글을 찾을 수 없습니다."
+    ),
+    COMMENT_UNAVAILABLE(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "Comment unavailable",
+            "댓글 작성자 정보를 조회할 수 없습니다."
     ),
     SHARE_NOT_FOUND(
             HttpStatus.NOT_FOUND,

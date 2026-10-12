@@ -6,6 +6,10 @@ import com.harudle.admin.service.exception.AdminGenerationUsageConflictException
 import com.harudle.admin.service.exception.AdminGenerationHistoryDateRangeException;
 import com.harudle.admin.service.exception.AdminInactiveUserException;
 import com.harudle.auth.presentation.AuthenticationRequiredException;
+import com.harudle.comment.service.exception.CommentAccessDeniedException;
+import com.harudle.comment.service.exception.CommentIntegrationUnavailableException;
+import com.harudle.comment.service.exception.CommentNotFoundException;
+import com.harudle.comment.service.exception.InvalidCommentCursorException;
 import com.harudle.common.validation.InvalidIdempotencyKeyException;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
@@ -160,6 +164,26 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(FeedNotFoundException.class)
     ResponseEntity<ProblemDetail> handleFeedNotFound(HttpServletRequest request) {
         return createResponse(ErrorType.FEED_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(CommentNotFoundException.class)
+    ResponseEntity<ProblemDetail> handleCommentNotFound(HttpServletRequest request) {
+        return createResponse(ErrorType.COMMENT_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(CommentAccessDeniedException.class)
+    ResponseEntity<ProblemDetail> handleCommentAccessDenied(HttpServletRequest request) {
+        return createResponse(ErrorType.FORBIDDEN, request);
+    }
+
+    @ExceptionHandler(InvalidCommentCursorException.class)
+    ResponseEntity<ProblemDetail> handleInvalidCommentCursor(HttpServletRequest request) {
+        return createResponse(ErrorType.INVALID_CURSOR, request);
+    }
+
+    @ExceptionHandler(CommentIntegrationUnavailableException.class)
+    ResponseEntity<ProblemDetail> handleCommentUnavailable(HttpServletRequest request) {
+        return createResponse(ErrorType.COMMENT_UNAVAILABLE, request);
     }
 
     @ExceptionHandler(ShareNotFoundException.class)
