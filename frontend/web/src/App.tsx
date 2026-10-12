@@ -23,9 +23,9 @@ const App = () => {
       <Routes>
         <Route element={<EntryRoute />}>
           <Route path="/" element={<FeedPage />} />
-          <Route path="/album" element={<AlbumPage />} />
-          <Route path="/login" element={<LoginPage />} />
         </Route>
+        <Route path="/album" element={<AlbumPage />} />
+        <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
         <Route path="/diary-write" element={<DiaryWritePage />} />
         <Route path="/diary-generating" element={<DiaryGeneratingPage />} />

@@ -200,6 +200,13 @@ const requestNewAccessToken = async (): Promise<void> => {
   if (!response.ok) {
     const errorData: unknown = await response.json();
     if (isProblemDetails(errorData)) {
+      if (errorData.code === 'INVALID_REFRESH_TOKEN') {
+        try {
+          localStorage.removeItem('harudle.has-completed-oauth');
+        } catch {
+          // 저장소 삭제 실패가 원래 인증 오류를 덮어쓰지 않게 한다.
+        }
+      }
       throw new RequestError(errorData);
     }
 

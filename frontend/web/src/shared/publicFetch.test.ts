@@ -8,7 +8,8 @@ import {
   it,
   jest,
 } from '@jest/globals';
-import { publicFetch, setAccessToken } from './auth';
+import { publicFetch, restoreAccessToken, setAccessToken } from './auth';
+import { RequestError } from './api';
 
 const success = (): Response => new Response('{}', { status: 200 });
 const unauthorized = (): Response => new Response('{}', { status: 401 });
@@ -20,13 +21,17 @@ const refreshed = (): Response =>
     expiresIn: 1800,
   });
 
+let restoreTestStorage: (() => void) | undefined;
+
 beforeEach(() => {
+  restoreTestStorage = mockStorage();
   setAccessToken(null);
 });
 
 afterEach(() => {
   setAccessToken(null);
   jest.restoreAllMocks();
+  restoreTestStorage?.();
 });
 
 const mockStorage = () => {
@@ -34,9 +39,22 @@ const mockStorage = () => {
     globalThis,
     'localStorage',
   );
+  const values = new Map([
+    ['harudle.has-completed-oauth', 'true'],
+    ['harudle.has-ever-logged-in', 'true'],
+    ['harudle.has-seen-landing', 'true'],
+  ]);
   Object.defineProperty(globalThis, 'localStorage', {
     configurable: true,
-    value: { getItem: () => 'true', setItem: jest.fn() },
+    value: {
+      getItem: (key: string): string | null => values.get(key) ?? null,
+      setItem: (key: string, value: string): void => {
+        values.set(key, value);
+      },
+      removeItem: (key: string): void => {
+        values.delete(key);
+      },
+    },
   });
   return () => {
     if (descriptor)
@@ -260,5 +278,73 @@ describe('publicFetch', () => {
     const fetchMock = jest.spyOn(globalThis, 'fetch').mockRejectedValue(error);
     await expect(publicFetch('/api/v1/feeds')).rejects.toBe(error);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+const invalidRefreshProblem = {
+  type: 'about:blank',
+  title: 'Expired',
+  status: 401,
+  detail: 'Expired',
+  instance: '/api/v1/auth/refresh',
+  code: 'INVALID_REFRESH_TOKEN',
+};
+
+describe('재발급 실패 후 로그인 완료 표시', () => {
+  it('서버가 세션 만료를 확인한 경우 완료 표시만 제거하고 방문·로그인 이력은 유지한다', async () => {
+    jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(csrf())
+      .mockResolvedValueOnce(
+        Response.json(invalidRefreshProblem, { status: 401 }),
+      );
+
+    await expect(restoreAccessToken()).rejects.toBeInstanceOf(RequestError);
+    expect(localStorage.getItem('harudle.has-completed-oauth')).toBeNull();
+    expect(localStorage.getItem('harudle.has-ever-logged-in')).toBe('true');
+    expect(localStorage.getItem('harudle.has-seen-landing')).toBe('true');
+  });
+
+  it('네트워크 실패만으로는 완료 표시를 제거하지 않는다', async () => {
+    const error = new TypeError('Failed to fetch');
+    jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(csrf())
+      .mockRejectedValueOnce(error);
+    await expect(restoreAccessToken()).rejects.toBe(error);
+    expect(localStorage.getItem('harudle.has-completed-oauth')).toBe('true');
+  });
+
+  it('서버 장애만으로는 완료 표시를 제거하지 않는다', async () => {
+    jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(csrf())
+      .mockResolvedValueOnce(
+        Response.json(
+          {
+            ...invalidRefreshProblem,
+            code: 'SERVICE_UNAVAILABLE',
+            status: 503,
+          },
+          { status: 503 },
+        ),
+      );
+    await expect(restoreAccessToken()).rejects.toBeInstanceOf(RequestError);
+    expect(localStorage.getItem('harudle.has-completed-oauth')).toBe('true');
+  });
+
+  it('저장소 삭제가 실패해도 원래 인증 오류를 전달한다', async () => {
+    jest.spyOn(localStorage, 'removeItem').mockImplementation(() => {
+      throw new Error('저장소 삭제 실패');
+    });
+    jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(csrf())
+      .mockResolvedValueOnce(
+        Response.json(invalidRefreshProblem, { status: 401 }),
+      );
+    await expect(restoreAccessToken()).rejects.toMatchObject({
+      problem: { code: 'INVALID_REFRESH_TOKEN' },
+    });
   });
 });

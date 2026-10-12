@@ -24,6 +24,7 @@ import useGuestDiaryCreation, {
 } from './useGuestDiaryCreation';
 import { useAnalytics } from '../../posthog/useAnalytics';
 import { GUEST_TRIAL_COPY } from './trialCopy';
+import { HAS_SEEN_LANDING_KEY } from '../../shared/constants';
 
 interface LandingPageProps {
   entryFeedback?: ReactNode;
@@ -33,6 +34,14 @@ const LandingPage = ({
   entryFeedback = null,
 }: LandingPageProps): JSX.Element => {
   const { track } = useAnalytics();
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(HAS_SEEN_LANDING_KEY, 'true');
+    } catch {
+      // 방문 기록을 저장하지 못해도 랜딩과 체험은 계속 이용한다.
+    }
+  }, []);
   const { creationState, submitDiary, retryDiary } = useGuestDiaryCreation({
     enabled: entryFeedback === null,
   });
