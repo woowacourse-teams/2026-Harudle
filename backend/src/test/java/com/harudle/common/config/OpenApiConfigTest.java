@@ -13,6 +13,28 @@ import org.junit.jupiter.api.Test;
 class OpenApiConfigTest {
 
     @Test
+    void documentsLikeMutationsWithBearerAndCsrfWithoutChangingOtherMethods() {
+        PathItem like = new PathItem();
+        for (PathItem.HttpMethod method : List.of(PathItem.HttpMethod.GET, PathItem.HttpMethod.POST,
+                PathItem.HttpMethod.PUT, PathItem.HttpMethod.PATCH, PathItem.HttpMethod.DELETE)) {
+            like.operation(method, new Operation()
+                    .addSecurityItem(new SecurityRequirement().addList("bearerAuth")));
+        }
+        new OpenApiConfig().csrfSecurityCustomizer().customise(new OpenAPI()
+                .paths(new Paths().addPathItem("/api/v1/feeds/{feedId}/like", like)));
+
+        for (PathItem.HttpMethod method : List.of(PathItem.HttpMethod.PUT, PathItem.HttpMethod.DELETE)) {
+            assertThat(like.readOperationsMap().get(method).getSecurity()).singleElement()
+                    .satisfies(requirement -> assertThat(requirement).containsOnlyKeys("bearerAuth", "csrfToken"));
+        }
+        for (PathItem.HttpMethod method : List.of(PathItem.HttpMethod.GET, PathItem.HttpMethod.POST,
+                PathItem.HttpMethod.PATCH)) {
+            assertThat(like.readOperationsMap().get(method).getSecurity()).singleElement()
+                    .satisfies(requirement -> assertThat(requirement).containsOnlyKeys("bearerAuth"));
+        }
+    }
+
+    @Test
     void requiresCsrfOnlyForCookieMutationsAndPreservesBearerSecurity() {
         Paths paths = new Paths();
         for (String path : List.of("/api/v1/auth/refresh", "/api/v1/auth/logout",
