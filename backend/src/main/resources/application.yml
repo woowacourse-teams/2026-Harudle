@@ -116,6 +116,14 @@ harudle:
       image-asset-object-key: ${HARUDLE_GENERATION_PROMPT_BOOTSTRAP_IMAGE_ASSET_OBJECT_KEY:}
     adapters:
       enabled: ${HARUDLE_GENERATION_ADAPTERS_ENABLED:false}
+    storyboard:
+      provider: ${STORYBOARD_PROVIDER:gemini}
+    qwen:
+      api-key: ${QWEN_TOKEN_PLAN_API_KEY:}
+      storyboard-model: ${QWEN_STORYBOARD_MODEL:qwen3.8-max}
+      thinking-budget: ${QWEN_THINKING_BUDGET:1024}
+      max-output-tokens: ${QWEN_MAX_OUTPUT_TOKENS:8192}
+      request-timeout: ${QWEN_REQUEST_TIMEOUT:180s}
     gemini:
       auth-mode: ${GEMINI_AUTH_MODE:express}
       api-key: ${GOOGLE_API_KEY:${GEMINI_API_KEY:}}

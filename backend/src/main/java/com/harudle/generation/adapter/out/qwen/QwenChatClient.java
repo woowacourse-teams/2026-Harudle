@@ -23,7 +23,7 @@ import okio.BufferedSource;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-public final class QwenChatClient {
+public final class QwenChatClient implements AutoCloseable {
 
     public static final URI TOKEN_PLAN_ENDPOINT = URI.create(
             "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions");
@@ -92,6 +92,15 @@ public final class QwenChatClient {
             throw exception;
         } catch (RuntimeException exception) {
             throw new QwenChatException(RESPONSE, null);
+        }
+    }
+
+    @Override
+    public void close() {
+        if (calls instanceof OkHttpClient httpClient) {
+            httpClient.dispatcher().cancelAll();
+            httpClient.dispatcher().executorService().shutdown();
+            httpClient.connectionPool().evictAll();
         }
     }
 

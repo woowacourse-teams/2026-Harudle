@@ -21,32 +21,42 @@ public final class QwenStoryboardGenerator implements StoryboardGenerator {
     private final QwenStoryboardRequestFactory requestFactory;
     private final StoryboardJsonCodec codec;
     private final ExternalApiLogger logger;
+    private final QwenStageMetrics stageMetrics;
 
     public QwenStoryboardGenerator(QwenChatClient client, QwenStoryboardSettings settings,
-                                   StoryboardJsonCodec codec, ExternalApiLogger logger) {
+            StoryboardJsonCodec codec, ExternalApiLogger logger, QwenStageMetrics stageMetrics) {
         this.client = Objects.requireNonNull(client);
         this.settings = Objects.requireNonNull(settings);
         this.codec = Objects.requireNonNull(codec);
         this.logger = Objects.requireNonNull(logger);
+        this.stageMetrics = Objects.requireNonNull(stageMetrics);
         this.requestFactory = new QwenStoryboardRequestFactory(settings, codec);
     }
 
     @Override
     public GeneratedStoryboard generate(StoryboardGenerationRequest request) {
+        long started = System.nanoTime();
         String phase = "preparation";
+        AiGenerationErrorType failureType = null;
+        QwenChatClient.Completion result = null;
+        GenerationTokenUsage usage = null;
         try {
             QwenChatClient.Request prepared = requestFactory.create(request);
             phase = "provider";
-            QwenChatClient.Completion result = client.generate(prepared);
+            result = client.generate(prepared);
             phase = "response";
+            usage = tokenUsage(result.usage(), settings.thinking());
             Storyboard storyboard = codec.decode(result.content());
-            return new GeneratedStoryboard(storyboard, tokenUsage(result.usage(), settings.thinking()));
+            return new GeneratedStoryboard(storyboard, usage);
         } catch (QwenChatException exception) {
-            throw report(resolveErrorType(exception), exception.statusCode());
+            failureType = resolveErrorType(exception);
+            throw report(failureType, exception.statusCode());
         } catch (RuntimeException exception) {
-            AiGenerationErrorType type = "response".equals(phase)
+            failureType = "response".equals(phase)
                     ? AiGenerationErrorType.RESPONSE_PROCESSING_ERROR : AiGenerationErrorType.INTERNAL_ERROR;
-            throw report(type, null);
+            throw report(failureType, null);
+        } finally {
+            stageMetrics.record(failureType, System.nanoTime() - started, result, usage);
         }
     }
 

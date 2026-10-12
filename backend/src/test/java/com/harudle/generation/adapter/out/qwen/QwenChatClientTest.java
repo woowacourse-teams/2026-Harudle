@@ -139,6 +139,19 @@ class QwenChatClientTest {
         http.dispatcher().executorService().shutdown();
     }
 
+    @Test
+    @DisplayName("애플리케이션 종료 시 Qwen 전용 HTTP 실행기를 정리한다")
+    void closeHttpResources() {
+        var http = QwenChatClient.httpClient(Duration.ofSeconds(180));
+        var managedClient = new QwenChatClient(http, mapper, "sk-sp-resource-test");
+
+        managedClient.close();
+        managedClient.close();
+
+        assertThat(http.dispatcher().executorService().isShutdown()).isTrue();
+        assertThat(http.connectionPool().connectionCount()).isZero();
+    }
+
     private String event(Object value) {
         return "data: " + mapper.writeValueAsString(value) + "\n\n";
     }

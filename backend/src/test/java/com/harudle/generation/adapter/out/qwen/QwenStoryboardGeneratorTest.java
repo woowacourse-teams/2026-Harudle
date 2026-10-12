@@ -20,6 +20,7 @@ import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
 import com.harudle.generation.diary.service.port.dto.StoryboardGenerationRequest;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.net.URI;
@@ -46,10 +47,12 @@ class QwenStoryboardGeneratorTest {
     private final ExternalApiLogger logger = mock(ExternalApiLogger.class);
     private final StoryboardJsonCodec codec = new StoryboardJsonCodec(mapper, new StoryboardResponseMapper());
     private final QwenStoryboardSettings settings = QwenStoryboardSettings.defaults();
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
     private final StoryboardGenerationRequest input = new StoryboardGenerationRequest("발표 전에 노트북이 업데이트됐다.",
             "Keep the facts. Return storyboard JSON.");
     private final QwenStoryboardGenerator generator = new QwenStoryboardGenerator(
-            new QwenChatClient(calls, mapper, KEY), settings, codec, logger);
+            new QwenChatClient(calls, mapper, KEY), settings, codec, logger,
+            new QwenStageMetrics(meterRegistry, settings.model()));
 
     @Test
     @DisplayName("기존 포트로 생성하고 이미지 생성기가 사용하는 동일한 스토리보드를 반환한다")
@@ -74,6 +77,10 @@ class QwenStoryboardGeneratorTest {
         assertThat(request.getValue().url().toString()).isEqualTo(QwenChatClient.TOKEN_PLAN_ENDPOINT.toString());
         assertThat(request.getValue().header("Authorization")).isEqualTo("Bearer " + KEY);
         verifyNoInteractions(logger);
+        assertThat(meterRegistry.get("harudle.qwen.stage.calls")
+                .tags("outcome", "success", "failureType", "none").counter().count()).isEqualTo(1);
+        assertThat(meterRegistry.get("harudle.qwen.tokens").tag("kind", "candidate").counter().count())
+                .isEqualTo(390);
     }
 
     @Test
@@ -141,6 +148,22 @@ class QwenStoryboardGeneratorTest {
     void rejectTruncatedCompletionBeforeMapping() throws Exception {
         respond(200, completion(StoryboardTestFixtures.storyboardJson(), "length", Map.of()));
         assertFailure(AiGenerationErrorType.OUTPUT_TRUNCATED);
+    }
+
+    @Test
+    @DisplayName("응답 검증이 실패해도 호출 한 번과 이미 받은 토큰 사용량은 지표에 남긴다")
+    void recordReceivedUsageWhenStoryboardValidationFails() throws Exception {
+        respond(200, completion("invalid storyboard", "stop", Map.of(
+                "prompt_tokens", 100, "completion_tokens", 500, "total_tokens", 600,
+                "completion_tokens_details", Map.of("reasoning_tokens", 110))));
+
+        assertFailure(AiGenerationErrorType.RESPONSE_PROCESSING_ERROR);
+
+        assertThat(meterRegistry.get("harudle.qwen.stage.calls")
+                .tags("outcome", "failure", "failureType", "RESPONSE_PROCESSING_ERROR").counter().count())
+                .isEqualTo(1);
+        assertThat(meterRegistry.get("harudle.qwen.tokens").tag("kind", "total").counter().count()).isEqualTo(600);
+        verify(call, times(1)).execute();
     }
 
     @Test
