@@ -3,6 +3,7 @@ package com.harudle.generation.adapter.out.storyboard;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.harudle.generation.adapter.out.gemini.DiaryImagePromptRenderer;
 import com.harudle.generation.adapter.out.gemini.GeminiStoryboardResponseSchema;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
@@ -45,6 +46,50 @@ class StoryboardJsonCodecTest {
         assertThat(storyboard.panels().getFirst().caption()).isEqualTo("🙂".repeat(24));
         assertThatThrownBy(() -> codec.decode(json.replace("\"caption\":\"준비 완료\"",
                 "\"caption\":\"" + "🙂".repeat(25) + "\""))).hasMessageContaining("24");
+    }
+
+    @Test
+    @DisplayName("색상 대상의 패널 번호는 모델 응답 대신 소품이 실제 등장하는 모든 패널에서 계산한다")
+    void deriveColorPanelNumbersFromProps() {
+        var storyboard = codec.decode(StoryboardTestFixtures.storyboardJsonWithMismatchedColorPanels());
+
+        assertThat(storyboard.scenePlan().focalColors()).hasSize(2);
+        assertThat(storyboard.scenePlan().focalColors().getFirst()).satisfies(color -> {
+            assertThat(color.prop()).isEqualTo("laptop");
+            assertThat(color.component()).isEqualTo("lid");
+            assertThat(color.colorHex()).isEqualTo("#A99BE8");
+            assertThat(color.panelNumbers()).containsExactly(1, 2, 4);
+        });
+        assertThat(storyboard.scenePlan().focalColors().getLast().panelNumbers()).containsExactly(3);
+        assertThat(new DiaryImagePromptRenderer().render(storyboard))
+                .contains("Panels 1, 2, 4: fill the entire visible lid of the existing laptop",
+                        "Panel 3: fill the entire visible case of the existing phone");
+    }
+
+    @Test
+    @DisplayName("소품 이름의 앞뒤 공백과 대소문자를 정규화하고 같은 패널의 중복 소품은 한 번만 센다")
+    void deriveColorPanelsUsingNormalizedPropNames() {
+        String json = StoryboardTestFixtures.storyboardJsonWithMismatchedColorPanels()
+                .replace("\"prop\":\"laptop\"", "\"prop\":\" LAPTOP \"")
+                .replace("\"props\":[\"laptop\"]", "\"props\":[\" laptop \",\"LAPTOP\"]");
+
+        var storyboard = codec.decode(json);
+
+        assertThat(storyboard.scenePlan().focalColors().getFirst()).satisfies(color -> {
+            assertThat(color.prop()).isEqualTo("LAPTOP");
+            assertThat(color.panelNumbers()).containsExactly(1, 2, 4);
+        });
+    }
+
+    @Test
+    @DisplayName("어느 패널에도 없는 색상 대상 소품은 패널 번호를 추측하지 않고 거부한다")
+    void rejectColorPropMissingFromEveryPanel() {
+        String json = StoryboardTestFixtures.storyboardJsonWithMismatchedColorPanels()
+                .replace("\"prop\":\"laptop\"", "\"prop\":\"tablet\"");
+
+        assertThatThrownBy(() -> codec.decode(json))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("props에 존재해야 합니다");
     }
 
     @Test
