@@ -8,6 +8,9 @@ import com.harudle.generation.adapter.out.gemini.GeminiStoryboardResponseSchema;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.json.JsonMapper;
 
 class StoryboardJsonCodecTest {
@@ -48,10 +51,14 @@ class StoryboardJsonCodecTest {
                 "\"caption\":\"" + "🙂".repeat(25) + "\""))).hasMessageContaining("24");
     }
 
-    @Test
-    @DisplayName("색상 대상의 패널 번호는 모델 응답 대신 소품이 실제 등장하는 모든 패널에서 계산한다")
-    void deriveColorPanelNumbersFromProps() {
-        var storyboard = codec.decode(StoryboardTestFixtures.storyboardJsonWithMismatchedColorPanels());
+    @ParameterizedTest
+    @ValueSource(strings = {"[1]", "[1,1]", "[4,1]"})
+    @DisplayName("색상 패널 번호의 누락·중복·역순은 소품이 실제 등장하는 모든 패널 번호로 교정한다")
+    void deriveColorPanelNumbersFromProps(String modelPanelNumbers) {
+        String json = StoryboardTestFixtures.storyboardJsonWithMismatchedColorPanels()
+                .replace("\"panel_numbers\":[1]", "\"panel_numbers\":" + modelPanelNumbers);
+
+        var storyboard = codec.decode(json);
 
         assertThat(storyboard.scenePlan().focalColors()).hasSize(2);
         assertThat(storyboard.scenePlan().focalColors().getFirst()).satisfies(color -> {
@@ -64,6 +71,26 @@ class StoryboardJsonCodecTest {
         assertThat(new DiaryImagePromptRenderer().render(storyboard))
                 .contains("Panels 1, 2, 4: fill the entire visible lid of the existing laptop",
                         "Panel 3: fill the entire visible case of the existing phone");
+    }
+
+    @ParameterizedTest
+    @CsvSource(value = {
+            "[] | too few items",
+            "null | expected array",
+            " | required field is missing",
+            "[5] | above maximum",
+            "[\"1\"] | expected integer"
+    }, delimiter = '|')
+    @DisplayName("색상 패널 번호의 형식 오류는 번호 교정 전에 기존 스키마 검증에서 거부한다")
+    void rejectInvalidColorPanelNumbers(String modelPanelNumbers, String reason) {
+        String panelNumbersField = modelPanelNumbers == null ? "" : ",\"panel_numbers\":" + modelPanelNumbers;
+        String json = StoryboardTestFixtures.storyboardJsonWithMismatchedColorPanels()
+                .replace(",\"panel_numbers\":[1]", panelNumbersField);
+
+        assertThatThrownBy(() -> codec.decode(json))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContainingAll("Storyboard schema violation",
+                        "$.visual_plan.focal_colors[0].panel_numbers", reason);
     }
 
     @Test
