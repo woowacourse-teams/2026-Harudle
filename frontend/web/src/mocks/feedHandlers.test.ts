@@ -2,6 +2,7 @@
 
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import {
+  getFeedComments,
   isFeedCommentsResponse,
   type FeedCommentsResponse,
 } from '../domain/feeds/feedComments';
@@ -338,6 +339,36 @@ describe('피드 상세와 댓글 MSW 계약', (): void => {
     await expect(invalid.json()).resolves.toMatchObject({
       code: 'INVALID_CURSOR',
     });
+  });
+
+  it('댓글 API가 서버 커서를 요청에 전달해 다음 페이지를 조회한다', async (): Promise<void> => {
+    const fetch = jest
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation((info, init): Promise<Response> => {
+        if (typeof info !== 'string')
+          throw new Error('댓글 API 요청 주소는 문자열이어야 합니다.');
+        return requestApi(info, init);
+      });
+
+    try {
+      const first = await getFeedComments({ feedId: ownFeedId });
+      expect(first.items).toHaveLength(20);
+      if (!first.nextCursor) throw new Error('다음 커서가 없습니다.');
+
+      const last = await getFeedComments({
+        feedId: ownFeedId,
+        cursor: first.nextCursor,
+      });
+      expect(last.items).toHaveLength(4);
+      expect(last.hasNext).toBe(false);
+      expect(last.nextCursor).toBeNull();
+      expect(
+        new Set([...first.items, ...last.items].map(({ id }): string => id))
+          .size,
+      ).toBe(24);
+    } finally {
+      fetch.mockRestore();
+    }
   });
 
   it('댓글 100 code point와 공백 제거를 적용하고 인증·잘못된 본문을 검사한다', async (): Promise<void> => {
