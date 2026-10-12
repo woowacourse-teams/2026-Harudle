@@ -96,12 +96,14 @@ const FeedDetailContent = ({ feedId }: FeedDetailContentProps) => {
             )}
           </header>
 
-          <DiaryImage
-            src={feed.imageUrl}
-            alt={`${feed.author.nickname}의 네컷만화`}
-            imageRole="feed"
-            css={comicImageStyle}
-          />
+          <div onContextMenu={(event) => event.preventDefault()}>
+            <DiaryImage
+              src={feed.imageUrl}
+              alt={`${feed.author.nickname}의 네컷만화`}
+              imageRole="feed"
+              css={comicImageStyle}
+            />
+          </div>
           <FeedActions
             feedId={feed.id}
             likeCount={feed.likeCount}
@@ -174,6 +176,7 @@ const publishedAtStyle = css`
 `;
 
 const comicImageStyle = css`
+  -webkit-touch-callout: none;
   display: block;
   width: 100%;
   aspect-ratio: 1;
