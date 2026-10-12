@@ -173,6 +173,67 @@ describe('publicFetch', () => {
     }
   });
 
+  it.each([true, false])(
+    '갱신 중 새 공개 요청은 갱신을 공유한다 (성공: %s)',
+    async (refreshSucceeds) => {
+      const restoreStorage = mockStorage();
+      let finishRefresh!: (response: Response) => void;
+      const pendingRefresh = new Promise<Response>((resolve) => {
+        finishRefresh = resolve;
+      });
+      let notifyRefreshStarted!: () => void;
+      const refreshStarted = new Promise<void>((resolve) => {
+        notifyRefreshStarted = resolve;
+      });
+      const nextUrl = '/api/v1/feeds?categoryId=2';
+      const signal = new AbortController().signal;
+      const response = success();
+      const fetchMock = jest
+        .spyOn(globalThis, 'fetch')
+        .mockImplementation(async (url, init): Promise<Response> => {
+          if (url === '/api/v1/auth/csrf') return csrf();
+          if (url === '/api/v1/auth/refresh') {
+            notifyRefreshStarted();
+            return pendingRefresh;
+          }
+          return authorization(init) === 'Bearer expired-token'
+            ? unauthorized()
+            : response;
+        });
+
+      try {
+        setAccessToken('expired-token');
+        const firstRequest = publicFetch('/api/v1/feeds');
+        await refreshStarted;
+        const nextRequest = publicFetch(nextUrl, { signal });
+        const callsWhileRefreshing = fetchMock.mock.calls.filter(
+          ([url]) => url === nextUrl,
+        );
+
+        finishRefresh(refreshSucceeds ? refreshed() : unauthorized());
+        const [, nextResponse] = await Promise.all([firstRequest, nextRequest]);
+
+        expect(callsWhileRefreshing).toHaveLength(0);
+        expect(nextResponse).toBe(response);
+        expect(
+          fetchMock.mock.calls.filter(
+            ([url]) => url === '/api/v1/auth/refresh',
+          ),
+        ).toHaveLength(1);
+        const nextCalls = fetchMock.mock.calls.filter(
+          ([url]) => url === nextUrl,
+        );
+        expect(nextCalls).toHaveLength(1);
+        expect(authorization(nextCalls[0][1])).toBe(
+          refreshSucceeds ? 'Bearer new-token' : null,
+        );
+        expect(nextCalls[0][1]?.signal).toBe(signal);
+      } finally {
+        restoreStorage();
+      }
+    },
+  );
+
   it('갱신한 토큰도 거부되면 추가 갱신 없이 공개 조회한다', async () => {
     const restoreStorage = mockStorage();
     try {
