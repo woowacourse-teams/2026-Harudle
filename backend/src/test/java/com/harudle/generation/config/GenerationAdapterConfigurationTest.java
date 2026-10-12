@@ -3,8 +3,8 @@ package com.harudle.generation.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.google.auth.oauth2.AccessToken;
 import com.google.auth.oauth2.GoogleCredentials;
@@ -18,31 +18,36 @@ import com.harudle.generation.adapter.out.gemini.GeminiStoryboardGenerator;
 import com.harudle.generation.adapter.out.gemini.client.ExpressGeminiClientFactory;
 import com.harudle.generation.adapter.out.gemini.client.GeminiClientFactory;
 import com.harudle.generation.adapter.out.gemini.client.VertexGeminiClientFactory;
+import com.harudle.generation.adapter.out.qwen.QwenChatClient;
+import com.harudle.generation.adapter.out.qwen.QwenStageMetrics;
+import com.harudle.generation.adapter.out.qwen.QwenStoryboardGenerator;
+import com.harudle.generation.adapter.out.s3.ImageUploadPreparer;
+import com.harudle.generation.adapter.out.s3.ImageVariantEncoder;
 import com.harudle.generation.adapter.out.s3.ObservedImageStorage;
 import com.harudle.generation.adapter.out.s3.ObservedImageUrlProvider;
 import com.harudle.generation.adapter.out.s3.R2FallbackImageUrlProvider;
 import com.harudle.generation.adapter.out.s3.S3FailureReporter;
-import com.harudle.generation.adapter.out.s3.ImageVariantEncoder;
-import com.harudle.generation.adapter.out.s3.ImageUploadPreparer;
-import com.harudle.generation.diary.service.port.DiaryImageGenerator;
+import com.harudle.generation.diary.service.ImageBackupService;
 import com.harudle.generation.diary.service.port.BackupObjectStorage;
+import com.harudle.generation.diary.service.port.DiaryImageGenerator;
 import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
 import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
-import com.harudle.generation.diary.service.ImageBackupService;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Date;
 import java.util.Map;
-import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.core.env.MapPropertySource;
+import org.springframework.core.io.ClassPathResource;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
@@ -92,12 +97,103 @@ class GenerationAdapterConfigurationTest {
                     .isEqualTo(Region.AP_NORTHEAST_2);
             assertThat(context.getBean(StoryboardGenerator.class))
                     .isInstanceOf(GeminiStoryboardGenerator.class);
+            assertThat(context.getBean(StoryboardProviderProperties.class).provider()).isEqualTo("gemini");
+            assertThat(context).doesNotHaveBean(QwenChatClient.class);
+            assertThat(context).doesNotHaveBean(QwenStoryboardProperties.class);
             assertThat(context.getBean(DiaryImageGenerator.class))
                     .isInstanceOf(GeminiDiaryImageGenerator.class);
             assertThat(context.getBean(ImageStorage.class))
                     .isInstanceOf(ObservedImageStorage.class);
             assertThat(context.getBean(ImageUrlProvider.class))
                     .isInstanceOf(ObservedImageUrlProvider.class);
+        });
+    }
+
+    @Test
+    @DisplayName("Qwen을 선택하면 스토리보드 구현만 교체하고 Vertex 이미지 생성기를 구성한다")
+    void selectQwenStoryboardWithVertexImageGeneration() {
+        vertexContextRunner().withPropertyValues(
+                "harudle.generation.storyboard.provider=qwen",
+                "harudle.generation.qwen.api-key=sk-sp-test-key"
+        ).run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context).hasSingleBean(StoryboardGenerator.class);
+            assertThat(context.getBean(StoryboardGenerator.class)).isInstanceOf(QwenStoryboardGenerator.class);
+            assertThat(context).hasSingleBean(QwenChatClient.class);
+            assertThat(context).hasSingleBean(QwenStageMetrics.class);
+            assertThat(context).hasSingleBean(DiaryImageGenerator.class);
+            assertThat(context.getBean(DiaryImageGenerator.class)).isInstanceOf(GeminiDiaryImageGenerator.class);
+            assertThat(context.getBean(GeminiClientFactory.class)).isInstanceOf(VertexGeminiClientFactory.class);
+            assertThat(context.getBean(GeminiGenerationProperties.class).imageModel())
+                    .isEqualTo("gemini-nano-banana-2.1");
+        });
+    }
+
+    @Test
+    @DisplayName("application.yml에 매핑한 환경 변수로 Qwen 모델과 추론 및 제한 시간을 연결한다")
+    void bindQwenEnvironmentVariablesThroughApplicationYaml() {
+        contextRunner.withPropertyValues(enabledAdapterProperties()).withPropertyValues(
+                "STORYBOARD_PROVIDER=qwen", "QWEN_TOKEN_PLAN_API_KEY=sk-sp-env-test-key",
+                "QWEN_STORYBOARD_MODEL=qwen-future-model", "QWEN_THINKING_BUDGET=512",
+                "QWEN_MAX_OUTPUT_TOKENS=4096", "QWEN_REQUEST_TIMEOUT=90s"
+        ).withInitializer(context -> {
+            try {
+                new YamlPropertySourceLoader().load("application", new ClassPathResource("application.yml"))
+                        .forEach(source -> context.getEnvironment().getPropertySources().addLast(source));
+            } catch (java.io.IOException exception) {
+                throw new IllegalStateException(exception);
+            }
+        }).run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context).hasSingleBean(StoryboardGenerator.class);
+            assertThat(context.getBean(StoryboardGenerator.class)).isInstanceOf(QwenStoryboardGenerator.class);
+            var settings = context.getBean(QwenStoryboardProperties.class).settings();
+            assertThat(settings.model()).isEqualTo("qwen-future-model");
+            assertThat(settings.thinkingBudget()).isEqualTo(512);
+            assertThat(settings.maxOutputTokens()).isEqualTo(4096);
+            assertThat(settings.requestTimeout()).isEqualTo(java.time.Duration.ofSeconds(90));
+        });
+    }
+
+    @Test
+    @DisplayName("Gemini 선택에서는 사용하지 않는 Qwen 키와 잘못된 Qwen 설정을 검증하지 않는다")
+    void ignoreUnselectedQwenSettings() {
+        contextRunner.withPropertyValues(enabledAdapterProperties()).withPropertyValues(
+                "harudle.generation.qwen.api-key=", "harudle.generation.qwen.thinking-budget=not-a-number"
+        ).run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context.getBean(StoryboardGenerator.class)).isInstanceOf(GeminiStoryboardGenerator.class);
+            assertThat(context).doesNotHaveBean(QwenStoryboardProperties.class);
+        });
+    }
+
+    @Test
+    @DisplayName("Qwen을 선택했을 때 전용 키가 없으면 시작에 실패한다")
+    void requireTokenPlanKeyWhenQwenIsSelected() {
+        contextRunner.withPropertyValues(enabledAdapterProperties())
+                .withPropertyValues("harudle.generation.storyboard.provider=qwen")
+                .run(context -> assertThat(context).hasFailed());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"unknown", "", " ", " qwen "})
+    @DisplayName("지원하지 않거나 잘못 입력한 Provider 값은 시작 시 거절한다")
+    void rejectInvalidStoryboardProvider(String provider) {
+        contextRunner.withPropertyValues(enabledAdapterProperties()).withInitializer(context ->
+                context.getEnvironment().getPropertySources().addFirst(new MapPropertySource(
+                        "invalid-provider", Map.of("harudle.generation.storyboard.provider", provider))))
+                .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    @DisplayName("외부 어댑터가 꺼져 있으면 Qwen 선택과 비밀값 없이 시작한다")
+    void keepQwenDisabledWithGenerationAdapters() {
+        contextRunner.withPropertyValues("harudle.generation.storyboard.provider=qwen").run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context).doesNotHaveBean(QwenChatClient.class);
+            assertThat(context).doesNotHaveBean(QwenStoryboardProperties.class);
+            assertThat(context).doesNotHaveBean(StoryboardProviderProperties.class);
+            assertThat(context).doesNotHaveBean(StoryboardGenerator.class);
         });
     }
 

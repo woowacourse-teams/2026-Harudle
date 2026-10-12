@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.hamcrest.Matchers.hasSize;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -12,11 +13,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.harudle.comment.service.CommentService;
 import com.harudle.comment.repository.CommentRepository;
+import com.harudle.comment.service.CommentService;
 import com.harudle.comment.service.exception.CommentNotFoundException;
+import com.harudle.diary.service.DiaryDeletionService;
+import com.harudle.feed.service.FeedDeletionService;
 import com.harudle.feed.service.exception.FeedNotFoundException;
 import com.harudle.profile.service.port.PublicProfileReader;
+import com.harudle.push.service.port.FeedPushOutbox;
 import jakarta.servlet.http.Cookie;
 import java.net.URI;
 import java.sql.Timestamp;
@@ -25,6 +29,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Callable;
@@ -87,6 +92,12 @@ class CommentPersistenceTest {
     private CommentRepository comments;
 
     @Autowired
+    private DiaryDeletionService diaryDeletion;
+
+    @Autowired
+    private FeedDeletionService feedDeletion;
+
+    @Autowired
     private JdbcTemplate jdbc;
 
     @Autowired
@@ -103,6 +114,9 @@ class CommentPersistenceTest {
 
     @MockitoBean
     private JwtDecoder jwtDecoder;
+
+    @MockitoBean
+    private FeedPushOutbox outbox;
 
     private final List<UUID> fixtureUsers = new ArrayList<>();
     private UUID feedAuthorId;
@@ -277,6 +291,39 @@ class CommentPersistenceTest {
         jdbc.update("UPDATE diaries SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", anotherDiary);
         mockMvc.perform(get("/api/v1/feeds/" + anotherFeed + "/comments"))
                 .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("FEED_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("피드 작성자가 탈퇴하면 남은 댓글은 공개하지 않고 댓글 쓰기와 삭제도 원본을 변경하지 않는다")
+    void hideCommentsOfFeedWhoseAuthorWasDeleted() throws Exception {
+        UUID comment = service.create(commenterId, feedId, "탈퇴 전 작성된 다른 회원의 댓글").id();
+        UUID notification = uuidValue("SELECT id FROM notifications WHERE feed_id = ?", feedId);
+        profiles.resetCallCount();
+        jdbc.update("UPDATE users SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", feedAuthorId);
+
+        assertThat(comments.existsVisibleFeed(feedId)).isFalse();
+        assertThat(comments.findAfter(feedId, Optional.empty(), 20)).isEmpty();
+        mockMvc.perform(get(commentsPath())).andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("FEED_NOT_FOUND"));
+        assertThat(profiles.callCount()).isZero();
+
+        mockMvc.perform(withCsrf(bearer(post(commentsPath())))
+                        .contentType(MediaType.APPLICATION_JSON).content(commentBody("추가할 수 없는 댓글")))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("FEED_NOT_FOUND"));
+        assertState(1, 1);
+        mockMvc.perform(withCsrf(bearer(delete(commentPath(comment)))))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("COMMENT_NOT_FOUND"));
+
+        assertState(1, 1);
+        assertThat(uuidValue("SELECT id FROM comments WHERE feed_id = ? AND deleted_at IS NULL", feedId))
+                .isEqualTo(comment);
+        assertThat(jdbc.queryForObject("SELECT content FROM comments WHERE id = ?", String.class, comment))
+                .isEqualTo("탈퇴 전 작성된 다른 회원의 댓글");
+        assertThat(uuidValue("SELECT id FROM notifications WHERE feed_id = ?", feedId)).isEqualTo(notification);
+        assertThat(uuidValue("SELECT source_action_id FROM notifications WHERE id = ?", notification))
+                .isEqualTo(comment);
+        assertThat(intValue("SELECT count(*) FROM feeds WHERE id = ? AND deleted_at IS NULL", feedId)).isEqualTo(1);
+        assertThat(intValue("SELECT count(*) FROM diaries WHERE id = ? AND deleted_at IS NULL", diaryId)).isEqualTo(1);
     }
 
     @Test
@@ -458,20 +505,30 @@ class CommentPersistenceTest {
     }
 
     @Test
-    @DisplayName("피드 삭제가 먼저 잠금을 잡으면 기다리던 댓글 작성은 삭제 커밋 후 실패한다")
+    @DisplayName("실제 피드 삭제 서비스가 먼저 잠그면 기다리던 댓글 작성은 삭제 커밋 후 실패한다")
     void rejectCreateWaitingForFeedDeletion() throws Exception {
         assertDeletionWins(false);
     }
 
     @Test
-    @DisplayName("일기→피드 순서로 삭제 잠금을 잡으면 기다리던 댓글 작성은 삭제 후 실패한다")
+    @DisplayName("실제 일기 삭제 서비스가 일기→피드를 잠그면 기다리던 댓글 작성은 삭제 후 실패한다")
     void rejectCreateWaitingForDiaryAndFeedDeletion() throws Exception {
         assertDeletionWins(true);
     }
 
     @Test
-    @DisplayName("댓글 생성의 피드 잠금은 커밋까지 유지해 뒤따르는 피드 삭제와 직렬화한다")
+    @DisplayName("댓글 생성의 피드 잠금은 커밋까지 유지해 실제 피드 삭제 서비스와 직렬화한다")
     void serializeFeedDeletionAfterCommentCreation() throws Exception {
+        assertDeletionAfterCommentCreation(false);
+    }
+
+    @Test
+    @DisplayName("댓글 생성이 선점하면 실제 일기 삭제 서비스는 피드 잠금을 기다리고 댓글 개수를 보존한다")
+    void serializeDiaryDeletionAfterCommentCreation() throws Exception {
+        assertDeletionAfterCommentCreation(true);
+    }
+
+    private void assertDeletionAfterCommentCreation(boolean deleteDiary) throws Exception {
         CountDownLatch created = new CountDownLatch(1);
         CountDownLatch releaseCreation = new CountDownLatch(1);
         AtomicInteger deletionPid = new AtomicInteger();
@@ -485,12 +542,13 @@ class CommentPersistenceTest {
                 assertThat(created.await(5, TimeUnit.SECONDS)).isTrue();
                 Future<?> deletion = executor.submit(() -> transactions.executeWithoutResult(status -> {
                     deletionPid.set(intValue("SELECT pg_backend_pid()"));
-                    jdbc.update("UPDATE feeds SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", feedId);
+                    deleteThroughProductionService(deleteDiary);
                 }));
                 awaitBlockedBackend(deletionPid);
                 releaseCreation.countDown();
                 creation.get(10, TimeUnit.SECONDS);
                 deletion.get(10, TimeUnit.SECONDS);
+                assertProductionDeletion(deleteDiary);
                 assertState(1, 1);
                 assertThatThrownBy(() -> service.list(feedId, null, null, 20))
                         .isInstanceOf(FeedNotFoundException.class);
@@ -592,12 +650,7 @@ class CommentPersistenceTest {
         AtomicInteger creationPid = new AtomicInteger();
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
             Future<?> deletion = executor.submit(() -> transactions.executeWithoutResult(status -> {
-                if (deleteDiary) {
-                    uuidValue("SELECT id FROM diaries WHERE id = ? FOR UPDATE", diaryId);
-                    jdbc.update("UPDATE diaries SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", diaryId);
-                }
-                uuidValue("SELECT id FROM feeds WHERE id = ? FOR UPDATE", feedId);
-                jdbc.update("UPDATE feeds SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", feedId);
+                deleteThroughProductionService(deleteDiary);
                 deletionReady.countDown();
                 await(releaseDeletion);
             }));
@@ -612,11 +665,32 @@ class CommentPersistenceTest {
                 releaseDeletion.countDown();
                 deletion.get(10, TimeUnit.SECONDS);
                 assertThat(creation.get(10, TimeUnit.SECONDS)).isInstanceOf(FeedNotFoundException.class);
+                assertProductionDeletion(deleteDiary);
                 assertState(0, 0);
             } finally {
                 releaseDeletion.countDown();
             }
         }
+    }
+
+    private void deleteThroughProductionService(boolean deleteDiary) {
+        if (deleteDiary) {
+            diaryDeletion.delete(feedAuthorId, diaryId);
+        } else {
+            feedDeletion.delete(feedAuthorId, feedId);
+        }
+    }
+
+    private void assertProductionDeletion(boolean diaryDeleted) {
+        Timestamp feedDeletedAt = jdbc.queryForObject("SELECT deleted_at FROM feeds WHERE id = ?", Timestamp.class, feedId);
+        Timestamp diaryDeletedAt = jdbc.queryForObject("SELECT deleted_at FROM diaries WHERE id = ?", Timestamp.class, diaryId);
+        assertThat(feedDeletedAt).isNotNull();
+        if (diaryDeleted) {
+            assertThat(diaryDeletedAt).isEqualTo(feedDeletedAt);
+        } else {
+            assertThat(diaryDeletedAt).isNull();
+        }
+        verify(outbox).cancelUnsentByFeed(feedId);
     }
 
     private <T> List<T> runConcurrently(List<Callable<T>> tasks) throws Exception {

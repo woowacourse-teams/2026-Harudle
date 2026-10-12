@@ -30,7 +30,9 @@ class JpaCommentRepository implements CommentRepository {
             SELECT count(*)
             FROM feeds f
             JOIN diaries d ON d.id = f.diary_id
+            JOIN users feed_author ON feed_author.id = d.user_id
             WHERE f.id = :feedId AND f.deleted_at IS NULL AND d.deleted_at IS NULL
+              AND feed_author.deleted_at IS NULL
             """;
     private static final String FIND_ACTIVE_QUERY = """
             SELECT id, feed_id, author_id, content, created_at
@@ -52,8 +54,10 @@ class JpaCommentRepository implements CommentRepository {
             FROM comments c
             JOIN feeds f ON f.id = c.feed_id
             JOIN diaries d ON d.id = f.diary_id
+            JOIN users feed_author ON feed_author.id = d.user_id
             WHERE c.feed_id = :feedId
               AND c.deleted_at IS NULL AND f.deleted_at IS NULL AND d.deleted_at IS NULL
+              AND feed_author.deleted_at IS NULL
             """;
     private static final String AFTER_PREDICATE = """
               AND (c.created_at > :afterCreatedAt
