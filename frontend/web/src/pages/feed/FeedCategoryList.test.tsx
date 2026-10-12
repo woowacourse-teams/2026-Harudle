@@ -10,9 +10,9 @@ import FeedCategoryList, {
 } from './FeedCategoryList';
 
 const categories: CategoryListResponse = [
-  { id: '1', name: '일상', sortOrder: 0, active: true },
-  { id: '2', name: '우테코', sortOrder: 1, active: true },
-  { id: '3', name: '새 카테고리', sortOrder: 2, active: true },
+  { id: 1, name: '일상', sortOrder: 0, active: true },
+  { id: 2, name: '우테코', sortOrder: 1, active: true },
+  { id: 3, name: '새 카테고리', sortOrder: 2, active: true },
 ];
 
 const mockGetCategoryList = jest.fn<typeof getCategoryList>();
@@ -72,13 +72,13 @@ describe('피드 카테고리 목록', () => {
       jest.fn<FeedCategoryListProps['onCategoryChange']>();
     render(
       <FeedCategoryList
-        selectedCategoryId="2"
+        selectedCategoryId={2}
         onCategoryChange={onCategoryChange}
       />,
     );
 
     await user.click(await screen.findByRole('button', { name: '일상' }));
-    expect(onCategoryChange).toHaveBeenLastCalledWith('1');
+    expect(onCategoryChange).toHaveBeenLastCalledWith(1);
     await user.click(screen.getByRole('button', { name: '전체' }));
     expect(onCategoryChange).toHaveBeenLastCalledWith(undefined);
   });
@@ -87,7 +87,7 @@ describe('피드 카테고리 목록', () => {
     const onCategoryChange = jest.fn();
     const { rerender } = render(
       <FeedCategoryList
-        selectedCategoryId="2"
+        selectedCategoryId={2}
         onCategoryChange={onCategoryChange}
       />,
     );
@@ -95,7 +95,7 @@ describe('피드 카테고리 목록', () => {
 
     rerender(
       <FeedCategoryList
-        selectedCategoryId="1"
+        selectedCategoryId={1}
         onCategoryChange={onCategoryChange}
       />,
     );

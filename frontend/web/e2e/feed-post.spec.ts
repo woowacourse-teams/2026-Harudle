@@ -61,7 +61,7 @@ test('전달받은 이미지를 재조회 없이 표시하고 필요한 필드�
   expect(response.status()).toBe(201);
   expect(response.request().postDataJSON()).toEqual({
     diaryId: DIARY_ID,
-    categoryId: '2',
+    categoryId: 2,
   });
   expect(response.request().headers()['authorization']).toBe(
     'Bearer mock-access-token',
@@ -69,7 +69,7 @@ test('전달받은 이미지를 재조회 없이 표시하고 필요한 필드�
   expect(response.request().headers()['x-xsrf-token']).toBeUndefined();
   const body: unknown = await response.json();
   expect(body).toMatchObject({
-    category: { id: '2', name: '우테코' },
+    category: { id: 2, name: '우테코' },
     isMine: true,
     likeCount: 0,
     commentCount: 0,

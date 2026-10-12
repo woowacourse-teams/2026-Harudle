@@ -18,7 +18,7 @@ jest.mock('../../posthog/useErrorTracking', () => ({
 const feed: Feed = {
   id: 'feed-1',
   author: { id: 'user-1', nickname: '네오', profileImageUrl: '/profile.svg' },
-  category: { id: '1', name: '일상' },
+  category: { id: 1, name: '일상' },
   imageUrl: '/comic.webp',
   imageUrlExpiresAt: '2099-10-11T12:00:00+09:00',
   publishedAt: '2026-10-11T12:00:00+09:00',

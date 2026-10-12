@@ -23,12 +23,16 @@ test('상세 직접 진입과 새로고침에서 세션을 복원해 본인 피�
 
     await page.goto(detailPath);
     await expect(
-      page.getByRole('button', { name: '옵션 더보기 아이콘' }),
+      page
+        .getByRole('article')
+        .getByRole('button', { name: '옵션 더보기 아이콘' }),
     ).toBeVisible();
     await expect(page).toHaveURL(detailPath);
     await page.reload();
     await expect(
-      page.getByRole('button', { name: '옵션 더보기 아이콘' }),
+      page
+        .getByRole('article')
+        .getByRole('button', { name: '옵션 더보기 아이콘' }),
     ).toBeVisible();
     await expect(page).toHaveURL(detailPath);
     expect(detailAuthorizations.length).toBeGreaterThanOrEqual(2);
@@ -49,6 +53,8 @@ test('첫 방문의 비로그인 사용자도 랜딩 이동 없이 공개 상세
   await expect(page.getByRole('article')).toBeVisible();
   await expect(page).toHaveURL(detailPath);
   await expect(
-    page.getByRole('button', { name: '옵션 더보기 아이콘' }),
+    page
+      .getByRole('article')
+      .getByRole('button', { name: '옵션 더보기 아이콘' }),
   ).toHaveCount(0);
 });

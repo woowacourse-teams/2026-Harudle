@@ -124,8 +124,8 @@ describe('피드 페이지 MSW', () => {
   it('비로그인 카테고리와 목록 조회, 기본 크기, 마지막 페이지를 지원한다', async () => {
     const categories = await requestApi('/api/v1/categories');
     await expect(categories.json()).resolves.toEqual([
-      { id: '1', name: '일상', sortOrder: 0, active: true },
-      { id: '2', name: '우테코', sortOrder: 1, active: true },
+      { id: 1, name: '일상', sortOrder: 0, active: true },
+      { id: 2, name: '우테코', sortOrder: 1, active: true },
     ]);
     const first = await listFeeds();
     expect(first.items).toHaveLength(20);
@@ -154,7 +154,7 @@ describe('피드 페이지 MSW', () => {
       filtered.items.every(
         (feed): boolean =>
           JSON.stringify(feed.category) ===
-          JSON.stringify({ id: '2', name: '우테코' }),
+          JSON.stringify({ id: 2, name: '우테코' }),
       ),
     ).toBe(true);
     const latest = await listFeeds('?size=2');

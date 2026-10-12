@@ -4,7 +4,7 @@ import type { DeepReadonly } from '../../shared/typeUtils';
 import { isNonNegativeInteger, isRecord } from '../../shared/utils';
 
 interface CategoryData {
-  id: string;
+  id: number;
   name: string;
   sortOrder: number;
   active: boolean;
@@ -32,7 +32,9 @@ export const getCategoryList = async (): Promise<CategoryListResponse> => {
 const isCategory = (value: unknown): value is Category => {
   return (
     isRecord(value) &&
-    typeof value.id === 'string' &&
+    typeof value.id === 'number' &&
+    Number.isSafeInteger(value.id) &&
+    value.id > 0 &&
     typeof value.name === 'string' &&
     typeof value.sortOrder === 'number' &&
     isNonNegativeInteger(value.sortOrder) &&

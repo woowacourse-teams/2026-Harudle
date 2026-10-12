@@ -63,14 +63,14 @@ const diary: DiaryDetailResponse = {
   },
 };
 const categories: CategoryListResponse = [
-  { id: '2', name: '우테코', sortOrder: 1, active: true },
-  { id: '1', name: '일상', sortOrder: 0, active: true },
-  { id: '3', name: '비활성', sortOrder: 2, active: false },
+  { id: 2, name: '우테코', sortOrder: 1, active: true },
+  { id: 1, name: '일상', sortOrder: 0, active: true },
+  { id: 3, name: '비활성', sortOrder: 2, active: false },
 ];
 const feed: Feed = {
   id: 'feed-1',
   author: { id: 'user-1', nickname: '하루들', profileImageUrl: '/profile.svg' },
-  category: { id: '2', name: '우테코' },
+  category: { id: 2, name: '우테코' },
   imageUrl: diary.generation.imageUrl,
   imageUrlExpiresAt: diary.generation.imageUrlExpiresAt,
   publishedAt: '2026-10-12T12:00:00+09:00',
@@ -133,7 +133,7 @@ describe('피드 게시 화면', (): void => {
     );
     expect(mockPublishFeed).toHaveBeenCalledWith({
       diaryId: diary.id,
-      categoryId: '1',
+      categoryId: 1,
     });
     expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true });
   });

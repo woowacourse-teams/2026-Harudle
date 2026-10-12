@@ -2,7 +2,7 @@ import { describe, expect, it } from '@jest/globals';
 import { isCategoryListResponse, type Category } from './categoryList';
 
 const category: Category = {
-  id: '1',
+  id: 1,
   name: '일상',
   sortOrder: 0,
   active: true,
@@ -18,7 +18,12 @@ describe('카테고리 목록 응답 검증', () => {
     null,
     { items: [category] },
     [null],
-    [{ ...category, id: 1 }],
+    [{ ...category, id: '1' }],
+    [{ ...category, id: 0 }],
+    [{ ...category, id: -1 }],
+    [{ ...category, id: 1.5 }],
+    [{ ...category, id: NaN }],
+    [{ ...category, id: Number.MAX_SAFE_INTEGER + 1 }],
     [{ ...category, name: undefined }],
     [{ ...category, sortOrder: '0' }],
     [{ ...category, sortOrder: -1 }],

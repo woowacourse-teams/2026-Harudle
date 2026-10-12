@@ -6,7 +6,7 @@ import { isCanonicalUuid } from '../pages/landing/guestTrialUuid';
 import { MOCK_SCENARIO_HEADER, MOCK_SCENARIOS } from './mockScenarios';
 
 interface MockCategory {
-  readonly id: string;
+  readonly id: number;
   readonly name: string;
   readonly sortOrder: number;
   readonly active: boolean;
@@ -49,10 +49,10 @@ type FeedProblemCode =
 const MOCK_USER_ID = '08d69a34-6d70-4d42-a158-671bc67733c9';
 const MOCK_ACCESS_TOKEN = 'mock-access-token';
 
-// 카테고리 개별 명세의 auto increment ID를 문자열로 반환한다.
+// 서버 계약에 맞춰 카테고리 ID를 숫자로 반환한다.
 const categories: readonly MockCategory[] = [
-  { id: '1', name: '일상', sortOrder: 0, active: true },
-  { id: '2', name: '우테코', sortOrder: 1, active: true },
+  { id: 1, name: '일상', sortOrder: 0, active: true },
+  { id: 2, name: '우테코', sortOrder: 1, active: true },
 ];
 
 const createInitialFeeds = (): MockFeed[] => {
@@ -269,7 +269,9 @@ export const feedHandlers = [
       !isRecord(body) ||
       typeof body.diaryId !== 'string' ||
       !isCanonicalUuid(body.diaryId) ||
-      typeof body.categoryId !== 'string'
+      typeof body.categoryId !== 'number' ||
+      !Number.isSafeInteger(body.categoryId) ||
+      body.categoryId <= 0
     )
       return problem(request, 400, 'VALIDATION_ERROR');
 
@@ -348,7 +350,7 @@ export const feedHandlers = [
     }
     if (
       categoryId !== null &&
-      !categories.some(({ id }): boolean => id === categoryId)
+      !categories.some(({ id }): boolean => id === Number(categoryId))
     ) {
       return problem(request, 404, 'CATEGORY_NOT_FOUND');
     }
@@ -362,7 +364,7 @@ export const feedHandlers = [
     const sortedFeeds = feeds
       .filter(
         (feed): boolean =>
-          categoryId === null || feed.category.id === categoryId,
+          categoryId === null || feed.category.id === Number(categoryId),
       )
       .sort((a, b): number => compareFeeds(a, b, sort))
       .filter(
