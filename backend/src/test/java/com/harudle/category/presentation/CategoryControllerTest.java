@@ -6,6 +6,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import com.harudle.auth.application.AccessTokenService;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.UserRepository;
+import com.harudle.category.service.port.CategoryReader;
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
 import io.restassured.module.mockmvc.response.MockMvcResponse;
 import io.restassured.http.ContentType;
@@ -54,6 +55,9 @@ class CategoryControllerTest {
 
     @Autowired
     private EntityManager entityManager;
+
+    @Autowired
+    private CategoryReader categoryReader;
 
     @BeforeEach
     void setUp() {
@@ -221,5 +225,80 @@ class CategoryControllerTest {
         return RestAssuredMockMvc.given()
                 .header(HttpHeaders.AUTHORIZATION, bearerToken(user))
                 .contentType(ContentType.JSON);
+    }
+
+    @Test
+    @DisplayName("보낸 항목만 수정하고 비활성 항목은 기존 표시를 유지하며 다시 활성화할 수 있다")
+    void updatesCategoryPartially() {
+        User admin = saveAdmin();
+        long id = categoryId("일상");
+        MockMvcResponse renamed = createRequest(admin)
+                .body("{\"name\":\" 일상 생활 \"}")
+                .patch("/api/v1/admin/categories/{categoryId}", id);
+        assertThat(renamed.statusCode()).isEqualTo(200);
+        assertThat(renamed.jsonPath().getString("name")).isEqualTo("일상 생활");
+        assertThat(renamed.jsonPath().getInt("sortOrder")).isEqualTo(2);
+        assertThat(renamed.jsonPath().getBoolean("active")).isTrue();
+
+        MockMvcResponse inactive = createRequest(admin)
+                .body("{\"sortOrder\":5,\"active\":false}")
+                .patch("/api/v1/admin/categories/{categoryId}", id);
+        assertThat(inactive.statusCode()).isEqualTo(200);
+        assertThat(inactive.jsonPath().getString("name")).isEqualTo("일상 생활");
+        assertThat(inactive.jsonPath().getInt("sortOrder")).isEqualTo(5);
+        assertThat(inactive.jsonPath().getBoolean("active")).isFalse();
+        assertThat(categoryReader.get(id).name()).isEqualTo("일상 생활");
+        assertThat(categoryReader.get(id).active()).isFalse();
+        assertThat(RestAssuredMockMvc.given().get("/api/v1/categories").jsonPath().getList("name"))
+                .doesNotContain("일상 생활");
+
+        MockMvcResponse reactivated = createRequest(admin).body("{\"active\":true}")
+                .patch("/api/v1/admin/categories/{categoryId}", id);
+        assertThat(reactivated.statusCode()).isEqualTo(200);
+        assertThat(reactivated.jsonPath().getBoolean("active")).isTrue();
+    }
+
+    @Test
+    @DisplayName("빈 수정과 null 및 잘못된 값은 400이고 없는 카테고리는 404다")
+    void rejectsInvalidCategoryUpdate() {
+        User admin = saveAdmin();
+        long id = categoryId("일상");
+        for (String body : new String[]{
+                "{}", "{\"name\":null}", "{\"sortOrder\":null}", "{\"active\":null}",
+                "{\"name\":\" \"}", "{\"name\":\"" + "가".repeat(21) + "\"}",
+                "{\"sortOrder\":-1}", "{\"sortOrder\":1.5}"
+        }) {
+            MockMvcResponse response = createRequest(admin).body(body)
+                    .patch("/api/v1/admin/categories/{categoryId}", id);
+            assertThat(response.statusCode()).isEqualTo(400);
+            assertThat(response.jsonPath().getString("code")).isEqualTo("VALIDATION_ERROR");
+        }
+        MockMvcResponse missing = createRequest(admin).body("{\"active\":false}")
+                .patch("/api/v1/admin/categories/{categoryId}", Long.MAX_VALUE);
+        assertThat(missing.statusCode()).isEqualTo(404);
+        assertThat(missing.jsonPath().getString("code")).isEqualTo("CATEGORY_NOT_FOUND");
+    }
+
+    @Test
+    @DisplayName("수정한 이름이 비활성 카테고리와 중복되면 409다")
+    void rejectsDuplicateCategoryUpdate() {
+        MockMvcResponse response = createRequest(saveAdmin()).body("{\"name\":\" 우테코 \"}")
+                .patch("/api/v1/admin/categories/{categoryId}", categoryId("일상"));
+        assertThat(response.statusCode()).isEqualTo(409);
+        assertThat(response.jsonPath().getString("code")).isEqualTo("CATEGORY_NAME_ALREADY_USED");
+    }
+
+    @Test
+    @DisplayName("일반 회원은 카테고리를 수정할 수 없다")
+    void rejectsMemberCategoryUpdate() {
+        User member = userRepository.saveAndFlush(new User(null, "회원", Instant.now()));
+        MockMvcResponse response = createRequest(member).body("{\"active\":false}")
+                .patch("/api/v1/admin/categories/{categoryId}", categoryId("일상"));
+        assertThat(response.statusCode()).isEqualTo(403);
+        assertThat(response.jsonPath().getString("code")).isEqualTo("FORBIDDEN");
+    }
+
+    private long categoryId(String name) {
+        return jdbc.queryForObject("SELECT id FROM categories WHERE name = ?", Long.class, name);
     }
 }

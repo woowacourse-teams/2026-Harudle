@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.harudle.category.domain.Category;
+import com.harudle.category.query.CategorySnapshot;
 import com.harudle.category.repository.CategoryRepository;
 import com.harudle.category.service.exception.CategoryInactiveException;
 import com.harudle.category.service.exception.CategoryNotFoundException;
@@ -42,7 +43,7 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers
 @DataJpaTest(showSql = false)
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import(DefaultCategoryReader.class)
+@Import({DefaultCategoryReader.class, CategoryUpdateService.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class DefaultCategoryReaderTest {
 
@@ -53,6 +54,9 @@ class DefaultCategoryReaderTest {
 
     @Autowired
     private CategoryReader reader;
+
+    @Autowired
+    private CategoryUpdateService categoryUpdateService;
 
     @Autowired
     private CategoryRepository repository;
@@ -286,8 +290,8 @@ class DefaultCategoryReaderTest {
         return jdbc.queryForObject("SELECT id FROM categories WHERE name = ?", Long.class, name);
     }
 
-    private int deactivate(long categoryId) {
-        return jdbc.update("UPDATE categories SET is_active = FALSE WHERE id = ?", categoryId);
+    private CategorySnapshot deactivate(long categoryId) {
+        return categoryUpdateService.update(categoryId, null, null, false);
     }
 
     private <T> T result(Future<T> future) {

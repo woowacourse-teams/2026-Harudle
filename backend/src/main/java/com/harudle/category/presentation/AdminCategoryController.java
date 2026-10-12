@@ -2,6 +2,7 @@ package com.harudle.category.presentation;
 
 import com.harudle.category.service.CategoryCreateService;
 import com.harudle.category.service.CategoryQueryService;
+import com.harudle.category.service.CategoryUpdateService;
 import com.harudle.common.error.ApiErrorResponses;
 import com.harudle.common.error.ErrorType;
 import io.swagger.v3.oas.annotations.Operation;
@@ -10,6 +11,8 @@ import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -23,10 +26,16 @@ class AdminCategoryController {
 
     private final CategoryQueryService categoryQueryService;
     private final CategoryCreateService categoryCreateService;
+    private final CategoryUpdateService categoryUpdateService;
 
-    AdminCategoryController(CategoryQueryService categoryQueryService, CategoryCreateService categoryCreateService) {
+    AdminCategoryController(
+            CategoryQueryService categoryQueryService,
+            CategoryCreateService categoryCreateService,
+            CategoryUpdateService categoryUpdateService
+    ) {
         this.categoryQueryService = categoryQueryService;
         this.categoryCreateService = categoryCreateService;
+        this.categoryUpdateService = categoryUpdateService;
     }
 
     @Operation(summary = "관리자 전체 카테고리 목록 조회")
@@ -49,5 +58,20 @@ class AdminCategoryController {
     @ResponseStatus(HttpStatus.CREATED)
     CategoryResponse create(@Valid @RequestBody CreateCategoryRequest request) {
         return CategoryResponse.from(categoryCreateService.create(request.name(), request.sortOrder()));
+    }
+
+    @Operation(summary = "관리자 카테고리 수정과 비활성화")
+    @ApiErrorResponses({
+            ErrorType.UNAUTHORIZED,
+            ErrorType.FORBIDDEN,
+            ErrorType.VALIDATION_ERROR,
+            ErrorType.CATEGORY_NOT_FOUND,
+            ErrorType.CATEGORY_NAME_ALREADY_USED
+    })
+    @PatchMapping("/{categoryId}")
+    CategoryResponse update(@PathVariable long categoryId, @Valid @RequestBody UpdateCategoryRequest request) {
+        return CategoryResponse.from(categoryUpdateService.update(
+                categoryId, request.getName(), request.getSortOrder(), request.getActive()
+        ));
     }
 }

@@ -41,6 +41,30 @@ public class Category {
     }
 
     public Category(String rawName, int sortOrder) {
+        this.name = normalizeAndValidateName(rawName);
+        validateSortOrder(sortOrder);
+        this.sortOrder = sortOrder;
+        this.active = true;
+    }
+
+    public void update(String rawName, Integer sortOrder, Boolean active) {
+        String name = this.name;
+        if (rawName != null) {
+            name = normalizeAndValidateName(rawName);
+        }
+        if (sortOrder != null) {
+            validateSortOrder(sortOrder);
+        }
+        this.name = name;
+        if (sortOrder != null) {
+            this.sortOrder = sortOrder;
+        }
+        if (active != null) {
+            this.active = active;
+        }
+    }
+
+    private String normalizeAndValidateName(String rawName) {
         if (rawName == null || rawName.isBlank()) {
             throw new InvalidCategoryException("name", "카테고리 이름은 필수입니다.");
         }
@@ -48,12 +72,13 @@ public class Category {
         if (name.codePointCount(0, name.length()) > 20) {
             throw new InvalidCategoryException("name", "카테고리 이름은 1자 이상 20자 이하여야 합니다.");
         }
+        return name;
+    }
+
+    private void validateSortOrder(int sortOrder) {
         if (sortOrder < 0) {
             throw new InvalidCategoryException("sortOrder", "표시 순서는 0 이상이어야 합니다.");
         }
-        this.name = name;
-        this.sortOrder = sortOrder;
-        this.active = true;
     }
 
     public Long getId() {

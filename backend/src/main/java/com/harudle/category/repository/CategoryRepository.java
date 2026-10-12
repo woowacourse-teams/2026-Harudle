@@ -2,9 +2,11 @@ package com.harudle.category.repository;
 
 import com.harudle.category.domain.Category;
 import com.harudle.category.query.CategorySnapshot;
+import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.repository.Repository;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Propagation;
@@ -16,6 +18,11 @@ public interface CategoryRepository extends Repository<Category, Long> {
 
     @Query("SELECT COALESCE(MAX(category.sortOrder), -1) FROM Category category")
     int findMaxSortOrder();
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT category FROM Category category WHERE category.id = :categoryId")
+    Optional<Category> findByIdForUpdate(@Param("categoryId") long categoryId);
 
     @Query("""
             SELECT new com.harudle.category.query.CategorySnapshot(

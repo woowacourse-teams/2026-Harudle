@@ -133,8 +133,9 @@ Idempotency-Key: 7e5cc251-fdde-4cc0-a54e-2c8142750609
 | `GET` | `/api/v1/categories` | 불필요 | 활성 카테고리 목록 |
 | `GET` | `/api/v1/admin/categories` | ADMIN | 활성·비활성 전체 카테고리 목록 |
 | `POST` | `/api/v1/admin/categories` | ADMIN | 카테고리 추가 |
+| `PATCH` | `/api/v1/admin/categories/{categoryId}` | ADMIN | 카테고리 수정과 비활성화 |
 
-두 API는 `sortOrder` 오름차순, 같은 순서에서는 `id` 오름차순으로 정렬한 JSON 배열을 반환한다.
+두 목록 조회 API는 `sortOrder` 오름차순, 같은 순서에서는 `id` 오름차순으로 정렬한 JSON 배열을 반환한다.
 `id`는 JSON 숫자이며, 항목이 없으면 `[]`를 반환한다.
 
 ```json
@@ -156,6 +157,17 @@ Idempotency-Key: 7e5cc251-fdde-4cc0-a54e-2c8142750609
 - `sortOrder`는 0 이상의 정수다. 생략하면 활성과 비활성 전체 항목의 최대 순서에 1을 더한다. 항목이 없으면 0이다.
 - 새 항목은 `active=true`로 저장하고 `201`과 생성된 Category 객체를 반환한다.
 - 비활성 항목과도 이름이 중복되면 `409 CATEGORY_NAME_ALREADY_USED`, 잘못된 입력은 `400 VALIDATION_ERROR`다.
+
+수정은 관리자 Bearer 인증으로 호출하며 CSRF 토큰을 요구하지 않는다.
+
+```json
+{ "name": "우테코 생활", "sortOrder": 2, "active": false }
+```
+
+- 보낸 항목만 수정하고 `200`과 수정된 Category 객체를 반환한다. 이름과 순서 검증은 생성과 같다.
+- 빈 요청과 명시적인 `null`은 `400 VALIDATION_ERROR`, 없는 ID는 `404 CATEGORY_NOT_FOUND`, 이름 중복은 `409 CATEGORY_NAME_ALREADY_USED`다.
+- 비활성화 후에도 기존 피드의 카테고리 조회는 유지되며 새 게시만 거부한다. `active=true`로 다시 활성화할 수 있다.
+- 수정은 카테고리 행을 잠그고 같은 행의 게시 검증과 순서대로 처리한다. 삭제 API는 제공하지 않는다.
 
 ## 4. 인증 및 사용자 API
 
