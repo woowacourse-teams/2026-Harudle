@@ -3,7 +3,7 @@ import { isLandingPath } from '../pages/landing/landingPaths';
 import { MOCK_SCENARIO_HEADER, MOCK_SCENARIOS } from './mockScenarios';
 import { getToday } from '../shared/utils';
 import diaryImage from '../assets/images/diary-four-panel.webp';
-import { hasMockFeed } from './feedHandlers';
+import { getMockPublishedFeedId, hasMockFeed } from './feedHandlers';
 
 interface CreateDiaryRequest {
   diaryDate: string;
@@ -565,7 +565,10 @@ export const handlers = [
     }
 
     if (createdDiaryDetail) {
-      return HttpResponse.json(createdDiaryDetail);
+      return HttpResponse.json({
+        ...createdDiaryDetail,
+        publishedFeedId: getMockPublishedFeedId(diaryId),
+      });
     }
 
     if (!diaryDay || !diary) {
@@ -580,9 +583,10 @@ export const handlers = [
     const response: DiaryDetailResponse = {
       id: diaryId,
       publishedFeedId:
-        diaryId === PUBLISHED_DIARY_ID && hasMockFeed(SAMPLE_PUBLISHED_FEED_ID)
+        getMockPublishedFeedId(diaryId) ??
+        (diaryId === PUBLISHED_DIARY_ID && hasMockFeed(SAMPLE_PUBLISHED_FEED_ID)
           ? SAMPLE_PUBLISHED_FEED_ID
-          : null,
+          : null),
       diaryDate: diaryDay.date,
       sourceText: '오늘 친구와 카페에 가서 오래 이야기했다.',
       createdAt: `${diaryDay.date}T20:10:23+09:00`,

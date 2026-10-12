@@ -11,6 +11,7 @@ export const MOCK_SCENARIOS = {
   diaryLongEmojiTitle: 'diary-long-emoji-title',
   diaryDeleteFailure: 'diary-delete-failure',
   diaryShareFailure: 'diary-share-failure',
+  feedPublishFailure: 'feed-publish-failure',
   profileFailure: 'profile-failure',
   logoutFailure: 'logout-failure',
 } as const;

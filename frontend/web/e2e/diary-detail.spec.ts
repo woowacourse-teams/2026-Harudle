@@ -238,10 +238,15 @@ test.describe('일기 상세', () => {
       .click();
 
     await expect(page).toHaveURL(`${SAMPLE_DIARY_URL}/feed-post`);
-    await expect(page.getByRole('main')).toHaveText('피드 게시');
+    await expect(page.getByRole('img', { name: '네컷만화' })).toBeVisible();
+    await expect(page.getByRole('radio', { name: '일상' })).not.toBeChecked();
+    await expect(
+      page.getByText(SAMPLE_DIARY_TITLE, { exact: true }),
+    ).toHaveCount(0);
 
     await page.reload();
-    await expect(page.getByRole('main')).toHaveText('피드 게시');
+    await expect(page.getByRole('img', { name: '네컷만화' })).toBeVisible();
+    await expect(page.getByRole('radio', { name: '일상' })).not.toBeChecked();
 
     await page.goBack();
     await expectSampleDiaryDetail(page);

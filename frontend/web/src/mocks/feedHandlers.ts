@@ -3,6 +3,7 @@ import diaryImage from '../assets/images/diary-four-panel.webp';
 import profileImage from '../assets/icons/article_person.svg';
 import { isRecord } from '../shared/utils';
 import { isCanonicalUuid } from '../pages/landing/guestTrialUuid';
+import { MOCK_SCENARIO_HEADER, MOCK_SCENARIOS } from './mockScenarios';
 
 interface MockCategory {
   readonly id: string;
@@ -12,6 +13,7 @@ interface MockCategory {
 }
 
 interface MockFeed {
+  readonly diaryId?: string;
   readonly id: string;
   readonly author: {
     readonly id: string;
@@ -34,6 +36,8 @@ interface MockFeedResponse extends MockFeed {
 
 type FeedSort = 'LATEST' | 'POPULAR';
 type FeedProblemCode =
+  | 'INTERNAL_SERVER_ERROR'
+  | 'DIARY_ALREADY_PUBLISHED'
   | 'VALIDATION_ERROR'
   | 'INVALID_CURSOR'
   | 'UNAUTHORIZED'
@@ -113,6 +117,9 @@ const createInitialComments = (
 let feeds = createInitialFeeds();
 let comments = createInitialComments(feeds);
 const likedFeedIds = new Set<string>();
+
+export const getMockPublishedFeedId = (diaryId: string): string | null =>
+  feeds.find((feed): boolean => feed.diaryId === diaryId)?.id ?? null;
 
 export const hasMockFeed = (feedId: string): boolean =>
   feeds.some((feed): boolean => feed.id === feedId);
@@ -254,6 +261,64 @@ const changeLike = (
 };
 
 export const feedHandlers = [
+  http.post('/api/v1/feeds', async ({ request }): Promise<Response> => {
+    const error = validateMutation(request);
+    if (error) return error;
+    const body: unknown = await request.json().catch((): null => null);
+    if (
+      !isRecord(body) ||
+      typeof body.diaryId !== 'string' ||
+      !isCanonicalUuid(body.diaryId) ||
+      typeof body.categoryId !== 'string'
+    )
+      return problem(request, 400, 'VALIDATION_ERROR');
+
+    await delay(800);
+    if (
+      request.headers.get(MOCK_SCENARIO_HEADER) ===
+      MOCK_SCENARIOS.feedPublishFailure
+    )
+      return problem(request, 503, 'INTERNAL_SERVER_ERROR');
+    if (getMockPublishedFeedId(body.diaryId))
+      return problem(request, 409, 'DIARY_ALREADY_PUBLISHED');
+    const category = categories.find(
+      ({ id }): boolean => id === body.categoryId,
+    );
+    if (!category) return problem(request, 404, 'CATEGORY_NOT_FOUND');
+
+    const feed: MockFeed = {
+      id: crypto.randomUUID(),
+      diaryId: body.diaryId,
+      author: {
+        id: MOCK_USER_ID,
+        nickname: '하루들',
+        profileImageUrl: profileImage,
+      },
+      category: { id: category.id, name: category.name },
+      imageUrl: diaryImage,
+      publishedAt: new Date().toISOString(),
+      likeCount: 0,
+      commentCount: 0,
+    };
+    feeds.unshift(feed);
+    return HttpResponse.json(
+      {
+        id: feed.id,
+        author: feed.author,
+        category: feed.category,
+        imageUrl: feed.imageUrl,
+        imageUrlExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+        publishedAt: feed.publishedAt,
+        likeCount: 0,
+        commentCount: 0,
+        likedByMe: false,
+        isMine: true,
+        shareUrl: `${new URL(request.url).origin}/feeds/${feed.id}`,
+      },
+      { status: 201 },
+    );
+  }),
+
   http.get('/api/v1/categories', async ({ request }): Promise<Response> => {
     await delay(300);
     const error = validateAuthentication(request);

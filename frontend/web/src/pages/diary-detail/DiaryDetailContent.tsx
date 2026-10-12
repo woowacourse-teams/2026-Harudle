@@ -41,7 +41,9 @@ const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
   const { imageUrl, title } = diaryDetail.generation;
 
   const handleFeedAction = (): void => {
-    void navigate(`/diary/${diaryId}/feed-post`);
+    void navigate(`/diary/${diaryId}/feed-post`, {
+      state: { imageUrl, publishedFeedId },
+    });
   };
 
   return (
