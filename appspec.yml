@@ -10,6 +10,10 @@ files:
     destination: /opt/harudle/monitoring
   - source: build-artifacts
     destination: /opt/harudle/images
+  - source: backend/src/main/resources/db/maintenance/backfill_user_public_profiles.sql
+    destination: /opt/harudle/maintenance
+  - source: deploy/scripts/run_profile_backfill.sh
+    destination: /opt/harudle/maintenance
 
 hooks:
   BeforeInstall:
