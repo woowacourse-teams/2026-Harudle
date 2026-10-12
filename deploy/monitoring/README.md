@@ -2,6 +2,8 @@
 
 이 디렉터리의 설정은 CodeDeploy 아티팩트로 EC2의 `/opt/harudle/monitoring`에 복사된다. 백엔드와 Nginx 로그는 Docker `awslogs` 드라이버가 CloudWatch Logs에 직접 보낸다. 이 CloudWatch Agent 설정은 호스트의 `127.0.0.1:19091/actuator/prometheus`를 1분마다 수집해 EMF 로그로 게시한다. Agent 설정은 기존 호스트 메트릭 구성을 지우지 않도록 **배포 후 별도로** 적용한다. PR 병합만으로 대시보드·Discord 알람이 완성되는 것은 아니다.
 
+생성 시간·토큰·정리 실패의 추가 구성과 검증 결과는 [추가 관측 운영 안내](generation-observation.md)에 정리했다.
+
 실제 AWS 리소스 확인과 적용 순서는 [인프라 적용 계획](infrastructure-rollout.md)에 정리했다. S3 폴더(prefix) 분리는 다른 팀원이 담당하며, 병합 전에 그 작업의 저장·조회·삭제·기존 이미지 인수 조건을 확인한다.
 
 ## dev 배포 전에 확인
@@ -28,7 +30,7 @@ dev에서는 `compose.dev.yaml`을 추가하고 prod에서는 추가하지 않�
 
 ## CloudWatch Agent
 
-호스트에 Agent가 이미 설치되어 있다면 기존 활성 설정과 파일 이름을 먼저 기록한다. 이 파일은 추가 조각이므로 `fetch-config`로 기존 구성을 대체하지 않는다. 현재 환경에 해당하는 파일 **하나만** `append-config`로 적용한다. dev 호스트에서 이 명령을 실행할 접근 경로는 아직 확인되지 않았다.
+호스트에 Agent가 이미 설치되어 있다면 기존 활성 설정과 파일 이름을 먼저 기록한다. 이 파일은 추가 조각이므로 `fetch-config`로 기존 구성을 대체하지 않는다. 현재 환경에 해당하는 파일 **하나만** `append-config`로 적용한다. dev와 prod 모두 SSM Session Manager로 접속해 적용했다. 기존 호스트 조각의 해시를 보존하고 앱 조각만 갱신한다.
 
 ```bash
 sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
@@ -38,7 +40,7 @@ sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
 
 prod에서는 위 명령의 파일명을 `cloudwatch-agent.prod.json`으로 바꾼다. 활성 Agent 조각에 같은 이름의 파일이 없는지 확인하고, 기존 호스트 CPU·메모리·디스크 지표가 계속 들어오는지 검사한다. `/harudle/{env}/prometheus-emf`에 새 이벤트가 생기고 `Harudle/Dev` 또는 `Harudle/Prod` 네임스페이스에 아래 지표가 나타나야 한다. Agent 수집·EMF 로그는 CloudWatch 비용이 발생하므로 필요한 계열만 선택했다.
 
-`prometheus.yaml`의 `metric_relabel_configs`는 아래 9개 계열만 Agent에 전달한다. `metric_declaration`만 지정하면 선택하지 않은 JVM·보안·저장소 지표도 EMF 로그 본문에 남을 수 있어, 수집 단계에서도 제외한다. 지표를 추가할 때는 이 허용 목록과 dev/prod의 `metric_declaration`을 함께 수정한다. 적용 뒤 새 EMF 로그에 허용한 계열만 들어오는지 확인한다.
+`prometheus.yaml`의 `metric_relabel_configs`는 아래 기존 9개 지표명에 생성 시간 sum/count와 Gemini 토큰 3개를 더한 **12개 지표명**만 Agent에 전달한다. EMF 선언은 11개이며 생성 시간 sum/count는 같은 선언을 사용한다. `metric_declaration`만 지정하면 선택하지 않은 JVM·보안·저장소 지표도 EMF 로그 본문에 남을 수 있어, 수집 단계에서도 제외한다. 지표를 추가할 때는 이 허용 목록과 dev/prod의 `metric_declaration`을 함께 수정한다. 적용 뒤 새 EMF 로그에 허용한 계열만 들어오는지 확인한다.
 
 ### 선택형 호스트 메모리·디스크 수집
 
@@ -66,6 +68,8 @@ sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
 | `harudle_s3_url_signs_total` | 이미지 접근 URL 발급 실패(`result`, `failureType`). 서명 성공이 객체 존재를 증명하지는 않음 |
 | `harudle_image_load_failures_total` | 로그인 사용자 타임라인·상세 화면의 이미지 실패 신고를 받은 횟수. 프론트 팀원의 신고 코드가 별도 배포되기 전에는 0으로 유지됨 |
 | `http_server_requests_seconds_count`, `hikaricp_connections_pending` | API 전체 요청·5xx 수·오류 비율(`job`, `outcome`, `status` 차원)과 DB 연결 대기 |
+| `harudle_generation_duration_seconds_sum`, `harudle_generation_duration_seconds_count` | 같은 `job/result`의 시간 합 ÷ 실행 수로 5분 평균 실행 시간 계산. 요청 P95와 DB 최종 성공률이 아님 |
+| `harudle_gemini_tokens_total` | 단계(`stage`)·종류(`kind`)별 공급자 응답에서 관측한 토큰. `total`과 구성 항목을 합산하지 않음 |
 
 `/actuator/prometheus`의 `*_total`은 프로세스 시작부터 누적된 값이다. 다만 CloudWatch Agent는 Prometheus 카운터를 이전 스크레이프 대비 **증가분**으로 변환해 EMF/CloudWatch에 보낸다. 첫 스크레이프에는 이전 값이 없어 증가분을 내보내지 않는다. 따라서 Agent가 게시한 CloudWatch 카운터의 알람은 실제 dev 샘플을 확인한 뒤 5분 또는 15분 기간의 `Sum`으로 평가한다. 누적 원본에 쓰는 `DIFF`나 `RATE`를 CloudWatch 값에 다시 적용하지 않는다. [AWS 카운터 변환 설명](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/ContainerInsights-Prometheus-metrics-conversion.html)을 참고한다. `harudle_generation_executions_total{result="returned"}`는 실행기가 값을 반환했다는 뜻이며 DB 최종 성공이나 브라우저 표시 성공을 뜻하지 않는다. `GENERATION_INTERRUPTED`는 DB 상태가 아니라 실패 `errorCode`다. S3 `get_object`는 서버가 참조 이미지를 읽는 작업이지 브라우저의 완성 이미지 조회가 아니다. `head_object{result="missing"}`은 점검이나 복구 중 예상된 결과일 수 있으므로 그 값만으로 알리지 않는다.
 
@@ -82,7 +86,7 @@ sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
 
 이미지 실패 신고 API는 `POST /api/v1/telemetry/image-load-failures/{timeline|detail}`이며 인증·CSRF가 필요한 본문 없는 요청에 204로 응답한다. 수락한 신고마다 `image_load_failure_reported` 구조화 로그를 한 번 기록하고, dev에는 이 이벤트의 로그 지표 필터를 준비했다. 이번 PR에는 프론트 신고 코드가 포함되지 않는다. 담당 팀원의 프론트 작업이 dev에 합류하고 두 화면의 실제 실패 신고가 API·지표·로그 필터에 도착하는지 확인한 뒤에만 `image-load-failure` 알람을 만든다. 그전의 지표 0은 이미지 표시 성공을 뜻하지 않는다.
 
-Gemini 단계·S3 작업/URL 서명·HTTP 상태별 카운터는 새 태그 조합이 첫 이벤트에서 생성될 수 있어 같은 첫 수집 누락 위험이 있다. 첫 **한 건**부터 감지해야 하는 S3/Gemini 오류는 `event=external_api_failure`와 `provider`·`operation`·`failureType`을 사용하는 CloudWatch Logs 지표 필터로 세고, Agent 카운터는 추세 관찰과 대조에 쓴다. 필터가 원본 실패 로그 한 건을 정확히 한 번 세는지 dev에서 확인한다. 2026-09-30 점검 시점 dev 로그 지표 필터 13개와 그중 12개에 대한 경보, EC2 상태 검사·CPU 경보 각 1개가 생성됐지만, 초기 점검의 dev 백엔드 로그 스트림은 0개였다. 이후 제공 역할로 Lambda·SNS를 연결하고 2026-09-30 22:49 KST에 시험 ALARM·OK의 Discord 수신을 확인했다. 이 시험은 SNS 게시부터의 전달을 검증했으며 실제 앱 실패 로그·CloudWatch 경보 상태 전환은 아직 검증 전이다. 앱 로그는 Docker `awslogs`가 직접 전송한다. 새 계측 코드는 아직 dev에 배포되지 않았고 Docker 로그 쓰기 권한도 미확인이므로, 스트림 0개만으로 수집 장애를 판단할 수 없다. 실제 로그 일치와 첫 건 알림은 아직 검증되지 않았다. [현재 AWS 현황](infrastructure-rollout.md#지금-확인된-것과-미확인인-것)을 참고한다. 이미지 신고도 구조화 로그와 필터는 준비됐지만, 프론트 연동과 실제 유입 전에는 첫 건 알림을 보장하지 않는다.
+Gemini 단계·S3 작업/URL 서명·HTTP 상태별 카운터는 새 태그 조합이 첫 이벤트에서 생성될 수 있어 같은 첫 수집 누락 위험이 있다. 첫 **한 건**부터 감지해야 하는 S3/Gemini 오류는 `event=external_api_failure`와 `provider`·`operation`·`failureType`을 사용하는 CloudWatch Logs 지표 필터로 세고, Agent 카운터는 추세 관찰과 대조에 쓴다. 2026-10-08 현재 dev/prod 모두 JSON 로그·1분 EMF 수집이 동작하며 환경별 기존 경보 19개를 유지했다. 대표 경보의 ALARM·자연 OK 전체 전달을 검증했으며, dev EC2 상태 경보의 기존 빈 AlarmActions는 유지했다. 기존 ALARM·자연 OK의 전체 전달 시험과 10/8 추가 구성은 [추가 관측 운영 안내](generation-observation.md)에 구분해 기록했다. 이번에 준비한 정리 경보 3개씩은 전달기 허용 목록 반영 전이므로 **알림 비활성**이다.
 
 dev에서 Agent 버전과 활성 설정을 기록하고, 안전한 테스트 요청 전후의 `/actuator/prometheus` 누적값·`/harudle/dev/prometheus-emf`의 증가분·CloudWatch 5분 `Sum`을 대조한다. 백엔드 재시작 뒤에도 큰 오탐 증가분이나 음수가 나오지 않는지 확인한 다음 알람을 활성화한다. 오류가 발생했을 때만 생성되는 시계열의 데이터 없음은 `notBreaching`으로 취급한다. 반대로 `hikaricp_connections_pending`처럼 매 수집 주기에 나오는 게이지가 dev에서 실제로 연속 게시되는지 확인한 뒤, 그 시계열의 무데이터를 `breaching`으로 보는 **별도 수집 중단 알람**을 둔다. Hikari가 연속 게시되지 않으면 Agent 상태를 나타내는 다른 지속 신호를 먼저 정한다. [CloudWatch 결측값 처리](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/alarms-and-missing-data.html)를 참고한다.
 
@@ -151,7 +155,9 @@ P95·P99 알람은 위의 수집 방식·목표·표본 수가 dev에서 검증�
 
 Discord 전달 함수 `discord_forwarder.py`는 아래 이름만 허용한다. 각 환경에서 `harudle-{env}-{suffix}`로 경보를 만들고 Lambda 환경 변수 `DEPLOY_ENV`에 해당 환경, `ALARM_TOPIC_ARN`에 환경별 SNS 주제 ARN을 지정한다. 함수는 CloudWatch의 자유 형식 오류 이유를 전달하지 않고, 환경·알람명·상태·고정 원인 문구만 Discord로 보낸다. `allowed_mentions`는 비활성화한다. 현재 Lambda·SNS·IAM·알람은 저장소 배포에서 자동으로 생성하지 않는다.
 
-알림은 Discord Embed 카드 한 개로 표시한다. ALARM은 빨강·경보 발생 제목, OK는 초록·정상 상태 제목, INSUFFICIENT_DATA는 노랑·지표 부족 제목으로 구분한다. 고정 원인을 본문에 먼저 보여주고 환경·상태는 나란히, 알람명은 별도 행에 표시한다. OK는 경보 생성 직후에도 발생할 수 있으므로 실제 장애 복구를 단정하지 않고 ‘현재 경보 상태: OK’로 표시한다. 전송 데이터는 기존 네 필드이며 원본 오류 이유·URL·추가 측정값을 포함하지 않는다. 이 함수 코드는 EC2 배포와 별도로 Lambda ZIP을 갱신해야 반영된다. [Discord Embed](https://docs.discord.com/developers/resources/message#embed-object)
+알림은 Discord Embed 카드 한 개로 표시한다. ALARM은 빨강·경보 발생 제목, OK는 초록, INSUFFICIENT_DATA는 노랑·지표 부족 제목으로 구분한다. 고정 원인을 본문에 먼저 보여주고 환경·상태는 나란히, 알람명은 별도 행에 표시한다. 정리 실패 3종과 이번 Gemini 요청 실패·이미지 대체 실패의 OK 제목은 `현재 경보 상태: OK`로 표시하고, 데이터가 없어도 OK가 될 수 있으며 이전 실패 건은 별도 확인해야 한다고 안내한다. 이 경보들은 실패 발생 건수를 세므로 이전 작업의 정리 완료나 이미지 복원을 증명하지 않는다. 다른 경보의 표현은 유지한다. 전송 데이터는 기존 네 필드이며 원본 오류 이유·URL·추가 측정값을 포함하지 않는다. 이 함수 코드는 EC2 배포와 별도로 Lambda ZIP을 갱신해야 반영된다. [Discord Embed](https://docs.discord.com/developers/resources/message#embed-object), [CloudWatch 결측값 처리](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/alarms-and-missing-data.html)
+
+PR #330의 추가 검토에서는 **Gemini 인증·요청 오류, 확인된 S3 부재와 대체 URL 미확보**만 환경별 두 경보로 준비한다. 기존 통신/응답 처리 경보를 유지하며 세부 원인은 로그에서 조사한다. 추가 API·Gemini 지연, DB 풀 세부 지표와 일반 R2 오류 알림은 이번 범위에 넣지 않는다. 새 두 경보는 저장소 설정만 준비한 상태이며 AWS 적용·필터 검증·전달기 배포·활성화 순서를 따른다. 조건과 보류 이유는 [최소 보완 범위](generation-observation.md#꼭-필요한-보완만-추가)를 참고한다.
 
 현재 우테코 제공 인프라에서는 **제공 역할 `techcourse-lambda-execution-role`**을 그대로 사용하고, Webhook은 Lambda 환경 변수 `WEBHOOK_URL`에 넣는다. 새 역할·관리형 정책·Secrets Manager 비밀 생성과 공유 역할의 정책 변경은 하지 않는다. `WEBHOOK_URL`과 `WEBHOOK_SECRET_ARN` 중 비어 있지 않은 값은 **정확히 하나**여야 한다. 둘 다 있거나 둘 다 없으면 호출 전에 설정 오류로 중단한다. 환경 변수 방식은 Secrets Manager API를 호출하지 않는다. 기존 Secret ARN 방식은 허용된 별도 운영 환경에서 계속 사용할 수 있으며, Secret 값은 URL 또는 `webhook_url`을 가진 JSON이다. 두 방식 모두 HTTPS Discord 호스트·Webhook 경로를 검증하고 사용자 정보·포트·query·fragment가 있는 URL을 거절한다.
 
@@ -176,12 +182,17 @@ Discord의 일반 Execute Webhook은 `wait` 기본값이 `false`다. 이때 메�
 | `s3-put-failure` | S3 생성 이미지 저장 실패 1건 |
 | `s3-reference-get-failure` | S3 참조 이미지 조회 실패 1건 |
 | `s3-url-sign-failure` | 이미지 접근 URL 발급 실패 1건 |
+| `s3-delete-failure` | 객체 삭제 처리 실패 로그 1건. 작업 수·SDK 재시도 수와 다름 |
+| `image-cleanup-deferred` | 안전한 이미지 폐기 여부 확인 실패로 삭제를 보류한 작업 1건 |
+| `generation-cleanup-failure` | 만료된 생성 정리 스케줄러 실행 실패 1건 |
 | `s3-authentication`, `s3-authorization`, `s3-configuration` | 각 S3 실패 유형 1건 |
 | `image-load-failure` | 로그인 사용자 타임라인·상세 화면 이미지 표시 실패 5분간 3건. 프론트 팀원 코드의 신고 연동 검증 전에는 만들거나 활성화하지 않음 |
 | `api-5xx` | `api_exception`의 5xx 로그 `Api5xxFailureLogs`가 5분간 3건 이상 |
 | `api-error-rate` | 표본 조건을 만족한 API 5xx 비율 증가 |
 | `gemini-storyboard-transient`, `gemini-image-transient` | 각 단계의 공급자 일시 오류 15분간 3건 이상 |
 | `gemini-storyboard-response`, `gemini-image-response` | 각 단계의 응답 처리 오류 15분간 2건 이상 |
+| `gemini-request-failure` | 인증·권한/요청 거절/요청 준비/인라인 크기 초과 오류 5분 1건. **저장소 설정만 준비, AWS 미적용** |
+| `image-fallback-unavailable` | S3 부재 확인 후 대체 URL 미확보 5분 1건. R2 대체 제공 경로 활성화 전제. **저장소 설정만 준비, AWS 미적용** |
 | `hikari-pending` | DB 연결 대기 증가 |
 | `telemetry-stale` | 검증된 지속 게이지의 무데이터로 서버 지표 수집 중단 감지 |
 | `api-p95`, `api-p99` | 지연 수집 방식·목표·표본 수 검증 후 활성화 |

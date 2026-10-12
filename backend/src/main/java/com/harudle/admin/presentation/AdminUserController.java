@@ -82,7 +82,6 @@ class AdminUserController {
             ErrorType.INVALID_IDEMPOTENCY_KEY,
             ErrorType.UNAUTHORIZED,
             ErrorType.FORBIDDEN,
-            ErrorType.INVALID_CSRF_TOKEN,
             ErrorType.USER_NOT_FOUND,
             ErrorType.INACTIVE_USER,
             ErrorType.GENERATION_USAGE_CONFLICT,
@@ -107,7 +106,6 @@ class AdminUserController {
             ErrorType.VALIDATION_ERROR,
             ErrorType.UNAUTHORIZED,
             ErrorType.FORBIDDEN,
-            ErrorType.INVALID_CSRF_TOKEN,
             ErrorType.USER_NOT_FOUND,
             ErrorType.INACTIVE_USER
     })
@@ -120,7 +118,6 @@ class AdminUserController {
             ErrorType.VALIDATION_ERROR,
             ErrorType.UNAUTHORIZED,
             ErrorType.FORBIDDEN,
-            ErrorType.INVALID_CSRF_TOKEN,
             ErrorType.USER_NOT_FOUND,
             ErrorType.INACTIVE_USER,
             ErrorType.GENERATION_LIMIT_BELOW_USAGE
