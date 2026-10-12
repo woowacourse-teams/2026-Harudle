@@ -1,6 +1,7 @@
 import { delay, http, HttpResponse } from 'msw';
 import diaryImage from '../assets/images/diary-four-panel.webp';
 import profileImage from '../assets/icons/article_person.svg';
+import { isRecord } from '../shared/utils';
 import { isCanonicalUuid } from '../pages/landing/guestTrialUuid';
 
 interface MockCategory {
@@ -21,7 +22,7 @@ interface MockFeed {
   readonly imageUrl: string;
   readonly publishedAt: string;
   likeCount: number;
-  readonly commentCount: number;
+  commentCount: number;
 }
 
 interface MockFeedResponse extends MockFeed {
@@ -38,7 +39,8 @@ type FeedProblemCode =
   | 'UNAUTHORIZED'
   | 'FORBIDDEN'
   | 'CATEGORY_NOT_FOUND'
-  | 'FEED_NOT_FOUND';
+  | 'FEED_NOT_FOUND'
+  | 'COMMENT_NOT_FOUND';
 
 const MOCK_USER_ID = '08d69a34-6d70-4d42-a158-671bc67733c9';
 const MOCK_ACCESS_TOKEN = 'mock-access-token';
@@ -71,16 +73,50 @@ const createInitialFeeds = (): MockFeed[] => {
         now - Math.floor(index / 2) * 3_600_000,
       ).toISOString(),
       likeCount: (index % 5) * 3,
-      commentCount: index % 4,
+      commentCount: index === 0 ? 24 : index % 4,
     };
   });
 };
 
+interface MockComment {
+  readonly id: string;
+  readonly feedId: string;
+  readonly author: MockFeed['author'];
+  readonly content: string;
+  readonly createdAt: string;
+}
+
+const createInitialComments = (
+  initialFeeds: readonly MockFeed[],
+): MockComment[] => {
+  return initialFeeds.flatMap((feed, feedIndex) =>
+    Array.from({ length: feed.commentCount }, (_, index): MockComment => ({
+      id: `10000000-0000-4000-8000-${String(feedIndex * 100 + index + 1).padStart(12, '0')}`,
+      feedId: feed.id,
+      author: {
+        id:
+          index % 2 === 0
+            ? MOCK_USER_ID
+            : '00000000-0000-4000-8000-000000000100',
+        nickname: index % 2 === 0 ? '하루들' : '네오',
+        profileImageUrl: profileImage,
+      },
+      content:
+        index % 2 === 0 ? '오늘도 수고했어요!' : '마지막 장면 너무 공감돼요!',
+      createdAt: new Date(
+        Date.now() - (feed.commentCount - index) * 60_000,
+      ).toISOString(),
+    })),
+  );
+};
+
 let feeds = createInitialFeeds();
+let comments = createInitialComments(feeds);
 const likedFeedIds = new Set<string>();
 
 export const resetFeedMockState = (): void => {
   feeds = createInitialFeeds();
+  comments = createInitialComments(feeds);
   likedFeedIds.clear();
 };
 
@@ -285,6 +321,127 @@ export const feedHandlers = [
   }),
 
   http.get(
+    '/api/v1/feeds/:feedId/comments',
+    async ({ request, params }): Promise<Response> => {
+      await delay(300);
+      const error = validateAuthentication(request);
+      if (error) return error;
+      const feedId = String(params.feedId);
+      if (!isCanonicalUuid(feedId))
+        return problem(request, 400, 'VALIDATION_ERROR');
+      if (!feeds.some(({ id }): boolean => id === feedId))
+        return problem(request, 404, 'FEED_NOT_FOUND');
+      const url = new URL(request.url);
+      const sizeValue = url.searchParams.get('size');
+      const size = sizeValue === null ? 20 : Number(sizeValue);
+      if (
+        (sizeValue !== null && !/^\d+$/.test(sizeValue)) ||
+        !Number.isInteger(size) ||
+        size < 1 ||
+        size > 50
+      )
+        return problem(request, 400, 'VALIDATION_ERROR');
+      let cursor: { readonly id: string; readonly createdAt: string } | null =
+        null;
+      const cursorValue = url.searchParams.get('cursor');
+      if (cursorValue !== null) {
+        try {
+          const value: unknown = JSON.parse(cursorValue);
+          if (
+            typeof value !== 'object' ||
+            value === null ||
+            !('feedId' in value) ||
+            value.feedId !== feedId ||
+            !('id' in value) ||
+            typeof value.id !== 'string' ||
+            !isCanonicalUuid(value.id) ||
+            !('createdAt' in value) ||
+            typeof value.createdAt !== 'string' ||
+            !Number.isFinite(Date.parse(value.createdAt))
+          )
+            return problem(request, 400, 'INVALID_CURSOR');
+          cursor = { id: value.id, createdAt: value.createdAt };
+        } catch {
+          return problem(request, 400, 'INVALID_CURSOR');
+        }
+      }
+      const sorted = comments
+        .filter((comment): boolean => comment.feedId === feedId)
+        .sort(
+          (a, b): number =>
+            a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id),
+        )
+        .filter(
+          (comment): boolean =>
+            cursor === null ||
+            comment.createdAt > cursor.createdAt ||
+            (comment.createdAt === cursor.createdAt && comment.id > cursor.id),
+        );
+      const page = sorted.slice(0, size);
+      const last = page.at(-1);
+      const hasNext = sorted.length > size;
+      return HttpResponse.json({
+        items: page.map((comment) => ({
+          id: comment.id,
+          author: comment.author,
+          content: comment.content,
+          createdAt: comment.createdAt,
+          isMine:
+            isAuthenticated(request) && comment.author.id === MOCK_USER_ID,
+        })),
+        nextCursor:
+          hasNext && last
+            ? JSON.stringify({ feedId, id: last.id, createdAt: last.createdAt })
+            : null,
+        hasNext,
+      });
+    },
+  ),
+
+  http.post(
+    '/api/v1/feeds/:feedId/comments',
+    async ({ request, params }): Promise<Response> => {
+      await delay(300);
+      const error = validateMutation(request);
+      if (error) return error;
+      const feedId = String(params.feedId);
+      if (!isCanonicalUuid(feedId))
+        return problem(request, 400, 'VALIDATION_ERROR');
+      const feed = feeds.find(({ id }): boolean => id === feedId);
+      if (!feed) return problem(request, 404, 'FEED_NOT_FOUND');
+      const data: unknown = await request.json().catch((): null => null);
+      if (!isRecord(data) || typeof data.content !== 'string')
+        return problem(request, 400, 'VALIDATION_ERROR');
+      const content = data.content.trim();
+      if ([...content].length < 1 || [...content].length > 100)
+        return problem(request, 400, 'VALIDATION_ERROR');
+      const comment: MockComment = {
+        id: crypto.randomUUID(),
+        feedId,
+        author: {
+          id: MOCK_USER_ID,
+          nickname: '하루들',
+          profileImageUrl: profileImage,
+        },
+        content,
+        createdAt: new Date().toISOString(),
+      };
+      comments.push(comment);
+      feed.commentCount += 1;
+      return HttpResponse.json(
+        {
+          id: comment.id,
+          author: comment.author,
+          content,
+          createdAt: comment.createdAt,
+          isMine: true,
+        },
+        { status: 201 },
+      );
+    },
+  ),
+
+  http.get(
     '/api/v1/feeds/:feedId',
     async ({ request, params }): Promise<Response> => {
       await delay(300);
@@ -303,6 +460,26 @@ export const feedHandlers = [
         isMine: authenticated && feed.author.id === MOCK_USER_ID,
         shareUrl: `${new URL(request.url).origin}/feeds/${feed.id}`,
       });
+    },
+  ),
+
+  http.delete(
+    '/api/v1/comments/:commentId',
+    async ({ request, params }): Promise<Response> => {
+      await delay(300);
+      const error = validateMutation(request);
+      if (error) return error;
+      const commentId = String(params.commentId);
+      if (!isCanonicalUuid(commentId))
+        return problem(request, 400, 'VALIDATION_ERROR');
+      const comment = comments.find(({ id }): boolean => id === commentId);
+      if (!comment) return problem(request, 404, 'COMMENT_NOT_FOUND');
+      if (comment.author.id !== MOCK_USER_ID)
+        return problem(request, 403, 'FORBIDDEN');
+      comments = comments.filter(({ id }): boolean => id !== commentId);
+      const feed = feeds.find(({ id }): boolean => id === comment.feedId);
+      if (feed) feed.commentCount -= 1;
+      return new HttpResponse(null, { status: 204 });
     },
   ),
 
@@ -338,6 +515,9 @@ export const feedHandlers = [
 
       feeds = feeds.filter(({ id }): boolean => id !== feedId);
       likedFeedIds.delete(feedId);
+      comments = comments.filter(
+        (comment): boolean => comment.feedId !== feedId,
+      );
       return new HttpResponse(null, { status: 204 });
     },
   ),

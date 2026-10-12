@@ -11,7 +11,7 @@ interface FeedActionsProps extends Pick<
   'likeCount' | 'likedByMe' | 'commentCount' | 'shareUrl'
 > {
   readonly feedId: Feed['id'];
-  readonly onCommentClick: () => void;
+  readonly onCommentClick?: () => void;
   readonly onLikeChange: (feedId: Feed['id'], like: FeedLikeResponse) => void;
 }
 

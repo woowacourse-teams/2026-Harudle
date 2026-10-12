@@ -1,6 +1,10 @@
 /** @jest-environment node */
 
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import {
+  isFeedCommentsResponse,
+  type FeedCommentsResponse,
+} from '../domain/feeds/feedComments';
 import { feedHandlers, resetFeedMockState } from './feedHandlers';
 
 jest.mock('msw', () => {
@@ -58,11 +62,14 @@ const requestApi = async (
   for (const handler of handlers) {
     if (handler.method !== request.method) continue;
     const pattern = new RegExp(
-      `^${handler.path.replace(':feedId', '([^/]+)')}$`,
+      `^${handler.path.replace(/:(feedId|commentId)/g, '([^/]+)')}$`,
     );
     const match = pathname.match(pattern);
     if (match) {
-      return handler.resolver({ request, params: { feedId: match[1] ?? '' } });
+      return handler.resolver({
+        request,
+        params: { feedId: match[1] ?? '', commentId: match[1] ?? '' },
+      });
     }
   }
   throw new Error(`MSW 핸들러가 없습니다: ${request.method} ${path}`);
@@ -99,6 +106,15 @@ const listFeeds = async (
     items.push(Object.fromEntries(Object.entries(item)));
   }
   return { items, nextCursor: data.nextCursor, hasNext: data.hasNext };
+};
+
+const readCommentPage = async (
+  response: Response,
+): Promise<FeedCommentsResponse> => {
+  const data: unknown = await response.json();
+  if (!isFeedCommentsResponse(data))
+    throw new Error('댓글 목록 응답 형식이 올바르지 않습니다.');
+  return data;
 };
 
 beforeEach(() => resetFeedMockState());
@@ -270,5 +286,133 @@ describe('피드 페이지 MSW', () => {
     await expect(missing.json()).resolves.toMatchObject({
       code: 'FEED_NOT_FOUND',
     });
+  });
+});
+
+describe('피드 상세와 댓글 MSW 계약', (): void => {
+  const commentPath = `/api/v1/feeds/${ownFeedId}/comments`;
+  it('상세를 공개 조회하고 로그인 시 소유권·좋아요를 개인화한다', async (): Promise<void> => {
+    const guest = await requestApi(`/api/v1/feeds/${ownFeedId}`);
+    await expect(guest.json()).resolves.toMatchObject({
+      id: ownFeedId,
+      isMine: false,
+      likedByMe: false,
+      commentCount: 24,
+    });
+    const member = await requestApi(`/api/v1/feeds/${ownFeedId}`, {
+      headers: memberHeaders,
+    });
+    await expect(member.json()).resolves.toMatchObject({
+      isMine: true,
+      shareUrl: `http://localhost/feeds/${ownFeedId}`,
+    });
+    expect((await requestApi('/api/v1/feeds/not-a-uuid')).status).toBe(400);
+  });
+
+  it('댓글을 오래된 순으로 페이지 조회하고 다른 피드의 커서를 거부한다', async (): Promise<void> => {
+    const first = await requestApi(`${commentPath}?size=20`);
+    const data = await readCommentPage(first);
+    expect(data.items).toHaveLength(20);
+    expect(
+      data.items.every(
+        (item: { readonly isMine: boolean }): boolean => item.isMine === false,
+      ),
+    ).toBe(true);
+    const last = await requestApi(
+      `${commentPath}?cursor=${encodeURIComponent(data.nextCursor ?? '')}`,
+    );
+    const lastData = await readCommentPage(last);
+    expect(lastData.items).toHaveLength(4);
+    expect(lastData.hasNext).toBe(false);
+    expect(lastData.nextCursor).toBeNull();
+    expect(
+      new Set(
+        [...data.items, ...lastData.items].map(
+          (item: { readonly id: string }): string => item.id,
+        ),
+      ).size,
+    ).toBe(24);
+    const invalid = await requestApi(
+      `/api/v1/feeds/${otherFeedId}/comments?cursor=${encodeURIComponent(data.nextCursor ?? '')}`,
+    );
+    await expect(invalid.json()).resolves.toMatchObject({
+      code: 'INVALID_CURSOR',
+    });
+  });
+
+  it('댓글 100 code point와 공백 제거를 적용하고 인증·잘못된 본문을 검사한다', async (): Promise<void> => {
+    expect((await requestApi(commentPath, { method: 'POST' })).status).toBe(
+      401,
+    );
+    for (const content of ['   ', '😀'.repeat(101)]) {
+      const invalid = await requestApi(commentPath, {
+        method: 'POST',
+        headers: memberHeaders,
+        body: JSON.stringify({ content }),
+      });
+      await expect(invalid.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+      });
+    }
+    const response = await requestApi(commentPath, {
+      method: 'POST',
+      headers: memberHeaders,
+      body: JSON.stringify({ content: `  ${'😀'.repeat(100)}  ` }),
+    });
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      content: '😀'.repeat(100),
+      isMine: true,
+    });
+    const feed = await requestApi(`/api/v1/feeds/${ownFeedId}`);
+    await expect(feed.json()).resolves.toMatchObject({ commentCount: 25 });
+  });
+
+  it('소유한 댓글만 삭제하고 개수를 갱신하며 피드 삭제 시 댓글 조회도 차단한다', async (): Promise<void> => {
+    const response = await requestApi(`${commentPath}?size=2`, {
+      headers: memberHeaders,
+    });
+    const data = await readCommentPage(response);
+    const ownCommentId = data.items[0].id;
+    const otherCommentId = data.items[1].id;
+    expect(
+      (
+        await requestApi(`/api/v1/comments/${otherCommentId}`, {
+          method: 'DELETE',
+          headers: memberHeaders,
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await requestApi(`/api/v1/comments/${ownCommentId}`, {
+          method: 'DELETE',
+          headers: memberHeaders,
+        })
+      ).status,
+    ).toBe(204);
+    const missing = await requestApi(`/api/v1/comments/${ownCommentId}`, {
+      method: 'DELETE',
+      headers: memberHeaders,
+    });
+    await expect(missing.json()).resolves.toMatchObject({
+      code: 'COMMENT_NOT_FOUND',
+    });
+    const feed = await requestApi(`/api/v1/feeds/${ownFeedId}`);
+    await expect(feed.json()).resolves.toMatchObject({ commentCount: 23 });
+    const nextPage = await requestApi(
+      `${commentPath}?cursor=${encodeURIComponent(data.nextCursor ?? '')}`,
+    );
+    expect(nextPage.status).toBe(200);
+    await requestApi(`/api/v1/feeds/${ownFeedId}`, {
+      method: 'DELETE',
+      headers: memberHeaders,
+    });
+    for (const path of [`/api/v1/feeds/${ownFeedId}`, commentPath]) {
+      const deleted = await requestApi(path);
+      await expect(deleted.json()).resolves.toMatchObject({
+        code: 'FEED_NOT_FOUND',
+      });
+    }
   });
 });

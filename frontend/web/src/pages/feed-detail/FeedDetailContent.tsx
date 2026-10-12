@@ -9,6 +9,9 @@ import backIcon from '../../assets/icons/back.svg';
 import harudleLogo from '../../assets/images/harudle-logo.webp';
 import LoadingSpinner from '../../shared/LoadingSpinner';
 import FeedDetailError from './FeedDetailError';
+import FeedComments from './FeedComments';
+import FeedCommentInput from './FeedCommentInput';
+import useFeedComments from './useFeedComments';
 import useFeedDetail from './useFeedDetail';
 import { formatPublishedAt } from '../../shared/feed/formatPublishedAt';
 import DiaryImage from '../../shared/DiaryImage';
@@ -20,7 +23,13 @@ interface FeedDetailContentProps {
 
 const FeedDetailContent = ({ feedId }: FeedDetailContentProps) => {
   const navigate = useNavigate();
-  const { request: feedDetailRequest, updateLike } = useFeedDetail({ feedId });
+  const {
+    request: feedDetailRequest,
+    updateLike,
+    increaseCommentCount,
+    decreaseCommentCount,
+  } = useFeedDetail({ feedId });
+  const comments = useFeedComments({ feedId });
 
   if (
     feedDetailRequest.status === 'idle' ||
@@ -111,10 +120,28 @@ const FeedDetailContent = ({ feedId }: FeedDetailContentProps) => {
             commentCount={feed.commentCount}
             shareUrl={feed.shareUrl}
             onLikeChange={updateLike}
-            onCommentClick={() => {}}
           />
         </article>
+        <FeedComments
+          request={comments.request}
+          onDelete={(commentId): void => {
+            comments.removeComment(commentId);
+            decreaseCommentCount();
+          }}
+          onRetry={() => {
+            void comments.execute();
+          }}
+        />
       </main>
+      {comments.request.status === 'success' && (
+        <FeedCommentInput
+          feedId={feedId}
+          onCommentCreated={(comment) => {
+            comments.addComment(comment);
+            increaseCommentCount();
+          }}
+        />
+      )}
     </div>
   );
 };
