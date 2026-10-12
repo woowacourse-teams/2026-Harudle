@@ -1,3 +1,7 @@
+import { useRef } from 'react';
+import { type ModalHandle } from '../../shared/Modal';
+import NicknameEditModal from './NicknameEditModal';
+import profileFallbackImage from '../../assets/images/profile-fallback.svg';
 import { css } from '@emotion/react';
 import BottomNavigationLayout from '../../shared/BottomNavigationLayout';
 import useProfile from './useProfile';
@@ -29,7 +33,8 @@ const SettingPage = () => {
 export default SettingPage;
 
 const SettingPageContent = () => {
-  const { profileRequest } = useProfile();
+  const { profileRequest, updateProfile } = useProfile();
+  const nicknameModalRef = useRef<ModalHandle>(null);
   const { request, handleLogout } = useLogout();
 
   if (profileRequest.status === 'idle' || profileRequest.status === 'loading') {
@@ -40,13 +45,43 @@ const SettingPageContent = () => {
     return <SettingError errorMessage={profileRequest.error.message} />;
   }
 
-  const { name, oauthProviders } = profileRequest.data;
+  const {
+    name,
+    oauthProviders,
+    nickname: currentNickname,
+    profileImageUrl,
+  } = profileRequest.data;
 
   return (
     <div css={settingPageContentStyle}>
+      <div css={profileStyle}>
+        <img
+          css={profileImageStyle}
+          src={profileImageUrl || profileFallbackImage}
+          alt=""
+          onError={(event) => {
+            if (
+              event.currentTarget.getAttribute('src') !== profileFallbackImage
+            ) {
+              event.currentTarget.src = profileFallbackImage;
+            }
+          }}
+        />
+        <div css={nicknameStyle}>
+          <span css={nicknameLabelStyle}>닉네임</span>
+          <strong>{currentNickname}</strong>
+        </div>
+        <button
+          type="button"
+          css={editNicknameButtonStyle}
+          onClick={() => nicknameModalRef.current?.open()}
+        >
+          수정
+        </button>
+      </div>
       <div css={settingCardStyle}>
         <div css={settingRowStyle}>
-          <span css={settingLabelStyle}>이름</span>
+          <span css={settingLabelStyle}>소셜 계정 이름</span>
           <span css={settingValueStyle}>
             <span>{name}</span>
           </span>
@@ -91,6 +126,11 @@ const SettingPageContent = () => {
         <span>로그아웃</span>
         <img css={logoutIconStyle} src={logoutIcon} alt="" aria-hidden="true" />
       </button>
+      <NicknameEditModal
+        ref={nicknameModalRef}
+        currentNickname={currentNickname}
+        onSaved={updateProfile}
+      />
       {request.status === 'error' && (
         <div css={logoutErrorStyle}>{request.error.message}</div>
       )}
@@ -216,4 +256,48 @@ const logoutErrorStyle = css`
   color: ${theme.colors.foreground.critical};
   font-size: 13px;
   line-height: 20px;
+`;
+
+const profileStyle = css`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0 10px;
+`;
+
+const profileImageStyle = css`
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  object-fit: cover;
+  background-color: ${theme.colors.stroke.brandWeak};
+`;
+
+const nicknameStyle = css`
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  color: ${theme.colors.foreground.neutral};
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 26px;
+  overflow-wrap: anywhere;
+`;
+
+const nicknameLabelStyle = css`
+  color: ${theme.colors.foreground.neutralMuted};
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+`;
+
+const editNicknameButtonStyle = css`
+  padding: 8px;
+  border: 0;
+  background: none;
+  color: ${theme.colors.foreground.brand};
+  font-size: 14px;
+  cursor: pointer;
 `;

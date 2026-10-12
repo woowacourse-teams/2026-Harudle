@@ -1,7 +1,7 @@
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { RequestError, type ProblemDetails } from '../../shared/api';
-import { getUserProfile } from './profile';
+import { getUserProfile, updateUserNickname } from './profile';
 
 const mockAuthFetch = jest.fn<(...args: unknown[]) => Promise<Response>>();
 
@@ -12,6 +12,8 @@ jest.mock('../../shared/auth', () => ({
 const profile = {
   id: '0550ds07-01ce-4d68-81a2-a2fa70982a25',
   name: '정연준',
+  nickname: '연준',
+  profileImageUrl: '/profile.svg',
   email: null,
   role: 'ADMIN',
   oauthProviders: ['kakao'],
@@ -46,6 +48,8 @@ describe('프로필 조회 API', () => {
       { ...profile, oauthProviders: ['google'] },
     ],
     ['비어 있는 OAuth Provider 목록', { ...profile, oauthProviders: [] }],
+    ['잘못된 닉네임 타입', { ...profile, nickname: null }],
+    ['잘못된 프로필 이미지 타입', { ...profile, profileImageUrl: 123 }],
     ['잘못된 이메일 타입', { ...profile, email: 123 }],
   ])('%s이면 응답 형식 오류를 던진다', async (_, invalidProfile) => {
     mockAuthFetch.mockResolvedValueOnce(
@@ -112,5 +116,51 @@ describe('프로필 조회 API', () => {
       message: problemDetails.detail,
       problem: problemDetails,
     });
+  });
+});
+
+describe('닉네임 수정 API', () => {
+  const updatedProfile = {
+    id: profile.id,
+    nickname: '새닉네임',
+    profileImageUrl: '/profile.svg',
+  };
+
+  it('PATCH로 닉네임을 보내고 수정된 프로필을 반환한다', async () => {
+    mockAuthFetch.mockResolvedValueOnce(
+      createJsonResponse(updatedProfile, 200),
+    );
+    await expect(updateUserNickname('새닉네임')).resolves.toEqual(
+      updatedProfile,
+    );
+    expect(mockAuthFetch).toHaveBeenCalledWith('/api/v1/me', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nickname: '새닉네임' }),
+    });
+  });
+
+  it.each([
+    { ...updatedProfile, nickname: null },
+    { ...updatedProfile, id: 123 },
+    { ...updatedProfile, profileImageUrl: null },
+  ])('잘못된 수정 응답을 거부한다', async (data) => {
+    mockAuthFetch.mockResolvedValueOnce(createJsonResponse(data, 200));
+    await expect(updateUserNickname('새닉네임')).rejects.toThrow(
+      ERROR_MESSAGES.INVALID_PROFILE_RESPONSE,
+    );
+  });
+
+  it('중복 오류 코드를 보존한다', async () => {
+    const problem = {
+      type: 'about:blank',
+      title: 'Conflict',
+      status: 409,
+      detail: '중복',
+      instance: '/api/v1/me',
+      code: 'NICKNAME_ALREADY_USED',
+    };
+    mockAuthFetch.mockResolvedValueOnce(createJsonResponse(problem, 409));
+    await expect(updateUserNickname('네오')).rejects.toMatchObject({ problem });
   });
 });

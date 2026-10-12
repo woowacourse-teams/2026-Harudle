@@ -3,6 +3,7 @@ import { type ApiRequest } from '../../shared/api';
 import {
   getUserProfile,
   type ProfileResponse,
+  type UpdateProfileResponse,
 } from '../../domain/user/profile';
 
 const useProfile = () => {
@@ -11,7 +12,7 @@ const useProfile = () => {
   });
 
   useEffect(() => {
-    const execute = async (): Promise<void> => {
+    const execute = async () => {
       setRequest({
         status: 'loading',
       });
@@ -36,7 +37,14 @@ const useProfile = () => {
     void execute();
   }, []);
 
-  return { profileRequest: request };
+  const updateProfile = (profile: UpdateProfileResponse) => {
+    setRequest((previous) => {
+      if (previous.status !== 'success') return previous;
+      return { status: 'success', data: { ...previous.data, ...profile } };
+    });
+  };
+
+  return { profileRequest: request, updateProfile };
 };
 
 export default useProfile;

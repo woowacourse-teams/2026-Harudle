@@ -2,6 +2,7 @@ import { delay, http, HttpResponse } from 'msw';
 import { isLandingPath } from '../pages/landing/landingPaths';
 import { MOCK_SCENARIO_HEADER, MOCK_SCENARIOS } from './mockScenarios';
 import { getToday } from '../shared/utils';
+import profileImage from '../assets/images/profile-fallback.svg';
 import diaryImage from '../assets/images/diary-four-panel.webp';
 import { getMockPublishedFeedId, hasMockFeed } from './feedHandlers';
 
@@ -351,6 +352,8 @@ const addDiaryToMockDiaries = (diary: CreateDiaryResponse): void => {
 };
 
 // 홈 - 월간 일기 조회
+let mockNickname = '하루들';
+
 export const handlers = [
   http.get('/oauth2/authorization/kakao', async ({ request }) => {
     await delay(300);
@@ -475,6 +478,8 @@ export const handlers = [
       {
         id: '08d69a34-6d70-4d42-a158-671bc67733c9',
         name: '하루들',
+        nickname: mockNickname,
+        profileImageUrl: profileImage,
         email: 'harudle.official@gmail.com',
         role: 'ADMIN',
         oauthProviders: ['kakao'],
@@ -486,6 +491,52 @@ export const handlers = [
         },
       },
     );
+  }),
+
+  http.patch('/api/v1/me', async ({ request }) => {
+    const unauthorizedResponse = validateAccessToken(request);
+    if (unauthorizedResponse) return unauthorizedResponse;
+
+    await delay(300);
+    const data: unknown = await request.json();
+    const nickname =
+      typeof data === 'object' &&
+      data !== null &&
+      'nickname' in data &&
+      typeof data.nickname === 'string'
+        ? data.nickname.trim()
+        : '';
+
+    if (
+      nickname !== mockNickname &&
+      (nickname.length === 0 || Array.from(nickname).length > 10)
+    ) {
+      return createProblemDetails({
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        detail: '닉네임은 1자 이상 10자 이하로 입력해 주세요.',
+        instance: '/api/v1/me',
+      });
+    }
+
+    if (
+      nickname !== mockNickname &&
+      (nickname === '네오' || nickname === '하루들2')
+    ) {
+      return createProblemDetails({
+        status: 409,
+        code: 'NICKNAME_ALREADY_USED',
+        detail: '이미 사용 중인 닉네임이에요.',
+        instance: '/api/v1/me',
+      });
+    }
+
+    mockNickname = nickname;
+    return HttpResponse.json({
+      id: '08d69a34-6d70-4d42-a158-671bc67733c9',
+      nickname: mockNickname,
+      profileImageUrl: profileImage,
+    });
   }),
 
   http.get('/api/v1/diaries', async ({ request }) => {
