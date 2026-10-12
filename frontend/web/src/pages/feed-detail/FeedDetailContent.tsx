@@ -124,6 +124,10 @@ const FeedDetailContent = ({ feedId }: FeedDetailContentProps) => {
         </article>
         <FeedComments
           request={comments.request}
+          loadMoreRequest={comments.loadMoreRequest}
+          onLoadMore={() => {
+            void comments.loadMore();
+          }}
           onDelete={(commentId): void => {
             comments.removeComment(commentId);
             decreaseCommentCount();

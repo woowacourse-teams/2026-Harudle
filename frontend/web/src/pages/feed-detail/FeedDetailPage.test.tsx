@@ -12,10 +12,12 @@ import type { Feed } from '../../domain/feeds/feedList';
 import type { getFeedDetail } from '../../domain/feeds/feedDetail';
 import type {
   FeedComment,
+  FeedCommentsResponse,
   getFeedComments,
 } from '../../domain/feeds/feedComments';
 import type { deleteFeedComment } from '../../domain/feeds/feedCommentDelete';
 import FeedDetailPage from './FeedDetailPage';
+import FeedDetailContent from './FeedDetailContent';
 
 const mockNavigate = jest.fn();
 jest.mock('react-router', () => ({
@@ -116,6 +118,176 @@ beforeEach((): void => {
 
 afterEach((): void => {
   jest.restoreAllMocks();
+});
+
+describe('피드 상세 댓글 더 보기', (): void => {
+  const firstPage: FeedCommentsResponse = {
+    items: [comment],
+    nextCursor: 'cursor-1',
+    hasNext: true,
+  };
+  const secondComment: FeedComment = {
+    ...comment,
+    id: 'comment-2',
+    content: '두 번째 댓글',
+    isMine: false,
+  };
+
+  it('서버 커서로 목록을 이어 붙이고 마지막 페이지에서 버튼을 숨긴다', async (): Promise<void> => {
+    const user = userEvent.setup();
+    mockGetFeedComments
+      .mockResolvedValueOnce(firstPage)
+      .mockResolvedValueOnce({
+        items: [secondComment],
+        nextCursor: 'cursor-2',
+        hasNext: true,
+      })
+      .mockResolvedValueOnce({
+        items: [{ ...secondComment, id: 'comment-3', content: '세 번째 댓글' }],
+        nextCursor: null,
+        hasNext: false,
+      });
+    render(<FeedDetailPage />);
+
+    await user.click(await screen.findByRole('button', { name: '더 보기' }));
+    expect(await screen.findByText(secondComment.content)).toBeInTheDocument();
+    expect(screen.getByText(comment.content)).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
+    expect(mockGetFeedComments).toHaveBeenNthCalledWith(2, {
+      feedId: feed.id,
+      cursor: 'cursor-1',
+      size: 50,
+      signal: expect.any(AbortSignal),
+    });
+
+    await user.click(screen.getByRole('button', { name: '더 보기' }));
+    expect(await screen.findByText('세 번째 댓글')).toBeInTheDocument();
+    expect(mockGetFeedComments).toHaveBeenNthCalledWith(3, {
+      feedId: feed.id,
+      cursor: 'cursor-2',
+      size: 50,
+      signal: expect.any(AbortSignal),
+    });
+    expect(screen.getAllByRole('listitem')).toHaveLength(3);
+    expect(
+      screen.queryByRole('button', { name: '더 보기' }),
+    ).not.toBeInTheDocument();
+    expect(mockGetFeedDetail).toHaveBeenCalledTimes(1);
+  });
+
+  it('실패는 컴포넌트에서 알리고 기존 댓글을 유지한 채 같은 커서로 재시도한다', async (): Promise<void> => {
+    const user = userEvent.setup();
+    const alert = jest
+      .spyOn(window, 'alert')
+      .mockImplementation((): void => {});
+    mockGetFeedComments
+      .mockResolvedValueOnce(firstPage)
+      .mockRejectedValueOnce(new Error('추가 조회 실패'))
+      .mockResolvedValueOnce({
+        items: [secondComment],
+        nextCursor: null,
+        hasNext: false,
+      });
+    render(<FeedDetailPage />);
+
+    await user.click(await screen.findByRole('button', { name: '더 보기' }));
+    expect(alert).toHaveBeenCalledWith(
+      '댓글을 더 불러오지 못했어요. 다시 시도해 주세요.',
+    );
+    expect(screen.getByText(comment.content)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '더 보기' })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: '더 보기' }));
+    expect(await screen.findByText(secondComment.content)).toBeInTheDocument();
+    expect(mockGetFeedComments.mock.calls[1][0].cursor).toBe('cursor-1');
+    expect(mockGetFeedComments.mock.calls[2][0].cursor).toBe('cursor-1');
+    expect(alert).toHaveBeenCalledTimes(1);
+  });
+
+  it('추가 조회 중 삭제한 댓글을 유지하고 중복 클릭을 막으며 새 댓글을 추가한다', async (): Promise<void> => {
+    const user = userEvent.setup();
+    let resolveNext: ((page: FeedCommentsResponse) => void) | undefined;
+    mockGetFeedComments.mockResolvedValueOnce(firstPage).mockImplementationOnce(
+      (): Promise<FeedCommentsResponse> =>
+        new Promise((resolve): void => {
+          resolveNext = resolve;
+        }),
+    );
+    mockDeleteComment.mockResolvedValueOnce(undefined);
+    render(<FeedDetailPage />);
+
+    await user.click(await screen.findByRole('button', { name: '더 보기' }));
+    const pendingButton = screen.getByRole('button', {
+      name: '불러오는 중...',
+    });
+    expect(pendingButton).toBeDisabled();
+    fireEvent.click(pendingButton);
+    expect(mockGetFeedComments).toHaveBeenCalledTimes(2);
+    expect(screen.getByText(comment.content)).toBeInTheDocument();
+    prepareDialogs();
+    await openDelete(user);
+    await user.click(screen.getByRole('button', { name: /댓글 삭제$/ }));
+    expect(screen.queryByText(comment.content)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('첫 번째 댓글을 남겨보세요.'),
+    ).not.toBeInTheDocument();
+    expect(pendingButton).toBeDisabled();
+
+    await act(async (): Promise<void> => {
+      resolveNext?.({
+        items: [secondComment],
+        nextCursor: null,
+        hasNext: false,
+      });
+    });
+    expect(screen.getByText(secondComment.content)).toBeInTheDocument();
+    expect(screen.queryByText(comment.content)).not.toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: '0' })).toBeInTheDocument();
+  });
+
+  it('피드 전환 시 추가 조회를 취소하고 새 댓글 커서로 시작한다', async (): Promise<void> => {
+    const user = userEvent.setup();
+    let resolvePrevious: ((page: FeedCommentsResponse) => void) | undefined;
+    mockGetFeedComments
+      .mockResolvedValueOnce(firstPage)
+      .mockImplementationOnce(
+        (): Promise<FeedCommentsResponse> =>
+          new Promise((resolve): void => {
+            resolvePrevious = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({
+        items: [secondComment],
+        nextCursor: 'new-cursor',
+        hasNext: true,
+      })
+      .mockResolvedValueOnce({ items: [], nextCursor: null, hasNext: false });
+    const { rerender } = render(<FeedDetailContent feedId={feed.id} />);
+    await user.click(await screen.findByRole('button', { name: '더 보기' }));
+    const previousSignal = mockGetFeedComments.mock.calls[1][0].signal;
+
+    rerender(<FeedDetailContent feedId="feed-2" />);
+    expect(previousSignal?.aborted).toBe(true);
+    expect(await screen.findByText(secondComment.content)).toBeInTheDocument();
+    expect(mockGetFeedComments).toHaveBeenNthCalledWith(3, {
+      feedId: 'feed-2',
+      size: 50,
+      signal: expect.any(AbortSignal),
+    });
+
+    await act(async (): Promise<void> => {
+      resolvePrevious?.({ items: [comment], nextCursor: null, hasNext: false });
+    });
+    expect(screen.queryByText(comment.content)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '더 보기' }));
+    expect(mockGetFeedComments).toHaveBeenLastCalledWith({
+      feedId: 'feed-2',
+      cursor: 'new-cursor',
+      size: 50,
+      signal: expect.any(AbortSignal),
+    });
+  });
 });
 
 describe('피드 상세 댓글 삭제', (): void => {

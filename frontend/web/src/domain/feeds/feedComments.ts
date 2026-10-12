@@ -57,9 +57,11 @@ export const isFeedCommentsResponse = (
 export const getFeedComments = async ({
   feedId,
   size = 20,
+  cursor,
   signal,
 }: FeedCommentsRequest): Promise<FeedCommentsResponse> => {
   const params = new URLSearchParams({ size: String(size) });
+  if (cursor !== undefined) params.set('cursor', cursor);
   const response = await publicFetch(
     `${API_BASE_URL}/feeds/${feedId}/comments?${params}`,
     { signal },

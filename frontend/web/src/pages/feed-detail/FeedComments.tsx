@@ -10,16 +10,26 @@ import { theme } from '../../styles/theme';
 
 interface FeedCommentsProps {
   readonly request: ApiRequest<FeedCommentsResponse>;
+  readonly loadMoreRequest: ApiRequest<void>;
+  readonly onLoadMore: () => void;
   readonly onRetry: () => void;
   readonly onDelete: (commentId: FeedComment['id']) => void;
 }
 
-const FeedComments = ({ request, onRetry, onDelete }: FeedCommentsProps) => {
+const FeedComments = ({
+  request,
+  loadMoreRequest,
+  onLoadMore,
+  onRetry,
+  onDelete,
+}: FeedCommentsProps) => {
   return (
     <section css={sectionStyle}>
       <h2 css={headingStyle}>{FEED_DETAIL_COPY.commentsHeading}</h2>
       <FeedCommentList
         request={request}
+        loadMoreRequest={loadMoreRequest}
+        onLoadMore={onLoadMore}
         onRetry={onRetry}
         onDelete={onDelete}
       />
