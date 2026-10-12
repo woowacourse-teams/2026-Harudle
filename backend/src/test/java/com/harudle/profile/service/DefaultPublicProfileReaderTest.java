@@ -4,6 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.harudle.auth.domain.User;
+import com.harudle.auth.application.NicknameChangeService;
+import com.harudle.auth.domain.OAuthAccount;
+import com.harudle.auth.domain.OAuthProvider;
+import com.harudle.auth.infrastructure.OAuthAccountRepository;
+import com.harudle.auth.infrastructure.nickname.NicknameCandidateRepository;
 import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.profile.configuration.ProfileConfiguration;
 import com.harudle.profile.service.port.PublicProfileReader;
@@ -38,7 +43,10 @@ import org.testcontainers.utility.DockerImageName;
         "spring.jpa.properties.hibernate.generate_statistics=true"
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({ProfileConfiguration.class, ProfileImageUrlResolver.class, DefaultPublicProfileReader.class})
+@Import({
+        ProfileConfiguration.class, ProfileImageUrlResolver.class, DefaultPublicProfileReader.class,
+        NicknameChangeService.class, NicknameCandidateRepository.class
+})
 class DefaultPublicProfileReaderTest {
 
     private static final Instant CREATED_AT = Instant.parse("2026-10-11T00:00:00Z");
@@ -54,6 +62,12 @@ class DefaultPublicProfileReaderTest {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private NicknameChangeService nicknameChangeService;
+
+    @Autowired
+    private OAuthAccountRepository oauthAccountRepository;
 
     @Autowired
     private TestEntityManager entityManager;
@@ -158,14 +172,32 @@ class DefaultPublicProfileReaderTest {
     }
 
     @Test
-    @DisplayName("닉네임 변경 후 다시 조회하면 최신 닉네임과 기존 이미지 주소를 반환한다")
+    @DisplayName("닉네임 변경 서비스 실행 후 기존 피드와 댓글의 작성자는 새 닉네임과 기존 이미지를 조회한다")
     void readsLatestNicknameAfterChange() {
         User user = saveProfile("신나는 토끼", 3);
-        Set<UUID> userIds = Set.of(user.getId());
+        oauthAccountRepository.saveAndFlush(new OAuthAccount(
+                user, OAuthProvider.KAKAO, user.getId().toString(), null, CREATED_AT
+        ));
+        UUID diaryId = UUID.randomUUID();
+        UUID feedId = UUID.randomUUID();
+        jdbcTemplate.update("""
+                INSERT INTO diaries (id, user_id, diary_date, source_text)
+                VALUES (?, ?, '2026-10-12', '기존 피드 작성자 확인')
+                """, diaryId, user.getId());
+        jdbcTemplate.update("""
+                INSERT INTO feeds (id, diary_id, category_id)
+                VALUES (?, ?, (SELECT id FROM categories WHERE name = '일상'))
+                """, feedId, diaryId);
+        jdbcTemplate.update("INSERT INTO comments (id, feed_id, author_id, content) VALUES (?, ?, ?, '댓글')",
+                UUID.randomUUID(), feedId, user.getId());
+        Set<UUID> userIds = new HashSet<>(jdbcTemplate.queryForList("""
+                SELECT d.user_id FROM feeds f JOIN diaries d ON d.id = f.diary_id WHERE f.id = ?
+                UNION
+                SELECT author_id FROM comments WHERE feed_id = ?
+                """, UUID.class, feedId, feedId));
         PublicProfileReader.Profile before = reader.readAll(userIds).get(user.getId());
 
-        user.changeNickname("즐거운 펭귄", CREATED_AT.plusSeconds(60));
-        entityManager.flush();
+        nicknameChangeService.change(user.getId(), "즐거운 펭귄");
         entityManager.clear();
 
         PublicProfileReader.Profile after = reader.readAll(userIds).get(user.getId());

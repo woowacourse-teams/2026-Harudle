@@ -13,6 +13,7 @@ import io.restassured.http.ContentType;
 import io.restassured.module.mockmvc.specification.MockMvcRequestSpecification;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -232,6 +233,13 @@ class CategoryControllerTest {
     void updatesCategoryPartially() {
         User admin = saveAdmin();
         long id = categoryId("일상");
+        UUID diaryId = UUID.randomUUID();
+        UUID feedId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO diaries (id, user_id, diary_date, source_text)
+                VALUES (?, ?, '2026-10-12', '기존 카테고리 피드')
+                """, diaryId, admin.getId());
+        jdbc.update("INSERT INTO feeds (id, diary_id, category_id) VALUES (?, ?, ?)", feedId, diaryId, id);
         MockMvcResponse renamed = createRequest(admin)
                 .body("{\"name\":\" 일상 생활 \"}")
                 .patch("/api/v1/admin/categories/{categoryId}", id);
@@ -249,6 +257,11 @@ class CategoryControllerTest {
         assertThat(inactive.jsonPath().getBoolean("active")).isFalse();
         assertThat(categoryReader.get(id).name()).isEqualTo("일상 생활");
         assertThat(categoryReader.get(id).active()).isFalse();
+        long storedCategoryId = jdbc.queryForObject(
+                "SELECT category_id FROM feeds WHERE id = ? AND deleted_at IS NULL", Long.class, feedId
+        );
+        assertThat(storedCategoryId).isEqualTo(id);
+        assertThat(categoryReader.get(storedCategoryId).name()).isEqualTo("일상 생활");
         assertThat(RestAssuredMockMvc.given().get("/api/v1/categories").jsonPath().getList("name"))
                 .doesNotContain("일상 생활");
 
