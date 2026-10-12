@@ -28,4 +28,13 @@ public final class StoryboardTestFixtures {
                 }
                 """;
     }
+
+    public static String storyboardJsonWithMismatchedColorPanels() {
+        return storyboardJson().replace("\"focal_colors\":[]", """
+                "focal_colors":[
+                  {"prop":"laptop","component":"lid","color_hex":"#A99BE8","panel_numbers":[1]},
+                  {"prop":"phone","component":"case","color_hex":"#55AAFF","panel_numbers":[1,4]}
+                ]
+                """.strip());
+    }
 }

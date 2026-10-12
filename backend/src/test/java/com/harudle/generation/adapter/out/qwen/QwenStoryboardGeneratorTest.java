@@ -105,6 +105,19 @@ class QwenStoryboardGeneratorTest {
     }
 
     @Test
+    @DisplayName("Qwen의 색상 패널 번호가 소품 위치와 달라도 공통 매퍼가 실제 등장 패널로 계산한다")
+    void deriveColorPanelNumbersFromQwenProps() throws Exception {
+        respond(200, completion(StoryboardTestFixtures.storyboardJsonWithMismatchedColorPanels(),
+                "stop", Map.of()));
+
+        var storyboard = generator.generate(input).storyboard();
+
+        assertThat(storyboard.scenePlan().focalColors().getFirst().panelNumbers()).containsExactly(1, 2, 4);
+        assertThat(storyboard.scenePlan().focalColors().getLast().panelNumbers()).containsExactly(3);
+        verifyNoInteractions(logger);
+    }
+
+    @Test
     @DisplayName("HTTP 상태를 기존 실패 종류로 매핑하고 재호출하거나 응답의 비밀 값을 노출하지 않는다")
     void classifyHttpFailuresWithoutRetryOrProviderBody() throws Exception {
         for (int status : new int[]{401, 429, 408, 504, 503}) {

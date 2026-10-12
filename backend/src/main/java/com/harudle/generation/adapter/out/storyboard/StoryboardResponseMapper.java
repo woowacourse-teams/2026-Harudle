@@ -1,10 +1,12 @@
 package com.harudle.generation.adapter.out.storyboard;
 
+import com.harudle.common.validation.TextValidator;
 import com.harudle.generation.diary.domain.FocalColor;
 import com.harudle.generation.diary.domain.ScenePlan;
 import com.harudle.generation.diary.domain.StoryPanel;
 import com.harudle.generation.diary.domain.Storyboard;
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.IntStream;
 
 public final class StoryboardResponseMapper {
@@ -23,10 +25,10 @@ public final class StoryboardResponseMapper {
         List<StoryPanel> panels = mapPanels(response.panels());
         validateStoryRoleOrder(response.panels());
         return new Storyboard(response.title(), response.castContinuity(), panels,
-                mapVisualPlan(response.visualPlan()));
+                mapVisualPlan(response.visualPlan(), panels));
     }
 
-    private static ScenePlan mapVisualPlan(StoryboardResponse.VisualPlan visualPlan) {
+    private static ScenePlan mapVisualPlan(StoryboardResponse.VisualPlan visualPlan, List<StoryPanel> panels) {
         if (visualPlan == null || visualPlan.focalColors() == null) {
             throw new IllegalArgumentException("스토리보드 시각 계획은 필수입니다.");
         }
@@ -34,11 +36,23 @@ public final class StoryboardResponseMapper {
             throw new IllegalArgumentException("스토리보드 색상 계획에 null을 포함할 수 없습니다.");
         }
         List<FocalColor> focalColors = visualPlan.focalColors().stream()
-                .map(color -> new FocalColor(
-                        color.prop(), color.component(), color.colorHex(), color.panelNumbers()
-                ))
+                .map(color -> mapFocalColor(color, panels))
                 .toList();
         return new ScenePlan(visualPlan.environmentRule(), focalColors);
+    }
+
+    private static FocalColor mapFocalColor(StoryboardResponse.ColorTarget color, List<StoryPanel> panels) {
+        String prop = TextValidator.normalizeRequired(color.prop(), "색상 대상 소품은 필수입니다.");
+        String normalizedProp = prop.toLowerCase(Locale.ROOT);
+        List<Integer> panelNumbers = panels.stream()
+                .filter(panel -> panel.props().stream()
+                        .anyMatch(panelProp -> panelProp.toLowerCase(Locale.ROOT).equals(normalizedProp)))
+                .map(StoryPanel::panelNumber)
+                .toList();
+        if (panelNumbers.isEmpty()) {
+            throw new IllegalArgumentException("색상 대상 소품은 최소 한 패널의 props에 존재해야 합니다.");
+        }
+        return new FocalColor(prop, color.component(), color.colorHex(), panelNumbers);
     }
 
     private static List<StoryPanel> mapPanels(List<StoryboardResponse.Panel> panels) {
