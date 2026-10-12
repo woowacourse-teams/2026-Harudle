@@ -1,0 +1,247 @@
+import { delay, http, HttpResponse } from 'msw';
+import diaryImage from '../assets/images/diary-four-panel.webp';
+import profileImage from '../assets/icons/article_person.svg';
+import { isCanonicalUuid } from '../pages/landing/guestTrialUuid';
+
+interface MockCategory {
+  readonly id: string;
+  readonly name: string;
+  readonly sortOrder: number;
+  readonly active: boolean;
+}
+
+interface MockFeed {
+  readonly id: string;
+  readonly author: {
+    readonly id: string;
+    readonly nickname: string;
+    readonly profileImageUrl: string;
+  };
+  readonly category: Pick<MockCategory, 'id' | 'name'>;
+  readonly imageUrl: string;
+  readonly publishedAt: string;
+  likeCount: number;
+  readonly commentCount: number;
+}
+
+interface MockFeedResponse extends MockFeed {
+  readonly imageUrlExpiresAt: string;
+  readonly likedByMe: boolean;
+  readonly isMine: boolean;
+  readonly shareUrl: string;
+}
+
+type FeedSort = 'LATEST' | 'POPULAR';
+type FeedProblemCode =
+  'VALIDATION_ERROR' | 'INVALID_CURSOR' | 'UNAUTHORIZED' | 'CATEGORY_NOT_FOUND';
+
+const MOCK_USER_ID = '08d69a34-6d70-4d42-a158-671bc67733c9';
+const MOCK_ACCESS_TOKEN = 'mock-access-token';
+
+// 카테고리 개별 명세의 auto increment ID를 문자열로 반환한다.
+const categories: readonly MockCategory[] = [
+  { id: '1', name: '일상', sortOrder: 0, active: true },
+  { id: '2', name: '우테코', sortOrder: 1, active: true },
+];
+
+const createInitialFeeds = (): MockFeed[] => {
+  const now = Date.now();
+
+  return Array.from({ length: 24 }, (_, index): MockFeed => {
+    const category = categories[index % categories.length];
+
+    return {
+      id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+      author: {
+        id:
+          index % 3 === 0
+            ? MOCK_USER_ID
+            : '00000000-0000-4000-8000-000000000100',
+        nickname: index % 3 === 0 ? '하루들' : '네오',
+        profileImageUrl: profileImage,
+      },
+      category: { id: category.id, name: category.name },
+      imageUrl: diaryImage,
+      publishedAt: new Date(
+        now - Math.floor(index / 2) * 3_600_000,
+      ).toISOString(),
+      likeCount: (index % 5) * 3,
+      commentCount: index % 4,
+    };
+  });
+};
+
+let feeds = createInitialFeeds();
+
+export const resetFeedMockState = (): void => {
+  feeds = createInitialFeeds();
+};
+
+const problem = (
+  request: Request,
+  status: number,
+  code: FeedProblemCode,
+): Response => {
+  return HttpResponse.json(
+    {
+      type: `urn:harudle:problem:${code.toLowerCase().replaceAll('_', '-')}`,
+      title: code,
+      status,
+      detail: code,
+      instance: new URL(request.url).pathname,
+      code,
+      traceId: 'mock-feed-trace-id',
+    },
+    { status, headers: { 'Content-Type': 'application/problem+json' } },
+  );
+};
+
+const isAuthenticated = (request: Request): boolean =>
+  request.headers.get('Authorization') === `Bearer ${MOCK_ACCESS_TOKEN}`;
+
+const validateAuthentication = (request: Request): Response | null => {
+  if (request.headers.has('Authorization') && !isAuthenticated(request)) {
+    const response = problem(request, 401, 'UNAUTHORIZED');
+    response.headers.set('WWW-Authenticate', 'Bearer');
+    return response;
+  }
+
+  return null;
+};
+
+const compareFeeds = (
+  a: Pick<MockFeed, 'id' | 'publishedAt' | 'likeCount'>,
+  b: Pick<MockFeed, 'id' | 'publishedAt' | 'likeCount'>,
+  sort: FeedSort,
+): number => {
+  if (sort === 'POPULAR' && a.likeCount !== b.likeCount) {
+    return b.likeCount - a.likeCount;
+  }
+
+  return b.publishedAt.localeCompare(a.publishedAt) || b.id.localeCompare(a.id);
+};
+
+const createCursor = (
+  feed: MockFeed,
+  sort: FeedSort,
+  categoryId: string | null,
+): string => {
+  // 마지막 항목의 정렬 키를 보관해 삭제돼도 다음 페이지를 조회할 수 있다.
+  return JSON.stringify({
+    id: feed.id,
+    publishedAt: feed.publishedAt,
+    likeCount: feed.likeCount,
+    sort,
+    categoryId,
+  });
+};
+
+const readCursor = (
+  cursor: string,
+  sort: FeedSort,
+  categoryId: string | null,
+): Pick<MockFeed, 'id' | 'publishedAt' | 'likeCount'> | null => {
+  try {
+    const value: unknown = JSON.parse(cursor);
+
+    if (
+      typeof value !== 'object' ||
+      value === null ||
+      !('id' in value) ||
+      typeof value.id !== 'string' ||
+      !isCanonicalUuid(value.id) ||
+      !('publishedAt' in value) ||
+      typeof value.publishedAt !== 'string' ||
+      !Number.isFinite(Date.parse(value.publishedAt)) ||
+      !('likeCount' in value) ||
+      typeof value.likeCount !== 'number' ||
+      !Number.isInteger(value.likeCount) ||
+      value.likeCount < 0 ||
+      !('sort' in value) ||
+      value.sort !== sort ||
+      !('categoryId' in value) ||
+      value.categoryId !== categoryId
+    ) {
+      return null;
+    }
+
+    return {
+      id: value.id,
+      publishedAt: value.publishedAt,
+      likeCount: value.likeCount,
+    };
+  } catch {
+    return null;
+  }
+};
+
+export const feedHandlers = [
+  http.get('/api/v1/categories', async ({ request }): Promise<Response> => {
+    await delay(300);
+    const error = validateAuthentication(request);
+    return error ?? HttpResponse.json(categories);
+  }),
+
+  http.get('/api/v1/feeds', async ({ request }): Promise<Response> => {
+    await delay(300);
+    const error = validateAuthentication(request);
+    if (error) return error;
+
+    const url = new URL(request.url);
+    const categoryId = url.searchParams.get('categoryId');
+    const sort = url.searchParams.get('sort') ?? 'LATEST';
+    const sizeValue = url.searchParams.get('size');
+    const size = sizeValue === null ? 20 : Number(sizeValue);
+
+    if (
+      (sort !== 'LATEST' && sort !== 'POPULAR') ||
+      (sizeValue !== null && !/^\d+$/.test(sizeValue)) ||
+      !Number.isInteger(size) ||
+      size < 1 ||
+      size > 50 ||
+      (categoryId !== null && !/^[1-9]\d*$/.test(categoryId))
+    ) {
+      return problem(request, 400, 'VALIDATION_ERROR');
+    }
+    if (
+      categoryId !== null &&
+      !categories.some(({ id }): boolean => id === categoryId)
+    ) {
+      return problem(request, 404, 'CATEGORY_NOT_FOUND');
+    }
+
+    const cursorValue = url.searchParams.get('cursor');
+    const cursor =
+      cursorValue === null ? null : readCursor(cursorValue, sort, categoryId);
+    if (cursorValue !== null && cursor === null)
+      return problem(request, 400, 'INVALID_CURSOR');
+
+    const sortedFeeds = feeds
+      .filter(
+        (feed): boolean =>
+          categoryId === null || feed.category.id === categoryId,
+      )
+      .sort((a, b): number => compareFeeds(a, b, sort))
+      .filter(
+        (feed): boolean =>
+          cursor === null || compareFeeds(feed, cursor, sort) > 0,
+      );
+    const page = sortedFeeds.slice(0, size);
+    const hasNext = sortedFeeds.length > size;
+    const lastFeed = page.at(-1);
+    const authenticated = isAuthenticated(request);
+
+    return HttpResponse.json({
+      items: page.map((feed): MockFeedResponse => ({
+        ...feed,
+        imageUrlExpiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+        likedByMe: false,
+        isMine: authenticated && feed.author.id === MOCK_USER_ID,
+        shareUrl: `${url.origin}/feeds/${feed.id}`,
+      })),
+      nextCursor:
+        hasNext && lastFeed ? createCursor(lastFeed, sort, categoryId) : null,
+      hasNext,
+    });
+  }),
+];

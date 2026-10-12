@@ -23,6 +23,44 @@ export const setAccessToken = (token: string | null): void => {
 type AuthFetchRequestInfo = Parameters<typeof fetch>[0];
 type AuthFetchRequestInit = Parameters<typeof fetch>[1];
 
+export const publicFetch = async (
+  info: AuthFetchRequestInfo,
+  init?: AuthFetchRequestInit,
+): Promise<Response> => {
+  // 갱신 중 시작한 공개 요청도 같은 갱신 결과를 기다린다.
+  if (!accessToken && refreshRequest) {
+    try {
+      await refreshRequest;
+    } catch {
+      return fetch(info, init);
+    }
+  }
+
+  const usedToken = accessToken;
+  if (!usedToken) return fetch(info, init);
+
+  const response = await fetchWithAccessToken(info, init, usedToken);
+  if (response.status !== 401) return response;
+
+  // 다른 요청이 이미 갱신한 토큰은 유지한다.
+  if (accessToken === usedToken) setAccessToken(null);
+
+  try {
+    if (!accessToken) await restoreAccessToken();
+  } catch {
+    return fetch(info, init);
+  }
+
+  const refreshedToken = accessToken;
+  if (!refreshedToken) return fetch(info, init);
+
+  const retryResponse = await fetchWithAccessToken(info, init, refreshedToken);
+  if (retryResponse.status !== 401) return retryResponse;
+
+  if (accessToken === refreshedToken) setAccessToken(null);
+  return fetch(info, init);
+};
+
 export const authFetch = async (
   info: AuthFetchRequestInfo,
   init?: AuthFetchRequestInit,
