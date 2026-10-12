@@ -5,8 +5,6 @@ import BottomNavigationLayout from '../../shared/BottomNavigationLayout';
 import FeedFilterBar from './FeedFilterBar';
 import FeedItemList from './FeedItemList';
 import { useSearchParams } from 'react-router';
-import useEntryStatus from '../../useEntryStatus';
-import LoadingSpinner from '../../shared/LoadingSpinner';
 
 const FEED_QUERY_KEYS = {
   CATEGORY_ID: 'categoryId',
@@ -14,7 +12,6 @@ const FEED_QUERY_KEYS = {
 } as const;
 
 const FeedPage = () => {
-  const { status } = useEntryStatus();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const categoryId = searchParams.get(FEED_QUERY_KEYS.CATEGORY_ID) ?? undefined;
@@ -46,8 +43,6 @@ const FeedPage = () => {
       return next;
     });
   };
-
-  if (status === 'restoringSession') return <LoadingSpinner />;
 
   return (
     <BottomNavigationLayout>

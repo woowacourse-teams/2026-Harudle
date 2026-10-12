@@ -1,5 +1,6 @@
 import { css } from '@emotion/react';
 import EntryRoute from './EntryRoute';
+import PublicFeedRoute from './PublicFeedRoute';
 import AlbumPage from './pages/album/AlbumPage/AlbumPage';
 import FeedPage from './pages/feed/FeedPage';
 import FeedDetailPage from './pages/feed-detail/FeedDetailPage';
@@ -23,10 +24,14 @@ const App = () => {
       <PwaAnalyticsTracker />
       <Routes>
         <Route element={<EntryRoute />}>
-          <Route path="/" element={<FeedPage />} />
+          <Route element={<PublicFeedRoute />}>
+            <Route path="/" element={<FeedPage />} />
+          </Route>
         </Route>
         <Route path="/album" element={<AlbumPage />} />
-        <Route path="/feeds/:feedId" element={<FeedDetailPage />} />
+        <Route element={<PublicFeedRoute />}>
+          <Route path="/feeds/:feedId" element={<FeedDetailPage />} />
+        </Route>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
         <Route path="/diary-write" element={<DiaryWritePage />} />
