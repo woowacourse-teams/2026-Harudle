@@ -104,6 +104,7 @@ public class SecurityConfig {
                         // The frontend proxy does not route /actuator to this internal Docker service.
                         .requestMatchers(HttpMethod.GET, "/actuator/prometheus").permitAll()
                         .requestMatchers("/actuator/**").denyAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/categories").permitAll()
                         .requestMatchers(
                                 HttpMethod.POST,
                                 "/api/v1/guest/session",

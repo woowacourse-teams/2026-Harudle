@@ -2,6 +2,7 @@ package com.harudle.category.repository;
 
 import com.harudle.category.domain.Category;
 import com.harudle.category.query.CategorySnapshot;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.Repository;
@@ -10,6 +11,25 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 public interface CategoryRepository extends Repository<Category, Long> {
+
+    @Query("""
+            SELECT new com.harudle.category.query.CategorySnapshot(
+                category.id, category.name, category.sortOrder, category.active
+            )
+            FROM Category category
+            WHERE category.active = TRUE
+            ORDER BY category.sortOrder, category.id
+            """)
+    List<CategorySnapshot> findAllActive();
+
+    @Query("""
+            SELECT new com.harudle.category.query.CategorySnapshot(
+                category.id, category.name, category.sortOrder, category.active
+            )
+            FROM Category category
+            ORDER BY category.sortOrder, category.id
+            """)
+    List<CategorySnapshot> findAll();
 
     @Query("""
             SELECT new com.harudle.category.query.CategorySnapshot(

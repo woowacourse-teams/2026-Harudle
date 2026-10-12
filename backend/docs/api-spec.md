@@ -126,6 +126,25 @@ Idempotency-Key: 7e5cc251-fdde-4cc0-a54e-2c8142750609
 | `PUT` | `/api/v1/diaries/{diaryId}/share-link` | 필요 | 공유 링크 생성 또는 기존 링크 조회 |
 | `GET` | `/api/v1/public/shares/{shareId}` | 불필요 | 공개 공유 결과 조회 |
 
+### 3.4 카테고리
+
+| Method | Endpoint | 인증 | 설명 |
+| --- | --- | ---: | --- |
+| `GET` | `/api/v1/categories` | 불필요 | 활성 카테고리 목록 |
+| `GET` | `/api/v1/admin/categories` | ADMIN | 활성·비활성 전체 카테고리 목록 |
+
+두 API는 `sortOrder` 오름차순, 같은 순서에서는 `id` 오름차순으로 정렬한 JSON 배열을 반환한다.
+`id`는 JSON 숫자이며, 항목이 없으면 `[]`를 반환한다.
+
+```json
+[
+  { "id": 1, "name": "일상", "sortOrder": 0, "active": true },
+  { "id": 2, "name": "우테코", "sortOrder": 1, "active": true }
+]
+```
+
+관리자 목록은 비로그인 요청에 `401`, 일반 회원 요청에 `403`을 반환한다.
+
 ## 4. 인증 및 사용자 API
 
 ### 4.1 Kakao OAuth 로그인 시작
