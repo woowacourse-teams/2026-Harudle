@@ -26,6 +26,10 @@ import com.harudle.guest.application.exception.GuestSessionRequiredException;
 import com.harudle.guest.application.exception.GuestTrialAlreadyUsedException;
 import com.harudle.share.service.exception.ShareGenerationFailedException;
 import com.harudle.share.service.exception.ShareNotFoundException;
+import com.harudle.notification.service.exception.InvalidNotificationCursorException;
+import com.harudle.notification.service.exception.NotificationAccessDeniedException;
+import com.harudle.notification.service.exception.NotificationIntegrationUnavailableException;
+import com.harudle.notification.service.exception.NotificationNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.util.List;
@@ -184,6 +188,26 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(CommentIntegrationUnavailableException.class)
     ResponseEntity<ProblemDetail> handleCommentUnavailable(HttpServletRequest request) {
         return createResponse(ErrorType.COMMENT_UNAVAILABLE, request);
+    }
+
+    @ExceptionHandler(NotificationNotFoundException.class)
+    ResponseEntity<ProblemDetail> handleNotificationNotFound(HttpServletRequest request) {
+        return createResponse(ErrorType.NOTIFICATION_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(NotificationAccessDeniedException.class)
+    ResponseEntity<ProblemDetail> handleNotificationAccessDenied(HttpServletRequest request) {
+        return createResponse(ErrorType.FORBIDDEN, request);
+    }
+
+    @ExceptionHandler(InvalidNotificationCursorException.class)
+    ResponseEntity<ProblemDetail> handleInvalidNotificationCursor(HttpServletRequest request) {
+        return createResponse(ErrorType.INVALID_CURSOR, request);
+    }
+
+    @ExceptionHandler(NotificationIntegrationUnavailableException.class)
+    ResponseEntity<ProblemDetail> handleNotificationUnavailable(HttpServletRequest request) {
+        return createResponse(ErrorType.NOTIFICATION_UNAVAILABLE, request);
     }
 
     @ExceptionHandler(ShareNotFoundException.class)
