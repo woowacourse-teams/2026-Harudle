@@ -8,9 +8,6 @@ test.use({
 
 test('공유 바텀시트에서 공개 링크를 복사한다', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-  await page.addInitScript(() => {
-    localStorage.setItem('harudle.has-seen-landing', 'true');
-  });
   await page.goto('/');
   await page
     .getByRole('article')
