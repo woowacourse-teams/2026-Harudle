@@ -5,6 +5,14 @@ import {
 } from '../src/mocks/mockScenarios';
 
 test.describe('하루들 접속', () => {
+  test('제거된 일기 공유 링크는 페이지 없음 안내를 표시한다', async ({
+    page,
+  }) => {
+    await page.goto('/shares/06ed972e-0b79-4da0-9716-c9bd8faec85d');
+    await expect(
+      page.getByRole('heading', { name: '페이지를 찾을 수 없어요' }),
+    ).toBeVisible();
+  });
   for (const entryPath of ['/', '/landing']) {
     test(`저장소가 비어 있어도 세션이 유효하면 ${entryPath}에서 피드에 도착하고 새로고침 후 유지한다`, async ({
       page,
@@ -197,18 +205,5 @@ test.describe('하루들 접속', () => {
     await expect(
       page.getByRole('button', { name: '카카오로 시작하기' }),
     ).toBeVisible();
-  });
-
-  test('로그인 이력 없이 공유받은 만화를 볼 수 있고, 하루들 버튼을 누르면 랜딩 페이지를 보여준다', async ({
-    page,
-  }) => {
-    const sharedPath = '/shares/06ed972e-0b79-4da0-9716-c9bd8faec85d';
-    await page.goto(sharedPath);
-    await expect(
-      page.getByText('비가 와도, 나는 괜찮았다.', { exact: true }),
-    ).toBeVisible();
-    await expect(page).toHaveURL(sharedPath);
-    await page.getByRole('button', { name: '하루들' }).click();
-    await expect(page).toHaveURL('/landing');
   });
 });

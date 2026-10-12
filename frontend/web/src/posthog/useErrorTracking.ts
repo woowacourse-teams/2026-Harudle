@@ -24,7 +24,7 @@ export const useErrorTracking = (): ErrorTracking => {
       if (error instanceof RequestError) {
         const { code, status, traceId } = error.problem;
 
-        if (code === 'INVALID_REFRESH_TOKEN' || code === 'SHARE_NOT_FOUND') {
+        if (code === 'INVALID_REFRESH_TOKEN') {
           return;
         }
 

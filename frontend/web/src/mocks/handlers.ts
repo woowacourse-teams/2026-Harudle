@@ -47,20 +47,6 @@ interface DiaryDetailResponse {
   };
 }
 
-interface DiaryShareLinkResponse {
-  shareId: string;
-  shareUrl: string;
-  createdAt: string;
-}
-
-interface PublicDiaryShareResponse {
-  title: string;
-  diaryDate: string;
-  imageUrl: string;
-  imageUrlExpiresAt: string;
-  createdAt: string;
-}
-
 interface ValidationError {
   field: string;
   reason: string;
@@ -77,34 +63,18 @@ const MOCK_CSRF_TOKEN = 'mock-csrf-token';
 
 let usedGenerationCount = 0;
 let mockDiarySequence = 1;
-let mockShareSequence = 1;
 
 const createdDiaryRequests = new Map<
   string,
   { fingerprint: string; response: CreateDiaryResponse }
 >();
 const createdDiaryDetails = new Map<string, DiaryDetailResponse>();
-const mockDiaryShareLinks = new Map<string, DiaryShareLinkResponse>();
 
 const diaryThumbnailUrl = diaryImage;
 
 const SAMPLE_DIARY_ID = '00000000-0000-4000-8000-000000000001';
 const PUBLISHED_DIARY_ID = '00000000-0000-4000-8000-000000000031';
 const SAMPLE_PUBLISHED_FEED_ID = '00000000-0000-4000-8000-000000000001';
-const SAMPLE_SHARE_ID = '06ed972e-0b79-4da0-9716-c9bd8faec85d';
-
-const mockPublicDiaryShares = new Map<string, PublicDiaryShareResponse>([
-  [
-    SAMPLE_SHARE_ID,
-    {
-      title: '비가 와도, 나는 괜찮았다.',
-      diaryDate: getMockDate(12),
-      imageUrl: diaryThumbnailUrl,
-      imageUrlExpiresAt: `${getMockDate(12)}T20:25:00+09:00`,
-      createdAt: `${getMockDate(12)}T20:10:23+09:00`,
-    },
-  ],
-]);
 
 const isRecord = (value: unknown): value is Record<string, unknown> => {
   return typeof value === 'object' && value !== null;
@@ -162,13 +132,11 @@ const problemTitleByCode: Record<string, string> = {
   INVALID_IDEMPOTENCY_KEY: 'Invalid idempotency key',
   IDEMPOTENCY_KEY_CONFLICT: 'Idempotency key conflict',
   DIARY_NOT_FOUND: 'Diary not found',
-  SHARE_NOT_FOUND: 'Share not found',
   DUPLICATE_DIARY: 'Duplicate diary',
   DAILY_GENERATION_LIMIT_EXCEEDED: 'Daily generation limit exceeded',
   DIARY_GENERATION_FAILED: 'Diary generation failed',
   DIARY_DETAIL_REQUEST_FAILED: 'Diary detail request failed',
   DIARY_DELETE_FAILED: 'Diary delete failed',
-  DIARY_SHARE_FAILED: 'Diary share failed',
   PROFILE_REQUEST_FAILED: 'Profile request failed',
   LOGOUT_FAILED: 'Logout failed',
   INVALID_REFRESH_TOKEN: 'Invalid refresh token',
@@ -643,121 +611,9 @@ export const handlers = [
       }
     }
 
-    const shareLink = mockDiaryShareLinks.get(diaryId);
-
     createdDiaryDetails.delete(diaryId);
-    mockDiaryShareLinks.delete(diaryId);
-
-    if (shareLink) {
-      mockPublicDiaryShares.delete(shareLink.shareId);
-    }
-
-    if (diaryId === SAMPLE_DIARY_ID) {
-      mockPublicDiaryShares.delete(SAMPLE_SHARE_ID);
-    }
 
     return new HttpResponse(null, { status: 204 });
-  }),
-
-  http.put(
-    '/api/v1/diaries/:diaryId/share-link',
-    async ({ params, request }) => {
-      const unauthorizedResponse = validateAccessToken(request);
-
-      if (unauthorizedResponse) {
-        return unauthorizedResponse;
-      }
-
-      const diaryId = String(params.diaryId);
-      const createdDiaryDetail = createdDiaryDetails.get(diaryId);
-      const diaryDay = mockDiaryDays.find((day) =>
-        day.items.some((diary) => diary.id === diaryId),
-      );
-      const diary = diaryDay?.items.find((item) => item.id === diaryId);
-      const sharedDiary: PublicDiaryShareResponse | undefined =
-        createdDiaryDetail
-          ? {
-              title: createdDiaryDetail.generation.title,
-              diaryDate: createdDiaryDetail.diaryDate,
-              imageUrl: createdDiaryDetail.generation.imageUrl,
-              imageUrlExpiresAt:
-                createdDiaryDetail.generation.imageUrlExpiresAt,
-              createdAt: createdDiaryDetail.createdAt,
-            }
-          : diaryDay && diary
-            ? {
-                title: diary.title,
-                diaryDate: diaryDay.date,
-                imageUrl: diary.thumbnailUrl,
-                imageUrlExpiresAt: `${diaryDay.date}T20:25:00+09:00`,
-                createdAt: `${diaryDay.date}T20:10:23+09:00`,
-              }
-            : undefined;
-
-      await delay(1_500);
-
-      if (
-        request.headers.get(MOCK_SCENARIO_HEADER) ===
-        MOCK_SCENARIOS.diaryShareFailure
-      ) {
-        return createProblemDetails({
-          status: 503,
-          code: 'DIARY_SHARE_FAILED',
-          detail: '공유 링크를 만들지 못했습니다. 다시 시도해주세요.',
-          instance: `/api/v1/diaries/${diaryId}/share-link`,
-        });
-      }
-
-      if (!sharedDiary) {
-        return createProblemDetails({
-          status: 404,
-          code: 'DIARY_NOT_FOUND',
-          detail: '일기를 찾을 수 없습니다.',
-          instance: `/api/v1/diaries/${diaryId}/share-link`,
-        });
-      }
-
-      const existingShareLink = mockDiaryShareLinks.get(diaryId);
-
-      if (existingShareLink) {
-        return HttpResponse.json(existingShareLink);
-      }
-
-      const shareId =
-        diaryId === SAMPLE_DIARY_ID
-          ? SAMPLE_SHARE_ID
-          : createMockUuid(mockShareSequence, 3);
-      mockShareSequence += 1;
-
-      const response: DiaryShareLinkResponse = {
-        shareId,
-        shareUrl: `${new URL(request.url).origin}/shares/${shareId}`,
-        createdAt: `${MOCK_USAGE_DATE}T20:15:00+09:00`,
-      };
-
-      mockDiaryShareLinks.set(diaryId, response);
-      mockPublicDiaryShares.set(shareId, sharedDiary);
-
-      return HttpResponse.json(response, { status: 201 });
-    },
-  ),
-
-  http.get('/api/v1/public/shares/:shareId', async ({ params }) => {
-    const shareId = String(params.shareId);
-    const sharedDiary = mockPublicDiaryShares.get(shareId);
-
-    await delay(1_500);
-
-    if (!sharedDiary) {
-      return createProblemDetails({
-        status: 404,
-        code: 'SHARE_NOT_FOUND',
-        detail: '공유 링크를 찾을 수 없습니다.',
-        instance: `/api/v1/public/shares/${shareId}`,
-      });
-    }
-
-    return HttpResponse.json(sharedDiary);
   }),
 
   http.post('/api/v1/diaries', async ({ request }) => {

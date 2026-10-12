@@ -15,7 +15,6 @@ import LandingRoutes from './pages/landing/LandingRoutes';
 import AdminGuard from './pages/admin/AdminGuard';
 import NotFoundPage from './pages/not-found/NotFoundPage';
 import PwaAnalyticsTracker from './pages/setting/PwaAnalyticsTracker';
-import SharedDiaryPage from './pages/shared-diary/SharedDiaryPage';
 import FeedPostPage from './pages/feed-post/FeedPostPage';
 
 const App = () => {
@@ -34,7 +33,6 @@ const App = () => {
         <Route path="/diary-generating" element={<DiaryGeneratingPage />} />
         <Route path="/diary/:diaryId" element={<DiaryDetailPage />} />
         <Route path="/diary/:diaryId/feed-post" element={<FeedPostPage />} />
-        <Route path="/shares/:shareId" element={<SharedDiaryPage />} />
         <Route path="/setting" element={<SettingPage />} />
         <Route path="/landing/*" element={<LandingRoutes />} />
         <Route path="/admin/*" element={<AdminGuard />} />

@@ -4,7 +4,6 @@ export const DIARY_DETAIL_COPY = {
   feedDeleteAction: '피드에서 내리기',
   menuAction: '네컷만화 메뉴 열기',
   menuTitle: '네컷만화 메뉴',
-  shareAction: '공유하기',
   downloadAction: '이미지 저장',
   copyAction: '이미지 복사',
   copySuccess: '복사됨',
