@@ -132,6 +132,7 @@ Idempotency-Key: 7e5cc251-fdde-4cc0-a54e-2c8142750609
 | --- | --- | ---: | --- |
 | `GET` | `/api/v1/categories` | 불필요 | 활성 카테고리 목록 |
 | `GET` | `/api/v1/admin/categories` | ADMIN | 활성·비활성 전체 카테고리 목록 |
+| `POST` | `/api/v1/admin/categories` | ADMIN | 카테고리 추가 |
 
 두 API는 `sortOrder` 오름차순, 같은 순서에서는 `id` 오름차순으로 정렬한 JSON 배열을 반환한다.
 `id`는 JSON 숫자이며, 항목이 없으면 `[]`를 반환한다.
@@ -144,6 +145,17 @@ Idempotency-Key: 7e5cc251-fdde-4cc0-a54e-2c8142750609
 ```
 
 관리자 목록은 비로그인 요청에 `401`, 일반 회원 요청에 `403`을 반환한다.
+
+카테고리 추가 요청은 다음과 같다. 관리자 Bearer 인증이 필요하며 CSRF 토큰은 요구하지 않는다.
+
+```json
+{ "name": "여행", "sortOrder": 2 }
+```
+
+- 이름은 앞뒤 공백 제거와 NFC 정규화 후 1~20자이며 영문 대소문자는 구분한다.
+- `sortOrder`는 0 이상의 정수다. 생략하면 활성과 비활성 전체 항목의 최대 순서에 1을 더한다. 항목이 없으면 0이다.
+- 새 항목은 `active=true`로 저장하고 `201`과 생성된 Category 객체를 반환한다.
+- 비활성 항목과도 이름이 중복되면 `409 CATEGORY_NAME_ALREADY_USED`, 잘못된 입력은 `400 VALIDATION_ERROR`다.
 
 ## 4. 인증 및 사용자 API
 

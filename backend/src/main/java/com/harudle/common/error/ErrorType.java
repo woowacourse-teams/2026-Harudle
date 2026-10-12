@@ -78,6 +78,11 @@ public enum ErrorType {
             "Inactive category",
             "비활성 카테고리에는 피드를 게시할 수 없습니다."
     ),
+    CATEGORY_NAME_ALREADY_USED(
+            HttpStatus.CONFLICT,
+            "Category name already used",
+            "이미 사용 중인 카테고리 이름입니다."
+    ),
     SHARE_NOT_FOUND(
             HttpStatus.NOT_FOUND,
             "Share not found",

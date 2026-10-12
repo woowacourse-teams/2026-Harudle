@@ -11,6 +11,8 @@ import com.harudle.auth.domain.exception.PublicProfileNotAssignedException;
 import com.harudle.auth.presentation.AuthenticationRequiredException;
 import com.harudle.category.service.exception.CategoryInactiveException;
 import com.harudle.category.service.exception.CategoryNotFoundException;
+import com.harudle.category.domain.exception.InvalidCategoryException;
+import com.harudle.category.service.exception.CategoryNameAlreadyUsedException;
 import com.harudle.common.validation.InvalidIdempotencyKeyException;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
@@ -191,6 +193,20 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(CategoryInactiveException.class)
     ResponseEntity<ProblemDetail> handleCategoryInactive(HttpServletRequest request) {
         return createResponse(ErrorType.CATEGORY_INACTIVE, request);
+    }
+
+    @ExceptionHandler(CategoryNameAlreadyUsedException.class)
+    ResponseEntity<ProblemDetail> handleCategoryNameAlreadyUsed(HttpServletRequest request) {
+        return createResponse(ErrorType.CATEGORY_NAME_ALREADY_USED, request);
+    }
+
+    @ExceptionHandler(InvalidCategoryException.class)
+    ResponseEntity<ProblemDetail> handleInvalidCategory(InvalidCategoryException exception, HttpServletRequest request) {
+        return createResponse(
+                ErrorType.VALIDATION_ERROR,
+                request,
+                List.of(new FieldValidationError(exception.getField(), exception.getMessage()))
+        );
     }
 
     @ExceptionHandler(ShareNotFoundException.class)

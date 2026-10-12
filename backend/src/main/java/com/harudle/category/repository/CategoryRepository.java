@@ -12,6 +12,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 public interface CategoryRepository extends Repository<Category, Long> {
 
+    Category saveAndFlush(Category category);
+
+    @Query("SELECT COALESCE(MAX(category.sortOrder), -1) FROM Category category")
+    int findMaxSortOrder();
+
     @Query("""
             SELECT new com.harudle.category.query.CategorySnapshot(
                 category.id, category.name, category.sortOrder, category.active
