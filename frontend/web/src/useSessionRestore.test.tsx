@@ -8,7 +8,7 @@ import {
 } from '@jest/globals';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { RequestError } from './shared/api';
-import useEntryStatus from './useEntryStatus';
+import useSessionRestore from './useSessionRestore';
 
 const mockRestoreAccessToken = jest.fn<() => Promise<void>>();
 const mockCaptureError = jest.fn();
@@ -24,33 +24,34 @@ jest.mock('./posthog/useErrorTracking', () => ({
 beforeEach(() => {
   localStorage.clear();
   mockRestoreAccessToken.mockReset();
+  mockCaptureError.mockReset();
 });
 
 afterEach(() => {
   jest.restoreAllMocks();
 });
 
-describe('useEntryStatus', () => {
-  it('로그인 경험이 없으면 세션을 조회하지 않고 랜딩을 선택한다', () => {
-    const { result } = renderHook(() => useEntryStatus());
+describe('useSessionRestore', () => {
+  it('로그인 경험이 없으면 세션을 조회하지 않고 공개 조회를 허용한다', () => {
+    const { result } = renderHook(() => useSessionRestore());
 
-    expect(result.current.status).toBe('landing');
+    expect(result.current.isRestoring).toBe(false);
     expect(mockRestoreAccessToken).not.toHaveBeenCalled();
   });
 
-  it('기존 인증 완료 표시만 있어도 이력을 이관하고 홈을 선택한다', async () => {
+  it('기존 인증 완료 표시만 있어도 이력을 이관하고 복원을 완료한다', async () => {
     localStorage.setItem('harudle.has-completed-oauth', 'true');
     mockRestoreAccessToken.mockResolvedValueOnce();
 
-    const { result } = renderHook(() => useEntryStatus());
+    const { result } = renderHook(() => useSessionRestore());
 
-    expect(result.current.status).toBe('restoringSession');
-    await waitFor(() => expect(result.current.status).toBe('home'));
+    expect(result.current.isRestoring).toBe(true);
+    await waitFor(() => expect(result.current.isRestoring).toBe(false));
     expect(localStorage.getItem('harudle.has-ever-logged-in')).toBe('true');
     expect(mockRestoreAccessToken).toHaveBeenCalledTimes(1);
   });
 
-  it('기존 사용자의 세션이 만료되어도 이력을 이관하고 로그인을 선택한다', async () => {
+  it('기존 사용자의 세션이 만료되어도 이력을 이관하고 복원을 완료한다', async () => {
     localStorage.setItem('harudle.has-completed-oauth', 'true');
     mockRestoreAccessToken.mockRejectedValue(
       new RequestError({
@@ -63,17 +64,19 @@ describe('useEntryStatus', () => {
       }),
     );
 
-    const { result, unmount } = renderHook(() => useEntryStatus());
+    const { result, unmount } = renderHook(() => useSessionRestore());
 
-    await waitFor(() => expect(result.current.status).toBe('login'));
+    await waitFor(() => expect(result.current.isRestoring).toBe(false));
     expect(localStorage.getItem('harudle.has-ever-logged-in')).toBe('true');
 
     unmount();
     localStorage.removeItem('harudle.has-completed-oauth');
-    const nextVisit = renderHook(() => useEntryStatus());
+    const nextVisit = renderHook(() => useSessionRestore());
 
-    expect(nextVisit.result.current.status).toBe('restoringSession');
-    await waitFor(() => expect(nextVisit.result.current.status).toBe('login'));
+    expect(nextVisit.result.current.isRestoring).toBe(true);
+    await waitFor(() =>
+      expect(nextVisit.result.current.isRestoring).toBe(false),
+    );
   });
 
   it('기존 사용자의 이력 저장이 실패해도 세션 복원을 진행한다', async () => {
@@ -83,24 +86,24 @@ describe('useEntryStatus', () => {
     });
     mockRestoreAccessToken.mockResolvedValueOnce();
 
-    const { result } = renderHook(() => useEntryStatus());
+    const { result } = renderHook(() => useSessionRestore());
 
-    await waitFor(() => expect(result.current.status).toBe('home'));
+    await waitFor(() => expect(result.current.isRestoring).toBe(false));
     expect(mockRestoreAccessToken).toHaveBeenCalledTimes(1);
   });
 
-  it('로그인 이력을 읽을 수 없으면 랜딩을 선택한다', () => {
+  it('로그인 이력을 읽을 수 없으면 공개 조회를 허용한다', () => {
     jest.spyOn(Storage.prototype, 'getItem').mockImplementation((): never => {
       throw new Error('저장소 읽기 실패');
     });
 
-    const { result } = renderHook(() => useEntryStatus());
+    const { result } = renderHook(() => useSessionRestore());
 
-    expect(result.current.status).toBe('landing');
+    expect(result.current.isRestoring).toBe(false);
     expect(mockRestoreAccessToken).not.toHaveBeenCalled();
   });
 
-  it('세션 복구 중 상태를 유지하고 성공하면 홈을 선택한다', async () => {
+  it('세션 복구 중 상태를 유지하고 성공하면 대기를 끝낸다', async () => {
     localStorage.setItem('harudle.has-ever-logged-in', 'true');
     let finishRestore: (() => void) | undefined;
     mockRestoreAccessToken.mockImplementationOnce(
@@ -109,18 +112,18 @@ describe('useEntryStatus', () => {
           finishRestore = resolve;
         }),
     );
-    const { result } = renderHook(() => useEntryStatus());
+    const { result } = renderHook(() => useSessionRestore());
 
-    expect(result.current.status).toBe('restoringSession');
+    expect(result.current.isRestoring).toBe(true);
 
     await act(async () => {
       finishRestore?.();
     });
 
-    expect(result.current.status).toBe('home');
+    expect(result.current.isRestoring).toBe(false);
   });
 
-  it('세션 만료 시 로그인 경험을 유지하고 로그인을 선택한다', async () => {
+  it('세션 만료 시 로그인 경험을 유지하고 대기를 끝낸다', async () => {
     localStorage.setItem('harudle.has-ever-logged-in', 'true');
     mockRestoreAccessToken.mockRejectedValueOnce(
       new RequestError({
@@ -132,9 +135,9 @@ describe('useEntryStatus', () => {
         code: 'INVALID_REFRESH_TOKEN',
       }),
     );
-    const { result } = renderHook(() => useEntryStatus());
+    const { result } = renderHook(() => useSessionRestore());
 
-    await waitFor(() => expect(result.current.status).toBe('login'));
+    await waitFor(() => expect(result.current.isRestoring).toBe(false));
     expect(localStorage.getItem('harudle.has-ever-logged-in')).toBe('true');
     expect(mockCaptureError).not.toHaveBeenCalled();
   });
@@ -150,24 +153,19 @@ describe('useEntryStatus', () => {
       code: 'SERVICE_UNAVAILABLE',
     }),
   ])(
-    '네트워크·서버 실패는 로그인 이동 대신 재시도할 수 있다: %s',
+    '네트워크·서버 실패는 오류를 기록하고 공개 조회를 허용한다: %s',
     async (error) => {
       localStorage.setItem('harudle.has-ever-logged-in', 'true');
-      mockRestoreAccessToken
-        .mockRejectedValueOnce(error)
-        .mockResolvedValueOnce();
-      const { result } = renderHook(() => useEntryStatus());
+      mockRestoreAccessToken.mockRejectedValueOnce(error);
+      const { result } = renderHook(() => useSessionRestore());
 
-      await waitFor(() => expect(result.current.status).toBe('error'));
+      await waitFor(() => expect(result.current.isRestoring).toBe(false));
       expect(mockCaptureError).toHaveBeenCalledWith(error, {
         feature: 'authentication',
         operation: 'restore_session',
       });
 
-      act(() => result.current.retry());
-      expect(result.current.status).toBe('restoringSession');
-      await waitFor(() => expect(result.current.status).toBe('home'));
-      expect(mockRestoreAccessToken).toHaveBeenCalledTimes(2);
+      expect(mockRestoreAccessToken).toHaveBeenCalledTimes(1);
     },
   );
 });

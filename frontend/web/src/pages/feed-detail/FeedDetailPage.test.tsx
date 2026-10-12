@@ -41,10 +41,6 @@ jest.mock('../../assets/icons/link.svg', () => 'link.svg');
 jest.mock('../../assets/icons/check.svg', () => 'check.svg');
 jest.mock('../../assets/icons/delete.svg', () => 'delete.svg');
 jest.mock('../../assets/icons/bottom-sheet-close.svg', () => 'close.svg');
-jest.mock('../../useEntryStatus', () => ({
-  __esModule: true,
-  default: () => ({ status: 'home' }),
-}));
 const mockCaptureError = jest.fn();
 jest.mock('../../posthog/useErrorTracking', () => ({
   useErrorTracking: () => ({ captureError: mockCaptureError }),

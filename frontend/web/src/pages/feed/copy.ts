@@ -11,4 +11,7 @@ export const FEED_COPY = {
   chooseAction: '네컷만화 고르기',
   loadErrorTitle: '피드를 불러오지 못했어요',
   reloadAction: '다시 불러오기',
+  loadMoreAction: '더 보기',
+  loadingMoreAction: '불러오는 중...',
+  loadMoreError: '피드를 더 불러오지 못했어요. 다시 시도해 주세요.',
 } as const;

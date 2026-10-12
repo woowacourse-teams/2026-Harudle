@@ -52,6 +52,8 @@ const mockNavigate = jest.fn();
 jest.mock('react-router', () => ({ useNavigate: () => mockNavigate }));
 
 const mockGetFeedList = jest.fn<typeof getFeedList>();
+const mockOnCategoryClick =
+  jest.fn<(categoryId: Feed['category']['id']) => void>();
 const mockSetFeedLike = jest.fn<typeof setFeedLike>();
 const mockDeleteFeed = jest.fn<typeof deleteFeed>();
 jest.mock('../../domain/feeds/feedLike', () => ({
@@ -125,9 +127,23 @@ const prepareDialogs = (): void => {
 };
 
 describe('피드 카드 액션', (): void => {
+  it('카드 카테고리를 누르면 해당 카테고리 ID를 전달한다', async (): Promise<void> => {
+    const user = userEvent.setup();
+    render(
+      <FeedItemList sort="LATEST" onCategoryClick={mockOnCategoryClick} />,
+    );
+
+    await user.click(await screen.findByRole('button', { name: '일상' }));
+    expect(mockOnCategoryClick).toHaveBeenCalledWith(feed.category.id);
+    expect(mockOnCategoryClick).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
   it('댓글을 누르면 해당 피드 상세 페이지로 이동한다', async (): Promise<void> => {
     const user = userEvent.setup();
-    render(<FeedItemList sort="LATEST" />);
+    render(
+      <FeedItemList onCategoryClick={mockOnCategoryClick} sort="LATEST" />,
+    );
 
     await user.click(await screen.findByRole('button', { name: '3' }));
 
@@ -140,7 +156,9 @@ describe('피드 카드 액션', (): void => {
     localStorage.setItem('harudle.has-ever-logged-in', 'true');
     const alert = jest.spyOn(window, 'alert').mockImplementation(() => {});
     const user = userEvent.setup();
-    render(<FeedItemList sort="LATEST" />);
+    render(
+      <FeedItemList onCategoryClick={mockOnCategoryClick} sort="LATEST" />,
+    );
     const button = await screen.findByRole('button', { name: '12' });
     prepareDialogs();
 
@@ -169,7 +187,9 @@ describe('피드 카드 액션', (): void => {
     const user = userEvent.setup();
     mockSetFeedLike.mockResolvedValueOnce({ likedByMe: true, likeCount: 13 });
     mockSetFeedLike.mockResolvedValueOnce({ likedByMe: false, likeCount: 12 });
-    render(<FeedItemList sort="LATEST" />);
+    render(
+      <FeedItemList onCategoryClick={mockOnCategoryClick} sort="LATEST" />,
+    );
 
     await user.click(await screen.findByRole('button', { name: '12' }));
     const liked = await screen.findByRole('button', {
@@ -210,7 +230,9 @@ describe('피드 카드 액션', (): void => {
         }),
     );
     mockSetFeedLike.mockResolvedValueOnce({ likedByMe: true, likeCount: 13 });
-    render(<FeedItemList sort="LATEST" />);
+    render(
+      <FeedItemList onCategoryClick={mockOnCategoryClick} sort="LATEST" />,
+    );
     const button = await screen.findByRole('button', { name: '12' });
     await user.click(button);
     expect(button).toBeDisabled();
@@ -236,7 +258,9 @@ describe('피드 카드 액션', (): void => {
       .spyOn(navigator.clipboard, 'writeText')
       .mockResolvedValue(undefined);
     const alert = jest.spyOn(window, 'alert').mockImplementation(() => {});
-    render(<FeedItemList sort="LATEST" />);
+    render(
+      <FeedItemList onCategoryClick={mockOnCategoryClick} sort="LATEST" />,
+    );
     await screen.findByRole('article');
     prepareDialogs();
     await user.click(screen.getByRole('button', { name: '공유 아이콘' }));
@@ -285,7 +309,9 @@ describe('피드 카드 액션', (): void => {
       )
       .mockResolvedValueOnce(undefined);
     const alert = jest.spyOn(window, 'alert').mockImplementation(() => {});
-    render(<FeedItemList sort="LATEST" />);
+    render(
+      <FeedItemList onCategoryClick={mockOnCategoryClick} sort="LATEST" />,
+    );
     await screen.findByRole('article');
     prepareDialogs();
     await user.click(screen.getByRole('button', { name: '공유 아이콘' }));
@@ -317,7 +343,9 @@ describe('피드 카드 액션', (): void => {
       ...response,
       items: [feed, secondFeed],
     });
-    render(<FeedItemList sort="LATEST" />);
+    render(
+      <FeedItemList onCategoryClick={mockOnCategoryClick} sort="LATEST" />,
+    );
     const shareButtons = await screen.findAllByRole('button', {
       name: '공유 아이콘',
     });
@@ -331,7 +359,9 @@ describe('피드 카드 액션', (): void => {
   it('복사 완료 후 화면을 떠나면 초기화 타이머를 정리한다', async () => {
     const user = userEvent.setup();
     jest.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
-    const { unmount } = render(<FeedItemList sort="LATEST" />);
+    const { unmount } = render(
+      <FeedItemList onCategoryClick={mockOnCategoryClick} sort="LATEST" />,
+    );
     await screen.findByRole('article');
     prepareDialogs();
     await user.click(screen.getByRole('button', { name: '공유 아이콘' }));
@@ -360,7 +390,9 @@ describe('피드 카드 액션', (): void => {
     });
     const alert = jest.spyOn(window, 'alert').mockImplementation(() => {});
     try {
-      render(<FeedItemList sort="LATEST" />);
+      render(
+        <FeedItemList onCategoryClick={mockOnCategoryClick} sort="LATEST" />,
+      );
       await screen.findByRole('article');
       prepareDialogs();
       await user.click(screen.getByRole('button', { name: '공유 아이콘' }));
@@ -390,7 +422,9 @@ describe('피드 카드 액션', (): void => {
         }),
     );
     mockDeleteFeed.mockResolvedValueOnce(undefined);
-    render(<FeedItemList sort="LATEST" />);
+    render(
+      <FeedItemList onCategoryClick={mockOnCategoryClick} sort="LATEST" />,
+    );
     await screen.findByRole('article');
     prepareDialogs();
     await user.click(
@@ -423,7 +457,9 @@ describe('피드 카드 액션', (): void => {
       items: [{ ...feed, isMine: true }],
     });
     mockDeleteFeed.mockResolvedValue(undefined);
-    render(<FeedItemList sort="LATEST" />);
+    render(
+      <FeedItemList onCategoryClick={mockOnCategoryClick} sort="LATEST" />,
+    );
     await screen.findByRole('article');
     prepareDialogs();
 
@@ -451,13 +487,245 @@ describe('피드 카드 액션', (): void => {
   });
 });
 
+describe('피드 목록 더 보기', (): void => {
+  const firstPage: FeedListResponse = {
+    ...response,
+    nextCursor: 'cursor-1',
+    hasNext: true,
+  };
+  const secondFeed: Feed = {
+    ...feed,
+    id: 'second',
+    author: { ...feed.author, nickname: '두 번째 작성자' },
+  };
+
+  it('서버 커서로 이어서 조회하고 마지막 페이지에서 버튼을 숨긴다', async (): Promise<void> => {
+    const user = userEvent.setup();
+    mockGetFeedList
+      .mockResolvedValueOnce(firstPage)
+      .mockResolvedValueOnce({
+        items: [secondFeed],
+        nextCursor: 'cursor-2',
+        hasNext: true,
+      })
+      .mockResolvedValueOnce({
+        ...response,
+        items: [{ ...secondFeed, id: 'third' }],
+      });
+    render(
+      <FeedItemList
+        onCategoryClick={mockOnCategoryClick}
+        categoryId="1"
+        sort="POPULAR"
+      />,
+    );
+    const button = await screen.findByRole('button', { name: '더 보기' });
+    expect(mockGetFeedList).toHaveBeenNthCalledWith(1, {
+      categoryId: '1',
+      sort: 'POPULAR',
+      size: 20,
+      signal: expect.any(AbortSignal),
+    });
+
+    await user.click(button);
+    expect(
+      await screen.findByText(secondFeed.author.nickname),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole('article')).toHaveLength(2);
+    expect(mockGetFeedList).toHaveBeenNthCalledWith(2, {
+      categoryId: '1',
+      sort: 'POPULAR',
+      size: 20,
+      cursor: 'cursor-1',
+      signal: expect.any(AbortSignal),
+    });
+
+    await user.click(screen.getByRole('button', { name: '더 보기' }));
+    expect(screen.getAllByRole('article')).toHaveLength(3);
+    expect(mockGetFeedList).toHaveBeenNthCalledWith(3, {
+      categoryId: '1',
+      sort: 'POPULAR',
+      size: 20,
+      cursor: 'cursor-2',
+      signal: expect.any(AbortSignal),
+    });
+    expect(
+      screen.queryByRole('button', { name: '더 보기' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('추가 조회 중 기존 목록과 좋아요 변경을 유지하고 중복 요청을 막는다', async (): Promise<void> => {
+    const user = userEvent.setup();
+    let resolveNext: ((value: FeedListResponse) => void) | undefined;
+    mockGetFeedList.mockResolvedValueOnce(firstPage).mockImplementationOnce(
+      (): Promise<FeedListResponse> =>
+        new Promise((resolve): void => {
+          resolveNext = resolve;
+        }),
+    );
+    mockSetFeedLike.mockResolvedValueOnce({ likedByMe: true, likeCount: 13 });
+    render(
+      <FeedItemList onCategoryClick={mockOnCategoryClick} sort="LATEST" />,
+    );
+    await user.click(await screen.findByRole('button', { name: '더 보기' }));
+    const pendingButton = screen.getByRole('button', {
+      name: '불러오는 중...',
+    });
+    expect(pendingButton).toBeDisabled();
+    fireEvent.click(pendingButton);
+    expect(mockGetFeedList).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('article')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '12' }));
+    expect(
+      await screen.findByRole('button', { name: '13' }),
+    ).toBeInTheDocument();
+
+    await act(async (): Promise<void> => {
+      resolveNext?.({ ...response, items: [secondFeed] });
+    });
+    expect(screen.getAllByRole('article')).toHaveLength(2);
+    expect(screen.getByRole('button', { name: '13' })).toBeInTheDocument();
+  });
+
+  it('추가 조회 실패를 alert로 안내하고 같은 커서로 다시 더 보기 할 수 있다', async (): Promise<void> => {
+    const user = userEvent.setup();
+    const alert = jest
+      .spyOn(window, 'alert')
+      .mockImplementation((): void => {});
+    mockGetFeedList
+      .mockResolvedValueOnce(firstPage)
+      .mockRejectedValueOnce(new Error('추가 조회 실패'))
+      .mockResolvedValueOnce({ ...response, items: [secondFeed] });
+    render(
+      <FeedItemList onCategoryClick={mockOnCategoryClick} sort="LATEST" />,
+    );
+    await user.click(await screen.findByRole('button', { name: '더 보기' }));
+    expect(alert).toHaveBeenCalledWith(
+      '피드를 더 불러오지 못했어요. 다시 시도해 주세요.',
+    );
+    expect(screen.getByRole('article')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '더 보기' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: '더 보기' }));
+    expect(
+      await screen.findByText(secondFeed.author.nickname),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole('article')).toHaveLength(2);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(mockGetFeedList.mock.calls[1][0]?.cursor).toBe('cursor-1');
+    expect(mockGetFeedList.mock.calls[2][0]?.cursor).toBe('cursor-1');
+  });
+
+  it.each([
+    { categoryId: '2', sort: 'POPULAR' as const },
+    { categoryId: '1', sort: 'LATEST' as const },
+  ])(
+    '필터 변경 시 추가 조회를 취소하고 커서를 초기화한다: %j',
+    async (filter): Promise<void> => {
+      const user = userEvent.setup();
+      let resolvePrevious: ((value: FeedListResponse) => void) | undefined;
+      mockGetFeedList
+        .mockResolvedValueOnce(firstPage)
+        .mockImplementationOnce(
+          (): Promise<FeedListResponse> =>
+            new Promise((resolve): void => {
+              resolvePrevious = resolve;
+            }),
+        )
+        .mockResolvedValueOnce({
+          ...firstPage,
+          items: [secondFeed],
+          nextCursor: 'new-cursor',
+        })
+        .mockResolvedValueOnce(emptyResponse);
+      const { rerender } = render(
+        <FeedItemList
+          onCategoryClick={mockOnCategoryClick}
+          categoryId="1"
+          sort="POPULAR"
+        />,
+      );
+      await user.click(await screen.findByRole('button', { name: '더 보기' }));
+      const previousSignal = mockGetFeedList.mock.calls[1][0]?.signal;
+      rerender(
+        <FeedItemList onCategoryClick={mockOnCategoryClick} {...filter} />,
+      );
+      expect(previousSignal?.aborted).toBe(true);
+      expect(
+        await screen.findByText(secondFeed.author.nickname),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(feed.author.nickname)).not.toBeInTheDocument();
+      expect(mockGetFeedList).toHaveBeenNthCalledWith(3, {
+        ...filter,
+        size: 20,
+        signal: expect.any(AbortSignal),
+      });
+
+      await act(async (): Promise<void> => {
+        resolvePrevious?.(response);
+      });
+      expect(screen.getAllByRole('article')).toHaveLength(1);
+      await user.click(screen.getByRole('button', { name: '더 보기' }));
+      expect(mockGetFeedList).toHaveBeenLastCalledWith({
+        ...filter,
+        size: 20,
+        cursor: 'new-cursor',
+        signal: expect.any(AbortSignal),
+      });
+    },
+  );
+
+  it('추가 조회 중 피드를 삭제해도 삭제 결과를 유지하고 새 피드를 추가한다', async (): Promise<void> => {
+    const user = userEvent.setup();
+    let resolveNext: ((value: FeedListResponse) => void) | undefined;
+    mockGetFeedList
+      .mockResolvedValueOnce({
+        ...firstPage,
+        items: [{ ...feed, isMine: true }],
+      })
+      .mockImplementationOnce(
+        (): Promise<FeedListResponse> =>
+          new Promise((resolve): void => {
+            resolveNext = resolve;
+          }),
+      );
+    mockDeleteFeed.mockResolvedValueOnce(undefined);
+    render(
+      <FeedItemList onCategoryClick={mockOnCategoryClick} sort="POPULAR" />,
+    );
+    await user.click(await screen.findByRole('button', { name: '더 보기' }));
+    prepareDialogs();
+    await user.click(
+      screen.getByRole('button', { name: '옵션 더보기 아이콘' }),
+    );
+    await user.click(screen.getByRole('button', { name: /피드 삭제$/ }));
+    await user.click(screen.getByRole('button', { name: /피드 삭제$/ }));
+    expect(screen.queryByRole('article')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '불러오는 중...' }),
+    ).toBeDisabled();
+
+    await act(async (): Promise<void> => {
+      resolveNext?.({ ...response, items: [secondFeed] });
+    });
+    expect(screen.getAllByRole('article')).toHaveLength(1);
+    expect(screen.queryByText(feed.author.nickname)).not.toBeInTheDocument();
+    expect(screen.getByText(secondFeed.author.nickname)).toBeInTheDocument();
+  });
+});
+
 describe('피드 목록 조회 상태', () => {
   it('로딩 후 조회한 항목 수만큼 기존 카드를 표시한다', async (): Promise<void> => {
     mockGetFeedList.mockResolvedValue({
       ...response,
       items: [feed, { ...feed, id: 'second' }],
     });
-    render(<FeedItemList categoryId="1" sort="POPULAR" />);
+    render(
+      <FeedItemList
+        onCategoryClick={mockOnCategoryClick}
+        categoryId="1"
+        sort="POPULAR"
+      />,
+    );
 
     expect(screen.getByRole('img', { name: '로딩 중' })).toBeInTheDocument();
     expect(await screen.findAllByRole('article')).toHaveLength(2);
@@ -470,7 +738,9 @@ describe('피드 목록 조회 상태', () => {
   });
 
   it('조회한 반응 수와 카드 액션 UI를 표시한다', async (): Promise<void> => {
-    render(<FeedItemList sort="LATEST" />);
+    render(
+      <FeedItemList onCategoryClick={mockOnCategoryClick} sort="LATEST" />,
+    );
     await screen.findByRole('article');
 
     expect(screen.queryByText('FeedItemActions')).not.toBeInTheDocument();
@@ -489,7 +759,9 @@ describe('피드 목록 조회 상태', () => {
       ...response,
       items: [{ ...feed, isMine: true }],
     });
-    render(<FeedItemList sort="LATEST" />);
+    render(
+      <FeedItemList onCategoryClick={mockOnCategoryClick} sort="LATEST" />,
+    );
 
     expect(
       await screen.findByRole('button', { name: '옵션 더보기 아이콘' }),
@@ -497,7 +769,9 @@ describe('피드 목록 조회 상태', () => {
   });
 
   it('프로필 이미지 로딩에 실패하면 기본 이미지로 대체한다', async () => {
-    render(<FeedItemList sort="LATEST" />);
+    render(
+      <FeedItemList onCategoryClick={mockOnCategoryClick} sort="LATEST" />,
+    );
     const article = await screen.findByRole('article');
     const image = article.querySelector('header img');
     if (!image) throw new Error('프로필 이미지가 없습니다.');
@@ -509,7 +783,9 @@ describe('피드 목록 조회 상태', () => {
 
   it('빈 응답은 FeedEmpty를 표시한다', async (): Promise<void> => {
     mockGetFeedList.mockResolvedValue(emptyResponse);
-    render(<FeedItemList sort="LATEST" />);
+    render(
+      <FeedItemList onCategoryClick={mockOnCategoryClick} sort="LATEST" />,
+    );
 
     expect(
       await screen.findByText('아직 이 카테고리에 공유된 피드가 없어요.'),
@@ -522,7 +798,13 @@ describe('피드 목록 조회 상태', () => {
   it('카테고리별 빈 화면에서 만화를 고르면 앨범으로 이동한다', async (): Promise<void> => {
     const user = userEvent.setup();
     mockGetFeedList.mockResolvedValue(emptyResponse);
-    render(<FeedItemList categoryId="2" sort="LATEST" />);
+    render(
+      <FeedItemList
+        onCategoryClick={mockOnCategoryClick}
+        categoryId="2"
+        sort="LATEST"
+      />,
+    );
     expect(
       await screen.findByText('아직 이 카테고리에 공유된 피드가 없어요.'),
     ).toBeInTheDocument();
@@ -535,7 +817,9 @@ describe('피드 목록 조회 상태', () => {
     '조회 실패 시 FeedError에 오류 메시지를 표시한다: %s',
     async (error): Promise<void> => {
       mockGetFeedList.mockRejectedValue(error);
-      render(<FeedItemList sort="LATEST" />);
+      render(
+        <FeedItemList onCategoryClick={mockOnCategoryClick} sort="LATEST" />,
+      );
 
       const alert = await screen.findByRole('alert');
       expect(alert).toHaveTextContent(
@@ -558,10 +842,22 @@ describe('피드 목록 조회 상태', () => {
         }),
     );
     mockGetFeedList.mockResolvedValueOnce(emptyResponse);
-    const { rerender } = render(<FeedItemList categoryId="1" sort="LATEST" />);
+    const { rerender } = render(
+      <FeedItemList
+        onCategoryClick={mockOnCategoryClick}
+        categoryId="1"
+        sort="LATEST"
+      />,
+    );
     const previousSignal = mockGetFeedList.mock.calls[0][0]?.signal;
 
-    rerender(<FeedItemList categoryId="2" sort="POPULAR" />);
+    rerender(
+      <FeedItemList
+        onCategoryClick={mockOnCategoryClick}
+        categoryId="2"
+        sort="POPULAR"
+      />,
+    );
     expect(previousSignal?.aborted).toBe(true);
     expect(
       await screen.findByText('아직 이 카테고리에 공유된 피드가 없어요.'),

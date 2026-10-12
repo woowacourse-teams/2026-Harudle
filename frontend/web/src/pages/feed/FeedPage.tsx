@@ -5,8 +5,6 @@ import BottomNavigationLayout from '../../shared/BottomNavigationLayout';
 import FeedFilterBar from './FeedFilterBar';
 import FeedItemList from './FeedItemList';
 import { useSearchParams } from 'react-router';
-import useEntryStatus from '../../useEntryStatus';
-import LoadingSpinner from '../../shared/LoadingSpinner';
 
 const FEED_QUERY_KEYS = {
   CATEGORY_ID: 'categoryId',
@@ -14,7 +12,6 @@ const FEED_QUERY_KEYS = {
 } as const;
 
 const FeedPage = () => {
-  const { status } = useEntryStatus();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const categoryId = searchParams.get(FEED_QUERY_KEYS.CATEGORY_ID) ?? undefined;
@@ -35,6 +32,14 @@ const FeedPage = () => {
     });
   };
 
+  const handleCategoryClick = (nextCategoryId: Category['id']): void => {
+    setSearchParams((previous): URLSearchParams => {
+      const next = new URLSearchParams(previous);
+      next.set(FEED_QUERY_KEYS.CATEGORY_ID, nextCategoryId);
+      return next;
+    });
+  };
+
   const handleSortChange = (nextSort: FeedSort): void => {
     setSearchParams((previous): URLSearchParams => {
       const next = new URLSearchParams(previous);
@@ -47,8 +52,6 @@ const FeedPage = () => {
     });
   };
 
-  if (status === 'restoringSession') return <LoadingSpinner />;
-
   return (
     <BottomNavigationLayout>
       <main css={feedPageContentStyle}>
@@ -58,7 +61,11 @@ const FeedPage = () => {
           sort={sort}
           onSortChange={handleSortChange}
         />
-        <FeedItemList categoryId={categoryId} sort={sort} />
+        <FeedItemList
+          categoryId={categoryId}
+          sort={sort}
+          onCategoryClick={handleCategoryClick}
+        />
       </main>
     </BottomNavigationLayout>
   );

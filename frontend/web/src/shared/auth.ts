@@ -27,6 +27,15 @@ export const publicFetch = async (
   info: AuthFetchRequestInfo,
   init?: AuthFetchRequestInit,
 ): Promise<Response> => {
+  // 갱신 중 시작한 공개 요청도 같은 갱신 결과를 기다린다.
+  if (!accessToken && refreshRequest) {
+    try {
+      await refreshRequest;
+    } catch {
+      return fetch(info, init);
+    }
+  }
+
   const usedToken = accessToken;
   if (!usedToken) return fetch(info, init);
 
