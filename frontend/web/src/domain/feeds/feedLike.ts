@@ -1,5 +1,5 @@
 import { API_BASE_URL, isProblemDetails, RequestError } from '../../shared/api';
-import { authFetch } from '../../shared/auth';
+import { authFetch, requestCsrfToken } from '../../shared/auth';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { isNonNegativeInteger, isRecord } from '../../shared/utils';
 import type { Feed } from './feedList';
@@ -18,8 +18,12 @@ export const setFeedLike = async ({
   feedId,
   likedByMe,
 }: FeedLikeRequest): Promise<FeedLikeResponse> => {
+  const csrfToken = await requestCsrfToken();
   const response = await authFetch(`${API_BASE_URL}/feeds/${feedId}/like`, {
     method: likedByMe ? 'PUT' : 'DELETE',
+    headers: {
+      'X-XSRF-TOKEN': csrfToken,
+    },
   });
 
   if (!response.ok) {
