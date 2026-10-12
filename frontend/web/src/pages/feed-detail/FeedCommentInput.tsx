@@ -7,6 +7,8 @@ import type { FeedComment } from '../../domain/feeds/feedComments';
 import NeedLoginBottomSheet from '../../shared/NeedLoginBottomSheet';
 import type { BottomSheetHandle } from '../../shared/BottomSheet';
 import useFeedCommentCreate from './useFeedCommentCreate';
+import { isValidCommentContent } from '../../domain/feeds/feedCommentCreate';
+import { ERROR_MESSAGES } from '../../shared/errorMessage';
 
 interface FeedCommentInputProps {
   readonly feedId: string;
@@ -20,16 +22,17 @@ const FeedCommentInput = ({
   const loginSheetRef = useRef<BottomSheetHandle>(null);
   const [content, setContent] = useState('');
   const { request, execute } = useFeedCommentCreate({ feedId });
+  const isValidContent = isValidCommentContent(content);
+  const isInvalidContent = content.length > 0 && !isValidContent;
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
+    if (!isValidContent || request.status === 'loading') return;
 
     if (localStorage.getItem('harudle.has-completed-oauth') === null) {
       loginSheetRef.current?.open();
       return;
     }
-
-    if (request.status === 'loading') return;
 
     void execute({
       content,
@@ -56,14 +59,18 @@ const FeedCommentInput = ({
           />
           <button
             type="submit"
-            disabled={content.length === 0 || request.status === 'loading'}
+            disabled={!isValidContent || request.status === 'loading'}
             css={sendButtonStyle}
           >
             <span css={sendIconStyle} />
           </button>
         </div>
-        {request.status === 'error' && (
-          <p css={errorStyle}>{FEED_DETAIL_COPY.commentSubmitError}</p>
+        {(isInvalidContent || request.status === 'error') && (
+          <p role="alert" css={errorStyle}>
+            {isInvalidContent
+              ? ERROR_MESSAGES.INVALID_COMMENT_CONTENT
+              : FEED_DETAIL_COPY.commentSubmitError}
+          </p>
         )}
       </form>
       <NeedLoginBottomSheet
