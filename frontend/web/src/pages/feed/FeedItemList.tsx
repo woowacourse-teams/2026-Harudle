@@ -1,6 +1,6 @@
 import { css } from '@emotion/react';
 import { useEffect } from 'react';
-import type { FeedListRequest } from '../../domain/feeds/feedList';
+import type { Feed, FeedListRequest } from '../../domain/feeds/feedList';
 import LoadingSpinner from '../../shared/LoadingSpinner';
 import FeedEmpty from './FeedEmpty';
 import FeedError from './FeedError';
@@ -9,10 +9,18 @@ import FeedItem from './FeedItem';
 import ActionButton from '../../shared/ActionButton';
 import { FEED_COPY } from './copy';
 
+interface FeedItemListProps extends Pick<
+  FeedListRequest,
+  'categoryId' | 'sort'
+> {
+  readonly onCategoryClick: (categoryId: Feed['category']['id']) => void;
+}
+
 const FeedItemList = ({
   categoryId,
   sort,
-}: Pick<FeedListRequest, 'categoryId' | 'sort'>) => {
+  onCategoryClick,
+}: FeedItemListProps) => {
   const { request, loadMoreRequest, loadMore, updateLike, removeFeedFromList } =
     useFeedList({ categoryId, sort });
   const isLoadingMore = loadMoreRequest.status === 'loading';
@@ -40,6 +48,7 @@ const FeedItemList = ({
         <FeedItem
           key={item.id}
           feed={item}
+          onCategoryClick={onCategoryClick}
           onLikeChange={updateLike}
           onDelete={removeFeedFromList}
         />
