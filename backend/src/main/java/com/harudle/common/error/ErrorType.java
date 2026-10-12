@@ -58,6 +58,11 @@ public enum ErrorType {
             "Diary not found",
             "일기를 찾을 수 없습니다."
     ),
+    FEED_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "Feed not found",
+            "피드를 찾을 수 없습니다."
+    ),
     SHARE_NOT_FOUND(
             HttpStatus.NOT_FOUND,
             "Share not found",

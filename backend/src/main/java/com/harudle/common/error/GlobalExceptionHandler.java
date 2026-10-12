@@ -9,6 +9,7 @@ import com.harudle.auth.presentation.AuthenticationRequiredException;
 import com.harudle.common.validation.InvalidIdempotencyKeyException;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
+import com.harudle.feed.service.exception.FeedNotFoundException;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
 import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
 import com.harudle.generation.usage.service.exception.DailyGenerationLimitExceededException;
@@ -154,6 +155,11 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(DiaryNotFoundException.class)
     ResponseEntity<ProblemDetail> handleDiaryNotFound(HttpServletRequest request) {
         return createResponse(ErrorType.DIARY_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(FeedNotFoundException.class)
+    ResponseEntity<ProblemDetail> handleFeedNotFound(HttpServletRequest request) {
+        return createResponse(ErrorType.FEED_NOT_FOUND, request);
     }
 
     @ExceptionHandler(ShareNotFoundException.class)
