@@ -11,22 +11,10 @@ const DIARY_DELETE = {
   DIARY_DELETION_FAILED: '네컷만화를 삭제하지 못했어요. 다시 시도해 주세요.',
 } as const;
 
-const DIARY_SHARE_LINK = {
-  DIARY_SHARE_LINK_CREATION_FAILED:
-    '공유 링크를 만들지 못했어요. 다시 시도해 주세요.',
-  INVALID_DIARY_SHARE_RESPONSE: 'DiaryShare 응답 형식이 일치하지 않습니다.',
-} as const;
-
 const DIARY_DETAIL = {
   DIARY_DETAIL_FETCH_FAILED:
     '네컷만화를 불러오지 못했어요. 다시 시도해 주세요.',
   INVALID_DIARY_DETAIL_RESPONSE: 'DiaryDetail 응답 형식이 일치하지 않습니다.',
-} as const;
-
-const SHARED_DIARY = {
-  SHARED_DIARY_FETCH_FAILED:
-    '공유된 네컷만화를 불러오지 못했어요. 다시 시도해 주세요.',
-  INVALID_SHARED_DIARY_RESPONSE: 'SharedDiary 응답 형식이 일치하지 않습니다.',
 } as const;
 
 const MONTHLY_DIARIES = {
@@ -57,6 +45,8 @@ const FEED_LIST = {
 } as const;
 
 const FEED_ACTIONS = {
+  FEED_PUBLISH_FAILED: '피드에 올리지 못했어요. 다시 시도해 주세요.',
+  INVALID_FEED_PUBLISH_RESPONSE: 'FeedPublish 응답 형식이 일치하지 않습니다.',
   FEED_LINK_COPY_FAILED: '링크를 복사하지 못했어요. 다시 시도해 주세요.',
   FEED_LIKE_FAILED: '좋아요를 반영하지 못했어요. 다시 시도해 주세요.',
   INVALID_FEED_LIKE_RESPONSE: 'FeedLike 응답 형식이 일치하지 않습니다.',
@@ -143,9 +133,7 @@ const PWA = {
 export const ERROR_MESSAGES = {
   ...DIARY_GENERATE,
   ...DIARY_DELETE,
-  ...DIARY_SHARE_LINK,
   ...DIARY_DETAIL,
-  ...SHARED_DIARY,
   ...MONTHLY_DIARIES,
   ...FEED_LIST,
   ...FEED_DETAIL,

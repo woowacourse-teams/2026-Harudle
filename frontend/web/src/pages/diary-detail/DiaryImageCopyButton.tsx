@@ -99,7 +99,7 @@ const DiaryImageCopyButton = ({
           ? DIARY_DETAIL_COPY.copySuccess
           : DIARY_DETAIL_COPY.copyAction
       }
-      variant="primary"
+      variant="secondary"
       onClick={handleImageCopy}
     />
   );

@@ -14,7 +14,8 @@ const FEED_QUERY_KEYS = {
 const FeedPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const categoryId = searchParams.get(FEED_QUERY_KEYS.CATEGORY_ID) ?? undefined;
+  const rawCategoryId = searchParams.get(FEED_QUERY_KEYS.CATEGORY_ID);
+  const categoryId = rawCategoryId === null ? undefined : Number(rawCategoryId);
   const rawSort = searchParams.get(FEED_QUERY_KEYS.SORT);
   const sort = isFeedSort(rawSort) ? rawSort : 'LATEST';
 
@@ -26,16 +27,8 @@ const FeedPage = () => {
       if (nextCategoryId === undefined) {
         next.delete(FEED_QUERY_KEYS.CATEGORY_ID);
       } else {
-        next.set(FEED_QUERY_KEYS.CATEGORY_ID, nextCategoryId);
+        next.set(FEED_QUERY_KEYS.CATEGORY_ID, String(nextCategoryId));
       }
-      return next;
-    });
-  };
-
-  const handleCategoryClick = (nextCategoryId: Category['id']): void => {
-    setSearchParams((previous): URLSearchParams => {
-      const next = new URLSearchParams(previous);
-      next.set(FEED_QUERY_KEYS.CATEGORY_ID, nextCategoryId);
       return next;
     });
   };
@@ -64,7 +57,7 @@ const FeedPage = () => {
         <FeedItemList
           categoryId={categoryId}
           sort={sort}
-          onCategoryClick={handleCategoryClick}
+          onCategoryClick={handleCategoryChange}
         />
       </main>
     </BottomNavigationLayout>

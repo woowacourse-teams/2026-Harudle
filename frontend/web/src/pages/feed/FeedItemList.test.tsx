@@ -79,7 +79,7 @@ const feed: Feed = {
     nickname: '하루들',
     profileImageUrl: '/profile.svg',
   },
-  category: { id: '1', name: '일상' },
+  category: { id: 1, name: '일상' },
   imageUrl: '/diary.webp',
   imageUrlExpiresAt: '2026-10-10T16:00:00+09:00',
   publishedAt: '2026-10-10T15:00:00+09:00',
@@ -515,13 +515,13 @@ describe('피드 목록 더 보기', (): void => {
     render(
       <FeedItemList
         onCategoryClick={mockOnCategoryClick}
-        categoryId="1"
+        categoryId={1}
         sort="POPULAR"
       />,
     );
     const button = await screen.findByRole('button', { name: '더 보기' });
     expect(mockGetFeedList).toHaveBeenNthCalledWith(1, {
-      categoryId: '1',
+      categoryId: 1,
       sort: 'POPULAR',
       size: 20,
       signal: expect.any(AbortSignal),
@@ -533,7 +533,7 @@ describe('피드 목록 더 보기', (): void => {
     ).toBeInTheDocument();
     expect(screen.getAllByRole('article')).toHaveLength(2);
     expect(mockGetFeedList).toHaveBeenNthCalledWith(2, {
-      categoryId: '1',
+      categoryId: 1,
       sort: 'POPULAR',
       size: 20,
       cursor: 'cursor-1',
@@ -543,7 +543,7 @@ describe('피드 목록 더 보기', (): void => {
     await user.click(screen.getByRole('button', { name: '더 보기' }));
     expect(screen.getAllByRole('article')).toHaveLength(3);
     expect(mockGetFeedList).toHaveBeenNthCalledWith(3, {
-      categoryId: '1',
+      categoryId: 1,
       sort: 'POPULAR',
       size: 20,
       cursor: 'cursor-2',
@@ -616,8 +616,8 @@ describe('피드 목록 더 보기', (): void => {
   });
 
   it.each([
-    { categoryId: '2', sort: 'POPULAR' as const },
-    { categoryId: '1', sort: 'LATEST' as const },
+    { categoryId: 2, sort: 'POPULAR' as const },
+    { categoryId: 1, sort: 'LATEST' as const },
   ])(
     '필터 변경 시 추가 조회를 취소하고 커서를 초기화한다: %j',
     async (filter): Promise<void> => {
@@ -640,7 +640,7 @@ describe('피드 목록 더 보기', (): void => {
       const { rerender } = render(
         <FeedItemList
           onCategoryClick={mockOnCategoryClick}
-          categoryId="1"
+          categoryId={1}
           sort="POPULAR"
         />,
       );
@@ -722,7 +722,7 @@ describe('피드 목록 조회 상태', () => {
     render(
       <FeedItemList
         onCategoryClick={mockOnCategoryClick}
-        categoryId="1"
+        categoryId={1}
         sort="POPULAR"
       />,
     );
@@ -730,7 +730,7 @@ describe('피드 목록 조회 상태', () => {
     expect(screen.getByRole('img', { name: '로딩 중' })).toBeInTheDocument();
     expect(await screen.findAllByRole('article')).toHaveLength(2);
     expect(mockGetFeedList).toHaveBeenCalledWith({
-      categoryId: '1',
+      categoryId: 1,
       sort: 'POPULAR',
       size: 20,
       signal: expect.any(AbortSignal),
@@ -801,7 +801,7 @@ describe('피드 목록 조회 상태', () => {
     render(
       <FeedItemList
         onCategoryClick={mockOnCategoryClick}
-        categoryId="2"
+        categoryId={2}
         sort="LATEST"
       />,
     );
@@ -845,7 +845,7 @@ describe('피드 목록 조회 상태', () => {
     const { rerender } = render(
       <FeedItemList
         onCategoryClick={mockOnCategoryClick}
-        categoryId="1"
+        categoryId={1}
         sort="LATEST"
       />,
     );
@@ -854,7 +854,7 @@ describe('피드 목록 조회 상태', () => {
     rerender(
       <FeedItemList
         onCategoryClick={mockOnCategoryClick}
-        categoryId="2"
+        categoryId={2}
         sort="POPULAR"
       />,
     );
@@ -863,7 +863,7 @@ describe('피드 목록 조회 상태', () => {
       await screen.findByText('아직 이 카테고리에 공유된 피드가 없어요.'),
     ).toBeInTheDocument();
     expect(mockGetFeedList).toHaveBeenLastCalledWith({
-      categoryId: '2',
+      categoryId: 2,
       sort: 'POPULAR',
       size: 20,
       signal: expect.any(AbortSignal),

@@ -39,21 +39,18 @@ describe('useErrorTracking', () => {
     expect(mockCaptureException).not.toHaveBeenCalled();
   });
 
-  it.each(['INVALID_REFRESH_TOKEN', 'SHARE_NOT_FOUND'])(
-    '%s는 수집하지 않는다',
-    (code) => {
-      const { result } = renderHook(() => useErrorTracking());
+  it.each(['INVALID_REFRESH_TOKEN'])('%s는 수집하지 않는다', (code) => {
+    const { result } = renderHook(() => useErrorTracking());
 
-      act(() => {
-        result.current.captureError(createRequestError(code), {
-          feature: 'diary',
-          operation: 'read_shared',
-        });
+    act(() => {
+      result.current.captureError(createRequestError(code), {
+        feature: 'diary',
+        operation: 'restore_session',
       });
+    });
 
-      expect(mockCaptureException).not.toHaveBeenCalled();
-    },
-  );
+    expect(mockCaptureException).not.toHaveBeenCalled();
+  });
 
   it('RequestError의 허용 필드만 안전한 메시지와 함께 수집한다', () => {
     const { result } = renderHook(() => useErrorTracking());

@@ -19,15 +19,6 @@ interface AnalyticsEventMap {
     diary_date: string;
     remaining_generation_count: number;
   };
-  diary_share_clicked: {
-    diary_id: string;
-  };
-  diary_share_viewed: {
-    share_id: string;
-  };
-  diary_share_landing_clicked: {
-    share_id: string;
-  };
   diary_image_downloaded: undefined;
   diary_image_copied: {
     diary_id: string;

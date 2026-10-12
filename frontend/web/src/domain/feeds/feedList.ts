@@ -3,11 +3,12 @@ import { publicFetch } from '../../shared/auth';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import type { DeepReadonly } from '../../shared/typeUtils';
 import { isNonNegativeInteger, isRecord } from '../../shared/utils';
+import type { Category } from '../category/categoryList';
 
 export type FeedSort = 'LATEST' | 'POPULAR';
 
 export interface FeedListRequest {
-  readonly categoryId?: string;
+  readonly categoryId?: Category['id'];
   readonly sort?: FeedSort;
   readonly cursor?: string | null;
   readonly size?: number;
@@ -22,7 +23,7 @@ interface FeedData {
     profileImageUrl: string;
   };
   category: {
-    id: string;
+    id: number;
     name: string;
   };
   imageUrl: string;
@@ -53,7 +54,7 @@ export const getFeedList = async ({
   signal,
 }: FeedListRequest = {}): Promise<FeedListResponse> => {
   const params = new URLSearchParams();
-  if (categoryId !== undefined) params.set('categoryId', categoryId);
+  if (categoryId !== undefined) params.set('categoryId', String(categoryId));
   if (sort !== undefined) params.set('sort', sort);
   if (cursor !== undefined && cursor !== null) params.set('cursor', cursor);
   if (size !== undefined) params.set('size', String(size));
@@ -86,7 +87,9 @@ export const isFeed = (value: unknown): value is Feed => {
     typeof value.author.nickname === 'string' &&
     typeof value.author.profileImageUrl === 'string' &&
     isRecord(value.category) &&
-    typeof value.category.id === 'string' &&
+    typeof value.category.id === 'number' &&
+    Number.isSafeInteger(value.category.id) &&
+    value.category.id > 0 &&
     typeof value.category.name === 'string' &&
     typeof value.imageUrl === 'string' &&
     typeof value.imageUrlExpiresAt === 'string' &&

@@ -3,15 +3,17 @@ import diaryImage from '../assets/images/diary-four-panel.webp';
 import profileImage from '../assets/icons/article_person.svg';
 import { isRecord } from '../shared/utils';
 import { isCanonicalUuid } from '../pages/landing/guestTrialUuid';
+import { MOCK_SCENARIO_HEADER, MOCK_SCENARIOS } from './mockScenarios';
 
 interface MockCategory {
-  readonly id: string;
+  readonly id: number;
   readonly name: string;
   readonly sortOrder: number;
   readonly active: boolean;
 }
 
 interface MockFeed {
+  readonly diaryId?: string;
   readonly id: string;
   readonly author: {
     readonly id: string;
@@ -34,6 +36,8 @@ interface MockFeedResponse extends MockFeed {
 
 type FeedSort = 'LATEST' | 'POPULAR';
 type FeedProblemCode =
+  | 'INTERNAL_SERVER_ERROR'
+  | 'DIARY_ALREADY_PUBLISHED'
   | 'VALIDATION_ERROR'
   | 'INVALID_CURSOR'
   | 'UNAUTHORIZED'
@@ -45,10 +49,10 @@ type FeedProblemCode =
 const MOCK_USER_ID = '08d69a34-6d70-4d42-a158-671bc67733c9';
 const MOCK_ACCESS_TOKEN = 'mock-access-token';
 
-// 카테고리 개별 명세의 auto increment ID를 문자열로 반환한다.
+// 서버 계약에 맞춰 카테고리 ID를 숫자로 반환한다.
 const categories: readonly MockCategory[] = [
-  { id: '1', name: '일상', sortOrder: 0, active: true },
-  { id: '2', name: '우테코', sortOrder: 1, active: true },
+  { id: 1, name: '일상', sortOrder: 0, active: true },
+  { id: 2, name: '우테코', sortOrder: 1, active: true },
 ];
 
 const createInitialFeeds = (): MockFeed[] => {
@@ -113,6 +117,12 @@ const createInitialComments = (
 let feeds = createInitialFeeds();
 let comments = createInitialComments(feeds);
 const likedFeedIds = new Set<string>();
+
+export const getMockPublishedFeedId = (diaryId: string): string | null =>
+  feeds.find((feed): boolean => feed.diaryId === diaryId)?.id ?? null;
+
+export const hasMockFeed = (feedId: string): boolean =>
+  feeds.some((feed): boolean => feed.id === feedId);
 
 export const resetFeedMockState = (): void => {
   feeds = createInitialFeeds();
@@ -251,6 +261,66 @@ const changeLike = (
 };
 
 export const feedHandlers = [
+  http.post('/api/v1/feeds', async ({ request }): Promise<Response> => {
+    const error = validateMutation(request);
+    if (error) return error;
+    const body: unknown = await request.json().catch((): null => null);
+    if (
+      !isRecord(body) ||
+      typeof body.diaryId !== 'string' ||
+      !isCanonicalUuid(body.diaryId) ||
+      typeof body.categoryId !== 'number' ||
+      !Number.isSafeInteger(body.categoryId) ||
+      body.categoryId <= 0
+    )
+      return problem(request, 400, 'VALIDATION_ERROR');
+
+    await delay(800);
+    if (
+      request.headers.get(MOCK_SCENARIO_HEADER) ===
+      MOCK_SCENARIOS.feedPublishFailure
+    )
+      return problem(request, 503, 'INTERNAL_SERVER_ERROR');
+    if (getMockPublishedFeedId(body.diaryId))
+      return problem(request, 409, 'DIARY_ALREADY_PUBLISHED');
+    const category = categories.find(
+      ({ id }): boolean => id === body.categoryId,
+    );
+    if (!category) return problem(request, 404, 'CATEGORY_NOT_FOUND');
+
+    const feed: MockFeed = {
+      id: crypto.randomUUID(),
+      diaryId: body.diaryId,
+      author: {
+        id: MOCK_USER_ID,
+        nickname: '하루들',
+        profileImageUrl: profileImage,
+      },
+      category: { id: category.id, name: category.name },
+      imageUrl: diaryImage,
+      publishedAt: new Date().toISOString(),
+      likeCount: 0,
+      commentCount: 0,
+    };
+    feeds.unshift(feed);
+    return HttpResponse.json(
+      {
+        id: feed.id,
+        author: feed.author,
+        category: feed.category,
+        imageUrl: feed.imageUrl,
+        imageUrlExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+        publishedAt: feed.publishedAt,
+        likeCount: 0,
+        commentCount: 0,
+        likedByMe: false,
+        isMine: true,
+        shareUrl: `${new URL(request.url).origin}/feeds/${feed.id}`,
+      },
+      { status: 201 },
+    );
+  }),
+
   http.get('/api/v1/categories', async ({ request }): Promise<Response> => {
     await delay(300);
     const error = validateAuthentication(request);
@@ -280,7 +350,7 @@ export const feedHandlers = [
     }
     if (
       categoryId !== null &&
-      !categories.some(({ id }): boolean => id === categoryId)
+      !categories.some(({ id }): boolean => id === Number(categoryId))
     ) {
       return problem(request, 404, 'CATEGORY_NOT_FOUND');
     }
@@ -294,7 +364,7 @@ export const feedHandlers = [
     const sortedFeeds = feeds
       .filter(
         (feed): boolean =>
-          categoryId === null || feed.category.id === categoryId,
+          categoryId === null || feed.category.id === Number(categoryId),
       )
       .sort((a, b): number => compareFeeds(a, b, sort))
       .filter(
