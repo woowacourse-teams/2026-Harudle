@@ -1,32 +1,22 @@
 import { DIARY_DETAIL_COPY } from './copy';
-import { useEffect } from 'react';
-import useDiaryDelete from './useDiaryDelete';
 import useDiaryDetail from './useDiaryDetail';
 import LoadingSpinner from '../../shared/LoadingSpinner';
 import DiaryDetailError from './DiaryDetailError';
 import PageHeader from '../../shared/PageHeader';
 import backIcon from '../../assets/icons/back.svg';
-import moreIcon from '../../assets/icons/delete.svg';
+import sendIcon from '../../assets/icons/feed-send.svg';
 import { useNavigate } from 'react-router';
 import { css } from '@emotion/react';
-import DiaryShareButton from './DiaryShareButton';
 import DiaryImageDownloadButton from './DiaryImageDownloadButton';
 import { theme } from '../../styles/theme';
 import DiaryImage from '../../shared/DiaryImage';
 import DiaryImageCopyButton from './DiaryImageCopyButton';
+import ActionButton from '../../shared/ActionButton';
+import DiaryMenuButton from './DiaryMenuButton';
 
 const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
   const navigate = useNavigate();
   const { request: diaryDetailRequest } = useDiaryDetail({ diaryId });
-  const { request: diaryDeleteRequest, execute: deleteDiary } = useDiaryDelete({
-    diaryId,
-  });
-
-  useEffect(() => {
-    if (diaryDeleteRequest.status === 'error') {
-      alert(diaryDeleteRequest.error.message);
-    }
-  }, [diaryDeleteRequest]);
 
   if (
     diaryDetailRequest.status === 'idle' ||
@@ -60,27 +50,7 @@ const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
           </button>
         }
         title={diaryDetail.diaryDate}
-        right={
-          <button
-            type="button"
-            aria-label={DIARY_DETAIL_COPY.deleteAction}
-            css={headerButtonStyle}
-            onClick={() => {
-              const confirmDelete = window.confirm(
-                DIARY_DETAIL_COPY.deleteConfirm,
-              );
-              if (confirmDelete) {
-                void deleteDiary();
-              }
-            }}
-          >
-            <img
-              src={moreIcon}
-              alt="더보기 아이콘"
-              css={headerButtonIconStyle}
-            />
-          </button>
-        }
+        right={<DiaryMenuButton diaryId={diaryId} />}
       />
 
       <main css={contentStyle}>
@@ -94,12 +64,18 @@ const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
           alt="네컷만화"
         />
 
-        <div>
-          <span css={storyTitleStyle}>{DIARY_DETAIL_COPY.storyTitle}</span>
+        <section css={storyStyle}>
+          <h2 css={storyTitleStyle}>{DIARY_DETAIL_COPY.storyTitle}</h2>
           <p css={storyTextStyle}>{diaryDetail.sourceText}</p>
-        </div>
+        </section>
         <div css={diaryActionsStyle}>
-          <DiaryImageCopyButton diaryId={diaryId} imageUrl={imageUrl} />
+          <ActionButton
+            icon={<span css={sendIconStyle} />}
+            label={DIARY_DETAIL_COPY.feedPostAction}
+            onClick={(): void => {
+              void navigate(`/diary/${diaryId}/feed-post`);
+            }}
+          />
           <div css={imageActionsStyle}>
             <DiaryImageDownloadButton
               diaryId={diaryId}
@@ -107,7 +83,7 @@ const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
               diaryDate={diaryDetail.diaryDate}
               diaryTitle={diaryDetail.generation.title}
             />
-            <DiaryShareButton diaryId={diaryId} diaryTitle={title} />
+            <DiaryImageCopyButton diaryId={diaryId} imageUrl={imageUrl} />
           </div>
         </div>
       </main>
@@ -118,10 +94,12 @@ const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
 export default DiaryDetailContent;
 
 const pageStyle = css`
-  position: relative;
+  display: flex;
+  flex-direction: column;
   width: 100%;
   height: 100%;
   padding: 20px;
+  background-color: ${theme.colors.background.surface};
 `;
 
 const headerButtonStyle = css`
@@ -146,9 +124,9 @@ const contentStyle = css`
   flex-direction: column;
   gap: 8px;
   width: 100%;
-  height: 100%;
-  padding-bottom: 40px;
-  box-sizing: border-box;
+  flex: 1;
+  min-height: 0;
+  padding-bottom: 20px;
   overflow-y: auto;
 `;
 
@@ -181,7 +159,16 @@ const imageActionsStyle = css`
   }
 `;
 
+const sendIconStyle = css`
+  display: block;
+  width: 24px;
+  height: 24px;
+  background-color: currentColor;
+  mask: url(${sendIcon}) center / contain no-repeat;
+`;
+
 const diaryImageStyle = css`
+  flex-shrink: 0;
   width: 100%;
   aspect-ratio: 1;
   border-radius: 16px;
@@ -190,9 +177,12 @@ const diaryImageStyle = css`
   object-fit: cover;
 `;
 
+const storyStyle = css`
+  flex-shrink: 0;
+`;
+
 const storyTitleStyle = css`
   word-break: keep-all;
-  text-align: center;
   color: ${theme.colors.foreground.neutral};
   font-size: 18px;
   font-weight: 700;

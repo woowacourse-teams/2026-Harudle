@@ -129,17 +129,25 @@ test.describe('일기 상세', () => {
     page,
   }) => {
     await goToSampleDiaryDetail(page);
+    await page
+      .getByRole('button', { name: DIARY_DETAIL_COPY.menuAction })
+      .click();
 
-    const confirmPromise = page.waitForEvent('dialog');
-    const deleteClickPromise = page
+    await page
       .getByRole('button', { name: DIARY_DETAIL_COPY.deleteAction })
       .click();
-    const confirmDialog = await confirmPromise;
-
-    expect(confirmDialog.type()).toBe('confirm');
-    expect(confirmDialog.message()).toBe(DIARY_DETAIL_COPY.deleteConfirm);
-    await confirmDialog.accept();
-    await deleteClickPromise;
+    const confirmModal = page.getByRole('dialog').filter({
+      has: page.getByRole('heading', {
+        name: DIARY_DETAIL_COPY.deleteConfirmTitle,
+        exact: true,
+      }),
+    });
+    await expect(
+      confirmModal.getByText(DIARY_DETAIL_COPY.deleteConfirm, { exact: true }),
+    ).toBeVisible();
+    await confirmModal
+      .getByRole('button', { name: DIARY_DETAIL_COPY.deleteAction })
+      .click();
 
     await expect(page).toHaveURL('/album');
     await expect(
@@ -154,21 +162,30 @@ test.describe('일기 상세', () => {
 
   test('일기 삭제에 실패하면 에러 메시지를 보여준다', async ({ page }) => {
     await goToSampleDiaryDetail(page, MOCK_SCENARIOS.diaryDeleteFailure);
+    await page
+      .getByRole('button', { name: DIARY_DETAIL_COPY.menuAction })
+      .click();
 
-    const confirmPromise = page.waitForEvent('dialog');
-    const deleteClickPromise = page
+    await page
       .getByRole('button', { name: DIARY_DETAIL_COPY.deleteAction })
       .click();
-    const confirmDialog = await confirmPromise;
+    const confirmModal = page.getByRole('dialog').filter({
+      has: page.getByRole('heading', {
+        name: DIARY_DETAIL_COPY.deleteConfirmTitle,
+        exact: true,
+      }),
+    });
     const errorPromise = page.waitForEvent('dialog');
-    await confirmDialog.accept();
-    await deleteClickPromise;
+    const confirmClickPromise = confirmModal
+      .getByRole('button', { name: DIARY_DETAIL_COPY.deleteAction })
+      .click();
 
     const errorDialog = await errorPromise;
     expect(errorDialog.message()).toBe(
       '일기 삭제에 실패했습니다. 다시 시도해주세요.',
     );
     await errorDialog.accept();
+    await confirmClickPromise;
 
     await expect(page).toHaveURL(SAMPLE_DIARY_URL);
     await expect(
@@ -176,49 +193,58 @@ test.describe('일기 상세', () => {
     ).toBeVisible();
   });
 
-  test('공유하기 버튼을 누르면 브라우저 공유 UI를 요청한다', async ({
+  test('삭제 확인 모달에서 취소하면 삭제 요청 없이 상세 화면을 유지한다', async ({
     page,
-  }) => {
+  }): Promise<void> => {
     await goToSampleDiaryDetail(page);
-    await page.evaluate(() => {
-      Object.defineProperty(navigator, 'share', {
-        configurable: true,
-        value: async (data: unknown) => {
-          sessionStorage.setItem('sharedDiary', JSON.stringify(data));
-        },
-      });
+    let deleteRequestCount = 0;
+    page.on('request', (request): void => {
+      if (
+        request.method() === 'DELETE' &&
+        new URL(request.url()).pathname === `/api/v1/diaries/${SAMPLE_DIARY_ID}`
+      ) {
+        deleteRequestCount += 1;
+      }
     });
 
     await page
-      .getByRole('button', { name: DIARY_DETAIL_COPY.shareAction })
+      .getByRole('button', { name: DIARY_DETAIL_COPY.menuAction })
+      .click();
+    await page
+      .getByRole('button', { name: DIARY_DETAIL_COPY.deleteAction })
+      .click();
+    const confirmModal = page.getByRole('dialog').filter({
+      has: page.getByRole('heading', {
+        name: DIARY_DETAIL_COPY.deleteConfirmTitle,
+        exact: true,
+      }),
+    });
+    await confirmModal
+      .getByRole('button', { name: '취소', exact: true })
       .click();
 
-    await expect
-      .poll(() => page.evaluate(() => sessionStorage.getItem('sharedDiary')))
-      .not.toBeNull();
-    const sharedDiary = await page.evaluate(() =>
-      JSON.parse(sessionStorage.getItem('sharedDiary') ?? '{}'),
-    );
-    expect(sharedDiary).toMatchObject({
-      title: SAMPLE_DIARY_TITLE,
-      url: expect.stringContaining('/shares/'),
-    });
+    await expect(confirmModal).toBeHidden();
+    await expectSampleDiaryDetail(page);
+    expect(deleteRequestCount).toBe(0);
   });
 
-  test('일기 공유에 실패하면 에러 메시지를 보여준다', async ({ page }) => {
-    await goToSampleDiaryDetail(page, MOCK_SCENARIOS.diaryShareFailure);
+  test('피드에 올리기를 누르면 해당 일기의 피드 게시 화면으로 이동한다', async ({
+    page,
+  }) => {
+    await goToSampleDiaryDetail(page);
 
-    const errorPromise = page.waitForEvent('dialog');
-    const shareClickPromise = page
-      .getByRole('button', { name: DIARY_DETAIL_COPY.shareAction })
+    await page
+      .getByRole('button', { name: DIARY_DETAIL_COPY.feedPostAction })
       .click();
-    const errorDialog = await errorPromise;
 
-    expect(errorDialog.message()).toBe(
-      '공유 링크를 만들지 못했습니다. 다시 시도해주세요.',
-    );
-    await errorDialog.accept();
-    await shareClickPromise;
+    await expect(page).toHaveURL(`${SAMPLE_DIARY_URL}/feed-post`);
+    await expect(page.getByRole('main')).toHaveText('피드 게시');
+
+    await page.reload();
+    await expect(page.getByRole('main')).toHaveText('피드 게시');
+
+    await page.goBack();
+    await expectSampleDiaryDetail(page);
   });
 
   test('이미지 저장 버튼을 누르면 일기 이미지를 저장한다', async ({ page }) => {
