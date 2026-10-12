@@ -30,7 +30,9 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest
+@SpringBootTest(properties = {
+        "harudle.profile.image-base-url=https://www.harudle.com/profile-images/v1"
+})
 @AutoConfigureMockMvc
 class CurrentUserControllerTest {
 
@@ -69,7 +71,9 @@ class CurrentUserControllerTest {
     @Test
     @DisplayName("유효한 Access Token으로 내 프로필을 조회한다")
     void findsCurrentUser() {
-        User user = saveUser("user@example.com", "하루들");
+        User user = new User("user@example.com", "하루들", CREATED_AT);
+        user.assignInitialPublicProfile("행복한 고양이", 5, CREATED_AT);
+        user = userRepository.save(user);
         saveOAuthAccount(user, "12345", "user@example.com");
 
         MockMvcResponse response = RestAssuredMockMvc.given()
@@ -81,11 +85,34 @@ class CurrentUserControllerTest {
         assertThat(response.contentType()).startsWith(MediaType.APPLICATION_JSON_VALUE);
         assertThat(response.jsonPath().getString("id")).isEqualTo(user.getId().toString());
         assertThat(response.jsonPath().getString("name")).isEqualTo("하루들");
+        assertThat(response.jsonPath().getString("nickname")).isEqualTo("행복한 고양이");
+        assertThat(response.jsonPath().getString("profileImageUrl"))
+                .isEqualTo("https://www.harudle.com/profile-images/v1/5.png");
         assertThat(response.jsonPath().getString("email")).isEqualTo("user@example.com");
         assertThat(response.jsonPath().getString("role")).isEqualTo("USER");
         assertThat(response.jsonPath().getList("oauthProviders")).containsExactly("kakao");
         assertThat(response.jsonPath().getString("oauthProvider")).isNull();
         assertThat(response.jsonPath().getString("createdAt")).isEqualTo(CREATED_AT.toString());
+    }
+
+    @Test
+    @DisplayName("백필 전 회원은 공개 프로필을 새로 배정하지 않고 null로 반환한다")
+    void findsCurrentUserWithoutPublicProfile() {
+        User user = saveUser("legacy@example.com", "기존OAuth이름");
+        saveOAuthAccount(user, "legacy-subject", "legacy@example.com");
+
+        MockMvcResponse response = RestAssuredMockMvc.given()
+                .header(HttpHeaders.AUTHORIZATION, bearerToken(user.getId()))
+                .get("/api/v1/me");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.jsonPath().getString("name")).isEqualTo("기존OAuth이름");
+        assertThat(response.jsonPath().getMap("")).containsKeys("nickname", "profileImageUrl");
+        assertThat(response.jsonPath().getString("nickname")).isNull();
+        assertThat(response.jsonPath().getString("profileImageUrl")).isNull();
+        User saved = userRepository.findById(user.getId()).orElseThrow();
+        assertThat(saved.getNickname()).isNull();
+        assertThat(saved.getProfileImageCode()).isNull();
     }
 
     @Test
