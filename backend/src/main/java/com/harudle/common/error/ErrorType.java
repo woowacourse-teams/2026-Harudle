@@ -13,6 +13,11 @@ public enum ErrorType {
             "Validation failed",
             "요청 값이 올바르지 않습니다."
     ),
+    INVALID_CURSOR(
+            HttpStatus.BAD_REQUEST,
+            "Invalid cursor",
+            "페이지 커서가 올바르지 않거나 조회 조건과 일치하지 않습니다."
+    ),
     INVALID_IDEMPOTENCY_KEY(
             HttpStatus.BAD_REQUEST,
             "Invalid idempotency key",
@@ -67,6 +72,11 @@ public enum ErrorType {
             HttpStatus.NOT_FOUND,
             "Diary not found",
             "일기를 찾을 수 없습니다."
+    ),
+    FEED_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "Feed not found",
+            "피드를 찾을 수 없습니다."
     ),
     CATEGORY_NOT_FOUND(
             HttpStatus.NOT_FOUND,

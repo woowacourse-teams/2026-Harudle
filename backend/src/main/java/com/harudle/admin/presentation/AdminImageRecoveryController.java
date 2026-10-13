@@ -30,7 +30,6 @@ class AdminImageRecoveryController {
             ErrorType.VALIDATION_ERROR,
             ErrorType.UNAUTHORIZED,
             ErrorType.FORBIDDEN,
-            ErrorType.INVALID_CSRF_TOKEN,
             ErrorType.GENERATION_UNAVAILABLE,
             ErrorType.IMAGE_STORAGE_ERROR
     }, framework = {
@@ -64,7 +63,6 @@ class AdminImageRecoveryController {
             ErrorType.VALIDATION_ERROR,
             ErrorType.UNAUTHORIZED,
             ErrorType.FORBIDDEN,
-            ErrorType.INVALID_CSRF_TOKEN,
             ErrorType.AI_PROVIDER_ERROR,
             ErrorType.GENERATION_UNAVAILABLE,
             ErrorType.IMAGE_STORAGE_ERROR,

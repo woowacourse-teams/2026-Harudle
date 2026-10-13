@@ -12,6 +12,7 @@ import com.harudle.diary.service.dto.DiarySummaryResult;
 import com.harudle.diary.service.dto.DiaryTimelineResult;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
+import com.harudle.feed.service.port.PublishedFeedReader;
 import com.harudle.generation.diary.domain.GenerationStatus;
 import com.harudle.generation.diary.repository.DiaryGenerationQueryRepository;
 import com.harudle.generation.diary.repository.DiaryGenerationSnapshot;
@@ -21,10 +22,12 @@ import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,15 +38,18 @@ public class DiaryQueryService {
 
     private final DiaryQueryRepository diaryQueryRepository;
     private final DiaryGenerationQueryRepository diaryGenerationQueryRepository;
+    private final PublishedFeedReader publishedFeedReader;
     private final Clock clock;
 
     DiaryQueryService(
             DiaryQueryRepository diaryQueryRepository,
             DiaryGenerationQueryRepository diaryGenerationQueryRepository,
+            PublishedFeedReader publishedFeedReader,
             @Qualifier("serviceClock") Clock clock
     ) {
         this.diaryQueryRepository = diaryQueryRepository;
         this.diaryGenerationQueryRepository = diaryGenerationQueryRepository;
+        this.publishedFeedReader = publishedFeedReader;
         this.clock = clock;
     }
 
@@ -75,7 +81,8 @@ public class DiaryQueryService {
                 .orElseThrow(() -> new IllegalStateException(
                         "일기의 그림일기 생성 기록을 찾을 수 없습니다."
                 ));
-        return toDetailResult(diary, generation);
+        UUID publishedFeedId = publishedFeedReader.findByDiaryIds(Set.of(diaryId)).get(diaryId);
+        return toDetailResult(diary, generation, publishedFeedId);
     }
 
     public DiaryStreakResult getCurrentStreak(UUID userId) {
@@ -171,7 +178,8 @@ public class DiaryQueryService {
 
     private DiaryDetailResult toDetailResult(
             DiarySnapshot diary,
-            DiaryGenerationSnapshot generation
+            DiaryGenerationSnapshot generation,
+            @Nullable UUID publishedFeedId
     ) {
         return new DiaryDetailResult(
                 diary.id(),
@@ -185,7 +193,8 @@ public class DiaryQueryService {
                         generation.imageObjectKey(),
                         generation.completedAt(),
                         generation.tokenUsage()
-                )
+                ),
+                publishedFeedId
         );
     }
 

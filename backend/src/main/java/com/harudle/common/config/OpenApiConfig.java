@@ -1,5 +1,6 @@
 package com.harudle.common.config;
 
+import com.harudle.common.security.CookieApiCsrfProtectionMatcher;
 import io.swagger.v3.oas.annotations.OpenAPIDefinition;
 import io.swagger.v3.oas.annotations.enums.SecuritySchemeIn;
 import io.swagger.v3.oas.annotations.enums.SecuritySchemeType;
@@ -26,7 +27,7 @@ import org.springframework.context.annotation.Configuration;
                 @Tag(name = "Guest", description = "로그인 전 체험"),
                 @Tag(name = "Diary", description = "일기 및 히스토리"),
                 @Tag(name = "Generation", description = "AI 생성 및 사용량"),
-                @Tag(name = "Share", description = "공유 링크")
+                @Tag(name = "Feed", description = "피드 게시·조회·공유")
         }
 )
 @SecurityScheme(
@@ -41,7 +42,9 @@ import org.springframework.context.annotation.Configuration;
         in = SecuritySchemeIn.HEADER,
         paramName = "X-XSRF-TOKEN",
         description = "먼저 GET /api/v1/auth/csrf 응답의 token 값을 입력합니다. "
-                + "함께 발급된 XSRF-TOKEN 쿠키도 요청에 포함되어야 합니다."
+                + "함께 발급된 XSRF-TOKEN 쿠키도 요청에 포함되어야 합니다. "
+                + "쿠키를 사용하는 인증·게스트 변경 API와 피드 좋아요 PUT·DELETE에 필요합니다. "
+                + "그 밖의 Bearer API는 각 경로의 security 요구를 따릅니다."
 )
 public class OpenApiConfig {
 
@@ -53,14 +56,23 @@ public class OpenApiConfig {
             if (openApi.getPaths() == null) {
                 return;
             }
-            openApi.getPaths().values().forEach(pathItem ->
+            openApi.getPaths().forEach((path, pathItem) ->
                     pathItem.readOperationsMap().forEach((httpMethod, operation) -> {
-                        if (requiresCsrf(httpMethod)) {
+                        if (usesCsrf(path, httpMethod)) {
                             operation.setSecurity(withCsrf(operation));
                         }
                     })
             );
         };
+    }
+
+    private static boolean usesCsrf(String path, PathItem.HttpMethod method) {
+        if (CookieApiCsrfProtectionMatcher.isCookieApi(path)) {
+            return requiresCsrf(method);
+        }
+        // Match the existing like-specific security chain, not all Bearer mutations.
+        return "/api/v1/feeds/{feedId}/like".equals(path)
+                && (method == PathItem.HttpMethod.PUT || method == PathItem.HttpMethod.DELETE);
     }
 
     private static boolean requiresCsrf(PathItem.HttpMethod httpMethod) {

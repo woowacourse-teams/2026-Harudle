@@ -8,15 +8,18 @@ import com.google.genai.types.GenerateContentResponseUsageMetadata;
 import com.google.genai.types.Part;
 import com.google.genai.types.ThinkingConfig;
 import com.harudle.common.logging.ExternalApiResponseDiagnostics;
+import com.harudle.generation.adapter.out.storyboard.StoryboardJsonCodec;
+import com.harudle.generation.adapter.out.storyboard.StoryboardRequestRenderer;
+import com.harudle.generation.adapter.out.storyboard.StoryboardResponseMapper;
 import com.harudle.generation.config.GeminiGenerationProperties;
-import com.harudle.generation.diary.domain.Storyboard;
 import com.harudle.generation.diary.domain.GenerationTokenUsage;
+import com.harudle.generation.diary.domain.Storyboard;
 import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
+import com.harudle.generation.diary.service.port.StoryboardGenerator;
 import com.harudle.generation.diary.service.port.dto.GeneratedStoryboard;
 import com.harudle.generation.diary.service.port.dto.StoryboardGenerationRequest;
-import com.harudle.generation.diary.service.port.StoryboardGenerator;
-import java.util.Optional;
 import java.util.Objects;
+import java.util.Optional;
 import tools.jackson.databind.ObjectMapper;
 
 public final class GeminiStoryboardGenerator implements StoryboardGenerator {
@@ -25,28 +28,10 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
     private static final String TRANSLATION_OPERATION = "스토리보드 생성";
     private static final String REQUEST_PREPARATION_ERROR = "REQUEST_PREPARATION_ERROR";
     private static final String JSON_RESPONSE_MIME_TYPE = "application/json";
-    private static final String DIARY_REQUEST_TEMPLATE = """
-            <context>
-            <diary>
-            %s
-            </diary>
-            </context>
-
-            <task>
-            Based only on the diary above, create exactly one schema-compliant four-panel storyboard.
-            Before returning, verify:
-            - exactly four panels use setup → action → escalation → resolution in order
-            - one source-faithful central cause-and-effect chain preserves the actual outcome
-            - panel 3 contains the main turn and panel 4 completes or changes earlier meaning
-            - the four captions form one connected verbal routine rather than four event labels
-            - every valid character annotation is preserved consistently
-            Return only the JSON.
-            </task>""";
 
     private final Models models;
     private final GeminiGenerationProperties properties;
-    private final ObjectMapper objectMapper;
-    private final GeminiStoryboardResponseMapper responseMapper;
+    private final StoryboardJsonCodec codec;
     private final GeminiFailureReporter failureReporter;
     private final GeminiStageMetrics stageMetrics;
 
@@ -54,14 +39,13 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
             Models models,
             GeminiGenerationProperties properties,
             ObjectMapper objectMapper,
-            GeminiStoryboardResponseMapper responseMapper,
+            StoryboardResponseMapper responseMapper,
             GeminiFailureReporter failureReporter,
             GeminiStageMetrics stageMetrics
     ) {
         this.models = models;
         this.properties = properties;
-        this.objectMapper = objectMapper;
-        this.responseMapper = responseMapper;
+        this.codec = new StoryboardJsonCodec(objectMapper, responseMapper);
         this.failureReporter = failureReporter;
         this.stageMetrics = Objects.requireNonNull(stageMetrics);
     }
@@ -181,7 +165,7 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
     }
 
     private static String createRequestText(StoryboardGenerationRequest request) {
-        return DIARY_REQUEST_TEMPLATE.formatted(request.diaryText());
+        return StoryboardRequestRenderer.render(request);
     }
 
     private GenerateContentConfig createGenerateContentConfig(String systemPrompt) {
@@ -211,10 +195,6 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
             throw new IllegalStateException("Gemini 스토리보드 응답 본문이 비어 있습니다.");
         }
 
-        GeminiStoryboardResponse storyboardResponse = objectMapper.readValue(
-                responseText,
-                GeminiStoryboardResponse.class
-        );
-        return responseMapper.map(storyboardResponse);
+        return codec.decode(responseText);
     }
 }
