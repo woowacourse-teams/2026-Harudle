@@ -19,6 +19,10 @@ import FeedPostPage from './FeedPostPage';
 import { FEED_POST_COPY } from './copy';
 
 const mockNavigate = jest.fn();
+const mockTrack = jest.fn();
+jest.mock('../../posthog/useAnalytics', () => ({
+  useAnalytics: () => ({ track: mockTrack }),
+}));
 let mockDiaryId: string | undefined = 'diary-1';
 let mockLocationState: unknown;
 jest.mock('react-router', () => ({
@@ -136,6 +140,18 @@ describe('피드 게시 화면', (): void => {
       categoryId: 1,
     });
     expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true });
+    expect(mockTrack).toHaveBeenCalledWith(
+      'api_requested',
+      expect.objectContaining({
+        operation: 'feed_publish',
+        diary_id: diary.id,
+        category_id: 1,
+      }),
+    );
+    expect(mockTrack).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(mockTrack.mock.calls)).not.toContain(
+      diary.sourceText,
+    );
   });
 
   it('게시 중 중복 제출을 막고 실패 후 선택을 유지한 채 재시도한다', async (): Promise<void> => {

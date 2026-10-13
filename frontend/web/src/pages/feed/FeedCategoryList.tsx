@@ -9,7 +9,10 @@ import useCategoryList from './useCategoryList';
 
 export interface FeedCategoryListProps {
   readonly selectedCategoryId: Category['id'] | undefined;
-  readonly onCategoryChange: (categoryId: Category['id'] | undefined) => void;
+  readonly onCategoryChange: (
+    categoryId: Category['id'] | undefined,
+    categoryName: string,
+  ) => void;
 }
 
 const FeedCategoryList = ({
@@ -50,14 +53,14 @@ const FeedCategoryList = ({
         <FeedCategoryItem
           label={FEED_COPY.allCategories}
           isSelected={selectedCategoryId === undefined}
-          onSelect={() => onCategoryChange(undefined)}
+          onSelect={() => onCategoryChange(undefined, FEED_COPY.allCategories)}
         />
         {categories.map((category) => (
           <FeedCategoryItem
             key={category.id}
             label={category.name}
             isSelected={category.id === selectedCategoryId}
-            onSelect={() => onCategoryChange(category.id)}
+            onSelect={() => onCategoryChange(category.id, category.name)}
           />
         ))}
       </div>

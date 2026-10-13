@@ -8,6 +8,7 @@ import {
 import type { ApiRequest } from '../../shared/api';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import type { FeedLikeResponse } from '../../domain/feeds/feedLike';
+import { useAnalytics } from '../../posthog/useAnalytics';
 
 interface FeedListState {
   readonly request: ApiRequest<FeedListResponse>;
@@ -23,6 +24,7 @@ const useFeedList = ({
   categoryId,
   sort,
 }: Pick<FeedListRequest, 'categoryId' | 'sort'>): FeedListState => {
+  const { track } = useAnalytics();
   const [request, setRequest] = useState<ApiRequest<FeedListResponse>>({
     status: 'idle',
   });
@@ -42,6 +44,15 @@ const useFeedList = ({
     setLoadMoreRequest({ status: 'idle' });
 
     try {
+      track('api_requested', {
+        feature: 'feed',
+        operation: 'feed_list',
+        endpoint: '/feeds',
+        method: 'GET',
+        category_id: categoryId ?? null,
+        sort: sort ?? 'LATEST',
+        request_reason: 'first_page',
+      });
       const data = await getFeedList({
         categoryId,
         sort,
@@ -65,7 +76,7 @@ const useFeedList = ({
         abortControllerRef.current = null;
       }
     }
-  }, [categoryId, sort]);
+  }, [categoryId, sort, track]);
 
   const appendFeedPage = useCallback((page: FeedListResponse): void => {
     setRequest((previous) => {
@@ -91,6 +102,15 @@ const useFeedList = ({
     setLoadMoreRequest({ status: 'loading' });
 
     try {
+      track('api_requested', {
+        feature: 'feed',
+        operation: 'feed_list',
+        endpoint: '/feeds',
+        method: 'GET',
+        category_id: categoryId ?? null,
+        sort: sort ?? 'LATEST',
+        request_reason: 'load_more',
+      });
       const data = await getFeedList({
         categoryId,
         sort,
@@ -115,7 +135,7 @@ const useFeedList = ({
         abortControllerRef.current = null;
       }
     }
-  }, [request, categoryId, sort, appendFeedPage]);
+  }, [request, categoryId, sort, appendFeedPage, track]);
 
   useEffect((): (() => void) => {
     // 필터가 바뀌면 이전 조회 결과 대신 로딩 상태를 표시한다.

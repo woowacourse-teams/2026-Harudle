@@ -8,6 +8,7 @@ import type { Feed } from '../../domain/feeds/feedList';
 import { useErrorTracking } from '../../posthog/useErrorTracking';
 import type { ApiRequest } from '../../shared/api';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
+import { useAnalytics } from '../../posthog/useAnalytics';
 
 interface FeedPublishOptions {
   readonly categoryId: FeedPublishRequest['categoryId'];
@@ -24,6 +25,7 @@ const useFeedPublish = ({
   const navigate = useNavigate();
   const [request, setRequest] = useState<ApiRequest<Feed>>({ status: 'idle' });
   const { captureError } = useErrorTracking();
+  const { track } = useAnalytics();
 
   const execute = useCallback(
     async ({ categoryId }: FeedPublishOptions): Promise<void> => {
@@ -31,6 +33,14 @@ const useFeedPublish = ({
       setRequest({ status: 'loading' });
 
       try {
+        track('api_requested', {
+          feature: 'feed',
+          operation: 'feed_publish',
+          endpoint: '/feeds',
+          method: 'POST',
+          diary_id: diaryId,
+          category_id: categoryId,
+        });
         const feed = await publishFeed({ diaryId, categoryId });
         setRequest({ status: 'success', data: feed });
         void navigate('/', { replace: true });
@@ -47,7 +57,7 @@ const useFeedPublish = ({
         setRequest({ status: 'error', error: requestError });
       }
     },
-    [diaryId, navigate, captureError, request.status],
+    [diaryId, navigate, captureError, request.status, track],
   );
 
   return { request, execute };

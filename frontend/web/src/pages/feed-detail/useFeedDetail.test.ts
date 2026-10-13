@@ -6,6 +6,10 @@ import useFeedDetail from './useFeedDetail';
 
 const mockGetFeedDetail = jest.fn<typeof getFeedDetail>();
 const mockCaptureError = jest.fn();
+const mockTrack = jest.fn();
+jest.mock('../../posthog/useAnalytics', () => ({
+  useAnalytics: () => ({ track: mockTrack }),
+}));
 jest.mock('../../domain/feeds/feedDetail', () => ({
   getFeedDetail: (
     ...args: Parameters<typeof getFeedDetail>
@@ -63,5 +67,9 @@ describe('피드 상세 요청 수명', (): void => {
       status: 'success',
       data: { id: 'feed-2' },
     });
+    expect(mockTrack.mock.calls.map(([event]): unknown => event)).toEqual([
+      'api_requested',
+      'api_requested',
+    ]);
   });
 });

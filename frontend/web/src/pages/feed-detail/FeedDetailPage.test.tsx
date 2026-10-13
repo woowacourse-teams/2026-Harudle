@@ -20,6 +20,10 @@ import FeedDetailPage from './FeedDetailPage';
 import FeedDetailContent from './FeedDetailContent';
 
 const mockNavigate = jest.fn();
+const mockTrack = jest.fn();
+jest.mock('../../posthog/useAnalytics', () => ({
+  useAnalytics: () => ({ track: mockTrack }),
+}));
 jest.mock('react-router', () => ({
   useNavigate: () => mockNavigate,
   useParams: () => ({ feedId: 'feed-1' }),
@@ -169,6 +173,26 @@ describe('피드 상세 댓글 더 보기', (): void => {
       screen.queryByRole('button', { name: '더 보기' }),
     ).not.toBeInTheDocument();
     expect(mockGetFeedDetail).toHaveBeenCalledTimes(1);
+    expect(mockTrack).toHaveBeenCalledWith(
+      'api_requested',
+      expect.objectContaining({
+        operation: 'feed_comments',
+        feed_id: feed.id,
+        request_reason: 'first_page',
+      }),
+    );
+    expect(mockTrack).toHaveBeenCalledWith(
+      'api_requested',
+      expect.objectContaining({
+        operation: 'feed_comments',
+        feed_id: feed.id,
+        request_reason: 'load_more',
+      }),
+    );
+    expect(mockTrack).toHaveBeenCalledWith(
+      'api_requested',
+      expect.objectContaining({ operation: 'feed_detail', feed_id: feed.id }),
+    );
   });
 
   it('실패는 컴포넌트에서 알리고 기존 댓글을 유지한 채 같은 커서로 재시도한다', async (): Promise<void> => {

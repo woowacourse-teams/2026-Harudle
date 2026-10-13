@@ -18,6 +18,12 @@ import FeedItemList from './FeedItemList';
 import type { setFeedLike } from '../../domain/feeds/feedLike';
 import type { deleteFeed } from '../../domain/feeds/feedDelete';
 
+const mockTrack =
+  jest.fn<(event: string, properties: Record<string, unknown>) => void>();
+jest.mock('../../posthog/useAnalytics', () => ({
+  useAnalytics: () => ({ track: mockTrack }),
+}));
+
 jest.mock('../../assets/images/loading-animation.webp', () => 'loading.webp');
 jest.mock('../../assets/images/empty-person-and-dog.png', () => 'empty.png');
 jest.mock('../../assets/images/request-fail.png', () => 'error.png');
@@ -53,7 +59,7 @@ jest.mock('react-router', () => ({ useNavigate: () => mockNavigate }));
 
 const mockGetFeedList = jest.fn<typeof getFeedList>();
 const mockOnCategoryClick =
-  jest.fn<(categoryId: Feed['category']['id']) => void>();
+  jest.fn<(categoryId: Feed['category']['id'], categoryName: string) => void>();
 const mockSetFeedLike = jest.fn<typeof setFeedLike>();
 const mockDeleteFeed = jest.fn<typeof deleteFeed>();
 jest.mock('../../domain/feeds/feedLike', () => ({
@@ -134,7 +140,10 @@ describe('피드 카드 액션', (): void => {
     );
 
     await user.click(await screen.findByRole('button', { name: '일상' }));
-    expect(mockOnCategoryClick).toHaveBeenCalledWith(feed.category.id);
+    expect(mockOnCategoryClick).toHaveBeenCalledWith(
+      feed.category.id,
+      feed.category.name,
+    );
     expect(mockOnCategoryClick).toHaveBeenCalledTimes(1);
     expect(mockNavigate).not.toHaveBeenCalled();
   });
@@ -214,6 +223,14 @@ describe('피드 카드 액션', (): void => {
       feedId: feed.id,
       likedByMe: false,
     });
+    expect(mockTrack).toHaveBeenCalledWith(
+      'api_requested',
+      expect.objectContaining({ operation: 'feed_like', action: 'like' }),
+    );
+    expect(mockTrack).toHaveBeenCalledWith(
+      'api_requested',
+      expect.objectContaining({ operation: 'feed_like', action: 'unlike' }),
+    );
     expect(mockGetFeedList).toHaveBeenCalledTimes(1);
   });
 

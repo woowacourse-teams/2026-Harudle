@@ -7,6 +7,7 @@ import {
 import type { ApiRequest } from '../../shared/api';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { useErrorTracking } from '../../posthog/useErrorTracking';
+import { useAnalytics } from '../../posthog/useAnalytics';
 
 interface FeedCommentsState {
   readonly request: ApiRequest<FeedCommentsResponse>;
@@ -25,6 +26,7 @@ const useFeedComments = ({
   readonly feedId: string;
 }): FeedCommentsState => {
   const { captureError } = useErrorTracking();
+  const { track } = useAnalytics();
   const [request, setRequest] = useState<ApiRequest<FeedCommentsResponse>>({
     status: 'idle',
   });
@@ -42,6 +44,14 @@ const useFeedComments = ({
       setRequest({ status: 'loading' });
       setLoadMoreRequest({ status: 'idle' });
       try {
+        track('api_requested', {
+          feature: 'feed',
+          operation: 'feed_comments',
+          endpoint: '/feeds/:feedId/comments',
+          method: 'GET',
+          feed_id: feedId,
+          request_reason: 'first_page',
+        });
         const data = await getFeedComments({
           feedId,
           size: COMMENT_SIZE,
@@ -68,7 +78,7 @@ const useFeedComments = ({
           abortControllerRef.current = null;
         }
       }
-    }, [feedId, captureError]);
+    }, [feedId, captureError, track]);
 
   const appendCommentPage = useCallback((page: FeedCommentsResponse): void => {
     setRequest((previous) => {
@@ -93,6 +103,14 @@ const useFeedComments = ({
     setLoadMoreRequest({ status: 'loading' });
 
     try {
+      track('api_requested', {
+        feature: 'feed',
+        operation: 'feed_comments',
+        endpoint: '/feeds/:feedId/comments',
+        method: 'GET',
+        feed_id: feedId,
+        request_reason: 'load_more',
+      });
       const data = await getFeedComments({
         feedId,
         cursor: request.data.nextCursor,
@@ -119,7 +137,7 @@ const useFeedComments = ({
         abortControllerRef.current = null;
       }
     }
-  }, [request, feedId, captureError, appendCommentPage]);
+  }, [request, feedId, captureError, appendCommentPage, track]);
 
   useEffect((): (() => void) => {
     // 피드가 바뀌면 첫 번째 댓글 페이지를 조회하고 이전 요청을 취소한다.

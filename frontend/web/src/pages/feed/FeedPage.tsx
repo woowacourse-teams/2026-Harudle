@@ -5,6 +5,7 @@ import BottomNavigationLayout from '../../shared/BottomNavigationLayout';
 import FeedFilterBar from './FeedFilterBar';
 import FeedItemList from './FeedItemList';
 import { useSearchParams } from 'react-router';
+import { useAnalytics } from '../../posthog/useAnalytics';
 
 const FEED_QUERY_KEYS = {
   CATEGORY_ID: 'categoryId',
@@ -12,6 +13,7 @@ const FEED_QUERY_KEYS = {
 } as const;
 
 const FeedPage = () => {
+  const { track } = useAnalytics();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const rawCategoryId = searchParams.get(FEED_QUERY_KEYS.CATEGORY_ID);
@@ -21,7 +23,17 @@ const FeedPage = () => {
 
   const handleCategoryChange = (
     nextCategoryId: Category['id'] | undefined,
+    categoryName: string,
   ): void => {
+    if (nextCategoryId === categoryId) return;
+
+    track('feed_category_changed', {
+      feature: 'feed',
+      operation: 'feed_category_change',
+      previous_category_id: categoryId ?? null,
+      category_id: nextCategoryId ?? null,
+      category_name: categoryName,
+    });
     setSearchParams((previous): URLSearchParams => {
       const next = new URLSearchParams(previous);
       if (nextCategoryId === undefined) {

@@ -5,6 +5,7 @@ import type { FeedLikeResponse } from '../../domain/feeds/feedLike';
 import type { ApiRequest } from '../../shared/api';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { useErrorTracking } from '../../posthog/useErrorTracking';
+import { useAnalytics } from '../../posthog/useAnalytics';
 
 interface FeedDetailState {
   readonly request: ApiRequest<Feed>;
@@ -20,6 +21,7 @@ const useFeedDetail = ({
   readonly feedId: Feed['id'];
 }): FeedDetailState => {
   const { captureError } = useErrorTracking();
+  const { track } = useAnalytics();
   const [request, setRequest] = useState<ApiRequest<Feed>>({ status: 'idle' });
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -32,6 +34,13 @@ const useFeedDetail = ({
       previous.status === 'success' ? previous : { status: 'loading' },
     );
     try {
+      track('api_requested', {
+        feature: 'feed',
+        operation: 'feed_detail',
+        endpoint: '/feeds/:feedId',
+        method: 'GET',
+        feed_id: feedId,
+      });
       const data = await getFeedDetail({ feedId, signal });
       if (signal.aborted) return;
       setRequest({ status: 'success', data });
@@ -48,7 +57,7 @@ const useFeedDetail = ({
       });
       setRequest({ status: 'error', error: requestError });
     }
-  }, [feedId, captureError]);
+  }, [feedId, captureError, track]);
 
   useEffect((): (() => void) => {
     // 상세 ID가 바뀌면 이전 조회를 취소하고 새 피드를 조회한다.

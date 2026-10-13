@@ -13,7 +13,10 @@ interface FeedItemListProps extends Pick<
   FeedListRequest,
   'categoryId' | 'sort'
 > {
-  readonly onCategoryClick: (categoryId: Feed['category']['id']) => void;
+  readonly onCategoryClick: (
+    categoryId: Feed['category']['id'],
+    categoryName: string,
+  ) => void;
 }
 
 const FeedItemList = ({
