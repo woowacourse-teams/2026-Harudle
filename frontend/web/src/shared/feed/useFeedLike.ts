@@ -7,6 +7,7 @@ import type { Feed } from '../../domain/feeds/feedList';
 import { useErrorTracking } from '../../posthog/useErrorTracking';
 import type { ApiRequest } from '../../shared/api';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
+import { useAnalytics } from '../../posthog/useAnalytics';
 
 interface UseFeedLikeProps {
   readonly feedId: Feed['id'];
@@ -24,6 +25,7 @@ interface FeedLikeState {
 
 const useFeedLike = ({ feedId }: UseFeedLikeProps): FeedLikeState => {
   const { captureError } = useErrorTracking();
+  const { track } = useAnalytics();
   const [request, setRequest] = useState<ApiRequest<FeedLikeResponse>>({
     status: 'idle',
   });
@@ -34,6 +36,14 @@ const useFeedLike = ({ feedId }: UseFeedLikeProps): FeedLikeState => {
       setRequest({ status: 'loading' });
 
       try {
+        track('api_requested', {
+          feature: 'feed',
+          operation: 'feed_like',
+          endpoint: '/feeds/:feedId/like',
+          method: likedByMe ? 'PUT' : 'DELETE',
+          feed_id: feedId,
+          action: likedByMe ? 'like' : 'unlike',
+        });
         const like = await setFeedLike({ feedId, likedByMe });
         setRequest({ status: 'success', data: like });
         onSuccess(like);
@@ -51,7 +61,7 @@ const useFeedLike = ({ feedId }: UseFeedLikeProps): FeedLikeState => {
         return;
       }
     },
-    [feedId, request.status, captureError],
+    [feedId, request.status, captureError, track],
   );
 
   return { request, execute };

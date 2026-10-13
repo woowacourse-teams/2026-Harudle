@@ -12,6 +12,13 @@ import useSessionRestore from './useSessionRestore';
 
 const mockRestoreAccessToken = jest.fn<() => Promise<void>>();
 const mockCaptureError = jest.fn();
+const mockConfirmAuthenticatedSession = jest.fn<() => void>();
+
+jest.mock('./posthog/useAnalytics', () => ({
+  useAnalytics: () => ({
+    confirmAuthenticatedSession: mockConfirmAuthenticatedSession,
+  }),
+}));
 
 jest.mock('./shared/auth', () => ({
   restoreAccessToken: () => mockRestoreAccessToken(),
@@ -37,6 +44,7 @@ describe('useSessionRestore', () => {
 
     expect(result.current.isRestoring).toBe(false);
     expect(mockRestoreAccessToken).not.toHaveBeenCalled();
+    expect(mockConfirmAuthenticatedSession).not.toHaveBeenCalled();
   });
 
   it('기존 인증 완료 표시만 있어도 이력을 이관하고 복원을 완료한다', async () => {
@@ -49,6 +57,7 @@ describe('useSessionRestore', () => {
     await waitFor(() => expect(result.current.isRestoring).toBe(false));
     expect(localStorage.getItem('harudle.has-ever-logged-in')).toBe('true');
     expect(mockRestoreAccessToken).toHaveBeenCalledTimes(1);
+    expect(mockConfirmAuthenticatedSession).toHaveBeenCalledTimes(1);
   });
 
   it('기존 사용자의 세션이 만료되어도 이력을 이관하고 복원을 완료한다', async () => {
@@ -116,11 +125,14 @@ describe('useSessionRestore', () => {
 
     expect(result.current.isRestoring).toBe(true);
 
+    expect(mockConfirmAuthenticatedSession).not.toHaveBeenCalled();
+
     await act(async () => {
       finishRestore?.();
     });
 
     expect(result.current.isRestoring).toBe(false);
+    expect(mockConfirmAuthenticatedSession).toHaveBeenCalledTimes(1);
   });
 
   it('세션 만료 시 로그인 경험을 유지하고 대기를 끝낸다', async () => {
@@ -140,6 +152,7 @@ describe('useSessionRestore', () => {
     await waitFor(() => expect(result.current.isRestoring).toBe(false));
     expect(localStorage.getItem('harudle.has-ever-logged-in')).toBe('true');
     expect(mockCaptureError).not.toHaveBeenCalled();
+    expect(mockConfirmAuthenticatedSession).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -166,6 +179,7 @@ describe('useSessionRestore', () => {
       });
 
       expect(mockRestoreAccessToken).toHaveBeenCalledTimes(1);
+      expect(mockConfirmAuthenticatedSession).not.toHaveBeenCalled();
     },
   );
 });

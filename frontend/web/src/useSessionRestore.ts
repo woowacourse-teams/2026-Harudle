@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { RequestError } from './shared/api';
 import { restoreAccessToken } from './shared/auth';
 import { useErrorTracking } from './posthog/useErrorTracking';
+import { useAnalytics } from './posthog/useAnalytics';
 
 interface SessionRestoreState {
   readonly isRestoring: boolean;
@@ -9,6 +10,7 @@ interface SessionRestoreState {
 
 const useSessionRestore = (): SessionRestoreState => {
   const { captureError } = useErrorTracking();
+  const { confirmAuthenticatedSession } = useAnalytics();
   let hasLoginHistory = false;
 
   try {
@@ -34,6 +36,7 @@ const useSessionRestore = (): SessionRestoreState => {
     }
 
     void restoreAccessToken()
+      .then(confirmAuthenticatedSession)
       .catch((error: unknown): void => {
         if (
           error instanceof RequestError &&
@@ -55,7 +58,7 @@ const useSessionRestore = (): SessionRestoreState => {
     return (): void => {
       isActive = false;
     };
-  }, [hasLoginHistory, captureError]);
+  }, [hasLoginHistory, captureError, confirmAuthenticatedSession]);
 
   return { isRestoring };
 };

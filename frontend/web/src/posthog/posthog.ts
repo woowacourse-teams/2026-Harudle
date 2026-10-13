@@ -62,7 +62,15 @@ export const identifyCurrentUserForPostHog = async (
     const profile: unknown = await response.json();
 
     if (hasUserId(profile)) {
-      posthog.identify(profile.id);
+      if (
+        'nickname' in profile &&
+        typeof profile.nickname === 'string' &&
+        profile.nickname.trim().length > 0
+      ) {
+        posthog.identify(profile.id, { name: profile.nickname });
+      } else {
+        posthog.identify(profile.id);
+      }
     }
   } catch (error: unknown) {
     if (process.env.NODE_ENV === 'development') {

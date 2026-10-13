@@ -78,9 +78,9 @@ describe('피드 카테고리 목록', () => {
     );
 
     await user.click(await screen.findByRole('button', { name: '일상' }));
-    expect(onCategoryChange).toHaveBeenLastCalledWith(1);
+    expect(onCategoryChange).toHaveBeenLastCalledWith(1, '일상');
     await user.click(screen.getByRole('button', { name: '전체' }));
-    expect(onCategoryChange).toHaveBeenLastCalledWith(undefined);
+    expect(onCategoryChange).toHaveBeenLastCalledWith(undefined, '전체');
   });
 
   it('선택 ID가 바뀌어도 카테고리 목록을 다시 조회하지 않는다', async (): Promise<void> => {

@@ -12,7 +12,10 @@ import FeedOptionsButton from '../../shared/feed/FeedOptionsButton';
 
 interface FeedItemProps {
   readonly feed: Feed;
-  readonly onCategoryClick: (categoryId: Feed['category']['id']) => void;
+  readonly onCategoryClick: (
+    categoryId: Feed['category']['id'],
+    categoryName: string,
+  ) => void;
   readonly onLikeChange: (feedId: Feed['id'], like: FeedLikeResponse) => void;
   readonly onDelete: (feedId: Feed['id']) => void;
 }
@@ -46,7 +49,7 @@ const FeedItem = ({
           <button
             type="button"
             css={categoryStyle}
-            onClick={() => onCategoryClick(category.id)}
+            onClick={() => onCategoryClick(category.id, category.name)}
           >
             <img src={categoryChevronIcon} alt="" />
             <span>{category.name}</span>
