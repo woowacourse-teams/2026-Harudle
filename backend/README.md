@@ -271,6 +271,23 @@ STORYBOARD_FALLBACK_TIMEOUT=60s
 기존 `AiGenerationErrorType`, API 응답 코드와 DB 실패 코드는 유지합니다. Gemini의 일반 interrupted I/O는
 스레드 인터럽트 상태에 따라 timeout과 취소를 구분합니다. 실제 대체 여부 판단은 아래 조합 서비스가 담당합니다.
 
+### 요청별 제한 시간과 취소 실행기
+
+`StoryboardAttemptRunner`는 `StoryboardGenerator`를 한 번 호출합니다. `StoryboardGenerationBudget`을
+한 생성 작업에서 공유하면 각 호출의 제한 시간은 Provider별 설정과 전체 남은 시간 중 작은 값으로 정해집니다.
+메인 60초·보조 60초에서는 전체 120초이며, 작업 대기·요청 준비·응답 수신·검증 시간도 포함합니다.
+실행기 내부에서 재시도하거나 보조 Provider를 선택하지 않습니다.
+
+실행기는 복사한 `StoryboardGenerationRequest`에 요청별 `StoryboardAttemptContext`를 전달합니다.
+기존 두 문자열 생성자는 컨텍스트 없이 그대로 사용할 수 있습니다. 어댑터는 컨텍스트의 남은 시간을 확인하고
+`onCancellation`에 해당 HTTP 요청만 취소하는 함수를 등록할 수 있습니다. 이 함수는 신속하게 반환해야 하며,
+HTTP 요청이 끝나면 반환된 등록 객체를 닫아 취소 함수를 해제합니다. 이미 취소된 컨텍스트에 등록한 함수는
+즉시 실행되므로, 늦게 만들어진 HTTP 요청도 취소할 수 있습니다.
+
+제한 시간 초과는 `TIMEOUT`, 호출자 인터럽트는 `CANCELLED`로 전달하며 호출자의 인터럽트 상태를 유지합니다.
+취소 함수 실행 후 해당 작업을 인터럽트하고, 제한 시간을 넘긴 결과는 반환하지 않습니다. 다른 요청의 컨텍스트와
+공유 실행기를 취소하지 않습니다. 호출자의 MDC를 작업 스레드에 전달하고 완료·실패 시 이전 MDC를 복원합니다.
+
 ## 테스트
 
 ```shell
