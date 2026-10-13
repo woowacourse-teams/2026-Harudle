@@ -91,6 +91,7 @@ const USER = {
   LOGOUT_FAILED: '로그아웃하는 중 문제가 발생했습니다. 다시 시도해주세요.',
   PROFILE_FETCH_FAILED:
     '프로필을 조회하는 중 문제가 발생했습니다. 다시 시도해주세요.',
+  NICKNAME_UPDATE_FAILED: '닉네임을 수정하지 못했어요. 다시 시도해 주세요.',
   INVALID_PROFILE_RESPONSE: 'Profile 응답 형식이 일치하지 않습니다.',
 } as const;
 

@@ -29,6 +29,8 @@ type UserRole = 'USER' | 'ADMIN';
 export interface ProfileResponse {
   id: string;
   name: string;
+  nickname: string;
+  profileImageUrl: string;
   email: string | null;
   role: UserRole;
   oauthProviders: OAuthProvider[];
@@ -51,6 +53,10 @@ const isProfileResponse = (value: unknown): value is ProfileResponse => {
     typeof value.id === 'string' &&
     'name' in value &&
     typeof value.name === 'string' &&
+    'nickname' in value &&
+    typeof value.nickname === 'string' &&
+    'profileImageUrl' in value &&
+    typeof value.profileImageUrl === 'string' &&
     'email' in value &&
     (typeof value.email === 'string' || value.email === null) &&
     'role' in value &&
@@ -62,4 +68,21 @@ const isProfileResponse = (value: unknown): value is ProfileResponse => {
     'createdAt' in value &&
     typeof value.createdAt === 'string'
   );
+};
+
+export const updateUserNickname = async (nickname: string): Promise<void> => {
+  const response = await authFetch(`${API_BASE_URL}/me/nickname`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nickname }),
+  });
+
+  if (!response.ok) {
+    const errorData: unknown = await response.json().catch(() => null);
+    if (isProblemDetails(errorData)) {
+      throw new RequestError(errorData);
+    }
+
+    throw new Error(ERROR_MESSAGES.NICKNAME_UPDATE_FAILED);
+  }
 };
