@@ -46,7 +46,6 @@ public class FeedPublicationService {
         if (categoryId <= 0) {
             throw new IllegalArgumentException("카테고리 ID는 양수여야 합니다.");
         }
-        // 실제 예약 구현이 없으면 쓰기를 시작하기 전에 명확하게 실패한다.
         FeedPushOutbox pushOutbox = collaborators.pushOutbox();
         CategoryReader categories = collaborators.categories();
         PublicProfileReader profiles = collaborators.profiles();

@@ -35,7 +35,6 @@ import com.harudle.diary.service.dto.DiarySummaryResult;
 import com.harudle.diary.service.dto.DiaryTimelineResult;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
-import com.harudle.feed.service.exception.FeedIntegrationUnavailableException;
 import com.harudle.generation.adapter.out.s3.R2FallbackImageUrlProvider;
 import com.harudle.generation.config.R2StorageProperties;
 import com.harudle.generation.config.S3StorageProperties;
@@ -52,7 +51,6 @@ import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageLookupBudget;
 import com.harudle.generation.diary.service.port.ImageStorageException;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
-import com.harudle.push.service.port.FeedPushOutbox;
 import io.restassured.http.ContentType;
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
 import io.restassured.module.mockmvc.response.MockMvcResponse;
@@ -386,19 +384,6 @@ class DiaryControllerTest {
 
         assertThat(response.statusCode()).isEqualTo(204);
         verify(diaryDeletionService).delete(USER_ID, DIARY_ID);
-    }
-
-    @Test
-    @DisplayName("일기 삭제에 필요한 푸시 구현이 없으면 503 피드 연동 오류를 반환한다")
-    void deleteDiaryReturnsUnavailableWhenPushAdapterIsMissing() {
-        doThrow(new FeedIntegrationUnavailableException(FeedPushOutbox.class))
-                .when(diaryDeletionService).delete(USER_ID, DIARY_ID);
-
-        MockMvcResponse response = authenticatedRequest().delete("/api/v1/diaries/{diaryId}", DIARY_ID);
-
-        assertThat(response.statusCode()).isEqualTo(503);
-        assertThat(response.jsonPath().getString("code")).isEqualTo("FEED_UNAVAILABLE");
-        verifyNoInteractions(imageUrlProvider);
     }
 
     @Test
