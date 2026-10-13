@@ -9,6 +9,10 @@ import com.harudle.auth.domain.exception.InvalidNicknameException;
 import com.harudle.auth.domain.exception.NicknameAlreadyInUseException;
 import com.harudle.auth.domain.exception.PublicProfileNotAssignedException;
 import com.harudle.auth.presentation.AuthenticationRequiredException;
+import com.harudle.comment.service.exception.CommentAccessDeniedException;
+import com.harudle.comment.service.exception.CommentIntegrationUnavailableException;
+import com.harudle.comment.service.exception.CommentNotFoundException;
+import com.harudle.comment.service.exception.InvalidCommentCursorException;
 import com.harudle.category.service.exception.CategoryInactiveException;
 import com.harudle.category.service.exception.CategoryNotFoundException;
 import com.harudle.category.domain.exception.InvalidCategoryException;
@@ -34,6 +38,10 @@ import com.harudle.guest.application.exception.GuestSessionRequiredException;
 import com.harudle.guest.application.exception.GuestTrialAlreadyUsedException;
 import com.harudle.share.service.exception.ShareGenerationFailedException;
 import com.harudle.share.service.exception.ShareNotFoundException;
+import com.harudle.notification.service.exception.InvalidNotificationCursorException;
+import com.harudle.notification.service.exception.NotificationAccessDeniedException;
+import com.harudle.notification.service.exception.NotificationIntegrationUnavailableException;
+import com.harudle.notification.service.exception.NotificationNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.util.List;
@@ -223,6 +231,54 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(FeedNotFoundException.class)
     ResponseEntity<ProblemDetail> handleFeedNotFound(HttpServletRequest request) {
         return createResponse(ErrorType.FEED_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(CommentNotFoundException.class)
+    ResponseEntity<ProblemDetail> handleCommentNotFound(HttpServletRequest request) {
+        return createResponse(ErrorType.COMMENT_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(CommentAccessDeniedException.class)
+    ResponseEntity<ProblemDetail> handleCommentAccessDenied(HttpServletRequest request) {
+        return createResponse(ErrorType.FORBIDDEN, request);
+    }
+
+    @ExceptionHandler(InvalidCommentCursorException.class)
+    ResponseEntity<ProblemDetail> handleInvalidCommentCursor(HttpServletRequest request) {
+        return createResponse(ErrorType.INVALID_CURSOR, request);
+    }
+
+    @ExceptionHandler(CommentIntegrationUnavailableException.class)
+    ResponseEntity<ProblemDetail> handleCommentUnavailable(
+            CommentIntegrationUnavailableException exception,
+            HttpServletRequest request
+    ) {
+        apiExceptionLogger.error(ErrorType.COMMENT_UNAVAILABLE, exception, request);
+        return createResponse(ErrorType.COMMENT_UNAVAILABLE, request);
+    }
+
+    @ExceptionHandler(NotificationNotFoundException.class)
+    ResponseEntity<ProblemDetail> handleNotificationNotFound(HttpServletRequest request) {
+        return createResponse(ErrorType.NOTIFICATION_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(NotificationAccessDeniedException.class)
+    ResponseEntity<ProblemDetail> handleNotificationAccessDenied(HttpServletRequest request) {
+        return createResponse(ErrorType.FORBIDDEN, request);
+    }
+
+    @ExceptionHandler(InvalidNotificationCursorException.class)
+    ResponseEntity<ProblemDetail> handleInvalidNotificationCursor(HttpServletRequest request) {
+        return createResponse(ErrorType.INVALID_CURSOR, request);
+    }
+
+    @ExceptionHandler(NotificationIntegrationUnavailableException.class)
+    ResponseEntity<ProblemDetail> handleNotificationUnavailable(
+            NotificationIntegrationUnavailableException exception,
+            HttpServletRequest request
+    ) {
+        apiExceptionLogger.error(ErrorType.NOTIFICATION_UNAVAILABLE, exception, request);
+        return createResponse(ErrorType.NOTIFICATION_UNAVAILABLE, request);
     }
 
     @ExceptionHandler(FeedAccessDeniedException.class)

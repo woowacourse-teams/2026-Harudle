@@ -78,6 +78,26 @@ public enum ErrorType {
             "Feed not found",
             "피드를 찾을 수 없습니다."
     ),
+    COMMENT_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "Comment not found",
+            "댓글을 찾을 수 없습니다."
+    ),
+    COMMENT_UNAVAILABLE(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "Comment unavailable",
+            "댓글 작성자 정보를 조회할 수 없습니다."
+    ),
+    NOTIFICATION_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "Notification not found",
+            "알림을 찾을 수 없습니다."
+    ),
+    NOTIFICATION_UNAVAILABLE(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "Notification unavailable",
+            "알림의 회원 정보를 조회할 수 없습니다."
+    ),
     CATEGORY_NOT_FOUND(
             HttpStatus.NOT_FOUND,
             "Category not found",
