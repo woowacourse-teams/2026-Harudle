@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /auth/
+Disallow: /diary/
+Disallow: /diary-write
+Disallow: /diary-generating
+Disallow: /setting
+Disallow: /admin
+Disallow: /landing/result/

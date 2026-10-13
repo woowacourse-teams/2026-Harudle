@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "하루들 - AI 네컷일기",
+  "name": "하루들 | 우리끼리 통하는 네컷만화",
   "short_name": "하루들",
-  "description": "하루를 AI 네컷 그림일기로 기록해 보세요.",
+  "description": "함께한 일상을 네컷만화로 만들고, 같이 있었던 사람들과 나눠보세요.",
   "lang": "ko-KR",
   "start_url": "/",
   "scope": "/",

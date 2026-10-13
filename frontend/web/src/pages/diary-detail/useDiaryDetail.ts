@@ -1,112 +1,57 @@
-import { useEffect, useState } from 'react';
+import { useErrorTracking } from '../../posthog/useErrorTracking';
+import { useCallback, useEffect, useState } from 'react';
+import type { ApiRequest } from '../../shared/api';
 import {
-  API_BASE_URL,
-  isProblemDetails,
-  RequestError,
-  type ApiRequest,
-} from '../../shared/api';
-import { authFetch } from '../../shared/auth';
-import { useAnalytics } from '../../shared/useAnalytics';
+  getDiaryDetail,
+  type DiaryDetailResponse,
+} from '../../domain/diary/diaryDetail';
+import { useAnalytics } from '../../posthog/useAnalytics';
 
-interface DiaryDetail {
-  id: string;
-  diaryDate: string;
-  sourceText: string;
-  createdAt: string;
-  generation: {
-    id: string;
-    status: 'SUCCEEDED';
-    title: string;
-    imageUrl: string;
-    imageUrlExpiresAt: string;
-    completedAt: string;
-  };
-}
-
-const isDiaryDetail = (value: unknown): value is DiaryDetail => {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'id' in value &&
-    typeof value.id === 'string' &&
-    'diaryDate' in value &&
-    typeof value.diaryDate === 'string' &&
-    'sourceText' in value &&
-    typeof value.sourceText === 'string' &&
-    'createdAt' in value &&
-    typeof value.createdAt === 'string' &&
-    'generation' in value &&
-    typeof value.generation === 'object' &&
-    value.generation !== null &&
-    'id' in value.generation &&
-    typeof value.generation.id === 'string' &&
-    'status' in value.generation &&
-    value.generation.status === 'SUCCEEDED' &&
-    'title' in value.generation &&
-    typeof value.generation.title === 'string' &&
-    'imageUrl' in value.generation &&
-    typeof value.generation.imageUrl === 'string' &&
-    'imageUrlExpiresAt' in value.generation &&
-    typeof value.generation.imageUrlExpiresAt === 'string' &&
-    'completedAt' in value.generation &&
-    typeof value.generation.completedAt === 'string'
-  );
-};
-
-const useDiaryDetail = ({ diaryId }: { diaryId: string | undefined }) => {
+const useDiaryDetail = ({ diaryId }: { diaryId: string }) => {
   const { track } = useAnalytics();
-  const [diaryDetailReqeust, setDiaryDetailRequest] = useState<
-    ApiRequest<DiaryDetail>
-  >({
+  const { captureError } = useErrorTracking();
+  const [request, setRequest] = useState<ApiRequest<DiaryDetailResponse>>({
     status: 'idle',
   });
 
-  useEffect(() => {
-    const getDiaryDetail = async (): Promise<void> => {
-      setDiaryDetailRequest({
-        status: 'loading',
+  const execute = useCallback(async (): Promise<void> => {
+    setRequest({
+      status: 'loading',
+    });
+    try {
+      const diaryDetailResponse = await getDiaryDetail({ diaryId });
+
+      setRequest({
+        status: 'success',
+        data: diaryDetailResponse,
       });
-      try {
-        const response = await authFetch(`${API_BASE_URL}/diaries/${diaryId}`);
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          if (isProblemDetails(errorData)) {
-            throw new RequestError(errorData);
-          }
-
-          throw new Error('알 수 없는 에러가 발생했습니다.');
-        }
-
-        const data: unknown = await response.json();
-
-        if (!isDiaryDetail(data)) {
-          throw new Error('MonthlyDiaries 응답 형식이 일치하지 않습니다.');
-        }
-
-        setDiaryDetailRequest({
-          status: 'success',
-          data: data,
+      track('diary_detail_viewed', {
+        diary_id: diaryDetailResponse.id,
+        diary_date: diaryDetailResponse.diaryDate,
+      });
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        captureError(error, {
+          feature: 'diary',
+          operation: 'read',
+          diary_id: diaryId,
         });
-
-        track('diary_detail_viewed', {
-          diary_id: data.id,
-          diary_date: data.diaryDate,
+        setRequest({
+          status: 'error',
+          error: error,
         });
-      } catch (error: unknown) {
-        if (error instanceof Error) {
-          setDiaryDetailRequest({
-            status: 'error',
-            error: error,
-          });
-        }
       }
-    };
+    }
+  }, [diaryId, track, captureError]);
 
-    void getDiaryDetail();
-  }, [diaryId, track]);
+  useEffect(() => {
+    // TODO: API 요청과 상태 갱신 책임을 분리해 lint 예외를 제거한다.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void execute();
+  }, [execute]);
 
-  return { diaryDetailReqeust };
+  return { request };
 };
 
 export default useDiaryDetail;

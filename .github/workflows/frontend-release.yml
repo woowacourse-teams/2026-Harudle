@@ -1,0 +1,78 @@
+name: Frontend Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: '운영 배포에 사용한 전체 커밋 SHA (40자리)'
+        required: true
+        type: string
+      deployment_url:
+        description: '성공한 AWS CodePipeline 또는 CodeDeploy 실행 기록 URL'
+        required: true
+        type: string
+      deployment_verified:
+        description: '이 커밋의 운영 배포 성공과 주요 동작을 확인했습니다'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main' && inputs.deployment_verified
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    env:
+      RELEASE_COMMIT: ${{ inputs.commit }}
+      DEPLOYMENT_URL: ${{ inputs.deployment_url }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout release tooling
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Validate version, commit and changelog
+        id: release
+        run: |
+          git fetch origin main --tags
+          node .github/scripts/prepare-frontend-release.mjs
+
+      - name: Create annotated Git tag
+        if: steps.release.outputs.tag_exists == 'false'
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag -a "$RELEASE_TAG" "$RELEASE_COMMIT" -m "$RELEASE_TAG"
+          git push origin "refs/tags/$RELEASE_TAG"
+
+      - name: Publish GitHub Release
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_NOTES: ${{ steps.release.outputs.notes }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release already exists: $RELEASE_TAG"
+            exit 0
+          fi
+          gh release create "$RELEASE_TAG" \
+            --verify-tag \
+            --title "$RELEASE_TAG" \
+            --notes-file "$RELEASE_NOTES" \
+            --latest=false

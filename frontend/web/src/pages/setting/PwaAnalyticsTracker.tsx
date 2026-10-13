@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
-import { useAnalytics } from '../../shared/useAnalytics';
 import { isPwaInstalled } from './PwaInstallContext';
+import { useAnalytics } from '../../posthog/useAnalytics';
 
 const PWA_FIRST_LAUNCH_TRACKED_KEY = 'pwa_first_launch_tracked';
 

@@ -14,6 +14,11 @@ import {
   guestTrialHandlers,
   resetGuestTrialMockState,
 } from './guestTrialHandlers';
+import {
+  isGuestDiaryResponse,
+  type GuestDiaryResponse,
+} from '../pages/landing/guestTrialApi';
+import { isRecord } from '../shared/utils';
 
 jest.mock('msw', () => {
   class MockHttpResponse extends Response {
@@ -42,7 +47,7 @@ jest.mock('msw', () => {
   };
 });
 
-jest.mock('../assets/images/diary-four-panel.png', () => 'guest-diary.png');
+jest.mock('../assets/images/diary-four-panel.webp', () => 'guest-diary.webp');
 
 const API_ORIGIN = 'http://localhost';
 const DIARY_REQUEST = {
@@ -160,6 +165,18 @@ const createGuestDiary = ({
   );
 };
 
+const readGuestDiaryResponse = async (
+  response: Response,
+): Promise<GuestDiaryResponse> => {
+  const data: unknown = await response.json();
+
+  if (!isGuestDiaryResponse(data)) {
+    throw new Error('게스트 일기 응답 형식이 올바르지 않습니다.');
+  }
+
+  return data;
+};
+
 beforeAll(() => {
   Object.defineProperty(globalThis, 'sessionStorage', {
     configurable: true,
@@ -185,7 +202,7 @@ describe('게스트 체험 MSW 시나리오', () => {
   it('최초 사용 시 세션을 발급하고 일기를 생성한 뒤 결과를 조회한다', async () => {
     const sessionResponse = await issueGuestSession();
     const createResponse = await createGuestDiary();
-    const createdDiary = await createResponse.json();
+    const createdDiary = await readGuestDiaryResponse(createResponse);
 
     expect(sessionResponse.status).toBe(204);
     expect(createResponse.status).toBe(201);
@@ -207,13 +224,21 @@ describe('게스트 체험 MSW 시나리오', () => {
   it('새로고침 이후에도 sessionStorage에 저장된 결과를 조회한다', async () => {
     await issueGuestSession();
     const createResponse = await createGuestDiary();
-    const createdDiary = await createResponse.json();
-    const storedState = JSON.parse(
+    const createdDiary = await readGuestDiaryResponse(createResponse);
+    const storedState: unknown = JSON.parse(
       memoryStorage.getItem(GUEST_TRIAL_STATE_STORAGE_KEY) ?? '{}',
     );
 
-    storedState.diaries[createdDiary.id].generation.title =
-      '세션 저장소에서 복원한 결과';
+    if (!isRecord(storedState) || !isRecord(storedState.diaries)) {
+      throw new Error('저장된 게스트 체험 상태가 올바르지 않습니다.');
+    }
+
+    const storedDiary = storedState.diaries[createdDiary.id];
+    if (!isGuestDiaryResponse(storedDiary)) {
+      throw new Error('저장된 게스트 일기 형식이 올바르지 않습니다.');
+    }
+
+    storedDiary.generation.title = '세션 저장소에서 복원한 결과';
     memoryStorage.setItem(
       GUEST_TRIAL_STATE_STORAGE_KEY,
       JSON.stringify(storedState),
@@ -234,7 +259,7 @@ describe('게스트 체험 MSW 시나리오', () => {
     await issueGuestSession();
 
     const firstResponse = await createGuestDiary();
-    const firstDiary = await firstResponse.json();
+    const firstDiary: unknown = await firstResponse.json();
     const replayResponse = await createGuestDiary();
 
     expect(firstResponse.status).toBe(201);

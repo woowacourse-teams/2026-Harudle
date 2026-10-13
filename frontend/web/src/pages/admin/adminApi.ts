@@ -1,8 +1,12 @@
+import { ERROR_MESSAGES } from '../../shared/errorMessage';
+import {
+  isGenerationStatus,
+  type GenerationStatus,
+} from '../../domain/diary/diaryGenerate';
 import { API_BASE_URL, isProblemDetails, RequestError } from '../../shared/api';
 import { authFetch, requestCsrfToken } from '../../shared/auth';
 
 export type UserStatus = 'ACTIVE' | 'DELETED';
-export type GenerationStatus = 'PROCESSING' | 'SUCCEEDED' | 'FAILED';
 
 export interface AdminGenerationUsage {
   usageDate: string;
@@ -57,9 +61,6 @@ const isOptionalString = (value: unknown): value is string | null | undefined =>
 const isUserStatus = (value: unknown): value is UserStatus =>
   value === 'ACTIVE' || value === 'DELETED';
 
-const isGenerationStatus = (value: unknown): value is GenerationStatus =>
-  value === 'PROCESSING' || value === 'SUCCEEDED' || value === 'FAILED';
-
 const isGenerationUsage = (value: unknown): value is AdminGenerationUsage =>
   isRecord(value) &&
   typeof value.usageDate === 'string' &&
@@ -111,7 +112,7 @@ const readPage = <T>(
     typeof value.totalPages !== 'number' ||
     typeof value.hasNext !== 'boolean'
   ) {
-    throw new Error('관리자 API 응답 형식이 올바르지 않습니다.');
+    throw new Error(ERROR_MESSAGES.INVALID_ADMIN_API_RESPONSE);
   }
   return value as unknown as Page<T>;
 };
@@ -120,7 +121,7 @@ const readJson = async (response: Response): Promise<unknown> => {
   const data: unknown = await response.json();
   if (response.ok) return data;
   if (isProblemDetails(data)) throw new RequestError(data);
-  throw new Error('관리자 API 요청에 실패했습니다.');
+  throw new Error(ERROR_MESSAGES.ADMIN_API_REQUEST_FAILED);
 };
 
 export const searchAdminUsers = async (
@@ -143,7 +144,7 @@ export const getAdminUser = async (
   const response = await authFetch(`${API_BASE_URL}/admin/users/${userId}`);
   const value = await readJson(response);
   if (!isUserDetail(value)) {
-    throw new Error('관리자 사용자 상세 응답 형식이 올바르지 않습니다.');
+    throw new Error(ERROR_MESSAGES.INVALID_ADMIN_USER_DETAIL_RESPONSE);
   }
   return value;
 };
@@ -197,7 +198,7 @@ const updateUsage = async (
   const response = await adminMutationFetch(url, init);
   const value = await readJson(response);
   if (!isGenerationUsage(value)) {
-    throw new Error('사용량 변경 응답 형식이 올바르지 않습니다.');
+    throw new Error(ERROR_MESSAGES.INVALID_ADMIN_USAGE_UPDATE_RESPONSE);
   }
   return value;
 };

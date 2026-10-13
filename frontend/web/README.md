@@ -21,6 +21,31 @@ pnpm dev
 
 개발 서버는 `http://localhost:5173`에서 실행됩니다. 개발 환경에서는 MSW가 자동으로 활성화되며, Mock이 없는 요청은 그대로 서버로 전달됩니다.
 
+브랜드 소개와 로그인 없는 1회 네컷만화 체험은 `/landing`에서 제공합니다. 게스트 체험 결과 조회는 `/landing/result/:diaryId`를 사용합니다. 관련 UI와 체험 코드는 `src/pages/landing/`에 함께 둡니다.
+
+### Mock API 설정
+
+로컬 개발에서는 `.env`의 `USE_MSW` 값으로 MSW 사용 여부를 설정합니다.
+
+```text
+USE_MSW=true  # Mock API 사용
+USE_MSW=false # 실제 API 사용
+```
+
+설정을 변경한 뒤 개발 서버를 다시 실행해야 합니다.
+
+```bash
+pnpm dev
+```
+
+명령을 실행할 때 일시적으로 값을 변경할 수도 있습니다.
+
+```bash
+USE_MSW=false pnpm dev
+```
+
+`USE_MSW`는 development 빌드에서만 적용되며, production 빌드에서는 MSW가 실행되지 않습니다.
+
 ## 기술 스택
 
 | 구분      | 기술                             |
@@ -45,7 +70,7 @@ src/
 ```
 
 - 페이지 전용 코드는 `pages/<페이지>/`에 함께 두고, 페이지 내부 폴더는 최대 1 depth까지만 사용합니다.
-- 특정 페이지에 종속되지 않는 도메인 타입·API·비즈니스 로직이 생기면 `domain/<도메인>/`을 만듭니다.
+- 특정 페이지에 종속되지 않는 도메인 타입, API, 비즈니스 로직이 생기면 `domain/<도메인>/`을 만듭니다.
 - `shared/`로 옮기기 전, 실제로 여러 페이지에서 같은 책임으로 사용되는지 확인합니다.
 
 ## 개발 규칙
@@ -88,6 +113,10 @@ main ── CI/CD → harudle.com
 2. 작업이 끝나면 `develop-frontend`를 대상으로 PR을 올립니다.
 3. QA가 필요한 변경을 `dev`에 병합하면 `dev.harudle.com`으로 자동 배포됩니다.
 4. 개발 환경에서 QA를 마친 뒤 `main`에 병합하면 프로덕션 환경인 `harudle.com`으로 자동 배포됩니다.
+
+## 릴리스
+
+프론트엔드 버전 증가 기준과 Git 태그, GitHub Release 생성 절차는 [릴리스 가이드](./docs/releases.md), 버전별 변경은 [CHANGELOG](./CHANGELOG.md)에서 확인합니다.
 
 ## 커밋 메시지
 
@@ -136,3 +165,5 @@ OAuth 로그인 진입점과 실패 시 오류 메시지를 추가한다.
 PR을 올리기 전 `pnpm check`를 실행합니다.
 
 결정의 배경과 세부 기준은 [ADR](./docs/adr/README.md)에서 확인할 수 있습니다.
+
+화면 문구는 각 페이지의 `copy.ts`에서 수정합니다. 문구를 바꾸면 [UX 라이팅 가이드](./docs/ux-writing.md)도 함께 갱신합니다.

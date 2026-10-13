@@ -1,3 +1,6 @@
+import { DIARY_DETAIL_COPY } from '../src/pages/diary-detail/copy';
+import { ALBUM_COPY } from '../src/pages/album/copy';
+import { ERROR_MESSAGES } from '../src/shared/errorMessage';
 import { expect, test, type Page } from '@playwright/test';
 import {
   MOCK_SCENARIO_HEADER,
@@ -14,6 +17,10 @@ const SAMPLE_DIARY_TITLE = '비가 와도, 나는 괜찮았다.';
 const SAMPLE_DIARY_DATE = '2026-08-12';
 const SAMPLE_DIARY_STORY = '오늘 친구와 카페에 가서 오래 이야기했다.';
 
+test.beforeEach(async ({ page }): Promise<void> => {
+  await page.clock.setFixedTime(TODAY);
+});
+
 const setMockScenario = async (
   page: Page,
   scenario?: (typeof MOCK_SCENARIOS)[keyof typeof MOCK_SCENARIOS],
@@ -23,9 +30,9 @@ const setMockScenario = async (
   );
 };
 
-const goToHome = async (page: Page) => {
+const goToAlbum = async (page: Page) => {
   await page.clock.setFixedTime(TODAY);
-  await page.goto('/');
+  await page.goto('/album');
 };
 
 const clickSampleDiary = async (page: Page) => {
@@ -41,7 +48,7 @@ const expectSampleDiaryDetail = async (page: Page) => {
   ).toBeVisible();
   await expect(page.getByText(SAMPLE_DIARY_DATE)).toBeVisible();
   await expect(page.getByText(SAMPLE_DIARY_STORY)).toBeVisible();
-  await expect(page.getByRole('img', { name: '그림 일기' })).toBeVisible();
+  await expect(page.getByRole('img', { name: '네컷만화' })).toBeVisible();
 };
 
 const goToSampleDiaryDetail = async (
@@ -55,10 +62,10 @@ const goToSampleDiaryDetail = async (
 };
 
 test.describe('일기 상세', () => {
-  test('홈에서 일기를 클릭하면 로딩 후 상세 정보를 확인할 수 있다', async ({
+  test('앨범에서 일기를 클릭하면 로딩 후 상세 정보를 확인할 수 있다', async ({
     page,
   }) => {
-    await goToHome(page);
+    await goToAlbum(page);
     await clickSampleDiary(page);
     const loadingSpinner = page.getByRole('img', { name: '로딩 중' });
 
@@ -69,11 +76,13 @@ test.describe('일기 상세', () => {
 
   test('상세 정보 조회에 실패하면 다시 불러올 수 있다', async ({ page }) => {
     await setMockScenario(page, MOCK_SCENARIOS.diaryDetailFailure);
-    await goToHome(page);
+    await goToAlbum(page);
     await clickSampleDiary(page);
 
     const errorPage = page.getByRole('alert');
-    await expect(errorPage.getByText('일기를 불러오지 못했어요')).toBeVisible();
+    await expect(
+      errorPage.getByText(DIARY_DETAIL_COPY.loadErrorTitle),
+    ).toBeVisible();
     await expect(
       errorPage.getByText(
         '일기 상세 정보를 불러오지 못했습니다. 다시 시도해주세요.',
@@ -81,56 +90,71 @@ test.describe('일기 상세', () => {
     ).toBeVisible();
 
     await setMockScenario(page);
-    await page.getByRole('button', { name: '다시 불러오기' }).click();
+    await page
+      .getByRole('button', { name: DIARY_DETAIL_COPY.reloadAction })
+      .click();
 
     await expectSampleDiaryDetail(page);
   });
 
-  test('상단 뒤로가기 버튼을 누르면 홈 화면으로 이동한다', async ({ page }) => {
-    await goToHome(page);
+  test('상단 뒤로가기 버튼을 누르면 앨범 화면으로 이동한다', async ({
+    page,
+  }) => {
+    await goToAlbum(page);
     await clickSampleDiary(page);
 
     await page.getByRole('button', { name: '뒤로 가기' }).click();
 
-    await expect(page).toHaveURL('/');
+    await expect(page).toHaveURL('/album');
     await expect(page.getByLabel('조회할 월')).toBeVisible();
   });
 
   test('다른 월에서 상세 화면에 진입한 뒤 돌아가면 선택한 월을 유지한다', async ({
     page,
   }) => {
-    await page.clock.setFixedTime(new Date('2026-07-30T12:00:00+09:00'));
-    await page.goto('/');
+    await page.goto('/album?yearMonth=2026-07');
 
     const monthInput = page.getByLabel('조회할 월');
     await monthInput.fill('2026-08');
-    await expect(page).toHaveURL('/?yearMonth=2026-08');
+    await expect(page).toHaveURL('/album?yearMonth=2026-08');
 
     await clickSampleDiary(page);
     await page.getByRole('button', { name: '뒤로 가기' }).click();
 
-    await expect(page).toHaveURL('/?yearMonth=2026-08');
+    await expect(page).toHaveURL('/album?yearMonth=2026-08');
     await expect(monthInput).toHaveValue('2026-08');
   });
 
-  test('삭제를 확인하면 일기를 삭제하고 홈 화면으로 이동한다', async ({
+  test('삭제를 확인하면 일기를 삭제하고 앨범 화면으로 이동한다', async ({
     page,
   }) => {
     await goToSampleDiaryDetail(page);
-
-    const confirmPromise = page.waitForEvent('dialog');
-    const deleteClickPromise = page
-      .getByRole('button', { name: '더보기' })
+    await page
+      .getByRole('button', { name: DIARY_DETAIL_COPY.menuAction })
       .click();
-    const confirmDialog = await confirmPromise;
 
-    expect(confirmDialog.type()).toBe('confirm');
-    expect(confirmDialog.message()).toBe('일기를 삭제할까요?');
-    await confirmDialog.accept();
-    await deleteClickPromise;
+    await page
+      .getByRole('button', { name: DIARY_DETAIL_COPY.deleteAction })
+      .click();
+    const confirmModal = page.getByRole('dialog').filter({
+      has: page.getByRole('heading', {
+        name: DIARY_DETAIL_COPY.deleteConfirmTitle,
+        exact: true,
+      }),
+    });
+    await expect(
+      confirmModal.getByText(DIARY_DETAIL_COPY.deleteConfirm, { exact: true }),
+    ).toBeVisible();
+    await confirmModal
+      .getByRole('button', { name: DIARY_DETAIL_COPY.deleteAction })
+      .click();
 
-    await expect(page).toHaveURL('/');
-    await expect(page.getByText('5개의 기록')).toBeVisible();
+    await expect(page).toHaveURL('/album');
+    await expect(
+      page.getByText(
+        `${ALBUM_COPY.monthlyCount.before}5${ALBUM_COPY.monthlyCount.after}`,
+      ),
+    ).toBeVisible();
     await expect(
       page.getByText(SAMPLE_DIARY_TITLE, { exact: true }),
     ).toHaveCount(0);
@@ -138,21 +162,30 @@ test.describe('일기 상세', () => {
 
   test('일기 삭제에 실패하면 에러 메시지를 보여준다', async ({ page }) => {
     await goToSampleDiaryDetail(page, MOCK_SCENARIOS.diaryDeleteFailure);
-
-    const confirmPromise = page.waitForEvent('dialog');
-    const deleteClickPromise = page
-      .getByRole('button', { name: '더보기' })
+    await page
+      .getByRole('button', { name: DIARY_DETAIL_COPY.menuAction })
       .click();
-    const confirmDialog = await confirmPromise;
+
+    await page
+      .getByRole('button', { name: DIARY_DETAIL_COPY.deleteAction })
+      .click();
+    const confirmModal = page.getByRole('dialog').filter({
+      has: page.getByRole('heading', {
+        name: DIARY_DETAIL_COPY.deleteConfirmTitle,
+        exact: true,
+      }),
+    });
     const errorPromise = page.waitForEvent('dialog');
-    await confirmDialog.accept();
-    await deleteClickPromise;
+    const confirmClickPromise = confirmModal
+      .getByRole('button', { name: DIARY_DETAIL_COPY.deleteAction })
+      .click();
 
     const errorDialog = await errorPromise;
     expect(errorDialog.message()).toBe(
       '일기 삭제에 실패했습니다. 다시 시도해주세요.',
     );
     await errorDialog.accept();
+    await confirmClickPromise;
 
     await expect(page).toHaveURL(SAMPLE_DIARY_URL);
     await expect(
@@ -160,63 +193,109 @@ test.describe('일기 상세', () => {
     ).toBeVisible();
   });
 
-  test('공유하기 버튼을 누르면 브라우저 공유 UI를 요청한다', async ({
+  test('삭제 확인 모달에서 취소하면 삭제 요청 없이 상세 화면을 유지한다', async ({
+    page,
+  }): Promise<void> => {
+    await goToSampleDiaryDetail(page);
+    let deleteRequestCount = 0;
+    page.on('request', (request): void => {
+      if (
+        request.method() === 'DELETE' &&
+        new URL(request.url()).pathname === `/api/v1/diaries/${SAMPLE_DIARY_ID}`
+      ) {
+        deleteRequestCount += 1;
+      }
+    });
+
+    await page
+      .getByRole('button', { name: DIARY_DETAIL_COPY.menuAction })
+      .click();
+    await page
+      .getByRole('button', { name: DIARY_DETAIL_COPY.deleteAction })
+      .click();
+    const confirmModal = page.getByRole('dialog').filter({
+      has: page.getByRole('heading', {
+        name: DIARY_DETAIL_COPY.deleteConfirmTitle,
+        exact: true,
+      }),
+    });
+    await confirmModal
+      .getByRole('button', { name: '취소', exact: true })
+      .click();
+
+    await expect(confirmModal).toBeHidden();
+    await expectSampleDiaryDetail(page);
+    expect(deleteRequestCount).toBe(0);
+  });
+
+  test('피드에 올리기를 누르면 해당 일기의 피드 게시 화면으로 이동한다', async ({
     page,
   }) => {
     await goToSampleDiaryDetail(page);
-    await page.evaluate(() => {
-      Object.defineProperty(navigator, 'share', {
-        configurable: true,
-        value: async (data: unknown) => {
-          sessionStorage.setItem('sharedDiary', JSON.stringify(data));
-        },
-      });
-    });
 
-    await page.getByRole('button', { name: '공유하기' }).click();
-
-    await expect
-      .poll(() => page.evaluate(() => sessionStorage.getItem('sharedDiary')))
-      .not.toBeNull();
-    const sharedDiary = await page.evaluate(() =>
-      JSON.parse(sessionStorage.getItem('sharedDiary') ?? '{}'),
-    );
-    expect(sharedDiary).toMatchObject({
-      title: SAMPLE_DIARY_TITLE,
-      url: expect.stringContaining('/shares/'),
-    });
-  });
-
-  test('일기 공유에 실패하면 에러 메시지를 보여준다', async ({ page }) => {
-    await goToSampleDiaryDetail(page, MOCK_SCENARIOS.diaryShareFailure);
-
-    const errorPromise = page.waitForEvent('dialog');
-    const shareClickPromise = page
-      .getByRole('button', { name: '공유하기' })
+    await page
+      .getByRole('button', { name: DIARY_DETAIL_COPY.feedPostAction })
       .click();
-    const errorDialog = await errorPromise;
 
-    expect(errorDialog.message()).toBe(
-      '공유 링크를 만들지 못했습니다. 다시 시도해주세요.',
-    );
-    await errorDialog.accept();
-    await shareClickPromise;
+    await expect(page).toHaveURL(`${SAMPLE_DIARY_URL}/feed-post`);
+    await expect(page.getByRole('img', { name: '네컷만화' })).toBeVisible();
+    await expect(page.getByRole('radio', { name: '일상' })).not.toBeChecked();
+    await expect(
+      page.getByText(SAMPLE_DIARY_TITLE, { exact: true }),
+    ).toHaveCount(0);
+
+    await page.reload();
+    await expect(page.getByRole('img', { name: '네컷만화' })).toBeVisible();
+    await expect(page.getByRole('radio', { name: '일상' })).not.toBeChecked();
+
+    await page.goBack();
+    await expectSampleDiaryDetail(page);
   });
 
   test('이미지 저장 버튼을 누르면 일기 이미지를 저장한다', async ({ page }) => {
     await goToSampleDiaryDetail(page);
 
     const downloadPromise = page.waitForEvent('download');
-    await page.getByRole('button', { name: '이미지 저장' }).click();
+    await page
+      .getByRole('button', { name: DIARY_DETAIL_COPY.downloadAction })
+      .click();
     const download = await downloadPromise;
 
-    expect(download.suggestedFilename()).toBe('harudle-diary.png');
+    expect(download.suggestedFilename()).toBe(
+      '하루들_2026-08-12_비가 와도, 나는 괜찮았다.webp',
+    );
   });
+
+  for (const [label, scenario, character] of [
+    ['한글', MOCK_SCENARIOS.diaryLongKoreanTitle, '가'],
+    ['이모지', MOCK_SCENARIOS.diaryLongEmojiTitle, '😀'],
+  ] as const) {
+    test(`긴 ${label} 제목은 이미지 저장 시 20 code point로 제한한다`, async ({
+      page,
+    }): Promise<void> => {
+      await setMockScenario(page, scenario);
+      await page.goto(SAMPLE_DIARY_URL);
+      await expect(
+        page.getByText(character.repeat(100), { exact: true }),
+      ).toBeVisible();
+
+      const downloadPromise = page.waitForEvent('download');
+      await page
+        .getByRole('button', { name: DIARY_DETAIL_COPY.downloadAction })
+        .click();
+      const download = await downloadPromise;
+      const fileName = download.suggestedFilename();
+
+      expect(fileName).toBe(`하루들_2026-08-12_${character.repeat(20)}.webp`);
+      expect(Buffer.byteLength(fileName, 'utf8')).toBeLessThanOrEqual(127);
+      expect(await download.failure()).toBeNull();
+    });
+  }
 
   test('이미지 저장에 실패하면 에러 메시지를 보여준다', async ({ page }) => {
     await goToSampleDiaryDetail(page);
     const diaryImageUrl = await page
-      .getByRole('img', { name: '그림 일기' })
+      .getByRole('img', { name: '네컷만화' })
       .evaluate((image) => image.src);
 
     await page.evaluate((failedImageUrl) => {
@@ -237,11 +316,11 @@ test.describe('일기 상세', () => {
 
     const errorPromise = page.waitForEvent('dialog');
     const downloadClickPromise = page
-      .getByRole('button', { name: '이미지 저장' })
+      .getByRole('button', { name: DIARY_DETAIL_COPY.downloadAction })
       .click();
     const errorDialog = await errorPromise;
 
-    expect(errorDialog.message()).toBe('이미지 저장에 실패했습니다.');
+    expect(errorDialog.message()).toBe(ERROR_MESSAGES.DIARY_IMAGE_SAVE_FAILED);
     await errorDialog.accept();
     await downloadClickPromise;
   });

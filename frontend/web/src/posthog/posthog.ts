@@ -1,0 +1,80 @@
+import type { PostHog } from 'posthog-js';
+import posthog from 'posthog-js';
+import { API_BASE_URL } from '../shared/api';
+
+const posthogKey = process.env.REACT_APP_POSTHOG_KEY;
+
+export const initializePostHog = (): boolean => {
+  if (!isPostHogEnabled) {
+    return false;
+  }
+
+  if (!posthogKey) {
+    console.error('PostHog is enabled, but REACT_APP_POSTHOG_KEY is missing.');
+
+    return false;
+  }
+
+  posthog.init(posthogKey, {
+    api_host: 'https://e.harudle.com',
+    ui_host: 'https://us.posthog.com',
+    defaults: '2026-01-30',
+    capture_exceptions: true,
+  });
+
+  return true;
+};
+
+const localHostnames = new Set(['localhost', '127.0.0.1', '0.0.0.0', '[::1]']);
+
+export const isPostHogEnabled =
+  process.env.NODE_ENV === 'production' &&
+  !localHostnames.has(window.location.hostname);
+
+const hasUserId = (value: unknown): value is { id: string } => {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'id' in value &&
+    typeof value.id === 'string'
+  );
+};
+
+export const identifyCurrentUserForPostHog = async (
+  posthog: PostHog,
+  accessToken: string,
+): Promise<void> => {
+  if (!isPostHogEnabled) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/me`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      return;
+    }
+
+    const profile: unknown = await response.json();
+
+    if (hasUserId(profile)) {
+      if (
+        'nickname' in profile &&
+        typeof profile.nickname === 'string' &&
+        profile.nickname.trim().length > 0
+      ) {
+        posthog.identify(profile.id, { name: profile.nickname });
+      } else {
+        posthog.identify(profile.id);
+      }
+    }
+  } catch (error: unknown) {
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('PostHog 사용자 식별에 실패했습니다.', error);
+    }
+  }
+};

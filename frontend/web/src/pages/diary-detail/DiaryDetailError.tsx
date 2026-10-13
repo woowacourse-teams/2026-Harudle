@@ -1,3 +1,4 @@
+import { DIARY_DETAIL_COPY } from './copy';
 import { css } from '@emotion/react';
 import requestFailImage from '../../assets/images/request-fail.png';
 import { theme } from '../../styles/theme';
@@ -15,7 +16,7 @@ const DiaryDetailError = ({ errorMessage }: { errorMessage: string }) => {
             type="button"
             aria-label="뒤로 가기"
             css={headerButtonStyle}
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/album')}
           >
             <img
               src={backIcon}
@@ -29,12 +30,12 @@ const DiaryDetailError = ({ errorMessage }: { errorMessage: string }) => {
       />
       <img
         src={requestFailImage}
-        alt="일기를 불러오지 못해 속상한 사람과 강아지"
+        alt="네컷만화를 불러오지 못해 속상한 사람과 강아지"
         css={illustrationStyle}
       />
 
       <div css={messageBoxStyle}>
-        <h2 css={titleStyle}>일기를 불러오지 못했어요</h2>
+        <h2 css={titleStyle}>{DIARY_DETAIL_COPY.loadErrorTitle}</h2>
         <p css={descriptionStyle}>{errorMessage}</p>
       </div>
 
@@ -45,7 +46,7 @@ const DiaryDetailError = ({ errorMessage }: { errorMessage: string }) => {
           window.location.reload();
         }}
       >
-        다시 불러오기
+        {DIARY_DETAIL_COPY.reloadAction}
       </button>
     </div>
   );
@@ -97,7 +98,8 @@ const messageBoxStyle = css`
 `;
 
 const titleStyle = css`
-  color: ${theme.colors.text.primary};
+  word-break: keep-all;
+  color: ${theme.colors.foreground.neutral};
   font-size: 20px;
   font-weight: 700;
   line-height: 30px;
@@ -105,7 +107,7 @@ const titleStyle = css`
 
 const descriptionStyle = css`
   max-width: 280px;
-  color: ${theme.colors.text.secondary};
+  color: ${theme.colors.foreground.neutralMuted};
   font-size: 14px;
   font-weight: 400;
   line-height: 22px;
@@ -113,12 +115,13 @@ const descriptionStyle = css`
 `;
 
 const retryButtonStyle = css`
+  word-break: keep-all;
   width: 144px;
   height: 48px;
   border: none;
   border-radius: 18px;
-  background-color: ${theme.colors.bg.brand};
-  color: #ffffff;
+  background-color: ${theme.colors.background.brandSolid};
+  color: ${theme.colors.foreground.onBrand};
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
