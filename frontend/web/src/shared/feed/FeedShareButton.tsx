@@ -4,6 +4,7 @@ import sendIcon from '../../assets/icons/feed-send.svg';
 import linkIcon from '../../assets/icons/link.svg';
 import checkIcon from '../../assets/icons/check.svg';
 import type { Feed } from '../../domain/feeds/feedList';
+import { useAnalytics } from '../../posthog/useAnalytics';
 import { useErrorTracking } from '../../posthog/useErrorTracking';
 import BottomSheet, { type BottomSheetHandle } from '../../shared/BottomSheet';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
@@ -12,9 +13,14 @@ import { FEED_ACTION_COPY } from './copy';
 
 const SHOW_COPIED_DURATION_MS = 2_000;
 
-const FeedShareButton = ({ shareUrl }: Pick<Feed, 'shareUrl'>) => {
+interface FeedShareButtonProps extends Pick<Feed, 'shareUrl'> {
+  readonly feedId: Feed['id'];
+}
+
+const FeedShareButton = ({ feedId, shareUrl }: FeedShareButtonProps) => {
   const sheetRef = useRef<BottomSheetHandle>(null);
   const [isCopied, setIsCopied] = useState(false);
+  const { track } = useAnalytics();
   const { captureError } = useErrorTracking();
 
   useEffect(() => {
@@ -28,6 +34,12 @@ const FeedShareButton = ({ shareUrl }: Pick<Feed, 'shareUrl'>) => {
   }, [isCopied]);
 
   const handleCopyLink = async (): Promise<void> => {
+    track('feed_link_copy_clicked', {
+      feature: 'feed',
+      operation: 'copy_link',
+      feed_id: feedId,
+    });
+
     try {
       await navigator.clipboard.writeText(shareUrl);
       setIsCopied(true);
