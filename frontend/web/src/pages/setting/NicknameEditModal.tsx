@@ -69,19 +69,10 @@ const NicknameEditModal = ({
   let errorMessage = nicknameError;
   if (request.status === 'error') {
     const error = request.error;
-    if (
-      error instanceof RequestError &&
-      error.problem.code === 'NICKNAME_ALREADY_IN_USE'
-    ) {
-      errorMessage = '이미 사용 중인 닉네임이에요.';
-    } else if (
-      error instanceof RequestError &&
-      error.problem.code === 'VALIDATION_ERROR'
-    ) {
-      errorMessage = '닉네임은 1자 이상 10자 이하로 입력해 주세요.';
-    } else {
-      errorMessage = ERROR_MESSAGES.NICKNAME_UPDATE_FAILED;
-    }
+    errorMessage =
+      error instanceof RequestError
+        ? error.message
+        : ERROR_MESSAGES.NICKNAME_UPDATE_FAILED;
   }
 
   return (

@@ -88,7 +88,7 @@ describe('설정 프로필과 닉네임 수정', () => {
     expect(mockGetProfile).toHaveBeenCalledTimes(1);
   });
 
-  it('중복 오류를 표시하고 닉네임을 바꿔 다시 저장할 수 있다', async () => {
+  it('중복 오류의 서버 메시지를 표시하고 닉네임을 바꿔 다시 저장할 수 있다', async () => {
     mockUpdateNickname.mockRejectedValueOnce(
       new RequestError({
         type: 'about:blank',
@@ -103,9 +103,7 @@ describe('설정 프로필과 닉네임 수정', () => {
     await user.clear(input);
     await user.type(input, '네오');
     await user.click(screen.getByRole('button', { name: '저장' }));
-    expect(
-      await screen.findByText('이미 사용 중인 닉네임이에요.'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('서버 상세 문구')).toBeInTheDocument();
     expect(dialog).toHaveAttribute('open');
     expect(screen.getByText('연준')).toBeInTheDocument();
     await user.clear(input);
@@ -123,6 +121,37 @@ describe('설정 프로필과 닉네임 수정', () => {
     expect(mockUpdateNickname).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: '수정' }));
     expect(input).toHaveValue('연준');
+  });
+
+  it('서버 검증 오류 메시지를 그대로 표시한다', async () => {
+    const reason = '닉네임 앞뒤의 공백을 제거해 주세요.';
+    const problem = {
+      type: 'about:blank',
+      title: 'Bad Request',
+      status: 400 as const,
+      detail: '입력값을 확인해 주세요.',
+      instance: '/api/v1/me/nickname',
+      code: 'VALIDATION_ERROR',
+    };
+    mockUpdateNickname
+      .mockRejectedValueOnce(
+        new RequestError({
+          ...problem,
+          errors: [{ field: 'nickname', reason }],
+        }),
+      )
+      .mockRejectedValueOnce(new RequestError(problem));
+    const { user, dialog, input } = await openNicknameModal();
+    fireEvent.change(input, { target: { value: ' 하루' } });
+    await user.click(screen.getByRole('button', { name: '저장' }));
+    expect(await screen.findByText(reason)).toBeInTheDocument();
+    expect(dialog).toHaveAttribute('open');
+    expect(screen.getByText('연준')).toBeInTheDocument();
+
+    fireEvent.change(input, { target: { value: '하루' } });
+    expect(screen.queryByText(reason)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '저장' }));
+    expect(await screen.findByText(problem.detail)).toBeInTheDocument();
   });
 
   it('공백은 거부하고 입력을 Unicode 10자로 제한하며 글자 수를 표시한다', async () => {
