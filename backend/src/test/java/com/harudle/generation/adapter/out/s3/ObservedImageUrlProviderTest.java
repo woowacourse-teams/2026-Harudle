@@ -6,13 +6,18 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 
 import com.harudle.common.logging.ExternalApiLogger;
 import com.harudle.generation.config.S3StorageProperties;
 import com.harudle.generation.diary.service.port.ImageStorageException;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
+import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
+import java.time.Instant;
+import java.net.URI;
 import org.junit.jupiter.api.Test;
 import org.springframework.util.unit.DataSize;
 import software.amazon.awssdk.core.exception.SdkClientException;
@@ -20,6 +25,25 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
 class ObservedImageUrlProviderTest {
+
+    @Test
+    void preservesResponseScopedProviderThroughMetricsWrapper() {
+        ImageUrlProvider delegate = mock(ImageUrlProvider.class);
+        ImageUrlProvider scoped = mock(ImageUrlProvider.class);
+        ImageAccessUrl url = new ImageAccessUrl(URI.create("https://example/image.png"), Instant.MAX);
+        when(delegate.forResponse()).thenReturn(scoped);
+        when(scoped.createAccessUrl("image.png")).thenReturn(url);
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        try {
+            assertThat(new ObservedImageUrlProvider(delegate, registry).forResponse().createAccessUrl("image.png"))
+                    .isSameAs(url);
+            verify(delegate).forResponse();
+            verify(delegate, never()).createAccessUrl("image.png");
+            verify(scoped).createAccessUrl("image.png");
+        } finally {
+            registry.close();
+        }
+    }
 
     @Test
     void exportsSigningFailureWithBoundedTypeAndWithoutObjectKey() {

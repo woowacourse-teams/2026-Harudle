@@ -8,7 +8,7 @@ interface DiaryImageProps {
   readonly alt: string;
   readonly className?: string;
   readonly diaryId?: string;
-  readonly imageRole: 'thumbnail' | 'original';
+  readonly imageRole: 'thumbnail' | 'original' | 'feed';
 }
 
 const DiaryImage = ({

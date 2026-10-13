@@ -1,6 +1,9 @@
 import { css } from '@emotion/react';
 import EntryRoute from './EntryRoute';
-import HomePage from './pages/home/HomePage/HomePage';
+import PublicFeedRoute from './PublicFeedRoute';
+import AlbumPage from './pages/album/AlbumPage/AlbumPage';
+import FeedPage from './pages/feed/FeedPage';
+import FeedDetailPage from './pages/feed-detail/FeedDetailPage';
 import { Route, Routes } from 'react-router';
 import DiaryWritePage from './pages/diary-write/DiaryWritePage';
 import DiaryGeneratingPage from './pages/diary-generating/DiaryGeneratingPage';
@@ -13,7 +16,7 @@ import LandingRoutes from './pages/landing/LandingRoutes';
 import AdminGuard from './pages/admin/AdminGuard';
 import NotFoundPage from './pages/not-found/NotFoundPage';
 import PwaAnalyticsTracker from './pages/setting/PwaAnalyticsTracker';
-import SharedDiaryPage from './pages/shared-diary/SharedDiaryPage';
+import FeedPostPage from './pages/feed-post/FeedPostPage';
 
 const App = () => {
   return (
@@ -21,14 +24,20 @@ const App = () => {
       <PwaAnalyticsTracker />
       <Routes>
         <Route element={<EntryRoute />}>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/login" element={<LoginPage />} />
+          <Route element={<PublicFeedRoute />}>
+            <Route path="/" element={<FeedPage />} />
+          </Route>
         </Route>
+        <Route path="/album" element={<AlbumPage />} />
+        <Route element={<PublicFeedRoute />}>
+          <Route path="/feeds/:feedId" element={<FeedDetailPage />} />
+        </Route>
+        <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
         <Route path="/diary-write" element={<DiaryWritePage />} />
         <Route path="/diary-generating" element={<DiaryGeneratingPage />} />
         <Route path="/diary/:diaryId" element={<DiaryDetailPage />} />
-        <Route path="/shares/:shareId" element={<SharedDiaryPage />} />
+        <Route path="/diary/:diaryId/feed-post" element={<FeedPostPage />} />
         <Route path="/setting" element={<SettingPage />} />
         <Route path="/landing/*" element={<LandingRoutes />} />
         <Route path="/admin/*" element={<AdminGuard />} />

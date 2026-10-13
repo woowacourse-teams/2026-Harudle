@@ -6,14 +6,12 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import java.time.Duration;
-import org.jspecify.annotations.NonNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
 @Validated
 @ConfigurationProperties("harudle.generation.gemini")
 public record GeminiGenerationProperties(
-        @NotBlank String apiKey,
         @NotBlank String storyboardModel,
         @NotBlank String imageModel,
         @NotBlank
@@ -30,20 +28,5 @@ public record GeminiGenerationProperties(
     @AssertTrue(message = "Gemini 요청 제한 시간은 양수여야 합니다.")
     public boolean isRequestTimeoutPositive() {
         return requestTimeout != null && !requestTimeout.isZero() && !requestTimeout.isNegative();
-    }
-
-    @Override
-    public @NonNull String toString() {
-        return ("GeminiGenerationProperties[apiKey=***, storyboardModel=%s, imageModel=%s, "
-                + "storyboardThinkingLevel=%s, imageAspectRatio=%s, maxOutputTokens=%d, "
-                + "retryAttempts=%d, requestTimeout=%s]").formatted(
-                storyboardModel,
-                imageModel,
-                storyboardThinkingLevel,
-                imageAspectRatio,
-                maxOutputTokens,
-                retryAttempts,
-                requestTimeout
-        );
     }
 }

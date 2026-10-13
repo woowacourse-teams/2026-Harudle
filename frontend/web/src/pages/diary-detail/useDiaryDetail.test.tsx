@@ -31,6 +31,7 @@ describe('useDiaryDetail', () => {
     mockAuthFetch.mockResolvedValueOnce(
       createJsonResponse({
         id: 'diary-1',
+        publishedFeedId: null,
         diaryDate: '2026-08-24',
         sourceText: '오늘의 이야기',
         createdAt: '2026-08-24T00:00:00Z',

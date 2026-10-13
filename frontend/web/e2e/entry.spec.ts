@@ -5,8 +5,16 @@ import {
 } from '../src/mocks/mockScenarios';
 
 test.describe('하루들 접속', () => {
+  test('제거된 일기 공유 링크는 페이지 없음 안내를 표시한다', async ({
+    page,
+  }) => {
+    await page.goto('/shares/06ed972e-0b79-4da0-9716-c9bd8faec85d');
+    await expect(
+      page.getByRole('heading', { name: '페이지를 찾을 수 없어요' }),
+    ).toBeVisible();
+  });
   for (const entryPath of ['/', '/landing']) {
-    test(`저장소가 비어 있어도 세션이 유효하면 ${entryPath}에서 홈에 도착하고 새로고침 후 유지한다`, async ({
+    test(`저장소가 비어 있어도 세션이 유효하면 ${entryPath}에서 피드에 도착하고 새로고침 후 유지한다`, async ({
       page,
     }) => {
       await page.setExtraHTTPHeaders({
@@ -22,7 +30,7 @@ test.describe('하루들 접속', () => {
 
       await page.goto(entryPath);
 
-      await expect(page.getByLabel('조회할 월')).toBeVisible();
+      await expect(page.getByRole('combobox')).toBeVisible();
       await expect(page).toHaveURL('/');
       expect(
         await page.evaluate(() => [
@@ -30,7 +38,7 @@ test.describe('하루들 접속', () => {
           localStorage.getItem('harudle.has-completed-oauth'),
         ]),
       ).toEqual(['true', 'true']);
-      // 이전 문제는 홈 도착 직후 재이동했으므로 안정된 뒤 요청 횟수를 확인한다.
+      // 이전 문제는 화면 도착 직후 재이동했으므로 안정된 뒤 요청 횟수를 확인한다.
       await page.waitForTimeout(1000);
       expect(refreshCount).toBe(1);
       expect(guestSessionCount).toBe(0);
@@ -38,7 +46,7 @@ test.describe('하루들 접속', () => {
       await page.evaluate((): void => localStorage.clear());
       await page.reload();
 
-      await expect(page.getByLabel('조회할 월')).toBeVisible();
+      await expect(page.getByRole('combobox')).toBeVisible();
       await expect(page).toHaveURL('/');
       await page.waitForTimeout(1000);
       expect(refreshCount).toBe(2);
@@ -50,6 +58,7 @@ test.describe('하루들 접속', () => {
     page,
   }) => {
     await page.addInitScript((): void => {
+      localStorage.setItem('harudle.has-seen-landing', 'true');
       localStorage.setItem('harudle.has-ever-logged-in', 'true');
     });
     let refreshCount = 0;
@@ -59,7 +68,7 @@ test.describe('하루들 접속', () => {
 
     await page.goto('/');
 
-    await expect(page.getByLabel('조회할 월')).toBeVisible();
+    await expect(page.getByRole('combobox')).toBeVisible();
     expect(
       await page.evaluate(() =>
         localStorage.getItem('harudle.has-completed-oauth'),
@@ -69,7 +78,7 @@ test.describe('하루들 접속', () => {
     expect(refreshCount).toBe(1);
   });
 
-  test('localStorage에 로그인 이력이 없으면, 랜딩 페이지를 보여준다', async ({
+  test('첫 방문은 랜딩을 보여주고 재방문은 로그인 없이 공개 피드를 보여준다', async ({
     page,
   }) => {
     await page.goto('/');
@@ -80,13 +89,20 @@ test.describe('하루들 접속', () => {
 
     await page.goto('/');
 
-    await expect(page).toHaveURL('/landing');
+    await expect(page).toHaveURL('/');
+    await expect(page.getByRole('combobox')).toBeVisible();
+    expect(
+      await page.evaluate(() =>
+        localStorage.getItem('harudle.has-completed-oauth'),
+      ),
+    ).toBeNull();
   });
 
-  test('localStorage에 로그인 이력이 있고 세션이 유효하면 홈 화면을 보여준다', async ({
+  test('localStorage에 로그인 이력이 있고 세션이 유효하면 피드 화면을 보여준다', async ({
     page,
   }) => {
     await page.addInitScript(() => {
+      localStorage.setItem('harudle.has-seen-landing', 'true');
       localStorage.setItem('harudle.has-ever-logged-in', 'true');
       localStorage.setItem('harudle.has-completed-oauth', 'true');
     });
@@ -98,17 +114,20 @@ test.describe('하루들 접속', () => {
 
     await page.goto('/');
 
-    await expect(page.getByLabel('조회할 월')).toBeVisible();
+    await expect(page.getByRole('combobox')).toBeVisible();
     await expect(page).toHaveURL('/');
     expect(refreshRequests).toHaveLength(1);
   });
 
-  test('로그아웃 후 다시 접속하면 로그인 페이지를 보여주고, 다시 로그인하면 홈 화면을 보여준다', async ({
+  test('로그아웃 후 다시 접속하면 공개 피드를 보여주고, 다시 로그인할 수 있다', async ({
     page,
   }) => {
+    await page.addInitScript((): void => {
+      localStorage.setItem('harudle.has-seen-landing', 'true');
+    });
     await page.goto('/login');
     await page.getByRole('button', { name: '카카오로 시작하기' }).click();
-    await expect(page.getByLabel('조회할 월')).toBeVisible();
+    await expect(page.getByRole('combobox')).toBeVisible();
     await page.goto('/setting');
     await expect(page.getByText('kakao', { exact: true })).toBeVisible();
 
@@ -118,7 +137,8 @@ test.describe('하루들 접속', () => {
     });
 
     await page.getByRole('button', { name: '로그아웃', exact: true }).click();
-    await expect(page).toHaveURL('/login');
+    await expect(page).toHaveURL('/');
+    await expect(page.getByRole('combobox')).toBeVisible();
     expect(
       await page.evaluate(() =>
         localStorage.getItem('harudle.has-completed-oauth'),
@@ -131,16 +151,19 @@ test.describe('하루들 접속', () => {
     ).toBe('true');
 
     await page.goto('/');
-    await expect(page).toHaveURL('/login');
+    await expect(page).toHaveURL('/');
+    await expect(page.getByRole('combobox')).toBeVisible();
     await page.setExtraHTTPHeaders({});
+    await page.goto('/login');
     await page.getByRole('button', { name: '카카오로 시작하기' }).click();
-    await expect(page.getByLabel('조회할 월')).toBeVisible();
+    await expect(page.getByRole('combobox')).toBeVisible();
   });
 
-  test('세션이 만료된 상태로 접속하면 경고창 없이 로그인 페이지를 보여준다', async ({
+  test('세션이 만료된 상태로 재방문하면 경고창 없이 공개 피드를 보여준다', async ({
     page,
   }) => {
     await page.addInitScript(() => {
+      localStorage.setItem('harudle.has-seen-landing', 'true');
       localStorage.setItem('harudle.has-ever-logged-in', 'true');
       localStorage.setItem('harudle.has-completed-oauth', 'true');
     });
@@ -160,10 +183,8 @@ test.describe('하루들 접속', () => {
 
     await page.goto('/');
 
-    await expect(page).toHaveURL('/login');
-    await expect(
-      page.getByRole('button', { name: '카카오로 시작하기' }),
-    ).toBeVisible();
+    await expect(page).toHaveURL('/');
+    await expect(page.getByRole('combobox')).toBeVisible();
     expect(refreshRequests).toHaveLength(1);
     expect(dialogs).toEqual([]);
   });
@@ -184,18 +205,5 @@ test.describe('하루들 접속', () => {
     await expect(
       page.getByRole('button', { name: '카카오로 시작하기' }),
     ).toBeVisible();
-  });
-
-  test('로그인 이력 없이 공유받은 만화를 볼 수 있고, 하루들 버튼을 누르면 랜딩 페이지를 보여준다', async ({
-    page,
-  }) => {
-    const sharedPath = '/shares/06ed972e-0b79-4da0-9716-c9bd8faec85d';
-    await page.goto(sharedPath);
-    await expect(
-      page.getByText('비가 와도, 나는 괜찮았다.', { exact: true }),
-    ).toBeVisible();
-    await expect(page).toHaveURL(sharedPath);
-    await page.getByRole('button', { name: '하루들' }).click();
-    await expect(page).toHaveURL('/landing');
   });
 });

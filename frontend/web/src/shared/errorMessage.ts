@@ -11,22 +11,10 @@ const DIARY_DELETE = {
   DIARY_DELETION_FAILED: '네컷만화를 삭제하지 못했어요. 다시 시도해 주세요.',
 } as const;
 
-const DIARY_SHARE_LINK = {
-  DIARY_SHARE_LINK_CREATION_FAILED:
-    '공유 링크를 만들지 못했어요. 다시 시도해 주세요.',
-  INVALID_DIARY_SHARE_RESPONSE: 'DiaryShare 응답 형식이 일치하지 않습니다.',
-} as const;
-
 const DIARY_DETAIL = {
   DIARY_DETAIL_FETCH_FAILED:
     '네컷만화를 불러오지 못했어요. 다시 시도해 주세요.',
   INVALID_DIARY_DETAIL_RESPONSE: 'DiaryDetail 응답 형식이 일치하지 않습니다.',
-} as const;
-
-const SHARED_DIARY = {
-  SHARED_DIARY_FETCH_FAILED:
-    '공유된 네컷만화를 불러오지 못했어요. 다시 시도해 주세요.',
-  INVALID_SHARED_DIARY_RESPONSE: 'SharedDiary 응답 형식이 일치하지 않습니다.',
 } as const;
 
 const MONTHLY_DIARIES = {
@@ -34,6 +22,41 @@ const MONTHLY_DIARIES = {
     '이 달의 네컷만화를 불러오지 못했어요. 다시 시도해 주세요.',
   INVALID_MONTHLY_DIARIES_RESPONSE:
     'MonthlyDiaries 응답 형식이 일치하지 않습니다.',
+} as const;
+
+const FEED_COMMENTS = {
+  FEED_COMMENT_DELETION_FAILED: '댓글을 삭제하지 못했어요. 다시 시도해 주세요.',
+  FEED_COMMENT_CREATION_FAILED:
+    '댓글을 남기지 못했어요. 작성 여부를 확인한 뒤 다시 시도해 주세요.',
+  INVALID_FEED_COMMENT_RESPONSE: 'FeedComment 응답 형식이 일치하지 않습니다.',
+  INVALID_COMMENT_CONTENT: '댓글은 1자 이상 100자 이하로 입력해 주세요.',
+  FEED_COMMENTS_FETCH_FAILED: '댓글을 불러오지 못했어요. 다시 시도해 주세요.',
+  INVALID_FEED_COMMENTS_RESPONSE: 'FeedComments 응답 형식이 일치하지 않습니다.',
+} as const;
+
+const FEED_DETAIL = {
+  FEED_DETAIL_FETCH_FAILED: '피드를 불러오지 못했어요. 다시 시도해 주세요.',
+  INVALID_FEED_DETAIL_RESPONSE: 'FeedDetail 응답 형식이 일치하지 않습니다.',
+} as const;
+
+const FEED_LIST = {
+  FEED_LIST_FETCH_FAILED: '피드를 불러오지 못했어요. 다시 시도해 주세요.',
+  INVALID_FEED_LIST_RESPONSE: 'FeedList 응답 형식이 일치하지 않습니다.',
+} as const;
+
+const FEED_ACTIONS = {
+  FEED_PUBLISH_FAILED: '피드에 올리지 못했어요. 다시 시도해 주세요.',
+  INVALID_FEED_PUBLISH_RESPONSE: 'FeedPublish 응답 형식이 일치하지 않습니다.',
+  FEED_LINK_COPY_FAILED: '링크를 복사하지 못했어요. 다시 시도해 주세요.',
+  FEED_LIKE_FAILED: '좋아요를 반영하지 못했어요. 다시 시도해 주세요.',
+  INVALID_FEED_LIKE_RESPONSE: 'FeedLike 응답 형식이 일치하지 않습니다.',
+  FEED_DELETION_FAILED: '피드를 삭제하지 못했어요. 다시 시도해 주세요.',
+} as const;
+
+const CATEGORY_LIST = {
+  CATEGORY_LIST_FETCH_FAILED:
+    '카테고리를 불러오지 못했어요. 다시 시도해 주세요.',
+  INVALID_CATEGORY_LIST_RESPONSE: 'CategoryList 응답 형식이 일치하지 않습니다.',
 } as const;
 
 const DIARY_IMAGE_DOWNLOAD = {
@@ -68,6 +91,7 @@ const USER = {
   LOGOUT_FAILED: '로그아웃하는 중 문제가 발생했습니다. 다시 시도해주세요.',
   PROFILE_FETCH_FAILED:
     '프로필을 조회하는 중 문제가 발생했습니다. 다시 시도해주세요.',
+  NICKNAME_UPDATE_FAILED: '닉네임을 수정하지 못했어요. 다시 시도해 주세요.',
   INVALID_PROFILE_RESPONSE: 'Profile 응답 형식이 일치하지 않습니다.',
 } as const;
 
@@ -110,10 +134,13 @@ const PWA = {
 export const ERROR_MESSAGES = {
   ...DIARY_GENERATE,
   ...DIARY_DELETE,
-  ...DIARY_SHARE_LINK,
   ...DIARY_DETAIL,
-  ...SHARED_DIARY,
   ...MONTHLY_DIARIES,
+  ...FEED_LIST,
+  ...FEED_DETAIL,
+  ...FEED_COMMENTS,
+  ...FEED_ACTIONS,
+  ...CATEGORY_LIST,
   ...DIARY_IMAGE_DOWNLOAD,
   ...DIARY_IMAGE_COPY,
   ...GENERATION_USAGE,

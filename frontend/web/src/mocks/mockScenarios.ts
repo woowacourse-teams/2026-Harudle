@@ -10,7 +10,9 @@ export const MOCK_SCENARIOS = {
   diaryLongKoreanTitle: 'diary-long-korean-title',
   diaryLongEmojiTitle: 'diary-long-emoji-title',
   diaryDeleteFailure: 'diary-delete-failure',
-  diaryShareFailure: 'diary-share-failure',
+  feedListFailure: 'feed-list-failure',
+  feedListEmpty: 'feed-list-empty',
+  feedPublishFailure: 'feed-publish-failure',
   profileFailure: 'profile-failure',
   logoutFailure: 'logout-failure',
 } as const;

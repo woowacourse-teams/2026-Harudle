@@ -202,7 +202,7 @@ class GuestDiaryControllerTest {
 
         assertThat(response.statusCode()).isEqualTo(401);
         assertThat(response.jsonPath().getString("code")).isEqualTo("GUEST_SESSION_REQUIRED");
-        verifyNoInteractions(guestDiaryCreationService);
+        verifyNoInteractions(guestDiaryCreationService, imageUrlProvider);
     }
 
     @Test
@@ -243,6 +243,7 @@ class GuestDiaryControllerTest {
         assertThat(response.statusCode()).isEqualTo(401);
         assertThat(response.jsonPath().getString("code"))
                 .isEqualTo("GUEST_SESSION_EXPIRED");
+        verifyNoInteractions(imageUrlProvider);
     }
 
     @Test
@@ -346,7 +347,8 @@ class GuestDiaryControllerTest {
                 DIARY_DATE,
                 "오늘 친구와 카페에 갔다.",
                 CREATED_AT,
-                createGenerationResult()
+                createGenerationResult(),
+                null
         );
     }
 

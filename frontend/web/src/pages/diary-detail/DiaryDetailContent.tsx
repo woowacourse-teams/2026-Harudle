@@ -1,32 +1,29 @@
 import { DIARY_DETAIL_COPY } from './copy';
-import { useEffect } from 'react';
-import useDiaryDelete from './useDiaryDelete';
 import useDiaryDetail from './useDiaryDetail';
 import LoadingSpinner from '../../shared/LoadingSpinner';
 import DiaryDetailError from './DiaryDetailError';
 import PageHeader from '../../shared/PageHeader';
 import backIcon from '../../assets/icons/back.svg';
-import moreIcon from '../../assets/icons/delete.svg';
+import sendIcon from '../../assets/icons/feed-send.svg';
+import deleteIcon from '../../assets/icons/delete.svg';
 import { useNavigate } from 'react-router';
 import { css } from '@emotion/react';
-import DiaryShareButton from './DiaryShareButton';
 import DiaryImageDownloadButton from './DiaryImageDownloadButton';
 import { theme } from '../../styles/theme';
 import DiaryImage from '../../shared/DiaryImage';
 import DiaryImageCopyButton from './DiaryImageCopyButton';
+import ActionButton from '../../shared/ActionButton';
+import DiaryDetailOptionsButton from './DiaryDetailOptionsButton';
+import { useEffect, useRef } from 'react';
+import ConfirmModal from '../../shared/ConfirmModal';
+import type { ModalHandle } from '../../shared/Modal';
+import { FEED_ACTION_COPY } from '../../shared/feed/copy';
+import useFeedDelete from '../../shared/feed/useFeedDelete';
+import type { Feed } from '../../domain/feeds/feedList';
 
 const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
   const navigate = useNavigate();
   const { request: diaryDetailRequest } = useDiaryDetail({ diaryId });
-  const { request: diaryDeleteRequest, execute: deleteDiary } = useDiaryDelete({
-    diaryId,
-  });
-
-  useEffect(() => {
-    if (diaryDeleteRequest.status === 'error') {
-      alert(diaryDeleteRequest.error.message);
-    }
-  }, [diaryDeleteRequest]);
 
   if (
     diaryDetailRequest.status === 'idle' ||
@@ -40,7 +37,14 @@ const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
   }
 
   const diaryDetail = diaryDetailRequest.data;
+  const { publishedFeedId } = diaryDetail;
   const { imageUrl, title } = diaryDetail.generation;
+
+  const handleFeedAction = (): void => {
+    void navigate(`/diary/${diaryId}/feed-post`, {
+      state: { imageUrl, publishedFeedId },
+    });
+  };
 
   return (
     <div css={pageStyle}>
@@ -50,7 +54,7 @@ const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
             type="button"
             aria-label="뒤로 가기"
             css={headerButtonStyle}
-            onClick={() => navigate(-1)}
+            onClick={() => navigate('/album')}
           >
             <img
               src={backIcon}
@@ -60,27 +64,7 @@ const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
           </button>
         }
         title={diaryDetail.diaryDate}
-        right={
-          <button
-            type="button"
-            aria-label={DIARY_DETAIL_COPY.deleteAction}
-            css={headerButtonStyle}
-            onClick={() => {
-              const confirmDelete = window.confirm(
-                DIARY_DETAIL_COPY.deleteConfirm,
-              );
-              if (confirmDelete) {
-                void deleteDiary();
-              }
-            }}
-          >
-            <img
-              src={moreIcon}
-              alt="더보기 아이콘"
-              css={headerButtonIconStyle}
-            />
-          </button>
-        }
+        right={<DiaryDetailOptionsButton diaryId={diaryId} />}
       />
 
       <main css={contentStyle}>
@@ -94,12 +78,20 @@ const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
           alt="네컷만화"
         />
 
-        <div>
-          <span css={storyTitleStyle}>{DIARY_DETAIL_COPY.storyTitle}</span>
+        <section css={storyStyle}>
+          <h2 css={storyTitleStyle}>{DIARY_DETAIL_COPY.storyTitle}</h2>
           <p css={storyTextStyle}>{diaryDetail.sourceText}</p>
-        </div>
+        </section>
         <div css={diaryActionsStyle}>
-          <DiaryImageCopyButton diaryId={diaryId} imageUrl={imageUrl} />
+          {publishedFeedId === null ? (
+            <ActionButton
+              icon={<span css={sendIconStyle} />}
+              label={DIARY_DETAIL_COPY.feedPostAction}
+              onClick={handleFeedAction}
+            />
+          ) : (
+            <DiaryFeedDeleteAction feedId={publishedFeedId} />
+          )}
           <div css={imageActionsStyle}>
             <DiaryImageDownloadButton
               diaryId={diaryId}
@@ -107,7 +99,7 @@ const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
               diaryDate={diaryDetail.diaryDate}
               diaryTitle={diaryDetail.generation.title}
             />
-            <DiaryShareButton diaryId={diaryId} diaryTitle={title} />
+            <DiaryImageCopyButton diaryId={diaryId} imageUrl={imageUrl} />
           </div>
         </div>
       </main>
@@ -117,11 +109,58 @@ const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
 
 export default DiaryDetailContent;
 
+const DiaryFeedDeleteAction = ({ feedId }: { feedId: Feed['id'] }) => {
+  const navigate = useNavigate();
+  const confirmRef = useRef<ModalHandle>(null);
+  const { request: feedDeleteRequest, execute: deleteFeed } = useFeedDelete({
+    feedId,
+  });
+
+  useEffect((): void => {
+    if (feedDeleteRequest.status === 'error') {
+      window.alert(feedDeleteRequest.error.message);
+    }
+  }, [feedDeleteRequest]);
+
+  const handleFeedDeleteConfirm = (): void => {
+    void deleteFeed({
+      onSuccess: (): void => {
+        confirmRef.current?.close();
+        void navigate('/');
+      },
+    });
+  };
+
+  return (
+    <>
+      <ActionButton
+        icon={<span css={deleteIconStyle} />}
+        label={DIARY_DETAIL_COPY.feedDeleteAction}
+        disabled={feedDeleteRequest.status === 'loading'}
+        onClick={(): void => confirmRef.current?.open()}
+      />
+      <ConfirmModal
+        ref={confirmRef}
+        title={FEED_ACTION_COPY.deleteConfirmTitle}
+        description={FEED_ACTION_COPY.deleteConfirmDescription}
+        confirmLabel={
+          feedDeleteRequest.status === 'loading'
+            ? FEED_ACTION_COPY.deletingAction
+            : DIARY_DETAIL_COPY.feedDeleteAction
+        }
+        onConfirm={handleFeedDeleteConfirm}
+      />
+    </>
+  );
+};
+
 const pageStyle = css`
-  position: relative;
+  display: flex;
+  flex-direction: column;
   width: 100%;
   height: 100%;
   padding: 20px;
+  background-color: ${theme.colors.background.surface};
 `;
 
 const headerButtonStyle = css`
@@ -146,9 +185,9 @@ const contentStyle = css`
   flex-direction: column;
   gap: 8px;
   width: 100%;
-  height: 100%;
-  padding-bottom: 40px;
-  box-sizing: border-box;
+  flex: 1;
+  min-height: 0;
+  padding-bottom: 20px;
   overflow-y: auto;
 `;
 
@@ -181,7 +220,16 @@ const imageActionsStyle = css`
   }
 `;
 
+const sendIconStyle = css`
+  display: block;
+  width: 24px;
+  height: 24px;
+  background-color: currentColor;
+  mask: url(${sendIcon}) center / contain no-repeat;
+`;
+
 const diaryImageStyle = css`
+  flex-shrink: 0;
   width: 100%;
   aspect-ratio: 1;
   border-radius: 16px;
@@ -190,9 +238,12 @@ const diaryImageStyle = css`
   object-fit: cover;
 `;
 
+const storyStyle = css`
+  flex-shrink: 0;
+`;
+
 const storyTitleStyle = css`
   word-break: keep-all;
-  text-align: center;
   color: ${theme.colors.foreground.neutral};
   font-size: 18px;
   font-weight: 700;
@@ -210,4 +261,12 @@ const storyTextStyle = css`
   line-height: 26px;
   white-space: pre-wrap;
   overflow-wrap: break-word;
+`;
+
+const deleteIconStyle = css`
+  display: block;
+  width: 24px;
+  height: 24px;
+  background-color: currentColor;
+  mask: url(${deleteIcon}) center / contain no-repeat;
 `;

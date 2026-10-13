@@ -148,7 +148,7 @@ const LandingSlackCommunity = ({
                   data-slack-phase
                   style={
                     {
-                      '--slack-delay': `${3.05 + index * 0.22}s`,
+                      '--slack-delay': `${2.25 + index * 0.22}s`,
                     } as CSSProperties
                   }
                   css={replyStyle}
@@ -170,7 +170,7 @@ const LandingSlackCommunity = ({
             </div>
             <p
               data-slack-phase
-              style={{ '--slack-delay': '3.4s' } as CSSProperties}
+              style={{ '--slack-delay': '2.6s' } as CSSProperties}
               css={threadCountStyle}
             >
               <span aria-hidden="true">💬 </span>
@@ -188,7 +188,7 @@ const LandingSlackCommunity = ({
             key={post.title}
             data-slack-phase
             style={
-              { '--slack-delay': `${3.7 + index * 0.25}s` } as CSSProperties
+              { '--slack-delay': `${2.9 + index * 0.25}s` } as CSSProperties
             }
           >
             <img
@@ -261,7 +261,7 @@ const frameStyle = css`
     animation-delay: var(--slack-delay, 0.15s);
   }
   &[data-slack-motion='enabled'][data-slack-active='true'] [data-slack-typing] {
-    animation: slack-typing 0.75s 2.25s both;
+    animation: slack-typing 0.6s 1.6s both;
   }
   @keyframes slack-message-in {
     from {

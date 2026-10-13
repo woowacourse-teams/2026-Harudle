@@ -2,7 +2,11 @@
 
 2026-10-01 정리 기록이다. 9월 30일 dev 로그 지표 필터 13개·경보 14개를 준비했고, **SNS → Lambda → Discord의 ALARM·OK 수신을 확인했다.** 이는 당시 ZIP의 성공 경로 시험이며, Discord 저장 확인·실패 재시도나 실제 앱 로그 → 경보 전환을 검증한 것은 아니다. 계측 코드는 [PR #280](https://github.com/woowacourse-teams/2026-Harudle/pull/280), 제공 역할을 사용하는 전달 함수 변경은 [PR #291](https://github.com/woowacourse-teams/2026-Harudle/pull/291)에 있다. S3 이미지 경로 분리는 다른 팀원의 작업이다. 환경별 설정·알람 상세는 [운영 안내](README.md)를 따른다.
 
-## 지금 확인된 것과 미확인인 것
+## 현재 적용 상태
+
+2026-10-08의 생성 시간·토큰 수집, 대시보드 추가, 알림을 꺼둔 정리 경보 3개씩과 DB 집계 검증은 [추가 관측 운영 안내](generation-observation.md)를 기준으로 확인한다. 아래 9/30 기록은 당시 상태이며 현재의 미배포·접근 불가를 뜻하지 않는다.
+
+## 2026-09-30 초기 점검 기록
 
 저장소에는 CodePipeline → CodeBuild → CodeDeploy → EC2 배포 흐름, Docker `awslogs`, 내부 관리 포트 `127.0.0.1:19091`, CloudWatch Agent의 1분 Prometheus 수집 설정이 있다. 백엔드·Nginx 로그는 Docker `awslogs`가 CloudWatch Logs에 직접 보내고, 이 Agent 조각은 Prometheus를 수집해 EMF로 게시한다. dev는 `compose.prod.yaml`에 `compose.dev.yaml`을 덧붙여 로그 그룹을 변경한다. Agent 설정 파일은 배포 아티팩트로 복사되지만 호스트에 자동 적용되지는 않는다. 알람·SNS·Lambda·Secrets Manager·대시보드를 생성하는 IaC도 없다.
 

@@ -5,8 +5,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 import com.harudle.generation.diary.service.port.ImageStorage;
+import com.harudle.generation.diary.service.port.ImageLookupBudget;
 import com.harudle.generation.diary.service.port.ImageStorageException;
 import com.harudle.generation.diary.service.port.dto.GeneratedImage;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -16,6 +18,20 @@ import org.springframework.http.MediaType;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
 class ObservedImageStorageTest {
+
+    @Test
+    void passesSameBudgetThroughMetricsWrapper() {
+        ImageStorage delegate = mock(ImageStorage.class);
+        ImageLookupBudget budget = ImageLookupBudget.unlimited();
+        when(delegate.exists("image.png", budget)).thenReturn(true);
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        try {
+            assertThat(new ObservedImageStorage(delegate, registry).exists("image.png", budget)).isTrue();
+            verify(delegate).exists("image.png", budget);
+        } finally {
+            registry.close();
+        }
+    }
 
     @Test
     void distinguishesMissingHeadFromFailedDeleteWithoutObjectKeyTags() {

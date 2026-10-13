@@ -23,7 +23,7 @@ const DiaryWritePage = () => {
 
   if (request.status === 'loading') {
     alert(DIARY_WRITE_COPY.generationInProgress);
-    return <Navigate to="/" replace />;
+    return <Navigate to="/album" replace />;
   }
 
   const handleDiarySubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -54,7 +54,7 @@ const DiaryWritePage = () => {
             type="button"
             aria-label="뒤로 가기"
             css={headerButtonStyle}
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/album')}
           >
             <img
               src={backIcon}

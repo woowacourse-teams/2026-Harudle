@@ -55,4 +55,30 @@ public final class ImageVariantKeys {
         return List.of(originalImageKey(detailKey, "png"), originalImageKey(detailKey, "jpeg"),
                 originalImageKey(detailKey, "webp"));
     }
+
+    /** 폴더 경로를 유지해 백업용 원본 키 후보를 만든다. 실제 존재 여부는 저장소 조회 시 확인한다. */
+    public static List<String> originalImageKeyCandidatesForBackup(String imageObjectKey) {
+        if (imageObjectKey == null || imageObjectKey.isBlank()) {
+            throw new IllegalArgumentException("백업할 이미지 Object Key가 필요합니다.");
+        }
+        if (isOptimizedDetailKey(imageObjectKey)) {
+            return originalImageKeyCandidates(imageObjectKey);
+        }
+
+        String filename = imageObjectKey.substring(imageObjectKey.lastIndexOf('/') + 1);
+        return switch (filename) {
+            case "image.png", "image.jpg", "image.webp" -> List.of(imageObjectKey);
+            default -> throw new IllegalArgumentException("백업할 원본 또는 최적화된 상세 이미지 키가 필요합니다.");
+        };
+    }
+
+    /** 화면 표시용 상세·썸네일 키를 같은 폴더의 R2 원본 후보로 변환한다. */
+    public static List<String> originalImageKeyCandidatesForLookup(String imageObjectKey) {
+        if (imageObjectKey != null && imageObjectKey.endsWith("/" + ImageVariant.THUMBNAIL.filename())) {
+            String detailKey = imageObjectKey.substring(0, imageObjectKey.lastIndexOf('/') + 1)
+                    + ImageVariant.DETAIL.filename();
+            return originalImageKeyCandidates(detailKey);
+        }
+        return originalImageKeyCandidatesForBackup(imageObjectKey);
+    }
 }

@@ -1,0 +1,161 @@
+[
+  {
+    "putMetricFilter": {
+      "logGroupName": "/harudle/prod/backend",
+      "filterName": "harudle-prod-s3-delete-failure",
+      "filterPattern": "{ $.event = \"external_api_failure\" && $.provider = \"s3\" && $.operation = \"delete_object\" }",
+      "metricTransformations": [
+        {
+          "metricName": "S3DeleteFailureLogs",
+          "metricNamespace": "Harudle/Prod",
+          "metricValue": "1",
+          "defaultValue": 0,
+          "unit": "Count"
+        }
+      ]
+    },
+    "putMetricAlarm": {
+      "AlarmName": "harudle-prod-s3-delete-failure",
+      "AlarmDescription": "S3 이미지 삭제 실패. 객체 삭제 처리 실패 로그 1건. SDK 호출 전 검증·요청 구성 실패도 포함하며 SDK 재시도 횟수 또는 생성 요청 수가 아니다. 전달기 허용 목록 반영 전 알림 비활성 준비 상태.",
+      "ActionsEnabled": false,
+      "AlarmActions": [
+        "arn:aws:sns:ap-northeast-2:843255971531:harudle-prod-alerts"
+      ],
+      "OKActions": [
+        "arn:aws:sns:ap-northeast-2:843255971531:harudle-prod-alerts"
+      ],
+      "InsufficientDataActions": [],
+      "MetricName": "S3DeleteFailureLogs",
+      "Namespace": "Harudle/Prod",
+      "Statistic": "Sum",
+      "Dimensions": [],
+      "Period": 300,
+      "EvaluationPeriods": 1,
+      "DatapointsToAlarm": 1,
+      "Threshold": 1,
+      "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+      "TreatMissingData": "notBreaching",
+      "Unit": "Count",
+      "Tags": [
+        {
+          "Key": "Service",
+          "Value": "techcourse"
+        },
+        {
+          "Key": "Role",
+          "Value": "techcourse-etc"
+        },
+        {
+          "Key": "ProjectTeam",
+          "Value": "harudle"
+        }
+      ]
+    }
+  },
+  {
+    "putMetricFilter": {
+      "logGroupName": "/harudle/prod/backend",
+      "filterName": "harudle-prod-image-cleanup-deferred",
+      "filterPattern": "{ $.event = \"discarded_image_delete_deferred\" }",
+      "metricTransformations": [
+        {
+          "metricName": "ImageCleanupDeferredLogs",
+          "metricNamespace": "Harudle/Prod",
+          "metricValue": "1",
+          "defaultValue": 0,
+          "unit": "Count"
+        }
+      ]
+    },
+    "putMetricAlarm": {
+      "AlarmName": "harudle-prod-image-cleanup-deferred",
+      "AlarmDescription": "이미지 정리를 위한 상태 확인 실패. 안전한 폐기 여부를 확인하지 못한 작업 로그 1건. 이 경로는 삭제 시도 전 상태 확인 실패이며 S3 삭제 실패 건수가 아니다. 전달기 허용 목록 반영 전 알림 비활성 준비 상태.",
+      "ActionsEnabled": false,
+      "AlarmActions": [
+        "arn:aws:sns:ap-northeast-2:843255971531:harudle-prod-alerts"
+      ],
+      "OKActions": [
+        "arn:aws:sns:ap-northeast-2:843255971531:harudle-prod-alerts"
+      ],
+      "InsufficientDataActions": [],
+      "MetricName": "ImageCleanupDeferredLogs",
+      "Namespace": "Harudle/Prod",
+      "Statistic": "Sum",
+      "Dimensions": [],
+      "Period": 300,
+      "EvaluationPeriods": 1,
+      "DatapointsToAlarm": 1,
+      "Threshold": 1,
+      "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+      "TreatMissingData": "notBreaching",
+      "Unit": "Count",
+      "Tags": [
+        {
+          "Key": "Service",
+          "Value": "techcourse"
+        },
+        {
+          "Key": "Role",
+          "Value": "techcourse-etc"
+        },
+        {
+          "Key": "ProjectTeam",
+          "Value": "harudle"
+        }
+      ]
+    }
+  },
+  {
+    "putMetricFilter": {
+      "logGroupName": "/harudle/prod/backend",
+      "filterName": "harudle-prod-generation-cleanup-failure",
+      "filterPattern": "{ $.event = \"generation_cleanup_failed\" }",
+      "metricTransformations": [
+        {
+          "metricName": "GenerationCleanupFailureLogs",
+          "metricNamespace": "Harudle/Prod",
+          "metricValue": "1",
+          "defaultValue": 0,
+          "unit": "Count"
+        }
+      ]
+    },
+    "putMetricAlarm": {
+      "AlarmName": "harudle-prod-generation-cleanup-failure",
+      "AlarmDescription": "만료된 생성 작업 정리 실패. 만료 생성 정리 스케줄러의 실패한 실행 로그 1건. candidateCount/interruptedCount는 진단값이며 지표값으로 합산하지 않는다. 전달기 허용 목록 반영 전 알림 비활성 준비 상태.",
+      "ActionsEnabled": false,
+      "AlarmActions": [
+        "arn:aws:sns:ap-northeast-2:843255971531:harudle-prod-alerts"
+      ],
+      "OKActions": [
+        "arn:aws:sns:ap-northeast-2:843255971531:harudle-prod-alerts"
+      ],
+      "InsufficientDataActions": [],
+      "MetricName": "GenerationCleanupFailureLogs",
+      "Namespace": "Harudle/Prod",
+      "Statistic": "Sum",
+      "Dimensions": [],
+      "Period": 300,
+      "EvaluationPeriods": 1,
+      "DatapointsToAlarm": 1,
+      "Threshold": 1,
+      "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+      "TreatMissingData": "notBreaching",
+      "Unit": "Count",
+      "Tags": [
+        {
+          "Key": "Service",
+          "Value": "techcourse"
+        },
+        {
+          "Key": "Role",
+          "Value": "techcourse-etc"
+        },
+        {
+          "Key": "ProjectTeam",
+          "Value": "harudle"
+        }
+      ]
+    }
+  }
+]

@@ -12,6 +12,8 @@ public interface ImageStorage {
 
     boolean exists(String imageObjectKey);
 
+    boolean exists(String imageObjectKey, ImageLookupBudget budget);
+
     boolean restoreIfMissing(String imageObjectKey, GeneratedImage generatedImage);
 
     boolean restoreOptimizedIfMissing(String detailKey, GeneratedImage generatedImage);

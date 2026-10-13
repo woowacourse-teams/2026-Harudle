@@ -9,6 +9,7 @@ import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.generation.diary.domain.GenerationErrorCode;
 import com.harudle.generation.prompt.domain.GenerationPrompt;
 import com.harudle.generation.diary.domain.GenerationStatus;
+import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -54,6 +55,9 @@ class JpaAdminGenerationHistoryQueryRepositoryTest {
     private AdminGenerationHistoryQueryRepository generationHistoryQueryRepository;
 
     @Autowired
+    private DiaryGenerationRepository diaryGenerations;
+
+    @Autowired
     private GenerationPromptRepository generationPromptRepository;
 
     @Autowired
@@ -78,6 +82,31 @@ class JpaAdminGenerationHistoryQueryRepositoryTest {
                 "생성 이력 테스트 이미지 스타일",
                 "references/admin-history.png"
         ));
+    }
+
+    @Test
+    void backupCursorKeepsEqualTimestampTargetsAndExcludesOtherEnvironmentStatusAndFutureCompletion() {
+        UUID future = new UUID(0, 4);
+        UUID development = new UUID(0, 5);
+        UUID failed = new UUID(0, 6);
+        for (UUID id : List.of(FIRST_GENERATION_ID, SECOND_GENERATION_ID, THIRD_GENERATION_ID, future, development)) {
+            Instant requestedAt = id.equals(future) ? CREATED_AT.plusSeconds(10) : CREATED_AT;
+            insertGeneration(id, firstUser.getId(), requestedAt, GenerationStatus.SUCCEEDED, null);
+            jdbcTemplate.update("UPDATE diary_generations SET image_object_key = ? WHERE id = ?",
+                    "harudle/generated/diary-images/" + (id.equals(development) ? "dev/" : "prod/") + id + "/image.png", id);
+        }
+        insertGeneration(failed, firstUser.getId(), CREATED_AT, GenerationStatus.FAILED, GenerationErrorCode.AI_PROVIDER_ERROR);
+        String pattern = "harudle/generated/diary-images/prod/%";
+        Instant cutoff = CREATED_AT.plusSeconds(1);
+        var first = diaryGenerations.findImageBackupTargets(GenerationStatus.SUCCEEDED, cutoff, pattern, PageRequest.of(0, 2));
+        assertThat(first).extracting(target -> target.generationId()).containsExactly(FIRST_GENERATION_ID, SECOND_GENERATION_ID);
+        var cursor = first.getLast();
+        var next = diaryGenerations.findImageBackupTargetsAfter(GenerationStatus.SUCCEEDED, cutoff, pattern,
+                cursor.completedAt(), cursor.generationId(), PageRequest.of(0, 2));
+        assertThat(next).extracting(target -> target.generationId()).containsExactly(THIRD_GENERATION_ID);
+        var last = next.getLast();
+        assertThat(diaryGenerations.findImageBackupTargetsAfter(GenerationStatus.SUCCEEDED, cutoff, pattern,
+                last.completedAt(), last.generationId(), PageRequest.of(0, 2))).isEmpty();
     }
 
     @AfterEach
