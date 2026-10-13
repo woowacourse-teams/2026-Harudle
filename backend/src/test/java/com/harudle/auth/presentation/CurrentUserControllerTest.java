@@ -222,8 +222,8 @@ class CurrentUserControllerTest {
     }
 
     @Test
-    @DisplayName("닉네임 변경은 기존 Bearer 인증과 CSRF 정책을 따른다")
-    void requiresAuthenticationAndCsrfForNicknameChange() {
+    @DisplayName("닉네임 변경은 Bearer 인증이 필요하며 CSRF 토큰을 요구하지 않는다")
+    void requiresBearerAuthenticationForNicknameChange() {
         User user = saveProfileUser();
         MockMvcResponse unauthenticated = RestAssuredMockMvc.given()
                 .postProcessors(csrf())
@@ -232,12 +232,12 @@ class CurrentUserControllerTest {
                 .patch("/api/v1/me/nickname");
         assertThat(unauthenticated.statusCode()).isEqualTo(401);
 
-        MockMvcResponse missingCsrf = RestAssuredMockMvc.given()
+        MockMvcResponse unauthenticatedWithoutCsrf = RestAssuredMockMvc.given()
                 .contentType(MediaType.APPLICATION_JSON_VALUE)
                 .body(Map.of("nickname", "새별명"))
                 .patch("/api/v1/me/nickname");
-        assertThat(missingCsrf.statusCode()).isEqualTo(403);
-        assertThat(missingCsrf.jsonPath().getString("code")).isEqualTo("INVALID_CSRF_TOKEN");
+        assertThat(unauthenticatedWithoutCsrf.statusCode()).isEqualTo(401);
+        assertThat(unauthenticatedWithoutCsrf.jsonPath().getString("code")).isEqualTo("UNAUTHORIZED");
 
         assertThat(changeNickname(user, "새별명").statusCode()).isEqualTo(204);
     }
