@@ -8,7 +8,7 @@ import com.harudle.push.service.port.FeedPushOutbox;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
-/** 다른 담당 영역의 구현체가 합쳐질 때 기존 포트로 연결한다. 미연동을 성공으로 처리하지 않는다. */
+/** 조회 포트는 필수이며, 푸시는 실제 구현이 연결될 때까지 생략한다. */
 @Component
 public class FeedCollaborators {
 
@@ -42,7 +42,8 @@ public class FeedCollaborators {
     }
 
     FeedPushOutbox pushOutbox() {
-        return require(pushOutbox, FeedPushOutbox.class);
+        FeedPushOutbox collaborator = pushOutbox.getIfAvailable();
+        return collaborator == null ? NoOpFeedPushOutbox.INSTANCE : collaborator;
     }
 
     private static <T> T require(ObjectProvider<T> provider, Class<T> type) {

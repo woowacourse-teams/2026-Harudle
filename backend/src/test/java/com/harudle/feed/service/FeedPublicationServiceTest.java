@@ -12,6 +12,7 @@ import com.harudle.category.service.port.CategoryReader;
 import com.harudle.diary.service.port.DiaryPublicationReader;
 import com.harudle.feed.repository.FeedRepository;
 import com.harudle.feed.service.exception.DiaryAlreadyPublishedException;
+import com.harudle.feed.service.port.FeedLikeReader;
 import com.harudle.profile.service.port.PublicProfileReader;
 import com.harudle.push.service.port.FeedPushOutbox;
 import java.net.URI;
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 
 @ExtendWith(MockitoExtension.class)
@@ -40,7 +42,7 @@ class FeedPublicationServiceTest {
 
     @Mock private DiaryPublicationReader diaries;
     @Mock private FeedRepository feeds;
-    @Mock private FeedCollaborators collaborators;
+    private DefaultListableBeanFactory beans;
     @Mock private CategoryReader categories;
     @Mock private PublicProfileReader profiles;
     @Mock private FeedPushOutbox outbox;
@@ -48,10 +50,14 @@ class FeedPublicationServiceTest {
 
     @BeforeEach
     void setUp() {
+        beans = new DefaultListableBeanFactory();
+        beans.registerSingleton("categories", categories);
+        beans.registerSingleton("profiles", profiles);
+        beans.registerSingleton("pushOutbox", outbox);
+        FeedCollaborators collaborators = new FeedCollaborators(beans.getBeanProvider(CategoryReader.class),
+                beans.getBeanProvider(PublicProfileReader.class), beans.getBeanProvider(FeedLikeReader.class),
+                beans.getBeanProvider(FeedPushOutbox.class));
         service = new FeedPublicationService(diaries, feeds, collaborators, Clock.fixed(NOW, ZoneOffset.UTC));
-        when(collaborators.pushOutbox()).thenReturn(outbox);
-        when(collaborators.categories()).thenReturn(categories);
-        when(collaborators.profiles()).thenReturn(profiles);
         when(diaries.lockAndRead(ACTOR, DIARY))
                 .thenReturn(new DiaryPublicationReader.PublishableDiary(DIARY, ACTOR, "generated/comic.webp"));
     }
@@ -104,6 +110,29 @@ class FeedPublicationServiceTest {
         when(feeds.saveAndFlush(any())).thenThrow(failure);
         assertThatThrownBy(() -> service.publish(ACTOR, DIARY, 1)).isSameAs(failure);
         verifyNoInteractions(outbox);
+    }
+
+    @Test
+    void publishesWithoutPushAdapter() {
+        beans.destroySingleton("pushOutbox");
+        validCategoryAndProfile();
+
+        var result = service.publish(ACTOR, DIARY, 1);
+
+        assertThat(result.id()).isNotNull();
+        assertThat(result.author().id()).isEqualTo(ACTOR);
+        assertThat(result.category()).isEqualTo(CATEGORY);
+        verify(feeds).saveAndFlush(any());
+        verifyNoInteractions(outbox);
+    }
+
+    @Test
+    void propagatesRegisteredPushReservationFailure() {
+        validCategoryAndProfile();
+        var failure = new IllegalStateException("푸시 예약 저장 실패");
+        when(outbox.enqueuePublished(any())).thenThrow(failure);
+
+        assertThatThrownBy(() -> service.publish(ACTOR, DIARY, 1)).isSameAs(failure);
     }
 
     private void validCategoryAndProfile() {

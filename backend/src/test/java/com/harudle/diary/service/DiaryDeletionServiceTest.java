@@ -11,9 +11,7 @@ import static org.mockito.Mockito.when;
 import com.harudle.diary.domain.Diary;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
-import com.harudle.feed.service.exception.FeedIntegrationUnavailableException;
 import com.harudle.feed.service.port.FeedLifecycle;
-import com.harudle.push.service.port.FeedPushOutbox;
 import com.harudle.share.repository.ShareLinkRepository;
 import java.time.Clock;
 import java.time.Instant;
@@ -129,18 +127,6 @@ class DiaryDeletionServiceTest {
 
         assertThatThrownBy(() -> diaryDeletionService.delete(USER_ID, diary.getId()))
                 .isInstanceOf(IllegalStateException.class).hasMessage("푸시 취소 실패");
-    }
-
-    @Test
-    @DisplayName("푸시 구현이 미연결인 경우 피드 연동 오류를 전파한다")
-    void propagatesUnavailablePushAdapter() {
-        Diary diary = createDiary(USER_ID);
-        when(diaryRepository.findActiveById(diary.getId())).thenReturn(Optional.of(diary));
-        doThrow(new FeedIntegrationUnavailableException(FeedPushOutbox.class))
-                .when(feedLifecycle).deleteByDiary(diary.getId(), NOW);
-
-        assertThatThrownBy(() -> diaryDeletionService.delete(USER_ID, diary.getId()))
-                .isInstanceOf(FeedIntegrationUnavailableException.class);
     }
 
     private Diary createDiary(UUID userId) {

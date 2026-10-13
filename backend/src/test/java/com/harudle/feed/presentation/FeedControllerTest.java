@@ -405,8 +405,6 @@ class FeedControllerTest {
         return Stream.of(
                 Arguments.of(new FeedAccessDeniedException(), 403, "FORBIDDEN"),
                 Arguments.of(new FeedNotFoundException(), 404, "FEED_NOT_FOUND"),
-                Arguments.of(new FeedIntegrationUnavailableException(com.harudle.push.service.port.FeedPushOutbox.class),
-                        503, "FEED_UNAVAILABLE"),
                 Arguments.of(new IllegalStateException("푸시 취소 저장 실패"), 500, "INTERNAL_SERVER_ERROR")
         );
     }
