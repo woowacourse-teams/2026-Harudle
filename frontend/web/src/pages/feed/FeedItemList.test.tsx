@@ -283,6 +283,10 @@ describe('피드 카드 액션', (): void => {
     await user.click(screen.getByRole('button', { name: '공유 아이콘' }));
     const sheet = screen.getByRole('dialog');
     expect(sheet).toHaveAttribute('open');
+    expect(mockTrack).not.toHaveBeenCalledWith(
+      'feed_link_copy_clicked',
+      expect.anything(),
+    );
     const copyButton = screen.getByRole('button', { name: '링크 복사' });
     expect(copyButton.querySelector('span')).toHaveStyle({
       mask: 'url(link.svg) center/contain no-repeat',
@@ -292,6 +296,11 @@ describe('피드 카드 액션', (): void => {
       fireEvent.click(copyButton);
     });
     expect(writeText).toHaveBeenCalledWith(feed.shareUrl);
+    expect(mockTrack).toHaveBeenCalledWith('feed_link_copy_clicked', {
+      feature: 'feed',
+      operation: 'copy_link',
+      feed_id: feed.id,
+    });
     expect(alert).not.toHaveBeenCalled();
     expect(sheet).toHaveAttribute('open');
     const copiedButton = screen.getByRole('button', { name: '복사됨' });
@@ -302,6 +311,11 @@ describe('피드 카드 액션', (): void => {
       fireEvent.click(copiedButton);
     });
     expect(writeText).toHaveBeenCalledTimes(2);
+    expect(
+      mockTrack.mock.calls.filter(
+        ([event]): boolean => event === 'feed_link_copy_clicked',
+      ),
+    ).toHaveLength(2);
     act(() => {
       jest.advanceTimersByTime(1_999);
     });
@@ -336,11 +350,26 @@ describe('피드 카드 액션', (): void => {
     await user.click(screen.getByRole('button', { name: '링크 복사' }));
     expect(sheet).toHaveAttribute('open');
     expect(alert).toHaveBeenCalledWith(ERROR_MESSAGES.FEED_LINK_COPY_FAILED);
+    expect(mockTrack).toHaveBeenCalledWith('feed_link_copy_clicked', {
+      feature: 'feed',
+      operation: 'copy_link',
+      feed_id: feed.id,
+    });
+    expect(
+      mockTrack.mock.calls.filter(
+        ([event]): boolean => event === 'feed_link_copy_clicked',
+      ),
+    ).toHaveLength(1);
 
     await user.click(screen.getByRole('button', { name: '링크 복사' }));
     expect(writeText).toHaveBeenCalledTimes(2);
     expect(sheet).toHaveAttribute('open');
     expect(screen.getByRole('button', { name: '복사됨' })).toBeInTheDocument();
+    expect(
+      mockTrack.mock.calls.filter(
+        ([event]): boolean => event === 'feed_link_copy_clicked',
+      ),
+    ).toHaveLength(2);
     writeText.mockRestore();
     alert.mockRestore();
   });
@@ -370,6 +399,11 @@ describe('피드 카드 액션', (): void => {
     await user.click(shareButtons[1]);
     await user.click(screen.getByRole('button', { name: '링크 복사' }));
     expect(writeText).toHaveBeenCalledWith(secondFeed.shareUrl);
+    expect(mockTrack).toHaveBeenCalledWith('feed_link_copy_clicked', {
+      feature: 'feed',
+      operation: 'copy_link',
+      feed_id: secondFeed.id,
+    });
     expect(mockSetFeedLike).not.toHaveBeenCalled();
   });
 
