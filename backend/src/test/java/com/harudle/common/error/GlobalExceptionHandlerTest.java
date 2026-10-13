@@ -4,13 +4,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
+import com.harudle.comment.service.exception.CommentIntegrationUnavailableException;
 import com.harudle.generation.diary.domain.GenerationErrorCode;
 import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
 import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
 import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
+import com.harudle.notification.service.exception.NotificationIntegrationUnavailableException;
 import java.lang.reflect.Method;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
@@ -248,6 +251,40 @@ class GlobalExceptionHandlerTest {
                 .containsEntry("code", "GENERATION_UNAVAILABLE")
                 .containsEntry("traceId", TRACE_ID);
         verify(apiExceptionLogger).error(ErrorType.GENERATION_UNAVAILABLE, exception, request);
+    }
+
+    @Test
+    @DisplayName("알림 프로필 연동 실패는 기존 503과 traceId를 보존하고 공통 오류 로그를 한 번 기록한다")
+    void logsNotificationIntegrationUnavailable() {
+        NotificationIntegrationUnavailableException exception = new NotificationIntegrationUnavailableException();
+
+        ResponseEntity<ProblemDetail> response = exceptionHandler.handleNotificationUnavailable(exception, request);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(503);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getDetail()).isEqualTo(ErrorType.NOTIFICATION_UNAVAILABLE.detail());
+        assertThat(response.getBody().getProperties())
+                .containsEntry("code", "NOTIFICATION_UNAVAILABLE")
+                .containsEntry("traceId", TRACE_ID);
+        verify(apiExceptionLogger).error(ErrorType.NOTIFICATION_UNAVAILABLE, exception, request);
+        verifyNoMoreInteractions(apiExceptionLogger);
+    }
+
+    @Test
+    @DisplayName("댓글 프로필 연동 실패도 기존 503과 traceId를 보존하고 공통 오류 로그를 한 번 기록한다")
+    void logsCommentIntegrationUnavailable() {
+        CommentIntegrationUnavailableException exception = new CommentIntegrationUnavailableException();
+
+        ResponseEntity<ProblemDetail> response = exceptionHandler.handleCommentUnavailable(exception, request);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(503);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getDetail()).isEqualTo(ErrorType.COMMENT_UNAVAILABLE.detail());
+        assertThat(response.getBody().getProperties())
+                .containsEntry("code", "COMMENT_UNAVAILABLE")
+                .containsEntry("traceId", TRACE_ID);
+        verify(apiExceptionLogger).error(ErrorType.COMMENT_UNAVAILABLE, exception, request);
+        verifyNoMoreInteractions(apiExceptionLogger);
     }
 
     @Test

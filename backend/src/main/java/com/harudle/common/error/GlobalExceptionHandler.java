@@ -198,7 +198,11 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     @ExceptionHandler(CommentIntegrationUnavailableException.class)
-    ResponseEntity<ProblemDetail> handleCommentUnavailable(HttpServletRequest request) {
+    ResponseEntity<ProblemDetail> handleCommentUnavailable(
+            CommentIntegrationUnavailableException exception,
+            HttpServletRequest request
+    ) {
+        apiExceptionLogger.error(ErrorType.COMMENT_UNAVAILABLE, exception, request);
         return createResponse(ErrorType.COMMENT_UNAVAILABLE, request);
     }
 
@@ -218,7 +222,11 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     @ExceptionHandler(NotificationIntegrationUnavailableException.class)
-    ResponseEntity<ProblemDetail> handleNotificationUnavailable(HttpServletRequest request) {
+    ResponseEntity<ProblemDetail> handleNotificationUnavailable(
+            NotificationIntegrationUnavailableException exception,
+            HttpServletRequest request
+    ) {
+        apiExceptionLogger.error(ErrorType.NOTIFICATION_UNAVAILABLE, exception, request);
         return createResponse(ErrorType.NOTIFICATION_UNAVAILABLE, request);
     }
 
