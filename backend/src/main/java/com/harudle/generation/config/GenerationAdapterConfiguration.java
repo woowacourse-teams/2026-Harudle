@@ -45,6 +45,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import software.amazon.awssdk.regions.Region;
@@ -58,7 +59,7 @@ import tools.jackson.databind.ObjectMapper;
         name = "enabled",
         havingValue = "true"
 )
-@Import(QwenStoryboardConfiguration.class)
+@Import({QwenStoryboardConfiguration.class, StoryboardGenerationConfiguration.class})
 @EnableConfigurationProperties({GeminiClientProperties.class, GeminiGenerationProperties.class,
         S3StorageProperties.class, StoryboardProviderProperties.class})
 public class GenerationAdapterConfiguration {
@@ -100,21 +101,19 @@ public class GenerationAdapterConfiguration {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "harudle.generation.storyboard", name = "provider",
-            havingValue = "gemini", matchIfMissing = true)
+    @Conditional(GeminiStoryboardSelectedCondition.class)
     public GeminiStoryboardCallScope geminiStoryboardCallScope() {
         return new GeminiStoryboardCallScope();
     }
 
     @Bean(destroyMethod = "close")
-    @ConditionalOnProperty(prefix = "harudle.generation.storyboard", name = "provider",
-            havingValue = "gemini", matchIfMissing = true)
+    @Conditional(GeminiStoryboardSelectedCondition.class)
     public Client geminiStoryboardClient(
             StoryboardProviderProperties properties,
             GeminiClientFactory clientFactory,
             GeminiStoryboardCallScope callScope
     ) {
-        Duration timeout = properties.primaryTimeout();
+        Duration timeout = properties.timeoutFor("gemini");
         HttpOptions httpOptions = HttpOptions.builder()
                 .timeout(Math.toIntExact(timeout.toMillis()))
                 .retryOptions(HttpRetryOptions.builder().attempts(1).httpStatusCodes(List.of()).build())
@@ -126,8 +125,7 @@ public class GenerationAdapterConfiguration {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "harudle.generation.storyboard", name = "provider",
-            havingValue = "gemini", matchIfMissing = true)
+    @Conditional(GeminiStoryboardSelectedCondition.class)
     public Models geminiStoryboardModels(@Qualifier("geminiStoryboardClient") Client client) {
         return client.models;
     }
@@ -180,9 +178,8 @@ public class GenerationAdapterConfiguration {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "harudle.generation.storyboard", name = "provider",
-            havingValue = "gemini", matchIfMissing = true)
-    public StoryboardGenerator storyboardGenerator(
+    @Conditional(GeminiStoryboardSelectedCondition.class)
+    public StoryboardGenerator geminiStoryboardGenerator(
             @Qualifier("geminiStoryboardModels") Models geminiModels,
             GeminiGenerationProperties properties,
             ObjectMapper objectMapper,

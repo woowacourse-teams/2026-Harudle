@@ -125,18 +125,21 @@ docker compose up -d
 | `GOOGLE_CLOUD_LOCATION` | 사용하지 않음 | 기본값 `global` |
 | `GOOGLE_APPLICATION_CREDENTIALS` | 사용하지 않음 | WIF credential configuration 파일의 절대 경로 |
 
-`GeminiClientFactory`의 구현체만 교체되며, 기존 생성 서비스의 `ObjectProvider`와
-`StoryboardGenerator` / `DiaryImageGenerator` 인터페이스는 유지됩니다. 모델, 요청 제한 시간,
-SDK 재시도 횟수는 기존 설정을 그대로 사용합니다.
+인증 모드에 따라 `GeminiClientFactory` 구현체를 선택하며, 기존 생성 서비스의 `ObjectProvider`와
+`StoryboardGenerator` / `DiaryImageGenerator` 인터페이스는 유지됩니다. 모델과 이미지 생성의 HTTP 설정은
+기존 값을 사용합니다. 스토리보드 전용 제한 시간과 재시도 설정은 아래 HTTP 취소 연결 절을 참고합니다.
 
 ```mermaid
 flowchart LR
     A[GEMINI_AUTH_MODE] --> B{인증 모드}
     B -->|express| C[ExpressGeminiClientFactory / API Key]
     B -->|vertex| D[VertexGeminiClientFactory / project + location + ADC]
-    C --> E[공용 Client와 Models]
+    C --> E[스토리보드 전용 Client와 Models]
     D --> E
-    E --> F[기존 StoryboardGenerator / DiaryImageGenerator]
+    C --> G[이미지용 Client와 Models]
+    D --> G
+    E --> F[StoryboardGenerator]
+    G --> H[DiaryImageGenerator]
 ```
 
 Nano Banana 2.1을 표준 Vertex AI에서 사용하려면 다음 환경 변수를 설정합니다. 기존 S3 및 생성
@@ -211,8 +214,8 @@ Qwen HTTP 호출과 SSE 파싱은 별도 구현체인 `QwenChatClient`가 담당
 추가하고, 같은 호출 규격을 공유할 실제 구현체가 생기면 클라이언트 인터페이스를 추출할 수 있습니다.
 
 기본 설정은 `qwen3.8-max`, 추론 활성화, `thinking_budget=1024`, `max_tokens=8192`, `json_object`,
-요청 전체 제한 시간 180초입니다. `QwenStoryboardSettings`로 모델명, 추론 예산, 출력 한도와 제한 시간을
-변경합니다. `json_object`에서는 기존 시스템 프롬프트 뒤에 공통 출력 스키마를 붙입니다.
+메인·보조 역할별 요청 제한 시간은 기본 60초입니다. `QwenStoryboardSettings`로 모델명, 추론 예산과 출력
+한도를 변경합니다. `json_object`에서는 기존 시스템 프롬프트 뒤에 공통 출력 스키마를 붙입니다.
 
 스토리보드 Provider는 `STORYBOARD_PROVIDER`로 선택합니다. 값은 소문자 `gemini` 또는 `qwen`이며
 기본값은 `gemini`입니다. dev에서 Qwen 스토리보드와 기존 Gemini 이미지 생성을 연결하려면 서버의
@@ -220,16 +223,17 @@ Qwen HTTP 호출과 SSE 파싱은 별도 구현체인 `QwenChatClient`가 담당
 
 ```dotenv
 STORYBOARD_PROVIDER=qwen
+STORYBOARD_FALLBACK_PROVIDER=none
+STORYBOARD_PRIMARY_TIMEOUT=60s
 QWEN_TOKEN_PLAN_API_KEY=<sk-sp- 전용 키>
 QWEN_STORYBOARD_MODEL=qwen3.8-max
 QWEN_THINKING_BUDGET=1024
 QWEN_MAX_OUTPUT_TOKENS=8192
-QWEN_REQUEST_TIMEOUT=180s
 ```
 
 현재 배포 Compose의 `env_file: .env`로 위 변수가 전달됩니다. Gemini 이미지 생성에 필요한 인증·모델,
 S3 설정도 함께 사용합니다. API 키는 서버 환경에 주입하고 Git에는 저장하지 않습니다.
-Qwen을 선택했을 때 Qwen 설정을 검증하며, 잘못된 Provider 값이나 필수 키 누락은 시작 시 거절합니다.
+Qwen을 메인 또는 보조로 선택했을 때 Qwen 설정을 검증하며, 잘못된 Provider 값이나 필수 키 누락은 시작 시 거절합니다.
 설정 변경은 애플리케이션 재시작 후 적용됩니다.
 
 기본 클라이언트는 Token Plan 전용 엔드포인트와 `sk-sp-` 키를 사용합니다. 키는 실행 환경에서 주입하며
@@ -246,8 +250,7 @@ Qwen 호출은 `generation_stage_completed` 로그에 `provider=qwen`, `stage=st
 `harudle.qwen.response.duration`이며 모델과 단계별로 확인합니다. 기존 Gemini 이미지 생성 시간과
 Qwen 스토리보드 생성 시간을 각각 비교할 수 있습니다. 종료 시 Qwen HTTP 실행기와 연결 풀을 정리합니다.
 
-Provider 선택은 dev에서 Qwen의 품질과 생성 시간을 확인하기 위한 고정 선택입니다. Gemini에서 Qwen으로
-자동 전환하는 보조 Provider 정책은 후속 단계에서 연결합니다.
+보조 없이 Qwen만 선택할 수도 있고, 아래 설정으로 메인 실패 시 다른 Provider를 한 번 호출할 수도 있습니다.
 
 ### 스토리보드 대체 설정과 오류 분류
 
@@ -256,13 +259,20 @@ Provider 선택은 dev에서 Qwen의 품질과 생성 시간을 확인하기 위
 
 ```dotenv
 STORYBOARD_PROVIDER=gemini
-STORYBOARD_FALLBACK_PROVIDER=none
+STORYBOARD_FALLBACK_PROVIDER=qwen
 STORYBOARD_PRIMARY_TIMEOUT=60s
 STORYBOARD_FALLBACK_TIMEOUT=60s
+QWEN_TOKEN_PLAN_API_KEY=<sk-sp- 전용 키>
 ```
 
 각 제한 시간은 1ms 이상, 2,147,483,647ms 이하로 검증합니다. 보조가 지정되면 전체 예산은 두 제한 시간의
-합이고, 단독 선택에서는 메인 제한 시간만 사용합니다. 실제 대체 호출은 후속 단계에서 연결합니다.
+합이고, 단독 선택에서는 메인 제한 시간만 사용합니다.
+
+`ClaimedDiaryGenerationService`가 `StoryboardGenerationService`를 통해 메인과 선택적인 보조를 호출합니다.
+Gemini·Qwen 스토리보드 Client는 메인일 때 `STORYBOARD_PRIMARY_TIMEOUT`, 보조일 때
+`STORYBOARD_FALLBACK_TIMEOUT`과 내부 재시도 없는 설정을 사용합니다. Gemini 이미지 Client는 기존
+`GEMINI_REQUEST_TIMEOUT`·`GEMINI_RETRY_ATTEMPTS`를 유지합니다. 기존 `QWEN_REQUEST_TIMEOUT` 속성은
+호환성을 위해 바인딩을 유지하지만 서버의 스토리보드 호출에는 역할별 제한 시간이 우선합니다.
 
 `AiGenerationException.providerFailureType()`은 어댑터가 SDK 오류를 정규화한 상세 정보입니다.
 `NETWORK_ERROR`, `TRANSIENT_SERVER_ERROR`, `AUTH_CONFIGURATION_ERROR`, `REQUEST_REJECTED`, `CANCELLED`,
@@ -288,7 +298,13 @@ STORYBOARD_FALLBACK_TIMEOUT=60s
 전체 제한 시간 이후 도착한 결과도 거절합니다. 메인과 보조 설정에 맞는 구현체가 필요하며 같은 구현체를 중복
 주입하면 조합을 거절합니다.
 
-조합 서비스의 Bean 구성과 운영 생성 경로 연결은 후속 단계에서 진행합니다.
+`StoryboardGenerationConfiguration`은 `geminiStoryboardGenerator`·`qwenStoryboardGenerator` Bean 이름으로
+메인과 보조 포트를 선택합니다. 선택한 Provider만 스토리보드 어댑터를 초기화하며, 보조가 `none`이면 메인만
+사용합니다. 조합 서비스의 성공 결과를 기존 이미지 생성·저장·완료 처리에 전달하고, 대체 호출까지 실패했을 때
+최종 오류를 DB에 저장합니다. 이미지 생성 실패는 스토리보드 대체 호출을 유발하지 않습니다.
+
+요청 실행기는 이름이 `storyboard-attempt-`로 시작하는 가상 스레드를 호출마다 생성하고 애플리케이션 종료 시
+정리합니다. 메인 작업의 취소가 늦어져도 보조가 같은 작업 스레드의 종료를 기다리지 않도록 구성합니다.
 
 ### 요청별 제한 시간과 취소 실행기
 
@@ -320,8 +336,8 @@ Express와 Vertex 모두 같은 인증 팩토리에 전용 HTTP 옵션을 전달
 컨텍스트의 남은 시간을 밀리초로 올림해 넣으며, 0ms가 무제한으로 처리되지 않도록 최소 1ms를 사용합니다.
 
 Qwen은 `QwenChatClient`가 만든 Call에 취소 함수를 등록하고 남은 시간을 해당 Call의 timeout에 적용합니다.
-본문·SSE 읽기가 끝나거나 실패하면 등록을 해제합니다. 컨텍스트 없는 기존 호출은 `QWEN_REQUEST_TIMEOUT`을
-사용합니다.
+본문·SSE 읽기가 끝나거나 실패하면 등록을 해제합니다. 직접 생성하는 클라이언트의 컨텍스트 없는 호출은
+생성자에 전달한 HTTP Client의 제한 시간을 사용합니다. 서버에서는 역할별 제한 시간으로 Client를 구성합니다.
 두 Provider 모두 취소 컨텍스트의 `TIMEOUT`·`CANCELLED`를 유지하며, 늦은 응답의 검증 오류가
 응답 처리 오류로 덮어쓰지 않도록 검사합니다.
 
@@ -329,7 +345,7 @@ Qwen은 `QwenChatClient`가 만든 Call에 취소 함수를 등록하고 남은 
 OkHttp의 `503 + Retry-After: 0` 자동 후속 호출도 방지합니다. 이 설정은 이미지 Client에 적용하지 않습니다.
 테스트는 로컬 HTTP 서버에서 지연된 헤더·본문 취소, 동시 요청 격리, 오류 응답·연결 실패의 실제 전송 횟수를 확인합니다.
 
-전체 예산과 보조 호출의 운영 경로 연결은 후속 단계에서 진행합니다. 이미지 생성에는 이 실행기를 적용하지 않습니다.
+외부 생성 어댑터를 비활성화하면 조합 서비스와 실행기를 초기화하지 않습니다. 이미지 생성에는 이 실행기를 적용하지 않습니다.
 
 ## 테스트
 

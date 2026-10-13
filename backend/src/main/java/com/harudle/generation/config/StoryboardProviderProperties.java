@@ -29,6 +29,16 @@ public record StoryboardProviderProperties(
         return fallbackEnabled() ? primaryTimeout.plus(fallbackTimeout) : primaryTimeout;
     }
 
+    public Duration timeoutFor(String selectedProvider) {
+        if (provider.equals(selectedProvider)) {
+            return primaryTimeout;
+        }
+        if (fallbackEnabled() && fallbackProvider.equals(selectedProvider)) {
+            return fallbackTimeout;
+        }
+        throw new IllegalArgumentException("선택하지 않은 스토리보드 Provider의 제한 시간을 조회할 수 없습니다.");
+    }
+
     @AssertTrue(message = "메인과 보조 스토리보드 Provider는 서로 달라야 합니다.")
     public boolean isProviderPairValid() {
         return provider == null || fallbackProvider == null || !fallbackEnabled() || !provider.equals(fallbackProvider);

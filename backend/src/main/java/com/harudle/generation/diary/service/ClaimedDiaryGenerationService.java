@@ -2,27 +2,27 @@ package com.harudle.generation.diary.service;
 
 import com.harudle.generation.diary.domain.DiaryGeneration;
 import com.harudle.generation.diary.domain.GenerationErrorCode;
-import com.harudle.generation.prompt.domain.GenerationPrompt;
+import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import com.harudle.generation.diary.domain.ImageObjectKeyPolicy;
 import com.harudle.generation.diary.domain.Storyboard;
-import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
-import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import com.harudle.generation.diary.service.dto.CompletedDiaryGeneration;
 import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
 import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
 import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
 import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
-import com.harudle.generation.diary.service.port.dto.DiaryImageGenerationRequest;
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
-import com.harudle.generation.diary.service.port.dto.GeneratedImage;
 import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageStorageException;
+import com.harudle.generation.diary.service.port.dto.DiaryImageGenerationRequest;
+import com.harudle.generation.diary.service.port.dto.GeneratedImage;
+import com.harudle.generation.diary.service.port.dto.GeneratedStoryboard;
 import com.harudle.generation.diary.service.port.dto.ReferenceImage;
 import com.harudle.generation.diary.service.port.dto.StoryboardGenerationRequest;
-import com.harudle.generation.diary.service.port.dto.GeneratedStoryboard;
-import com.harudle.generation.diary.service.port.StoryboardGenerator;
+import com.harudle.generation.diary.service.storyboard.StoryboardGenerationService;
+import com.harudle.generation.prompt.domain.GenerationPrompt;
+import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import java.util.UUID;
 
 public final class ClaimedDiaryGenerationService implements DiaryGenerationExecutor {
@@ -30,7 +30,7 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
     private final RequestFingerprintGenerator requestFingerprintGenerator;
     private final GenerationPromptRepository generationPromptRepository;
     private final DiaryGenerationRepository diaryGenerationRepository;
-    private final StoryboardGenerator storyboardGenerator;
+    private final StoryboardGenerationService storyboardGenerationService;
     private final DiaryImageGenerator diaryImageGenerator;
     private final ImageStorage imageStorage;
     private final DiaryGenerationCompletionService completionService;
@@ -41,7 +41,7 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
             RequestFingerprintGenerator requestFingerprintGenerator,
             GenerationPromptRepository generationPromptRepository,
             DiaryGenerationRepository diaryGenerationRepository,
-            StoryboardGenerator storyboardGenerator,
+            StoryboardGenerationService storyboardGenerationService,
             DiaryImageGenerator diaryImageGenerator,
             ImageStorage imageStorage,
             DiaryGenerationCompletionService completionService,
@@ -50,7 +50,7 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
         this.requestFingerprintGenerator = requestFingerprintGenerator;
         this.generationPromptRepository = generationPromptRepository;
         this.diaryGenerationRepository = diaryGenerationRepository;
-        this.storyboardGenerator = storyboardGenerator;
+        this.storyboardGenerationService = storyboardGenerationService;
         this.diaryImageGenerator = diaryImageGenerator;
         this.imageStorage = imageStorage;
         this.completionService = completionService;
@@ -132,10 +132,8 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
     ) {
         GenerationLifecycleMetrics.Phase phase = GenerationLifecycleMetrics.Phase.STORYBOARD;
         try {
-            GeneratedStoryboard generatedStoryboard = storyboardGenerator.generate(new StoryboardGenerationRequest(
-                    command.diaryText(),
-                    prompt.getStoryboardPromptText()
-            ));
+            GeneratedStoryboard generatedStoryboard = storyboardGenerationService.generate(
+                    new StoryboardGenerationRequest(command.diaryText(), prompt.getStoryboardPromptText()));
             Storyboard storyboard = generatedStoryboard.storyboard();
             phase = GenerationLifecycleMetrics.Phase.REFERENCE_LOAD;
             ReferenceImage referenceImage = imageStorage.load(prompt.getImageAssetObjectKey());

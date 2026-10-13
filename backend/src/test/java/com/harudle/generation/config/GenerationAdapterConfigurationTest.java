@@ -38,6 +38,7 @@ import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
 import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
+import com.harudle.generation.diary.service.storyboard.StoryboardGenerationService;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
@@ -46,9 +47,11 @@ import java.time.Instant;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import okhttp3.OkHttpClient;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.boot.env.YamlPropertySourceLoader;
@@ -92,6 +95,7 @@ class GenerationAdapterConfigurationTest {
             assertThat(context).hasSingleBean(ImageVariantEncoder.class);
             assertThat(context).hasSingleBean(ImageUploadPreparer.class);
             assertThat(context).hasSingleBean(StoryboardGenerator.class);
+            assertThat(context).hasSingleBean(StoryboardGenerationService.class);
             assertThat(context).hasSingleBean(DiaryImageGenerator.class);
             assertThat(context).hasSingleBean(ImageStorage.class);
             assertThat(context).hasSingleBean(ImageUrlProvider.class);
@@ -115,6 +119,50 @@ class GenerationAdapterConfigurationTest {
             assertThat(context.getBean(ImageUrlProvider.class))
                     .isInstanceOf(ObservedImageUrlProvider.class);
         });
+    }
+
+    @ParameterizedTest
+    @CsvSource({"gemini,qwen,45000,35000", "qwen,gemini,35000,45000"})
+    @DisplayName("메인과 보조를 모두 등록하고 Provider의 역할에 맞는 HTTP 제한 시간을 적용한다")
+    void configurePrimaryAndFallbackProviders(String primary, String fallback, int geminiTimeout, int qwenTimeout) {
+        GeminiClientFactory factory = spy(new ExpressGeminiClientFactory("test-api-key"));
+        contextRunner.withPropertyValues(enabledAdapterProperties()).withPropertyValues(
+                        "harudle.generation.storyboard.provider=" + primary,
+                        "harudle.generation.storyboard.fallback-provider=" + fallback,
+                        "harudle.generation.storyboard.primary-timeout=45s",
+                        "harudle.generation.storyboard.fallback-timeout=35s",
+                        "harudle.generation.qwen.api-key=sk-sp-test-key")
+                .withInitializer(context -> context.addBeanFactoryPostProcessor(beanFactory ->
+                        beanFactory.registerSingleton("geminiClientFactory", factory)))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context.getBeansOfType(StoryboardGenerator.class))
+                            .containsOnlyKeys("geminiStoryboardGenerator", "qwenStoryboardGenerator");
+                    assertThat(context).hasSingleBean(StoryboardGenerationService.class);
+                    Client imageClient = context.getBean("geminiClient", Client.class);
+                    Client storyClient = context.getBean("geminiStoryboardClient", Client.class);
+                    assertThat(ReflectionTestUtils.getField(context.getBean("geminiStoryboardGenerator"), "models"))
+                            .isSameAs(storyClient.models);
+                    assertThat(ReflectionTestUtils.getField(context.getBean(DiaryImageGenerator.class), "models"))
+                            .isSameAs(imageClient.models);
+                    var options = ArgumentCaptor.forClass(HttpOptions.class);
+                    var clients = ArgumentCaptor.forClass(ClientOptions.class);
+                    verify(factory, times(2)).create(options.capture(), clients.capture());
+                    var storyOptions = options.getAllValues().stream()
+                            .filter(value -> value.timeout().orElseThrow() == geminiTimeout).findFirst().orElseThrow();
+                    assertThat(storyOptions.retryOptions().orElseThrow().attempts()).contains(1);
+                    var http = (OkHttpClient) ReflectionTestUtils.getField(context.getBean(QwenChatClient.class), "calls");
+                    assertThat(http.callTimeoutMillis()).isEqualTo(qwenTimeout);
+                    assertThat(http.retryOnConnectionFailure()).isFalse();
+                });
+    }
+
+    @Test
+    @DisplayName("Qwen이 보조로 선택되어도 전용 키가 없으면 시작에 실패한다")
+    void requireTokenPlanKeyForFallback() {
+        contextRunner.withPropertyValues(enabledAdapterProperties())
+                .withPropertyValues("harudle.generation.storyboard.fallback-provider=qwen")
+                .run(context -> assertThat(context).hasFailed());
     }
 
     @Test
@@ -201,6 +249,8 @@ class GenerationAdapterConfigurationTest {
             assertThat(settings.thinkingBudget()).isEqualTo(512);
             assertThat(settings.maxOutputTokens()).isEqualTo(4096);
             assertThat(settings.requestTimeout()).isEqualTo(java.time.Duration.ofSeconds(90));
+            var http = (OkHttpClient) ReflectionTestUtils.getField(context.getBean(QwenChatClient.class), "calls");
+            assertThat(http.callTimeoutMillis()).isEqualTo(60_000);
         });
     }
 
@@ -237,12 +287,14 @@ class GenerationAdapterConfigurationTest {
     @Test
     @DisplayName("외부 어댑터가 꺼져 있으면 Qwen 선택과 비밀값 없이 시작한다")
     void keepQwenDisabledWithGenerationAdapters() {
-        contextRunner.withPropertyValues("harudle.generation.storyboard.provider=qwen").run(context -> {
+        contextRunner.withPropertyValues("harudle.generation.storyboard.provider=gemini",
+                "harudle.generation.storyboard.fallback-provider=qwen").run(context -> {
             assertThat(context).hasNotFailed();
             assertThat(context).doesNotHaveBean(QwenChatClient.class);
             assertThat(context).doesNotHaveBean(QwenStoryboardProperties.class);
             assertThat(context).doesNotHaveBean(StoryboardProviderProperties.class);
             assertThat(context).doesNotHaveBean(StoryboardGenerator.class);
+            assertThat(context).doesNotHaveBean(StoryboardGenerationService.class);
         });
     }
 
