@@ -271,6 +271,25 @@ STORYBOARD_FALLBACK_TIMEOUT=60s
 기존 `AiGenerationErrorType`, API 응답 코드와 DB 실패 코드는 유지합니다. Gemini의 일반 interrupted I/O는
 스레드 인터럽트 상태에 따라 timeout과 취소를 구분합니다. 실제 대체 여부 판단은 아래 조합 서비스가 담당합니다.
 
+### 스토리보드 Provider 조합 서비스
+
+`StoryboardGenerationService`는 메인과 선택적인 보조 `StoryboardGenerator` 포트를 주입받습니다.
+각 어댑터는 한 번의 생성을 담당하며, 조합 서비스가 호출 순서와 대체 여부를 결정합니다. 서비스는 생성 요청마다
+하나의 전체 시간 예산을 시작하고, 같은 입력을 각각의 새 호출 컨텍스트로 전달합니다.
+
+메인이 성공하면 해당 스토리보드와 토큰 사용량을 그대로 반환합니다. 메인의 `TIMEOUT`, `RATE_LIMITED`,
+`OUTPUT_TRUNCATED`, `RESPONSE_PROCESSING_ERROR`는 보조 호출 대상입니다. `PROVIDER_ERROR`는 상세 분류가
+`NETWORK_ERROR` 또는 `TRANSIENT_SERVER_ERROR`인 경우에만 대체합니다. 인증·설정 오류, 요청 거절, 명시적
+취소, 내부 오류와 미분류 오류는 대체하지 않습니다. 호출자 스레드의 인터럽트 상태도 대체를 중단합니다.
+
+메인 실패 후 대기 없이 보조를 한 번 호출합니다. 각 Provider의 동일 호출 재시도는 없으며, 보조가 실패하면
+그 보조 오류를 최종 오류로 전달합니다. 보조가 없으면 메인 결과 또는 오류를 유지합니다. 보조의 결과를 선택하면
+그 결과의 토큰만 반환하고 메인 사용량을 합산하지 않습니다. 전체 예산이 소진되면 보조 Provider를 호출하지 않으며,
+전체 제한 시간 이후 도착한 결과도 거절합니다. 메인과 보조 설정에 맞는 구현체가 필요하며 같은 구현체를 중복
+주입하면 조합을 거절합니다.
+
+조합 서비스의 Bean 구성과 운영 생성 경로 연결은 후속 단계에서 진행합니다.
+
 ### 요청별 제한 시간과 취소 실행기
 
 `StoryboardAttemptRunner`는 `StoryboardGenerator`를 한 번 호출합니다. `StoryboardGenerationBudget`을
