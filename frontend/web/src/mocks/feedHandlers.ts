@@ -344,6 +344,12 @@ export const feedHandlers = [
     const error = validateAuthentication(request);
     if (error) return error;
 
+    const scenario = request.headers.get(MOCK_SCENARIO_HEADER);
+    if (scenario === MOCK_SCENARIOS.feedListFailure)
+      return problem(request, 503, 'INTERNAL_SERVER_ERROR');
+    if (scenario === MOCK_SCENARIOS.feedListEmpty)
+      return HttpResponse.json({ items: [], nextCursor: null, hasNext: false });
+
     const url = new URL(request.url);
     const categoryId = url.searchParams.get('categoryId');
     const sort = url.searchParams.get('sort') ?? 'LATEST';

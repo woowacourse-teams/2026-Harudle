@@ -3,6 +3,23 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import LandingContent from './LandingContent';
 
+jest.mock('react-router', () => ({
+  Link: ({
+    to,
+    children,
+    ...props
+  }: {
+    to: string;
+    children: import('react').ReactNode;
+  }) => (
+    <a href={to} {...props}>
+      {children}
+    </a>
+  ),
+}));
+
+jest.mock('./LandingFeedPreview', () => () => <p>공개 피드 미리보기</p>);
+
 jest.mock('../../assets/icons/kakao.svg', () => 'kakao.svg');
 jest.mock('./assets/chat-me.png', () => 'chat-me.png');
 jest.mock('./assets/chat-friend.png', () => 'chat-friend.png');
@@ -116,6 +133,26 @@ describe('브랜드 소개와 체험을 연결하는 랜딩', () => {
     expect(
       within(chat).getByRole('img', { name: '친구의 프로필' }),
     ).toHaveAttribute('src', 'chat-friend.png');
+  });
+
+  it('기존 공유 사례 아래에 인기 피드를 두고 이용 현황을 미리보기 아래로 옮긴다', () => {
+    render(<LandingContent trialSection={null} />);
+    expect(
+      screen.getByRole('figure', { name: '공유 장면 예시' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('figure', { name: '우아한테크코스의 슬랙 공유 사례' }),
+    ).toBeInTheDocument();
+    const feed = screen.getByRole('region', {
+      name: /피드에서/,
+    });
+    expect(within(feed).getByText('공개 피드 미리보기')).toBeInTheDocument();
+    expect(within(feed).getAllByRole('definition')).toHaveLength(2);
+    const share = screen.getByRole('region', { name: /생성한 만화를/ });
+    expect(within(share).queryByRole('definition')).not.toBeInTheDocument();
+    expect(
+      within(feed).getByRole('link', { name: '피드 둘러보기' }),
+    ).toHaveAttribute('href', '/');
   });
 
   it('사용한 체험의 CTA는 로그인 안내로 바꾸고 해당 링크로 초점을 준다', async () => {

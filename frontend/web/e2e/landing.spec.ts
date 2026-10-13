@@ -1,4 +1,8 @@
 import { expect, test } from '@playwright/test';
+import {
+  MOCK_SCENARIO_HEADER,
+  MOCK_SCENARIOS,
+} from '../src/mocks/mockScenarios';
 
 test.describe('통합 랜딩의 1회 체험', () => {
   test('소개에서 바로 생성하고 재방문 시 추가 생성을 막는다', async ({
@@ -320,5 +324,109 @@ test.describe('랜딩 스크롤과 채팅 연출', () => {
       .getByRole('heading', { name: /사진은 없어도/ })
       .scrollIntoViewIfNeeded();
     await expect(sticky).toBeVisible();
+  });
+});
+
+test.describe('기존 랜딩 아래의 공개 피드', () => {
+  test('작은 화면에서 인기 피드 두 개를 미리 보고 상세로 이동한다', async ({
+    page,
+  }, testInfo) => {
+    await page.setExtraHTTPHeaders({
+      [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.authRefreshFailure,
+    });
+    await page.setViewportSize({ width: 320, height: 720 });
+    await page.goto('/landing');
+    const feed = page.getByRole('region', { name: /피드에서/ });
+    const list = feed.getByRole('list', { name: '공개 피드 미리보기' });
+    await expect(list.getByRole('listitem')).toHaveCount(2);
+    await expect(list.getByRole('link').first()).toHaveAttribute(
+      'href',
+      '/feeds/00000000-0000-4000-8000-000000000005',
+    );
+    await expect(list.getByRole('link').nth(1)).toHaveAttribute(
+      'href',
+      '/feeds/00000000-0000-4000-8000-000000000010',
+    );
+    await expect(
+      list.getByRole('img', { name: '좋아요', exact: true }),
+    ).toHaveCount(2);
+    await expect(feed.getByRole('definition')).toHaveCount(2);
+
+    await list.scrollIntoViewIfNeeded();
+    await expect(list.getByRole('img').first()).toBeVisible();
+    await expect
+      .poll(() =>
+        list
+          .getByRole('img')
+          .first()
+          .evaluate((image: HTMLImageElement) => image.naturalWidth),
+      )
+      .toBeGreaterThan(0);
+    await expect
+      .poll(() =>
+        feed.evaluate((element) => element.scrollWidth - element.clientWidth),
+      )
+      .toBe(0);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+    await expect(
+      page.getByRole('figure', { name: /슬랙|공유 장면/ }),
+    ).toHaveCount(2);
+    await feed
+      .getByRole('link', { name: '피드 둘러보기' })
+      .scrollIntoViewIfNeeded();
+    await feed.getByRole('definition').first().scrollIntoViewIfNeeded();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await feed.screenshot({
+      path: testInfo.outputPath('landing-feed-preview.png'),
+    });
+    const first = list.getByRole('link').first();
+    const href = await first.getAttribute('href');
+    if (!href) throw new Error('피드 상세 링크 없음');
+    expect(href).toMatch(/^\/feeds\//);
+    await first.click();
+    await expect(page).toHaveURL(href);
+    await expect(
+      page.getByRole('article').getByRole('img', { name: /네컷만화$/ }),
+    ).toBeVisible();
+  });
+
+  test('미리보기 조회 실패 후 다시 불러오며 체험과 피드 링크를 유지한다', async ({
+    page,
+  }) => {
+    await page.setExtraHTTPHeaders({
+      [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.feedListFailure,
+    });
+    await page.goto('/landing');
+    const feed = page.getByRole('region', { name: /피드에서/ });
+    await expect(feed.getByRole('status')).toHaveText(
+      '네컷만화 미리보기를 불러오지 못했어요.',
+    );
+    await expect(
+      feed.getByRole('link', { name: '피드 둘러보기' }),
+    ).toHaveAttribute('href', '/');
+    await expect(
+      page.getByRole('textbox', { name: '네컷만화로 만들 내용' }),
+    ).toBeAttached();
+    await page.setExtraHTTPHeaders({});
+    await feed.getByRole('button', { name: '다시 불러오기' }).click();
+    await expect(feed.getByRole('listitem')).toHaveCount(2);
+  });
+
+  test('공개 피드가 비어 있어도 직접 체험하고 피드로 이동할 수 있다', async ({
+    page,
+  }) => {
+    await page.setExtraHTTPHeaders({
+      [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.feedListEmpty,
+    });
+    await page.goto('/landing');
+    const feed = page.getByRole('region', { name: /피드에서/ });
+    await expect(feed.getByRole('status')).toHaveText(
+      '아직 공개 피드에 올라온 네컷만화가 없어요.',
+    );
+    await expect(
+      page.getByRole('textbox', { name: '네컷만화로 만들 내용' }),
+    ).toBeAttached();
+    await feed.getByRole('link', { name: '피드 둘러보기' }).click();
+    await expect(page).toHaveURL('/');
   });
 });
