@@ -20,6 +20,7 @@ import com.harudle.generation.adapter.out.qwen.QwenStageMetrics;
 import com.harudle.generation.adapter.out.qwen.QwenStoryboardGenerator;
 import com.harudle.generation.adapter.out.qwen.QwenStoryboardSettings;
 import com.harudle.generation.config.GeminiGenerationProperties;
+import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
 import com.harudle.generation.diary.service.exception.AiProviderFailureType;
@@ -52,6 +53,7 @@ import okhttp3.OkHttpClient;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -258,6 +260,38 @@ class StoryboardHttpCancellationTest {
         assertThat(generator.generate(request).storyboard().panels()).hasSize(4);
         assertThat(requests).hasValue(2);
         assertThat(calls.getLast().isCanceled()).isFalse();
+    }
+
+    @Test
+    @DisplayName("Qwen 완료 신호 뒤 서버가 스트림을 열어 둬도 답변과 사용량을 반환하고 취소 등록을 해제한다")
+    void completeQwenStreamWithoutWaitingForServerToClose() throws Exception {
+        StoryboardGenerator generator = generator("qwen");
+        String usageEvent = "data: " + mapper.writeValueAsString(Map.of("choices", List.of(), "usage", Map.of(
+                "prompt_tokens", 100, "completion_tokens", 500, "total_tokens", 600,
+                "completion_tokens_details", Map.of("reasoning_tokens", 110)))) + "\n\n";
+        byte[] stream = new String(successBody(), StandardCharsets.UTF_8)
+                .replace("data: [DONE]", usageEvent + "data: [DONE]").getBytes(StandardCharsets.UTF_8);
+        behavior = exchange -> {
+            exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+            exchange.sendResponseHeaders(200, 0);
+            exchange.getResponseBody().write(stream);
+            exchange.getResponseBody().flush();
+            bodySent.countDown();
+            await(release);
+        };
+        StoryboardAttemptContext context = context();
+        var result = workers.submit(() -> generator.generate(request.withAttemptContext(context)));
+        assertThat(bodySent.await(3, TimeUnit.SECONDS)).isTrue();
+
+        var completed = result.get(2, TimeUnit.SECONDS);
+
+        assertThat(release.getCount()).isEqualTo(1);
+        assertThat(completed.storyboard().panels()).hasSize(4);
+        assertThat(completed.tokenUsage()).isEqualTo(new GenerationTokenUsage(100, 390, 110, 600));
+        assertThat(requests).hasValue(1);
+        assertThat(calls).hasSize(1);
+        context.cancel(CancellationReason.TIMEOUT);
+        assertThat(calls.getFirst().isCanceled()).isFalse();
     }
 
     private StoryboardGenerator generator(String selectedProvider) {

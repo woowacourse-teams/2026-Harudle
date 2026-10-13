@@ -147,9 +147,14 @@ public final class QwenChatClient implements AutoCloseable {
         while ((line = readLine(source)) != null) {
             bytes += line.getBytes(java.nio.charset.StandardCharsets.UTF_8).length + 1L;
             requireResponseSize(bytes);
-            if (line.startsWith("data:")) {
+            String data = line.startsWith("data:") ? line.substring(5).strip() : null;
+            if ("[DONE]".equals(data)) {
                 streaming = true;
-                consumeEvent(state, line.substring(5).strip());
+                break;
+            }
+            if (data != null) {
+                streaming = true;
+                consumeEvent(state, data);
             } else if (!streaming && !line.startsWith(":")) {
                 fallback.append(line).append('\n');
             }
@@ -173,7 +178,7 @@ public final class QwenChatClient implements AutoCloseable {
     }
 
     private void consumeEvent(StreamState state, String data) {
-        if (data.isBlank() || "[DONE]".equals(data)) {
+        if (data.isBlank()) {
             return;
         }
         JsonNode event = mapper.readTree(data);
