@@ -18,6 +18,7 @@ import com.harudle.generation.adapter.out.storyboard.StoryboardResponseMapper;
 import com.harudle.generation.adapter.out.storyboard.StoryboardTestFixtures;
 import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
+import com.harudle.generation.diary.service.exception.AiProviderFailureType;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
 import com.harudle.generation.diary.service.port.dto.StoryboardGenerationRequest;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -35,6 +36,8 @@ import okhttp3.Response;
 import okhttp3.ResponseBody;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -143,6 +146,40 @@ class QwenStoryboardGeneratorTest {
         }
     }
 
+    @ParameterizedTest
+    @CsvSource({"400,REQUEST_REJECTED", "401,AUTH_CONFIGURATION_ERROR", "403,AUTH_CONFIGURATION_ERROR",
+            "404,REQUEST_REJECTED", "499,CANCELLED", "500,TRANSIENT_SERVER_ERROR", "501,UNKNOWN",
+            "502,TRANSIENT_SERVER_ERROR", "503,TRANSIENT_SERVER_ERROR"})
+    @DisplayName("API 제공자 오류 타입을 유지하면서 HTTP 원인 상세 유형을 구분한다")
+    void normalizeHttpFailureDetailsWithoutExposingProviderResponse(int status, AiProviderFailureType expected)
+            throws Exception {
+        respond(status, "private diary and " + KEY);
+
+        assertThatThrownBy(() -> generator.generate(input))
+                .isInstanceOfSatisfying(AiGenerationException.class, exception -> {
+                    assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.PROVIDER_ERROR);
+                    assertThat(exception.providerFailureType()).isEqualTo(expected);
+                    assertThat(exception.getMessage()).doesNotContain(KEY, "private diary");
+                    assertThat(exception.getCause()).isNull();
+                });
+        verify(call, times(1)).execute();
+    }
+
+    @Test
+    @DisplayName("인터럽트로 중단된 Qwen 통신은 상세 취소 유형을 보존한다")
+    void preserveInterruptedCancellationDetails() throws Exception {
+        when(calls.newCall(any(Request.class))).thenReturn(call);
+        when(call.execute()).thenThrow(new InterruptedIOException("interrupted I/O"));
+        Thread.currentThread().interrupt();
+        try {
+            assertFailure(AiGenerationErrorType.TIMEOUT, AiProviderFailureType.CANCELLED);
+            assertThat(Thread.currentThread().isInterrupted()).isTrue();
+        } finally {
+            Thread.interrupted();
+        }
+        verify(call).cancel();
+    }
+
     @Test
     @DisplayName("타임아웃과 네트워크 실패는 취소 후 기존 오류로 반환하며 원인 메시지를 숨긴다")
     void cancelIoFailuresWithoutLeakingCauseOrRetrying() throws Exception {
@@ -152,7 +189,7 @@ class QwenStoryboardGeneratorTest {
         verify(call).cancel();
         reset(call);
         when(call.execute()).thenThrow(new IOException(KEY));
-        assertFailure(AiGenerationErrorType.PROVIDER_ERROR);
+        assertFailure(AiGenerationErrorType.PROVIDER_ERROR, AiProviderFailureType.NETWORK_ERROR);
         verify(call).cancel();
         verify(calls, times(2)).newCall(any(Request.class));
     }
@@ -221,9 +258,14 @@ class QwenStoryboardGeneratorTest {
     }
 
     private void assertFailure(AiGenerationErrorType expected) {
+        assertFailure(expected, AiProviderFailureType.UNKNOWN);
+    }
+
+    private void assertFailure(AiGenerationErrorType expected, AiProviderFailureType providerFailureType) {
         assertThatThrownBy(() -> generator.generate(input))
                 .isInstanceOfSatisfying(AiGenerationException.class, error -> {
                     assertThat(error.errorType()).isEqualTo(expected);
+                    assertThat(error.providerFailureType()).isEqualTo(providerFailureType);
                     assertThat(error.getMessage()).doesNotContain(KEY);
                     assertThat(error.getCause()).isNull();
                 });

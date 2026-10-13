@@ -249,6 +249,28 @@ Qwen 스토리보드 생성 시간을 각각 비교할 수 있습니다. 종료 
 Provider 선택은 dev에서 Qwen의 품질과 생성 시간을 확인하기 위한 고정 선택입니다. Gemini에서 Qwen으로
 자동 전환하는 보조 Provider 정책은 후속 단계에서 연결합니다.
 
+### 스토리보드 대체 설정과 오류 분류
+
+메인 Provider는 기존 `STORYBOARD_PROVIDER`로 선택합니다. 보조 선택값은 `none`, `gemini`, `qwen`이며
+기본값 `none`은 보조를 사용하지 않는 설정입니다. 메인과 보조를 같은 Provider로 지정하면 시작 시 거절합니다.
+
+```dotenv
+STORYBOARD_PROVIDER=gemini
+STORYBOARD_FALLBACK_PROVIDER=none
+STORYBOARD_PRIMARY_TIMEOUT=60s
+STORYBOARD_FALLBACK_TIMEOUT=60s
+```
+
+각 제한 시간은 1ms 이상, 2,147,483,647ms 이하로 검증합니다. 보조가 지정되면 전체 예산은 두 제한 시간의
+합이고, 단독 선택에서는 메인 제한 시간만 사용합니다. 실제 대체 호출은 후속 단계에서 연결합니다.
+
+`AiGenerationException.providerFailureType()`은 어댑터가 SDK 오류를 정규화한 상세 정보입니다.
+`NETWORK_ERROR`, `TRANSIENT_SERVER_ERROR`, `AUTH_CONFIGURATION_ERROR`, `REQUEST_REJECTED`, `CANCELLED`,
+`UNKNOWN`을 구분합니다. 일시적 서버 오류는 500·502·503이며, 408·504·명시적 deadline 초과와 429는
+기존 `TIMEOUT`·`RATE_LIMITED` 오류 타입으로 전달합니다. 미분류 오류는 일시적 오류로 추측하지 않습니다.
+기존 `AiGenerationErrorType`, API 응답 코드와 DB 실패 코드는 유지합니다. Gemini의 일반 interrupted I/O는
+스레드 인터럽트 상태에 따라 timeout과 취소를 구분합니다. 실제 대체 여부 판단은 아래 조합 서비스가 담당합니다.
+
 ## 테스트
 
 ```shell

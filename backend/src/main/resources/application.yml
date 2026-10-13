@@ -118,6 +118,9 @@ harudle:
       enabled: ${HARUDLE_GENERATION_ADAPTERS_ENABLED:false}
     storyboard:
       provider: ${STORYBOARD_PROVIDER:gemini}
+      fallback-provider: ${STORYBOARD_FALLBACK_PROVIDER:none}
+      primary-timeout: ${STORYBOARD_PRIMARY_TIMEOUT:60s}
+      fallback-timeout: ${STORYBOARD_FALLBACK_TIMEOUT:60s}
     qwen:
       api-key: ${QWEN_TOKEN_PLAN_API_KEY:}
       storyboard-model: ${QWEN_STORYBOARD_MODEL:qwen3.8-max}
