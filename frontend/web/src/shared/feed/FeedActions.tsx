@@ -38,7 +38,7 @@ const FeedActions = ({
         </span>
         <span>{commentCount}</span>
       </button>
-      <FeedShareButton shareUrl={shareUrl} />
+      <FeedShareButton feedId={feedId} shareUrl={shareUrl} />
     </div>
   );
 };
