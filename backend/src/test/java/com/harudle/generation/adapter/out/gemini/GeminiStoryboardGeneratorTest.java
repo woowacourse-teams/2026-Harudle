@@ -24,6 +24,7 @@ import com.harudle.common.logging.ExternalApiFailure;
 import com.harudle.common.logging.ExternalApiLogger;
 import com.harudle.common.logging.ExternalApiResponseDiagnostics;
 import com.harudle.generation.adapter.out.storyboard.StoryboardResponseMapper;
+import com.harudle.generation.adapter.out.storyboard.StoryboardTestFixtures;
 import com.harudle.generation.config.GeminiGenerationProperties;
 import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import com.harudle.generation.diary.domain.Storyboard;
@@ -142,6 +143,18 @@ class GeminiStoryboardGeneratorTest {
         assertThat(meterRegistry.get("harudle.gemini.tokens")
                 .tags("stage", "storyboard_generation", "kind", "thought")
                 .counter().count()).isEqualTo(80);
+    }
+
+    @Test
+    @DisplayName("Gemini의 색상 패널 번호가 소품 위치와 달라도 공통 매퍼가 실제 등장 패널로 계산한다")
+    void deriveColorPanelNumbersFromGeminiProps() {
+        when(response.text()).thenReturn(StoryboardTestFixtures.storyboardJsonWithMismatchedColorPanels());
+
+        var storyboard = generator.generate(createRequest()).storyboard();
+
+        assertThat(storyboard.scenePlan().focalColors().getFirst().panelNumbers()).containsExactly(1, 2, 4);
+        assertThat(storyboard.scenePlan().focalColors().getLast().panelNumbers()).containsExactly(3);
+        verifyNoInteractions(externalApiLogger);
     }
 
     @Test

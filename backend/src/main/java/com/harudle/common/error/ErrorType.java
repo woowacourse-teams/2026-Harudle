@@ -38,6 +38,16 @@ public enum ErrorType {
             "Invalid current user",
             "현재 로그인 사용자를 확인할 수 없습니다."
     ),
+    NICKNAME_ALREADY_IN_USE(
+            HttpStatus.CONFLICT,
+            "Nickname already in use",
+            "이미 사용 중인 닉네임입니다."
+    ),
+    PUBLIC_PROFILE_NOT_ASSIGNED(
+            HttpStatus.CONFLICT,
+            "Public profile not assigned",
+            "공개 프로필을 먼저 배정해야 합니다."
+    ),
     GUEST_SESSION_REQUIRED(
             HttpStatus.UNAUTHORIZED,
             "Guest session required",
@@ -68,6 +78,26 @@ public enum ErrorType {
             "Feed not found",
             "피드를 찾을 수 없습니다."
     ),
+    COMMENT_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "Comment not found",
+            "댓글을 찾을 수 없습니다."
+    ),
+    COMMENT_UNAVAILABLE(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "Comment unavailable",
+            "댓글 작성자 정보를 조회할 수 없습니다."
+    ),
+    NOTIFICATION_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "Notification not found",
+            "알림을 찾을 수 없습니다."
+    ),
+    NOTIFICATION_UNAVAILABLE(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "Notification unavailable",
+            "알림의 회원 정보를 조회할 수 없습니다."
+    ),
     CATEGORY_NOT_FOUND(
             HttpStatus.NOT_FOUND,
             "Category not found",
@@ -85,8 +115,13 @@ public enum ErrorType {
     ),
     CATEGORY_INACTIVE(
             HttpStatus.CONFLICT,
-            "Category inactive",
-            "비활성 카테고리에는 게시할 수 없습니다."
+            "Inactive category",
+            "비활성 카테고리에는 피드를 게시할 수 없습니다."
+    ),
+    CATEGORY_NAME_ALREADY_USED(
+            HttpStatus.CONFLICT,
+            "Category name already used",
+            "이미 사용 중인 카테고리 이름입니다."
     ),
     FEED_UNAVAILABLE(
             HttpStatus.SERVICE_UNAVAILABLE,

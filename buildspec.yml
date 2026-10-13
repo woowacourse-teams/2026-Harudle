@@ -54,5 +54,6 @@ artifacts:
     - deploy/compose.prod.yaml
     - deploy/monitoring/**/*
     - deploy/scripts/**/*
+    - backend/src/main/resources/db/maintenance/backfill_user_public_profiles.sql
     - build-artifacts/*
   discard-paths: no

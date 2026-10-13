@@ -80,6 +80,7 @@ class HarudleApplicationTests {
                 "feeds",
                 "generation_prompts",
                 "guest_sessions",
+                "nickname_candidates",
                 "notification_outbox",
                 "notifications",
                 "oauth_accounts",

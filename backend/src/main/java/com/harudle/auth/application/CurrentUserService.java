@@ -4,6 +4,8 @@ import com.harudle.auth.domain.OAuthAccount;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.OAuthAccountRepository;
 import com.harudle.auth.infrastructure.UserRepository;
+import com.harudle.profile.service.ProfileImageUrlResolver;
+import java.net.URI;
 import java.util.Objects;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -14,13 +16,16 @@ public class CurrentUserService {
 
     private final UserRepository userRepository;
     private final OAuthAccountRepository oauthAccountRepository;
+    private final ProfileImageUrlResolver profileImageUrlResolver;
 
     public CurrentUserService(
             UserRepository userRepository,
-            OAuthAccountRepository oauthAccountRepository
+            OAuthAccountRepository oauthAccountRepository,
+            ProfileImageUrlResolver profileImageUrlResolver
     ) {
         this.userRepository = userRepository;
         this.oauthAccountRepository = oauthAccountRepository;
+        this.profileImageUrlResolver = profileImageUrlResolver;
     }
 
     @Transactional(readOnly = true)
@@ -35,7 +40,13 @@ public class CurrentUserService {
         OAuthAccount oauthAccount = oauthAccountRepository.findByUser_Id(userId)
                 .orElseThrow(InvalidCurrentUserException::new);
 
-        return CurrentUserResult.from(user, oauthAccount);
+        Short imageCode = user.getProfileImageCode();
+        URI profileImageUrl = null;
+        if (imageCode != null) {
+            profileImageUrl = profileImageUrlResolver.resolve(imageCode);
+        }
+
+        return CurrentUserResult.from(user, oauthAccount, profileImageUrl);
     }
 
     private void validateActiveUser(User user) {

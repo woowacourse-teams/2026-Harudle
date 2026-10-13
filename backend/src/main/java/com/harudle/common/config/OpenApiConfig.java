@@ -43,7 +43,9 @@ import org.springframework.context.annotation.Configuration;
         paramName = "X-XSRF-TOKEN",
         description = "먼저 GET /api/v1/auth/csrf 응답의 token 값을 입력합니다. "
                 + "함께 발급된 XSRF-TOKEN 쿠키도 요청에 포함되어야 합니다. "
-                + "쿠키를 사용하는 인증·게스트 변경 API에만 필요하며 Bearer 인증 API에는 필요하지 않습니다."
+                + "쿠키를 사용하는 인증·게스트 변경 API, 피드 좋아요 PUT·DELETE, "
+                + "댓글 POST·DELETE와 알림 읽음 PATCH에 필요합니다. "
+                + "그 밖의 Bearer API는 각 경로의 security 요구를 따릅니다."
 )
 public class OpenApiConfig {
 
@@ -57,11 +59,26 @@ public class OpenApiConfig {
             }
             openApi.getPaths().forEach((path, pathItem) ->
                     pathItem.readOperationsMap().forEach((httpMethod, operation) -> {
-                        if (CookieApiCsrfProtectionMatcher.isCookieApi(path) && requiresCsrf(httpMethod)) {
+                        if (usesCsrf(path, httpMethod)) {
                             operation.setSecurity(withCsrf(operation));
                         }
                     })
             );
+        };
+    }
+
+    private static boolean usesCsrf(String path, PathItem.HttpMethod method) {
+        if (CookieApiCsrfProtectionMatcher.isCookieApi(path)) {
+            return requiresCsrf(method);
+        }
+        // Match the dedicated reaction security chains, not all Bearer mutations.
+        return switch (path) {
+            case "/api/v1/feeds/{feedId}/like" ->
+                    method == PathItem.HttpMethod.PUT || method == PathItem.HttpMethod.DELETE;
+            case "/api/v1/feeds/{feedId}/comments" -> method == PathItem.HttpMethod.POST;
+            case "/api/v1/comments/{commentId}" -> method == PathItem.HttpMethod.DELETE;
+            case "/api/v1/notifications/{notificationId}" -> method == PathItem.HttpMethod.PATCH;
+            default -> false;
         };
     }
 
