@@ -70,9 +70,14 @@ public class OpenApiConfig {
         if (CookieApiCsrfProtectionMatcher.isCookieApi(path)) {
             return requiresCsrf(method);
         }
-        // Match the existing like-specific security chain, not all Bearer mutations.
-        return "/api/v1/feeds/{feedId}/like".equals(path)
-                && (method == PathItem.HttpMethod.PUT || method == PathItem.HttpMethod.DELETE);
+        // Match the dedicated reaction security chains, not all Bearer mutations.
+        return switch (path) {
+            case "/api/v1/feeds/{feedId}/like" ->
+                    method == PathItem.HttpMethod.PUT || method == PathItem.HttpMethod.DELETE;
+            case "/api/v1/feeds/{feedId}/comments" -> method == PathItem.HttpMethod.POST;
+            case "/api/v1/comments/{commentId}" -> method == PathItem.HttpMethod.DELETE;
+            default -> false;
+        };
     }
 
     private static boolean requiresCsrf(PathItem.HttpMethod httpMethod) {
