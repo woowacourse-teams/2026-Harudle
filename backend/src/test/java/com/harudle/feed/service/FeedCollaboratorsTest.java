@@ -9,6 +9,8 @@ import com.harudle.feed.service.exception.FeedIntegrationUnavailableException;
 import com.harudle.feed.service.port.FeedLikeReader;
 import com.harudle.profile.service.port.PublicProfileReader;
 import com.harudle.push.service.port.FeedPushOutbox;
+import java.time.Instant;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 
@@ -21,7 +23,6 @@ class FeedCollaboratorsTest {
         assertThatThrownBy(collaborators::categories).isInstanceOf(FeedIntegrationUnavailableException.class);
         assertThatThrownBy(collaborators::profiles).isInstanceOf(FeedIntegrationUnavailableException.class);
         assertThatThrownBy(collaborators::likes).isInstanceOf(FeedIntegrationUnavailableException.class);
-        assertThatThrownBy(collaborators::pushOutbox).isInstanceOf(FeedIntegrationUnavailableException.class);
     }
 
     @Test
@@ -30,6 +31,27 @@ class FeedCollaboratorsTest {
         CategoryReader reader = mock(CategoryReader.class);
         beans.registerSingleton("categories", reader);
         assertThat(collaborators(beans).categories()).isSameAs(reader);
+    }
+
+    @Test
+    void skipsReservationAndCancellationWhenPushAdapterIsMissing() {
+        FeedPushOutbox outbox = collaborators(new DefaultListableBeanFactory()).pushOutbox();
+        UUID feedId = UUID.randomUUID();
+        var event = new FeedPushOutbox.FeedPublished(UUID.randomUUID(), feedId, Instant.now());
+
+        assertThat(outbox.enqueuePublished(event)).isZero();
+        assertThat(outbox.cancelUnsentByFeed(feedId)).isZero();
+    }
+
+    @Test
+    void usesRegisteredPushAdapterAfterPreviouslyFallingBack() {
+        var beans = new DefaultListableBeanFactory();
+        FeedCollaborators collaborators = collaborators(beans);
+        collaborators.pushOutbox();
+        FeedPushOutbox outbox = mock(FeedPushOutbox.class);
+        beans.registerSingleton("pushOutbox", outbox);
+
+        assertThat(collaborators.pushOutbox()).isSameAs(outbox);
     }
 
     private FeedCollaborators collaborators(DefaultListableBeanFactory beans) {

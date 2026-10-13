@@ -122,7 +122,7 @@ class FeedController {
     @ApiResponse(responseCode = "204", description = "피드 삭제 완료")
     @ApiErrorResponses({
             ErrorType.VALIDATION_ERROR, ErrorType.UNAUTHORIZED, ErrorType.FORBIDDEN,
-            ErrorType.FEED_NOT_FOUND, ErrorType.FEED_UNAVAILABLE
+            ErrorType.FEED_NOT_FOUND
     })
     @DeleteMapping("/{feedId}")
     ResponseEntity<Void> delete(

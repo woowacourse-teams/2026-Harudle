@@ -163,8 +163,7 @@ class DiaryController {
     @ApiErrorResponses({
             ErrorType.VALIDATION_ERROR,
             ErrorType.UNAUTHORIZED,
-            ErrorType.FORBIDDEN,
-            ErrorType.FEED_UNAVAILABLE
+            ErrorType.FORBIDDEN
     })
     @DeleteMapping("/{diaryId}")
     public ResponseEntity<Void> delete(

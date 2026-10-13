@@ -6,12 +6,14 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.harudle.category.service.port.CategoryReader;
 import com.harudle.feed.domain.Feed;
 import com.harudle.feed.repository.FeedDeletionRepository;
 import com.harudle.feed.repository.FeedInteractionRepository;
 import com.harudle.feed.service.exception.FeedAccessDeniedException;
-import com.harudle.feed.service.exception.FeedIntegrationUnavailableException;
 import com.harudle.feed.service.exception.FeedNotFoundException;
+import com.harudle.feed.service.port.FeedLikeReader;
+import com.harudle.profile.service.port.PublicProfileReader;
 import com.harudle.push.service.port.FeedPushOutbox;
 import java.time.Clock;
 import java.time.Instant;
@@ -25,6 +27,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 
 @ExtendWith(MockitoExtension.class)
 class FeedDeletionServiceTest {
@@ -92,12 +95,15 @@ class FeedDeletionServiceTest {
     }
 
     @Test
-    void failsBeforeStateChangeWhenPushAdapterIsUnavailable() {
+    void deletesOwnedFeedWithoutPushAdapter() {
         Feed feed = ownedFeed();
-        when(collaborators.pushOutbox()).thenThrow(new FeedIntegrationUnavailableException(FeedPushOutbox.class));
-        assertThatThrownBy(() -> service.delete(AUTHOR, feed.getId()))
-                .isInstanceOf(FeedIntegrationUnavailableException.class);
-        assertThat(feed.isDeleted()).isFalse();
+        service = new FeedDeletionService(feeds, deletions, collaboratorsWithoutPush(),
+                Clock.fixed(NOW, ZoneOffset.UTC));
+
+        service.delete(AUTHOR, feed.getId());
+
+        assertThat(feed.getDeletedAt()).isEqualTo(NOW);
+        verifyNoInteractions(outbox);
     }
 
     @Test
@@ -131,6 +137,27 @@ class FeedDeletionServiceTest {
         service.deleteByDiary(feed.getDiaryId(), NOW);
         assertThat(feed.getDeletedAt()).isEqualTo(NOW.minusSeconds(30));
         verifyNoInteractions(feeds, collaborators, outbox);
+    }
+
+    @Test
+    void diaryLifecycleDeletesConnectedFeedWithoutPushAdapter() {
+        Feed feed = Feed.publish(UUID.randomUUID(), 1, NOW.minusSeconds(60));
+        when(deletions.findActiveByDiaryIdForUpdate(feed.getDiaryId())).thenReturn(Optional.of(feed));
+        service = new FeedDeletionService(feeds, deletions, collaboratorsWithoutPush(),
+                Clock.fixed(NOW, ZoneOffset.UTC));
+        Instant diaryDeletionTime = NOW.minusSeconds(30);
+
+        service.deleteByDiary(feed.getDiaryId(), diaryDeletionTime);
+
+        assertThat(feed.getDeletedAt()).isEqualTo(diaryDeletionTime);
+        verifyNoInteractions(feeds, outbox);
+    }
+
+    private FeedCollaborators collaboratorsWithoutPush() {
+        var beans = new DefaultListableBeanFactory();
+        return new FeedCollaborators(beans.getBeanProvider(CategoryReader.class),
+                beans.getBeanProvider(PublicProfileReader.class), beans.getBeanProvider(FeedLikeReader.class),
+                beans.getBeanProvider(FeedPushOutbox.class));
     }
 
     private Feed ownedFeed() {
