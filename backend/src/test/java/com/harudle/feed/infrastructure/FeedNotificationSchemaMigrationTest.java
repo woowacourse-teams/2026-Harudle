@@ -46,7 +46,7 @@ class FeedNotificationSchemaMigrationTest {
 
     @BeforeEach
     void upgradeExistingSchema() throws SQLException {
-        migrateExistingSchemaTo("24");
+        migrateExistingSchemaTo("25");
     }
 
     private void migrateExistingSchemaTo(String target) throws SQLException {
@@ -88,7 +88,7 @@ class FeedNotificationSchemaMigrationTest {
     @DisplayName("빈 PostgreSQL에도 전체 마이그레이션과 카테고리 시드를 적용할 수 있다")
     void migrateEmptyDatabase() throws SQLException {
         flyway().clean();
-        assertThat(flyway().migrate().migrationsExecuted).isEqualTo(24);
+        assertThat(flyway().migrate().migrationsExecuted).isEqualTo(25);
         flyway().validate();
         assertThat(queryLong("SELECT count(*) FROM categories WHERE is_active")).isEqualTo(2);
         assertThat(queryLong("""
@@ -111,7 +111,7 @@ class FeedNotificationSchemaMigrationTest {
         execute(insertToken, AUTHOR, "c".repeat(64), tomorrow);
         execute(insertToken, AUTHOR, "d".repeat(64), OffsetDateTime.now().minusDays(1));
 
-        assertThat(flyway().migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(flyway("24").migrate().migrationsExecuted).isEqualTo(1);
         assertThat(queryLong("""
                 SELECT count(DISTINCT session_id) FROM refresh_tokens
                 WHERE user_id = ? AND expires_at > CURRENT_TIMESTAMP
@@ -141,6 +141,21 @@ class FeedNotificationSchemaMigrationTest {
         execute(insertToken, AUTHOR, "e".repeat(64), tomorrow);
         assertThat(queryLong("SELECT count(*) FROM refresh_tokens WHERE token_hash = ? AND session_id IS NULL",
                 "e".repeat(64))).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("V25는 기존 푸시 등록과 새 등록의 버전을 0으로 시작하고 음수·NULL을 거부한다")
+    void initializePushRegistrationVersion() throws SQLException {
+        migrateExistingSchemaTo("24");
+        UUID existing = createRegistration(AUTHOR, UUID.randomUUID(), "fid-existing");
+
+        assertThat(flyway("25").migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(queryLong("SELECT version FROM push_registrations WHERE id = ?", existing)).isZero();
+
+        UUID fresh = createRegistration(READER, UUID.randomUUID(), "fid-fresh");
+        assertThat(queryLong("SELECT version FROM push_registrations WHERE id = ?", fresh)).isZero();
+        reject("23502", "UPDATE push_registrations SET version = NULL WHERE id = ?", fresh);
+        reject("23514", "UPDATE push_registrations SET version = -1 WHERE id = ?", fresh);
     }
 
     @Test
@@ -537,7 +552,7 @@ class FeedNotificationSchemaMigrationTest {
     }
 
     private static Flyway flyway() {
-        return flyway("24");
+        return flyway("25");
     }
 
     private static Flyway flyway(String target) {
