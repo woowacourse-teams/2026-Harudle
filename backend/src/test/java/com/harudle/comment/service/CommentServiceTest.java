@@ -38,15 +38,19 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
 
 @ExtendWith(MockitoExtension.class)
 class CommentServiceTest {
@@ -106,7 +110,10 @@ class CommentServiceTest {
         when(repository.create(any(), any(), any(), eq("안녕"), eq(NOW)))
                 .thenReturn(snapshot(COMMENT_ID, ACTOR_ID));
         when(notifications.record(any())).thenReturn(Result.SELF_SKIPPED);
-        assertThat(service.create(ACTOR_ID, FEED_ID, "안녕").id()).isEqualTo(COMMENT_ID);
+        var created = service.create(ACTOR_ID, FEED_ID, "안녕");
+        assertThat(created.id()).isEqualTo(COMMENT_ID);
+        assertThat(created.author()).isEqualTo(PROFILE);
+        assertThat(created.isMine()).isTrue();
     }
 
     @Test
@@ -164,6 +171,101 @@ class CommentServiceTest {
         assertThat(page.nextCursor()).isNull();
         assertThat(page.hasNext()).isFalse();
         verifyNoInteractions(profileProvider, profiles);
+    }
+
+    @Test
+    void withdrawnAuthorsRemainInThePageWithoutProfileIntegrationOrOwnership() {
+        visibleFeedAndCursor(Optional.empty());
+        UUID secondId = UUID.randomUUID();
+        when(repository.findAfter(FEED_ID, Optional.empty(), 21)).thenReturn(List.of(
+                withdrawnSnapshot(COMMENT_ID, ACTOR_ID), withdrawnSnapshot(secondId, AUTHOR_ID)));
+
+        var page = service.list(FEED_ID, ACTOR_ID, null, 20);
+
+        assertThat(page.items()).extracting(item -> item.id()).containsExactly(COMMENT_ID, secondId);
+        assertThat(page.items()).allSatisfy(item -> {
+            assertThat(item.author()).isNull();
+            assertThat(item.isMine()).isFalse();
+            assertThat(item.content()).isEqualTo("탈퇴 전에 작성한 댓글");
+            assertThat(item.createdAt()).isEqualTo(NOW);
+        });
+        assertThat(page.nextCursor()).isNull();
+        assertThat(page.hasNext()).isFalse();
+        verifyNoInteractions(profileProvider, profiles, feeds, notifications);
+    }
+
+    @Test
+    void mixedPageLooksUpOnlyActiveAuthorsAndKeepsWithdrawnCursorBoundary() {
+        visibleFeedAndCursor(Optional.empty());
+        UUID withdrawnId = UUID.randomUUID();
+        UUID lookAheadId = UUID.randomUUID();
+        UUID lookAheadAuthor = UUID.randomUUID();
+        when(repository.findAfter(FEED_ID, Optional.empty(), 3)).thenReturn(List.of(
+                snapshot(COMMENT_ID, ACTOR_ID), withdrawnSnapshot(withdrawnId, AUTHOR_ID),
+                snapshot(lookAheadId, lookAheadAuthor)));
+        // 제공자가 불필요한 과거 프로필을 함께 반환해도 DB의 탈퇴 판정을 우선해 공개하지 않는다.
+        Profile oldProfile = new Profile(AUTHOR_ID, "공개하면 안 되는 이전 닉네임", PROFILE.profileImageUrl());
+        availableProfiles(Map.of(ACTOR_ID, PROFILE, AUTHOR_ID, oldProfile), Set.of(ACTOR_ID));
+        when(codec.encode(new CommentCursor(FEED_ID, NOW, withdrawnId))).thenReturn("next-withdrawn");
+
+        var page = service.list(FEED_ID, ACTOR_ID, null, 2);
+
+        assertThat(page.items()).extracting(item -> item.id()).containsExactly(COMMENT_ID, withdrawnId);
+        assertThat(page.items().getFirst().author()).isEqualTo(PROFILE);
+        assertThat(page.items().getFirst().isMine()).isTrue();
+        assertThat(page.items().getLast().author()).isNull();
+        assertThat(page.items().getLast().isMine()).isFalse();
+        assertThat(page.nextCursor()).isEqualTo("next-withdrawn");
+        assertThat(page.hasNext()).isTrue();
+        verify(profiles).readAll(Set.of(ACTOR_ID));
+        verify(codec).encode(new CommentCursor(FEED_ID, NOW, withdrawnId));
+    }
+
+    @Test
+    void mixedPageStillFailsWhenRequiredActiveProfileProviderIsMissing() {
+        visibleFeedAndCursor(Optional.empty());
+        when(repository.findAfter(FEED_ID, Optional.empty(), 21)).thenReturn(List.of(
+                withdrawnSnapshot(UUID.randomUUID(), AUTHOR_ID), snapshot(COMMENT_ID, ACTOR_ID)));
+
+        assertThatThrownBy(() -> service.list(FEED_ID, null, null, 20))
+                .isInstanceOf(CommentIntegrationUnavailableException.class);
+        verify(profileProvider).getIfAvailable();
+        verifyNoInteractions(profiles);
+    }
+
+    @Test
+    void missingActiveProfileInMixedPageIsNotMistakenForAWithdrawnAuthor() {
+        visibleFeedAndCursor(Optional.empty());
+        when(repository.findAfter(FEED_ID, Optional.empty(), 21)).thenReturn(List.of(
+                withdrawnSnapshot(UUID.randomUUID(), AUTHOR_ID), snapshot(COMMENT_ID, ACTOR_ID)));
+        availableProfiles(Map.of(), Set.of(ACTOR_ID));
+
+        assertThatThrownBy(() -> service.list(FEED_ID, null, null, 20))
+                .isInstanceOf(CommentIntegrationUnavailableException.class);
+        verify(profiles).readAll(Set.of(ACTOR_ID));
+    }
+
+    @ParameterizedTest
+    @MethodSource("invalidActiveProfiles")
+    void invalidActiveProfileInMixedPageStillFailsClosed(Profile invalidProfile) {
+        visibleFeedAndCursor(Optional.empty());
+        when(repository.findAfter(FEED_ID, Optional.empty(), 21)).thenReturn(List.of(
+                withdrawnSnapshot(UUID.randomUUID(), AUTHOR_ID), snapshot(COMMENT_ID, ACTOR_ID)));
+        availableProfiles(Map.of(ACTOR_ID, invalidProfile), Set.of(ACTOR_ID));
+
+        assertThatThrownBy(() -> service.list(FEED_ID, null, null, 20))
+                .isInstanceOf(CommentIntegrationUnavailableException.class);
+    }
+
+    @Test
+    void listUsesReadOnlyRepeatableReadForAuthorClassificationAndProfiles() throws NoSuchMethodException {
+        Transactional transaction = CommentService.class
+                .getMethod("list", UUID.class, UUID.class, String.class, int.class)
+                .getAnnotation(Transactional.class);
+
+        assertThat(transaction).isNotNull();
+        assertThat(transaction.readOnly()).isTrue();
+        assertThat(transaction.isolation()).isEqualTo(Isolation.REPEATABLE_READ);
     }
 
     @Test
@@ -303,5 +405,20 @@ class CommentServiceTest {
 
     private CommentSnapshot snapshot(UUID id, UUID author) {
         return new CommentSnapshot(id, FEED_ID, author, "안녕", NOW);
+    }
+
+    private CommentSnapshot withdrawnSnapshot(UUID id, UUID author) {
+        return new CommentSnapshot(id, FEED_ID, author, "탈퇴 전에 작성한 댓글", NOW, true);
+    }
+
+    private static Stream<Profile> invalidActiveProfiles() {
+        return Stream.of(
+                new Profile(AUTHOR_ID, "다른 회원", PROFILE.profileImageUrl()),
+                new Profile(ACTOR_ID, null, PROFILE.profileImageUrl()),
+                new Profile(ACTOR_ID, " ", PROFILE.profileImageUrl()),
+                new Profile(ACTOR_ID, "연준", null),
+                new Profile(ACTOR_ID, "연준", URI.create("/profiles/one.svg")),
+                new Profile(ACTOR_ID, "연준", URI.create("javascript:alert(1)"))
+        );
     }
 }

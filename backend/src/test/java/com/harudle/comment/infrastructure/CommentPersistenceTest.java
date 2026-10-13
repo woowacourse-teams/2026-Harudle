@@ -327,6 +327,144 @@ class CommentPersistenceTest {
     }
 
     @Test
+    @DisplayName("탈퇴한 댓글 작성자는 익명화하고 활성 작성자만 일괄 조회하면서 댓글 수와 커서 경계를 보존한다")
+    void anonymizeDeletedAuthorsWithoutChangingCommentsOrPagination() throws Exception {
+        UUID activeCommenter = createMember();
+        UUID first = service.create(commenterId, feedId, "탈퇴 회원의 첫 댓글").id();
+        UUID second = service.create(activeCommenter, feedId, "활성 회원의 첫 댓글").id();
+        UUID third = service.create(commenterId, feedId, "탈퇴 회원의 두 번째 댓글").id();
+        UUID fourth = service.create(activeCommenter, feedId, "활성 회원의 두 번째 댓글").id();
+        List<UUID> commentIds = List.of(first, second, third, fourth);
+        for (int index = 0; index < commentIds.size(); index++) {
+            jdbc.update("UPDATE comments SET created_at = ? WHERE id = ?",
+                    Timestamp.from(FIXTURE_TIME.plusSeconds(index)), commentIds.get(index));
+        }
+        List<UUID> notificationIds = jdbc.queryForList(
+                "SELECT id FROM notifications WHERE feed_id = ? ORDER BY id", UUID.class, feedId);
+        jdbc.update("UPDATE users SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", commenterId);
+        profiles.resetCallCount();
+
+        String firstResponse = mockMvc.perform(bearer(get(commentsPath())).param("size", "2"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items", hasSize(2)))
+                .andExpect(jsonPath("$.items[0].id").value(first.toString()))
+                .andExpect(jsonPath("$.items[0].content").value("탈퇴 회원의 첫 댓글"))
+                .andExpect(jsonPath("$.items[0].author").isMap())
+                .andExpect(jsonPath("$.items[0].author.id").value((Object) null))
+                .andExpect(jsonPath("$.items[0].author.nickname").value("탈퇴한 회원"))
+                .andExpect(jsonPath("$.items[0].author.profileImageUrl").value((Object) null))
+                .andExpect(jsonPath("$.items[0].isMine").value(false))
+                .andExpect(jsonPath("$.items[1].id").value(second.toString()))
+                .andExpect(jsonPath("$.items[1].author.id").value(activeCommenter.toString()))
+                .andExpect(jsonPath("$.items[1].author.profileImageUrl")
+                        .value("https://test.example.com/profiles/1.png"))
+                .andExpect(jsonPath("$.hasNext").value(true))
+                .andExpect(jsonPath("$.nextCursor").isNotEmpty())
+                .andReturn().getResponse().getContentAsString();
+        String nextCursor = objectMapper.readTree(firstResponse).path("nextCursor").asText();
+        assertThat(profiles.callCount()).isEqualTo(1);
+        assertThat(profiles.lastRequestedIds()).containsExactly(activeCommenter);
+
+        mockMvc.perform(get(commentsPath()).param("size", "2").param("cursor", nextCursor))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items", hasSize(2)))
+                .andExpect(jsonPath("$.items[0].id").value(third.toString()))
+                .andExpect(jsonPath("$.items[0].author.id").value((Object) null))
+                .andExpect(jsonPath("$.items[0].author.nickname").value("탈퇴한 회원"))
+                .andExpect(jsonPath("$.items[0].author.profileImageUrl").value((Object) null))
+                .andExpect(jsonPath("$.items[1].id").value(fourth.toString()))
+                .andExpect(jsonPath("$.items[1].author.id").value(activeCommenter.toString()))
+                .andExpect(jsonPath("$.hasNext").value(false))
+                .andExpect(jsonPath("$.nextCursor").value((Object) null));
+        assertThat(profiles.callCount()).isEqualTo(2);
+        assertThat(profiles.lastRequestedIds()).containsExactly(activeCommenter);
+        assertState(4, 4);
+        assertThat(jdbc.queryForList("SELECT id FROM comments WHERE feed_id = ? AND deleted_at IS NULL "
+                + "ORDER BY created_at, id", UUID.class, feedId)).containsExactlyElementsOf(commentIds);
+        assertThat(jdbc.queryForList("SELECT id FROM notifications WHERE feed_id = ? ORDER BY id", UUID.class, feedId))
+                .containsExactlyElementsOf(notificationIds);
+    }
+
+    @Test
+    @DisplayName("페이지의 작성자가 모두 탈퇴했다면 프로필을 조회하지 않고 댓글 내용과 페이지를 유지한다")
+    void returnAllDeletedAuthorsWithoutReadingProfiles() throws Exception {
+        UUID first = service.create(commenterId, feedId, "보존되는 첫 댓글").id();
+        UUID second = service.create(commenterId, feedId, "보존되는 두 번째 댓글").id();
+        jdbc.update("UPDATE comments SET created_at = ? WHERE id = ?", Timestamp.from(FIXTURE_TIME), first);
+        jdbc.update("UPDATE comments SET created_at = ? WHERE id = ?", Timestamp.from(FIXTURE_TIME.plusSeconds(1)), second);
+        jdbc.update("UPDATE users SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", commenterId);
+        profiles.reset();
+        profiles.omitAllProfiles = true;
+
+        mockMvc.perform(bearer(get(commentsPath())))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items", hasSize(2)))
+                .andExpect(jsonPath("$.items[0].id").value(first.toString()))
+                .andExpect(jsonPath("$.items[0].content").value("보존되는 첫 댓글"))
+                .andExpect(jsonPath("$.items[0].author.id").value((Object) null))
+                .andExpect(jsonPath("$.items[0].author.nickname").value("탈퇴한 회원"))
+                .andExpect(jsonPath("$.items[0].author.profileImageUrl").value((Object) null))
+                .andExpect(jsonPath("$.items[0].isMine").value(false))
+                .andExpect(jsonPath("$.items[1].id").value(second.toString()))
+                .andExpect(jsonPath("$.items[1].content").value("보존되는 두 번째 댓글"))
+                .andExpect(jsonPath("$.items[1].author.id").value((Object) null))
+                .andExpect(jsonPath("$.items[1].author.nickname").value("탈퇴한 회원"))
+                .andExpect(jsonPath("$.items[1].author.profileImageUrl").value((Object) null))
+                .andExpect(jsonPath("$.items[1].isMine").value(false))
+                .andExpect(jsonPath("$.hasNext").value(false))
+                .andExpect(jsonPath("$.nextCursor").value((Object) null));
+
+        assertThat(profiles.callCount()).isZero();
+        assertThat(profiles.lastRequestedIds()).isEmpty();
+        assertState(2, 2);
+    }
+
+    @Test
+    @DisplayName("댓글 상태 조회 후 작성자가 탈퇴해도 같은 읽기 스냅샷의 프로필을 반환하고 다음 요청에서 익명화한다")
+    void useConsistentSnapshotWhenAuthorIsDeletedDuringProfileRead() throws Exception {
+        UUID activeCommenter = createMember();
+        UUID first = service.create(commenterId, feedId, "조회와 탈퇴가 경쟁하는 댓글").id();
+        UUID second = service.create(activeCommenter, feedId, "계속 활성인 회원의 댓글").id();
+        jdbc.update("UPDATE comments SET created_at = ? WHERE id = ?", Timestamp.from(FIXTURE_TIME), first);
+        jdbc.update("UPDATE comments SET created_at = ? WHERE id = ?", Timestamp.from(FIXTURE_TIME.plusSeconds(1)), second);
+        profiles.resetCallCount();
+        profiles.beforeRead = () -> {
+            assertThat(jdbc.queryForObject("SHOW transaction_isolation", String.class)).isEqualTo("repeatable read");
+            try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
+                Future<?> deletion = executor.submit(() -> transactions.executeWithoutResult(status ->
+                        jdbc.update("UPDATE users SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", commenterId)));
+                deletion.get(5, TimeUnit.SECONDS);
+            } catch (Exception exception) {
+                throw new AssertionError("프로필 조회 중 다른 트랜잭션에서 회원 탈퇴를 완료하지 못했습니다.", exception);
+            }
+        };
+
+        mockMvc.perform(bearer(get(commentsPath())))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items", hasSize(2)))
+                .andExpect(jsonPath("$.items[0].id").value(first.toString()))
+                .andExpect(jsonPath("$.items[0].author.id").value(commenterId.toString()))
+                .andExpect(jsonPath("$.items[0].author.nickname").value("댓글통합테스트회원"))
+                .andExpect(jsonPath("$.items[0].author.profileImageUrl")
+                        .value("https://test.example.com/profiles/1.png"))
+                .andExpect(jsonPath("$.items[0].isMine").value(true))
+                .andExpect(jsonPath("$.items[1].author.id").value(activeCommenter.toString()));
+        assertThat(profiles.lastRequestedIds()).containsExactlyInAnyOrder(commenterId, activeCommenter);
+        assertThat(intValue("SELECT count(*) FROM users WHERE id = ? AND deleted_at IS NOT NULL", commenterId))
+                .isEqualTo(1);
+        assertState(2, 2);
+
+        mockMvc.perform(bearer(get(commentsPath())))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items", hasSize(2)))
+                .andExpect(jsonPath("$.items[0].id").value(first.toString()))
+                .andExpect(jsonPath("$.items[0].author.id").value((Object) null))
+                .andExpect(jsonPath("$.items[0].author.nickname").value("탈퇴한 회원"))
+                .andExpect(jsonPath("$.items[0].author.profileImageUrl").value((Object) null))
+                .andExpect(jsonPath("$.items[0].isMine").value(false))
+                .andExpect(jsonPath("$.items[1].id").value(second.toString()))
+                .andExpect(jsonPath("$.items[1].author.id").value(activeCommenter.toString()));
+        assertThat(profiles.callCount()).isEqualTo(2);
+        assertThat(profiles.lastRequestedIds()).containsExactly(activeCommenter);
+        assertState(2, 2);
+    }
+
+    @Test
     @DisplayName("댓글은 삽입 순서가 아닌 작성 시각과 UUID 오름차순으로 결정적으로 정렬된다")
     void sortOldestFirstWithUuidTieBreaker() {
         UUID first = UUID.fromString("00000000-0000-0000-0000-000000000011");
@@ -842,6 +980,7 @@ class CommentPersistenceTest {
         private final AtomicInteger calls = new AtomicInteger();
         private volatile Set<UUID> lastRequested = Set.of();
         private volatile boolean omitAllProfiles;
+        private volatile Runnable beforeRead;
 
         DatabaseTestProfiles(JdbcTemplate jdbc) {
             this.jdbc = jdbc;
@@ -851,6 +990,11 @@ class CommentPersistenceTest {
         public Map<UUID, Profile> readAll(Set<UUID> ids) {
             calls.incrementAndGet();
             lastRequested = Set.copyOf(ids);
+            Runnable callback = beforeRead;
+            beforeRead = null;
+            if (callback != null) {
+                callback.run();
+            }
             if (omitAllProfiles || ids.isEmpty()) {
                 return Map.of();
             }
@@ -882,6 +1026,7 @@ class CommentPersistenceTest {
             calls.set(0);
             lastRequested = Set.of();
             omitAllProfiles = false;
+            beforeRead = null;
         }
     }
 }
@@ -907,6 +1052,47 @@ class CommentMissingProfilePersistenceTest {
 
     @MockitoBean
     private JwtDecoder jwtDecoder;
+
+    @Test
+    @DisplayName("프로필 구현이 없어도 탈퇴한 작성자의 댓글만 있는 공개 페이지는 익명 작성자와 원문을 반환한다")
+    void returnDeletedAuthorsWhenProfileProviderIsMissing() throws Exception {
+        UUID owner = UUID.randomUUID();
+        UUID deletedCommenter = UUID.randomUUID();
+        UUID diary = UUID.randomUUID();
+        UUID feed = UUID.randomUUID();
+        UUID comment = UUID.randomUUID();
+        jdbc.update("INSERT INTO users (id, name, profile_image_code) VALUES (?, ?, 1)", owner, "활성피드작성자");
+        jdbc.update("INSERT INTO users (id, name, profile_image_code, deleted_at) "
+                + "VALUES (?, ?, 1, CURRENT_TIMESTAMP)", deletedCommenter, "이름을숨길댓글작성자");
+        try {
+            jdbc.update("INSERT INTO diaries (id, user_id, diary_date, source_text) VALUES (?, ?, DATE '2026-10-12', ?)",
+                    diary, owner, "탈퇴 댓글 공개 조회 테스트 일기");
+            jdbc.update("INSERT INTO feeds (id, diary_id, category_id, comment_count) VALUES (?, ?, "
+                    + "(SELECT id FROM categories WHERE name = '일상'), 1)", feed, diary);
+            jdbc.update("INSERT INTO comments (id, feed_id, author_id, content) VALUES (?, ?, ?, ?)",
+                    comment, feed, deletedCommenter, "작성자가 탈퇴해도 보존되는 댓글");
+
+            assertThat(profiles.getIfAvailable()).isNull();
+            mockMvc.perform(get("/api/v1/feeds/" + feed + "/comments"))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.items", hasSize(1)))
+                    .andExpect(jsonPath("$.items[0].id").value(comment.toString()))
+                    .andExpect(jsonPath("$.items[0].content").value("작성자가 탈퇴해도 보존되는 댓글"))
+                    .andExpect(jsonPath("$.items[0].author").isMap())
+                    .andExpect(jsonPath("$.items[0].author.id").value((Object) null))
+                    .andExpect(jsonPath("$.items[0].author.nickname").value("탈퇴한 회원"))
+                    .andExpect(jsonPath("$.items[0].author.profileImageUrl").value((Object) null))
+                    .andExpect(jsonPath("$.items[0].isMine").value(false))
+                    .andExpect(jsonPath("$.hasNext").value(false))
+                    .andExpect(jsonPath("$.nextCursor").value((Object) null));
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM comments WHERE feed_id = ? AND deleted_at IS NULL",
+                    Integer.class, feed)).isEqualTo(1);
+            assertThat(jdbc.queryForObject("SELECT comment_count FROM feeds WHERE id = ?", Integer.class, feed))
+                    .isEqualTo(1);
+        } finally {
+            jdbc.update("DELETE FROM users WHERE id = ?", owner);
+            jdbc.update("DELETE FROM users WHERE id = ?", deletedCommenter);
+        }
+    }
 
     @Test
     @DisplayName("프로필 제공 구현이 아직 없어도 앱은 시작하고 빈 목록은 성공하며 작성은 503으로 안전하게 실패한다")

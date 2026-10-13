@@ -1,5 +1,6 @@
 package com.harudle.comment.presentation;
 
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -110,6 +111,47 @@ class CommentControllerTest {
     }
 
     @Test
+    void mixedListKeepsWithdrawnCommentAndReturnsAnAuthorObjectWithNullIdentityAndImage() throws Exception {
+        UUID withdrawnCommentId = UUID.fromString("f8ba2b53-0e66-41ad-9dcb-8aacb8250f26");
+        when(service.list(FEED_ID, null, null, 20)).thenReturn(new CommentPageResult(List.of(
+                comment("정상 회원의 댓글", false),
+                new CommentResult(withdrawnCommentId, null, "탈퇴 전에 작성한 댓글", CREATED_AT.plusSeconds(1), false)
+        ), null, false));
+
+        mockMvc.perform(get(LIST_PATH)).andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].author.id").value(USER_ID.toString()))
+                .andExpect(jsonPath("$.items[0].author.nickname").value("연준"))
+                .andExpect(jsonPath("$.items[0].author.profileImageUrl").value(PROFILE.profileImageUrl().toString()))
+                .andExpect(jsonPath("$.items[1].id").value(withdrawnCommentId.toString()))
+                .andExpect(jsonPath("$.items[1].content").value("탈퇴 전에 작성한 댓글"))
+                .andExpect(jsonPath("$.items[1].createdAt").value(CREATED_AT.plusSeconds(1).toString()))
+                .andExpect(jsonPath("$.items[1].author").isMap())
+                .andExpect(jsonPath("$.items[1].author.id").value(nullValue()))
+                .andExpect(jsonPath("$.items[1].author.nickname").value("탈퇴한 회원"))
+                .andExpect(jsonPath("$.items[1].author.profileImageUrl").value(nullValue()))
+                .andExpect(jsonPath("$.items[1].isMine").value(false));
+    }
+
+    @Test
+    void withdrawnOnlyListReturns200AndDoesNotExposeIdentityEvenForAnAuthenticatedViewer() throws Exception {
+        when(service.list(FEED_ID, USER_ID, null, 20)).thenReturn(new CommentPageResult(
+                List.of(new CommentResult(COMMENT_ID, null, "유지되는 댓글", CREATED_AT, false)), null, false));
+
+        mockMvc.perform(bearer(get(LIST_PATH))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].id").value(COMMENT_ID.toString()))
+                .andExpect(jsonPath("$.items[0].author").isMap())
+                .andExpect(jsonPath("$.items[0].author.id").value(nullValue()))
+                .andExpect(jsonPath("$.items[0].author.nickname").value("탈퇴한 회원"))
+                .andExpect(jsonPath("$.items[0].author.profileImageUrl").value(nullValue()))
+                .andExpect(jsonPath("$.items[0].isMine").value(false))
+                .andExpect(jsonPath("$.nextCursor").value(nullValue()))
+                .andExpect(jsonPath("$.hasNext").value(false));
+        verify(service).list(FEED_ID, USER_ID, null, 20);
+    }
+
+    @Test
     void invalidBearerOnPublicListDoesNotSilentlyBecomeAnonymous() throws Exception {
         when(jwtDecoder.decode("invalid-token")).thenThrow(new BadJwtException("expired or invalid"));
         mockMvc.perform(get(LIST_PATH).header(HttpHeaders.AUTHORIZATION, "Bearer invalid-token"))
@@ -143,6 +185,9 @@ class CommentControllerTest {
                         .content("{\"content\":\"" + text + "\"}"))
                 .andExpect(status().isCreated()).andExpect(header().string(HttpHeaders.LOCATION, DELETE_PATH))
                 .andExpect(jsonPath("$.id").value(COMMENT_ID.toString()))
+                .andExpect(jsonPath("$.author.id").value(USER_ID.toString()))
+                .andExpect(jsonPath("$.author.nickname").value("연준"))
+                .andExpect(jsonPath("$.author.profileImageUrl").value(PROFILE.profileImageUrl().toString()))
                 .andExpect(jsonPath("$.content").value(text)).andExpect(jsonPath("$.isMine").value(true))
                 .andExpect(jsonPath("$.createdAt").value(CREATED_AT.toString()));
         verify(service).create(USER_ID, FEED_ID, text);

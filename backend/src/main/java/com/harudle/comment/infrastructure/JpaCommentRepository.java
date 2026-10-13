@@ -35,14 +35,16 @@ class JpaCommentRepository implements CommentRepository {
               AND feed_author.deleted_at IS NULL
             """;
     private static final String FIND_ACTIVE_QUERY = """
-            SELECT id, feed_id, author_id, content, created_at
-            FROM comments
-            WHERE id = :commentId AND deleted_at IS NULL
+            SELECT c.id, c.feed_id, c.author_id, c.content, c.created_at,
+                   comment_author.deleted_at IS NOT NULL AS author_deleted
+            FROM comments c
+            JOIN users comment_author ON comment_author.id = c.author_id
+            WHERE c.id = :commentId AND c.deleted_at IS NULL
             """;
     private static final String CREATE_QUERY = """
             INSERT INTO comments (id, feed_id, author_id, content, created_at)
             VALUES (:commentId, :feedId, :authorId, :content, :createdAt)
-            RETURNING id, feed_id, author_id, content, created_at
+            RETURNING id, feed_id, author_id, content, created_at, false AS author_deleted
             """;
     private static final String DELETE_QUERY = """
             UPDATE comments
@@ -50,8 +52,10 @@ class JpaCommentRepository implements CommentRepository {
             WHERE id = :commentId AND feed_id = :feedId AND deleted_at IS NULL
             """;
     private static final String LIST_QUERY = """
-            SELECT c.id, c.feed_id, c.author_id, c.content, c.created_at
+            SELECT c.id, c.feed_id, c.author_id, c.content, c.created_at,
+                   comment_author.deleted_at IS NOT NULL AS author_deleted
             FROM comments c
+            JOIN users comment_author ON comment_author.id = c.author_id
             JOIN feeds f ON f.id = c.feed_id
             JOIN diaries d ON d.id = f.diary_id
             JOIN users feed_author ON feed_author.id = d.user_id
@@ -147,7 +151,8 @@ class JpaCommentRepository implements CommentRepository {
     }
 
     private static CommentSnapshot snapshot(Object[] row) {
-        return new CommentSnapshot((UUID) row[0], (UUID) row[1], (UUID) row[2], (String) row[3], instant(row[4]));
+        return new CommentSnapshot((UUID) row[0], (UUID) row[1], (UUID) row[2], (String) row[3], instant(row[4]),
+                (Boolean) row[5]);
     }
 
     private static Instant instant(Object value) {
