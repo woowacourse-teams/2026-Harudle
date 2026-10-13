@@ -7,7 +7,6 @@ import com.harudle.diary.service.DiaryDeletionService;
 import com.harudle.diary.service.DiaryQueryService;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
 import com.harudle.feed.repository.FeedRepository;
-import com.harudle.push.service.port.FeedPushOutbox;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
@@ -15,11 +14,11 @@ import java.time.LocalDate;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.context.ApplicationContext;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -30,7 +29,7 @@ import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest
-class FeedWithoutPushPersistenceTest {
+class FeedWithoutPushRegistrationPersistenceTest {
     private static final UUID AUTHOR = UUID.fromString("550e8400-e29b-41d4-a716-446655440021");
     private static final UUID DIARY = UUID.fromString("550e8400-e29b-41d4-a716-446655440022");
     private static final UUID GENERATION = UUID.fromString("550e8400-e29b-41d4-a716-446655440023");
@@ -40,7 +39,6 @@ class FeedWithoutPushPersistenceTest {
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"));
 
     @PersistenceContext private EntityManager entityManager;
-    @Autowired private ApplicationContext context;
     @Autowired private TransactionTemplate transactions;
     @Autowired private FeedPublicationService publication;
     @Autowired private FeedDeletionService deletion;
@@ -52,7 +50,6 @@ class FeedWithoutPushPersistenceTest {
 
     @BeforeEach
     void setUp() {
-        assertThat(context.getBeansOfType(FeedPushOutbox.class)).isEmpty();
         update("INSERT INTO users (id, name, nickname, profile_image_code) VALUES (?, '캐모', '캐모', 1)", AUTHOR);
         update("""
                 INSERT INTO generation_prompts (storyboard_prompt_text, image_style_prompt_text, image_asset_object_key)
@@ -76,7 +73,8 @@ class FeedWithoutPushPersistenceTest {
     }
 
     @Test
-    void publishesWithRealCategoryAndProfileReadersButWithoutPushAdapter() {
+    @DisplayName("등록된 푸시 기기가 없어도 피드 게시와 조회가 성공하고 발송 작업은 만들지 않는다")
+    void publishesWithRealCategoryAndProfileReadersButWithoutPushRegistration() {
         var result = publication.publish(AUTHOR, DIARY, categoryId);
 
         assertThat(feeds.existsByDiaryIdAndDeletedAtIsNull(DIARY)).isTrue();
@@ -87,7 +85,8 @@ class FeedWithoutPushPersistenceTest {
     }
 
     @Test
-    void deletesFeedWithoutPushAdapterAndRetainsOriginalDiary() {
+    @DisplayName("등록된 푸시 기기가 없어도 피드를 삭제하면 원래 일기는 남는다")
+    void deletesFeedWithoutPushRegistrationAndRetainsOriginalDiary() {
         UUID feedId = publication.publish(AUTHOR, DIARY, categoryId).id();
 
         deletion.delete(AUTHOR, feedId);
@@ -98,7 +97,8 @@ class FeedWithoutPushPersistenceTest {
     }
 
     @Test
-    void deletesDiaryAndConnectedFeedWithoutPushAdapter() {
+    @DisplayName("등록된 푸시 기기가 없어도 일기를 삭제하면 연결된 피드가 함께 삭제된다")
+    void deletesDiaryAndConnectedFeedWithoutPushRegistration() {
         UUID feedId = publication.publish(AUTHOR, DIARY, categoryId).id();
 
         diaryDeletion.delete(AUTHOR, DIARY);
