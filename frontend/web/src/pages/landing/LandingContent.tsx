@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react';
 import { css, type SerializedStyles } from '@emotion/react';
+import { Link } from 'react-router';
 import harudleLogo from '../../assets/images/harudle-logo.webp';
 import loginHero from '../../assets/images/login-shared-comic.png';
 import chatMeImage from './assets/chat-me.png';
@@ -13,6 +14,7 @@ import LandingExampleDemo from './LandingExampleDemo';
 import useLandingStickyCta from './useLandingStickyCta';
 import LandingUsageStats from './LandingUsageStats';
 import LandingSlackCommunity from './LandingSlackCommunity';
+import LandingFeedPreview from './LandingFeedPreview';
 
 interface LandingContentProps {
   trialSection: ReactNode;
@@ -263,7 +265,9 @@ const LandingContent = ({
               )}
             </ul>
             <p data-chat-step="4" css={typingStyle} aria-hidden="true">
-              •••
+              <span />
+              <span />
+              <span />
             </p>
             <div data-chat-step="5" css={sentRowStyle}>
               <p css={sentMessageStyle}>{LANDING_COPY.share.sceneReaction}</p>
@@ -283,6 +287,22 @@ const LandingContent = ({
           <p css={descriptionStyle}>{LANDING_COPY.share.communityNotice}</p>
         </div>
         <LandingSlackCommunity pageRef={pageRef} />
+      </section>
+
+      <section
+        css={[sectionStyle, feedSectionSpacingStyle]}
+        aria-labelledby="landing-feed-title"
+      >
+        <h2 id="landing-feed-title" css={sectionTitleStyle}>
+          {LANDING_COPY.feed.title}
+        </h2>
+        <p css={[descriptionStyle, heroDescriptionStyle]}>
+          {LANDING_COPY.feed.description}
+        </p>
+        <LandingFeedPreview />
+        <Link to="/" css={feedBrowseButtonStyle}>
+          {LANDING_COPY.feed.action} <span aria-hidden="true">→</span>
+        </Link>
         <LandingUsageStats pageRef={pageRef} />
       </section>
 
@@ -409,6 +429,9 @@ const pageStyle = css`
   &[data-motion='enabled'] [data-revealed='true'] [data-chat-step='4'] {
     animation: landing-typing 0.8s 2.1s linear both;
   }
+  &[data-motion='enabled'] [data-revealed='true'] [data-chat-step='4'] span {
+    animation-play-state: running;
+  }
   [data-chat-step='1'] {
     --chat-step: 1;
   }
@@ -504,6 +527,10 @@ const sectionStyle = css`
   flex-direction: column;
   gap: 16px;
   padding: 64px 24px;
+`;
+
+const feedSectionSpacingStyle = css`
+  padding-top: 16px;
 `;
 
 const heroStyle = css`
@@ -958,12 +985,44 @@ const typingStyle = css`
   position: absolute;
   right: 44px;
   bottom: 30px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 0;
-  padding: 8px 14px;
+  padding: 12px 14px;
   border-radius: 12px;
   background-color: ${chatColors.sentBubble};
-  letter-spacing: 4px;
   visibility: hidden;
+
+  span {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background-color: ${chatColors.text};
+    animation: landing-typing-dot 0.7s ease-in-out infinite;
+    animation-play-state: paused;
+  }
+  span:nth-child(2) {
+    animation-delay: 0.12s;
+  }
+  span:nth-child(3) {
+    animation-delay: 0.24s;
+  }
+  @keyframes landing-typing-dot {
+    0%,
+    60%,
+    100% {
+      transform: translateY(0);
+    }
+    30% {
+      transform: translateY(-4px);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    span {
+      animation: none;
+    }
+  }
 `;
 
 const stickyCtaStyle = css`
@@ -1047,4 +1106,25 @@ const imageReactionsStyle = css`
 const reactionEmojiStyle = css`
   font-size: 19px;
   line-height: 22px;
+`;
+
+const feedBrowseButtonStyle = css`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 12px 16px;
+  border: 1px solid ${theme.colors.stroke.brandWeak};
+  border-radius: 14px;
+  background-color: ${theme.colors.background.brandWeak};
+  color: ${theme.colors.foreground.brand};
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+
+  &:focus-visible {
+    outline: 3px solid ${theme.colors.stroke.focusRing};
+    outline-offset: 3px;
+  }
 `;
