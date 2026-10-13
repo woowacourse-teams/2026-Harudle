@@ -17,7 +17,7 @@
 
 다음 PR의 구현 기준으로 작성했다. 상태의 `채택`은 해당 PR에서 구현한 결정을 뜻하며, 모든 피드 코드를 병합하거나 운영 배포했다는 뜻은 아니다.
 
-PR #342는 `develop-backend`에 병합됐으며, PR #343·#344는 리뷰와 통합을 진행하는 범위다. 프론트 CSRF 요청 수정은 `fix/feed-like-csrf-request`의 로컬 커밋으로 준비했으며 아직 병합·배포한 상태가 아니다.
+PR #342·#343은 `develop-backend`에 병합됐으며, PR #344는 리뷰와 통합을 진행하는 범위다. 프론트 CSRF 요청 수정은 `fix/feed-like-csrf-request`의 로컬 커밋으로 준비했으며 아직 병합·배포한 상태가 아니다.
 
 - [PR #342 피드 좋아요와 인앱 알림 기록](https://github.com/woowacourse-teams/2026-Harudle/pull/342)
 - [PR #343 댓글 조회 작성 삭제](https://github.com/woowacourse-teams/2026-Harudle/pull/343)

@@ -32,6 +32,7 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -74,7 +75,8 @@ public class CommentService {
         return toResult(comment, profile, actorId);
     }
 
-    @Transactional(readOnly = true)
+    // 작성자 상태와 프로필을 같은 DB 스냅샷으로 읽어, 조회 도중 탈퇴를 프로필 장애로 오인하지 않는다.
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public CommentPageResult list(UUID feedId, @Nullable UUID viewerId, @Nullable String cursor, int size) {
         Objects.requireNonNull(feedId, "피드 ID는 필수입니다.");
         if (size < 1 || size > 50) {
@@ -89,10 +91,12 @@ public class CommentService {
         if (page.isEmpty()) {
             return new CommentPageResult(List.of(), null, false);
         }
-        Set<UUID> authorIds = page.stream().map(CommentSnapshot::authorId).collect(Collectors.toSet());
+        Set<UUID> authorIds = page.stream().filter(comment -> !comment.authorDeleted())
+                .map(CommentSnapshot::authorId).collect(Collectors.toSet());
         Map<UUID, Profile> profiles = profilesFor(authorIds);
         List<CommentResult> items = page.stream()
-                .map(comment -> toResult(comment, profiles.get(comment.authorId()), viewerId)).toList();
+                .map(comment -> toResult(comment,
+                        comment.authorDeleted() ? null : profiles.get(comment.authorId()), viewerId)).toList();
         CommentSnapshot last = page.getLast();
         String nextCursor = hasNext ? cursorCodec.encode(new CommentCursor(feedId, last.createdAt(), last.id())) : null;
         return new CommentPageResult(items, nextCursor, hasNext);
@@ -128,6 +132,9 @@ public class CommentService {
     }
 
     private Map<UUID, Profile> profilesFor(Set<UUID> authorIds) {
+        if (authorIds.isEmpty()) {
+            return Map.of();
+        }
         PublicProfileReader reader = publicProfileReaders.getIfAvailable();
         if (reader == null) {
             throw new CommentIntegrationUnavailableException();
@@ -147,8 +154,8 @@ public class CommentService {
                 || "http".equalsIgnoreCase(profile.profileImageUrl().getScheme()));
     }
 
-    private static CommentResult toResult(CommentSnapshot comment, Profile profile, @Nullable UUID viewerId) {
+    private static CommentResult toResult(CommentSnapshot comment, @Nullable Profile profile, @Nullable UUID viewerId) {
         return new CommentResult(comment.id(), profile, comment.content(), comment.createdAt(),
-                comment.authorId().equals(viewerId));
+                profile != null && comment.authorId().equals(viewerId));
     }
 }

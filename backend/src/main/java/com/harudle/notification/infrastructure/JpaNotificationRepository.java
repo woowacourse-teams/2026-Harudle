@@ -30,8 +30,11 @@ class JpaNotificationRepository implements NotificationRepository {
     private static final String VISIBLE_PARENT_JOIN = """
             JOIN feeds f ON f.id = n.feed_id
             JOIN diaries d ON d.id = f.diary_id
+            JOIN users feed_author ON feed_author.id = d.user_id
             """;
-    private static final String VISIBLE_PARENT_CONDITION = " f.deleted_at IS NULL AND d.deleted_at IS NULL ";
+    private static final String VISIBLE_PARENT_CONDITION = """
+             f.deleted_at IS NULL AND d.deleted_at IS NULL AND feed_author.deleted_at IS NULL
+            """;
     // Keep historical rows, but show a LIKE only while its exact source like is active.
     // COMMENT history does not depend on whether the original comment still exists.
     private static final String VISIBLE_ACTION_CONDITION = """
@@ -70,8 +73,11 @@ class JpaNotificationRepository implements NotificationRepository {
             SET read_at = COALESCE(n.read_at, :readAt)
             WHERE n.id = :notificationId AND n.recipient_user_id = :recipientId
               AND EXISTS (
-                  SELECT 1 FROM feeds f JOIN diaries d ON d.id = f.diary_id
-                  WHERE f.id = n.feed_id AND f.deleted_at IS NULL AND d.deleted_at IS NULL
+                  SELECT 1 FROM feeds f
+                  JOIN diaries d ON d.id = f.diary_id
+                  JOIN users feed_author ON feed_author.id = d.user_id
+                  WHERE f.id = n.feed_id AND
+            """ + VISIBLE_PARENT_CONDITION + """
               )
             """ + VISIBLE_ACTION_CONDITION;
 

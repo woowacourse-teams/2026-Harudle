@@ -3,13 +3,18 @@ package com.harudle.feed.infrastructure;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.harudle.diary.service.DiaryDeletionService;
+import com.harudle.feed.domain.Feed;
 import com.harudle.feed.repository.FeedLikeRepository;
+import com.harudle.feed.service.FeedDeletionService;
 import com.harudle.feed.service.FeedLikeService;
 import com.harudle.feed.service.exception.FeedNotFoundException;
 import com.harudle.feed.service.port.FeedInteractionPort;
@@ -20,7 +25,11 @@ import com.harudle.notification.service.port.InAppNotificationRecorder;
 import com.harudle.notification.service.port.InAppNotificationRecorder.Interaction;
 import com.harudle.notification.service.port.InAppNotificationRecorder.Result;
 import com.harudle.notification.service.port.InAppNotificationRecorder.Type;
+import com.harudle.push.service.port.FeedPushOutbox;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import jakarta.servlet.http.Cookie;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -43,7 +52,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.dao.InvalidDataAccessApiUsageException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -52,6 +60,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.IllegalTransactionStateException;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -74,6 +83,15 @@ class FeedLikePersistenceTest {
 
     @Autowired
     private FeedLikeService service;
+
+    @Autowired
+    private DiaryDeletionService diaryDeletion;
+
+    @Autowired
+    private FeedDeletionService feedDeletion;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     @Autowired
     private FeedInteractionPort interactions;
@@ -99,6 +117,9 @@ class FeedLikePersistenceTest {
     @MockitoBean
     private JwtDecoder jwtDecoder;
 
+    @MockitoBean
+    private FeedPushOutbox outbox;
+
     private final List<UUID> fixtureUsers = new ArrayList<>();
     private UUID authorId;
     private UUID viewerId;
@@ -112,6 +133,7 @@ class FeedLikePersistenceTest {
         diaryId = createDiary(authorId);
         feedId = createFeed(diaryId);
         when(jwtDecoder.decode("member-token")).thenReturn(jwt("member-token", viewerId));
+        when(outbox.cancelUnsentByFeed(any())).thenAnswer(invocation -> cancelUnsentJobs(invocation.getArgument(0)));
     }
 
     @AfterEach
@@ -301,8 +323,7 @@ class FeedLikePersistenceTest {
         jdbc.update("UPDATE feeds SET like_count = 0 WHERE id = ?", feedId);
 
         assertThatThrownBy(() -> service.unlike(viewerId, feedId))
-                .isInstanceOf(InvalidDataAccessApiUsageException.class)
-                .hasRootCauseInstanceOf(IllegalStateException.class);
+                .isInstanceOf(IllegalStateException.class);
 
         assertThat(onlyLikeId()).isEqualTo(originalLikeId);
         assertThat(intValue("SELECT like_count FROM feeds WHERE id = ?", feedId)).isZero();
@@ -399,20 +420,91 @@ class FeedLikePersistenceTest {
     }
 
     @Test
-    @DisplayName("피드 삭제가 먼저 잠금을 잡으면 기다리던 좋아요는 삭제 커밋 후 실패한다")
+    @DisplayName("실제 피드 삭제 서비스가 먼저 잠그면 기다리던 좋아요는 삭제 커밋 후 실패한다")
     void rejectLikeWaitingForFeedDeletion() throws Exception {
         assertDeletionWins(false);
     }
 
     @Test
-    @DisplayName("일기→피드 순서로 삭제 잠금을 잡으면 기다리던 좋아요는 삭제 커밋 후 실패한다")
+    @DisplayName("실제 일기 삭제 서비스가 일기→피드를 잠그면 기다리던 좋아요는 삭제 커밋 후 실패한다")
     void rejectLikeWaitingForDiaryAndFeedDeletion() throws Exception {
         assertDeletionWins(true);
     }
 
     @Test
-    @DisplayName("좋아요의 피드 잠금은 커밋까지 유지되어 뒤따르는 피드 삭제와 직렬화한다")
+    @DisplayName("좋아요가 선점하면 실제 피드 삭제 서비스는 반응 커밋을 기다리고 개수를 보존한다")
     void serializeDeletionAfterLikeTransaction() throws Exception {
+        assertDeletionAfterLike(false);
+    }
+
+    @Test
+    @DisplayName("좋아요가 선점하면 실제 일기 삭제 서비스는 피드 잠금을 기다리고 반응과 개수를 보존한다")
+    void serializeActualDiaryDeletionAfterLikeTransaction() throws Exception {
+        assertDeletionAfterLike(true);
+    }
+
+    @Test
+    @DisplayName("실제 일기 삭제가 생명주기를 통해 피드도 삭제하고 이후 좋아요·취소는 404다")
+    void actualDiaryDeletionHidesFeedButPreservesReactionHistory() {
+        service.like(viewerId, feedId);
+        UUID job = createPendingPushJob();
+
+        diaryDeletion.delete(authorId, diaryId);
+
+        assertProductionDeletion(true);
+        assertCounts(1, 0);
+        assertThat(notificationCount()).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT status FROM notification_outbox WHERE id = ?", String.class, job))
+                .isEqualTo("CANCELLED");
+        assertThat(reader.findLikedFeedIds(viewerId, Set.of(feedId))).isEmpty();
+        assertThatThrownBy(() -> service.like(viewerId, feedId)).isInstanceOf(FeedNotFoundException.class);
+        assertThatThrownBy(() -> service.unlike(viewerId, feedId)).isInstanceOf(FeedNotFoundException.class);
+        assertCounts(1, 0);
+        assertThat(notificationCount()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("같은 트랜잭션의 관리 Feed 엔티티·좋아요·일기 삭제가 오래된 카운터를 다시 저장하지 않는다")
+    void preserveCounterWhenManagedFeedIsLoadedBeforeLikeAndDiaryDeletion() {
+        transactions.executeWithoutResult(status -> {
+            Feed managedFeed = entityManager.find(Feed.class, feedId);
+            assertThat(managedFeed.getLikeCount()).isZero();
+            assertThat(service.like(viewerId, feedId).likeCount()).isEqualTo(1);
+            assertThat(managedFeed.getLikeCount()).isEqualTo(1);
+
+            diaryDeletion.delete(authorId, diaryId);
+
+            assertThat(managedFeed.isDeleted()).isTrue();
+            assertThat(managedFeed.getLikeCount()).isEqualTo(1);
+        });
+
+        assertProductionDeletion(true);
+        assertCounts(1, 0);
+        assertThat(notificationCount()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("실제 일기 삭제 중 푸시 취소가 실패하면 일기·피드·작업을 롤백하고 기존 좋아요를 유지한다")
+    void rollbackActualDiaryDeletionWhenPushCancellationFails() {
+        service.like(viewerId, feedId);
+        UUID job = createPendingPushJob();
+        doAnswer(invocation -> {
+            cancelUnsentJobs(invocation.getArgument(0));
+            throw new IllegalStateException("테스트 푸시 취소 저장 실패");
+        }).when(outbox).cancelUnsentByFeed(any());
+
+        assertThatThrownBy(() -> diaryDeletion.delete(authorId, diaryId)).isInstanceOf(IllegalStateException.class);
+
+        assertThat(intValue("SELECT count(*) FROM diaries WHERE id = ? AND deleted_at IS NULL", diaryId)).isEqualTo(1);
+        assertThat(intValue("SELECT count(*) FROM feeds WHERE id = ? AND deleted_at IS NULL", feedId)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT status FROM notification_outbox WHERE id = ?", String.class, job))
+                .isEqualTo("PENDING");
+        assertCounts(1, 0);
+        assertThat(notificationCount()).isEqualTo(1);
+        assertThat(reader.findLikedFeedIds(viewerId, Set.of(feedId))).containsExactly(feedId);
+    }
+
+    private void assertDeletionAfterLike(boolean deleteDiary) throws Exception {
         CountDownLatch liked = new CountDownLatch(1);
         CountDownLatch releaseLike = new CountDownLatch(1);
         AtomicInteger deletionPid = new AtomicInteger();
@@ -426,15 +518,18 @@ class FeedLikePersistenceTest {
                 assertThat(liked.await(5, TimeUnit.SECONDS)).isTrue();
                 Future<?> deletion = executor.submit(() -> transactions.executeWithoutResult(status -> {
                     deletionPid.set(intValue("SELECT pg_backend_pid()"));
-                    jdbc.update("UPDATE feeds SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", feedId);
+                    deleteThroughProductionService(deleteDiary);
                 }));
                 awaitBlockedBackend(deletionPid);
                 releaseLike.countDown();
                 like.get(10, TimeUnit.SECONDS);
                 deletion.get(10, TimeUnit.SECONDS);
+                assertProductionDeletion(deleteDiary);
                 assertCounts(1, 0);
                 assertThat(notificationCount()).isEqualTo(1);
                 assertThat(reader.findLikedFeedIds(viewerId, Set.of(feedId))).isEmpty();
+                assertThatThrownBy(() -> service.like(viewerId, feedId)).isInstanceOf(FeedNotFoundException.class);
+                assertThatThrownBy(() -> service.unlike(viewerId, feedId)).isInstanceOf(FeedNotFoundException.class);
             } finally {
                 releaseLike.countDown();
             }
@@ -567,12 +662,7 @@ class FeedLikePersistenceTest {
         AtomicInteger likePid = new AtomicInteger();
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
             Future<?> deletion = executor.submit(() -> transactions.executeWithoutResult(status -> {
-                if (deleteDiary) {
-                    uuidValue("SELECT id FROM diaries WHERE id = ? FOR UPDATE", diaryId);
-                    jdbc.update("UPDATE diaries SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", diaryId);
-                }
-                uuidValue("SELECT id FROM feeds WHERE id = ? FOR UPDATE", feedId);
-                jdbc.update("UPDATE feeds SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", feedId);
+                deleteThroughProductionService(deleteDiary);
                 deletionReady.countDown();
                 await(releaseDeletion);
             }));
@@ -587,12 +677,55 @@ class FeedLikePersistenceTest {
                 releaseDeletion.countDown();
                 deletion.get(10, TimeUnit.SECONDS);
                 assertThat(like.get(10, TimeUnit.SECONDS)).isInstanceOf(FeedNotFoundException.class);
+                assertProductionDeletion(deleteDiary);
                 assertCounts(0, 0);
                 assertThat(notificationCount()).isZero();
+                assertThatThrownBy(() -> service.unlike(viewerId, feedId)).isInstanceOf(FeedNotFoundException.class);
             } finally {
                 releaseDeletion.countDown();
             }
         }
+    }
+
+    private void deleteThroughProductionService(boolean deleteDiary) {
+        if (deleteDiary) {
+            diaryDeletion.delete(authorId, diaryId);
+        } else {
+            feedDeletion.delete(authorId, feedId);
+        }
+    }
+
+    private void assertProductionDeletion(boolean diaryDeleted) {
+        Timestamp feedDeletedAt = jdbc.queryForObject("SELECT deleted_at FROM feeds WHERE id = ?", Timestamp.class, feedId);
+        Timestamp diaryDeletedAt = jdbc.queryForObject("SELECT deleted_at FROM diaries WHERE id = ?", Timestamp.class, diaryId);
+        assertThat(feedDeletedAt).isNotNull();
+        if (diaryDeleted) {
+            assertThat(diaryDeletedAt).isEqualTo(feedDeletedAt);
+        } else {
+            assertThat(diaryDeletedAt).isNull();
+        }
+    }
+
+    private int cancelUnsentJobs(UUID targetFeedId) {
+        assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isTrue();
+        return jdbc.update("""
+                UPDATE notification_outbox
+                SET status = 'CANCELLED', locked_until = NULL, lock_token = NULL,
+                    sent_at = NULL, updated_at = CURRENT_TIMESTAMP
+                WHERE feed_id = ? AND status IN ('PENDING', 'PROCESSING')
+                """, targetFeedId);
+    }
+
+    private UUID createPendingPushJob() {
+        UUID registration = UUID.randomUUID();
+        jdbc.update("INSERT INTO push_registrations (id, user_id, device_id, recipient_value) VALUES (?, ?, ?, ?)",
+                registration, authorId, UUID.randomUUID(), "token-" + registration);
+        UUID job = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO notification_outbox (id, event_id, feed_id, recipient_user_id, push_registration_id)
+                VALUES (?, ?, ?, ?, ?)
+                """, job, UUID.randomUUID(), feedId, authorId, registration);
+        return job;
     }
 
     private <T> List<T> runConcurrently(List<Callable<T>> tasks) throws Exception {

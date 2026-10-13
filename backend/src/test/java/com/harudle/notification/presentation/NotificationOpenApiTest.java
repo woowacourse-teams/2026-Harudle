@@ -30,6 +30,7 @@ class NotificationOpenApiTest {
         String operation = "$.paths['/api/v1/notifications'].get";
         mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk())
                 .andExpect(jsonPath(operation + ".description").value(containsString("좋아요 취소 시 숨기며")))
+                .andExpect(jsonPath(operation + ".description").value(containsString("피드 작성자가 탈퇴한 알림")))
                 .andExpect(jsonPath(operation + ".description").value(containsString("COMMENT 알림은 댓글이 삭제돼도 유지")))
                 .andExpect(jsonPath(operation + ".security[0].bearerAuth").isArray())
                 .andExpect(jsonPath(operation + ".security[0].csrfToken").doesNotExist())
@@ -51,6 +52,7 @@ class NotificationOpenApiTest {
         String operation = "$.paths['/api/v1/notifications/{notificationId}'].patch";
         mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk())
                 .andExpect(jsonPath(operation + ".description").value(containsString("좋아요가 취소된 LIKE 알림은 404")))
+                .andExpect(jsonPath(operation + ".description").value(containsString("피드 작성자가 탈퇴한 알림도 404")))
                 .andExpect(jsonPath(operation + ".security[0].bearerAuth").isArray())
                 .andExpect(jsonPath(operation + ".security[0].csrfToken").isArray())
                 .andExpect(jsonPath(operation + ".responses['204']").exists())

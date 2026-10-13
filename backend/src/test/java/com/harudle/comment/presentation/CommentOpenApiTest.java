@@ -60,4 +60,19 @@ class CommentOpenApiTest {
                 .andExpect(jsonPath("$.components.schemas.CommentResponse.properties.author['$ref']")
                         .value("#/components/schemas/CommentAuthorResponse"));
     }
+
+    @Test
+    void documentsWithdrawnAuthorFieldsAsNullableWhileKeepingUuidAndUriStringFormats() throws Exception {
+        String author = "$.components.schemas.CommentAuthorResponse.properties";
+        mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.components.schemas.CommentResponse.properties.author['$ref']")
+                        .value("#/components/schemas/CommentAuthorResponse"))
+                .andExpect(jsonPath(author + ".id.type").value("string"))
+                .andExpect(jsonPath(author + ".id.nullable").value(true))
+                .andExpect(jsonPath(author + ".id.format").value("uuid"))
+                .andExpect(jsonPath(author + ".nickname.type").value("string"))
+                .andExpect(jsonPath(author + ".profileImageUrl.type").value("string"))
+                .andExpect(jsonPath(author + ".profileImageUrl.nullable").value(true))
+                .andExpect(jsonPath(author + ".profileImageUrl.format").value("uri"));
+    }
 }

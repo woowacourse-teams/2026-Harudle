@@ -43,7 +43,8 @@ com.harudle
 | `auth` | 사용자 조회, 카카오 OAuth 로그인, Access/Refresh Token 발급·갱신·폐기 | `users`, `oauth_accounts`, `refresh_tokens` |
 | `diary` | 일기 저장, 월간 히스토리와 상세 조회, 소프트 삭제 | `diaries` |
 | `generation` | 일일 생성 횟수, 멱등성, AI 생성 상태, 실패 및 고아 작업 복구 | `daily_generation_usage`, `generation_prompts`, `comic_generations` |
-| `share` | 성공한 생성 결과의 공유 링크 생성과 인증 없는 공개 조회 | `share_links` |
+| `feed` | 완성된 만화의 공개 게시·상세 조회와 피드 주소 공유 | `feeds` |
+| `share` | 기존 공유 링크 데이터와 일기 삭제 시 정리 코드 | `share_links` |
 
 각 도메인은 구현 규모에 따라 `domain`, `application`, `presentation`, `infrastructure` 하위 패키지로 확장합니다.
 AI와 S3 같은 외부 시스템 연동은 독립 도메인으로 만들지 않고 `generation.infrastructure`의 어댑터로 둡니다. 보안 설정,
@@ -197,6 +198,56 @@ ADC를 찾을 수 없으면 애플리케이션 시작에 실패하며 Express �
 
 공식 안내: [AWS 연동 WIF](https://docs.cloud.google.com/iam/docs/workload-identity-federation-with-other-clouds),
 [Nano Banana 2.1 모델](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/nano-banana-2-1).
+
+## Qwen 스토리보드 어댑터
+
+`QwenStoryboardGenerator`는 기존 `StoryboardGenerator`를 구현합니다. Gemini와 Qwen 모두
+`StoryboardResponseSchema`, `StoryboardJsonCodec`, `StoryboardResponseMapper`로 네 컷 JSON을 검증하고
+같은 `GeneratedStoryboard`를 반환합니다. 따라서 생성된 스토리보드는 기존 이미지 프롬프트 렌더러로
+전달할 수 있습니다. Gemini SDK의 `propertyOrdering` 변환은 Gemini 어댑터에서 처리합니다.
+
+Qwen HTTP 호출과 SSE 파싱은 별도 구현체인 `QwenChatClient`가 담당합니다. 현재는 공통
+`ChatCompletionClient` 인터페이스를 추가하지 않습니다. 다른 Provider는 `StoryboardGenerator` 구현을
+추가하고, 같은 호출 규격을 공유할 실제 구현체가 생기면 클라이언트 인터페이스를 추출할 수 있습니다.
+
+기본 설정은 `qwen3.8-max`, 추론 활성화, `thinking_budget=1024`, `max_tokens=8192`, `json_object`,
+요청 전체 제한 시간 180초입니다. `QwenStoryboardSettings`로 모델명, 추론 예산, 출력 한도와 제한 시간을
+변경합니다. `json_object`에서는 기존 시스템 프롬프트 뒤에 공통 출력 스키마를 붙입니다.
+
+스토리보드 Provider는 `STORYBOARD_PROVIDER`로 선택합니다. 값은 소문자 `gemini` 또는 `qwen`이며
+기본값은 `gemini`입니다. dev에서 Qwen 스토리보드와 기존 Gemini 이미지 생성을 연결하려면 서버의
+`.env`에 다음 값을 설정하고 변경된 백엔드로 컨테이너를 재생성합니다.
+
+```dotenv
+STORYBOARD_PROVIDER=qwen
+QWEN_TOKEN_PLAN_API_KEY=<sk-sp- 전용 키>
+QWEN_STORYBOARD_MODEL=qwen3.8-max
+QWEN_THINKING_BUDGET=1024
+QWEN_MAX_OUTPUT_TOKENS=8192
+QWEN_REQUEST_TIMEOUT=180s
+```
+
+현재 배포 Compose의 `env_file: .env`로 위 변수가 전달됩니다. Gemini 이미지 생성에 필요한 인증·모델,
+S3 설정도 함께 사용합니다. API 키는 서버 환경에 주입하고 Git에는 저장하지 않습니다.
+Qwen을 선택했을 때 Qwen 설정을 검증하며, 잘못된 Provider 값이나 필수 키 누락은 시작 시 거절합니다.
+설정 변경은 애플리케이션 재시작 후 적용됩니다.
+
+기본 클라이언트는 Token Plan 전용 엔드포인트와 `sk-sp-` 키를 사용합니다. 키는 실행 환경에서 주입하며
+예외와 로그에 응답 원문이나 키를 남기지 않습니다. HTTP 상태, 타임아웃, 통신 실패, 잘린 출력과 응답
+검증 실패를 기존 `AiGenerationErrorType`으로 변환합니다. 클라이언트 자동 재시도는 비활성화되어 있습니다.
+추론 토큰이 응답에 없으면 알 수 없는 값으로 유지하며 최종 답변 토큰을 임의로 계산하지 않습니다.
+
+Qwen 호출은 `generation_stage_completed` 로그에 `provider=qwen`, `stage=storyboard`, 모델,
+성공 여부·오류 종류, 생성 시간과 토큰을 기록합니다. 응답을 완전히 수신하면 HTTP 헤더·첫 추론·첫 최종 답변·완료
+수신 시간도 기록합니다. 토큰 집계는 기존 생성 완료 저장 경로로 전달하며, 실패 응답에서 이미 받은 사용량은
+지표에만 기록합니다. 키·일기·응답·추론 원문을 로그에 포함하지 않습니다.
+
+지표는 `harudle.qwen.stage.calls`, `harudle.qwen.stage.duration`, `harudle.qwen.tokens`,
+`harudle.qwen.response.duration`이며 모델과 단계별로 확인합니다. 기존 Gemini 이미지 생성 시간과
+Qwen 스토리보드 생성 시간을 각각 비교할 수 있습니다. 종료 시 Qwen HTTP 실행기와 연결 풀을 정리합니다.
+
+Provider 선택은 dev에서 Qwen의 품질과 생성 시간을 확인하기 위한 고정 선택입니다. Gemini에서 Qwen으로
+자동 전환하는 보조 Provider 정책은 후속 단계에서 연결합니다.
 
 ## 테스트
 

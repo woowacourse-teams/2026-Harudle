@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -15,11 +16,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.harudle.comment.query.CommentCursor;
 import com.harudle.comment.service.CommentCursorCodec;
 import com.harudle.comment.service.CommentService;
+import com.harudle.diary.service.DiaryDeletionService;
+import com.harudle.feed.service.FeedDeletionService;
 import com.harudle.feed.service.FeedLikeService;
 import com.harudle.notification.repository.NotificationRepository;
 import com.harudle.notification.service.NotificationService;
 import com.harudle.notification.service.exception.NotificationNotFoundException;
 import com.harudle.profile.service.port.PublicProfileReader;
+import com.harudle.push.service.port.FeedPushOutbox;
 import jakarta.servlet.http.Cookie;
 import java.net.URI;
 import java.sql.Timestamp;
@@ -28,6 +32,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Callable;
@@ -91,6 +96,10 @@ class NotificationPersistenceTest {
     @Autowired
     private CommentService comments;
     @Autowired
+    private DiaryDeletionService diaryDeletion;
+    @Autowired
+    private FeedDeletionService feedDeletion;
+    @Autowired
     private CommentCursorCodec commentCursorCodec;
     @Autowired
     private JdbcTemplate jdbc;
@@ -102,6 +111,8 @@ class NotificationPersistenceTest {
     private DatabaseTestProfiles profiles;
     @MockitoBean
     private JwtDecoder jwtDecoder;
+    @MockitoBean
+    private FeedPushOutbox outbox;
 
     private final List<UUID> fixtureUsers = new ArrayList<>();
     private UUID recipientId;
@@ -277,6 +288,57 @@ class NotificationPersistenceTest {
         assertThat(page.items().stream().map(item -> item.id()).toList()).containsExactly(visible);
         assertThat(page.unreadCount()).isEqualTo(1);
         assertThat(intValue("SELECT count(*) FROM notifications WHERE recipient_user_id = ?", recipientId)).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("수신자는 활성이어도 부모 피드 작성자가 탈퇴하면 좋아요·댓글 알림의 모든 조회와 읽음 경로에서 제외한다")
+    void hideNotificationsAfterFeedAuthorWasSoftDeleted() throws Exception {
+        UUID targetDiary = createDiary(otherRecipientId);
+        UUID targetFeed = createFeed(targetDiary);
+        UUID likeNotice = insertNotification(recipientId, actorId, targetFeed, "LIKE", FIXTURE_TIME);
+        UUID comment = UUID.randomUUID();
+        UUID commentNotice = UUID.randomUUID();
+        jdbc.update("INSERT INTO comments (id, feed_id, author_id, content, created_at) VALUES (?, ?, ?, ?, ?)",
+                comment, targetFeed, actorId, "원인 댓글이 존재하는 알림", Timestamp.from(FIXTURE_TIME));
+        jdbc.update("UPDATE feeds SET comment_count = comment_count + 1 WHERE id = ?", targetFeed);
+        insertNotificationWithSource(commentNotice, recipientId, actorId, targetFeed, "COMMENT", comment,
+                FIXTURE_TIME.plusSeconds(1));
+        transactions.executeWithoutResult(status ->
+                assertThat(repository.markRead(likeNotice, recipientId, FIXTURE_TIME)).isTrue());
+        assertThat(repository.findAfter(recipientId, Optional.empty(), 20)).hasSize(2);
+        assertThat(repository.countUnread(recipientId)).isEqualTo(1);
+        assertThat(repository.findVisibleById(likeNotice)).isPresent();
+        assertThat(repository.findVisibleById(commentNotice)).isPresent();
+
+        jdbc.update("UPDATE users SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", otherRecipientId);
+
+        assertThat(repository.isActiveMember(recipientId)).isTrue();
+        assertHiddenNotifications(List.of(likeNotice, commentNotice));
+        assertThat(readAt(likeNotice)).isEqualTo(FIXTURE_TIME);
+        assertThat(readAt(commentNotice)).isNull();
+        assertThat(intValue("SELECT count(*) FROM notifications WHERE feed_id = ?", targetFeed)).isEqualTo(2);
+        assertThat(intValue("SELECT count(*) FROM feed_likes WHERE feed_id = ? AND user_id = ?", targetFeed, actorId))
+                .isEqualTo(1);
+        assertThat(uuidValue("SELECT source_action_id FROM notifications WHERE id = ?", likeNotice))
+                .isEqualTo(uuidValue("SELECT id FROM feed_likes WHERE feed_id = ? AND user_id = ?", targetFeed, actorId));
+        assertThat(intValue("SELECT count(*) FROM comments WHERE id = ? AND deleted_at IS NULL", comment))
+                .isEqualTo(1);
+        assertThat(intValue("SELECT like_count FROM feeds WHERE id = ?", targetFeed)).isEqualTo(1);
+        assertThat(intValue("SELECT comment_count FROM feeds WHERE id = ?", targetFeed)).isEqualTo(1);
+        assertThat(intValue("SELECT count(*) FROM feeds WHERE id = ? AND deleted_at IS NULL", targetFeed)).isEqualTo(1);
+        assertThat(intValue("SELECT count(*) FROM diaries WHERE id = ? AND deleted_at IS NULL", targetDiary)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("실제 개인 일기 삭제는 연결 피드와 푸시를 정리하고 기존 알림을 목록·미읽음·읽음에서 숨긴다")
+    void hidePreservedNotificationsAfterActualDiaryDeletion() throws Exception {
+        assertActualDeletionHidesNotifications(true);
+    }
+
+    @Test
+    @DisplayName("실제 피드 삭제는 원본 일기를 보존하고 기존 알림을 목록·미읽음·읽음에서 숨긴다")
+    void hidePreservedNotificationsAfterActualFeedDeletion() throws Exception {
+        assertActualDeletionHidesNotifications(false);
     }
 
     @Test
@@ -769,6 +831,64 @@ class NotificationPersistenceTest {
             } finally {
                 releaseNotice.countDown();
             }
+        }
+    }
+
+    private void assertActualDeletionHidesNotifications(boolean deleteDiary) throws Exception {
+        likes.like(actorId, feedId);
+        UUID comment = comments.create(actorId, feedId, "삭제 이후에도 이력으로 보존할 댓글").id();
+        UUID likeNotice = uuidValue("SELECT id FROM notifications WHERE feed_id = ? AND type = 'LIKE'", feedId);
+        UUID commentNotice = uuidValue("SELECT id FROM notifications WHERE source_action_id = ?", comment);
+        service.markRead(recipientId, likeNotice);
+        Instant originalReadAt = readAt(likeNotice);
+        assertThat(originalReadAt).isNotNull();
+        assertThat(service.list(recipientId, null, 20).unreadCount()).isEqualTo(1);
+
+        if (deleteDiary) {
+            diaryDeletion.delete(recipientId, diaryId);
+        } else {
+            feedDeletion.delete(recipientId, feedId);
+        }
+
+        Timestamp feedDeletedAt = jdbc.queryForObject("SELECT deleted_at FROM feeds WHERE id = ?", Timestamp.class, feedId);
+        Timestamp diaryDeletedAt = jdbc.queryForObject("SELECT deleted_at FROM diaries WHERE id = ?", Timestamp.class, diaryId);
+        assertThat(feedDeletedAt).isNotNull();
+        if (deleteDiary) {
+            assertThat(diaryDeletedAt).isEqualTo(feedDeletedAt);
+        } else {
+            assertThat(diaryDeletedAt).isNull();
+        }
+        verify(outbox).cancelUnsentByFeed(feedId);
+        assertHiddenNotifications(List.of(likeNotice, commentNotice));
+        assertThat(readAt(likeNotice)).isEqualTo(originalReadAt);
+        assertThat(readAt(commentNotice)).isNull();
+        assertThat(intValue("SELECT count(*) FROM notifications WHERE feed_id = ?", feedId)).isEqualTo(2);
+        assertThat(intValue("SELECT count(*) FROM feed_likes WHERE feed_id = ? AND user_id = ?", feedId, actorId))
+                .isEqualTo(1);
+        assertThat(intValue("SELECT count(*) FROM comments WHERE id = ? AND deleted_at IS NULL", comment))
+                .isEqualTo(1);
+        assertThat(intValue("SELECT like_count FROM feeds WHERE id = ?", feedId)).isEqualTo(1);
+        assertThat(intValue("SELECT comment_count FROM feeds WHERE id = ?", feedId)).isEqualTo(1);
+    }
+
+    private void assertHiddenNotifications(List<UUID> notifications) throws Exception {
+        profiles.reset();
+        mockMvc.perform(recipient(get(listPath())))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items", hasSize(0)))
+                .andExpect(jsonPath("$.unreadCount").value(0))
+                .andExpect(jsonPath("$.hasNext").value(false))
+                .andExpect(jsonPath("$.nextCursor").value((Object) null));
+        assertThat(profiles.callCount()).isZero();
+        assertThat(repository.findAfter(recipientId, Optional.empty(), 20)).isEmpty();
+        assertThat(repository.countUnread(recipientId)).isZero();
+        for (UUID notice : notifications) {
+            assertThat(repository.findVisibleById(notice)).isEmpty();
+            transactions.executeWithoutResult(status ->
+                    assertThat(repository.markRead(notice, recipientId, FIXTURE_TIME.plusSeconds(60))).isFalse());
+            mockMvc.perform(withCsrf(recipient(patch(readPath(notice))))
+                            .contentType(MediaType.APPLICATION_JSON).content("{\"read\":true}"))
+                    .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("NOTIFICATION_NOT_FOUND"));
+            assertThat(intValue("SELECT count(*) FROM notifications WHERE id = ?", notice)).isEqualTo(1);
         }
     }
 
