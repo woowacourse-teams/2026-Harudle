@@ -8,6 +8,7 @@ import com.harudle.generation.diary.domain.Storyboard;
 import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
 import com.harudle.generation.diary.service.exception.AiProviderFailureType;
+import com.harudle.generation.diary.service.port.StoryboardAttemptContext;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
 import com.harudle.generation.diary.service.port.dto.GeneratedStoryboard;
 import com.harudle.generation.diary.service.port.dto.StoryboardGenerationRequest;
@@ -42,23 +43,40 @@ public final class QwenStoryboardGenerator implements StoryboardGenerator {
         QwenChatClient.Completion result = null;
         GenerationTokenUsage usage = null;
         try {
+            request.attemptContext().ifPresent(StoryboardAttemptContext::checkActive);
             QwenChatClient.Request prepared = requestFactory.create(request);
             phase = "provider";
-            result = client.generate(prepared);
+            result = client.generate(prepared, request.attemptContext());
             phase = "response";
+            request.attemptContext().ifPresent(StoryboardAttemptContext::checkActive);
             usage = tokenUsage(result.usage(), settings.thinking());
             Storyboard storyboard = codec.decode(result.content());
+            request.attemptContext().ifPresent(StoryboardAttemptContext::checkActive);
             return new GeneratedStoryboard(storyboard, usage);
+        } catch (AiGenerationException exception) {
+            failureType = exception.errorType();
+            throw exception;
         } catch (QwenChatException exception) {
             failureType = resolveErrorType(exception);
             throw report(failureType, exception.statusCode(), resolveProviderFailureType(exception, failureType));
         } catch (RuntimeException exception) {
-            failureType = "response".equals(phase)
-                    ? AiGenerationErrorType.RESPONSE_PROCESSING_ERROR : AiGenerationErrorType.INTERNAL_ERROR;
-            throw report(failureType, null, AiProviderFailureType.UNKNOWN);
+            AiGenerationException failure = translateLocalFailure(request, phase);
+            failureType = failure.errorType();
+            throw failure;
         } finally {
             stageMetrics.record(failureType, System.nanoTime() - started, result, usage);
         }
+    }
+
+    private AiGenerationException translateLocalFailure(StoryboardGenerationRequest request, String phase) {
+        try {
+            request.attemptContext().ifPresent(StoryboardAttemptContext::checkActive);
+        } catch (AiGenerationException exception) {
+            return exception;
+        }
+        AiGenerationErrorType errorType = "response".equals(phase)
+                ? AiGenerationErrorType.RESPONSE_PROCESSING_ERROR : AiGenerationErrorType.INTERNAL_ERROR;
+        return report(errorType, null, AiProviderFailureType.UNKNOWN);
     }
 
     public static GenerationTokenUsage tokenUsage(QwenChatClient.Usage usage, boolean thinking) {

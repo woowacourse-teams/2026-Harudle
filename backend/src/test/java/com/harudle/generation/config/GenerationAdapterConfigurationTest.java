@@ -3,6 +3,8 @@ package com.harudle.generation.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -10,6 +12,8 @@ import com.google.auth.oauth2.AccessToken;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.genai.Client;
 import com.google.genai.Models;
+import com.google.genai.types.ClientOptions;
+import com.google.genai.types.HttpOptions;
 import com.harudle.common.logging.ExternalApiLogger;
 import com.harudle.generation.adapter.out.gemini.GeminiDiaryImageGenerator;
 import com.harudle.generation.adapter.out.gemini.GeminiFailureReporter;
@@ -37,17 +41,21 @@ import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.core.env.MapPropertySource;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.test.util.ReflectionTestUtils;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
@@ -71,11 +79,11 @@ class GenerationAdapterConfigurationTest {
     void configureGenerationAdapters() {
         contextRunner.withPropertyValues(enabledAdapterProperties()).run(context -> {
             assertThat(context).hasNotFailed();
-            assertThat(context).hasSingleBean(Client.class);
+            assertThat(context.getBeansOfType(Client.class)).containsOnlyKeys("geminiClient", "geminiStoryboardClient");
             assertThat(context).hasSingleBean(GeminiClientFactory.class);
             assertThat(context.getBean(GeminiClientFactory.class)).isInstanceOf(ExpressGeminiClientFactory.class);
             assertThat(context).doesNotHaveBean(GoogleCredentials.class);
-            assertThat(context).hasSingleBean(Models.class);
+            assertThat(context.getBeansOfType(Models.class)).containsOnlyKeys("geminiModels", "geminiStoryboardModels");
             assertThat(context).hasSingleBean(S3Client.class);
             assertThat(context).hasSingleBean(S3Presigner.class);
             assertThat(context).hasSingleBean(GeminiFailureReporter.class);
@@ -90,7 +98,7 @@ class GenerationAdapterConfigurationTest {
             assertThat(context).doesNotHaveBean(ImageBackupService.class);
             assertThat(context).doesNotHaveBean("generateDiaryImageService");
 
-            Client client = context.getBean(Client.class);
+            Client client = context.getBean("geminiClient", Client.class);
             assertThat(client.vertexAI()).isTrue();
             assertThat(client.apiKey()).isEqualTo("test-api-key");
             assertThat(context.getBean(S3Client.class).serviceClientConfiguration().region())
@@ -110,6 +118,45 @@ class GenerationAdapterConfigurationTest {
     }
 
     @Test
+    @DisplayName("스토리보드 전용 Client를 분리하고 이미지의 제한 시간과 SDK 재시도 설정을 유지한다")
+    void separateStoryboardTransportFromImageTransport() {
+        GeminiClientFactory factory = spy(new ExpressGeminiClientFactory("test-api-key"));
+        contextRunner.withPropertyValues(enabledAdapterProperties())
+                .withPropertyValues("harudle.generation.storyboard.primary-timeout=45s")
+                .withInitializer(context -> context.addBeanFactoryPostProcessor(beanFactory ->
+                        beanFactory.registerSingleton("geminiClientFactory", factory)))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    Client image = context.getBean("geminiClient", Client.class);
+                    Client storyboard = context.getBean("geminiStoryboardClient", Client.class);
+                    assertThat(storyboard).isNotSameAs(image);
+                    assertThat(context.getBean("geminiModels")).isSameAs(image.models);
+                    assertThat(context.getBean("geminiStoryboardModels")).isSameAs(storyboard.models);
+                    assertThat(ReflectionTestUtils.getField(context.getBean(DiaryImageGenerator.class), "models"))
+                            .isSameAs(image.models);
+                    assertThat(ReflectionTestUtils.getField(context.getBean(StoryboardGenerator.class), "models"))
+                            .isSameAs(storyboard.models);
+
+                    var options = ArgumentCaptor.forClass(HttpOptions.class);
+                    var clients = ArgumentCaptor.forClass(ClientOptions.class);
+                    verify(factory, times(2)).create(options.capture(), clients.capture());
+                    HttpOptions imageOptions = options.getAllValues().stream()
+                            .filter(value -> value.timeout().orElseThrow() == 180_000).findFirst().orElseThrow();
+                    HttpOptions storyOptions = options.getAllValues().stream()
+                            .filter(value -> value.timeout().orElseThrow() == 45_000).findFirst().orElseThrow();
+                    assertThat(imageOptions.retryOptions().orElseThrow().attempts()).contains(3);
+                    assertThat(storyOptions.retryOptions().orElseThrow().attempts()).contains(1);
+                    assertThat(storyOptions.retryOptions().orElseThrow().httpStatusCodes()).contains(List.of());
+                    var http = clients.getAllValues().stream().flatMap(value -> value.customHttpClient().stream())
+                            .findFirst().orElseThrow();
+                    assertThat(http.callTimeoutMillis()).isEqualTo(Duration.ofSeconds(45).toMillis());
+                    assertThat(http.retryOnConnectionFailure()).isFalse();
+                    assertThat(http.followRedirects()).isFalse();
+                    assertThat(http.eventListenerFactory()).isSameAs(context.getBean("geminiStoryboardCallScope"));
+                });
+    }
+
+    @Test
     @DisplayName("Qwen을 선택하면 스토리보드 구현만 교체하고 Vertex 이미지 생성기를 구성한다")
     void selectQwenStoryboardWithVertexImageGeneration() {
         vertexContextRunner().withPropertyValues(
@@ -120,6 +167,8 @@ class GenerationAdapterConfigurationTest {
             assertThat(context).hasSingleBean(StoryboardGenerator.class);
             assertThat(context.getBean(StoryboardGenerator.class)).isInstanceOf(QwenStoryboardGenerator.class);
             assertThat(context).hasSingleBean(QwenChatClient.class);
+            assertThat(context).hasSingleBean(Client.class);
+            assertThat(context).doesNotHaveBean("geminiStoryboardClient");
             assertThat(context).hasSingleBean(QwenStageMetrics.class);
             assertThat(context).hasSingleBean(DiaryImageGenerator.class);
             assertThat(context.getBean(DiaryImageGenerator.class)).isInstanceOf(GeminiDiaryImageGenerator.class);
@@ -209,7 +258,7 @@ class GenerationAdapterConfigurationTest {
                     assertThat(context).hasSingleBean(GeminiClientFactory.class);
                     assertThat(context.getBean(GeminiClientFactory.class)).isInstanceOf(ExpressGeminiClientFactory.class);
                     assertThat(context).doesNotHaveBean(GoogleCredentials.class);
-                    assertThat(context.getBean(Client.class).apiKey()).isEqualTo("test-api-key");
+                    assertThat(context.getBean("geminiClient", Client.class).apiKey()).isEqualTo("test-api-key");
                 });
     }
 
@@ -223,7 +272,7 @@ class GenerationAdapterConfigurationTest {
                     .isEqualTo(GeminiClientProperties.AuthMode.VERTEX);
             assertThat(context).hasSingleBean(GeminiClientFactory.class);
             assertThat(context.getBean(GeminiClientFactory.class)).isInstanceOf(VertexGeminiClientFactory.class);
-            Client client = context.getBean(Client.class);
+            Client client = context.getBean("geminiClient", Client.class);
             assertThat(client.apiKey()).isNull();
             assertThat(client.project()).isEqualTo("test-project");
             assertThat(client.location()).isEqualTo("global");
@@ -251,8 +300,9 @@ class GenerationAdapterConfigurationTest {
                     assertThat(context).hasNotFailed();
                     assertThat(context).hasSingleBean(GeminiClientFactory.class);
                     assertThat(context.getBean(GeminiClientFactory.class)).isInstanceOf(VertexGeminiClientFactory.class);
-                    assertThat(context).hasSingleBean(Client.class);
-                    Client client = context.getBean(Client.class);
+                    assertThat(context.getBeansOfType(Client.class))
+                            .containsOnlyKeys("geminiClient", "geminiStoryboardClient");
+                    Client client = context.getBean("geminiClient", Client.class);
                     assertThat(client.vertexAI()).isTrue();
                     assertThat(client.apiKey()).isNull();
                     assertThat(client.project()).isEqualTo("test-project");
@@ -269,7 +319,7 @@ class GenerationAdapterConfigurationTest {
     void ignoreApiKeyInVertexMode() {
         vertexContextRunner().run(context -> {
             assertThat(context).hasNotFailed();
-            assertThat(context.getBean(Client.class).apiKey()).isNull();
+            assertThat(context.getBean("geminiClient", Client.class).apiKey()).isNull();
         });
     }
 

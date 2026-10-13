@@ -141,7 +141,7 @@ class ClaimedDiaryGenerationServiceTest {
         QwenChatClient client = mock(QwenChatClient.class);
         var codec = new StoryboardJsonCodec(JsonMapper.builder().build(), new StoryboardResponseMapper());
         String json = StoryboardTestFixtures.storyboardJson();
-        when(client.generate(any(QwenChatClient.Request.class))).thenReturn(new QwenChatClient.Completion(
+        when(client.generate(any(QwenChatClient.Request.class), any())).thenReturn(new QwenChatClient.Completion(
                 json, new QwenChatClient.Usage(100, 500, 110, 600, null), "stop", null));
         var qwen = new QwenStoryboardGenerator(client, QwenStoryboardSettings.defaults(), codec,
                 mock(ExternalApiLogger.class), new QwenStageMetrics(new SimpleMeterRegistry(), "qwen3.8-max"));

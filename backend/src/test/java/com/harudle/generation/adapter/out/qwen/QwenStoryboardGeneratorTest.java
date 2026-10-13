@@ -20,6 +20,8 @@ import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
 import com.harudle.generation.diary.service.exception.AiProviderFailureType;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
+import com.harudle.generation.diary.service.port.StoryboardAttemptContext;
+import com.harudle.generation.diary.service.port.StoryboardAttemptContext.CancellationReason;
 import com.harudle.generation.diary.service.port.dto.StoryboardGenerationRequest;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
@@ -28,12 +30,14 @@ import java.net.URI;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 import okhttp3.Call;
 import okhttp3.MediaType;
 import okhttp3.Protocol;
 import okhttp3.Request;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
+import okio.Timeout;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -56,6 +60,78 @@ class QwenStoryboardGeneratorTest {
     private final QwenStoryboardGenerator generator = new QwenStoryboardGenerator(
             new QwenChatClient(calls, mapper, KEY), settings, codec, logger,
             new QwenStageMetrics(meterRegistry, settings.model()));
+
+    @Test
+    @DisplayName("이미 만료된 컨텍스트는 준비 오류로 바꾸지 않고 TIMEOUT으로 기록한다")
+    void preserveExpiredContextBeforeRequest() {
+        var context = new StoryboardAttemptContext(0, () -> 0);
+
+        assertThatThrownBy(() -> generator.generate(input.withAttemptContext(context)))
+                .isInstanceOfSatisfying(AiGenerationException.class, failure ->
+                        assertThat(failure.errorType()).isEqualTo(AiGenerationErrorType.TIMEOUT));
+
+        verifyNoInteractions(calls, logger);
+        assertThat(meterRegistry.get("harudle.qwen.stage.calls").tag("failureType", "TIMEOUT").counter().count())
+                .isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("명시적 취소는 내부 오류로 바꾸지 않고 CANCELLED로 전달한다")
+    void preserveExplicitCancellationBeforeRequest() {
+        var context = new StoryboardAttemptContext(Duration.ofSeconds(60).toNanos(), () -> 0);
+        context.cancel(CancellationReason.CANCELLED);
+
+        assertThatThrownBy(() -> generator.generate(input.withAttemptContext(context)))
+                .isInstanceOfSatisfying(AiGenerationException.class, failure -> {
+                    assertThat(failure.errorType()).isEqualTo(AiGenerationErrorType.PROVIDER_ERROR);
+                    assertThat(failure.providerFailureType()).isEqualTo(AiProviderFailureType.CANCELLED);
+                });
+        verifyNoInteractions(calls, logger);
+    }
+
+    @Test
+    @DisplayName("HTTP 취소에 따른 I/O 오류를 원래 TIMEOUT 사유로 유지한다")
+    void preserveDeadlineAfterHttpCancellation() throws Exception {
+        var context = new StoryboardAttemptContext(Duration.ofSeconds(60).toNanos(), () -> 0);
+        when(calls.newCall(any(Request.class))).thenReturn(call);
+        when(call.timeout()).thenReturn(new Timeout());
+        when(call.execute()).thenAnswer(invocation -> {
+            context.cancel(CancellationReason.TIMEOUT);
+            throw new IOException("private cause");
+        });
+
+        assertThatThrownBy(() -> generator.generate(input.withAttemptContext(context)))
+                .isInstanceOfSatisfying(AiGenerationException.class, failure -> {
+                    assertThat(failure.errorType()).isEqualTo(AiGenerationErrorType.TIMEOUT);
+                    assertThat(failure.providerFailureType()).isEqualTo(AiProviderFailureType.UNKNOWN);
+                    assertThat(failure.getCause()).isNull();
+                });
+        verify(call).cancel();
+        verifyNoInteractions(logger);
+    }
+
+    @Test
+    @DisplayName("만료 후 JSON 검증이 실패해도 응답 처리 오류 대신 TIMEOUT으로 기록한다")
+    void preserveDeadlineAfterResponseValidationFailure() throws Exception {
+        AtomicLong clock = new AtomicLong();
+        var context = new StoryboardAttemptContext(Duration.ofSeconds(60).toNanos(), clock::get);
+        var failingCodec = mock(StoryboardJsonCodec.class);
+        when(failingCodec.schemaJson()).thenReturn("{}");
+        when(failingCodec.decode(any())).thenAnswer(invocation -> {
+            clock.set(Duration.ofSeconds(61).toNanos());
+            throw new IllegalArgumentException("fixture");
+        });
+        when(call.timeout()).thenReturn(new Timeout());
+        respond(200, completion(StoryboardTestFixtures.storyboardJson(), "stop", Map.of()));
+        var validatingGenerator = new QwenStoryboardGenerator(new QwenChatClient(calls, mapper, KEY), settings,
+                failingCodec, logger, new QwenStageMetrics(meterRegistry, settings.model()));
+
+        assertThatThrownBy(() -> validatingGenerator.generate(input.withAttemptContext(context)))
+                .isInstanceOfSatisfying(AiGenerationException.class, failure ->
+                        assertThat(failure.errorType()).isEqualTo(AiGenerationErrorType.TIMEOUT));
+        assertThat(meterRegistry.get("harudle.qwen.stage.calls").tag("failureType", "TIMEOUT").counter().count())
+                .isEqualTo(1);
+    }
 
     @Test
     @DisplayName("기존 포트로 생성하고 이미지 생성기가 사용하는 동일한 스토리보드를 반환한다")
