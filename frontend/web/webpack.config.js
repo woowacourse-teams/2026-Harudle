@@ -60,6 +60,10 @@ export default {
     new CopyWebpackPlugin({
       patterns: [
         {
+          from: path.resolve(__dirname, 'public/profile-images'),
+          to: 'profile-images',
+        },
+        {
           from: path.resolve(__dirname, 'manifest.json'),
           to: 'manifest.json',
         },

@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
+import static org.mockito.ArgumentMatchers.anySet;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -22,16 +24,14 @@ import com.harudle.feed.service.FeedLikeService;
 import com.harudle.notification.repository.NotificationRepository;
 import com.harudle.notification.service.NotificationService;
 import com.harudle.notification.service.exception.NotificationNotFoundException;
+import com.harudle.profile.service.DefaultPublicProfileReader;
 import com.harudle.profile.service.port.PublicProfileReader;
 import com.harudle.push.service.port.FeedPushOutbox;
 import jakarta.servlet.http.Cookie;
-import java.net.URI;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -50,19 +50,16 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.IllegalTransactionStateException;
@@ -73,9 +70,11 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest(properties = "harudle.generation.adapters.enabled=false")
+@SpringBootTest(properties = {
+        "harudle.generation.adapters.enabled=false",
+        "harudle.profile.image-base-url=https://test.example.com/profiles"
+})
 @AutoConfigureMockMvc
-@Import(NotificationPersistenceTest.ProfileTestConfiguration.class)
 class NotificationPersistenceTest {
 
     private static final Instant FIXTURE_TIME = Instant.parse("2026-10-12T03:00:00Z");
@@ -107,8 +106,10 @@ class NotificationPersistenceTest {
     private TransactionTemplate transactions;
     @Autowired
     private MockMvc mockMvc;
-    @Autowired
-    private DatabaseTestProfiles profiles;
+    @MockitoSpyBean
+    private DefaultPublicProfileReader profileReader;
+
+    private final ProfileReadProbe profiles = new ProfileReadProbe();
     @MockitoBean
     private JwtDecoder jwtDecoder;
     @MockitoBean
@@ -124,6 +125,10 @@ class NotificationPersistenceTest {
     @BeforeEach
     void setUp() {
         profiles.reset();
+        doAnswer(invocation -> {
+            profiles.recordRead(invocation.getArgument(0), jdbc.queryForObject("SHOW transaction_isolation", String.class));
+            return invocation.callRealMethod();
+        }).when(profileReader).readAll(anySet());
         recipientId = createMember();
         actorId = createMember();
         otherRecipientId = createMember();
@@ -668,7 +673,7 @@ class NotificationPersistenceTest {
     @Test
     @DisplayName("활성 행위자 프로필 누락은 503이지만 빈 목록과 읽음 처리는 프로필에 의존하지 않는다")
     void failUnavailableProfilesOnlyWhenListNeedsThem() throws Exception {
-        profiles.omitAllProfiles = true;
+        jdbc.update("UPDATE users SET nickname = NULL WHERE id = ?", actorId);
         mockMvc.perform(recipient(get(listPath()))).andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0))).andExpect(jsonPath("$.unreadCount").value(0));
         assertThat(profiles.callCount()).isZero();
@@ -711,7 +716,7 @@ class NotificationPersistenceTest {
                 assertThat(profiles.lastIsolation()).isEqualTo("repeatable read");
                 assertThat(snapshot.items()).hasSize(2).allMatch(item -> !item.read());
                 assertThat(snapshot.unreadCount()).isEqualTo(2);
-                assertThat(snapshot.items().getFirst().actor().nickname()).isEqualTo("알림통합테스트회원");
+                assertThat(snapshot.items().getFirst().actor().nickname()).isEqualTo("알림통합테스트회원1");
                 profiles.beforeQuery = null;
                 assertThat(service.list(recipientId, null, 20).unreadCount()).isEqualTo(1);
             } finally {
@@ -943,7 +948,8 @@ class NotificationPersistenceTest {
 
     private UUID createUser() {
         UUID id = UUID.randomUUID();
-        jdbc.update("INSERT INTO users (id, name, profile_image_code) VALUES (?, ?, 1)", id, "알림통합테스트회원");
+        jdbc.update("INSERT INTO users (id, name, nickname, profile_image_code) VALUES (?, ?, ?, 1)",
+                id, "알림통합테스트회원", "알림통합테스트회원" + fixtureUsers.size());
         fixtureUsers.add(id);
         return id;
     }
@@ -1038,51 +1044,21 @@ class NotificationPersistenceTest {
                 .issuedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(3600)).build();
     }
 
-    @TestConfiguration(proxyBeanMethods = false)
-    static class ProfileTestConfiguration {
+    static class ProfileReadProbe {
 
-        @Bean
-        DatabaseTestProfiles testOnlyPublicProfileReader(JdbcTemplate jdbc) {
-            return new DatabaseTestProfiles(jdbc);
-        }
-    }
-
-    /** This database-backed profile implementation is restricted to the test context. */
-    static class DatabaseTestProfiles implements PublicProfileReader {
-
-        private final JdbcTemplate jdbc;
         private final AtomicInteger calls = new AtomicInteger();
         private volatile Set<UUID> lastRequested = Set.of();
         private volatile String isolation;
-        private volatile boolean omitAllProfiles;
         private volatile Runnable beforeQuery;
 
-        DatabaseTestProfiles(JdbcTemplate jdbc) {
-            this.jdbc = jdbc;
-        }
-
-        @Override
-        public Map<UUID, Profile> readAll(Set<UUID> ids) {
+        void recordRead(Set<UUID> ids, String transactionIsolation) {
             calls.incrementAndGet();
             lastRequested = Set.copyOf(ids);
-            isolation = jdbc.queryForObject("SHOW transaction_isolation", String.class);
+            isolation = transactionIsolation;
             Runnable hook = beforeQuery;
             if (hook != null) {
                 hook.run();
             }
-            if (omitAllProfiles || ids.isEmpty()) {
-                return Map.of();
-            }
-            String placeholders = String.join(",", ids.stream().map(id -> "?").toList());
-            Map<UUID, Profile> result = new HashMap<>();
-            jdbc.query("SELECT id, COALESCE(nickname, name), profile_image_code FROM users "
-                            + "WHERE deleted_at IS NULL AND id IN (" + placeholders + ")",
-                    row -> {
-                        UUID id = row.getObject(1, UUID.class);
-                        result.put(id, new Profile(id, row.getString(2),
-                                URI.create("https://test.example.com/profiles/" + row.getInt(3) + ".png")));
-                    }, ids.toArray());
-            return Map.copyOf(result);
         }
 
         int callCount() {
@@ -1105,16 +1081,18 @@ class NotificationPersistenceTest {
             calls.set(0);
             lastRequested = Set.of();
             isolation = null;
-            omitAllProfiles = false;
             beforeQuery = null;
         }
     }
 }
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest(properties = "harudle.generation.adapters.enabled=false")
+@SpringBootTest(properties = {
+        "harudle.generation.adapters.enabled=false",
+        "harudle.profile.image-base-url=https://test.example.com/profiles"
+})
 @AutoConfigureMockMvc
-class NotificationWithoutProfilePersistenceTest {
+class NotificationProfileIntegrationPersistenceTest {
 
     @Container
     @ServiceConnection
@@ -1126,13 +1104,13 @@ class NotificationWithoutProfilePersistenceTest {
     @Autowired
     private MockMvc mockMvc;
     @Autowired
-    private ObjectProvider<PublicProfileReader> profiles;
+    private PublicProfileReader profiles;
     @MockitoBean
     private JwtDecoder jwtDecoder;
 
     @Test
-    @DisplayName("프로필 구현 없이도 앱이 시작하고 빈 목록·탈퇴 행위자·읽음은 성공하며 활성 행위자 목록만 503이다")
-    void bootAndReadWithoutProfileImplementation() throws Exception {
+    @DisplayName("실제 프로필 빈으로 미할당 행위자는 503이며 할당 후 정상 프로필과 탈퇴 익명화를 반환한다")
+    void readAssignedProfileAndAnonymizeDeletedActor() throws Exception {
         UUID recipient = UUID.randomUUID();
         UUID actor = UUID.randomUUID();
         UUID diary = UUID.randomUUID();
@@ -1149,7 +1127,8 @@ class NotificationWithoutProfilePersistenceTest {
             when(jwtDecoder.decode("no-profile-token")).thenReturn(Jwt.withTokenValue("no-profile-token")
                     .header("alg", "HS256").subject(recipient.toString()).issuedAt(Instant.now())
                     .expiresAt(Instant.now().plusSeconds(3600)).build());
-            assertThat(profiles.getIfAvailable()).isNull();
+            assertThat(profiles).isInstanceOf(DefaultPublicProfileReader.class);
+            assertThat(profiles.readAll(Set.of(actor))).isEmpty();
             mockMvc.perform(authenticated(get("/api/v1/notifications")))
                     .andExpect(status().isOk()).andExpect(jsonPath("$.items", hasSize(0)))
                     .andExpect(jsonPath("$.unreadCount").value(0));
@@ -1161,6 +1140,14 @@ class NotificationWithoutProfilePersistenceTest {
             mockMvc.perform(authenticated(get("/api/v1/notifications")))
                     .andExpect(status().isServiceUnavailable())
                     .andExpect(jsonPath("$.code").value("NOTIFICATION_UNAVAILABLE"));
+            jdbc.update("UPDATE users SET nickname = ?, profile_image_code = 1 WHERE id = ?", "프로필연동행위자", actor);
+            assertThat(profiles.readAll(Set.of(actor))).containsKey(actor);
+            mockMvc.perform(authenticated(get("/api/v1/notifications")))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.items[0].actor.nickname").value("프로필연동행위자"))
+                    .andExpect(jsonPath("$.items[0].actor.profileImageUrl").value("https://test.example.com/profiles/1.png"))
+                    .andExpect(jsonPath("$.items[0].message", containsString("프로필연동행위자")))
+                    .andExpect(jsonPath("$.unreadCount").value(1));
             mockMvc.perform(authenticated(patch("/api/v1/notifications/" + notice))
                             .cookie(new Cookie("XSRF-TOKEN", "csrf-value")).header("X-XSRF-TOKEN", "csrf-value")
                             .contentType(MediaType.APPLICATION_JSON).content("{\"read\":true}"))

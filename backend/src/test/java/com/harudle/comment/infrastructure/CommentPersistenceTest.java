@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.hamcrest.Matchers.hasSize;
+import static org.mockito.ArgumentMatchers.anySet;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -19,14 +21,13 @@ import com.harudle.comment.service.exception.CommentNotFoundException;
 import com.harudle.diary.service.DiaryDeletionService;
 import com.harudle.feed.service.FeedDeletionService;
 import com.harudle.feed.service.exception.FeedNotFoundException;
+import com.harudle.profile.service.DefaultPublicProfileReader;
 import com.harudle.profile.service.port.PublicProfileReader;
 import com.harudle.push.service.port.FeedPushOutbox;
 import jakarta.servlet.http.Cookie;
-import java.net.URI;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -47,19 +48,16 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.IllegalTransactionStateException;
@@ -71,9 +69,11 @@ import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.ObjectMapper;
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest(properties = "harudle.generation.adapters.enabled=false")
+@SpringBootTest(properties = {
+        "harudle.generation.adapters.enabled=false",
+        "harudle.profile.image-base-url=https://test.example.com/profiles"
+})
 @AutoConfigureMockMvc
-@Import(CommentPersistenceTest.ProfileTestConfiguration.class)
 class CommentPersistenceTest {
 
     private static final String CSRF_TOKEN = "comment-cookie-and-header-value";
@@ -109,8 +109,10 @@ class CommentPersistenceTest {
     @Autowired
     private ObjectMapper objectMapper;
 
-    @Autowired
-    private DatabaseTestProfiles profiles;
+    @MockitoSpyBean
+    private DefaultPublicProfileReader profileReader;
+
+    private final ProfileReadProbe profiles = new ProfileReadProbe();
 
     @MockitoBean
     private JwtDecoder jwtDecoder;
@@ -127,6 +129,10 @@ class CommentPersistenceTest {
     @BeforeEach
     void setUp() {
         profiles.reset();
+        doAnswer(invocation -> {
+            profiles.recordRead(invocation.getArgument(0));
+            return invocation.callRealMethod();
+        }).when(profileReader).readAll(anySet());
         feedAuthorId = createMember();
         commenterId = createMember();
         diaryId = createDiary(feedAuthorId);
@@ -392,7 +398,6 @@ class CommentPersistenceTest {
         jdbc.update("UPDATE comments SET created_at = ? WHERE id = ?", Timestamp.from(FIXTURE_TIME.plusSeconds(1)), second);
         jdbc.update("UPDATE users SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", commenterId);
         profiles.reset();
-        profiles.omitAllProfiles = true;
 
         mockMvc.perform(bearer(get(commentsPath())))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.items", hasSize(2)))
@@ -440,7 +445,7 @@ class CommentPersistenceTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.items", hasSize(2)))
                 .andExpect(jsonPath("$.items[0].id").value(first.toString()))
                 .andExpect(jsonPath("$.items[0].author.id").value(commenterId.toString()))
-                .andExpect(jsonPath("$.items[0].author.nickname").value("댓글통합테스트회원"))
+                .andExpect(jsonPath("$.items[0].author.nickname").value("댓글통합테스트회원1"))
                 .andExpect(jsonPath("$.items[0].author.profileImageUrl")
                         .value("https://test.example.com/profiles/1.png"))
                 .andExpect(jsonPath("$.items[0].isMine").value(true))
@@ -747,7 +752,7 @@ class CommentPersistenceTest {
     @Test
     @DisplayName("작성자 프로필을 제공할 수 없으면 빈 값을 위조하지 않고 503과 쓰기 없음으로 응답한다")
     void rejectCreationAndListWhenProfileIsUnavailable() throws Exception {
-        profiles.omitAllProfiles = true;
+        jdbc.update("UPDATE users SET nickname = NULL WHERE id = ?", commenterId);
         mockMvc.perform(withCsrf(bearer(post(commentsPath())))
                         .contentType(MediaType.APPLICATION_JSON).content(commentBody("프로필 없는 댓글")))
                 .andExpect(status().isServiceUnavailable())
@@ -882,7 +887,8 @@ class CommentPersistenceTest {
 
     private UUID createUser() {
         UUID id = UUID.randomUUID();
-        jdbc.update("INSERT INTO users (id, name, profile_image_code) VALUES (?, ?, 1)", id, "댓글통합테스트회원");
+        jdbc.update("INSERT INTO users (id, name, nickname, profile_image_code) VALUES (?, ?, ?, 1)",
+                id, "댓글통합테스트회원", "댓글통합테스트회원" + fixtureUsers.size());
         fixtureUsers.add(id);
         return id;
     }
@@ -964,30 +970,13 @@ class CommentPersistenceTest {
                 .issuedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(3600)).build();
     }
 
-    @TestConfiguration(proxyBeanMethods = false)
-    static class ProfileTestConfiguration {
+    static class ProfileReadProbe {
 
-        @Bean
-        DatabaseTestProfiles testOnlyPublicProfileReader(JdbcTemplate jdbc) {
-            return new DatabaseTestProfiles(jdbc);
-        }
-    }
-
-    /** The profile PR is separate; this provider exists only inside this test context. */
-    static class DatabaseTestProfiles implements PublicProfileReader {
-
-        private final JdbcTemplate jdbc;
         private final AtomicInteger calls = new AtomicInteger();
         private volatile Set<UUID> lastRequested = Set.of();
-        private volatile boolean omitAllProfiles;
         private volatile Runnable beforeRead;
 
-        DatabaseTestProfiles(JdbcTemplate jdbc) {
-            this.jdbc = jdbc;
-        }
-
-        @Override
-        public Map<UUID, Profile> readAll(Set<UUID> ids) {
+        void recordRead(Set<UUID> ids) {
             calls.incrementAndGet();
             lastRequested = Set.copyOf(ids);
             Runnable callback = beforeRead;
@@ -995,19 +984,6 @@ class CommentPersistenceTest {
             if (callback != null) {
                 callback.run();
             }
-            if (omitAllProfiles || ids.isEmpty()) {
-                return Map.of();
-            }
-            String placeholders = String.join(",", ids.stream().map(id -> "?").toList());
-            Map<UUID, Profile> result = new HashMap<>();
-            jdbc.query("SELECT id, COALESCE(nickname, name), profile_image_code FROM users "
-                            + "WHERE deleted_at IS NULL AND id IN (" + placeholders + ")",
-                    row -> {
-                        UUID id = row.getObject(1, UUID.class);
-                        result.put(id, new Profile(id, row.getString(2),
-                                URI.create("https://test.example.com/profiles/" + row.getInt(3) + ".png")));
-                    }, ids.toArray());
-            return Map.copyOf(result);
         }
 
         int callCount() {
@@ -1025,16 +1001,18 @@ class CommentPersistenceTest {
         void reset() {
             calls.set(0);
             lastRequested = Set.of();
-            omitAllProfiles = false;
             beforeRead = null;
         }
     }
 }
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest(properties = "harudle.generation.adapters.enabled=false")
+@SpringBootTest(properties = {
+        "harudle.generation.adapters.enabled=false",
+        "harudle.profile.image-base-url=https://test.example.com/profiles"
+})
 @AutoConfigureMockMvc
-class CommentMissingProfilePersistenceTest {
+class CommentProfileIntegrationPersistenceTest {
 
     @Container
     @ServiceConnection
@@ -1048,14 +1026,14 @@ class CommentMissingProfilePersistenceTest {
     private MockMvc mockMvc;
 
     @Autowired
-    private ObjectProvider<PublicProfileReader> profiles;
+    private PublicProfileReader profiles;
 
     @MockitoBean
     private JwtDecoder jwtDecoder;
 
     @Test
-    @DisplayName("프로필 구현이 없어도 탈퇴한 작성자의 댓글만 있는 공개 페이지는 익명 작성자와 원문을 반환한다")
-    void returnDeletedAuthorsWhenProfileProviderIsMissing() throws Exception {
+    @DisplayName("실제 프로필 구현으로 탈퇴한 작성자의 댓글만 있는 공개 페이지는 익명 작성자와 원문을 반환한다")
+    void returnDeletedAuthorsWithRealProfileReader() throws Exception {
         UUID owner = UUID.randomUUID();
         UUID deletedCommenter = UUID.randomUUID();
         UUID diary = UUID.randomUUID();
@@ -1072,7 +1050,7 @@ class CommentMissingProfilePersistenceTest {
             jdbc.update("INSERT INTO comments (id, feed_id, author_id, content) VALUES (?, ?, ?, ?)",
                     comment, feed, deletedCommenter, "작성자가 탈퇴해도 보존되는 댓글");
 
-            assertThat(profiles.getIfAvailable()).isNull();
+            assertThat(profiles).isInstanceOf(DefaultPublicProfileReader.class);
             mockMvc.perform(get("/api/v1/feeds/" + feed + "/comments"))
                     .andExpect(status().isOk()).andExpect(jsonPath("$.items", hasSize(1)))
                     .andExpect(jsonPath("$.items[0].id").value(comment.toString()))
@@ -1095,8 +1073,8 @@ class CommentMissingProfilePersistenceTest {
     }
 
     @Test
-    @DisplayName("프로필 제공 구현이 아직 없어도 앱은 시작하고 빈 목록은 성공하며 작성은 503으로 안전하게 실패한다")
-    void bootWithoutProfileProviderAndDoNotWriteOnCreation() throws Exception {
+    @DisplayName("실제 프로필 빈은 미할당 회원의 작성을 503으로 거절하고 할당 후 정상 프로필로 댓글을 저장한다")
+    void createCommentOnlyAfterPublicProfileIsAssigned() throws Exception {
         UUID user = UUID.randomUUID();
         UUID diary = UUID.randomUUID();
         UUID feed = UUID.randomUUID();
@@ -1113,7 +1091,8 @@ class CommentMissingProfilePersistenceTest {
                             .subject(user.toString()).issuedAt(Instant.now())
                             .expiresAt(Instant.now().plusSeconds(3600)).build());
 
-            assertThat(profiles.getIfAvailable()).isNull();
+            assertThat(profiles).isInstanceOf(DefaultPublicProfileReader.class);
+            assertThat(profiles.readAll(Set.of(user))).isEmpty();
             String path = "/api/v1/feeds/" + feed + "/comments";
             mockMvc.perform(get(path)).andExpect(status().isOk())
                     .andExpect(jsonPath("$.items", hasSize(0)))
@@ -1129,6 +1108,18 @@ class CommentMissingProfilePersistenceTest {
                     .isZero();
             assertThat(jdbc.queryForObject("SELECT count(*) FROM notifications WHERE feed_id = ?", Integer.class, feed))
                     .isZero();
+            jdbc.update("UPDATE users SET nickname = ? WHERE id = ?", "프로필연동회원", user);
+            assertThat(profiles.readAll(Set.of(user))).containsKey(user);
+            mockMvc.perform(post(path).header(HttpHeaders.AUTHORIZATION, "Bearer profile-unavailable-token")
+                            .cookie(new Cookie("XSRF-TOKEN", "csrf-value")).header("X-XSRF-TOKEN", "csrf-value")
+                            .contentType(MediaType.APPLICATION_JSON).content("{\"content\":\"프로필 연동 댓글\"}"))
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.author.nickname").value("프로필연동회원"))
+                    .andExpect(jsonPath("$.author.profileImageUrl").value("https://test.example.com/profiles/1.png"));
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM comments WHERE feed_id = ?", Integer.class, feed))
+                    .isEqualTo(1);
+            assertThat(jdbc.queryForObject("SELECT comment_count FROM feeds WHERE id = ?", Integer.class, feed))
+                    .isEqualTo(1);
         } finally {
             jdbc.update("DELETE FROM users WHERE id = ?", user);
         }

@@ -38,6 +38,16 @@ public enum ErrorType {
             "Invalid current user",
             "현재 로그인 사용자를 확인할 수 없습니다."
     ),
+    NICKNAME_ALREADY_IN_USE(
+            HttpStatus.CONFLICT,
+            "Nickname already in use",
+            "이미 사용 중인 닉네임입니다."
+    ),
+    PUBLIC_PROFILE_NOT_ASSIGNED(
+            HttpStatus.CONFLICT,
+            "Public profile not assigned",
+            "공개 프로필을 먼저 배정해야 합니다."
+    ),
     GUEST_SESSION_REQUIRED(
             HttpStatus.UNAUTHORIZED,
             "Guest session required",
@@ -105,8 +115,13 @@ public enum ErrorType {
     ),
     CATEGORY_INACTIVE(
             HttpStatus.CONFLICT,
-            "Category inactive",
-            "비활성 카테고리에는 게시할 수 없습니다."
+            "Inactive category",
+            "비활성 카테고리에는 피드를 게시할 수 없습니다."
+    ),
+    CATEGORY_NAME_ALREADY_USED(
+            HttpStatus.CONFLICT,
+            "Category name already used",
+            "이미 사용 중인 카테고리 이름입니다."
     ),
     FEED_UNAVAILABLE(
             HttpStatus.SERVICE_UNAVAILABLE,

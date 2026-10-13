@@ -8,6 +8,6 @@ public final class CategoryInactiveException extends RuntimeException {
     private static final long serialVersionUID = 1L;
 
     public CategoryInactiveException() {
-        super("비활성 카테고리에는 게시할 수 없습니다.");
+        super("비활성 카테고리에는 피드를 게시할 수 없습니다.");
     }
 }

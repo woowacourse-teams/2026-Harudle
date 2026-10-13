@@ -11,6 +11,8 @@ import org.springframework.data.repository.query.Param;
 
 public interface UserRepository extends JpaRepository<User, UUID> {
 
+    boolean existsByNicknameAndDeletedAtIsNull(String nickname);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT user FROM User user WHERE user.id = :userId")
     Optional<User> findByIdForUpdate(@Param("userId") UUID userId);

@@ -5,6 +5,9 @@ import com.harudle.admin.service.exception.AdminGenerationLimitBelowUsageExcepti
 import com.harudle.admin.service.exception.AdminGenerationUsageConflictException;
 import com.harudle.admin.service.exception.AdminGenerationHistoryDateRangeException;
 import com.harudle.admin.service.exception.AdminInactiveUserException;
+import com.harudle.auth.domain.exception.InvalidNicknameException;
+import com.harudle.auth.domain.exception.NicknameAlreadyInUseException;
+import com.harudle.auth.domain.exception.PublicProfileNotAssignedException;
 import com.harudle.auth.presentation.AuthenticationRequiredException;
 import com.harudle.comment.service.exception.CommentAccessDeniedException;
 import com.harudle.comment.service.exception.CommentIntegrationUnavailableException;
@@ -12,6 +15,8 @@ import com.harudle.comment.service.exception.CommentNotFoundException;
 import com.harudle.comment.service.exception.InvalidCommentCursorException;
 import com.harudle.category.service.exception.CategoryInactiveException;
 import com.harudle.category.service.exception.CategoryNotFoundException;
+import com.harudle.category.domain.exception.InvalidCategoryException;
+import com.harudle.category.service.exception.CategoryNameAlreadyUsedException;
 import com.harudle.common.validation.InvalidIdempotencyKeyException;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
@@ -137,6 +142,28 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return createResponse(ErrorType.VALIDATION_ERROR, request);
     }
 
+    @ExceptionHandler(InvalidNicknameException.class)
+    ResponseEntity<ProblemDetail> handleInvalidNickname(
+            InvalidNicknameException exception,
+            HttpServletRequest request
+    ) {
+        return createResponse(
+                ErrorType.VALIDATION_ERROR,
+                request,
+                List.of(new FieldValidationError("nickname", exception.getMessage()))
+        );
+    }
+
+    @ExceptionHandler(NicknameAlreadyInUseException.class)
+    ResponseEntity<ProblemDetail> handleNicknameAlreadyInUse(HttpServletRequest request) {
+        return createResponse(ErrorType.NICKNAME_ALREADY_IN_USE, request);
+    }
+
+    @ExceptionHandler(PublicProfileNotAssignedException.class)
+    ResponseEntity<ProblemDetail> handlePublicProfileNotAssigned(HttpServletRequest request) {
+        return createResponse(ErrorType.PUBLIC_PROFILE_NOT_ASSIGNED, request);
+    }
+
     @ExceptionHandler(InvalidIdempotencyKeyException.class)
     ResponseEntity<ProblemDetail> handleInvalidIdempotencyKey(HttpServletRequest request) {
         return createResponse(ErrorType.INVALID_IDEMPOTENCY_KEY, request);
@@ -170,6 +197,30 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(DiaryNotFoundException.class)
     ResponseEntity<ProblemDetail> handleDiaryNotFound(HttpServletRequest request) {
         return createResponse(ErrorType.DIARY_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(CategoryNotFoundException.class)
+    ResponseEntity<ProblemDetail> handleCategoryNotFound(HttpServletRequest request) {
+        return createResponse(ErrorType.CATEGORY_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(CategoryInactiveException.class)
+    ResponseEntity<ProblemDetail> handleCategoryInactive(HttpServletRequest request) {
+        return createResponse(ErrorType.CATEGORY_INACTIVE, request);
+    }
+
+    @ExceptionHandler(CategoryNameAlreadyUsedException.class)
+    ResponseEntity<ProblemDetail> handleCategoryNameAlreadyUsed(HttpServletRequest request) {
+        return createResponse(ErrorType.CATEGORY_NAME_ALREADY_USED, request);
+    }
+
+    @ExceptionHandler(InvalidCategoryException.class)
+    ResponseEntity<ProblemDetail> handleInvalidCategory(InvalidCategoryException exception, HttpServletRequest request) {
+        return createResponse(
+                ErrorType.VALIDATION_ERROR,
+                request,
+                List.of(new FieldValidationError(exception.getField(), exception.getMessage()))
+        );
     }
 
     @ExceptionHandler(ShareNotFoundException.class)
@@ -238,16 +289,6 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(InvalidFeedCursorException.class)
     ResponseEntity<ProblemDetail> handleInvalidFeedCursor(HttpServletRequest request) {
         return createResponse(ErrorType.INVALID_CURSOR, request);
-    }
-
-    @ExceptionHandler(CategoryNotFoundException.class)
-    ResponseEntity<ProblemDetail> handleCategoryNotFound(HttpServletRequest request) {
-        return createResponse(ErrorType.CATEGORY_NOT_FOUND, request);
-    }
-
-    @ExceptionHandler(CategoryInactiveException.class)
-    ResponseEntity<ProblemDetail> handleCategoryInactive(HttpServletRequest request) {
-        return createResponse(ErrorType.CATEGORY_INACTIVE, request);
     }
 
     @ExceptionHandler(DiaryNotPublishableException.class)
