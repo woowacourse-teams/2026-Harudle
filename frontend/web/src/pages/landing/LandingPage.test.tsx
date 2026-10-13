@@ -40,6 +40,8 @@ const guestDiaryResponse: GuestDiaryResponse = {
   },
 };
 
+jest.mock('./LandingFeedPreview', () => () => <p>공개 피드 미리보기</p>);
+
 jest.mock('./useGuestDiaryCreation', () => ({
   __esModule: true,
   default: () => ({
@@ -55,6 +57,18 @@ jest.mock('../diary-generating/DiaryGeneratingPage', () => ({
   FINAL_STEP: 5,
 }));
 jest.mock('react-router', () => ({
+  Link: ({
+    to,
+    children,
+    ...props
+  }: {
+    to: string;
+    children: import('react').ReactNode;
+  }) => (
+    <a href={to} {...props}>
+      {children}
+    </a>
+  ),
   useLocation: () => ({ state: null }),
   useNavigate: () => jest.fn(),
 }));
