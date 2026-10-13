@@ -3,7 +3,6 @@ import { type ApiRequest } from '../../shared/api';
 import {
   getUserProfile,
   type ProfileResponse,
-  type UpdateProfileResponse,
 } from '../../domain/user/profile';
 
 const useProfile = () => {
@@ -37,14 +36,14 @@ const useProfile = () => {
     void execute();
   }, []);
 
-  const updateProfile = (profile: UpdateProfileResponse) => {
+  const updateNickname = (nickname: string): void => {
     setRequest((previous) => {
       if (previous.status !== 'success') return previous;
-      return { status: 'success', data: { ...previous.data, ...profile } };
+      return { status: 'success', data: { ...previous.data, nickname } };
     });
   };
 
-  return { profileRequest: request, updateProfile };
+  return { profileRequest: request, updateNickname };
 };
 
 export default useProfile;

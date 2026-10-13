@@ -33,7 +33,7 @@ const SettingPage = () => {
 export default SettingPage;
 
 const SettingPageContent = () => {
-  const { profileRequest, updateProfile } = useProfile();
+  const { profileRequest, updateNickname } = useProfile();
   const nicknameModalRef = useRef<ModalHandle>(null);
   const { request, handleLogout } = useLogout();
 
@@ -129,7 +129,7 @@ const SettingPageContent = () => {
       <NicknameEditModal
         ref={nicknameModalRef}
         currentNickname={currentNickname}
-        onSaved={updateProfile}
+        onSaved={updateNickname}
       />
       {request.status === 'error' && (
         <div css={logoutErrorStyle}>{request.error.message}</div>

@@ -1,24 +1,21 @@
 import { useState } from 'react';
-import {
-  updateUserNickname,
-  type UpdateProfileResponse,
-} from '../../domain/user/profile';
+import { updateUserNickname } from '../../domain/user/profile';
 import type { ApiRequest } from '../../shared/api';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 
 const useNicknameUpdate = () => {
-  const [request, setRequest] = useState<ApiRequest<UpdateProfileResponse>>({
+  const [request, setRequest] = useState<ApiRequest<void>>({
     status: 'idle',
   });
 
-  const execute = async (nickname: string) => {
-    if (request.status === 'loading') return;
+  const execute = async (nickname: string): Promise<boolean> => {
+    if (request.status === 'loading') return false;
     setRequest({ status: 'loading' });
 
     try {
-      const profile = await updateUserNickname(nickname);
-      setRequest({ status: 'success', data: profile });
-      return profile;
+      await updateUserNickname(nickname);
+      setRequest({ status: 'success', data: undefined });
+      return true;
     } catch (error: unknown) {
       setRequest({
         status: 'error',
@@ -27,10 +24,11 @@ const useNicknameUpdate = () => {
             ? error
             : new Error(ERROR_MESSAGES.NICKNAME_UPDATE_FAILED),
       });
+      return false;
     }
   };
 
-  const reset = () => setRequest({ status: 'idle' });
+  const reset = (): void => setRequest({ status: 'idle' });
 
   return { request, execute, reset };
 };

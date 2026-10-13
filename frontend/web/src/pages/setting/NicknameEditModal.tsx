@@ -7,7 +7,6 @@ import {
   type Ref,
 } from 'react';
 import Modal, { type ModalHandle } from '../../shared/Modal';
-import type { UpdateProfileResponse } from '../../domain/user/profile';
 import useNicknameUpdate from './useNicknameUpdate';
 import { RequestError } from '../../shared/api';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
@@ -15,7 +14,7 @@ import { theme } from '../../styles/theme';
 
 interface NicknameEditModalProps {
   currentNickname: string;
-  onSaved: (profile: UpdateProfileResponse) => void;
+  onSaved: (nickname: string) => void;
   ref: Ref<ModalHandle>;
 }
 
@@ -48,7 +47,9 @@ const NicknameEditModal = ({
     [currentNickname, isSaving, reset],
   );
 
-  const handleNicknameSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  const handleNicknameSubmit = async (
+    event: FormEvent<HTMLFormElement>,
+  ): Promise<void> => {
     event.preventDefault();
     if (isSaving) return;
 
@@ -58,10 +59,10 @@ const NicknameEditModal = ({
     }
 
     setNicknameError('');
-    const profile = await execute(nickname);
-    if (!profile) return;
+    const saved = await execute(nickname);
+    if (!saved) return;
 
-    onSaved(profile);
+    onSaved(nickname);
     nicknameModalRef.current?.close();
   };
 
@@ -70,7 +71,7 @@ const NicknameEditModal = ({
     const error = request.error;
     if (
       error instanceof RequestError &&
-      error.problem.code === 'NICKNAME_ALREADY_USED'
+      error.problem.code === 'NICKNAME_ALREADY_IN_USE'
     ) {
       errorMessage = '이미 사용 중인 닉네임이에요.';
     } else if (

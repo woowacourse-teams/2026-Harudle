@@ -70,16 +70,8 @@ const isProfileResponse = (value: unknown): value is ProfileResponse => {
   );
 };
 
-export interface UpdateProfileResponse {
-  id: string;
-  nickname: string;
-  profileImageUrl: string;
-}
-
-export const updateUserNickname = async (
-  nickname: string,
-): Promise<UpdateProfileResponse> => {
-  const response = await authFetch(`${API_BASE_URL}/me`, {
+export const updateUserNickname = async (nickname: string): Promise<void> => {
+  const response = await authFetch(`${API_BASE_URL}/me/nickname`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ nickname }),
@@ -93,26 +85,4 @@ export const updateUserNickname = async (
 
     throw new Error(ERROR_MESSAGES.NICKNAME_UPDATE_FAILED);
   }
-
-  const data: unknown = await response.json();
-  if (!isUpdateProfileResponse(data)) {
-    throw new Error(ERROR_MESSAGES.INVALID_PROFILE_RESPONSE);
-  }
-
-  return data;
-};
-
-const isUpdateProfileResponse = (
-  value: unknown,
-): value is UpdateProfileResponse => {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'id' in value &&
-    typeof value.id === 'string' &&
-    'nickname' in value &&
-    typeof value.nickname === 'string' &&
-    'profileImageUrl' in value &&
-    typeof value.profileImageUrl === 'string'
-  );
 };

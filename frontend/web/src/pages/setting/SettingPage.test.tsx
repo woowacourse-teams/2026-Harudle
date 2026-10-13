@@ -57,11 +57,7 @@ beforeEach(() => {
     configurable: true,
   });
   mockGetProfile.mockReset().mockResolvedValue(profile);
-  mockUpdateNickname.mockReset().mockImplementation(async (nickname) => ({
-    id: profile.id,
-    nickname,
-    profileImageUrl: profile.profileImageUrl,
-  }));
+  mockUpdateNickname.mockReset().mockResolvedValue(undefined);
 });
 
 const openNicknameModal = async () => {
@@ -78,22 +74,18 @@ const openNicknameModal = async () => {
 };
 
 describe('설정 프로필과 닉네임 수정', () => {
-  it('이름과 닉네임을 구분하고 입력 그대로 전송한 뒤 서버 결과를 표시한다', async () => {
-    mockUpdateNickname.mockResolvedValueOnce({
-      id: profile.id,
-      nickname: '새닉네임',
-      profileImageUrl: profile.profileImageUrl,
-    });
+  it('응답 본문 없이 저장에 성공하면 닉네임을 반영하고 모달을 닫는다', async () => {
     const { user, dialog, input } = await openNicknameModal();
     expect(screen.getByText('정연준')).toBeInTheDocument();
     expect(input).toHaveValue('연준');
     await user.clear(input);
-    await user.type(input, ' 새닉네임 ');
+    await user.type(input, '새닉네임');
     await user.click(screen.getByRole('button', { name: '저장' }));
     await waitFor(() => expect(dialog).not.toHaveAttribute('open'));
-    expect(mockUpdateNickname).toHaveBeenCalledWith(' 새닉네임 ');
+    expect(mockUpdateNickname).toHaveBeenCalledWith('새닉네임');
     expect(screen.getByText('새닉네임')).toBeInTheDocument();
     expect(screen.getByText('정연준')).toBeInTheDocument();
+    expect(mockGetProfile).toHaveBeenCalledTimes(1);
   });
 
   it('중복 오류를 표시하고 닉네임을 바꿔 다시 저장할 수 있다', async () => {
@@ -103,8 +95,8 @@ describe('설정 프로필과 닉네임 수정', () => {
         title: 'Conflict',
         status: 409,
         detail: '서버 상세 문구',
-        instance: '/api/v1/me',
-        code: 'NICKNAME_ALREADY_USED',
+        instance: '/api/v1/me/nickname',
+        code: 'NICKNAME_ALREADY_IN_USE',
       }),
     );
     const { user, dialog, input } = await openNicknameModal();
@@ -172,9 +164,7 @@ describe('설정 프로필과 닉네임 수정', () => {
     );
   });
   it('저장 중 버튼 제출은 막고 배경으로 닫은 뒤 재열어도 진행 상태를 유지한다', async () => {
-    let completeSave:
-      | ((profile: Awaited<ReturnType<typeof updateUserNickname>>) => void)
-      | undefined;
+    let completeSave: (() => void) | undefined;
     mockUpdateNickname.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -210,11 +200,7 @@ describe('설정 프로필과 닉네임 수정', () => {
     expect(mockUpdateNickname).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      completeSave?.({
-        id: profile.id,
-        nickname: '새닉네임',
-        profileImageUrl: profile.profileImageUrl,
-      });
+      completeSave?.();
     });
     await waitFor(() => expect(dialog).not.toHaveAttribute('open'));
     expect(screen.getByText('새닉네임')).toBeInTheDocument();

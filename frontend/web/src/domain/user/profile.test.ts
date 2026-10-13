@@ -120,35 +120,21 @@ describe('프로필 조회 API', () => {
 });
 
 describe('닉네임 수정 API', () => {
-  const updatedProfile = {
-    id: profile.id,
-    nickname: '새닉네임',
-    profileImageUrl: '/profile.svg',
-  };
-
-  it('PATCH로 닉네임을 보내고 수정된 프로필을 반환한다', async () => {
-    mockAuthFetch.mockResolvedValueOnce(
-      createJsonResponse(updatedProfile, 200),
-    );
-    await expect(updateUserNickname('새닉네임')).resolves.toEqual(
-      updatedProfile,
-    );
-    expect(mockAuthFetch).toHaveBeenCalledWith('/api/v1/me', {
+  it('PATCH로 닉네임을 보내고 204 응답은 본문을 파싱하지 않는다', async () => {
+    const json = jest
+      .fn<() => Promise<unknown>>()
+      .mockRejectedValue(new SyntaxError('Unexpected end of JSON input'));
+    mockAuthFetch.mockResolvedValueOnce({
+      ...createJsonResponse(null, 204),
+      json,
+    });
+    await expect(updateUserNickname('새닉네임')).resolves.toBeUndefined();
+    expect(json).not.toHaveBeenCalled();
+    expect(mockAuthFetch).toHaveBeenCalledWith('/api/v1/me/nickname', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ nickname: '새닉네임' }),
     });
-  });
-
-  it.each([
-    { ...updatedProfile, nickname: null },
-    { ...updatedProfile, id: 123 },
-    { ...updatedProfile, profileImageUrl: null },
-  ])('잘못된 수정 응답을 거부한다', async (data) => {
-    mockAuthFetch.mockResolvedValueOnce(createJsonResponse(data, 200));
-    await expect(updateUserNickname('새닉네임')).rejects.toThrow(
-      ERROR_MESSAGES.INVALID_PROFILE_RESPONSE,
-    );
   });
 
   it('중복 오류 코드를 보존한다', async () => {
@@ -157,8 +143,8 @@ describe('닉네임 수정 API', () => {
       title: 'Conflict',
       status: 409,
       detail: '중복',
-      instance: '/api/v1/me',
-      code: 'NICKNAME_ALREADY_USED',
+      instance: '/api/v1/me/nickname',
+      code: 'NICKNAME_ALREADY_IN_USE',
     };
     mockAuthFetch.mockResolvedValueOnce(createJsonResponse(problem, 409));
     await expect(updateUserNickname('네오')).rejects.toMatchObject({ problem });

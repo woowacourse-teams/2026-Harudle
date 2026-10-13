@@ -493,7 +493,7 @@ export const handlers = [
     );
   }),
 
-  http.patch('/api/v1/me', async ({ request }) => {
+  http.patch('/api/v1/me/nickname', async ({ request }) => {
     const unauthorizedResponse = validateAccessToken(request);
     if (unauthorizedResponse) return unauthorizedResponse;
 
@@ -515,7 +515,7 @@ export const handlers = [
         status: 400,
         code: 'VALIDATION_ERROR',
         detail: '닉네임은 1자 이상 10자 이하로 입력해 주세요.',
-        instance: '/api/v1/me',
+        instance: '/api/v1/me/nickname',
       });
     }
 
@@ -525,18 +525,14 @@ export const handlers = [
     ) {
       return createProblemDetails({
         status: 409,
-        code: 'NICKNAME_ALREADY_USED',
+        code: 'NICKNAME_ALREADY_IN_USE',
         detail: '이미 사용 중인 닉네임이에요.',
-        instance: '/api/v1/me',
+        instance: '/api/v1/me/nickname',
       });
     }
 
     mockNickname = nickname;
-    return HttpResponse.json({
-      id: '08d69a34-6d70-4d42-a158-671bc67733c9',
-      nickname: mockNickname,
-      profileImageUrl: profileImage,
-    });
+    return new HttpResponse(null, { status: 204 });
   }),
 
   http.get('/api/v1/diaries', async ({ request }) => {
