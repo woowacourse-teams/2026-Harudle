@@ -71,6 +71,7 @@ class HarudleApplicationTests {
 
         assertThat(tableNames).containsExactly(
                 "admin_generation_usage_restores",
+                "auth_sessions",
                 "categories",
                 "comments",
                 "daily_generation_usage",

@@ -46,7 +46,7 @@ class FeedNotificationSchemaMigrationTest {
 
     @BeforeEach
     void upgradeExistingSchema() throws SQLException {
-        migrateExistingSchemaTo("19");
+        migrateExistingSchemaTo("20");
     }
 
     private void migrateExistingSchemaTo(String target) throws SQLException {
@@ -88,14 +88,59 @@ class FeedNotificationSchemaMigrationTest {
     @DisplayName("빈 PostgreSQL에도 전체 마이그레이션과 카테고리 시드를 적용할 수 있다")
     void migrateEmptyDatabase() throws SQLException {
         flyway().clean();
-        assertThat(flyway().migrate().migrationsExecuted).isEqualTo(19);
+        assertThat(flyway().migrate().migrationsExecuted).isEqualTo(20);
         flyway().validate();
         assertThat(queryLong("SELECT count(*) FROM categories WHERE is_active")).isEqualTo(2);
         assertThat(queryLong("""
                 SELECT count(*) FROM pg_tables WHERE schemaname = 'public'
-                AND tablename IN ('categories', 'feeds', 'comments', 'feed_likes',
+                AND tablename IN ('categories', 'feeds', 'comments', 'feed_likes', 'auth_sessions',
                                   'notifications', 'push_registrations', 'notification_outbox')
-                """)).isEqualTo(7);
+                """)).isEqualTo(8);
+    }
+
+    @Test
+    @DisplayName("기존 활성 Refresh Token을 세션에 연결하고 세션 소유자 변경을 막는다")
+    void migrateLegacyRefreshTokensAndProtectSessionOwnership() throws SQLException {
+        migrateExistingSchemaTo("19");
+        String insertToken = """
+                INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
+                VALUES (?, ?, ?)
+                """;
+        OffsetDateTime tomorrow = OffsetDateTime.now().plusDays(1);
+        execute(insertToken, AUTHOR, "b".repeat(64), tomorrow);
+        execute(insertToken, AUTHOR, "c".repeat(64), tomorrow);
+        execute(insertToken, AUTHOR, "d".repeat(64), OffsetDateTime.now().minusDays(1));
+
+        assertThat(flyway().migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(queryLong("""
+                SELECT count(DISTINCT session_id) FROM refresh_tokens
+                WHERE user_id = ? AND expires_at > CURRENT_TIMESTAMP
+                """, AUTHOR)).isEqualTo(2);
+        assertThat(queryLong("""
+                SELECT count(*) FROM refresh_tokens
+                WHERE user_id = ? AND expires_at < CURRENT_TIMESTAMP AND session_id IS NULL
+                """, AUTHOR)).isEqualTo(1);
+
+        UUID authorSession = UUID.randomUUID();
+        UUID anotherAuthorSession = UUID.randomUUID();
+        UUID readerSession = UUID.randomUUID();
+        execute("INSERT INTO auth_sessions (id, user_id) VALUES (?, ?)", authorSession, AUTHOR);
+        execute("INSERT INTO auth_sessions (id, user_id) VALUES (?, ?)", anotherAuthorSession, AUTHOR);
+        execute("INSERT INTO auth_sessions (id, user_id) VALUES (?, ?)", readerSession, READER);
+        reject("23503", "UPDATE refresh_tokens SET session_id = ? WHERE token_hash = ?",
+                readerSession, "b".repeat(64));
+
+        UUID registration = createRegistration(AUTHOR, UUID.randomUUID(), "fid-session");
+        execute("UPDATE push_registrations SET session_id = ? WHERE id = ?", authorSession, registration);
+        reject("23514", "UPDATE push_registrations SET session_id = ? WHERE id = ?",
+                anotherAuthorSession, registration);
+        reject("23503", "INSERT INTO push_registrations "
+                + "(id, user_id, device_id, recipient_value, session_id) VALUES (?, ?, ?, ?, ?)",
+                UUID.randomUUID(), READER, UUID.randomUUID(), "fid-wrong-owner", authorSession);
+
+        execute(insertToken, AUTHOR, "e".repeat(64), tomorrow);
+        assertThat(queryLong("SELECT count(*) FROM refresh_tokens WHERE token_hash = ? AND session_id IS NULL",
+                "e".repeat(64))).isEqualTo(1);
     }
 
     @Test
@@ -492,7 +537,7 @@ class FeedNotificationSchemaMigrationTest {
     }
 
     private static Flyway flyway() {
-        return flyway("19");
+        return flyway("20");
     }
 
     private static Flyway flyway(String target) {
