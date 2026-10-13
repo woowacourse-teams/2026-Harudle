@@ -1,38 +1,39 @@
+import { DIARY_WRITE_COPY } from './copy';
 import { Navigate, useNavigate } from 'react-router';
-import FloatingActionButton from '../../shared/FloatingActionButton';
 import PageHeader from '../../shared/PageHeader';
+import ActionButton from '../../shared/ActionButton';
 import DiaryInputField from './DiaryInputField';
 import { useState } from 'react';
 import backIcon from '../../assets/icons/back.svg';
 import { css } from '@emotion/react';
 import { theme } from '../../styles/theme';
-import nextIcon from '../../assets/icons/arrow-right.svg';
 import { useDiaryGenerateContext } from '../diary-generating/DiaryGenerateContext';
 import { getToday } from '../../shared/utils';
+import { DIARY_CONTENT_SESSION_KEY } from '../../shared/constants';
 
 const DiaryWritePage = () => {
   const navigate = useNavigate();
   const [diaryContent, setDiaryContent] = useState(
-    sessionStorage.getItem('diaryContent') ?? '',
+    sessionStorage.getItem(DIARY_CONTENT_SESSION_KEY) ?? '',
   );
   const [diaryContentError, setDiaryContentError] = useState<string | null>(
     null,
   );
-  const { diaryGenerateRequest } = useDiaryGenerateContext();
+  const { request } = useDiaryGenerateContext();
 
-  if (diaryGenerateRequest.status === 'loading') {
-    alert('다른 일기가 생성중입니다.');
-    return <Navigate to="/" replace />;
+  if (request.status === 'loading') {
+    alert(DIARY_WRITE_COPY.generationInProgress);
+    return <Navigate to="/album" replace />;
   }
 
   const handleDiarySubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (diaryContent.length < 10) {
-      setDiaryContentError('10자 이상으로 입력해주세요!');
+      setDiaryContentError(DIARY_WRITE_COPY.minLengthError);
       return;
     }
 
-    sessionStorage.setItem('diaryContent', diaryContent);
+    sessionStorage.setItem(DIARY_CONTENT_SESSION_KEY, diaryContent);
 
     const { year, month, day } = getToday();
     navigate('/diary-generating', {
@@ -53,7 +54,7 @@ const DiaryWritePage = () => {
             type="button"
             aria-label="뒤로 가기"
             css={headerButtonStyle}
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/album')}
           >
             <img
               src={backIcon}
@@ -62,16 +63,19 @@ const DiaryWritePage = () => {
             />
           </button>
         }
-        title={'새 일기 쓰기'}
+        title={null}
         right={null}
       />
 
       <main css={contentStyle}>
-        <h2 css={promptTitleStyle}>
-          오늘의 하루를
-          <br />
-          자유롭게 적어주세요!
-        </h2>
+        <div css={promptStyle}>
+          <h2 css={promptTitleStyle}>
+            {DIARY_WRITE_COPY.questionLines[0]}
+            <br />
+            {DIARY_WRITE_COPY.questionLines[1]}
+          </h2>
+          <p css={promptDescriptionStyle}>{DIARY_WRITE_COPY.guide}</p>
+        </div>
 
         <form css={formStyle} onSubmit={handleDiarySubmit}>
           <DiaryInputField
@@ -83,11 +87,9 @@ const DiaryWritePage = () => {
             diaryContentError={diaryContentError}
           />
 
-          <FloatingActionButton
-            onClick={() => {}}
-            icon={<img css={nextIconStyle} src={nextIcon} />}
-            disabled={false}
-          />
+          <div css={submitButtonContainerStyle}>
+            <ActionButton type="submit" label={DIARY_WRITE_COPY.createAction} />
+          </div>
         </form>
       </main>
     </div>
@@ -105,8 +107,8 @@ const pageStyle = css`
   width: 100%;
   height: 100%;
   padding: 20px;
-  overflow: hidden;
-  background-color: #ffffff;
+  overflow-y: auto;
+  background-color: ${theme.colors.background.surface};
 `;
 
 const headerButtonStyle = css`
@@ -129,24 +131,43 @@ const headerButtonIconStyle = css`
 const contentStyle = css`
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 32px;
   width: 100%;
   height: 100%;
 `;
 
+const promptStyle = css`
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 20px;
+  text-align: center;
+`;
+
 const promptTitleStyle = css`
-  color: ${theme.colors.text.primary};
+  margin: 0;
+  word-break: keep-all;
+  color: ${theme.colors.foreground.neutral};
   font-size: 22px;
   font-weight: 700;
   line-height: 34px;
   text-align: center;
 `;
 
-const formStyle = css`
-  width: 100%;
+const promptDescriptionStyle = css`
+  margin: 0;
+  color: ${theme.colors.foreground.neutralMuted};
+  font-size: 14px;
+  line-height: 22px;
+  white-space: pre-line;
+  word-break: keep-all;
 `;
 
-const nextIconStyle = css`
-  width: 24px;
-  height: 24px;
+const formStyle = css`
+  width: 100%;
+  padding: 0 20px 20px;
+`;
+
+const submitButtonContainerStyle = css`
+  margin-top: 24px;
 `;

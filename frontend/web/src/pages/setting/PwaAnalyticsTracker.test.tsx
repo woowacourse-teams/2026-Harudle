@@ -5,7 +5,7 @@ import PwaAnalyticsTracker from './PwaAnalyticsTracker';
 const mockTrack = jest.fn();
 const mockIsPwaInstalled = jest.fn();
 
-jest.mock('../../shared/useAnalytics', () => ({
+jest.mock('../../posthog/useAnalytics', () => ({
   useAnalytics: () => ({ track: mockTrack }),
 }));
 

@@ -7,9 +7,9 @@ import AdminRoutes from './AdminRoutes';
 type AdminAccess =
   'checking' | 'allowed' | 'unauthenticated' | 'forbidden' | 'error';
 
-type CurrentUserAuthorization = {
+interface CurrentUserAuthorization {
   role: 'USER' | 'ADMIN';
-};
+}
 
 const isCurrentUserAuthorization = (
   value: unknown,
@@ -73,7 +73,7 @@ const AdminGuard = () => {
   }
 
   if (access === 'unauthenticated') {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/" replace />;
   }
 
   if (access === 'forbidden') {

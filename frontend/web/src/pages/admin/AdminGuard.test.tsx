@@ -30,11 +30,11 @@ describe('AdminGuard', () => {
     mockAuthFetch.mockReset();
   });
 
-  it('로그인하지 않은 사용자는 관리자 페이지 대신 로그인으로 이동한다', async () => {
+  it('로그인 경험이 없는 사용자는 기본 주소에서 진입을 판단한다', async () => {
     render(<AdminGuard />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('navigate')).toHaveTextContent('/login');
+      expect(screen.getByTestId('navigate')).toHaveTextContent(/^\/$/);
     });
     expect(mockAuthFetch).not.toHaveBeenCalled();
     expect(screen.queryByText('관리자 페이지')).not.toBeInTheDocument();

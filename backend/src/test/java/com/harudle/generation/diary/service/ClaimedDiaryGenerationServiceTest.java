@@ -8,28 +8,37 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.harudle.common.logging.ExternalApiLogger;
+import com.harudle.generation.adapter.out.qwen.QwenChatClient;
+import com.harudle.generation.adapter.out.qwen.QwenStageMetrics;
+import com.harudle.generation.adapter.out.qwen.QwenStoryboardGenerator;
+import com.harudle.generation.adapter.out.qwen.QwenStoryboardSettings;
+import com.harudle.generation.adapter.out.storyboard.StoryboardJsonCodec;
+import com.harudle.generation.adapter.out.storyboard.StoryboardResponseMapper;
+import com.harudle.generation.adapter.out.storyboard.StoryboardTestFixtures;
 import com.harudle.generation.diary.domain.DiaryGeneration;
 import com.harudle.generation.diary.domain.GenerationErrorCode;
-import com.harudle.generation.prompt.domain.GenerationPrompt;
+import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import com.harudle.generation.diary.domain.StoryPanel;
 import com.harudle.generation.diary.domain.Storyboard;
-import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
-import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import com.harudle.generation.diary.service.dto.CompletedDiaryGeneration;
 import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
 import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
 import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
-import com.harudle.generation.diary.service.port.dto.DiaryImageGenerationRequest;
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
-import com.harudle.generation.diary.service.port.dto.GeneratedImage;
 import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageStorageException;
+import com.harudle.generation.diary.service.port.StoryboardGenerator;
+import com.harudle.generation.diary.service.port.dto.DiaryImageGenerationRequest;
+import com.harudle.generation.diary.service.port.dto.GeneratedImage;
+import com.harudle.generation.diary.service.port.dto.GeneratedStoryboard;
 import com.harudle.generation.diary.service.port.dto.ReferenceImage;
 import com.harudle.generation.diary.service.port.dto.StoryboardGenerationRequest;
-import com.harudle.generation.diary.service.port.dto.GeneratedStoryboard;
-import com.harudle.generation.diary.service.port.StoryboardGenerator;
+import com.harudle.generation.prompt.domain.GenerationPrompt;
+import com.harudle.generation.prompt.repository.GenerationPromptRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -48,6 +57,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
+import tools.jackson.databind.json.JsonMapper;
 
 @ExtendWith(MockitoExtension.class)
 class ClaimedDiaryGenerationServiceTest {
@@ -123,6 +133,45 @@ class ClaimedDiaryGenerationServiceTest {
         assertThat(result.title()).isEqualTo("친구와 보낸 하루");
         assertThat(result.tokenUsage()).isEqualTo(tokenUsage);
         verify(imageStorage, never()).delete(any(String.class));
+    }
+
+    @Test
+    @DisplayName("Qwen 스토리보드를 기존 이미지 생성에 전달하고 정규화한 토큰으로 생성을 완료한다")
+    void generateImageFromQwenStoryboardAndPersistNormalizedUsage() {
+        QwenChatClient client = mock(QwenChatClient.class);
+        var codec = new StoryboardJsonCodec(JsonMapper.builder().build(), new StoryboardResponseMapper());
+        String json = StoryboardTestFixtures.storyboardJson();
+        when(client.generate(any(QwenChatClient.Request.class))).thenReturn(new QwenChatClient.Completion(
+                json, new QwenChatClient.Usage(100, 500, 110, 600, null), "stop", null));
+        var qwen = new QwenStoryboardGenerator(client, QwenStoryboardSettings.defaults(), codec,
+                mock(ExternalApiLogger.class), new QwenStageMetrics(new SimpleMeterRegistry(), "qwen3.8-max"));
+        var service = new ClaimedDiaryGenerationService(requestFingerprintGenerator, generationPromptRepository,
+                diaryGenerationRepository, qwen, diaryImageGenerator, imageStorage, completionService,
+                lifecycleMetrics);
+        GenerateDiaryImageCommand command = createCommand();
+        DiaryGeneration generation = createGeneration(command);
+        Storyboard storyboard = codec.decode(json);
+        GenerationPrompt prompt = createPrompt();
+        GenerationTokenUsage usage = new GenerationTokenUsage(100, 390, 110, 600);
+        ReferenceImage reference = createReferenceImage();
+        GeneratedImage image = createGeneratedImage();
+        DiaryGeneration completed = createGeneration(command);
+        completed.succeed(storyboard, "generated/qwen.png", usage, Instant.parse("2026-08-06T12:00:00Z"));
+        when(diaryGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(imageStorage.load("references/style.png")).thenReturn(reference);
+        when(diaryImageGenerator.generate(any(DiaryImageGenerationRequest.class))).thenReturn(image);
+        when(imageStorage.store(generation.getId(), image)).thenReturn("generated/qwen.png");
+        when(completionService.succeed(generation.getId(), storyboard, "generated/qwen.png", usage))
+                .thenReturn(completed);
+
+        CompletedDiaryGeneration result = service.generate(command, generation.getId());
+
+        assertThat(result.tokenUsage()).isEqualTo(usage);
+        assertThat(result.imageObjectKey()).isEqualTo("generated/qwen.png");
+        verify(diaryImageGenerator).generate(new DiaryImageGenerationRequest(storyboard,
+                "이미지 스타일 프롬프트", reference));
+        verify(completionService).succeed(generation.getId(), storyboard, "generated/qwen.png", usage);
     }
 
     @Test

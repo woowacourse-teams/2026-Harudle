@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import {
   createContext,
   useContext,
@@ -106,9 +107,7 @@ export const usePwaInstall = () => {
   const context = useContext(PwaInstallContext);
 
   if (!context) {
-    throw new Error(
-      'usePwaInstall은 PwaInstallProvider 내부에서만 사용할 수 있습니다.',
-    );
+    throw new Error(ERROR_MESSAGES.PWA_INSTALL_PROVIDER_REQUIRED);
   }
 
   return context;

@@ -1,15 +1,8 @@
+import { DIARY_GENERATING_COPY } from './copy';
 import { css } from '@emotion/react';
 import { theme } from '../../styles/theme';
 import checkIcon from '../../assets/icons/check.svg';
-import { FINAL_STEP } from './useGenerateLoading';
-
-const stepLabels = [
-  '이야기 분석 중',
-  '장면 구성 중',
-  '스케치 그리는 중',
-  '채색하고 마무리 중',
-  '완료',
-] as const;
+import { FINAL_STEP } from './useDiaryGenerationProgress';
 
 const DiaryGenerateStepper = ({ loadingStep }: { loadingStep: number }) => {
   const progress =
@@ -21,7 +14,7 @@ const DiaryGenerateStepper = ({ loadingStep }: { loadingStep: number }) => {
         <div css={progressBarStyle(progress)} />
       </div>
 
-      {stepLabels.map((label, index) => {
+      {DIARY_GENERATING_COPY.stepLabels.map((label, index) => {
         const step = index + 1;
         const isComplete =
           step === FINAL_STEP ? step === loadingStep : step < loadingStep;
@@ -69,7 +62,7 @@ const progressRailStyle = css`
 const progressBarStyle = (progress: number) => css`
   width: 100%;
   height: ${progress}%;
-  background-color: ${theme.colors.bg.brand};
+  background-color: ${theme.colors.background.brandSolid};
   transition: height 500ms ease-in-out;
 `;
 
@@ -99,9 +92,9 @@ const indicatorStyle = ({
   width: 24px;
   height: 24px;
   border: 2px solid
-    ${isComplete || isActive ? theme.colors.bg.brand : '#e3e3e8'};
+    ${isComplete || isActive ? theme.colors.stroke.brandSolid : '#e3e3e8'};
   border-radius: 50%;
-  background-color: ${isComplete ? theme.colors.bg.brand : '#ffffff'};
+  background-color: ${isComplete ? theme.colors.background.brandSolid : theme.colors.background.surface};
   box-sizing: border-box;
   transform: scale(${isActive ? 1.1 : 1});
 
@@ -112,7 +105,7 @@ const indicatorStyle = ({
 `;
 
 const labelStyle = css`
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 16px;
   font-weight: 500;
   line-height: 24px;

@@ -1,9 +1,10 @@
+import { useRef } from 'react';
+import { type ModalHandle } from '../../shared/Modal';
+import NicknameEditModal from './NicknameEditModal';
+import profileFallbackImage from '../../assets/images/profile-fallback.svg';
 import { css } from '@emotion/react';
-import BottomNavigation from '../../shared/BottomNavigation';
-import harudleLogo from '../../assets/images/harudle-logo.png';
-import { useNavigate } from 'react-router';
+import BottomNavigationLayout from '../../shared/BottomNavigationLayout';
 import useProfile from './useProfile';
-import loadingAnimation from '../../assets/images/loading-animation.webp';
 import { theme } from '../../styles/theme';
 import useLogout from './useLogout';
 import SettingError from './SettingError';
@@ -11,57 +12,76 @@ import callMadeIcon from '../../assets/icons/call_made.svg';
 import logoutIcon from '../../assets/icons/logout.svg';
 import articlePersonIcon from '../../assets/icons/article_person.svg';
 import PwaInstallButton from './PwaInstallButton';
+import LoadingSpinner from '../../shared/LoadingSpinner';
 
 const PRIVACY_POLICY_URL = 'https://harudle.notion.site/';
 
 const GOOGLE_FROM_URL = 'https://forms.gle/8DMM4L835Esxk7BE6';
 
 const SettingPage = () => {
-  const navigate = useNavigate();
-
   return (
-    <div css={pageStyle}>
-      <header css={pageHeaderStyle}>
-        <button css={logoButtonStyle} onClick={() => navigate('/')}>
-          <img css={logoStyle} src={harudleLogo} alt="하루들" />
-        </button>
-      </header>
-
+    <BottomNavigationLayout>
       <main css={contentStyle}>
         <div css={pageTitleStyle}>설정</div>
         <SettingPageContent />
+        <p css={versionStyle}>버전 {__APP_VERSION__}</p>
       </main>
-
-      <BottomNavigation />
-    </div>
+    </BottomNavigationLayout>
   );
 };
 
 export default SettingPage;
 
 const SettingPageContent = () => {
-  const { profileRequest } = useProfile();
-  const { logoutRequest, handleLogout } = useLogout();
+  const { profileRequest, updateNickname } = useProfile();
+  const nicknameModalRef = useRef<ModalHandle>(null);
+  const { request, handleLogout } = useLogout();
 
   if (profileRequest.status === 'idle' || profileRequest.status === 'loading') {
-    return (
-      <div css={loadingAnimationBoxStyle}>
-        <img src={loadingAnimation} alt="로딩 중" css={loadingImageStyle} />
-      </div>
-    );
+    return <LoadingSpinner />;
   }
 
   if (profileRequest.status === 'error') {
     return <SettingError errorMessage={profileRequest.error.message} />;
   }
 
-  const { name, oauthProviders } = profileRequest.data;
+  const {
+    name,
+    oauthProviders,
+    nickname: currentNickname,
+    profileImageUrl,
+  } = profileRequest.data;
 
   return (
     <div css={settingPageContentStyle}>
+      <div css={profileStyle}>
+        <img
+          css={profileImageStyle}
+          src={profileImageUrl || profileFallbackImage}
+          alt=""
+          onError={(event) => {
+            if (
+              event.currentTarget.getAttribute('src') !== profileFallbackImage
+            ) {
+              event.currentTarget.src = profileFallbackImage;
+            }
+          }}
+        />
+        <div css={nicknameStyle}>
+          <span css={nicknameLabelStyle}>닉네임</span>
+          <strong>{currentNickname}</strong>
+        </div>
+        <button
+          type="button"
+          css={editNicknameButtonStyle}
+          onClick={() => nicknameModalRef.current?.open()}
+        >
+          수정
+        </button>
+      </div>
       <div css={settingCardStyle}>
         <div css={settingRowStyle}>
-          <span css={settingLabelStyle}>이름</span>
+          <span css={settingLabelStyle}>소셜 계정 이름</span>
           <span css={settingValueStyle}>
             <span>{name}</span>
           </span>
@@ -100,59 +120,23 @@ const SettingPageContent = () => {
       <button
         type="button"
         css={logoutButtonStyle}
-        disabled={logoutRequest.status === 'loading'}
+        disabled={request.status === 'loading'}
         onClick={() => void handleLogout()}
       >
         <span>로그아웃</span>
         <img css={logoutIconStyle} src={logoutIcon} alt="" aria-hidden="true" />
       </button>
-      {logoutRequest.status === 'error' && (
-        <div css={logoutErrorStyle}>{logoutRequest.error.message}</div>
+      <NicknameEditModal
+        ref={nicknameModalRef}
+        currentNickname={currentNickname}
+        onSaved={updateNickname}
+      />
+      {request.status === 'error' && (
+        <div css={logoutErrorStyle}>{request.error.message}</div>
       )}
     </div>
   );
 };
-
-const loadingAnimationBoxStyle = css`
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 100%;
-  height: 100%;
-`;
-
-const loadingImageStyle = css`
-  width: 140px;
-  height: 140px;
-`;
-
-const pageStyle = css`
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-`;
-
-const pageHeaderStyle = css`
-  width: 100%;
-  height: 71px;
-  box-sizing: border-box;
-`;
-
-const logoButtonStyle = css`
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 100%;
-  height: 100%;
-  border: none;
-  background: none;
-  cursor: pointer;
-`;
-
-const logoStyle = css`
-  width: 106px;
-  height: 71px;
-`;
 
 const contentStyle = css`
   position: relative;
@@ -161,11 +145,11 @@ const contentStyle = css`
   flex-direction: column;
   gap: 8px;
   min-height: 0px;
-  padding: 20px 20px 0 20px;
+  padding: 4px 20px 0 20px;
 `;
 
 const pageTitleStyle = css`
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   font-size: 22px;
   font-weight: 700;
   line-height: 32px;
@@ -178,17 +162,29 @@ const settingPageContentStyle = css`
   gap: 10px;
   min-height: 0;
   overflow-y: auto;
+
+  & > * {
+    flex-shrink: 0;
+  }
+`;
+
+const versionStyle = css`
+  margin: 0;
+  padding: 8px 0;
+  color: ${theme.colors.foreground.neutralMuted};
+  font-size: 13px;
+  line-height: 20px;
+  text-align: center;
 `;
 
 const settingCardStyle = css`
-  height: 120px;
   overflow: hidden;
-  border: 1px solid ${theme.colors.border.primary};
+  border: 1px solid ${theme.colors.stroke.outline};
   border-radius: 16px;
 `;
 
 const settingLinkStyle = css`
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
   text-decoration: none;
 
   &:active {
@@ -211,16 +207,16 @@ const settingRowStyle = css`
   line-height: 24px;
 
   &:first-of-type {
-    border-bottom: 1px solid ${theme.colors.border.primary};
+    border-bottom: 1px solid ${theme.colors.stroke.divider};
   }
 `;
 
 const settingLabelStyle = css`
-  color: ${theme.colors.text.primary};
+  color: ${theme.colors.foreground.neutral};
 `;
 
 const settingValueStyle = css`
-  color: ${theme.colors.text.secondary};
+  color: ${theme.colors.foreground.neutralMuted};
   text-transform: capitalize;
 `;
 
@@ -231,10 +227,10 @@ const logoutButtonStyle = css`
   width: 100%;
   height: 56px;
   padding: 0 16px;
-  border: 1px solid ${theme.colors.border.primary};
+  border: 1px solid ${theme.colors.stroke.outline};
   border-radius: 16px;
   background-color: transparent;
-  color: ${theme.colors.text.danger};
+  color: ${theme.colors.foreground.critical};
   font-size: 15px;
   font-weight: 500;
   line-height: 24px;
@@ -242,7 +238,7 @@ const logoutButtonStyle = css`
   cursor: pointer;
 
   &:active {
-    background-color: #fff7f7;
+    background-color: ${theme.colors.background.criticalWeak};
   }
 
   &:disabled {
@@ -257,7 +253,51 @@ const logoutIconStyle = css`
 `;
 
 const logoutErrorStyle = css`
-  color: ${theme.colors.text.danger};
+  color: ${theme.colors.foreground.critical};
   font-size: 13px;
   line-height: 20px;
+`;
+
+const profileStyle = css`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0 10px;
+`;
+
+const profileImageStyle = css`
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  object-fit: cover;
+  background-color: ${theme.colors.stroke.brandWeak};
+`;
+
+const nicknameStyle = css`
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  color: ${theme.colors.foreground.neutral};
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 26px;
+  overflow-wrap: anywhere;
+`;
+
+const nicknameLabelStyle = css`
+  color: ${theme.colors.foreground.neutralMuted};
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+`;
+
+const editNicknameButtonStyle = css`
+  padding: 8px;
+  border: 0;
+  background: none;
+  color: ${theme.colors.foreground.brand};
+  font-size: 14px;
+  cursor: pointer;
 `;

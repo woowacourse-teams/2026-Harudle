@@ -1,3 +1,4 @@
+import { DIARY_GENERATING_COPY } from './copy';
 import { css } from '@emotion/react';
 import diaryGeneratingFailImage from '../../assets/images/diary-generating-fail.png';
 import { theme } from '../../styles/theme';
@@ -5,19 +6,23 @@ import PageHeader from '../../shared/PageHeader';
 import backIcon from '../../assets/icons/back.svg';
 import { useEffect } from 'react';
 import { RequestError } from '../../shared/api';
+import { DIARY_GENERATION_ERROR_CODE } from '../../domain/diary/diaryGenerate';
 
 const DiaryGeneratingError = ({
   error,
-  onReturnHome,
+  onReturnAlbum,
   onDiaryWriteRetry,
 }: {
   error: Error;
-  onReturnHome: () => void;
+  onReturnAlbum: () => void;
   onDiaryWriteRetry: () => void;
 }) => {
   const isGenerationInProgress =
     error instanceof RequestError &&
-    error.problem.code === 'GENERATION_IN_PROGRESS';
+    error.problem.code === DIARY_GENERATION_ERROR_CODE.IN_PROGRESS;
+  const isDailyLimitExceeded =
+    error instanceof RequestError &&
+    error.problem.code === DIARY_GENERATION_ERROR_CODE.DAILY_LIMIT_EXCEEDED;
 
   useEffect(() => {
     if (!isGenerationInProgress) {
@@ -25,9 +30,9 @@ const DiaryGeneratingError = ({
     }
 
     // alert를 렌더링 도중에 실행시키지 않기 위해 useEffect로 감싼다. (순수성 보장)
-    alert('이미 일기를 만들고 있어요. 완료되면 홈에 반영돼요.');
-    onReturnHome();
-  }, [isGenerationInProgress, onReturnHome]);
+    alert(DIARY_GENERATING_COPY.inProgress);
+    onReturnAlbum();
+  }, [isGenerationInProgress, onReturnAlbum]);
 
   if (isGenerationInProgress) {
     return null;
@@ -41,7 +46,7 @@ const DiaryGeneratingError = ({
             type="button"
             aria-label="뒤로 가기"
             css={headerButtonStyle}
-            onClick={onReturnHome}
+            onClick={onReturnAlbum}
           >
             <img
               src={backIcon}
@@ -56,17 +61,22 @@ const DiaryGeneratingError = ({
 
       <img
         src={diaryGeneratingFailImage}
-        alt="일기 생성에 실패해 속상한 하루들 캐릭터"
+        alt="네컷만화를 완성하지 못해 속상한 하루들 캐릭터"
         css={illustrationStyle}
       />
 
       <div css={messageBoxStyle}>
-        <h2 css={titleStyle}>일기 생성 중 오류가 발생했어요</h2>
+        <h2 css={titleStyle}>{DIARY_GENERATING_COPY.errorTitle}</h2>
+        <p css={descriptionStyle}>
+          {isDailyLimitExceeded
+            ? DIARY_GENERATING_COPY.limitErrorDescription
+            : DIARY_GENERATING_COPY.errorDescription}
+        </p>
         <p css={descriptionStyle}>{error.message}</p>
       </div>
 
       <button type="button" css={retryButtonStyle} onClick={onDiaryWriteRetry}>
-        다시 작성하기
+        {DIARY_GENERATING_COPY.editAction}
       </button>
     </div>
   );
@@ -118,7 +128,8 @@ const messageBoxStyle = css`
 `;
 
 const titleStyle = css`
-  color: ${theme.colors.text.primary};
+  word-break: keep-all;
+  color: ${theme.colors.foreground.neutral};
   font-size: 20px;
   font-weight: 700;
   line-height: 30px;
@@ -126,7 +137,7 @@ const titleStyle = css`
 
 const descriptionStyle = css`
   max-width: 280px;
-  color: ${theme.colors.text.secondary};
+  color: ${theme.colors.foreground.neutralMuted};
   font-size: 14px;
   font-weight: 400;
   line-height: 22px;
@@ -134,12 +145,13 @@ const descriptionStyle = css`
 `;
 
 const retryButtonStyle = css`
-  width: 144px;
+  word-break: keep-all;
+  min-width: 200px;
   height: 48px;
   border: none;
   border-radius: 18px;
-  background-color: ${theme.colors.bg.brand};
-  color: #ffffff;
+  background-color: ${theme.colors.background.brandSolid};
+  color: ${theme.colors.foreground.onBrand};
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;

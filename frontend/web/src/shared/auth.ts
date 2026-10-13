@@ -1,8 +1,16 @@
+import { ERROR_MESSAGES } from './errorMessage';
 import { API_BASE_URL, isProblemDetails, RequestError } from './api';
 
 let accessToken: string | null = null;
 let refreshRequest: Promise<void> | null = null; // Single-Flight 패턴
 let isHandlingAuthFailure = false;
+
+export class AuthenticationRequiredError extends Error {
+  constructor() {
+    super(ERROR_MESSAGES.OAUTH_LOGIN_HISTORY_REQUIRED);
+    this.name = 'AuthenticationRequiredError';
+  }
+}
 
 export const setAccessToken = (token: string | null): void => {
   accessToken = token;
@@ -15,14 +23,52 @@ export const setAccessToken = (token: string | null): void => {
 type AuthFetchRequestInfo = Parameters<typeof fetch>[0];
 type AuthFetchRequestInit = Parameters<typeof fetch>[1];
 
+export const publicFetch = async (
+  info: AuthFetchRequestInfo,
+  init?: AuthFetchRequestInit,
+): Promise<Response> => {
+  // 갱신 중 시작한 공개 요청도 같은 갱신 결과를 기다린다.
+  if (!accessToken && refreshRequest) {
+    try {
+      await refreshRequest;
+    } catch {
+      return fetch(info, init);
+    }
+  }
+
+  const usedToken = accessToken;
+  if (!usedToken) return fetch(info, init);
+
+  const response = await fetchWithAccessToken(info, init, usedToken);
+  if (response.status !== 401) return response;
+
+  // 다른 요청이 이미 갱신한 토큰은 유지한다.
+  if (accessToken === usedToken) setAccessToken(null);
+
+  try {
+    if (!accessToken) await restoreAccessToken();
+  } catch {
+    return fetch(info, init);
+  }
+
+  const refreshedToken = accessToken;
+  if (!refreshedToken) return fetch(info, init);
+
+  const retryResponse = await fetchWithAccessToken(info, init, refreshedToken);
+  if (retryResponse.status !== 401) return retryResponse;
+
+  if (accessToken === refreshedToken) setAccessToken(null);
+  return fetch(info, init);
+};
+
 export const authFetch = async (
   info: AuthFetchRequestInfo,
   init?: AuthFetchRequestInit,
 ) => {
   try {
     if (localStorage.getItem('harudle.has-completed-oauth') === null) {
-      window.location.replace('/login');
-      throw new Error('OAuth 로그인 이력이 없습니다.');
+      window.location.replace('/');
+      throw new AuthenticationRequiredError();
     }
 
     if (!accessToken) {
@@ -30,7 +76,7 @@ export const authFetch = async (
     }
 
     if (!accessToken) {
-      throw new Error('Access Token 복구 실패');
+      throw new Error(ERROR_MESSAGES.ACCESS_TOKEN_RECOVERY_FAILED);
     }
 
     const usedToken = accessToken; // 액세스 토큰 race condition 문제 해결을 위해 복사
@@ -72,7 +118,7 @@ export const authFetch = async (
         isHandlingAuthFailure = true;
 
         alert('세션이 만료되었습니다. 다시 로그인 해주세요.');
-        window.location.href = '/login';
+        window.location.href = '/';
       }
     }
 
@@ -121,6 +167,10 @@ export const isRefreshTokenResponse = (
 };
 
 export const restoreAccessToken = async (): Promise<void> => {
+  // 로그인 콜백이나 앞선 진입 확인에서 이미 확보한 토큰은 재사용한다.
+  // API에서 401을 받으면 authFetch가 토큰을 비운 뒤 다시 갱신한다.
+  if (accessToken) return;
+
   if (refreshRequest) {
     await refreshRequest;
     return;
@@ -148,19 +198,30 @@ const requestNewAccessToken = async (): Promise<void> => {
   });
 
   if (!response.ok) {
-    const errorData = await response.json();
+    const errorData: unknown = await response.json();
     if (isProblemDetails(errorData)) {
+      if (errorData.code === 'INVALID_REFRESH_TOKEN') {
+        try {
+          localStorage.removeItem('harudle.has-completed-oauth');
+        } catch {
+          // 저장소 삭제 실패가 원래 인증 오류를 덮어쓰지 않게 한다.
+        }
+      }
       throw new RequestError(errorData);
     }
 
-    throw new Error('알 수 없는 에러가 발생했습니다.');
+    throw new Error(ERROR_MESSAGES.ACCESS_TOKEN_REFRESH_FAILED);
   }
 
   const data: unknown = await response.json();
   if (!isRefreshTokenResponse(data)) {
-    throw new Error('RefreshToken 응답 형식이 일치하지 않습니다.');
+    throw new Error(ERROR_MESSAGES.INVALID_REFRESH_TOKEN_RESPONSE);
   }
 
+  // 서버가 세션을 확인한 뒤 누락된 인증 완료 표시를 복구한다.
+  if (localStorage.getItem('harudle.has-completed-oauth') === null) {
+    localStorage.setItem('harudle.has-completed-oauth', 'true');
+  }
   setAccessToken(data.accessToken);
 };
 
@@ -191,13 +252,13 @@ export const requestCsrfToken = async (): Promise<string> => {
       throw new RequestError(errorData);
     }
 
-    throw new Error('CSRF Token 발급에 실패했습니다.');
+    throw new Error(ERROR_MESSAGES.CSRF_TOKEN_ISSUANCE_FAILED);
   }
 
   const data: unknown = await response.json();
 
   if (!isCsrfTokenResponse(data)) {
-    throw new Error('CSRF Token 응답 형식이 일치하지 않습니다.');
+    throw new Error(ERROR_MESSAGES.INVALID_CSRF_TOKEN_RESPONSE);
   }
 
   return data.token;

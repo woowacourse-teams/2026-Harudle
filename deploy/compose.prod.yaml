@@ -25,7 +25,7 @@ services:
     healthcheck:
       test: >-
         code=$$(curl -sS -o /dev/null -w '%{http_code}'
-        http://127.0.0.1:8080/api/v1/public/shares/00000000-0000-0000-0000-000000000000);
+        http://127.0.0.1:8080/api/v1/feeds/00000000-0000-0000-0000-000000000000);
         [ "$$code" -ge 200 ] && [ "$$code" -lt 500 ]
       interval: 30s
       timeout: 5s

@@ -1,0 +1,134 @@
+import { diaryTimelineColors } from './diaryTimelineColors';
+import { css } from '@emotion/react';
+import { theme } from '../../styles/theme';
+import DiaryImage from '../../shared/DiaryImage';
+import { formatDiaryDate } from '../../shared/utils';
+import type {
+  MonthlyDiaryDay,
+  MonthlyDiaryItem,
+} from '../../domain/diary/monthlyDiaries';
+
+const DiaryItemRow = ({
+  monthlyDiary,
+  date,
+  onClick,
+}: {
+  monthlyDiary: MonthlyDiaryItem;
+  date: MonthlyDiaryDay['date'];
+  onClick: () => void;
+}) => {
+  const { id, title, thumbnailUrl } = monthlyDiary;
+  const { date: formattedDate, weekday } = formatDiaryDate(date);
+  return (
+    <button css={diaryItemRowStyle} onClick={onClick}>
+      <div css={dateStyle}>
+        <strong>{formattedDate}</strong>
+        <span>{weekday}</span>
+      </div>
+
+      <span css={titleStyle}>{title}</span>
+
+      <DiaryImage
+        diaryId={id}
+        imageRole="thumbnail"
+        src={thumbnailUrl}
+        alt={`네컷만화 ${date}`}
+        css={thumbnailStyle}
+      />
+    </button>
+  );
+};
+
+export default DiaryItemRow;
+
+const diaryItemRowStyle = css`
+  position: relative;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  height: 98px;
+  padding-left: 45px;
+  border: none;
+  background: none;
+  cursor: pointer;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 25px;
+    width: 2px;
+    background: ${diaryTimelineColors.connector};
+  }
+
+  &:not(:first-of-type)::before {
+    top: -12px;
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 40px;
+    left: 26px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: ${diaryTimelineColors.marker};
+    transform: translate(-50%, -50%);
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  &:active {
+    background-color: #fafafb;
+  }
+`;
+
+const dateStyle = css`
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-self: center;
+  gap: 2px;
+  height: 64px;
+  white-space: nowrap;
+
+  strong {
+    color: ${theme.colors.foreground.neutral};
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 24px;
+  }
+
+  span {
+    color: ${theme.colors.foreground.neutralMuted};
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 18px;
+  }
+`;
+
+const titleStyle = css`
+  display: -webkit-box;
+  max-height: 60px;
+  overflow: hidden;
+  color: ${theme.colors.foreground.neutral};
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 24px;
+  word-break: keep-all;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+`;
+
+const thumbnailStyle = css`
+  flex: 0 0 96px;
+  width: 96px;
+  height: 96px;
+  border-radius: 4px;
+  object-fit: contain;
+  box-sizing: border-box;
+`;
