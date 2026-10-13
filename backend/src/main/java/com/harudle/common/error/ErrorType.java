@@ -83,6 +83,16 @@ public enum ErrorType {
             "Category not found",
             "카테고리를 찾을 수 없습니다."
     ),
+    DIARY_NOT_PUBLISHABLE(
+            HttpStatus.CONFLICT,
+            "Diary not publishable",
+            "이미지 생성이 완료된 일기만 게시할 수 있습니다."
+    ),
+    DIARY_ALREADY_PUBLISHED(
+            HttpStatus.CONFLICT,
+            "Diary already published",
+            "이미 피드로 게시된 일기입니다."
+    ),
     CATEGORY_INACTIVE(
             HttpStatus.CONFLICT,
             "Inactive category",
@@ -92,6 +102,11 @@ public enum ErrorType {
             HttpStatus.CONFLICT,
             "Category name already used",
             "이미 사용 중인 카테고리 이름입니다."
+    ),
+    FEED_UNAVAILABLE(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "Feed unavailable",
+            "피드 연동 기능이 아직 구성되지 않았습니다."
     ),
     SHARE_NOT_FOUND(
             HttpStatus.NOT_FOUND,

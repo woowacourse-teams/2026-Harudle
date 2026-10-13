@@ -235,16 +235,6 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return createResponse(ErrorType.INVALID_CURSOR, request);
     }
 
-    @ExceptionHandler(CategoryNotFoundException.class)
-    ResponseEntity<ProblemDetail> handleCategoryNotFound(HttpServletRequest request) {
-        return createResponse(ErrorType.CATEGORY_NOT_FOUND, request);
-    }
-
-    @ExceptionHandler(CategoryInactiveException.class)
-    ResponseEntity<ProblemDetail> handleCategoryInactive(HttpServletRequest request) {
-        return createResponse(ErrorType.CATEGORY_INACTIVE, request);
-    }
-
     @ExceptionHandler(DiaryNotPublishableException.class)
     ResponseEntity<ProblemDetail> handleDiaryNotPublishable(HttpServletRequest request) {
         return createResponse(ErrorType.DIARY_NOT_PUBLISHABLE, request);
