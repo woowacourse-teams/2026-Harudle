@@ -1,7 +1,9 @@
+import { useRef } from 'react';
+import { type ModalHandle } from '../../shared/Modal';
+import NicknameEditModal from './NicknameEditModal';
+import profileFallbackImage from '../../assets/images/profile-fallback.svg';
 import { css } from '@emotion/react';
-import BottomNavigation from '../../shared/BottomNavigation';
-import harudleLogo from '../../assets/images/harudle-logo.webp';
-import { useNavigate } from 'react-router';
+import BottomNavigationLayout from '../../shared/BottomNavigationLayout';
 import useProfile from './useProfile';
 import { theme } from '../../styles/theme';
 import useLogout from './useLogout';
@@ -17,31 +19,22 @@ const PRIVACY_POLICY_URL = 'https://harudle.notion.site/';
 const GOOGLE_FROM_URL = 'https://forms.gle/8DMM4L835Esxk7BE6';
 
 const SettingPage = () => {
-  const navigate = useNavigate();
-
   return (
-    <div css={pageStyle}>
-      <header css={pageHeaderStyle}>
-        <button css={logoButtonStyle} onClick={() => navigate('/')}>
-          <img css={logoStyle} src={harudleLogo} alt="하루들" />
-        </button>
-      </header>
-
+    <BottomNavigationLayout>
       <main css={contentStyle}>
         <div css={pageTitleStyle}>설정</div>
         <SettingPageContent />
         <p css={versionStyle}>버전 {__APP_VERSION__}</p>
       </main>
-
-      <BottomNavigation />
-    </div>
+    </BottomNavigationLayout>
   );
 };
 
 export default SettingPage;
 
 const SettingPageContent = () => {
-  const { profileRequest } = useProfile();
+  const { profileRequest, updateNickname } = useProfile();
+  const nicknameModalRef = useRef<ModalHandle>(null);
   const { request, handleLogout } = useLogout();
 
   if (profileRequest.status === 'idle' || profileRequest.status === 'loading') {
@@ -52,13 +45,43 @@ const SettingPageContent = () => {
     return <SettingError errorMessage={profileRequest.error.message} />;
   }
 
-  const { name, oauthProviders } = profileRequest.data;
+  const {
+    name,
+    oauthProviders,
+    nickname: currentNickname,
+    profileImageUrl,
+  } = profileRequest.data;
 
   return (
     <div css={settingPageContentStyle}>
+      <div css={profileStyle}>
+        <img
+          css={profileImageStyle}
+          src={profileImageUrl || profileFallbackImage}
+          alt=""
+          onError={(event) => {
+            if (
+              event.currentTarget.getAttribute('src') !== profileFallbackImage
+            ) {
+              event.currentTarget.src = profileFallbackImage;
+            }
+          }}
+        />
+        <div css={nicknameStyle}>
+          <span css={nicknameLabelStyle}>닉네임</span>
+          <strong>{currentNickname}</strong>
+        </div>
+        <button
+          type="button"
+          css={editNicknameButtonStyle}
+          onClick={() => nicknameModalRef.current?.open()}
+        >
+          수정
+        </button>
+      </div>
       <div css={settingCardStyle}>
         <div css={settingRowStyle}>
-          <span css={settingLabelStyle}>이름</span>
+          <span css={settingLabelStyle}>소셜 계정 이름</span>
           <span css={settingValueStyle}>
             <span>{name}</span>
           </span>
@@ -103,40 +126,17 @@ const SettingPageContent = () => {
         <span>로그아웃</span>
         <img css={logoutIconStyle} src={logoutIcon} alt="" aria-hidden="true" />
       </button>
+      <NicknameEditModal
+        ref={nicknameModalRef}
+        currentNickname={currentNickname}
+        onSaved={updateNickname}
+      />
       {request.status === 'error' && (
         <div css={logoutErrorStyle}>{request.error.message}</div>
       )}
     </div>
   );
 };
-
-const pageStyle = css`
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-`;
-
-const pageHeaderStyle = css`
-  width: 100%;
-  height: 56px;
-  box-sizing: border-box;
-`;
-
-const logoButtonStyle = css`
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 100%;
-  height: 100%;
-  border: none;
-  background: none;
-  cursor: pointer;
-`;
-
-const logoStyle = css`
-  width: 106px;
-  height: 71px;
-`;
 
 const contentStyle = css`
   position: relative;
@@ -256,4 +256,48 @@ const logoutErrorStyle = css`
   color: ${theme.colors.foreground.critical};
   font-size: 13px;
   line-height: 20px;
+`;
+
+const profileStyle = css`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0 10px;
+`;
+
+const profileImageStyle = css`
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  object-fit: cover;
+  background-color: ${theme.colors.stroke.brandWeak};
+`;
+
+const nicknameStyle = css`
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  color: ${theme.colors.foreground.neutral};
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 26px;
+  overflow-wrap: anywhere;
+`;
+
+const nicknameLabelStyle = css`
+  color: ${theme.colors.foreground.neutralMuted};
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+`;
+
+const editNicknameButtonStyle = css`
+  padding: 8px;
+  border: 0;
+  background: none;
+  color: ${theme.colors.foreground.brand};
+  font-size: 14px;
+  cursor: pointer;
 `;

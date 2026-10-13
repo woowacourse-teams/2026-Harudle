@@ -24,7 +24,7 @@ const DiaryGeneratingPage = () => {
 
   if (!isDiaryGenerateRequest(diaryGenerateRequestBody)) {
     alert(DIARY_GENERATING_COPY.invalidRequest);
-    return <Navigate to="/" replace />;
+    return <Navigate to="/album" replace />;
   }
 
   return <DiaryGeneratingContent {...diaryGenerateRequestBody} />;
@@ -65,9 +65,9 @@ const DiaryGeneratingContent = (generateRequestBody: DiaryGenerateRequest) => {
     void execute(generateRequestBody);
   }, [execute, generateRequestBody]);
 
-  const handleReturnHome = useCallback(() => {
+  const handleReturnAlbum = useCallback(() => {
     resetRequest();
-    navigate('/', { replace: true });
+    navigate('/album', { replace: true });
   }, [resetRequest, navigate]);
 
   const handleDairyWriteRetry = useCallback(() => {
@@ -79,7 +79,7 @@ const DiaryGeneratingContent = (generateRequestBody: DiaryGenerateRequest) => {
     return (
       <DiaryGeneratingError
         error={request.error}
-        onReturnHome={handleReturnHome}
+        onReturnAlbum={handleReturnAlbum}
         onDiaryWriteRetry={handleDairyWriteRetry}
       />
     );
@@ -93,7 +93,7 @@ const DiaryGeneratingContent = (generateRequestBody: DiaryGenerateRequest) => {
             type="button"
             aria-label="뒤로 가기"
             css={headerButtonStyle}
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/album')}
           >
             <img
               src={backIcon}

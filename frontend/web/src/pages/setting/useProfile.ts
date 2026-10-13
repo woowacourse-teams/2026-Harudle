@@ -11,7 +11,7 @@ const useProfile = () => {
   });
 
   useEffect(() => {
-    const execute = async (): Promise<void> => {
+    const execute = async () => {
       setRequest({
         status: 'loading',
       });
@@ -36,7 +36,14 @@ const useProfile = () => {
     void execute();
   }, []);
 
-  return { profileRequest: request };
+  const updateNickname = (nickname: string): void => {
+    setRequest((previous) => {
+      if (previous.status !== 'success') return previous;
+      return { status: 'success', data: { ...previous.data, nickname } };
+    });
+  };
+
+  return { profileRequest: request, updateNickname };
 };
 
 export default useProfile;
