@@ -13,6 +13,34 @@ import org.junit.jupiter.api.Test;
 class OpenApiConfigTest {
 
     @Test
+    void documentsNotificationReadPatchWithBearerAndCsrfOnlyForTheExactMethodAndPath() {
+        Paths paths = new Paths();
+        for (String path : List.of("/api/v1/notifications", "/api/v1/notifications/{notificationId}")) {
+            PathItem pathItem = new PathItem();
+            for (PathItem.HttpMethod method : List.of(PathItem.HttpMethod.GET, PathItem.HttpMethod.POST,
+                    PathItem.HttpMethod.PUT, PathItem.HttpMethod.PATCH, PathItem.HttpMethod.DELETE)) {
+                pathItem.operation(method, new Operation()
+                        .addSecurityItem(new SecurityRequirement().addList("bearerAuth")));
+            }
+            paths.addPathItem(path, pathItem);
+        }
+
+        new OpenApiConfig().csrfSecurityCustomizer().customise(new OpenAPI().paths(paths));
+
+        paths.forEach((path, pathItem) -> pathItem.readOperationsMap().forEach((method, operation) -> {
+            boolean readPatch = path.equals("/api/v1/notifications/{notificationId}")
+                    && method == PathItem.HttpMethod.PATCH;
+            assertThat(operation.getSecurity()).singleElement().satisfies(requirement -> {
+                if (readPatch) {
+                    assertThat(requirement).containsOnlyKeys("bearerAuth", "csrfToken");
+                } else {
+                    assertThat(requirement).containsOnlyKeys("bearerAuth");
+                }
+            });
+        }));
+    }
+
+    @Test
     void documentsLikeMutationsWithBearerAndCsrfWithoutChangingOtherMethods() {
         PathItem like = new PathItem();
         for (PathItem.HttpMethod method : List.of(PathItem.HttpMethod.GET, PathItem.HttpMethod.POST,
