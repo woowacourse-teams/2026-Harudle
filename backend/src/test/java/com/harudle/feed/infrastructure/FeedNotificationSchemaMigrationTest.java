@@ -46,7 +46,7 @@ class FeedNotificationSchemaMigrationTest {
 
     @BeforeEach
     void upgradeExistingSchema() throws SQLException {
-        migrateExistingSchemaTo("20");
+        migrateExistingSchemaTo("24");
     }
 
     private void migrateExistingSchemaTo(String target) throws SQLException {
@@ -88,7 +88,7 @@ class FeedNotificationSchemaMigrationTest {
     @DisplayName("빈 PostgreSQL에도 전체 마이그레이션과 카테고리 시드를 적용할 수 있다")
     void migrateEmptyDatabase() throws SQLException {
         flyway().clean();
-        assertThat(flyway().migrate().migrationsExecuted).isEqualTo(20);
+        assertThat(flyway().migrate().migrationsExecuted).isEqualTo(24);
         flyway().validate();
         assertThat(queryLong("SELECT count(*) FROM categories WHERE is_active")).isEqualTo(2);
         assertThat(queryLong("""
@@ -101,7 +101,7 @@ class FeedNotificationSchemaMigrationTest {
     @Test
     @DisplayName("기존 활성 Refresh Token을 세션에 연결하고 세션 소유자 변경을 막는다")
     void migrateLegacyRefreshTokensAndProtectSessionOwnership() throws SQLException {
-        migrateExistingSchemaTo("19");
+        migrateExistingSchemaTo("23");
         String insertToken = """
                 INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
                 VALUES (?, ?, ?)
@@ -256,7 +256,7 @@ class FeedNotificationSchemaMigrationTest {
                 VALUES (?, ?, ?, ?)
                 """, registration, AUTHOR, UUID.randomUUID(), "legacy-token");
 
-        assertThatThrownBy(() -> flyway("19").migrate()).isInstanceOf(FlywayException.class);
+        assertThatThrownBy(() -> flyway("23").migrate()).isInstanceOf(FlywayException.class);
         assertThat(queryLong("SELECT count(*) FROM push_registrations WHERE id = ? "
                 + "AND recipient_kind = 'FCM_TOKEN'", registration)).isEqualTo(1);
     }
@@ -537,7 +537,7 @@ class FeedNotificationSchemaMigrationTest {
     }
 
     private static Flyway flyway() {
-        return flyway("20");
+        return flyway("24");
     }
 
     private static Flyway flyway(String target) {
