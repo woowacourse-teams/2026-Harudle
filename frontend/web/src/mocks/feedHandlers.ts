@@ -40,6 +40,7 @@ type FeedProblemCode =
   | 'DIARY_ALREADY_PUBLISHED'
   | 'VALIDATION_ERROR'
   | 'INVALID_CURSOR'
+  | 'INVALID_CSRF_TOKEN'
   | 'UNAUTHORIZED'
   | 'FORBIDDEN'
   | 'CATEGORY_NOT_FOUND'
@@ -48,6 +49,7 @@ type FeedProblemCode =
 
 const MOCK_USER_ID = '08d69a34-6d70-4d42-a158-671bc67733c9';
 const MOCK_ACCESS_TOKEN = 'mock-access-token';
+export const FEED_MOCK_CSRF_TOKEN = 'mock-csrf-token';
 
 // 서버 계약에 맞춰 카테고리 ID를 숫자로 반환한다.
 const categories: readonly MockCategory[] = [
@@ -166,6 +168,16 @@ const validateMutation = (request: Request): Response | null => {
   if (!isAuthenticated(request)) {
     return problem(request, 401, 'UNAUTHORIZED');
   }
+
+  return null;
+};
+
+const validateCommentMutation = (request: Request): Response | null => {
+  const authenticationError = validateMutation(request);
+  if (authenticationError) return authenticationError;
+
+  if (request.headers.get('X-XSRF-TOKEN') !== FEED_MOCK_CSRF_TOKEN)
+    return problem(request, 403, 'INVALID_CSRF_TOKEN');
 
   return null;
 };
@@ -472,7 +484,7 @@ export const feedHandlers = [
     '/api/v1/feeds/:feedId/comments',
     async ({ request, params }): Promise<Response> => {
       await delay(300);
-      const error = validateMutation(request);
+      const error = validateCommentMutation(request);
       if (error) return error;
       const feedId = String(params.feedId);
       if (!isCanonicalUuid(feedId))
@@ -537,7 +549,7 @@ export const feedHandlers = [
     '/api/v1/comments/:commentId',
     async ({ request, params }): Promise<Response> => {
       await delay(300);
-      const error = validateMutation(request);
+      const error = validateCommentMutation(request);
       if (error) return error;
       const commentId = String(params.commentId);
       if (!isCanonicalUuid(commentId))

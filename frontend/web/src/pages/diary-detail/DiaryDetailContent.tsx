@@ -54,7 +54,7 @@ const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
             type="button"
             aria-label="뒤로 가기"
             css={headerButtonStyle}
-            onClick={() => navigate(-1)}
+            onClick={() => navigate('/album')}
           >
             <img
               src={backIcon}
