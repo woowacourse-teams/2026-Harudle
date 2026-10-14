@@ -95,6 +95,8 @@ class AdminGenerationControllerTest {
                 GenerationStatus.PROCESSING,
                 null
         );
+        jdbcTemplate.update("UPDATE diary_generations SET storyboard_provider = ?, storyboard_model = ? WHERE id = ?",
+                "qwen", "qwen3.8-max", middleGenerationId);
 
         MockMvcResponse response = adminRequest(admin)
                 .get("/api/v1/admin/generations");
@@ -114,6 +116,10 @@ class AdminGenerationControllerTest {
         assertThat(response.jsonPath().getString("content[1].id"))
                 .isEqualTo(middleGenerationId.toString());
         assertThat(response.jsonPath().getString("content[1].status")).isEqualTo("SUCCEEDED");
+        assertThat(response.jsonPath().getString("content[1].storyboardProvider")).isEqualTo("qwen");
+        assertThat(response.jsonPath().getString("content[1].storyboardModel")).isEqualTo("qwen3.8-max");
+        assertThat(response.jsonPath().getString("content[0].storyboardProvider")).isNull();
+        assertThat(response.jsonPath().getString("content[0].storyboardModel")).isNull();
         assertThat(response.jsonPath().getString("content[2].id"))
                 .isEqualTo(oldestGenerationId.toString());
         assertThat(response.jsonPath().getString("content[2].status")).isEqualTo("FAILED");

@@ -9,18 +9,20 @@ import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
 import tools.jackson.databind.ObjectMapper;
 
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(prefix = "harudle.generation.adapters", name = "enabled", havingValue = "true")
-@ConditionalOnProperty(prefix = "harudle.generation.storyboard", name = "provider", havingValue = "qwen")
+@Conditional(QwenStoryboardSelectedCondition.class)
 @EnableConfigurationProperties(QwenStoryboardProperties.class)
 public class QwenStoryboardConfiguration {
 
     @Bean(destroyMethod = "close")
-    public QwenChatClient qwenChatClient(QwenStoryboardProperties properties, ObjectMapper objectMapper) {
-        return new QwenChatClient(QwenChatClient.httpClient(properties.requestTimeout()),
+    public QwenChatClient qwenChatClient(QwenStoryboardProperties properties,
+            StoryboardProviderProperties providers, ObjectMapper objectMapper) {
+        return new QwenChatClient(QwenChatClient.httpClient(providers.timeoutFor("qwen")),
                 objectMapper, properties.apiKey());
     }
 
