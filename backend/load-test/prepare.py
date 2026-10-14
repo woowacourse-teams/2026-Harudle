@@ -123,6 +123,15 @@ def build_fixture(base_url, per_month):
     return fixture, "\n".join(statements), image_keys
 
 
+def write_fixture(directory, base_url='https://dev.harudle.com', per_month=1):
+    os.umask(0o077)
+    directory.mkdir(parents=True, exist_ok=False)
+    fixture, seed, keys = build_fixture(base_url, per_month)
+    (directory / "members.json").write_text(json.dumps(fixture, ensure_ascii=False, indent=2))
+    (directory / "seed.sql").write_text(seed)
+    return fixture, seed, keys
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default="https://dev.harudle.com")
@@ -136,11 +145,7 @@ def main():
         parser.error("dev requires HTTPS")
     if not 1 <= args.diaries_per_month <= 100:
         parser.error("diaries-per-month must be between 1 and 100")
-    os.umask(0o077)
-    args.output.mkdir(parents=True, exist_ok=False)
-    fixture, seed, keys = build_fixture(args.base_url.rstrip("/"), args.diaries_per_month)
-    (args.output / "members.json").write_text(json.dumps(fixture, ensure_ascii=False, indent=2))
-    (args.output / "seed.sql").write_text(seed)
+    _, _, keys = write_fixture(args.output, args.base_url.rstrip("/"), args.diaries_per_month)
     print(f"Prepared {MEMBERS} members, {len(keys)} diaries, {MEMBERS * args.diaries_per_month} feeds: {args.output}")
     print("No server was changed. Upload test images, apply seed.sql to the dev DB, then run k6 once.")
 

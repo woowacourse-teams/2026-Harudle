@@ -93,8 +93,11 @@ def save_plan(path, plan, fixture):
         os.close(descriptor)
 
 
-def cleanup(directory):
+def cleanup(directory, execute_sql=None, client_stopped=False):
+    execute_sql = execute_sql or psql
     with run_lock(directory):
+        if (directory / '.exported').exists() and not client_stopped:
+            raise ValueError('Members were exported. Stop local k6 first, then use --client-stopped')
         fixture = load_fixture(directory)
         plan_path = directory / 'cleanup.json'
         plan = {'runId': fixture['runId'], 'generations': seed_records(fixture)}
@@ -104,7 +107,7 @@ def cleanup(directory):
                     or not hmac.compare_digest(plan.get('signature', ''), signature(fixture, plan))):
                 raise ValueError('Cleanup plan was changed or belongs to another run')
         validate_records(fixture, plan['generations'])
-        current = json.loads(psql(snapshot_sql(fixture)))
+        current = json.loads(execute_sql(snapshot_sql(fixture)))
         validate_records(fixture, current)
         records = {record['id']: record for record in plan['generations']}
         for record in current:
@@ -115,7 +118,7 @@ def cleanup(directory):
         plan['generations'] = list(records.values())
         # Persist before DELETE. Retain old entries when the DB is already empty on a retry.
         save_plan(plan_path, plan, fixture)
-        psql(cleanup_sql(fixture, plan['generations']))
+        execute_sql(cleanup_sql(fixture, plan['generations']))
         print('DB cleanup committed: test members, diaries, feeds and reactions removed.', flush=True)
         delete_images(fixture, plan['generations'])
 
@@ -123,9 +126,10 @@ def cleanup(directory):
 def main():
     parser = argparse.ArgumentParser(description='Clean one test run, DB first and S3 second')
     parser.add_argument('--run-dir', type=Path, required=True)
+    parser.add_argument('--client-stopped', action='store_true', help='Confirm local k6 has stopped')
     args = parser.parse_args()
     try:
-        cleanup(args.run_dir)
+        cleanup(args.run_dir, client_stopped=args.client_stopped)
     except (ValueError, KeyError, TypeError) as error:
         parser.error(str(error))
 

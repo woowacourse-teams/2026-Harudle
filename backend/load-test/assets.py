@@ -15,7 +15,9 @@ from prepare import MEMBERS, PREFIX, seed_image
 BUCKET = "techcourse-project-2026"
 UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 IMAGE = re.compile(rf"{PREFIX}/({UUID})/{UUID}/image(?:-(?:960|240)\.webp|\.(?:webp|png|jpg))")
-TEST_IMAGE = Path(__file__).resolve().parents[1] / "src/main/resources/load-test-diary.png"
+TEST_IMAGE = Path(__file__).with_name('load-test-diary.png')
+if not TEST_IMAGE.is_file():
+    TEST_IMAGE = Path(__file__).resolve().parents[1] / "src/main/resources/load-test-diary.png"
 
 
 def aws(*args):
