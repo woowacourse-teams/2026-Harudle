@@ -10,7 +10,7 @@ RUN chmod +x gradlew \
 
 COPY src ./src
 
-RUN ./gradlew --no-daemon clean bootJar -x test \
+RUN ./gradlew --no-daemon bootJar -x test \
     && JAR_FILE="$(find build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-plain.jar' | head -n 1)" \
     && test -n "$JAR_FILE" \
     && cp "$JAR_FILE" /workspace/app.jar

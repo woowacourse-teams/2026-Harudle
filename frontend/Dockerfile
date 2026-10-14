@@ -1,8 +1,5 @@
 FROM node:24-bookworm-slim AS builder
 
-ARG REACT_APP_POSTHOG_KEY
-ARG REACT_APP_POSTHOG_HOST
-
 WORKDIR /workspace
 
 RUN corepack enable \
@@ -16,6 +13,9 @@ RUN pnpm install --frozen-lockfile
 COPY web ./web
 
 WORKDIR /workspace/web
+
+ARG REACT_APP_POSTHOG_KEY
+ARG REACT_APP_POSTHOG_HOST
 
 RUN pnpm check
 
