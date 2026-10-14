@@ -82,7 +82,6 @@ EC2에서 실행 중인 백엔드의 DB 설정을 읽으므로 비밀번호를 �
 Docker에서는 DB 접속 도구인 `psql`만 잠깐 실행합니다. **새 DB를 띄우지 않고 실제 dev RDS에 접속합니다.**
 처음에는 `postgres:18-alpine` 이미지를 받을 수 있어야 합니다.
 
-아래 로컬 명령은 Mac 기준입니다. `pbcopy`는 복사, `pbpaste`는 붙여넣기 명령입니다.
 두 컴퓨터에서 `openssl version`이 `OpenSSL 3.`으로 시작하는지 먼저 확인합니다.
 모니터링 설정은 [모니터링 적용 방법](../../deploy/monitoring/README.md)에 따라 미리 적용합니다.
 
@@ -104,50 +103,62 @@ dev 환경, `harudle_dev` DB, dev S3 경로가 맞는지 확인한 뒤 이미지
 
 ## 4. 회원 파일을 받아 내 컴퓨터에서 실행하기
 
-**첫째, 내 컴퓨터에서 파일을 받을 키를 만듭니다.** 이번 배포와 같은 코드가 있는 저장소의 `backend` 폴더에서 실행합니다.
+**첫째, 내 컴퓨터에서 키를 만듭니다.** 이번 배포와 같은 코드가 있는 저장소의 최상위 폴더에서 실행합니다.
 
 ```bash
 cd backend
 RUN=smoke1
-python3 load-test/transfer.py keygen "$RUN" >/dev/null &&
-pbcopy < "load-test/runs/$RUN/recipient.pem"
+python3 load-test/transfer.py keygen "$RUN"
 ```
 
-공개키인 `recipient.pem`이 복사됩니다. EC2에는 이 내용만 보냅니다.
-`private.pem`은 회원 파일을 복원할 때 필요하므로 **내 컴퓨터에만 보관합니다.**
-키 생성은 실행 이름마다 한 번만 합니다. 공개키를 다시 복사할 때는 `pbcopy` 명령만 실행합니다.
+`load-test/runs/smoke1/`에 파일 두 개가 생깁니다.
 
-**둘째, EC2에서 회원 파일을 암호화합니다.** 아래 가운데 줄을 방금 복사한 공개키 전체로 바꿔 실행합니다. `CERT` 두 곳은 그대로 둡니다.
+- `recipient.pem`: EC2에 전달할 공개키입니다.
+- `private.pem`: 회원 파일을 복원할 개인키입니다. **내 컴퓨터에만 보관합니다.**
+
+키 생성은 실행 이름마다 한 번만 합니다. 이미 만들었다면 다음 단계로 넘어갑니다.
+
+**둘째, EC2에서 공개키를 붙여넣습니다.** 3번에서 사용한 Session Manager 터미널에서 아래 한 줄을 입력하고 Enter를 누릅니다.
 
 ```bash
 sudo python3 /opt/harudle/load-test/ec2.py export "$RUN" <<'CERT'
-여기에 recipient.pem 내용을 붙여넣습니다
-CERT
 ```
 
-출력된 `-----BEGIN CMS-----`부터 `-----END CMS-----`까지 모두 복사합니다.
-약 43KB의 암호화된 내용입니다. 로그인 정보 원문은 화면에 출력되지 않습니다.
-복사가 빠졌다면 같은 공개키로 위 명령을 다시 실행해 복사합니다.
+입력을 기다리면 내 컴퓨터의 `recipient.pem`을 코드 편집기로 엽니다.
+파일 내용 전체를 복사해 EC2 터미널에 붙여넣습니다. 마지막 줄 아래에 **`CERT`를 직접 입력하고 Enter**를 누릅니다.
 
-**셋째, 내 컴퓨터에서 파일을 복원하고 k6를 실행합니다.** 앞에서 사용한 로컬 터미널에서 실행합니다. Docker도 켜 둡니다.
+**셋째, EC2에 나온 내용을 내 컴퓨터에 저장합니다.**
+출력된 `-----BEGIN CMS-----`부터 `-----END CMS-----`까지 두 줄을 포함해 모두 복사합니다.
+내 컴퓨터의 코드 편집기에서 `backend/load-test/runs/smoke1/members.cms` 파일을 만들고, 복사한 내용을 붙여넣어 저장합니다.
+약 43KB의 암호화된 내용이며 로그인 정보 원문은 보이지 않습니다. 복사가 빠졌다면 둘째 단계를 다시 진행해 파일을 고칩니다.
+
+**넷째, 내 컴퓨터에서 회원 파일을 복원합니다.** 첫째 단계의 로컬 터미널에서 실행합니다. 현재 폴더는 `backend`여야 합니다.
 
 ```bash
-pbpaste | python3 load-test/transfer.py receive "$RUN" &&
+python3 load-test/transfer.py receive "$RUN" \
+  < "load-test/runs/$RUN/members.cms"
+```
+
+`Restored members.json`이 나오면 같은 폴더에 `members.json`이 생깁니다.
+내용이 빠졌거나 키가 다르면 파일을 저장하지 않습니다. 복원이 실패하면 k6를 실행하지 않습니다.
+**로컬에서 `prepare.py`를 다시 실행하거나 `members.json`을 직접 만들 필요는 없습니다.**
+
+**다섯째, 내 컴퓨터에서 k6를 실행합니다.** Docker를 켜고 같은 로컬 터미널에서 실행합니다.
+
+```bash
 bash load-test/run.sh smoke "$RUN"
 ```
 
-복원에 성공해야 k6가 시작합니다. 내용이 빠졌거나 키가 다르면 `members.json`을 저장하지 않습니다.
 k6는 준비된 회원으로 로그인해 CSRF와 Bearer 토큰을 받고, `https://dev.harudle.com`에 요청합니다.
-로컬에서는 DB나 S3에 접속하지 않습니다. **로컬에서 `prepare.py`를 다시 실행하지 않습니다.**
+로컬에서는 DB나 S3에 접속하지 않습니다.
 
 회원 4명, API 요청 28건이 완료되고 `THRESHOLDS`가 모두 통과하는지 확인합니다.
 보고서 탭을 닫고 k6가 끝나면 6번으로 `smoke1` 데이터를 정리합니다.
 
 통과하면 **3번과 4번의 `smoke1`을 모두 `peak1`로 바꿔 새 데이터와 키를 준비**합니다.
-로컬 실행 명령만 아래처럼 `peak`로 바꿉니다.
+회원 파일 복원까지 마친 뒤, 다섯째 단계의 실행 명령만 아래처럼 `peak`로 바꿉니다.
 
 ```bash
-pbpaste | python3 load-test/transfer.py receive "$RUN" &&
 bash load-test/run.sh peak "$RUN"
 ```
 
