@@ -49,6 +49,22 @@ dependencies {
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
+tasks.register('resolveProductionDependencies') {
+    group = 'build setup'
+    description = 'Downloads the artifacts required to compile and package the production application.'
+
+    def dependencyFiles = files(
+        configurations.named('compileClasspath'),
+        configurations.named('runtimeClasspath'),
+        configurations.named('annotationProcessor')
+    )
+    inputs.files(dependencyFiles)
+
+    doLast {
+        logger.lifecycle("Resolved ${dependencyFiles.files.size()} production dependency artifacts.")
+    }
+}
+
 tasks.named('test') {
     useJUnitPlatform()
 
