@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
+import com.harudle.generation.diary.service.exception.AiProviderFailureType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -25,6 +26,7 @@ class AiGenerationExceptionTest {
                 AiGenerationException.class,
                 exception -> {
                     assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.PROVIDER_ERROR);
+                    assertThat(exception.providerFailureType()).isEqualTo(AiProviderFailureType.UNKNOWN);
                     assertThat(exception).hasMessage("AI 제공자 호출에 실패했습니다.");
                     assertThat(exception).hasCause(cause);
                 }
@@ -43,10 +45,31 @@ class AiGenerationExceptionTest {
                 AiGenerationException.class,
                 exception -> {
                     assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.TIMEOUT);
+                    assertThat(exception.providerFailureType()).isEqualTo(AiProviderFailureType.UNKNOWN);
                     assertThat(exception).hasMessage("AI 생성 시간이 초과되었습니다.");
                     assertThat(exception.getCause()).isNull();
                 }
         );
+    }
+
+    @Test
+    @DisplayName("상세 제공자 오류를 추가해도 기존 API 오류 타입과 원인을 보존한다")
+    void preserveProviderFailureDetailsWithoutChangingApiErrorType() {
+        RuntimeException cause = new RuntimeException("authentication failed");
+        var exception = new AiGenerationException(AiGenerationErrorType.PROVIDER_ERROR, "AI 제공자 호출에 실패했습니다.",
+                cause, AiProviderFailureType.AUTH_CONFIGURATION_ERROR);
+
+        assertThat(exception.errorType()).isEqualTo(AiGenerationErrorType.PROVIDER_ERROR);
+        assertThat(exception.providerFailureType()).isEqualTo(AiProviderFailureType.AUTH_CONFIGURATION_ERROR);
+        assertThat(exception).hasCause(cause);
+    }
+
+    @Test
+    @DisplayName("제공자 오류 상세 유형이 없으면 예외를 생성할 수 없다")
+    void rejectNullProviderFailureType() {
+        assertThatThrownBy(() -> new AiGenerationException(AiGenerationErrorType.PROVIDER_ERROR,
+                "AI 제공자 호출에 실패했습니다.", null, null))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("상세 유형");
     }
 
     @Test

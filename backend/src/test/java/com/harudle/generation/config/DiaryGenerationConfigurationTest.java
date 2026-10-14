@@ -5,14 +5,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
-import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import com.harudle.generation.diary.service.DiaryGenerationCompletionService;
 import com.harudle.generation.diary.service.DiaryGenerationExecutor;
 import com.harudle.generation.diary.service.GenerationLifecycleMetrics;
 import com.harudle.generation.diary.service.RequestFingerprintGenerator;
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
 import com.harudle.generation.diary.service.port.ImageStorage;
-import com.harudle.generation.diary.service.port.StoryboardGenerator;
+import com.harudle.generation.diary.service.storyboard.StoryboardGenerationService;
+import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.DisplayName;
@@ -48,9 +48,9 @@ class DiaryGenerationConfigurationTest {
     void rejectPartiallyConfiguredAdapters() {
         try (AnnotationConfigApplicationContext context = createBaseContext()) {
             context.registerBean(
-                    "storyboardGenerator",
-                    StoryboardGenerator.class,
-                    () -> mock(StoryboardGenerator.class)
+                    "storyboardGenerationService",
+                    StoryboardGenerationService.class,
+                    () -> mock(StoryboardGenerationService.class)
             );
 
             assertThatThrownBy(context::refresh)
@@ -60,14 +60,14 @@ class DiaryGenerationConfigurationTest {
     }
 
     @Test
-    @DisplayName("동일한 생성 어댑터가 여러 개면 구성을 임의로 선택하지 않는다")
+    @DisplayName("스토리보드 조합 서비스가 여러 개면 구성을 임의로 선택하지 않는다")
     void rejectAmbiguousAdapters() {
         try (AnnotationConfigApplicationContext context = createBaseContext()) {
             registerAdapters(context);
             context.registerBean(
-                    "secondStoryboardGenerator",
-                    StoryboardGenerator.class,
-                    () -> mock(StoryboardGenerator.class)
+                    "secondStoryboardGenerationService",
+                    StoryboardGenerationService.class,
+                    () -> mock(StoryboardGenerationService.class)
             );
 
             assertThatThrownBy(context::refresh)
@@ -108,9 +108,9 @@ class DiaryGenerationConfigurationTest {
 
     private void registerAdapters(AnnotationConfigApplicationContext context) {
         context.registerBean(
-                "storyboardGenerator",
-                StoryboardGenerator.class,
-                () -> mock(StoryboardGenerator.class)
+                "storyboardGenerationService",
+                StoryboardGenerationService.class,
+                () -> mock(StoryboardGenerationService.class)
         );
         context.registerBean(
                 "diaryImageGenerator",

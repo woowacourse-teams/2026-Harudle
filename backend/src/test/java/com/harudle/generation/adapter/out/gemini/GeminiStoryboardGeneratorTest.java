@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import com.google.genai.Models;
 import com.google.genai.errors.ClientException;
+import com.google.genai.errors.GenAiIOException;
 import com.google.genai.types.Candidate;
 import com.google.genai.types.Content;
 import com.google.genai.types.FinishReason;
@@ -23,6 +24,7 @@ import com.google.genai.types.ThinkingLevel;
 import com.harudle.common.logging.ExternalApiFailure;
 import com.harudle.common.logging.ExternalApiLogger;
 import com.harudle.common.logging.ExternalApiResponseDiagnostics;
+import com.harudle.generation.adapter.out.gemini.client.GeminiStoryboardCallScope;
 import com.harudle.generation.adapter.out.storyboard.StoryboardResponseMapper;
 import com.harudle.generation.adapter.out.storyboard.StoryboardTestFixtures;
 import com.harudle.generation.config.GeminiGenerationProperties;
@@ -30,12 +32,17 @@ import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import com.harudle.generation.diary.domain.Storyboard;
 import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
+import com.harudle.generation.diary.service.exception.AiProviderFailureType;
+import com.harudle.generation.diary.service.port.StoryboardAttemptContext.CancellationReason;
+import com.harudle.generation.diary.service.port.StoryboardAttemptContext;
 import com.harudle.generation.diary.service.port.dto.GeneratedStoryboard;
 import com.harudle.generation.diary.service.port.dto.StoryboardGenerationRequest;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -59,13 +66,94 @@ class GeminiStoryboardGeneratorTest {
                     new GeminiExceptionTranslator(),
                     externalApiLogger
             ),
-            new GeminiStageMetrics(meterRegistry)
+            new GeminiStageMetrics(meterRegistry),
+            new GeminiStoryboardCallScope()
     );
 
     @BeforeEach
     void setUp() {
         when(models.generateContent(anyString(), anyString(), any(GenerateContentConfig.class)))
                 .thenReturn(response);
+    }
+
+    @Test
+    @DisplayName("요청별 남은 시간을 1ms 이상 올림하고 SDK 재시도 대상과 횟수를 제한한다")
+    void applyRemainingTimeoutAndDisableRequestRetries() {
+        AtomicLong clock = new AtomicLong();
+        var context = new StoryboardAttemptContext(1_200_001, clock::get);
+        when(response.text()).thenReturn(validResponseJson());
+
+        generator.generate(createRequest().withAttemptContext(context));
+
+        ArgumentCaptor<GenerateContentConfig> config = ArgumentCaptor.forClass(GenerateContentConfig.class);
+        verify(models).generateContent(anyString(), anyString(), config.capture());
+        var http = config.getValue().httpOptions().orElseThrow();
+        assertThat(http.timeout()).contains(2);
+        assertThat(http.retryOptions().orElseThrow().attempts()).contains(1);
+        assertThat(http.retryOptions().orElseThrow().httpStatusCodes()).contains(List.of());
+    }
+
+    @Test
+    @DisplayName("이미 만료된 요청은 SDK를 호출하지 않고 준비 오류 대신 TIMEOUT으로 기록한다")
+    void rejectExpiredRequestBeforePreparation() {
+        var context = new StoryboardAttemptContext(0, () -> 0);
+
+        assertThatThrownBy(() -> generator.generate(createRequest().withAttemptContext(context)))
+                .isInstanceOfSatisfying(AiGenerationException.class, failure ->
+                        assertThat(failure.errorType()).isEqualTo(AiGenerationErrorType.TIMEOUT));
+
+        verifyNoInteractions(models, externalApiLogger);
+        assertThat(meterRegistry.get("harudle.gemini.stage.calls").tag("failureType", "TIMEOUT").counter().count())
+                .isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("명시적 취소는 SDK를 호출하지 않고 CANCELLED로 기록한다")
+    void rejectExplicitlyCancelledRequest() {
+        var context = new StoryboardAttemptContext(Duration.ofSeconds(60).toNanos(), () -> 0);
+        context.cancel(CancellationReason.CANCELLED);
+
+        assertThatThrownBy(() -> generator.generate(createRequest().withAttemptContext(context)))
+                .isInstanceOfSatisfying(AiGenerationException.class, failure ->
+                        assertThat(failure.providerFailureType()).isEqualTo(AiProviderFailureType.CANCELLED));
+
+        verifyNoInteractions(models, externalApiLogger);
+        assertThat(meterRegistry.get("harudle.gemini.stage.calls").tag("failureType", "CANCELLED").counter().count())
+                .isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("HTTP 취소로 발생한 SDK I/O 오류를 원래 TIMEOUT 사유로 전달한다")
+    void preserveDeadlineReasonAfterSdkCancellation() {
+        var context = new StoryboardAttemptContext(Duration.ofSeconds(60).toNanos(), () -> 0);
+        when(models.generateContent(anyString(), anyString(), any(GenerateContentConfig.class))).thenAnswer(call -> {
+            context.cancel(CancellationReason.TIMEOUT);
+            throw new GenAiIOException("fixture", new IOException("Canceled"));
+        });
+
+        assertThatThrownBy(() -> generator.generate(createRequest().withAttemptContext(context)))
+                .isInstanceOfSatisfying(AiGenerationException.class, failure -> {
+                    assertThat(failure.errorType()).isEqualTo(AiGenerationErrorType.TIMEOUT);
+                    assertThat(failure.providerFailureType()).isEqualTo(AiProviderFailureType.UNKNOWN);
+                });
+        verifyNoInteractions(externalApiLogger);
+    }
+
+    @Test
+    @DisplayName("만료 후 응답 파싱도 실패하면 응답 처리 오류 대신 TIMEOUT으로 전달한다")
+    void preserveDeadlineDuringResponseProcessing() {
+        AtomicLong clock = new AtomicLong();
+        var context = new StoryboardAttemptContext(Duration.ofSeconds(60).toNanos(), clock::get);
+        when(response.text()).thenAnswer(call -> {
+            clock.set(Duration.ofSeconds(61).toNanos());
+            return "invalid JSON";
+        });
+
+        assertThatThrownBy(() -> generator.generate(createRequest().withAttemptContext(context)))
+                .isInstanceOfSatisfying(AiGenerationException.class, failure ->
+                        assertThat(failure.errorType()).isEqualTo(AiGenerationErrorType.TIMEOUT));
+        assertThat(meterRegistry.get("harudle.gemini.stage.calls").tag("failureType", "TIMEOUT").counter().count())
+                .isEqualTo(1);
     }
 
     @Test
@@ -139,6 +227,8 @@ class GeminiStoryboardGeneratorTest {
         GeneratedStoryboard result = generator.generate(createRequest());
 
         assertThat(result.tokenUsage()).isEqualTo(new GenerationTokenUsage(120, 350, 80, 550));
+        assertThat(result.providerInfo().provider()).isEqualTo("gemini");
+        assertThat(result.providerInfo().model()).isEqualTo(properties.storyboardModel());
         assertThat(result.storyboard().panels()).hasSize(4);
         assertThat(meterRegistry.get("harudle.gemini.tokens")
                 .tags("stage", "storyboard_generation", "kind", "thought")

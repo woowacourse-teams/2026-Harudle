@@ -6,6 +6,10 @@ import static com.harudle.generation.adapter.out.qwen.QwenChatException.Kind.RES
 import static com.harudle.generation.adapter.out.qwen.QwenChatException.Kind.TIMEOUT;
 import static com.harudle.generation.adapter.out.qwen.QwenChatException.Kind.TRUNCATED;
 
+import com.harudle.generation.adapter.out.storyboard.StoryboardHttpTransport;
+import com.harudle.generation.diary.service.exception.AiGenerationException;
+import com.harudle.generation.diary.service.port.StoryboardAttemptContext;
+import com.harudle.generation.diary.service.port.StoryboardAttemptContext.CancellationRegistration;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InterruptedIOException;
@@ -15,6 +19,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import okhttp3.Call;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -53,12 +59,7 @@ public final class QwenChatClient implements AutoCloseable {
     }
 
     public static OkHttpClient httpClient(Duration timeout) {
-        if (timeout == null || timeout.isZero() || timeout.isNegative()) {
-            throw new IllegalArgumentException("Qwen 호출 제한 시간은 양수여야 합니다.");
-        }
-        return new OkHttpClient.Builder().connectTimeout(Duration.ofSeconds(10))
-                .callTimeout(timeout).readTimeout(timeout).retryOnConnectionFailure(false)
-                .followRedirects(false).followSslRedirects(false).build();
+        return StoryboardHttpTransport.builder(timeout).build();
     }
 
     private static void requireTokenPlanKey(String key) {
@@ -68,12 +69,36 @@ public final class QwenChatClient implements AutoCloseable {
     }
 
     public Completion generate(Request request) {
+        return generate(request, Optional.empty());
+    }
+
+    public Completion generate(Request request, Optional<StoryboardAttemptContext> context) {
+        Objects.requireNonNull(context).ifPresent(StoryboardAttemptContext::checkActive);
         long started = System.nanoTime();
         okhttp3.Request httpRequest = new okhttp3.Request.Builder().url(endpoint.toString())
                 .header("Authorization", "Bearer " + apiKey).header("Accept", "text/event-stream")
                 .post(RequestBody.create(mapper.writeValueAsString(request.payload()),
                         MediaType.get("application/json; charset=utf-8"))).build();
         Call call = calls.newCall(httpRequest);
+        try (CancellationRegistration registration = registerCancellation(call, context)) {
+            return execute(call, context, started);
+        }
+    }
+
+    private CancellationRegistration registerCancellation(Call call, Optional<StoryboardAttemptContext> context) {
+        if (context.isEmpty()) {
+            return () -> { };
+        }
+        StoryboardAttemptContext attempt = context.orElseThrow();
+        long remainingNanos = attempt.remainingTime().toNanos();
+        if (remainingNanos > 0) {
+            call.timeout().timeout(remainingNanos, TimeUnit.NANOSECONDS);
+        }
+        return attempt.onCancellation(call::cancel);
+    }
+
+    private Completion execute(Call call, Optional<StoryboardAttemptContext> context, long started) {
+        context.ifPresent(StoryboardAttemptContext::checkActive);
         try (okhttp3.Response response = call.execute()) {
             if (response.code() != 200) {
                 throw new QwenChatException(HTTP, response.code());
@@ -81,16 +106,24 @@ public final class QwenChatClient implements AutoCloseable {
             if (response.body() == null) {
                 throw new QwenChatException(RESPONSE, null);
             }
-            return readResponse(response.body().source(), started);
+            Completion completion = readResponse(response.body().source(), started);
+            context.ifPresent(StoryboardAttemptContext::checkActive);
+            return completion;
+        } catch (AiGenerationException exception) {
+            throw exception;
         } catch (InterruptedIOException exception) {
+            context.ifPresent(StoryboardAttemptContext::checkActive);
             call.cancel();
             throw new QwenChatException(TIMEOUT, null);
         } catch (IOException exception) {
+            context.ifPresent(StoryboardAttemptContext::checkActive);
             call.cancel();
             throw new QwenChatException(NETWORK, null);
         } catch (QwenChatException exception) {
+            context.ifPresent(StoryboardAttemptContext::checkActive);
             throw exception;
         } catch (RuntimeException exception) {
+            context.ifPresent(StoryboardAttemptContext::checkActive);
             throw new QwenChatException(RESPONSE, null);
         }
     }
@@ -114,9 +147,14 @@ public final class QwenChatClient implements AutoCloseable {
         while ((line = readLine(source)) != null) {
             bytes += line.getBytes(java.nio.charset.StandardCharsets.UTF_8).length + 1L;
             requireResponseSize(bytes);
-            if (line.startsWith("data:")) {
+            String data = line.startsWith("data:") ? line.substring(5).strip() : null;
+            if ("[DONE]".equals(data)) {
                 streaming = true;
-                consumeEvent(state, line.substring(5).strip());
+                break;
+            }
+            if (data != null) {
+                streaming = true;
+                consumeEvent(state, data);
             } else if (!streaming && !line.startsWith(":")) {
                 fallback.append(line).append('\n');
             }
@@ -140,7 +178,7 @@ public final class QwenChatClient implements AutoCloseable {
     }
 
     private void consumeEvent(StreamState state, String data) {
-        if (data.isBlank() || "[DONE]".equals(data)) {
+        if (data.isBlank()) {
             return;
         }
         JsonNode event = mapper.readTree(data);

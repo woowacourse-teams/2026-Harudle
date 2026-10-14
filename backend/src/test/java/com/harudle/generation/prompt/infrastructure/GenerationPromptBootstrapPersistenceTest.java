@@ -3,6 +3,7 @@ package com.harudle.generation.prompt.infrastructure;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.harudle.generation.prompt.domain.GenerationPrompt;
+import com.harudle.support.ServiceIntegrationTestSupport;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.util.List;
@@ -17,27 +18,14 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest
-class GenerationPromptBootstrapPersistenceTest {
+class GenerationPromptBootstrapPersistenceTest extends ServiceIntegrationTestSupport {
 
-    private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:18-alpine");
     private static final int CONCURRENT_REQUEST_COUNT = 2;
     private static final long CONCURRENCY_READY_TIMEOUT_SECONDS = 5L;
-
-    @Container
-    @ServiceConnection
-    static final PostgreSQLContainer POSTGRESQL_CONTAINER = new PostgreSQLContainer(POSTGRES_IMAGE);
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -47,9 +35,6 @@ class GenerationPromptBootstrapPersistenceTest {
 
     @Autowired
     private GenerationPromptBootstrapService bootstrapService;
-
-    @MockitoBean
-    private JwtDecoder jwtDecoder;
 
     @AfterEach
     void tearDown() {

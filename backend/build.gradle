@@ -51,4 +51,13 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+
+    def contextCacheMaxSize = providers.gradleProperty('testContextCacheMaxSize')
+    if (contextCacheMaxSize.present) {
+        def cacheSize = contextCacheMaxSize.get()
+        if (!cacheSize.isInteger() || cacheSize.toInteger() < 1) {
+            throw new GradleException('testContextCacheMaxSize must be a positive integer')
+        }
+        systemProperty 'spring.test.context.cache.maxSize', cacheSize.toInteger()
+    }
 }
