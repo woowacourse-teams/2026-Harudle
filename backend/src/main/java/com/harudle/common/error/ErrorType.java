@@ -38,6 +38,21 @@ public enum ErrorType {
             "Invalid current user",
             "현재 로그인 사용자를 확인할 수 없습니다."
     ),
+    INVALID_PUSH_SESSION(
+            HttpStatus.UNAUTHORIZED,
+            "Invalid push session",
+            "현재 로그인 세션으로 푸시를 등록할 수 없습니다."
+    ),
+    PUSH_REGISTRATION_CONFLICT(
+            HttpStatus.CONFLICT,
+            "Push registration conflict",
+            "다른 로그인 세션에서 사용 중인 푸시 등록입니다."
+    ),
+    STALE_PUSH_REGISTRATION(
+            HttpStatus.CONFLICT,
+            "Stale push registration",
+            "푸시 등록 상태가 변경되었습니다. 현재 등록 상태를 확인해 주세요."
+    ),
     NICKNAME_ALREADY_IN_USE(
             HttpStatus.CONFLICT,
             "Nickname already in use",
