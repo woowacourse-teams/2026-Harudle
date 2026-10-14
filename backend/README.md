@@ -199,6 +199,22 @@ ADC를 찾을 수 없으면 애플리케이션 시작에 실패하며 Express �
 공식 안내: [AWS 연동 WIF](https://docs.cloud.google.com/iam/docs/workload-identity-federation-with-other-clouds),
 [Nano Banana 2.1 모델](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/nano-banana-2-1).
 
+## 피드 푸시 Firebase 설정
+
+Firebase 프로젝트가 준비되면 해당 프로젝트에서 Cloud Messaging을 활성화하고 백엔드에 아래 환경 변수를 지정합니다.
+Firebase 프로젝트를 만들기 전에는 기본값으로 SDK 초기화를 건너뜁니다.
+
+```dotenv
+HARUDLE_PUSH_FCM_ENABLED=true
+FIREBASE_PROJECT_ID=your-firebase-project-id
+GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/credential.json
+```
+
+`GOOGLE_APPLICATION_CREDENTIALS`는 Google 기본 인증 정보(ADC)를 읽을 수 있도록 백엔드 프로세스에
+설정합니다. 로컬에서는 `gcloud auth application-default login`으로 만든 ADC도 사용할 수 있습니다.
+인증 파일과 비밀 키는 저장소에 커밋하지 않습니다. 웹 클라이언트의 Firebase 설정, VAPID 키와
+알림 권한 요청은 별도로 준비해야 합니다. 현재 SDK 설정만으로는 실제 푸시가 발송되지 않습니다.
+
 ## Qwen 스토리보드 어댑터
 
 `QwenStoryboardGenerator`는 기존 `StoryboardGenerator`를 구현합니다. Gemini와 Qwen 모두
