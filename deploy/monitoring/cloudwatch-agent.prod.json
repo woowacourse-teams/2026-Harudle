@@ -19,7 +19,10 @@
             "hikaricp_connections_pending": "Count",
             "harudle_generation_duration_seconds_sum": "Seconds",
             "harudle_generation_duration_seconds_count": "Count",
-            "harudle_gemini_tokens_total": "Count"
+            "harudle_gemini_tokens_total": "Count",
+            "harudle_api_response_seconds": "Seconds",
+            "harudle_api_response_seconds_sum": "Seconds",
+            "harudle_api_response_seconds_count": "Count"
           },
           "metric_declaration": [
             {
@@ -87,6 +90,41 @@
               "label_matcher": "^harudle-backend$",
               "dimensions": [["job", "stage", "kind"]],
               "metric_selectors": ["^harudle_gemini_tokens_total$"]
+            },
+            {
+              "source_labels": [
+                "job"
+              ],
+              "label_matcher": "^harudle-backend$",
+              "dimensions": [
+                [
+                  "job",
+                  "node",
+                  "method",
+                  "uri",
+                  "quantile"
+                ]
+              ],
+              "metric_selectors": [
+                "^harudle_api_response_seconds$"
+              ]
+            },
+            {
+              "source_labels": [
+                "job"
+              ],
+              "label_matcher": "^harudle-backend$",
+              "dimensions": [
+                [
+                  "job",
+                  "node",
+                  "method",
+                  "uri"
+                ]
+              ],
+              "metric_selectors": [
+                "^harudle_api_response_seconds_(sum|count)$"
+              ]
             }
           ]
         }

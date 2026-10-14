@@ -35,6 +35,13 @@ NEW_DIMENSIONS = {
 }
 
 
+API_DIMENSIONS = {
+    "harudle_api_response_seconds": [["job", "node", "method", "uri", "quantile"]],
+    "harudle_api_response_seconds_sum": [["job", "node", "method", "uri"]],
+    "harudle_api_response_seconds_count": [["job", "node", "method", "uri"]],
+}
+
+
 def read_processor(environment):
     configuration = json.loads((CONFIG_DIR / f"cloudwatch-agent.{environment}.json").read_text())
     prometheus = configuration["logs"]["metrics_collected"]["prometheus"]
@@ -76,7 +83,21 @@ class MonitoringConfigTests(unittest.TestCase):
                         "Seconds" if name.endswith("_sum") else "Count",
                     )
             # No additional custom-metric extraction or identifier dimensions.
-            self.assertEqual(set(processor["metric_unit"]), EXISTING_DIMENSIONS.keys() | NEW_DIMENSIONS.keys())
+            self.assertEqual(set(processor["metric_unit"]), EXISTING_DIMENSIONS.keys() | NEW_DIMENSIONS.keys() | API_DIMENSIONS.keys())
+
+
+    def test_api_response_quantiles_keep_the_full_population_identity(self):
+        for environment in ("dev", "prod"):
+            _, _, processor = read_processor(environment)
+            for name, dimensions in API_DIMENSIONS.items():
+                with self.subTest(environment=environment, metric=name):
+                    declarations = matching_declarations(processor, name)
+                    self.assertEqual(len(declarations), 1)
+                    self.assertEqual(declarations[0]["dimensions"], dimensions)
+                    self.assertEqual(declarations[0]["source_labels"], ["job"])
+                    self.assertEqual(declarations[0]["label_matcher"], "^harudle-backend$")
+                    self.assertEqual(processor["metric_unit"][name],
+                                     "Count" if name.endswith("_count") else "Seconds")
 
     def test_metric_filter_keeps_required_series_and_drops_histograms_and_noise(self):
         source = (CONFIG_DIR / "prometheus.yaml").read_text()
@@ -88,7 +109,7 @@ class MonitoringConfigTests(unittest.TestCase):
         self.assertRegex(source, r"targets:\s*\n\s*- 127\.0\.0\.1:19091\s*$|targets:\s*\n\s*- 127\.0\.0\.1:19091\s*\n")
         self.assertRegex(source, r"source_labels:\s*\[__name__\]")
         self.assertRegex(source, r"action:\s*keep\b")
-        for name in EXISTING_DIMENSIONS.keys() | NEW_DIMENSIONS.keys():
+        for name in EXISTING_DIMENSIONS.keys() | NEW_DIMENSIONS.keys() | API_DIMENSIONS.keys():
             with self.subTest(metric=name):
                 self.assertIsNotNone(keep.fullmatch(name))
         for name in (
@@ -97,6 +118,10 @@ class MonitoringConfigTests(unittest.TestCase):
             "harudle_generation_duration_seconds_max",
             "harudle_generation_duration_seconds_sum_unbounded_suffix",
             "harudle_gemini_tokens_total_created",
+            "harudle_api_response_seconds_bucket",
+            "harudle_api_response_seconds_max",
+            "harudle_api_response_seconds_created",
+            "http_server_requests_seconds_sum",
             "http_server_requests_seconds_bucket",
             "jvm_gc_pause_seconds_count",
             "process_cpu_usage",

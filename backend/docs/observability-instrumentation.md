@@ -28,6 +28,12 @@ Actuator는 별도 코드 없이 HTTP 요청 상태·소요 시간, JVM·프로�
 
 이번 PR은 `POST /api/v1/telemetry/image-load-failures/timeline`과 `/detail`의 인증된 신고 API, 본문 없는 요청과 204 응답, 고정 `surface` 지표를 제공한다. 수락한 신고마다 `event=image_load_failure_reported`와 `surface=timeline|detail`만 구조화 INFO 로그로 한 번 기록한다. 이 로그의 CloudWatch 지표 필터는 첫 신고 감지용으로 준비할 수 있지만, 프론트 신고 코드는 담당 팀원이 별도 반영한다. 실제 프론트 코드가 두 경로와 인증·CSRF 정책에 맞게 호출하는지 dev에서 확인하기 전에는 지표와 로그의 0을 이미지 정상으로 해석하거나 관련 알람을 활성화하지 않는다. 신고에는 S3 응답 상태나 객체 키가 없어 404, URL 만료, 네트워크 오류를 구분할 수 없다.
 
+## API 응답 시간
+
+`ApiResponseObservationHandler`는 Spring HTTP 서버 Observation의 시작·종료를 사용해 API 전체와 라우트 템플릿별 HTTP 응답 시간을 `harudle.api.response` Timer에 직접 기록한다. 성공·실패를 같은 모집단에 넣고 상태 코드별 백분위를 합산하지 않는다. 비동기 HTTP는 최종 완료 시 한 번 기록하며 응답 이후의 생성 작업은 포함하지 않는다. 내부 loopback healthcheck·Actuator·OAuth 경로는 제외한다. 태그는 안정적인 `node`, 고정 메서드, 라우트 템플릿 또는 `UNMATCHED`만 사용한다.
+
+P95/P99는 최대 5분 감쇠 창의 summary 게시값이며 CloudWatch 5분 요청 전체의 백분위와 다르다. Agent 차원·요청 수·시간 합, 대시보드와 알림 비활성 알람 생성기, 실제 적용·검증은 [API 응답 시간 운영 절차](../../deploy/monitoring/api-response-latency.md)를 따른다.
+
 ## Gemini 실패 분류
 
 두 생성 단계에 동일한 `stage=storyboard_generation|image_generation` 태그를 쓴다. 공급자 응답의 HTTP 429는 `RATE_LIMIT`, 5xx는 `PROVIDER_5XX`, 시간 초과는 `TIMEOUT`이다. 스토리보드에서 JSON 파싱 실패는 `INVALID_JSON`, 스키마·도메인 검증 실패는 `SCHEMA_VIOLATION`이다. 이미지 단계에서 이미지 파트 누락과 사용할 수 없는 파트는 각각 `IMAGE_PART_MISSING`, `IMAGE_PART_INVALID`로 나눈다. 종료 사유가 `MAX_TOKENS`인 실패만 `OUTPUT_TOKEN_LIMIT`로 분류한다. 성공 응답에도 `MAX_TOKENS`가 포함될 수 있으므로 종료 사유 지표와 실패 결과를 함께 확인한다.

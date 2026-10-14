@@ -92,6 +92,9 @@ app:
       ttl: 14d
 
 harudle:
+  monitoring:
+    api-response:
+      node: ${HARUDLE_API_METRICS_NODE:local}
   admin:
     image-recovery:
       interval: ${ADMIN_IMAGE_RECOVERY_INTERVAL:10s}

@@ -103,4 +103,4 @@ AWS에 적용한 초기 payload는 [dev](cleanup-alarms.dev.json) / [prod](clean
 - [prod 대시보드](https://ap-northeast-2.console.aws.amazon.com/cloudwatch/home?region=ap-northeast-2#dashboards/dashboard/DASHBOARD-harudle-prod)
 - [새 prod 삭제 실패 경보](https://ap-northeast-2.console.aws.amazon.com/cloudwatch/home?region=ap-northeast-2#alarmsV2:alarm/harudle-prod-s3-delete-failure)
 
-이미지 전체 점검, 실시간 DB 집계 관측기, HTTP/생성 summary 백분위와 지연 경보는 별도 확장이다. 이번 평균과 일회성 DB P50/P95를 지속 수집되는 요청 백분위로 표시하지 않는다.
+이미지 전체 점검, 실시간 DB 집계 관측기, 생성 summary 백분위와 지연 경보는 별도 확장이다. API 응답 시간만 대상으로 한 별도 수집·정의는 [API 응답 시간 운영 절차](api-response-latency.md)를 따른다. 이번 평균과 일회성 DB P50/P95를 지속 수집되는 요청 백분위로 표시하지 않는다.

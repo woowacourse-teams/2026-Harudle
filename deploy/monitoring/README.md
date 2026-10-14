@@ -40,7 +40,7 @@ sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
 
 prod에서는 위 명령의 파일명을 `cloudwatch-agent.prod.json`으로 바꾼다. 활성 Agent 조각에 같은 이름의 파일이 없는지 확인하고, 기존 호스트 CPU·메모리·디스크 지표가 계속 들어오는지 검사한다. `/harudle/{env}/prometheus-emf`에 새 이벤트가 생기고 `Harudle/Dev` 또는 `Harudle/Prod` 네임스페이스에 아래 지표가 나타나야 한다. Agent 수집·EMF 로그는 CloudWatch 비용이 발생하므로 필요한 계열만 선택했다.
 
-`prometheus.yaml`의 `metric_relabel_configs`는 아래 기존 9개 지표명에 생성 시간 sum/count와 Gemini 토큰 3개를 더한 **12개 지표명**만 Agent에 전달한다. EMF 선언은 11개이며 생성 시간 sum/count는 같은 선언을 사용한다. `metric_declaration`만 지정하면 선택하지 않은 JVM·보안·저장소 지표도 EMF 로그 본문에 남을 수 있어, 수집 단계에서도 제외한다. 지표를 추가할 때는 이 허용 목록과 dev/prod의 `metric_declaration`을 함께 수정한다. 적용 뒤 새 EMF 로그에 허용한 계열만 들어오는지 확인한다.
+`prometheus.yaml`의 `metric_relabel_configs`는 아래 기존 9개 지표명에 생성 시간 sum/count·Gemini 토큰 3개와 API 응답 시간 3개를 더한 **15개 지표명**만 Agent에 전달한다. API 응답 시간 summary·sum/count를 포함하며 EMF 선언은 13개다. 생성 시간 sum/count와 API 응답 시간 sum/count는 각각 같은 선언을 사용한다. `metric_declaration`만 지정하면 선택하지 않은 JVM·보안·저장소 지표도 EMF 로그 본문에 남을 수 있어, 수집 단계에서도 제외한다. 지표를 추가할 때는 이 허용 목록과 dev/prod의 `metric_declaration`을 함께 수정한다. 적용 뒤 새 EMF 로그에 허용한 계열만 들어오는지 확인한다.
 
 ### 선택형 호스트 메모리·디스크 수집
 
@@ -70,6 +70,7 @@ sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
 | `http_server_requests_seconds_count`, `hikaricp_connections_pending` | API 전체 요청·5xx 수·오류 비율(`job`, `outcome`, `status` 차원)과 DB 연결 대기 |
 | `harudle_generation_duration_seconds_sum`, `harudle_generation_duration_seconds_count` | 같은 `job/result`의 시간 합 ÷ 실행 수로 5분 평균 실행 시간 계산. 요청 P95와 DB 최종 성공률이 아님 |
 | `harudle_gemini_tokens_total` | 단계(`stage`)·종류(`kind`)별 공급자 응답에서 관측한 토큰. `total`과 구성 항목을 합산하지 않음 |
+| `harudle_api_response_seconds`, `_sum`, `_count` | API 전체·경로별 HTTP 응답 시간 P95/P99와 평균·요청 수. `node/method/uri` 모집단 및 summary의 `quantile` 유지. 생성 작업 시간 제외. [설정과 적용 절차](api-response-latency.md) |
 
 `/actuator/prometheus`의 `*_total`은 프로세스 시작부터 누적된 값이다. 다만 CloudWatch Agent는 Prometheus 카운터를 이전 스크레이프 대비 **증가분**으로 변환해 EMF/CloudWatch에 보낸다. 첫 스크레이프에는 이전 값이 없어 증가분을 내보내지 않는다. 따라서 Agent가 게시한 CloudWatch 카운터의 알람은 실제 dev 샘플을 확인한 뒤 5분 또는 15분 기간의 `Sum`으로 평가한다. 누적 원본에 쓰는 `DIFF`나 `RATE`를 CloudWatch 값에 다시 적용하지 않는다. [AWS 카운터 변환 설명](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/ContainerInsights-Prometheus-metrics-conversion.html)을 참고한다. `harudle_generation_executions_total{result="returned"}`는 실행기가 값을 반환했다는 뜻이며 DB 최종 성공이나 브라우저 표시 성공을 뜻하지 않는다. `GENERATION_INTERRUPTED`는 DB 상태가 아니라 실패 `errorCode`다. S3 `get_object`는 서버가 참조 이미지를 읽는 작업이지 브라우저의 완성 이미지 조회가 아니다. `head_object{result="missing"}`은 점검이나 복구 중 예상된 결과일 수 있으므로 그 값만으로 알리지 않는다.
 
@@ -108,9 +109,11 @@ DB의 성공 이미지와 S3 객체를 주기적으로 대조하는 전체 점�
 
 CloudWatch Agent는 HTTP 완료 횟수를 전체(`job`), 결과군(`job`, `outcome`), 상태 코드(`job`, `status`) 차원으로 보낸다. Spring의 `outcome=SERVER_ERROR`는 5xx 응답이다. 5분 `Sum`으로 전체 요청 수 `T`와 서버 오류 수 `E`를 구하고 `IF(T >= 20, 100 * E / T, 0)`을 오류 비율(%)로 표시한다. 초기 경보는 **오류 비율 5% 초과가 5분 창 2회 연속**일 때다. 기존 **5xx 3건/5분** 경보는 `ApiExceptionLogger`가 기록한 오류를 보완한다. Gemini 예외 처리의 502 응답처럼 `api_exception`을 남기지 않는 경로는 이 건수 경보에 포함되지 않으므로, 요청이 적을 때는 Gemini 단계별 로그 경보도 함께 확인한다. `outcome`과 전체 차원에서 같은 요청이 각각 한 번만 집계되는지 dev에서 먼저 확인하고, 재시작 직후 첫 수집 누락도 로그와 대조한다. [Spring HTTP 결과 태그](https://docs.spring.io/spring-boot/reference/actuator/metrics.html), [CloudWatch 지표 수식](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/using-metric-math.html)을 참고한다.
 
-부하 시험에서는 AI 작업 완료까지의 비동기 시간과 API 응답 시간을 별도로 측정한다. 우선 부하 시험 도구가 측정한 **요청별 P95·P99, 평균 응답 시간, 5xx 비율, 동시 사용자 수, 초당 요청 수**를 시나리오와 함께 보존한다. 현재 Agent 설정은 HTTP `http_server_requests_seconds_count`만 CloudWatch에 보내고 `_sum`은 보내지 않으므로, CloudWatch 대시보드에서 평균 응답 시간을 계산할 수 없다. 지금은 HTTP 요청 수·5xx 비율, Hikari pending, EC2/RDS 자원 지표를 같은 시간축에 놓고 본다. 평균 응답 시간은 `_sum`의 수집 차원·시계열 수·비용을 dev에서 검증한 뒤 추가한다. 평균이나 `count`만으로 P95·P99를 계산하지 않는다.
+API 응답 시간은 `harudle.api.response` 전용 HTTP Observation Timer로 전체·경로별 P95/P99 summary와 sum/count를 수집한다. 생성 작업 시간은 이 백분위에 포함하지 않는다. 기존 HTTP count 오류율 지표는 유지한다. 부하 시험의 요청별 응답 시간·5xx 비율·동시 사용자·초당 요청 수도 같은 시간축에서 비교한다.
 
-현재 CloudWatch Agent의 Prometheus 수집기는 **histogram을 버리므로**, 서버에 Micrometer histogram bucket만 켜고 CloudWatch P95·P99 알람을 만들 수 없다. 부하 시험 뒤 API 유형별 지연 목표와 최소 표본 수를 정한다. 운영 지연 경보가 필요하면 두 방식 중 하나를 선택해 dev에서 값과 비용을 검증한다: (1) Micrometer가 계산한 P95·P99 summary quantile을 Agent로 보내되, 이는 인스턴스·URI별 값이라 여러 시계열을 합쳐 전체 백분위를 만들 수 없다. (2) 장기 보존과 집계가 필요하면 Prometheus/AMP가 histogram bucket을 수집하도록 별도 경로를 둔다. 이후 `api-p95`·`api-p99`를 **5분 표본 20건 이상, 합의한 응답 시간 목표 초과가 2개 평가 창 연속**일 때만 활성화한다. [Agent의 지원 유형](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/ContainerInsights-Prometheus-metrics-conversion.html), [Micrometer 백분위의 집계 제한](https://docs.micrometer.io/micrometer/reference/concepts/histogram-quantiles.html)을 참고한다.
+Agent는 histogram을 버리므로 summary의 quantile을 그대로 전달한다. 대시보드의 백분위는 1분 `Maximum`, 평균은 같은 모집단의 5분 증가분 sum/count를 사용한다. 여러 경로·인스턴스의 summary를 평균 내거나 합쳐 전체 백분위를 만들지 않는다. 전체 API Timer에 원래 요청들을 직접 기록한다. 5분 `Maximum` 게시값은 5분 모든 요청의 백분위가 아니다.
+
+`api_latency_resources.py`로 별도 대시보드와 `api-p95`·`api-p99` 알람 본문을 생성한다. 지연 목표는 필수 입력이며 5분 최소 API 완료 건수와 양수 백분위, 2회 연속 초과 조건을 둔다. 완료 건수는 활동 조건으로 summary 내부 표본 수와 같지 않다. 알림은 기본 비활성이다. [모집단·시간 창·최소 표본 한계와 dev/prod 적용 절차](api-response-latency.md)를 따른다. 여러 인스턴스 전체의 백분위가 필요하면 Prometheus/AMP histogram 수집 경로를 검토한다.
 
 ## EC2·RDS 자원 경보
 
@@ -195,7 +198,7 @@ Discord의 일반 Execute Webhook은 `wait` 기본값이 `false`다. 이때 메�
 | `image-fallback-unavailable` | S3 부재 확인 후 대체 URL 미확보 5분 1건. R2 대체 제공 경로 활성화 전제. **저장소 설정만 준비, AWS 미적용** |
 | `hikari-pending` | DB 연결 대기 증가 |
 | `telemetry-stale` | 검증된 지속 게이지의 무데이터로 서버 지표 수집 중단 감지 |
-| `api-p95`, `api-p99` | 지연 수집 방식·목표·표본 수 검증 후 활성화 |
+| `api-p95`, `api-p99` | API 응답 시간 전용 summary 알람 정의 생성 가능. dev 목표·수집·트래픽 검증 후 활성화. [적용 절차](api-response-latency.md) |
 | `ec2-status-check`, `ec2-cpu-high`, `ec2-memory-high`, `ec2-disk-high` | EC2 상태·CPU·메모리·디스크 경보 |
 | `rds-cpu-high`, `rds-memory-low`, `rds-storage-low`, `rds-connections-high` | RDS CPU·사용 가능 메모리·저장 공간·연결 수 경보 |
 

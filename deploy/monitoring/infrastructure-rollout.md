@@ -81,7 +81,7 @@ SNS가 Lambda 호출을 수락받지 못할 때의 재시도와, 수락 후 함�
 
 프론트 이미지 실패 신고는 담당 팀원의 별도 작업이다. `POST /api/v1/telemetry/image-load-failures/{timeline|detail}`에 인증·CSRF를 갖춘 본문 없는 요청이 실제 화면 실패 때 도착하고 204로 끝나는지 dev에서 확인한다. 그 뒤 `harudle_image_load_failures_total` 증가와 `image_load_failure_reported` 로그 및 필터 집계를 대조한다. 연동 전에는 `image-load-failure` 알람을 만들거나 활성화하지 않는다.
 
-부하 시험에서는 요청별 평균·P95·P99와 5xx 비율을 부하 도구 결과로 기록하고 EC2/RDS·Hikari·API 지표와 같은 시간축에서 비교한다. 현재 Agent 설정은 HTTP `_count`만 보내므로 CloudWatch의 평균 응답 시간도 아직 없다. Agent는 Prometheus histogram을 버리므로 P95·P99를 CloudWatch에 이미 수집한다고 가정하지 않는다. 시험 후 API 유형별 목표와 충분한 표본 수를 결정하고, 평균에 필요한 `_sum`의 수집 차원·비용 및 P95·P99용 summary quantile 또는 별도 Prometheus 수집 경로를 dev에서 검증한 뒤 지연 지표와 `api-p95`·`api-p99` 알람을 추가한다.
+API 응답 시간만 `harudle.api.response` summary와 sum/count로 수집한다. 생성 시간은 이 작업의 범위가 아니다. [API 응답 시간 적용 절차](api-response-latency.md)에 따라 node·모집단·Agent 증가분·백분위 게시값을 dev에서 대조하고 별도 대시보드와 알림 비활성 `api-p95`·`api-p99` 알람을 준비한다. 지연 목표·트래픽 조건·실제 평가 및 Discord 수신을 검증한 뒤 dev 전달을 활성화하고 prod에 적용한다. 기존 HTTP count 기반 오류율·호스트 지표도 함께 확인한다.
 
 ## prod 적용과 되돌리기
 
