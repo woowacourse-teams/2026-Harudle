@@ -55,6 +55,7 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.http.converter.HttpMessageNotWritableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -63,6 +64,7 @@ import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
+import org.springframework.web.util.DisconnectedClientHelper;
 
 @RestControllerAdvice
 @NullMarked
@@ -406,6 +408,20 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     ) {
         apiExceptionLogger.error(ErrorType.INTERNAL_SERVER_ERROR, exception, request);
         return createResponse(ErrorType.INTERNAL_SERVER_ERROR, request);
+    }
+
+    @Override
+    protected @Nullable ResponseEntity<Object> handleHttpMessageNotWritable(
+            HttpMessageNotWritableException exception,
+            HttpHeaders headers,
+            HttpStatusCode statusCode,
+            WebRequest request
+    ) {
+        if (DisconnectedClientHelper.isClientDisconnectedException(exception)) {
+            logger.debug("event=client_disconnected exceptionType=HttpMessageNotWritableException");
+            return null;
+        }
+        return super.handleHttpMessageNotWritable(exception, headers, statusCode, request);
     }
 
     @Override

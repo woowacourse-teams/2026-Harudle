@@ -20,13 +20,17 @@ import com.harudle.generation.diary.service.exception.AiGenerationException;
 import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
 import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
 import com.harudle.notification.service.exception.NotificationIntegrationUnavailableException;
+import java.io.EOFException;
+import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.ConversionNotSupportedException;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.HttpMethod;
@@ -51,7 +55,9 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.context.request.ServletWebRequest;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
@@ -252,6 +258,58 @@ class GlobalExceptionHandlerTest {
         ResponseEntity<Object> response = handleFrameworkException(exception);
 
         assertFrameworkError(response, 500, "INTERNAL_SERVER_ERROR");
+    }
+
+    @ParameterizedTest
+    @MethodSource("disconnectedClientCauses")
+    @DisplayName("응답 작성 중 연결 종료는 재응답과 서버 오류 로그를 남기지 않는다")
+    void handleHttpMessageNotWritableForDisconnectedClient(Throwable cause) throws Exception {
+        HttpMessageNotWritableException exception = new HttpMessageNotWritableException(
+                "응답 본문을 작성할 수 없습니다.",
+                new RuntimeException("직렬화 중 I/O 오류", cause)
+        );
+
+        ResponseEntity<Object> response = handleFrameworkException(exception);
+
+        assertThat(response).isNull();
+        verifyNoInteractions(apiExceptionLogger);
+    }
+
+    private static Stream<Throwable> disconnectedClientCauses() {
+        return Stream.of(
+                new AsyncRequestNotUsableException("응답 연결 종료", new IOException("Socket closed")),
+                new EOFException("응답 연결 종료"),
+                new IOException("Broken pipe"),
+                new IOException("Connection reset by peer")
+        );
+    }
+
+    @Test
+    @DisplayName("실제 응답 변환 오류는 기존 내부 서버 오류와 로그를 유지한다")
+    void handleHttpMessageNotWritableForSerializationFailure() throws Exception {
+        HttpMessageNotWritableException exception = new HttpMessageNotWritableException(
+                "응답 본문을 작성할 수 없습니다.",
+                new IllegalStateException("응답 필드를 변환할 수 없습니다.")
+        );
+
+        ResponseEntity<Object> response = handleFrameworkException(exception);
+
+        assertFrameworkError(response, 500, "INTERNAL_SERVER_ERROR");
+        verify(apiExceptionLogger).error(response.getStatusCode(), exception, request);
+    }
+
+    @Test
+    @DisplayName("외부 API 연결 오류는 클라이언트 연결 종료로 처리하지 않는다")
+    void handleHttpMessageNotWritableForUpstreamFailure() throws Exception {
+        HttpMessageNotWritableException exception = new HttpMessageNotWritableException(
+                "응답 본문을 작성할 수 없습니다.",
+                new RestClientException("외부 API 호출 실패", new IOException("Broken pipe"))
+        );
+
+        ResponseEntity<Object> response = handleFrameworkException(exception);
+
+        assertFrameworkError(response, 500, "INTERNAL_SERVER_ERROR");
+        verify(apiExceptionLogger).error(response.getStatusCode(), exception, request);
     }
 
     @Test
