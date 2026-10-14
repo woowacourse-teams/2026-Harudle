@@ -42,6 +42,8 @@ class DiaryGenerationTest {
         assertThat(generation.getImageObjectKey()).isNull();
         assertThat(generation.getErrorCode()).isNull();
         assertThat(generation.getCompletedAt()).isNull();
+        assertThat(generation.getStoryboardProvider()).isNull();
+        assertThat(generation.getStoryboardModel()).isNull();
         assertThat(generation.getUsageDate()).isNull();
     }
 
@@ -83,6 +85,8 @@ class DiaryGenerationTest {
         assertThat(generation.getImageObjectKey()).isEqualTo("generated/diary-image.png");
         assertThat(generation.getErrorCode()).isNull();
         assertThat(generation.getCompletedAt()).isEqualTo(completedAt);
+        assertThat(generation.getStoryboardProvider()).isNull();
+        assertThat(generation.getStoryboardModel()).isNull();
     }
 
     @Test

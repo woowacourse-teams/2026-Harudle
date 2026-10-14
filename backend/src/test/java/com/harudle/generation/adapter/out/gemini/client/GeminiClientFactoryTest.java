@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.google.auth.oauth2.AccessToken;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.genai.Client;
+import com.google.genai.types.ClientOptions;
 import com.google.genai.types.GenerateContentConfig;
 import com.google.genai.types.HttpOptions;
 import com.google.genai.types.HttpRetryOptions;
@@ -12,13 +13,20 @@ import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import okhttp3.Call;
+import okhttp3.EventListener;
+import okhttp3.OkHttpClient;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class GeminiClientFactoryTest {
 
@@ -89,6 +97,36 @@ class GeminiClientFactoryTest {
                 "/v1/projects/test-project/locations/global/publishers/google/models/" + MODEL + ":generateContent");
         assertThat(request.get().authorization()).isEqualTo("Bearer test-access-token");
         assertThat(request.get().apiKey()).isNull();
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    @DisplayName("두 인증 방식 모두 전용 HTTP Client의 호출 제한과 이벤트 리스너를 SDK에 전달한다")
+    void forwardCustomTransportForBothAuthModes(boolean vertex) {
+        GoogleCredentials credentials = GoogleCredentials.create(
+                new AccessToken("test-access-token", Date.from(Instant.now().plusSeconds(3600))));
+        GeminiClientFactory factory = vertex
+                ? new VertexGeminiClientFactory("test-project", "global", credentials)
+                : new ExpressGeminiClientFactory("test-api-key");
+        AtomicInteger started = new AtomicInteger();
+        AtomicReference<Call> captured = new AtomicReference<>();
+        OkHttpClient http = new OkHttpClient.Builder().callTimeout(Duration.ofSeconds(3))
+                .eventListenerFactory(call -> {
+                    captured.set(call);
+                    return new EventListener() {
+                        @Override
+                        public void callStart(Call current) {
+                            started.incrementAndGet();
+                        }
+                    };
+                }).build();
+
+        try (Client client = factory.create(httpOptions(), ClientOptions.builder().customHttpClient(http).build())) {
+            assertThat(client.models.generateContent(MODEL, "fixture", GenerateContentConfig.builder().build()).text())
+                    .isEqualTo("ok");
+            assertThat(started).hasValue(1);
+            assertThat(captured.get().timeout().timeoutNanos()).isEqualTo(Duration.ofSeconds(3).toNanos());
+        }
     }
 
     private HttpOptions httpOptions() {

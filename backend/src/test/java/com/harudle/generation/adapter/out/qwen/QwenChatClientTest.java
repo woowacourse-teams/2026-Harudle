@@ -29,6 +29,8 @@ import okio.Source;
 import okio.Timeout;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import tools.jackson.databind.json.JsonMapper;
 
 class QwenChatClientTest {
@@ -65,6 +67,21 @@ class QwenChatClientTest {
         assertThat(result.timing().responseCompletedSeconds())
                 .isGreaterThanOrEqualTo(result.timing().firstAnswerSeconds());
         assertThat(mapper.writeValueAsString(result)).doesNotContain("secret reasoning", "must-not-be-retained");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"length,TRUNCATED", "'',RESPONSE"})
+    @DisplayName("완료 신호를 받아도 출력 잘림이나 정상 종료 사유 누락은 성공으로 처리하지 않는다")
+    void preserveCompletionValidationAtDone(String finishReason, QwenChatException.Kind expected) throws Exception {
+        var completion = finishReason.isEmpty() ? Map.of("delta", Map.of())
+                : Map.of("delta", Map.of(), "finish_reason", finishReason);
+        String stream = contentEvent(StoryboardTestFixtures.storyboardJson())
+                + event(Map.of("choices", List.of(completion)))
+                + "data: [DONE]\n\n";
+        respond(ResponseBody.create(stream, MediaType.get("text/event-stream")));
+
+        assertThatThrownBy(() -> client.generate(request)).isInstanceOfSatisfying(QwenChatException.class,
+                failure -> assertThat(failure.kind()).isEqualTo(expected));
     }
 
     @Test
