@@ -133,6 +133,41 @@ class JdbcPushDeliveryQueueTest {
     }
 
     @Test
+    @DisplayName("UNREGISTERED 응답 뒤 FID가 그대로면 등록을 해제하고 미발송 작업을 취소한다")
+    void revokesOnlyTheFidThatWasSent() {
+        Instant now = Instant.now();
+        JdbcPushDeliveryQueue.Claim claim = queue.claim(now).orElseThrow();
+        JdbcPushDeliveryQueue.Target sentTo = queue.target(claim, now).orElseThrow();
+        UUID waiting = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO notification_outbox
+                    (id, event_id, feed_id, recipient_user_id, push_registration_id)
+                VALUES (?, ?, ?, ?, ?)
+                """, waiting, UUID.randomUUID(), feed, recipient, registration);
+
+        assertThat(queue.revokeUnregistered(claim, sentTo, now)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT revoked_at IS NOT NULL FROM push_registrations WHERE id = ?",
+                Boolean.class, registration)).isTrue();
+        assertThat(status()).isEqualTo("CANCELLED");
+        assertThat(jdbc.queryForObject("SELECT status FROM notification_outbox WHERE id = ?", String.class, waiting))
+                .isEqualTo("CANCELLED");
+        assertThat(queue.sent(claim, now)).isFalse();
+    }
+
+    @Test
+    @DisplayName("전송 중 FID가 바뀌면 옛 FID의 UNREGISTERED 응답으로 새 등록을 해제하지 않는다")
+    void preservesChangedFidAfterUnregistered() {
+        Instant now = Instant.now();
+        JdbcPushDeliveryQueue.Claim claim = queue.claim(now).orElseThrow();
+        JdbcPushDeliveryQueue.Target sentTo = queue.target(claim, now).orElseThrow();
+        jdbc.update("UPDATE push_registrations SET recipient_value = 'F2', version = 1 WHERE id = ?", registration);
+
+        assertThat(queue.revokeUnregistered(claim, sentTo, now)).isFalse();
+        assertThat(queue.target(claim, now)).contains(new JdbcPushDeliveryQueue.Target("F2", 1));
+        assertThat(status()).isEqualTo("PROCESSING");
+    }
+
+    @Test
     @DisplayName("세션이나 피드가 종료되면 전송 직전 검사에서 발송 대상을 찾지 못한다")
     void skipsInvalidSessionAndDeletedFeed() {
         Instant now = Instant.now();

@@ -29,7 +29,7 @@ class JdbcPushDeliveryQueue {
                 attempt_count = o.attempt_count + 1, updated_at = ?
             FROM candidate WHERE o.id = candidate.id
             RETURNING o.id, o.event_id, o.feed_id, o.push_registration_id,
-                o.lock_token, o.attempt_count, candidate.published_at
+                o.lock_token, o.locked_until, o.attempt_count, candidate.published_at
             """;
     private static final String TARGET = """
             SELECT r.recipient_value, r.version FROM notification_outbox o
@@ -40,6 +40,7 @@ class JdbcPushDeliveryQueue {
             JOIN users u ON u.id = r.user_id AND u.deleted_at IS NULL
             JOIN feeds f ON f.id = o.feed_id AND f.deleted_at IS NULL
             WHERE o.id = ? AND o.status = 'PROCESSING' AND o.lock_token = ?
+              AND o.locked_until > ?
               AND EXISTS (SELECT 1 FROM refresh_tokens rt
                   WHERE rt.session_id = s.id AND rt.user_id = s.user_id
                     AND rt.revoked_at IS NULL AND rt.expires_at > ?)
@@ -65,6 +66,15 @@ class JdbcPushDeliveryQueue {
                 locked_until = NULL, last_error_code = ?, updated_at = ?
             WHERE id = ? AND status = 'PROCESSING' AND lock_token = ?
             """;
+    private static final String REVOKE_UNREGISTERED = """
+            UPDATE push_registrations SET revoked_at = ?, updated_at = ?
+            WHERE id = ? AND recipient_value = ? AND version = ? AND revoked_at IS NULL
+            """;
+    private static final String CANCEL_REGISTRATION = """
+            UPDATE notification_outbox SET status = 'CANCELLED', lock_token = NULL,
+                locked_until = NULL, updated_at = ?
+            WHERE push_registration_id = ? AND status IN ('PENDING', 'PROCESSING')
+            """;
 
     private final JdbcTemplate jdbc;
 
@@ -78,7 +88,8 @@ class JdbcPushDeliveryQueue {
         return jdbc.query(CLAIM, (rs, row) -> new Claim(
                         rs.getObject("id", UUID.class), rs.getObject("event_id", UUID.class),
                         rs.getObject("feed_id", UUID.class), rs.getObject("push_registration_id", UUID.class),
-                        rs.getObject("lock_token", UUID.class), rs.getInt("attempt_count"),
+                        rs.getObject("lock_token", UUID.class),
+                        rs.getObject("locked_until", OffsetDateTime.class).toInstant(), rs.getInt("attempt_count"),
                         rs.getObject("published_at", OffsetDateTime.class).toInstant()),
                 time(now), time(now), time(now.minus(DEADLINE)), token,
                 time(now.plus(LEASE)), time(now)).stream().findFirst();
@@ -93,7 +104,7 @@ class JdbcPushDeliveryQueue {
     public Optional<Target> target(Claim claim, Instant now) {
         return jdbc.query(TARGET, (rs, row) -> new Target(
                         rs.getString("recipient_value"), rs.getLong("version")),
-                claim.id(), claim.lockToken(), time(now)).stream().findFirst();
+                claim.id(), claim.lockToken(), time(now), time(now)).stream().findFirst();
     }
 
     @Transactional
@@ -117,6 +128,17 @@ class JdbcPushDeliveryQueue {
         return stop(claim, "CANCELLED", null, now);
     }
 
+    @Transactional
+    public boolean revokeUnregistered(Claim claim, Target target, Instant now) {
+        int revoked = jdbc.update(REVOKE_UNREGISTERED, time(now), time(now),
+                claim.registrationId(), target.fid(), target.version());
+        if (revoked == 0) {
+            return false;
+        }
+        jdbc.update(CANCEL_REGISTRATION, time(now), claim.registrationId());
+        return true;
+    }
+
     private boolean stop(Claim claim, String status, String errorCode, Instant now) {
         return jdbc.update(STOP, status, errorCode, time(now), claim.id(), claim.lockToken()) == 1;
     }
@@ -126,7 +148,7 @@ class JdbcPushDeliveryQueue {
     }
 
     record Claim(UUID id, UUID eventId, UUID feedId, UUID registrationId,
-                 UUID lockToken, int attemptCount, Instant publishedAt) { }
+                 UUID lockToken, Instant lockedUntil, int attemptCount, Instant publishedAt) { }
 
     record Target(String fid, long version) { }
 }
