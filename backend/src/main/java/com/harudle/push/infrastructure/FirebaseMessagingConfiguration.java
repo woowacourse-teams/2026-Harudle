@@ -4,6 +4,7 @@ import com.google.auth.oauth2.GoogleCredentials;
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.FirebaseOptions;
 import com.google.firebase.messaging.FirebaseMessaging;
+import com.harudle.feed.configuration.FeedUrlProperties;
 import java.io.IOException;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
@@ -37,5 +38,10 @@ class FirebaseMessagingConfiguration {
     @Bean
     FirebaseMessaging firebaseMessaging(FirebaseApp firebaseApp) {
         return FirebaseMessaging.getInstance(firebaseApp);
+    }
+
+    @Bean
+    FcmFeedPushSender feedPushSender(FirebaseMessaging firebaseMessaging, FeedUrlProperties feedUrls) {
+        return new FcmFeedPushSender(firebaseMessaging, feedUrls);
     }
 }

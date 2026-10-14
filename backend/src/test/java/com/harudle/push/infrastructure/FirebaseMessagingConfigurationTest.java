@@ -6,6 +6,8 @@ import com.google.auth.oauth2.AccessToken;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.messaging.FirebaseMessaging;
+import com.harudle.feed.configuration.FeedUrlProperties;
+import java.net.URI;
 import java.util.Date;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -14,6 +16,8 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 class FirebaseMessagingConfigurationTest {
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
             .withUserConfiguration(FirebaseMessagingConfiguration.class)
+            .withBean(FeedUrlProperties.class,
+                    () -> new FeedUrlProperties(URI.create("https://www.harudle.com/feeds")))
             .withBean("firebaseCredentials", GoogleCredentials.class,
                     () -> GoogleCredentials.create(new AccessToken("test", new Date(Long.MAX_VALUE))));
 
@@ -24,6 +28,7 @@ class FirebaseMessagingConfigurationTest {
             assertThat(context).hasNotFailed();
             assertThat(context).doesNotHaveBean(FirebaseApp.class);
             assertThat(context).doesNotHaveBean(FirebaseMessaging.class);
+            assertThat(context).doesNotHaveBean(FcmFeedPushSender.class);
         });
     }
 
@@ -37,6 +42,7 @@ class FirebaseMessagingConfigurationTest {
             assertThat(context).hasNotFailed();
             assertThat(context).hasSingleBean(FirebaseApp.class);
             assertThat(context).hasSingleBean(FirebaseMessaging.class);
+            assertThat(context).hasSingleBean(FcmFeedPushSender.class);
             assertThat(context.getBean(FirebaseApp.class).getOptions().getProjectId()).isEqualTo("harudle-test");
         });
     }

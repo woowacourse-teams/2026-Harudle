@@ -150,6 +150,18 @@ class PushRegistrationControllerTest {
     }
 
     @Test
+    @DisplayName("알고 있던 등록이 이미 사라졌으면 409 응답의 current는 null이다")
+    void staleRegistrationCanHaveNoCurrentRegistration() {
+        MockMvcResponse response = put(alice, aliceSession, device,
+                Map.of("fid", "F1", "registrationId", UUID.randomUUID(), "version", 0));
+
+        assertThat(response.statusCode()).isEqualTo(409);
+        assertThat(response.jsonPath().getString("code")).isEqualTo("STALE_PUSH_REGISTRATION");
+        assertThat(response.jsonPath().getMap("")).containsKey("current");
+        assertThat(response.jsonPath().getMap("").get("current")).isNull();
+    }
+
+    @Test
     @DisplayName("본인 등록만 해제하고 같은 요청을 다시 보내도 204를 반환한다")
     void revokeIsIdempotent() {
         put(alice, aliceSession, device, Map.of("fid", "F1"));
