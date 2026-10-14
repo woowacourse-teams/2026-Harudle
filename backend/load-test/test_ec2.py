@@ -61,7 +61,7 @@ class Ec2PreparationTest(unittest.TestCase):
         self.assertEqual(run.call_args.kwargs['env']['PGPASSWORD'], self.values['DB_PASSWORD'])
         self.assertEqual(run.call_args.kwargs['input'], 'SELECT 1;')
 
-    def test_prepare_uploads_before_seed_and_marks_ready_only_after_success(self):
+    def test_prepare_registers_reusable_members_without_uploading_images(self):
         steps = []
 
         def sql_runner(sql):
@@ -72,24 +72,28 @@ class Ec2PreparationTest(unittest.TestCase):
                 return ''
             return 't'
 
-        with patch.object(ec2, 'upload', side_effect=lambda fixture: steps.append('upload')):
+        with patch.object(ec2, 'upload') as upload:
             with contextlib.redirect_stdout(io.StringIO()):
                 ec2.prepare_run(self.directory, self.settings, sql_runner)
-        self.assertEqual(steps, ['upload', 'seed'])
+        upload.assert_not_called()
+        self.assertEqual(steps, ['seed'])
         self.assertTrue((self.directory / '.ready').exists())
         self.assertEqual(len(assets.load_fixture(self.directory)['members']), 200)
         target = json.loads((self.directory / 'database.json').read_text())
         self.assertEqual(target, ec2.database_target(self.settings))
         self.assertNotIn('PGPASSWORD', target)
 
-    def test_missing_prompt_stops_before_files_or_upload(self):
+    def test_missing_prompt_stops_reset_before_new_files_or_upload(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            ec2.prepare_run(self.directory, self.settings, Mock())
+        run = self.directory.with_name('peak1')
         with patch.object(ec2, 'upload') as upload, self.assertRaises(ValueError):
-            ec2.prepare_run(self.directory, self.settings, lambda sql: 'f')
-        self.assertFalse(self.directory.exists())
+            ec2.reset_run(run, self.directory, self.settings, lambda sql: 'f', True)
+        self.assertFalse(run.exists())
         upload.assert_not_called()
 
     def test_failed_seed_keeps_cleanup_files_but_cannot_be_exported(self):
-        runner = Mock(side_effect=['t', subprocess.CalledProcessError(3, 'psql')])
+        runner = Mock(side_effect=subprocess.CalledProcessError(3, 'psql'))
         with patch.object(ec2, 'upload'), self.assertRaises(subprocess.CalledProcessError):
             ec2.prepare_run(self.directory, self.settings, runner)
         self.assertFalse((self.directory / '.ready').exists())

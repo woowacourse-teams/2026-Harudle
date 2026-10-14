@@ -1,4 +1,5 @@
 import argparse
+from contextlib import ExitStack
 import hashlib
 import hmac
 import json
@@ -7,8 +8,8 @@ from pathlib import Path
 import subprocess
 import uuid
 
-from assets import delete_images, load_fixture, run_lock, seed_records, validate_records
-from prepare import database_guard, quote
+from assets import delete_images, load_fixture, member_directory, run_lock, seed_records, validate_active_run, validate_records
+from prepare import database_guard, member_identity, quote
 
 
 def psql(sql):
@@ -20,17 +21,23 @@ def psql(sql):
 
 def member_filter(fixture):
     ids = ', '.join(quote(member['id']) for member in fixture['members'])
-    email = quote('%@' + uuid.UUID(fixture['runId']).hex + '.loadtest.invalid')
+    email = quote('%@' + member_identity(fixture).hex + '.loadtest.invalid')
     return ids, email
 
 
 def snapshot_sql(fixture):
     ids, email = member_filter(fixture)
+    scope = ''
+    if fixture['version'] == 3:
+        seeds = ', '.join(quote(record['id']) for record in seed_records(fixture))
+        creates = ', '.join(quote(uuid.uuid5(uuid.UUID(fixture['runId']), f'create-{i}'))
+                            for i in range(len(fixture['members'])))
+        scope = f' AND (g.id IN ({seeds}) OR g.idempotency_key IN ({creates}))'
     return database_guard() + f"""
 SELECT COALESCE(jsonb_agg(jsonb_build_object(
     'id', g.id, 'userId', u.id, 'imageKey', g.image_object_key)), '[]'::jsonb)
 FROM diary_generations g JOIN diaries d ON d.id = g.diary_id JOIN users u ON u.id = d.user_id
-WHERE u.id IN ({ids}) AND u.primary_email LIKE {email};
+WHERE u.id IN ({ids}) AND u.primary_email LIKE {email}{scope};
 COMMIT;
 """
 
@@ -38,6 +45,21 @@ COMMIT;
 def cleanup_sql(fixture, records):
     ids, email = member_filter(fixture)
     expected = quote(json.dumps(records))
+    delete = f'DELETE FROM users WHERE id IN ({ids}) AND primary_email LIKE {email};'
+    diary_guard = ''
+    if fixture['version'] == 3:
+        diary_guard = f"""
+    IF EXISTS (SELECT 1 FROM diaries d WHERE d.user_id IN ({ids}) AND NOT EXISTS (
+        SELECT 1 FROM diary_generations g JOIN cleanup_generations e ON e.id = g.id
+        WHERE g.diary_id = d.id)) THEN
+        RAISE EXCEPTION 'Diary does not belong to this test run';
+    END IF;
+"""
+        delete = f"""
+DELETE FROM diaries WHERE user_id IN ({ids});
+DELETE FROM daily_generation_usage WHERE user_id IN ({ids});
+DELETE FROM refresh_tokens WHERE user_id IN ({ids});
+"""
     return database_guard() + f"""
 CREATE TEMP TABLE cleanup_generations ON COMMIT DROP AS
 SELECT * FROM jsonb_to_recordset({expected}::jsonb) AS x(id uuid, "userId" uuid, "imageKey" text);
@@ -65,8 +87,9 @@ BEGIN
                JOIN diaries d ON d.id = g.diary_id WHERE d.user_id <> e."userId") THEN
         RAISE EXCEPTION 'Generation belongs to another member';
     END IF;
+{diary_guard}
 END $$;
-DELETE FROM users WHERE id IN ({ids}) AND primary_email LIKE {email};
+{delete}
 DELETE FROM categories WHERE name = {quote(fixture['categoryName'])}
     AND NOT EXISTS (SELECT 1 FROM feeds WHERE category_id = categories.id);
 COMMIT;
@@ -94,11 +117,24 @@ def save_plan(path, plan, fixture):
 
 
 def cleanup(directory, execute_sql=None, client_stopped=False):
-    execute_sql = execute_sql or psql
-    with run_lock(directory):
+    with ExitStack() as locks:
+        fixture = load_fixture(directory)
+        if fixture['version'] == 3:
+            locks.enter_context(run_lock(member_directory(directory, fixture)))
+        locks.enter_context(run_lock(directory))
+        cleanup_locked(directory, execute_sql or psql, client_stopped)
+
+
+def cleanup_locked(directory, execute_sql, client_stopped):
+    # Caller holds both the member-set lock (v3) and this run's lock.
+    fixture = load_fixture(directory)
+    if fixture['version'] == 3:
+        validate_active_run(directory, fixture)
+        if not client_stopped:
+            raise ValueError('Stop local k6 first, then use --client-stopped')
+    if not (directory / '.cleaned').exists():
         if (directory / '.exported').exists() and not client_stopped:
             raise ValueError('Members were exported. Stop local k6 first, then use --client-stopped')
-        fixture = load_fixture(directory)
         plan_path = directory / 'cleanup.json'
         plan = {'runId': fixture['runId'], 'generations': seed_records(fixture)}
         if plan_path.exists():
@@ -119,8 +155,13 @@ def cleanup(directory, execute_sql=None, client_stopped=False):
         # Persist before DELETE. Retain old entries when the DB is already empty on a retry.
         save_plan(plan_path, plan, fixture)
         execute_sql(cleanup_sql(fixture, plan['generations']))
-        print('DB cleanup committed: test members, diaries, feeds and reactions removed.', flush=True)
+        print('DB cleanup committed: test data removed.'
+              + (' Reusable members kept.' if fixture['version'] == 3 else ' Test members removed.'), flush=True)
         delete_images(fixture, plan['generations'])
+        # Only mark completion after all S3 deletions have succeeded.
+        with (directory / '.cleaned').open('w') as marker:
+            marker.flush()
+            os.fsync(marker.fileno())
 
 
 def main():

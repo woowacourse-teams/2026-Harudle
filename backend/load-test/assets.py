@@ -10,7 +10,7 @@ import re
 import subprocess
 import uuid
 
-from prepare import MEMBERS, PREFIX, seed_image
+from prepare import MEMBERS, NAME, PREFIX, member_identity, seed_image
 
 BUCKET = "techcourse-project-2026"
 UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
@@ -40,17 +40,45 @@ def run_lock(directory):
 def load_fixture(directory):
     fixture = json.loads((directory / 'members.json').read_text())
     run_id = uuid.UUID(fixture['runId'])
-    expected = [str(uuid.uuid5(run_id, f'member-{i}')) for i in range(MEMBERS)]
+    member_set = member_identity(fixture)
+    expected = [str(uuid.uuid5(member_set, f'member-{i}')) for i in range(MEMBERS)]
     current = date.fromisoformat(fixture['currentMonth'])
     previous = (current - timedelta(days=1)).replace(day=1)
-    if (fixture.get('version') != 2 or str(run_id) != fixture['runId']
+    if (fixture.get('version') not in {2, 3} or str(run_id) != fixture['runId']
             or not re.fullmatch(r'[0-9a-f]{64}', fixture.get('cleanupKey', ''))
             or [member['id'] for member in fixture['members']] != expected
             or fixture['categoryName'] != '부하' + run_id.hex[:12]
             or current.day != 1 or fixture['previousMonth'] != str(previous)
             or type(fixture['diariesPerMonth']) is not int or not 1 <= fixture['diariesPerMonth'] <= 100):
         raise ValueError('Invalid run fixture; prepare a fresh run with the current prepare.py')
+    if fixture['version'] == 3:
+        if not re.fullmatch(NAME, fixture.get('memberSetName', '')) or str(member_set) != fixture['memberSetId']:
+            raise ValueError('Invalid reusable member set')
+        if 'runName' in fixture:
+            name = fixture['runName']
+            if not re.fullmatch(NAME, name) or run_id != uuid.uuid5(member_set, 'run-' + name):
+                raise ValueError('Invalid test run identity')
+        elif run_id != member_set:
+            raise ValueError('Invalid reusable member identity')
+    elif 'memberSetId' in fixture:
+        raise ValueError('Legacy fixtures cannot reuse members')
     return fixture
+
+
+def member_directory(directory, fixture):
+    if fixture['version'] != 3 or fixture.get('runName') != directory.name:
+        raise ValueError('Select a test run, not the reusable members folder')
+    return directory.parent / fixture['memberSetName']
+
+
+def validate_active_run(directory, fixture):
+    group = member_directory(directory, fixture)
+    accounts = load_fixture(group)
+    if ('runName' in accounts or accounts['memberSetId'] != fixture['memberSetId']
+            or accounts['cleanupKey'] != fixture['cleanupKey']
+            or (group / 'active-run').read_text() != directory.name):
+        raise ValueError('This is not the active test run for these members')
+    return group
 
 
 def seed_records(fixture):
@@ -130,6 +158,8 @@ def main():
     try:
         with run_lock(args.run_dir):
             fixture = load_fixture(args.run_dir)
+            if fixture['version'] == 3:
+                raise ValueError('Use ec2.py reset to prepare data for reusable members')
             if (args.run_dir / 'cleanup.json').exists():
                 raise ValueError('Cleanup has started; prepare a fresh run')
             upload(fixture)

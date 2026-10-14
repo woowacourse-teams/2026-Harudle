@@ -7,9 +7,9 @@ import shutil
 import subprocess
 import sys
 
-from assets import BUCKET, TEST_IMAGE, run_lock, upload
-from cleanup import cleanup
-from prepare import PREFIX, database_guard, write_fixture
+from assets import BUCKET, TEST_IMAGE, load_fixture, run_lock, upload
+from cleanup import cleanup, cleanup_locked
+from prepare import NAME, PREFIX, database_guard, members_sql, reset_guard, write_fixture, write_members
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 APP_DIR = SCRIPT_DIR.parent
@@ -59,34 +59,94 @@ def execute_sql(container, settings, sql):
 
 
 def prepare_run(directory, settings, sql_runner):
+    if not directory.exists():
+        write_members(directory)
+    with run_lock(directory):
+        fixture = load_fixture(directory)
+        if (fixture['version'] != 3 or 'runName' in fixture or fixture['memberSetName'] != directory.name):
+            raise ValueError('Use a reusable members folder')
+        if (directory / 'database.json').exists():
+            check_database(directory, settings)
+        if (directory / '.ready').exists():
+            print(f'Reusable members already prepared: {directory.name}. Use reset before each test.')
+            return
+        (directory / 'database.json').write_text(json.dumps(database_target(settings)))
+        sql_runner(members_sql(fixture))
+        (directory / '.ready').touch()
+    print(f'Prepared 200 reusable members in the dev DB: {directory.name}. Export members once.')
+
+
+def check_database(directory, settings):
+    target = json.loads((directory / 'database.json').read_text())
+    if target != database_target(settings):
+        raise ValueError('The backend DB address changed. Use the original dev DB')
+
+
+def set_active_run(group, name):
+    temporary = group / 'active-run.tmp'
+    with temporary.open('w') as output:
+        output.write(name)
+        output.flush()
+        os.fsync(output.fileno())
+    temporary.replace(group / 'active-run')
+    descriptor = os.open(group, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def reset_run(directory, group, settings, sql_runner, client_stopped):
+    if not client_stopped:
+        raise ValueError('Stop local k6 first, then use --client-stopped')
     if not TEST_IMAGE.is_file():
         raise ValueError('The test image is missing from this deployment')
-    result = sql_runner(database_guard() + 'SELECT EXISTS (SELECT 1 FROM generation_prompts);\nCOMMIT;')
-    if result != 't':
-        raise ValueError('The dev DB needs generation_prompts before preparing data')
-    fixture, seed, _ = write_fixture(directory)
-    with run_lock(directory):
-        (directory / 'database.json').write_text(json.dumps(database_target(settings)))
-        upload(fixture)
-        sql_runner(seed)
-        (directory / '.ready').touch()
-    print(f'Prepared 200 members in the dev DB: {directory.name}. Export members next.')
+    if directory.exists():
+        raise ValueError('This run name already exists. Use a new name, such as peak2')
+    with run_lock(group):
+        accounts = load_fixture(group)
+        if (accounts['version'] != 3 or 'runName' in accounts or accounts['memberSetName'] != group.name
+                or not (group / '.ready').exists()):
+            raise ValueError('Prepare reusable members first')
+        check_database(group, settings)
+        result = sql_runner(database_guard() + 'SELECT EXISTS (SELECT 1 FROM generation_prompts);\nCOMMIT;')
+        if result != 't':
+            raise ValueError('The dev DB needs generation_prompts before preparing data')
+        active = group / 'active-run'
+        if active.exists():
+            name = active.read_text()
+            if not re.fullmatch(NAME, name):
+                raise ValueError('Invalid active run name')
+            previous = group.parent / name
+            check_database(previous, settings)
+            with run_lock(previous):
+                cleanup_locked(previous, sql_runner, client_stopped)
+        # Check member ownership and leftover data before publishing a new active run.
+        sql_runner(database_guard() + reset_guard(accounts) + '\nROLLBACK;')
+        fixture, seed, _ = write_fixture(directory, accounts=accounts)
+        with run_lock(directory):
+            (directory / 'database.json').write_text(json.dumps(database_target(settings)))
+            # Persist ownership before either S3 or DB can change.
+            set_active_run(group, directory.name)
+            upload(fixture)
+            sql_runner(seed)
+            (directory / '.ready').touch()
+    print(f'Ready: {directory.name}. Run local k6 with the same run name. Reuse the existing members.json.')
 
 
 def cleanup_run(directory, settings, sql_runner, client_stopped):
-    target = json.loads((directory / 'database.json').read_text())
-    if target != database_target(settings):
-        raise ValueError('The backend DB address changed. Cleanup must use the original dev DB')
+    check_database(directory, settings)
     cleanup(directory, execute_sql=sql_runner, client_stopped=client_stopped)
 
 
 def main():
     parser = argparse.ArgumentParser(description='Prepare or clean test data on the dev EC2')
-    parser.add_argument('action', choices=['prepare', 'export', 'cleanup'])
-    parser.add_argument('run', help='A new run folder name, such as smoke1 or peak1')
+    parser.add_argument('action', choices=['prepare', 'export', 'reset', 'cleanup'])
+    parser.add_argument('run', help='members for prepare/export; a new name such as peak1 for reset')
+    parser.add_argument('--members', default='members', help='Reusable members folder used by reset')
     parser.add_argument('--client-stopped', action='store_true', help='Confirm local k6 has stopped')
     args = parser.parse_args()
-    if not re.fullmatch(r'[a-zA-Z0-9_-]+', args.run):
+    if not all(re.fullmatch(NAME, name) for name in [args.run, args.members]):
         parser.error('Use only letters, digits, hyphens and underscores for the run name')
     os.umask(0o077)
     directory = SCRIPT_DIR / 'runs' / args.run
@@ -99,6 +159,8 @@ def main():
         sql_runner = lambda sql: execute_sql(container, settings, sql)
         if args.action == 'prepare':
             prepare_run(directory, settings, sql_runner)
+        elif args.action == 'reset':
+            reset_run(directory, SCRIPT_DIR / 'runs' / args.members, settings, sql_runner, args.client_stopped)
         else:
             cleanup_run(directory, settings, sql_runner, args.client_stopped)
     except subprocess.CalledProcessError:

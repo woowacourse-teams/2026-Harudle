@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import uuid
 from datetime import datetime, timedelta
@@ -11,6 +12,7 @@ from zoneinfo import ZoneInfo
 
 PREFIX = "harudle/generated/diary-images/dev"
 MEMBERS = 200
+NAME = r'[a-zA-Z0-9_-]+'
 
 
 def quote(value):
@@ -37,13 +39,56 @@ def seed_image(run_id, member_index, month, index):
     return generation_id, f"{PREFIX}/{generation_id}/{asset_id}/image.png"
 
 
-def build_fixture(base_url, per_month):
-    run_id = uuid.uuid4()
+def member_identity(fixture):
+    return uuid.UUID(fixture.get('memberSetId', fixture['runId']))
+
+
+def account_statements(fixture):
+    member_set = member_identity(fixture)
+    statements = []
+    for i, member in enumerate(fixture['members']):
+        statements += [
+            "INSERT INTO users (id, primary_email, name, nickname, profile_image_code, role) VALUES "
+            f"({quote(member['id'])}, '{i}@{member_set.hex}.loadtest.invalid', "
+            f"'부하테스트{i:03}', '{member_set.hex[:6]}{i:03}', 1, 'USER');",
+            "INSERT INTO oauth_accounts (user_id, provider, provider_subject) VALUES "
+            f"({quote(member['id'])}, 'KAKAO', 'load-test-{member_set.hex}-{i}');",
+        ]
+    return statements
+
+
+def reset_guard(accounts):
+    ids = ', '.join(quote(member['id']) for member in accounts['members'])
+    email = quote('%@' + member_identity(accounts).hex + '.loadtest.invalid')
+    return f"""
+DO $$
+BEGIN
+    PERFORM 1 FROM users WHERE id IN ({ids}) FOR UPDATE;
+    IF (SELECT COUNT(*) FROM users WHERE id IN ({ids}) AND primary_email LIKE {email}
+        AND deleted_at IS NULL AND role = 'USER') <> {MEMBERS} THEN
+        RAISE EXCEPTION 'The reusable test members changed';
+    END IF;
+    IF EXISTS (SELECT 1 FROM diaries WHERE user_id IN ({ids})) THEN
+        RAISE EXCEPTION 'Clean the previous test before reset';
+    END IF;
+END $$;
+DELETE FROM refresh_tokens WHERE user_id IN ({ids});
+DELETE FROM daily_generation_usage WHERE user_id IN ({ids});
+"""
+
+
+def build_fixture(base_url, per_month, accounts=None, run_name=None):
+    if accounts is not None and (not re.fullmatch(NAME, run_name or '') or 'runName' in accounts
+                                 or accounts.get('version') != 3):
+        raise ValueError('Use reusable members and a new run name')
+    run_id = uuid.uuid4() if accounts is None else uuid.uuid5(member_identity(accounts), 'run-' + run_name)
     today = datetime.now(ZoneInfo("Asia/Seoul")).date()
     current = today.replace(day=1)
     previous = (current - timedelta(days=1)).replace(day=1)
     category = "부하" + run_id.hex[:12]
     members, image_keys, statements = [], [], [database_guard()]
+    if accounts is not None:
+        statements.append(reset_guard(accounts))
     statements += [
         "SELECT id AS prompt_id FROM generation_prompts ORDER BY id DESC LIMIT 1 \\gset",
         "INSERT INTO categories (name, sort_order) VALUES (" + quote(category)
@@ -60,15 +105,8 @@ def build_fixture(base_url, per_month):
         return str(uuid.uuid5(run_id, key))
 
     for i in range(MEMBERS):
-        user_id = identifier(f"member-{i}")
-        refresh = secrets.token_urlsafe(48)
-        email = f"{i}@{run_id.hex}.loadtest.invalid"
-        statements.append(
-            "INSERT INTO users (id, primary_email, name, nickname, profile_image_code, role) VALUES "
-            f"({quote(user_id)}, {quote(email)}, '부하테스트{i:03}', '{run_id.hex[:6]}{i:03}', 1, 'USER');")
-        statements.append(
-            "INSERT INTO oauth_accounts (user_id, provider, provider_subject) VALUES "
-            f"({quote(user_id)}, 'KAKAO', 'load-test-{run_id.hex}-{i}');")
+        user_id = identifier(f"member-{i}") if accounts is None else accounts['members'][i]['id']
+        refresh = secrets.token_urlsafe(48) if accounts is None else accounts['members'][i]['refreshToken']
         statements.append(
             "INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES "
             f"({quote(user_id)}, '{hashlib.sha256(refresh.encode()).hexdigest()}', CURRENT_TIMESTAMP + INTERVAL '1 day');")
@@ -120,16 +158,46 @@ def build_fixture(base_url, per_month):
                "baseUrl": base_url, "date": str(today),
                "currentMonth": str(current), "previousMonth": str(previous), "categoryName": category,
                "diariesPerMonth": per_month, "members": members}
+    if accounts is None:
+        statements[1:1] = account_statements(fixture)
+    else:
+        fixture.update(version=3, memberSetId=accounts['memberSetId'], memberSetName=accounts['memberSetName'],
+                       cleanupKey=accounts['cleanupKey'], runName=run_name)
     return fixture, "\n".join(statements), image_keys
 
 
-def write_fixture(directory, base_url='https://dev.harudle.com', per_month=1):
+def write_fixture(directory, base_url='https://dev.harudle.com', per_month=1, accounts=None):
     os.umask(0o077)
     directory.mkdir(parents=True, exist_ok=False)
-    fixture, seed, keys = build_fixture(base_url, per_month)
+    if accounts is not None:
+        base_url, per_month = accounts['baseUrl'], accounts['diariesPerMonth']
+    fixture, seed, keys = build_fixture(base_url, per_month, accounts, directory.name)
     (directory / "members.json").write_text(json.dumps(fixture, ensure_ascii=False, indent=2))
     (directory / "seed.sql").write_text(seed)
     return fixture, seed, keys
+
+
+def write_members(directory):
+    fixture, _, _ = write_fixture(directory)
+    fixture.update(version=3, memberSetId=fixture['runId'], memberSetName=directory.name)
+    (directory / 'members.json').write_text(json.dumps(fixture, ensure_ascii=False, indent=2))
+    seed = members_sql(fixture)
+    (directory / 'seed.sql').write_text(seed)
+    return fixture, seed
+
+
+def members_sql(fixture):
+    ids = ', '.join(quote(member['id']) for member in fixture['members'])
+    inserts = '\n'.join(account_statements(fixture))
+    # A lost DB response must not require a new member file after a successful commit.
+    return database_guard() + f"""
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM users WHERE id IN ({ids})) THEN
+        {inserts}
+    END IF;
+END $$;
+""" + reset_guard(fixture) + '\nCOMMIT;'
 
 
 def main():

@@ -47,6 +47,8 @@ def export_members(directory, certificate):
         if not (directory / '.ready').exists() or (directory / 'cleanup.json').exists():
             raise ValueError('Data preparation must finish and cleanup must not have started')
         fixture = load_fixture(directory)
+        if fixture['version'] == 3 and 'runName' in fixture:
+            raise ValueError('Export the reusable members folder, not a test run')
         recipient = directory / 'recipient.pem'
         if recipient.exists() and recipient.read_text() != certificate:
             raise ValueError('This run already has a recipient. Use the original local key')
@@ -77,7 +79,7 @@ def receive_members(directory, encrypted):
         raise ValueError('The copied text is too large')
     with run_lock(directory):
         if (directory / 'members.json').exists() or (directory / '.started').exists():
-            raise ValueError('This run already has members. Use a new run for another test')
+            raise ValueError('members.json already exists. Reuse it without receiving it again')
         compressed = openssl('cms', '-decrypt', '-binary', '-inform', 'PEM',
                              '-recip', str(directory / 'recipient.pem'),
                              '-inkey', str(directory / 'private.pem'), data=encrypted)
@@ -90,6 +92,8 @@ def receive_members(directory, encrypted):
             path = Path(temporary) / 'members.json'
             path.write_bytes(data)
             fixture = load_fixture(Path(temporary))
+            if fixture['version'] == 3 and 'runName' in fixture:
+                raise ValueError('Receive the reusable members folder, not a test run')
             if fixture['baseUrl'] != 'https://dev.harudle.com':
                 raise ValueError('Exported members must target https://dev.harudle.com')
             path.replace(directory / 'members.json')
@@ -98,7 +102,7 @@ def receive_members(directory, encrypted):
 def main():
     parser = argparse.ArgumentParser(description='Copy encrypted members through Session Manager, without local AWS CLI')
     parser.add_argument('action', choices=['keygen', 'receive'])
-    parser.add_argument('run', help='The same run name used on EC2')
+    parser.add_argument('run', help='The reusable members folder on EC2, normally members')
     args = parser.parse_args()
     if not re.fullmatch(r'[a-zA-Z0-9_-]+', args.run):
         parser.error('Use only letters, digits, hyphens and underscores for the run name')
@@ -108,7 +112,7 @@ def main():
             print(create_key(directory), end='')
         else:
             receive_members(directory, sys.stdin.buffer.read(MAX_BYTES + 1))
-            print(f'Restored members.json for {args.run}. Run k6 locally.')
+            print(f'Restored members.json for {args.run}. Reuse it; reset test data on EC2 before each local k6 run.')
     except (OSError, ValueError, KeyError, TypeError, EOFError) as error:
         parser.error(str(error))
 

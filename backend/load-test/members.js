@@ -29,8 +29,9 @@ const apiNames = [
 if (!/^https:\/\/dev\.harudle\.com$|^http:\/\/(localhost|127\.0\.0\.1|host\.docker\.internal)(:\d+)?$/.test(baseUrl)) {
   throw new Error('Only the dev or local origin is allowed');
 }
-if (fixture.version !== 2 || fixture.members.length !== 200 || new Set(fixture.members.map((member) => member.id)).size !== 200) {
-  throw new Error('A fresh version 2 fixture with 200 distinct members is required');
+if (![2, 3].includes(fixture.version) || (fixture.version === 3 && !fixture.runName)
+  || fixture.members.length !== 200 || new Set(fixture.members.map((member) => member.id)).size !== 200) {
+  throw new Error('A prepared test run with 200 distinct members is required');
 }
 if (__ENV.MODE && !['smoke', 'peak'].includes(__ENV.MODE)) {
   throw new Error('MODE must be smoke or peak');

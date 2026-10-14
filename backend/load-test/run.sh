@@ -3,27 +3,31 @@ set -euo pipefail
 
 mode="${1:-peak}"
 run="${2:-$mode}"
+members="${3:-members}"
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-if [[ "$mode" != smoke && "$mode" != peak ]] || [[ ! "$run" =~ ^[a-zA-Z0-9_-]+$ ]]; then
-  echo 'Usage: bash load-test/run.sh [smoke|peak] [run-folder-name]' >&2
+if [[ "$mode" != smoke && "$mode" != peak ]] || [[ ! "$run" =~ ^[a-zA-Z0-9_-]+$ ]] || [[ ! "$members" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+  echo 'Usage: bash load-test/run.sh [smoke|peak] [new-run-name] [members-folder=members]' >&2
   exit 1
 fi
-if [[ ! -f "$script_dir/runs/$run/members.json" ]]; then
-  echo 'Prepare accounts and apply seed.sql first.' >&2
+if [[ ! -f "$script_dir/runs/$members/members.json" ]]; then
+  echo 'Receive the reusable members.json first. Before each run, use ec2.py reset on EC2.' >&2
   exit 1
 fi
 if [[ "${HARUDLE_LOAD_TEST_LOCKED:-}" != "$run" ]]; then
-  exec python3 - "$script_dir" "$mode" "$run" <<'PY'
+  exec python3 - "$script_dir" "$mode" "$run" "$members" <<'PY'
 import os
 from pathlib import Path
 import subprocess
 import sys
 sys.path.insert(0, sys.argv[1])
 from assets import load_fixture, run_lock
-directory, mode, run = sys.argv[1:]
-with run_lock(Path(directory) / 'runs' / run):
-    load_fixture(Path(directory) / 'runs' / run)
-    result = subprocess.run(['bash', directory + '/run.sh', mode, run],
+from prepare import write_fixture
+directory, mode, run, members = sys.argv[1:]
+group = Path(directory) / 'runs' / members
+with run_lock(group):
+    accounts = load_fixture(group)
+    write_fixture(Path(directory) / 'runs' / run, accounts=accounts)
+    result = subprocess.run(['bash', directory + '/run.sh', mode, run, members],
                             env={**os.environ, 'HARUDLE_LOAD_TEST_LOCKED': run})
     sys.exit(result.returncode)
 PY
@@ -33,7 +37,7 @@ if [[ -f "$script_dir/runs/$run/cleanup.json" ]]; then
   exit 1
 fi
 if ! (set -o noclobber; : > "$script_dir/runs/$run/.started") 2>/dev/null; then
-  echo 'This fixture was already started. Refresh tokens rotate; prepare a fresh run.' >&2
+  echo 'This run was already started. Reset on EC2 and use a new run name.' >&2
   exit 1
 fi
 docker run --rm \
