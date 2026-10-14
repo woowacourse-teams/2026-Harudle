@@ -33,7 +33,7 @@ NEW_DIMENSIONS = {
     "harudle_generation_duration_seconds_count": [["job", "result"]],
     "harudle_gemini_tokens_total": [["job", "stage", "kind"]],
 }
-DEV_METRICS = {
+RESOURCE_METRICS = {
     "hikaricp_connections_acquire_seconds_sum": "Seconds",
     "hikaricp_connections_acquire_seconds_count": "Count",
     "hikaricp_connections_acquire_seconds_max": "Seconds",
@@ -83,30 +83,28 @@ class MonitoringConfigTests(unittest.TestCase):
                         "Seconds" if name.endswith("_sum") else "Count",
                     )
             expected = EXISTING_DIMENSIONS.keys() | NEW_DIMENSIONS.keys()
-            if environment == "dev":
-                expected |= DEV_METRICS.keys()
+            expected |= RESOURCE_METRICS.keys()
             self.assertEqual(set(processor["metric_unit"]), expected)
 
-    def test_dev_connection_metrics_preserve_pool_and_heap_preserves_memory_pool(self):
-        _, _, dev = read_processor("dev")
-        _, _, prod = read_processor("prod")
-        for name, unit in DEV_METRICS.items():
-            with self.subTest(metric=name):
-                declarations = matching_declarations(dev, name)
-                self.assertEqual(len(declarations), 1)
-                declaration = declarations[0]
-                self.assertEqual(dev["metric_unit"][name], unit)
-                self.assertEqual(matching_declarations(prod, name), [])
-                if name == "jvm_memory_used_bytes":
-                    self.assertEqual(declaration["dimensions"], [["job", "area", "id"]])
-                    self.assertEqual(declaration["source_labels"], ["job", "area"])
-                    self.assertIsNotNone(re.fullmatch(declaration["label_matcher"], "harudle-backend;heap"))
-                    self.assertIsNone(re.fullmatch(declaration["label_matcher"], "harudle-backend;nonheap"))
-                    self.assertIsNone(re.fullmatch(declaration["label_matcher"], "another-app;heap"))
-                else:
-                    self.assertEqual(declaration["dimensions"], [["job", "pool"]])
-                    self.assertEqual(declaration["source_labels"], ["job"])
-                    self.assertEqual(declaration["label_matcher"], "^harudle-backend$")
+    def test_connection_metrics_preserve_pool_and_heap_preserves_memory_pool(self):
+        for environment in ("dev", "prod"):
+            _, _, processor = read_processor(environment)
+            for name, unit in RESOURCE_METRICS.items():
+                with self.subTest(environment=environment, metric=name):
+                    declarations = matching_declarations(processor, name)
+                    self.assertEqual(len(declarations), 1)
+                    declaration = declarations[0]
+                    self.assertEqual(processor["metric_unit"][name], unit)
+                    if name == "jvm_memory_used_bytes":
+                        self.assertEqual(declaration["dimensions"], [["job", "area", "id"]])
+                        self.assertEqual(declaration["source_labels"], ["job", "area"])
+                        self.assertIsNotNone(re.fullmatch(declaration["label_matcher"], "harudle-backend;heap"))
+                        self.assertIsNone(re.fullmatch(declaration["label_matcher"], "harudle-backend;nonheap"))
+                        self.assertIsNone(re.fullmatch(declaration["label_matcher"], "another-app;heap"))
+                    else:
+                        self.assertEqual(declaration["dimensions"], [["job", "pool"]])
+                        self.assertEqual(declaration["source_labels"], ["job"])
+                        self.assertEqual(declaration["label_matcher"], "^harudle-backend$")
 
     def test_metric_filter_keeps_required_series_and_drops_histograms_and_noise(self):
         source = (CONFIG_DIR / "prometheus.yaml").read_text()
@@ -121,7 +119,7 @@ class MonitoringConfigTests(unittest.TestCase):
         self.assertRegex(source, r"action:\s*keep\b")
         self.assertRegex(source, r"source_labels:\s*\[__name__, area\]")
         self.assertRegex(source, r"action:\s*drop\b")
-        for name in EXISTING_DIMENSIONS.keys() | NEW_DIMENSIONS.keys() | DEV_METRICS.keys():
+        for name in EXISTING_DIMENSIONS.keys() | NEW_DIMENSIONS.keys() | RESOURCE_METRICS.keys():
             with self.subTest(metric=name):
                 self.assertIsNotNone(keep.fullmatch(name))
                 area = "heap" if name == "jvm_memory_used_bytes" else ""
@@ -149,7 +147,7 @@ class MonitoringConfigTests(unittest.TestCase):
                 for environment in ("dev", "prod"):
                     self.assertEqual(matching_declarations(read_processor(environment)[2], name), [])
 
-    def test_dev_additions_preserve_common_app_and_host_configuration(self):
+    def test_environments_collect_the_same_metrics_without_replacing_host_configuration(self):
         normalized = []
         for environment, namespace in (("dev", "Harudle/Dev"), ("prod", "Harudle/Prod")):
             configuration, prometheus, processor = read_processor(environment)
@@ -157,27 +155,18 @@ class MonitoringConfigTests(unittest.TestCase):
             self.assertEqual(processor["metric_namespace"], namespace)
             self.assertEqual(prometheus["prometheus_config_path"], "/opt/harudle/monitoring/prometheus.yaml")
             item = copy.deepcopy(configuration)
-            if environment == "dev":
-                metrics = item.pop("metrics")
-                self.assertEqual(metrics["namespace"], "CWAgent")
-                self.assertEqual(metrics["append_dimensions"], {"InstanceId": "${aws:InstanceId}"})
-                # Add only procstat; retain host CPU/memory/disk fragments on append-config.
-                self.assertEqual(set(metrics["metrics_collected"]), {"procstat"})
-                item_processor = item["logs"]["metrics_collected"]["prometheus"]["emf_processor"]
-                for name in DEV_METRICS:
-                    del item_processor["metric_unit"][name]
-                item_processor["metric_declaration"] = [
-                    declaration for declaration in item_processor["metric_declaration"]
-                    if not any(declaration in matching_declarations(processor, name) for name in DEV_METRICS)
-                ]
-            self.assertEqual(set(item), {"logs"})
+            metrics = item["metrics"]
+            self.assertEqual(metrics["namespace"], "CWAgent")
+            self.assertEqual(metrics["append_dimensions"], {"InstanceId": "${aws:InstanceId}"})
+            # Add only procstat; retain host CPU/memory/disk fragments on append-config.
+            self.assertEqual(set(metrics["metrics_collected"]), {"procstat"})
             item["logs"]["metrics_collected"]["prometheus"]["log_group_name"] = "ENVIRONMENT"
             item["logs"]["metrics_collected"]["prometheus"]["emf_processor"]["metric_namespace"] = "ENVIRONMENT"
             normalized.append(item)
         self.assertEqual(*normalized)
 
     def test_procstat_selects_backend_java_without_counting_parent_or_other_java(self):
-        configuration, _, _ = read_processor("dev")
+        configuration, _, _ = read_processor("prod")
         processes = configuration["metrics"]["metrics_collected"]["procstat"]
         self.assertEqual(len(processes), 1)
         process = processes[0]

@@ -8,8 +8,11 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -19,6 +22,7 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = "management.server.port=0")
+@ExtendWith(OutputCaptureExtension.class)
 class ManagementEndpointIsolationTest {
 
     @Container
@@ -31,6 +35,18 @@ class ManagementEndpointIsolationTest {
 
     @Value("${local.management.port}")
     private int managementPort;
+
+    @Test
+    void recordsPublicAndRejectedApiRequestsButNotManagementRequests(CapturedOutput output) throws Exception {
+        HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+
+        assertThat(get(client, applicationPort, "/api/v1/feeds?size=1").statusCode()).isEqualTo(200);
+        assertThat(get(client, applicationPort, "/api/v1/diaries?year=2026&month=10").statusCode()).isEqualTo(401);
+        assertThat(get(client, managementPort, "/actuator/prometheus").statusCode()).isEqualTo(200);
+
+        assertThat(output.getOut().lines().filter(line -> line.contains("event=api_request_completed")))
+                .hasSize(2);
+    }
 
     @Test
     void prometheusIsServedOnlyOnTheManagementPort() throws Exception {

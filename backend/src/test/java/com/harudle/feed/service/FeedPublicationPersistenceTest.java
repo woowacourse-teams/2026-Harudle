@@ -35,8 +35,11 @@ import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -48,6 +51,7 @@ import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest
+@ExtendWith(OutputCaptureExtension.class)
 class FeedPublicationPersistenceTest {
 
     private static final UUID ACTOR = UUID.fromString("08d69a34-6d70-4d42-a158-671bc67733c9");
@@ -100,6 +104,31 @@ class FeedPublicationPersistenceTest {
     void tearDown() {
         update("DELETE FROM users WHERE id = ?", ACTOR);
         update("DELETE FROM generation_prompts WHERE image_asset_object_key = ?", "references/feed-publication-test.png");
+    }
+
+    @Test
+    void recordsPublicationOnlyAfterCommitAndDoesNotCountDuplicate(CapturedOutput output) {
+        transactions.executeWithoutResult(status -> {
+            publication.publish(ACTOR, DIARY, categoryId);
+            assertThat(output).doesNotContain("event=feed_publication_succeeded");
+        });
+
+        assertThatThrownBy(() -> publication.publish(ACTOR, DIARY, categoryId))
+                .isInstanceOf(DiaryAlreadyPublishedException.class);
+        assertThat(output.getOut().lines()
+                .filter(line -> line.contains("event=feed_publication_succeeded")))
+                .hasSize(1);
+    }
+
+    @Test
+    void doesNotRecordPublicationWhenTransactionRollsBack(CapturedOutput output) {
+        transactions.executeWithoutResult(status -> {
+            publication.publish(ACTOR, DIARY, categoryId);
+            status.setRollbackOnly();
+        });
+
+        assertThat(feeds.existsByDiaryIdAndDeletedAtIsNull(DIARY)).isFalse();
+        assertThat(output).doesNotContain("event=feed_publication_succeeded");
     }
 
     @Test
