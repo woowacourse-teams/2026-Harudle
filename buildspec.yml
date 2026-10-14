@@ -33,17 +33,28 @@ phases:
         for service in backend frontend; do
           cache_directory="$cache_root/$service"
           cache_export_directory="$cache_export_root/$service"
-          cache_from=()
+          cache_args=()
           build_args=()
 
-          if [[ -f "$cache_directory/index.json" ]]; then
-            echo "Restoring $service build cache."
-            cache_from=(--cache-from "type=local,src=$cache_directory")
+          if [[ "$service" == backend ]]; then
+            if [[ -f "$cache_directory/index.json" ]]; then
+              echo "Restoring backend build cache."
+              cache_args=(--cache-from "type=local,src=$cache_directory")
+            else
+              echo "No backend build cache; building without a restored cache."
+            fi
+            # Only persist layers before application sources are copied.
+            docker buildx build \
+              --platform linux/arm64 \
+              --progress plain \
+              --pull \
+              --target dependencies \
+              --output type=cacheonly \
+              "${cache_args[@]}" \
+              --cache-to "type=local,dest=$cache_export_directory,mode=min,ignore-error=true" \
+              ./backend
           else
-            echo "No $service build cache; building without a restored cache."
-          fi
-
-          if [[ "$service" == frontend ]]; then
+            echo "Frontend external build cache is disabled."
             build_args=(--build-arg REACT_APP_POSTHOG_KEY --build-arg REACT_APP_POSTHOG_HOST)
           fi
 
@@ -52,8 +63,7 @@ phases:
             --progress plain \
             --pull \
             --output "type=docker,dest=build-artifacts/$service-image.tar" \
-            "${cache_from[@]}" \
-            --cache-to "type=local,dest=$cache_export_directory,mode=max,ignore-error=true" \
+            "${cache_args[@]}" \
             "${build_args[@]}" \
             --tag "harudle-$service:local" \
             "./$service"
@@ -67,9 +77,14 @@ phases:
           '
 
           # Export into a fresh directory so obsolete cache blobs do not accumulate.
-          if [[ -f "$cache_export_directory/index.json" ]]; then
+          if [[ "$service" == backend && -f "$cache_export_directory/index.json" ]]; then
             rm -rf -- "$cache_directory"
             mv -- "$cache_export_directory" "$cache_directory"
+          fi
+
+          if [[ "$service" == backend && -d "$cache_directory" ]]; then
+            echo "Backend build cache directory size: "
+            du -sh "$cache_directory"
           fi
         done
   post_build:
@@ -99,4 +114,4 @@ artifacts:
 # Leave the key unset so the cache is updated after each build.
 cache:
   paths:
-    - "/root/.cache/harudle-buildkit/**/*"
+    - "/root/.cache/harudle-buildkit/backend/**/*"
