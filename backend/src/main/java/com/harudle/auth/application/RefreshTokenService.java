@@ -6,10 +6,13 @@ import com.harudle.auth.infrastructure.RefreshTokenRepository;
 import com.harudle.auth.infrastructure.token.RefreshTokenGenerator;
 import com.harudle.auth.infrastructure.token.RefreshTokenHasher;
 import com.harudle.common.security.AuthProperties;
+import jakarta.persistence.EntityManager;
+import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,17 +20,23 @@ import org.springframework.transaction.annotation.Transactional;
 public class RefreshTokenService {
 
     private final RefreshTokenRepository refreshTokenRepository;
+    private final JdbcTemplate jdbcTemplate;
+    private final EntityManager entityManager;
     private final RefreshTokenGenerator refreshTokenGenerator;
     private final RefreshTokenHasher refreshTokenHasher;
     private final Duration refreshTokenTtl;
 
     public RefreshTokenService(
             RefreshTokenRepository refreshTokenRepository,
+            JdbcTemplate jdbcTemplate,
+            EntityManager entityManager,
             RefreshTokenGenerator refreshTokenGenerator,
             RefreshTokenHasher refreshTokenHasher,
             AuthProperties authProperties
     ) {
         this.refreshTokenRepository = refreshTokenRepository;
+        this.jdbcTemplate = jdbcTemplate;
+        this.entityManager = entityManager;
         this.refreshTokenGenerator = refreshTokenGenerator;
         this.refreshTokenHasher = refreshTokenHasher;
         this.refreshTokenTtl = extractRefreshTokenTtl(authProperties);
@@ -39,7 +48,7 @@ public class RefreshTokenService {
         Objects.requireNonNull(now, "now는 필수입니다.");
         validateActiveUser(user);
 
-        return issueNewToken(user, now);
+        return issueNewToken(user, createSession(user, now), now);
     }
 
     @Transactional
@@ -53,7 +62,11 @@ public class RefreshTokenService {
 
         UUID userId = refreshToken.getUser().getId();
         refreshToken.revoke(now);
-        IssuedRefreshToken issuedRefreshToken = issueNewToken(refreshToken.getUser(), now);
+        UUID sessionId = refreshToken.getSessionId();
+        if (sessionId == null) {
+            sessionId = createSession(refreshToken.getUser(), now);
+        }
+        IssuedRefreshToken issuedRefreshToken = issueNewToken(refreshToken.getUser(), sessionId, now);
 
         return new RotatedRefreshToken(userId, issuedRefreshToken);
     }
@@ -71,13 +84,14 @@ public class RefreshTokenService {
                 .ifPresent(refreshToken -> refreshToken.revoke(now));
     }
 
-    private IssuedRefreshToken issueNewToken(User user, Instant now) {
+    private IssuedRefreshToken issueNewToken(User user, UUID sessionId, Instant now) {
         String rawToken = refreshTokenGenerator.generate();
         String tokenHash = refreshTokenHasher.hash(rawToken);
         Instant expiresAt = now.plus(refreshTokenTtl);
 
         RefreshToken refreshToken = new RefreshToken(
                 user,
+                sessionId,
                 tokenHash,
                 expiresAt,
                 now
@@ -85,6 +99,14 @@ public class RefreshTokenService {
         refreshTokenRepository.save(refreshToken);
 
         return new IssuedRefreshToken(rawToken, expiresAt);
+    }
+
+    private UUID createSession(User user, Instant now) {
+        UUID sessionId = UUID.randomUUID();
+        entityManager.flush();
+        jdbcTemplate.update("INSERT INTO auth_sessions (id, user_id, created_at) VALUES (?, ?, ?)",
+                sessionId, user.getId(), Timestamp.from(now));
+        return sessionId;
     }
 
     private String hashRawToken(String rawToken) {

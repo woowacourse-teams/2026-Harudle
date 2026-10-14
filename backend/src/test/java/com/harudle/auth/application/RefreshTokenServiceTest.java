@@ -81,6 +81,8 @@ class RefreshTokenServiceTest {
         assertThat(savedToken.getExpiresAt()).isEqualTo(CREATED_AT.plus(REFRESH_TOKEN_TTL));
         assertThat(savedToken.getCreatedAt()).isEqualTo(CREATED_AT);
         assertThat(savedToken.getUser().getId()).isEqualTo(user.getId());
+        assertThat(savedToken.getSessionId()).isNotNull();
+        assertThat(sessionCount(user)).isEqualTo(1);
     }
 
     @Test
@@ -107,7 +109,39 @@ class RefreshTokenServiceTest {
         assertThat(newToken.isRevoked()).isFalse();
         assertThat(newToken.getExpiresAt()).isEqualTo(ROTATED_AT.plus(REFRESH_TOKEN_TTL));
         assertThat(newToken.getUser().getId()).isEqualTo(user.getId());
+        assertThat(newToken.getSessionId()).isEqualTo(revokedToken.getSessionId());
+        assertThat(sessionCount(user)).isEqualTo(1);
         assertThat(refreshTokenRepository.count()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("같은 사용자가 다시 로그인하면 서로 다른 세션을 만든다")
+    void createsSeparateSessionsForLogins() {
+        User user = saveUser();
+
+        IssuedRefreshToken first = refreshTokenService.issue(user, CREATED_AT);
+        IssuedRefreshToken second = refreshTokenService.issue(user, ROTATED_AT);
+        flushAndClear();
+
+        assertThat(findToken(first.rawToken()).getSessionId())
+                .isNotEqualTo(findToken(second.rawToken()).getSessionId());
+        assertThat(sessionCount(user)).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("세션 ID가 없는 기존 토큰을 갱신하면 새 세션에 연결한다")
+    void connectsLegacyTokenToNewSessionOnRotation() {
+        User user = saveUser();
+        RefreshToken legacy = refreshTokenRepository.save(new RefreshToken(
+                user, refreshTokenHasher.hash("legacy"), CREATED_AT.plus(REFRESH_TOKEN_TTL), CREATED_AT));
+        flushAndClear();
+
+        RotatedRefreshToken rotated = refreshTokenService.rotate("legacy", ROTATED_AT);
+        flushAndClear();
+
+        assertThat(legacy.getSessionId()).isNull();
+        assertThat(findToken(rotated.issuedRefreshToken().rawToken()).getSessionId()).isNotNull();
+        assertThat(sessionCount(user)).isEqualTo(1);
     }
 
     @Test
@@ -189,5 +223,10 @@ class RefreshTokenServiceTest {
     private void flushAndClear() {
         entityManager.flush();
         entityManager.clear();
+    }
+
+    private long sessionCount(User user) {
+        return jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM auth_sessions WHERE user_id = ?", Long.class, user.getId());
     }
 }
