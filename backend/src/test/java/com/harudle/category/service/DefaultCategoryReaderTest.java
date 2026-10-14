@@ -17,6 +17,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -26,7 +27,6 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -35,22 +35,14 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers
 @DataJpaTest(showSql = false)
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({DefaultCategoryReader.class, CategoryUpdateService.class})
+@Import(CategoryJpaTestConfiguration.class)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class DefaultCategoryReaderTest {
-
-    @Container
-    @ServiceConnection
-    static final PostgreSQLContainer POSTGRESQL =
-            new PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"));
 
     @Autowired
     private CategoryReader reader;
@@ -80,6 +72,11 @@ class DefaultCategoryReaderTest {
         jdbc.update("UPDATE categories SET is_active = TRUE");
         dailyId = categoryId("일상");
         wootechId = categoryId("우테코");
+    }
+
+    @AfterEach
+    void tearDown() {
+        jdbc.update("UPDATE categories SET is_active = TRUE WHERE name IN ('일상', '우테코')");
     }
 
     @ParameterizedTest

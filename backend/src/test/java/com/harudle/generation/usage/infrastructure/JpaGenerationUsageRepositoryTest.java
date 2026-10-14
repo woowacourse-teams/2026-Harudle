@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.harudle.generation.usage.domain.GenerationUsage;
 import com.harudle.generation.usage.repository.GenerationUsageRepository;
+import com.harudle.support.ServiceIntegrationTestSupport;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
@@ -26,30 +27,17 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.dao.InvalidDataAccessApiUsageException;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest
-class JpaGenerationUsageRepositoryTest {
+class JpaGenerationUsageRepositoryTest extends ServiceIntegrationTestSupport {
 
-    private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:18-alpine");
     private static final UUID USER_ID = UUID.fromString("08d69a34-6d70-4d42-a158-671bc67733c9");
     private static final LocalDate USAGE_DATE = LocalDate.of(2026, 8, 6);
     private static final int CONCURRENT_REQUEST_COUNT = 10;
     private static final long CONCURRENCY_READY_TIMEOUT_SECONDS = 5L;
-
-    @Container
-    @ServiceConnection
-    static final PostgreSQLContainer POSTGRESQL_CONTAINER = new PostgreSQLContainer(POSTGRES_IMAGE);
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -59,9 +47,6 @@ class JpaGenerationUsageRepositoryTest {
 
     @Autowired
     private GenerationUsageRepository generationUsageRepository;
-
-    @MockitoBean
-    private JwtDecoder jwtDecoder;
 
     @BeforeEach
     void setUp() {

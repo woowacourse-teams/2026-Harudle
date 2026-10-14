@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.harudle.TestcontainersConfiguration;
 import com.harudle.category.service.port.CategoryReader;
 import com.harudle.diary.service.DiaryDeletionService;
 import com.harudle.diary.service.DiaryQueryService;
@@ -37,25 +38,20 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.context.annotation.Import;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
+@Import(TestcontainersConfiguration.class)
 @SpringBootTest
 class FeedPublicationPersistenceTest {
 
     private static final UUID ACTOR = UUID.fromString("08d69a34-6d70-4d42-a158-671bc67733c9");
     private static final UUID DIARY = UUID.fromString("550e8400-e29b-41d4-a716-446655440002");
     private static final UUID GENERATION = UUID.fromString("550e8400-e29b-41d4-a716-446655440003");
-
-    @Container @ServiceConnection
-    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"));
 
     @PersistenceContext private EntityManager entityManager;
     @Autowired private TransactionTemplate transactions;

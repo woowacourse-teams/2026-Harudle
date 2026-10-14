@@ -376,7 +376,38 @@ OkHttp의 `503 + Retry-After: 0` 자동 후속 호출도 방지합니다. 이 �
 ```
 
 통합 테스트는 Testcontainers가 PostgreSQL 컨테이너를 실행하므로 Docker가 필요합니다. Docker를 사용할 수 없는
-환경에서는 컨테이너 기반 테스트가 자동으로 건너뛰어집니다.
+환경에서는 `@Testcontainers(disabledWithoutDocker = true)`가 설정된 테스트만 자동으로 건너뛰어집니다.
+Docker 실행을 필수로 요구하는 테스트는 엔진이 준비되어 있어야 실행할 수 있습니다.
+
+Spring 통합 테스트는 `TestcontainersConfiguration`을 `@Import`하여 PostgreSQL 컨테이너를 Spring Bean으로
+사용합니다. 컨텍스트 설정이 같은 테스트 클래스는 캐시된 Spring 컨텍스트와 컨테이너를 함께 재사용합니다.
+컨테이너는 컨텍스트가 종료될 때 다른 Bean이 정리된 뒤 종료됩니다. 테스트별 mock, 프로필 또는 추가 설정이
+다르면 별도 컨텍스트와 컨테이너가 생성됩니다.
+
+일반 서비스 통합 테스트는 `ServiceIntegrationTestSupport`의 공통 JWT mock을 사용합니다. 실제 Bean을 사용한
+MockMvc 통합 테스트는 `@MockMvcIntegrationTest`로 프로필 이미지 URL과 MVC 설정을 공유합니다. 카테고리 JPA
+테스트는 `CategoryJpaTestConfiguration`에 실제 생성·조회·수정 서비스를 함께 등록하여 컨텍스트를 재사용합니다.
+추가 mock, spy 또는 고정 Clock이 필요한 테스트는 해당 설정을 유지합니다.
+
+같은 MVC 컨텍스트를 공유하는 테스트는 실제 CSRF Cookie와 Header를 사용합니다. Spring Security 테스트의
+`csrf()` post-processor는 공유 필터의 토큰 저장소를 세션 방식으로 바꿀 수 있어 Cookie 기반 테스트에 영향을 줍니다.
+
+DB를 공유하는 테스트는 트랜잭션 롤백 또는 명시적인 fixture 삭제로 데이터를 정리해야 합니다. 다른 스레드에서
+커밋하는 동시성 테스트도 생성한 데이터를 정리합니다. `Flyway.clean()`이나 이전 스키마를 검증하는 테스트는
+공통 컨테이너 대신 클래스별 컨테이너를 사용하여 Spring 통합 테스트의 DB와 격리합니다.
+
+로컬 메모리가 부족하면 다음처럼 테스트 JVM의 컨텍스트 캐시 크기를 줄이고 필요한 그룹만 실행할 수 있습니다.
+캐시에서 제거된 컨텍스트는 연결된 컨테이너도 종료합니다. 작은 캐시는 재초기화 횟수를 늘릴 수 있으므로,
+옵션을 지정하지 않은 CI 실행은 Spring의 기본 캐시 크기 32를 사용합니다.
+
+```shell
+./gradlew test -PtestContextCacheMaxSize=4 \
+  --tests 'com.harudle.category.service.CategoryCreateServiceTest' \
+  --tests 'com.harudle.category.service.DefaultCategoryReaderTest'
+```
+
+`testContextCacheMaxSize`는 양의 정수여야 합니다. Docker 엔진이 준비되어 있는지는 테스트 전에 `docker info`로
+확인합니다. Docker Desktop 자체가 시작 단계에서 종료되는 경우에는 테스트 실행과 별도로 Desktop 로그를 확인합니다.
 
 Testcontainers의 PostgreSQL로 애플리케이션을 직접 실행하려면 다음 명령을 사용합니다.
 
