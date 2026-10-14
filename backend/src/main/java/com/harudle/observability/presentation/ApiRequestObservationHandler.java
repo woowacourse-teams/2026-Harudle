@@ -56,6 +56,7 @@ class ApiRequestObservationHandler implements ObservationHandler<ServerRequestOb
     private String apiGroup(HttpServletRequest request) {
         if ("POST".equals(request.getMethod())
                 && ("/api/v1/diaries".equals(request.getRequestURI())
+                || "/api/v1/guest/diaries".equals(request.getRequestURI())
                 || "/api/v1/load-test/diaries".equals(request.getRequestURI()))) {
             return "generation";
         }

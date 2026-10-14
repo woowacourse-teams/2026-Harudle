@@ -95,6 +95,17 @@ class ApiRequestObservationHandlerTest {
     }
 
     @Test
+    @DisplayName("게스트 일기 생성은 생성 API로 기록하고 상세 조회는 일반 API로 기록한다")
+    void separatesGuestGenerationFromReads() throws Exception {
+        mockMvc.perform(post("/api/v1/guest/diaries")).andExpect(status().isCreated());
+        mockMvc.perform(get("/api/v1/guest/diaries/private-diary-id")).andExpect(status().isOk());
+
+        assertThat(appender.list).hasSize(2);
+        assertThat(fields(0)).containsEntry("apiGroup", "generation").containsEntry("operation", "other");
+        assertThat(fields(1)).containsEntry("apiGroup", "general").containsEntry("operation", "other");
+    }
+
+    @Test
     @DisplayName("자동 상태 확인과 지표 수집 요청은 기록하지 않는다")
     void excludesHealthAndManagementRequests() throws Exception {
         mockMvc.perform(get("/api/v1/feeds/00000000-0000-0000-0000-000000000000"));
@@ -166,12 +177,12 @@ class ApiRequestObservationHandlerTest {
     @RestController
     static class TestController {
 
-        @GetMapping({"/api/v1/feeds", "/api/v1/feeds/{feedId}"})
+        @GetMapping({"/api/v1/feeds", "/api/v1/feeds/{feedId}", "/api/v1/guest/diaries/{diaryId}"})
         String read() {
             return "ok";
         }
 
-        @PostMapping({"/api/v1/diaries", "/api/v1/load-test/diaries", "/api/v1/feeds"})
+        @PostMapping({"/api/v1/diaries", "/api/v1/guest/diaries", "/api/v1/load-test/diaries", "/api/v1/feeds"})
         ResponseEntity<Void> create() {
             return ResponseEntity.status(HttpStatus.CREATED).build();
         }
