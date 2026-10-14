@@ -95,19 +95,23 @@ CodeDeploy의 이미지 로드 절차를 그대로 사용합니다. 개선 효�
 
 ### CodeBuild 빌드 캐시
 
-`buildspec.yml`은 백엔드와 프론트엔드의 BuildKit 캐시를 각각
-`/root/.cache/harudle-buildkit/backend`와 `frontend`에 저장합니다.
-`mode=max`로 builder 단계의 의존성 설치 레이어까지 내보내고, 다음 빌드에서
-`--cache-from`으로 복원합니다. 소스가 변경되면 해당 이미지의 소스 복사 이후
-단계는 다시 실행되지만, 변경되지 않은 의존성 설치 단계는 재사용할 수 있습니다.
+`buildspec.yml`은 백엔드의 BuildKit 캐시만
+`/root/.cache/harudle-buildkit/backend`에 저장합니다. `mode=max`로 builder 단계까지
+내보내고, 다음 빌드에서 `--cache-from`으로 복원합니다. 소스가 변경되면 소스 복사
+이후 단계는 다시 실행됩니다. 프론트엔드는 `pnpm check`를 포함한 기존 이미지
+빌드를 수행하며, 실행 간 외부 캐시를 저장하거나 복원하지 않습니다.
+
+캐시의 S3 전송량을 줄이기 위해 프론트엔드는 제외하고, `cache.paths`도 백엔드
+디렉터리로 제한합니다. 이전 캐시에 프론트엔드 파일이 있어도 새로 저장하는
+캐시에는 포함하지 않습니다. 대상 경로 변경으로 첫 빌드에는 캐시가 없을 수 있습니다.
 
 빌드 사이에 캐시를 유지하려면 CodeBuild 프로젝트에도 다음 설정을 적용합니다.
 
 1. 프로젝트의 **Edit > Artifacts > Additional configuration**에서 Cache type을
    **Amazon S3**로 선택합니다.
 2. 프로젝트와 같은 리전의 캐시 버킷을 선택하고, 캐시 경로를
-   `harudle/build-cache/<CodeBuild 프로젝트명>`처럼 프로젝트별로 구분합니다.
-   dev와 prod 프로젝트가 따로 있으면 서로 다른 경로를 사용합니다.
+   `harudle/build-cache`처럼 팀 폴더 아래에 지정합니다. 같은 CodeBuild 프로젝트를
+   사용하는 파이프라인은 이 캐시를 공유합니다.
 3. CodeBuild 서비스 역할에 해당 캐시 경로의 `s3:GetObject`, `s3:PutObject`와
    버킷의 `s3:GetBucketLocation`, `s3:GetBucketAcl` 권한을 부여합니다. 버킷이 고객 관리 KMS 키로
    암호화되어 있으면 해당 키의 복호화와 데이터 키 생성 권한도 필요합니다.
@@ -123,9 +127,11 @@ CodeDeploy의 이미지 로드 절차를 그대로 사용합니다. 개선 효�
 실패한 경우에는 이미지 빌드를 계속 진행하고 기존 캐시를 유지합니다.
 
 첫 번째 성공한 빌드의 캐시 업로드 로그와 두 번째 빌드의
-`Restoring backend build cache.`, `Restoring frontend build cache.`, BuildKit의
-`CACHED` 표시를 확인합니다. 캐시 효과는 복원·저장 시간을 포함한 전체 CodeBuild
-실행 시간으로 비교합니다. 캐시 크기나 전송 시간이 커지면 이득이 줄어들 수 있습니다.
+`Restoring backend build cache.`, BuildKit의 `CACHED` 표시를 확인합니다.
+프론트엔드에는 `Frontend external build cache is disabled.`가 출력됩니다.
+`Backend build cache directory size:` 다음의 `du -sh` 출력과 S3 캐시 파일 크기로
+저장량을 확인합니다. 디렉터리 크기와 S3 파일 크기는 압축으로 차이가 날 수 있습니다.
+캐시 효과는 복원·저장 시간을 포함한 전체 CodeBuild 실행 시간으로 비교합니다.
 
 설정 근거는 [CodeBuild S3 캐시](https://docs.aws.amazon.com/codebuild/latest/userguide/caching-s3.html)와
 [BuildKit 외부 캐시](https://docs.docker.com/build/cache/backends/) 문서를 참고합니다.
