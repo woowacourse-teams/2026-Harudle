@@ -48,7 +48,8 @@
 이 브랜치의 백엔드를 dev에 배포합니다. **DB 구조를 갱신하는 V23 적용까지 끝낸 뒤** 다음 단계로 넘어갑니다.
 
 **서버 환경 설정은 그대로 사용합니다.** `load-test` 프로필을 추가할 필요가 없습니다.
-기존 `DEPLOY_ENV=dev` 값을 보고 테스트 API가 자동으로 등록됩니다.
+기존 `DEPLOY_ENV=dev`이고 이미지 저장 기능이 켜져 있으면 테스트 API가 자동으로 등록됩니다.
+`HARUDLE_GENERATION_ADAPTERS_ENABLED=false`인 로컬 환경에서는 테스트 API도 꺼집니다. 서버는 정상적으로 실행됩니다.
 
 | 호출 주소 | 일기 생성 방식 |
 | --- | --- |
@@ -68,11 +69,16 @@ Python 3.9 이상, Docker, AWS CLI, PostgreSQL 접속 도구인 `psql`이 필요
 cd backend
 export PGHOST='dev DB 주소'
 export PGPORT='5432'
-export PGDATABASE='dev DB 이름'
+export PGDATABASE='harudle_dev'
 export PGUSER='dev DB 사용자 이름'
 ```
 
-이후 `psql` 명령을 실행하면 DB 비밀번호를 입력합니다. **DB 주소가 dev인지 확인하세요.**
+이후 `psql` 명령을 실행하면 DB 비밀번호를 입력합니다.
+SQL은 DB 이름이 `harudle_dev`일 때만 실행됩니다. 다른 이름이면 데이터를 넣거나 지우기 전에 멈춥니다.
+**DB 주소도 dev인지 확인하세요.** dev와 prod가 같은 RDS 서버를 쓰면 테스트가 운영 서비스도 느리게 만들 수 있습니다.
+
+S3 작업은 `techcourse-project-2026` 버킷의 `harudle/generated/diary-images/dev/` 안에서만 실행합니다.
+이 버킷은 여러 팀이 함께 사용합니다. 다른 버킷이나 prod 경로를 넣으면 복사와 삭제를 시작하지 않습니다.
 
 이미 만들어진 일기 이미지 중 하나를 찾아 테스트용으로 복사합니다. 아래 명령으로 이미지 경로를 조회합니다.
 
@@ -104,7 +110,7 @@ python3 load-test/assets.py copy --bucket techcourse-project-2026 \
   --source-detail-key "$SOURCE_DETAIL_KEY"
 
 # dev DB에 테스트 계정과 데이터 넣기
-psql -W -v expected_database="$PGDATABASE" -f "load-test/runs/$RUN/seed.sql"
+psql -W -f "load-test/runs/$RUN/seed.sql"
 
 # 회원 4명으로 실제 API 호출하기
 bash load-test/run.sh smoke "$RUN"
@@ -126,13 +132,14 @@ python3 load-test/prepare.py --output "load-test/runs/$RUN"
 python3 load-test/assets.py copy --bucket techcourse-project-2026 \
   --keys "load-test/runs/$RUN/image-keys.json" \
   --source-detail-key "$SOURCE_DETAIL_KEY"
-psql -W -v expected_database="$PGDATABASE" -f "load-test/runs/$RUN/seed.sql"
+psql -W -f "load-test/runs/$RUN/seed.sql"
 bash load-test/run.sh peak "$RUN"
 ```
 
 마지막 명령의 첫 번째 값 `peak`는 **200명 테스트 방식**, 두 번째 값 `"$RUN"`은 **사용할 데이터 폴더 이름**입니다.
 예를 들어 `bash load-test/run.sh peak peak2`는 `runs/peak2/members.json`으로 200명을 테스트합니다.
 결과는 같은 폴더의 `summary.json`, `report.html`, `k6.log`에 저장합니다. `members.js`는 따로 실행하지 않아도 됩니다.
+Docker도 명령을 실행한 사용자로 동작하므로, Linux에서도 비공개 회원 파일을 읽고 결과를 저장할 수 있습니다.
 
 **같은 데이터는 한 번만 사용합니다.** 실행하면 로그인 토큰이 바뀌고 새 일기와 반응이 저장되기 때문입니다.
 데이터 준비와 테스트 실행은 한국 시간으로 같은 날에 진행합니다.
@@ -191,16 +198,27 @@ bash load-test/run.sh peak "$RUN"
 
 ```bash
 RUN=peak
-(cd "load-test/runs/$RUN" && psql -W -v expected_database="$PGDATABASE" -f cleanup.sql)
+(cd "load-test/runs/$RUN" && psql -W -f cleanup.sql)
 python3 load-test/assets.py delete --bucket techcourse-project-2026 \
   --keys "load-test/runs/$RUN/cleanup-image-keys.txt"
 ```
 
 이미지 삭제에 실패하면 `cleanup-image-keys.txt`를 보관하고 이미지 삭제 명령만 다시 실행합니다.
 삭제할 이미지 목록이 덮어써질 수 있으므로 `cleanup.sql`은 다시 실행하지 않습니다.
+이 목록에는 이번 테스트 회원이 가진 이미지 경로만 담깁니다. 목록에 다른 이미지 경로를 직접 추가하지 않습니다.
+준비한 `image-960.webp`와 생성 중 저장된 `image.webp`, `image.png`, `image.jpg`를 모두 정리할 수 있습니다.
+버킷의 버전 관리가 켜져 있으므로 **삭제 후에도 이전 버전은 남아 저장 비용이 생깁니다.** 이 명령은 이전 버전까지 영구 삭제하지 않습니다.
 R2 백업을 실행했다면 해당 테스트 이미지의 백업도 별도로 정리합니다.
+
+## 실행 전에 남아 있는 운영 설정 확인하기
+
+2026-10-14 AWS 확인 당시, 공유 버킷은 서명 없는 일기 이미지 조회를 허용했고 RDS 삭제 방지는 꺼져 있었습니다.
+버킷 담당자와 함께 일기 이미지의 공개 조회를 막고, RDS 삭제 방지를 켜야 합니다. 공유 버킷 전체의 공개 설정을 한 번에 바꾸면 다른 팀도 영향을 받을 수 있습니다.
+또한 dev와 prod의 실제 DB 주소, EC2 역할의 S3 권한을 확인한 뒤 테스트합니다. 이번 코드 수정으로 AWS 설정이 바뀌지는 않습니다.
 
 ---
 
 2026-10-14 로컬 검증에서는 회원 200명과 요청 1,420건이 실패 없이 완료됐습니다.
+리뷰 수정 뒤에는 회원 4명과 요청 28건을 다시 확인했습니다. 운영 DB 이름으로 실행하면 멈추고, 정리 후에도 기존 회원과 일기는 남는지 검사했습니다.
+Linux에서는 회원 파일의 읽기 제한을 유지한 채 k6 실행과 결과 저장이 되는지 확인했습니다.
 로컬 검증에서는 이미지 저장소를 대체했습니다. **dev 배포와 실제 dev 부하 테스트는 아직 진행하지 않았습니다.**

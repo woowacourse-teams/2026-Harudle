@@ -25,9 +25,19 @@ class LoadTestDiaryConfigurationTest {
     @Test
     void isAbsentInProductionOrWithoutEnvironment() {
         for (String environment : new String[]{"prod", ""}) {
-            context.withPropertyValues("DEPLOY_ENV=" + environment)
+            context.withPropertyValues("DEPLOY_ENV=" + environment, "harudle.generation.adapters.enabled=true")
                     .run(application -> assertThat(application).hasNotFailed()
                             .doesNotHaveBean(LoadTestDiaryCreationService.class));
+        }
+    }
+
+    @Test
+    void devStartsWithoutStorageWhenAdaptersAreDisabledOrUnset() {
+        for (String enabled : new String[]{"false", ""}) {
+            context.withPropertyValues("DEPLOY_ENV=dev", "harudle.generation.adapters.enabled=" + enabled)
+                    .run(application -> assertThat(application).hasNotFailed()
+                            .doesNotHaveBean(LoadTestDiaryCreationService.class)
+                            .doesNotHaveBean("loadTestStoryboardExecutor"));
         }
     }
 
@@ -37,7 +47,7 @@ class LoadTestDiaryConfigurationTest {
         var normalExecutor = mock(DiaryGenerationExecutor.class);
         var normalStoryboard = mock(StoryboardGenerationService.class);
         var normalImageGenerator = mock(DiaryImageGenerator.class);
-        context.withPropertyValues("spring.profiles.active=prod", "DEPLOY_ENV=dev")
+        context.withPropertyValues("spring.profiles.active=prod", "DEPLOY_ENV=dev", "harudle.generation.adapters.enabled=true")
                 .withBean(MemberDiaryCreationTransactionService.class, () -> mock(MemberDiaryCreationTransactionService.class))
                 .withBean(RequestFingerprintGenerator.class, () -> mock(RequestFingerprintGenerator.class))
                 .withBean(GenerationPromptRepository.class, () -> mock(GenerationPromptRepository.class))

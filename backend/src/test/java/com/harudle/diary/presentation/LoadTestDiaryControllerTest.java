@@ -49,7 +49,8 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-@WebMvcTest(controllers = LoadTestDiaryController.class, properties = "DEPLOY_ENV=dev")
+@WebMvcTest(controllers = LoadTestDiaryController.class,
+        properties = {"DEPLOY_ENV=dev", "harudle.generation.adapters.enabled=true"})
 @Import({AuthenticatedUserIdResolver.class, DiaryResponseAssembler.class, TimeConfiguration.class,
         ApiExceptionLoggerTestConfiguration.class, ProblemDetailFactory.class, TraceIdConfiguration.class,
         CsrfConfiguration.class, SecurityConfig.class})
@@ -99,7 +100,16 @@ class LoadTestDiaryControllerTest {
     @ValueSource(strings = {"prod", ""})
     void isAbsentOutsideDev(String environment) {
         new ApplicationContextRunner().withUserConfiguration(LoadTestDiaryController.class)
-                .withPropertyValues("DEPLOY_ENV=" + environment)
+                .withPropertyValues("DEPLOY_ENV=" + environment, "harudle.generation.adapters.enabled=true")
+                .run(application -> assertThat(application).hasNotFailed()
+                        .doesNotHaveBean(LoadTestDiaryController.class));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"false", ""})
+    void isAbsentInDevWhenAdaptersAreDisabledOrUnset(String enabled) {
+        new ApplicationContextRunner().withUserConfiguration(LoadTestDiaryController.class)
+                .withPropertyValues("DEPLOY_ENV=dev", "harudle.generation.adapters.enabled=" + enabled)
                 .run(application -> assertThat(application).hasNotFailed()
                         .doesNotHaveBean(LoadTestDiaryController.class));
     }

@@ -24,6 +24,7 @@ import org.springframework.context.annotation.Configuration;
 
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "DEPLOY_ENV", havingValue = "dev")
+@ConditionalOnProperty(name = "harudle.generation.adapters.enabled", havingValue = "true")
 class LoadTestDiaryConfiguration {
 
     @Bean(destroyMethod = "shutdownNow")

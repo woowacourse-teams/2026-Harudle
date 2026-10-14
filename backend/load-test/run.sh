@@ -17,6 +17,7 @@ if ! (set -o noclobber; : > "$script_dir/runs/$run/.started") 2>/dev/null; then
   exit 1
 fi
 docker run --rm \
+  --user "$(id -u):$(id -g)" \
   -p 127.0.0.1:5665:5665 \
   -v "$script_dir:/scripts" \
   -e "MODE=$mode" -e "MEMBERS_FILE=/scripts/runs/$run/members.json" \

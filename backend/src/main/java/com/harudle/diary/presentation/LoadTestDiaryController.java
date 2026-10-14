@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Hidden
 @RestController
 @ConditionalOnProperty(name = "DEPLOY_ENV", havingValue = "dev")
+@ConditionalOnProperty(name = "harudle.generation.adapters.enabled", havingValue = "true")
 @RequestMapping("/api/v1/load-test")
 class LoadTestDiaryController {
 

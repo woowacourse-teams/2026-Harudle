@@ -19,17 +19,12 @@ def quote(value):
 
 def database_guard():
     return r"""\set ON_ERROR_STOP on
-\if :{?expected_database}
-SELECT current_database() = :'expected_database' AS correct_database \gset
-\else
-\echo 'Pass -v expected_database=<dev database name>'
-\quit 1
-\endif
-\if :correct_database
-\else
-\echo 'Database name does not match'
-\quit 1
-\endif
+DO $$
+BEGIN
+    IF current_database() <> 'harudle_dev' THEN
+        RAISE EXCEPTION 'Load test requires harudle_dev. Connected to: %', current_database();
+    END IF;
+END $$;
 BEGIN;
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '60s';
