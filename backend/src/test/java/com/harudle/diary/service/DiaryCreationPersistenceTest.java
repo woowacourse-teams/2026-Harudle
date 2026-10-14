@@ -3,6 +3,7 @@ package com.harudle.diary.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.harudle.TestcontainersConfiguration;
 import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.generation.diary.domain.GenerationStatus;
 import com.harudle.generation.usage.service.exception.DailyGenerationLimitExceededException;
@@ -22,7 +23,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
@@ -30,24 +30,16 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest
-@Import(DiaryCreationPersistenceTest.FixedClockConfiguration.class)
+@Import({TestcontainersConfiguration.class, DiaryCreationPersistenceTest.FixedClockConfiguration.class})
 class DiaryCreationPersistenceTest {
 
-    private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:18-alpine");
     private static final UUID USER_ID = UUID.fromString("08d69a34-6d70-4d42-a158-671bc67733c9");
     private static final UUID IDEMPOTENCY_KEY = UUID.fromString("7e5cc251-fdde-4cc0-a54e-2c8142750609");
     private static final LocalDate DIARY_DATE = LocalDate.of(2026, 8, 6);
-
-    @Container
-    @ServiceConnection
-    private static final PostgreSQLContainer POSTGRESQL_CONTAINER = new PostgreSQLContainer(POSTGRES_IMAGE);
 
     @PersistenceContext
     private EntityManager entityManager;

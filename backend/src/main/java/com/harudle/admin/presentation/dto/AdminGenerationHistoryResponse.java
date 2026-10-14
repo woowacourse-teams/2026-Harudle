@@ -41,7 +41,9 @@ public record AdminGenerationHistoryResponse(
             Instant requestedAt,
             GenerationStatus status,
             Instant completedAt,
-            GenerationErrorCode errorCode
+            GenerationErrorCode errorCode,
+            String storyboardProvider,
+            String storyboardModel
     ) {
 
         private static GenerationResponse from(AdminGenerationHistorySnapshot generation) {
@@ -51,7 +53,9 @@ public record AdminGenerationHistoryResponse(
                     generation.requestedAt(),
                     generation.status(),
                     generation.completedAt(),
-                    generation.errorCode()
+                    generation.errorCode(),
+                    generation.storyboardProvider(),
+                    generation.storyboardModel()
             );
         }
     }

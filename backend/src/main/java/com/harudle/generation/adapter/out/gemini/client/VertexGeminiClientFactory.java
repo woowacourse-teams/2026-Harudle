@@ -2,6 +2,7 @@ package com.harudle.generation.adapter.out.gemini.client;
 
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.genai.Client;
+import com.google.genai.types.ClientOptions;
 import com.google.genai.types.HttpOptions;
 
 public final class VertexGeminiClientFactory implements GeminiClientFactory {
@@ -17,13 +18,14 @@ public final class VertexGeminiClientFactory implements GeminiClientFactory {
     }
 
     @Override
-    public Client create(HttpOptions httpOptions) {
+    public Client create(HttpOptions httpOptions, ClientOptions clientOptions) {
         return Client.builder()
                 .vertexAI(true)
                 .project(projectId)
                 .location(location)
                 .credentials(credentials)
                 .httpOptions(httpOptions)
+                .clientOptions(clientOptions)
                 .build();
     }
 }

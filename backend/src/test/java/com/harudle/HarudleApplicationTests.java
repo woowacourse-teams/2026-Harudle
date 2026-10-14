@@ -2,6 +2,7 @@ package com.harudle;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.harudle.support.ServiceIntegrationTestSupport;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.util.List;
@@ -10,24 +11,10 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.flyway.autoconfigure.FlywayProperties;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest
-class HarudleApplicationTests {
-
-    private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:18-alpine");
-
-    @Container
-    @ServiceConnection
-    static final PostgreSQLContainer POSTGRESQL_CONTAINER = new PostgreSQLContainer(POSTGRES_IMAGE);
+class HarudleApplicationTests extends ServiceIntegrationTestSupport {
 
     @Autowired
     private Flyway flyway;
@@ -37,9 +24,6 @@ class HarudleApplicationTests {
 
     @PersistenceContext
     private EntityManager entityManager;
-
-    @MockitoBean
-    private JwtDecoder jwtDecoder;
 
     @Test
     @DisplayName("Spring 애플리케이션 컨텍스트를 로드한다")

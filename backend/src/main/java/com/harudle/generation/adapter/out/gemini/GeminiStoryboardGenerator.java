@@ -5,19 +5,27 @@ import com.google.genai.types.Content;
 import com.google.genai.types.GenerateContentConfig;
 import com.google.genai.types.GenerateContentResponse;
 import com.google.genai.types.GenerateContentResponseUsageMetadata;
+import com.google.genai.types.HttpOptions;
+import com.google.genai.types.HttpRetryOptions;
 import com.google.genai.types.Part;
 import com.google.genai.types.ThinkingConfig;
 import com.harudle.common.logging.ExternalApiResponseDiagnostics;
+import com.harudle.generation.adapter.out.gemini.client.GeminiStoryboardCallScope;
 import com.harudle.generation.adapter.out.storyboard.StoryboardJsonCodec;
 import com.harudle.generation.adapter.out.storyboard.StoryboardRequestRenderer;
 import com.harudle.generation.adapter.out.storyboard.StoryboardResponseMapper;
 import com.harudle.generation.config.GeminiGenerationProperties;
 import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import com.harudle.generation.diary.domain.Storyboard;
+import com.harudle.generation.diary.domain.StoryboardProviderInfo;
 import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
+import com.harudle.generation.diary.service.exception.AiGenerationException;
+import com.harudle.generation.diary.service.exception.AiProviderFailureType;
+import com.harudle.generation.diary.service.port.StoryboardAttemptContext;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
 import com.harudle.generation.diary.service.port.dto.GeneratedStoryboard;
 import com.harudle.generation.diary.service.port.dto.StoryboardGenerationRequest;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import tools.jackson.databind.ObjectMapper;
@@ -34,6 +42,7 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
     private final StoryboardJsonCodec codec;
     private final GeminiFailureReporter failureReporter;
     private final GeminiStageMetrics stageMetrics;
+    private final GeminiStoryboardCallScope callScope;
 
     public GeminiStoryboardGenerator(
             Models models,
@@ -41,13 +50,20 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
             ObjectMapper objectMapper,
             StoryboardResponseMapper responseMapper,
             GeminiFailureReporter failureReporter,
-            GeminiStageMetrics stageMetrics
+            GeminiStageMetrics stageMetrics,
+            GeminiStoryboardCallScope callScope
     ) {
         this.models = models;
         this.properties = properties;
         this.codec = new StoryboardJsonCodec(objectMapper, responseMapper);
         this.failureReporter = failureReporter;
         this.stageMetrics = Objects.requireNonNull(stageMetrics);
+        this.callScope = Objects.requireNonNull(callScope);
+    }
+
+    @Override
+    public StoryboardProviderInfo providerInfo() {
+        return new StoryboardProviderInfo("gemini", properties.storyboardModel());
     }
 
     @Override
@@ -55,21 +71,19 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
         long startedAt = System.nanoTime();
         String phase = "preparation";
         GenerateContentResponse response = null;
+        Optional<StoryboardAttemptContext> context = request.attemptContext();
         try {
+            checkActive(context);
             PreparedRequest preparedRequest = prepareRequest(request);
+            checkActive(context);
             phase = "provider";
-            response = callProvider(preparedRequest);
+            response = callProvider(preparedRequest, context);
             phase = "response";
-            GeneratedStoryboard storyboard = processResponse(response);
+            GeneratedStoryboard storyboard = processResponse(response, context);
             stageMetrics.record(OPERATION, null, System.nanoTime() - startedAt, response);
             return storyboard;
-        } catch (com.harudle.generation.diary.service.exception.AiGenerationException exception) {
-            GeminiFailureType failureType = switch (phase) {
-                case "preparation" -> GeminiFailureType.preparation(exception.getCause());
-                case "provider" -> GeminiFailureType.provider(exception.getCause(), exception.errorType());
-                default -> GeminiFailureType.storyboardResponse(
-                        GeminiFailureType.finishReason(response), exception.getCause());
-            };
+        } catch (AiGenerationException exception) {
+            GeminiFailureType failureType = failureType(phase, response, exception);
             stageMetrics.record(OPERATION, failureType, System.nanoTime() - startedAt, response);
             throw exception;
         }
@@ -81,6 +95,7 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
             GenerateContentConfig config = createGenerateContentConfig(request.storyboardPromptText());
             return new PreparedRequest(requestText, config);
         } catch (Exception exception) {
+            checkActive(request.attemptContext());
             throw failureReporter.reportInternalFailure(
                     OPERATION,
                     TRANSLATION_OPERATION,
@@ -91,27 +106,46 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
         }
     }
 
-    private GenerateContentResponse callProvider(PreparedRequest request) {
+    private GenerateContentResponse callProvider(
+            PreparedRequest request,
+            Optional<StoryboardAttemptContext> context
+    ) {
         try {
-            return models.generateContent(
-                    properties.storyboardModel(),
-                    request.text(),
-                    request.config()
-            );
+            checkActive(context);
+            if (context.isPresent()) {
+                StoryboardAttemptContext attempt = context.orElseThrow();
+                GenerateContentConfig config = request.config().toBuilder()
+                        .httpOptions(remainingHttpOptions(attempt))
+                        .build();
+                return callScope.withContext(attempt, () ->
+                        models.generateContent(properties.storyboardModel(), request.text(), config));
+            }
+            return models.generateContent(properties.storyboardModel(), request.text(), request.config());
+        } catch (AiGenerationException exception) {
+            throw exception;
         } catch (Exception exception) {
+            checkActive(context);
             throw failureReporter.reportProviderFailure(OPERATION, TRANSLATION_OPERATION, exception);
         }
     }
 
-    private GeneratedStoryboard processResponse(GenerateContentResponse response) {
+    private GeneratedStoryboard processResponse(
+            GenerateContentResponse response,
+            Optional<StoryboardAttemptContext> context
+    ) {
         String responseText = null;
         try {
+            checkActive(context);
             if (response != null) {
                 responseText = response.text();
             }
             Storyboard storyboard = mapResponse(response, responseText);
-            return new GeneratedStoryboard(storyboard, tokenUsage(response));
+            checkActive(context);
+            return new GeneratedStoryboard(storyboard, tokenUsage(response), providerInfo());
+        } catch (AiGenerationException exception) {
+            throw exception;
         } catch (Exception exception) {
+            checkActive(context);
             throw failureReporter.reportStoryboardResponseFailure(
                     OPERATION,
                     TRANSLATION_OPERATION,
@@ -119,6 +153,38 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
                     exception
             );
         }
+    }
+
+    private static void checkActive(Optional<StoryboardAttemptContext> context) {
+        context.ifPresent(StoryboardAttemptContext::checkActive);
+    }
+
+    private static HttpOptions remainingHttpOptions(StoryboardAttemptContext context) {
+        context.checkActive();
+        long remainingNanos = context.remainingTime().toNanos();
+        int timeoutMillis = Math.toIntExact(Math.max(1, (remainingNanos + 999_999) / 1_000_000));
+        return HttpOptions.builder().timeout(timeoutMillis)
+                .retryOptions(HttpRetryOptions.builder().attempts(1).httpStatusCodes(List.of()).build())
+                .build();
+    }
+
+    private static GeminiFailureType failureType(
+            String phase,
+            GenerateContentResponse response,
+            AiGenerationException exception
+    ) {
+        if (exception.errorType() == AiGenerationErrorType.TIMEOUT) {
+            return GeminiFailureType.TIMEOUT;
+        }
+        if (exception.providerFailureType() == AiProviderFailureType.CANCELLED) {
+            return GeminiFailureType.CANCELLED;
+        }
+        return switch (phase) {
+            case "preparation" -> GeminiFailureType.preparation(exception.getCause());
+            case "provider" -> GeminiFailureType.provider(exception.getCause(), exception.errorType());
+            default -> GeminiFailureType.storyboardResponse(
+                    GeminiFailureType.finishReason(response), exception.getCause());
+        };
     }
 
     private static GenerationTokenUsage tokenUsage(GenerateContentResponse response) {

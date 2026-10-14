@@ -8,6 +8,7 @@ import com.harudle.diary.service.DiaryQueryService;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
 import com.harudle.feed.repository.FeedRepository;
 import com.harudle.push.service.port.FeedPushOutbox;
+import com.harudle.support.ServiceIntegrationTestSupport;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
@@ -17,27 +18,16 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.ApplicationContext;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest
-class FeedWithoutPushPersistenceTest {
+class FeedWithoutPushPersistenceTest extends ServiceIntegrationTestSupport {
     private static final UUID AUTHOR = UUID.fromString("550e8400-e29b-41d4-a716-446655440021");
     private static final UUID DIARY = UUID.fromString("550e8400-e29b-41d4-a716-446655440022");
     private static final UUID GENERATION = UUID.fromString("550e8400-e29b-41d4-a716-446655440023");
     private static final String REFERENCE = "references/feed-without-push-test.png";
-
-    @Container @ServiceConnection
-    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"));
 
     @PersistenceContext private EntityManager entityManager;
     @Autowired private ApplicationContext context;
@@ -47,7 +37,6 @@ class FeedWithoutPushPersistenceTest {
     @Autowired private FeedRepository feeds;
     @Autowired private DiaryDeletionService diaryDeletion;
     @Autowired private DiaryQueryService diaryQueries;
-    @MockitoBean private JwtDecoder jwtDecoder;
     private long categoryId;
 
     @BeforeEach

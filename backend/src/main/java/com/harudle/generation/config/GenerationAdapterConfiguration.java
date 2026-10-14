@@ -3,6 +3,7 @@ package com.harudle.generation.config;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.genai.Client;
 import com.google.genai.Models;
+import com.google.genai.types.ClientOptions;
 import com.google.genai.types.HttpOptions;
 import com.google.genai.types.HttpRetryOptions;
 import com.harudle.common.logging.ExternalApiLogger;
@@ -14,6 +15,7 @@ import com.harudle.generation.adapter.out.gemini.GeminiStageMetrics;
 import com.harudle.generation.adapter.out.gemini.GeminiStoryboardGenerator;
 import com.harudle.generation.adapter.out.gemini.client.ExpressGeminiClientFactory;
 import com.harudle.generation.adapter.out.gemini.client.GeminiClientFactory;
+import com.harudle.generation.adapter.out.gemini.client.GeminiStoryboardCallScope;
 import com.harudle.generation.adapter.out.gemini.client.VertexGeminiClientFactory;
 import com.harudle.generation.adapter.out.s3.CwebpImageVariantEncoder;
 import com.harudle.generation.adapter.out.s3.ImageObjectKeyFactory;
@@ -26,6 +28,7 @@ import com.harudle.generation.adapter.out.s3.S3ExceptionTranslator;
 import com.harudle.generation.adapter.out.s3.S3FailureReporter;
 import com.harudle.generation.adapter.out.s3.S3ImageStorage;
 import com.harudle.generation.adapter.out.s3.S3ImageUrlProvider;
+import com.harudle.generation.adapter.out.storyboard.StoryboardHttpTransport;
 import com.harudle.generation.adapter.out.storyboard.StoryboardJsonCodec;
 import com.harudle.generation.adapter.out.storyboard.StoryboardResponseMapper;
 import com.harudle.generation.diary.service.port.BackupObjectStorage;
@@ -35,11 +38,14 @@ import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.io.IOException;
+import java.time.Duration;
+import java.util.List;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import software.amazon.awssdk.regions.Region;
@@ -53,7 +59,7 @@ import tools.jackson.databind.ObjectMapper;
         name = "enabled",
         havingValue = "true"
 )
-@Import(QwenStoryboardConfiguration.class)
+@Import({QwenStoryboardConfiguration.class, StoryboardGenerationConfiguration.class})
 @EnableConfigurationProperties({GeminiClientProperties.class, GeminiGenerationProperties.class,
         S3StorageProperties.class, StoryboardProviderProperties.class})
 public class GenerationAdapterConfiguration {
@@ -90,8 +96,38 @@ public class GenerationAdapterConfiguration {
     }
 
     @Bean
-    public Models geminiModels(Client geminiClient) {
+    public Models geminiModels(@Qualifier("geminiClient") Client geminiClient) {
         return geminiClient.models;
+    }
+
+    @Bean
+    @Conditional(GeminiStoryboardSelectedCondition.class)
+    public GeminiStoryboardCallScope geminiStoryboardCallScope() {
+        return new GeminiStoryboardCallScope();
+    }
+
+    @Bean(destroyMethod = "close")
+    @Conditional(GeminiStoryboardSelectedCondition.class)
+    public Client geminiStoryboardClient(
+            StoryboardProviderProperties properties,
+            GeminiClientFactory clientFactory,
+            GeminiStoryboardCallScope callScope
+    ) {
+        Duration timeout = properties.timeoutFor("gemini");
+        HttpOptions httpOptions = HttpOptions.builder()
+                .timeout(Math.toIntExact(timeout.toMillis()))
+                .retryOptions(HttpRetryOptions.builder().attempts(1).httpStatusCodes(List.of()).build())
+                .build();
+        ClientOptions clientOptions = ClientOptions.builder().customHttpClient(
+                StoryboardHttpTransport.builder(timeout).eventListenerFactory(callScope).build()
+        ).build();
+        return clientFactory.create(httpOptions, clientOptions);
+    }
+
+    @Bean
+    @Conditional(GeminiStoryboardSelectedCondition.class)
+    public Models geminiStoryboardModels(@Qualifier("geminiStoryboardClient") Client client) {
+        return client.models;
     }
 
     @Bean(destroyMethod = "close")
@@ -142,15 +178,15 @@ public class GenerationAdapterConfiguration {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "harudle.generation.storyboard", name = "provider",
-            havingValue = "gemini", matchIfMissing = true)
-    public StoryboardGenerator storyboardGenerator(
-            Models geminiModels,
+    @Conditional(GeminiStoryboardSelectedCondition.class)
+    public StoryboardGenerator geminiStoryboardGenerator(
+            @Qualifier("geminiStoryboardModels") Models geminiModels,
             GeminiGenerationProperties properties,
             ObjectMapper objectMapper,
             StoryboardResponseMapper responseMapper,
             GeminiFailureReporter failureReporter,
-            GeminiStageMetrics stageMetrics
+            GeminiStageMetrics stageMetrics,
+            GeminiStoryboardCallScope callScope
     ) {
         return new GeminiStoryboardGenerator(
                 geminiModels,
@@ -158,13 +194,14 @@ public class GenerationAdapterConfiguration {
                 objectMapper,
                 responseMapper,
                 failureReporter,
-                stageMetrics
+                stageMetrics,
+                callScope
         );
     }
 
     @Bean
     public DiaryImageGenerator diaryImageGenerator(
-            Models geminiModels,
+            @Qualifier("geminiModels") Models geminiModels,
             GeminiGenerationProperties properties,
             DiaryImagePromptRenderer promptRenderer,
             GeminiFailureReporter failureReporter,
