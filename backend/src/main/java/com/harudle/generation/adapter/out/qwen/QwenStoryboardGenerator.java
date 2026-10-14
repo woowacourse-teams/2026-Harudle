@@ -5,6 +5,7 @@ import com.harudle.common.logging.ExternalApiLogger;
 import com.harudle.generation.adapter.out.storyboard.StoryboardJsonCodec;
 import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import com.harudle.generation.diary.domain.Storyboard;
+import com.harudle.generation.diary.domain.StoryboardProviderInfo;
 import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
 import com.harudle.generation.diary.service.exception.AiProviderFailureType;
@@ -36,6 +37,11 @@ public final class QwenStoryboardGenerator implements StoryboardGenerator {
     }
 
     @Override
+    public StoryboardProviderInfo providerInfo() {
+        return new StoryboardProviderInfo("qwen", settings.model());
+    }
+
+    @Override
     public GeneratedStoryboard generate(StoryboardGenerationRequest request) {
         long started = System.nanoTime();
         String phase = "preparation";
@@ -52,7 +58,7 @@ public final class QwenStoryboardGenerator implements StoryboardGenerator {
             usage = tokenUsage(result.usage(), settings.thinking());
             Storyboard storyboard = codec.decode(result.content());
             request.attemptContext().ifPresent(StoryboardAttemptContext::checkActive);
-            return new GeneratedStoryboard(storyboard, usage);
+            return new GeneratedStoryboard(storyboard, usage, providerInfo());
         } catch (AiGenerationException exception) {
             failureType = exception.errorType();
             throw exception;

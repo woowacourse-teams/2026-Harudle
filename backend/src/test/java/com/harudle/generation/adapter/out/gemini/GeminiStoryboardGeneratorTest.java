@@ -33,8 +33,8 @@ import com.harudle.generation.diary.domain.Storyboard;
 import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
 import com.harudle.generation.diary.service.exception.AiProviderFailureType;
-import com.harudle.generation.diary.service.port.StoryboardAttemptContext;
 import com.harudle.generation.diary.service.port.StoryboardAttemptContext.CancellationReason;
+import com.harudle.generation.diary.service.port.StoryboardAttemptContext;
 import com.harudle.generation.diary.service.port.dto.GeneratedStoryboard;
 import com.harudle.generation.diary.service.port.dto.StoryboardGenerationRequest;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -43,7 +43,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
-import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -228,6 +227,8 @@ class GeminiStoryboardGeneratorTest {
         GeneratedStoryboard result = generator.generate(createRequest());
 
         assertThat(result.tokenUsage()).isEqualTo(new GenerationTokenUsage(120, 350, 80, 550));
+        assertThat(result.providerInfo().provider()).isEqualTo("gemini");
+        assertThat(result.providerInfo().model()).isEqualTo(properties.storyboardModel());
         assertThat(result.storyboard().panels()).hasSize(4);
         assertThat(meterRegistry.get("harudle.gemini.tokens")
                 .tags("stage", "storyboard_generation", "kind", "thought")

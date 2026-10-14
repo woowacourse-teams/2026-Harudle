@@ -5,6 +5,7 @@ import com.harudle.generation.diary.domain.GenerationErrorCode;
 import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import com.harudle.generation.diary.domain.ImageObjectKeyPolicy;
 import com.harudle.generation.diary.domain.Storyboard;
+import com.harudle.generation.diary.domain.StoryboardProviderInfo;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.diary.service.dto.CompletedDiaryGeneration;
 import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
@@ -90,7 +91,8 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
                     generationId,
                     generatedDiaryImage.storyboard(),
                     generatedDiaryImage.imageObjectKey(),
-                    generatedDiaryImage.tokenUsage()
+                    generatedDiaryImage.tokenUsage(),
+                    generatedDiaryImage.providerInfo()
             );
             imageCleaner.deleteIfUnused(completedGeneration, generatedDiaryImage.imageObjectKey());
             return completedGeneration;
@@ -131,9 +133,11 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
             UUID generationId
     ) {
         GenerationLifecycleMetrics.Phase phase = GenerationLifecycleMetrics.Phase.STORYBOARD;
+        StoryboardProviderInfo providerInfo = null;
         try {
             GeneratedStoryboard generatedStoryboard = storyboardGenerationService.generate(
                     new StoryboardGenerationRequest(command.diaryText(), prompt.getStoryboardPromptText()));
+            providerInfo = generatedStoryboard.providerInfo();
             Storyboard storyboard = generatedStoryboard.storyboard();
             phase = GenerationLifecycleMetrics.Phase.REFERENCE_LOAD;
             ReferenceImage referenceImage = imageStorage.load(prompt.getImageAssetObjectKey());
@@ -145,21 +149,21 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
             ));
             phase = GenerationLifecycleMetrics.Phase.IMAGE_STORE;
             String imageObjectKey = storeImage(generationId, generatedImage);
-            return new GeneratedDiaryImage(storyboard, imageObjectKey, generatedStoryboard.tokenUsage());
+            return new GeneratedDiaryImage(storyboard, imageObjectKey, generatedStoryboard.tokenUsage(), providerInfo);
         } catch (AiGenerationException exception) {
-            failGeneration(generationId, mapAiGenerationErrorCode(exception.errorType()));
+            failGeneration(generationId, mapAiGenerationErrorCode(exception.errorType()), providerInfo);
             throw exception;
         } catch (ImageStorageException exception) {
-            failGeneration(generationId, GenerationErrorCode.IMAGE_STORAGE_ERROR);
+            failGeneration(generationId, GenerationErrorCode.IMAGE_STORAGE_ERROR, providerInfo);
             throw exception;
         } catch (RuntimeException exception) {
             lifecycleMetrics.unexpectedFailure(generationId, phase, exception);
             if (phase == GenerationLifecycleMetrics.Phase.REFERENCE_LOAD
                     || phase == GenerationLifecycleMetrics.Phase.IMAGE_STORE) {
-                failGeneration(generationId, GenerationErrorCode.IMAGE_STORAGE_ERROR);
+                failGeneration(generationId, GenerationErrorCode.IMAGE_STORAGE_ERROR, providerInfo);
                 throw new ImageStorageException("이미지 저장소 요청을 처리하지 못했습니다.", exception);
             }
-            failGeneration(generationId, GenerationErrorCode.GENERATION_INTERNAL_ERROR);
+            failGeneration(generationId, GenerationErrorCode.GENERATION_INTERNAL_ERROR, providerInfo);
             throw exception;
         }
     }
@@ -177,8 +181,11 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
         }
     }
 
-    private void failGeneration(UUID generationId, GenerationErrorCode requestedErrorCode) {
-        GenerationErrorCode effectiveErrorCode = completionService.fail(generationId, requestedErrorCode);
+    private void failGeneration(UUID generationId, GenerationErrorCode requestedErrorCode,
+            StoryboardProviderInfo providerInfo) {
+        GenerationErrorCode effectiveErrorCode = providerInfo == null
+                ? completionService.fail(generationId, requestedErrorCode)
+                : completionService.fail(generationId, requestedErrorCode, providerInfo);
         if (effectiveErrorCode != requestedErrorCode) {
             throw new DiaryGenerationFailedException(effectiveErrorCode);
         }
@@ -208,7 +215,8 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
     private record GeneratedDiaryImage(
             Storyboard storyboard,
             String imageObjectKey,
-            GenerationTokenUsage tokenUsage
+            GenerationTokenUsage tokenUsage,
+            StoryboardProviderInfo providerInfo
     ) {
     }
 }

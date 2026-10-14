@@ -6,6 +6,7 @@ import com.harudle.generation.diary.service.exception.AiProviderFailureType;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
 import com.harudle.generation.diary.service.port.dto.GeneratedStoryboard;
 import com.harudle.generation.diary.service.port.dto.StoryboardGenerationRequest;
+import java.time.Duration;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.LongSupplier;
@@ -52,12 +53,32 @@ public final class StoryboardGenerationService {
         Objects.requireNonNull(request);
         StoryboardGenerationBudget budget = StoryboardGenerationBudget.start(properties.totalTimeout(), nanoTime);
         try {
-            return runner.run(primary, request, properties.primaryTimeout(), budget);
+            return runAttempt(primary, request, properties.primaryTimeout(), budget, properties.provider(), 1);
         } catch (AiGenerationException primaryFailure) {
             if (fallback.isEmpty() || !canFallback(primaryFailure)) {
                 throw primaryFailure;
             }
-            return runner.run(fallback.orElseThrow(), request, properties.fallbackTimeout(), budget);
+            StoryboardGenerator backup = fallback.orElseThrow();
+            StoryboardGenerationLogger.fallbackTriggered(properties.provider(), primary,
+                    properties.fallbackProvider(), backup, primaryFailure);
+            return runAttempt(backup, request, properties.fallbackTimeout(), budget, properties.fallbackProvider(), 2);
+        }
+    }
+
+    private GeneratedStoryboard runAttempt(StoryboardGenerator generator, StoryboardGenerationRequest request,
+            Duration timeout, StoryboardGenerationBudget budget, String provider, int attempt) {
+        long started = nanoTime.getAsLong();
+        GeneratedStoryboard result = null;
+        RuntimeException failure = null;
+        try {
+            result = runner.run(generator, request, timeout, budget);
+            return result;
+        } catch (RuntimeException exception) {
+            failure = exception;
+            throw exception;
+        } finally {
+            StoryboardGenerationLogger.attemptCompleted(provider, attempt, generator,
+                    result, failure, nanoTime.getAsLong() - started);
         }
     }
 

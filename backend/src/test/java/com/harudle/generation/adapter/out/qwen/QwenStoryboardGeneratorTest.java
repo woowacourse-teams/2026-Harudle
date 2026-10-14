@@ -148,6 +148,8 @@ class QwenStoryboardGeneratorTest {
         assertThat(result.tokenUsage().candidateTokenCount()).isEqualTo(390);
         assertThat(result.tokenUsage().thoughtTokenCount()).isEqualTo(110);
         assertThat(result.tokenUsage().totalTokenCount()).isEqualTo(600);
+        assertThat(result.providerInfo().provider()).isEqualTo("qwen");
+        assertThat(result.providerInfo().model()).isEqualTo(settings.model());
         assertThat(new DiaryImagePromptRenderer().render(result.storyboard()))
                 .contains("준비 완료", "작은 화면 출동", "upper-left");
         ArgumentCaptor<Request> request = ArgumentCaptor.forClass(Request.class);

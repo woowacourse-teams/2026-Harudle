@@ -306,6 +306,28 @@ Gemini·Qwen 스토리보드 Client는 메인일 때 `STORYBOARD_PRIMARY_TIMEOUT
 요청 실행기는 이름이 `storyboard-attempt-`로 시작하는 가상 스레드를 호출마다 생성하고 애플리케이션 종료 시
 정리합니다. 메인 작업의 취소가 늦어져도 보조가 같은 작업 스레드의 종료를 기다리지 않도록 구성합니다.
 
+### 스토리보드 Provider 사용 기록
+
+최종 스토리보드를 만든 Provider와 요청 모델명을 `diary_generations.storyboard_provider`와
+`storyboard_model`에 저장합니다. 메인 실패 후 보조가 성공하면 보조 정보를 저장하며, 이미지 생성·저장 단계에서
+실패해도 스토리보드의 Provider 정보는 최종 실패 기록에 남깁니다. 이미 확정된 생성 기록의 정보는 늦은 결과로
+덮어쓰지 않습니다. 스토리보드 자체가 실패했거나 과거 기록의 정보를 알 수 없으면 두 컬럼은 `null`입니다.
+
+V23 마이그레이션이 nullable 컬럼과 두 값이 함께 저장되도록 하는 제약을 추가합니다. 관리자 생성 이력 API
+`GET /api/v1/admin/generations`에서도 `storyboardProvider`·`storyboardModel`을 조회할 수 있습니다.
+추가 ENV는 없으며, 실제 요청에 사용하는 어댑터의 모델 설정을 기록합니다.
+
+`storyboard_attempt_completed` 로그는 Provider·모델·시도 순서·메인/보조 역할·성공 여부·소요 시간과 오류
+분류를 기록합니다. `storyboard_fallback_triggered` 로그는 메인·보조 Provider와 대체 사유를 기록합니다.
+두 이벤트는 기존 MDC의 `generationId`로 연결하며 일기·프롬프트·응답·예외 메시지 원문을 포함하지 않습니다.
+
+```sql
+SELECT id, status, storyboard_provider, storyboard_model, token_usage,
+       completed_at - created_at AS total_duration
+FROM diary_generations
+ORDER BY created_at DESC;
+```
+
 ### 요청별 제한 시간과 취소 실행기
 
 `StoryboardAttemptRunner`는 `StoryboardGenerator`를 한 번 호출합니다. `StoryboardGenerationBudget`을

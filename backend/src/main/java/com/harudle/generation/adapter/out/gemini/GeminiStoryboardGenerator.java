@@ -17,6 +17,7 @@ import com.harudle.generation.adapter.out.storyboard.StoryboardResponseMapper;
 import com.harudle.generation.config.GeminiGenerationProperties;
 import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import com.harudle.generation.diary.domain.Storyboard;
+import com.harudle.generation.diary.domain.StoryboardProviderInfo;
 import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
 import com.harudle.generation.diary.service.exception.AiProviderFailureType;
@@ -58,6 +59,11 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
         this.failureReporter = failureReporter;
         this.stageMetrics = Objects.requireNonNull(stageMetrics);
         this.callScope = Objects.requireNonNull(callScope);
+    }
+
+    @Override
+    public StoryboardProviderInfo providerInfo() {
+        return new StoryboardProviderInfo("gemini", properties.storyboardModel());
     }
 
     @Override
@@ -135,7 +141,7 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
             }
             Storyboard storyboard = mapResponse(response, responseText);
             checkActive(context);
-            return new GeneratedStoryboard(storyboard, tokenUsage(response));
+            return new GeneratedStoryboard(storyboard, tokenUsage(response), providerInfo());
         } catch (AiGenerationException exception) {
             throw exception;
         } catch (Exception exception) {
