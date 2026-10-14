@@ -22,8 +22,9 @@
 | 파일 | 하는 일 | 우리가 실행하는 시점 |
 | --- | --- | --- |
 | `prepare.py` | 테스트 회원 정보와 DB에 넣을 SQL 파일 만들기 | 테스트 준비를 시작할 때 |
-| `assets.py` | S3에 테스트 이미지를 복사하거나 삭제하기 | 테스트 전에는 `copy`, 정리할 때는 `delete` |
-| `runs/실행이름/seed.sql` | 준비한 회원과 일기, 피드 등을 실제 DB에 넣기 | 이미지를 복사한 뒤 `psql`로 실행 |
+| `assets.py` | 준비된 테스트 이미지를 S3에 올리기 | 테스트 전에 `upload` 실행 |
+| `cleanup.py` | 테스트 회원과 피드를 지운 뒤 S3 이미지 정리하기 | 테스트가 끝난 뒤 실행 |
+| `runs/실행이름/seed.sql` | 준비한 회원과 일기, 피드 등을 실제 DB에 넣기 | 이미지를 올린 뒤 `psql`로 실행 |
 | `run.sh` | 사용할 회원 파일을 고르고 Docker에서 k6 실행하기 | 데이터 준비가 끝났을 때 |
 | `members.js` | 회원별로 로그인하고 일기, 피드, 댓글 API 호출하기 | `run.sh`가 실행한 k6에서 자동으로 실행 |
 
@@ -57,11 +58,12 @@
 | `POST /api/v1/load-test/diaries` | 30초 AI Stub 사용, 실제 일기 저장 |
 
 k6는 일기를 만들 때 테스트 전용 주소를 호출합니다. 피드 게시와 조회는 기존 API를 호출합니다.
+테스트 전용 생성 API는 준비한 테스트 계정만 사용할 수 있습니다. **R2 백업은 실행하지 않습니다.** 기존 자동 백업은 prod에서만 허용됩니다.
 
 ## 2. 작업용 터미널 준비하기
 
-Python 3.9 이상, Docker, AWS CLI, PostgreSQL 접속 도구인 `psql`이 필요합니다.
-**dev DB에 접속하고 dev S3 파일을 복사할 권한이 있는 터미널**에서 진행합니다.
+Python 3.9 이상, Docker, AWS CLI v2, PostgreSQL 접속 도구인 `psql`이 필요합니다. macOS 또는 Linux에서 실행합니다.
+**dev DB에 접속하고 dev S3 파일을 올리고 지울 권한이 있는 터미널**에서 진행합니다.
 
 저장소의 최상위 폴더에서 `backend`로 이동하고, 아래 값을 실제 dev DB 정보로 바꿉니다.
 
@@ -73,27 +75,16 @@ export PGDATABASE='harudle_dev'
 export PGUSER='dev DB 사용자 이름'
 ```
 
-이후 `psql` 명령을 실행하면 DB 비밀번호를 입력합니다.
+이후 DB 비밀번호를 요청하면 입력합니다.
 SQL은 DB 이름이 `harudle_dev`일 때만 실행됩니다. 다른 이름이면 데이터를 넣거나 지우기 전에 멈춥니다.
-**DB 주소도 dev인지 확인하세요.** dev와 prod가 같은 RDS 서버를 쓰면 테스트가 운영 서비스도 느리게 만들 수 있습니다.
+별도로 운영하는 dev DB를 사용합니다. 기존 dev 데이터는 남기고 이번 테스트 데이터만 정리합니다.
 
 S3 작업은 `techcourse-project-2026` 버킷의 `harudle/generated/diary-images/dev/` 안에서만 실행합니다.
-이 버킷은 여러 팀이 함께 사용합니다. 다른 버킷이나 prod 경로를 넣으면 복사와 삭제를 시작하지 않습니다.
+이 버킷은 여러 팀이 함께 사용합니다. 버킷은 코드에 고정되어 있고, 이미지 경로는 이번 실행 정보로 만듭니다.
 
-이미 만들어진 일기 이미지 중 하나를 찾아 테스트용으로 복사합니다. 아래 명령으로 이미지 경로를 조회합니다.
-
-```bash
-psql -W -c "SELECT image_object_key FROM diary_generations
-WHERE status = 'SUCCEEDED'
-  AND image_object_key LIKE 'harudle/generated/diary-images/dev/%/image-960.webp'
-ORDER BY completed_at DESC LIMIT 1;"
-```
-
-조회된 경로를 아래 따옴표 안에 넣습니다. 같은 S3 폴더에 `image-240.webp`도 있어야 합니다.
-
-```bash
-SOURCE_DETAIL_KEY='조회된 image_object_key 값'
-```
+이미지는 저장소의 `src/main/resources/load-test-diary.png`를 사용합니다. 개인정보가 없는 4칸 이미지이며, AI Stub도 같은 이미지를 저장합니다.
+다른 회원의 이미지를 찾거나 이미지 경로를 복사할 필요가 없습니다. 준비 단계에서는 일기 400개에 사용할 PNG 파일 400개를 올립니다.
+대상 경로에 파일이 이미 있으면 덮어쓰지 않고 실패합니다. 준비 도중 실패했다면 6번의 정리 명령을 실행한 뒤 새 실행 이름으로 준비합니다.
 
 ## 3. 먼저 회원 4명으로 확인하기
 
@@ -102,15 +93,13 @@ SOURCE_DETAIL_KEY='조회된 image_object_key 값'
 ```bash
 # 테스트 계정과 데이터 파일 만들기
 RUN=smoke
-python3 load-test/prepare.py --output "load-test/runs/$RUN"
+python3 load-test/prepare.py --output "load-test/runs/$RUN" &&
 
-# 테스트에서 사용할 이미지 복사하기
-python3 load-test/assets.py copy --bucket techcourse-project-2026 \
-  --keys "load-test/runs/$RUN/image-keys.json" \
-  --source-detail-key "$SOURCE_DETAIL_KEY"
+# 테스트에서 사용할 이미지 올리기
+python3 load-test/assets.py upload --run-dir "load-test/runs/$RUN" &&
 
 # dev DB에 테스트 계정과 데이터 넣기
-psql -W -f "load-test/runs/$RUN/seed.sql"
+psql -W -f "load-test/runs/$RUN/seed.sql" &&
 
 # 회원 4명으로 실제 API 호출하기
 bash load-test/run.sh smoke "$RUN"
@@ -128,11 +117,9 @@ bash load-test/run.sh smoke "$RUN"
 
 ```bash
 RUN=peak
-python3 load-test/prepare.py --output "load-test/runs/$RUN"
-python3 load-test/assets.py copy --bucket techcourse-project-2026 \
-  --keys "load-test/runs/$RUN/image-keys.json" \
-  --source-detail-key "$SOURCE_DETAIL_KEY"
-psql -W -f "load-test/runs/$RUN/seed.sql"
+python3 load-test/prepare.py --output "load-test/runs/$RUN" &&
+python3 load-test/assets.py upload --run-dir "load-test/runs/$RUN" &&
+psql -W -f "load-test/runs/$RUN/seed.sql" &&
 bash load-test/run.sh peak "$RUN"
 ```
 
@@ -144,6 +131,7 @@ Docker도 명령을 실행한 사용자로 동작하므로, Linux에서도 비�
 **같은 데이터는 한 번만 사용합니다.** 실행하면 로그인 토큰이 바뀌고 새 일기와 반응이 저장되기 때문입니다.
 데이터 준비와 테스트 실행은 한국 시간으로 같은 날에 진행합니다.
 다시 실행할 때는 첫 줄을 `RUN=peak2`처럼 새 이름으로 바꾸고 이 단계 전체를 반복합니다.
+시작 30초 뒤부터 누적 API 실패율이 1% 이상이면 k6가 자동으로 중단됩니다. 이미 서버에서 시작한 생성 작업은 끝날 때까지 기다린 뒤 정리합니다.
 
 ## 5. 결과 확인하기
 
@@ -193,32 +181,26 @@ Docker도 명령을 실행한 사용자로 동작하므로, Linux에서도 비�
 
 ## 6. 테스트 데이터 지우기
 
-결과를 확인한 뒤 아래 명령으로 이번 테스트의 회원, 연결된 데이터, 이미지 파일을 지웁니다.
+결과를 확인한 뒤 아래 명령 하나로 이번 테스트의 회원, 일기, 피드, 댓글, 좋아요, 관련 알림과 이미지 파일을 지웁니다.
 `RUN`에는 정리할 실행 이름을 넣습니다. `peak`를 정리한 뒤 `smoke`도 같은 방법으로 정리합니다.
 
 ```bash
 RUN=peak
-(cd "load-test/runs/$RUN" && psql -W -f cleanup.sql)
-python3 load-test/assets.py delete --bucket techcourse-project-2026 \
-  --keys "load-test/runs/$RUN/cleanup-image-keys.txt"
+python3 load-test/cleanup.py --run-dir "load-test/runs/$RUN"
 ```
 
-이미지 삭제에 실패하면 `cleanup-image-keys.txt`를 보관하고 이미지 삭제 명령만 다시 실행합니다.
-삭제할 이미지 목록이 덮어써질 수 있으므로 `cleanup.sql`은 다시 실행하지 않습니다.
-이 목록에는 이번 테스트 회원이 가진 이미지 경로만 담깁니다. 목록에 다른 이미지 경로를 직접 추가하지 않습니다.
-준비한 `image-960.webp`와 생성 중 저장된 `image.webp`, `image.png`, `image.jpg`를 모두 정리할 수 있습니다.
+**DB 정리가 성공해야 S3 이미지를 삭제합니다.** DB 오류가 나거나 생성 중인 일기가 있으면 이미지 삭제 없이 멈춥니다.
+`run.sh`가 실행 중일 때도 정리할 수 없습니다. 테스트가 끝나고 브라우저 보고서 탭까지 닫은 뒤 실행합니다.
+이미지 삭제에 실패하면 같은 명령을 다시 실행합니다. 삭제 목록인 `cleanup.json`은 이전 내용을 유지하므로 DB가 이미 비어 있어도 남은 이미지를 정리할 수 있습니다.
+`members.json`과 `cleanup.json`은 정리가 끝날 때까지 보관하고 직접 수정하지 않습니다. 다른 실행의 목록이나 변경된 삭제 목록은 거부합니다.
+준비 중 일부만 업로드된 이미지도 정리합니다. 테스트 회원의 DB 기록으로 확인한 생성 작업에 대해서만 원본과 상세 이미지, 작은 이미지를 삭제합니다.
 버킷의 버전 관리가 켜져 있으므로 **삭제 후에도 이전 버전은 남아 저장 비용이 생깁니다.** 이 명령은 이전 버전까지 영구 삭제하지 않습니다.
-R2 백업을 실행했다면 해당 테스트 이미지의 백업도 별도로 정리합니다.
+이전 코드로 만든 실행 폴더는 새 정리 명령에서 거부됩니다. 이번 코드의 `prepare.py`로 새 실행 폴더를 만듭니다.
 
 ## 실행 전에 남아 있는 운영 설정 확인하기
 
-2026-10-14 AWS 확인 당시, 공유 버킷은 서명 없는 일기 이미지 조회를 허용했고 RDS 삭제 방지는 꺼져 있었습니다.
-버킷 담당자와 함께 일기 이미지의 공개 조회를 막고, RDS 삭제 방지를 켜야 합니다. 공유 버킷 전체의 공개 설정을 한 번에 바꾸면 다른 팀도 영향을 받을 수 있습니다.
-또한 dev와 prod의 실제 DB 주소, EC2 역할의 S3 권한을 확인한 뒤 테스트합니다. 이번 코드 수정으로 AWS 설정이 바뀌지는 않습니다.
-
----
-
 2026-10-14 로컬 검증에서는 회원 200명과 요청 1,420건이 실패 없이 완료됐습니다.
-리뷰 수정 뒤에는 회원 4명과 요청 28건을 다시 확인했습니다. 운영 DB 이름으로 실행하면 멈추고, 정리 후에도 기존 회원과 일기는 남는지 검사했습니다.
+이번 수정 뒤에는 회원 4명과 요청 28건을 다시 확인했습니다. 생성 중이거나 DB 잠금 오류가 나면 이미지 삭제 없이 멈추는지 검사했습니다.
+정리 후에도 기존 회원의 일기, 피드, 댓글, 좋아요가 남고, 이미지 삭제 실패 후 같은 명령으로 다시 정리할 수 있는지 확인했습니다.
 Linux에서는 회원 파일의 읽기 제한을 유지한 채 k6 실행과 결과 저장이 되는지 확인했습니다.
 로컬 검증에서는 이미지 저장소를 대체했습니다. **dev 배포와 실제 dev 부하 테스트는 아직 진행하지 않았습니다.**

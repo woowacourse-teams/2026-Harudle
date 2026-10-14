@@ -31,6 +31,12 @@ SET LOCAL statement_timeout = '60s';
 """
 
 
+def seed_image(run_id, member_index, month, index):
+    generation_id = str(uuid.uuid5(run_id, f"generation-{member_index}-{month}-{index}"))
+    asset_id = uuid.uuid5(run_id, 'asset-' + generation_id)
+    return generation_id, f"{PREFIX}/{generation_id}/{asset_id}/image.png"
+
+
 def build_fixture(base_url, per_month):
     run_id = uuid.uuid4()
     today = datetime.now(ZoneInfo("Asia/Seoul")).date()
@@ -71,8 +77,7 @@ def build_fixture(base_url, per_month):
         for month in [current, previous]:
             for j in range(per_month):
                 diary_id = identifier(f"diary-{i}-{month}-{j}")
-                generation_id = identifier(f"generation-{i}-{month}-{j}")
-                key = f"{PREFIX}/{generation_id}/{identifier('asset-' + generation_id)}/image-960.webp"
+                generation_id, key = seed_image(run_id, i, month, j)
                 image_keys.append(key)
                 diary_date = month.replace(day=min(j + 1, today.day if month == current else 28))
                 statements.append(
@@ -111,17 +116,11 @@ def build_fixture(base_url, per_month):
                 f"({quote(identifier(f'like-{i}-{offset}'))}, {quote(feed)}, {quote(liker)});")
         statements.append(f"UPDATE feeds SET comment_count = 2, like_count = {i % 6} WHERE id = {quote(feed)};")
     statements.append("COMMIT;")
-    ids = ", ".join(quote(m["id"]) for m in members)
-    cleanup = database_guard() + rf"""
-\copy (SELECT g.image_object_key FROM diary_generations g JOIN diaries d ON d.id = g.diary_id JOIN users u ON u.id = d.user_id WHERE u.id IN ({ids}) AND u.primary_email LIKE '%@{run_id.hex}.loadtest.invalid' AND g.image_object_key IS NOT NULL) TO 'cleanup-image-keys.txt'
-DELETE FROM users WHERE id IN ({ids}) AND primary_email LIKE '%@{run_id.hex}.loadtest.invalid';
-DELETE FROM categories WHERE name = {quote(category)} AND NOT EXISTS (SELECT 1 FROM feeds WHERE category_id = categories.id);
-COMMIT;
-"""
-    fixture = {"runId": str(run_id), "baseUrl": base_url, "date": str(today),
+    fixture = {"version": 2, "runId": str(run_id), "cleanupKey": secrets.token_hex(32),
+               "baseUrl": base_url, "date": str(today),
                "currentMonth": str(current), "previousMonth": str(previous), "categoryName": category,
                "diariesPerMonth": per_month, "members": members}
-    return fixture, "\n".join(statements), cleanup, image_keys
+    return fixture, "\n".join(statements), image_keys
 
 
 def main():
@@ -139,13 +138,11 @@ def main():
         parser.error("diaries-per-month must be between 1 and 100")
     os.umask(0o077)
     args.output.mkdir(parents=True, exist_ok=False)
-    fixture, seed, cleanup, keys = build_fixture(args.base_url.rstrip("/"), args.diaries_per_month)
+    fixture, seed, keys = build_fixture(args.base_url.rstrip("/"), args.diaries_per_month)
     (args.output / "members.json").write_text(json.dumps(fixture, ensure_ascii=False, indent=2))
     (args.output / "seed.sql").write_text(seed)
-    (args.output / "cleanup.sql").write_text(cleanup)
-    (args.output / "image-keys.json").write_text(json.dumps(keys, indent=2))
     print(f"Prepared {MEMBERS} members, {len(keys)} diaries, {MEMBERS * args.diaries_per_month} feeds: {args.output}")
-    print("No server was changed. Copy images, apply seed.sql to the dev DB, then run k6 once.")
+    print("No server was changed. Upload test images, apply seed.sql to the dev DB, then run k6 once.")
 
 
 if __name__ == "__main__":

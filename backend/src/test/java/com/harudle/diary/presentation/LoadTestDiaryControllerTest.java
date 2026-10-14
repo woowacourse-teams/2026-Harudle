@@ -2,6 +2,7 @@ package com.harudle.diary.presentation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -12,6 +13,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.harudle.auth.domain.User;
+import com.harudle.auth.domain.UserRole;
 import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.auth.infrastructure.oauth.OAuthLoginFailureHandler;
 import com.harudle.auth.infrastructure.oauth.OAuthLoginSuccessHandler;
@@ -33,6 +36,7 @@ import com.harudle.generation.usage.domain.GenerationUsage;
 import java.net.URI;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -76,9 +80,27 @@ class LoadTestDiaryControllerTest {
 
     @BeforeEach
     void configureBearerToken() {
+        User user = mock(User.class);
+        when(user.getPrimaryEmail()).thenReturn("0@0123456789abcdef0123456789abcdef.loadtest.invalid");
+        when(user.getRole()).thenReturn(UserRole.USER);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
         when(jwtDecoder.decode("test-token")).thenReturn(Jwt.withTokenValue("test-token")
                 .header("alg", "RS256").subject(USER_ID.toString())
                 .issuedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(600)).build());
+    }
+
+    @Test
+    void ordinaryDevMembersCannotCreateStubDiaries() throws Exception {
+        User user = mock(User.class);
+        when(user.getPrimaryEmail()).thenReturn("member@example.com");
+        when(user.getRole()).thenReturn(UserRole.USER);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+        mvc.perform(post(PATH).header("Authorization", "Bearer test-token")
+                        .header("Idempotency-Key", KEY.toString())
+                        .contentType(MediaType.APPLICATION_JSON).content(BODY))
+                .andExpect(status().isForbidden());
+        verify(userRepository).findById(USER_ID);
+        verifyNoInteractions(creationService);
     }
 
     @Test
@@ -93,7 +115,8 @@ class LoadTestDiaryControllerTest {
     void reportsStubWithoutLoadTestProfile() throws Exception {
         mvc.perform(get("/api/v1/load-test/ai-stub").with(jwt()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.delayMs").value(30000));
+                .andExpect(jsonPath("$.delayMs").value(30000))
+                .andExpect(jsonPath("$.output").value("test-image"));
     }
 
     @ParameterizedTest

@@ -12,6 +12,26 @@ if [[ ! -f "$script_dir/runs/$run/members.json" ]]; then
   echo 'Prepare accounts and apply seed.sql first.' >&2
   exit 1
 fi
+if [[ "${HARUDLE_LOAD_TEST_LOCKED:-}" != "$run" ]]; then
+  exec python3 - "$script_dir" "$mode" "$run" <<'PY'
+import os
+from pathlib import Path
+import subprocess
+import sys
+sys.path.insert(0, sys.argv[1])
+from assets import load_fixture, run_lock
+directory, mode, run = sys.argv[1:]
+with run_lock(Path(directory) / 'runs' / run):
+    load_fixture(Path(directory) / 'runs' / run)
+    result = subprocess.run(['bash', directory + '/run.sh', mode, run],
+                            env={**os.environ, 'HARUDLE_LOAD_TEST_LOCKED': run})
+    sys.exit(result.returncode)
+PY
+fi
+if [[ -f "$script_dir/runs/$run/cleanup.json" ]]; then
+  echo 'Cleanup has started; prepare a fresh run.' >&2
+  exit 1
+fi
 if ! (set -o noclobber; : > "$script_dir/runs/$run/.started") 2>/dev/null; then
   echo 'This fixture was already started. Refresh tokens rotate; prepare a fresh run.' >&2
   exit 1

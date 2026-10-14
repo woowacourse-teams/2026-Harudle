@@ -12,6 +12,8 @@ import com.harudle.generation.diary.service.port.dto.ReferenceImage;
 import java.time.Duration;
 import java.util.List;
 import java.util.stream.IntStream;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.http.MediaType;
 
 public final class LoadTestAiStub {
 
@@ -33,6 +35,6 @@ public final class LoadTestAiStub {
             Thread.currentThread().interrupt();
             throw new AiGenerationException(AiGenerationErrorType.TIMEOUT, "AI Stub 대기가 중단되었습니다.", exception);
         }
-        return new GeneratedImage(referenceImage.resource(), referenceImage.mediaType());
+        return new GeneratedImage(new ClassPathResource("load-test-diary.png"), MediaType.IMAGE_PNG);
     }
 }

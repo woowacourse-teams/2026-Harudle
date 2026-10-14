@@ -29,8 +29,8 @@ const apiNames = [
 if (!/^https:\/\/dev\.harudle\.com$|^http:\/\/(localhost|127\.0\.0\.1|host\.docker\.internal)(:\d+)?$/.test(baseUrl)) {
   throw new Error('Only the dev or local origin is allowed');
 }
-if (fixture.members.length !== 200 || new Set(fixture.members.map((member) => member.id)).size !== 200) {
-  throw new Error('Exactly 200 distinct member accounts are required');
+if (fixture.version !== 2 || fixture.members.length !== 200 || new Set(fixture.members.map((member) => member.id)).size !== 200) {
+  throw new Error('A fresh version 2 fixture with 200 distinct members is required');
 }
 if (__ENV.MODE && !['smoke', 'peak'].includes(__ENV.MODE)) {
   throw new Error('MODE must be smoke or peak');
@@ -50,7 +50,7 @@ export const options = {
   thresholds: {
     business_requests: [`count==${expectedRequests}`],
     member_visits: [`count==${expectedVisits}`],
-    business_failures: ['rate<0.01'],
+    business_failures: [{ threshold: 'rate<0.01', abortOnFail: true, delayAbortEval: '30s' }],
     journey_success: ['rate==1'],
     completed_journeys: [`count==${smoke ? 7 : 340}`],
     ordinary_api_duration: ['p(95)<1000'],
@@ -104,7 +104,8 @@ export function setup() {
     requireValue(me.id === member.id && me.role === 'USER', 'authenticated as the expected test member');
     if (categoryId === undefined) {
       const stub = setupRequest('GET', '/api/v1/load-test/ai-stub', null, { headers });
-      requireValue(stub.environment === 'dev' && stub.delayMs === 30000 && stub.storage === 'real', 'dev AI Stub is active at 30 seconds');
+      requireValue(stub.environment === 'dev' && stub.delayMs === 30000 && stub.storage === 'real'
+        && stub.output === 'test-image', 'dev AI Stub uses the fixed test image at 30 seconds');
       const categories = setupRequest('GET', '/api/v1/categories', null, { headers });
       const category = categories.find((item) => item.name === fixture.categoryName);
       requireValue(!!category, 'run-specific active category exists');
