@@ -177,6 +177,11 @@ Docker도 명령을 실행한 사용자로 동작하므로, Linux에서도 비�
 
 실패가 있으면 `k6.log`에서 실패한 API와 오류 코드를 찾습니다.
 응답이 느리면 같은 시간대의 [dev CloudWatch 대시보드](https://ap-northeast-2.console.aws.amazon.com/cloudwatch/home?region=ap-northeast-2#dashboards/dashboard/DASHBOARD-harudle-dev)에서 CPU, 메모리, DB 연결 대기를 확인합니다.
+
+DB 연결의 평균 시간과 최근 최대 시간, 연결 시간 초과 횟수, Java 힙과 실제 RAM 사용량도 볼 수 있도록 설정을 추가했습니다.
+**아직 AWS에는 적용하지 않았습니다.** dev Agent에 설정을 적용하고 그래프를 추가한 뒤 확인할 수 있습니다. [적용 후 확인 방법](../../deploy/monitoring/README.md#dev-부하-테스트에서-추가로-볼-값)을 참고합니다.
+테스트 결과에는 이 다섯 값도 같은 시간 범위로 기록합니다. 연결 시간 초과는 제한 시간 안에 DB 연결을 받지 못한 횟수입니다. 실제 RAM 사용량에는 힙 밖의 메모리도 포함됩니다.
+이 값은 k6 보고서에 자동으로 저장되지 않으므로 CloudWatch 그래프나 조회한 값을 함께 보관합니다.
 확인한 원인과 다음에 확인할 내용을 짧게 적습니다. 아직 모르는 원인은 `미확인`으로 남깁니다.
 
 ## 6. 테스트 데이터 지우기

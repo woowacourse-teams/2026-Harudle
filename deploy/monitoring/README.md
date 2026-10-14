@@ -40,7 +40,30 @@ sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
 
 prod에서는 위 명령의 파일명을 `cloudwatch-agent.prod.json`으로 바꾼다. 활성 Agent 조각에 같은 이름의 파일이 없는지 확인하고, 기존 호스트 CPU·메모리·디스크 지표가 계속 들어오는지 검사한다. `/harudle/{env}/prometheus-emf`에 새 이벤트가 생기고 `Harudle/Dev` 또는 `Harudle/Prod` 네임스페이스에 아래 지표가 나타나야 한다. Agent 수집·EMF 로그는 CloudWatch 비용이 발생하므로 필요한 계열만 선택했다.
 
-`prometheus.yaml`의 `metric_relabel_configs`는 아래 기존 9개 지표명에 생성 시간 sum/count와 Gemini 토큰 3개를 더한 **12개 지표명**만 Agent에 전달한다. EMF 선언은 11개이며 생성 시간 sum/count는 같은 선언을 사용한다. `metric_declaration`만 지정하면 선택하지 않은 JVM·보안·저장소 지표도 EMF 로그 본문에 남을 수 있어, 수집 단계에서도 제외한다. 지표를 추가할 때는 이 허용 목록과 dev/prod의 `metric_declaration`을 함께 수정한다. 적용 뒤 새 EMF 로그에 허용한 계열만 들어오는지 확인한다.
+`prometheus.yaml`은 기존 12개 지표명과 DB 연결 시간, 연결 시간 초과 횟수, Java 힙 사용량에 필요한 5개 지표명만 전달한다. 힙 이외의 JVM 메모리와 histogram은 제외한다. 새 CloudWatch 지표 등록은 `cloudwatch-agent.dev.json`에만 추가했다. 공통 수집 파일을 prod에 적용하면 새 값이 prod의 EMF 로그에도 포함될 수 있지만, prod의 CloudWatch 지표 등록 목록은 그대로다. 지표를 추가할 때는 공통 수집 목록과 사용할 환경의 등록 목록을 함께 확인한다.
+
+### dev 부하 테스트에서 추가로 볼 값
+
+**현재는 설정 파일만 준비했습니다. AWS에는 아직 적용하지 않았습니다.** 이후 dev에 배포하고 위의 dev Agent 적용 명령을 실행해야 새 값이 수집됩니다. 대시보드 그래프도 별도로 추가해야 합니다. k6는 API 응답 시간을 재고, 아래 값은 서버의 Agent가 1분마다 수집합니다.
+
+| 볼 값 | 뜻 | CloudWatch에서 찾을 이름 |
+|---|---|---|
+| DB 연결 평균 시간 | DB 연결을 받기 위해 기다린 시간의 평균 | `hikaricp_connections_acquire_seconds_sum`, `hikaricp_connections_acquire_seconds_count` |
+| DB 연결 최근 최대 시간 | 최근에 기록한 연결 대기 시간 중 가장 긴 시간 | `hikaricp_connections_acquire_seconds_max` |
+| DB 연결 시간 초과 횟수 | 제한 시간 안에 연결을 받지 못한 횟수 | `hikaricp_connections_timeout_total` |
+| Java 힙 사용량 | Java가 객체를 저장하는 메모리의 사용량 | `jvm_memory_used_bytes`, `area=heap` |
+| Java 실제 메모리 | Java 프로그램이 RAM에서 차지하는 양. 힙 밖의 메모리도 포함 | `procstat_memory_rss` |
+
+**나중에 dev에 적용한 뒤에는 다음 순서로 확인합니다.**
+
+1. DB와 힙 지표는 `Harudle/Dev`에서 `job=harudle-backend`를 선택합니다. DB는 같은 `pool`을 선택합니다. 실제 메모리는 `CWAgent`에서 dev EC2의 `InstanceId`와 백엔드 Java의 `pattern`을 선택합니다.
+2. 모든 그래프의 기간을 **1분**으로 맞춥니다. DB 시간 합과 횟수는 각각 `Sum`으로 선택하고 수식 ID를 `s`, `c`로 정합니다. 평균은 `IF(c > 0, 1000 * s / c)`로 계산합니다. 단위는 밀리초(ms)입니다. 시도가 없으면 값을 표시하지 않습니다. 최대 시간은 `Maximum`으로 선택한 뒤 1,000을 곱하고, 시간 초과 횟수는 `Sum`으로 봅니다. 이미 증가분을 보내므로 `DIFF`를 다시 적용하지 않습니다.
+3. 힙은 `area=heap`인 모든 `id`를 하나씩 선택하고 각각 `Average`로 봅니다. 현재의 `Eden Space`, `Survivor Space`, `Tenured Gen`을 `h1`, `h2`, `h3`로 정하면 전체 힙 사용량은 `(h1 + h2 + h3) / 1048576`입니다. 값이 빠진 영역이 없는지 확인합니다. 실제 메모리도 `Average`를 선택하고 1,048,576으로 나누면 MiB로 볼 수 있습니다. 힙과 실제 메모리를 서로 더하지 않습니다.
+4. 테스트 전에 새 값이 두 번 이상 연속으로 들어오는지 확인합니다. 테스트가 끝난 뒤 마지막 수집까지 기다리고, k6와 같은 시간 범위를 선택해 기록합니다. 값이 없으면 0으로 적지 말고 Agent 상태부터 확인합니다.
+
+DB 평균과 최대에는 시간 초과로 끝난 대기도 포함됩니다. 시간 초과 횟수는 모든 DB 오류의 수가 아닙니다. SQL 오류나 인증 오류의 원인은 백엔드 로그에서 확인합니다. 최대 시간은 최근 구간의 값이므로 테스트 시작 전 대기가 포함될 수 있습니다. 메모리는 1분 간격으로 확인하므로 그 사이의 짧은 증가를 놓칠 수 있습니다.
+
+실제 메모리는 호스트 Agent가 `/app/app.jar`를 실행한 Java만 찾아 수집합니다. 부모 `sh`, `tini`와 다른 Java 프로그램은 제외합니다. Swap 사용량은 이 값에 포함되지 않습니다. 나중에 적용할 때는 기존 호스트 설정을 유지하는 `append-config`를 사용하고, `cloudwatch:PutMetricData` 권한과 실제 게시 결과를 확인합니다. 공유 역할은 변경하지 않습니다. 기존 CPU, 서버 메모리, 디스크 지표도 계속 들어오는지 확인합니다. [AWS 프로세스 메모리 지표](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-Agent-procstat-process-metrics.html), [AWS 카운터 변환 설명](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/ContainerInsights-Prometheus-metrics-conversion.html)
 
 ### 선택형 호스트 메모리·디스크 수집
 
