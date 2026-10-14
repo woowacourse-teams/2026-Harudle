@@ -68,7 +68,7 @@ public class RefreshTokenService {
         }
         IssuedRefreshToken issuedRefreshToken = issueNewToken(refreshToken.getUser(), sessionId, now);
 
-        return new RotatedRefreshToken(userId, issuedRefreshToken);
+        return new RotatedRefreshToken(userId, sessionId, issuedRefreshToken);
     }
 
     @Transactional

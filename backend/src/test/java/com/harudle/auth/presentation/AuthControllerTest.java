@@ -14,6 +14,7 @@ import com.harudle.auth.application.IssuedRefreshToken;
 import com.harudle.auth.application.RefreshTokenService;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.UserRepository;
+import com.harudle.auth.infrastructure.token.RefreshTokenHasher;
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
 import io.restassured.module.mockmvc.response.MockMvcResponse;
 import jakarta.servlet.http.Cookie;
@@ -32,6 +33,9 @@ import org.springframework.boot.testcontainers.service.connection.ServiceConnect
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -64,6 +68,15 @@ class AuthControllerTest {
 
     @Autowired
     private RefreshTokenService refreshTokenService;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private RefreshTokenHasher refreshTokenHasher;
+
+    @Autowired
+    private JwtDecoder jwtDecoder;
 
     @BeforeEach
     void setUp() {
@@ -192,6 +205,26 @@ class AuthControllerTest {
                         HttpHeaders.SET_COOKIE,
                         containsString("refresh_token=")
                 ));
+    }
+
+    @Test
+    @DisplayName("토큰을 갱신하면 Access Token의 세션 ID가 Refresh Token의 세션 ID와 같다")
+    void issuesAccessTokenWithRefreshTokenSession() throws Exception {
+        Cookie csrfCookie = issueCsrfCookie();
+        IssuedRefreshToken issuedRefreshToken = issueRefreshToken();
+        UUID sessionId = jdbcTemplate.queryForObject(
+                "SELECT session_id FROM refresh_tokens WHERE token_hash = ?", UUID.class,
+                refreshTokenHasher.hash(issuedRefreshToken.rawToken()));
+
+        MockMvcResponse response = RestAssuredMockMvc.given()
+                .cookie("refresh_token", issuedRefreshToken.rawToken())
+                .cookie("XSRF-TOKEN", csrfCookie.getValue())
+                .header("X-XSRF-TOKEN", csrfCookie.getValue())
+                .post("/api/v1/auth/refresh");
+
+        Jwt jwt = jwtDecoder.decode(response.jsonPath().getString("accessToken"));
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(jwt.getClaimAsString("sid")).isEqualTo(sessionId.toString());
     }
 
     @Test

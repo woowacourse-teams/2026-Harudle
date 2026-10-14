@@ -296,6 +296,6 @@ class AdminGenerationControllerTest {
     }
 
     private String bearerToken(User user) {
-        return "Bearer " + accessTokenService.issue(user.getId(), Instant.now()).accessToken();
+        return "Bearer " + accessTokenService.issue(user.getId(), UUID.randomUUID(), Instant.now()).accessToken();
     }
 }

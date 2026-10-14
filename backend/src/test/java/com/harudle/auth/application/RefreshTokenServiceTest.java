@@ -104,6 +104,7 @@ class RefreshTokenServiceTest {
 
         assertThat(secondToken.rawToken()).isNotEqualTo(firstToken.rawToken());
         assertThat(rotatedToken.userId()).isEqualTo(user.getId());
+        assertThat(rotatedToken.sessionId()).isEqualTo(revokedToken.getSessionId());
         assertThat(revokedToken.isRevoked()).isTrue();
         assertThat(revokedToken.getRevokedAt()).isEqualTo(ROTATED_AT);
         assertThat(newToken.isRevoked()).isFalse();
@@ -140,6 +141,7 @@ class RefreshTokenServiceTest {
         flushAndClear();
 
         assertThat(legacy.getSessionId()).isNull();
+        assertThat(rotated.sessionId()).isNotNull();
         assertThat(findToken(rotated.issuedRefreshToken().rawToken()).getSessionId()).isNotNull();
         assertThat(sessionCount(user)).isEqualTo(1);
     }

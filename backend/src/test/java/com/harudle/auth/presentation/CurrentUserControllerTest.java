@@ -287,6 +287,6 @@ class CurrentUserControllerTest {
     }
 
     private String bearerToken(UUID userId) {
-        return "Bearer " + accessTokenService.issue(userId, Instant.now()).accessToken();
+        return "Bearer " + accessTokenService.issue(userId, UUID.randomUUID(), Instant.now()).accessToken();
     }
 }
