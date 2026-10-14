@@ -6,7 +6,7 @@ import sys
 import tempfile
 import unittest
 
-from prepare_dashboard import metric_filters, prepare_dashboard, service_widgets
+from prepare_dashboard import metric_filters, prepare_dashboard, read_dashboard, service_widgets
 
 
 INSTANCE_ID = "i-0123456789abcdef0"
@@ -117,6 +117,65 @@ class DashboardTests(unittest.TestCase):
             self.assertEqual(len(list(output.glob("*.json"))), 7)
             self.assertEqual(json.loads(before.read_text()), previous)
             self.assertEqual(len(json.loads((output / "dashboard.json").read_text())["widgets"]), 9)
+
+    def test_cli_accepts_console_source_and_preserves_widgets_and_variables_for_both_environments(self):
+        for environment in ("dev", "prod"):
+            with self.subTest(environment=environment), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                before = root / "before.json"
+                output = root / "result"
+                original = {"start": "-PT6H", "variables": [
+                    {"type": "property", "property": "InstanceId", "inputType": "input",
+                     "id": "ec2InstanceId", "defaultValue": INSTANCE_ID},
+                ], "widgets": [
+                    {"type": "text", "x": 0, "y": 0, "height": 2, "properties": {"markdown": "기존 안내"}},
+                ]}
+                before.write_text(json.dumps(original, ensure_ascii=False), encoding="utf-8")
+                saved_source = before.read_bytes()
+                command = [sys.executable, str(Path(__file__).with_name("prepare_dashboard.py")),
+                           "--environment", environment, "--instance-id", INSTANCE_ID,
+                           "--rds-instance-id", "harudle-db", "--dashboard", str(before), "--output", str(output)]
+
+                subprocess.run(command, capture_output=True, text=True, check=True)
+
+                result = json.loads((output / "dashboard.json").read_text())
+                self.assertEqual(before.read_bytes(), saved_source)
+                self.assertEqual(result["variables"], original["variables"])
+                self.assertEqual(result["start"], original["start"])
+                self.assertEqual(result["widgets"][:1], original["widgets"])
+                self.assertEqual(len(result["widgets"]), 10)
+                self.assertEqual(len(list(output.glob("*.json"))), 7)
+                for index, expected in enumerate(metric_filters(environment), start=1):
+                    self.assertEqual(json.loads((output / f"metric-filter-{index}.json").read_text()), expected)
+                before.write_text(json.dumps(result), encoding="utf-8")
+                subprocess.run(command, capture_output=True, text=True, check=True)
+                self.assertEqual(json.loads((output / "dashboard.json").read_text()), result)
+
+    def test_rejects_incomplete_console_source(self):
+        for source in ("{", "null", "[]", "{}", '{"widgets": {}}', '{"widgets": [null]}',
+                       '{"widgets": [{"properties": []}]}'):
+            with self.subTest(source=source), tempfile.TemporaryDirectory() as directory:
+                before = Path(directory) / "before.json"
+                before.write_text(source)
+                with self.assertRaises(ValueError):
+                    read_dashboard(before, "dev")
+
+    def test_cli_does_not_overwrite_input_dashboard(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            before = root / "dashboard.json"
+            before.write_text('{"widgets": []}')
+            saved_source = before.read_bytes()
+            command = [sys.executable, str(Path(__file__).with_name("prepare_dashboard.py")),
+                       "--environment", "dev", "--instance-id", INSTANCE_ID, "--rds-instance-id", "harudle-db",
+                       "--dashboard", str(before), "--output", str(root)]
+
+            result = subprocess.run(command, capture_output=True, text=True)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("원본 JSON과 생성할 파일의 경로를 다르게 지정하세요.", result.stderr)
+            self.assertEqual(before.read_bytes(), saved_source)
+            self.assertEqual(list(root.iterdir()), [before])
 
 
 if __name__ == "__main__":

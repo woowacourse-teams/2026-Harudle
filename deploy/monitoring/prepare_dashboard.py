@@ -131,31 +131,51 @@ def prepare_dashboard(original, environment, instance_id, rds_instance_id):
     return dashboard
 
 
+def read_dashboard(path, environment):
+    dashboard = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(dashboard, dict) and "DashboardBody" in dashboard:
+        expected_name = f"DASHBOARD-harudle-{environment}"
+        arn = dashboard.get("DashboardArn", "")
+        if not isinstance(arn, str) or not arn.endswith(f":dashboard/{expected_name}"):
+            raise ValueError(f"{expected_name} 대시보드를 조회한 JSON이 필요합니다.")
+        if not isinstance(dashboard["DashboardBody"], str):
+            raise ValueError("DashboardBody에는 JSON 문자열이 필요합니다.")
+        dashboard = json.loads(dashboard["DashboardBody"])
+    if not isinstance(dashboard, dict) or not isinstance(dashboard.get("widgets"), list):
+        raise ValueError("View/edit source의 JSON 전체를 저장하세요. widgets 목록이 필요합니다.")
+    if any(not isinstance(item, dict) or not isinstance(item.get("properties"), dict)
+           for item in dashboard["widgets"]):
+        raise ValueError("widgets의 각 항목에는 properties 객체가 필요합니다.")
+    return dashboard
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--environment", choices=NAMESPACES, required=True)
     parser.add_argument("--instance-id", required=True)
     parser.add_argument("--rds-instance-id", required=True)
-    parser.add_argument("--dashboard", type=Path, required=True, help="AWS get-dashboard JSON output")
+    parser.add_argument("--dashboard", type=Path, required=True,
+                        help="CloudWatch View/edit source JSON or AWS get-dashboard JSON output")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if not re.fullmatch(r"i-[0-9a-f]{8}(?:[0-9a-f]{9})?", args.instance_id) or set(args.instance_id[2:]) == {"0"}:
         parser.error("실제 EC2 InstanceId를 입력하세요.")
     if not re.fullmatch(r"[a-z][a-z0-9-]{0,62}", args.rds_instance_id):
         parser.error("실제 RDS DBInstanceIdentifier를 입력하세요.")
-    previous = json.loads(args.dashboard.read_text())
-    expected_name = f"DASHBOARD-harudle-{args.environment}"
-    if not previous.get("DashboardArn", "").endswith(f":dashboard/{expected_name}"):
-        parser.error(f"{expected_name} 대시보드를 조회한 JSON이 필요합니다.")
-    original = json.loads(previous["DashboardBody"])
+    try:
+        original = read_dashboard(args.dashboard, args.environment)
+    except (OSError, ValueError) as error:
+        parser.error(f"대시보드 JSON을 읽을 수 없습니다: {error}")
     dashboard = prepare_dashboard(original, args.environment, args.instance_id, args.rds_instance_id)
-    args.output.mkdir(parents=True, exist_ok=True)
     files = {"dashboard.json": dashboard}
     for index, configuration in enumerate(metric_filters(args.environment), start=1):
         files[f"metric-filter-{index}.json"] = configuration
+    if args.dashboard.resolve() in {(args.output / name).resolve() for name in files}:
+        parser.error("원본 JSON과 생성할 파일의 경로를 다르게 지정하세요.")
+    args.output.mkdir(parents=True, exist_ok=True)
     for name, content in files.items():
         target = args.output / name
-        target.write_text(json.dumps(content, ensure_ascii=False, indent=2) + "\n")
+        target.write_text(json.dumps(content, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         print(target)
 
 
