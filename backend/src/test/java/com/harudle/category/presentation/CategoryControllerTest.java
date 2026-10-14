@@ -1,8 +1,8 @@
 package com.harudle.category.presentation;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 
+import com.harudle.support.MockMvcIntegrationTest;
 import com.harudle.auth.application.AccessTokenService;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.UserRepository;
@@ -19,28 +19,16 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpHeaders;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers
-@SpringBootTest
-@AutoConfigureMockMvc
+@MockMvcIntegrationTest
 @Transactional
 class CategoryControllerTest {
-
-    @Container
-    @ServiceConnection
-    static final PostgreSQLContainer POSTGRESQL =
-            new PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"));
 
     @Autowired
     private MockMvc mockMvc;
@@ -201,7 +189,8 @@ class CategoryControllerTest {
         assertThat(forbidden.jsonPath().getString("code")).isEqualTo("FORBIDDEN");
 
         MockMvcResponse anonymous = RestAssuredMockMvc.given()
-                .postProcessors(csrf())
+                .cookie("XSRF-TOKEN", "test-csrf-token")
+                .header("X-XSRF-TOKEN", "test-csrf-token")
                 .contentType(ContentType.JSON)
                 .body("{\"name\":\"운동\"}")
                 .post("/api/v1/admin/categories");

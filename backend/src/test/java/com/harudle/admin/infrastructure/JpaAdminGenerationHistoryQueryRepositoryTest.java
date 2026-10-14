@@ -15,6 +15,7 @@ import com.harudle.generation.diary.domain.StoryboardProviderInfo;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.prompt.domain.GenerationPrompt;
 import com.harudle.generation.prompt.repository.GenerationPromptRepository;
+import com.harudle.support.ServiceIntegrationTestSupport;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -28,23 +29,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest
-class JpaAdminGenerationHistoryQueryRepositoryTest {
+class JpaAdminGenerationHistoryQueryRepositoryTest extends ServiceIntegrationTestSupport {
 
-    private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:18-alpine");
     private static final Instant CREATED_AT = Instant.parse("2026-08-06T00:00:00Z");
     private static final UUID FIRST_GENERATION_ID = UUID.fromString(
             "00000000-0000-0000-0000-000000000001"
@@ -55,10 +47,6 @@ class JpaAdminGenerationHistoryQueryRepositoryTest {
     private static final UUID THIRD_GENERATION_ID = UUID.fromString(
             "00000000-0000-0000-0000-000000000003"
     );
-    @Container
-    @ServiceConnection
-    static final PostgreSQLContainer POSTGRESQL_CONTAINER = new PostgreSQLContainer(POSTGRES_IMAGE);
-
     @Autowired
     private AdminGenerationHistoryQueryRepository generationHistoryQueryRepository;
 
@@ -73,9 +61,6 @@ class JpaAdminGenerationHistoryQueryRepositoryTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
-
-    @MockitoBean
-    private JwtDecoder jwtDecoder;
 
     private GenerationPrompt generationPrompt;
     private User firstUser;

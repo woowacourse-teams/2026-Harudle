@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.harudle.TestcontainersConfiguration;
 import com.harudle.diary.service.DiaryDeletionService;
 import com.harudle.feed.domain.Feed;
 import com.harudle.feed.repository.FeedLikeRepository;
@@ -50,8 +51,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -62,12 +63,10 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import org.springframework.transaction.IllegalTransactionStateException;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
+@Import(TestcontainersConfiguration.class)
 @SpringBootTest(properties = "harudle.generation.adapters.enabled=false")
 @AutoConfigureMockMvc
 class FeedLikePersistenceTest {
@@ -75,11 +74,6 @@ class FeedLikePersistenceTest {
     private static final Instant OCCURRED_AT = Instant.parse("2026-10-12T03:00:00Z");
     private static final int WORKER_COUNT = 8;
     private static final String CSRF_TOKEN = "real-cookie-and-header-value";
-
-    @Container
-    @ServiceConnection
-    private static final PostgreSQLContainer POSTGRESQL =
-            new PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"));
 
     @Autowired
     private FeedLikeService service;

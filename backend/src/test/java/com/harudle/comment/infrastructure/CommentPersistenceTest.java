@@ -15,6 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.harudle.TestcontainersConfiguration;
 import com.harudle.comment.repository.CommentRepository;
 import com.harudle.comment.service.CommentService;
 import com.harudle.comment.service.exception.CommentNotFoundException;
@@ -49,8 +50,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -62,13 +63,11 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.IllegalTransactionStateException;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.ObjectMapper;
 
 @Testcontainers(disabledWithoutDocker = true)
+@Import(TestcontainersConfiguration.class)
 @SpringBootTest(properties = {
         "harudle.generation.adapters.enabled=false",
         "harudle.profile.image-base-url=https://test.example.com/profiles"
@@ -79,11 +78,6 @@ class CommentPersistenceTest {
     private static final String CSRF_TOKEN = "comment-cookie-and-header-value";
     private static final Instant FIXTURE_TIME = Instant.parse("2026-10-12T03:00:00Z");
     private static final int WORKERS = 8;
-
-    @Container
-    @ServiceConnection
-    private static final PostgreSQLContainer POSTGRESQL =
-            new PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"));
 
     @Autowired
     private CommentService service;
@@ -1007,17 +1001,13 @@ class CommentPersistenceTest {
 }
 
 @Testcontainers(disabledWithoutDocker = true)
+@Import(TestcontainersConfiguration.class)
 @SpringBootTest(properties = {
         "harudle.generation.adapters.enabled=false",
         "harudle.profile.image-base-url=https://test.example.com/profiles"
 })
 @AutoConfigureMockMvc
 class CommentProfileIntegrationPersistenceTest {
-
-    @Container
-    @ServiceConnection
-    private static final PostgreSQLContainer POSTGRESQL =
-            new PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"));
 
     @Autowired
     private JdbcTemplate jdbc;
