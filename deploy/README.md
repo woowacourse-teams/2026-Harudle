@@ -63,7 +63,7 @@ CodeBuild 프로젝트는 다음 설정을 사용합니다.
 
 ```text
 Source: CodePipeline
-Environment: Amazon Linux / Standard / Small
+Environment: Amazon Linux 2023 / AArch64 Standard 3.0 or 4.0 / Small
 Privileged mode: enabled
 Service role: codebuild-project
 Buildspec: buildspec.yml
@@ -74,18 +74,21 @@ CloudWatch log group: /aws/codebuild/project-2026
 
 ### Docker 빌드 최적화
 
-CodeBuild 호스트와 EC2는 모두 ARM64입니다. builder와 runtime 단계는
-기존처럼 `--platform linux/arm64`로 실행하므로 에뮬레이션을 사용하지 않습니다.
+CodeBuild 호스트와 EC2는 모두 ARM64입니다. 백엔드는 CodeBuild의 Corretto 21로
+JAR를 만든 뒤 Dockerfile의 `codebuild` 타깃으로 실행 이미지만 포장합니다.
+최종 이미지는 기존처럼 `--platform linux/arm64`로 생성합니다. 기본 Docker 타깃은
+소스에서 빌드하므로 기존 `docker compose build`도 사용할 수 있습니다.
 
 프론트엔드의 PostHog 빌드 인자는 의존성 설치 이후에 선언하므로 분석 설정만
 바뀌었을 때 `pnpm install` 레이어까지 무효화하지 않습니다. `pnpm check`는 그대로
-실행합니다. 백엔드는 깨끗한 Docker builder에서 불필요한 `clean`을 생략합니다.
+실행합니다. 백엔드는 이전 클래스와 분석 상태를 복원하고 `clean` 없이 빌드합니다.
 
 이미지는 `docker-container` 빌더에서 Docker 형식 tar로 직접 내보냅니다.
 CodeBuild Docker daemon에 이미지를 로드하고 다시 `docker save`하는 단계를 줄입니다.
 압축하기 전에 tar의 manifest와 이미지 설정을 읽어 예상 태그 및 `linux/arm64`를
 검증하고, `gzip -1`로 압축한 뒤 gzip 무결성과 체크섬을 확인합니다.
-CodeBuild 이미지에는 Docker/buildx, `jq`, `tar`, `gzip`이 필요합니다.
+CodeBuild 이미지에는 Docker/buildx, Corretto 21, `jq`, `tar`, `gzip`과 GNU coreutils가 필요합니다.
+`install.runtime-versions.java: corretto21`을 지원하는 ARM64 표준 이미지를 사용합니다.
 
 아티팩트 이름은 기존과 같은 `backend-image.tar.gz`, `frontend-image.tar.gz`이므로
 CodeDeploy의 이미지 로드 절차를 그대로 사용합니다. 개선 효과는 CodeBuild 빌드와
@@ -95,83 +98,93 @@ CodeDeploy의 이미지 로드 절차를 그대로 사용합니다. 개선 효�
 
 ### CodeBuild 빌드 캐시
 
-`buildspec.yml`은 백엔드 Dockerfile의 `dependencies` 단계만
-`/root/.cache/harudle-buildkit/backend`에 저장합니다. `--target dependencies`와
-`--output type=cacheonly`로 환경·의존성 준비까지만 먼저 빌드하고, 그 단계의
-결과 레이어를 `mode=min`으로 내보냅니다. 같은 BuildKit 빌더에서 최종 이미지
-빌드를 이어가므로 준비된 의존성 레이어를 다시 사용할 수 있습니다. 최종 이미지
-빌드에는 외부 캐시 내보내기를 지정하지 않습니다.
+백엔드는 CodeBuild의 Corretto 21로 빌드합니다. Docker는 빌드가 끝난 JAR를
+실행 이미지에 넣습니다. 프론트엔드는 기존처럼 `pnpm check`를 실행합니다.
 
-저장 범위는 JDK 기반 이미지, Gradle 배포판·플러그인, 운영 코드의 컴파일·실행
-의존성과 annotation processor입니다. `resolveProductionDependencies` 작업은
-`compileClasspath`, `runtimeClasspath`, `annotationProcessor`의 실제 파일을
-해석해 필요한 JAR를 다운로드합니다. 기존 `dependencies` 보고서는 의존성 그래프만
-해석할 수 있어 이 작업으로 대체합니다. 테스트 의존성은 다운로드 대상에서 제외합니다.
+빌드는 다음 순서로 진행합니다.
 
-소스 복사 이후의 클래스 파일, 컴파일 분석 정보, `bootJar` 결과와 런타임 이미지
-레이어는 S3 캐시에 저장하지 않습니다. 런타임 패키지 설치 단계도 이번 캐시 범위에서
-제외합니다. 각 CodeBuild 실행에서 컴파일·패키징을 다시 수행하며, 증분 컴파일을
-위한 이전 빌드 결과는 복원하지 않습니다. JDK와 의존성 자체의 용량은 남아 있으므로
-실제 저장량과 전체 실행 시간을 비교해 효과를 확인합니다.
+1. 이번에 받은 백엔드 코드를 `/root/.cache/harudle-gradle/workspace`로 복사합니다.
+2. 이전 빌드의 클래스 파일과 Gradle 기록을 가져옵니다.
+3. `bootJar -x test`를 실행합니다. 바뀐 소스와 영향을 받는 클래스만 다시 컴파일합니다.
+4. 새 JAR를 `backend/build/codebuild/app.jar`에 놓고 Docker의 `codebuild` 타깃으로 포장합니다.
+5. 두 이미지의 태그, ARM64 여부, 압축 파일을 검사합니다. 성공하면 이전 빌드 기록을 새 기록으로 바꿉니다.
 
-프론트엔드는 `pnpm check`를 포함한 기존 이미지 빌드를 수행하며, 실행 간 외부
-캐시를 저장하거나 복원하지 않습니다. `cache.paths`도 백엔드 디렉터리로 제한합니다.
-이전 캐시에 프론트엔드 파일이 있어도 새로 저장하는 캐시에는 포함하지 않습니다.
-첫 의존성 캐시 내보내기가 성공하면 이전 백엔드 캐시는 의존성 전용 캐시로 교체됩니다.
-캐시 경로나 Dockerfile 단계 변경으로 첫 빌드에는 캐시가 없을 수 있습니다.
+작업 폴더는 매번 같은 경로를 사용합니다. 이번 소스는 새로 복사하고, 이전 소스를
+캐시에서 가져오지는 않습니다. 기본 Docker 타깃도 유지해서 `docker compose build`를
+사용할 수 있습니다.
 
-빌드 사이에 캐시를 유지하려면 CodeBuild 프로젝트에도 다음 설정을 적용합니다.
+#### 저장하는 파일
 
-1. 프로젝트의 **Edit > Artifacts > Additional configuration**에서 Cache type을
-   **Amazon S3**로 선택합니다.
-2. 프로젝트와 같은 리전의 캐시 버킷을 선택하고, 캐시 경로를
-   `harudle/build-cache`처럼 팀 폴더 아래에 지정합니다. 같은 CodeBuild 프로젝트를
-   사용하는 파이프라인은 이 캐시를 공유합니다.
-3. CodeBuild 서비스 역할에 해당 캐시 경로의 `s3:GetObject`, `s3:PutObject`와
-   버킷의 `s3:GetBucketLocation`, `s3:GetBucketAcl` 권한을 부여합니다. 버킷이 고객 관리 KMS 키로
-   암호화되어 있으면 해당 키의 복호화와 데이터 키 생성 권한도 필요합니다.
-4. 저장소의 변경된 `buildspec.yml`이 포함된 커밋으로 빌드합니다.
+| 대상 | 저장 위치와 내용 |
+| --- | --- |
+| Gradle 실행 파일 | `home/wrapper/dists` |
+| 다운로드한 라이브러리 | `home/caches/modules-2` |
+| Gradle 준비 파일 | 스크립트 실행 결과, 변환 결과, Java 분석, 파일 해시, 접근 기록, `home/native` 실행 파일 |
+| 이전 컴파일 결과 | 프로젝트 `.gradle`, 운영 클래스, 리소스, 생성 소스, 헤더, 컴파일 분석 파일 |
+| 빈 폴더 목록 | `incremental/directories`. 복원할 때 같은 출력 폴더를 다시 만듭니다. |
 
-`cache.paths`만 추가해서는 S3 캐시가 활성화되지 않습니다. S3 위치는 CodeBuild
-프로젝트 설정에서 지정하며, Docker daemon의 Local Docker layer cache를 켜는
-것만으로는 `docker-container` 빌더의 캐시 복원을 대신할 수 없습니다.
-`cache.key`는 지정하지 않아 매 빌드 후 캐시가 갱신되도록 합니다.
+위 경로의 기준은 `/root/.cache/harudle-gradle`입니다. 이전 컴파일 결과는 최근에 성공한
+한 세트만 보관합니다. Gradle 설정, Wrapper, Java 버전, OS, CPU 종류가 바뀌면 그 결과를
+사용하지 않고 다시 빌드합니다. Gradle도 입력 파일의 변경을 확인합니다.
 
-캐시가 없는 첫 빌드는 전체 빌드를 수행합니다. 새 캐시는 별도 임시 디렉터리에
-내보낸 후 기존 캐시와 교체해 오래된 blob의 누적을 방지합니다. 캐시 내보내기만
-실패한 경우에는 이미지 빌드를 계속 진행하고 기존 캐시를 유지합니다.
-의존성 준비나 최종 이미지 빌드 자체가 실패하면 빌드를 중단합니다.
+완성된 JAR, JDK, Docker 레이어, 프론트엔드, 테스트 결과, 보고서, Daemon 로그는 저장하지
+않습니다. `build/libs`를 복원하지 않으므로 JAR는 매번 새로 만듭니다. 클래스 파일을 또
+저장하는 Gradle Build Cache와 Configuration Cache도 켜지 않습니다.
 
-첫 번째 성공한 빌드의 캐시 업로드 로그와 두 번째 빌드의
-`Restoring backend build cache.`, BuildKit의 `CACHED` 표시를 확인합니다.
-프론트엔드에는 `Frontend external build cache is disabled.`가 출력됩니다.
-`Backend build cache directory size:` 다음의 `du -sh` 출력과 S3 캐시 파일 크기로
-저장량을 확인합니다. 디렉터리 크기와 S3 파일 크기는 압축으로 차이가 날 수 있습니다.
-캐시 효과는 복원·저장 시간을 포함한 전체 CodeBuild 실행 시간으로 비교합니다.
+Gradle의 프로젝트 기록과 빈 출력 폴더를 함께 복원해야 컴파일을 생략할 수 있습니다.
+프로젝트의 잠금 메타데이터도 보존하고, 의존성 캐시의 `modules-2.lock`만 제거합니다.
+컴파일이나 이미지 생성이 실패하면 이전 성공 기록을 유지합니다. 캐시 저장만 실패한
+경우에는 검사를 마친 이미지로 계속 진행합니다.
 
-#### 캐시 용량·시간 비교
+#### CodeBuild 설정
 
-Docker 빌드 로그에서 `[build-metrics] backend_gradle_bootjar_seconds=`를 검색하면
-Gradle 기동·컴파일·JAR 생성 시간을 초 단위로 확인할 수 있습니다. Docker 내부에서
-`date +%s`로 측정하며, 의존성 준비와 최종 이미지 내보내기·압축 시간은 포함하지
-않습니다. 캐시 디렉터리 크기는 `Backend build cache directory size:` 다음의
-`du -sh` 출력으로, 실제 S3 캐시 파일 크기는 S3에서 별도로 확인합니다.
+1. Corretto 21을 지원하는 Amazon Linux 2023 AArch64 Standard 3.0 또는 4.0 이미지를 사용합니다.
+2. **Edit > Artifacts > Additional configuration**에서 Cache type을 **Amazon S3**로 선택합니다.
+3. 기존 캐시 버킷과 팀 폴더 경로를 사용합니다. 예시는 `harudle/build-cache`입니다.
+4. 변경한 `buildspec.yml`이 들어 있는 커밋으로 빌드합니다.
 
-의존성 준비·이미지 내보내기는 BuildKit의 단계별 로그, 압축을 포함한 전체 빌드
-시간은 CodeBuild의 단계별·전체 실행 시간으로 확인합니다. CodeBuild가 자동으로
-수행하는 S3 캐시 다운로드·업로드도 전체 실행 시간에 포함해 비교합니다.
-별도의 캐시 파일 복사나 추가 압축은 수행하지 않습니다.
+CodeBuild 역할에는 해당 캐시 경로의 `s3:GetObject`, `s3:PutObject`와 버킷의
+`s3:GetBucketLocation`, `s3:GetBucketAcl` 권한이 필요합니다. 고객 관리 KMS 키를 쓰면
+복호화와 데이터 키 생성 권한도 필요합니다.
 
-같은 파이프라인·빌드 이미지·컴퓨팅 크기에서 기존 방식과 비교합니다. 첫 성공
-빌드는 의존성 캐시를 생성하는 실행으로 구분하고, 이후 의존성 설정은 그대로
-두고 소스만 변경한 빌드를 2~3회 비교합니다. 전체 실행 시간, S3 캐시 파일 크기,
-Gradle 시간과 `CACHED` 여부를 기록해 캐시 전송 비용보다 작업 생략 효과가 큰지
-판단합니다. 내보내기가 실패한 실행은 새 의존성 캐시의 용량 비교에서 제외합니다.
+`cache.key`는 넣지 않아 매 빌드 후 같은 캐시를 갱신합니다. dev와 prod가 같은 CodeBuild
+프로젝트를 쓰면 이 캐시도 공유합니다. 소스가 다르면 Gradle이 변경된 부분을 확인합니다.
+새 저장 경로로 바꾸기 때문에 첫 빌드에서는 캐시가 없을 수 있습니다.
 
-설정 근거는 [CodeBuild S3 캐시](https://docs.aws.amazon.com/codebuild/latest/userguide/caching-s3.html),
-[BuildKit 외부 캐시](https://docs.docker.com/build/cache/backends/),
-[Docker 단계별 빌드](https://docs.docker.com/build/building/multi-stage/)와
-[Gradle 의존성 해석](https://docs.gradle.org/current/userguide/dependency_resolution.html) 문서를 참고합니다.
+#### 시간과 용량 확인
+
+로그에서 아래 값을 확인합니다.
+
+| 로그 이름 | 뜻 |
+| --- | --- |
+| `backend_incremental_state_restored` | 이전 컴파일 결과를 가져왔는지 |
+| `backend_incremental_restore_seconds` | 가져온 결과를 작업 폴더에 복사한 시간 |
+| `backend_gradle_bootjar_seconds` | Gradle 시작부터 JAR 생성까지 걸린 시간 |
+| `backend_incremental_save_seconds` | 새 컴파일 결과를 저장한 시간 |
+
+`compileJava UP-TO-DATE`는 컴파일을 생략했다는 뜻입니다. 파일을 바꾼 경우에는 실제로
+얼마나 다시 컴파일했는지도 확인합니다. 복원 성공 로그만으로 속도가 빨라졌다고 판단하지
+않습니다.
+
+Gradle의 자세한 시간은 아티팩트의 `build-artifacts/backend-gradle-profile`에서 봅니다.
+시작, 설정, `compileJava`, `bootJar` 시간을 각각 확인할 수 있습니다. 저장 후 출력하는
+`du -sh`는 압축 전 사용량입니다. 실제 저장 용량은 S3 캐시 파일 크기로 확인합니다.
+
+같은 빌드 이미지와 컴퓨팅 크기에서 비교합니다. 첫 빌드, 소스 일부 변경, 리소스만 변경,
+백엔드 변경 없음의 경우를 나눠 봅니다. S3에서 캐시를 받는 시간과 올리는 시간을 포함한
+전체 CodeBuild 시간이 줄어야 효과가 있는 것입니다.
+
+캐시 복원과 실패 처리는 다음 명령으로 확인할 수 있습니다.
+
+```bash
+bash deploy/scripts/test_codebuild_backend.sh
+```
+
+참고 문서는 [CodeBuild S3 캐시](https://docs.aws.amazon.com/codebuild/latest/userguide/caching-s3.html),
+[지원 런타임](https://docs.aws.amazon.com/codebuild/latest/userguide/available-runtimes.html),
+[Gradle 증분 컴파일](https://docs.gradle.org/current/userguide/java_plugin.html#sec:incremental_compile),
+[Gradle 캐시 폴더](https://docs.gradle.org/current/userguide/directory_layout.html),
+[빌드 시간 보고서](https://docs.gradle.org/current/userguide/inspect.html#sec:profiling_build)입니다.
 
 CodeDeploy 애플리케이션은 EC2/온프레미스 플랫폼과 현재 위치 배포를 사용합니다. 배포 그룹 서비스 역할은 `codedeploy-project`이며, 에이전트를 직접 설치한 EC2에서는 Systems Manager 에이전트 구성 값을 `Never`로 설정합니다.
 
