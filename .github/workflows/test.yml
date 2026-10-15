@@ -103,6 +103,9 @@ jobs:
       - name: Verify Docker
         run: docker info
 
+      - name: Test CodeBuild backend cache (offline)
+        run: bash ../deploy/scripts/test_codebuild_backend.sh
+
       - name: Test deployment image environment
         run: bash ../deploy/scripts/test_image_environment.sh
 
