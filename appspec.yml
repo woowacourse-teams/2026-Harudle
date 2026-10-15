@@ -14,6 +14,10 @@ files:
     destination: /opt/harudle/maintenance
   - source: deploy/scripts/run_profile_backfill.sh
     destination: /opt/harudle/maintenance
+  - source: backend/load-test
+    destination: /opt/harudle/load-test
+  - source: backend/src/main/resources/load-test-diary.png
+    destination: /opt/harudle/load-test
 
 hooks:
   BeforeInstall:
