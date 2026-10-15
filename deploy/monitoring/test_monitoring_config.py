@@ -155,18 +155,21 @@ class MonitoringConfigTests(unittest.TestCase):
             self.assertEqual(processor["metric_namespace"], namespace)
             self.assertEqual(prometheus["prometheus_config_path"], "/opt/harudle/monitoring/prometheus.yaml")
             item = copy.deepcopy(configuration)
-            metrics = item["metrics"]
-            self.assertEqual(metrics["namespace"], "CWAgent")
-            self.assertEqual(metrics["append_dimensions"], {"InstanceId": "${aws:InstanceId}"})
-            # Add only procstat; retain host CPU/memory/disk fragments on append-config.
-            self.assertEqual(set(metrics["metrics_collected"]), {"procstat"})
+            if environment == "dev":
+                metrics = item.pop("metrics")
+                self.assertEqual(metrics["namespace"], "CWAgent")
+                self.assertEqual(metrics["append_dimensions"], {"InstanceId": "${aws:InstanceId}"})
+                self.assertEqual(set(metrics["metrics_collected"]), {"procstat"})
+            else:
+                # Production already collects host metrics and Java RSS in Harudle/Prod.
+                self.assertNotIn("metrics", item)
             item["logs"]["metrics_collected"]["prometheus"]["log_group_name"] = "ENVIRONMENT"
             item["logs"]["metrics_collected"]["prometheus"]["emf_processor"]["metric_namespace"] = "ENVIRONMENT"
             normalized.append(item)
         self.assertEqual(*normalized)
 
-    def test_procstat_selects_backend_java_without_counting_parent_or_other_java(self):
-        configuration, _, _ = read_processor("prod")
+    def test_dev_procstat_selects_backend_java_without_counting_parent_or_other_java(self):
+        configuration, _, _ = read_processor("dev")
         processes = configuration["metrics"]["metrics_collected"]["procstat"]
         self.assertEqual(len(processes), 1)
         process = processes[0]
