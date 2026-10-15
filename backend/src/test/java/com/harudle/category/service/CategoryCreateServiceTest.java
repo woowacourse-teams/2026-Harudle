@@ -11,27 +11,18 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers
 @DataJpaTest(showSql = false)
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import(CategoryCreateService.class)
+@Import(CategoryJpaTestConfiguration.class)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class CategoryCreateServiceTest {
-
-    @Container
-    @ServiceConnection
-    static final PostgreSQLContainer POSTGRESQL =
-            new PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"));
 
     @Autowired
     private CategoryCreateService service;

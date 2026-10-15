@@ -1,12 +1,26 @@
 /** @jest-environment node */
 
-import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  jest,
+} from '@jest/globals';
+import * as auth from '../shared/auth';
+import { createFeedComment } from '../domain/feeds/feedCommentCreate';
+import { deleteFeedComment } from '../domain/feeds/feedCommentDelete';
 import {
   getFeedComments,
   isFeedCommentsResponse,
   type FeedCommentsResponse,
 } from '../domain/feeds/feedComments';
-import { feedHandlers, resetFeedMockState } from './feedHandlers';
+import {
+  FEED_MOCK_CSRF_TOKEN,
+  feedHandlers,
+  resetFeedMockState,
+} from './feedHandlers';
 
 jest.mock('msw', () => {
   class MockHttpResponse extends Response {
@@ -50,6 +64,10 @@ interface MockHandler {
 const handlers = feedHandlers as unknown as MockHandler[];
 const memberHeaders = {
   Authorization: 'Bearer mock-access-token',
+};
+const commentMutationHeaders = {
+  ...memberHeaders,
+  'X-XSRF-TOKEN': FEED_MOCK_CSRF_TOKEN,
 };
 const ownFeedId = '00000000-0000-4000-8000-000000000001';
 const otherFeedId = '00000000-0000-4000-8000-000000000002';
@@ -119,6 +137,94 @@ const readCommentPage = async (
 };
 
 beforeEach(() => resetFeedMockState());
+afterEach((): void => {
+  jest.restoreAllMocks();
+});
+
+describe('댓글 변경 CSRF 계약', (): void => {
+  const ownCommentId = '10000000-0000-4000-8000-000000000001';
+
+  it.each([undefined, 'invalid-token'])(
+    'CSRF가 누락되거나 잘못되면 작성·삭제와 댓글 개수 변경을 막는다: %s',
+    async (csrfToken): Promise<void> => {
+      const headers = new Headers(memberHeaders);
+      if (csrfToken !== undefined) headers.set('X-XSRF-TOKEN', csrfToken);
+
+      const responses = [
+        await requestApi(`/api/v1/feeds/${ownFeedId}/comments`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ content: '새 댓글' }),
+        }),
+        await requestApi(`/api/v1/comments/${ownCommentId}`, {
+          method: 'DELETE',
+          headers,
+        }),
+      ];
+      for (const response of responses) {
+        expect(response.status).toBe(403);
+        await expect(response.json()).resolves.toMatchObject({
+          code: 'INVALID_CSRF_TOKEN',
+        });
+      }
+
+      const feed = await requestApi(`/api/v1/feeds/${ownFeedId}`);
+      await expect(feed.json()).resolves.toMatchObject({ commentCount: 24 });
+      const comments = await readCommentPage(
+        await requestApi(`/api/v1/feeds/${ownFeedId}/comments`),
+      );
+      expect(comments.items[0].id).toBe(ownCommentId);
+    },
+  );
+
+  it('클라이언트가 발급받은 CSRF로 댓글을 작성하고 삭제한다', async (): Promise<void> => {
+    const requestCsrfToken = jest
+      .spyOn(auth, 'requestCsrfToken')
+      .mockResolvedValue(FEED_MOCK_CSRF_TOKEN);
+    jest
+      .spyOn(auth, 'authFetch')
+      .mockImplementation((info, init): Promise<Response> => {
+        if (typeof info !== 'string')
+          throw new Error('문자열 주소가 필요합니다.');
+        const headers = new Headers(init?.headers);
+        headers.set('Authorization', memberHeaders.Authorization);
+        return requestApi(info, { ...init, headers });
+      });
+
+    const comment = await createFeedComment({
+      feedId: ownFeedId,
+      content: '  새 댓글  ',
+    });
+    expect(comment).toMatchObject({ content: '새 댓글', isMine: true });
+    const createdFeed = await requestApi(`/api/v1/feeds/${ownFeedId}`);
+    await expect(createdFeed.json()).resolves.toMatchObject({
+      commentCount: 25,
+    });
+
+    await deleteFeedComment({ commentId: comment.id });
+    const deletedFeed = await requestApi(`/api/v1/feeds/${ownFeedId}`);
+    await expect(deletedFeed.json()).resolves.toMatchObject({
+      commentCount: 24,
+    });
+    expect(requestCsrfToken).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['create', 'delete'] as const)(
+    'CSRF 발급 실패 시 댓글 변경 요청을 보내지 않는다: %s',
+    async (operation): Promise<void> => {
+      const error = new Error('CSRF 발급 실패');
+      jest.spyOn(auth, 'requestCsrfToken').mockRejectedValue(error);
+      const authFetch = jest.spyOn(auth, 'authFetch');
+      const request =
+        operation === 'create'
+          ? createFeedComment({ feedId: ownFeedId, content: '새 댓글' })
+          : deleteFeedComment({ commentId: ownCommentId });
+
+      await expect(request).rejects.toBe(error);
+      expect(authFetch).not.toHaveBeenCalled();
+    },
+  );
+});
 
 describe('피드 페이지 MSW', () => {
   it('비로그인 카테고리와 목록 조회, 기본 크기, 마지막 페이지를 지원한다', async () => {
@@ -378,7 +484,7 @@ describe('피드 상세와 댓글 MSW 계약', (): void => {
     for (const content of ['   ', '😀'.repeat(101)]) {
       const invalid = await requestApi(commentPath, {
         method: 'POST',
-        headers: memberHeaders,
+        headers: commentMutationHeaders,
         body: JSON.stringify({ content }),
       });
       await expect(invalid.json()).resolves.toMatchObject({
@@ -387,7 +493,7 @@ describe('피드 상세와 댓글 MSW 계약', (): void => {
     }
     const response = await requestApi(commentPath, {
       method: 'POST',
-      headers: memberHeaders,
+      headers: commentMutationHeaders,
       body: JSON.stringify({ content: `  ${'😀'.repeat(100)}  ` }),
     });
     expect(response.status).toBe(201);
@@ -410,7 +516,7 @@ describe('피드 상세와 댓글 MSW 계약', (): void => {
       (
         await requestApi(`/api/v1/comments/${otherCommentId}`, {
           method: 'DELETE',
-          headers: memberHeaders,
+          headers: commentMutationHeaders,
         })
       ).status,
     ).toBe(403);
@@ -418,13 +524,13 @@ describe('피드 상세와 댓글 MSW 계약', (): void => {
       (
         await requestApi(`/api/v1/comments/${ownCommentId}`, {
           method: 'DELETE',
-          headers: memberHeaders,
+          headers: commentMutationHeaders,
         })
       ).status,
     ).toBe(204);
     const missing = await requestApi(`/api/v1/comments/${ownCommentId}`, {
       method: 'DELETE',
-      headers: memberHeaders,
+      headers: commentMutationHeaders,
     });
     await expect(missing.json()).resolves.toMatchObject({
       code: 'COMMENT_NOT_FOUND',

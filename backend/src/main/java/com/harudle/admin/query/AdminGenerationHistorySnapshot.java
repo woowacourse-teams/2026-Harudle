@@ -12,6 +12,13 @@ public record AdminGenerationHistorySnapshot(
         Instant requestedAt,
         GenerationStatus status,
         Instant completedAt,
-        GenerationErrorCode errorCode
+        GenerationErrorCode errorCode,
+        String storyboardProvider,
+        String storyboardModel
 ) {
+
+    public AdminGenerationHistorySnapshot(UUID id, UUID userId, String userName, Instant requestedAt,
+            GenerationStatus status, Instant completedAt, GenerationErrorCode errorCode) {
+        this(id, userId, userName, requestedAt, status, completedAt, errorCode, null, null);
+    }
 }

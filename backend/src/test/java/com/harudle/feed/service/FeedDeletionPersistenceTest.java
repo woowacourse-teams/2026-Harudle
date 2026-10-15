@@ -8,6 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.harudle.TestcontainersConfiguration;
 import com.harudle.category.service.port.CategoryReader;
 import com.harudle.diary.repository.DiaryLifecycleRepository;
 import com.harudle.diary.service.DiaryDeletionService;
@@ -44,18 +45,16 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.context.annotation.Import;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.IllegalTransactionStateException;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
+@Import(TestcontainersConfiguration.class)
 @SpringBootTest
 class FeedDeletionPersistenceTest {
     private static final UUID AUTHOR = UUID.fromString("08d69a34-6d70-4d42-a158-671bc67733c9");
@@ -67,8 +66,6 @@ class FeedDeletionPersistenceTest {
     private static final String IMAGE = "generated/feed-deletion-test.webp";
     private static final String SOURCE = "공개하면 안 되는 개인 일기 원문";
 
-    @Container @ServiceConnection
-    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"));
     @PersistenceContext private EntityManager entityManager;
     @Autowired private TransactionTemplate transactions;
     @Autowired private FeedPublicationService publication;

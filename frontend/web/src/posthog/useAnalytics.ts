@@ -69,6 +69,11 @@ interface AnalyticsEventMap {
     category_id: number | null;
     category_name: string;
   };
+  feed_link_copy_clicked: {
+    feature: 'feed';
+    operation: 'copy_link';
+    feed_id: string;
+  };
   diary_timeline_viewed: {
     year: number;
     month: number;

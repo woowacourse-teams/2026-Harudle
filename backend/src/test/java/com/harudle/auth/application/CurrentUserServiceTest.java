@@ -3,6 +3,7 @@ package com.harudle.auth.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.harudle.TestcontainersConfiguration;
 import com.harudle.auth.domain.OAuthAccount;
 import com.harudle.auth.domain.OAuthProvider;
 import com.harudle.auth.domain.User;
@@ -20,29 +21,20 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
 @DataJpaTest(showSql = false, properties = {
         "harudle.profile.image-base-url=https://www.harudle.com/profile-images/v1"
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({CurrentUserService.class, ProfileConfiguration.class, ProfileImageUrlResolver.class})
+@Import({TestcontainersConfiguration.class, CurrentUserService.class, ProfileConfiguration.class, ProfileImageUrlResolver.class})
 class CurrentUserServiceTest {
 
-    private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:18-alpine");
     private static final Instant CREATED_AT = Instant.parse("2026-08-11T10:00:00Z");
     private static final Instant DELETED_AT = Instant.parse("2026-08-12T09:00:00Z");
-
-    @Container
-    @ServiceConnection
-    static final PostgreSQLContainer POSTGRESQL_CONTAINER = new PostgreSQLContainer(POSTGRES_IMAGE);
 
     @Autowired
     private CurrentUserService currentUserService;

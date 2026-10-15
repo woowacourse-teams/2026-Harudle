@@ -39,6 +39,7 @@ class TraceIdFilterTest {
         );
 
         assertThat(traceIdDuringRequest).hasValue(TRACE_ID);
+        assertThat(response.getHeader("X-Trace-Id")).isEqualTo(TRACE_ID);
         assertThat(MDC.get("traceId")).isNull();
     }
 
@@ -53,6 +54,19 @@ class TraceIdFilterTest {
                 }
         )).isInstanceOf(ServletException.class);
 
+        assertThat(response.getHeader("X-Trace-Id")).isEqualTo(TRACE_ID);
         assertThat(MDC.get("traceId")).isNull();
+    }
+
+    @Test
+    @DisplayName("응답에는 클라이언트가 보낸 값 대신 서버가 생성한 Trace ID를 사용한다")
+    void responseUsesServerGeneratedTraceId() throws Exception {
+        request.addHeader("X-Trace-Id", "client-provided-value");
+
+        traceIdFilter.doFilter(request, response, (servletRequest, servletResponse) -> {
+            assertThat(response.getHeader("X-Trace-Id")).isEqualTo(MDC.get("traceId"));
+        });
+
+        assertThat(response.getHeader("X-Trace-Id")).isEqualTo(TRACE_ID);
     }
 }

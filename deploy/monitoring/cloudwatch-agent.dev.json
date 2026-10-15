@@ -1,9 +1,24 @@
 {
+  "metrics": {
+    "namespace": "CWAgent",
+    "append_dimensions": {
+      "InstanceId": "${aws:InstanceId}"
+    },
+    "metrics_collected": {
+      "procstat": [
+        {
+          "pattern": "^([^ ]*/)?java +.*-jar +/app/app[.]jar( +.*)?$",
+          "measurement": ["memory_rss"],
+          "metrics_collection_interval": 10
+        }
+      ]
+    }
+  },
   "logs": {
     "metrics_collected": {
       "prometheus": {
         "log_group_name": "/harudle/dev/prometheus-emf",
-        "prometheus_config_path": "/opt/harudle/monitoring/prometheus.yaml",
+        "prometheus_config_path": "/opt/harudle/monitoring/prometheus.dev.yaml",
         "emf_processor": {
           "metric_declaration_dedup": true,
           "metric_namespace": "Harudle/Dev",
@@ -17,6 +32,16 @@
             "harudle_image_load_failures_total": "Count",
             "http_server_requests_seconds_count": "Count",
             "hikaricp_connections_pending": "Count",
+            "hikaricp_connections_acquire_seconds_sum": "Seconds",
+            "hikaricp_connections_acquire_seconds_count": "Count",
+            "hikaricp_connections_acquire_seconds_max": "Seconds",
+            "hikaricp_connections_timeout_total": "Count",
+            "jvm_memory_used_bytes": "Bytes",
+            "jvm_memory_committed_bytes": "Bytes",
+            "jvm_memory_max_bytes": "Bytes",
+            "jvm_gc_pause_seconds_count": "Count",
+            "jvm_gc_pause_seconds_sum": "Seconds",
+            "jvm_gc_pause_seconds_max": "Seconds",
             "harudle_generation_duration_seconds_sum": "Seconds",
             "harudle_generation_duration_seconds_count": "Count",
             "harudle_gemini_tokens_total": "Count"
@@ -75,6 +100,30 @@
               "label_matcher": "^harudle-backend$",
               "dimensions": [["job", "pool"]],
               "metric_selectors": ["^hikaricp_connections_pending$"]
+            },
+            {
+              "source_labels": ["job"],
+              "label_matcher": "^harudle-backend$",
+              "dimensions": [["job", "pool"]],
+              "metric_selectors": ["^hikaricp_connections_acquire_seconds_(sum|count|max)$"]
+            },
+            {
+              "source_labels": ["job"],
+              "label_matcher": "^harudle-backend$",
+              "dimensions": [["job", "pool"]],
+              "metric_selectors": ["^hikaricp_connections_timeout_total$"]
+            },
+            {
+              "source_labels": ["job", "area"],
+              "label_matcher": "^harudle-backend;(heap|nonheap)$",
+              "dimensions": [["job", "area", "id"]],
+              "metric_selectors": ["^jvm_memory_(used|committed|max)_bytes$"]
+            },
+            {
+              "source_labels": ["job"],
+              "label_matcher": "^harudle-backend$",
+              "dimensions": [["job", "gc", "action", "cause"]],
+              "metric_selectors": ["^jvm_gc_pause_seconds_(count|sum|max)$"]
             },
             {
               "source_labels": ["job"],

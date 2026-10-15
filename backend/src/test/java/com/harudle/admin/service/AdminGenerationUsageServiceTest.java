@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.harudle.admin.service.exception.AdminGenerationLimitBelowUsageException;
 import com.harudle.generation.usage.domain.GenerationUsage;
 import com.harudle.generation.usage.repository.GenerationUsageRepository;
+import com.harudle.support.ServiceIntegrationTestSupport;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.UUID;
@@ -21,22 +22,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest
-class AdminGenerationUsageServiceTest {
+class AdminGenerationUsageServiceTest extends ServiceIntegrationTestSupport {
 
-    private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:18-alpine");
     private static final UUID USER_ID = UUID.fromString("08d69a34-6d70-4d42-a158-671bc67733c9");
     private static final UUID IDEMPOTENCY_KEY = UUID.fromString(
             "b7a8a9aa-0b1c-4d2e-8f3a-4b5c6d7e8f90"
@@ -44,10 +36,6 @@ class AdminGenerationUsageServiceTest {
     private static final ZoneId SERVICE_ZONE = ZoneId.of("Asia/Seoul");
     private static final LocalDate USAGE_DATE = LocalDate.now(SERVICE_ZONE);
     private static final long CONCURRENCY_READY_TIMEOUT_SECONDS = 5L;
-
-    @Container
-    @ServiceConnection
-    static final PostgreSQLContainer POSTGRESQL_CONTAINER = new PostgreSQLContainer(POSTGRES_IMAGE);
 
     @Autowired
     private AdminGenerationUsageService adminGenerationUsageService;
@@ -60,9 +48,6 @@ class AdminGenerationUsageServiceTest {
 
     @Autowired
     private TransactionTemplate transactionTemplate;
-
-    @MockitoBean
-    private JwtDecoder jwtDecoder;
 
     @BeforeEach
     void setUp() {

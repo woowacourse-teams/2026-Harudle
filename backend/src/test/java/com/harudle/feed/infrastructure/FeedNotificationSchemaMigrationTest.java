@@ -46,7 +46,7 @@ class FeedNotificationSchemaMigrationTest {
 
     @BeforeEach
     void upgradeExistingSchema() throws SQLException {
-        migrateExistingSchemaTo("26");
+        migrateExistingSchemaTo("27");
     }
 
     private void migrateExistingSchemaTo(String target) throws SQLException {
@@ -88,7 +88,7 @@ class FeedNotificationSchemaMigrationTest {
     @DisplayName("빈 PostgreSQL에도 전체 마이그레이션과 카테고리 시드를 적용할 수 있다")
     void migrateEmptyDatabase() throws SQLException {
         flyway().clean();
-        assertThat(flyway().migrate().migrationsExecuted).isEqualTo(26);
+        assertThat(flyway().migrate().migrationsExecuted).isEqualTo(27);
         flyway().validate();
         assertThat(queryLong("SELECT count(*) FROM categories WHERE is_active")).isEqualTo(2);
         assertThat(queryLong("""
@@ -102,7 +102,7 @@ class FeedNotificationSchemaMigrationTest {
     @Test
     @DisplayName("기존 활성 Refresh Token을 세션에 연결하고 세션 소유자 변경을 막는다")
     void migrateLegacyRefreshTokensAndProtectSessionOwnership() throws SQLException {
-        migrateExistingSchemaTo("23");
+        migrateExistingSchemaTo("24");
         String insertToken = """
                 INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
                 VALUES (?, ?, ?)
@@ -112,7 +112,7 @@ class FeedNotificationSchemaMigrationTest {
         execute(insertToken, AUTHOR, "c".repeat(64), tomorrow);
         execute(insertToken, AUTHOR, "d".repeat(64), OffsetDateTime.now().minusDays(1));
 
-        assertThat(flyway("24").migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(flyway("25").migrate().migrationsExecuted).isEqualTo(1);
         assertThat(queryLong("""
                 SELECT count(DISTINCT session_id) FROM refresh_tokens
                 WHERE user_id = ? AND expires_at > CURRENT_TIMESTAMP
@@ -145,12 +145,12 @@ class FeedNotificationSchemaMigrationTest {
     }
 
     @Test
-    @DisplayName("V25는 기존 푸시 등록과 새 등록의 버전을 0으로 시작하고 음수·NULL을 거부한다")
+    @DisplayName("V26은 기존 푸시 등록과 새 등록의 버전을 0으로 시작하고 음수·NULL을 거부한다")
     void initializePushRegistrationVersion() throws SQLException {
-        migrateExistingSchemaTo("24");
+        migrateExistingSchemaTo("25");
         UUID existing = createRegistration(AUTHOR, UUID.randomUUID(), "fid-existing");
 
-        assertThat(flyway("25").migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(flyway("26").migrate().migrationsExecuted).isEqualTo(1);
         assertThat(queryLong("SELECT version FROM push_registrations WHERE id = ?", existing)).isZero();
 
         UUID fresh = createRegistration(READER, UUID.randomUUID(), "fid-fresh");
@@ -160,9 +160,9 @@ class FeedNotificationSchemaMigrationTest {
     }
 
     @Test
-    @DisplayName("V26은 기존 활성 등록만 수신 켜짐으로 옮기고 세션 없는 등록은 옮기지 않는다")
+    @DisplayName("V27은 기존 활성 등록만 수신 켜짐으로 옮기고 세션 없는 등록은 옮기지 않는다")
     void initializePushRegistrationStates() throws SQLException {
-        migrateExistingSchemaTo("25");
+        migrateExistingSchemaTo("26");
         UUID session = UUID.randomUUID();
         UUID device = UUID.randomUUID();
         execute("INSERT INTO auth_sessions (id, user_id) VALUES (?, ?)", session, AUTHOR);
@@ -170,7 +170,7 @@ class FeedNotificationSchemaMigrationTest {
         execute("UPDATE push_registrations SET session_id = ? WHERE id = ?", session, active);
         createRegistration(READER, UUID.randomUUID(), "fid-legacy");
 
-        assertThat(flyway("26").migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(flyway("27").migrate().migrationsExecuted).isEqualTo(1);
         assertThat(queryLong("SELECT state_version FROM push_registration_states WHERE session_id = ?"
                 + " AND device_id = ? AND enabled", session, device)).isEqualTo(1);
         assertThat(queryLong("SELECT count(*) FROM push_registration_states")).isEqualTo(1);
@@ -291,7 +291,7 @@ class FeedNotificationSchemaMigrationTest {
                 VALUES (?, ?, ?, ?)
                 """, registration, AUTHOR, UUID.randomUUID(), "legacy-token");
 
-        assertThatThrownBy(() -> flyway("23").migrate()).isInstanceOf(FlywayException.class);
+        assertThatThrownBy(() -> flyway("24").migrate()).isInstanceOf(FlywayException.class);
         assertThat(queryLong("SELECT count(*) FROM push_registrations WHERE id = ? "
                 + "AND recipient_kind = 'FCM_TOKEN'", registration)).isEqualTo(1);
     }
@@ -572,7 +572,7 @@ class FeedNotificationSchemaMigrationTest {
     }
 
     private static Flyway flyway() {
-        return flyway("26");
+        return flyway("27");
     }
 
     private static Flyway flyway(String target) {

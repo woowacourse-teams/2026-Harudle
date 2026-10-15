@@ -1,8 +1,8 @@
 package com.harudle.auth.presentation;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 
+import com.harudle.support.MockMvcIntegrationTest;
 import com.harudle.auth.application.AccessTokenService;
 import com.harudle.auth.domain.OAuthAccount;
 import com.harudle.auth.domain.OAuthProvider;
@@ -19,31 +19,17 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest(properties = {
-        "harudle.profile.image-base-url=https://www.harudle.com/profile-images/v1"
-})
-@AutoConfigureMockMvc
+@MockMvcIntegrationTest
 class CurrentUserControllerTest {
 
-    private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:18-alpine");
     private static final Instant CREATED_AT = Instant.parse("2026-08-11T10:00:00Z");
-
-    @Container
-    @ServiceConnection
-    static final PostgreSQLContainer POSTGRESQL_CONTAINER = new PostgreSQLContainer(POSTGRES_IMAGE);
 
     @Autowired
     private MockMvc mockMvc;
@@ -67,6 +53,7 @@ class CurrentUserControllerTest {
 
     @AfterEach
     void tearDown() {
+        userRepository.deleteAll();
         RestAssuredMockMvc.reset();
     }
 
@@ -226,7 +213,8 @@ class CurrentUserControllerTest {
     void requiresBearerAuthenticationForNicknameChange() {
         User user = saveProfileUser();
         MockMvcResponse unauthenticated = RestAssuredMockMvc.given()
-                .postProcessors(csrf())
+                .cookie("XSRF-TOKEN", "test-csrf-token")
+                .header("X-XSRF-TOKEN", "test-csrf-token")
                 .contentType(MediaType.APPLICATION_JSON_VALUE)
                 .body(Map.of("nickname", "새별명"))
                 .patch("/api/v1/me/nickname");

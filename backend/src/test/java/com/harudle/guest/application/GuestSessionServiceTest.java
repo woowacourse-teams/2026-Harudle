@@ -3,6 +3,7 @@ package com.harudle.guest.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.harudle.TestcontainersConfiguration;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.guest.configuration.GuestSessionProperties;
@@ -19,12 +20,8 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Import;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
 @DataJpaTest(
@@ -34,19 +31,15 @@ import org.testcontainers.utility.DockerImageName;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @EnableConfigurationProperties(GuestSessionProperties.class)
 @Import({
+        TestcontainersConfiguration.class,
         GuestSessionService.class,
         GuestSessionTokenGenerator.class,
         GuestSessionTokenHasher.class
 })
 class GuestSessionServiceTest {
 
-    private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:18-alpine");
     private static final Instant ISSUED_AT = Instant.parse("2026-08-19T00:00:00Z");
     private static final Duration SESSION_TTL = Duration.ofDays(30);
-
-    @Container
-    @ServiceConnection
-    static final PostgreSQLContainer POSTGRESQL_CONTAINER = new PostgreSQLContainer(POSTGRES_IMAGE);
 
     @Autowired
     private GuestSessionService guestSessionService;

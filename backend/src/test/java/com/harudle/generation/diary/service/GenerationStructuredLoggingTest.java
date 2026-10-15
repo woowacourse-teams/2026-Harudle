@@ -9,16 +9,30 @@ import static org.mockito.Mockito.when;
 
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.core.OutputStreamAppender;
+import com.harudle.generation.config.StoryboardProviderProperties;
 import com.harudle.generation.diary.domain.GenerationErrorCode;
 import com.harudle.generation.diary.domain.GenerationStatus;
+import com.harudle.generation.diary.domain.StoryboardProviderInfo;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
+import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
+import com.harudle.generation.diary.service.exception.AiGenerationException;
 import com.harudle.generation.diary.service.port.ImageStorage;
+import com.harudle.generation.diary.service.port.StoryboardGenerator;
+import com.harudle.generation.diary.service.port.dto.GeneratedStoryboard;
+import com.harudle.generation.diary.service.port.dto.StoryboardGenerationRequest;
+import com.harudle.generation.diary.service.storyboard.StoryboardAttemptRunner;
+import com.harudle.generation.diary.service.storyboard.StoryboardGenerationService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.function.Supplier;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -182,6 +196,67 @@ class GenerationStructuredLoggingTest {
         }
     }
 
+    @ParameterizedTest
+    @EnumSource(GenerationContext.class)
+    @DisplayName("메인 실패와 대체 사유 및 보조 성공을 같은 생성 ID와 실제 모델로 안전하게 기록한다")
+    void recordProviderAttemptsAndFallbackWithoutSensitiveInput(GenerationContext context) {
+        context.apply();
+        String previousGenerationId = MDC.get("generationId");
+        var info = new StoryboardProviderInfo("qwen", "qwen3.8-max");
+        GeneratedStoryboard result = mock(GeneratedStoryboard.class);
+        when(result.providerInfo()).thenReturn(info);
+        StoryboardGenerator primary = provider(new StoryboardProviderInfo("gemini", "gemini-storyboard-model"), () -> {
+            throw new AiGenerationException(AiGenerationErrorType.TIMEOUT, OBJECT_KEY);
+        });
+        StoryboardGenerator fallback = provider(info, () -> result);
+        try (var workers = Executors.newVirtualThreadPerTaskExecutor();
+                StructuredLogCapture capture = new StructuredLogCapture()) {
+            var settings = new StoryboardProviderProperties("gemini", "qwen",
+                    Duration.ofSeconds(60), Duration.ofSeconds(60));
+            var service = new StoryboardGenerationService(primary, Optional.of(fallback),
+                    new StoryboardAttemptRunner(workers), settings);
+            GenerationLogContext.withGenerationId(GENERATION_ID,
+                    () -> assertThat(service.generate(new StoryboardGenerationRequest(OBJECT_KEY, "private prompt")))
+                            .isSameAs(result));
+
+            var events = capture.assertEventsAndFollowUp("storyboard_attempt_completed",
+                    "storyboard_fallback_triggered", "storyboard_attempt_completed");
+
+            assertThat(events.get(0).path("provider").asString()).isEqualTo("gemini");
+            assertThat(events.get(0).path("model").asString()).isEqualTo("gemini-storyboard-model");
+            assertThat(events.get(0).path("attempt").asInt()).isEqualTo(1);
+            assertThat(events.get(0).path("role").asString()).isEqualTo("primary");
+            assertThat(events.get(0).path("status").asString()).isEqualTo("FAILED");
+            assertThat(events.get(0).path("durationMs").asLong()).isGreaterThanOrEqualTo(0);
+            assertThat(events.get(1).path("reason").asString()).isEqualTo("TIMEOUT");
+            assertThat(events.get(1).path("primaryProvider").asString()).isEqualTo("gemini");
+            assertThat(events.get(1).path("fallbackProvider").asString()).isEqualTo("qwen");
+            assertThat(events.get(1).path("fallbackModel").asString()).isEqualTo("qwen3.8-max");
+            assertThat(events.get(2).path("provider").asString()).isEqualTo("qwen");
+            assertThat(events.get(2).path("model").asString()).isEqualTo("qwen3.8-max");
+            assertThat(events.get(2).path("attempt").asInt()).isEqualTo(2);
+            assertThat(events.get(2).path("role").asString()).isEqualTo("fallback");
+            assertThat(events.get(2).path("status").asString()).isEqualTo("SUCCEEDED");
+            assertThat(events.get(2).path("errorType").asString()).isEqualTo("none");
+            assertThat(capture.contents()).doesNotContain(OBJECT_KEY, "private prompt");
+        }
+        assertThat(MDC.get("generationId")).isEqualTo(previousGenerationId);
+    }
+
+    private static StoryboardGenerator provider(StoryboardProviderInfo info, Supplier<GeneratedStoryboard> result) {
+        return new StoryboardGenerator() {
+            @Override
+            public StoryboardProviderInfo providerInfo() {
+                return info;
+            }
+
+            @Override
+            public GeneratedStoryboard generate(StoryboardGenerationRequest request) {
+                return result.get();
+            }
+        };
+    }
+
     private static final class StructuredLogCapture implements AutoCloseable {
 
         private final LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
@@ -192,6 +267,7 @@ class GenerationStructuredLoggingTest {
         private final List<ch.qos.logback.classic.Logger> loggers = List.of(
                 context.getLogger(GenerationLifecycleMetrics.class),
                 context.getLogger(DiscardedGenerationImageCleaner.class),
+                context.getLogger("com.harudle.generation.diary.service.storyboard.StoryboardGenerationLogger"),
                 context.getLogger(GenerationStructuredLoggingTest.class));
 
         private StructuredLogCapture() {
@@ -223,6 +299,21 @@ class GenerationStructuredLoggingTest {
 
         private String contents() {
             return output.toString(StandardCharsets.UTF_8);
+        }
+
+        private List<JsonNode> assertEventsAndFollowUp(String... expectedEvents) {
+            loggers.getLast().info(FOLLOW_UP_MESSAGE);
+            List<String> lines = contents().lines().toList();
+            assertThat(lines).hasSize(expectedEvents.length + 1);
+            ObjectMapper mapper = new ObjectMapper();
+            List<JsonNode> events = lines.stream().limit(expectedEvents.length).map(mapper::readTree).toList();
+            IntStream.range(0, expectedEvents.length).forEach(index -> {
+                assertThat(events.get(index).path("event").asString()).isEqualTo(expectedEvents[index]);
+                assertThat(events.get(index).path("generationId").asString()).isEqualTo(GENERATION_ID.toString());
+                assertThat(lines.get(index).split("\"generationId\"", -1)).hasSize(2);
+            });
+            assertThat(mapper.readTree(lines.getLast()).path("message").asString()).isEqualTo(FOLLOW_UP_MESSAGE);
+            return events;
         }
 
         @Override

@@ -30,6 +30,7 @@ class TraceIdFilter extends OncePerRequestFilter {
             FilterChain filterChain
     ) throws ServletException, IOException {
         String traceId = requestTraceId.getOrCreate(request);
+        response.setHeader("X-Trace-Id", traceId);
         MDC.put(TRACE_ID_MDC_KEY, traceId);
         try {
             filterChain.doFilter(request, response);

@@ -2,6 +2,7 @@ package com.harudle.diary.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.harudle.TestcontainersConfiguration;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.diary.service.dto.CreateGuestDiaryCommand;
@@ -30,33 +31,24 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest
-@Import(GuestDiaryCreationConcurrencyTest.FixedClockConfiguration.class)
+@Import({TestcontainersConfiguration.class, GuestDiaryCreationConcurrencyTest.FixedClockConfiguration.class})
 class GuestDiaryCreationConcurrencyTest {
 
-    private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:18-alpine");
     private static final String RAW_TOKEN = "guest-session-token";
     private static final Instant CREATED_AT = Instant.parse("2026-08-19T00:00:00Z");
     private static final Instant NOW = Instant.parse("2026-08-20T00:00:00Z");
     private static final Instant EXPIRES_AT = Instant.parse("2026-09-19T00:00:00Z");
     private static final LocalDate DIARY_DATE = LocalDate.of(2026, 8, 20);
-
-    @Container
-    @ServiceConnection
-    private static final PostgreSQLContainer POSTGRESQL_CONTAINER = new PostgreSQLContainer(POSTGRES_IMAGE);
 
     @Autowired
     private GuestDiaryCreationTransactionService transactionService;
