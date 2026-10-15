@@ -53,8 +53,16 @@ HARUDLE_DOCKER_NETWORK의 기본값은 harudle_app이다.
 
 토큰은 worker와 백엔드에 동일하게 주입한다. 로그인은 비밀값을 CLI 밖으로 추출하지 않고 진행한다.
 codex-auth 볼륨은 OAuth 갱신을 위해 쓰기 가능해야 한다. 운영 백엔드의 AWS/GCP/DB 자격 증명은
-worker에 전달하지 않는다. CODEX_HOME에는 SDK 세션 기록에 입력 프롬프트가 남으므로 접근과 보관 기간을 관리한다.
-Worker 로그에는 프롬프트·참조 이미지·OAuth 토큰을 출력하지 않는다.
+worker에 전달하지 않는다. Worker 로그에는 프롬프트, 참조 이미지와 OAuth 토큰을 출력하지 않는다.
+
+SDK가 만든 세션 JSONL에는 입력 프롬프트가 들어간다. 요청이 성공하거나 실패하면 해당 요청의 세션을 바로 삭제한다.
+실행 중인 요청의 기록은 삭제하지 않는다. 강제 종료로 남은 worker 세션은 시작할 때와 이후 5분마다 확인하고,
+마지막 수정 후 1시간이 지난 기록을 삭제한다.
+
+정리 범위는 CODEX_HOME/sessions 안에서 worker의 임시 작업 경로가 확인된 세션 파일이다.
+OAuth 인증 파일, 설정 파일과 다른 작업의 세션은 삭제하지 않는다. 심볼릭 링크도 따라가지 않는다.
+정리 실패는 안전한 오류 코드만 기록하고 다음 정리 때 다시 시도한다.
+이 구분은 고정한 SDK 0.162.1의 session_meta 형식을 사용하므로 SDK 버전을 바꾸면 함께 확인해야 한다.
 
 Windows에서 기존 서비스의 실제 Storyboard/스타일/참조 이미지를 이용한 SDK 실생성을 검증했다.
 Linux 컨테이너의 native image tool 제공 여부와 OAuth 로그인은 배포 환경에서 별도 실생성 검증이 필요하다.
@@ -74,10 +82,30 @@ POST /v1/images/generations, Authorization: Bearer <internal token>, application
 성공 응답은 바이너리 image/png다. 입력/출력은 각각 20MiB 이하로 제한한다.
 실제 생성 파일은 해당 Codex thread의 generated_images 디렉터리 안에 있고,
 이번 요청에서 새로 만들어졌으며 참조 이미지와 다른 PNG여야 한다.
-임시 입력과 해당 thread의 생성 이미지 파일은 응답 후 정리한다.
+임시 입력과 해당 thread의 생성 이미지 파일은 이미지 읽기를 끝낸 뒤 정리한다.
 클라이언트 연결 종료·worker 제한 시간·프로세스 종료 신호는 SDK AbortSignal로 전달한다.
 원격 추론 시작 후 취소하면 원격 비용이나 실행이 즉시 중단된다고 보장할 수는 없다.
 
 검증:
 
     node ../tools/codex-image-poc/verify-worker.mjs <captured-service-input.json>
+
+## 백엔드 오류 분류
+
+CodexExceptionTranslator가 단계별로 예외를 공통 생성 오류로 바꾼다.
+이미 AiGenerationException으로 분류된 예외는 같은 객체를 유지한다.
+
+| 실패한 단계 또는 원인 | 기록하는 오류 |
+| --- | --- |
+| 참조 이미지 읽기, 프롬프트 작성, 요청 구성 | INTERNAL_ERROR |
+| HTTP 429 | RATE_LIMITED |
+| HTTP 408/504, SDK 또는 HTTP 제한 시간 초과 | TIMEOUT |
+| HTTP 401/403 | PROVIDER_ERROR / AUTH_CONFIGURATION_ERROR |
+| HTTP 500/502/503 | PROVIDER_ERROR / TRANSIENT_SERVER_ERROR |
+| 연결 실패 | PROVIDER_ERROR / NETWORK_ERROR |
+| 취소 또는 인터럽트 | PROVIDER_ERROR / CANCELLED |
+| Provider 호출 중 그 밖의 예외 | PROVIDER_ERROR / UNKNOWN |
+| 받은 PNG의 형식 확인 또는 응답 처리 실패 | RESPONSE_PROCESSING_ERROR |
+
+본문을 읽는 중에도 실제 통신 timeout이나 연결 오류가 나면 통신 오류로 기록한다.
+지표 기록이 실패해도 이미지 결과나 원래 오류는 바꾸지 않는다.

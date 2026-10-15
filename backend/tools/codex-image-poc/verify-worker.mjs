@@ -52,6 +52,7 @@ try {
 } finally {
   clearInterval(heartbeat);
   server.abortActive();
+  await generate.close?.();
   server.closeAllConnections();
   server.close();
 }

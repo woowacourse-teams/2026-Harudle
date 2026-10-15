@@ -12,6 +12,8 @@ if (Test-Path -LiteralPath $OutputDirectory) { throw 'Use a new output directory
 $javaSource = [IO.File]::ReadAllText((Join-Path $pocRoot 'PrepareServiceInput.java'))
 $remoteSource = [IO.File]::ReadAllText((Join-Path $pocRoot 'prepare-service-input-remote.py'))
 $remoteSource = $remoteSource.Replace('__JAVA_SOURCE_BASE64__', [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($javaSource)))
+$redactorSource = [IO.File]::ReadAllText((Join-Path $pocRoot 'redact_output.py'))
+$remoteSource = $remoteSource.Replace('__REDACTOR_SOURCE_BASE64__', [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($redactorSource)))
 $sshArguments = @('-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10')
 if ($SshConfig) { $sshArguments += @('-F', $SshConfig) }
 $sshArguments += @($SshHost, 'python3 -')

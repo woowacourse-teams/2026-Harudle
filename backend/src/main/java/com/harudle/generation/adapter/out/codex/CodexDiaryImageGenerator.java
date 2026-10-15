@@ -4,22 +4,17 @@ import com.harudle.generation.adapter.out.gemini.DiaryImagePromptRenderer;
 import com.harudle.generation.adapter.out.http.SingleAttemptHttpTransport;
 import com.harudle.generation.adapter.out.image.DiaryImagePrompt;
 import com.harudle.generation.config.ImageProviderProperties;
-import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
-import com.harudle.generation.diary.service.exception.AiGenerationException;
-import com.harudle.generation.diary.service.exception.AiProviderFailureType;
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
 import com.harudle.generation.diary.service.port.dto.DiaryImageGenerationRequest;
 import com.harudle.generation.diary.service.port.dto.GeneratedImage;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.io.IOException;
-import java.io.InterruptedIOException;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Map;
 import okhttp3.Call;
-import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
@@ -35,11 +30,21 @@ public final class CodexDiaryImageGenerator implements DiaryImageGenerator {
     private final DiaryImagePromptRenderer renderer;
     private final ObjectMapper objectMapper;
     private final MeterRegistry metrics;
-    private final OkHttpClient http;
+    private final Call.Factory calls;
+    private final CodexExceptionTranslator exceptionTranslator = new CodexExceptionTranslator();
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(CodexDiaryImageGenerator.class);
 
     public CodexDiaryImageGenerator(
             ImageProviderProperties properties, DiaryImagePromptRenderer renderer,
             ObjectMapper objectMapper, MeterRegistry metrics
+    ) {
+        this(properties, renderer, objectMapper, metrics,
+                SingleAttemptHttpTransport.builder(properties.codexTimeout()).build());
+    }
+
+    CodexDiaryImageGenerator(
+            ImageProviderProperties properties, DiaryImagePromptRenderer renderer,
+            ObjectMapper objectMapper, MeterRegistry metrics, Call.Factory calls
     ) {
         if (!properties.codexEnabled() || !properties.isCodexConnectionValid() || !properties.isCodexTimeoutValid()) {
             throw new IllegalArgumentException("유효한 Codex 이미지 fallback 설정이 필요합니다.");
@@ -48,7 +53,7 @@ public final class CodexDiaryImageGenerator implements DiaryImageGenerator {
         this.renderer = renderer;
         this.objectMapper = objectMapper;
         this.metrics = metrics;
-        this.http = SingleAttemptHttpTransport.builder(properties.codexTimeout()).build();
+        this.calls = calls;
     }
 
     @Override
@@ -57,18 +62,23 @@ public final class CodexDiaryImageGenerator implements DiaryImageGenerator {
         String outcome = "failure";
         try {
             if (Thread.currentThread().isInterrupted()) {
-                throw failure(AiGenerationErrorType.PROVIDER_ERROR, AiProviderFailureType.CANCELLED, null);
+                throw exceptionTranslator.providerFailure(new java.util.concurrent.CancellationException());
             }
-            GeneratedImage result = invoke(prepareBody(request));
+            GeneratedImage result = invoke(prepareRequest(request));
             outcome = "success";
             return result;
         } finally {
-            metrics.timer("harudle.image.provider.duration", "provider", "codex", "outcome", outcome)
-                    .record(Duration.ofNanos(System.nanoTime() - started));
+            try {
+                metrics.timer("harudle.image.provider.duration", "provider", "codex", "outcome", outcome)
+                        .record(Duration.ofNanos(System.nanoTime() - started));
+            } catch (RuntimeException exception) {
+                log.warn("event=metrics_recording_failed component=codex exceptionType={}",
+                        exception.getClass().getSimpleName());
+            }
         }
     }
 
-    private byte[] prepareBody(DiaryImageGenerationRequest request) {
+    private Request prepareRequest(DiaryImageGenerationRequest request) {
         try (var input = request.referenceImage().resource().getInputStream()) {
             byte[] reference = input.readNBytes(MAX_BYTES + 1);
             if (reference.length == 0 || reference.length > MAX_BYTES) {
@@ -85,40 +95,41 @@ public final class CodexDiaryImageGenerator implements DiaryImageGenerator {
             if (body.length > MAX_BYTES) {
                 throw new IllegalArgumentException("Codex 이미지 요청은 20MiB 이하여야 합니다.");
             }
-            return body;
+            return new Request.Builder()
+                    .url(properties.codexUrl().resolve("/v1/images/generations").toString())
+                    .header("Authorization", "Bearer " + properties.codexToken())
+                    .post(RequestBody.create(body, okhttp3.MediaType.get("application/json; charset=utf-8"))).build();
         } catch (IOException | RuntimeException exception) {
-            throw failure(AiGenerationErrorType.INTERNAL_ERROR, AiProviderFailureType.UNKNOWN, exception);
+            throw exceptionTranslator.preparationFailure(exception);
         }
     }
 
-    private GeneratedImage invoke(byte[] body) {
-        RequestBody singleAttemptBody = RequestBody.create(
-                body, okhttp3.MediaType.get("application/json; charset=utf-8")
-        );
-        Request request = new Request.Builder()
-                .url(properties.codexUrl().resolve("/v1/images/generations").toString())
-                .header("Authorization", "Bearer " + properties.codexToken())
-                .post(singleAttemptBody).build();
-        Call call = http.newCall(request);
-        try (Response response = call.execute()) {
+    private Response callProvider(Request request) {
+        try {
+            return calls.newCall(request).execute();
+        } catch (IOException | RuntimeException exception) {
+            throw exceptionTranslator.providerFailure(exception);
+        }
+    }
+
+    private GeneratedImage invoke(Request request) {
+        try (Response response = callProvider(request)) {
             if (response.code() != 200) {
-                throw statusFailure(response.code());
+                throw exceptionTranslator.httpFailure(response.code());
             }
             if (response.body() == null || response.body().contentType() == null
                     || !"image/png".equals(response.body().contentType().toString())) {
-                throw failure(AiGenerationErrorType.RESPONSE_PROCESSING_ERROR, AiProviderFailureType.UNKNOWN, null);
+                throw new IllegalStateException("Codex worker의 이미지 응답이 유효하지 않습니다.");
             }
             byte[] image = response.body().byteStream().readNBytes(MAX_BYTES + 1);
             if (!isPng(image)) {
-                throw failure(AiGenerationErrorType.RESPONSE_PROCESSING_ERROR, AiProviderFailureType.UNKNOWN, null);
+                throw new IllegalStateException("Codex worker의 이미지 응답이 유효하지 않습니다.");
             }
             return new GeneratedImage(new ByteArrayResource(image), MediaType.IMAGE_PNG);
         } catch (IOException exception) {
-            boolean cancelled = Thread.currentThread().isInterrupted();
-            throw failure(cancelled ? AiGenerationErrorType.PROVIDER_ERROR
-                            : exception instanceof InterruptedIOException ? AiGenerationErrorType.TIMEOUT
-                            : AiGenerationErrorType.PROVIDER_ERROR,
-                    cancelled ? AiProviderFailureType.CANCELLED : AiProviderFailureType.NETWORK_ERROR, exception);
+            throw exceptionTranslator.providerFailure(exception);
+        } catch (RuntimeException exception) {
+            throw exceptionTranslator.responseFailure(exception);
         }
     }
 
@@ -129,22 +140,4 @@ public final class CodexDiaryImageGenerator implements DiaryImageGenerator {
                 && ByteBuffer.wrap(image, 20, 4).getInt() > 0;
     }
 
-    private static AiGenerationException statusFailure(int status) {
-        return switch (status) {
-            case 429 -> failure(AiGenerationErrorType.RATE_LIMITED, AiProviderFailureType.UNKNOWN, null);
-            case 408, 504 -> failure(AiGenerationErrorType.TIMEOUT, AiProviderFailureType.UNKNOWN, null);
-            case 401, 403 -> failure(AiGenerationErrorType.PROVIDER_ERROR,
-                    AiProviderFailureType.AUTH_CONFIGURATION_ERROR, null);
-            case 400, 413, 415, 422 -> failure(AiGenerationErrorType.PROVIDER_ERROR,
-                    AiProviderFailureType.REQUEST_REJECTED, null);
-            default -> failure(AiGenerationErrorType.PROVIDER_ERROR,
-                    status >= 500 ? AiProviderFailureType.TRANSIENT_SERVER_ERROR : AiProviderFailureType.UNKNOWN, null);
-        };
-    }
-
-    private static AiGenerationException failure(
-            AiGenerationErrorType type, AiProviderFailureType detail, Throwable cause
-    ) {
-        return new AiGenerationException(type, "Codex 이미지 생성 요청에 실패했습니다.", cause, detail);
-    }
 }

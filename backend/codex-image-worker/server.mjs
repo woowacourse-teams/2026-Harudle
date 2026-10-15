@@ -94,6 +94,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   });
   for (const event of ["SIGTERM", "SIGINT"]) process.once(event, () => {
     server.abortActive();
+    void generate.close?.();
     server.close();
     setTimeout(() => process.exit(1), 10000).unref();
   });

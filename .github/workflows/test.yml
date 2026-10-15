@@ -143,6 +143,9 @@ jobs:
       - name: Test worker without OAuth or external inference
         run: npm test
 
+      - name: Test diagnostic secret masking
+        run: python3 -m unittest discover -s ../tools/codex-image-poc -p 'test_*.py'
+
   frontend-test:
     name: Frontend Test
     if: github.base_ref != 'develop-backend'

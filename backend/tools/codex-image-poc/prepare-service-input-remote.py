@@ -1,5 +1,6 @@
 import base64,hashlib,io,json,os,re,subprocess,sys,tarfile,tempfile,uuid,zipfile
 SOURCE_BASE64="__JAVA_SOURCE_BASE64__"
+exec(compile(base64.b64decode("__REDACTOR_SOURCE_BASE64__"), "redact_output.py", "exec"))
 name="harudle-backend-1"
 item=json.loads(subprocess.check_output(["docker","inspect",name],text=True))[0]
 settings=dict(value.split("=",1) for value in item["Config"]["Env"] if "=" in value)
@@ -51,9 +52,7 @@ with tempfile.TemporaryDirectory(prefix="harudle-codex-input-") as directory:
         process=subprocess.run(command,capture_output=True,text=True,timeout=150)
         if process.returncode:
             errors=process.stdout+"\n"+process.stderr
-            for key in keys:
-                if ("KEY" in key or "TOKEN" in key) and settings.get(key): errors=errors.replace(settings[key],"[redacted]")
-            sys.stderr.write(errors[-6000:])
+            sys.stderr.write(redact_output(errors, settings)[-6000:])
             raise RuntimeError("Standalone preparation failed")
         lines=[line[len("SERVICE_INPUT "):] for line in process.stdout.splitlines() if line.startswith("SERVICE_INPUT ")]
         if len(lines)!=1: raise RuntimeError("Expected one preparation result")

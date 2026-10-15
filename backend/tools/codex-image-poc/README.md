@@ -28,7 +28,11 @@
 ./prepare-service-input.ps1 -SshHost <configured-host>
 ~~~
 
-필요하면 `-SshConfig <path>`를 지정합니다. 현재 원격 준비 도구는 `harudle-backend-1` 컨테이너와 Gemini 기본·Qwen/none 보조 Provider 구성을 지원하고, 다른 구성에서는 명시적으로 실패합니다. DB·Gemini 인증은 원격 환경에 남겨 두며 로컬로 내보내지 않습니다.
+필요하면 `-SshConfig <path>`를 지정합니다. 현재 원격 준비 도구는 `harudle-backend-1` 컨테이너와 Gemini 기본·Qwen/none 보조 Provider 구성을 지원하고, 다른 구성에서는 명시적으로 실패합니다. DB와 Gemini 인증은 원격 환경에 남겨 두며 로컬로 내보내지 않습니다.
+진단 JVM의 실패 출력을 반환하기 전에 서버 설정의 KEY, TOKEN, PASSWORD, SECRET,
+CREDENTIAL, AUTHORIZATION 값을 가립니다. URL에 들어가도록 인코딩된 값도 가립니다.
+가리기 처리를 먼저 끝낸 뒤 마지막 6000자를 반환합니다.
+설정에 없는 비밀값까지 찾아내는 기능은 아니므로 불필요한 인증 정보나 원문을 로그에 추가하지 않습니다.
 
 위 명령이 출력한 입력 경로를 사용합니다.
 
@@ -81,3 +85,11 @@ SDK는 기존 ChatGPT 로그인을 사용하며 API 키 환경 변수를 제거�
 - [Codex SDK](https://learn.chatgpt.com/docs/codex-sdk)
 - [Authentication](https://learn.chatgpt.com/docs/auth)
 - [Image generation](https://learn.chatgpt.com/docs/image-generation)
+
+Worker 연결 검증에서는 요청 종료 후 SDK 세션이 정리됩니다.
+SDK 이벤트 원문까지 보관해 직접 확인하려면 이 디렉터리의 단독 verify.mjs를 사용합니다.
+진단 결과는 runs 아래에만 저장하며 Git에서 제외합니다.
+
+비밀값 가리기 테스트:
+
+    python -m unittest discover -s . -p 'test_*.py'

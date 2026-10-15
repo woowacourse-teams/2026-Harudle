@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { MAX_BYTES, WorkerError, validatePng } from "./image.mjs";
+import { createSessionRetention } from "./session-retention.mjs";
 
 const require = createRequire(import.meta.url);
 const targets = {
@@ -75,9 +76,12 @@ export async function createCodexGenerator({ sourceEnv = process.env, log = cons
   });
   log(JSON.stringify({ event: "codex_ready", version, authentication: "chatgpt" }));
 
-  return async function generate({ prompt, reference, extension }, signal) {
+  const retention = createSessionRetention({ codexHome, log });
+  await retention.start();
+  const generate = async function generate({ prompt, reference, extension }, signal) {
     signal.throwIfAborted();
     const runDir = await mkdtemp(path.join(os.tmpdir(), "harudle-codex-image-"));
+    retention.begin(runDir);
     let thread;
     try {
       const started = Date.now();
@@ -134,10 +138,18 @@ export async function createCodexGenerator({ sourceEnv = process.env, log = cons
         promptSha256: sha(prompt), referenceSha256: sha(reference) }));
       return image;
     } finally {
-      await rm(runDir, { recursive: true, force: true });
+      await retention.finish(runDir);
+      const cleanup = [rm(runDir, { recursive: true, force: true })];
       if (/^[a-f0-9-]{36}$/.test(thread?.id || "")) {
-        await rm(path.join(codexHome, "generated_images", thread.id), { recursive: true, force: true });
+        cleanup.push(rm(path.join(codexHome, "generated_images", thread.id), { recursive: true, force: true }));
+      }
+      for (const result of await Promise.allSettled(cleanup)) {
+        if (result.status === "rejected") {
+          log(JSON.stringify({ event: "codex_artifact_cleanup_failed", code: result.reason.code || "cleanup_failed" }));
+        }
       }
     }
   };
+  generate.close = () => retention.close();
+  return generate;
 }

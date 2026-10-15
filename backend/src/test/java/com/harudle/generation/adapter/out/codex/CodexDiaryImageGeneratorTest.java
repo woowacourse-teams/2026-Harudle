@@ -254,6 +254,76 @@ class CodexDiaryImageGeneratorTest {
         }
     }
 
+    @Test
+    void unexpectedTransportExceptionIsMappedAtTheProviderBoundary() throws Exception {
+        var calls = mock(okhttp3.Call.Factory.class);
+        var call = mock(okhttp3.Call.class);
+        var cause = new IllegalStateException("sensitive provider diagnostics");
+        when(calls.newCall(any(okhttp3.Request.class))).thenReturn(call);
+        when(call.execute()).thenThrow(cause);
+
+        assertThatThrownBy(() -> adapter(calls, metrics).generate(input))
+                .isInstanceOfSatisfying(AiGenerationException.class, failure -> {
+                    assertThat(failure.errorType()).isEqualTo(AiGenerationErrorType.PROVIDER_ERROR);
+                    assertThat(failure.providerFailureType()).isEqualTo(AiProviderFailureType.UNKNOWN);
+                    assertThat(failure).hasCause(cause).hasMessageNotContaining("sensitive");
+                });
+    }
+
+    @Test
+    void unexpectedResponseExceptionIsMappedAsResponseProcessingFailure() throws Exception {
+        var calls = mock(okhttp3.Call.Factory.class);
+        var call = mock(okhttp3.Call.class);
+        var body = mock(okhttp3.ResponseBody.class);
+        when(body.source()).thenReturn(new okio.Buffer());
+        when(body.contentType()).thenThrow(new IllegalStateException("invalid response"));
+        when(calls.newCall(any(okhttp3.Request.class))).thenReturn(call);
+        when(call.execute()).thenReturn(new okhttp3.Response.Builder()
+                .request(new okhttp3.Request.Builder().url("http://localhost").build())
+                .protocol(okhttp3.Protocol.HTTP_1_1).code(200).message("OK").body(body).build());
+
+        assertThatThrownBy(() -> adapter(calls, metrics).generate(input))
+                .isInstanceOfSatisfying(AiGenerationException.class,
+                        failure -> assertThat(failure.errorType()).isEqualTo(AiGenerationErrorType.RESPONSE_PROCESSING_ERROR));
+    }
+
+    @Test
+    void localReferenceReadFailureIsInternalAndDoesNotCallWorker() {
+        var calls = mock(okhttp3.Call.Factory.class);
+        var reference = new ByteArrayResource(new byte[]{1}) {
+            @Override public java.io.InputStream getInputStream() {
+                throw new IllegalStateException("local reference failure");
+            }
+        };
+        var request = new DiaryImageGenerationRequest(input.storyboard(), input.imageStylePromptText(),
+                new ReferenceImage(reference, MediaType.IMAGE_PNG));
+
+        assertThatThrownBy(() -> adapter(calls, metrics).generate(request))
+                .isInstanceOfSatisfying(AiGenerationException.class,
+                        failure -> assertThat(failure.errorType()).isEqualTo(AiGenerationErrorType.INTERNAL_ERROR));
+        verifyNoInteractions(calls);
+    }
+
+    @Test
+    void classifiedProviderFailureIsPreservedEvenWhenMetricsFail() throws Exception {
+        var calls = mock(okhttp3.Call.Factory.class);
+        var call = mock(okhttp3.Call.class);
+        var original = new AiGenerationException(AiGenerationErrorType.TIMEOUT, "already classified");
+        var failingMetrics = mock(io.micrometer.core.instrument.MeterRegistry.class);
+        when(failingMetrics.timer(anyString(), any(String[].class))).thenThrow(new IllegalStateException("metrics failed"));
+        when(calls.newCall(any(okhttp3.Request.class))).thenReturn(call);
+        when(call.execute()).thenThrow(original);
+
+        assertThatThrownBy(() -> adapter(calls, failingMetrics).generate(input)).isSameAs(original);
+    }
+
+    private CodexDiaryImageGenerator adapter(okhttp3.Call.Factory calls,
+            io.micrometer.core.instrument.MeterRegistry registry) {
+        return new CodexDiaryImageGenerator(new ImageProviderProperties("codex",
+                URI.create("http://127.0.0.1:8090"), TOKEN, Duration.ofSeconds(2)),
+                renderer, mapper, registry, calls);
+    }
+
     private CodexDiaryImageGenerator codex() {
         return new CodexDiaryImageGenerator(new ImageProviderProperties("codex",
                 URI.create("http://127.0.0.1:" + server.getAddress().getPort()), TOKEN, Duration.ofSeconds(2)),
