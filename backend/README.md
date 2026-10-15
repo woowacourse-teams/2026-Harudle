@@ -363,7 +363,7 @@ Qwen은 `QwenChatClient`가 만든 Call에 취소 함수를 등록하고 남은 
 두 Provider 모두 취소 컨텍스트의 `TIMEOUT`·`CANCELLED`를 유지하며, 늦은 응답의 검증 오류가
 응답 처리 오류로 덮어쓰지 않도록 검사합니다.
 
-`StoryboardHttpTransport`는 연결 재시도와 리디렉션을 비활성화하고 요청 본문을 재전송하지 않도록 표시합니다.
+`SingleAttemptHttpTransport`는 연결 재시도와 리디렉션을 비활성화하고 요청 본문을 재전송하지 않도록 표시합니다.
 OkHttp의 `503 + Retry-After: 0` 자동 후속 호출도 방지합니다. 이 설정은 이미지 Client에 적용하지 않습니다.
 테스트는 로컬 HTTP 서버에서 지연된 헤더·본문 취소, 동시 요청 격리, 오류 응답·연결 실패의 실제 전송 횟수를 확인합니다.
 
@@ -420,3 +420,13 @@ Testcontainers의 PostgreSQL로 애플리케이션을 직접 실행하려면 다
 - JPA의 Open Session in View는 비활성화되어 있습니다.
 - Hibernate는 스키마를 자동 변경하지 않고 시작 시 스키마를 검증합니다.
 - 인증 구현 전까지 Spring Security의 기본 보안 설정이 적용되어 모든 API가 보호됩니다.
+
+## 이미지 생성의 Codex fallback
+
+IMAGE_FALLBACK_PROVIDER=codex로 설정하면 Gemini 이미지 생성이 429 또는 timeout으로 실패할 때
+Codex SDK worker에 같은 Storyboard, 스타일 지시문과 참조 이미지를 전달합니다.
+Gemini와 Codex를 각각 한 번 호출하며, 일반 생성과 관리자 이미지 복구에 동일하게 적용합니다.
+기본값 none에서는 기존 Gemini 생성과 재시도 설정을 유지합니다.
+
+OAuth 로그인, 내부 HTTP 토큰, 제한 시간과 선택적 컨테이너 구성은
+[codex-image-worker/README.md](codex-image-worker/README.md)를 참고하세요.
