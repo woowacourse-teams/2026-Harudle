@@ -53,6 +53,11 @@ public enum ErrorType {
             "Stale push registration",
             "푸시 등록 상태가 변경되었습니다. 현재 등록 상태를 확인해 주세요."
     ),
+    STALE_PUSH_STATE(
+            HttpStatus.CONFLICT,
+            "Stale push state",
+            "푸시 수신 선택이 변경되었습니다. 현재 상태를 확인해 주세요."
+    ),
     NICKNAME_ALREADY_IN_USE(
             HttpStatus.CONFLICT,
             "Nickname already in use",

@@ -7,6 +7,7 @@ import com.harudle.push.infrastructure.JpaPushRegistrationService.InvalidPushSes
 import com.harudle.push.infrastructure.JpaPushRegistrationService.Registration;
 import com.harudle.push.infrastructure.JpaPushRegistrationService.RegistrationConflict;
 import com.harudle.push.infrastructure.JpaPushRegistrationService.StaleRegistration;
+import com.harudle.push.infrastructure.JpaPushRegistrationService.StalePushState;
 import jakarta.persistence.EntityManager;
 import java.util.List;
 import java.util.UUID;
@@ -73,7 +74,8 @@ class JpaPushRegistrationServiceTest {
     void changesFidWithExpectedVersion() {
         Registration first = register(alice, aliceSession, device, "F1", null);
         assertThatThrownBy(() -> registrations.register(alice, aliceSession, device, "F2",
-                UUID.randomUUID(), first.version())).isInstanceOf(StaleRegistration.class);
+                UUID.randomUUID(), first.version(), first.stateVersion()))
+                .isInstanceOf(StaleRegistration.class);
 
         Registration changed = register(alice, aliceSession, device, "F2", first);
         Registration repeated = register(alice, aliceSession, device, "F2", first);
@@ -121,12 +123,10 @@ class JpaPushRegistrationServiceTest {
 
             List<Object> results = List.of(f1.get(10, TimeUnit.SECONDS), f2.get(10, TimeUnit.SECONDS));
             assertThat(results.stream().filter(Registration.class::isInstance)).hasSize(1);
-            assertThat(results.stream().filter(StaleRegistration.class::isInstance)).hasSize(1);
+            assertThat(results.stream().filter(this::isStale)).hasSize(1);
             Registration winner = (Registration) results.stream().filter(Registration.class::isInstance)
                     .findFirst().orElseThrow();
-            StaleRegistration loser = (StaleRegistration) results.stream()
-                    .filter(StaleRegistration.class::isInstance).findFirst().orElseThrow();
-            assertThat(loser.current()).isEqualTo(winner);
+            assertThat(winner.stateVersion()).isEqualTo(1);
             assertThat(number("SELECT count(*) FROM push_registrations WHERE device_id = ?", device)).isEqualTo(1);
         }
     }
@@ -144,9 +144,7 @@ class JpaPushRegistrationServiceTest {
             List<Object> results = List.of(f2.get(10, TimeUnit.SECONDS), f3.get(10, TimeUnit.SECONDS));
             Registration winner = (Registration) results.stream().filter(Registration.class::isInstance)
                     .findFirst().orElseThrow();
-            StaleRegistration loser = (StaleRegistration) results.stream()
-                    .filter(StaleRegistration.class::isInstance).findFirst().orElseThrow();
-            assertThat(loser.current()).isEqualTo(winner);
+            assertThat(results.stream().filter(this::isStale)).hasSize(1);
             assertThat(winner.version()).isEqualTo(1);
             assertThat(text("SELECT recipient_value FROM push_registrations WHERE id = ?", first.id()))
                     .isIn("F2", "F3");
@@ -260,6 +258,8 @@ class JpaPushRegistrationServiceTest {
                 .isEqualTo(1);
         assertThat(number("SELECT count(*) FROM notification_outbox WHERE push_registration_id = ? AND status = 'CANCELLED'",
                 old.id())).isEqualTo(1);
+        assertThatThrownBy(() -> registrations.register(alice, aliceSession, device, "F1", null, null,
+                old.stateVersion())).isInstanceOf(StalePushState.class);
     }
 
     @Test
@@ -317,13 +317,14 @@ class JpaPushRegistrationServiceTest {
         job(old.id(), alice, "SENT");
         UUID otherSession = UUID.randomUUID();
         session(otherSession, alice);
-        registrations.revoke(bob, bobSession, device);
-        registrations.revoke(alice, otherSession, device);
+        revoke(bob, bobSession, device);
+        revoke(alice, otherSession, device);
         assertThat(number("SELECT count(*) FROM push_registrations WHERE id = ? AND revoked_at IS NULL", old.id()))
                 .isEqualTo(1);
 
-        registrations.revoke(alice, aliceSession, device);
-        registrations.revoke(alice, aliceSession, device);
+        long disabledVersion = revoke(alice, aliceSession, device);
+        assertThat(registrations.revoke(alice, aliceSession, device, disabledVersion - 1))
+                .isEqualTo(disabledVersion);
 
         assertThat(number("SELECT count(*) FROM push_registrations WHERE id = ? AND revoked_at IS NOT NULL", old.id()))
                 .isEqualTo(1);
@@ -355,11 +356,92 @@ class JpaPushRegistrationServiceTest {
     @Test
     @DisplayName("등록 ID와 버전이 짝을 이루지 않거나 FID가 비어 있으면 DB를 변경하지 않는다")
     void rejectsInvalidRegistrationRequest() {
-        assertThatThrownBy(() -> registrations.register(alice, aliceSession, device, "F1", UUID.randomUUID(), null))
+        assertThatThrownBy(() -> registrations.register(alice, aliceSession, device, "F1",
+                UUID.randomUUID(), null, 0))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> registrations.register(alice, aliceSession, device, " ", null, null))
+        assertThatThrownBy(() -> registrations.register(alice, aliceSession, device, " ", null, null, 0))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThat(number("SELECT count(*) FROM push_registrations")).isZero();
+    }
+
+    @Test
+    @DisplayName("첫 PUT보다 DELETE가 먼저 끝나면 늦은 PUT을 거절하고 다시 켤 때만 등록한다")
+    void deleteBeforeFirstPutRejectsLateRegistration() {
+        long disabled = registrations.revoke(alice, aliceSession, device, 0);
+
+        assertThat(disabled).isEqualTo(1);
+        assertThatThrownBy(() -> registrations.register(alice, aliceSession, device, "F1", null, null, 0))
+                .isInstanceOfSatisfying(StalePushState.class, conflict -> {
+                    assertThat(conflict.stateVersion()).isEqualTo(1);
+                    assertThat(conflict.enabled()).isFalse();
+                });
+        assertThat(number("SELECT count(*) FROM push_registrations WHERE revoked_at IS NULL")).isZero();
+
+        Registration enabled = registrations.register(alice, aliceSession, device, "F2", null, null, disabled);
+        assertThat(enabled.stateVersion()).isEqualTo(2);
+        assertThat(text("SELECT recipient_value FROM push_registrations WHERE id = ?", enabled.id())).isEqualTo("F2");
+    }
+
+    @Test
+    @DisplayName("첫 PUT이 먼저 끝나면 오래된 DELETE는 거절하고 현재 번호로 다시 해제한다")
+    void firstPutBeforeDeleteNeedsCurrentStateVersion() {
+        Registration enabled = registrations.register(alice, aliceSession, device, "F1", null, null, 0);
+        job(enabled.id(), alice, "PENDING");
+
+        assertThatThrownBy(() -> registrations.revoke(alice, aliceSession, device, 0))
+                .isInstanceOfSatisfying(StalePushState.class, conflict -> {
+                    assertThat(conflict.stateVersion()).isEqualTo(1);
+                    assertThat(conflict.enabled()).isTrue();
+                });
+        assertThat(registrations.revoke(alice, aliceSession, device, enabled.stateVersion())).isEqualTo(2);
+        assertThat(number("SELECT count(*) FROM notification_outbox WHERE status = 'CANCELLED'"
+                + " AND push_registration_id = ?", enabled.id())).isEqualTo(1);
+        assertThatThrownBy(() -> registrations.register(alice, aliceSession, device, "F1", null, null, 0))
+                .isInstanceOf(StalePushState.class);
+    }
+
+    @Test
+    @DisplayName("해제 요청을 반복하거나 알림을 다시 켜도 이전 DELETE가 새 등록을 지우지 못한다")
+    void repeatedDeleteCannotUndoLaterRegistration() {
+        long disabled = registrations.revoke(alice, aliceSession, device, 0);
+        assertThat(registrations.revoke(alice, aliceSession, device, 0)).isEqualTo(disabled);
+        Registration enabled = registrations.register(alice, aliceSession, device, "F1", null, null, disabled);
+
+        assertThatThrownBy(() -> registrations.revoke(alice, aliceSession, device, 0))
+                .isInstanceOf(StalePushState.class);
+        assertThat(number("SELECT count(*) FROM push_registrations WHERE id = ? AND revoked_at IS NULL",
+                enabled.id())).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("첫 PUT과 DELETE가 동시에 처리돼도 한 요청만 성공하고 끄기 재요청 후 등록이 남지 않는다")
+    void concurrentFirstPutAndDeleteKeepLatestChoice() throws Exception {
+        CountDownLatch start = new CountDownLatch(1);
+        try (var workers = Executors.newFixedThreadPool(2)) {
+            var put = workers.submit(() -> {
+                start.await();
+                try {
+                    return registrations.register(alice, aliceSession, device, "F1", null, null, 0);
+                } catch (StalePushState conflict) {
+                    return conflict;
+                }
+            });
+            var delete = workers.submit(() -> {
+                start.await();
+                try {
+                    return registrations.revoke(alice, aliceSession, device, 0);
+                } catch (StalePushState conflict) {
+                    return conflict;
+                }
+            });
+            start.countDown();
+
+            List<Object> results = List.of(put.get(10, TimeUnit.SECONDS), delete.get(10, TimeUnit.SECONDS));
+            assertThat(results.stream().filter(StalePushState.class::isInstance)).hasSize(1);
+            assertThat(stateVersion(aliceSession, device)).isEqualTo(1);
+            registrations.revoke(alice, aliceSession, device, 1);
+            assertThat(number("SELECT count(*) FROM push_registrations WHERE revoked_at IS NULL")).isZero();
+        }
     }
 
     @Test
@@ -377,16 +459,38 @@ class JpaPushRegistrationServiceTest {
         start.await();
         try {
             return register(alice, aliceSession, device, fid, expected);
-        } catch (StaleRegistration conflict) {
+        } catch (StaleRegistration | StalePushState conflict) {
             return conflict;
         }
     }
 
+    private boolean isStale(Object result) {
+        return result instanceof StaleRegistration || result instanceof StalePushState;
+    }
+
     private Registration register(UUID user, UUID session, UUID deviceId, String fid, Registration expected) {
+        long stateVersion = stateVersion(session, deviceId);
         if (expected == null) {
-            return registrations.register(user, session, deviceId, fid, null, null);
+            return registrations.register(user, session, deviceId, fid, null, null, stateVersion);
         }
-        return registrations.register(user, session, deviceId, fid, expected.id(), expected.version());
+        return registrations.register(user, session, deviceId, fid, expected.id(), expected.version(), stateVersion);
+    }
+
+    private long revoke(UUID user, UUID session, UUID deviceId) {
+        return registrations.revoke(user, session, deviceId, stateVersion(session, deviceId));
+    }
+
+    private long stateVersion(UUID session, UUID deviceId) {
+        return transactions.execute(status -> {
+            List<?> rows = entityManager.createNativeQuery("""
+                    SELECT state_version FROM push_registration_states
+                    WHERE session_id = ? AND device_id = ?
+                    """).setParameter(1, session).setParameter(2, deviceId).getResultList();
+            if (rows.isEmpty()) {
+                return 0L;
+            }
+            return ((Number) rows.getFirst()).longValue();
+        });
     }
 
     private void session(UUID id, UUID user) {

@@ -85,6 +85,7 @@ class HarudleApplicationTests {
                 "notification_outbox",
                 "notifications",
                 "oauth_accounts",
+                "push_registration_states",
                 "push_registrations",
                 "refresh_tokens",
                 "share_links",

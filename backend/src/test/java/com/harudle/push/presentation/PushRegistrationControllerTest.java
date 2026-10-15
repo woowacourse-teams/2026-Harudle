@@ -6,6 +6,8 @@ import com.harudle.auth.application.AccessTokenService;
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
 import io.restassured.module.mockmvc.response.MockMvcResponse;
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -68,6 +70,7 @@ class PushRegistrationControllerTest {
         assertThat(first.header(HttpHeaders.CACHE_CONTROL)).isEqualTo("no-store");
         assertThat(repeated.jsonPath().getString("id")).isEqualTo(first.jsonPath().getString("id"));
         assertThat(repeated.jsonPath().getInt("version")).isZero();
+        assertThat(repeated.jsonPath().getInt("stateVersion")).isEqualTo(1);
         assertThat(count("SELECT count(*) FROM push_registrations WHERE device_id = ?", device)).isEqualTo(1);
     }
 
@@ -173,19 +176,63 @@ class PushRegistrationControllerTest {
         assertThat(other.statusCode()).isEqualTo(204);
         assertThat(first.statusCode()).isEqualTo(204);
         assertThat(repeated.statusCode()).isEqualTo(204);
+        assertThat(first.header("Push-State-Version")).isEqualTo("2");
+        assertThat(repeated.header("Push-State-Version")).isEqualTo("2");
         assertThat(count("SELECT count(*) FROM push_registrations WHERE device_id = ? AND revoked_at IS NULL",
                 device)).isZero();
     }
 
+    @Test
+    @DisplayName("DELETE가 먼저 처리되면 늦은 첫 PUT은 409와 현재 수신 상태를 받는다")
+    void lateFirstPutCannotReenablePush() {
+        MockMvcResponse disabled = delete(alice, aliceSession, device);
+        MockMvcResponse late = put(alice, aliceSession, device, Map.of("fid", "F1", "stateVersion", 0));
+
+        assertThat(disabled.header("Push-State-Version")).isEqualTo("1");
+        assertThat(late.statusCode()).isEqualTo(409);
+        assertThat(late.jsonPath().getString("code")).isEqualTo("STALE_PUSH_STATE");
+        assertThat(late.jsonPath().getInt("currentStateVersion")).isEqualTo(1);
+        assertThat(late.jsonPath().getBoolean("enabled")).isFalse();
+        assertThat(count("SELECT count(*) FROM push_registrations WHERE revoked_at IS NULL")).isZero();
+    }
+
+    @Test
+    @DisplayName("등록과 해제 요청에는 stateVersion이 필요하다")
+    void requiresStateVersion() {
+        MockMvcResponse registration = RestAssuredMockMvc.given()
+                .header(HttpHeaders.AUTHORIZATION, bearer(alice, aliceSession))
+                .contentType(MediaType.APPLICATION_JSON_VALUE).body(Map.of("fid", "F1"))
+                .put("/api/v1/me/push-registrations/{deviceId}", device);
+        MockMvcResponse revocation = RestAssuredMockMvc.given()
+                .header(HttpHeaders.AUTHORIZATION, bearer(alice, aliceSession))
+                .delete("/api/v1/me/push-registrations/{deviceId}", device);
+
+        assertThat(registration.statusCode()).isEqualTo(400);
+        assertThat(revocation.statusCode()).isEqualTo(400);
+    }
+
     private MockMvcResponse put(UUID user, UUID session, UUID deviceId, Map<String, ?> body) {
+        Map<String, Object> request = new HashMap<>(body);
+        request.putIfAbsent("stateVersion", stateVersion(session, deviceId));
         return RestAssuredMockMvc.given().header(HttpHeaders.AUTHORIZATION, bearer(user, session))
-                .contentType(MediaType.APPLICATION_JSON_VALUE).body(body)
+                .contentType(MediaType.APPLICATION_JSON_VALUE).body(request)
                 .put("/api/v1/me/push-registrations/{deviceId}", deviceId);
     }
 
     private MockMvcResponse delete(UUID user, UUID session, UUID deviceId) {
         return RestAssuredMockMvc.given().header(HttpHeaders.AUTHORIZATION, bearer(user, session))
+                .queryParam("stateVersion", stateVersion(session, deviceId))
                 .delete("/api/v1/me/push-registrations/{deviceId}", deviceId);
+    }
+
+    private long stateVersion(UUID session, UUID deviceId) {
+        List<Long> versions = jdbc.queryForList("""
+                SELECT state_version FROM push_registration_states WHERE session_id = ? AND device_id = ?
+                """, Long.class, session, deviceId);
+        if (versions.isEmpty()) {
+            return 0;
+        }
+        return versions.getFirst();
     }
 
     private String bearer(UUID user, UUID session) {

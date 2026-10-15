@@ -46,7 +46,7 @@ class FeedNotificationSchemaMigrationTest {
 
     @BeforeEach
     void upgradeExistingSchema() throws SQLException {
-        migrateExistingSchemaTo("25");
+        migrateExistingSchemaTo("26");
     }
 
     private void migrateExistingSchemaTo(String target) throws SQLException {
@@ -88,14 +88,15 @@ class FeedNotificationSchemaMigrationTest {
     @DisplayName("빈 PostgreSQL에도 전체 마이그레이션과 카테고리 시드를 적용할 수 있다")
     void migrateEmptyDatabase() throws SQLException {
         flyway().clean();
-        assertThat(flyway().migrate().migrationsExecuted).isEqualTo(25);
+        assertThat(flyway().migrate().migrationsExecuted).isEqualTo(26);
         flyway().validate();
         assertThat(queryLong("SELECT count(*) FROM categories WHERE is_active")).isEqualTo(2);
         assertThat(queryLong("""
                 SELECT count(*) FROM pg_tables WHERE schemaname = 'public'
                 AND tablename IN ('categories', 'feeds', 'comments', 'feed_likes', 'auth_sessions',
-                                  'notifications', 'push_registrations', 'notification_outbox')
-                """)).isEqualTo(8);
+                                  'notifications', 'push_registrations', 'push_registration_states',
+                                  'notification_outbox')
+                """)).isEqualTo(9);
     }
 
     @Test
@@ -156,6 +157,25 @@ class FeedNotificationSchemaMigrationTest {
         assertThat(queryLong("SELECT version FROM push_registrations WHERE id = ?", fresh)).isZero();
         reject("23502", "UPDATE push_registrations SET version = NULL WHERE id = ?", fresh);
         reject("23514", "UPDATE push_registrations SET version = -1 WHERE id = ?", fresh);
+    }
+
+    @Test
+    @DisplayName("V26은 기존 활성 등록만 수신 켜짐으로 옮기고 세션 없는 등록은 옮기지 않는다")
+    void initializePushRegistrationStates() throws SQLException {
+        migrateExistingSchemaTo("25");
+        UUID session = UUID.randomUUID();
+        UUID device = UUID.randomUUID();
+        execute("INSERT INTO auth_sessions (id, user_id) VALUES (?, ?)", session, AUTHOR);
+        UUID active = createRegistration(AUTHOR, device, "fid-active");
+        execute("UPDATE push_registrations SET session_id = ? WHERE id = ?", session, active);
+        createRegistration(READER, UUID.randomUUID(), "fid-legacy");
+
+        assertThat(flyway("26").migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(queryLong("SELECT state_version FROM push_registration_states WHERE session_id = ?"
+                + " AND device_id = ? AND enabled", session, device)).isEqualTo(1);
+        assertThat(queryLong("SELECT count(*) FROM push_registration_states")).isEqualTo(1);
+        reject("23514", "UPDATE push_registration_states SET state_version = -1 WHERE session_id = ?"
+                + " AND device_id = ?", session, device);
     }
 
     @Test
@@ -552,7 +572,7 @@ class FeedNotificationSchemaMigrationTest {
     }
 
     private static Flyway flyway() {
-        return flyway("25");
+        return flyway("26");
     }
 
     private static Flyway flyway(String target) {
