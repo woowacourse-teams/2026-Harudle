@@ -136,10 +136,16 @@ function request(session, method, path, payload, name, generation = false, expec
   businessFailures.add(!success, { api: name });
   if (generation) generationDuration.add(response.timings.duration);
   else apiDuration.add(response.timings.duration);
+  const responseTraceId = response.headers?.['X-Trace-Id'] || '';
+  const traceId = /^[0-9a-f]{32}$/i.test(responseTraceId) ? responseTraceId : 'unavailable';
+  if (!generation && response.timings.duration >= 1000) {
+    // Keep slow-request evidence without logging URLs, bodies, cookies or tokens.
+    console.warn(`${name}: slow response HTTP ${response.status}, durationMs=${response.timings.duration}, waitingMs=${response.timings.waiting}, traceId=${traceId}`);
+  }
   if (!success) {
     let errorCode = 'unknown';
     try { errorCode = response.json().code || 'unknown'; } catch (_) { /* No response body is logged. */ }
-    console.error(`${name}: received HTTP ${response.status}, code=${errorCode}`);
+    console.error(`${name}: received HTTP ${response.status}, code=${errorCode}, traceId=${traceId}`);
   }
   requireValue(success, `${name}: HTTP ${expectedStatus}`);
   return json(response, name);
@@ -161,9 +167,12 @@ function journey(name, action) {
 
 export function memberVisit(data) {
   const iteration = execution.scenario.iterationInTest;
+  // At 5m, the arrival timer can win against the executor's duration cancellation.
+  // Skip that boundary slot before accessing an account or sending any requests.
+  if (!smoke && iteration === expectedVisits) return;
+  if (iteration >= expectedVisits) fail('Unexpected extra visit');
   // 73 and 200 are coprime: every member visits once, with roles spread over time.
   const index = smoke ? smokeMembers[iteration] : (iteration * 73) % 200;
-  if (iteration >= expectedVisits) fail('Unexpected extra visit');
   const member = fixture.members[index];
   const session = data.sessions[index];
   const jar = http.cookieJar();

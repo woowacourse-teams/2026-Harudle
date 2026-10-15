@@ -64,10 +64,10 @@ class DashboardTests(unittest.TestCase):
             self.assertIn("$.httpStatus = 200", filters[name]["filterPattern"])
             self.assertEqual(filters[name]["metricTransformations"][0]["metricValue"], "1")
 
-    def test_dev_and_prod_have_the_same_contract_in_separate_namespaces(self):
+    def test_existing_dev_and_prod_widgets_and_filters_keep_the_same_contract(self):
         normalized = []
         for environment in ("dev", "prod"):
-            value = {"filters": metric_filters(environment), "widgets": service_widgets(environment, INSTANCE_ID)}
+            value = {"filters": metric_filters(environment), "widgets": service_widgets(environment, INSTANCE_ID)[:9]}
             text = json.dumps(value)
             other = "Prod" if environment == "dev" else "Dev"
             self.assertNotIn(f"Harudle/{other}", text)
@@ -76,6 +76,24 @@ class DashboardTests(unittest.TestCase):
             text = text.replace(f"harudle-{environment}-", "harudle-ENV-")
             normalized.append(text)
         self.assertEqual(*normalized)
+
+    def test_gc_and_nonheap_widgets_are_dev_only_and_use_converted_counters(self):
+        self.assertEqual(len(service_widgets("prod", INSTANCE_ID)), 9)
+        widgets = service_widgets("dev", INSTANCE_ID)
+        self.assertEqual(len(widgets), 11)
+        gc, memory = widgets[-2:]
+        self.assertIn("jvm_gc_pause_seconds_max", json.dumps(gc))
+        self.assertIn("1000*MAX(", json.dumps(gc))
+        for row, name in zip(gc["properties"]["metrics"][1:], ("sum", "count")):
+            formula = row[0]["expression"]
+            self.assertIn(f"jvm_gc_pause_seconds_{name}", formula)
+            self.assertIn("'Sum'", formula)
+            self.assertNotIn("DIFF(", formula)
+            self.assertNotIn("RATE(", formula)
+        self.assertIn('area=\\"nonheap\\"', json.dumps(memory))
+        self.assertIn("jvm_memory_committed_bytes", json.dumps(memory))
+        prepared = prepare_dashboard({"widgets": []}, "dev", INSTANCE_ID, "harudle-dev-db")
+        self.assertEqual(prepare_dashboard(prepared, "dev", INSTANCE_ID, "harudle-dev-db"), prepared)
 
     def test_dashboard_uses_sample_percentiles_period_based_rates_and_matching_resource_units(self):
         widgets = service_widgets("dev", INSTANCE_ID)
@@ -116,7 +134,7 @@ class DashboardTests(unittest.TestCase):
             result = subprocess.run(command, capture_output=True, text=True, check=True)
             self.assertEqual(len(list(output.glob("*.json"))), 7)
             self.assertEqual(json.loads(before.read_text()), previous)
-            self.assertEqual(len(json.loads((output / "dashboard.json").read_text())["widgets"]), 9)
+            self.assertEqual(len(json.loads((output / "dashboard.json").read_text())["widgets"]), 11)
 
     def test_cli_accepts_console_source_and_preserves_widgets_and_variables_for_both_environments(self):
         for environment in ("dev", "prod"):
@@ -143,7 +161,7 @@ class DashboardTests(unittest.TestCase):
                 self.assertEqual(result["variables"], original["variables"])
                 self.assertEqual(result["start"], original["start"])
                 self.assertEqual(result["widgets"][:1], original["widgets"])
-                self.assertEqual(len(result["widgets"]), 10)
+                self.assertEqual(len(result["widgets"]), 12 if environment == "dev" else 10)
                 self.assertEqual(len(list(output.glob("*.json"))), 7)
                 for index, expected in enumerate(metric_filters(environment), start=1):
                     self.assertEqual(json.loads((output / f"metric-filter-{index}.json").read_text()), expected)
