@@ -4,6 +4,7 @@ import com.harudle.push.service.port.FeedPushOutbox;
 import jakarta.persistence.EntityManager;
 import java.util.Objects;
 import java.util.UUID;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,9 +37,11 @@ class JpaFeedPushOutbox implements FeedPushOutbox {
             """;
 
     private final EntityManager entityManager;
+    private final ApplicationEventPublisher events;
 
-    JpaFeedPushOutbox(EntityManager entityManager) {
+    JpaFeedPushOutbox(EntityManager entityManager, ApplicationEventPublisher events) {
         this.entityManager = entityManager;
+        this.events = events;
     }
 
     @Override
@@ -48,11 +51,15 @@ class JpaFeedPushOutbox implements FeedPushOutbox {
         Objects.requireNonNull(event.eventId(), "eventId는 필수입니다.");
         Objects.requireNonNull(event.feedId(), "feedId는 필수입니다.");
         Objects.requireNonNull(event.publishedAt(), "publishedAt은 필수입니다.");
-        return entityManager.createNativeQuery(ENQUEUE)
+        int created = entityManager.createNativeQuery(ENQUEUE)
                 .setParameter("eventId", event.eventId())
                 .setParameter("feedId", event.feedId())
                 .setParameter("publishedAt", event.publishedAt())
                 .executeUpdate();
+        if (created > 0) {
+            events.publishEvent(new JobsQueued());
+        }
+        return created;
     }
 
     @Override
@@ -63,4 +70,6 @@ class JpaFeedPushOutbox implements FeedPushOutbox {
                 .setParameter("feedId", feedId)
                 .executeUpdate();
     }
+
+    record JobsQueued() { }
 }

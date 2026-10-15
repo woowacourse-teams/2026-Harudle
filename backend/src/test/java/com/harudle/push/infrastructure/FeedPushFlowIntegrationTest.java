@@ -29,6 +29,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -98,7 +99,7 @@ class FeedPushFlowIntegrationTest {
                 Integer.class, feed.id())).isEqualTo(1);
 
         when(sender.send("FID-1", eventId, feed.id())).thenReturn("accepted-message-id");
-        new FeedPushDeliveryWorker(queue, sender, clock).runBatch();
+        new FeedPushDeliveryWorker(queue, sender, clock, mock(ThreadPoolTaskScheduler.class)).runBatch();
 
         verify(sender).send("FID-1", eventId, feed.id());
         assertThat(status(feed.id())).isEqualTo("SENT");
@@ -117,7 +118,7 @@ class FeedPushFlowIntegrationTest {
         when(sender.send("FID-1", eventId, feed.id())).thenThrow(exception);
 
         Instant beforeRun = clock.instant();
-        new FeedPushDeliveryWorker(queue, sender, clock).runBatch();
+        new FeedPushDeliveryWorker(queue, sender, clock, mock(ThreadPoolTaskScheduler.class)).runBatch();
 
         verify(sender).send("FID-1", eventId, feed.id());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM feeds WHERE id = ?", Integer.class, feed.id()))

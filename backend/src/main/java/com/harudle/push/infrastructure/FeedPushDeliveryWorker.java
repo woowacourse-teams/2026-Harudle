@@ -18,7 +18,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 @Component
 @ConditionalOnProperty(prefix = "harudle.push.fcm", name = "enabled", havingValue = "true")
@@ -31,25 +34,45 @@ class FeedPushDeliveryWorker {
     private final JdbcPushDeliveryQueue queue;
     private final FcmFeedPushSender sender;
     private final Clock clock;
+    private final ThreadPoolTaskScheduler scheduler;
 
     FeedPushDeliveryWorker(JdbcPushDeliveryQueue queue, FcmFeedPushSender sender,
-                           @Qualifier("serviceClock") Clock clock) {
+                           @Qualifier("serviceClock") Clock clock,
+                           @Qualifier("pushTaskScheduler") ThreadPoolTaskScheduler scheduler) {
         this.queue = queue;
         this.sender = sender;
         this.clock = clock;
+        this.scheduler = scheduler;
     }
 
-    @Scheduled(fixedDelayString = "${harudle.push.worker.interval:1s}",
-            initialDelayString = "${harudle.push.worker.interval:1s}", scheduler = "pushTaskScheduler")
-    void runBatch() {
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    void onJobsQueued(JpaFeedPushOutbox.JobsQueued event) {
+        try {
+            scheduler.execute(this::drain);
+        } catch (RuntimeException exception) {
+            log.warn("푸시 워커를 바로 실행하지 못했습니다. 다음 주기 확인에서 다시 처리합니다.", exception);
+        }
+    }
+
+    @Scheduled(fixedDelayString = "${harudle.push.worker.interval:30s}",
+            initialDelayString = "${harudle.push.worker.interval:30s}", scheduler = "pushTaskScheduler")
+    void drain() {
+        boolean fullBatch;
+        do {
+            fullBatch = runBatch();
+        } while (fullBatch);
+    }
+
+    boolean runBatch() {
         queue.expire(clock.instant());
         for (int processed = 0; processed < BATCH_SIZE; processed++) {
             Optional<JdbcPushDeliveryQueue.Claim> claim = queue.claim(clock.instant());
             if (claim.isEmpty()) {
-                return;
+                return false;
             }
             deliver(claim.orElseThrow());
         }
+        return true;
     }
 
     private void deliver(JdbcPushDeliveryQueue.Claim claim) {

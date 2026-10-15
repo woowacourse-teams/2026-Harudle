@@ -8,16 +8,21 @@ import com.harudle.push.service.port.FeedPushOutbox;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.IllegalTransactionStateException;
+import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -26,6 +31,7 @@ import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest
+@Import(JpaFeedPushOutboxTest.QueuedProbeConfig.class)
 class JpaFeedPushOutboxTest {
     @Container @ServiceConnection
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"));
@@ -34,6 +40,7 @@ class JpaFeedPushOutboxTest {
     @Autowired private TransactionTemplate transactions;
     @Autowired private FeedPushOutbox outbox;
     @Autowired private FeedDeletionService deletion;
+    @Autowired private QueuedProbe queuedProbe;
     @MockitoBean private JwtDecoder jwtDecoder;
 
     private final UUID author = UUID.randomUUID();
@@ -43,6 +50,7 @@ class JpaFeedPushOutboxTest {
 
     @BeforeEach
     void setUp() {
+        queuedProbe.reset();
         update("INSERT INTO users (id, name) VALUES (?, '작성자'), (?, '독자'), (?, '탈퇴자')",
                 author, reader, deletedUser);
         UUID diary = UUID.randomUUID();
@@ -50,6 +58,19 @@ class JpaFeedPushOutboxTest {
                 diary, author);
         update("INSERT INTO feeds (id, diary_id, category_id) VALUES (?, ?, "
                 + "(SELECT id FROM categories WHERE name = '일상'))", feed, diary);
+    }
+
+    @Test
+    @DisplayName("발송 작업이 생기면 커밋 뒤에만 워커 실행 신호를 보낸다")
+    void signalsOnlyAfterCommit() {
+        registration(reader, true);
+
+        transactions.executeWithoutResult(status -> {
+            assertThat(outbox.enqueuePublished(event())).isEqualTo(1);
+            assertThat(queuedProbe.count()).isZero();
+        });
+
+        assertThat(queuedProbe.count()).isEqualTo(1);
     }
 
     @AfterEach
@@ -125,6 +146,7 @@ class JpaFeedPushOutboxTest {
         assertThat(created).isZero();
         assertThat(number("SELECT count(*) FROM notification_outbox WHERE event_id = ?", event.eventId()))
                 .isZero();
+        assertThat(queuedProbe.count()).isZero();
     }
 
     @Test
@@ -184,6 +206,7 @@ class JpaFeedPushOutboxTest {
         });
         assertThat(number("SELECT count(*) FROM notification_outbox WHERE event_id = ?", event.eventId()))
                 .isZero();
+        assertThat(queuedProbe.count()).isZero();
         assertThatThrownBy(() -> outbox.enqueuePublished(event))
                 .isInstanceOf(IllegalTransactionStateException.class);
     }
@@ -223,5 +246,30 @@ class JpaFeedPushOutboxTest {
             for (int i = 0; i < values.length; i++) query.setParameter(i + 1, values[i]);
             return ((Number) query.getSingleResult()).longValue();
         });
+    }
+
+    @TestConfiguration
+    static class QueuedProbeConfig {
+        @Bean
+        QueuedProbe queuedProbe() {
+            return new QueuedProbe();
+        }
+    }
+
+    static class QueuedProbe {
+        private final AtomicInteger count = new AtomicInteger();
+
+        @TransactionalEventListener
+        public void onQueued(JpaFeedPushOutbox.JobsQueued event) {
+            count.incrementAndGet();
+        }
+
+        int count() {
+            return count.get();
+        }
+
+        void reset() {
+            count.set(0);
+        }
     }
 }

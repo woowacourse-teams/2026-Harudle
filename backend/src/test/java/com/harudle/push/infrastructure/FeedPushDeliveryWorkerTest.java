@@ -3,8 +3,10 @@ package com.harudle.push.infrastructure;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -19,10 +21,12 @@ import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 class FeedPushDeliveryWorkerTest {
 
@@ -31,6 +35,7 @@ class FeedPushDeliveryWorkerTest {
     private JdbcPushDeliveryQueue queue;
     private FcmFeedPushSender sender;
     private FeedPushDeliveryWorker worker;
+    private ThreadPoolTaskScheduler scheduler;
     private JdbcPushDeliveryQueue.Claim claim;
     private JdbcPushDeliveryQueue.Target target;
 
@@ -38,7 +43,8 @@ class FeedPushDeliveryWorkerTest {
     void setUp() {
         queue = mock(JdbcPushDeliveryQueue.class);
         sender = mock(FcmFeedPushSender.class);
-        worker = new FeedPushDeliveryWorker(queue, sender, Clock.fixed(NOW, ZoneOffset.UTC));
+        scheduler = mock(ThreadPoolTaskScheduler.class);
+        worker = new FeedPushDeliveryWorker(queue, sender, Clock.fixed(NOW, ZoneOffset.UTC), scheduler);
         claim = new JdbcPushDeliveryQueue.Claim(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
                 UUID.randomUUID(), UUID.randomUUID(), NOW.plusSeconds(300), 1, NOW.minusSeconds(3600));
         target = new JdbcPushDeliveryQueue.Target("F1", 0);
@@ -54,6 +60,45 @@ class FeedPushDeliveryWorkerTest {
         verify(queue).expire(NOW);
         verify(sender).send("F1", claim.eventId(), claim.feedId());
         verify(queue).sent(claim, NOW);
+    }
+
+    @Test
+    @DisplayName("새 발송 작업 신호를 받으면 워커를 즉시 실행하도록 예약한다")
+    void wakesAfterJobsQueued() {
+        worker.onJobsQueued(new JpaFeedPushOutbox.JobsQueued());
+
+        verify(scheduler).execute(any(Runnable.class));
+    }
+
+    @Test
+    @DisplayName("즉시 실행 예약에 실패해도 피드 게시 결과를 바꾸지 않는다")
+    void keepsPublishResultWhenWakeupFails() {
+        doThrow(new IllegalStateException("scheduler stopped"))
+                .when(scheduler).execute(any(Runnable.class));
+
+        worker.onJobsQueued(new JpaFeedPushOutbox.JobsQueued());
+
+        verify(scheduler).execute(any(Runnable.class));
+    }
+
+    @Test
+    @DisplayName("발송 작업이 100건을 넘으면 다음 주기를 기다리지 않고 남은 작업을 처리한다")
+    void drainsMoreThanOneBatch() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        when(queue.claim(NOW)).thenAnswer(invocation -> {
+            if (calls.getAndIncrement() == 101) {
+                return Optional.empty();
+            }
+            return Optional.of(new JdbcPushDeliveryQueue.Claim(UUID.randomUUID(), claim.eventId(),
+                    claim.feedId(), claim.registrationId(), UUID.randomUUID(),
+                    claim.lockedUntil(), 1, claim.publishedAt()));
+        });
+        when(queue.target(any(), eq(NOW))).thenReturn(Optional.of(target));
+
+        worker.drain();
+
+        verify(sender, times(101)).send("F1", claim.eventId(), claim.feedId());
+        verify(queue, times(102)).claim(NOW);
     }
 
     @Test
