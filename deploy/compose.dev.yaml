@@ -1,5 +1,10 @@
 services:
   backend:
+    environment:
+      # Keep the existing heap sizing and collector while recording GC causes.
+      JAVA_OPTS: >-
+        -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError
+        -Xlog:gc*,safepoint:stdout:time,uptime,level,tags
     logging: !override
       driver: awslogs
       options:
