@@ -1,9 +1,6 @@
 package com.harudle.generation.config;
 
-import com.harudle.generation.prompt.infrastructure.GenerationPromptBootstrapService;
-import com.harudle.generation.prompt.infrastructure.GenerationPromptInitializer;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
-import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import com.harudle.generation.diary.service.ClaimedDiaryGenerationService;
 import com.harudle.generation.diary.service.DiaryGenerationCompletionService;
 import com.harudle.generation.diary.service.DiaryGenerationExecutor;
@@ -15,13 +12,16 @@ import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
 import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
 import com.harudle.generation.diary.service.port.ImageStorage;
-import com.harudle.generation.diary.service.port.StoryboardGenerator;
+import com.harudle.generation.diary.service.storyboard.StoryboardGenerationService;
+import com.harudle.generation.prompt.infrastructure.GenerationPromptBootstrapService;
+import com.harudle.generation.prompt.infrastructure.GenerationPromptInitializer;
+import com.harudle.generation.prompt.repository.GenerationPromptRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.Optional;
 import java.util.UUID;
-import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -50,22 +50,22 @@ class DiaryGenerationConfiguration {
             RequestFingerprintGenerator requestFingerprintGenerator,
             GenerationPromptRepository generationPromptRepository,
             DiaryGenerationRepository diaryGenerationRepository,
-            ObjectProvider<StoryboardGenerator> storyboardGeneratorProvider,
+            ObjectProvider<StoryboardGenerationService> storyboardServiceProvider,
             ObjectProvider<DiaryImageGenerator> diaryImageGeneratorProvider,
             ObjectProvider<ImageStorage> imageStorageProvider,
             DiaryGenerationCompletionService completionService,
             GenerationLifecycleMetrics lifecycleMetrics,
             MeterRegistry meterRegistry
     ) {
-        Optional<StoryboardGenerator> storyboardGenerator = findAdapter(storyboardGeneratorProvider);
+        Optional<StoryboardGenerationService> storyboardService = findAdapter(storyboardServiceProvider);
         Optional<DiaryImageGenerator> diaryImageGenerator = findAdapter(diaryImageGeneratorProvider);
         Optional<ImageStorage> imageStorage = findAdapter(imageStorageProvider);
-        if (storyboardGenerator.isEmpty()
+        if (storyboardService.isEmpty()
                 && diaryImageGenerator.isEmpty()
                 && imageStorage.isEmpty()) {
             return new UnavailableDiaryGenerationExecutor();
         }
-        if (storyboardGenerator.isEmpty()
+        if (storyboardService.isEmpty()
                 || diaryImageGenerator.isEmpty()
                 || imageStorage.isEmpty()) {
             throw new IllegalStateException("AI 생성 어댑터는 모두 함께 구성해야 합니다.");
@@ -75,7 +75,7 @@ class DiaryGenerationConfiguration {
                 requestFingerprintGenerator,
                 generationPromptRepository,
                 diaryGenerationRepository,
-                storyboardGenerator.orElseThrow(),
+                storyboardService.orElseThrow(),
                 diaryImageGenerator.orElseThrow(),
                 imageStorage.orElseThrow(),
                 completionService,

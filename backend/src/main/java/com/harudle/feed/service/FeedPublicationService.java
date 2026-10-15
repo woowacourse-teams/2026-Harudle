@@ -14,13 +14,19 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import org.hibernate.exception.ConstraintViolationException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class FeedPublicationService {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(FeedPublicationService.class);
 
     private final DiaryPublicationReader diaryPublicationReader;
     private final FeedRepository feeds;
@@ -63,10 +69,43 @@ public class FeedPublicationService {
         pushOutbox.enqueuePublished(new FeedPushOutbox.FeedPublished(
                 UUID.randomUUID(), feed.getId(), feed.getPublishedAt()
         ));
+        recordPublicationAfterCommit();
         return new FeedResult(
                 feed.getId(), author, category, diary.imageObjectKey(), feed.getPublishedAt(),
                 feed.getLikeCount(), feed.getCommentCount(), false, true
         );
+    }
+
+    private void recordPublicationAfterCommit() {
+        if (!TransactionSynchronizationManager.isActualTransactionActive()
+                || !TransactionSynchronizationManager.isSynchronizationActive()) {
+            return;
+        }
+        try {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    try {
+                        LOGGER.atInfo()
+                                .addKeyValue("event", "feed_publication_succeeded")
+                                .log("event=feed_publication_succeeded");
+                    } catch (RuntimeException exception) {
+                        warnRecordingFailure(exception);
+                    }
+                }
+            });
+        } catch (RuntimeException exception) {
+            warnRecordingFailure(exception);
+        }
+    }
+
+    private void warnRecordingFailure(RuntimeException exception) {
+        try {
+            LOGGER.warn("event=metrics_recording_failed component=feed_publication exceptionType={}",
+                    exception.getClass().getSimpleName());
+        } catch (RuntimeException ignored) {
+            // Observation failures must never change the publication outcome.
+        }
     }
 
     private void save(Feed feed) {

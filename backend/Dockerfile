@@ -1,4 +1,4 @@
-FROM amazoncorretto:21-alpine3.22-jdk AS builder
+FROM amazoncorretto:21-alpine3.22-jdk AS dependencies
 
 WORKDIR /workspace
 
@@ -6,11 +6,15 @@ COPY gradlew settings.gradle build.gradle ./
 COPY gradle ./gradle
 
 RUN chmod +x gradlew \
-    && ./gradlew --no-daemon dependencies
+    && ./gradlew --no-daemon resolveProductionDependencies
+
+FROM dependencies AS builder
 
 COPY src ./src
 
-RUN ./gradlew --no-daemon clean bootJar -x test \
+RUN gradle_build_started="$(date +%s)" \
+    && ./gradlew --no-daemon bootJar -x test \
+    && echo "[build-metrics] backend_gradle_bootjar_seconds=$(($(date +%s) - gradle_build_started))" \
     && JAR_FILE="$(find build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-plain.jar' | head -n 1)" \
     && test -n "$JAR_FILE" \
     && cp "$JAR_FILE" /workspace/app.jar

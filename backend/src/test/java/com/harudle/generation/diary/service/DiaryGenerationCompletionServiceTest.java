@@ -16,6 +16,7 @@ import com.harudle.generation.diary.domain.GenerationStatus;
 import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import com.harudle.generation.diary.domain.StoryPanel;
 import com.harudle.generation.diary.domain.Storyboard;
+import com.harudle.generation.diary.domain.StoryboardProviderInfo;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
 import com.harudle.generation.usage.domain.GenerationUsage;
@@ -90,6 +91,56 @@ class DiaryGenerationCompletionServiceTest {
         assertThat(result.getStatus()).isEqualTo(GenerationStatus.SUCCEEDED);
         assertThat(result.getCompletedAt()).isEqualTo(NOW);
         assertThat(result.getTokenUsage()).isEqualTo(tokenUsage);
+    }
+
+    @Test
+    @DisplayName("성공 결과의 Provider와 모델을 토큰 및 완료 상태와 함께 저장한다")
+    void persistWinningProviderWithCompletion() {
+        DiaryGeneration generation = createGeneration();
+        StoryboardProviderInfo info = new StoryboardProviderInfo("qwen", "qwen3.8-max");
+        when(diaryGenerationRepository.findByIdForUpdate(generation.getId())).thenReturn(Optional.of(generation));
+
+        DiaryGeneration result = completionService.succeed(generation.getId(), createStoryboard(),
+                "generated/comic.png", new GenerationTokenUsage(100, 390, 110, 600), info);
+
+        assertThat(result.getStoryboardProvider()).isEqualTo("qwen");
+        assertThat(result.getStoryboardModel()).isEqualTo("qwen3.8-max");
+        assertThat(result.getStatus()).isEqualTo(GenerationStatus.SUCCEEDED);
+    }
+
+    @Test
+    @DisplayName("늦게 도착한 성공 결과가 이미 확정된 Provider와 모델을 덮어쓰지 않는다")
+    void retainPreviouslyCommittedProviderInfo() {
+        DiaryGeneration generation = createGeneration();
+        generation.succeed(createStoryboard(), "generated/winner.png", null,
+                new StoryboardProviderInfo("gemini", "winner-model"), NOW.minusSeconds(1));
+        when(diaryGenerationRepository.findByIdForUpdate(generation.getId())).thenReturn(Optional.of(generation));
+
+        DiaryGeneration result = completionService.succeed(generation.getId(), createStoryboard(),
+                "generated/loser.png", null, new StoryboardProviderInfo("qwen", "loser-model"));
+
+        assertThat(result.getStoryboardProvider()).isEqualTo("gemini");
+        assertThat(result.getStoryboardModel()).isEqualTo("winner-model");
+        assertThat(result.getImageObjectKey()).isEqualTo("generated/winner.png");
+        assertNoFinalizations();
+    }
+
+    @Test
+    @DisplayName("이미지 단계 실패 시 성공한 스토리보드의 Provider와 모델을 최종 실패와 함께 저장한다")
+    void persistStoryboardProviderWhenImageStageFails() {
+        DiaryGeneration generation = createGeneration();
+        Diary diary = mock(Diary.class);
+        when(diaryGenerationRepository.findByIdForUpdate(generation.getId())).thenReturn(Optional.of(generation));
+        when(diaryRepository.findByIdIncludingDeletedForUpdate(generation.getDiaryId())).thenReturn(Optional.of(diary));
+
+        GenerationErrorCode error = completionService.fail(generation.getId(), GenerationErrorCode.IMAGE_STORAGE_ERROR,
+                new StoryboardProviderInfo("qwen", "qwen3.8-max"));
+
+        assertThat(error).isEqualTo(GenerationErrorCode.IMAGE_STORAGE_ERROR);
+        assertThat(generation.getStatus()).isEqualTo(GenerationStatus.FAILED);
+        assertThat(generation.getStoryboardProvider()).isEqualTo("qwen");
+        assertThat(generation.getStoryboardModel()).isEqualTo("qwen3.8-max");
+        verify(diary).delete(NOW);
     }
 
     @Test

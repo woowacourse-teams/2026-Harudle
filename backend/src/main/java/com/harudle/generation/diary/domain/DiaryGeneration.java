@@ -53,6 +53,12 @@ public class DiaryGeneration {
     @Column(name = "token_usage", columnDefinition = "jsonb")
     private GenerationTokenUsage tokenUsage;
 
+    @Column(name = "storyboard_provider", columnDefinition = "text")
+    private String storyboardProvider;
+
+    @Column(name = "storyboard_model", columnDefinition = "text")
+    private String storyboardModel;
+
     @Column(name = "title", length = Storyboard.MAX_TITLE_LENGTH)
     private String title;
 
@@ -156,6 +162,14 @@ public class DiaryGeneration {
         return tokenUsage;
     }
 
+    public String getStoryboardProvider() {
+        return storyboardProvider;
+    }
+
+    public String getStoryboardModel() {
+        return storyboardModel;
+    }
+
     public String getImageObjectKey() {
         return imageObjectKey;
     }
@@ -203,6 +217,16 @@ public class DiaryGeneration {
             GenerationTokenUsage tokenUsage,
             Instant completedAt
     ) {
+        succeed(storyboard, imageObjectKey, tokenUsage, null, completedAt);
+    }
+
+    public void succeed(
+            Storyboard storyboard,
+            String imageObjectKey,
+            GenerationTokenUsage tokenUsage,
+            StoryboardProviderInfo providerInfo,
+            Instant completedAt
+    ) {
         validateProcessingStatus();
         validateStoryboard(storyboard);
         validateCompletedAt(completedAt);
@@ -210,6 +234,7 @@ public class DiaryGeneration {
 
         this.storyboard = storyboard;
         this.tokenUsage = tokenUsage;
+        recordStoryboardProvider(providerInfo);
         this.title = storyboard.title();
         this.imageObjectKey = normalizedImageObjectKey;
         this.errorCode = null;
@@ -218,13 +243,23 @@ public class DiaryGeneration {
     }
 
     public void fail(GenerationErrorCode errorCode, Instant completedAt) {
+        fail(errorCode, null, completedAt);
+    }
+
+    public void fail(GenerationErrorCode errorCode, StoryboardProviderInfo providerInfo, Instant completedAt) {
         validateProcessingStatus();
         validateErrorCode(errorCode);
         validateCompletedAt(completedAt);
 
         this.errorCode = errorCode;
+        recordStoryboardProvider(providerInfo);
         this.completedAt = completedAt;
         this.status = GenerationStatus.FAILED;
+    }
+
+    private void recordStoryboardProvider(StoryboardProviderInfo providerInfo) {
+        this.storyboardProvider = providerInfo == null ? null : providerInfo.provider();
+        this.storyboardModel = providerInfo == null ? null : providerInfo.model();
     }
 
     void interrupt(Instant completedAt) {

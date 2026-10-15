@@ -5,8 +5,9 @@ import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.generation.diary.domain.DiaryGeneration;
 import com.harudle.generation.diary.domain.GenerationErrorCode;
 import com.harudle.generation.diary.domain.GenerationStatus;
-import com.harudle.generation.diary.domain.Storyboard;
 import com.harudle.generation.diary.domain.GenerationTokenUsage;
+import com.harudle.generation.diary.domain.Storyboard;
+import com.harudle.generation.diary.domain.StoryboardProviderInfo;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
 import com.harudle.generation.usage.service.GenerationUsageService;
@@ -49,12 +50,23 @@ public class DiaryGenerationCompletionService {
             String imageObjectKey,
             GenerationTokenUsage tokenUsage
     ) {
+        return succeed(generationId, storyboard, imageObjectKey, tokenUsage, null);
+    }
+
+    @Transactional
+    DiaryGeneration succeed(
+            UUID generationId,
+            Storyboard storyboard,
+            String imageObjectKey,
+            GenerationTokenUsage tokenUsage,
+            StoryboardProviderInfo providerInfo
+    ) {
         DiaryGeneration generation = findForUpdate(generationId);
         return switch (generation.getStatus()) {
             case FAILED -> throw new DiaryGenerationFailedException(generation.getErrorCode());
             case SUCCEEDED -> generation;
             case PROCESSING -> {
-                generation.succeed(storyboard, imageObjectKey, tokenUsage, clock.instant());
+                generation.succeed(storyboard, imageObjectKey, tokenUsage, providerInfo, clock.instant());
                 lifecycleMetrics.finalizedAfterCommit(generationId, GenerationStatus.SUCCEEDED, null);
                 yield generation;
             }
@@ -63,12 +75,17 @@ public class DiaryGenerationCompletionService {
 
     @Transactional
     GenerationErrorCode fail(UUID generationId, GenerationErrorCode errorCode) {
+        return fail(generationId, errorCode, null);
+    }
+
+    @Transactional
+    GenerationErrorCode fail(UUID generationId, GenerationErrorCode errorCode, StoryboardProviderInfo providerInfo) {
         DiaryGeneration generation = findForUpdate(generationId);
         Diary diary = findDiaryForUpdate(generation.getDiaryId());
         return switch (generation.getStatus()) {
             case PROCESSING -> {
                 Instant failedAt = clock.instant();
-                generation.fail(errorCode, failedAt);
+                generation.fail(errorCode, providerInfo, failedAt);
                 diary.delete(failedAt);
                 restoreUsage(generation, diary);
                 lifecycleMetrics.finalizedAfterCommit(generationId, GenerationStatus.FAILED, errorCode);
