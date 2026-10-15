@@ -3,6 +3,7 @@ package com.harudle.comment.infrastructure;
 import com.harudle.comment.query.CommentCursor;
 import com.harudle.comment.repository.CommentRepository;
 import com.harudle.comment.repository.CommentSnapshot;
+import com.harudle.common.testdata.DevTestDataVisibility;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import java.sql.Timestamp;
@@ -12,6 +13,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -70,9 +72,11 @@ class JpaCommentRepository implements CommentRepository {
     private static final String ORDER_QUERY = " ORDER BY c.created_at ASC, c.id ASC";
 
     private final EntityManager entityManager;
+    private final DevTestDataVisibility visibility;
 
-    JpaCommentRepository(EntityManager entityManager) {
+    JpaCommentRepository(EntityManager entityManager, DevTestDataVisibility visibility) {
         this.entityManager = entityManager;
+        this.visibility = visibility;
     }
 
     @Override
@@ -84,9 +88,17 @@ class JpaCommentRepository implements CommentRepository {
 
     @Override
     @Transactional(readOnly = true)
-    public boolean existsVisibleFeed(UUID feedId) {
+    public boolean existsVisibleFeed(UUID feedId, @Nullable UUID viewerId) {
         Objects.requireNonNull(feedId, "feedId는 필수입니다.");
-        return count(VISIBLE_FEED_QUERY, "feedId", feedId) > 0;
+        if (!visibility.enabled()) {
+            return count(VISIBLE_FEED_QUERY, "feedId", feedId) > 0;
+        }
+        Query query = entityManager.createNativeQuery(VISIBLE_FEED_QUERY + """
+                 AND (feed_author.primary_email IS NULL OR feed_author.primary_email NOT LIKE '%.loadtest.invalid'
+                      OR
+                """ + DevTestDataVisibility.TEST_VIEWER_SQL + ")")
+                .setParameter("feedId", feedId).setParameter("viewerId", viewerId);
+        return ((Number) query.getSingleResult()).longValue() > 0;
     }
 
     @Override

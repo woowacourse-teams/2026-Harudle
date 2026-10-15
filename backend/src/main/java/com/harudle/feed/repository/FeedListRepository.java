@@ -1,11 +1,13 @@
 package com.harudle.feed.repository;
 
+import com.harudle.common.testdata.DevTestDataVisibility;
 import com.harudle.feed.query.FeedCursor;
 import com.harudle.feed.query.FeedSort;
 import com.harudle.generation.diary.domain.GenerationStatus;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.TypedQuery;
 import java.util.List;
+import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Repository;
 
@@ -31,15 +33,21 @@ public class FeedListRepository {
             """;
 
     private final EntityManager entityManager;
+    private final DevTestDataVisibility visibility;
 
-    public FeedListRepository(EntityManager entityManager) {
+    public FeedListRepository(EntityManager entityManager, DevTestDataVisibility visibility) {
         this.entityManager = entityManager;
+        this.visibility = visibility;
     }
 
     public List<FeedSnapshot> findAfter(
-            FeedSort sort, @Nullable Long categoryId, @Nullable FeedCursor cursor, int limit
+            FeedSort sort, @Nullable Long categoryId, @Nullable FeedCursor cursor, int limit,
+            @Nullable UUID viewerId
     ) {
         var hql = new StringBuilder(SELECT_ACTIVE);
+        if (visibility.enabled()) {
+            hql.append(DevTestDataVisibility.VISIBLE_AUTHOR_HQL);
+        }
         if (categoryId != null) {
             hql.append(" AND feed.categoryId = :categoryId");
         }
@@ -57,6 +65,9 @@ public class FeedListRepository {
                 : " ORDER BY feed.publishedAt DESC, feed.id DESC");
         TypedQuery<FeedSnapshot> query = entityManager.createQuery(hql.toString(), FeedSnapshot.class)
                 .setParameter("succeeded", GenerationStatus.SUCCEEDED).setMaxResults(limit);
+        if (visibility.enabled()) {
+            query.setParameter("viewerId", viewerId);
+        }
         if (categoryId != null) {
             query.setParameter("categoryId", categoryId);
         }
