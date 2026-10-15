@@ -211,6 +211,8 @@ bash load-test/run.sh peak peak1
 | 일기 생성이 제시간에 끝났나요? | `generation_duration`의 `p(95)` | 45초 미만 |
 
 한 회원이 여러 행동을 하므로 회원 수는 200명, 행동 수는 340회입니다.
+5분이 끝나는 순간 k6가 마지막 반복을 한 번 더 시작할 수 있습니다. 이 마지막 반복은 회원 조회나 API 호출 없이 끝냅니다.
+따라서 `iterations`가 201이어도 실제 방문은 `member_visits=200`, API 요청은 `business_requests=1420`으로 확인합니다.
 전체 HTTP 요청 수에는 로그인 준비도 포함됩니다. 1,420건인지는 `business_requests`로 확인합니다.
 
 **셋째, 응답 시간과 처리량을 기록합니다.**
@@ -229,7 +231,10 @@ bash load-test/run.sh peak peak1
 `summary.json`, `report.html`, `k6.log`도 함께 보관합니다.
 
 실패가 있으면 `k6.log`에서 실패한 API와 오류 코드를 찾습니다.
+일반 API가 1초 이상 걸리면 성공한 요청도 API 이름, 응답 시간, 응답을 기다린 시간과 서버의 `traceId`를 `k6.log`에 남깁니다. 서버 로그에서 같은 ID를 검색하면 해당 요청을 찾을 수 있습니다. URL과 로그인 정보, 응답 본문은 기록하지 않습니다.
 응답이 느리면 같은 시간대의 [dev CloudWatch 대시보드](https://ap-northeast-2.console.aws.amazon.com/cloudwatch/home?region=ap-northeast-2#dashboards/dashboard/DASHBOARD-harudle-dev)에서 CPU, 메모리, DB 연결 대기를 확인합니다.
+
+GC 원인을 재시험할 때는 [GC 로그와 1초 단위 OS 기록 절차](../../deploy/monitoring/README.md#dev-부하테스트에서-gc-원인을-확인합니다)를 먼저 적용합니다. GC 종류와 힙 크기를 유지한 채 새 실행 이름으로 비교합니다.
 
 DB 연결의 평균 시간과 최근 최대 시간, 연결 시간 초과 횟수, Java 힙과 실제 RAM 사용량도 볼 수 있도록 설정을 추가했습니다.
 **아직 AWS에는 적용하지 않았습니다.** dev Agent에 설정을 적용하고 그래프를 추가한 뒤 확인할 수 있습니다. [모니터링 적용과 확인 방법](../../deploy/monitoring/README.md)을 참고합니다.
