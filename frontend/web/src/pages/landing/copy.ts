@@ -30,8 +30,8 @@ export const LANDING_COPY = {
     slackChannelName: '그림일기-공유',
     // 사용자가 전달한 대표 수치. 집계 기준은 확인 후 확정한다.
     usageStats: [
-      { value: 1300, prefix: '', suffix: '장+', label: '만들어진 네컷만화' },
-      { value: 160, prefix: '', suffix: '명+', label: '함께하는 사람' },
+      { value: 2000, prefix: '', suffix: '장+', label: '만들어진 네컷만화' },
+      { value: 170, prefix: '', suffix: '명+', label: '함께하는 사람' },
     ],
     sceneLabel: '공유 장면 예시',
     sceneTitle: '생일 작전방 · 3',
@@ -47,6 +47,15 @@ export const LANDING_COPY = {
     recipientName: '친구',
     dateLabel: '어제',
     inputPlaceholder: '메시지 입력',
+  },
+  feed: {
+    title: '피드에서\n네컷만화를 구경해요',
+    description: '지금 인기있는 네컷만화 두 개를 먼저 만나보세요.',
+    action: '피드 둘러보기',
+    loading: '네컷만화를 불러오고 있어요',
+    error: '네컷만화 미리보기를 불러오지 못했어요.',
+    empty: '아직 공개 피드에 올라온 네컷만화가 없어요.',
+    retry: '다시 불러오기',
   },
   final: {
     title: '최근에 같이 웃었던\n순간이 있나요?',

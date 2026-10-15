@@ -1,5 +1,5 @@
 import { API_BASE_URL, isProblemDetails, RequestError } from '../../shared/api';
-import { authFetch } from '../../shared/auth';
+import { authFetch, requestCsrfToken } from '../../shared/auth';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { isFeedComment, type FeedComment } from './feedComments';
 
@@ -21,9 +21,13 @@ export const createFeedComment = async ({
   if (!isValidCommentContent(normalizedContent))
     throw new Error(ERROR_MESSAGES.INVALID_COMMENT_CONTENT);
 
+  const csrfToken = await requestCsrfToken();
   const response = await authFetch(`${API_BASE_URL}/feeds/${feedId}/comments`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrfToken,
+    },
     body: JSON.stringify({ content: normalizedContent }),
   });
 
