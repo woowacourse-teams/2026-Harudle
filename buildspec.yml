@@ -107,6 +107,12 @@ artifacts:
     - deploy/monitoring/**/*
     - deploy/scripts/**/*
     - backend/src/main/resources/db/maintenance/backfill_user_public_profiles.sql
+    - backend/src/main/resources/load-test-diary.png
+    - backend/load-test/prepare.py
+    - backend/load-test/assets.py
+    - backend/load-test/cleanup.py
+    - backend/load-test/ec2.py
+    - backend/load-test/transfer.py
     - build-artifacts/*
   discard-paths: no
 
