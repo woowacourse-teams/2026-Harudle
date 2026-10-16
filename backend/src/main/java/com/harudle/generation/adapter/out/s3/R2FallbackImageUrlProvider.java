@@ -28,6 +28,7 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
     private final R2StorageProperties r2;
     private final S3ImageAccessPolicy accessPolicy;
     private final LongSupplier nanoTime;
+    private volatile ImageUrlProvider selectedReadProvider;
 
     public R2FallbackImageUrlProvider(ImageUrlProvider primary, ImageStorage storage, BackupObjectStorage backup,
             S3StorageProperties s3, R2StorageProperties r2) {
@@ -52,6 +53,70 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
         if (!s3.environment().equals(r2.environment())) {
             throw new IllegalArgumentException("이미지 URL 발급의 S3와 R2 환경이 일치해야 합니다.");
         }
+    }
+
+    @Override
+    public ImageUrlProvider forRead() {
+        return imageObjectKey -> {
+            try {
+                accessPolicy.requireGenerated(imageObjectKey);
+            } catch (IllegalArgumentException exception) {
+                throw new ImageStorageException("현재 환경의 생성 이미지 키가 필요합니다.", exception,
+                        DiagnosticType.REQUEST_VALIDATION_ERROR);
+            }
+            ImageUrlProvider selected = selectedReadProvider;
+            if (selected == null) {
+                selected = selectReadProvider(imageObjectKey);
+            }
+            return selected.createAccessUrl(imageObjectKey);
+        };
+    }
+
+    private synchronized ImageUrlProvider selectReadProvider(String imageObjectKey) {
+        if (selectedReadProvider != null) {
+            return selectedReadProvider;
+        }
+        long startedAt = System.nanoTime();
+        boolean s3Available = false;
+        String s3Result = "ERROR";
+        try {
+            s3Available = storage.exists(imageObjectKey, new ImageLookupBudget(r2.singleLookupBudget(), nanoTime));
+            s3Result = s3Available ? "AVAILABLE" : "MISSING";
+        } catch (ImageLookupBudgetExceededException exception) {
+            s3Result = "BUDGET_EXHAUSTED";
+        } catch (ImageStorageException exception) {
+            if (exception.diagnosticType() == DiagnosticType.REQUEST_VALIDATION_ERROR) {
+                throw exception;
+            }
+        }
+        selectedReadProvider = s3Available ? primary : backup::createAccessUrl;
+        String selectedStorage = s3Available ? "S3" : "R2";
+        LOGGER.atInfo().addKeyValue("event", "image_read_storage_selected")
+                .addKeyValue("environment", s3.environment()).addKeyValue("storage", selectedStorage)
+                .addKeyValue("s3Result", s3Result)
+                .addKeyValue("durationMs", (System.nanoTime() - startedAt) / 1_000_000)
+                .log("event=image_read_storage_selected storage={} s3Result={}", selectedStorage, s3Result);
+        return selectedReadProvider;
+    }
+
+    @Override
+    public ImageUrlProvider forPublication() {
+        ImageUrlProvider publication = primary.forPublication();
+        return imageObjectKey -> {
+            try {
+                return publication.createAccessUrl(imageObjectKey);
+            } catch (ImageStorageException exception) {
+                if (exception.diagnosticType() == DiagnosticType.REQUEST_VALIDATION_ERROR) {
+                    throw exception;
+                }
+            }
+            try {
+                return backup.createAccessUrl(imageObjectKey);
+            } catch (BackupStorageException exception) {
+                throw new ImageStorageException("피드 이미지 URL 발급에 실패했습니다.", exception,
+                        S3MetricFailureType.bounded(exception.failureType().name()));
+            }
+        };
     }
 
     @Override

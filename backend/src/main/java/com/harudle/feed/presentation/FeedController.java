@@ -79,7 +79,7 @@ class FeedController {
         UUID actorId = userIds.resolve(authentication);
         FeedResult result = publicationService.publish(actorId, request.diaryId(), request.categoryId());
         return ResponseEntity.created(URI.create(BASE_PATH + "/" + result.id()))
-                .body(responseAssembler.toResponse(result));
+                .body(responseAssembler.toPublishResponse(result));
     }
 
     @Operation(summary = "공개 피드 목록 조회", description = "최신순 또는 현재 좋아요 수 기준 인기순으로 조회합니다.")
