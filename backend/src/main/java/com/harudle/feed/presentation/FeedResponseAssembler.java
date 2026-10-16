@@ -26,7 +26,7 @@ class FeedResponseAssembler {
     }
 
     FeedResponse toResponse(FeedResult result) {
-        return toResponse(result, imageUrlProvider);
+        return toResponse(result, imageUrlProvider.forFeed());
     }
 
     private FeedResponse toResponse(FeedResult result, ImageUrlProvider responseUrls) {
@@ -47,7 +47,8 @@ class FeedResponseAssembler {
     }
 
     FeedPageResponse toResponse(FeedPageResult page) {
-        return new FeedPageResponse(page.items().stream().map(this::toResponse).toList(),
+        ImageUrlProvider responseUrls = imageUrlProvider.forFeed();
+        return new FeedPageResponse(page.items().stream().map(item -> toResponse(item, responseUrls)).toList(),
                 page.nextCursor(), page.hasNext());
     }
 }
