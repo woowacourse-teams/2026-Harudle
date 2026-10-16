@@ -1,4 +1,4 @@
-package com.harudle.generation.adapter.out.storyboard;
+package com.harudle.generation.adapter.out.http;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -9,17 +9,17 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import okio.BufferedSink;
 
-/** Transport defaults for a single storyboard attempt; image clients do not use these defaults. */
-public final class StoryboardHttpTransport {
+/** Transport for one provider attempt, without request retransmission or redirects. */
+public final class SingleAttemptHttpTransport {
 
-    private StoryboardHttpTransport() {
+    private SingleAttemptHttpTransport() {
     }
 
     public static OkHttpClient.Builder builder(Duration timeout) {
         Objects.requireNonNull(timeout);
         if (timeout.compareTo(Duration.ofMillis(1)) < 0
                 || timeout.compareTo(Duration.ofMillis(Integer.MAX_VALUE)) > 0) {
-            throw new IllegalArgumentException("스토리보드 HTTP 제한 시간은 1ms 이상, 2147483647ms 이하여야 합니다.");
+            throw new IllegalArgumentException("HTTP 제한 시간은 1ms 이상, 2147483647ms 이하여야 합니다.");
         }
         return new OkHttpClient.Builder()
                 .connectTimeout(Duration.ofSeconds(10))
