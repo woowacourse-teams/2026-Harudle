@@ -70,8 +70,8 @@ class R2FallbackImageUrlProviderTest {
         when(storage.exists(eq(DETAIL), any(ImageLookupBudget.class))).thenReturn(true);
         when(primary.createAccessUrl(anyString())).thenReturn(S3_URL);
 
-        assertThat(provider.forFeed().createAccessUrl(DETAIL)).isSameAs(S3_URL);
-        ImageUrlProvider nextResponse = provider.forFeed();
+        assertThat(provider.forRead().createAccessUrl(DETAIL)).isSameAs(S3_URL);
+        ImageUrlProvider nextResponse = provider.forRead();
         IntStream.range(1, 21).forEach(index -> assertThat(nextResponse.createAccessUrl(
                 DETAIL.replace("446655440000", String.format("%012d", index)))).isSameAs(S3_URL));
 
@@ -84,8 +84,8 @@ class R2FallbackImageUrlProviderTest {
     void feedUsesR2KeysDirectlyWithoutMetadataLookupsWhenS3IsMissing() {
         when(backup.createAccessUrl(anyString())).thenReturn(R2_URL);
 
-        assertThat(provider.forFeed().createAccessUrl(DETAIL)).isSameAs(R2_URL);
-        assertThat(provider.forFeed().createAccessUrl(THUMBNAIL)).isSameAs(R2_URL);
+        assertThat(provider.forRead().createAccessUrl(DETAIL)).isSameAs(R2_URL);
+        assertThat(provider.forRead().createAccessUrl(THUMBNAIL)).isSameAs(R2_URL);
 
         verify(storage).exists(eq(DETAIL), any(ImageLookupBudget.class));
         verifyNoMoreInteractions(storage);
@@ -101,8 +101,8 @@ class R2FallbackImageUrlProviderTest {
                 .thenThrow(new ImageStorageException("connection failed", null, DiagnosticType.CLIENT_ERROR));
         when(backup.createAccessUrl(anyString())).thenReturn(R2_URL);
 
-        assertThat(provider.forFeed().createAccessUrl(DETAIL)).isSameAs(R2_URL);
-        assertThat(provider.forFeed().createAccessUrl(THUMBNAIL)).isSameAs(R2_URL);
+        assertThat(provider.forRead().createAccessUrl(DETAIL)).isSameAs(R2_URL);
+        assertThat(provider.forRead().createAccessUrl(THUMBNAIL)).isSameAs(R2_URL);
 
         verify(storage).exists(eq(DETAIL), any(ImageLookupBudget.class));
         verifyNoMoreInteractions(storage);
@@ -115,20 +115,20 @@ class R2FallbackImageUrlProviderTest {
                 .thenThrow(new ImageLookupBudgetExceededException());
         when(backup.createAccessUrl(DETAIL)).thenReturn(R2_URL);
 
-        assertThat(provider.forFeed().createAccessUrl(DETAIL)).isSameAs(R2_URL);
+        assertThat(provider.forRead().createAccessUrl(DETAIL)).isSameAs(R2_URL);
         verifyNoInteractions(primary);
     }
 
     @Test
     void invalidFeedKeyDoesNotSelectOrProbeStorage() {
-        assertThatThrownBy(() -> provider.forFeed().createAccessUrl(DETAIL.replace("/dev/", "/prod/")))
+        assertThatThrownBy(() -> provider.forRead().createAccessUrl(DETAIL.replace("/dev/", "/prod/")))
                 .isInstanceOf(ImageStorageException.class);
         verifyNoInteractions(storage, backup, primary);
 
         when(storage.exists(eq(DETAIL), any(ImageLookupBudget.class))).thenReturn(true);
         when(primary.createAccessUrl(DETAIL)).thenReturn(S3_URL);
-        assertThat(provider.forFeed().createAccessUrl(DETAIL)).isSameAs(S3_URL);
-        assertThatThrownBy(() -> provider.forFeed().createAccessUrl(DETAIL.replace("/dev/", "/prod/")))
+        assertThat(provider.forRead().createAccessUrl(DETAIL)).isSameAs(S3_URL);
+        assertThatThrownBy(() -> provider.forRead().createAccessUrl(DETAIL.replace("/dev/", "/prod/")))
                 .isInstanceOf(ImageStorageException.class);
         verify(storage).exists(eq(DETAIL), any(ImageLookupBudget.class));
         verifyNoMoreInteractions(storage);
@@ -144,7 +144,7 @@ class R2FallbackImageUrlProviderTest {
 
         try (var executor = Executors.newFixedThreadPool(8)) {
             var requests = IntStream.range(0, 20).mapToObj(index -> CompletableFuture.supplyAsync(
-                    () -> provider.forFeed().createAccessUrl(DETAIL), executor)).toList();
+                    () -> provider.forRead().createAccessUrl(DETAIL), executor)).toList();
             requests.forEach(request -> assertThat(request.join()).isSameAs(S3_URL));
         }
 

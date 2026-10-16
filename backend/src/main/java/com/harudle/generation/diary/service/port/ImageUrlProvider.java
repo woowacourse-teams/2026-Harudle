@@ -7,8 +7,8 @@ public interface ImageUrlProvider {
 
     ImageAccessUrl createAccessUrl(String imageObjectKey);
 
-    /** 피드 목록과 상세 조회에서 재사용할 이미지 발급기. */
-    default ImageUrlProvider forFeed() {
+    /** 피드 목록, 상세와 일기 월간 조회에서 저장소 선택을 공유하는 이미지 발급기. */
+    default ImageUrlProvider forRead() {
         return this;
     }
 

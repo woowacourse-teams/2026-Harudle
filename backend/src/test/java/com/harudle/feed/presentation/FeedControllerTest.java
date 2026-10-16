@@ -102,7 +102,7 @@ class FeedControllerTest {
 
     @BeforeEach
     void setUp() {
-        when(imageUrlProvider.forFeed()).thenReturn(imageUrlProvider);
+        when(imageUrlProvider.forRead()).thenReturn(imageUrlProvider);
         when(imageUrlProvider.forPublication()).thenReturn(imageUrlProvider);
         when(imageUrlProvider.createAccessUrl("generated/comic.webp")).thenReturn(new ImageAccessUrl(
                 URI.create("https://signed.example/comic.webp"), Instant.parse("2026-10-11T01:15:00Z")));
@@ -142,7 +142,7 @@ class FeedControllerTest {
                 .andExpect(jsonPath("$.shareUrl").value("https://harudle.example/feeds/" + FEED))
                 .andExpect(jsonPath("$.publishedAt").value("2026-10-11T10:00:00+09:00"));
         verify(queryService).getDetail(null, FEED);
-        verify(imageUrlProvider).forFeed();
+        verify(imageUrlProvider).forRead();
     }
 
     @Test
@@ -169,7 +169,7 @@ class FeedControllerTest {
                 .andExpect(jsonPath("$.nextCursor").value("next-page"))
                 .andExpect(jsonPath("$.hasNext").value(true));
         verify(listService).getList(null, FeedSort.LATEST, null, null, 20);
-        verify(imageUrlProvider).forFeed();
+        verify(imageUrlProvider).forRead();
     }
 
     @Test

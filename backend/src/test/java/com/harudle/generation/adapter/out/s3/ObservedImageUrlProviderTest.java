@@ -50,11 +50,11 @@ class ObservedImageUrlProviderTest {
         ImageUrlProvider delegate = mock(ImageUrlProvider.class);
         ImageUrlProvider feed = mock(ImageUrlProvider.class);
         ImageAccessUrl url = new ImageAccessUrl(URI.create("https://example/image.png"), Instant.MAX);
-        when(delegate.forFeed()).thenReturn(feed);
+        when(delegate.forRead()).thenReturn(feed);
         when(feed.createAccessUrl("image.png")).thenReturn(url);
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         try {
-            assertThat(new ObservedImageUrlProvider(delegate, registry).forFeed().createAccessUrl("image.png"))
+            assertThat(new ObservedImageUrlProvider(delegate, registry).forRead().createAccessUrl("image.png"))
                     .isSameAs(url);
             verify(delegate, never()).createAccessUrl("image.png");
             assertThat(registry.get("harudle.s3.url.signs")
