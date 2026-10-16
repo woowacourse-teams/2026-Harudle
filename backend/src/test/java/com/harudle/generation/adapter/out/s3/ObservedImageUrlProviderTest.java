@@ -46,6 +46,25 @@ class ObservedImageUrlProviderTest {
     }
 
     @Test
+    void preservesPublicationProviderAndSigningMetrics() {
+        ImageUrlProvider delegate = mock(ImageUrlProvider.class);
+        ImageUrlProvider publication = mock(ImageUrlProvider.class);
+        ImageAccessUrl url = new ImageAccessUrl(URI.create("https://example/image.png"), Instant.MAX);
+        when(delegate.forPublication()).thenReturn(publication);
+        when(publication.createAccessUrl("image.png")).thenReturn(url);
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        try {
+            assertThat(new ObservedImageUrlProvider(delegate, registry).forPublication().createAccessUrl("image.png"))
+                    .isSameAs(url);
+            verify(delegate, never()).createAccessUrl("image.png");
+            assertThat(registry.get("harudle.s3.url.signs")
+                    .tags("result", "signed", "failureType", "NONE").counter().count()).isEqualTo(1);
+        } finally {
+            registry.close();
+        }
+    }
+
+    @Test
     void exportsSigningFailureWithBoundedTypeAndWithoutObjectKey() {
         String objectKey = "private/image.png";
         ImageUrlProvider delegate = mock(ImageUrlProvider.class);

@@ -55,6 +55,11 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
     }
 
     @Override
+    public ImageUrlProvider forPublication() {
+        return primary.forPublication();
+    }
+
+    @Override
     public ImageUrlProvider forResponse() {
         ImageLookupBudget budget = new ImageLookupBudget(r2.listLookupBudget(), nanoTime);
         return key -> createAccessUrl(key, budget);

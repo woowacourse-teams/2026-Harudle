@@ -102,6 +102,7 @@ class FeedControllerTest {
 
     @BeforeEach
     void setUp() {
+        when(imageUrlProvider.forPublication()).thenReturn(imageUrlProvider);
         when(imageUrlProvider.createAccessUrl("generated/comic.webp")).thenReturn(new ImageAccessUrl(
                 URI.create("https://signed.example/comic.webp"), Instant.parse("2026-10-11T01:15:00Z")));
     }
@@ -125,6 +126,7 @@ class FeedControllerTest {
                 .andExpect(jsonPath("$.diaryId").doesNotExist())
                 .andExpect(jsonPath("$.author.email").doesNotExist())
                 .andExpect(jsonPath("$.imageObjectKey").doesNotExist());
+        verify(imageUrlProvider).forPublication();
     }
 
     @Test

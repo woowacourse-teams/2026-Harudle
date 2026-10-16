@@ -64,6 +64,17 @@ class R2FallbackImageUrlProviderTest {
     }
 
     @Test
+    void publicationSignsExistingImageWithoutCheckingS3OrR2() {
+        when(primary.forPublication()).thenReturn(primary);
+        when(primary.createAccessUrl(DETAIL)).thenReturn(S3_URL);
+
+        assertThat(provider.forPublication().createAccessUrl(DETAIL)).isSameAs(S3_URL);
+
+        verifyNoInteractions(storage, backup);
+        verify(primary).createAccessUrl(DETAIL);
+    }
+
+    @Test
     void slowSingleS3LookupSkipsR2AndSignsS3WithoutRepeatingHead(CapturedOutput output) {
         AtomicLong time = useFakeTime();
         when(storage.exists(eq(DETAIL), any(ImageLookupBudget.class))).thenAnswer(invocation -> {

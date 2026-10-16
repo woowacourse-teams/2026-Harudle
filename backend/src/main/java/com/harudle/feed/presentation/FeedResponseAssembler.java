@@ -21,9 +21,17 @@ class FeedResponseAssembler {
         this.urls = urls;
     }
 
+    FeedResponse toPublishResponse(FeedResult result) {
+        return toResponse(result, imageUrlProvider.forPublication());
+    }
+
     FeedResponse toResponse(FeedResult result) {
-        // 저장 트랜잭션이 끝난 뒤 기존 발급기를 사용해 S3/R2 접근 URL을 만든다.
-        ImageAccessUrl accessUrl = imageUrlProvider.createAccessUrl(result.imageObjectKey());
+        return toResponse(result, imageUrlProvider);
+    }
+
+    private FeedResponse toResponse(FeedResult result, ImageUrlProvider responseUrls) {
+        // 저장 트랜잭션이 끝난 뒤 접근 URL을 만든다.
+        ImageAccessUrl accessUrl = responseUrls.createAccessUrl(result.imageObjectKey());
         return new FeedResponse(
                 result.id(),
                 new FeedResponse.Author(
