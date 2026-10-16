@@ -117,6 +117,32 @@ class JdbcPushDeliveryQueueTest {
     }
 
     @Test
+    @DisplayName("같은 피드 행이 잠겨 있어도 기기별 발송 작업은 점유할 수 있다")
+    void claimsOutboxWithoutLockingFeed() throws Exception {
+        CountDownLatch locked = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        try (var executor = Executors.newSingleThreadExecutor()) {
+            var holder = executor.submit(() -> transactions.executeWithoutResult(status -> {
+                jdbc.queryForObject("SELECT id FROM feeds WHERE id = ? FOR UPDATE", UUID.class, feed);
+                locked.countDown();
+                try {
+                    if (!release.await(5, TimeUnit.SECONDS)) throw new IllegalStateException("잠금 해제 시간 초과");
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(exception);
+                }
+            }));
+            try {
+                assertThat(locked.await(5, TimeUnit.SECONDS)).isTrue();
+                assertThat(queue.claim(Instant.now())).isPresent();
+            } finally {
+                release.countDown();
+            }
+            holder.get(5, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
     @DisplayName("전송 직전에는 현재 FID를 다시 읽고 해제된 등록은 발송 대상에서 제외한다")
     void readsLatestFidAndSkipsRevokedRegistration() {
         Instant now = Instant.now();

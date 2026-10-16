@@ -21,6 +21,8 @@ import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -67,7 +69,64 @@ class FeedPushDeliveryWorkerTest {
     void wakesAfterJobsQueued() {
         worker.onJobsQueued(new JpaFeedPushOutbox.JobsQueued());
 
-        verify(scheduler).execute(any(Runnable.class));
+        verify(scheduler, times(4)).execute(any(Runnable.class));
+    }
+
+    @Test
+    @DisplayName("워커 하나가 끝난 뒤 새 작업 신호가 오면 빈 자리 하나만 다시 실행한다")
+    void refillsAvailableWorkerSlot() {
+        worker.onJobsQueued(new JpaFeedPushOutbox.JobsQueued());
+        ArgumentCaptor<Runnable> tasks = ArgumentCaptor.forClass(Runnable.class);
+        verify(scheduler, times(4)).execute(tasks.capture());
+
+        tasks.getAllValues().getFirst().run();
+        worker.onJobsQueued(new JpaFeedPushOutbox.JobsQueued());
+
+        verify(scheduler, times(5)).execute(any(Runnable.class));
+    }
+
+    @Test
+    @DisplayName("같은 피드의 기기별 작업 4건을 동시에 보내고 중복 신호에도 워커는 4개만 실행한다")
+    void sendsFourJobsInParallel() throws Exception {
+        ThreadPoolTaskScheduler parallelScheduler = new FirebaseMessagingConfiguration().pushTaskScheduler();
+        parallelScheduler.initialize();
+        FeedPushDeliveryWorker parallelWorker = new FeedPushDeliveryWorker(queue, sender,
+                Clock.fixed(NOW, ZoneOffset.UTC), parallelScheduler);
+        AtomicInteger claims = new AtomicInteger();
+        when(queue.claim(NOW)).thenAnswer(invocation -> {
+            if (claims.incrementAndGet() > 4) return Optional.empty();
+            return Optional.of(new JdbcPushDeliveryQueue.Claim(UUID.randomUUID(), claim.eventId(),
+                    claim.feedId(), claim.registrationId(), UUID.randomUUID(),
+                    claim.lockedUntil(), 1, claim.publishedAt()));
+        });
+        when(queue.target(any(), eq(NOW))).thenReturn(Optional.of(target));
+        CountDownLatch sending = new CountDownLatch(4);
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch completed = new CountDownLatch(4);
+        when(sender.send("F1", claim.eventId(), claim.feedId())).thenAnswer(invocation -> {
+            sending.countDown();
+            assertThat(release.await(5, TimeUnit.SECONDS)).isTrue();
+            return "accepted";
+        });
+        when(queue.sent(any(), eq(NOW))).thenAnswer(invocation -> {
+            completed.countDown();
+            return true;
+        });
+        try {
+            parallelWorker.onJobsQueued(new JpaFeedPushOutbox.JobsQueued());
+            parallelWorker.onJobsQueued(new JpaFeedPushOutbox.JobsQueued());
+            try {
+                assertThat(sending.await(5, TimeUnit.SECONDS)).isTrue();
+            } finally {
+                release.countDown();
+            }
+            assertThat(completed.await(5, TimeUnit.SECONDS)).isTrue();
+        } finally {
+            release.countDown();
+            parallelScheduler.shutdown();
+        }
+        verify(sender, times(4)).send("F1", claim.eventId(), claim.feedId());
+        verify(queue, times(4)).sent(any(), eq(NOW));
     }
 
     @Test

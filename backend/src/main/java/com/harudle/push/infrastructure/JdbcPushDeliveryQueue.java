@@ -22,7 +22,7 @@ class JdbcPushDeliveryQueue {
                 WHERE ((o.status = 'PENDING' AND o.available_at <= ?)
                     OR (o.status = 'PROCESSING' AND o.locked_until <= ?))
                   AND f.published_at > ?
-                ORDER BY o.available_at, o.id LIMIT 1 FOR UPDATE SKIP LOCKED
+                ORDER BY o.available_at, o.id LIMIT 1 FOR UPDATE OF o SKIP LOCKED
             )
             UPDATE notification_outbox o
             SET status = 'PROCESSING', lock_token = ?, locked_until = ?,

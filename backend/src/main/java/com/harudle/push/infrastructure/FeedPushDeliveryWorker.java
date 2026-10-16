@@ -12,6 +12,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.ThreadLocalRandom;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,11 +31,13 @@ class FeedPushDeliveryWorker {
     private static final Logger log = LoggerFactory.getLogger(FeedPushDeliveryWorker.class);
     private static final Duration DEADLINE = Duration.ofHours(24);
     private static final int BATCH_SIZE = 100;
+    static final int WORKER_COUNT = 4;
 
     private final JdbcPushDeliveryQueue queue;
     private final FcmFeedPushSender sender;
     private final Clock clock;
     private final ThreadPoolTaskScheduler scheduler;
+    private final AtomicInteger activeWorkers = new AtomicInteger();
 
     FeedPushDeliveryWorker(JdbcPushDeliveryQueue queue, FcmFeedPushSender sender,
                            @Qualifier("serviceClock") Clock clock,
@@ -47,15 +50,38 @@ class FeedPushDeliveryWorker {
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     void onJobsQueued(JpaFeedPushOutbox.JobsQueued event) {
-        try {
-            scheduler.execute(this::drain);
-        } catch (RuntimeException exception) {
-            log.warn("푸시 워커를 바로 실행하지 못했습니다. 다음 주기 확인에서 다시 처리합니다.", exception);
-        }
+        startDrains();
     }
 
     @Scheduled(fixedDelayString = "${harudle.push.worker.interval:30s}",
             initialDelayString = "${harudle.push.worker.interval:30s}", scheduler = "pushTaskScheduler")
+    void checkPending() {
+        startDrains();
+    }
+
+    private void startDrains() {
+        for (int i = 0; i < WORKER_COUNT; i++) {
+            if (activeWorkers.getAndUpdate(count -> Math.min(WORKER_COUNT, count + 1)) == WORKER_COUNT) return;
+            try {
+                scheduler.execute(this::drainAndRelease);
+            } catch (RuntimeException exception) {
+                activeWorkers.decrementAndGet();
+                log.warn("푸시 워커를 실행하지 못했습니다. 다음 주기 확인에서 다시 처리합니다.", exception);
+                return;
+            }
+        }
+    }
+
+    private void drainAndRelease() {
+        try {
+            drain();
+        } catch (RuntimeException exception) {
+            log.warn("푸시 워커가 중단됐습니다. 다음 주기 확인에서 다시 처리합니다.", exception);
+        } finally {
+            activeWorkers.decrementAndGet();
+        }
+    }
+
     void drain() {
         boolean fullBatch;
         do {

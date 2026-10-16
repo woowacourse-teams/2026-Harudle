@@ -52,7 +52,7 @@ class FirebaseMessagingConfiguration {
     @Bean
     ThreadPoolTaskScheduler pushTaskScheduler() {
         ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
-        scheduler.setPoolSize(1);
+        scheduler.setPoolSize(FeedPushDeliveryWorker.WORKER_COUNT);
         scheduler.setThreadNamePrefix("push-worker-");
         return scheduler;
     }
