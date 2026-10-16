@@ -101,7 +101,22 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
 
     @Override
     public ImageUrlProvider forPublication() {
-        return primary.forPublication();
+        ImageUrlProvider publication = primary.forPublication();
+        return imageObjectKey -> {
+            try {
+                return publication.createAccessUrl(imageObjectKey);
+            } catch (ImageStorageException exception) {
+                if (exception.diagnosticType() == DiagnosticType.REQUEST_VALIDATION_ERROR) {
+                    throw exception;
+                }
+            }
+            try {
+                return backup.createAccessUrl(imageObjectKey);
+            } catch (BackupStorageException exception) {
+                throw new ImageStorageException("피드 이미지 URL 발급에 실패했습니다.", exception,
+                        S3MetricFailureType.bounded(exception.failureType().name()));
+            }
+        };
     }
 
     @Override

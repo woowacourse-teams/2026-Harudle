@@ -4,8 +4,10 @@ import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -45,11 +47,19 @@ import com.harudle.feed.service.exception.FeedAccessDeniedException;
 import com.harudle.feed.service.exception.FeedIntegrationUnavailableException;
 import com.harudle.feed.service.exception.FeedNotFoundException;
 import com.harudle.feed.service.exception.InvalidFeedCursorException;
+import com.harudle.generation.adapter.out.s3.R2FallbackImageUrlProvider;
+import com.harudle.generation.config.R2StorageProperties;
+import com.harudle.generation.config.S3StorageProperties;
+import com.harudle.generation.diary.service.port.BackupObjectStorage;
+import com.harudle.generation.diary.service.port.BackupStorageException;
+import com.harudle.generation.diary.service.port.ImageStorage;
+import com.harudle.generation.diary.service.port.ImageStorageException;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
 import com.harudle.profile.service.port.PublicProfileReader;
 import jakarta.servlet.http.Cookie;
 import java.net.URI;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -71,6 +81,7 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.util.unit.DataSize;
 
 @WebMvcTest(FeedController.class)
 @Import({
@@ -128,6 +139,56 @@ class FeedControllerTest {
                 .andExpect(jsonPath("$.author.email").doesNotExist())
                 .andExpect(jsonPath("$.imageObjectKey").doesNotExist());
         verify(imageUrlProvider).forPublication();
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void publicationSigningFallbackPreservesHttpResponses(boolean backupFails) throws Exception {
+        String key = "harudle/generated/diary-images/dev/" + DIARY + "/image-960.webp";
+        FeedResult original = result(false, true);
+        FeedResult feed = new FeedResult(original.id(), original.author(), original.category(), key,
+                original.publishedAt(), original.likeCount(), original.commentCount(), false, true);
+        when(publicationService.publish(ACTOR, DIARY, 1)).thenReturn(feed);
+        ImageStorage source = mock(ImageStorage.class);
+        BackupObjectStorage backup = mock(BackupObjectStorage.class);
+        ImageUrlProvider primary = imageKey -> {
+            throw new ImageStorageException("S3 signing failed", null,
+                    ImageStorageException.DiagnosticType.CONFIGURATION_ERROR);
+        };
+        S3StorageProperties s3 = new S3StorageProperties("source", "ap-northeast-2", "dev",
+                "harudle/generated/diary-images/dev", "harudle/references/generation/dev",
+                DataSize.ofMegabytes(20), Duration.ofMinutes(15));
+        R2StorageProperties r2 = new R2StorageProperties(true, "dev", URI.create("https://backup.example"),
+                "backup", "key", "secret", Duration.ofMinutes(15), DataSize.ofMegabytes(20),
+                Duration.ofSeconds(2), Duration.ofSeconds(2));
+        ImageUrlProvider provider = new R2FallbackImageUrlProvider(primary, source, backup, s3, r2);
+        when(imageUrlProvider.forPublication()).thenReturn(provider.forPublication());
+        if (backupFails) {
+            when(backup.createAccessUrl(key)).thenThrow(new BackupStorageException(
+                    BackupStorageException.FailureType.CONFIGURATION_ERROR, new RuntimeException("R2 signing failed")));
+        } else {
+            when(backup.createAccessUrl(key)).thenReturn(new ImageAccessUrl(
+                    URI.create("https://backup.example/image-960.webp"), Instant.parse("2026-10-11T01:15:00Z")));
+        }
+
+        var response = mockMvc.perform(post("/api/v1/feeds")
+                .with(jwt().jwt(token -> token.subject(ACTOR.toString())))
+                .cookie(csrfCookie()).header("X-XSRF-TOKEN", "feed-test-csrf")
+                .contentType(MediaType.APPLICATION_JSON).content(REQUEST));
+        if (backupFails) {
+            response.andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.code").value("IMAGE_STORAGE_ERROR"));
+        } else {
+            response.andExpect(status().isCreated())
+                    .andExpect(header().string("Location", "/api/v1/feeds/" + FEED))
+                    .andExpect(jsonPath("$.id").value(FEED.toString()))
+                    .andExpect(jsonPath("$.imageUrl").value("https://backup.example/image-960.webp"))
+                    .andExpect(jsonPath("$.imageUrlExpiresAt").value("2026-10-11T10:15:00+09:00"));
+        }
+        verify(publicationService).publish(ACTOR, DIARY, 1);
+        verifyNoInteractions(source);
+        verify(backup).createAccessUrl(key);
+        verifyNoMoreInteractions(backup);
     }
 
     @Test

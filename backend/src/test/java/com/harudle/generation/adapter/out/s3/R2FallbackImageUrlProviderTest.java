@@ -38,6 +38,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.boot.test.system.CapturedOutput;
@@ -162,6 +163,90 @@ class R2FallbackImageUrlProviderTest {
 
         verifyNoInteractions(storage, backup);
         verify(primary).createAccessUrl(DETAIL);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"image.png", "image-960.webp", "image-240.webp"})
+    void publicationSignsSameR2KeyOnlyWhenS3SigningFails(String filename) {
+        String key = ROOT + filename;
+        when(primary.forPublication()).thenReturn(primary);
+        when(primary.createAccessUrl(key)).thenThrow(new ImageStorageException(
+                "S3 signing failed", null, DiagnosticType.CONFIGURATION_ERROR));
+        when(backup.createAccessUrl(key)).thenReturn(R2_URL);
+
+        assertThat(provider.forPublication().createAccessUrl(key)).isSameAs(R2_URL);
+
+        verify(primary).forPublication();
+        verify(primary).createAccessUrl(key);
+        verifyNoMoreInteractions(primary);
+        verify(backup).createAccessUrl(key);
+        verifyNoMoreInteractions(backup);
+        verifyNoInteractions(storage);
+    }
+
+    @Test
+    void publicationValidationFailureDoesNotFallBackToR2() {
+        ImageStorageException failure = new ImageStorageException("invalid key", null,
+                DiagnosticType.REQUEST_VALIDATION_ERROR);
+        when(primary.forPublication()).thenReturn(primary);
+        when(primary.createAccessUrl(DETAIL)).thenThrow(failure);
+
+        assertThatThrownBy(() -> provider.forPublication().createAccessUrl(DETAIL)).isSameAs(failure);
+
+        verifyNoInteractions(storage, backup);
+    }
+
+    @Test
+    void publicationDoesNotHideUnexpectedErrorsBehindR2Signing() {
+        IllegalStateException failure = new IllegalStateException("unexpected error");
+        when(primary.forPublication()).thenReturn(primary);
+        when(primary.createAccessUrl(DETAIL)).thenThrow(failure);
+
+        assertThatThrownBy(() -> provider.forPublication().createAccessUrl(DETAIL)).isSameAs(failure);
+
+        verifyNoInteractions(storage, backup);
+    }
+
+    @ParameterizedTest
+    @EnumSource(BackupStorageException.FailureType.class)
+    void publicationKeepsImageStorageErrorContractWhenBothSignersFail(BackupStorageException.FailureType type) {
+        BackupStorageException failure = new BackupStorageException(type, new RuntimeException("R2 signing failed"));
+        when(primary.forPublication()).thenReturn(primary);
+        when(primary.createAccessUrl(DETAIL)).thenThrow(new ImageStorageException(
+                "S3 signing failed", null, DiagnosticType.CONFIGURATION_ERROR));
+        when(backup.createAccessUrl(DETAIL)).thenThrow(failure);
+
+        assertThatThrownBy(() -> provider.forPublication().createAccessUrl(DETAIL))
+                .isInstanceOf(ImageStorageException.class).hasCause(failure)
+                .extracting(exception -> ((ImageStorageException) exception).diagnosticType().name())
+                .isEqualTo(type.name());
+
+        verify(primary).forPublication();
+        verify(primary).createAccessUrl(DETAIL);
+        verifyNoMoreInteractions(primary);
+        verify(backup).createAccessUrl(DETAIL);
+        verifyNoMoreInteractions(backup);
+        verifyNoInteractions(storage);
+    }
+
+    @Test
+    void publicationFallbackDoesNotChangeTheStorageSelectedForReads() {
+        when(storage.exists(eq(DETAIL), any(ImageLookupBudget.class))).thenReturn(true);
+        when(primary.createAccessUrl(DETAIL)).thenReturn(S3_URL);
+        when(primary.createAccessUrl(THUMBNAIL)).thenReturn(S3_URL);
+        when(primary.forPublication()).thenReturn(primary);
+        when(primary.createAccessUrl(ORIGINAL)).thenThrow(new ImageStorageException(
+                "S3 signing failed", null, DiagnosticType.CONFIGURATION_ERROR));
+        when(backup.createAccessUrl(ORIGINAL)).thenReturn(R2_URL);
+
+        assertThat(provider.forRead().createAccessUrl(DETAIL)).isSameAs(S3_URL);
+        assertThat(provider.forPublication().createAccessUrl(ORIGINAL)).isSameAs(R2_URL);
+        assertThat(provider.forRead().createAccessUrl(THUMBNAIL)).isSameAs(S3_URL);
+
+        verify(storage).exists(eq(DETAIL), any(ImageLookupBudget.class));
+        verifyNoMoreInteractions(storage);
+        verify(backup).createAccessUrl(ORIGINAL);
+        verifyNoMoreInteractions(backup);
     }
 
     @Test
