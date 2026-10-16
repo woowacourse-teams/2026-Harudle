@@ -73,6 +73,8 @@ sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
 
 기존 Agent가 설치되어 있고 로그와 지표를 보낼 권한이 있어야 합니다. 새 Agent를 설치하지 않고 기존 Agent의 설정을 갱신합니다. 적용 전 활성 설정을 보관합니다. `append-config`는 기존 서버 자원 수집을 유지하면서 새 설정을 적용하고 Agent를 재시작합니다. 같은 서버에 dev와 prod 파일을 모두 적용하지 않습니다. 명령이 실패하면 오류를 확인한 뒤 다음 단계로 넘어갑니다.
 
+dev 앱 설정은 `CWAgent`에 Java RSS 수집을 추가합니다. prod는 기존 호스트 설정이 `Harudle/Prod`에서 메모리·스왑·디스크·Java RSS를 수집하므로, `cloudwatch-agent.prod.json`에는 최상위 `metrics` 없이 Prometheus 수집을 위한 `logs` 설정만 둡니다. 운영 호스트의 네임스페이스·추가 차원·`InstanceId` 집계 설정을 유지합니다.
+
 **EC2 전체 메모리와 디스크 지표가 아직 없을 때만** 같은 EC2에서 아래 설정도 추가합니다. `cloudwatch-agent.host.json`은 dev와 prod가 공통으로 사용하며, 이미 같은 지표를 수집하고 있다면 추가하지 않습니다. EC2 CPU와 위 표의 RDS 지표는 AWS가 제공하므로 이 파일로 수집하지 않습니다.
 
 ```bash
@@ -172,7 +174,7 @@ Python 스크립트는 AWS에 접속하지 않고 **내 컴퓨터에 파일만 �
 1. 해당 환경에서 피드 목록과 상세 화면을 엽니다.
 2. CloudWatch Logs의 백엔드 로그에서 `event = api_request_completed`를 찾습니다. `durationMs`가 숫자이고 `httpStatus`가 실제 응답과 같은지 확인합니다.
 3. CloudWatch의 `DASHBOARD-harudle-dev` 또는 `DASHBOARD-harudle-prod`에서 최근 시간을 선택합니다. 몇 분 뒤 API 시간, RPS, 조회 TPS에 값이 나오는지 확인합니다.
-4. DB와 Java 지표는 dev는 10초, prod는 1분마다 수집합니다. dev는 `prometheus.dev.yaml`, prod는 `prometheus.yaml`을 사용합니다. 해당 환경의 `prometheus-emf` 로그와 `Harudle/Dev` 또는 `Harudle/Prod` 지표에 새 값이 들어오는지 확인합니다. RSS도 dev는 10초, prod는 1분 간격이며 `CWAgent`에서 해당 EC2와 Java 실행 조건으로 찾습니다. 대시보드 집계 간격은 1분입니다.
+4. DB와 Java 지표는 dev는 10초, prod는 1분마다 수집합니다. dev는 `prometheus.dev.yaml`, prod는 `prometheus.yaml`을 사용합니다. 해당 환경의 `prometheus-emf` 로그와 `Harudle/Dev` 또는 `Harudle/Prod` 지표에 새 값이 들어오는지 확인합니다. RSS는 dev에서 `CWAgent`의 해당 EC2와 Java 실행 조건으로 찾고, prod는 기존 `Harudle/Prod`의 `procstat_memory_rss`를 `InstanceId` 집계로 확인합니다. 생성된 RSS 위젯도 그 시계열을 선택합니다. 대시보드 집계 간격은 1분입니다.
 5. 일기 생성과 피드 게시가 실제 성공한 시각에 해당 TPS가 기록되는지 확인합니다.
 6. EC2 CPU, 전체 메모리, 디스크와 RDS CPU, 남은 메모리, 연결 수에 새 값이 들어오는지 확인합니다. 디스크는 실제 `path`와 `fstype`도 맞춰 선택합니다. 기존 오류 그래프도 계속 들어와야 합니다.
 

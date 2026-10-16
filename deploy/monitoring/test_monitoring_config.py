@@ -168,16 +168,19 @@ class MonitoringConfigTests(unittest.TestCase):
             suffix = ".dev" if environment == "dev" else ""
             self.assertEqual(prometheus["prometheus_config_path"], f"/opt/harudle/monitoring/prometheus{suffix}.yaml")
             item = copy.deepcopy(configuration)
-            metrics = item["metrics"]
-            self.assertEqual(metrics["namespace"], "CWAgent")
-            self.assertEqual(metrics["append_dimensions"], {"InstanceId": "${aws:InstanceId}"})
-            # Add only procstat; retain host CPU/memory/disk fragments on append-config.
-            self.assertEqual(set(metrics["metrics_collected"]), {"procstat"})
+            if environment == "dev":
+                metrics = item.pop("metrics")
+                self.assertEqual(metrics["namespace"], "CWAgent")
+                self.assertEqual(metrics["append_dimensions"], {"InstanceId": "${aws:InstanceId}"})
+                self.assertEqual(set(metrics["metrics_collected"]), {"procstat"})
+            else:
+                # Production already collects host metrics and Java RSS in Harudle/Prod.
+                self.assertNotIn("metrics", item)
             item["logs"]["metrics_collected"]["prometheus"]["log_group_name"] = "ENVIRONMENT"
             item["logs"]["metrics_collected"]["prometheus"]["emf_processor"]["metric_namespace"] = "ENVIRONMENT"
             if environment == "dev":
                 # Strip only the deliberate dev additions before comparing the shared contract.
-                native = item["metrics"]["metrics_collected"]["procstat"][0]
+                native = metrics["metrics_collected"]["procstat"][0]
                 self.assertEqual(native["metrics_collection_interval"], 10)
                 native["metrics_collection_interval"] = 60
                 prom = item["logs"]["metrics_collected"]["prometheus"]
@@ -224,14 +227,14 @@ class MonitoringConfigTests(unittest.TestCase):
         self.assertNotRegex(source, r"-Xmx|-Xms|-XX:[+-]Use\w+GC|mem_limit")
         self.assertNotIn("-Xlog:", (deploy / "compose.prod.yaml").read_text())
 
-    def test_procstat_selects_backend_java_without_counting_parent_or_other_java(self):
-        configuration, _, _ = read_processor("prod")
+    def test_dev_procstat_selects_backend_java_without_counting_parent_or_other_java(self):
+        configuration, _, _ = read_processor("dev")
         processes = configuration["metrics"]["metrics_collected"]["procstat"]
         self.assertEqual(len(processes), 1)
         process = processes[0]
         self.assertEqual(set(process), {"pattern", "measurement", "metrics_collection_interval"})
         self.assertEqual(process["measurement"], ["memory_rss"])
-        self.assertEqual(process["metrics_collection_interval"], 60)
+        self.assertEqual(process["metrics_collection_interval"], 10)
         pattern = re.compile(process["pattern"])
         for command in (
             "java -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError -jar /app/app.jar",
