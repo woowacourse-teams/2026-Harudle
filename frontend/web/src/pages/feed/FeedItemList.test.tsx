@@ -295,7 +295,9 @@ describe('피드 카드 액션', (): void => {
     await act(async () => {
       fireEvent.click(copyButton);
     });
-    expect(writeText).toHaveBeenCalledWith(feed.shareUrl);
+    expect(writeText).toHaveBeenCalledWith(
+      `${feed.shareUrl}?utm_source=feed_share`,
+    );
     expect(mockTrack).toHaveBeenCalledWith('feed_link_copy_clicked', {
       feature: 'feed',
       operation: 'copy_link',
@@ -398,7 +400,9 @@ describe('피드 카드 액션', (): void => {
     prepareDialogs();
     await user.click(shareButtons[1]);
     await user.click(screen.getByRole('button', { name: '링크 복사' }));
-    expect(writeText).toHaveBeenCalledWith(secondFeed.shareUrl);
+    expect(writeText).toHaveBeenCalledWith(
+      `${secondFeed.shareUrl}?utm_source=feed_share`,
+    );
     expect(mockTrack).toHaveBeenCalledWith('feed_link_copy_clicked', {
       feature: 'feed',
       operation: 'copy_link',
