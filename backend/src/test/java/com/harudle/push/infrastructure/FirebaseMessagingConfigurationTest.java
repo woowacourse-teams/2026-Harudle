@@ -43,7 +43,11 @@ class FirebaseMessagingConfigurationTest {
             assertThat(context).hasSingleBean(FirebaseApp.class);
             assertThat(context).hasSingleBean(FirebaseMessaging.class);
             assertThat(context).hasSingleBean(FcmFeedPushSender.class);
-            assertThat(context.getBean(FirebaseApp.class).getOptions().getProjectId()).isEqualTo("harudle-test");
+            var options = context.getBean(FirebaseApp.class).getOptions();
+            assertThat(options.getProjectId()).isEqualTo("harudle-test");
+            assertThat(options.getConnectTimeout()).isEqualTo(10_000);
+            assertThat(options.getReadTimeout()).isEqualTo(30_000);
+            assertThat(options.getWriteTimeout()).isEqualTo(10_000);
         });
     }
 

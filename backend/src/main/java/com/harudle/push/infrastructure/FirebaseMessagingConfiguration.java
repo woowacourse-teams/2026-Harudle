@@ -33,6 +33,9 @@ class FirebaseMessagingConfiguration {
         return FirebaseApp.initializeApp(FirebaseOptions.builder()
                 .setCredentials(credentials)
                 .setProjectId(projectId)
+                .setConnectTimeout(10_000)
+                .setReadTimeout(30_000)
+                .setWriteTimeout(10_000)
                 .build(), "harudle-push");
     }
 
