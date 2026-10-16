@@ -108,4 +108,7 @@ CodexExceptionTranslator가 단계별로 예외를 공통 생성 오류로 바�
 | 받은 PNG의 형식 확인 또는 응답 처리 실패 | RESPONSE_PROCESSING_ERROR |
 
 본문을 읽는 중에도 실제 통신 timeout이나 연결 오류가 나면 통신 오류로 기록한다.
+백엔드 호출 스레드가 인터럽트되면 헤더나 PNG 본문을 기다리는 중에도 해당 HTTP 요청을 취소한다.
+성공 결과를 반환하기 전에 인터럽트를 다시 확인하고, 취소된 요청은 PROVIDER_ERROR / CANCELLED로 처리한다.
+Worker는 연결 종료를 받아 진행 중인 SDK 호출에 취소 신호를 전달한다.
 지표 기록이 실패해도 이미지 결과나 원래 오류는 바꾸지 않는다.

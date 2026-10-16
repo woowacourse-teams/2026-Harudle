@@ -14,6 +14,9 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
 import okhttp3.Call;
 import okhttp3.Request;
 import okhttp3.RequestBody;
@@ -61,10 +64,9 @@ public final class CodexDiaryImageGenerator implements DiaryImageGenerator {
         long started = System.nanoTime();
         String outcome = "failure";
         try {
-            if (Thread.currentThread().isInterrupted()) {
-                throw exceptionTranslator.providerFailure(new java.util.concurrent.CancellationException());
-            }
+            checkInterrupted();
             GeneratedImage result = invoke(prepareRequest(request));
+            checkInterrupted();
             outcome = "success";
             return result;
         } finally {
@@ -104,16 +106,55 @@ public final class CodexDiaryImageGenerator implements DiaryImageGenerator {
         }
     }
 
-    private Response callProvider(Request request) {
+    private Call newCall(Request request) {
         try {
-            return calls.newCall(request).execute();
+            return calls.newCall(request);
+        } catch (RuntimeException exception) {
+            throw exceptionTranslator.providerFailure(exception);
+        }
+    }
+
+    private Response callProvider(Call call) {
+        try {
+            return call.execute();
         } catch (IOException | RuntimeException exception) {
             throw exceptionTranslator.providerFailure(exception);
         }
     }
 
     private GeneratedImage invoke(Request request) {
-        try (Response response = callProvider(request)) {
+        Call call = newCall(request);
+        FutureTask<GeneratedImage> task = new FutureTask<>(() -> readResponse(call));
+        try {
+            checkInterrupted();
+            // Socket reads need explicit Call cancellation when the waiting caller is interrupted.
+            Thread.startVirtualThread(task);
+            return task.get();
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw exceptionTranslator.providerFailure(exception);
+        } catch (ExecutionException exception) {
+            checkInterrupted();
+            if (exception.getCause() instanceof Error error) {
+                throw error;
+            }
+            throw exceptionTranslator.providerFailure(exception.getCause());
+        } finally {
+            if (Thread.currentThread().isInterrupted()) {
+                call.cancel();
+                task.cancel(true);
+            }
+        }
+    }
+
+    private void checkInterrupted() {
+        if (Thread.currentThread().isInterrupted()) {
+            throw exceptionTranslator.providerFailure(new CancellationException());
+        }
+    }
+
+    private GeneratedImage readResponse(Call call) {
+        try (Response response = callProvider(call)) {
             if (response.code() != 200) {
                 throw exceptionTranslator.httpFailure(response.code());
             }
