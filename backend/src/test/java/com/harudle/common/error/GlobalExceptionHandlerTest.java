@@ -17,6 +17,7 @@ import com.harudle.comment.service.exception.CommentIntegrationUnavailableExcept
 import com.harudle.generation.diary.domain.GenerationErrorCode;
 import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
+import com.harudle.generation.diary.service.exception.AiProviderFailureType;
 import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
 import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
 import com.harudle.notification.service.exception.NotificationIntegrationUnavailableException;
@@ -418,38 +419,57 @@ class GlobalExceptionHandlerTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = AiGenerationErrorType.class, names = {
-            "RATE_LIMITED", "OUTPUT_TRUNCATED", "RESPONSE_PROCESSING_ERROR"
+    @CsvSource({
+            "RATE_LIMITED,UNKNOWN,503,AI_PROVIDER_RATE_LIMITED",
+            "TIMEOUT,UNKNOWN,504,AI_PROVIDER_TIMEOUT",
+            "CONTENT_BLOCKED,UNKNOWN,400,AI_CONTENT_BLOCKED",
+            "OUTPUT_TRUNCATED,UNKNOWN,502,AI_OUTPUT_TRUNCATED",
+            "RESPONSE_PROCESSING_ERROR,UNKNOWN,502,AI_RESPONSE_PROCESSING_ERROR",
+            "PROVIDER_ERROR,NETWORK_ERROR,502,AI_PROVIDER_CONNECTION_ERROR",
+            "PROVIDER_ERROR,TRANSIENT_SERVER_ERROR,502,AI_PROVIDER_SERVER_ERROR",
+            "PROVIDER_ERROR,AUTH_CONFIGURATION_ERROR,503,AI_PROVIDER_CONFIGURATION_ERROR",
+            "PROVIDER_ERROR,REQUEST_REJECTED,502,AI_PROVIDER_REQUEST_REJECTED",
+            "PROVIDER_ERROR,CANCELLED,503,GENERATION_INTERRUPTED",
+            "PROVIDER_ERROR,UNKNOWN,502,AI_PROVIDER_ERROR"
     })
-    @DisplayName("세부 AI 오류 분류는 사용자 API에서 기존 AI 제공자 오류로 반환한다")
-    void returnExistingApiErrorForDetailedAiFailure(AiGenerationErrorType errorType) {
+    @DisplayName("AI 실패 원인과 저장된 실패의 응답이 같고 외부 오류 원문을 노출하지 않는다")
+    void returnDetailedAiFailure(AiGenerationErrorType errorType, AiProviderFailureType providerFailureType,
+            int expectedStatus, String expectedCode) {
         AiGenerationException exception = new AiGenerationException(
                 errorType,
-                "Gemini 생성에 실패했습니다."
+                "private-provider-message",
+                new IllegalStateException("private-provider-cause"),
+                providerFailureType
         );
 
         ResponseEntity<ProblemDetail> response = exceptionHandler.handleAiGeneration(exception, request);
+        ResponseEntity<ProblemDetail> storedResponse = exceptionHandler.handleDiaryGenerationFailed(
+                new DiaryGenerationFailedException(exception.errorCode()), request);
 
-        assertThat(response.getStatusCode().value()).isEqualTo(502);
+        assertThat(response.getStatusCode().value()).isEqualTo(expectedStatus);
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getProperties()).containsEntry("code", "AI_PROVIDER_ERROR");
+        assertThat(response.getBody().getProperties()).containsEntry("code", expectedCode)
+                .containsEntry("traceId", TRACE_ID).doesNotContainKey("action");
+        assertThat(response.getBody().getDetail()).isNotBlank().doesNotContain("private-provider");
+        assertThat(storedResponse.getStatusCode()).isEqualTo(response.getStatusCode());
+        assertThat(storedResponse.getBody().getProperties()).isEqualTo(response.getBody().getProperties());
+        assertThat(storedResponse.getBody().getDetail()).isEqualTo(response.getBody().getDetail());
+        verifyNoInteractions(apiExceptionLogger);
     }
 
     @ParameterizedTest
-    @EnumSource(value = GenerationErrorCode.class, names = {
-            "AI_PROVIDER_RATE_LIMITED", "AI_OUTPUT_TRUNCATED", "AI_RESPONSE_PROCESSING_ERROR"
-    })
-    @DisplayName("저장된 세부 AI 오류 코드도 사용자 API에서는 기존 오류로 반환한다")
-    void returnExistingApiErrorForStoredAiFailure(GenerationErrorCode errorCode) {
+    @EnumSource(value = GenerationErrorCode.class, names = "GENERATION_INTERNAL_ERROR",
+            mode = EnumSource.Mode.EXCLUDE)
+    @DisplayName("저장된 실패 원인과 기존 오류 코드를 사용자 API에서도 유지한다")
+    void preserveStoredAiFailure(GenerationErrorCode errorCode) {
         DiaryGenerationFailedException exception = new DiaryGenerationFailedException(
                 errorCode
         );
 
         ResponseEntity<ProblemDetail> response = exceptionHandler.handleDiaryGenerationFailed(exception, request);
 
-        assertThat(response.getStatusCode().value()).isEqualTo(502);
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getProperties()).containsEntry("code", "AI_PROVIDER_ERROR");
+        assertThat(response.getBody().getProperties()).containsEntry("code", errorCode.name());
     }
 
     @Test

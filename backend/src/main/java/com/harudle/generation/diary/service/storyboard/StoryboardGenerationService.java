@@ -93,7 +93,7 @@ public final class StoryboardGenerationService {
             case TIMEOUT, RATE_LIMITED, OUTPUT_TRUNCATED, RESPONSE_PROCESSING_ERROR -> true;
             case PROVIDER_ERROR -> detail == AiProviderFailureType.NETWORK_ERROR
                     || detail == AiProviderFailureType.TRANSIENT_SERVER_ERROR;
-            case INTERNAL_ERROR -> false;
+            case CONTENT_BLOCKED, INTERNAL_ERROR -> false;
         };
     }
 }

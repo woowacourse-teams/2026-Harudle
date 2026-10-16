@@ -64,7 +64,16 @@ class AdminImageRecoveryController {
             ErrorType.UNAUTHORIZED,
             ErrorType.FORBIDDEN,
             ErrorType.AI_PROVIDER_ERROR,
+            ErrorType.AI_PROVIDER_CONNECTION_ERROR,
+            ErrorType.AI_PROVIDER_SERVER_ERROR,
+            ErrorType.AI_PROVIDER_CONFIGURATION_ERROR,
+            ErrorType.AI_PROVIDER_REQUEST_REJECTED,
+            ErrorType.AI_PROVIDER_RATE_LIMITED,
+            ErrorType.AI_CONTENT_BLOCKED,
+            ErrorType.AI_OUTPUT_TRUNCATED,
+            ErrorType.AI_RESPONSE_PROCESSING_ERROR,
             ErrorType.GENERATION_UNAVAILABLE,
+            ErrorType.GENERATION_INTERRUPTED,
             ErrorType.IMAGE_STORAGE_ERROR,
             ErrorType.AI_PROVIDER_TIMEOUT
     }, framework = {

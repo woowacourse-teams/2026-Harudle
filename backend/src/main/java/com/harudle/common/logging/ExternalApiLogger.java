@@ -90,7 +90,20 @@ public final class ExternalApiLogger {
             Throwable exception,
             ExternalApiResponseDiagnostics diagnostics
     ) {
-        withSafeFields(LOGGER.atError(), EXTERNAL_API_FAILURE_EVENT, failure, exception)
+        logResponseFailure(LOGGER.atError(), failure, exception, diagnostics);
+    }
+
+    public void warn(
+            ExternalApiFailure failure,
+            Throwable exception,
+            ExternalApiResponseDiagnostics diagnostics
+    ) {
+        logResponseFailure(LOGGER.atWarn(), failure, exception, diagnostics);
+    }
+
+    private void logResponseFailure(LoggingEventBuilder event, ExternalApiFailure failure,
+            Throwable exception, ExternalApiResponseDiagnostics diagnostics) {
+        withSafeFields(event, EXTERNAL_API_FAILURE_EVENT, failure, exception)
                 .addKeyValue("finishReason", safe(diagnostics.finishReason()))
                 .addKeyValue("candidateTokenCount", number(diagnostics.candidateTokenCount()))
                 .addKeyValue("thoughtTokenCount", number(diagnostics.thoughtTokenCount()))

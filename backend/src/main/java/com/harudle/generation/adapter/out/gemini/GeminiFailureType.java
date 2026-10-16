@@ -19,6 +19,7 @@ enum GeminiFailureType {
     REQUEST_PREPARATION_ERROR,
     INLINE_REQUEST_TOO_LARGE,
     OUTPUT_TOKEN_LIMIT,
+    CONTENT_BLOCKED,
     EMPTY_RESPONSE,
     INVALID_JSON,
     SCHEMA_VIOLATION,
@@ -60,8 +61,11 @@ enum GeminiFailureType {
                 ? INLINE_REQUEST_TOO_LARGE : REQUEST_PREPARATION_ERROR;
     }
 
-    static GeminiFailureType storyboardResponse(String finishReason, Throwable cause) {
-        if ("MAX_TOKENS".equals(finishReason)) {
+    static GeminiFailureType storyboardResponse(GenerateContentResponse response, Throwable cause) {
+        if (GeminiResponseValidator.isContentBlocked(response)) {
+            return CONTENT_BLOCKED;
+        }
+        if ("MAX_TOKENS".equals(finishReason(response))) {
             return OUTPUT_TOKEN_LIMIT;
         }
         if (cause instanceof IllegalStateException) {
@@ -77,6 +81,9 @@ enum GeminiFailureType {
     }
 
     static GeminiFailureType imageResponse(GenerateContentResponse response) {
+        if (GeminiResponseValidator.isContentBlocked(response)) {
+            return CONTENT_BLOCKED;
+        }
         if ("MAX_TOKENS".equals(finishReason(response))) {
             return OUTPUT_TOKEN_LIMIT;
         }
@@ -93,6 +100,14 @@ enum GeminiFailureType {
         } catch (RuntimeException ignored) {
             return RESPONSE_PROCESSING_ERROR;
         }
+    }
+
+    AiGenerationErrorType responseErrorType() {
+        return switch (this) {
+            case CONTENT_BLOCKED -> AiGenerationErrorType.CONTENT_BLOCKED;
+            case OUTPUT_TOKEN_LIMIT -> AiGenerationErrorType.OUTPUT_TRUNCATED;
+            default -> AiGenerationErrorType.RESPONSE_PROCESSING_ERROR;
+        };
     }
 
     static String finishReason(GenerateContentResponse response) {
