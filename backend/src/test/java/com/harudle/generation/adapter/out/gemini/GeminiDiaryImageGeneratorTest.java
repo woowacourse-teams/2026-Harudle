@@ -15,8 +15,11 @@ import com.google.common.collect.ImmutableList;
 import com.google.genai.Models;
 import com.google.genai.errors.ClientException;
 import com.google.genai.types.Content;
+import com.google.genai.types.Candidate;
+import com.google.genai.types.FinishReason;
 import com.google.genai.types.GenerateContentConfig;
 import com.google.genai.types.GenerateContentResponse;
+import com.google.genai.types.GenerateContentResponsePromptFeedback;
 import com.google.genai.types.GenerateContentResponseUsageMetadata;
 import com.google.genai.types.Part;
 import com.harudle.common.logging.ExternalApiFailure;
@@ -44,6 +47,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
@@ -171,6 +175,79 @@ class GeminiDiaryImageGeneratorTest {
                         exception -> assertThat(exception.errorType())
                                 .isEqualTo(AiGenerationErrorType.RESPONSE_PROCESSING_ERROR)
                 );
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"SAFETY", "IMAGE_SAFETY", "IMAGE_PROHIBITED_CONTENT", "IMAGE_RECITATION"})
+    @DisplayName("이미지 생성 차단은 이미지 추출 전에 판별하고 처리 오류와 구분한다")
+    void rejectBlockedImage(String reason) {
+        when(response.candidates()).thenReturn(Optional.of(List.of(
+                Candidate.builder().finishReason(new FinishReason(reason)).build())));
+
+        assertThatThrownBy(() -> generator.generate(createRequest(createReferenceImage())))
+                .isInstanceOfSatisfying(AiGenerationException.class,
+                        failure -> assertThat(failure.errorType()).isEqualTo(AiGenerationErrorType.CONTENT_BLOCKED));
+        verify(response, never()).parts();
+        verify(externalApiLogger).warn(eq(new ExternalApiFailure(
+                "gemini", "image_generation", "CONTENT_BLOCKED", null, null, null)),
+                any(IllegalStateException.class), any(ExternalApiResponseDiagnostics.class));
+        assertThat(meterRegistry.get("harudle.gemini.stage.calls")
+                .tags("stage", "image_generation", "outcome", "failure", "failureType", "CONTENT_BLOCKED")
+                .counter().count()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("이미지 프롬프트 차단도 후보나 이미지가 없는 일반 응답과 구분한다")
+    void rejectBlockedImagePrompt() {
+        when(response.promptFeedback()).thenReturn(Optional.of(
+                GenerateContentResponsePromptFeedback.fromJson("{\"blockReason\":\"SAFETY\"}")));
+
+        assertThatThrownBy(() -> generator.generate(createRequest(createReferenceImage())))
+                .isInstanceOfSatisfying(AiGenerationException.class,
+                        failure -> assertThat(failure.errorType()).isEqualTo(AiGenerationErrorType.CONTENT_BLOCKED));
+        verify(response, never()).parts();
+    }
+
+    @Test
+    @DisplayName("이미지 출력 토큰 한도 도달도 생성 결과 잘림으로 분류한다")
+    void rejectTruncatedImage() {
+        when(response.candidates()).thenReturn(Optional.of(List.of(
+                Candidate.builder().finishReason(new FinishReason("MAX_TOKENS")).build())));
+        when(response.parts()).thenReturn(ImmutableList.of(Part.fromText("unfinished image")));
+
+        assertThatThrownBy(() -> generator.generate(createRequest(createReferenceImage())))
+                .isInstanceOfSatisfying(AiGenerationException.class,
+                        failure -> assertThat(failure.errorType()).isEqualTo(AiGenerationErrorType.OUTPUT_TRUNCATED));
+        assertThat(meterRegistry.get("harudle.gemini.stage.calls")
+                .tags("stage", "image_generation", "outcome", "failure", "failureType", "OUTPUT_TOKEN_LIMIT")
+                .counter().count()).isEqualTo(1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"OTHER", "IMAGE_OTHER", "NO_IMAGE", "FUTURE_REASON"})
+    @DisplayName("이미지가 없거나 종료 사유가 불명확한 경우에는 콘텐츠 차단으로 단정하지 않는다")
+    void preserveUnknownImageFailure(String reason) {
+        when(response.candidates()).thenReturn(Optional.of(List.of(
+                Candidate.builder().finishReason(new FinishReason(reason)).build())));
+        when(response.parts()).thenReturn(ImmutableList.of(Part.fromText("no image")));
+
+        assertThatThrownBy(() -> generator.generate(createRequest(createReferenceImage())))
+                .isInstanceOfSatisfying(AiGenerationException.class,
+                        failure -> assertThat(failure.errorType())
+                                .isEqualTo(AiGenerationErrorType.RESPONSE_PROCESSING_ERROR));
+    }
+
+    @Test
+    @DisplayName("차단 사유가 지정되지 않은 피드백만으로 생성 차단을 판단하지 않는다")
+    void preserveUnspecifiedPromptFailure() {
+        when(response.promptFeedback()).thenReturn(Optional.of(GenerateContentResponsePromptFeedback.fromJson(
+                "{\"blockReason\":\"BLOCKED_REASON_UNSPECIFIED\"}")));
+        when(response.parts()).thenReturn(ImmutableList.of(Part.fromText("no image")));
+
+        assertThatThrownBy(() -> generator.generate(createRequest(createReferenceImage())))
+                .isInstanceOfSatisfying(AiGenerationException.class,
+                        failure -> assertThat(failure.errorType())
+                                .isEqualTo(AiGenerationErrorType.RESPONSE_PROCESSING_ERROR));
     }
 
     @Test

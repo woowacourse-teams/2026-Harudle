@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -18,6 +19,7 @@ import com.google.genai.types.Content;
 import com.google.genai.types.FinishReason;
 import com.google.genai.types.GenerateContentConfig;
 import com.google.genai.types.GenerateContentResponse;
+import com.google.genai.types.GenerateContentResponsePromptFeedback;
 import com.google.genai.types.GenerateContentResponseUsageMetadata;
 import com.google.genai.types.Part;
 import com.google.genai.types.ThinkingLevel;
@@ -46,8 +48,10 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.core.exc.UnexpectedEndOfInputException;
+import org.mockito.ArgumentCaptor;
 import tools.jackson.databind.json.JsonMapper;
 
 class GeminiStoryboardGeneratorTest {
@@ -324,6 +328,52 @@ class GeminiStoryboardGeneratorTest {
                 any(Exception.class),
                 eq(new ExternalApiResponseDiagnostics("STOP", null, null, 4096, 14))
         );
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"SAFETY", "IMAGE_SAFETY", "RECITATION", "PROHIBITED_CONTENT", "SPII"})
+    @DisplayName("명시적인 생성 차단은 JSON을 읽기 전에 분류하고 경고와 지표에 남긴다")
+    void rejectBlockedStoryboard(String reason) {
+        when(response.candidates()).thenReturn(Optional.of(List.of(
+                Candidate.builder().finishReason(new FinishReason(reason)).build())));
+
+        assertThatThrownBy(() -> generator.generate(createRequest()))
+                .isInstanceOfSatisfying(AiGenerationException.class,
+                        failure -> assertThat(failure.errorType()).isEqualTo(AiGenerationErrorType.CONTENT_BLOCKED));
+
+        verify(response, never()).text();
+        verify(externalApiLogger).warn(eq(new ExternalApiFailure(
+                "gemini", "storyboard_generation", "CONTENT_BLOCKED", null, null, null)),
+                any(IllegalStateException.class), any(ExternalApiResponseDiagnostics.class));
+        assertThat(meterRegistry.get("harudle.gemini.stage.calls")
+                .tags("stage", "storyboard_generation", "outcome", "failure", "failureType", "CONTENT_BLOCKED")
+                .counter().count()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("후보 없이 프롬프트가 차단된 응답도 생성 차단으로 분류한다")
+    void rejectBlockedStoryboardPrompt() {
+        when(response.promptFeedback()).thenReturn(Optional.of(
+                GenerateContentResponsePromptFeedback.fromJson("{\"blockReason\":\"SAFETY\"}")));
+
+        assertThatThrownBy(() -> generator.generate(createRequest()))
+                .isInstanceOfSatisfying(AiGenerationException.class,
+                        failure -> assertThat(failure.errorType()).isEqualTo(AiGenerationErrorType.CONTENT_BLOCKED));
+        verify(response, never()).text();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"OTHER", "FINISH_REASON_UNSPECIFIED", "FUTURE_REASON"})
+    @DisplayName("빈 스토리보드와 알 수 없는 종료 사유만으로 콘텐츠 차단을 판단하지 않는다")
+    void preserveUnknownResponseFailure(String reason) {
+        when(response.candidates()).thenReturn(Optional.of(List.of(
+                Candidate.builder().finishReason(new FinishReason(reason)).build())));
+        when(response.text()).thenReturn("");
+
+        assertThatThrownBy(() -> generator.generate(createRequest()))
+                .isInstanceOfSatisfying(AiGenerationException.class,
+                        failure -> assertThat(failure.errorType())
+                                .isEqualTo(AiGenerationErrorType.RESPONSE_PROCESSING_ERROR));
     }
 
     @Test
