@@ -32,6 +32,7 @@ class ReusableMembersTest(unittest.TestCase):
         patch('sys.stdout', new=io.StringIO()).start()
         self.upload = patch.object(ec2, 'upload').start()
         self.delete = patch.object(cleanup, 'delete_images').start()
+        self.purge = patch.object(ec2, 'delete_images').start()
         ec2.prepare_run(self.group, self.settings, Mock())
         self.original = (self.group / 'members.json').read_bytes()
         self.accounts = assets.load_fixture(self.group)
@@ -39,6 +40,8 @@ class ReusableMembersTest(unittest.TestCase):
     def sql(self, sql):
         if 'SELECT EXISTS (SELECT 1 FROM generation_prompts)' in sql:
             return 't'
+        if 'SELECT jsonb_build_object(' in sql:
+            return json.dumps({'feeds': [], 'comments': [], 'likes': []})
         if 'jsonb_agg' in sql:
             return '[]'
         return ''
@@ -48,18 +51,19 @@ class ReusableMembersTest(unittest.TestCase):
         ec2.reset_run(directory, self.group, self.settings, self.sql, True)
         return directory
 
-    def test_same_members_and_file_are_reused_with_new_data_and_idempotency_keys(self):
+    def test_same_members_data_and_images_are_reused_with_new_idempotency_keys(self):
         first = assets.load_fixture(self.reset('smoke1'))
         second = assets.load_fixture(self.reset('peak1'))
         self.assertEqual(self.original, (self.group / 'members.json').read_bytes())
         for one, two, account in zip(first['members'], second['members'], self.accounts['members']):
             self.assertEqual(one['id'], account['id'])
             self.assertEqual(two['refreshToken'], account['refreshToken'])
-            self.assertNotEqual(one['diaryId'], two['diaryId'])
-            self.assertNotEqual(one['feedId'], two['feedId'])
+            self.assertEqual(one['diaryId'], two['diaryId'])
+            self.assertEqual(one['feedId'], two['feedId'])
             self.assertNotEqual(one['idempotencyKey'], two['idempotencyKey'])
-        self.assertTrue(set(row['imageKey'] for row in assets.seed_records(first)).isdisjoint(
-            row['imageKey'] for row in assets.seed_records(second)))
+        self.assertEqual(assets.seed_records(first), assets.seed_records(second))
+        self.upload.assert_called_once()
+        self.delete.assert_not_called()
 
     def test_retrying_initial_registration_preserves_the_same_member_file(self):
         (self.group / '.ready').unlink()
@@ -85,14 +89,17 @@ class ReusableMembersTest(unittest.TestCase):
         self.assertEqual(self.accounts, assets.load_fixture(local))
 
     def test_reset_refreshes_the_date_and_month_without_replacing_members(self):
+        self.reset('smoke1')
         with patch.object(prepare, 'datetime') as clock:
             clock.now.return_value = datetime(2027, 1, 2, tzinfo=ZoneInfo('Asia/Seoul'))
             fixture = assets.load_fixture(self.reset('nextyear'))
         self.assertEqual(fixture['date'], '2027-01-02')
         self.assertEqual(fixture['previousMonth'], '2026-12-01')
         self.assertEqual(self.original, (self.group / 'members.json').read_bytes())
+        self.assertEqual(self.upload.call_count, 2)
+        self.purge.assert_called_once()
 
-    def test_reset_cleans_db_then_s3_before_upload_and_seed(self):
+    def test_reset_restores_db_and_login_without_reuploading_baseline_images(self):
         self.reset('smoke1')
         steps = []
 
@@ -100,15 +107,17 @@ class ReusableMembersTest(unittest.TestCase):
             if 'DELETE FROM diaries' in sql:
                 steps.append('db-cleanup')
                 self.assertNotIn('DELETE FROM users', sql)
-            if 'INSERT INTO diaries' in sql:
-                steps.append('seed')
-                self.assertNotIn('INSERT INTO users', sql)
+            if 'INSERT INTO refresh_tokens' in sql:
+                steps.append('login')
+                self.assertNotIn('INSERT INTO diaries', sql)
             return self.sql(sql)
 
         self.delete.side_effect = lambda *args: steps.append('s3-cleanup')
         self.upload.side_effect = lambda *args: steps.append('upload')
         ec2.reset_run(self.root / 'peak1', self.group, self.settings, sql, True)
-        self.assertEqual(steps, ['db-cleanup', 's3-cleanup', 'upload', 'seed'])
+        self.assertEqual(steps, ['db-cleanup', 'login'])
+        self.upload.assert_called_once()
+        self.delete.assert_not_called()
 
     def test_db_failure_keeps_plan_and_blocks_s3_and_next_run(self):
         directory = self.reset('smoke1')
@@ -174,9 +183,10 @@ class ReusableMembersTest(unittest.TestCase):
         with self.assertRaises(subprocess.CalledProcessError):
             ec2.reset_run(self.root / 'smoke1', self.group, self.settings,
                           Mock(side_effect=['t', '', subprocess.CalledProcessError(1, 'psql')]), True)
-        self.assertFalse((self.root / 'smoke1' / '.ready').exists())
+        self.assertFalse((self.group / 'baseline' / '.ready').exists())
         self.reset('smoke2')
-        self.assertTrue((self.root / 'smoke1' / '.cleaned').exists())
+        self.purge.assert_called_once()
+        self.assertTrue((self.root / 'smoke2' / '.ready').exists())
 
     def test_local_runner_keeps_members_and_refuses_a_repeated_run(self):
         scripts = self.root / 'client'
@@ -261,16 +271,38 @@ class ReusableMembersPostgresTest(unittest.TestCase):
                      f"('{uuid.uuid4()}', '{diary}', (SELECT MIN(id) FROM categories));")
 
             def s3_deleted(fixture, records):
-                self.assertEqual(self.sql(f"SELECT COUNT(*) FROM diaries WHERE user_id = '{account['id']}';"), '0')
+                self.assertEqual(self.sql(f"SELECT COUNT(*) FROM diaries WHERE user_id = '{account['id']}';"), '2')
                 self.assertEqual(self.sql('SELECT COUNT(*) FROM users;'), '201')
-                self.assertEqual(self.sql('SELECT COUNT(*) FROM feeds;'), '1')
+                self.assertEqual(self.sql('SELECT COUNT(*) FROM feeds;'), '201')
                 self.assertTrue(all(record['userId'] != outsider for record in records))
+                self.assertTrue({record['id'] for record in records}.isdisjoint(
+                    record['id'] for record in assets.seed_records(fixture)))
 
-            with patch.object(ec2, 'upload'), patch.object(cleanup, 'delete_images', side_effect=s3_deleted) as delete:
+            with patch.object(ec2, 'upload') as upload, patch.object(cleanup, 'delete_images', side_effect=s3_deleted) as delete:
                 ec2.reset_run(root / 'smoke1', group, settings, self.sql, True)
                 first = assets.load_fixture(root / 'smoke1')
+                snapshot = """SELECT jsonb_build_object(
+                    'diaries', (SELECT jsonb_agg(d ORDER BY id) FROM diaries d),
+                    'feeds', (SELECT jsonb_agg(f ORDER BY id) FROM feeds f),
+                    'comments', (SELECT jsonb_agg(c ORDER BY id) FROM comments c),
+                    'likes', (SELECT jsonb_agg(l ORDER BY id) FROM feed_likes l));"""
+                baseline = self.sql(snapshot)
                 generated = self.add_generation(first, first['members'][0]['idempotencyKey'])
-                self.assertEqual(self.sql('SELECT COUNT(*) FROM feeds;'), '201')
+                feed, actor = first['members'][0]['feedId'], first['members'][60]['id']
+                like = str(uuid.uuid4())
+                self.sql(f"INSERT INTO feeds (id, diary_id, category_id) "
+                         f"SELECT '{uuid.uuid4()}', g.diary_id, f.category_id FROM diary_generations g, feeds f "
+                         f"WHERE g.id = '{generated['id']}' AND f.id = '{feed}'; "
+                         f"INSERT INTO comments (id, feed_id, author_id, content) "
+                         f"VALUES ('{uuid.uuid4()}', '{feed}', '{actor}', '새 댓글'); "
+                         "UPDATE comments SET content = '수정한 댓글', deleted_at = CURRENT_TIMESTAMP "
+                         f"WHERE id = (SELECT id FROM comments WHERE feed_id = '{feed}' "
+                         f"AND author_id <> '{actor}' ORDER BY id LIMIT 1); "
+                         "DELETE FROM feed_likes WHERE id = (SELECT id FROM feed_likes ORDER BY id LIMIT 1); "
+                         f"INSERT INTO feed_likes (id, feed_id, user_id) VALUES ('{like}', '{feed}', '{actor}'); "
+                         f"UPDATE feeds SET comment_count = 3, like_count = 99 WHERE id = '{feed}'; "
+                         "INSERT INTO notifications (id, recipient_user_id, actor_user_id, feed_id, type, source_action_id) "
+                         f"VALUES ('{uuid.uuid4()}', '{account['id']}', '{actor}', '{feed}', 'LIKE', '{like}');")
                 # Simulate the real refresh-token rotation and an exhausted generation quota.
                 self.sql(f"UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = '{account['id']}'; "
                          f"INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES "
@@ -280,6 +312,9 @@ class ReusableMembersPostgresTest(unittest.TestCase):
                 ec2.reset_run(root / 'peak1', group, settings, self.sql, True)
                 self.assertEqual(delete.call_count, 1)
                 self.assertIn(generated, delete.call_args.args[1])
+                upload.assert_called_once()
+                self.assertEqual(baseline, self.sql(snapshot))
+                self.assertEqual(self.sql('SELECT COUNT(*) FROM notifications;'), '0')
                 self.assertEqual(self.sql('SELECT COUNT(*) FROM users;'), '201')
                 self.assertEqual(self.sql('SELECT COUNT(*) FROM oauth_accounts;'), '200')
                 self.assertEqual(self.sql('SELECT COUNT(*) FROM refresh_tokens;'), '200')
@@ -287,10 +322,10 @@ class ReusableMembersPostgresTest(unittest.TestCase):
                 token_hash = hashlib.sha256(account['refreshToken'].encode()).hexdigest()
                 self.assertEqual(self.sql(f"SELECT token_hash FROM refresh_tokens WHERE user_id = '{account['id']}' "
                                           "AND revoked_at IS NULL AND expires_at > CURRENT_TIMESTAMP;"), token_hash)
-                self.assertEqual(self.sql(f"SELECT COUNT(*) FROM diaries WHERE id = '{first['members'][0]['diaryId']}';"), '0')
+                self.assertEqual(self.sql(f"SELECT COUNT(*) FROM diaries WHERE id = '{first['members'][0]['diaryId']}';"), '1')
                 cleanup.cleanup(root / 'peak1', execute_sql=self.sql, client_stopped=True)
-                self.assertEqual(self.sql('SELECT COUNT(*) FROM comments;'), '0')
-                self.assertEqual(self.sql('SELECT COUNT(*) FROM feed_likes;'), '0')
+                self.assertEqual(baseline, self.sql(snapshot))
+                self.assertEqual(delete.call_count, 1)
                 self.assertEqual(self.sql('SELECT COUNT(*) FROM refresh_tokens;'), '0')
                 self.assertEqual(self.sql(f"SELECT COUNT(*) FROM diaries WHERE id = '{diary}';"), '1')
                 self.assertEqual(original, (group / 'members.json').read_bytes())

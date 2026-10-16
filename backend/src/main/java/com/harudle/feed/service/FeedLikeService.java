@@ -42,7 +42,7 @@ public class FeedLikeService {
     @Transactional
     public FeedLikeResult like(UUID userId, UUID feedId) {
         validateMember(userId, feedId);
-        Target target = feedInteractionPort.lockActive(feedId);
+        Target target = feedInteractionPort.lockActiveForInteraction(feedId, userId);
         UUID likeId = UUID.randomUUID();
         Instant now = clock.instant();
         if (!feedLikeRepository.add(likeId, feedId, userId, now)) {
@@ -56,7 +56,7 @@ public class FeedLikeService {
     @Transactional
     public FeedLikeResult unlike(UUID userId, UUID feedId) {
         validateMember(userId, feedId);
-        Target target = feedInteractionPort.lockActive(feedId);
+        Target target = feedInteractionPort.lockActiveForInteraction(feedId, userId);
         if (!feedLikeRepository.remove(feedId, userId)) {
             return new FeedLikeResult(false, target.counts().likeCount());
         }

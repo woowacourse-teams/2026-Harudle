@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -78,7 +79,7 @@ class CommentServiceTest {
     @Test
     void createsNormalizedPlainTextAndUsesSavedCommentForNotification() {
         activeActor();
-        when(feeds.lockActive(FEED_ID)).thenReturn(new Target(FEED_ID, AUTHOR_ID, new Counts(3, 0)));
+        when(feeds.lockActiveForInteraction(FEED_ID, ACTOR_ID)).thenReturn(new Target(FEED_ID, AUTHOR_ID, new Counts(3, 0)));
         availableProfiles(Map.of(ACTOR_ID, PROFILE), Set.of(ACTOR_ID));
         when(repository.create(any(), eq(FEED_ID), eq(ACTOR_ID), eq("<b>안녕 😀</b>"), eq(NOW)))
                 .thenAnswer(invocation -> new CommentSnapshot(invocation.getArgument(0), FEED_ID, ACTOR_ID,
@@ -93,7 +94,7 @@ class CommentServiceTest {
         ArgumentCaptor<UUID> commentId = ArgumentCaptor.forClass(UUID.class);
         var order = inOrder(repository, feeds, profiles, notifications);
         order.verify(repository).isActiveMember(ACTOR_ID);
-        order.verify(feeds).lockActive(FEED_ID);
+        order.verify(feeds).lockActiveForInteraction(FEED_ID, ACTOR_ID);
         order.verify(profiles).readAll(Set.of(ACTOR_ID));
         order.verify(repository).create(commentId.capture(), eq(FEED_ID), eq(ACTOR_ID), eq("<b>안녕 😀</b>"), eq(NOW));
         order.verify(feeds).adjustCounter(FEED_ID, CounterKind.COMMENT, CounterChange.ADDED);
@@ -105,7 +106,7 @@ class CommentServiceTest {
     @Test
     void selfSkippedNotificationIsNormalCreateSuccess() {
         activeActor();
-        when(feeds.lockActive(FEED_ID)).thenReturn(new Target(FEED_ID, ACTOR_ID, new Counts(0, 0)));
+        when(feeds.lockActiveForInteraction(FEED_ID, ACTOR_ID)).thenReturn(new Target(FEED_ID, ACTOR_ID, new Counts(0, 0)));
         availableProfiles(Map.of(ACTOR_ID, PROFILE), Set.of(ACTOR_ID));
         when(repository.create(any(), any(), any(), eq("안녕"), eq(NOW)))
                 .thenReturn(snapshot(COMMENT_ID, ACTOR_ID));
@@ -119,7 +120,7 @@ class CommentServiceTest {
     @Test
     void missingProfileProviderFailsBeforeCreateCounterOrNotification() {
         activeActor();
-        when(feeds.lockActive(FEED_ID)).thenReturn(new Target(FEED_ID, AUTHOR_ID, new Counts(0, 0)));
+        when(feeds.lockActiveForInteraction(FEED_ID, ACTOR_ID)).thenReturn(new Target(FEED_ID, AUTHOR_ID, new Counts(0, 0)));
         assertThatThrownBy(() -> service.create(ACTOR_ID, FEED_ID, "안녕"))
                 .isInstanceOf(CommentIntegrationUnavailableException.class);
         verify(repository, never()).create(any(), any(), any(), any(), any());
@@ -130,7 +131,7 @@ class CommentServiceTest {
     @Test
     void missingAuthorFailsClosedRatherThanCreatingAnAnonymousProfile() {
         activeActor();
-        when(feeds.lockActive(FEED_ID)).thenReturn(new Target(FEED_ID, AUTHOR_ID, new Counts(0, 0)));
+        when(feeds.lockActiveForInteraction(FEED_ID, ACTOR_ID)).thenReturn(new Target(FEED_ID, AUTHOR_ID, new Counts(0, 0)));
         availableProfiles(Map.of(), Set.of(ACTOR_ID));
         assertThatThrownBy(() -> service.create(ACTOR_ID, FEED_ID, "안녕"))
                 .isInstanceOf(CommentIntegrationUnavailableException.class);
@@ -141,7 +142,7 @@ class CommentServiceTest {
     @ValueSource(strings = {"/profiles/one.svg", "javascript:alert(1)", "ftp://example.com/profile.svg", "https:profile"})
     void rejectsNonHttpOrRelativeProfileUrls(String url) {
         activeActor();
-        when(feeds.lockActive(FEED_ID)).thenReturn(new Target(FEED_ID, AUTHOR_ID, new Counts(0, 0)));
+        when(feeds.lockActiveForInteraction(FEED_ID, ACTOR_ID)).thenReturn(new Target(FEED_ID, AUTHOR_ID, new Counts(0, 0)));
         availableProfiles(Map.of(ACTOR_ID, new Profile(ACTOR_ID, "연준", URI.create(url))), Set.of(ACTOR_ID));
         assertThatThrownBy(() -> service.create(ACTOR_ID, FEED_ID, "안녕"))
                 .isInstanceOf(CommentIntegrationUnavailableException.class);
@@ -151,7 +152,7 @@ class CommentServiceTest {
     @Test
     void rejectsProfileIdentityMismatchAndNullImage() {
         activeActor();
-        when(feeds.lockActive(FEED_ID)).thenReturn(new Target(FEED_ID, AUTHOR_ID, new Counts(0, 0)));
+        when(feeds.lockActiveForInteraction(FEED_ID, ACTOR_ID)).thenReturn(new Target(FEED_ID, AUTHOR_ID, new Counts(0, 0)));
         when(profileProvider.getIfAvailable()).thenReturn(profiles);
         when(profiles.readAll(Set.of(ACTOR_ID)))
                 .thenReturn(Map.of(ACTOR_ID, new Profile(AUTHOR_ID, "다른 회원", PROFILE.profileImageUrl())))
@@ -394,7 +395,7 @@ class CommentServiceTest {
     }
 
     private void visibleFeedAndCursor(Optional<CommentCursor> cursor) {
-        when(repository.existsVisibleFeed(FEED_ID)).thenReturn(true);
+        when(repository.existsVisibleFeed(eq(FEED_ID), nullable(UUID.class))).thenReturn(true);
         when(codec.decode(FEED_ID, null)).thenReturn(cursor);
     }
 

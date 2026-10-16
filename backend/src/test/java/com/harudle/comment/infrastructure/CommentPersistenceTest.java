@@ -301,7 +301,7 @@ class CommentPersistenceTest {
         profiles.resetCallCount();
         jdbc.update("UPDATE users SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", feedAuthorId);
 
-        assertThat(comments.existsVisibleFeed(feedId)).isFalse();
+        assertThat(comments.existsVisibleFeed(feedId, null)).isFalse();
         assertThat(comments.findAfter(feedId, Optional.empty(), 20)).isEmpty();
         mockMvc.perform(get(commentsPath())).andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("FEED_NOT_FOUND"));

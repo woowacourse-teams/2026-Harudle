@@ -7,9 +7,9 @@ import shutil
 import subprocess
 import sys
 
-from assets import BUCKET, TEST_IMAGE, load_fixture, run_lock, upload
-from cleanup import cleanup, cleanup_locked
-from prepare import NAME, PREFIX, database_guard, members_sql, reset_guard, write_fixture, write_members
+from assets import BUCKET, TEST_IMAGE, delete_images, load_fixture, run_lock, seed_records, upload
+from cleanup import baseline_state_sql, cleanup, cleanup_locked, cleanup_sql, load_baseline_state, save_plan
+from prepare import NAME, PREFIX, build_fixture, database_guard, login_sql, members_sql, reset_guard, write_fixture, write_members
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 APP_DIR = SCRIPT_DIR.parent
@@ -96,6 +96,34 @@ def set_active_run(group, name):
         os.close(descriptor)
 
 
+def prepare_baseline(group, accounts, settings, sql_runner):
+    directory = group / 'baseline'
+    expected, _, _ = build_fixture(accounts['baseUrl'], accounts['diariesPerMonth'], accounts, 'baseline')
+    if directory.exists():
+        fixture = load_fixture(directory)
+        check_database(directory, settings)
+        if fixture.get('memberSetId') != accounts['memberSetId'] or fixture['cleanupKey'] != accounts['cleanupKey']:
+            raise ValueError('The baseline belongs to another test member set')
+        if fixture.get('baselineId') == expected['baselineId'] and (directory / '.ready').exists():
+            return False
+        # A new month or an interrupted first preparation needs one full rebuild.
+        records = seed_records(fixture)
+        sql_runner(cleanup_sql(fixture, records))
+        delete_images(fixture, records)
+        shutil.rmtree(directory)
+    sql_runner(database_guard() + reset_guard(accounts) + '\nROLLBACK;')
+    fixture, seed, _ = write_fixture(directory, accounts=accounts)
+    (directory / 'database.json').write_text(json.dumps(database_target(settings)))
+    upload(fixture)
+    sql_runner(seed)
+    state = json.loads(sql_runner(baseline_state_sql(fixture)))
+    save_plan(directory / 'state.json', {'runId': fixture['runId'], 'baselineId': fixture['baselineId'],
+              'generations': seed_records(fixture), 'state': state}, fixture)
+    (directory / '.ready').touch()
+    print('Prepared the monthly baseline. Later runs will reuse its data and images.')
+    return True
+
+
 def reset_run(directory, group, settings, sql_runner, client_stopped):
     if not client_stopped:
         raise ValueError('Stop local k6 first, then use --client-stopped')
@@ -121,15 +149,14 @@ def reset_run(directory, group, settings, sql_runner, client_stopped):
             check_database(previous, settings)
             with run_lock(previous):
                 cleanup_locked(previous, sql_runner, client_stopped)
-        # Check member ownership and leftover data before publishing a new active run.
-        sql_runner(database_guard() + reset_guard(accounts) + '\nROLLBACK;')
-        fixture, seed, _ = write_fixture(directory, accounts=accounts)
+        created = prepare_baseline(group, accounts, settings, sql_runner)
+        fixture, _, _ = write_fixture(directory, accounts=accounts)
         with run_lock(directory):
+            load_baseline_state(directory, fixture)
             (directory / 'database.json').write_text(json.dumps(database_target(settings)))
-            # Persist ownership before either S3 or DB can change.
             set_active_run(group, directory.name)
-            upload(fixture)
-            sql_runner(seed)
+            if not created:
+                sql_runner(login_sql(fixture))
             (directory / '.ready').touch()
     print(f'Ready: {directory.name}. Run local k6 with the same run name. Reuse the existing members.json.')
 

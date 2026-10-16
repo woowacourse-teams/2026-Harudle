@@ -27,6 +27,15 @@ public class FeedInteractionService implements FeedInteractionPort {
     }
 
     @Override
+    public Target lockActiveForInteraction(UUID feedId, UUID actorId) {
+        Objects.requireNonNull(actorId);
+        Feed feed = lockFeed(feedId);
+        UUID authorId = feeds.findActiveAuthorIdForInteraction(feed.getDiaryId(), actorId)
+                .orElseThrow(FeedNotFoundException::new);
+        return new Target(feedId, authorId, counts(feed));
+    }
+
+    @Override
     public Counts adjustCounter(UUID feedId, CounterKind kind, CounterChange change) {
         Objects.requireNonNull(kind);
         Objects.requireNonNull(change);
