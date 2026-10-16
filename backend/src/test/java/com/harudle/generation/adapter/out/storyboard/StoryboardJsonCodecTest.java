@@ -8,9 +8,12 @@ import com.harudle.generation.adapter.out.gemini.GeminiStoryboardResponseSchema;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import tools.jackson.databind.json.JsonMapper;
 
 class StoryboardJsonCodecTest {
@@ -109,14 +112,66 @@ class StoryboardJsonCodecTest {
     }
 
     @Test
-    @DisplayName("어느 패널에도 없는 색상 대상 소품은 패널 번호를 추측하지 않고 거부한다")
-    void rejectColorPropMissingFromEveryPanel() {
+    @ExtendWith(OutputCaptureExtension.class)
+    @DisplayName("어느 패널에도 없는 색상 대상만 제외하고 유효한 색상과 스토리보드는 유지한다")
+    void ignoreColorPropMissingFromEveryPanel(CapturedOutput output) {
         String json = StoryboardTestFixtures.storyboardJsonWithMismatchedColorPanels()
-                .replace("\"prop\":\"laptop\"", "\"prop\":\"tablet\"");
+                .replace("\"prop\":\"laptop\"", "\"prop\":\"private-missing-prop\"");
+
+        var storyboard = codec.decode(json);
+
+        assertThat(storyboard.panels()).isEqualTo(codec.decode(StoryboardTestFixtures.storyboardJson()).panels());
+        assertThat(storyboard.scenePlan().focalColors()).singleElement().satisfies(color -> {
+            assertThat(color.prop()).isEqualTo("phone");
+            assertThat(color.colorHex()).isEqualTo("#55AAFF");
+            assertThat(color.panelNumbers()).containsExactly(3);
+        });
+        assertThat(new DiaryImagePromptRenderer().render(storyboard))
+                .contains("Panel 3: fill the entire visible case of the existing phone")
+                .doesNotContain("private-missing-prop");
+        assertThat(output).contains("event=storyboard_color_targets_ignored", "ignoredCount=1")
+                .doesNotContain("private-missing-prop", "발표 직전", "#55AAFF", "#A99BE8");
+    }
+
+    @Test
+    @DisplayName("모든 컷의 소품이 비어 있으면 색상 계획만 비우고 이미지 생성용 스토리보드를 반환한다")
+    void continueWithoutColorsWhenEveryPanelHasNoProps() {
+        String json = StoryboardTestFixtures.storyboardJsonWithMismatchedColorPanels()
+                .replace("\"props\":[\"laptop\"]", "\"props\":[]")
+                .replace("\"props\":[\"phone\"]", "\"props\":[]");
+
+        var storyboard = codec.decode(json);
+
+        assertThat(storyboard.title()).isEqualTo("발표 직전");
+        assertThat(storyboard.panels()).hasSize(4)
+                .allSatisfy(panel -> assertThat(panel.props()).isEmpty());
+        assertThat(storyboard.scenePlan().environmentRule()).isEqualTo("All panels remain in the same office.");
+        assertThat(storyboard.scenePlan().focalColors()).isEmpty();
+        assertThat(new DiaryImagePromptRenderer().render(storyboard))
+                .contains("Do not introduce a colored prop; preserve the mostly black-and-white scene.");
+    }
+
+    @Test
+    @DisplayName("색상 대상 소품 이름이 비어 있으면 기존 필수 값 검증으로 거부한다")
+    void rejectBlankColorProp() {
+        String json = StoryboardTestFixtures.storyboardJsonWithMismatchedColorPanels()
+                .replace("\"prop\":\"laptop\"", "\"prop\":\" \"");
 
         assertThatThrownBy(() -> codec.decode(json))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("props에 존재해야 합니다");
+                .hasMessageContaining("색상 대상 소품은 필수입니다");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"not-a-color", "#12345"})
+    @DisplayName("실제 등장하는 소품의 잘못된 색상 코드는 기존 도메인 검증으로 거부한다")
+    void rejectInvalidColorForExistingProp(String colorHex) {
+        String json = StoryboardTestFixtures.storyboardJsonWithMismatchedColorPanels()
+                .replace("#A99BE8", colorHex);
+
+        assertThatThrownBy(() -> codec.decode(json))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("색상 코드는 #RRGGBB 형식이어야 합니다");
     }
 
     @Test

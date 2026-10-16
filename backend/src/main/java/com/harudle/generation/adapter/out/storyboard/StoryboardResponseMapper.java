@@ -7,9 +7,14 @@ import com.harudle.generation.diary.domain.StoryPanel;
 import com.harudle.generation.diary.domain.Storyboard;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.stream.IntStream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class StoryboardResponseMapper {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(StoryboardResponseMapper.class);
 
     private static final List<String> STORY_ROLES = List.of(
             "setup",
@@ -36,12 +41,22 @@ public final class StoryboardResponseMapper {
             throw new IllegalArgumentException("스토리보드 색상 계획에 null을 포함할 수 없습니다.");
         }
         List<FocalColor> focalColors = visualPlan.focalColors().stream()
-                .map(color -> mapFocalColor(color, panels))
+                .flatMap(color -> mapFocalColor(color, panels).stream())
                 .toList();
-        return new ScenePlan(visualPlan.environmentRule(), focalColors);
+        ScenePlan scenePlan = new ScenePlan(visualPlan.environmentRule(), focalColors);
+        int ignoredCount = visualPlan.focalColors().size() - focalColors.size();
+        if (ignoredCount > 0) {
+            LOGGER.atInfo()
+                    .addKeyValue("event", "storyboard_color_targets_ignored")
+                    .addKeyValue("reason", "PROP_NOT_IN_PANELS")
+                    .addKeyValue("ignoredCount", ignoredCount)
+                    .log("event=storyboard_color_targets_ignored reason=PROP_NOT_IN_PANELS ignoredCount={}",
+                            ignoredCount);
+        }
+        return scenePlan;
     }
 
-    private static FocalColor mapFocalColor(StoryboardResponse.ColorTarget color, List<StoryPanel> panels) {
+    private static Optional<FocalColor> mapFocalColor(StoryboardResponse.ColorTarget color, List<StoryPanel> panels) {
         String prop = TextValidator.normalizeRequired(color.prop(), "색상 대상 소품은 필수입니다.");
         String normalizedProp = prop.toLowerCase(Locale.ROOT);
         List<Integer> panelNumbers = panels.stream()
@@ -50,9 +65,9 @@ public final class StoryboardResponseMapper {
                 .map(StoryPanel::panelNumber)
                 .toList();
         if (panelNumbers.isEmpty()) {
-            throw new IllegalArgumentException("색상 대상 소품은 최소 한 패널의 props에 존재해야 합니다.");
+            return Optional.empty();
         }
-        return new FocalColor(prop, color.component(), color.colorHex(), panelNumbers);
+        return Optional.of(new FocalColor(prop, color.component(), color.colorHex(), panelNumbers));
     }
 
     private static List<StoryPanel> mapPanels(List<StoryboardResponse.Panel> panels) {
