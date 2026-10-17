@@ -1,6 +1,7 @@
 package com.harudle.feed.infrastructure;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
 import java.io.IOException;
@@ -17,6 +18,7 @@ import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.FlywayException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -44,7 +46,7 @@ class FeedNotificationSchemaMigrationTest {
 
     @BeforeEach
     void upgradeExistingSchema() throws SQLException {
-        migrateExistingSchemaTo("18");
+        migrateExistingSchemaTo("27");
     }
 
     private void migrateExistingSchemaTo(String target) throws SQLException {
@@ -86,14 +88,94 @@ class FeedNotificationSchemaMigrationTest {
     @DisplayName("빈 PostgreSQL에도 전체 마이그레이션과 카테고리 시드를 적용할 수 있다")
     void migrateEmptyDatabase() throws SQLException {
         flyway().clean();
-        assertThat(flyway().migrate().migrationsExecuted).isEqualTo(18);
+        assertThat(flyway().migrate().migrationsExecuted).isEqualTo(27);
         flyway().validate();
         assertThat(queryLong("SELECT count(*) FROM categories WHERE is_active")).isEqualTo(2);
         assertThat(queryLong("""
                 SELECT count(*) FROM pg_tables WHERE schemaname = 'public'
-                AND tablename IN ('categories', 'feeds', 'comments', 'feed_likes',
-                                  'notifications', 'push_registrations', 'notification_outbox')
-                """)).isEqualTo(7);
+                AND tablename IN ('categories', 'feeds', 'comments', 'feed_likes', 'auth_sessions',
+                                  'notifications', 'push_registrations', 'push_registration_states',
+                                  'notification_outbox')
+                """)).isEqualTo(9);
+    }
+
+    @Test
+    @DisplayName("기존 활성 Refresh Token을 세션에 연결하고 세션 소유자 변경을 막는다")
+    void migrateLegacyRefreshTokensAndProtectSessionOwnership() throws SQLException {
+        migrateExistingSchemaTo("24");
+        String insertToken = """
+                INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
+                VALUES (?, ?, ?)
+                """;
+        OffsetDateTime tomorrow = OffsetDateTime.now().plusDays(1);
+        execute(insertToken, AUTHOR, "b".repeat(64), tomorrow);
+        execute(insertToken, AUTHOR, "c".repeat(64), tomorrow);
+        execute(insertToken, AUTHOR, "d".repeat(64), OffsetDateTime.now().minusDays(1));
+
+        assertThat(flyway("25").migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(queryLong("""
+                SELECT count(DISTINCT session_id) FROM refresh_tokens
+                WHERE user_id = ? AND expires_at > CURRENT_TIMESTAMP
+                """, AUTHOR)).isEqualTo(2);
+        assertThat(queryLong("""
+                SELECT count(*) FROM refresh_tokens
+                WHERE user_id = ? AND expires_at < CURRENT_TIMESTAMP AND session_id IS NULL
+                """, AUTHOR)).isEqualTo(1);
+
+        UUID authorSession = UUID.randomUUID();
+        UUID anotherAuthorSession = UUID.randomUUID();
+        UUID readerSession = UUID.randomUUID();
+        execute("INSERT INTO auth_sessions (id, user_id) VALUES (?, ?)", authorSession, AUTHOR);
+        execute("INSERT INTO auth_sessions (id, user_id) VALUES (?, ?)", anotherAuthorSession, AUTHOR);
+        execute("INSERT INTO auth_sessions (id, user_id) VALUES (?, ?)", readerSession, READER);
+        reject("23503", "UPDATE refresh_tokens SET session_id = ? WHERE token_hash = ?",
+                readerSession, "b".repeat(64));
+
+        UUID registration = createRegistration(AUTHOR, UUID.randomUUID(), "fid-session");
+        execute("UPDATE push_registrations SET session_id = ? WHERE id = ?", authorSession, registration);
+        reject("23514", "UPDATE push_registrations SET session_id = ? WHERE id = ?",
+                anotherAuthorSession, registration);
+        reject("23503", "INSERT INTO push_registrations "
+                + "(id, user_id, device_id, recipient_value, session_id) VALUES (?, ?, ?, ?, ?)",
+                UUID.randomUUID(), READER, UUID.randomUUID(), "fid-wrong-owner", authorSession);
+
+        execute(insertToken, AUTHOR, "e".repeat(64), tomorrow);
+        assertThat(queryLong("SELECT count(*) FROM refresh_tokens WHERE token_hash = ? AND session_id IS NULL",
+                "e".repeat(64))).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("V26은 기존 푸시 등록과 새 등록의 버전을 0으로 시작하고 음수·NULL을 거부한다")
+    void initializePushRegistrationVersion() throws SQLException {
+        migrateExistingSchemaTo("25");
+        UUID existing = createRegistration(AUTHOR, UUID.randomUUID(), "fid-existing");
+
+        assertThat(flyway("26").migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(queryLong("SELECT version FROM push_registrations WHERE id = ?", existing)).isZero();
+
+        UUID fresh = createRegistration(READER, UUID.randomUUID(), "fid-fresh");
+        assertThat(queryLong("SELECT version FROM push_registrations WHERE id = ?", fresh)).isZero();
+        reject("23502", "UPDATE push_registrations SET version = NULL WHERE id = ?", fresh);
+        reject("23514", "UPDATE push_registrations SET version = -1 WHERE id = ?", fresh);
+    }
+
+    @Test
+    @DisplayName("V27은 기존 활성 등록만 수신 켜짐으로 옮기고 세션 없는 등록은 옮기지 않는다")
+    void initializePushRegistrationStates() throws SQLException {
+        migrateExistingSchemaTo("26");
+        UUID session = UUID.randomUUID();
+        UUID device = UUID.randomUUID();
+        execute("INSERT INTO auth_sessions (id, user_id) VALUES (?, ?)", session, AUTHOR);
+        UUID active = createRegistration(AUTHOR, device, "fid-active");
+        execute("UPDATE push_registrations SET session_id = ? WHERE id = ?", session, active);
+        createRegistration(READER, UUID.randomUUID(), "fid-legacy");
+
+        assertThat(flyway("27").migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(queryLong("SELECT state_version FROM push_registration_states WHERE session_id = ?"
+                + " AND device_id = ? AND enabled", session, device)).isEqualTo(1);
+        assertThat(queryLong("SELECT count(*) FROM push_registration_states")).isEqualTo(1);
+        reject("23514", "UPDATE push_registration_states SET state_version = -1 WHERE session_id = ?"
+                + " AND device_id = ?", session, device);
     }
 
     @Test
@@ -175,28 +257,50 @@ class FeedNotificationSchemaMigrationTest {
     @DisplayName("푸시 등록의 계정·기기는 고정하고 폐기 후 새 등록으로 키를 재사용한다")
     void keepRegistrationOwnershipImmutable() throws SQLException {
         UUID device = UUID.randomUUID();
-        UUID registration = createRegistration(AUTHOR, device, "token-original");
+        UUID registration = createRegistration(AUTHOR, device, "fid-original");
+        assertThat(queryLong("SELECT count(*) FROM push_registrations "
+                + "WHERE id = ? AND recipient_kind = 'FID' AND recipient_value = ?",
+                registration, "fid-original")).isEqualTo(1);
+        reject("23514", """
+                INSERT INTO push_registrations (id, user_id, device_id, recipient_kind, recipient_value)
+                VALUES (?, ?, ?, 'FCM_TOKEN', ?)
+                """, UUID.randomUUID(), READER, UUID.randomUUID(), "legacy-token");
         reject("23505", """
                 INSERT INTO push_registrations (id, user_id, device_id, recipient_value)
                 VALUES (?, ?, ?, ?)
-                """, UUID.randomUUID(), READER, device, "token-other");
+                """, UUID.randomUUID(), READER, device, "fid-other");
         reject("23505", """
                 INSERT INTO push_registrations (id, user_id, device_id, recipient_value)
                 VALUES (?, ?, ?, ?)
-                """, UUID.randomUUID(), READER, UUID.randomUUID(), "token-original");
-        execute("UPDATE push_registrations SET recipient_value = ? WHERE id = ?", "token-refreshed", registration);
+                """, UUID.randomUUID(), READER, UUID.randomUUID(), "fid-original");
+        execute("UPDATE push_registrations SET recipient_value = ? WHERE id = ?", "fid-refreshed", registration);
         reject("23514", "UPDATE push_registrations SET user_id = ? WHERE id = ?", READER, registration);
         reject("23514", "UPDATE push_registrations SET device_id = ? WHERE id = ?", UUID.randomUUID(), registration);
         execute("UPDATE push_registrations SET revoked_at = CURRENT_TIMESTAMP WHERE id = ?", registration);
-        createRegistration(READER, device, "token-refreshed");
+        createRegistration(READER, device, "fid-refreshed");
         reject("23514", "UPDATE push_registrations SET revoked_at = NULL WHERE id = ?", registration);
+    }
+
+    @Test
+    @DisplayName("기존 토큰 등록은 FID로 오인해 이관하지 않는다")
+    void rejectLegacyTokenRowsDuringFidMigration() throws SQLException {
+        migrateExistingSchemaTo("18");
+        UUID registration = UUID.randomUUID();
+        execute("""
+                INSERT INTO push_registrations (id, user_id, device_id, recipient_value)
+                VALUES (?, ?, ?, ?)
+                """, registration, AUTHOR, UUID.randomUUID(), "legacy-token");
+
+        assertThatThrownBy(() -> flyway("24").migrate()).isInstanceOf(FlywayException.class);
+        assertThat(queryLong("SELECT count(*) FROM push_registrations WHERE id = ? "
+                + "AND recipient_kind = 'FCM_TOKEN'", registration)).isEqualTo(1);
     }
 
     @Test
     @DisplayName("Outbox는 등록 소유자에게만 연결되고 같은 이벤트·기기의 중복 작업을 거부한다")
     void constrainOutboxRecipientAndDeduplication() throws SQLException {
         UUID feed = createFeed(createDiary());
-        UUID registration = createRegistration(READER, UUID.randomUUID(), "token-one");
+        UUID registration = createRegistration(READER, UUID.randomUUID(), "fid-one");
         UUID event = UUID.randomUUID();
         String sql = """
                 INSERT INTO notification_outbox (id, event_id, feed_id, recipient_user_id, push_registration_id)
@@ -205,7 +309,7 @@ class FeedNotificationSchemaMigrationTest {
         reject("23503", sql, UUID.randomUUID(), event, feed, AUTHOR, registration);
         execute(sql, UUID.randomUUID(), event, feed, READER, registration);
         reject("23505", sql, UUID.randomUUID(), event, feed, READER, registration);
-        UUID otherDevice = createRegistration(READER, UUID.randomUUID(), "token-two");
+        UUID otherDevice = createRegistration(READER, UUID.randomUUID(), "fid-two");
         execute(sql, UUID.randomUUID(), event, feed, READER, otherDevice);
         assertThat(queryLong("SELECT count(*) FROM notification_outbox WHERE event_id = ?", event)).isEqualTo(2);
     }
@@ -231,7 +335,7 @@ class FeedNotificationSchemaMigrationTest {
     void validateOutboxStateFields(String status, boolean locked, boolean lease, boolean sent, boolean valid)
             throws SQLException {
         UUID feed = createFeed(createDiary());
-        UUID registration = createRegistration(READER, UUID.randomUUID(), "token-state");
+        UUID registration = createRegistration(READER, UUID.randomUUID(), "fid-state");
         Object[] values = {UUID.randomUUID(), UUID.randomUUID(), feed, READER, registration, status,
                 locked ? UUID.randomUUID() : null,
                 lease ? OffsetDateTime.now().plusMinutes(1) : null,
@@ -421,12 +525,12 @@ class FeedNotificationSchemaMigrationTest {
         return feed;
     }
 
-    private UUID createRegistration(UUID user, UUID device, String token) throws SQLException {
+    private UUID createRegistration(UUID user, UUID device, String fid) throws SQLException {
         UUID registration = UUID.randomUUID();
         execute("""
                 INSERT INTO push_registrations (id, user_id, device_id, recipient_value)
                 VALUES (?, ?, ?, ?)
-                """, registration, user, device, token);
+                """, registration, user, device, fid);
         return registration;
     }
 
@@ -468,7 +572,7 @@ class FeedNotificationSchemaMigrationTest {
     }
 
     private static Flyway flyway() {
-        return flyway("18");
+        return flyway("27");
     }
 
     private static Flyway flyway(String target) {
