@@ -181,10 +181,12 @@ gcloud iam workload-identity-pools create-cred-config \
 
 컨테이너에서는 호스트의 credential configuration 파일을 읽기 전용으로 마운트하고
 `GOOGLE_APPLICATION_CREDENTIALS`를 컨테이너 내부 경로로 지정합니다. 현재 Compose에는 이
-마운트가 없으므로 배포할 때 추가해야 합니다. 컨테이너에서 EC2 IMDS에 접근할 수 있어야 합니다.
+마운트가 `/etc/harudle/gcp/gcp-wif.json`에서 `/var/run/harudle/gcp-wif.json`으로 설정돼 있습니다.
+백엔드는 UID `10001`로 실행되므로 이 사용자가 호스트 파일을 읽을 수 있어야 합니다.
+컨테이너에서 EC2 IMDS에 접근할 수 있어야 합니다.
 Docker bridge 네트워크에서는 [배포 가이드의 EC2 IMDSv2 설정](../deploy/README.md)에 따라
 `Metadata response hop limit`을 `2`로 설정하고 `Http tokens=required`를 유지합니다.
-GCP WIF 리소스 생성과 운영 Compose 변경은 이 Client 구현에 포함하지 않습니다.
+GCP WIF 리소스와 서비스 계정 권한은 서버 설정에서 확인합니다.
 
 `backend/.env`를 Spring 설정으로 읽는 것만으로는 ADC의 환경 변수가 설정되지 않습니다.
 `GOOGLE_APPLICATION_CREDENTIALS`는 Java **프로세스 환경 변수**로 주입해야 합니다. IntelliJ에서는
@@ -210,11 +212,12 @@ Firebase 프로젝트를 만들기 전에는 기본값으로 SDK 초기화를 �
 ```dotenv
 HARUDLE_PUSH_FCM_ENABLED=true
 FIREBASE_PROJECT_ID=your-firebase-project-id
-GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/credential.json
+GOOGLE_APPLICATION_CREDENTIALS=/var/run/harudle/gcp-wif.json
 ```
 
 `GOOGLE_APPLICATION_CREDENTIALS`는 Google 기본 인증 정보(ADC)를 읽을 수 있도록 백엔드 프로세스에
-설정합니다. 로컬에서는 `gcloud auth application-default login`으로 만든 ADC도 사용할 수 있습니다.
+설정합니다. EC2에서는 위에서 마운트한 WIF 파일을 사용하고, 연결된 서비스 계정에 FCM 전송 권한이
+있어야 합니다. 로컬에서는 `gcloud auth application-default login`으로 만든 ADC도 사용할 수 있습니다.
 인증 파일과 비밀 키는 저장소에 커밋하지 않습니다. 웹 클라이언트의 Firebase 설정, VAPID 키와
 알림 권한 요청은 별도로 준비해야 합니다. 현재 SDK 설정만으로는 실제 푸시가 발송되지 않습니다.
 

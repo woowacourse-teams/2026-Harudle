@@ -1,13 +1,13 @@
-package com.harudle.push.infrastructure;
+package com.harudle.push.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.harudle.push.infrastructure.JpaPushRegistrationService.InvalidPushSession;
-import com.harudle.push.infrastructure.JpaPushRegistrationService.Registration;
-import com.harudle.push.infrastructure.JpaPushRegistrationService.RegistrationConflict;
-import com.harudle.push.infrastructure.JpaPushRegistrationService.StaleRegistration;
-import com.harudle.push.infrastructure.JpaPushRegistrationService.StalePushState;
+import com.harudle.push.service.PushRegistrationService.InvalidPushSession;
+import com.harudle.push.service.PushRegistrationService.Registration;
+import com.harudle.push.service.PushRegistrationService.RegistrationConflict;
+import com.harudle.push.service.PushRegistrationService.StaleRegistration;
+import com.harudle.push.service.PushRegistrationService.StalePushState;
 import jakarta.persistence.EntityManager;
 import java.util.List;
 import java.util.UUID;
@@ -31,11 +31,11 @@ import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest
-class JpaPushRegistrationServiceTest {
+class PushRegistrationServiceTest {
     @Container @ServiceConnection
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"));
 
-    @Autowired private JpaPushRegistrationService registrations;
+    @Autowired private PushRegistrationService registrations;
     @Autowired private EntityManager entityManager;
     @Autowired private TransactionTemplate transactions;
     @MockitoBean private JwtDecoder jwtDecoder;

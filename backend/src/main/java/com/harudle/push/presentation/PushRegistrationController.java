@@ -4,12 +4,12 @@ import com.harudle.common.error.ApiErrorResponses;
 import com.harudle.common.error.ErrorType;
 import com.harudle.common.error.ProblemDetailFactory;
 import com.harudle.common.validation.CanonicalUuidParser;
-import com.harudle.push.infrastructure.JpaPushRegistrationService;
-import com.harudle.push.infrastructure.JpaPushRegistrationService.InvalidPushSession;
-import com.harudle.push.infrastructure.JpaPushRegistrationService.Registration;
-import com.harudle.push.infrastructure.JpaPushRegistrationService.RegistrationConflict;
-import com.harudle.push.infrastructure.JpaPushRegistrationService.StaleRegistration;
-import com.harudle.push.infrastructure.JpaPushRegistrationService.StalePushState;
+import com.harudle.push.service.PushRegistrationService;
+import com.harudle.push.service.PushRegistrationService.InvalidPushSession;
+import com.harudle.push.service.PushRegistrationService.Registration;
+import com.harudle.push.service.PushRegistrationService.RegistrationConflict;
+import com.harudle.push.service.PushRegistrationService.StaleRegistration;
+import com.harudle.push.service.PushRegistrationService.StalePushState;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -40,10 +40,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/me/push-registrations")
 public class PushRegistrationController {
 
-    private final JpaPushRegistrationService registrations;
+    private final PushRegistrationService registrations;
     private final ProblemDetailFactory problems;
 
-    public PushRegistrationController(JpaPushRegistrationService registrations, ProblemDetailFactory problems) {
+    public PushRegistrationController(PushRegistrationService registrations, ProblemDetailFactory problems) {
         this.registrations = registrations;
         this.problems = problems;
     }
