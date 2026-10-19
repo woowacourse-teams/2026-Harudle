@@ -18,16 +18,62 @@ interface FeedListState {
   readonly removeFeedFromList: (feedId: Feed['id']) => void;
 }
 
+type FeedListKey =
+  `category:${FeedListRequest['categoryId']}&sort:${FeedListRequest['sort']}`;
+
+interface FeedListCache {
+  readonly key: FeedListKey;
+  readonly data: FeedListResponse;
+}
+
+let feedListCache: FeedListCache | null = null;
+
 const FEED_SIZE = 20;
+
+const appendFeedPage = (
+  previous: FeedListResponse,
+  page: FeedListResponse,
+): FeedListResponse => ({
+  items: [...previous.items, ...page.items],
+  nextCursor: page.nextCursor,
+  hasNext: page.hasNext,
+});
+
+const updateFeedLike = (
+  previous: FeedListResponse,
+  feedId: Feed['id'],
+  like: FeedLikeResponse,
+): FeedListResponse => ({
+  ...previous,
+  items: previous.items.map((feed): Feed =>
+    feed.id === feedId ? { ...feed, ...like } : feed,
+  ),
+});
+
+const removeFeed = (
+  previous: FeedListResponse,
+  feedId: Feed['id'],
+): FeedListResponse => ({
+  ...previous,
+  items: previous.items.filter((feed): boolean => feed.id !== feedId),
+});
 
 const useFeedList = ({
   categoryId,
   sort,
 }: Pick<FeedListRequest, 'categoryId' | 'sort'>): FeedListState => {
   const { track } = useAnalytics();
-  const [request, setRequest] = useState<ApiRequest<FeedListResponse>>({
-    status: 'idle',
-  });
+  const key: FeedListKey = `category:${categoryId}&sort:${sort}`;
+  const [request, setRequest] = useState<ApiRequest<FeedListResponse>>(
+    (): ApiRequest<FeedListResponse> => {
+      const cached = feedListCache;
+
+      return cached === null || cached.key !== key
+        ? { status: 'idle' }
+        : { status: 'success', data: cached.data };
+    },
+  );
+
   const [loadMoreRequest, setLoadMoreRequest] = useState<ApiRequest<void>>({
     status: 'idle',
   });
@@ -62,6 +108,7 @@ const useFeedList = ({
       if (signal.aborted) return;
 
       setRequest({ status: 'success', data });
+      feedListCache = { key, data };
     } catch (error: unknown) {
       if (signal.aborted) return;
       setRequest({
@@ -76,21 +123,7 @@ const useFeedList = ({
         abortControllerRef.current = null;
       }
     }
-  }, [categoryId, sort, track]);
-
-  const appendFeedPage = useCallback((page: FeedListResponse): void => {
-    setRequest((previous) => {
-      if (previous.status !== 'success') return previous;
-      return {
-        ...previous,
-        data: {
-          items: [...previous.data.items, ...page.items],
-          nextCursor: page.nextCursor,
-          hasNext: page.hasNext,
-        },
-      };
-    });
-  }, []);
+  }, [categoryId, sort, key, track]);
 
   const loadMore = useCallback(async (): Promise<void> => {
     // TODO: 타입 안정성 보강 hasNext, nextCursor
@@ -119,7 +152,12 @@ const useFeedList = ({
         signal,
       });
       if (signal.aborted) return;
-      appendFeedPage(data);
+
+      if (feedListCache?.key !== key) return;
+
+      const nextData = appendFeedPage(feedListCache.data, data);
+      feedListCache = { key, data: nextData };
+      setRequest({ status: 'success', data: nextData });
       setLoadMoreRequest({ status: 'success', data: undefined });
     } catch (error: unknown) {
       if (signal.aborted) return;
@@ -135,46 +173,39 @@ const useFeedList = ({
         abortControllerRef.current = null;
       }
     }
-  }, [request, categoryId, sort, appendFeedPage, track]);
+  }, [request, categoryId, sort, key, track]);
 
-  useEffect((): (() => void) => {
-    // 필터가 바뀌면 이전 조회 결과 대신 로딩 상태를 표시한다.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void execute();
+  useEffect(() => {
+    if (feedListCache?.key !== key) {
+      feedListCache = null;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      void execute();
+    }
 
     return (): void => abortControllerRef.current?.abort();
-  }, [execute]);
+  }, [execute, key]);
 
   const updateLike = useCallback(
     (feedId: Feed['id'], like: FeedLikeResponse): void => {
-      setRequest((previous) => {
-        if (previous.status !== 'success') return previous;
-        return {
-          ...previous,
-          data: {
-            ...previous.data,
-            items: previous.data.items.map((feed) =>
-              feed.id === feedId ? { ...feed, ...like } : feed,
-            ),
-          },
-        };
-      });
+      if (request.status !== 'success') return;
+
+      const nextData = updateFeedLike(request.data, feedId, like);
+      feedListCache = { key, data: nextData };
+      setRequest({ status: 'success', data: nextData });
     },
-    [],
+    [request, key],
   );
 
-  const removeFeedFromList = useCallback((feedId: Feed['id']): void => {
-    setRequest((previous) => {
-      if (previous.status !== 'success') return previous;
-      return {
-        ...previous,
-        data: {
-          ...previous.data,
-          items: previous.data.items.filter((feed) => feed.id !== feedId),
-        },
-      };
-    });
-  }, []);
+  const removeFeedFromList = useCallback(
+    (feedId: Feed['id']): void => {
+      if (request.status !== 'success') return;
+
+      const nextData = removeFeed(request.data, feedId);
+      feedListCache = { key, data: nextData };
+      setRequest({ status: 'success', data: nextData });
+    },
+    [request, key],
+  );
 
   return {
     request,

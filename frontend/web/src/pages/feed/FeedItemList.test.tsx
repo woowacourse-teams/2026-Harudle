@@ -7,6 +7,7 @@ import {
   jest,
 } from '@jest/globals';
 import userEvent from '@testing-library/user-event';
+import * as React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import type {
   Feed,
@@ -17,6 +18,15 @@ import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import FeedItemList from './FeedItemList';
 import type { setFeedLike } from '../../domain/feeds/feedLike';
 import type { deleteFeed } from '../../domain/feeds/feedDelete';
+import type useFeedList from './useFeedList';
+
+let mockUseFeedList: typeof useFeedList;
+jest.mock('./useFeedList', () => ({
+  __esModule: true,
+  default: (
+    options: Parameters<typeof useFeedList>[0],
+  ): ReturnType<typeof useFeedList> => mockUseFeedList(options),
+}));
 
 const mockTrack =
   jest.fn<(event: string, properties: Record<string, unknown>) => void>();
@@ -108,6 +118,14 @@ const emptyResponse: FeedListResponse = {
 };
 
 beforeEach((): void => {
+  // React 인스턴스는 유지하고, 목록 캐시는 테스트마다 새 모듈로 격리한다.
+  jest.isolateModules((): void => {
+    jest.doMock('react', () => React);
+    mockUseFeedList =
+      jest.requireActual<typeof import('./useFeedList')>(
+        './useFeedList',
+      ).default;
+  });
   localStorage.setItem('harudle.has-completed-oauth', 'true');
   mockGetFeedList.mockReset();
   mockGetFeedList.mockResolvedValue(response);
