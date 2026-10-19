@@ -15,10 +15,30 @@ import type {
   getFeedList,
 } from '../../domain/feeds/feedList';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
-import FeedItemList from './FeedItemList';
+import FeedItemListView from './FeedItemList';
 import type { setFeedLike } from '../../domain/feeds/feedLike';
 import type { deleteFeed } from '../../domain/feeds/feedDelete';
-import type useFeedList from './useFeedList';
+import useFeedList from './useFeedList';
+
+const FeedItemList = ({
+  categoryId,
+  sort,
+  onCategoryClick,
+}: Pick<
+  React.ComponentProps<typeof FeedItemListView>,
+  'categoryId' | 'sort' | 'onCategoryClick'
+>) => {
+  const feedList = useFeedList({ categoryId, sort });
+
+  return (
+    <FeedItemListView
+      categoryId={categoryId}
+      sort={sort}
+      onCategoryClick={onCategoryClick}
+      {...feedList}
+    />
+  );
+};
 
 let mockUseFeedList: typeof useFeedList;
 jest.mock('./useFeedList', () => ({

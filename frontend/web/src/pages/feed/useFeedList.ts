@@ -10,9 +10,10 @@ import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import type { FeedLikeResponse } from '../../domain/feeds/feedLike';
 import { useAnalytics } from '../../posthog/useAnalytics';
 
-interface FeedListState {
+export interface FeedListState {
   readonly request: ApiRequest<FeedListResponse>;
   readonly loadMoreRequest: ApiRequest<void>;
+  readonly execute: () => Promise<void>;
   readonly loadMore: () => Promise<void>;
   readonly updateLike: (feedId: Feed['id'], like: FeedLikeResponse) => void;
   readonly removeFeedFromList: (feedId: Feed['id']) => void;
@@ -210,6 +211,7 @@ const useFeedList = ({
   return {
     request,
     loadMoreRequest,
+    execute,
     loadMore,
     updateLike,
     removeFeedFromList,

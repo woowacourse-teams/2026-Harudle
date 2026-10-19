@@ -4,16 +4,23 @@ import type { Feed, FeedListRequest } from '../../domain/feeds/feedList';
 import LoadingSpinner from '../../shared/LoadingSpinner';
 import FeedEmpty from './FeedEmpty';
 import FeedError from './FeedError';
-import useFeedList from './useFeedList';
+import type { FeedListState } from './useFeedList';
 import FeedItem from './FeedItem';
 import ActionButton from '../../shared/ActionButton';
 import { FEED_COPY } from './copy';
 import useFeedScrollRestore from './useFeedScrollRestore';
 
-interface FeedItemListProps extends Pick<
-  FeedListRequest,
-  'categoryId' | 'sort'
-> {
+interface FeedItemListProps
+  extends
+    Pick<FeedListRequest, 'categoryId' | 'sort'>,
+    Pick<
+      FeedListState,
+      | 'request'
+      | 'loadMoreRequest'
+      | 'loadMore'
+      | 'updateLike'
+      | 'removeFeedFromList'
+    > {
   readonly onCategoryClick: (
     categoryId: Feed['category']['id'],
     categoryName: string,
@@ -24,9 +31,12 @@ const FeedItemList = ({
   categoryId,
   sort,
   onCategoryClick,
+  request,
+  loadMoreRequest,
+  loadMore,
+  updateLike,
+  removeFeedFromList,
 }: FeedItemListProps) => {
-  const { request, loadMoreRequest, loadMore, updateLike, removeFeedFromList } =
-    useFeedList({ categoryId, sort });
   const { targetScrollRef, setFeedScroll } = useFeedScrollRestore({
     categoryId,
     sort,
