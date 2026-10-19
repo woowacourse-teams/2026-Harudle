@@ -415,6 +415,34 @@ Testcontainers의 PostgreSQL로 애플리케이션을 직접 실행하려면 다
 ./gradlew bootTestRun
 ```
 
+### GitHub Actions 빌드 캐시
+
+PR CI는 `gradle/actions/setup-gradle`로 Gradle 실행 파일, 의존성과 컴파일 결과를 저장하고 복원합니다.
+`cache-read-only: false`로 PR 실행에서도 결과를 저장하므로, 같은 PR을 다시 실행할 때 사용할 수 있습니다.
+다른 PR에 저장된 캐시는 공유되지 않습니다. 병합 후 공통 캐시를 만드는 작업은 현재 포함하지 않습니다.
+
+CI는 다음 명령을 실행합니다.
+
+```shell
+./gradlew --no-daemon --console=plain --build-cache test --rerun
+```
+
+`--build-cache`는 입력이 같은 컴파일 결과를 재사용합니다. `test --rerun`은 테스트를 매번 실행하게 하며,
+컴파일 작업은 다시 실행하도록 강제하지 않습니다. 소스나 의존성이 바뀌면 필요한 컴파일을 다시 수행합니다.
+
+같은 커밋의 첫 실행이 성공한 뒤 GitHub Actions에서 해당 실행을 다시 실행합니다.
+`Set up Gradle`의 복원 로그와 `Post Set up Gradle`의 저장 결과를 확인하고, 다음 Gradle 로그를 확인합니다.
+
+```text
+> Task :compileJava FROM-CACHE
+> Task :compileTestJava FROM-CACHE
+> Task :test
+```
+
+`test`가 `FROM-CACHE`나 `UP-TO-DATE`로 생략되지 않았는지도 확인합니다.
+캐시 저장과 복원을 포함한 Backend Test Job 전체 시간을 비교해야 실제 시간 절감 여부를 알 수 있습니다.
+새 캐시를 처음 만드는 실행은 복원할 결과가 없을 수 있습니다. AWS CodeBuild의 S3 캐시는 별도 설정입니다.
+
 ## 기본 정책
 
 - JPA의 Open Session in View는 비활성화되어 있습니다.

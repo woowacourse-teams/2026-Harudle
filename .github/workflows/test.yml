@@ -95,10 +95,11 @@ jobs:
         with:
           distribution: corretto
           java-version: "21"
-          cache: gradle
-          cache-dependency-path: |
-            backend/*.gradle*
-            backend/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: false
 
       - name: Verify Docker
         run: docker info
@@ -119,7 +120,7 @@ jobs:
       - name: Run backend tests
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon test
+          ./gradlew --no-daemon --console=plain --build-cache test --rerun
 
   frontend-test:
     name: Frontend Test
