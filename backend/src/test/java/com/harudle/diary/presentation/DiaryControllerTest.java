@@ -690,23 +690,28 @@ class DiaryControllerTest {
     }
 
     @Test
-    @DisplayName("월간 조회가 R2를 선택하면 존재 확인 없이 같은 썸네일 키로 URL을 발급한다")
-    void timelineSignsR2ThumbnailWithoutChangingResponseContract() {
+    @DisplayName("월간 조회가 R2를 선택하면 썸네일 필드에 원본 URL을 반환한다")
+    void timelineReturnsR2OriginalWithoutChangingResponseContract() {
         when(diaryQueryService.getTimeline(USER_ID, 2026, 8)).thenReturn(new DiaryTimelineResult(
                 2026, 8, List.of(new DiaryDayResult(DIARY_DATE,
                         List.of(new DiarySummaryResult(DIARY_ID, "새 일기", BACKUP_DETAIL_KEY))))));
         BackupObjectStorage backup = configureR2Fallback();
-        when(backup.createAccessUrl(BACKUP_THUMBNAIL_KEY)).thenReturn(new ImageAccessUrl(
-                URI.create("https://backup.example/image-240.webp?signature=test"), IMAGE_EXPIRES_AT));
+        String originalKey = BACKUP_FOLDER + "image.png";
+        when(backup.findMetadata(originalKey)).thenReturn(Optional.of(
+                new BackupObjectMetadata(originalKey, MediaType.IMAGE_PNG, 123, null)));
+        when(backup.createAccessUrl(originalKey)).thenReturn(new ImageAccessUrl(
+                URI.create("https://backup.example/image.png?signature=test"), IMAGE_EXPIRES_AT));
 
         MockMvcResponse response = authenticatedRequest().queryParam("year", 2026).queryParam("month", 8)
                 .get("/api/v1/diaries");
 
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.jsonPath().getString("days[0].items[0].thumbnailUrl"))
-                .isEqualTo("https://backup.example/image-240.webp?signature=test");
+                .isEqualTo("https://backup.example/image.png?signature=test");
         verify(imageUrlProvider).forRead();
-        verify(backup).createAccessUrl(BACKUP_THUMBNAIL_KEY);
+        verify(backup).findMetadata(eq(originalKey), any(ImageLookupBudget.class));
+        verify(backup).findMetadata(originalKey);
+        verify(backup).createAccessUrl(originalKey);
         verifyNoMoreInteractions(backup);
     }
 
@@ -741,7 +746,7 @@ class DiaryControllerTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"MISSING", "ERROR"})
-    @DisplayName("첫 S3 확인이 실패하면 월간 목록의 모든 썸네일을 R2 URL로 반환한다")
+    @DisplayName("첫 S3 확인이 실패하면 월간 목록의 썸네일에 R2 원본 URL을 반환한다")
     void timelineUsesOneStorageForEveryDiary(String sourceResult) {
         when(diaryQueryService.getTimeline(USER_ID, 2026, 8)).thenReturn(new DiaryTimelineResult(
                 2026, 8, List.of(new DiaryDayResult(DIARY_DATE, List.of(
@@ -753,6 +758,8 @@ class DiaryControllerTest {
                     ImageStorageException.DiagnosticType.CLIENT_ERROR));
         }
         BackupObjectStorage backup = configureR2Fallback(source);
+        when(backup.findMetadata(anyString())).thenAnswer(invocation -> Optional.of(
+                new BackupObjectMetadata(invocation.getArgument(0), MediaType.IMAGE_PNG, 123, null)));
         when(backup.createAccessUrl(anyString())).thenAnswer(invocation -> new ImageAccessUrl(
                 URI.create("https://backup.example/" + invocation.getArgument(0)), IMAGE_EXPIRES_AT));
 
@@ -763,15 +770,49 @@ class DiaryControllerTest {
         assertThat(response.jsonPath().getList("days[0].items.id", String.class))
                 .containsExactly(DIARY_ID.toString(), SECOND_DIARY_ID.toString());
         assertThat(response.jsonPath().getString("days[0].items[0].thumbnailUrl"))
-                .isEqualTo("https://backup.example/" + BACKUP_THUMBNAIL_KEY);
+                .isEqualTo("https://backup.example/" + BACKUP_FOLDER + "image.png");
         assertThat(response.jsonPath().getString("days[0].items[1].thumbnailUrl"))
-                .isEqualTo("https://backup.example/" + HEALTHY_THUMBNAIL_KEY);
+                .isEqualTo("https://backup.example/" + HEALTHY_FOLDER + "image.png");
         verify(source).exists(eq(BACKUP_THUMBNAIL_KEY), any(ImageLookupBudget.class));
         verify(source).exists(BACKUP_THUMBNAIL_KEY);
         verifyNoMoreInteractions(source);
-        verify(backup).createAccessUrl(BACKUP_THUMBNAIL_KEY);
-        verify(backup).createAccessUrl(HEALTHY_THUMBNAIL_KEY);
+        for (String originalKey : List.of(BACKUP_FOLDER + "image.png", HEALTHY_FOLDER + "image.png")) {
+            verify(backup).findMetadata(eq(originalKey), any(ImageLookupBudget.class));
+            verify(backup).findMetadata(originalKey);
+            verify(backup).createAccessUrl(originalKey);
+        }
         verifyNoMoreInteractions(backup);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"MISSING", "ERROR"})
+    @DisplayName("R2 원본 부재나 조회 오류가 있어도 월간 조회의 모든 일기를 유지한다")
+    void timelineKeepsAllDiariesWhenR2OriginalIsUnavailable(String backupResult) {
+        when(diaryQueryService.getTimeline(USER_ID, 2026, 8)).thenReturn(new DiaryTimelineResult(
+                2026, 8, List.of(new DiaryDayResult(DIARY_DATE, List.of(
+                        new DiarySummaryResult(DIARY_ID, "원본이 없는 이미지", BACKUP_DETAIL_KEY),
+                        new DiarySummaryResult(SECOND_DIARY_ID, "정상 원본", HEALTHY_DETAIL_KEY))))));
+        BackupObjectStorage backup = configureR2Fallback();
+        if ("ERROR".equals(backupResult)) {
+            when(backup.findMetadata(BACKUP_FOLDER + "image.png")).thenThrow(new BackupStorageException(
+                    BackupStorageException.FailureType.CLIENT_ERROR, new RuntimeException("R2 lookup failed")));
+        }
+        String healthyOriginal = HEALTHY_FOLDER + "image.png";
+        when(backup.findMetadata(healthyOriginal)).thenReturn(Optional.of(
+                new BackupObjectMetadata(healthyOriginal, MediaType.IMAGE_PNG, 123, null)));
+        when(backup.createAccessUrl(healthyOriginal)).thenReturn(new ImageAccessUrl(
+                URI.create("https://backup.example/" + healthyOriginal), IMAGE_EXPIRES_AT));
+
+        MockMvcResponse response = authenticatedRequest().queryParam("year", 2026).queryParam("month", 8)
+                .get("/api/v1/diaries");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.jsonPath().getList("days[0].items.id", String.class))
+                .containsExactly(DIARY_ID.toString(), SECOND_DIARY_ID.toString());
+        assertThat(response.jsonPath().getString("days[0].items[0].thumbnailUrl"))
+                .isEqualTo(sourceUrlFor(BACKUP_THUMBNAIL_KEY));
+        assertThat(response.jsonPath().getString("days[0].items[1].thumbnailUrl"))
+                .isEqualTo("https://backup.example/" + healthyOriginal);
     }
 
     @ParameterizedTest

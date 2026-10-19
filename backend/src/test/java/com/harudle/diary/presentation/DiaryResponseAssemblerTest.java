@@ -23,6 +23,7 @@ import com.harudle.generation.diary.service.port.ImageLookupBudget;
 import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageStorageException;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
+import com.harudle.generation.diary.service.port.dto.BackupObjectMetadata;
 import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
 import java.net.URI;
 import java.time.Duration;
@@ -30,12 +31,14 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.http.MediaType;
 import org.springframework.util.unit.DataSize;
 
 class DiaryResponseAssemblerTest {
@@ -53,6 +56,8 @@ class DiaryResponseAssemblerTest {
                 "backup", "key", "secret", Duration.ofMinutes(15), DataSize.ofMegabytes(20),
                 Duration.ofSeconds(2), Duration.ofSeconds(2));
         when(source.exists(anyString(), any(ImageLookupBudget.class))).thenReturn(s3Available);
+        when(backup.findMetadata(anyString(), any(ImageLookupBudget.class))).thenAnswer(invocation -> Optional.of(
+                new BackupObjectMetadata(invocation.getArgument(0), MediaType.IMAGE_PNG, 123, null)));
         when(backup.createAccessUrl(anyString())).thenAnswer(invocation -> new ImageAccessUrl(
                 URI.create("https://backup.example/" + invocation.getArgument(0)), Instant.MAX));
         ImageUrlProvider provider = new R2FallbackImageUrlProvider(primary, source, backup, s3, r2, () -> 0);
@@ -76,17 +81,20 @@ class DiaryResponseAssemblerTest {
                 assertThat(day.items()).singleElement().satisfies(item -> {
                     assertThat(item.id()).isEqualTo(new UUID(month, date));
                     assertThat(item.thumbnailUrl()).isEqualTo(selectedBase
-                            + "harudle/generated/diary-images/dev/" + month + "-" + date + "/image-240.webp");
+                            + "harudle/generated/diary-images/dev/" + month + "-" + date
+                            + (s3Available ? "/image-240.webp" : "/image.png"));
                 });
             });
         }
         String feedImage = "harudle/generated/diary-images/dev/feed/image-960.webp";
-        assertThat(provider.forRead().createAccessUrl(feedImage).url().toString()).isEqualTo(selectedBase + feedImage);
+        assertThat(provider.forRead().createAccessUrl(feedImage).url().toString()).isEqualTo(selectedBase
+                + (s3Available ? feedImage : feedImage.replace("image-960.webp", "image.png")));
         verify(source, times(3)).exists(anyString(), any(ImageLookupBudget.class));
         verifyNoMoreInteractions(source);
         if (s3Available) {
             verifyNoInteractions(backup);
         } else {
+            verify(backup, times(61)).findMetadata(anyString(), any(ImageLookupBudget.class));
             verify(backup, times(61)).createAccessUrl(anyString());
             verifyNoMoreInteractions(backup);
         }

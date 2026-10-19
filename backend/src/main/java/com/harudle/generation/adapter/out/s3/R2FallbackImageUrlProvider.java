@@ -89,7 +89,7 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
                 throw exception;
             }
         }
-        ImageUrlProvider selected = s3Available ? primary : backup::createAccessUrl;
+        ImageUrlProvider selected = s3Available ? primary : forR2Read();
         String selectedStorage = s3Available ? "S3" : "R2";
         LOGGER.atInfo().addKeyValue("event", "image_read_storage_selected")
                 .addKeyValue("environment", s3.environment()).addKeyValue("storage", selectedStorage)
@@ -97,6 +97,11 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
                 .addKeyValue("durationMs", (System.nanoTime() - startedAt) / 1_000_000)
                 .log("event=image_read_storage_selected storage={} s3Result={}", selectedStorage, s3Result);
         return selected;
+    }
+
+    private ImageUrlProvider forR2Read() {
+        ImageLookupBudget budget = new ImageLookupBudget(r2.listLookupBudget(), nanoTime);
+        return key -> createAccessUrl(key, budget, false);
     }
 
     @Override
@@ -122,15 +127,15 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
     @Override
     public ImageUrlProvider forResponse() {
         ImageLookupBudget budget = new ImageLookupBudget(r2.listLookupBudget(), nanoTime);
-        return key -> createAccessUrl(key, budget);
+        return key -> createAccessUrl(key, budget, true);
     }
 
     @Override
     public ImageAccessUrl createAccessUrl(String imageObjectKey) {
-        return createAccessUrl(imageObjectKey, new ImageLookupBudget(r2.singleLookupBudget(), nanoTime));
+        return createAccessUrl(imageObjectKey, new ImageLookupBudget(r2.singleLookupBudget(), nanoTime), true);
     }
 
-    private ImageAccessUrl createAccessUrl(String imageObjectKey, ImageLookupBudget budget) {
+    private ImageAccessUrl createAccessUrl(String imageObjectKey, ImageLookupBudget budget, boolean checkS3) {
         String loggedKey = "invalid";
         String originalKey = "none";
         String s3Result = "NOT_CHECKED";
@@ -152,36 +157,38 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
             }
             loggedKey = imageObjectKey;
             if (budget.isExhausted()) {
-                s3Result = "BUDGET_EXHAUSTED";
+                s3Result = checkS3 ? "BUDGET_EXHAUSTED" : "NOT_CHECKED";
                 r2Result = "BUDGET_EXHAUSTED";
                 ImageAccessUrl url = primary.createAccessUrl(imageObjectKey);
                 result = "S3_FALLBACK";
                 return url;
             }
-            try {
-                boolean exists = storage.exists(imageObjectKey, budget);
-                if (exists) {
-                    s3Result = "AVAILABLE";
-                    try {
-                        ImageAccessUrl url = primary.createAccessUrl(imageObjectKey);
-                        result = "S3";
-                        return url;
-                    } catch (ImageStorageException exception) {
-                        signingFailure = exception;
+            if (checkS3) {
+                try {
+                    boolean exists = storage.exists(imageObjectKey, budget);
+                    if (exists) {
+                        s3Result = "AVAILABLE";
+                        try {
+                            ImageAccessUrl url = primary.createAccessUrl(imageObjectKey);
+                            result = "S3";
+                            return url;
+                        } catch (ImageStorageException exception) {
+                            signingFailure = exception;
+                            throw exception;
+                        }
+                    }
+                    s3Result = "MISSING";
+                } catch (ImageLookupBudgetExceededException exhausted) {
+                    s3Result = "BUDGET_EXHAUSTED";
+                } catch (ImageStorageException exception) {
+                    // 잘못된 요청을 다른 저장소로 우회시키지 않는다.
+                    if (exception.diagnosticType() == DiagnosticType.REQUEST_VALIDATION_ERROR) {
                         throw exception;
                     }
+                    s3Result = "ERROR";
+                    s3FailureType = exception.diagnosticType() == null ? "OTHER"
+                            : exception.diagnosticType().name();
                 }
-                s3Result = "MISSING";
-            } catch (ImageLookupBudgetExceededException exhausted) {
-                s3Result = "BUDGET_EXHAUSTED";
-            } catch (ImageStorageException exception) {
-                // 잘못된 요청을 다른 저장소로 우회시키지 않는다.
-                if (exception.diagnosticType() == DiagnosticType.REQUEST_VALIDATION_ERROR) {
-                    throw exception;
-                }
-                s3Result = "ERROR";
-                s3FailureType = exception.diagnosticType() == null ? "OTHER"
-                        : exception.diagnosticType().name();
             }
 
             // R2 후보 탐색은 한 번만 수행하고, 조회 오류와 백업 부재를 별도로 기록한다.
