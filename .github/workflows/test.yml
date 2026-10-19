@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - develop-backend
-      - dev
     paths:
       - "backend/src/**"
       - "backend/*.gradle*"
