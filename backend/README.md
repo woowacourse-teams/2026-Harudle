@@ -419,9 +419,9 @@ Testcontainers의 PostgreSQL로 애플리케이션을 직접 실행하려면 다
 
 PR CI는 `gradle/actions/setup-gradle`로 Gradle 실행 파일, 의존성과 컴파일 결과를 저장하고 복원합니다.
 `cache-read-only: false`로 PR 실행에서도 결과를 저장하므로, 같은 PR을 다시 실행할 때 사용할 수 있습니다.
-다른 PR에 저장된 캐시는 공유되지 않습니다. 병합 후 공통 캐시를 만드는 작업은 현재 포함하지 않습니다.
+다른 PR에 저장된 캐시는 공유되지 않습니다. 새 PR은 병합 대상 브랜치와 기본 브랜치에 저장된 캐시도 찾습니다.
 
-CI는 다음 명령을 실행합니다.
+PR 검증과 수동 테스트는 다음 명령을 실행합니다.
 
 ```shell
 ./gradlew --no-daemon --console=plain --build-cache test --rerun
@@ -429,6 +429,25 @@ CI는 다음 명령을 실행합니다.
 
 `--build-cache`는 입력이 같은 컴파일 결과를 재사용합니다. `test --rerun`은 테스트를 매번 실행하게 하며,
 컴파일 작업은 다시 실행하도록 강제하지 않습니다. 소스나 의존성이 바뀌면 필요한 컴파일을 다시 수행합니다.
+
+#### 병합 후 공통 캐시 생성
+
+`develop-backend`와 `dev`에 백엔드 소스, Gradle 설정, Wrapper 또는 `test.yml` 변경이 들어오면
+같은 `backend-test` Job에서 다음 명령을 실행합니다.
+
+```shell
+./gradlew --no-daemon --console=plain --build-cache classes testClasses
+```
+
+소스와 테스트 코드를 컴파일하고 결과를 해당 브랜치의 캐시에 저장합니다. 이 실행에서는 테스트, Docker 준비,
+WebP 설치와 프론트엔드 검증을 생략합니다. 백엔드 문서나 프론트엔드만 바뀐 push는 공통 캐시를 만들지 않습니다.
+PR 검증과 캐시 생성은 이벤트별로 실행 그룹을 나눠 서로 취소하지 않도록 합니다.
+
+`develop-backend` 대상의 새 PR은 `develop-backend` 캐시를, `dev` 대상의 새 PR은 `dev` 캐시를
+가져올 수 있습니다. `dev`에 저장한 캐시가 `stage`나 `main`의 독립 실행에 자동으로 공유되지는 않습니다.
+두 브랜치에 캐시를 만드는 시간도 추가되므로, 후속 PR에서 줄어든 시간과 함께 비교합니다.
+
+#### 캐시 재사용 확인
 
 같은 커밋의 첫 실행이 성공한 뒤 GitHub Actions에서 해당 실행을 다시 실행합니다.
 `Set up Gradle`의 복원 로그와 `Post Set up Gradle`의 저장 결과를 확인하고, 다음 Gradle 로그를 확인합니다.
@@ -440,6 +459,8 @@ CI는 다음 명령을 실행합니다.
 ```
 
 `test`가 `FROM-CACHE`나 `UP-TO-DATE`로 생략되지 않았는지도 확인합니다.
+공통 캐시는 병합 후 `Backend Compile Cache` 실행에서 저장 성공을 확인하고, 해당 브랜치 대상의 새 PR에서
+처음 가져온 캐시 키와 위 컴파일 로그를 확인합니다. 입력이 바뀐 작업은 다시 컴파일할 수 있습니다.
 캐시 저장과 복원을 포함한 Backend Test Job 전체 시간을 비교해야 실제 시간 절감 여부를 알 수 있습니다.
 새 캐시를 처음 만드는 실행은 복원할 결과가 없을 수 있습니다. AWS CodeBuild의 S3 캐시는 별도 설정입니다.
 

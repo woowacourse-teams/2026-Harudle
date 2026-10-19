@@ -119,7 +119,9 @@ EC2에서는 Gradle·Node 빌드를 수행하지 않는다. 네이티브 의존�
 실행하는 `.github/workflows/frontend-release.yml`이 정의되어 있다.
 PR 백엔드 CI는 `gradle/actions/setup-gradle`로 실행 파일, 의존성과 컴파일 결과를 저장한다.
 `--build-cache test --rerun`으로 컴파일 결과를 재사용하고 테스트는 매번 실행한다.
-캐시는 PR 실행에서도 저장하며, 병합 후 공통 캐시 생성 작업은 아직 없다.
+캐시는 PR 실행에서도 저장한다. `develop-backend`와 `dev`의 백엔드 컴파일 입력 또는 CI 설정이
+바뀌면 같은 Job에서 `classes testClasses --build-cache`로 후속 PR용 공통 캐시를 만든다.
+이 push 실행은 컴파일과 캐시 저장만 수행하며, PR 검증과 실행 그룹을 나눠 서로 취소하지 않는다.
 AWS 배포 파이프라인과 GitHub 워크플로의 역할을 구분해 확인한다.
 
 ## 로그와 지표 수집

@@ -1,6 +1,17 @@
 name: Test
 
 on:
+  push:
+    branches:
+      - develop-backend
+      - dev
+    paths:
+      - "backend/src/**"
+      - "backend/*.gradle*"
+      - "backend/gradle.properties"
+      - "backend/gradle/**"
+      - "backend/gradlew*"
+      - ".github/workflows/test.yml"
   pull_request:
     branches:
       - dev
@@ -13,12 +24,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: test-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: test-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   monitoring-config:
     name: Monitoring deployment config
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -73,7 +85,7 @@ jobs:
           grep -Fq 'Image environment mismatch: DEPLOY_ENV.' /tmp/image-environment-error
 
   backend-test:
-    name: Backend Test
+    name: ${{ github.event_name == 'push' && 'Backend Compile Cache' || 'Backend Test' }}
     if: github.base_ref != 'develop-frontend'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -102,29 +114,40 @@ jobs:
           cache-read-only: false
 
       - name: Verify Docker
+        if: github.event_name != 'push'
         run: docker info
 
       - name: Test CodeBuild backend cache (offline)
+        if: github.event_name != 'push'
         run: bash ../deploy/scripts/test_codebuild_backend.sh
 
       - name: Test deployment image environment
+        if: github.event_name != 'push'
         run: bash ../deploy/scripts/test_image_environment.sh
 
       - name: Install WebP tools
+        if: github.event_name != 'push'
         run: |
           sudo apt-get update
           sudo apt-get install -y webp
           cwebp -version
           dwebp -version
 
+      - name: Compile backend for shared cache
+        if: github.event_name == 'push'
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --console=plain --build-cache classes testClasses
+
       - name: Run backend tests
+        if: github.event_name != 'push'
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon --console=plain --build-cache test --rerun
 
   frontend-test:
     name: Frontend Test
-    if: github.base_ref != 'develop-backend'
+    if: github.event_name != 'push' && github.base_ref != 'develop-backend'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
