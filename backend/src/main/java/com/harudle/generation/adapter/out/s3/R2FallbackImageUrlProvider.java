@@ -28,7 +28,6 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
     private final R2StorageProperties r2;
     private final S3ImageAccessPolicy accessPolicy;
     private final LongSupplier nanoTime;
-    private volatile ImageUrlProvider selectedReadProvider;
 
     public R2FallbackImageUrlProvider(ImageUrlProvider primary, ImageStorage storage, BackupObjectStorage backup,
             S3StorageProperties s3, R2StorageProperties r2) {
@@ -57,25 +56,26 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
 
     @Override
     public ImageUrlProvider forRead() {
-        return imageObjectKey -> {
-            try {
-                accessPolicy.requireGenerated(imageObjectKey);
-            } catch (IllegalArgumentException exception) {
-                throw new ImageStorageException("현재 환경의 생성 이미지 키가 필요합니다.", exception,
-                        DiagnosticType.REQUEST_VALIDATION_ERROR);
+        return new ImageUrlProvider() {
+            private ImageUrlProvider selected;
+
+            @Override
+            public synchronized ImageAccessUrl createAccessUrl(String imageObjectKey) {
+                try {
+                    accessPolicy.requireGenerated(imageObjectKey);
+                } catch (IllegalArgumentException exception) {
+                    throw new ImageStorageException("현재 환경의 생성 이미지 키가 필요합니다.", exception,
+                            DiagnosticType.REQUEST_VALIDATION_ERROR);
+                }
+                if (selected == null) {
+                    selected = selectReadProvider(imageObjectKey);
+                }
+                return selected.createAccessUrl(imageObjectKey);
             }
-            ImageUrlProvider selected = selectedReadProvider;
-            if (selected == null) {
-                selected = selectReadProvider(imageObjectKey);
-            }
-            return selected.createAccessUrl(imageObjectKey);
         };
     }
 
-    private synchronized ImageUrlProvider selectReadProvider(String imageObjectKey) {
-        if (selectedReadProvider != null) {
-            return selectedReadProvider;
-        }
+    private ImageUrlProvider selectReadProvider(String imageObjectKey) {
         long startedAt = System.nanoTime();
         boolean s3Available = false;
         String s3Result = "ERROR";
@@ -89,14 +89,14 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
                 throw exception;
             }
         }
-        selectedReadProvider = s3Available ? primary : backup::createAccessUrl;
+        ImageUrlProvider selected = s3Available ? primary : backup::createAccessUrl;
         String selectedStorage = s3Available ? "S3" : "R2";
         LOGGER.atInfo().addKeyValue("event", "image_read_storage_selected")
                 .addKeyValue("environment", s3.environment()).addKeyValue("storage", selectedStorage)
                 .addKeyValue("s3Result", s3Result)
                 .addKeyValue("durationMs", (System.nanoTime() - startedAt) / 1_000_000)
                 .log("event=image_read_storage_selected storage={} s3Result={}", selectedStorage, s3Result);
-        return selectedReadProvider;
+        return selected;
     }
 
     @Override

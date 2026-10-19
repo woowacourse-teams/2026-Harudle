@@ -42,7 +42,7 @@ class DiaryResponseAssemblerTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
-    void monthlyTimelinesAndFeedReadsReuseTheFirstStorageSelection(boolean s3Available) {
+    void eachMonthlyTimelineAndFeedReadSelectsStorageOnce(boolean s3Available) {
         ImageStorage source = mock(ImageStorage.class);
         BackupObjectStorage backup = mock(BackupObjectStorage.class);
         ImageUrlProvider primary = key -> new ImageAccessUrl(URI.create("https://source.example/" + key), Instant.MAX);
@@ -82,7 +82,7 @@ class DiaryResponseAssemblerTest {
         }
         String feedImage = "harudle/generated/diary-images/dev/feed/image-960.webp";
         assertThat(provider.forRead().createAccessUrl(feedImage).url().toString()).isEqualTo(selectedBase + feedImage);
-        verify(source).exists(anyString(), any(ImageLookupBudget.class));
+        verify(source, times(3)).exists(anyString(), any(ImageLookupBudget.class));
         verifyNoMoreInteractions(source);
         if (s3Available) {
             verifyNoInteractions(backup);
