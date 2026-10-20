@@ -366,6 +366,7 @@ class SecurityConfigTest {
     private String issueAccessToken(UUID userId) {
         return accessTokenService.issue(
                 userId,
+                UUID.randomUUID(),
                 Instant.now()
         ).accessToken();
     }

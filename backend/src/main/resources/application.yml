@@ -109,6 +109,10 @@ harudle:
     image-base-url: ${PROFILE_IMAGE_BASE_URL:http://localhost:5173/profile-images/v1}
   feed:
     public-base-url: ${FEED_PUBLIC_BASE_URL:http://localhost:5173/feeds}
+  push:
+    fcm:
+      enabled: ${HARUDLE_PUSH_FCM_ENABLED:false}
+      project-id: ${FIREBASE_PROJECT_ID:}
   generation:
     worker:
       concurrency: ${GENERATION_WORKER_CONCURRENCY:1}

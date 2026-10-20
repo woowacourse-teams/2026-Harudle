@@ -39,7 +39,7 @@ class DiaryGenerationPendingMigrationTest {
                         POSTGRESQL_CONTAINER.getUsername(),
                         POSTGRESQL_CONTAINER.getPassword()
                 )
-                .target(MigrationVersion.fromVersion("23"))
+                .target(MigrationVersion.fromVersion("27"))
                 .load()
                 .migrate();
     }

@@ -32,22 +32,24 @@ public class AccessTokenService {
         this.accessTokenTtl = accessTokenProperties.ttl();
     }
 
-    public IssuedAccessToken issue(UUID userId, Instant now) {
+    public IssuedAccessToken issue(UUID userId, UUID sessionId, Instant now) {
         Objects.requireNonNull(userId, "userId는 필수입니다.");
+        Objects.requireNonNull(sessionId, "sessionId는 필수입니다.");
         Objects.requireNonNull(now, "now는 필수입니다.");
 
         Instant issuedAt = now.truncatedTo(ChronoUnit.SECONDS);
         Instant expiresAt = issuedAt.plus(accessTokenTtl);
-        JwtClaimsSet claims = createClaims(userId, issuedAt, expiresAt);
+        JwtClaimsSet claims = createClaims(userId, sessionId, issuedAt, expiresAt);
         Jwt jwt = jwtEncoder.encode(JwtEncoderParameters.from(claims));
 
         return new IssuedAccessToken(jwt.getTokenValue(), expiresAt);
     }
 
-    private JwtClaimsSet createClaims(UUID userId, Instant issuedAt, Instant expiresAt) {
+    private JwtClaimsSet createClaims(UUID userId, UUID sessionId, Instant issuedAt, Instant expiresAt) {
         return JwtClaimsSet.builder()
                 .issuer(issuer)
                 .subject(userId.toString())
+                .claim("sid", sessionId.toString())
                 .audience(List.of(audience))
                 .issuedAt(issuedAt)
                 .expiresAt(expiresAt)
