@@ -13,3 +13,5 @@
 ## 주제별 ADR
 
 - [피드 삭제 정책: 피드와 연결 데이터의 삭제 방식을 어떻게 정할 것인가](feed-deletion-policy/2026-10-11_피드와%20연결%20데이터의%20삭제%20방식을%20어떻게%20정할%20것인가_캐모.md)
+- [CodeBuild 캐시 효과를 전체 빌드 시간으로 판단](code-build-cache/2026-10-21_CodeBuild%20캐시%20효과를%20전체%20빌드%20시간으로%20판단_이산.md)
+- [CodeBuild 이미지 생성과 압축 시간을 build-metrics 로그로 기록](code-build-cache/2026-10-21_CodeBuild%20이미지%20생성과%20압축%20시간을%20build-metrics%20로그로%20기록_이산.md)

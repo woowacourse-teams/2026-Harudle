@@ -67,7 +67,7 @@ Environment: Amazon Linux 2023 / AArch64 Standard 3.0 or 4.0 / Small
 Privileged mode: enabled
 Service role: codebuild-project
 Buildspec: buildspec.yml
-CloudWatch log group: /aws/codebuild/project-2026
+CloudWatch log group: /aws/codebuild/harudle-dev-bulid
 ```
 
 `buildspec.yml`은 빌드 호스트 아키텍처와 관계없이 최종 이미지를 `linux/arm64`로 생성하고 이미지 아키텍처를 검증합니다. x86 빌드 환경에서는 QEMU/binfmt를 등록하므로 Docker 교차 빌드를 위해 Privileged mode가 반드시 필요합니다.
@@ -161,6 +161,10 @@ CodeBuild 역할에는 해당 캐시 경로의 `s3:GetObject`, `s3:PutObject`와
 | `backend_incremental_restore_seconds` | 가져온 결과를 작업 폴더에 복사한 시간 |
 | `backend_gradle_bootjar_seconds` | Gradle 시작부터 JAR 생성까지 걸린 시간 |
 | `backend_incremental_save_seconds` | 새 컴파일 결과를 저장한 시간 |
+| `backend_docker_export_seconds` | 백엔드 Docker 이미지 생성과 tar 내보내기 시간 |
+| `frontend_docker_export_seconds` | 프론트엔드 Docker 이미지 생성과 tar 내보내기 시간. `pnpm check`도 포함 |
+| `backend_image_gzip_seconds` | 백엔드 이미지 tar 압축 시간 |
+| `frontend_image_gzip_seconds` | 프론트엔드 이미지 tar 압축 시간 |
 
 `compileJava UP-TO-DATE`는 컴파일을 생략했다는 뜻입니다. 파일을 바꾼 경우에는 실제로
 얼마나 다시 컴파일했는지도 확인합니다. 복원 성공 로그만으로 속도가 빨라졌다고 판단하지

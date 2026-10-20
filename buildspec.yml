@@ -41,6 +41,7 @@ phases:
             build_args=(--build-arg REACT_APP_POSTHOG_KEY --build-arg REACT_APP_POSTHOG_HOST)
           fi
 
+          image_build_started="$(date +%s)"
           docker buildx build \
             --platform linux/arm64 \
             --progress plain \
@@ -49,6 +50,7 @@ phases:
             "${build_args[@]}" \
             --tag "harudle-$service:local" \
             "./$service"
+          echo "[build-metrics] ${service}_docker_export_seconds=$(($(date +%s) - image_build_started))"
 
           image_archive="build-artifacts/$service-image.tar"
           image_config="$(tar -xOf "$image_archive" manifest.json | jq -er --arg tag "harudle-$service:local" '
@@ -63,8 +65,13 @@ phases:
       - set -euo pipefail
       - test "${CODEBUILD_BUILD_SUCCEEDING:-1}" = 1
       - mkdir -p build-artifacts
-      - gzip -1 build-artifacts/backend-image.tar
-      - gzip -1 build-artifacts/frontend-image.tar
+      - |
+        set -euo pipefail
+        for service in backend frontend; do
+          image_gzip_started="$(date +%s)"
+          gzip -1 "build-artifacts/$service-image.tar"
+          echo "[build-metrics] ${service}_image_gzip_seconds=$(($(date +%s) - image_gzip_started))"
+        done
       - gzip -t build-artifacts/backend-image.tar.gz build-artifacts/frontend-image.tar.gz
       - (cd build-artifacts && sha256sum backend-image.tar.gz frontend-image.tar.gz > image-checksums.sha256)
       - chmod 0755 deploy/scripts/*.sh
