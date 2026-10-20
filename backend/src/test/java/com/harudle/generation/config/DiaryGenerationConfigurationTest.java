@@ -39,16 +39,16 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 class DiaryGenerationConfigurationTest {
 
     @Test
-    @DisplayName("작업 처리기는 기본으로 꺼져 있고 실행 수와 확인 간격의 기본값을 제공한다")
-    void disableWorkerByDefault() {
+    @DisplayName("별도 활성화 설정 없이 처리기를 등록하고 실행 수와 확인 간격의 기본값을 제공한다")
+    void registerWorkerByDefault() {
         try (AnnotationConfigApplicationContext context = createContext(false)) {
             GenerationWorkerProperties properties = context.getBean(GenerationWorkerProperties.class);
 
-            assertThat(properties.enabled()).isFalse();
             assertThat(properties.concurrency()).isEqualTo(1);
             assertThat(properties.pollInterval()).isEqualTo(Duration.ofSeconds(5));
-            assertThat(context.getBeansOfType(DiaryGenerationWorker.class)).isEmpty();
-            assertThat(context.containsBean("generationWorkerTaskExecutor")).isFalse();
+            assertThat(context.getBean(DiaryGenerationWorker.class)).isNotNull();
+            assertThat(context.containsBean("generationWorkerTaskExecutor")).isTrue();
+            assertThat(context.containsBean("generationWorkerShutdownListener")).isTrue();
         }
     }
 
@@ -61,7 +61,6 @@ class DiaryGenerationConfigurationTest {
             ThreadPoolTaskExecutor executor = context.getBean("generationWorkerTaskExecutor", ThreadPoolTaskExecutor.class);
             GenerationWorkerProperties properties = context.getBean(GenerationWorkerProperties.class);
 
-            assertThat(properties.enabled()).isTrue();
             assertThat(properties.concurrency()).isEqualTo(concurrency);
             assertThat(properties.pollInterval()).isEqualTo(Duration.ofHours(1));
             assertThat(executor.getCorePoolSize()).isEqualTo(concurrency);
@@ -94,7 +93,7 @@ class DiaryGenerationConfigurationTest {
     }
 
     @Test
-    @DisplayName("작업 처리기를 켜면 예약 작업 스레드와 분리된 실행 스레드에서 선점한다")
+    @DisplayName("앱이 시작되면 예약 작업 스레드와 분리된 실행 스레드에서 자동으로 선점한다")
     void scheduleWorkerPolls() throws InterruptedException {
         try (AnnotationConfigApplicationContext context = createWorkerContext(1, "10ms")) {
             registerAdapters(context);
@@ -200,12 +199,9 @@ class DiaryGenerationConfigurationTest {
     private AnnotationConfigApplicationContext createWorkerContext(int concurrency, String pollInterval) {
         AnnotationConfigApplicationContext context = createBaseContext();
         TestPropertyValues.of(
-                "harudle.generation.worker.enabled=true",
                 "harudle.generation.worker.concurrency=" + concurrency,
                 "harudle.generation.worker.poll-interval=" + pollInterval
         ).applyTo(context);
-        context.registerBean(PendingDiaryGenerationClaimService.class, () -> mock(PendingDiaryGenerationClaimService.class));
-        context.registerBean(DiaryRepository.class, () -> mock(DiaryRepository.class));
         return context;
     }
 
@@ -225,6 +221,8 @@ class DiaryGenerationConfigurationTest {
                 DiaryGenerationCompletionService.class,
                 () -> mock(DiaryGenerationCompletionService.class)
         );
+        context.registerBean(PendingDiaryGenerationClaimService.class, () -> mock(PendingDiaryGenerationClaimService.class));
+        context.registerBean(DiaryRepository.class, () -> mock(DiaryRepository.class));
         context.registerBean(MeterRegistry.class, SimpleMeterRegistry::new);
         context.registerBean(GenerationLifecycleMetrics.class, () -> mock(GenerationLifecycleMetrics.class));
         context.register(DiaryGenerationConfiguration.class);

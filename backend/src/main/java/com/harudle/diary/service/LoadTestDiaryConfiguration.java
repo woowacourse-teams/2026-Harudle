@@ -13,7 +13,6 @@ import com.harudle.generation.diary.service.storyboard.StoryboardGenerationServi
 import com.harudle.generation.loadtest.LoadTestAiStub;
 import com.harudle.generation.loadtest.LoadTestDiaryGenerationExecutor;
 import com.harudle.generation.loadtest.LoadTestGenerationRegistry;
-import com.harudle.generation.config.GenerationWorkerProperties;
 import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
@@ -65,9 +64,8 @@ class LoadTestDiaryConfiguration {
     @Bean
     LoadTestDiaryCreationService loadTestDiaryCreationService(
             MemberDiaryCreationTransactionService transactionService,
-            LoadTestGenerationRegistry registry,
-            GenerationWorkerProperties workerProperties
+            LoadTestGenerationRegistry registry
     ) {
-        return new LoadTestDiaryCreationService(transactionService, registry, workerProperties);
+        return new LoadTestDiaryCreationService(transactionService, registry);
     }
 }

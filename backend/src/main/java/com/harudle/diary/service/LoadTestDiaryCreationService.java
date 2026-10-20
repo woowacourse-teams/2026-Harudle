@@ -2,7 +2,6 @@ package com.harudle.diary.service;
 
 import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.dto.CreateDiaryResult;
-import com.harudle.generation.config.GenerationWorkerProperties;
 import com.harudle.generation.loadtest.LoadTestGenerationRegistry;
 import org.springframework.dao.DataIntegrityViolationException;
 
@@ -10,22 +9,17 @@ public final class LoadTestDiaryCreationService {
 
     private final MemberDiaryCreationTransactionService memberTransactionService;
     private final LoadTestGenerationRegistry generationRegistry;
-    private final GenerationWorkerProperties workerProperties;
 
     LoadTestDiaryCreationService(
             MemberDiaryCreationTransactionService memberTransactionService,
-            LoadTestGenerationRegistry generationRegistry,
-            GenerationWorkerProperties workerProperties
+            LoadTestGenerationRegistry generationRegistry
     ) {
         this.memberTransactionService = memberTransactionService;
         this.generationRegistry = generationRegistry;
-        this.workerProperties = workerProperties;
     }
 
     public CreateDiaryResult create(CreateDiaryCommand command) {
-        MemberDiaryCreationClaim memberClaim = enqueue(
-                command, workerProperties.enabled() && generationRegistry.isConfigured()
-        );
+        MemberDiaryCreationClaim memberClaim = enqueue(command, generationRegistry.isConfigured());
         DiaryCreationClaim claim = memberClaim.claim();
         return new CreateDiaryResult(
                 claim.diaryId(),
@@ -36,10 +30,6 @@ public final class LoadTestDiaryCreationService {
                 memberClaim.usage(),
                 claim.newlyCreated()
         );
-    }
-
-    public boolean isWorkerEnabled() {
-        return workerProperties.enabled();
     }
 
     private MemberDiaryCreationClaim enqueue(CreateDiaryCommand command, boolean generationAvailable) {

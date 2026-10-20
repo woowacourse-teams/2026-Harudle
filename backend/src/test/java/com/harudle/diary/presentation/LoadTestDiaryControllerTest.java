@@ -114,13 +114,11 @@ class LoadTestDiaryControllerTest {
 
     @Test
     void reportsStubWithoutLoadTestProfile() throws Exception {
-        when(creationService.isWorkerEnabled()).thenReturn(true);
         mvc.perform(get("/api/v1/load-test/ai-stub").with(jwt()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.delayMs").value(30000))
                 .andExpect(jsonPath("$.output").value("test-image"))
-                .andExpect(jsonPath("$.execution").value("db-queue"))
-                .andExpect(jsonPath("$.workerEnabled").value(true));
+                .andExpect(jsonPath("$.execution").value("db-queue"));
     }
 
     @ParameterizedTest

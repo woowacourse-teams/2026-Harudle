@@ -17,6 +17,7 @@ import com.harudle.generation.diary.domain.DiaryGeneration;
 import com.harudle.generation.diary.domain.GenerationStatus;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.diary.service.DiaryGenerationExecutor;
+import com.harudle.generation.diary.service.DiaryGenerationWorker;
 import com.harudle.generation.diary.service.PendingDiaryGenerationClaimService;
 import com.harudle.generation.loadtest.LoadTestDiaryGenerationExecutor;
 import com.harudle.generation.loadtest.LoadTestGenerationRegistry;
@@ -53,7 +54,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest(properties = "harudle.generation.worker.enabled=false")
+@SpringBootTest
 @Import({TestcontainersConfiguration.class, DiaryCreationPersistenceTest.FixedClockConfiguration.class})
 class DiaryCreationPersistenceTest {
 
@@ -98,6 +99,9 @@ class DiaryCreationPersistenceTest {
 
     @MockitoBean
     private DiaryGenerationExecutor generationExecutor;
+
+    @MockitoBean(enforceOverride = true)
+    private DiaryGenerationWorker generationWorker;
 
     @MockitoBean
     private JwtDecoder jwtDecoder;

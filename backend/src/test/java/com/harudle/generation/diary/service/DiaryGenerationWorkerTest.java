@@ -310,7 +310,7 @@ class DiaryGenerationWorkerTest {
         try (var executor = Executors.newFixedThreadPool(2)) {
             DiaryGenerationWorker worker = new DiaryGenerationWorker(
                     claimService, generationRepository, diaryRepository, generationExecutor, Optional.of(registry),
-                    completionService, executor::execute, new GenerationWorkerProperties(true, 2, Duration.ofSeconds(5))
+                    completionService, executor::execute, new GenerationWorkerProperties(2, Duration.ofSeconds(5))
             );
             try {
                 worker.poll();
@@ -442,12 +442,12 @@ class DiaryGenerationWorkerTest {
     private DiaryGenerationWorker workerWithRegistry(LoadTestGenerationRegistry registry) {
         return new DiaryGenerationWorker(claimService, generationRepository, diaryRepository, generationExecutor,
                 Optional.of(registry), completionService, Runnable::run,
-                new GenerationWorkerProperties(true, 1, Duration.ofSeconds(5)));
+                new GenerationWorkerProperties(1, Duration.ofSeconds(5)));
     }
 
     private DiaryGenerationWorker worker(TaskExecutor taskExecutor, int concurrency) {
         return new DiaryGenerationWorker(claimService, generationRepository, diaryRepository, generationExecutor, Optional.empty(),
-                completionService, taskExecutor, new GenerationWorkerProperties(true, concurrency, Duration.ofSeconds(5)));
+                completionService, taskExecutor, new GenerationWorkerProperties(concurrency, Duration.ofSeconds(5)));
     }
 
     private Fixture processingGeneration() {

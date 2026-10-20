@@ -4,10 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
-import com.harudle.generation.config.GenerationWorkerProperties;
 import com.harudle.generation.loadtest.LoadTestDiaryGenerationExecutor;
 import com.harudle.generation.loadtest.LoadTestGenerationRegistry;
-import java.time.Duration;
 import com.harudle.generation.diary.service.DiaryGenerationCompletionService;
 import com.harudle.generation.diary.service.DiaryGenerationExecutor;
 import com.harudle.generation.diary.service.GenerationLifecycleMetrics;
@@ -61,7 +59,6 @@ class LoadTestDiaryConfigurationTest {
                 .withBean(GenerationLifecycleMetrics.class, () -> mock(GenerationLifecycleMetrics.class))
                 .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
                 .withBean(DiaryCreationService.class, () -> normalCreation)
-                .withBean(GenerationWorkerProperties.class, () -> new GenerationWorkerProperties(true, 1, Duration.ofSeconds(5)))
                 .withBean(DiaryGenerationExecutor.class, () -> normalExecutor, definition -> definition.setPrimary(true))
                 .withBean(StoryboardGenerationService.class, () -> normalStoryboard)
                 .withBean(DiaryImageGenerator.class, () -> normalImageGenerator)

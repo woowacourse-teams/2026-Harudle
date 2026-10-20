@@ -57,7 +57,6 @@ class DiaryGenerationConfiguration {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "harudle.generation.worker", name = "enabled", havingValue = "true")
     ThreadPoolTaskExecutor generationWorkerTaskExecutor(GenerationWorkerProperties properties) {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setCorePoolSize(properties.concurrency());
@@ -69,7 +68,6 @@ class DiaryGenerationConfiguration {
     }
 
     @Bean(destroyMethod = "requestStop")
-    @ConditionalOnProperty(prefix = "harudle.generation.worker", name = "enabled", havingValue = "true")
     DiaryGenerationWorker diaryGenerationWorker(
             PendingDiaryGenerationClaimService claimService,
             DiaryGenerationRepository generationRepository,
@@ -86,7 +84,6 @@ class DiaryGenerationConfiguration {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "harudle.generation.worker", name = "enabled", havingValue = "true")
     ApplicationListener<ContextClosedEvent> generationWorkerShutdownListener(
             ApplicationContext context, DiaryGenerationWorker worker
     ) {

@@ -11,7 +11,6 @@ import org.springframework.validation.annotation.Validated;
 @Validated
 @ConfigurationProperties("harudle.generation.worker")
 public record GenerationWorkerProperties(
-        @DefaultValue("false") boolean enabled,
         @DefaultValue("1") @Min(value = 1, message = "동시에 실행할 생성 작업 수는 1 이상이어야 합니다.") int concurrency,
         @DefaultValue("5s") @NotNull Duration pollInterval
 ) {

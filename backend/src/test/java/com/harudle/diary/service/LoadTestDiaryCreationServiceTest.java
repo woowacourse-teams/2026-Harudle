@@ -16,8 +16,6 @@ import com.harudle.generation.diary.domain.GenerationStatus;
 import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import com.harudle.generation.loadtest.LoadTestDiaryGenerationExecutor;
 import com.harudle.generation.loadtest.LoadTestGenerationRegistry;
-import com.harudle.generation.config.GenerationWorkerProperties;
-import java.time.Duration;
 import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
 import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
 import com.harudle.generation.usage.domain.GenerationUsage;
@@ -62,8 +60,7 @@ class LoadTestDiaryCreationServiceTest {
     @BeforeEach
     void setUp() {
         generationRegistry = new LoadTestGenerationRegistry(generationExecutor);
-        diaryCreationService = new LoadTestDiaryCreationService(transactionService, generationRegistry,
-                new GenerationWorkerProperties(true, 1, Duration.ofSeconds(5)));
+        diaryCreationService = new LoadTestDiaryCreationService(transactionService, generationRegistry);
     }
 
     @AfterEach
@@ -176,31 +173,6 @@ class LoadTestDiaryCreationServiceTest {
 
         assertThatThrownBy(() -> diaryCreationService.create(command))
                 .isInstanceOf(GenerationUnavailableException.class);
-    }
-
-    @Test
-    @DisplayName("작업 처리기가 꺼져 있으면 신규 테스트 접수를 거절한다")
-    void rejectNewLoadTestWhenWorkerDisabled() {
-        diaryCreationService = new LoadTestDiaryCreationService(transactionService, generationRegistry,
-                new GenerationWorkerProperties(false, 1, Duration.ofSeconds(5)));
-        CreateDiaryCommand command = createCommand();
-        when(transactionService.enqueue(eq(command), eq(false), any()))
-                .thenThrow(GenerationUnavailableException.adaptersNotConfigured());
-
-        assertThatThrownBy(() -> diaryCreationService.create(command))
-                .isInstanceOf(GenerationUnavailableException.class);
-    }
-
-    @Test
-    @DisplayName("작업 처리기를 꺼도 이미 접수한 테스트 결과는 반환한다")
-    void replayLoadTestWhenWorkerDisabled() {
-        diaryCreationService = new LoadTestDiaryCreationService(transactionService, generationRegistry,
-                new GenerationWorkerProperties(false, 1, Duration.ofSeconds(5)));
-        CreateDiaryCommand command = createCommand();
-        when(transactionService.enqueue(eq(command), eq(false), any()))
-                .thenReturn(new MemberDiaryCreationClaim(createClaim(GenerationStatus.PENDING, false), USAGE));
-
-        assertThat(diaryCreationService.create(command).newlyCreated()).isFalse();
     }
 
     private CreateDiaryCommand createCommand() {

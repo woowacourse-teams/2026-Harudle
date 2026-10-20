@@ -110,8 +110,7 @@ export function setup() {
       const stub = setupRequest('GET', '/api/v1/load-test/ai-stub', null, { headers });
       requireValue(stub.environment === 'dev' && stub.delayMs === 30000 && stub.storage === 'real'
         && stub.output === 'test-image', 'dev AI Stub uses the fixed test image at 30 seconds');
-      requireValue(stub.execution === 'db-queue' && stub.workerEnabled === true,
-        'load tests use the enabled DB queue worker');
+      requireValue(stub.execution === 'db-queue', 'load tests use the DB queue worker');
       const categories = setupRequest('GET', '/api/v1/categories', null, { headers });
       const category = categories.find((item) => item.name === fixture.categoryName);
       requireValue(!!category, 'run-specific active category exists');

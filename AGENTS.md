@@ -59,15 +59,15 @@ flowchart TB
 두 컨테이너의 재시작 정책은 `unless-stopped`다. 이미지 처리·동시 실행 수·
 임시 파일 사용량을 바꿀 때는 위 메모리 제한을 함께 고려한다.
 
-이미지 비동기 작업 처리기는 같은 백엔드 앱 안에서 실행하며 기본으로 꺼져 있다.
-`GENERATION_WORKER_ENABLED`로 켜고, `GENERATION_WORKER_CONCURRENCY`로 백엔드 한 대의
-동시 실행 수를 정한다. 기본 동시 실행 수는 `1`, `GENERATION_WORKER_POLL_INTERVAL`의
+이미지 비동기 작업 처리기는 같은 백엔드 앱 안에서 앱 시작 시 항상 등록된다.
+`GENERATION_WORKER_CONCURRENCY`로 백엔드 한 대의 동시 실행 수를 정한다.
+기본 동시 실행 수는 `1`, `GENERATION_WORKER_POLL_INTERVAL`의
 기본 확인 간격은 `5s`다. 환경 변수를 바꾸면 로컬 백엔드는 재시작하고, 배포 컨테이너는
 재생성해야 한다. 회원과 게스트, 부하 테스트 생성 API는 새 일기와 대기 작업을 저장한 뒤 `202 Accepted`로 생성 상태를 반환한다.
 같은 요청의 기존 상태와 결과는 `200 OK`로 반환한다.
 회원은 `/api/v1/diary-generations/{generationId}`, 게스트는 `/api/v1/guest/diary-generations/{generationId}`로
 본인의 생성 상태를 조회한다. 성공 시 일기 ID, 실패 시 오류 코드를 반환한다. 실패로 숨겨진 일기의 작업 상태도 조회할 수 있다.
-이미지 생성을 실행하려면 작업 처리기를 켜야 한다. 부하 테스트도 같은 대기열과 처리기를 사용한다.
+AI 설정이 준비되지 않으면 신규 접수를 거절한다. 부하 테스트도 같은 대기열과 처리기를 사용한다.
 부하 테스트 API가 접수한 생성 ID는 메모리에 등록하며, 처리기가 이 ID에 dev 전용 가짜 AI 실행기를 사용한다.
 이 연결은 현재 백엔드 프로세스에서만 유지된다.
 

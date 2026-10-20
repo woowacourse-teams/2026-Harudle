@@ -50,7 +50,7 @@ class LoadTestDiaryController {
     ResponseEntity<Status> status() {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .body(new Status("dev", LoadTestAiStub.DELAY.toMillis(), "test-image", "real",
-                        "db-queue", diaryCreationService.isWorkerEnabled()));
+                        "db-queue"));
     }
 
     @PostMapping("/diaries")
@@ -79,5 +79,5 @@ class LoadTestDiaryController {
                 .body(response);
     }
 
-    record Status(String environment, long delayMs, String output, String storage, String execution, boolean workerEnabled) {}
+    record Status(String environment, long delayMs, String output, String storage, String execution) {}
 }
