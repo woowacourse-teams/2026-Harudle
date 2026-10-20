@@ -30,6 +30,7 @@ public class AuthService {
         );
         IssuedAccessToken issuedAccessToken = accessTokenService.issue(
                 rotatedRefreshToken.userId(),
+                rotatedRefreshToken.sessionId(),
                 now
         );
 

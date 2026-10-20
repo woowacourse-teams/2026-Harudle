@@ -55,6 +55,7 @@ class HarudleApplicationTests extends ServiceIntegrationTestSupport {
 
         assertThat(tableNames).containsExactly(
                 "admin_generation_usage_restores",
+                "auth_sessions",
                 "categories",
                 "comments",
                 "daily_generation_usage",
@@ -68,6 +69,7 @@ class HarudleApplicationTests extends ServiceIntegrationTestSupport {
                 "notification_outbox",
                 "notifications",
                 "oauth_accounts",
+                "push_registration_states",
                 "push_registrations",
                 "refresh_tokens",
                 "share_links",
