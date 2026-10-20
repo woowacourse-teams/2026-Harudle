@@ -8,6 +8,12 @@ services:
       - .env
     volumes:
       - type: bind
+        source: /etc/harudle/diary-key-checks.json
+        target: /var/run/harudle/diary-key-checks.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
         source: /etc/harudle/gcp/gcp-wif.json
         target: /var/run/harudle/gcp-wif.json
         read_only: true
@@ -18,6 +24,7 @@ services:
       SERVER_FORWARD_HEADERS_STRATEGY: framework
       MANAGEMENT_SERVER_PORT: 8081
       CONSOLE_LOG_STRUCTURED_FORMAT: logstash
+      DIARY_SOURCE_TEXT_KEY_VERIFICATION_FILE: /var/run/harudle/diary-key-checks.json
     expose:
       - "8080"
     ports:

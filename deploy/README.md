@@ -11,7 +11,9 @@ Internet -> host Nginx/Certbot -> 127.0.0.1:3000
 
 ## EC2 최초 설정
 
-Docker, Docker Compose v2, `jq`를 설치합니다. `BeforeInstall`은 이 도구들이 없으면 기존 배포 파일을 정리하기 전에 중단합니다.
+Docker, Docker Compose 2.24.4 이상, `jq`를 설치합니다. 검증 컨테이너의 로그 설정을 완전히
+교체하는 [`!override`는 Compose 2.24.4 이상](https://docs.docker.com/reference/compose-file/merge/#replace-value)이 필요합니다.
+`BeforeInstall`은 도구가 없으면 기존 배포 파일을 정리하기 전에 중단합니다.
 
 CodeDeploy가 사용하는 고정 경로에 운영 환경 파일을 만들고 실제 값으로 교체합니다. 이 파일은 Git에 커밋하거나 CodeBuild 아티팩트에 포함하지 않습니다.
 
@@ -28,9 +30,12 @@ EC2에서는 `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`�
 서버 `.env`의 기존 `SHARE_PUBLIC_BASE_URL`을 `FEED_PUBLIC_BASE_URL`로 교체하고, 해당 환경의 프론트 피드 페이지 주소를 설정합니다. 운영 환경 예시는 다음과 같습니다.
 
 일기 원문 암호화 배포 전에는 각 환경의 `/opt/harudle/.env`에 독립적인 32바이트 Base64
-`DIARY_SOURCE_TEXT_KEY_BASE64`를 준비해야 합니다. 누락되거나 잘못된 키이면 앱은 시작하지 않습니다.
-키는 배포마다 재생성하지 않으며 JWT 키와 재사용하지 않습니다. 암호문을 쓰기 시작한 뒤에는
-원문 암호화를 모르는 구버전 앱으로 되돌릴 수 없습니다. 전환 순서와 키 교체·복구 조건은
+`DIARY_SOURCE_TEXT_KEY_BASE64`와 신뢰할 수 있는 `/etc/harudle/diary-key-checks.json`을 준비해야 합니다.
+후보 이미지가 기존 검증 자료를 복호화하고 HMAC을 확인한 뒤에만 컨테이너를 교체합니다.
+같은 ID에 다른 32바이트 키를 넣어도 실패하며 기존 컨테이너는 계속 실행됩니다. 앱 자체도
+`prod` 프로필에서 같은 검증을 요구합니다. 키와 검증 자료는 배포마다 재생성하지 않습니다.
+키는 JWT 키와 재사용하지 않습니다. 암호문을 쓰기 시작한 뒤의 복구 대상은 먼저 성공시켜 둔
+암호화 호환 `reader` 배포본입니다. 전환 순서와 키 교체·복구 조건은
 [일기 원문 암호화 운영 안내](../backend/docs/diary-source-text-encryption.md)를 따릅니다.
 
 ```dotenv
@@ -77,6 +82,86 @@ CloudWatch log group: /aws/codebuild/project-2026
 ```
 
 `buildspec.yml`은 빌드 호스트 아키텍처와 관계없이 최종 이미지를 `linux/arm64`로 생성하고 이미지 아키텍처를 검증합니다. x86 빌드 환경에서는 QEMU/binfmt를 등록하므로 Docker 교차 빌드를 위해 Privileged mode가 반드시 필요합니다.
+
+### 원문 암호화 최초 적용과 복구 배포본
+
+CodeBuild의 `DIARY_SOURCE_TEXT_RELEASE_MODE`는 기본값이 `reader`입니다. 빌드할 때
+선택값을 `diary-source-text-release-mode` 파일로 묶고, 배포 훅은 해당 Compose override를
+마지막에 적용합니다. 서버 `.env`를 바꿔도 복구 배포본의 정책이 writer로 바뀌지 않습니다.
+
+| 배포본 | 신규 일기 작성 | 기존 상세·동일 요청 재조회 | 보관 목적 |
+| --- | --- | --- | --- |
+| `reader` A | 503으로 차단 | 평문 v0·암호문 v1·HMAC 지원 | 최초 호환 배포 및 복구 기준 |
+| `writer` B | v1 암호문·HMAC으로 저장 | 동일하게 지원 | A 성공 이후 정상 운영 |
+
+1. 키·검증 자료를 아래 절차로 준비하고 서버 밖의 암호화된 보관소에 함께 백업합니다.
+2. `reader`로 빌드한 A를 dev, prod에 각각 배포합니다. 조회·이미지 접근과 작성 차단을 확인하고
+   CodeDeploy가 `Succeeded`인지 확인합니다. 커밋, CodeDeploy revision의 S3 bucket/key/version,
+   이미지 ID, 담당자와 확인 시각을 운영 기록에 남기고 아티팩트를 보존합니다.
+3. 같은 검토된 코드에서 `DIARY_SOURCE_TEXT_RELEASE_MODE=writer`를 명시해 B를 빌드·배포합니다.
+   최초 전환에서는 A 확인 없이 writer로 직행하지 않습니다. 이후 정상 빌드도 writer를 명시합니다.
+4. 장애 시 신규 작성을 차단한 호환 A 또는 그 이후의 reader 배포본을 선택합니다.
+   암호화 미지원 구버전 수동 배포는 금지합니다. 과거 배포본의 훅은 이 검사를 포함하지 않으므로
+   새 코드만으로 모든 구버전 수동 배포를 차단할 수는 없습니다.
+
+자동 롤백이 필요한 배포는 그룹 설정뿐 아니라 그 배포의 override도 확인합니다.
+[CodeDeploy 롤백은 이전 revision을 새 배포로 재실행](https://docs.aws.amazon.com/codedeploy/latest/userguide/deployments-rollback-and-redeploy.html)합니다.
+성공 후 `docker image prune`을 실행하므로 복구를 기존 `:local` 태그나 dangling 이미지에 의존하지 않습니다.
+`HARUDLE_GENERATION_ADAPTERS_ENABLED=false`는 이미지 URL 조회에도 영향을 주므로 reader를 대신하지 않습니다.
+
+### 키 검증 자료의 명시적 관리
+
+이 파일은 환경·키 ID별 공개 검증용 암호문과 HMAC입니다. 사용자 원문·비밀 키는 포함하지
+않지만 변조되면 잘못된 키를 신뢰할 수 있으므로 root가 관리합니다. 일반 배포는 파일을
+읽기 전용으로 마운트하고 `verify`만 실행합니다. 후보 검증은 DB·Flyway·AI 클라이언트를
+시작하지 않으며 외부 로그 전송과 진단 원문 출력을 막습니다.
+
+`initialize`는 **최초 신뢰 설정 한 번만** 사용하고 기존 파일을 덮어쓰지 않습니다. 이미 v1
+행이 있으면 먼저 백업 키·실제 행 복호화로 키의 이력을 확인해야 합니다. 잘못된 키로 새 검증
+자료를 만드는 것은 과거 데이터 복구 검증이 아닙니다. 초기 신뢰 확인 책임자는 배포 담당자입니다.
+`register`는 기존 모든 검증을 통과한 뒤 새 키 ID만 추가합니다. 키를 삭제하거나 같은 ID의
+값을 바꾸지 않습니다. 관리 명령에는 잠금·원자 교체를 위해 부모 디렉터리를 쓰기 가능하게 마운트합니다.
+
+검토한 후보 이미지와 배포 파일을 로드한 뒤 배포 묶음 루트에서 실행하는 예입니다. `.env`는 root 소유 600,
+검증 파일은 root:10001 소유 640이며 컨테이너 UID/GID 10001이 부모 경로를 통과할 수 있어야 합니다.
+
+```bash
+sudo bash <<'SH'
+set -euo pipefail
+set +x
+export DEPLOYMENT_GROUP_NAME=harudle-dev # 운영은 harudle-prod
+source deploy/scripts/compose_environment.sh
+configure_compose /opt/harudle
+install -d -m 0750 -o root -g 10001 /etc/harudle
+override="$(mktemp)"
+trap 'rm -f -- "$override"' EXIT
+cat > "$override" <<'YAML'
+services:
+  backend:
+    volumes: !override
+      - type: bind
+        source: /etc/harudle
+        target: /var/run/harudle
+    logging: !override
+      driver: none
+YAML
+operation=initialize # 신규 키 추가 시에만 register로 변경
+if ! docker compose "${COMPOSE_ARGS[@]}" --file "$override" run --rm --no-deps -T \
+  --user 0:0 --env LOADER_MAIN=com.harudle.diary.infrastructure.crypto.DiarySourceTextKeyCheckMain \
+  --entrypoint sh backend -c \
+  'exec java ${JAVA_OPTS:-} -Xmx128m -cp /app/app.jar org.springframework.boot.loader.launch.PropertiesLauncher "$1"' \
+  sh "$operation" >/dev/null 2>&1; then
+  echo '키 검증 자료 관리 실패: 기존 키와 백업을 확인하세요.' >&2
+  exit 1
+fi
+chown root:10001 /etc/harudle/diary-key-checks.json
+chmod 640 /etc/harudle/diary-key-checks.json
+SH
+```
+
+실패 시 기존 파일을 지우고 재초기화하지 않습니다. 별도 권한의 서버 밖 암호화 보관소에
+키링과 검증 파일을 보존하고 격리 환경에서 복원·`verify`·실제 백업 행 읽기를 확인합니다.
+실행자, 보관 위치, 복원 시각과 결과를 기록합니다. 실제 서버 설정·백업·복원 훈련은 운영 적용 전 필수입니다.
 
 ### Docker 빌드 최적화
 
@@ -199,11 +284,12 @@ CodeDeploy 애플리케이션은 EC2/온프레미스 플랫폼과 현재 위치 
 ```text
 BeforeInstall    -> Docker/Compose/jq와 .env 파일 확인 후 기존 배포 파일 정리
 AfterInstall     -> 체크섬 검증 후 ARM64 Docker 이미지 로드
-ApplicationStart -> 이미지 환경 검사 후 docker compose up --no-build
+ApplicationStart -> 이미지 환경·배포 모드 검사, 후보 키 검증 후 docker compose up --no-build
 ValidateService  -> 두 컨테이너 health 및 프론트 /health 확인
 ```
 
-이미지 환경 검사는 기존 `configure_compose` 함수에서 수행합니다. `ApplicationStart`에서 검사에 실패하면 컨테이너 재생성을 시작하지 않습니다. 검사는 S3나 DB를 수정하지 않으며 파일 존재 여부와 이전 완료 여부까지 확인하지는 않습니다.
+이미지 환경과 배포 모드는 `configure_compose`에서 검사하고, 이어서 후보 이미지로 키 검증을
+수행합니다. 실패하면 컨테이너 재생성을 시작하지 않습니다. 이 검증은 S3나 DB를 수정하지 않습니다.
 
 배포 묶음 루트에서 서버의 `.env`를 확인하는 명령입니다. 대상 서버에 맞게 `harudle-dev` 또는 `harudle-prod`를 지정합니다. 개발 서버에는 `compose.dev.yaml`도 설치되어 있어야 합니다.
 

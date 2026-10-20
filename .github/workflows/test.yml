@@ -124,6 +124,12 @@ jobs:
         if: github.event_name != 'push'
         run: bash ../deploy/scripts/test_image_environment.sh
 
+      - name: Test diary key preflight and release selection (offline)
+        if: github.event_name != 'push'
+        run: |
+          bash ../deploy/scripts/test_diary_key_verification.sh
+          bash ../deploy/scripts/test_diary_release.sh
+
       - name: Install WebP tools
         if: github.event_name != 'push'
         run: |
@@ -143,6 +149,12 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon --console=plain --build-cache test --rerun
+
+      - name: Verify packaged key check without database
+        if: github.event_name != 'push'
+        run: |
+          ./gradlew --no-daemon --console=plain --build-cache bootJar
+          bash ../deploy/scripts/test_diary_key_check_jar.sh build/libs/harudle-0.0.1-SNAPSHOT.jar
 
   frontend-test:
     name: Frontend Test

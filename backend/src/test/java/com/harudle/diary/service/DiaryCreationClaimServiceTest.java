@@ -41,6 +41,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -78,20 +80,7 @@ class DiaryCreationClaimServiceTest {
         sourceTextCipher = spy(DiarySourceTextTestSupport.cipher());
         lenient().when(requestFingerprintGenerator.generate(any(GenerateDiaryImageCommand.class)))
                 .thenAnswer(invocation -> fingerprintFor(invocation.getArgument(0)));
-        Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
-        claimService = new DiaryCreationClaimService(
-                diaryRepository,
-                generationPromptRepository,
-                diaryGenerationRepository,
-                completionService,
-                requestFingerprintGenerator,
-                sourceTextCipher,
-                clock,
-                new GenerationLifecycleProperties(
-                        Duration.ofMinutes(30),
-                        Duration.ofMinutes(1)
-                )
-        );
+        claimService = createClaimService(true);
     }
 
     @Test
@@ -293,6 +282,64 @@ class DiaryCreationClaimServiceTest {
         assertThatThrownBy(() -> claimService.claim(command, false))
                 .isInstanceOf(GenerationUnavailableException.class);
         verify(diaryRepository, never()).save(any(Diary.class));
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    @DisplayName("신규 작성 차단 시 어댑터 구성과 무관하게 저장과 암호화를 시작하지 않는다")
+    void refuseNewClaimBeforePersistenceWhenWritesAreDisabled(boolean generationAvailable) {
+        claimService = createClaimService(false);
+
+        assertThatThrownBy(() -> claimService.claim(createCommand("오늘의 일기"), generationAvailable))
+                .isInstanceOf(GenerationUnavailableException.class)
+                .hasMessage("신규 일기 생성이 일시 중지되었습니다.");
+
+        verifyNoInteractions(diaryRepository, generationPromptRepository, sourceTextCipher, completionService);
+        verify(diaryGenerationRepository, never()).saveAndFlush(any(DiaryGeneration.class));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, 1})
+    @DisplayName("신규 작성 차단 시에도 기존 평문과 암호문 일기의 성공한 멱등 요청을 복원한다")
+    void replayLegacyAndEncryptedClaimsWhenWritesAreDisabled(int sourceTextVersion) {
+        claimService = createClaimService(false);
+        CreateDiaryCommand command = createCommand("오늘의 일기");
+        Diary diary = Diary.create(USER_ID, DIARY_DATE, command.sourceText(), DiarySourceTextTestSupport.cipher());
+        if (sourceTextVersion == 0) {
+            ReflectionTestUtils.setField(diary, "sourceText", command.sourceText());
+            ReflectionTestUtils.setField(diary, "sourceTextVersion", 0);
+        }
+        DiaryGeneration generation = createGeneration(command, diary);
+        generation.succeed(TestStoryboardFactory.create(), "generated/comic.png", NOW);
+        when(diaryGenerationRepository.findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY))
+                .thenReturn(Optional.of(generation));
+        when(diaryRepository.findByIdIncludingDeletedForUpdate(diary.getId())).thenReturn(Optional.of(diary));
+
+        DiaryCreationClaim replayed = claimService.claim(command, false);
+        Optional<DiaryCreationClaim> recovered = claimService.findExistingClaim(command);
+
+        assertThat(replayed.diaryId()).isEqualTo(diary.getId());
+        assertThat(replayed.sourceText()).isEqualTo(command.sourceText());
+        assertThat(replayed.generationStatus()).isEqualTo(GenerationStatus.SUCCEEDED);
+        assertThat(replayed.newlyCreated()).isFalse();
+        assertThat(recovered).contains(replayed);
+        verify(diaryRepository, never()).save(any(Diary.class));
+        verify(diaryGenerationRepository, never()).saveAndFlush(any(DiaryGeneration.class));
+        verifyNoInteractions(generationPromptRepository);
+    }
+
+    private DiaryCreationClaimService createClaimService(boolean newWritesEnabled) {
+        return new DiaryCreationClaimService(
+                diaryRepository,
+                generationPromptRepository,
+                diaryGenerationRepository,
+                completionService,
+                requestFingerprintGenerator,
+                sourceTextCipher,
+                new DiarySourceTextWriteProperties(newWritesEnabled),
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                new GenerationLifecycleProperties(Duration.ofMinutes(30), Duration.ofMinutes(1))
+        );
     }
 
     private CreateDiaryCommand createCommand(String sourceText) {

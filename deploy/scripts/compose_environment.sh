@@ -38,7 +38,7 @@ require_resolved_image_setting() {
 configure_compose() {
   local app_dir="$1"
   local env_file="${app_dir}/.env"
-  local deploy_env compose_config
+  local deploy_env compose_config release_mode new_writes_enabled
 
   case "${DEPLOYMENT_GROUP_NAME:-}" in
     harudle-dev) deploy_env=dev ;;
@@ -61,6 +61,20 @@ configure_compose() {
   require_image_setting "${env_file}" S3_GENERATED_PREFIX "harudle/generated/diary-images/${deploy_env}" || return 1
   require_image_setting "${env_file}" S3_REFERENCE_PREFIX "harudle/references/generation/${deploy_env}" || return 1
 
+  if ! release_mode="$(cat "${app_dir}/diary-source-text-release-mode" 2>/dev/null)"; then
+    echo "Missing diary source text release mode for this deployment revision." >&2
+    return 1
+  fi
+  case "${release_mode}" in
+    reader) new_writes_enabled=false ;;
+    writer) new_writes_enabled=true ;;
+    *) echo "Invalid diary source text release mode for this deployment revision." >&2; return 1 ;;
+  esac
+  if [[ ! -s "${app_dir}/compose.diary-${release_mode}.yaml" ]]; then
+    echo "Missing diary source text Compose override for this deployment revision." >&2
+    return 1
+  fi
+
   COMPOSE_ARGS=(
     --project-name harudle
     --env-file "${env_file}"
@@ -74,6 +88,8 @@ configure_compose() {
     COMPOSE_ARGS+=(--file "${app_dir}/compose.dev.yaml")
   fi
 
+  COMPOSE_ARGS+=(--file "${app_dir}/compose.diary-${release_mode}.yaml")
+
   # Keep the rendered configuration and parser errors private: both may contain secrets.
   if ! compose_config="$(docker compose "${COMPOSE_ARGS[@]}" config --format json 2>/dev/null)"; then
     echo "Cannot resolve the Docker Compose configuration. Check the Compose files and .env." >&2
@@ -85,6 +101,12 @@ configure_compose() {
   require_resolved_image_setting "${compose_config}" S3_GENERATED_PREFIX "harudle/generated/diary-images/${deploy_env}" || return 1
   require_resolved_image_setting "${compose_config}" S3_REFERENCE_PREFIX "harudle/references/generation/${deploy_env}" || return 1
 
+  require_resolved_image_setting "${compose_config}" DIARY_SOURCE_TEXT_NEW_WRITES_ENABLED \
+    "${new_writes_enabled}" || return 1
+  require_resolved_image_setting "${compose_config}" DIARY_SOURCE_TEXT_RELEASE_MODE \
+    "${release_mode}" || return 1
+
+  readonly DIARY_SOURCE_TEXT_RELEASE_MODE_VALUE="${release_mode}"
   readonly DEPLOY_ENV_VALUE="${deploy_env}"
   readonly COMPOSE_ARGS
 }

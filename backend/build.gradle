@@ -8,6 +8,10 @@ group = 'com.harudle'
 version = '0.0.1-SNAPSHOT'
 description = 'Harudle backend service'
 
+springBoot {
+    mainClass = 'com.harudle.HarudleApplication'
+}
+
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)

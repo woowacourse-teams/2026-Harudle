@@ -94,6 +94,8 @@ app:
 harudle:
   diary:
     source-text-encryption:
+      verification-file: ${DIARY_SOURCE_TEXT_KEY_VERIFICATION_FILE:}
+      new-writes-enabled: ${DIARY_SOURCE_TEXT_NEW_WRITES_ENABLED:true}
       active-key-id: ${DIARY_SOURCE_TEXT_ACTIVE_KEY_ID:primary}
       keys:
         primary: ${DIARY_SOURCE_TEXT_KEY_BASE64:}

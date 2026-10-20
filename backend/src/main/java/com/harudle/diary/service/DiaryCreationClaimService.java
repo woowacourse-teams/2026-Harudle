@@ -34,6 +34,7 @@ class DiaryCreationClaimService {
     private final DiaryGenerationCompletionService completionService;
     private final RequestFingerprintGenerator requestFingerprintGenerator;
     private final DiarySourceTextCipher sourceTextCipher;
+    private final boolean newWritesEnabled;
     private final Clock clock;
     private final Duration processingTimeout;
 
@@ -44,6 +45,7 @@ class DiaryCreationClaimService {
             DiaryGenerationCompletionService completionService,
             RequestFingerprintGenerator requestFingerprintGenerator,
             DiarySourceTextCipher sourceTextCipher,
+            DiarySourceTextWriteProperties sourceTextWriteProperties,
             @Qualifier("serviceClock") Clock clock,
             GenerationLifecycleProperties generationLifecycleProperties
     ) {
@@ -55,6 +57,7 @@ class DiaryCreationClaimService {
         this.completionService = completionService;
         this.requestFingerprintGenerator = requestFingerprintGenerator;
         this.sourceTextCipher = sourceTextCipher;
+        this.newWritesEnabled = sourceTextWriteProperties.newWritesEnabled();
         this.clock = clock;
         this.processingTimeout = processingTimeout;
     }
@@ -109,6 +112,9 @@ class DiaryCreationClaimService {
             boolean generationAvailable,
             LocalDate usageDate
     ) {
+        if (!newWritesEnabled) {
+            throw GenerationUnavailableException.newDiaryWritesDisabled();
+        }
         if (!generationAvailable) {
             throw GenerationUnavailableException.adaptersNotConfigured();
         }

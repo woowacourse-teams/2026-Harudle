@@ -53,6 +53,8 @@ flowchart TB
 | Backend 관리 포트 | `127.0.0.1:19091 → 8081` | `/actuator/prometheus` 수집 |
 | Backend 임시 파일 | `/tmp` tmpfs | 메모리 기반 `128m` |
 | 서버 환경 변수 | EC2 `/opt/harudle/.env` | 배포 간 유지, Backend `env_file` |
+| 원문 키 검증 자료 | 호스트 `/etc/harudle/diary-key-checks.json` → 컨테이너 `/var/run/harudle/diary-key-checks.json` | 읽기 전용, 배포 간 보존, 키와 함께 서버 밖에 백업 |
+| 신규 일기 작성 정책 | 배포본 `diary-source-text-release-mode` + `compose.diary-reader.yaml` 또는 `compose.diary-writer.yaml` | 최초 reader 성공 후 writer, 복구 시 배포본의 정책도 복원 |
 | S3 인증 | EC2 IAM Role `ec2-project` | 임시 자격 증명 사용 |
 | GCP WIF 설정 파일 | 호스트 `/etc/harudle/gcp/gcp-wif.json` → 컨테이너 `/var/run/harudle/gcp-wif.json` | 읽기 전용 마운트 |
 
@@ -107,11 +109,14 @@ GitHub main
   → CodeDeploy → EC2 CodeDeploy Agent
       BeforeInstall    : ARM64 / Docker / Compose / jq / 서버 .env 확인
       AfterInstall     : 이미지 체크섬 검증 → docker load
-      ApplicationStart : 배포 환경 검사 → Compose 컨테이너 교체 (--no-build)
+      ApplicationStart : 배포 환경 검사 → 후보 이미지의 키 검증 → Compose 컨테이너 교체 (--no-build)
       ValidateService  : 컨테이너 health + Frontend /health + 관리 포트 지표 확인
 ```
 
 CodeBuild가 이미지를 `docker save`로 묶어 전달하고 EC2가 로드한다.
+`DIARY_SOURCE_TEXT_RELEASE_MODE` 빌드 설정은 기본 `reader`이며 신규 작성을 차단한다.
+호환 reader 배포본을 성공·보존한 뒤 `writer`로 빌드해 신규 암호문 작성을 허용한다.
+복구 대상은 암호문·HMAC을 읽는 보존된 CodeDeploy 배포본이며 `:local` 이미지 태그가 아니다.
 EC2에서는 Gradle·Node 빌드를 수행하지 않는다. 네이티브 의존성과 베이스 이미지를
 바꿀 때는 최종 이미지의 `linux/arm64` 호환성을 확인한다.
 
