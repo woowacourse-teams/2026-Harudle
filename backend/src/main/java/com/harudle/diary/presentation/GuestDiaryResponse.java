@@ -14,4 +14,9 @@ public record GuestDiaryResponse(
         OffsetDateTime createdAt,
         DiaryGenerationResponse generation
 ) {
+
+    @Override
+    public String toString() {
+        return "GuestDiaryResponse[sourceText=<redacted>]";
+    }
 }

@@ -1,6 +1,7 @@
 package com.harudle.diary.service;
 
 import com.harudle.diary.domain.CurrentDiaryStreak;
+import com.harudle.diary.domain.DiarySourceTextCipher;
 import com.harudle.diary.repository.DiaryQueryRepository;
 import com.harudle.diary.repository.DiarySnapshot;
 import com.harudle.diary.service.dto.DiaryDayResult;
@@ -39,17 +40,20 @@ public class DiaryQueryService {
     private final DiaryQueryRepository diaryQueryRepository;
     private final DiaryGenerationQueryRepository diaryGenerationQueryRepository;
     private final PublishedFeedReader publishedFeedReader;
+    private final DiarySourceTextCipher sourceTextCipher;
     private final Clock clock;
 
     DiaryQueryService(
             DiaryQueryRepository diaryQueryRepository,
             DiaryGenerationQueryRepository diaryGenerationQueryRepository,
             PublishedFeedReader publishedFeedReader,
+            DiarySourceTextCipher sourceTextCipher,
             @Qualifier("serviceClock") Clock clock
     ) {
         this.diaryQueryRepository = diaryQueryRepository;
         this.diaryGenerationQueryRepository = diaryGenerationQueryRepository;
         this.publishedFeedReader = publishedFeedReader;
+        this.sourceTextCipher = sourceTextCipher;
         this.clock = clock;
     }
 
@@ -184,7 +188,7 @@ public class DiaryQueryService {
         return new DiaryDetailResult(
                 diary.id(),
                 diary.diaryDate(),
-                diary.sourceText(),
+                diary.decryptSourceText(sourceTextCipher),
                 diary.createdAt(),
                 new DiaryGenerationResult(
                         generation.id(),

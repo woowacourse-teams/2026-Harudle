@@ -8,6 +8,7 @@ import com.harudle.generation.diary.service.GenerationLifecycleMetrics;
 import com.harudle.generation.diary.service.ObservedDiaryGenerationExecutor;
 import com.harudle.generation.diary.service.RequestFingerprintGenerator;
 import com.harudle.generation.diary.service.port.ImageStorage;
+import com.harudle.generation.diary.service.port.RequestFingerprintProtector;
 import com.harudle.generation.diary.service.storyboard.StoryboardAttemptRunner;
 import com.harudle.generation.diary.service.storyboard.StoryboardGenerationService;
 import com.harudle.generation.loadtest.LoadTestAiStub;
@@ -36,6 +37,7 @@ class LoadTestDiaryConfiguration {
     LoadTestDiaryCreationService loadTestDiaryCreationService(
             MemberDiaryCreationTransactionService memberTransactionService,
             RequestFingerprintGenerator fingerprintGenerator,
+            RequestFingerprintProtector fingerprintProtector,
             GenerationPromptRepository prompts,
             DiaryGenerationRepository generations,
             ImageStorage imageStorage,
@@ -45,12 +47,15 @@ class LoadTestDiaryConfiguration {
             @Qualifier("loadTestStoryboardExecutor") ExecutorService executor
     ) {
         var stub = new LoadTestAiStub();
-        var properties = new StoryboardProviderProperties("gemini", "none", Duration.ofSeconds(60), Duration.ofSeconds(60));
+        var properties = new StoryboardProviderProperties(
+                "gemini", "none", Duration.ofSeconds(60), Duration.ofSeconds(60)
+        );
         var storyboardService = new StoryboardGenerationService(request -> stub.storyboard(), Optional.empty(),
                 new StoryboardAttemptRunner(executor), properties);
         var generationService = new ClaimedDiaryGenerationService(
-                fingerprintGenerator, prompts, generations, storyboardService,
-                request -> stub.generateImage(request.referenceImage()), imageStorage, completionService, lifecycleMetrics
+                fingerprintGenerator, fingerprintProtector, prompts, generations, storyboardService,
+                request -> stub.generateImage(request.referenceImage()),
+                imageStorage, completionService, lifecycleMetrics
         );
         var executionService = new DiaryCreationExecutionService(
                 new ObservedDiaryGenerationExecutor(generationService, meterRegistry));

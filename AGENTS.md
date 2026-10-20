@@ -146,6 +146,7 @@ AWS 배포 파이프라인과 GitHub 워크플로의 역할을 구분해 확인�
 | 이미지 빌드·배포 훅 | [buildspec.yml](buildspec.yml), [appspec.yml](appspec.yml), `deploy/scripts/` |
 | 이미지 저장·조회·삭제 | [이미지 저장소 분리 절차](docs/image-storage-isolation.md) |
 | RDS 연결·데이터 작업 | [DB 연결 설정](backend/src/main/resources/application.yml), [배포 환경 안내](deploy/README.md) |
+| 일기 원문 암호화·키 교체 | [원문 암호화 운영 안내](backend/docs/diary-source-text-encryption.md), `DIARY_SOURCE_TEXT_KEY_BASE64` (환경별 필수, 서버 `.env`에서 보존) |
 | 로그·지표·알람 | [모니터링 운영 안내](deploy/monitoring/README.md) |
 
 운영 기록에 과거 구성이 남아 있으면 현재 설정과 비교한다. 특히 로그 수집 방식,

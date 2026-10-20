@@ -19,4 +19,9 @@ public record CreateDiaryRequest(
         )
         String sourceText
 ) {
+
+    @Override
+    public String toString() {
+        return "CreateDiaryRequest[sourceText=<redacted>]";
+    }
 }

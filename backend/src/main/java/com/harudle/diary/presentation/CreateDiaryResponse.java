@@ -16,4 +16,9 @@ public record CreateDiaryResponse(
         DiaryGenerationResponse generation,
         GenerationUsageResponse usage
 ) {
+
+    @Override
+    public String toString() {
+        return "CreateDiaryResponse[sourceText=<redacted>]";
+    }
 }

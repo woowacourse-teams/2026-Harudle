@@ -37,4 +37,9 @@ record DiaryCreationClaim(
         this(diaryId, diaryDate, sourceText, createdAt, generationId, generationStatus,
                 title, imageObjectKey, completedAt, errorCode, newlyCreated, null);
     }
+
+    @Override
+    public String toString() {
+        return "DiaryCreationClaim[sourceText=<redacted>]";
+    }
 }

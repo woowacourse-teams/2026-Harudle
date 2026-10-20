@@ -27,6 +27,12 @@ EC2에서는 `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`�
 
 서버 `.env`의 기존 `SHARE_PUBLIC_BASE_URL`을 `FEED_PUBLIC_BASE_URL`로 교체하고, 해당 환경의 프론트 피드 페이지 주소를 설정합니다. 운영 환경 예시는 다음과 같습니다.
 
+일기 원문 암호화 배포 전에는 각 환경의 `/opt/harudle/.env`에 독립적인 32바이트 Base64
+`DIARY_SOURCE_TEXT_KEY_BASE64`를 준비해야 합니다. 누락되거나 잘못된 키이면 앱은 시작하지 않습니다.
+키는 배포마다 재생성하지 않으며 JWT 키와 재사용하지 않습니다. 암호문을 쓰기 시작한 뒤에는
+원문 암호화를 모르는 구버전 앱으로 되돌릴 수 없습니다. 전환 순서와 키 교체·복구 조건은
+[일기 원문 암호화 운영 안내](../backend/docs/diary-source-text-encryption.md)를 따릅니다.
+
 ```dotenv
 FEED_PUBLIC_BASE_URL=https://www.harudle.com/feeds
 ```

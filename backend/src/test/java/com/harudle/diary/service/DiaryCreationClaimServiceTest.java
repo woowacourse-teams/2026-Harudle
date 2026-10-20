@@ -3,12 +3,18 @@ package com.harudle.diary.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.harudle.support.DiarySourceTextTestSupport;
 import com.harudle.diary.domain.Diary;
+import com.harudle.diary.domain.DiarySourceTextCipher;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
@@ -65,9 +71,11 @@ class DiaryCreationClaimServiceTest {
     private RequestFingerprintGenerator requestFingerprintGenerator;
 
     private DiaryCreationClaimService claimService;
+    private DiarySourceTextCipher sourceTextCipher;
 
     @BeforeEach
     void setUp() {
+        sourceTextCipher = spy(DiarySourceTextTestSupport.cipher());
         lenient().when(requestFingerprintGenerator.generate(any(GenerateDiaryImageCommand.class)))
                 .thenAnswer(invocation -> fingerprintFor(invocation.getArgument(0)));
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
@@ -77,6 +85,7 @@ class DiaryCreationClaimServiceTest {
                 diaryGenerationRepository,
                 completionService,
                 requestFingerprintGenerator,
+                sourceTextCipher,
                 clock,
                 new GenerationLifecycleProperties(
                         Duration.ofMinutes(30),
@@ -111,7 +120,7 @@ class DiaryCreationClaimServiceTest {
     @DisplayName("성공한 멱등 요청은 일기와 생성 기록을 새로 만들지 않는다")
     void claimExistingSuccessfulCreation() {
         CreateDiaryCommand command = createCommand("오늘 친구와 카페에 갔다.");
-        Diary diary = Diary.create(USER_ID, DIARY_DATE, command.sourceText());
+        Diary diary = Diary.create(USER_ID, DIARY_DATE, command.sourceText(), DiarySourceTextTestSupport.cipher());
         DiaryGeneration generation = createGeneration(command, diary);
         generation.succeed(
                 TestStoryboardFactory.create(),
@@ -136,7 +145,10 @@ class DiaryCreationClaimServiceTest {
     void claimRejectsDifferentRequestForSameIdempotencyKey() {
         CreateDiaryCommand originalCommand = createCommand("원래 일기");
         CreateDiaryCommand differentCommand = createCommand("다른 일기");
-        Diary diary = Diary.create(USER_ID, DIARY_DATE, originalCommand.sourceText());
+        Diary diary = Diary.create(
+                USER_ID, DIARY_DATE, originalCommand.sourceText(),
+                DiarySourceTextTestSupport.cipher()
+        );
         DiaryGeneration generation = createGeneration(originalCommand, diary);
         when(diaryGenerationRepository.findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY))
                 .thenReturn(Optional.of(generation));
@@ -145,13 +157,33 @@ class DiaryCreationClaimServiceTest {
 
         assertThatThrownBy(() -> claimService.claim(differentCommand, true))
                 .isInstanceOf(IdempotencyKeyConflictException.class);
+        verify(sourceTextCipher, never()).decrypt(any(), any(), anyString(), anyInt());
+    }
+
+    @Test
+    @DisplayName("타인의 멱등성 키 재요청은 원문 복호화와 지문 처리 전에 거절한다")
+    void rejectOtherUserBeforeReadingSourceText() {
+        CreateDiaryCommand original = createCommand("오늘의 일기");
+        Diary diary = Diary.create(USER_ID, DIARY_DATE, original.sourceText(), DiarySourceTextTestSupport.cipher());
+        DiaryGeneration generation = createGeneration(original, diary);
+        CreateDiaryCommand otherUserCommand = new CreateDiaryCommand(
+                UUID.randomUUID(), DIARY_DATE, original.sourceText(), IDEMPOTENCY_KEY
+        );
+        when(diaryGenerationRepository.findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY))
+                .thenReturn(Optional.of(generation));
+        when(diaryRepository.findByIdIncludingDeletedForUpdate(diary.getId()))
+                .thenReturn(Optional.of(diary));
+
+        assertThatThrownBy(() -> claimService.claim(otherUserCommand, true))
+                .isInstanceOf(IdempotencyKeyConflictException.class);
+        verifyNoInteractions(sourceTextCipher);
     }
 
     @Test
     @DisplayName("삭제된 일기의 멱등 재요청은 기존 내용을 다시 노출하지 않는다")
     void rejectIdempotentReplayForDeletedDiary() {
         CreateDiaryCommand command = createCommand("오늘 친구와 카페에 갔다.");
-        Diary diary = Diary.create(USER_ID, DIARY_DATE, command.sourceText());
+        Diary diary = Diary.create(USER_ID, DIARY_DATE, command.sourceText(), DiarySourceTextTestSupport.cipher());
         DiaryGeneration generation = createGeneration(command, diary);
         generation.succeed(TestStoryboardFactory.create(), "generated/comic.png", NOW.minusSeconds(2));
         diary.delete(NOW.minusSeconds(1));
@@ -171,7 +203,10 @@ class DiaryCreationClaimServiceTest {
     void rejectDifferentRequestForFailedDiscardedDiary() {
         CreateDiaryCommand originalCommand = createCommand("원래 일기");
         CreateDiaryCommand differentCommand = createCommand("다른 일기");
-        Diary diary = Diary.create(USER_ID, DIARY_DATE, originalCommand.sourceText());
+        Diary diary = Diary.create(
+                USER_ID, DIARY_DATE, originalCommand.sourceText(),
+                DiarySourceTextTestSupport.cipher()
+        );
         DiaryGeneration generation = createGeneration(originalCommand, diary);
         generation.fail(GenerationErrorCode.AI_PROVIDER_TIMEOUT, NOW.minusSeconds(1));
         diary.delete(NOW.minusSeconds(1));
@@ -188,7 +223,7 @@ class DiaryCreationClaimServiceTest {
     @DisplayName("실패로 폐기된 일기의 멱등 재요청은 저장된 실패를 복원한다")
     void claimExistingFailedDiscardedDiary() {
         CreateDiaryCommand command = createCommand("오늘 친구와 카페에 갔다.");
-        Diary diary = Diary.create(USER_ID, DIARY_DATE, command.sourceText());
+        Diary diary = Diary.create(USER_ID, DIARY_DATE, command.sourceText(), DiarySourceTextTestSupport.cipher());
         DiaryGeneration generation = createGeneration(command, diary);
         Instant failedAt = NOW.minusSeconds(1);
         generation.fail(GenerationErrorCode.AI_PROVIDER_TIMEOUT, failedAt);
@@ -209,7 +244,7 @@ class DiaryCreationClaimServiceTest {
     @DisplayName("처리 시간이 지난 생성은 중단하고 일기를 함께 폐기한다")
     void interruptStaleGenerationAndDiscardDiary() {
         CreateDiaryCommand command = createCommand("오늘 친구와 카페에 갔다.");
-        Diary diary = Diary.create(USER_ID, DIARY_DATE, command.sourceText());
+        Diary diary = Diary.create(USER_ID, DIARY_DATE, command.sourceText(), DiarySourceTextTestSupport.cipher());
         DiaryGeneration generation = createGeneration(command, diary);
         ReflectionTestUtils.setField(
                 generation,
@@ -276,7 +311,9 @@ class DiaryCreationClaimServiceTest {
                 diary.getId(),
                 1L,
                 command.idempotencyKey(),
-                requestFingerprintGenerator.generate(generationCommand)
+                diary.protectRequestFingerprint(
+                        DiarySourceTextTestSupport.cipher(), requestFingerprintGenerator.generate(generationCommand)
+                )
         );
     }
 

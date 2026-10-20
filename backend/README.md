@@ -24,6 +24,8 @@ Gradle은 별도로 설치할 필요가 없습니다. 저장소에 포함된 Gra
 
 ## 문서
 
+- [일기 원문 암호화와 키 관리](docs/diary-source-text-encryption.md)
+
 - [API 명세](docs/api-spec.md)
 
 ## 도메인 패키지

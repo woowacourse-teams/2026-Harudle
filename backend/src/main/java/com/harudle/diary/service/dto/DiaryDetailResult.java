@@ -13,4 +13,9 @@ public record DiaryDetailResult(
         DiaryGenerationResult generation,
         @Nullable UUID publishedFeedId
 ) {
+
+    @Override
+    public String toString() {
+        return "DiaryDetailResult[sourceText=<redacted>]";
+    }
 }
