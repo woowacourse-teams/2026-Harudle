@@ -39,7 +39,7 @@ class DiaryCreationExecutionService {
 
     private DiaryCreationExecution handleExistingClaim(DiaryCreationClaim claim) {
         return switch (claim.generationStatus()) {
-            case PROCESSING -> throw new GenerationInProgressException();
+            case PENDING, PROCESSING -> throw new GenerationInProgressException();
             case FAILED -> throw new DiaryGenerationFailedException(claim.errorCode());
             case SUCCEEDED -> createResult(
                     claim,

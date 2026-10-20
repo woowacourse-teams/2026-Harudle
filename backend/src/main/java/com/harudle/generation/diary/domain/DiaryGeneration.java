@@ -92,7 +92,8 @@ public class DiaryGeneration {
             Long generationPromptId,
             UUID idempotencyKey,
             String requestFingerprint,
-            LocalDate usageDate
+            LocalDate usageDate,
+            GenerationStatus initialStatus
     ) {
         validateId(id);
         validateDiaryId(diaryId);
@@ -105,7 +106,7 @@ public class DiaryGeneration {
         this.idempotencyKey = idempotencyKey;
         this.requestFingerprint = normalizeRequestFingerprint(requestFingerprint);
         this.usageDate = usageDate;
-        this.status = GenerationStatus.PROCESSING;
+        this.status = initialStatus;
     }
 
     public static DiaryGeneration start(
@@ -130,7 +131,26 @@ public class DiaryGeneration {
                 generationPromptId,
                 idempotencyKey,
                 requestFingerprint,
-                usageDate
+                usageDate,
+                GenerationStatus.PROCESSING
+        );
+    }
+
+    public static DiaryGeneration pending(
+            UUID diaryId,
+            Long generationPromptId,
+            UUID idempotencyKey,
+            String requestFingerprint,
+            LocalDate usageDate
+    ) {
+        return new DiaryGeneration(
+                UUID.randomUUID(),
+                diaryId,
+                generationPromptId,
+                idempotencyKey,
+                requestFingerprint,
+                usageDate,
+                GenerationStatus.PENDING
         );
     }
 

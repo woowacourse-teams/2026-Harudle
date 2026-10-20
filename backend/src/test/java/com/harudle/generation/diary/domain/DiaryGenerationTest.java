@@ -64,6 +64,62 @@ class DiaryGenerationTest {
     }
 
     @Test
+    @DisplayName("대기 작업은 요청 정보와 사용량 날짜를 보존하고 아직 실행할 수 없다")
+    void createPendingGeneration() {
+        UUID diaryId = UUID.randomUUID();
+        UUID idempotencyKey = UUID.randomUUID();
+        LocalDate usageDate = LocalDate.of(2026, 10, 20);
+
+        DiaryGeneration generation = DiaryGeneration.pending(
+                diaryId, GENERATION_PROMPT_ID, idempotencyKey, REQUEST_FINGERPRINT, usageDate
+        );
+
+        assertThat(generation.getId()).isNotNull();
+        assertThat(generation.getDiaryId()).isEqualTo(diaryId);
+        assertThat(generation.getGenerationPromptId()).isEqualTo(GENERATION_PROMPT_ID);
+        assertThat(generation.hasSameRequestFingerprint(REQUEST_FINGERPRINT)).isTrue();
+        assertThat(generation.getUsageDate()).isEqualTo(usageDate);
+        assertThat(generation.getStatus()).isEqualTo(GenerationStatus.PENDING);
+        assertThat(generation.matchesExecutableClaim(diaryId, idempotencyKey, REQUEST_FINGERPRINT)).isFalse();
+        assertThat(generation.getStoryboard()).isNull();
+        assertThat(generation.getTitle()).isNull();
+        assertThat(generation.getImageObjectKey()).isNull();
+        assertThat(generation.getErrorCode()).isNull();
+        assertThat(generation.getCompletedAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("대기 작업은 실행을 시작하기 전에 성공이나 실패로 완료할 수 없다")
+    void rejectCompletingPendingGeneration() {
+        DiaryGeneration generation = DiaryGeneration.pending(
+                UUID.randomUUID(), GENERATION_PROMPT_ID, UUID.randomUUID(), REQUEST_FINGERPRINT, null
+        );
+        Instant completedAt = Instant.parse("2026-10-20T10:00:00Z");
+
+        assertThatThrownBy(() -> generation.succeed(createStoryboard(), "generated/diary-image.png", completedAt))
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> generation.fail(GenerationErrorCode.AI_PROVIDER_ERROR, completedAt))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(generation.getStatus()).isEqualTo(GenerationStatus.PENDING);
+        assertThat(generation.getCompletedAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("오래 대기한 작업에 처리 중인 작업의 제한 시간을 적용하지 않는다")
+    void doNotInterruptPendingGeneration() {
+        DiaryGeneration generation = DiaryGeneration.pending(
+                UUID.randomUUID(), GENERATION_PROMPT_ID, UUID.randomUUID(), REQUEST_FINGERPRINT, null
+        );
+        Instant currentTime = Instant.parse("2026-10-20T10:00:00Z");
+        ReflectionTestUtils.setField(generation, "updatedAt", currentTime.minus(Duration.ofHours(1)));
+
+        assertThat(generation.interruptIfStale(currentTime, Duration.ofMinutes(15))).isFalse();
+        assertThat(generation.getStatus()).isEqualTo(GenerationStatus.PENDING);
+        assertThat(generation.getErrorCode()).isNull();
+        assertThat(generation.getCompletedAt()).isNull();
+    }
+
+    @Test
     @DisplayName("유효하지 않은 요청 지문으로 생성 작업을 시작할 수 없다")
     void rejectInvalidRequestFingerprint() {
         assertThatThrownBy(() -> startGeneration("A".repeat(64)))

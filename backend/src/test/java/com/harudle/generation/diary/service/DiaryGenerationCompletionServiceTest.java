@@ -94,6 +94,46 @@ class DiaryGenerationCompletionServiceTest {
     }
 
     @Test
+    @DisplayName("대기 작업을 성공으로 완료하거나 완료 지표를 기록하지 않는다")
+    void rejectSucceedingPendingGeneration() {
+        DiaryGeneration generation = DiaryGeneration.pending(
+                UUID.randomUUID(), 1L, UUID.randomUUID(), "a".repeat(64), USAGE_DATE
+        );
+        when(diaryGenerationRepository.findByIdForUpdate(generation.getId()))
+                .thenReturn(Optional.of(generation));
+
+        assertThatThrownBy(() -> completionService.succeed(
+                generation.getId(), createStoryboard(), "generated/comic.png", null
+        )).isInstanceOf(IllegalStateException.class);
+
+        assertThat(generation.getStatus()).isEqualTo(GenerationStatus.PENDING);
+        assertThat(generation.getCompletedAt()).isNull();
+        assertNoFinalizations();
+    }
+
+    @Test
+    @DisplayName("대기 작업의 실패 처리를 거부하고 일기와 사용량을 유지한다")
+    void rejectFailingPendingGeneration() {
+        DiaryGeneration generation = DiaryGeneration.pending(
+                UUID.randomUUID(), 1L, UUID.randomUUID(), "a".repeat(64), USAGE_DATE
+        );
+        Diary diary = mock(Diary.class);
+        when(diaryGenerationRepository.findByIdForUpdate(generation.getId()))
+                .thenReturn(Optional.of(generation));
+        when(diaryRepository.findByIdIncludingDeletedForUpdate(generation.getDiaryId()))
+                .thenReturn(Optional.of(diary));
+
+        assertThatThrownBy(() -> completionService.fail(generation.getId(), GenerationErrorCode.AI_PROVIDER_TIMEOUT))
+                .isInstanceOf(IllegalStateException.class);
+
+        assertThat(generation.getStatus()).isEqualTo(GenerationStatus.PENDING);
+        assertThat(generation.getCompletedAt()).isNull();
+        verify(diary, never()).delete(any());
+        verify(generationUsageService, never()).restoreUsage(any(), any());
+        assertNoFinalizations();
+    }
+
+    @Test
     @DisplayName("성공 결과의 Provider와 모델을 토큰 및 완료 상태와 함께 저장한다")
     void persistWinningProviderWithCompletion() {
         DiaryGeneration generation = createGeneration();

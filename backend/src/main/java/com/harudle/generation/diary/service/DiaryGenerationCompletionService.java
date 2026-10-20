@@ -63,6 +63,7 @@ public class DiaryGenerationCompletionService {
     ) {
         DiaryGeneration generation = findForUpdate(generationId);
         return switch (generation.getStatus()) {
+            case PENDING -> throw new IllegalStateException("처리 중인 생성 작업만 완료할 수 있습니다.");
             case FAILED -> throw new DiaryGenerationFailedException(generation.getErrorCode());
             case SUCCEEDED -> generation;
             case PROCESSING -> {
@@ -83,6 +84,7 @@ public class DiaryGenerationCompletionService {
         DiaryGeneration generation = findForUpdate(generationId);
         Diary diary = findDiaryForUpdate(generation.getDiaryId());
         return switch (generation.getStatus()) {
+            case PENDING -> throw new IllegalStateException("처리 중인 생성 작업만 완료할 수 있습니다.");
             case PROCESSING -> {
                 Instant failedAt = clock.instant();
                 generation.fail(errorCode, providerInfo, failedAt);
