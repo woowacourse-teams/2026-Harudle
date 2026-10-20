@@ -8,12 +8,15 @@ import static org.mockito.Mockito.when;
 
 import com.harudle.TestcontainersConfiguration;
 import com.harudle.category.service.port.CategoryReader;
+import com.harudle.diary.domain.DiarySourceTextCipher;
 import com.harudle.diary.service.DiaryDeletionService;
 import com.harudle.diary.service.DiaryQueryService;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
 import com.harudle.diary.service.exception.DiaryNotPublishableException;
 import com.harudle.feed.repository.FeedRepository;
+import com.harudle.generation.diary.service.RequestFingerprintGenerator;
+import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
 import com.harudle.feed.service.dto.FeedResult;
 import com.harudle.feed.service.exception.DiaryAlreadyPublishedException;
 import com.harudle.feed.service.exception.FeedNotFoundException;
@@ -64,6 +67,8 @@ class FeedPublicationPersistenceTest {
     @Autowired private FeedRepository feeds;
     @Autowired private DiaryDeletionService diaryDeletion;
     @Autowired private DiaryQueryService diaryQueries;
+    @Autowired private DiarySourceTextCipher sourceTextCipher;
+    @Autowired private RequestFingerprintGenerator fingerprints;
     @Autowired private PublishedFeedReader publishedFeeds;
     @MockitoBean private CategoryReader categories;
     @MockitoBean private PublicProfileReader profiles;
@@ -78,14 +83,25 @@ class FeedPublicationPersistenceTest {
                 INSERT INTO generation_prompts (storyboard_prompt_text, image_style_prompt_text, image_asset_object_key)
                 VALUES ('스토리보드', '이미지 스타일', 'references/feed-publication-test.png')
                 """);
-        update("INSERT INTO diaries (id, user_id, diary_date, source_text) VALUES (?, ?, ?, ?)",
-                DIARY, ACTOR, LocalDate.of(2026, 10, 11), "공개하면 안 되는 개인 일기 원문");
+        LocalDate date = LocalDate.of(2026, 10, 11);
+        String encrypted = sourceTextCipher.encrypt(DIARY, ACTOR, "공개하면 안 되는 개인 일기 원문");
+        UUID idempotencyKey = UUID.randomUUID();
+        String rawFingerprint = fingerprints.generate(new GenerateDiaryImageCommand(
+                ACTOR, DIARY, date, "공개하면 안 되는 개인 일기 원문", idempotencyKey
+        ));
+        String protectedFingerprint = sourceTextCipher.protectRequestFingerprint(
+                DIARY, ACTOR, encrypted, DiarySourceTextCipher.CURRENT_VERSION, rawFingerprint
+        );
+        update("""
+                INSERT INTO diaries (id, user_id, diary_date, source_text, source_text_version)
+                VALUES (?, ?, ?, ?, 1)
+                """, DIARY, ACTOR, date, encrypted);
         update("""
                 INSERT INTO diary_generations
                     (id, diary_id, prompt_id, idempotency_key, request_fingerprint, status, image_object_key)
                 VALUES (?, ?, (SELECT id FROM generation_prompts WHERE image_asset_object_key = ?),
                     ?, ?, 'SUCCEEDED', 'generated/feed-publication-test.webp')
-                """, GENERATION, DIARY, "references/feed-publication-test.png", UUID.randomUUID(), "a".repeat(64));
+                """, GENERATION, DIARY, "references/feed-publication-test.png", idempotencyKey, protectedFingerprint);
         categoryId = transactions.execute(status ->
                 ((Number) entityManager.createNativeQuery("SELECT id FROM categories WHERE name = '일상'")
                         .getSingleResult()).longValue());

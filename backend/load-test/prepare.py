@@ -6,13 +6,14 @@ from pathlib import Path
 import re
 import secrets
 import uuid
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 PREFIX = "harudle/generated/diary-images/dev"
 MEMBERS = 200
 NAME = r'[a-zA-Z0-9_-]+'
+SEED_PLACEHOLDER = re.compile(r":'(?:source_text|request_fingerprint)_[0-9a-f]{32}'")
 
 
 def quote(value):
@@ -51,6 +52,55 @@ def diary_ids(fixture):
     return [str(uuid.uuid5(data_identity(fixture), f'diary-{i}-{month}-{j}'))
             for i in range(MEMBERS) for month in [fixture['currentMonth'], fixture['previousMonth']]
             for j in range(fixture['diariesPerMonth'])]
+
+
+def seed_requests(fixture):
+    baseline = data_identity(fixture)
+    today = date.fromisoformat(fixture['date'])
+    rows = []
+    for i, member in enumerate(fixture['members']):
+        for month in [fixture['currentMonth'], fixture['previousMonth']]:
+            for j in range(fixture['diariesPerMonth']):
+                diary_id = str(uuid.uuid5(baseline, f'diary-{i}-{month}-{j}'))
+                day = min(j + 1, today.day if month == fixture['currentMonth'] else 28)
+                rows.append({'diaryId': diary_id, 'userId': member['id'],
+                             'diaryDate': str(date.fromisoformat(month).replace(day=day)),
+                             'idempotencyKey': str(uuid.uuid5(baseline, 'key-' + diary_id))})
+    return rows
+
+
+def seed_placeholder(field, diary_id):
+    return f":'{field}_{uuid.UUID(diary_id).hex}'"
+
+
+def protect_seed(fixture, seed, encryptor):
+    requests = seed_requests(fixture)
+    encrypted = encryptor(requests)
+    expected = {row['diaryId'] for row in requests}
+    if not isinstance(encrypted, list) or len(encrypted) != len(expected):
+        raise ValueError('Fixture encryption returned an incomplete result')
+    seen = set()
+    bindings = {}
+    for row in encrypted:
+        if (not isinstance(row, dict) or set(row) != {'diaryId', 'sourceText', 'requestFingerprint'}
+                or not isinstance(row['diaryId'], str)
+                or row['diaryId'] not in expected or row['diaryId'] in seen):
+            raise ValueError('Fixture encryption identities do not match this baseline')
+        source, fingerprint = row['sourceText'], row['requestFingerprint']
+        if (not isinstance(source, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}:[A-Za-z0-9+/]{39,2048}={0,2}', source)
+                or not isinstance(fingerprint, str) or not re.fullmatch(r'[0-9a-f]{64}', fingerprint)):
+            raise ValueError('Fixture encryption returned an invalid protected value')
+        bindings[seed_placeholder('source_text', row['diaryId'])] = quote(source)
+        bindings[seed_placeholder('request_fingerprint', row['diaryId'])] = quote(fingerprint)
+        seen.add(row['diaryId'])
+    seed = SEED_PLACEHOLDER.sub(lambda match: bindings.get(match.group(0), match.group(0)), seed)
+    require_encrypted_seed(seed)
+    return seed
+
+
+def require_encrypted_seed(sql):
+    if SEED_PLACEHOLDER.search(sql):
+        raise ValueError('Use ec2.py reset to encrypt the fixture before applying its SQL')
 
 
 def account_statements(fixture):
@@ -148,13 +198,14 @@ def build_fixture(base_url, per_month, accounts=None, run_name=None):
                 image_keys.append(key)
                 diary_date = month.replace(day=min(j + 1, today.day if month == current else 28))
                 statements.append(
-                    "INSERT INTO diaries (id, user_id, diary_date, source_text) VALUES "
-                    f"({quote(diary_id)}, {quote(user_id)}, {quote(diary_date)}, '부하 테스트 준비 데이터');")
+                    "INSERT INTO diaries (id, user_id, diary_date, source_text, source_text_version) VALUES "
+                    f"({quote(diary_id)}, {quote(user_id)}, {quote(diary_date)}, "
+                    f"{seed_placeholder('source_text', diary_id)}, 1);")
                 statements.append(
                     "INSERT INTO diary_generations (id, diary_id, prompt_id, idempotency_key, request_fingerprint, "
                     "status, storyboard, title, image_object_key, completed_at, usage_date, storyboard_provider, storyboard_model) VALUES "
                     f"({quote(generation_id)}, {quote(diary_id)}, :prompt_id, {quote(identifier('key-' + diary_id))}, "
-                    f"'{hashlib.sha256(diary_id.encode()).hexdigest()}', 'SUCCEEDED', {quote(storyboard)}::jsonb, "
+                    f"{seed_placeholder('request_fingerprint', diary_id)}, 'SUCCEEDED', {quote(storyboard)}::jsonb, "
                     f"'부하 테스트 일기', {quote(key)}, CURRENT_TIMESTAMP, {quote(diary_date)}, 'stub', 'seed');")
                 if month == previous and j == 0:
                     member["diaryId"] = diary_id
@@ -186,7 +237,7 @@ def build_fixture(base_url, per_month, accounts=None, run_name=None):
     fixture = {"version": 2, "runId": str(run_id), "cleanupKey": secrets.token_hex(32),
                "baseUrl": base_url, "date": str(today),
                "currentMonth": str(current), "previousMonth": str(previous), "categoryName": category,
-               "diariesPerMonth": per_month, "members": members}
+               "diariesPerMonth": per_month, "sourceTextVersion": 1, "members": members}
     if accounts is None:
         statements[1:1] = account_statements(fixture)
     else:
@@ -244,7 +295,7 @@ def main():
         parser.error("diaries-per-month must be between 1 and 100")
     _, _, keys = write_fixture(args.output, args.base_url.rstrip("/"), args.diaries_per_month)
     print(f"Prepared {MEMBERS} members, {len(keys)} diaries, {MEMBERS * args.diaries_per_month} feeds: {args.output}")
-    print("No server was changed. Upload test images, apply seed.sql to the dev DB, then run k6 once.")
+    print("No server was changed. seed.sql is a template; use ec2.py reset to encrypt and prepare the dev DB.")
 
 
 if __name__ == "__main__":

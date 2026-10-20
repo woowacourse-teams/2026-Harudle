@@ -12,7 +12,8 @@ public interface DiarySourceTextCipher {
     String decrypt(UUID diaryId, UUID userId, String storedText, int version);
 
     /**
-     * Protects a canonical SHA-256 request fingerprint with the key selected by the stored source-text version.
+     * Protects a canonical SHA-256 request fingerprint with the stored v1 envelope's key.
+     * Legacy plaintext and SHA passthrough are rejected after migration cutover.
      * Ciphertext authentication remains the responsibility of {@link #decrypt(UUID, UUID, String, int)}.
      */
     String protectRequestFingerprint(UUID diaryId, UUID userId, String storedText, int version, String fingerprint);

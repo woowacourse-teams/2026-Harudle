@@ -109,7 +109,7 @@ public final class DiarySourceTextKeyCheckMain {
         }
     }
 
-    private static void prepareEnvironment(ConfigurableEnvironment environment) {
+    static void prepareEnvironment(ConfigurableEnvironment environment) {
         new SpringApplicationJsonEnvironmentPostProcessor()
                 .postProcessEnvironment(environment, new SpringApplication(DiarySourceTextKeyCheckMain.class));
         ConfigDataEnvironmentPostProcessor.applyTo(environment);

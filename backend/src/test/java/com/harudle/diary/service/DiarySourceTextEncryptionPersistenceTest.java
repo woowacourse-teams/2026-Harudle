@@ -7,10 +7,12 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.harudle.diary.domain.DiarySourceTextCipher;
 import com.harudle.diary.infrastructure.crypto.DiarySourceTextCryptoException;
+import com.harudle.diary.infrastructure.migration.DiarySourceTextMigration;
 import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.dto.CreateDiaryResult;
 import com.harudle.diary.service.dto.DiaryDetailResult;
@@ -39,6 +41,8 @@ import com.harudle.support.ServiceIntegrationTestSupport;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -50,6 +54,7 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.IntStream;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -82,6 +87,9 @@ class DiarySourceTextEncryptionPersistenceTest extends ServiceIntegrationTestSup
 
     @Autowired
     private TransactionTemplate transactionTemplate;
+
+    @Autowired
+    private DataSource dataSource;
 
     @Autowired
     private MemberDiaryCreationTransactionService transactionService;
@@ -262,21 +270,18 @@ class DiarySourceTextEncryptionPersistenceTest extends ServiceIntegrationTestSup
     }
 
     @Test
-    @DisplayName("기존 v0 평문과 신규 v1 암호문이 섞여 있어도 상세와 재요청이 원문을 유지한다")
-    void readAndReplayLegacyPlaintextAlongsideEncryptedDiary() {
+    @DisplayName("기존 v0 평문이 남으면 상세와 재요청을 거절하면서 v1 일기는 계속 조회한다")
+    void rejectLegacyPlaintextWhileKeepingEncryptedDiaryReadable() {
         CreateDiaryCommand legacyCommand = createCommand("기존에 작성한 일기");
         UUID legacyDiaryId = insertLegacyDiary(legacyCommand);
         DiaryCreationClaim encrypted = transactionService.claim(createCommand(SOURCE_TEXT), true).claim();
         markGenerationSucceeded(encrypted);
 
-        DiaryCreationClaim replayed = transactionService.claim(legacyCommand, true).claim();
-
-        assertThat(queryService.getDetail(USER_ID, legacyDiaryId).sourceText())
-                .isEqualTo(legacyCommand.sourceText());
+        assertThatThrownBy(() -> transactionService.claim(legacyCommand, true))
+                .isInstanceOf(DiarySourceTextCryptoException.class);
+        assertThatThrownBy(() -> queryService.getDetail(USER_ID, legacyDiaryId))
+                .isInstanceOf(DiarySourceTextCryptoException.class);
         assertThat(queryService.getDetail(USER_ID, encrypted.diaryId()).sourceText()).isEqualTo(SOURCE_TEXT);
-        assertThat(replayed.diaryId()).isEqualTo(legacyDiaryId);
-        assertThat(replayed.sourceText()).isEqualTo(legacyCommand.sourceText());
-        assertThat(replayed.newlyCreated()).isFalse();
         assertThat(findStoredSource(legacyDiaryId))
                 .isEqualTo(new StoredSource(legacyCommand.sourceText(), 0));
         assertThat(findStoredSource(encrypted.diaryId()).version()).isEqualTo(1);
@@ -284,6 +289,52 @@ class DiarySourceTextEncryptionPersistenceTest extends ServiceIntegrationTestSup
                 .flatMap(day -> day.items().stream()))
                 .extracting(item -> item.id())
                 .containsExactlyInAnyOrder(legacyDiaryId, encrypted.diaryId());
+    }
+
+    @Test
+    @DisplayName("실제 평문 전환 후 상세와 회원 재요청은 원문 및 기존 성공 결과를 복원하고 AI를 다시 호출하지 않는다")
+    void replayExistingSuccessfulGenerationAfterMigratingLegacySource() throws SQLException {
+        CreateDiaryCommand command = createCommand("전환 전에 이미 완성한 그림일기 😀");
+        UUID diaryId = insertLegacyDiary(command);
+        UUID generationId = (UUID) readValue("SELECT id FROM diary_generations WHERE diary_id = ?", diaryId);
+        String canonicalSha = fingerprintGenerator.generate(new GenerateDiaryImageCommand(
+                USER_ID, diaryId, DIARY_DATE, command.sourceText(), command.idempotencyKey()
+        ));
+        assertThat(findStoredSource(diaryId)).isEqualTo(new StoredSource(command.sourceText(), 0));
+        assertThat(readValue("SELECT request_fingerprint FROM diary_generations WHERE id = ?", generationId))
+                .isEqualTo(canonicalSha);
+
+        try (Connection connection = dataSource.getConnection()) {
+            var migrated = new DiarySourceTextMigration(connection, sourceTextCipher, fingerprintGenerator)
+                    .migrate(10, 1);
+            assertThat(migrated.migrated()).isEqualTo(1);
+            assertThat(migrated.failed()).isZero();
+        }
+        StoredSource stored = findStoredSource(diaryId);
+        DiaryDetailResult detail = queryService.getDetail(USER_ID, diaryId);
+        CreateDiaryResult replayed = creationService.create(command);
+
+        assertThat(stored.version()).isEqualTo(1);
+        assertThat(stored.text()).isNotEqualTo(command.sourceText());
+        assertThat(readValue("SELECT request_fingerprint FROM diary_generations WHERE id = ?", generationId))
+                .isNotEqualTo(canonicalSha)
+                .isEqualTo(sourceTextCipher.protectRequestFingerprint(
+                        diaryId, USER_ID, stored.text(), stored.version(), canonicalSha
+                ));
+        assertThat(detail.sourceText()).isEqualTo(command.sourceText());
+        assertThat(detail.generation().id()).isEqualTo(generationId);
+        assertThat(replayed.id()).isEqualTo(diaryId);
+        assertThat(replayed.sourceText()).isEqualTo(command.sourceText());
+        assertThat(replayed.newlyCreated()).isFalse();
+        assertThat(replayed.generation()).isEqualTo(detail.generation());
+        assertThat(replayed.generation().status()).isEqualTo(GenerationStatus.SUCCEEDED);
+        assertThat(replayed.generation().title()).isEqualTo("기존 그림일기");
+        assertThat(replayed.generation().imageObjectKey()).isEqualTo("generated/%s.png".formatted(diaryId));
+        assertThat(replayed.usage().usedCount()).isZero();
+        assertThat(countUserDiaries()).isEqualTo(1);
+        assertThat(readValue("SELECT COUNT(*) FROM diary_generations WHERE diary_id = ?", diaryId)).isEqualTo(1L);
+        assertThat(findStoredSource(diaryId)).isEqualTo(stored);
+        verifyNoInteractions(storyboardGenerator, diaryImageGenerator, imageStorage);
     }
 
     @Test
