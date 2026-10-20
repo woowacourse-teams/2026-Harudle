@@ -1,11 +1,14 @@
 package com.harudle.generation.config;
 
+import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.diary.service.ClaimedDiaryGenerationService;
 import com.harudle.generation.diary.service.DiaryGenerationCompletionService;
 import com.harudle.generation.diary.service.DiaryGenerationExecutor;
+import com.harudle.generation.diary.service.DiaryGenerationWorker;
 import com.harudle.generation.diary.service.GenerationLifecycleMetrics;
 import com.harudle.generation.diary.service.ObservedDiaryGenerationExecutor;
+import com.harudle.generation.diary.service.PendingDiaryGenerationClaimService;
 import com.harudle.generation.diary.service.RequestFingerprintGenerator;
 import com.harudle.generation.diary.service.dto.CompletedDiaryGeneration;
 import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
@@ -20,19 +23,25 @@ import io.micrometer.core.instrument.MeterRegistry;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationListener;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 @Configuration(proxyBeanMethods = false)
 @EnableScheduling
 @EnableConfigurationProperties({
         GenerationPromptBootstrapProperties.class,
-        GenerationLifecycleProperties.class
+        GenerationLifecycleProperties.class,
+        GenerationWorkerProperties.class
 })
 class DiaryGenerationConfiguration {
 
@@ -43,6 +52,45 @@ class DiaryGenerationConfiguration {
         scheduler.setPoolSize(1);
         scheduler.setThreadNamePrefix("generation-scheduler-");
         return scheduler;
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "harudle.generation.worker", name = "enabled", havingValue = "true")
+    ThreadPoolTaskExecutor generationWorkerTaskExecutor(GenerationWorkerProperties properties) {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(properties.concurrency());
+        executor.setMaxPoolSize(properties.concurrency());
+        executor.setQueueCapacity(0);
+        executor.setThreadNamePrefix("generation-worker-");
+        executor.setStrictEarlyShutdown(true);
+        return executor;
+    }
+
+    @Bean(destroyMethod = "requestStop")
+    @ConditionalOnProperty(prefix = "harudle.generation.worker", name = "enabled", havingValue = "true")
+    DiaryGenerationWorker diaryGenerationWorker(
+            PendingDiaryGenerationClaimService claimService,
+            DiaryGenerationRepository generationRepository,
+            DiaryRepository diaryRepository,
+            DiaryGenerationExecutor generationExecutor,
+            DiaryGenerationCompletionService completionService,
+            @Qualifier("generationWorkerTaskExecutor") ThreadPoolTaskExecutor taskExecutor,
+            GenerationWorkerProperties properties
+    ) {
+        return new DiaryGenerationWorker(claimService, generationRepository, diaryRepository, generationExecutor,
+                completionService, taskExecutor, properties);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "harudle.generation.worker", name = "enabled", havingValue = "true")
+    ApplicationListener<ContextClosedEvent> generationWorkerShutdownListener(
+            ApplicationContext context, DiaryGenerationWorker worker
+    ) {
+        return event -> {
+            if (event.getApplicationContext() == context) {
+                worker.requestStop();
+            }
+        };
     }
 
     @Bean

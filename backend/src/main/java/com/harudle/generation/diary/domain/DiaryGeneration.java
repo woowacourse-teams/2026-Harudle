@@ -166,6 +166,10 @@ public class DiaryGeneration {
         return generationPromptId;
     }
 
+    public UUID getIdempotencyKey() {
+        return idempotencyKey;
+    }
+
     public GenerationStatus getStatus() {
         return status;
     }

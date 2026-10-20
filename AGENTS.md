@@ -59,6 +59,12 @@ flowchart TB
 두 컨테이너의 재시작 정책은 `unless-stopped`다. 이미지 처리·동시 실행 수·
 임시 파일 사용량을 바꿀 때는 위 메모리 제한을 함께 고려한다.
 
+이미지 비동기 작업 처리기는 같은 백엔드 앱 안에서 실행하며 기본으로 꺼져 있다.
+`GENERATION_WORKER_ENABLED`로 켜고, `GENERATION_WORKER_CONCURRENCY`로 백엔드 한 대의
+동시 실행 수를 정한다. 기본 동시 실행 수는 `1`, `GENERATION_WORKER_POLL_INTERVAL`의
+기본 확인 간격은 `5s`다. 환경 변수를 바꾸면 로컬 백엔드는 재시작하고, 배포 컨테이너는
+재생성해야 한다. 현재 생성 요청 API는 동기 방식이며 대기 작업 접수는 아직 연결하지 않았다.
+
 ## dev / prod 구성
 
 dev와 prod는 각각 별도 EC2와 별도 RDS 인스턴스를 사용한다.

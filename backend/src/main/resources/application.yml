@@ -110,6 +110,10 @@ harudle:
   feed:
     public-base-url: ${FEED_PUBLIC_BASE_URL:http://localhost:5173/feeds}
   generation:
+    worker:
+      enabled: ${GENERATION_WORKER_ENABLED:false}
+      concurrency: ${GENERATION_WORKER_CONCURRENCY:1}
+      poll-interval: ${GENERATION_WORKER_POLL_INTERVAL:5s}
     lifecycle:
       processing-timeout: ${GENERATION_PROCESSING_TIMEOUT:30m}
       cleanup-interval: ${GENERATION_CLEANUP_INTERVAL:1m}
