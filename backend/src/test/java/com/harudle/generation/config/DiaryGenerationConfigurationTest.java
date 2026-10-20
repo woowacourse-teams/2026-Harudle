@@ -17,6 +17,8 @@ import com.harudle.generation.diary.service.port.DiaryImageGenerator;
 import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.storyboard.StoryboardGenerationService;
 import com.harudle.generation.prompt.repository.GenerationPromptRepository;
+import com.harudle.generation.loadtest.LoadTestDiaryGenerationExecutor;
+import com.harudle.generation.loadtest.LoadTestGenerationRegistry;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
@@ -159,6 +161,30 @@ class DiaryGenerationConfigurationTest {
 
             assertThatThrownBy(context::refresh)
                     .hasRootCauseInstanceOf(NoUniqueBeanDefinitionException.class);
+        }
+    }
+
+    @Test
+    @DisplayName("가짜 AI를 등록해도 기본 실행기를 바꾸지 않고 공통 처리기에 연결한다")
+    void wireStubWithoutReplacingDefaultExecutor() throws InterruptedException {
+        try (AnnotationConfigApplicationContext context = createWorkerContext(1, "1h")) {
+            LoadTestDiaryGenerationExecutor stub = mock(LoadTestDiaryGenerationExecutor.class);
+            when(stub.isConfigured()).thenReturn(true);
+            context.registerBean(LoadTestDiaryGenerationExecutor.class, () -> stub);
+            context.registerBean(LoadTestGenerationRegistry.class, () -> new LoadTestGenerationRegistry(stub));
+            context.refresh();
+            CountDownLatch claimed = new CountDownLatch(1);
+            when(context.getBean(PendingDiaryGenerationClaimService.class).claim(1))
+                    .thenAnswer(invocation -> {
+                        claimed.countDown();
+                        return List.of();
+                    });
+
+            context.getBean(DiaryGenerationWorker.class).poll();
+
+            assertThat(claimed.await(2, TimeUnit.SECONDS)).isTrue();
+            assertThat(context.getBean(DiaryGenerationExecutor.class)).isNotSameAs(stub);
+            assertThat(context.getBean(DiaryGenerationExecutor.class).isConfigured()).isFalse();
         }
     }
 

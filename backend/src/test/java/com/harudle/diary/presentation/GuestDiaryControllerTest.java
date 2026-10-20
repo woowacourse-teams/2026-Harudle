@@ -46,6 +46,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -122,14 +124,14 @@ class GuestDiaryControllerTest {
     }
 
     @Test
-    @DisplayName("Access Token 없이 게스트 일기를 한 번 생성하고 201을 반환한다")
-    void createGuestDiary() {
+    @DisplayName("Access Token 없이 게스트의 기존 이미지와 토큰 사용량을 200으로 반환한다")
+    void replayGuestDiaryWithImageAndTokenUsage() {
         configureGuestSessionCookie();
         configureImageUrl();
         when(guestDiaryCreationService.create(
                 eq(RAW_TOKEN),
                 any(CreateGuestDiaryCommand.class)
-        )).thenReturn(createGuestResult(true));
+        )).thenReturn(createGuestResult(false));
 
         MockMvcResponse response = guestPostRequest()
                 .contentType(ContentType.JSON)
@@ -137,9 +139,8 @@ class GuestDiaryControllerTest {
                 .body(validRequestBody())
                 .post("/api/v1/guest/diaries");
 
-        assertThat(response.statusCode()).isEqualTo(201);
-        assertThat(response.header("Location"))
-                .isEqualTo("/api/v1/guest/diaries/" + DIARY_ID);
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.header("Location")).isNull();
         assertThat(response.header("Cache-Control")).isEqualTo("no-store");
         assertThat(response.jsonPath().getString("id")).isEqualTo(DIARY_ID.toString());
         assertThat(response.jsonPath().getString("generation.imageUrl"))
@@ -147,6 +148,38 @@ class GuestDiaryControllerTest {
         assertThat(response.jsonPath().getInt("generation.tokenUsage.totalTokenCount"))
                 .isEqualTo(550);
         assertThat(response.asString()).doesNotContain("usage", "imageObjectKey");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"true,PENDING,202", "false,PENDING,200", "false,PROCESSING,200"})
+    @DisplayName("게스트 신규 대기 작업은 202로 접수하고 재요청은 200으로 상태를 반환한다")
+    void returnPendingGuestGeneration(boolean newlyCreated, GenerationStatus generationStatus, int statusCode) {
+        configureGuestSessionCookie();
+        when(guestDiaryCreationService.create(eq(RAW_TOKEN), any(CreateGuestDiaryCommand.class)))
+                .thenReturn(new CreateGuestDiaryResult(
+                        DIARY_ID, DIARY_DATE, "오늘 친구와 카페에 갔다.", CREATED_AT,
+                        new DiaryGenerationResult(GENERATION_ID, generationStatus, null, null, null), newlyCreated
+                ));
+
+        MockMvcResponse response = guestPostRequest()
+                .contentType(ContentType.JSON)
+                .header("Idempotency-Key", IDEMPOTENCY_KEY)
+                .body(validRequestBody())
+                .post("/api/v1/guest/diaries");
+
+        assertThat(response.statusCode()).isEqualTo(statusCode);
+        assertThat(response.header("Location"))
+                .isEqualTo(newlyCreated ? "/api/v1/guest/diaries/" + DIARY_ID : null);
+        assertThat(response.header("Cache-Control")).isEqualTo("no-store");
+        assertThat(response.jsonPath().getString("id")).isEqualTo(DIARY_ID.toString());
+        assertThat(response.jsonPath().getString("generation.id")).isEqualTo(GENERATION_ID.toString());
+        assertThat(response.jsonPath().getString("generation.status")).isEqualTo(generationStatus.name());
+        assertThat(response.jsonPath().getString("generation.title")).isNull();
+        assertThat(response.jsonPath().getString("generation.imageUrl")).isNull();
+        assertThat(response.jsonPath().getString("generation.imageUrlExpiresAt")).isNull();
+        assertThat(response.jsonPath().getString("generation.completedAt")).isNull();
+        assertThat(response.asString()).doesNotContain("usage", "imageObjectKey");
+        verifyNoInteractions(imageUrlProvider);
     }
 
     @Test

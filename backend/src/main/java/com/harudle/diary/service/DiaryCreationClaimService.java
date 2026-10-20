@@ -66,10 +66,33 @@ class DiaryCreationClaimService {
             boolean generationAvailable,
             LocalDate usageDate
     ) {
+        return claim(command, generationAvailable, usageDate, false);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    DiaryCreationClaim enqueue(CreateDiaryCommand command, boolean generationAvailable) {
+        return enqueue(command, generationAvailable, null);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    DiaryCreationClaim enqueue(
+            CreateDiaryCommand command,
+            boolean generationAvailable,
+            LocalDate usageDate
+    ) {
+        return claim(command, generationAvailable, usageDate, true);
+    }
+
+    private DiaryCreationClaim claim(
+            CreateDiaryCommand command,
+            boolean generationAvailable,
+            LocalDate usageDate,
+            boolean queueForWorker
+    ) {
         return diaryGenerationRepository
                 .findByIdempotencyKeyForUpdate(command.idempotencyKey())
                 .map(generation -> createExistingClaim(command, generation))
-                .orElseGet(() -> createNewClaim(command, generationAvailable, usageDate));
+                .orElseGet(() -> createNewClaim(command, generationAvailable, usageDate, queueForWorker));
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -98,7 +121,8 @@ class DiaryCreationClaimService {
     private DiaryCreationClaim createNewClaim(
             CreateDiaryCommand command,
             boolean generationAvailable,
-            LocalDate usageDate
+            LocalDate usageDate,
+            boolean queueForWorker
     ) {
         if (!generationAvailable) {
             throw GenerationUnavailableException.adaptersNotConfigured();
@@ -112,13 +136,13 @@ class DiaryCreationClaimService {
                 command.sourceText()
         ));
         GenerateDiaryImageCommand generationCommand = createGenerationCommand(command, diary);
-        DiaryGeneration generation = DiaryGeneration.start(
-                diary.getId(),
-                promptId,
-                command.idempotencyKey(),
-                requestFingerprintGenerator.generate(generationCommand),
-                usageDate
+        String fingerprint = requestFingerprintGenerator.generate(generationCommand);
+        DiaryGeneration generation = DiaryGeneration.pending(
+                diary.getId(), promptId, command.idempotencyKey(), fingerprint, usageDate
         );
+        if (!queueForWorker) {
+            generation.startProcessing();
+        }
         DiaryGeneration savedGeneration = diaryGenerationRepository.saveAndFlush(generation);
         return toClaim(diary, savedGeneration, true);
     }

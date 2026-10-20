@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 import com.harudle.diary.domain.Diary;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.generation.config.GenerationWorkerProperties;
+import com.harudle.generation.loadtest.LoadTestGenerationRegistry;
 import com.harudle.generation.diary.domain.DiaryGeneration;
 import com.harudle.generation.diary.domain.GenerationErrorCode;
 import com.harudle.generation.diary.domain.GenerationStatus;
@@ -35,6 +36,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.core.task.TaskExecutor;
@@ -266,7 +269,7 @@ class DiaryGenerationWorkerTest {
     }
 
     @Test
-    @DisplayName("설정한 개수까지만 병렬 실행하고 종료 후에는 새 작업을 가져오지 않는다")
+    @DisplayName("실제 AI와 Stub을 합해 설정한 개수까지만 병렬 실행하고 종료 후에는 선점을 멈춘다")
     void limitConcurrentExecutionAndFinishClaimedWorkOnStop() throws Exception {
         Fixture first = processingGeneration();
         Fixture second = processingGeneration();
@@ -279,19 +282,36 @@ class DiaryGenerationWorkerTest {
         CountDownLatch finished = new CountDownLatch(2);
         AtomicInteger active = new AtomicInteger();
         AtomicInteger maximumActive = new AtomicInteger();
-        when(generationExecutor.generate(any(), any())).thenAnswer(invocation -> {
+        DiaryGenerationExecutor stub = mock(DiaryGenerationExecutor.class);
+        when(stub.isConfigured()).thenReturn(true);
+        LoadTestGenerationRegistry registry = mock(LoadTestGenerationRegistry.class);
+        when(registry.findExecutor(second.generation().getId())).thenReturn(Optional.of(stub));
+        Runnable awaitRelease = () -> {
             maximumActive.accumulateAndGet(active.incrementAndGet(), Math::max);
             started.countDown();
             try {
                 assertThat(release.await(5, TimeUnit.SECONDS)).isTrue();
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(exception);
             } finally {
                 active.decrementAndGet();
                 finished.countDown();
             }
+        };
+        when(generationExecutor.generate(any(), any())).thenAnswer(invocation -> {
+            awaitRelease.run();
+            return null;
+        });
+        when(stub.generate(any(), any())).thenAnswer(invocation -> {
+            awaitRelease.run();
             return null;
         });
         try (var executor = Executors.newFixedThreadPool(2)) {
-            DiaryGenerationWorker worker = worker(executor::execute, 2);
+            DiaryGenerationWorker worker = new DiaryGenerationWorker(
+                    claimService, generationRepository, diaryRepository, generationExecutor, Optional.of(registry),
+                    completionService, executor::execute, new GenerationWorkerProperties(true, 2, Duration.ofSeconds(5))
+            );
             try {
                 worker.poll();
                 assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
@@ -306,11 +326,127 @@ class DiaryGenerationWorkerTest {
             assertThat(finished.await(5, TimeUnit.SECONDS)).isTrue();
         }
         verify(claimService, times(2)).claim(1);
+        verify(generationExecutor).generate(any(), eq(first.generation().getId()));
+        verify(stub).generate(any(), eq(second.generation().getId()));
+        verify(registry).remove(first.generation().getId());
+        verify(registry).remove(second.generation().getId());
         verifyNoInteractions(completionService);
     }
 
-    private DiaryGenerationWorker worker(TaskExecutor taskExecutor, int concurrency) {
+    @Test
+    @DisplayName("선점한 테스트 작업은 가짜 AI로 실행하고 일반 실행기는 호출하지 않는다")
+    void routeClaimedLoadTestGenerationToStub() {
+        Fixture fixture = processingGeneration();
+        stubInput(fixture);
+        DiaryGenerationExecutor stub = mock(DiaryGenerationExecutor.class);
+        when(stub.isConfigured()).thenReturn(true);
+        when(claimService.claim(1)).thenReturn(List.of(fixture.generation().getId()));
+        DiaryGenerationWorker worker = workerWithStub(stub, fixture.generation().getId());
+
+        worker.poll();
+
+        verify(stub).generate(any(), eq(fixture.generation().getId()));
+        verify(generationExecutor, never()).generate(any(), any());
+    }
+
+    @Test
+    @DisplayName("가짜 AI가 함께 있어도 일반 작업은 실제 실행기로 처리한다")
+    void keepRealExecutorForNormalGeneration() {
+        Fixture fixture = processingGeneration();
+        stubInput(fixture);
+        DiaryGenerationExecutor stub = mock(DiaryGenerationExecutor.class);
+        when(stub.isConfigured()).thenReturn(true);
+        when(claimService.claim(1)).thenReturn(List.of(fixture.generation().getId()));
+
+        workerWithStub(stub, UUID.randomUUID()).poll();
+
+        verify(generationExecutor).generate(any(), eq(fixture.generation().getId()));
+        verify(stub, never()).generate(any(), any());
+    }
+
+    @Test
+    @DisplayName("실제 AI가 없어도 가짜 AI가 준비되면 등록된 테스트 작업을 실행한다")
+    void runRegisteredStubWhenRealExecutorUnavailable() {
+        when(generationExecutor.isConfigured()).thenReturn(false);
+        Fixture fixture = processingGeneration();
+        stubInput(fixture);
+        DiaryGenerationExecutor stub = mock(DiaryGenerationExecutor.class);
+        when(stub.isConfigured()).thenReturn(true);
+        when(claimService.claim(1)).thenReturn(List.of(fixture.generation().getId()));
+
+        workerWithStub(stub, fixture.generation().getId()).poll();
+
+        verify(stub).generate(any(), eq(fixture.generation().getId()));
+        verify(generationExecutor, never()).generate(any(), any());
+    }
+
+    @Test
+    @DisplayName("등록된 테스트 실행기가 준비되지 않으면 실제 AI로 대신 실행하지 않는다")
+    void neverFallBackToRealAiForRegisteredLoadTest() {
+        Fixture fixture = processingGeneration();
+        stubInput(fixture);
+        DiaryGenerationExecutor stub = mock(DiaryGenerationExecutor.class);
+        when(claimService.claim(1)).thenReturn(List.of(fixture.generation().getId()));
+
+        workerWithStub(stub, fixture.generation().getId()).poll();
+
+        verify(generationExecutor, never()).generate(any(), any());
+        verify(stub, never()).generate(any(), any());
+        verify(completionService).fail(fixture.generation().getId(), GenerationErrorCode.GENERATION_INTERNAL_ERROR);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    @DisplayName("Stub 실행이 성공하거나 실패하면 메모리 연결을 지운다")
+    void removeRegistrationAfterExecution(boolean fail) {
+        Fixture fixture = processingGeneration();
+        stubInput(fixture);
+        DiaryGenerationExecutor stub = mock(DiaryGenerationExecutor.class);
+        when(stub.isConfigured()).thenReturn(true);
+        LoadTestGenerationRegistry registry = mock(LoadTestGenerationRegistry.class);
+        when(registry.findExecutor(fixture.generation().getId())).thenReturn(Optional.of(stub));
+        when(claimService.claim(1)).thenReturn(List.of(fixture.generation().getId()));
+        if (fail) {
+            when(stub.generate(any(), any())).thenThrow(new IllegalStateException("테스트 생성 실패"));
+        }
+
+        workerWithRegistry(registry).poll();
+
+        verify(registry).remove(fixture.generation().getId());
+        verify(generationExecutor, never()).generate(any(), any());
+    }
+
+    @Test
+    @DisplayName("실행 전에 종료된 테스트 작업도 메모리 연결을 지운다")
+    void removeRegistrationWhenGenerationAlreadyFinalized() {
+        Fixture fixture = processingGeneration();
+        fixture.generation().fail(GenerationErrorCode.GENERATION_INTERRUPTED, Instant.now());
+        when(generationRepository.findById(fixture.generation().getId())).thenReturn(Optional.of(fixture.generation()));
+        when(claimService.claim(1)).thenReturn(List.of(fixture.generation().getId()));
+        LoadTestGenerationRegistry registry = mock(LoadTestGenerationRegistry.class);
+
+        workerWithRegistry(registry).poll();
+
+        verify(registry).remove(fixture.generation().getId());
+        verify(generationExecutor, never()).generate(any(), any());
+    }
+
+    private DiaryGenerationWorker workerWithStub(DiaryGenerationExecutor stub, UUID registeredId) {
+        LoadTestGenerationRegistry registry = mock(LoadTestGenerationRegistry.class);
+        when(registry.isConfigured()).thenAnswer(invocation -> stub.isConfigured());
+        when(registry.findExecutor(any())).thenAnswer(invocation ->
+                registeredId.equals(invocation.getArgument(0)) ? Optional.of(stub) : Optional.empty());
+        return workerWithRegistry(registry);
+    }
+
+    private DiaryGenerationWorker workerWithRegistry(LoadTestGenerationRegistry registry) {
         return new DiaryGenerationWorker(claimService, generationRepository, diaryRepository, generationExecutor,
+                Optional.of(registry), completionService, Runnable::run,
+                new GenerationWorkerProperties(true, 1, Duration.ofSeconds(5)));
+    }
+
+    private DiaryGenerationWorker worker(TaskExecutor taskExecutor, int concurrency) {
+        return new DiaryGenerationWorker(claimService, generationRepository, diaryRepository, generationExecutor, Optional.empty(),
                 completionService, taskExecutor, new GenerationWorkerProperties(true, concurrency, Duration.ofSeconds(5)));
     }
 

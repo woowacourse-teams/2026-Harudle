@@ -61,6 +61,8 @@ import org.testcontainers.utility.MountableFile;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "spring.config.import=", "spring.profiles.active=", "DEPLOY_ENV=dev",
         "harudle.load-test.verification=true",
+        "harudle.generation.worker.enabled=true", "harudle.generation.worker.concurrency=3",
+        "harudle.generation.worker.poll-interval=100ms",
         "harudle.generation.adapters.enabled=true", "harudle.generation.storage.r2.enabled=false",
         "spring.security.oauth2.client.registration.kakao.client-id=test",
         "spring.security.oauth2.client.registration.kakao.client-secret=test",

@@ -41,6 +41,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -113,10 +114,13 @@ class LoadTestDiaryControllerTest {
 
     @Test
     void reportsStubWithoutLoadTestProfile() throws Exception {
+        when(creationService.isWorkerEnabled()).thenReturn(true);
         mvc.perform(get("/api/v1/load-test/ai-stub").with(jwt()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.delayMs").value(30000))
-                .andExpect(jsonPath("$.output").value("test-image"));
+                .andExpect(jsonPath("$.output").value("test-image"))
+                .andExpect(jsonPath("$.execution").value("db-queue"))
+                .andExpect(jsonPath("$.workerEnabled").value(true));
     }
 
     @ParameterizedTest
@@ -138,24 +142,38 @@ class LoadTestDiaryControllerTest {
     }
 
     @ParameterizedTest
-    @ValueSource(booleans = {true, false})
-    void returnsSavedDiaryOrReusesIdempotentResult(boolean newlyCreated) throws Exception {
+    @CsvSource({"true,PENDING,202", "false,PENDING,200", "false,PROCESSING,200", "false,SUCCEEDED,200"})
+    void returnsAcceptedDiaryOrReusesIdempotentResult(
+            boolean newlyCreated, GenerationStatus generationStatus, int statusCode
+    ) throws Exception {
         Instant now = Instant.now();
+        UUID generationId = UUID.randomUUID();
+        boolean succeeded = generationStatus == GenerationStatus.SUCCEEDED;
         when(creationService.create(any())).thenReturn(new CreateDiaryResult(
                 DIARY_ID, DATE, "부하 테스트 일기", now,
-                new DiaryGenerationResult(UUID.randomUUID(), GenerationStatus.SUCCEEDED, "부하 테스트 일기", "image-key", now),
+                new DiaryGenerationResult(generationId, generationStatus,
+                        succeeded ? "부하 테스트 일기" : null, succeeded ? "image-key" : null, succeeded ? now : null),
                 new GenerationUsage(DATE, 1, 3), newlyCreated));
-        when(imageUrlProvider.createAccessUrl("image-key"))
-                .thenReturn(new ImageAccessUrl(URI.create("https://images.invalid/diary.webp"), now.plusSeconds(900)));
+        if (succeeded) {
+            when(imageUrlProvider.createAccessUrl("image-key"))
+                    .thenReturn(new ImageAccessUrl(URI.create("https://images.invalid/diary.webp"), now.plusSeconds(900)));
+        }
         var response = mvc.perform(post(PATH)
                         .header("Authorization", "Bearer test-token")
                         .header("Idempotency-Key", KEY.toString())
                         .contentType(MediaType.APPLICATION_JSON).content(BODY))
-                .andExpect(status().is(newlyCreated ? 201 : 200))
+                .andExpect(status().is(statusCode))
                 .andExpect(jsonPath("$.id").value(DIARY_ID.toString()))
-                .andExpect(jsonPath("$.generation.status").value("SUCCEEDED"));
+                .andExpect(jsonPath("$.generation.id").value(generationId.toString()))
+                .andExpect(jsonPath("$.generation.status").value(generationStatus.name()))
+                .andExpect(jsonPath("$.usage.remainingCount").value(2));
         if (newlyCreated) {
             response.andExpect(header().string("Location", "/api/v1/diaries/" + DIARY_ID));
+        } else {
+            response.andExpect(header().doesNotExist("Location"));
+        }
+        if (!succeeded) {
+            verifyNoInteractions(imageUrlProvider);
         }
         verify(creationService).create(new CreateDiaryCommand(USER_ID, DATE, "부하 테스트 일기", KEY));
     }

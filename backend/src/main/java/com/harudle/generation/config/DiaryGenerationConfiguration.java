@@ -19,6 +19,7 @@ import com.harudle.generation.diary.service.storyboard.StoryboardGenerationServi
 import com.harudle.generation.prompt.infrastructure.GenerationPromptBootstrapService;
 import com.harudle.generation.prompt.infrastructure.GenerationPromptInitializer;
 import com.harudle.generation.prompt.repository.GenerationPromptRepository;
+import com.harudle.generation.loadtest.LoadTestGenerationRegistry;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.Optional;
 import java.util.UUID;
@@ -31,6 +32,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -73,11 +75,13 @@ class DiaryGenerationConfiguration {
             DiaryGenerationRepository generationRepository,
             DiaryRepository diaryRepository,
             DiaryGenerationExecutor generationExecutor,
+            ObjectProvider<LoadTestGenerationRegistry> loadTestRegistryProvider,
             DiaryGenerationCompletionService completionService,
             @Qualifier("generationWorkerTaskExecutor") ThreadPoolTaskExecutor taskExecutor,
             GenerationWorkerProperties properties
     ) {
         return new DiaryGenerationWorker(claimService, generationRepository, diaryRepository, generationExecutor,
+                Optional.ofNullable(loadTestRegistryProvider.getIfAvailable()),
                 completionService, taskExecutor, properties);
     }
 
@@ -94,6 +98,7 @@ class DiaryGenerationConfiguration {
     }
 
     @Bean
+    @Primary
     DiaryGenerationExecutor diaryGenerationExecutor(
             RequestFingerprintGenerator requestFingerprintGenerator,
             GenerationPromptRepository generationPromptRepository,

@@ -73,6 +73,11 @@ public enum ErrorType {
             "Diary not found",
             "일기를 찾을 수 없습니다."
     ),
+    GENERATION_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "Generation not found",
+            "생성 작업을 찾을 수 없습니다."
+    ),
     FEED_NOT_FOUND(
             HttpStatus.NOT_FOUND,
             "Feed not found",

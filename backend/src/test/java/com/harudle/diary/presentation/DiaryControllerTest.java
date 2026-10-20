@@ -150,10 +150,10 @@ class DiaryControllerTest {
     }
 
     @Test
-    @DisplayName("일기를 작성하고 4컷 이미지 생성 결과를 201로 반환한다")
-    void createDiary() {
+    @DisplayName("성공한 멱등 재요청은 기존 이미지와 토큰 사용량을 200으로 반환한다")
+    void replayDiaryWithImageAndTokenUsage() {
         when(diaryCreationService.create(any(CreateDiaryCommand.class)))
-                .thenReturn(createDiaryResult(true));
+                .thenReturn(createDiaryResult(false));
         configureImageUrl();
 
         MockMvcResponse response = authenticatedRequest()
@@ -167,8 +167,8 @@ class DiaryControllerTest {
                         """)
                 .post("/api/v1/diaries");
 
-        assertThat(response.statusCode()).isEqualTo(201);
-        assertThat(response.header("Location")).isEqualTo("/api/v1/diaries/" + DIARY_ID);
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.header("Location")).isNull();
         assertThat(response.jsonPath().getString("id")).isEqualTo(DIARY_ID.toString());
         assertThat(response.jsonPath().getString("generation.imageUrl"))
                 .isEqualTo("https://images.harudle.example/comic.png");
@@ -182,6 +182,38 @@ class DiaryControllerTest {
                 .isEqualTo(550);
         assertThat(response.jsonPath().getInt("usage.remainingCount")).isEqualTo(2);
         assertThat(response.asString()).doesNotContain("imageObjectKey", "generated/comic.png");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"true,PENDING,202", "false,PENDING,200", "false,PROCESSING,200"})
+    @DisplayName("신규 대기 작업은 202로 접수하고 재요청은 200으로 상태를 반환한다")
+    void returnPendingGeneration(boolean newlyCreated, GenerationStatus generationStatus, int statusCode) {
+        when(diaryCreationService.create(any(CreateDiaryCommand.class))).thenReturn(new CreateDiaryResult(
+                DIARY_ID, DIARY_DATE, "오늘 친구와 카페에 갔다.", CREATED_AT,
+                new DiaryGenerationResult(GENERATION_ID, generationStatus, null, null, null),
+                new GenerationUsage(DIARY_DATE, 1, 3), newlyCreated
+        ));
+
+        MockMvcResponse response = authenticatedRequest()
+                .contentType(ContentType.JSON)
+                .header("Idempotency-Key", IDEMPOTENCY_KEY)
+                .body("""
+                        {"diaryDate": "2026-08-06", "sourceText": "오늘 친구와 카페에 갔다."}
+                        """)
+                .post("/api/v1/diaries");
+
+        assertThat(response.statusCode()).isEqualTo(statusCode);
+        assertThat(response.header("Location"))
+                .isEqualTo(newlyCreated ? "/api/v1/diaries/" + DIARY_ID : null);
+        assertThat(response.jsonPath().getString("id")).isEqualTo(DIARY_ID.toString());
+        assertThat(response.jsonPath().getString("generation.id")).isEqualTo(GENERATION_ID.toString());
+        assertThat(response.jsonPath().getString("generation.status")).isEqualTo(generationStatus.name());
+        assertThat(response.jsonPath().getString("generation.title")).isNull();
+        assertThat(response.jsonPath().getString("generation.imageUrl")).isNull();
+        assertThat(response.jsonPath().getString("generation.imageUrlExpiresAt")).isNull();
+        assertThat(response.jsonPath().getString("generation.completedAt")).isNull();
+        assertThat(response.jsonPath().getInt("usage.remainingCount")).isEqualTo(2);
+        verifyNoInteractions(imageUrlProvider);
     }
 
     @Test
@@ -478,7 +510,7 @@ class DiaryControllerTest {
                 .body(requestBody)
                 .post("/api/v1/diaries");
 
-        assertThat(response.statusCode()).isEqualTo(201);
+        assertThat(response.statusCode()).isEqualTo(202);
     }
 
     @Test

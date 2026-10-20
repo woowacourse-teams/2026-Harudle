@@ -114,7 +114,8 @@ public class SecurityConfig {
                         ).permitAll()
                         .requestMatchers(
                                 HttpMethod.GET,
-                                "/api/v1/guest/diaries/*"
+                                "/api/v1/guest/diaries/*",
+                                "/api/v1/guest/diary-generations/*"
                         ).permitAll()
                         .requestMatchers(
                                 "/api/v1/auth/refresh",

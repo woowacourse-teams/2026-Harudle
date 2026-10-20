@@ -346,11 +346,12 @@ class ReusableMembersPostgresTest(unittest.TestCase):
                 delete.assert_not_called()
                 self.assertEqual(self.sql('SELECT COUNT(*) FROM diaries;'), '401')
                 current_key = fixture['members'][0]['idempotencyKey']
-                self.sql(f"UPDATE diary_generations SET idempotency_key = '{current_key}', status = 'PROCESSING' "
-                         f"WHERE id = '{unknown['id']}';")
-                with self.assertRaises(subprocess.CalledProcessError):
-                    cleanup.cleanup(directory, execute_sql=self.sql, client_stopped=True)
-                delete.assert_not_called()
+                for status in ['PENDING', 'PROCESSING']:
+                    self.sql(f"UPDATE diary_generations SET idempotency_key = '{current_key}', status = '{status}' "
+                             f"WHERE id = '{unknown['id']}';")
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        cleanup.cleanup(directory, execute_sql=self.sql, client_stopped=True)
+                    delete.assert_not_called()
                 self.sql(f"UPDATE diary_generations SET status = 'SUCCEEDED' WHERE id = '{unknown['id']}';")
                 cleanup.cleanup(directory, execute_sql=self.sql, client_stopped=True)
                 self.assertIn(unknown, delete.call_args.args[1])

@@ -8,7 +8,10 @@ import com.harudle.generation.diary.domain.GenerationErrorCode;
 import com.harudle.generation.diary.domain.GenerationStatus;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
+import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
+import com.harudle.generation.loadtest.LoadTestGenerationRegistry;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
@@ -26,6 +29,7 @@ public final class DiaryGenerationWorker {
     private final DiaryGenerationRepository generationRepository;
     private final DiaryRepository diaryRepository;
     private final DiaryGenerationExecutor generationExecutor;
+    private final Optional<LoadTestGenerationRegistry> loadTestGenerationRegistry;
     private final DiaryGenerationCompletionService completionService;
     private final TaskExecutor taskExecutor;
     private final int concurrency;
@@ -37,6 +41,7 @@ public final class DiaryGenerationWorker {
             DiaryGenerationRepository generationRepository,
             DiaryRepository diaryRepository,
             DiaryGenerationExecutor generationExecutor,
+            Optional<LoadTestGenerationRegistry> loadTestGenerationRegistry,
             DiaryGenerationCompletionService completionService,
             TaskExecutor taskExecutor,
             GenerationWorkerProperties properties
@@ -45,6 +50,7 @@ public final class DiaryGenerationWorker {
         this.generationRepository = generationRepository;
         this.diaryRepository = diaryRepository;
         this.generationExecutor = generationExecutor;
+        this.loadTestGenerationRegistry = loadTestGenerationRegistry;
         this.completionService = completionService;
         this.taskExecutor = taskExecutor;
         this.concurrency = properties.concurrency();
@@ -56,7 +62,7 @@ public final class DiaryGenerationWorker {
             initialDelayString = "${harudle.generation.worker.poll-interval:5s}"
     )
     public void poll() {
-        if (stopping.get() || !generationExecutor.isConfigured()) {
+        if (stopping.get() || (!generationExecutor.isConfigured() && !isLoadTestConfigured())) {
             return;
         }
         for (int attempt = 0; attempt < concurrency; attempt++) {
@@ -102,6 +108,10 @@ public final class DiaryGenerationWorker {
                 handleFailure(generationId, exception);
             }
         } finally {
+            if (generationId != null) {
+                UUID completedGenerationId = generationId;
+                loadTestGenerationRegistry.ifPresent(registry -> registry.remove(completedGenerationId));
+            }
             availableSlots.release();
         }
     }
@@ -117,13 +127,23 @@ public final class DiaryGenerationWorker {
         if (diary.isDeleted()) {
             throw new IllegalStateException("삭제된 일기는 생성할 수 없습니다.");
         }
-        generationExecutor.generate(new GenerateDiaryImageCommand(
+        DiaryGenerationExecutor executor = loadTestGenerationRegistry
+                .flatMap(registry -> registry.findExecutor(generationId))
+                .orElse(generationExecutor);
+        if (!executor.isConfigured()) {
+            throw GenerationUnavailableException.adaptersNotConfigured();
+        }
+        executor.generate(new GenerateDiaryImageCommand(
                 diary.getUserId(),
                 diary.getId(),
                 diary.getDiaryDate(),
                 diary.getSourceText(),
                 generation.getIdempotencyKey()
         ), generationId);
+    }
+
+    private boolean isLoadTestConfigured() {
+        return loadTestGenerationRegistry.map(LoadTestGenerationRegistry::isConfigured).orElse(false);
     }
 
     private void handleFailure(UUID generationId, RuntimeException exception) {

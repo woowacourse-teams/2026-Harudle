@@ -8,9 +8,7 @@ import com.harudle.generation.diary.service.dto.CompletedDiaryGeneration;
 import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
 import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
 import com.harudle.generation.diary.service.exception.GenerationInProgressException;
-import org.springframework.stereotype.Service;
 
-@Service
 class DiaryCreationExecutionService {
 
     private final DiaryGenerationExecutor generationExecutor;

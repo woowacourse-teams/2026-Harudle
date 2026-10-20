@@ -68,18 +68,17 @@ class DiaryController {
 
     @Operation(
             summary = "일기 생성",
-            description = "일기를 저장하고 4컷 이미지를 동기 생성합니다. 동일한 멱등성 요청의 성공 결과는 재사용합니다."
+            description = "일기와 대기 작업을 저장하고 생성 상태를 반환합니다. 이미지는 작업 처리기가 생성합니다."
     )
     @ApiResponses({
-            @ApiResponse(responseCode = "201", description = "새 일기 생성 완료"),
-            @ApiResponse(responseCode = "200", description = "멱등 재요청의 기존 일기 반환")
+            @ApiResponse(responseCode = "202", description = "새 일기와 대기 작업 접수 완료"),
+            @ApiResponse(responseCode = "200", description = "멱등 재요청의 기존 일기와 생성 상태 반환")
     })
     @ApiErrorResponses({
             ErrorType.VALIDATION_ERROR,
             ErrorType.INVALID_IDEMPOTENCY_KEY,
             ErrorType.UNAUTHORIZED,
             ErrorType.DIARY_NOT_FOUND,
-            ErrorType.GENERATION_IN_PROGRESS,
             ErrorType.IDEMPOTENCY_KEY_CONFLICT,
             ErrorType.DAILY_GENERATION_LIMIT_EXCEEDED,
             ErrorType.AI_PROVIDER_ERROR,
@@ -111,7 +110,7 @@ class DiaryController {
             return ResponseEntity.ok(response);
         }
         URI location = URI.create(BASE_PATH + "/" + result.id());
-        return ResponseEntity.created(location).body(response);
+        return ResponseEntity.accepted().location(location).body(response);
     }
 
     @Operation(
