@@ -80,6 +80,14 @@ const useFeedList = ({
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  const updateFeedStateAndCache = useCallback(
+    (data: FeedListResponse): void => {
+      feedListCache = { key, data };
+      setRequest({ status: 'success', data });
+    },
+    [key],
+  );
+
   const execute = useCallback(async (): Promise<void> => {
     abortControllerRef.current?.abort();
     const controller = new AbortController();
@@ -107,8 +115,7 @@ const useFeedList = ({
       });
       if (signal.aborted) return;
 
-      setRequest({ status: 'success', data });
-      feedListCache = { key, data };
+      updateFeedStateAndCache(data);
     } catch (error: unknown) {
       if (signal.aborted) return;
       setRequest({
@@ -123,7 +130,7 @@ const useFeedList = ({
         abortControllerRef.current = null;
       }
     }
-  }, [categoryId, sort, key, track]);
+  }, [categoryId, sort, track, updateFeedStateAndCache]);
 
   const loadMore = useCallback(async (): Promise<void> => {
     // TODO: 타입 안정성 보강 hasNext, nextCursor
@@ -156,8 +163,7 @@ const useFeedList = ({
       if (feedListCache?.key !== key) return;
 
       const nextData = appendFeedPage(feedListCache.data, data);
-      feedListCache = { key, data: nextData };
-      setRequest({ status: 'success', data: nextData });
+      updateFeedStateAndCache(nextData);
       setLoadMoreRequest({ status: 'success', data: undefined });
     } catch (error: unknown) {
       if (signal.aborted) return;
@@ -173,7 +179,7 @@ const useFeedList = ({
         abortControllerRef.current = null;
       }
     }
-  }, [request, categoryId, sort, key, track]);
+  }, [request, categoryId, sort, key, track, updateFeedStateAndCache]);
 
   useEffect(() => {
     if (feedListCache?.key !== key) {
@@ -190,10 +196,9 @@ const useFeedList = ({
       if (request.status !== 'success') return;
 
       const nextData = updateFeedLike(request.data, feedId, like);
-      feedListCache = { key, data: nextData };
-      setRequest({ status: 'success', data: nextData });
+      updateFeedStateAndCache(nextData);
     },
-    [request, key],
+    [request, updateFeedStateAndCache],
   );
 
   const removeFeedFromList = useCallback(
@@ -201,10 +206,9 @@ const useFeedList = ({
       if (request.status !== 'success') return;
 
       const nextData = removeFeed(request.data, feedId);
-      feedListCache = { key, data: nextData };
-      setRequest({ status: 'success', data: nextData });
+      updateFeedStateAndCache(nextData);
     },
-    [request, key],
+    [request, updateFeedStateAndCache],
   );
 
   return {
