@@ -15,10 +15,30 @@ import type {
   getFeedList,
 } from '../../domain/feeds/feedList';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
-import FeedItemList from './FeedItemList';
+import FeedItemListView from './FeedItemList';
 import type { setFeedLike } from '../../domain/feeds/feedLike';
 import type { deleteFeed } from '../../domain/feeds/feedDelete';
-import type useFeedList from './useFeedList';
+import useFeedList from './useFeedList';
+
+const FeedItemList = ({
+  categoryId,
+  sort,
+  onCategoryClick,
+}: Pick<
+  React.ComponentProps<typeof FeedItemListView>,
+  'categoryId' | 'sort' | 'onCategoryClick'
+>) => {
+  const feedList = useFeedList({ categoryId, sort });
+
+  return (
+    <FeedItemListView
+      categoryId={categoryId}
+      sort={sort}
+      onCategoryClick={onCategoryClick}
+      {...feedList}
+    />
+  );
+};
 
 let mockUseFeedList: typeof useFeedList;
 jest.mock('./useFeedList', () => ({
@@ -174,7 +194,9 @@ describe('피드 카드 액션', (): void => {
 
     await user.click(await screen.findByRole('button', { name: '3' }));
 
-    expect(mockNavigate).toHaveBeenCalledWith(`/feeds/${feed.id}`);
+    expect(mockNavigate).toHaveBeenCalledWith(`/feeds/${feed.id}`, {
+      state: { fromFeed: true },
+    });
   });
 
   it('비로그인 좋아요는 요청 없이 로그인 안내를 열고 닫거나 로그인 페이지로 이동한다', async (): Promise<void> => {

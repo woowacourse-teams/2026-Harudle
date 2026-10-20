@@ -84,6 +84,41 @@ test.beforeEach(async ({ page }): Promise<void> => {
 });
 
 test.describe('피드 스크롤과 목록 캐시 복원', (): void => {
+  test('새로고침하면 필터를 유지하고 누적 목록과 커서를 첫 페이지로 갱신한다', async ({
+    page,
+  }): Promise<void> => {
+    const requests = trackFeedListRequests(page);
+    await page.goto('/?categoryId=1&sort=POPULAR');
+    await expect(page.getByRole('article')).toHaveCount(12);
+    await scrollToFeed(page, 4);
+    const requestCount = requests.length;
+
+    await page.getByRole('combobox').locator('..').getByRole('button').click();
+
+    await expect(page.getByRole('article')).toHaveCount(12);
+    await expectFeedScroll(page, 0);
+    expect(requests).toHaveLength(requestCount + 1);
+    expect(requests.at(-1)?.searchParams.get('categoryId')).toBe('1');
+    expect(requests.at(-1)?.searchParams.get('sort')).toBe('POPULAR');
+    expect(requests.at(-1)?.searchParams.has('cursor')).toBe(false);
+    await expect(page).toHaveURL('/?categoryId=1&sort=POPULAR');
+
+    await page.goto('/?sort=POPULAR');
+    await expect(page.getByRole('article')).toHaveCount(20);
+    await page.getByRole('button', { name: '더 보기', exact: true }).click();
+    await expect(page.getByRole('article')).toHaveCount(24);
+    await scrollToFeed(page, 23);
+
+    await page.getByRole('combobox').locator('..').getByRole('button').click();
+
+    await expect(page.getByRole('article')).toHaveCount(20);
+    await expectFeedScroll(page, 0);
+    expect(requests.at(-1)?.searchParams.has('cursor')).toBe(false);
+    await page.getByRole('button', { name: '더 보기', exact: true }).click();
+    await expect(page.getByRole('article')).toHaveCount(24);
+    expect(requests.at(-1)?.searchParams.get('cursor')).toBeTruthy();
+  });
+
   for (const destination of destinations) {
     test(`${destination}에서 화면의 복귀 버튼으로 돌아오면 위치를 복원하고 목록을 재조회하지 않는다`, async ({
       page,

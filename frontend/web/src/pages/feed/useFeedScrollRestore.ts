@@ -39,7 +39,10 @@ const useFeedScrollRestore = ({
   }, [categoryId, sort]);
 
   useLayoutEffect(() => {
-    if (!isListReady) return;
+    if (!isListReady) {
+      initFeedScroll();
+      return;
+    }
 
     targetScrollRef.current?.scrollTo({
       top: feedScroll,

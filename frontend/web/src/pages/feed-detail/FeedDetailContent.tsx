@@ -16,6 +16,7 @@ import useFeedDetail from './useFeedDetail';
 import { formatPublishedAt } from '../../shared/feed/formatPublishedAt';
 import DiaryImage from '../../shared/DiaryImage';
 import { theme } from '../../styles/theme';
+import useFeedDetailBack from './useFeedDetailBack';
 
 interface FeedDetailContentProps {
   readonly feedId: Feed['id'];
@@ -23,6 +24,7 @@ interface FeedDetailContentProps {
 
 const FeedDetailContent = ({ feedId }: FeedDetailContentProps) => {
   const navigate = useNavigate();
+  const handleBack = useFeedDetailBack();
   const {
     request: feedDetailRequest,
     updateLike,
@@ -56,13 +58,7 @@ const FeedDetailContent = ({ feedId }: FeedDetailContentProps) => {
         >
           <img css={logoStyle} src={harudleLogo} alt="하루들" />
         </button>
-        <button
-          type="button"
-          css={backButtonStyle}
-          onClick={() => {
-            void navigate('/');
-          }}
-        >
+        <button type="button" css={backButtonStyle} onClick={handleBack}>
           <img src={backIcon} alt="뒤로가기 아이콘" />
         </button>
       </header>
