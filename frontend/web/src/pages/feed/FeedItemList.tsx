@@ -8,6 +8,7 @@ import useFeedList from './useFeedList';
 import FeedItem from './FeedItem';
 import ActionButton from '../../shared/ActionButton';
 import { FEED_COPY } from './copy';
+import useFeedScrollRestore from './useFeedScrollRestore';
 
 interface FeedItemListProps extends Pick<
   FeedListRequest,
@@ -26,9 +27,14 @@ const FeedItemList = ({
 }: FeedItemListProps) => {
   const { request, loadMoreRequest, loadMore, updateLike, removeFeedFromList } =
     useFeedList({ categoryId, sort });
+  const { targetScrollRef, setFeedScroll } = useFeedScrollRestore({
+    categoryId,
+    sort,
+    isListReady: request.status === 'success',
+  });
   const isLoadingMore = loadMoreRequest.status === 'loading';
 
-  useEffect((): void => {
+  useEffect(() => {
     if (loadMoreRequest.status === 'error') {
       window.alert(FEED_COPY.loadMoreError);
     }
@@ -46,7 +52,13 @@ const FeedItemList = ({
   if (items.length === 0 && !hasNext) return <FeedEmpty />;
 
   return (
-    <div css={feedItemListStyle}>
+    <div
+      css={feedItemListStyle}
+      ref={targetScrollRef}
+      onScroll={(event) => {
+        setFeedScroll(event.currentTarget.scrollTop);
+      }}
+    >
       {items.map((item) => (
         <FeedItem
           key={item.id}

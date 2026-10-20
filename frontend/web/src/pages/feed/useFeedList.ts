@@ -9,6 +9,16 @@ import type { ApiRequest } from '../../shared/api';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import type { FeedLikeResponse } from '../../domain/feeds/feedLike';
 import { useAnalytics } from '../../posthog/useAnalytics';
+import {
+  getFeedListCache,
+  setFeedListCache,
+  type FeedListKey,
+} from '../../domain/feeds/feedListCache';
+import {
+  appendFeedPage,
+  updateFeedLike,
+  removeFeed,
+} from '../../domain/feeds/feedListUpdates';
 
 interface FeedListState {
   readonly request: ApiRequest<FeedListResponse>;
@@ -25,14 +35,43 @@ const useFeedList = ({
   sort,
 }: Pick<FeedListRequest, 'categoryId' | 'sort'>): FeedListState => {
   const { track } = useAnalytics();
-  const [request, setRequest] = useState<ApiRequest<FeedListResponse>>({
-    status: 'idle',
-  });
+  const key: FeedListKey = `category:${categoryId}&sort:${sort}`;
+  const [request, setRequest] = useState<ApiRequest<FeedListResponse>>(
+    (): ApiRequest<FeedListResponse> => {
+      const cached = getFeedListCache();
+
+      return cached === null || cached.key !== key
+        ? { status: 'idle' }
+        : { status: 'success', data: cached.data };
+    },
+  );
+
   const [loadMoreRequest, setLoadMoreRequest] = useState<ApiRequest<void>>({
     status: 'idle',
   });
 
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  const setFeedStateAndCache = useCallback(
+    (data: FeedListResponse): void => {
+      setFeedListCache({ key, data });
+      setRequest({ status: 'success', data });
+    },
+    [key],
+  );
+
+  const updateFeedStateAndCache = useCallback(
+    (update: (latest: FeedListResponse) => FeedListResponse): void => {
+      const cached = getFeedListCache();
+      if (cached?.key !== key) return;
+
+      // 캐시로부터 항상 최신 값을 읽도록 해서
+      // 여러 요청의 응답 순서가 바뀌어도 이전 데이터로 덮어씌워지는 것을 방지함
+      const nextData = update(cached.data);
+      setFeedStateAndCache(nextData);
+    },
+    [key, setFeedStateAndCache],
+  );
 
   const execute = useCallback(async (): Promise<void> => {
     abortControllerRef.current?.abort();
@@ -61,7 +100,7 @@ const useFeedList = ({
       });
       if (signal.aborted) return;
 
-      setRequest({ status: 'success', data });
+      setFeedStateAndCache(data);
     } catch (error: unknown) {
       if (signal.aborted) return;
       setRequest({
@@ -76,21 +115,7 @@ const useFeedList = ({
         abortControllerRef.current = null;
       }
     }
-  }, [categoryId, sort, track]);
-
-  const appendFeedPage = useCallback((page: FeedListResponse): void => {
-    setRequest((previous) => {
-      if (previous.status !== 'success') return previous;
-      return {
-        ...previous,
-        data: {
-          items: [...previous.data.items, ...page.items],
-          nextCursor: page.nextCursor,
-          hasNext: page.hasNext,
-        },
-      };
-    });
-  }, []);
+  }, [categoryId, sort, track, setFeedStateAndCache]);
 
   const loadMore = useCallback(async (): Promise<void> => {
     // TODO: 타입 안정성 보강 hasNext, nextCursor
@@ -119,7 +144,12 @@ const useFeedList = ({
         signal,
       });
       if (signal.aborted) return;
-      appendFeedPage(data);
+
+      if (getFeedListCache()?.key !== key) return;
+
+      updateFeedStateAndCache((latest): FeedListResponse =>
+        appendFeedPage(latest, data),
+      );
       setLoadMoreRequest({ status: 'success', data: undefined });
     } catch (error: unknown) {
       if (signal.aborted) return;
@@ -135,46 +165,35 @@ const useFeedList = ({
         abortControllerRef.current = null;
       }
     }
-  }, [request, categoryId, sort, appendFeedPage, track]);
+  }, [request, categoryId, sort, key, track, updateFeedStateAndCache]);
 
-  useEffect((): (() => void) => {
-    // 필터가 바뀌면 이전 조회 결과 대신 로딩 상태를 표시한다.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void execute();
+  useEffect(() => {
+    if (getFeedListCache()?.key !== key) {
+      setFeedListCache(null);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      void execute();
+    }
 
     return (): void => abortControllerRef.current?.abort();
-  }, [execute]);
+  }, [execute, key]);
 
   const updateLike = useCallback(
     (feedId: Feed['id'], like: FeedLikeResponse): void => {
-      setRequest((previous) => {
-        if (previous.status !== 'success') return previous;
-        return {
-          ...previous,
-          data: {
-            ...previous.data,
-            items: previous.data.items.map((feed) =>
-              feed.id === feedId ? { ...feed, ...like } : feed,
-            ),
-          },
-        };
-      });
+      updateFeedStateAndCache((latest): FeedListResponse =>
+        updateFeedLike(latest, feedId, like),
+      );
     },
-    [],
+    [updateFeedStateAndCache],
   );
 
-  const removeFeedFromList = useCallback((feedId: Feed['id']): void => {
-    setRequest((previous) => {
-      if (previous.status !== 'success') return previous;
-      return {
-        ...previous,
-        data: {
-          ...previous.data,
-          items: previous.data.items.filter((feed) => feed.id !== feedId),
-        },
-      };
-    });
-  }, []);
+  const removeFeedFromList = useCallback(
+    (feedId: Feed['id']): void => {
+      updateFeedStateAndCache((latest): FeedListResponse =>
+        removeFeed(latest, feedId),
+      );
+    },
+    [updateFeedStateAndCache],
+  );
 
   return {
     request,

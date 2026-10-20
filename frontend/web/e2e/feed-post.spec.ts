@@ -91,6 +91,64 @@ test('전달받은 이미지를 재조회 없이 표시하고 필요한 필드�
   expect(detail).toMatchObject({ publishedFeedId: expect.any(String) });
 });
 
+test('목록을 본 뒤 새 글을 게시하고 돌아오면 목록을 다시 조회해 새 글을 표시한다', async ({
+  page,
+}): Promise<void> => {
+  let listRequestCount = 0;
+  page.on('request', (request): void => {
+    if (
+      request.method() === 'GET' &&
+      new URL(request.url()).pathname === '/api/v1/feeds'
+    )
+      listRequestCount += 1;
+  });
+  await page.goto('/');
+  await expect(page.getByRole('article')).toHaveCount(20);
+  const initialListRequestCount = listRequestCount;
+
+  await page
+    .getByRole('navigation')
+    .getByRole('button', { name: '네컷 모아보기', exact: true })
+    .click();
+  await page
+    .getByRole('button', { name: /비가 와도, 나는 괜찮았다\./ })
+    .click();
+  await expect(page).toHaveURL(`/diary/${DIARY_ID}`);
+  await page
+    .getByRole('button', { name: FEED_POST_COPY.publishAction, exact: true })
+    .click();
+  await page.getByRole('radio', { name: '우테코' }).check();
+  const publishResponse = page.waitForResponse(
+    (response): boolean =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname === '/api/v1/feeds',
+  );
+  await page
+    .getByRole('button', { name: FEED_POST_COPY.publishAction, exact: true })
+    .click();
+  const response = await publishResponse;
+  expect(response.status()).toBe(201);
+  const body: unknown = await response.json();
+  if (
+    typeof body !== 'object' ||
+    body === null ||
+    !('id' in body) ||
+    typeof body.id !== 'string'
+  )
+    throw new Error('게시 응답에 피드 ID가 없습니다.');
+
+  await expect(page).toHaveURL('/');
+  await expect(page.getByRole('article')).toHaveCount(20);
+  expect(listRequestCount).toBeGreaterThan(initialListRequestCount);
+  await page
+    .getByRole('article')
+    .first()
+    .getByRole('button', { name: /^\d+$/ })
+    .nth(1)
+    .click();
+  await expect(page).toHaveURL(`/feeds/${body.id}`);
+});
+
 test('게시 실패 후 카테고리를 유지하며 사용자가 재시도할 수 있다', async ({
   page,
 }): Promise<void> => {

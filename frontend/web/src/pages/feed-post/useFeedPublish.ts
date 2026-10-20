@@ -5,6 +5,7 @@ import {
   type FeedPublishRequest,
 } from '../../domain/feeds/feedPublish';
 import type { Feed } from '../../domain/feeds/feedList';
+import { setFeedListCache } from '../../domain/feeds/feedListCache';
 import { useErrorTracking } from '../../posthog/useErrorTracking';
 import type { ApiRequest } from '../../shared/api';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
@@ -42,6 +43,7 @@ const useFeedPublish = ({
           category_id: categoryId,
         });
         const feed = await publishFeed({ diaryId, categoryId });
+        setFeedListCache(null);
         setRequest({ status: 'success', data: feed });
         void navigate('/', { replace: true });
       } catch (error: unknown) {
