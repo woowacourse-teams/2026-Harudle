@@ -105,3 +105,58 @@ test.describe('피드 상세 좋아요', (): void => {
     }
   });
 });
+
+test.describe('피드 상세 삭제', (): void => {
+  test.use({ storageState: AUTHENTICATED_STORAGE_STATE });
+
+  test('상세에서 삭제하고 목록으로 돌아오면 삭제한 피드가 다시 표시되지 않는다', async ({
+    page,
+  }): Promise<void> => {
+    const listRequests: string[] = [];
+    page.on('request', (request): void => {
+      if (
+        request.method() === 'GET' &&
+        new URL(request.url()).pathname === '/api/v1/feeds'
+      ) {
+        listRequests.push(request.url());
+      }
+    });
+    await page.goto('/');
+    const articles = page.getByRole('article');
+    await expect(articles).toHaveCount(20);
+    const options = page.getByRole('button', { name: '옵션 더보기 아이콘' });
+    const ownFeedCount = await options.count();
+    const ownFeed = articles.filter({ has: options }).first();
+    const requestCount = listRequests.length;
+    await ownFeed.getByRole('button', { name: /^\d+$/ }).nth(1).click();
+    await expect(page).toHaveURL(/\/feeds\/[^/]+$/);
+    await expect(articles).toHaveCount(1);
+
+    await page
+      .getByRole('article')
+      .getByRole('button', { name: '옵션 더보기 아이콘' })
+      .click();
+    await page
+      .getByRole('dialog')
+      .filter({
+        has: page.getByRole('heading', { name: '피드 관리', exact: true }),
+      })
+      .getByRole('button', { name: /피드 삭제$/ })
+      .click();
+    await page
+      .getByRole('dialog')
+      .filter({
+        has: page.getByRole('heading', {
+          name: '이 피드를 삭제할까요?',
+          exact: true,
+        }),
+      })
+      .getByRole('button', { name: /피드 삭제$/ })
+      .click();
+
+    await expect(page).toHaveURL('/');
+    await expect(articles).toHaveCount(19);
+    await expect(options).toHaveCount(ownFeedCount - 1);
+    expect(listRequests).toHaveLength(requestCount);
+  });
+});
