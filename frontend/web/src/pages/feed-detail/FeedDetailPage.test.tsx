@@ -20,12 +20,14 @@ import FeedDetailPage from './FeedDetailPage';
 import FeedDetailContent from './FeedDetailContent';
 
 const mockNavigate = jest.fn();
+let mockLocationState: unknown = null;
 const mockTrack = jest.fn();
 jest.mock('../../posthog/useAnalytics', () => ({
   useAnalytics: () => ({ track: mockTrack }),
 }));
 jest.mock('react-router', () => ({
   useNavigate: () => mockNavigate,
+  useLocation: () => ({ state: mockLocationState }),
   useParams: () => ({ feedId: 'feed-1' }),
 }));
 jest.mock('../../assets/images/harudle-logo.webp', () => 'logo.webp');
@@ -108,6 +110,7 @@ const openDelete = async (
 };
 
 beforeEach((): void => {
+  mockLocationState = null;
   localStorage.clear();
   mockGetFeedDetail.mockReset().mockResolvedValue(feed);
   mockGetFeedComments
@@ -118,6 +121,41 @@ beforeEach((): void => {
 
 afterEach((): void => {
   jest.restoreAllMocks();
+});
+
+describe('피드 상세 뒤로가기', (): void => {
+  it.each([false, true])(
+    '목록에서 진입하면 이전 화면으로 돌아간다 (조회 실패: %s)',
+    async (isError): Promise<void> => {
+      mockLocationState = { fromFeed: true };
+      if (isError)
+        mockGetFeedDetail.mockRejectedValueOnce(new Error('조회 실패'));
+      const user = userEvent.setup();
+      render(<FeedDetailPage />);
+
+      await user.click(
+        await screen.findByRole('button', { name: '뒤로가기 아이콘' }),
+      );
+
+      expect(mockNavigate).toHaveBeenCalledWith(-1);
+    },
+  );
+
+  it.each([false, true])(
+    '직접 진입하면 상세 기록을 홈으로 교체한다 (조회 실패: %s)',
+    async (isError): Promise<void> => {
+      if (isError)
+        mockGetFeedDetail.mockRejectedValueOnce(new Error('조회 실패'));
+      const user = userEvent.setup();
+      render(<FeedDetailPage />);
+
+      await user.click(
+        await screen.findByRole('button', { name: '뒤로가기 아이콘' }),
+      );
+
+      expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true });
+    },
+  );
 });
 
 describe('피드 상세 댓글 더 보기', (): void => {
