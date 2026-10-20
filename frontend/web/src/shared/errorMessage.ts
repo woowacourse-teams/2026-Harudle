@@ -131,6 +131,11 @@ const PWA = {
     'usePwaInstall은 PwaInstallProvider 내부에서만 사용할 수 있습니다.',
 } as const;
 
+const TOAST = {
+  TOAST_PROVIDER_REQUIRED:
+    'useToastContext는 ToastProvider 내부에서만 사용할 수 있습니다.',
+} as const;
+
 export const ERROR_MESSAGES = {
   ...DIARY_GENERATE,
   ...DIARY_DELETE,
@@ -150,4 +155,5 @@ export const ERROR_MESSAGES = {
   ...ADMIN,
   ...VALIDATION,
   ...PWA,
+  ...TOAST,
 } as const;
