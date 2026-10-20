@@ -94,6 +94,8 @@ RDS 연결 대상은 `DEPLOY_ENV`와 별도로 각 서버 `.env`의 `DB_HOST`, `
 `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`로 설정한다. DB 마이그레이션·데이터 작업·
 부하 시험·모니터링에서는 해당 환경의 RDS 인스턴스를 대상으로 한다.
 S3 prefix 변경은 기존 DB의 이미지·참조 이미지 Object Key를 자동으로 바꾸지 않는다.
+개인 프로필 이미지는 같은 S3 연결을 사용하며 `harudle/profile-images/{DEPLOY_ENV}/{회원ID}/{UUID}.webp`에 저장한다.
+프로필 경로는 `DEPLOY_ENV`에서 자동 구성하고 조회 주소는 기존 `S3_ACCESS_URL_TTL`을 따른다.
 
 ## 배포 구성
 

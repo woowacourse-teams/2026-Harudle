@@ -6,6 +6,7 @@ import com.google.genai.Models;
 import com.google.genai.types.ClientOptions;
 import com.google.genai.types.HttpOptions;
 import com.google.genai.types.HttpRetryOptions;
+import com.harudle.auth.infrastructure.S3ProfileImageStorage;
 import com.harudle.common.logging.ExternalApiLogger;
 import com.harudle.generation.adapter.out.gemini.DiaryImagePromptRenderer;
 import com.harudle.generation.adapter.out.gemini.GeminiDiaryImageGenerator;
@@ -142,6 +143,15 @@ public class GenerationAdapterConfiguration {
         return S3Presigner.builder()
                 .region(Region.of(properties.region()))
                 .build();
+    }
+
+    @Bean
+    public S3ProfileImageStorage profileImageStorage(
+            @Qualifier("s3Client") S3Client s3Client,
+            @Qualifier("s3Presigner") S3Presigner s3Presigner,
+            S3StorageProperties properties
+    ) {
+        return new S3ProfileImageStorage(s3Client, s3Presigner, properties);
     }
 
     @Bean

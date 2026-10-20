@@ -14,6 +14,7 @@ import com.google.genai.Client;
 import com.google.genai.Models;
 import com.google.genai.types.ClientOptions;
 import com.google.genai.types.HttpOptions;
+import com.harudle.auth.infrastructure.S3ProfileImageStorage;
 import com.harudle.common.logging.ExternalApiLogger;
 import com.harudle.generation.adapter.out.gemini.GeminiDiaryImageGenerator;
 import com.harudle.generation.adapter.out.gemini.GeminiFailureReporter;
@@ -89,6 +90,7 @@ class GenerationAdapterConfigurationTest {
             assertThat(context.getBeansOfType(Models.class)).containsOnlyKeys("geminiModels", "geminiStoryboardModels");
             assertThat(context).hasSingleBean(S3Client.class);
             assertThat(context).hasSingleBean(S3Presigner.class);
+            assertThat(context).hasSingleBean(S3ProfileImageStorage.class);
             assertThat(context).hasSingleBean(GeminiFailureReporter.class);
             assertThat(context).hasSingleBean(GeminiStageMetrics.class);
             assertThat(context).hasSingleBean(S3FailureReporter.class);
@@ -438,6 +440,7 @@ class GenerationAdapterConfigurationTest {
             assertThat(context).doesNotHaveBean(GoogleCredentials.class);
             assertThat(context).doesNotHaveBean(S3Client.class);
             assertThat(context).doesNotHaveBean(S3Presigner.class);
+            assertThat(context).doesNotHaveBean(S3ProfileImageStorage.class);
             assertThat(context).doesNotHaveBean(StoryboardGenerator.class);
             assertThat(context).doesNotHaveBean(DiaryImageGenerator.class);
             assertThat(context).doesNotHaveBean(ImageStorage.class);
