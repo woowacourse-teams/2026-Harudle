@@ -80,12 +80,24 @@ const useFeedList = ({
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const updateFeedStateAndCache = useCallback(
+  const setFeedStateAndCache = useCallback(
     (data: FeedListResponse): void => {
       feedListCache = { key, data };
       setRequest({ status: 'success', data });
     },
     [key],
+  );
+
+  const updateFeedStateAndCache = useCallback(
+    (update: (latest: FeedListResponse) => FeedListResponse): void => {
+      if (feedListCache?.key !== key) return;
+
+      // 캐시로부터 항상 최신 값을 읽도록 해서
+      // 여러 요청의 응답 순서가 바뀌어도 이전 데이터로 덮어씌워지는 것을 방지함
+      const nextData = update(feedListCache.data);
+      setFeedStateAndCache(nextData);
+    },
+    [key, setFeedStateAndCache],
   );
 
   const execute = useCallback(async (): Promise<void> => {
@@ -115,7 +127,7 @@ const useFeedList = ({
       });
       if (signal.aborted) return;
 
-      updateFeedStateAndCache(data);
+      setFeedStateAndCache(data);
     } catch (error: unknown) {
       if (signal.aborted) return;
       setRequest({
@@ -130,7 +142,7 @@ const useFeedList = ({
         abortControllerRef.current = null;
       }
     }
-  }, [categoryId, sort, track, updateFeedStateAndCache]);
+  }, [categoryId, sort, track, setFeedStateAndCache]);
 
   const loadMore = useCallback(async (): Promise<void> => {
     // TODO: 타입 안정성 보강 hasNext, nextCursor
@@ -162,8 +174,9 @@ const useFeedList = ({
 
       if (feedListCache?.key !== key) return;
 
-      const nextData = appendFeedPage(feedListCache.data, data);
-      updateFeedStateAndCache(nextData);
+      updateFeedStateAndCache((latest): FeedListResponse =>
+        appendFeedPage(latest, data),
+      );
       setLoadMoreRequest({ status: 'success', data: undefined });
     } catch (error: unknown) {
       if (signal.aborted) return;
@@ -193,22 +206,20 @@ const useFeedList = ({
 
   const updateLike = useCallback(
     (feedId: Feed['id'], like: FeedLikeResponse): void => {
-      if (request.status !== 'success') return;
-
-      const nextData = updateFeedLike(request.data, feedId, like);
-      updateFeedStateAndCache(nextData);
+      updateFeedStateAndCache((latest): FeedListResponse =>
+        updateFeedLike(latest, feedId, like),
+      );
     },
-    [request, updateFeedStateAndCache],
+    [updateFeedStateAndCache],
   );
 
   const removeFeedFromList = useCallback(
     (feedId: Feed['id']): void => {
-      if (request.status !== 'success') return;
-
-      const nextData = removeFeed(request.data, feedId);
-      updateFeedStateAndCache(nextData);
+      updateFeedStateAndCache((latest): FeedListResponse =>
+        removeFeed(latest, feedId),
+      );
     },
-    [request, updateFeedStateAndCache],
+    [updateFeedStateAndCache],
   );
 
   return {
