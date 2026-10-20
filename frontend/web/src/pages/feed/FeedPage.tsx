@@ -6,6 +6,7 @@ import FeedFilterBar from './FeedFilterBar';
 import FeedItemList from './FeedItemList';
 import { useSearchParams } from 'react-router';
 import { useAnalytics } from '../../posthog/useAnalytics';
+import useFeedList from './useFeedList';
 
 const FEED_QUERY_KEYS = {
   CATEGORY_ID: 'categoryId',
@@ -20,6 +21,14 @@ const FeedPage = () => {
   const categoryId = rawCategoryId === null ? undefined : Number(rawCategoryId);
   const rawSort = searchParams.get(FEED_QUERY_KEYS.SORT);
   const sort = isFeedSort(rawSort) ? rawSort : 'LATEST';
+  const {
+    request,
+    loadMoreRequest,
+    execute,
+    loadMore,
+    updateLike,
+    removeFeedFromList,
+  } = useFeedList({ categoryId, sort });
 
   const handleCategoryChange = (
     nextCategoryId: Category['id'] | undefined,
@@ -65,11 +74,18 @@ const FeedPage = () => {
           onCategoryChange={handleCategoryChange}
           sort={sort}
           onSortChange={handleSortChange}
+          onRefresh={execute}
+          isRefreshing={request.status === 'loading'}
         />
         <FeedItemList
           categoryId={categoryId}
           sort={sort}
           onCategoryClick={handleCategoryChange}
+          request={request}
+          loadMoreRequest={loadMoreRequest}
+          loadMore={loadMore}
+          updateLike={updateLike}
+          removeFeedFromList={removeFeedFromList}
         />
       </main>
     </BottomNavigationLayout>
