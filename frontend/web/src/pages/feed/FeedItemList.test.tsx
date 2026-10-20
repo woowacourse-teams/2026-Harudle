@@ -7,6 +7,7 @@ import {
   jest,
 } from '@jest/globals';
 import userEvent from '@testing-library/user-event';
+import * as React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import type {
   Feed,
@@ -14,9 +15,38 @@ import type {
   getFeedList,
 } from '../../domain/feeds/feedList';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
-import FeedItemList from './FeedItemList';
+import FeedItemListView from './FeedItemList';
 import type { setFeedLike } from '../../domain/feeds/feedLike';
 import type { deleteFeed } from '../../domain/feeds/feedDelete';
+import useFeedList from './useFeedList';
+
+const FeedItemList = ({
+  categoryId,
+  sort,
+  onCategoryClick,
+}: Pick<
+  React.ComponentProps<typeof FeedItemListView>,
+  'categoryId' | 'sort' | 'onCategoryClick'
+>) => {
+  const feedList = useFeedList({ categoryId, sort });
+
+  return (
+    <FeedItemListView
+      categoryId={categoryId}
+      sort={sort}
+      onCategoryClick={onCategoryClick}
+      {...feedList}
+    />
+  );
+};
+
+let mockUseFeedList: typeof useFeedList;
+jest.mock('./useFeedList', () => ({
+  __esModule: true,
+  default: (
+    options: Parameters<typeof useFeedList>[0],
+  ): ReturnType<typeof useFeedList> => mockUseFeedList(options),
+}));
 
 const mockTrack =
   jest.fn<(event: string, properties: Record<string, unknown>) => void>();
@@ -108,6 +138,14 @@ const emptyResponse: FeedListResponse = {
 };
 
 beforeEach((): void => {
+  // React 인스턴스는 유지하고, 목록 캐시는 테스트마다 새 모듈로 격리한다.
+  jest.isolateModules((): void => {
+    jest.doMock('react', () => React);
+    mockUseFeedList =
+      jest.requireActual<typeof import('./useFeedList')>(
+        './useFeedList',
+      ).default;
+  });
   localStorage.setItem('harudle.has-completed-oauth', 'true');
   mockGetFeedList.mockReset();
   mockGetFeedList.mockResolvedValue(response);
@@ -156,7 +194,9 @@ describe('피드 카드 액션', (): void => {
 
     await user.click(await screen.findByRole('button', { name: '3' }));
 
-    expect(mockNavigate).toHaveBeenCalledWith(`/feeds/${feed.id}`);
+    expect(mockNavigate).toHaveBeenCalledWith(`/feeds/${feed.id}`, {
+      state: { fromFeed: true },
+    });
   });
 
   it('비로그인 좋아요는 요청 없이 로그인 안내를 열고 닫거나 로그인 페이지로 이동한다', async (): Promise<void> => {

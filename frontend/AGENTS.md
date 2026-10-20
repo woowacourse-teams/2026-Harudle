@@ -79,6 +79,9 @@
 
 - Node.js 24와 pnpm 11.20.0을 사용한다. 의존성은 `frontend/`에서
   `pnpm install`로 설치하고 npm 또는 yarn lockfile을 만들지 않는다.
+- PR CI의 `cache: pnpm`은 내려받은 패키지를 재사용한다. `develop-frontend`의 의존성 또는
+  CI 설정이 바뀌면 `.github/workflows/frontend-cache.yml`이 패키지만 설치해 후속 PR용 캐시를 만든다.
+  캐시에는 `node_modules`와 빌드 결과를 넣지 않으며, PR 검증은 기존대로 실행한다.
 - Web 전용 의존성은 `web/package.json`에 선언한다. 향후 workspace 내부
   패키지를 참조할 때는 `workspace:` 프로토콜을 사용한다.
 - Web 변경을 완료하기 전에 `frontend/web`에서 `pnpm check`를 실행한다. 이
