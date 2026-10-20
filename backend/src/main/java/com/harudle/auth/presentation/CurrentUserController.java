@@ -58,11 +58,13 @@ public class CurrentUserController {
 
     @Operation(
             summary = "내 프로필 조회",
-            description = "인증된 사용자의 프로필과 연결된 OAuth Provider를 조회합니다."
+            description = "인증된 사용자의 프로필과 연결된 OAuth Provider를 조회합니다. "
+                    + "개인 사진이 있으면 서명 URL과 만료 시각을 반환하며, 기본 이미지는 만료 시각이 null입니다."
     )
     @ApiErrorResponses({
             ErrorType.UNAUTHORIZED,
-            ErrorType.INVALID_CURRENT_USER
+            ErrorType.INVALID_CURRENT_USER,
+            ErrorType.PROFILE_IMAGE_STORAGE_ERROR
     })
     @GetMapping
     public ResponseEntity<CurrentUserResponse> find(

@@ -60,6 +60,21 @@ class SecurityConfigTest {
     }
 
     @Test
+    @DisplayName("프로필 조회 응답의 만료 시각과 주소 발급 실패를 문서화한다")
+    void documentsProfileImageExpiryAndReadFailure() throws Exception {
+        String image = "$.components.schemas.CurrentUserResponse.properties.profileImageUrlExpiresAt";
+        mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk())
+                .andExpect(jsonPath(image + ".format")
+                        .value("date-time"))
+                .andExpect(jsonPath(image + ".nullable")
+                        .value(true))
+                .andExpect(jsonPath("$.components.schemas.Author.properties.profileImageUrlExpiresAt.format")
+                        .value("date-time"))
+                .andExpect(jsonPath("$.paths['/api/v1/me'].get.responses['503'].content['application/problem+json']"
+                        + ".examples.PROFILE_IMAGE_STORAGE_ERROR.value.code").value("PROFILE_IMAGE_STORAGE_ERROR"));
+    }
+
+    @Test
     @DisplayName("Access Token 없이 보호 API에 접근할 수 없다")
     void rejectsUnauthenticatedApiRequest() throws Exception {
         mockMvc.perform(get("/api/v1/test-auth"))

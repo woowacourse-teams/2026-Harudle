@@ -258,6 +258,7 @@ HTTP/1.1 200 OK
   "name": "하루들",
   "nickname": "행복한 고양이",
   "profileImageUrl": "https://www.harudle.com/profile-images/v1/3.png",
+  "profileImageUrlExpiresAt": null,
   "email": "harudle.official@gmail.com",
   "role": "USER",
   "oauthProviders": ["kakao"],
@@ -265,8 +266,12 @@ HTTP/1.1 200 OK
 }
 ```
 
-공개 프로필이 아직 배정되지 않은 기존 회원은 `nickname`과 `profileImageUrl`이 `null`입니다.
-기본 이미지 URL은 `PROFILE_IMAGE_BASE_URL` 설정과 이미지 번호로 구성합니다.
+공개 프로필이 아직 배정되지 않은 기존 회원은 `nickname`, `profileImageUrl`, `profileImageUrlExpiresAt`이 `null`입니다.
+기본 이미지 URL은 `PROFILE_IMAGE_BASE_URL` 설정과 이미지 번호로 구성하고 만료 시각은 `null`입니다.
+개인 사진이 있으면 기본 이미지 대신 S3 서명 URL과 `profileImageUrlExpiresAt`을 반환합니다.
+만료 시각은 `2026-10-21T00:15:00Z` 형식이며 기본 유효 시간은 15분입니다. `S3_ACCESS_URL_TTL` 설정을 따릅니다.
+주소가 만료되면 해당 API를 다시 조회합니다. DB 저장 경로는 응답에 포함하지 않습니다.
+주소 발급에 실패하면 `503 PROFILE_IMAGE_STORAGE_ERROR`를 반환하며 기존 사진은 유지합니다.
 
 ### 4.6 게스트 세션 발급
 
@@ -378,7 +383,11 @@ Cache-Control: no-store
 | `415` | `UNSUPPORTED_MEDIA_TYPE` | JPEG/PNG가 아니거나 요청이 multipart/form-data 형식이 아님 |
 | `503` | `PROFILE_IMAGE_STORAGE_ERROR` | S3 저장 실패 또는 저장소 연결 비활성화 |
 
-현재 구현 범위는 업로드와 DB 저장까지입니다. 내 정보, 피드, 댓글의 개인 사진 URL과 만료 시각 반환은 별도 연결 예정입니다.
+저장 성공 후 `GET /api/v1/me`와 피드를 다시 조회하면 새 개인 사진이 반영됩니다.
+내 정보의 `profileImageUrl`, 피드와 댓글의 `author.profileImageUrl`, 알림의 `actor.profileImageUrl`은 현재 사진을 사용합니다.
+각 이미지 URL과 같은 객체에 `profileImageUrlExpiresAt`을 반환합니다. 개인 사진은 만료 시각이 있고 기본 이미지는 `null`입니다.
+기존 글과 댓글도 다시 조회할 때 바뀐 사진을 표시합니다. 다른 사람이 열어둔 화면을 실시간으로 갱신하지는 않습니다.
+탈퇴 회원의 댓글은 이미지 URL과 만료 시각이 모두 `null`이며, 알림의 탈퇴한 행위자는 기존처럼 `actor: null`입니다.
 
 ## 5. 일기 및 생성 API
 

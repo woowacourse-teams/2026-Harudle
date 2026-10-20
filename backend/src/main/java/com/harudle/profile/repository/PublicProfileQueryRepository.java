@@ -17,7 +17,8 @@ public interface PublicProfileQueryRepository extends Repository<User, UUID> {
             SELECT new com.harudle.profile.query.PublicProfileSnapshot(
                 user.id,
                 user.nickname,
-                user.profileImageCode
+                user.profileImageCode,
+                user.profileImageObjectKey
             )
             FROM User user
             WHERE user.id IN :userIds

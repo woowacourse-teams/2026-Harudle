@@ -16,12 +16,15 @@ import com.harudle.auth.infrastructure.CwebpProfileImageEncoder;
 import com.harudle.auth.infrastructure.OAuthAccountRepository;
 import com.harudle.auth.infrastructure.S3ProfileImageStorage;
 import com.harudle.auth.infrastructure.UserRepository;
+import com.harudle.generation.diary.service.port.ImageUrlProvider;
+import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
 import com.harudle.support.MockMvcIntegrationTest;
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
 import io.restassured.module.mockmvc.response.MockMvcResponse;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.net.URI;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
@@ -62,6 +65,8 @@ class ProfileImageUploadControllerTest {
     private CwebpProfileImageEncoder encoder;
     @MockitoBean
     private S3ProfileImageStorage storage;
+    @MockitoBean
+    private ImageUrlProvider imageUrlProvider;
 
     @BeforeEach
     void setUp() {
@@ -75,6 +80,7 @@ class ProfileImageUploadControllerTest {
     void tearDown() {
         jdbc.update("DELETE FROM profile_image_cleanup_tasks");
         users.deleteAll();
+        jdbc.update("DELETE FROM generation_prompts WHERE image_asset_object_key = ?", "profile-read-test");
         RestAssuredMockMvc.reset();
     }
 
@@ -99,6 +105,70 @@ class ProfileImageUploadControllerTest {
         assertThat(captor.getValue().getWidth()).isEqualTo(512);
         assertThat(captor.getValue().getHeight()).isEqualTo(512);
         verify(storage).store(user.getId(), WEBP);
+    }
+
+    @Test
+    @DisplayName("업로드 직후 내 정보와 기존 피드 및 댓글은 개인 사진 주소와 만료 시각을 반환한다")
+    void readsUploadedProfileImageAfterSave() throws IOException {
+        User user = saveUser(true);
+        UUID feedId = saveFeedAndComment(user);
+        URI url = URI.create("https://s3.example/profile.webp?signature=example");
+        Instant expiresAt = Instant.now().plusSeconds(900);
+        when(storage.createAccessUrl(key(user.getId()))).thenReturn(new ImageAccessUrl(url, expiresAt));
+        when(imageUrlProvider.createAccessUrl("generated/profile-read-test.webp"))
+                .thenReturn(new ImageAccessUrl(URI.create("https://s3.example/comic.webp"), expiresAt));
+        MockMvcResponse before = RestAssuredMockMvc.get("/api/v1/feeds/" + feedId);
+        assertThat(before.statusCode()).isEqualTo(200);
+        assertThat(before.jsonPath().getString("author.profileImageUrl"))
+                .isEqualTo("https://www.harudle.com/profile-images/v1/3.png");
+        assertThat(before.jsonPath().getMap("author")).containsEntry("profileImageUrlExpiresAt", null);
+
+        assertThat(upload(user, imageBytes("png", 200, 200)).statusCode()).isEqualTo(204);
+        MockMvcResponse response = RestAssuredMockMvc.given()
+                .header(HttpHeaders.AUTHORIZATION, bearer(user.getId()))
+                .get("/api/v1/me");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.jsonPath().getString("profileImageUrl")).isEqualTo(url.toString());
+        assertThat(Instant.parse(response.jsonPath().getString("profileImageUrlExpiresAt"))).isEqualTo(expiresAt);
+        assertThat(response.jsonPath().getString("nickname")).isEqualTo(user.getNickname());
+        assertThat(response.jsonPath().getMap("$")).doesNotContainKey("profileImageObjectKey");
+        assertThat(response.header(HttpHeaders.CACHE_CONTROL)).isEqualTo("no-store");
+
+        MockMvcResponse feed = RestAssuredMockMvc.get("/api/v1/feeds/" + feedId);
+        assertThat(feed.statusCode()).isEqualTo(200);
+        assertThat(feed.jsonPath().getString("author.profileImageUrl")).isEqualTo(url.toString());
+        assertThat(Instant.parse(feed.jsonPath().getString("author.profileImageUrlExpiresAt"))).isEqualTo(expiresAt);
+        assertThat(feed.jsonPath().getMap("author")).doesNotContainKey("profileImageObjectKey");
+        MockMvcResponse list = RestAssuredMockMvc.get("/api/v1/feeds");
+        assertThat(list.statusCode()).isEqualTo(200);
+        assertThat(list.jsonPath().getString("items[0].author.profileImageUrl")).isEqualTo(url.toString());
+        assertThat(Instant.parse(list.jsonPath().getString("items[0].author.profileImageUrlExpiresAt")))
+                .isEqualTo(expiresAt);
+        MockMvcResponse comments = RestAssuredMockMvc.get("/api/v1/feeds/" + feedId + "/comments");
+        assertThat(comments.statusCode()).isEqualTo(200);
+        assertThat(comments.jsonPath().getString("items[0].author.profileImageUrl")).isEqualTo(url.toString());
+        assertThat(Instant.parse(comments.jsonPath().getString("items[0].author.profileImageUrlExpiresAt")))
+                .isEqualTo(expiresAt);
+    }
+
+    @Test
+    @DisplayName("조회 주소 발급 실패는 기존 개인 사진을 유지하고 503을 반환한다")
+    void preservesImageWhenSigningFails() {
+        User user = saveUser(true);
+        String previous = setPreviousImage(user);
+        when(storage.createAccessUrl(previous))
+                .thenThrow(new ProfileImageStorageException("서명 실패", previous, null));
+
+        MockMvcResponse response = RestAssuredMockMvc.given()
+                .header(HttpHeaders.AUTHORIZATION, bearer(user.getId()))
+                .get("/api/v1/me");
+
+        assertThat(response.statusCode()).isEqualTo(503);
+        assertThat(response.jsonPath().getString("code")).isEqualTo("PROFILE_IMAGE_STORAGE_ERROR");
+        assertThat(response.body().asString()).doesNotContain(previous);
+        assertThat(users.findById(user.getId()).orElseThrow().getProfileImageObjectKey()).isEqualTo(previous);
+        verify(storage, never()).delete(any());
     }
 
     @Test
@@ -130,6 +200,14 @@ class ProfileImageUploadControllerTest {
         assertThat(users.findById(user.getId()).orElseThrow().getProfileImageObjectKey()).isNull();
         verify(storage).delete(previous);
         verifyNoInteractions(encoder);
+        MockMvcResponse currentUser = RestAssuredMockMvc.given()
+                .header(HttpHeaders.AUTHORIZATION, bearer(user.getId()))
+                .get("/api/v1/me");
+        assertThat(currentUser.statusCode()).isEqualTo(200);
+        assertThat(currentUser.jsonPath().getString("profileImageUrl"))
+                .isEqualTo("https://www.harudle.com/profile-images/v1/7.png");
+        assertThat(currentUser.jsonPath().getMap("$")).containsEntry("profileImageUrlExpiresAt", null);
+        verify(storage, never()).createAccessUrl(any());
     }
 
     @Test
@@ -249,6 +327,31 @@ class ProfileImageUploadControllerTest {
         user = users.save(user);
         accounts.save(new OAuthAccount(user, OAuthProvider.KAKAO, user.getId().toString(), null, NOW));
         return user;
+    }
+
+    private UUID saveFeedAndComment(User user) {
+        UUID diaryId = UUID.randomUUID();
+        UUID feedId = UUID.randomUUID();
+        Long promptId = jdbc.queryForObject("""
+                INSERT INTO generation_prompts (storyboard_prompt_text, image_style_prompt_text, image_asset_object_key)
+                VALUES ('스토리보드', '이미지 스타일', 'profile-read-test') RETURNING id
+                """, Long.class);
+        jdbc.update("""
+                INSERT INTO diaries (id, user_id, diary_date, source_text)
+                VALUES (?, ?, '2026-10-20', '프로필 변경 전 작성한 일기')
+                """, diaryId, user.getId());
+        jdbc.update("""
+                INSERT INTO diary_generations
+                    (id, diary_id, prompt_id, idempotency_key, request_fingerprint, status, image_object_key)
+                VALUES (?, ?, ?, ?, ?, 'SUCCEEDED', 'generated/profile-read-test.webp')
+                """, UUID.randomUUID(), diaryId, promptId, UUID.randomUUID(), "a".repeat(64));
+        jdbc.update("""
+                INSERT INTO feeds (id, diary_id, category_id)
+                VALUES (?, ?, (SELECT id FROM categories WHERE name = '일상'))
+                """, feedId, diaryId);
+        jdbc.update("INSERT INTO comments (id, feed_id, author_id, content) VALUES (?, ?, ?, '기존 댓글')",
+                UUID.randomUUID(), feedId, user.getId());
+        return feedId;
     }
 
     private String setPreviousImage(User user) {
