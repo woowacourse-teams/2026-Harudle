@@ -10,8 +10,11 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.harudle.HarudleApplication;
+import com.harudle.diary.domain.DiarySourceTextCipher;
 import com.harudle.generation.config.GenerationAdapterConfiguration;
 import com.harudle.generation.config.StoryboardGenerationConfiguration;
+import com.harudle.generation.diary.service.RequestFingerprintGenerator;
+import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
 import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
@@ -23,9 +26,12 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.mockito.ArgumentCaptor;
@@ -54,6 +60,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 import org.testcontainers.utility.MountableFile;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 @EnabledIfEnvironmentVariable(named = "HARUDLE_K6_VERIFY", matches = "smoke|peak")
 @Testcontainers
@@ -69,6 +77,9 @@ import org.testcontainers.utility.MountableFile;
 })
 @Import(MemberLoadTestIntegrationTest.StorageConfiguration.class)
 class MemberLoadTestIntegrationTest {
+
+    private static final String SEED_TEXT = "부하 테스트 준비 데이터";
+    private static final JsonMapper JSON = JsonMapper.builder().build();
 
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"))
@@ -86,8 +97,11 @@ class MemberLoadTestIntegrationTest {
     @Autowired private StoryboardGenerationService normalStoryboardService;
     @Autowired private DiaryImageGenerator normalImageGenerator;
     @Autowired private ImageStorage imageStorage;
+    @Autowired private DiarySourceTextCipher sourceTextCipher;
+    @Autowired private RequestFingerprintGenerator fingerprints;
 
     @Test
+    @DisplayName("암호화된 준비 데이터로 실제 회원 인증과 부하 테스트 동선을 검증한다")
     void executesRealHttpAuthenticationAndAllMemberJourneys() throws Exception {
         String mode = System.getenv("HARUDLE_K6_VERIFY");
         Path scripts = Path.of("load-test").toAbsolutePath();
@@ -98,11 +112,17 @@ class MemberLoadTestIntegrationTest {
         UUID existingDiary = UUID.randomUUID();
         UUID existingFeed = UUID.randomUUID();
         UUID existingGeneration = UUID.randomUUID();
+        UUID existingIdempotency = UUID.randomUUID();
+        LocalDate existingDate = LocalDate.now(ZoneId.of("Asia/Seoul"));
+        String existingSource = sourceTextCipher.encrypt(existingDiary, existingUser, "기존 일기");
+        String existingFingerprint = protectedFingerprint(new GenerateDiaryImageCommand(
+                existingUser, existingDiary, existingDate, "기존 일기", existingIdempotency
+        ), existingSource);
         String existingImage = "harudle/generated/diary-images/dev/" + existingGeneration + "/" + UUID.randomUUID() + "/image.png";
         jdbc.update("INSERT INTO users (id, primary_email, name, nickname, profile_image_code, role) "
                 + "VALUES (?, 'existing@example.invalid', '기존회원', '기존회원', 1, 'USER')", existingUser);
-        jdbc.update("INSERT INTO diaries (id, user_id, diary_date, source_text) VALUES (?, ?, CURRENT_DATE, '기존 일기')",
-                existingDiary, existingUser);
+        jdbc.update("INSERT INTO diaries (id, user_id, diary_date, source_text, source_text_version) "
+                + "VALUES (?, ?, ?, ?, 1)", existingDiary, existingUser, existingDate, existingSource);
         jdbc.update("INSERT INTO feeds (id, diary_id, category_id, like_count, comment_count) "
                 + "VALUES (?, ?, (SELECT min(id) FROM categories), 1, 1)", existingFeed, existingDiary);
         jdbc.update("INSERT INTO comments (id, feed_id, author_id, content) VALUES (?, ?, ?, '기존 댓글')",
@@ -111,6 +131,7 @@ class MemberLoadTestIntegrationTest {
                 UUID.randomUUID(), existingFeed, existingUser);
         run(List.of("python3", scripts.resolve("prepare.py").toString(), "--output", run.toString(),
                 "--base-url", "http://host.docker.internal:" + port), scripts.resolve("runs/prepare-verification.log"));
+        protectSeed(scripts, run);
         POSTGRES.copyFileToContainer(MountableFile.forHostPath(run.resolve("seed.sql")), "/tmp/seed.sql");
         POSTGRES.execInContainer("createdb", "-U", POSTGRES.getUsername(), "harudle_prod");
         for (String database : List.of("harudle_prod", "postgres")) {
@@ -124,9 +145,9 @@ class MemberLoadTestIntegrationTest {
         assertThat(seed.getExitCode()).as(seed.getStderr()).isZero();
         jdbc.update("INSERT INTO diary_generations (id, diary_id, prompt_id, idempotency_key, request_fingerprint, "
                 + "status, storyboard, title, image_object_key, completed_at, usage_date, storyboard_provider, storyboard_model) "
-                + "SELECT ?, ?, prompt_id, ?, request_fingerprint, status, storyboard, '기존 일기', ?, completed_at, "
+                + "SELECT ?, ?, prompt_id, ?, ?, status, storyboard, '기존 일기', ?, completed_at, "
                 + "usage_date, storyboard_provider, 'existing' FROM diary_generations LIMIT 1",
-                existingGeneration, existingDiary, UUID.randomUUID(), existingImage);
+                existingGeneration, existingDiary, existingIdempotency, existingFingerprint, existingImage);
         String user = commandOutput("id", "-u") + ":" + commandOutput("id", "-g");
         run(List.of("docker", "run", "--rm", "--user", user, "-v", scripts + ":/scripts", "-e", "MODE=" + mode,
                 "-e", "MEMBERS_FILE=/scripts/runs/" + run.getFileName() + "/members.json", "grafana/k6:2.3.0",
@@ -155,11 +176,17 @@ class MemberLoadTestIntegrationTest {
         assertThat(Files.readString(run.resolve("cleanup-verification.log"))).contains("Load test requires harudle_dev");
         UUID lockedUser = jdbc.queryForObject("SELECT id FROM users WHERE primary_email LIKE '%.loadtest.invalid' LIMIT 1", UUID.class);
         UUID busyDiary = UUID.randomUUID();
-        jdbc.update("INSERT INTO diaries (id, user_id, diary_date, source_text) VALUES (?, ?, CURRENT_DATE, '생성 중')",
-                busyDiary, lockedUser);
+        UUID busyIdempotency = UUID.randomUUID();
+        LocalDate busyDate = LocalDate.now(ZoneId.of("Asia/Seoul"));
+        String busySource = sourceTextCipher.encrypt(busyDiary, lockedUser, "생성 중");
+        String busyFingerprint = protectedFingerprint(new GenerateDiaryImageCommand(
+                lockedUser, busyDiary, busyDate, "생성 중", busyIdempotency
+        ), busySource);
+        jdbc.update("INSERT INTO diaries (id, user_id, diary_date, source_text, source_text_version) "
+                + "VALUES (?, ?, ?, ?, 1)", busyDiary, lockedUser, busyDate, busySource);
         jdbc.update("INSERT INTO diary_generations (id, diary_id, prompt_id, idempotency_key, request_fingerprint, status, usage_date) "
-                + "SELECT ?, ?, prompt_id, ?, request_fingerprint, 'PROCESSING', usage_date FROM diary_generations LIMIT 1",
-                UUID.randomUUID(), busyDiary, UUID.randomUUID());
+                + "SELECT ?, ?, prompt_id, ?, ?, 'PROCESSING', usage_date FROM diary_generations LIMIT 1",
+                UUID.randomUUID(), busyDiary, busyIdempotency, busyFingerprint);
         runCleanup(scripts, run, "harudle_dev", false);
         assertThat(Files.readString(run.resolve("cleanup-verification.log"))).contains("Generation is still processing");
         assertThat(Files.exists(run.resolve("aws-calls.jsonl"))).isFalse();
@@ -194,6 +221,47 @@ class MemberLoadTestIntegrationTest {
         runCleanup(scripts, run, "harudle_dev", true);
         assertThat(Files.readString(run.resolve("cleanup.json"))).isEqualTo(plan);
         assertThat(Files.readString(run.resolve("aws-calls.jsonl"))).doesNotContain(existingImage).doesNotContain("/prod/");
+    }
+
+    private void protectSeed(Path scripts, Path directory) throws Exception {
+        Path requests = directory.resolve("seed-requests.json");
+        run(List.of("python3", "-c", """
+                import json
+                from pathlib import Path
+                import sys
+                sys.path.insert(0, sys.argv[1])
+                from prepare import seed_requests
+                print(json.dumps(seed_requests(json.loads(Path(sys.argv[2]).read_text()))))
+                """, scripts.toString(), directory.resolve("members.json").toString()), requests);
+        Path seedFile = directory.resolve("seed.sql");
+        String seed = Files.readString(seedFile);
+        for (JsonNode request : JSON.readTree(Files.readString(requests))) {
+            seed = protectSeedRow(seed, request);
+        }
+        assertThat(seed.contains(":'source_text_") || seed.contains(":'request_fingerprint_")).isFalse();
+        Files.writeString(seedFile, seed);
+    }
+
+    private String protectSeedRow(String seed, JsonNode request) {
+        UUID diaryId = UUID.fromString(request.get("diaryId").asString());
+        UUID userId = UUID.fromString(request.get("userId").asString());
+        LocalDate date = LocalDate.parse(request.get("diaryDate").asString());
+        UUID idempotency = UUID.fromString(request.get("idempotencyKey").asString());
+        String encrypted = sourceTextCipher.encrypt(diaryId, userId, SEED_TEXT);
+        String fingerprint = protectedFingerprint(new GenerateDiaryImageCommand(
+                userId, diaryId, date, SEED_TEXT, idempotency
+        ), encrypted);
+        String suffix = diaryId.toString().replace("-", "");
+        String sourcePlaceholder = ":'source_text_" + suffix + "'";
+        String fingerprintPlaceholder = ":'request_fingerprint_" + suffix + "'";
+        assertThat(seed.contains(sourcePlaceholder) && seed.contains(fingerprintPlaceholder)).isTrue();
+        return seed.replace(sourcePlaceholder, "'" + encrypted + "'")
+                .replace(fingerprintPlaceholder, "'" + fingerprint + "'");
+    }
+
+    private String protectedFingerprint(GenerateDiaryImageCommand command, String encrypted) {
+        return sourceTextCipher.protectRequestFingerprint(command.diaryId(), command.userId(), encrypted,
+                DiarySourceTextCipher.CURRENT_VERSION, fingerprints.generate(command));
     }
 
     private void prepareCleanupCommands(Path run) throws Exception {
