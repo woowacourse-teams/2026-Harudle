@@ -227,6 +227,13 @@ public class DiaryGeneration {
                 && status == GenerationStatus.PROCESSING;
     }
 
+    public void startProcessing() {
+        if (status != GenerationStatus.PENDING) {
+            throw new IllegalStateException("대기 중인 생성 작업만 처리할 수 있습니다.");
+        }
+        this.status = GenerationStatus.PROCESSING;
+    }
+
     public void succeed(Storyboard storyboard, String imageObjectKey, Instant completedAt) {
         succeed(storyboard, imageObjectKey, null, completedAt);
     }

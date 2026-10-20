@@ -10,6 +10,8 @@ import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.test.util.ReflectionTestUtils;
 
 class DiaryGenerationTest {
@@ -86,6 +88,43 @@ class DiaryGenerationTest {
         assertThat(generation.getImageObjectKey()).isNull();
         assertThat(generation.getErrorCode()).isNull();
         assertThat(generation.getCompletedAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("대기 작업을 처리 중으로 바꾸면 같은 요청으로 실행할 수 있다")
+    void startProcessingPendingGeneration() {
+        UUID diaryId = UUID.randomUUID();
+        UUID idempotencyKey = UUID.randomUUID();
+        LocalDate usageDate = LocalDate.of(2026, 10, 20);
+        DiaryGeneration generation = DiaryGeneration.pending(
+                diaryId, GENERATION_PROMPT_ID, idempotencyKey, REQUEST_FINGERPRINT, usageDate
+        );
+
+        generation.startProcessing();
+
+        assertThat(generation.getStatus()).isEqualTo(GenerationStatus.PROCESSING);
+        assertThat(generation.matchesExecutableClaim(diaryId, idempotencyKey, REQUEST_FINGERPRINT)).isTrue();
+        assertThat(generation.getUsageDate()).isEqualTo(usageDate);
+        assertThat(generation.getErrorCode()).isNull();
+        assertThat(generation.getCompletedAt()).isNull();
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = GenerationStatus.class, names = {"PROCESSING", "SUCCEEDED", "FAILED"})
+    @DisplayName("이미 시작했거나 끝난 작업을 다시 처리 중으로 바꿀 수 없다")
+    void rejectStartingNonPendingGeneration(GenerationStatus status) {
+        DiaryGeneration generation = startGeneration();
+        if (status == GenerationStatus.SUCCEEDED) {
+            generation.succeed(createStoryboard(), "generated/diary-image.png", Instant.now());
+        }
+        if (status == GenerationStatus.FAILED) {
+            generation.fail(GenerationErrorCode.AI_PROVIDER_ERROR, Instant.now());
+        }
+
+        assertThatThrownBy(generation::startProcessing)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("대기 중인 생성 작업만 처리할 수 있습니다.");
+        assertThat(generation.getStatus()).isEqualTo(status);
     }
 
     @Test

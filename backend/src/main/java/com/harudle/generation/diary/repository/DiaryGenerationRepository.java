@@ -35,6 +35,16 @@ public interface DiaryGenerationRepository extends
             @Param("idempotencyKey") UUID idempotencyKey
     );
 
+    @Query(value = """
+            SELECT generation.*
+            FROM diary_generations AS generation
+            WHERE generation.status = 'PENDING'
+            ORDER BY generation.created_at, generation.id
+            LIMIT :batchSize
+            FOR UPDATE SKIP LOCKED
+            """, nativeQuery = true)
+    List<DiaryGeneration> findPendingForUpdateSkipLocked(@Param("batchSize") int batchSize);
+
     @Query("""
             SELECT generation.id
             FROM DiaryGeneration generation
