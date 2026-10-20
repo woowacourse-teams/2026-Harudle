@@ -236,6 +236,29 @@ class SecurityConfigTest {
     }
 
     @Test
+    @DisplayName("기본 프로필 이미지 변경 문서에 인증, 번호 범위와 응답을 명시한다")
+    void documentsDefaultProfileImageChange() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].patch.security[0].bearerAuth").isArray())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].patch.security[0].csrfToken").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].patch.responses['204']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].patch.responses['200']").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].patch.responses['400'].content"
+                        + "['application/problem+json'].examples.VALIDATION_ERROR.value.code")
+                        .value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].patch.responses['409'].content"
+                        + "['application/problem+json'].examples.PUBLIC_PROFILE_NOT_ASSIGNED.value.code")
+                        .value("PUBLIC_PROFILE_NOT_ASSIGNED"))
+                .andExpect(jsonPath("$.components.schemas.ChangeDefaultProfileImageRequest.required")
+                        .value(hasItem("imageCode")))
+                .andExpect(jsonPath("$.components.schemas.ChangeDefaultProfileImageRequest.properties.imageCode.minimum")
+                        .value(1))
+                .andExpect(jsonPath("$.components.schemas.ChangeDefaultProfileImageRequest.properties.imageCode.maximum")
+                        .value(10));
+    }
+
+    @Test
     @DisplayName("OpenAPI 문서에 API별 Problem Details 코드와 예시를 명시한다")
     void documentsApiErrorResponses() throws Exception {
         mockMvc.perform(get("/v3/api-docs"))

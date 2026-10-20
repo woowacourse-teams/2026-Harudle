@@ -112,6 +112,7 @@ Idempotency-Key: 7e5cc251-fdde-4cc0-a54e-2c8142750609
 | `POST` | `/api/v1/auth/logout` | 불필요 | Refresh Token Cookie를 이용한 현재 로그인 세션 종료 |
 | `POST` | `/api/v1/guest/session` | 불필요 | 로그인 전 체험용 게스트 세션 발급 또는 재사용 |
 | `GET` | `/api/v1/me` | 필요 | 내 프로필 조회 |
+| `PATCH` | `/api/v1/me/profile-image` | 필요 | 내 기본 프로필 이미지 변경 |
 
 ### 3.2 일기 및 생성
 
@@ -254,12 +255,17 @@ HTTP/1.1 200 OK
 {
   "id": "08d69a34-6d70-4d42-a158-671bc67733c9",
   "name": "하루들",
+  "nickname": "행복한 고양이",
+  "profileImageUrl": "https://www.harudle.com/profile-images/v1/3.png",
   "email": "harudle.official@gmail.com",
-  "oauthProvider": "KAKAO",
   "role": "USER",
+  "oauthProviders": ["kakao"],
   "createdAt": "2026-08-06T10:30:00+09:00"
 }
 ```
+
+공개 프로필이 아직 배정되지 않은 기존 회원은 `nickname`과 `profileImageUrl`이 `null`입니다.
+기본 이미지 URL은 `PROFILE_IMAGE_BASE_URL` 설정과 이미지 번호로 구성합니다.
 
 ### 4.6 게스트 세션 발급
 
@@ -289,6 +295,44 @@ HTTP/1.1 204 No Content
 Cache-Control: no-store
 Set-Cookie: guest_session={guestToken}; Path=/api/v1/guest; Max-Age=2592000; Secure; HttpOnly; SameSite=Lax
 ```
+
+### 4.7 내 기본 프로필 이미지 변경
+
+```http
+PATCH /api/v1/me/profile-image
+Authorization: Bearer {accessToken}
+Content-Type: application/json
+```
+
+요청:
+
+```json
+{
+  "imageCode": 7
+}
+```
+
+- `imageCode`는 필수이며 1~10 사이의 정수입니다.
+- 로그인한 사용자의 기본 이미지만 변경하며 닉네임은 유지합니다.
+- Bearer 인증을 사용하므로 CSRF Cookie/Header는 요구하지 않습니다.
+- 검증이나 저장에 실패하면 기존 프로필을 유지합니다.
+- 개인 이미지 파일 업로드는 별도 구현 예정이며 이 API는 기본 이미지 선택에 사용합니다.
+
+성공 응답은 본문이 없습니다.
+
+```http
+HTTP/1.1 204 No Content
+Cache-Control: no-store
+```
+
+저장 후 FE는 `GET /api/v1/me`로 새 `profileImageUrl`을 조회해 화면에 반영합니다.
+
+| HTTP 상태 | 오류 코드 | 상황 |
+| --- | --- | --- |
+| `400` | `VALIDATION_ERROR` | 이미지 번호 누락, `null` 또는 허용 범위 초과 |
+| `401` | `UNAUTHORIZED` | Access Token 누락 또는 유효하지 않은 토큰 |
+| `401` | `INVALID_CURRENT_USER` | 사용자가 없거나 탈퇴했거나 연결된 OAuth 계정이 없음 |
+| `409` | `PUBLIC_PROFILE_NOT_ASSIGNED` | 공개 프로필이 아직 배정되지 않음 |
 
 ## 5. 일기 및 생성 API
 

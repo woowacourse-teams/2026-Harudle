@@ -4,10 +4,12 @@ import com.harudle.auth.application.CurrentUserResult;
 import com.harudle.auth.application.CurrentUserService;
 import com.harudle.auth.application.InvalidCurrentUserException;
 import com.harudle.auth.application.NicknameChangeService;
+import com.harudle.auth.application.ProfileImageChangeService;
 import com.harudle.common.error.ApiErrorResponses;
 import com.harudle.common.error.ErrorType;
 import com.harudle.common.error.ProblemDetailFactory;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -35,15 +37,18 @@ public class CurrentUserController {
 
     private final CurrentUserService currentUserService;
     private final NicknameChangeService nicknameChangeService;
+    private final ProfileImageChangeService profileImageChangeService;
     private final ProblemDetailFactory problemDetailFactory;
 
     public CurrentUserController(
             CurrentUserService currentUserService,
             NicknameChangeService nicknameChangeService,
+            ProfileImageChangeService profileImageChangeService,
             ProblemDetailFactory problemDetailFactory
     ) {
         this.currentUserService = currentUserService;
         this.nicknameChangeService = nicknameChangeService;
+        this.profileImageChangeService = profileImageChangeService;
         this.problemDetailFactory = problemDetailFactory;
     }
 
@@ -82,6 +87,30 @@ public class CurrentUserController {
             @Valid @RequestBody ChangeNicknameRequest request
     ) {
         nicknameChangeService.change(extractUserId(jwt), request.nickname());
+
+        return ResponseEntity.noContent()
+                .cacheControl(CacheControl.noStore())
+                .build();
+    }
+
+    @Operation(
+            summary = "내 기본 프로필 이미지 변경",
+            description = "1~10번 중 선택한 기본 이미지로 변경합니다. 닉네임은 유지합니다. "
+                    + "성공 후 GET /api/v1/me로 변경된 이미지 URL을 조회합니다."
+    )
+    @ApiResponse(responseCode = "204", description = "기본 프로필 이미지 변경 완료")
+    @ApiErrorResponses({
+            ErrorType.UNAUTHORIZED,
+            ErrorType.INVALID_CURRENT_USER,
+            ErrorType.VALIDATION_ERROR,
+            ErrorType.PUBLIC_PROFILE_NOT_ASSIGNED
+    })
+    @PatchMapping("/profile-image")
+    public ResponseEntity<Void> changeDefaultProfileImage(
+            @AuthenticationPrincipal Jwt jwt,
+            @Valid @RequestBody ChangeDefaultProfileImageRequest request
+    ) {
+        profileImageChangeService.changeDefault(extractUserId(jwt), request.imageCode());
 
         return ResponseEntity.noContent()
                 .cacheControl(CacheControl.noStore())
