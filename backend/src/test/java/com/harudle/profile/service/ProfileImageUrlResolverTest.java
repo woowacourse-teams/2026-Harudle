@@ -12,7 +12,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 class ProfileImageUrlResolverTest {
 
     @ParameterizedTest
-    @ValueSource(ints = {1, 2, 3, 4, 5})
+    @ValueSource(ints = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10})
     @DisplayName("저장된 이미지 코드에 대응하는 고정 PNG 주소를 반환한다")
     void resolvesAssignedImageCode(int imageCode) {
         ProfileImageUrlResolver resolver = resolver("https://www.harudle.com/profile-images/v1");
@@ -35,7 +35,7 @@ class ProfileImageUrlResolverTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {-1, 0, 6})
+    @ValueSource(ints = {-1, 0, 11})
     @DisplayName("허용 범위 밖의 이미지 코드로 URL을 만들지 않는다")
     void rejectsInvalidImageCode(int imageCode) {
         assertThatThrownBy(() -> resolver("https://www.harudle.com/profile-images/v1").resolve(imageCode))
