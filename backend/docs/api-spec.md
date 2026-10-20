@@ -113,6 +113,7 @@ Idempotency-Key: 7e5cc251-fdde-4cc0-a54e-2c8142750609
 | `POST` | `/api/v1/guest/session` | 불필요 | 로그인 전 체험용 게스트 세션 발급 또는 재사용 |
 | `GET` | `/api/v1/me` | 필요 | 내 프로필 조회 |
 | `PATCH` | `/api/v1/me/profile-image` | 필요 | 내 기본 프로필 이미지 변경 |
+| `POST` | `/api/v1/me/profile-image` | 필요 | 내 개인 프로필 이미지 업로드 |
 
 ### 3.2 일기 및 생성
 
@@ -316,7 +317,8 @@ Content-Type: application/json
 - 로그인한 사용자의 기본 이미지만 변경하며 닉네임은 유지합니다.
 - Bearer 인증을 사용하므로 CSRF Cookie/Header는 요구하지 않습니다.
 - 검증이나 저장에 실패하면 기존 프로필을 유지합니다.
-- 개인 이미지 파일 업로드는 별도 구현 예정이며 이 API는 기본 이미지 선택에 사용합니다.
+- 개인 이미지 파일 업로드는 같은 경로의 `POST`를 사용합니다. 이 API는 기본 이미지 선택에 사용합니다.
+- 기존 개인 사진은 DB 변경이 확정된 뒤 삭제합니다. 삭제만 실패하면 기본 이미지 변경은 성공으로 유지하고 재시도합니다.
 
 성공 응답은 본문이 없습니다.
 
@@ -333,6 +335,50 @@ Cache-Control: no-store
 | `401` | `UNAUTHORIZED` | Access Token 누락 또는 유효하지 않은 토큰 |
 | `401` | `INVALID_CURRENT_USER` | 사용자가 없거나 탈퇴했거나 연결된 OAuth 계정이 없음 |
 | `409` | `PUBLIC_PROFILE_NOT_ASSIGNED` | 공개 프로필이 아직 배정되지 않음 |
+
+### 4.8 내 개인 프로필 이미지 업로드
+
+```http
+POST /api/v1/me/profile-image
+Authorization: Bearer {accessToken}
+Content-Type: multipart/form-data; boundary={boundary}
+```
+
+`image` 항목으로 파일 한 장을 전송합니다.
+
+```shell
+curl -X POST 'http://localhost:8080/api/v1/me/profile-image' \
+  -H 'Authorization: Bearer {accessToken}' \
+  -F 'image=@profile.png'
+```
+
+- 원본은 최대 5MiB(5 × 1024 × 1024바이트)의 JPEG 또는 PNG입니다. 실제 파일 내용으로 형식을 확인합니다.
+- 빈 파일, 손상된 사진, 2500만 픽셀을 넘는 사진은 거절합니다.
+- 가운데를 정사각형으로 자르고 최대 512 × 512픽셀의 WebP로 저장합니다. 작은 사진은 확대하지 않으며 회전 보정은 하지 않습니다.
+- 닉네임과 기본 이미지 번호는 유지하고 개인 사진 경로만 변경합니다.
+- Bearer 인증을 사용하며 CSRF Cookie/Header는 요구하지 않습니다.
+- 변환과 S3 업로드는 DB 트랜잭션 밖에서 실행하고 회원 상태를 다시 확인한 뒤 DB 경로를 변경합니다.
+- DB 저장 후 이전 개인 파일을 삭제합니다. 삭제 실패는 업로드 성공을 되돌리지 않고 DB에 기록해 재시도합니다.
+- DB 저장 실패가 확정되면 새 파일을 정리합니다. 결과가 불명확하면 회원 잠금 조회로 현재 참조를 확인한 뒤 정리합니다.
+
+성공 응답은 본문이 없습니다.
+
+```http
+HTTP/1.1 204 No Content
+Cache-Control: no-store
+```
+
+| HTTP 상태 | 오류 코드 | 상황 |
+| --- | --- | --- |
+| `400` | `VALIDATION_ERROR` | 파일 누락, 빈 파일, 손상된 사진 또는 픽셀 수 초과 |
+| `401` | `UNAUTHORIZED` | Access Token 누락 또는 유효하지 않은 토큰 |
+| `401` | `INVALID_CURRENT_USER` | 사용자가 없거나 탈퇴했거나 연결된 OAuth 계정이 없음 |
+| `409` | `PUBLIC_PROFILE_NOT_ASSIGNED` | 공개 프로필이 아직 배정되지 않음 |
+| `413` | `PAYLOAD_TOO_LARGE` | 원본 파일이 5MiB 초과 또는 공용 요청 크기 제한 초과 |
+| `415` | `UNSUPPORTED_MEDIA_TYPE` | JPEG/PNG가 아니거나 요청이 multipart/form-data 형식이 아님 |
+| `503` | `PROFILE_IMAGE_STORAGE_ERROR` | S3 저장 실패 또는 저장소 연결 비활성화 |
+
+현재 구현 범위는 업로드와 DB 저장까지입니다. 내 정보, 피드, 댓글의 개인 사진 URL과 만료 시각 반환은 별도 연결 예정입니다.
 
 ## 5. 일기 및 생성 API
 

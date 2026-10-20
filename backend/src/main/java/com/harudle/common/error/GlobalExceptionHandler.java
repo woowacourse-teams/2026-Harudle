@@ -8,6 +8,7 @@ import com.harudle.admin.service.exception.AdminInactiveUserException;
 import com.harudle.auth.domain.exception.InvalidNicknameException;
 import com.harudle.auth.domain.exception.NicknameAlreadyInUseException;
 import com.harudle.auth.domain.exception.PublicProfileNotAssignedException;
+import com.harudle.auth.application.ProfileImageStorageException;
 import com.harudle.auth.presentation.AuthenticationRequiredException;
 import com.harudle.comment.service.exception.CommentAccessDeniedException;
 import com.harudle.comment.service.exception.CommentIntegrationUnavailableException;
@@ -390,6 +391,15 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(ImageStorageException.class)
     ResponseEntity<ProblemDetail> handleImageStorage(HttpServletRequest request) {
         return createResponse(ErrorType.IMAGE_STORAGE_ERROR, request);
+    }
+
+    @ExceptionHandler(ProfileImageStorageException.class)
+    ResponseEntity<ProblemDetail> handleProfileImageStorage(
+            ProfileImageStorageException exception,
+            HttpServletRequest request
+    ) {
+        apiExceptionLogger.error(ErrorType.PROFILE_IMAGE_STORAGE_ERROR, exception, request);
+        return createResponse(ErrorType.PROFILE_IMAGE_STORAGE_ERROR, request);
     }
 
     @ExceptionHandler(GenerationUnavailableException.class)

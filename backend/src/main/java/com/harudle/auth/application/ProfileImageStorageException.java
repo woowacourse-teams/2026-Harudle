@@ -1,15 +1,17 @@
 package com.harudle.auth.application;
 
+import org.jspecify.annotations.Nullable;
+
 public final class ProfileImageStorageException extends RuntimeException {
 
-    private final String objectKey;
+    private final @Nullable String objectKey;
 
-    public ProfileImageStorageException(String message, String objectKey, Throwable cause) {
+    public ProfileImageStorageException(String message, @Nullable String objectKey, @Nullable Throwable cause) {
         super(message, cause);
         this.objectKey = objectKey;
     }
 
-    public String getObjectKey() {
+    public @Nullable String getObjectKey() {
         return objectKey;
     }
 }

@@ -259,6 +259,27 @@ class SecurityConfigTest {
     }
 
     @Test
+    @DisplayName("개인 사진 업로드 문서에 multipart 요청과 인증 및 성공과 실패 응답을 명시한다")
+    void documentsProfileImageUpload() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].post.security[0].bearerAuth").isArray())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].post.security[0].csrfToken").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].post.requestBody.required").value(true))
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].post.requestBody.content"
+                        + "['multipart/form-data']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].post.responses['204']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].post.responses['200']").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].post.responses['413'].content"
+                        + "['application/problem+json'].schema['$ref']")
+                        .value("#/components/schemas/HarudleProblemDetail"))
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].post.responses['415']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].post.responses['503'].content"
+                        + "['application/problem+json'].examples.PROFILE_IMAGE_STORAGE_ERROR.value.code")
+                        .value("PROFILE_IMAGE_STORAGE_ERROR"));
+    }
+
+    @Test
     @DisplayName("OpenAPI 문서에 API별 Problem Details 코드와 예시를 명시한다")
     void documentsApiErrorResponses() throws Exception {
         mockMvc.perform(get("/v3/api-docs"))

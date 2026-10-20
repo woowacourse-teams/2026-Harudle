@@ -96,6 +96,8 @@ RDS 연결 대상은 `DEPLOY_ENV`와 별도로 각 서버 `.env`의 `DB_HOST`, `
 S3 prefix 변경은 기존 DB의 이미지·참조 이미지 Object Key를 자동으로 바꾸지 않는다.
 개인 프로필 이미지는 같은 S3 연결을 사용하며 `harudle/profile-images/{DEPLOY_ENV}/{회원ID}/{UUID}.webp`에 저장한다.
 프로필 경로는 `DEPLOY_ENV`에서 자동 구성하고 조회 주소는 기존 `S3_ACCESS_URL_TTL`을 따른다.
+프로필 교체 후 삭제할 파일은 `profile_image_cleanup_tasks`에 남기고 커밋 후 정리한다.
+실패한 삭제는 기본 1분 간격으로 최대 50개씩 재시도하며, 현재 회원이 참조하는 파일은 삭제하지 않는다.
 
 ## 배포 구성
 

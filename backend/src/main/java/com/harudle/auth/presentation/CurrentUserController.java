@@ -4,8 +4,9 @@ import com.harudle.auth.application.CurrentUserResult;
 import com.harudle.auth.application.CurrentUserService;
 import com.harudle.auth.application.InvalidCurrentUserException;
 import com.harudle.auth.application.NicknameChangeService;
-import com.harudle.auth.application.ProfileImageChangeService;
+import com.harudle.auth.application.ProfileImageUploadService;
 import com.harudle.common.error.ApiErrorResponses;
+import com.harudle.common.error.ApiFrameworkError;
 import com.harudle.common.error.ErrorType;
 import com.harudle.common.error.ProblemDetailFactory;
 import io.swagger.v3.oas.annotations.Operation;
@@ -25,9 +26,12 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 @Tag(name = "Auth")
 @SecurityRequirement(name = "bearerAuth")
@@ -37,18 +41,18 @@ public class CurrentUserController {
 
     private final CurrentUserService currentUserService;
     private final NicknameChangeService nicknameChangeService;
-    private final ProfileImageChangeService profileImageChangeService;
+    private final ProfileImageUploadService profileImageUploadService;
     private final ProblemDetailFactory problemDetailFactory;
 
     public CurrentUserController(
             CurrentUserService currentUserService,
             NicknameChangeService nicknameChangeService,
-            ProfileImageChangeService profileImageChangeService,
+            ProfileImageUploadService profileImageUploadService,
             ProblemDetailFactory problemDetailFactory
     ) {
         this.currentUserService = currentUserService;
         this.nicknameChangeService = nicknameChangeService;
-        this.profileImageChangeService = profileImageChangeService;
+        this.profileImageUploadService = profileImageUploadService;
         this.problemDetailFactory = problemDetailFactory;
     }
 
@@ -110,7 +114,36 @@ public class CurrentUserController {
             @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody ChangeDefaultProfileImageRequest request
     ) {
-        profileImageChangeService.changeDefault(extractUserId(jwt), request.imageCode());
+        profileImageUploadService.changeDefault(extractUserId(jwt), request.imageCode());
+
+        return ResponseEntity.noContent()
+                .cacheControl(CacheControl.noStore())
+                .build();
+    }
+
+    @Operation(
+            summary = "내 개인 프로필 이미지 업로드",
+            description = "image 항목으로 5MiB 이하의 JPEG 또는 PNG 한 장을 전송합니다. "
+                    + "가운데를 정사각형으로 자르고 최대 512픽셀의 WebP로 저장합니다. 닉네임은 유지합니다.",
+            requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true)
+    )
+    @ApiResponse(responseCode = "204", description = "개인 프로필 이미지 저장 완료")
+    @ApiErrorResponses(value = {
+            ErrorType.UNAUTHORIZED,
+            ErrorType.INVALID_CURRENT_USER,
+            ErrorType.VALIDATION_ERROR,
+            ErrorType.PUBLIC_PROFILE_NOT_ASSIGNED,
+            ErrorType.PROFILE_IMAGE_STORAGE_ERROR
+    }, framework = {
+            @ApiFrameworkError(status = 413, name = "원본 이미지 크기 초과", detail = "프로필 이미지는 5MiB 이하여야 합니다."),
+            @ApiFrameworkError(status = 415, name = "미지원 이미지 형식", detail = "프로필 이미지는 JPEG 또는 PNG만 지원합니다.")
+    })
+    @PostMapping(value = "/profile-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Void> uploadProfileImage(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestPart("image") MultipartFile image
+    ) {
+        profileImageUploadService.upload(extractUserId(jwt), image);
 
         return ResponseEntity.noContent()
                 .cacheControl(CacheControl.noStore())
