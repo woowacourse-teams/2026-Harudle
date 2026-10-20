@@ -9,6 +9,16 @@ import type { ApiRequest } from '../../shared/api';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import type { FeedLikeResponse } from '../../domain/feeds/feedLike';
 import { useAnalytics } from '../../posthog/useAnalytics';
+import {
+  getFeedListCache,
+  setFeedListCache,
+  type FeedListKey,
+} from '../../domain/feeds/feedListCache';
+import {
+  appendFeedPage,
+  updateFeedLike,
+  removeFeed,
+} from '../../domain/feeds/feedListUpdates';
 
 interface FeedListState {
   readonly request: ApiRequest<FeedListResponse>;
@@ -18,45 +28,7 @@ interface FeedListState {
   readonly removeFeedFromList: (feedId: Feed['id']) => void;
 }
 
-type FeedListKey =
-  `category:${FeedListRequest['categoryId']}&sort:${FeedListRequest['sort']}`;
-
-interface FeedListCache {
-  readonly key: FeedListKey;
-  readonly data: FeedListResponse;
-}
-
-let feedListCache: FeedListCache | null = null;
-
 const FEED_SIZE = 20;
-
-const appendFeedPage = (
-  previous: FeedListResponse,
-  page: FeedListResponse,
-): FeedListResponse => ({
-  items: [...previous.items, ...page.items],
-  nextCursor: page.nextCursor,
-  hasNext: page.hasNext,
-});
-
-const updateFeedLike = (
-  previous: FeedListResponse,
-  feedId: Feed['id'],
-  like: FeedLikeResponse,
-): FeedListResponse => ({
-  ...previous,
-  items: previous.items.map((feed): Feed =>
-    feed.id === feedId ? { ...feed, ...like } : feed,
-  ),
-});
-
-const removeFeed = (
-  previous: FeedListResponse,
-  feedId: Feed['id'],
-): FeedListResponse => ({
-  ...previous,
-  items: previous.items.filter((feed): boolean => feed.id !== feedId),
-});
 
 const useFeedList = ({
   categoryId,
@@ -66,7 +38,7 @@ const useFeedList = ({
   const key: FeedListKey = `category:${categoryId}&sort:${sort}`;
   const [request, setRequest] = useState<ApiRequest<FeedListResponse>>(
     (): ApiRequest<FeedListResponse> => {
-      const cached = feedListCache;
+      const cached = getFeedListCache();
 
       return cached === null || cached.key !== key
         ? { status: 'idle' }
@@ -82,7 +54,7 @@ const useFeedList = ({
 
   const setFeedStateAndCache = useCallback(
     (data: FeedListResponse): void => {
-      feedListCache = { key, data };
+      setFeedListCache({ key, data });
       setRequest({ status: 'success', data });
     },
     [key],
@@ -90,11 +62,12 @@ const useFeedList = ({
 
   const updateFeedStateAndCache = useCallback(
     (update: (latest: FeedListResponse) => FeedListResponse): void => {
-      if (feedListCache?.key !== key) return;
+      const cached = getFeedListCache();
+      if (cached?.key !== key) return;
 
       // 캐시로부터 항상 최신 값을 읽도록 해서
       // 여러 요청의 응답 순서가 바뀌어도 이전 데이터로 덮어씌워지는 것을 방지함
-      const nextData = update(feedListCache.data);
+      const nextData = update(cached.data);
       setFeedStateAndCache(nextData);
     },
     [key, setFeedStateAndCache],
@@ -172,7 +145,7 @@ const useFeedList = ({
       });
       if (signal.aborted) return;
 
-      if (feedListCache?.key !== key) return;
+      if (getFeedListCache()?.key !== key) return;
 
       updateFeedStateAndCache((latest): FeedListResponse =>
         appendFeedPage(latest, data),
@@ -195,8 +168,8 @@ const useFeedList = ({
   }, [request, categoryId, sort, key, track, updateFeedStateAndCache]);
 
   useEffect(() => {
-    if (feedListCache?.key !== key) {
-      feedListCache = null;
+    if (getFeedListCache()?.key !== key) {
+      setFeedListCache(null);
       // eslint-disable-next-line react-hooks/set-state-in-effect
       void execute();
     }
