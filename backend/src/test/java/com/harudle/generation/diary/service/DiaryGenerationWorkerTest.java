@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 
 import com.harudle.diary.domain.Diary;
 import com.harudle.diary.repository.DiaryRepository;
+import com.harudle.generation.config.GenerationLifecycleProperties;
 import com.harudle.generation.config.GenerationWorkerProperties;
 import com.harudle.generation.loadtest.LoadTestGenerationRegistry;
 import com.harudle.generation.diary.domain.DiaryGeneration;
@@ -20,9 +21,12 @@ import com.harudle.generation.diary.domain.GenerationErrorCode;
 import com.harudle.generation.diary.domain.GenerationStatus;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayDeque;
 import java.util.List;
 import java.util.Optional;
@@ -111,6 +115,35 @@ class DiaryGenerationWorkerTest {
         verify(claimService, times(4)).claim(1);
         verify(generationExecutor, never()).generate(any(), any());
         verifyNoInteractions(generationRepository, diaryRepository, completionService);
+    }
+
+    @Test
+    @DisplayName("재시작 후 기한이 지난 대기 작업은 선점하거나 AI를 호출하지 않는다")
+    void doNotExecuteExpiredPendingGeneration() {
+        Instant now = Instant.parse("2026-10-21T00:00:00Z");
+        DiaryGeneration generation = DiaryGeneration.pending(UUID.randomUUID(), 1L, UUID.randomUUID(), "a".repeat(64), null);
+        ReflectionTestUtils.setField(generation, "createdAt", now.minusSeconds(120));
+        when(generationRepository.findPendingForUpdateSkipLocked(now.minusSeconds(120), 1))
+                .thenReturn(List.of(generation));
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        try {
+            claimService = new PendingDiaryGenerationClaimService(
+                    generationRepository,
+                    new GenerationQueueMetrics(registry, generationRepository),
+                    new GenerationLifecycleProperties(Duration.ofMinutes(30), Duration.ofMinutes(1),
+                            Duration.ofSeconds(120), Duration.ofSeconds(5)),
+                    Clock.fixed(now, ZoneOffset.UTC)
+            );
+
+            worker(Runnable::run, 1).poll();
+
+            assertThat(generation.getStatus()).isEqualTo(GenerationStatus.PENDING);
+            verify(generationExecutor, never()).generate(any(), any());
+            verify(generationRepository, never()).findById(any());
+            verifyNoInteractions(diaryRepository, completionService);
+        } finally {
+            registry.close();
+        }
     }
 
     @Test

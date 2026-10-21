@@ -223,6 +223,11 @@ public enum ErrorType {
             "Generation interrupted",
             "생성 처리가 완료되지 못했습니다."
     ),
+    GENERATION_PENDING_TIMEOUT(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "Generation pending timeout",
+            "생성 대기 시간이 초과되었습니다. 다시 요청해 주세요."
+    ),
     IMAGE_STORAGE_ERROR(
             HttpStatus.SERVICE_UNAVAILABLE,
             "Image storage error",
@@ -283,6 +288,7 @@ public enum ErrorType {
             case GENERATION_INTERNAL_ERROR -> INTERNAL_SERVER_ERROR;
             case AI_PROVIDER_TIMEOUT -> AI_PROVIDER_TIMEOUT;
             case GENERATION_INTERRUPTED -> GENERATION_INTERRUPTED;
+            case GENERATION_PENDING_TIMEOUT -> GENERATION_PENDING_TIMEOUT;
             case IMAGE_STORAGE_ERROR -> IMAGE_STORAGE_ERROR;
         };
     }

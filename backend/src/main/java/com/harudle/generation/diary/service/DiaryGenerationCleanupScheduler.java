@@ -4,6 +4,7 @@ import com.harudle.generation.config.GenerationLifecycleProperties;
 import com.harudle.generation.diary.domain.GenerationStatus;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -72,6 +73,46 @@ public final class DiaryGenerationCleanupScheduler {
                     .addKeyValue("interruptedCount", expiredCount)
                     .addKeyValue("exceptionType", exception.getClass().getSimpleName())
                     .log("event=generation_cleanup_failed candidateCount={} interruptedCount={} exceptionType={}",
+                            candidateCount, expiredCount, exception.getClass().getSimpleName());
+            throw exception;
+        }
+    }
+
+    @Scheduled(
+            fixedDelayString = "${harudle.generation.lifecycle.pending-cleanup-interval:5s}",
+            initialDelayString = "${harudle.generation.lifecycle.pending-cleanup-interval:5s}"
+    )
+    public void expireStalePendingGenerations() {
+        Instant currentTime = clock.instant();
+        Duration pendingTimeout = generationLifecycleProperties.pendingTimeout();
+        int candidateCount = 0;
+        int expiredCount = 0;
+        try {
+            List<UUID> generationIds = diaryGenerationRepository.findStalePendingIds(
+                    currentTime.minus(pendingTimeout), CLEANUP_BATCH_SIZE
+            );
+            candidateCount = generationIds.size();
+            for (UUID generationId : generationIds) {
+                if (completionService.expirePendingIfStale(generationId, currentTime, pendingTimeout)) {
+                    expiredCount++;
+                }
+            }
+
+            if (candidateCount > 0) {
+                log.atInfo()
+                        .addKeyValue("event", "generation_pending_cleanup_run")
+                        .addKeyValue("candidateCount", candidateCount)
+                        .addKeyValue("expiredCount", expiredCount)
+                        .log("event=generation_pending_cleanup_run candidateCount={} expiredCount={}",
+                                candidateCount, expiredCount);
+            }
+        } catch (RuntimeException exception) {
+            log.atError()
+                    .addKeyValue("event", "generation_pending_cleanup_failed")
+                    .addKeyValue("candidateCount", candidateCount)
+                    .addKeyValue("expiredCount", expiredCount)
+                    .addKeyValue("exceptionType", exception.getClass().getSimpleName())
+                    .log("event=generation_pending_cleanup_failed candidateCount={} expiredCount={} exceptionType={}",
                             candidateCount, expiredCount, exception.getClass().getSimpleName());
             throw exception;
         }

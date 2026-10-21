@@ -335,7 +335,10 @@ Content-Type: application/json
 
 접수 상한은 현재 백엔드 한 대의 동시 실행 수와 같습니다. 선점 전 작업도 상한에 포함합니다.
 회원과 게스트, 부하 테스트가 이 상한을 함께 사용합니다. 같은 요청의 재전송은 기존 작업으로 처리합니다.
-접수한 `PENDING` 작업은 120초를 기다렸다는 이유로 만료시키지 않습니다.
+기본 설정에서 저장한 지 120초 이상 지난 `PENDING` 작업은 자동 만료 대상입니다.
+5초 간격으로 확인해 `FAILED`와 `GENERATION_PENDING_TIMEOUT` 오류를 저장합니다.
+만료된 작업은 실행하지 않습니다. 실제 실패 저장 시점은 확인 간격과 DB 처리 시간에 따라 늦어질 수 있습니다.
+이미 `PROCESSING`인 작업에는 이 대기 제한을 적용하지 않습니다.
 
 일일 사용량 행은 PostgreSQL의 원자적 Upsert로 최초 행 생성과 증가를 함께 처리합니다. 최초 생성과 관리자 한도 변경이
 동시에 실행될 때는 사용자 행 잠금으로 두 작업을 직렬화하며, 사용 횟수가 제한보다 작은 경우에만 증가합니다.
@@ -537,8 +540,31 @@ Cookie: guest_session={guestToken}
 
 실패 상태의 `errorCode`는 `AI_PROVIDER_ERROR`, `AI_PROVIDER_RATE_LIMITED`, `AI_PROVIDER_TIMEOUT`,
 `AI_OUTPUT_TRUNCATED`, `AI_RESPONSE_PROCESSING_ERROR`, `GENERATION_INTERNAL_ERROR`,
-`GENERATION_INTERRUPTED`, `IMAGE_STORAGE_ERROR` 중 하나입니다.
+`GENERATION_INTERRUPTED`, `GENERATION_PENDING_TIMEOUT`, `IMAGE_STORAGE_ERROR` 중 하나입니다.
 작업이 실패한 것은 상태 조회 API의 오류가 아니므로 `200 OK`와 `FAILED`로 반환합니다.
+
+기본 설정에서 저장한 지 120초 이상 지난 `PENDING` 작업은 대기 만료 대상입니다.
+5초 간격으로 확인하며, 실패 저장이 끝나면 회원과 게스트에게 아래 결과를 반환합니다.
+실제 실패 저장 시점은 확인 간격과 DB 처리 시간에 따라 늦어질 수 있습니다.
+대기 만료는 `PROCESSING` 작업에는 적용하지 않습니다.
+
+```http
+HTTP/1.1 200 OK
+Cache-Control: no-store
+Content-Type: application/json
+```
+
+```json
+{
+  "id": "17ac16ef-c45a-40bb-92ea-aed37659ef1c",
+  "status": "FAILED",
+  "diaryId": null,
+  "errorCode": "GENERATION_PENDING_TIMEOUT"
+}
+```
+
+대기 만료 시 일기는 숨기고, 회원의 생성 횟수는 요청을 접수한 사용 날짜에 한 번 돌려줍니다.
+게스트의 체험 사용 상태는 유지합니다. 생성 기록은 남으므로 같은 요청 키를 다시 보내도 새 작업을 만들지 않습니다.
 
 - 회원은 로그인한 사용자가 소유한 작업만 조회할 수 있습니다.
 - 게스트는 세션의 소유자와 세션에 연결된 일기를 모두 확인합니다.

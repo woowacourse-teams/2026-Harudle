@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.harudle.diary.domain.Diary;
@@ -18,6 +19,7 @@ import com.harudle.generation.diary.domain.StoryPanel;
 import com.harudle.generation.diary.domain.Storyboard;
 import com.harudle.generation.diary.domain.StoryboardProviderInfo;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
+import com.harudle.generation.diary.service.event.DiaryGenerationPendingExpiredEvent;
 import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
 import com.harudle.generation.usage.domain.GenerationUsage;
 import com.harudle.generation.usage.service.GenerationUsageService;
@@ -34,8 +36,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -56,6 +61,9 @@ class DiaryGenerationCompletionServiceTest {
     @Mock
     private GenerationUsageService generationUsageService;
 
+    @Mock
+    private ApplicationEventPublisher events;
+
     private DiaryGenerationCompletionService completionService;
     private SimpleMeterRegistry meterRegistry;
 
@@ -68,7 +76,8 @@ class DiaryGenerationCompletionServiceTest {
                 diaryRepository,
                 generationUsageService,
                 clock,
-                new GenerationLifecycleMetrics(meterRegistry)
+                new GenerationLifecycleMetrics(meterRegistry),
+                events
         );
     }
 
@@ -249,6 +258,7 @@ class DiaryGenerationCompletionServiceTest {
         assertThat(generation.getCompletedAt()).isEqualTo(NOW);
         verify(diary).delete(NOW);
         verify(generationUsageService).restoreUsage(USER_ID, USAGE_DATE);
+        verifyNoInteractions(events);
     }
 
     @Test
@@ -305,6 +315,120 @@ class DiaryGenerationCompletionServiceTest {
                 .isEqualTo(GenerationErrorCode.GENERATION_INTERRUPTED);
         verify(diary).delete(NOW);
         verify(generationUsageService).restoreUsage(USER_ID, USAGE_DATE);
+    }
+
+    @Test
+    @DisplayName("대기 만료 시 일기를 숨기고 작업에 기록된 날짜의 사용량을 돌려준다")
+    void expirePendingGenerationAndRestoreOriginalUsageDate() {
+        LocalDate originalUsageDate = USAGE_DATE.minusDays(1);
+        DiaryGeneration generation = createPendingGeneration(originalUsageDate, NOW.minusSeconds(120));
+        Diary diary = mock(Diary.class);
+        when(diary.getUserId()).thenReturn(USER_ID);
+        when(diaryGenerationRepository.findByIdForUpdate(generation.getId())).thenReturn(Optional.of(generation));
+        when(diaryRepository.findByIdIncludingDeletedForUpdate(generation.getDiaryId())).thenReturn(Optional.of(diary));
+
+        boolean expired = completionService.expirePendingIfStale(generation.getId(), NOW, Duration.ofSeconds(120));
+
+        assertThat(expired).isTrue();
+        assertThat(generation.getStatus()).isEqualTo(GenerationStatus.FAILED);
+        assertThat(generation.getErrorCode()).isEqualTo(GenerationErrorCode.GENERATION_PENDING_TIMEOUT);
+        assertThat(generation.getCompletedAt()).isEqualTo(NOW);
+        verify(diary).delete(NOW);
+        verify(generationUsageService).restoreUsage(USER_ID, originalUsageDate);
+        verify(events).publishEvent(new DiaryGenerationPendingExpiredEvent(generation.getId()));
+        assertNoFinalizations();
+    }
+
+    @Test
+    @DisplayName("기한이 남은 대기 작업은 일기와 사용량을 변경하지 않는다")
+    void doNotExpireRecentPendingGeneration() {
+        DiaryGeneration generation = createPendingGeneration(USAGE_DATE, NOW.minusSeconds(120).plusNanos(1));
+        when(diaryGenerationRepository.findByIdForUpdate(generation.getId())).thenReturn(Optional.of(generation));
+
+        assertThat(completionService.expirePendingIfStale(generation.getId(), NOW, Duration.ofSeconds(120))).isFalse();
+
+        assertThat(generation.getStatus()).isEqualTo(GenerationStatus.PENDING);
+        verifyNoInteractions(diaryRepository, generationUsageService, events);
+        assertNoFinalizations();
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = GenerationStatus.class, names = {"PROCESSING", "SUCCEEDED", "FAILED"})
+    @DisplayName("행 잠금 후 이미 실행 중이거나 종료된 작업이면 대기 만료를 건너뛴다")
+    void skipPendingExpiryForNonPendingGeneration(GenerationStatus status) {
+        DiaryGeneration generation = createGeneration(USAGE_DATE);
+        ReflectionTestUtils.setField(generation, "createdAt", NOW.minusSeconds(180));
+        if (status == GenerationStatus.SUCCEEDED) {
+            generation.succeed(createStoryboard(), "generated/winner.png", NOW.minusSeconds(1));
+        }
+        if (status == GenerationStatus.FAILED) {
+            generation.fail(GenerationErrorCode.AI_PROVIDER_ERROR, NOW.minusSeconds(1));
+        }
+        when(diaryGenerationRepository.findByIdForUpdate(generation.getId())).thenReturn(Optional.of(generation));
+
+        assertThat(completionService.expirePendingIfStale(generation.getId(), NOW, Duration.ofSeconds(120))).isFalse();
+
+        assertThat(generation.getStatus()).isEqualTo(status);
+        verifyNoInteractions(diaryRepository, generationUsageService, events);
+        assertNoFinalizations();
+    }
+
+    @Test
+    @DisplayName("사용 날짜가 없는 대기 작업은 만료해도 회원 사용량을 복구하지 않는다")
+    void expirePendingGenerationWithoutMemberUsage() {
+        DiaryGeneration generation = createPendingGeneration(null, NOW.minusSeconds(120));
+        Diary diary = mock(Diary.class);
+        when(diaryGenerationRepository.findByIdForUpdate(generation.getId())).thenReturn(Optional.of(generation));
+        when(diaryRepository.findByIdIncludingDeletedForUpdate(generation.getDiaryId())).thenReturn(Optional.of(diary));
+
+        assertThat(completionService.expirePendingIfStale(generation.getId(), NOW, Duration.ofSeconds(120))).isTrue();
+
+        verify(diary).delete(NOW);
+        verifyNoInteractions(generationUsageService);
+    }
+
+    @Test
+    @DisplayName("같은 대기 작업을 다시 만료해도 일기 숨김과 사용량 복구를 반복하지 않는다")
+    void expirePendingGenerationOnlyOnce() {
+        DiaryGeneration generation = createPendingGeneration(USAGE_DATE, NOW.minusSeconds(120));
+        Diary diary = mock(Diary.class);
+        when(diary.getUserId()).thenReturn(USER_ID);
+        when(diaryGenerationRepository.findByIdForUpdate(generation.getId())).thenReturn(Optional.of(generation));
+        when(diaryRepository.findByIdIncludingDeletedForUpdate(generation.getDiaryId())).thenReturn(Optional.of(diary));
+
+        assertThat(completionService.expirePendingIfStale(generation.getId(), NOW, Duration.ofSeconds(120))).isTrue();
+        assertThat(completionService.expirePendingIfStale(
+                generation.getId(), NOW.plusSeconds(1), Duration.ofSeconds(120)
+        )).isFalse();
+
+        assertThat(generation.getCompletedAt()).isEqualTo(NOW);
+        verify(diary).delete(NOW);
+        verify(generationUsageService).restoreUsage(USER_ID, USAGE_DATE);
+        verify(events).publishEvent(new DiaryGenerationPendingExpiredEvent(generation.getId()));
+    }
+
+    @Test
+    @DisplayName("대기 만료 지표는 실패 저장이 커밋된 뒤에 한 번 기록한다")
+    void recordPendingExpiryAfterCommit() {
+        DiaryGeneration generation = createPendingGeneration(null, NOW.minusSeconds(120));
+        Diary diary = mock(Diary.class);
+        when(diaryGenerationRepository.findByIdForUpdate(generation.getId())).thenReturn(Optional.of(generation));
+        when(diaryRepository.findByIdIncludingDeletedForUpdate(generation.getDiaryId())).thenReturn(Optional.of(diary));
+        TransactionSynchronizationManager.initSynchronization();
+        TransactionSynchronizationManager.setActualTransactionActive(true);
+        try {
+            assertThat(completionService.expirePendingIfStale(generation.getId(), NOW, Duration.ofSeconds(120))).isTrue();
+            assertThat(completionService.expirePendingIfStale(generation.getId(), NOW, Duration.ofSeconds(120))).isFalse();
+
+            assertNoFinalizations();
+            for (TransactionSynchronization synchronization : TransactionSynchronizationManager.getSynchronizations()) {
+                synchronization.afterCommit();
+            }
+            assertThat(finalizationCount("FAILED", "GENERATION_PENDING_TIMEOUT")).isEqualTo(1.0);
+        } finally {
+            TransactionSynchronizationManager.setActualTransactionActive(false);
+            TransactionSynchronizationManager.clearSynchronization();
+        }
     }
 
     @Test
@@ -375,6 +499,14 @@ class DiaryGenerationCompletionServiceTest {
         for (GenerationErrorCode errorCode : GenerationErrorCode.values()) {
             assertThat(finalizationCount("FAILED", errorCode.name())).isZero();
         }
+    }
+
+    private DiaryGeneration createPendingGeneration(LocalDate usageDate, Instant createdAt) {
+        DiaryGeneration generation = DiaryGeneration.pending(
+                UUID.randomUUID(), 1L, UUID.randomUUID(), "a".repeat(64), usageDate
+        );
+        ReflectionTestUtils.setField(generation, "createdAt", createdAt);
+        return generation;
     }
 
     private DiaryGeneration createGeneration() {

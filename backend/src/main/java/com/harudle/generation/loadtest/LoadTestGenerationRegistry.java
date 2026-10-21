@@ -1,10 +1,13 @@
 package com.harudle.generation.loadtest;
 
 import com.harudle.generation.diary.service.DiaryGenerationExecutor;
+import com.harudle.generation.diary.service.event.DiaryGenerationPendingExpiredEvent;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
@@ -39,6 +42,11 @@ public final class LoadTestGenerationRegistry {
 
     public void remove(UUID generationId) {
         generationIds.remove(generationId);
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onPendingExpired(DiaryGenerationPendingExpiredEvent event) {
+        remove(event.generationId());
     }
 
     public boolean isConfigured() {

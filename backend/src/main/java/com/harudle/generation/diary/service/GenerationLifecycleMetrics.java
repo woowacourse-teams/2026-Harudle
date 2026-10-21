@@ -104,7 +104,7 @@ public final class GenerationLifecycleMetrics {
 
     private Counter finalizationCounter(GenerationStatus status, String errorCode) {
         return Counter.builder("harudle.generation.finalizations")
-                .description("Committed generation transitions from PROCESSING to a terminal status")
+                .description("Committed generation transitions to a terminal status")
                 .tags("status", status.name(), "errorCode", errorCode)
                 .register(meterRegistry);
     }

@@ -26,6 +26,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -82,12 +83,49 @@ class DiaryGenerationStatusQueryServiceTest {
         verify(repository).findStatusSnapshotByIdAndUserId(GENERATION_ID, USER_ID);
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    @DisplayName("회원과 게스트에게 대기 만료 상태와 오류를 반환하고 일기 ID는 제공하지 않는다")
+    void getPendingExpiredGenerationStatus(boolean guest) {
+        when(repository.findStatusSnapshotByIdAndUserId(GENERATION_ID, USER_ID))
+                .thenReturn(Optional.of(new DiaryGenerationStatusSnapshot(
+                        GENERATION_ID, DIARY_ID, GenerationStatus.FAILED, GenerationErrorCode.GENERATION_PENDING_TIMEOUT
+                )));
+        if (guest) {
+            when(sessionResolver.resolve(TOKEN, NOW)).thenReturn(usedSession());
+        }
+
+        DiaryGenerationStatusResult result = guest
+                ? service.getGuestStatus(TOKEN, GENERATION_ID)
+                : service.getStatus(USER_ID, GENERATION_ID);
+
+        assertThat(result.id()).isEqualTo(GENERATION_ID);
+        assertThat(result.status()).isEqualTo(GenerationStatus.FAILED);
+        assertThat(result.diaryId()).isNull();
+        assertThat(result.errorCode()).isEqualTo(GenerationErrorCode.GENERATION_PENDING_TIMEOUT);
+        verify(repository).findStatusSnapshotByIdAndUserId(GENERATION_ID, USER_ID);
+    }
+
     @Test
     @DisplayName("같은 게스트 사용자의 작업이어도 현재 세션에 연결되지 않았으면 조회하지 못한다")
     void rejectUnlinkedGuestGeneration() {
         when(sessionResolver.resolve(TOKEN, NOW)).thenReturn(usedSession());
         when(repository.findStatusSnapshotByIdAndUserId(GENERATION_ID, USER_ID))
                 .thenReturn(Optional.of(snapshot(GenerationStatus.PENDING, UUID.randomUUID())));
+
+        assertThatThrownBy(() -> service.getGuestStatus(TOKEN, GENERATION_ID))
+                .isInstanceOf(DiaryGenerationNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("대기 만료된 작업도 현재 게스트 세션에 연결되지 않았으면 조회하지 못한다")
+    void rejectUnlinkedPendingExpiredGuestGeneration() {
+        when(sessionResolver.resolve(TOKEN, NOW)).thenReturn(usedSession());
+        when(repository.findStatusSnapshotByIdAndUserId(GENERATION_ID, USER_ID))
+                .thenReturn(Optional.of(new DiaryGenerationStatusSnapshot(
+                        GENERATION_ID, UUID.randomUUID(), GenerationStatus.FAILED,
+                        GenerationErrorCode.GENERATION_PENDING_TIMEOUT
+                )));
 
         assertThatThrownBy(() -> service.getGuestStatus(TOKEN, GENERATION_ID))
                 .isInstanceOf(DiaryGenerationNotFoundException.class);

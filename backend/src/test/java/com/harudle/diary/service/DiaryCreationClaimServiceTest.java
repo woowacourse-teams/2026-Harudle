@@ -99,7 +99,9 @@ class DiaryCreationClaimServiceTest {
                 clock,
                 new GenerationLifecycleProperties(
                         Duration.ofMinutes(30),
-                        Duration.ofMinutes(1)
+                        Duration.ofMinutes(1),
+                        Duration.ofSeconds(120),
+                        Duration.ofSeconds(5)
                 ),
                 admissionLock,
                 new GenerationWorkerProperties(concurrency, Duration.ofSeconds(5)),

@@ -120,6 +120,8 @@ harudle:
     lifecycle:
       processing-timeout: ${GENERATION_PROCESSING_TIMEOUT:30m}
       cleanup-interval: ${GENERATION_CLEANUP_INTERVAL:1m}
+      pending-timeout: ${GENERATION_PENDING_TIMEOUT:120s}
+      pending-cleanup-interval: ${GENERATION_PENDING_CLEANUP_INTERVAL:5s}
     prompt-bootstrap:
       enabled: ${HARUDLE_GENERATION_PROMPT_BOOTSTRAP_ENABLED:false}
       storyboard-prompt-text: ${HARUDLE_GENERATION_PROMPT_BOOTSTRAP_STORYBOARD_PROMPT_TEXT:}

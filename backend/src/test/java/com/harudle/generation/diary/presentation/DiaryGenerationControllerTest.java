@@ -99,6 +99,28 @@ class DiaryGenerationControllerTest {
         }
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    @DisplayName("회원과 게스트의 대기 만료 결과는 200과 FAILED로 반환하고 캐시하지 않는다")
+    void getPendingExpiredGenerationStatus(boolean guest) throws Exception {
+        var result = new DiaryGenerationStatusResult(
+                GENERATION_ID, GenerationStatus.FAILED, null, GenerationErrorCode.GENERATION_PENDING_TIMEOUT
+        );
+        if (guest) {
+            when(queryService.getGuestStatus(RAW_TOKEN, GENERATION_ID)).thenReturn(result);
+        } else {
+            when(queryService.getStatus(USER_ID, GENERATION_ID)).thenReturn(result);
+        }
+
+        mvc.perform(request(guest, GENERATION_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.id").value(GENERATION_ID.toString()))
+                .andExpect(jsonPath("$.status").value("FAILED"))
+                .andExpect(jsonPath("$.diaryId").value(nullValue()))
+                .andExpect(jsonPath("$.errorCode").value("GENERATION_PENDING_TIMEOUT"));
+    }
+
     @Test
     @DisplayName("회원의 상태 조회는 로그인하지 않으면 거절한다")
     void rejectUnauthenticatedMember() throws Exception {

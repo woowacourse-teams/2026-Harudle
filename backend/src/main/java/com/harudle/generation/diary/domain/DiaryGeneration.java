@@ -283,6 +283,10 @@ public class DiaryGeneration {
 
     public void fail(GenerationErrorCode errorCode, StoryboardProviderInfo providerInfo, Instant completedAt) {
         validateProcessingStatus();
+        completeFailure(errorCode, providerInfo, completedAt);
+    }
+
+    private void completeFailure(GenerationErrorCode errorCode, StoryboardProviderInfo providerInfo, Instant completedAt) {
         validateErrorCode(errorCode);
         validateCompletedAt(completedAt);
 
@@ -312,6 +316,20 @@ public class DiaryGeneration {
             return false;
         }
         interrupt(currentTime);
+        return true;
+    }
+
+    public boolean expirePendingIfStale(Instant currentTime, Duration pendingTimeout) {
+        validateCurrentTime(currentTime);
+        validatePendingTimeout(pendingTimeout);
+        if (status != GenerationStatus.PENDING || createdAt == null) {
+            return false;
+        }
+        Instant staleCutoff = currentTime.minus(pendingTimeout);
+        if (createdAt.isAfter(staleCutoff)) {
+            return false;
+        }
+        completeFailure(GenerationErrorCode.GENERATION_PENDING_TIMEOUT, null, currentTime);
         return true;
     }
 
@@ -390,6 +408,12 @@ public class DiaryGeneration {
     private static void validateProcessingTimeout(Duration processingTimeout) {
         if (processingTimeout == null || processingTimeout.isZero() || processingTimeout.isNegative()) {
             throw new IllegalArgumentException("생성 처리 제한 시간은 양수여야 합니다.");
+        }
+    }
+
+    private static void validatePendingTimeout(Duration pendingTimeout) {
+        if (pendingTimeout == null || pendingTimeout.isZero() || pendingTimeout.isNegative()) {
+            throw new IllegalArgumentException("생성 대기 제한 시간은 양수여야 합니다.");
         }
     }
 }

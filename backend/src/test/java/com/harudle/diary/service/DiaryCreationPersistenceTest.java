@@ -61,7 +61,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest(properties = "harudle.generation.worker.concurrency=2")
+@SpringBootTest(properties = {
+        "harudle.generation.worker.concurrency=2",
+        "harudle.generation.lifecycle.pending-cleanup-interval=1h"
+})
 @Import({TestcontainersConfiguration.class, DiaryCreationPersistenceTest.FixedClockConfiguration.class})
 class DiaryCreationPersistenceTest {
 
@@ -401,8 +404,8 @@ class DiaryCreationPersistenceTest {
     }
 
     @Test
-    @DisplayName("120초 넘게 대기한 작업도 재요청 시 유지하고 사용량을 다시 차감하지 않는다")
-    void retainPendingRequestAfter120Seconds() {
+    @DisplayName("만료 정리 전 재요청은 기존 대기 작업을 반환하고 사용량을 다시 차감하지 않는다")
+    void replayPendingRequestBeforeExpiryCleanup() {
         MemberDiaryCreationClaim first = transactionService.enqueue(createCommand(), true);
         Timestamp queuedAt = Timestamp.from(NOW.minusSeconds(121));
         executeUpdate("UPDATE diary_generations SET created_at = ?, updated_at = ? WHERE id = ?",

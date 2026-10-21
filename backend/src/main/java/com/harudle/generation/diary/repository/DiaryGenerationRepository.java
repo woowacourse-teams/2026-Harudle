@@ -42,11 +42,28 @@ public interface DiaryGenerationRepository extends
             SELECT generation.*
             FROM diary_generations AS generation
             WHERE generation.status = 'PENDING'
+              AND generation.created_at > :createdAfter
             ORDER BY generation.created_at, generation.id
             LIMIT :batchSize
             FOR UPDATE SKIP LOCKED
             """, nativeQuery = true)
-    List<DiaryGeneration> findPendingForUpdateSkipLocked(@Param("batchSize") int batchSize);
+    List<DiaryGeneration> findPendingForUpdateSkipLocked(
+            @Param("createdAfter") Instant createdAfter,
+            @Param("batchSize") int batchSize
+    );
+
+    @Query(value = """
+            SELECT generation.id
+            FROM diary_generations AS generation
+            WHERE generation.status = 'PENDING'
+              AND generation.created_at <= :expiredBefore
+            ORDER BY generation.created_at, generation.id
+            LIMIT :batchSize
+            """, nativeQuery = true)
+    List<UUID> findStalePendingIds(
+            @Param("expiredBefore") Instant expiredBefore,
+            @Param("batchSize") int batchSize
+    );
 
     @Query("""
             SELECT generation.id

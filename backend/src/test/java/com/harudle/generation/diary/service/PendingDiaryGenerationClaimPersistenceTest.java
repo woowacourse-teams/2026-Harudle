@@ -9,8 +9,10 @@ import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.support.ServiceIntegrationTestSupport;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.sql.Timestamp;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
@@ -27,14 +29,24 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers(disabledWithoutDocker = true)
+@Import(PendingDiaryGenerationClaimPersistenceTest.FixedClockConfiguration.class)
+@TestPropertySource(properties = "harudle.generation.lifecycle.pending-cleanup-interval=1h")
 class PendingDiaryGenerationClaimPersistenceTest extends ServiceIntegrationTestSupport {
 
     private static final Instant CREATED_AT = Instant.parse("2026-08-06T00:00:00Z");
+    private static final Instant NOW = CREATED_AT.plusSeconds(30);
+    private static final Instant CREATED_AFTER = NOW.minusSeconds(120);
     private static final UUID FIRST_ID = new UUID(0, 1);
     private static final UUID SECOND_ID = new UUID(0, 2);
     private static final UUID THIRD_ID = new UUID(0, 3);
@@ -128,7 +140,7 @@ class PendingDiaryGenerationClaimPersistenceTest extends ServiceIntegrationTestS
     }
 
     @Test
-    @DisplayName("오래 대기한 작업도 선점 시각부터 처리 제한 시간을 계산한다")
+    @DisplayName("대기 작업의 처리 제한 시간은 선점 시각부터 계산한다")
     void refreshProcessingTimeoutWhenClaimed() {
         insertGeneration(FIRST_ID, GenerationStatus.PENDING, CREATED_AT);
         Instant beforeClaim = Instant.now();
@@ -154,7 +166,7 @@ class PendingDiaryGenerationClaimPersistenceTest extends ServiceIntegrationTestS
 
         try (var executor = Executors.newFixedThreadPool(2)) {
             Future<UUID> firstClaim = executor.submit(() -> transactionTemplate.execute(status -> {
-                DiaryGeneration generation = diaryGenerationRepository.findPendingForUpdateSkipLocked(1).getFirst();
+                DiaryGeneration generation = diaryGenerationRepository.findPendingForUpdateSkipLocked(CREATED_AFTER, 1).getFirst();
                 generation.startProcessing();
                 diaryGenerationRepository.flush();
                 firstLocked.countDown();
@@ -211,7 +223,7 @@ class PendingDiaryGenerationClaimPersistenceTest extends ServiceIntegrationTestS
         long initialWaitCount = waitCount();
 
         transactionTemplate.executeWithoutResult(status -> {
-            DiaryGeneration generation = diaryGenerationRepository.findPendingForUpdateSkipLocked(1).getFirst();
+            DiaryGeneration generation = diaryGenerationRepository.findPendingForUpdateSkipLocked(CREATED_AFTER, 1).getFirst();
             generation.startProcessing();
             queueMetrics.claimedAfterCommit(generation.getCreatedAt(), Instant.now());
             diaryGenerationRepository.flush();
@@ -248,6 +260,37 @@ class PendingDiaryGenerationClaimPersistenceTest extends ServiceIntegrationTestS
         assertThat(findStatus(FIRST_ID)).isEqualTo(GenerationStatus.PROCESSING);
     }
 
+    @Test
+    @DisplayName("기한이 지난 대기 작업은 선점에서 제외하고 만료 정리가 처리하도록 남긴다")
+    void excludeExpiredPendingGenerationsFromClaim() {
+        insertGeneration(FIRST_ID, GenerationStatus.PENDING, CREATED_AFTER.minusSeconds(1));
+        insertGeneration(SECOND_ID, GenerationStatus.PENDING, CREATED_AFTER);
+        insertGeneration(THIRD_ID, GenerationStatus.PENDING, CREATED_AFTER.plusSeconds(1));
+
+        assertThat(claimService.claim(3)).containsExactly(THIRD_ID);
+
+        assertThat(findStatus(FIRST_ID)).isEqualTo(GenerationStatus.PENDING);
+        assertThat(findStatus(SECOND_ID)).isEqualTo(GenerationStatus.PENDING);
+        assertThat(findStatus(THIRD_ID)).isEqualTo(GenerationStatus.PROCESSING);
+    }
+
+    @Test
+    @DisplayName("만료 ID 조회는 기한이 지난 대기 작업만 시각과 ID 순서로 개수를 제한해 반환한다")
+    void findExpiredPendingIdsInOrderWithinLimit() {
+        insertGeneration(THIRD_ID, GenerationStatus.PENDING, CREATED_AFTER);
+        insertGeneration(SECOND_ID, GenerationStatus.PENDING, CREATED_AFTER.minusSeconds(1));
+        insertGeneration(FIRST_ID, GenerationStatus.PENDING, CREATED_AFTER.minusSeconds(1));
+        insertGeneration(UUID.randomUUID(), GenerationStatus.PENDING, CREATED_AFTER.plusSeconds(1));
+        insertGeneration(UUID.randomUUID(), GenerationStatus.PROCESSING, CREATED_AFTER.minusSeconds(2));
+        insertGeneration(UUID.randomUUID(), GenerationStatus.FAILED, CREATED_AFTER.minusSeconds(2));
+        insertGeneration(UUID.randomUUID(), GenerationStatus.SUCCEEDED, CREATED_AFTER.minusSeconds(2));
+
+        assertThat(diaryGenerationRepository.findStalePendingIds(CREATED_AFTER, 2))
+                .containsExactly(FIRST_ID, SECOND_ID);
+        assertThat(diaryGenerationRepository.findStalePendingIds(CREATED_AFTER, 100))
+                .containsExactly(FIRST_ID, SECOND_ID, THIRD_ID);
+    }
+
     private long waitCount() {
         return meterRegistry.get("harudle.generation.queue.wait").timer().count();
     }
@@ -274,6 +317,17 @@ class PendingDiaryGenerationClaimPersistenceTest extends ServiceIntegrationTestS
         return GenerationStatus.valueOf(jdbcTemplate.queryForObject(
                 "SELECT status FROM diary_generations WHERE id = ?", String.class, generationId
         ));
+    }
+
+    @TestConfiguration(proxyBeanMethods = false)
+    static class FixedClockConfiguration {
+
+        @Bean
+        @Primary
+        @Qualifier("serviceClock")
+        Clock fixedClock() {
+            return Clock.fixed(NOW, ZoneOffset.UTC);
+        }
     }
 
     private static void await(CountDownLatch latch) {

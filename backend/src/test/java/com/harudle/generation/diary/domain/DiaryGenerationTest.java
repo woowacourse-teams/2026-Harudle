@@ -12,6 +12,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.test.util.ReflectionTestUtils;
 
 class DiaryGenerationTest {
@@ -128,7 +130,7 @@ class DiaryGenerationTest {
     }
 
     @Test
-    @DisplayName("대기 작업은 실행을 시작하기 전에 성공이나 실패로 완료할 수 없다")
+    @DisplayName("일반 완료 메서드로 대기 작업을 성공이나 실패로 바꿀 수 없다")
     void rejectCompletingPendingGeneration() {
         DiaryGeneration generation = DiaryGeneration.pending(
                 UUID.randomUUID(), GENERATION_PROMPT_ID, UUID.randomUUID(), REQUEST_FINGERPRINT, null
@@ -156,6 +158,83 @@ class DiaryGenerationTest {
         assertThat(generation.getStatus()).isEqualTo(GenerationStatus.PENDING);
         assertThat(generation.getErrorCode()).isNull();
         assertThat(generation.getCompletedAt()).isNull();
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {120, 180})
+    @DisplayName("대기 제한 시간에 도달한 작업을 한 번만 만료하고 완료 시각을 유지한다")
+    void expirePendingGenerationOnlyOnce(long ageSeconds) {
+        Instant currentTime = Instant.parse("2026-10-20T10:00:00Z");
+        DiaryGeneration generation = pendingGeneration(currentTime.minusSeconds(ageSeconds));
+        ReflectionTestUtils.setField(generation, "updatedAt", currentTime);
+
+        assertThat(generation.expirePendingIfStale(currentTime, Duration.ofSeconds(120))).isTrue();
+        assertThat(generation.expirePendingIfStale(currentTime.plusSeconds(1), Duration.ofSeconds(120))).isFalse();
+
+        assertThat(generation.getStatus()).isEqualTo(GenerationStatus.FAILED);
+        assertThat(generation.getErrorCode()).isEqualTo(GenerationErrorCode.GENERATION_PENDING_TIMEOUT);
+        assertThat(generation.getCompletedAt()).isEqualTo(currentTime);
+        assertThat(generation.getImageObjectKey()).isNull();
+    }
+
+    @Test
+    @DisplayName("대기 제한 시간 직전의 작업은 만료하지 않는다")
+    void doNotExpirePendingGenerationBeforeTimeout() {
+        Instant currentTime = Instant.parse("2026-10-20T10:00:00Z");
+        DiaryGeneration generation = pendingGeneration(currentTime.minusSeconds(120).plusNanos(1));
+
+        assertThat(generation.expirePendingIfStale(currentTime, Duration.ofSeconds(120))).isFalse();
+
+        assertThat(generation.getStatus()).isEqualTo(GenerationStatus.PENDING);
+        assertThat(generation.getErrorCode()).isNull();
+        assertThat(generation.getCompletedAt()).isNull();
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = GenerationStatus.class, names = {"PROCESSING", "SUCCEEDED", "FAILED"})
+    @DisplayName("이미 실행 중이거나 끝난 작업은 대기 시간으로 만료하지 않는다")
+    void doNotExpireNonPendingGeneration(GenerationStatus status) {
+        Instant currentTime = Instant.parse("2026-10-20T10:00:00Z");
+        DiaryGeneration generation = startGeneration();
+        ReflectionTestUtils.setField(generation, "createdAt", currentTime.minusSeconds(180));
+        if (status == GenerationStatus.SUCCEEDED) {
+            generation.succeed(createStoryboard(), "generated/diary-image.png", currentTime.minusSeconds(1));
+        }
+        if (status == GenerationStatus.FAILED) {
+            generation.fail(GenerationErrorCode.AI_PROVIDER_ERROR, currentTime.minusSeconds(1));
+        }
+        GenerationErrorCode originalError = generation.getErrorCode();
+        Instant originalCompletedAt = generation.getCompletedAt();
+
+        assertThat(generation.expirePendingIfStale(currentTime, Duration.ofSeconds(120))).isFalse();
+
+        assertThat(generation.getStatus()).isEqualTo(status);
+        assertThat(generation.getErrorCode()).isEqualTo(originalError);
+        assertThat(generation.getCompletedAt()).isEqualTo(originalCompletedAt);
+    }
+
+    @Test
+    @DisplayName("저장 시각이 없는 대기 작업은 만료하지 않는다")
+    void doNotExpirePendingGenerationWithoutCreatedAt() {
+        DiaryGeneration generation = pendingGeneration(null);
+
+        assertThat(generation.expirePendingIfStale(Instant.now(), Duration.ofSeconds(120))).isFalse();
+        assertThat(generation.getStatus()).isEqualTo(GenerationStatus.PENDING);
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(longs = {0, -1})
+    @DisplayName("대기 제한 시간이 없거나 양수가 아니면 만료를 거절한다")
+    void rejectInvalidPendingTimeout(Long seconds) {
+        Instant currentTime = Instant.parse("2026-10-20T10:00:00Z");
+        DiaryGeneration generation = pendingGeneration(currentTime.minusSeconds(180));
+        Duration timeout = seconds == null ? null : Duration.ofSeconds(seconds);
+
+        assertThatThrownBy(() -> generation.expirePendingIfStale(currentTime, timeout))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("생성 대기 제한 시간은 양수여야 합니다.");
+        assertThat(generation.getStatus()).isEqualTo(GenerationStatus.PENDING);
     }
 
     @Test
@@ -317,6 +396,14 @@ class DiaryGenerationTest {
         assertThatThrownBy(() -> generation.fail(null, Instant.now()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("오류 코드");
+    }
+
+    private DiaryGeneration pendingGeneration(Instant createdAt) {
+        DiaryGeneration generation = DiaryGeneration.pending(
+                UUID.randomUUID(), GENERATION_PROMPT_ID, UUID.randomUUID(), REQUEST_FINGERPRINT, null
+        );
+        ReflectionTestUtils.setField(generation, "createdAt", createdAt);
+        return generation;
     }
 
     private DiaryGeneration startGeneration() {

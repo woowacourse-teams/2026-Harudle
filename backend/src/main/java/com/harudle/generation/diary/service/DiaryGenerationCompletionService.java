@@ -9,6 +9,7 @@ import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import com.harudle.generation.diary.domain.Storyboard;
 import com.harudle.generation.diary.domain.StoryboardProviderInfo;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
+import com.harudle.generation.diary.service.event.DiaryGenerationPendingExpiredEvent;
 import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
 import com.harudle.generation.usage.service.GenerationUsageService;
 import java.time.Clock;
@@ -16,6 +17,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +29,7 @@ public class DiaryGenerationCompletionService {
     private final GenerationUsageService generationUsageService;
     private final Clock clock;
     private final GenerationLifecycleMetrics lifecycleMetrics;
+    private final ApplicationEventPublisher events;
 
     DiaryGenerationCompletionService(
             DiaryGenerationRepository diaryGenerationRepository,
@@ -34,13 +37,15 @@ public class DiaryGenerationCompletionService {
             GenerationUsageService generationUsageService,
             @Qualifier("serviceClock")
             Clock clock,
-            GenerationLifecycleMetrics lifecycleMetrics
+            GenerationLifecycleMetrics lifecycleMetrics,
+            ApplicationEventPublisher events
     ) {
         this.diaryGenerationRepository = diaryGenerationRepository;
         this.diaryRepository = diaryRepository;
         this.generationUsageService = generationUsageService;
         this.clock = clock;
         this.lifecycleMetrics = lifecycleMetrics;
+        this.events = events;
     }
 
     @Transactional
@@ -117,6 +122,24 @@ public class DiaryGenerationCompletionService {
                 GenerationStatus.FAILED,
                 GenerationErrorCode.GENERATION_INTERRUPTED
         );
+        return true;
+    }
+
+    @Transactional
+    public boolean expirePendingIfStale(UUID generationId, Instant currentTime, Duration pendingTimeout) {
+        DiaryGeneration generation = findForUpdate(generationId);
+        if (!generation.expirePendingIfStale(currentTime, pendingTimeout)) {
+            return false;
+        }
+        Diary diary = findDiaryForUpdate(generation.getDiaryId());
+        diary.delete(generation.getCompletedAt());
+        restoreUsage(generation, diary);
+        lifecycleMetrics.finalizedAfterCommit(
+                generationId,
+                GenerationStatus.FAILED,
+                GenerationErrorCode.GENERATION_PENDING_TIMEOUT
+        );
+        events.publishEvent(new DiaryGenerationPendingExpiredEvent(generationId));
         return true;
     }
 
