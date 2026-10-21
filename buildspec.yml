@@ -31,13 +31,19 @@ phases:
       - |
         bash deploy/scripts/codebuild_backend.sh build
         mkdir -p build-artifacts
+        frontend_image_reused=false
+        if bash deploy/scripts/codebuild_frontend.sh restore; then
+          frontend_image_reused=true
+        fi
 
         for service in backend frontend; do
+          if [[ "$service" == frontend && "$frontend_image_reused" == true ]]; then
+            continue
+          fi
           build_args=()
           if [[ "$service" == backend ]]; then
             build_args=(--target codebuild)
           else
-            echo "Frontend external build cache is disabled."
             build_args=(--build-arg REACT_APP_POSTHOG_KEY --build-arg REACT_APP_POSTHOG_HOST)
           fi
 
@@ -68,6 +74,9 @@ phases:
       - |
         set -euo pipefail
         for service in backend frontend; do
+          if [[ -s "build-artifacts/$service-image.tar.gz" ]]; then
+            continue
+          fi
           image_gzip_started="$(date +%s)"
           gzip -1 "build-artifacts/$service-image.tar"
           echo "[build-metrics] ${service}_image_gzip_seconds=$(($(date +%s) - image_gzip_started))"
@@ -80,6 +89,9 @@ phases:
       - >-
         bash deploy/scripts/codebuild_backend.sh save ||
         echo "Incremental cache save failed; continuing with the verified images."
+      - >-
+        bash deploy/scripts/codebuild_frontend.sh save ||
+        echo "Frontend image cache save failed; continuing with the verified images."
 
 artifacts:
   files:
@@ -108,6 +120,9 @@ cache:
     - "/root/.cache/harudle-gradle/home/caches/modules-2/**/*"
     - "/root/.cache/harudle-gradle/home/caches/*/generated-gradle-jars/**/*"
     - "/root/.cache/harudle-gradle/home/caches/*/groovy-dsl/**/*"
+    - "/root/.cache/harudle-frontend/frontend-image.tar.gz"
+    - "/root/.cache/harudle-frontend/frontend-image.sha256"
+    - "/root/.cache/harudle-frontend/fingerprint"
     - "/root/.cache/harudle-gradle/home/caches/*/transforms/**/*"
     - "/root/.cache/harudle-gradle/home/caches/*/javaCompile/**/*"
     - "/root/.cache/harudle-gradle/home/caches/*/fileHashes/**/*"
