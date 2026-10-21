@@ -73,7 +73,7 @@ expect_failure initialize
 test ! -e "${DIARY_SOURCE_TEXT_KEY_VERIFICATION_FILE}"
 
 # Apply the repository's real legacy DDL. The small history fixture is only the CLI harness;
-# the JUnit PostgreSQL integration suite separately runs actual Flyway V1, V27 and V28 migrations.
+# the JUnit PostgreSQL integration suite separately runs actual Flyway V1, V23 and V28 migrations.
 sql < "${repo_dir}/backend/src/main/resources/db/migration/V1__create_initial_schema.sql"
 sql <<'SQL'
 CREATE TABLE public.flyway_schema_history (

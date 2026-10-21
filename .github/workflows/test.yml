@@ -122,13 +122,16 @@ jobs:
 
       - name: Test deployment image environment
         if: github.event_name != 'push'
-        run: bash ../deploy/scripts/test_image_environment.sh
+        run: |
+          bash ../deploy/scripts/test_image_environment.sh
+          bash ../deploy/scripts/test_backend_entrypoint.sh
 
       - name: Test diary key preflight and release selection (offline)
         if: github.event_name != 'push'
         run: |
           bash ../deploy/scripts/test_diary_key_verification.sh
           bash ../deploy/scripts/test_diary_release.sh
+          bash ../deploy/scripts/test_diary_writer_approval.sh
 
       - name: Install WebP tools
         if: github.event_name != 'push'

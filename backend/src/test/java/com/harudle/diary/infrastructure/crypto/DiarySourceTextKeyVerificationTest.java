@@ -123,6 +123,31 @@ class DiarySourceTextKeyVerificationTest {
     }
 
     @Test
+    @DisplayName("신키로 저장한 실제 암호문은 구키만 가진 앱에서 읽을 수 없어 등록 키 일부만 허용하지 않는다")
+    void registeredSupersetDoesNotMakeOldReadersCompatibleWithNewCiphertext() {
+        Path file = file();
+        var oldKeys = properties("old", Map.of("old", OLD_KEY));
+        var completeKeys = properties("new", Map.of("old", OLD_KEY, "new", NEW_KEY));
+        var oldVerification = new DiarySourceTextKeyVerification(oldKeys);
+        oldVerification.createInitialEvidence(file, "dev");
+        var completeVerification = new DiarySourceTextKeyVerification(completeKeys);
+        completeVerification.register(file, "dev");
+        UUID diaryId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        var writer = new AesGcmDiarySourceTextCipher(completeKeys);
+        String encrypted = writer.encrypt(diaryId, userId, "키 전환 후 새 일기");
+
+        assertCryptoFailure(() -> oldVerification.verify(file, "dev"));
+        assertCryptoFailure(() -> new AesGcmDiarySourceTextCipher(oldKeys).decrypt(diaryId, userId, encrypted, 1));
+        completeVerification.verify(file, "dev");
+        assertThat(writer.decrypt(diaryId, userId, encrypted, 1)).isEqualTo("키 전환 후 새 일기");
+        var readerWithOldActiveKey = new AesGcmDiarySourceTextCipher(
+                properties("old", Map.of("old", OLD_KEY, "new", NEW_KEY))
+        );
+        assertThat(readerWithOldActiveKey.decrypt(diaryId, userId, encrypted, 1)).isEqualTo("키 전환 후 새 일기");
+    }
+
+    @Test
     @DisplayName("기존 키를 삭제하거나 변조한 상태에서는 신규 키를 등록하지 못한다")
     void rejectRemovedOrChangedExistingKeysBeforeAddingNewOnes() throws IOException {
         Path file = file();

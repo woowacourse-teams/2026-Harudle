@@ -35,6 +35,18 @@ require_resolved_image_setting() {
   fi
 }
 
+require_no_automatic_jvm_options() {
+  local compose_config="$1"
+  if ! jq -e '
+    (.services.backend.environment // {}) as $environment |
+    all(["JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS"][];
+      ($environment[.] // "") == "")
+  ' <<<"${compose_config}" >/dev/null 2>&1; then
+    echo "JVM 자동 옵션 환경 변수는 배포에서 사용할 수 없습니다." >&2
+    return 1
+  fi
+}
+
 configure_compose() {
   local app_dir="$1"
   local env_file="${app_dir}/.env"
@@ -105,6 +117,8 @@ configure_compose() {
     "${new_writes_enabled}" || return 1
   require_resolved_image_setting "${compose_config}" DIARY_SOURCE_TEXT_RELEASE_MODE \
     "${release_mode}" || return 1
+
+  require_no_automatic_jvm_options "${compose_config}" || return 1
 
   readonly DIARY_SOURCE_TEXT_RELEASE_MODE_VALUE="${release_mode}"
   readonly DEPLOY_ENV_VALUE="${deploy_env}"

@@ -39,6 +39,10 @@ spring:
     password: ${DB_PASSWORD}
   flyway:
     group: false
+    init-sqls:
+      - "SET lock_timeout = '5s';"
+      # This is the maximum permitted statement duration, not an expected migration runtime.
+      - "SET statement_timeout = '60s';"
     postgresql:
       transactional-lock: false
   jpa:

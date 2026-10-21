@@ -32,11 +32,22 @@ EC2에서는 `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`�
 일기 원문 암호화 배포 전에는 각 환경의 `/opt/harudle/.env`에 독립적인 32바이트 Base64
 `DIARY_SOURCE_TEXT_KEY_BASE64`와 신뢰할 수 있는 `/etc/harudle/diary-key-checks.json`을 준비해야 합니다.
 후보 이미지가 기존 검증 자료를 복호화하고 HMAC을 확인한 뒤에만 컨테이너를 교체합니다.
-같은 ID에 다른 32바이트 키를 넣어도 실패하며 기존 컨테이너는 계속 실행됩니다. 앱 자체도
+같은 ID에 다른 32바이트 키를 넣어도 검증이 실패하면 기존 컨테이너를 교체하지 않습니다. 앱 자체도
 `prod` 프로필에서 같은 검증을 요구합니다. 키와 검증 자료는 배포마다 재생성하지 않습니다.
 키는 JWT 키와 재사용하지 않습니다. 암호문을 쓰기 시작한 뒤의 복구 대상은 먼저 성공시켜 둔
 암호화 호환 `reader` 배포본입니다. 전환 순서와 키 교체·복구 조건은
 [일기 원문 암호화 운영 안내](../backend/docs/diary-source-text-encryption.md)를 따릅니다.
+
+배포·키 변경·복원·이미지 정리는 동시에 수행하지 않으며, 검증 시작부터 교체 완료까지 `.env`,
+Compose, canary와 후보 이미지 태그를 바꾸지 않습니다. 검증과 교체는 파일을 다시 읽으므로 이
+운영 전제를 지키지 않으면 검증한 입력과 실제 컨테이너 입력이 달라질 수 있습니다. 앱 시작 검증은
+잘못된 키로 쓰기를 시작하는 것을 막지만 교체 후의 시작 실패까지 무중단으로 복구하지는 않습니다.
+
+JVM 설정은 `JAVA_OPTS`를 사용합니다. `JAVA_TOOL_OPTIONS`, `JDK_JAVA_OPTIONS`, `_JAVA_OPTIONS`는
+JVM이 값을 stderr에 자동 출력하므로 배포의 최종 환경과 런타임 entrypoint에서 비어 있지 않으면
+거절합니다. 배포 전 검증은 종료 0과 정확한 `{"verified":true}` 한 줄을 함께 확인합니다. `-version`,
+`--dry-run`처럼 Main을 실행하지 않고 정상 종료하는 Java 옵션을 검증 성공으로 처리하지 않습니다.
+one-off 검증에만 JVM 통합 로그를 끄며 실제 앱의 GC 로깅 설정은 유지합니다.
 
 ```dotenv
 FEED_PUBLIC_BASE_URL=https://www.harudle.com/feeds
@@ -98,7 +109,8 @@ CodeBuild의 `DIARY_SOURCE_TEXT_RELEASE_MODE`는 기본값이 `reader`입니다.
 2. `reader`로 빌드한 A를 dev, prod에 각각 배포합니다. 조회·이미지 접근과 작성 차단을 확인하고
    CodeDeploy가 `Succeeded`인지 확인합니다. 커밋, CodeDeploy revision의 S3 bucket/key/version,
    이미지 ID, 담당자와 확인 시각을 운영 기록에 남기고 아티팩트를 보존합니다.
-3. 같은 검토된 코드에서 `DIARY_SOURCE_TEXT_RELEASE_MODE=writer`를 명시해 B를 빌드·배포합니다.
+3. 아래 실제 복원 조건과 prod 승인을 마친 뒤 같은 검토된 코드에서
+   `DIARY_SOURCE_TEXT_RELEASE_MODE=writer`를 명시해 B를 빌드·배포합니다.
    최초 전환에서는 A 확인 없이 writer로 직행하지 않습니다. 이후 정상 빌드도 writer를 명시합니다.
 4. 장애 시 신규 작성을 차단한 호환 A 또는 그 이후의 reader 배포본을 선택합니다.
    암호화 미지원 구버전 수동 배포는 금지합니다. 과거 배포본의 훅은 이 검사를 포함하지 않으므로
@@ -108,6 +120,82 @@ CodeBuild의 `DIARY_SOURCE_TEXT_RELEASE_MODE`는 기본값이 `reader`입니다.
 [CodeDeploy 롤백은 이전 revision을 새 배포로 재실행](https://docs.aws.amazon.com/codedeploy/latest/userguide/deployments-rollback-and-redeploy.html)합니다.
 성공 후 `docker image prune`을 실행하므로 복구를 기존 `:local` 태그나 dangling 이미지에 의존하지 않습니다.
 `HARUDLE_GENERATION_ADAPTERS_ENABLED=false`는 이미지 URL 조회에도 영향을 주므로 reader를 대신하지 않습니다.
+
+### prod writer 승인
+
+prod writer의 사전조건은 **dev 서버 밖 백업을 실제로 격리 복원하고 검토한 기록**과 **prod 키링/canary
+백업 및 호환 reader 원본 보존 확인**입니다. 실행자와 검토자는 서로 다른 사람이 기록을 검토합니다.
+dev 복원 성공을 prod 키 자체의 복원 성공으로 기록하지 않습니다. prod 복원 가능성도 별도로 확인합니다.
+
+<details>
+<summary>실제 복원 연습의 완료 항목과 기록</summary>
+
+1. dev의 v1 테스트 일기와 성공한 생성 요청을 포함하는 DB 백업, 같은 세대의 키링과 canary를
+   서버 밖 암호화 보관소에서 가져와 별도의 복원 DB와 앱에 복원합니다. live `.env`를 기본값으로
+   사용하지 않고 복원 대상 DB 주소와 키링/canary를 명시합니다. 원래 canary의 환경은 변경하지 않습니다.
+2. 복원 환경이 prod RDS·S3를 변경하지 않으며 생성·정리 스케줄러나 AI 호출 같은 외부 부작용이
+   발생하지 않도록 점검합니다. 키 누락/손상에 실패하는지 먼저 확인한 후 신뢰된 쌍으로 복원합니다.
+3. `verify`, `verify-data`의 checked > 0 및 failed = 0, 본인 상세, 완료된 동일 요청의 재조회와
+   타인 접근 거절을 확인합니다. 이미 성공한 요청 재조회로 AI 생성을 다시 실행하지 않았는지도 확인합니다.
+4. 실행자·검토자·시각, 키 ID 목록, 키링/canary 백업 세대, DB 백업 식별자, 후보 이미지 ID와 reader
+   원본 위치, 각 명령·조회 결과를 변경 이력이 남는 운영 기록에 남깁니다. 원문·키·암호문·지문·SQL
+   진단과 인증 토큰은 기록하지 않습니다. CI 통과나 체크리스트 복사는 실제 수행의 증거가 아닙니다.
+5. 별도 dev 전환 리허설에서 reader 503 시작부터 writer 실제 생성 확인까지의 시간과 복구 시간을
+   측정합니다. 팀이 허용한 점검 창·공지 기준을 확정한 뒤 prod 전환을 시작합니다. 현재 시간은 미측정입니다.
+
+</details>
+
+`/etc/harudle/diary-writer-approval.json`은 root 소유 600의 운영자 승인서입니다. 현재 prod canary의
+SHA-256과 승인된 복원·백업 기록 및 reader 원본 참조를 묶습니다. canary 등록/복원으로 파일이
+변경되면 승인을 다시 검토합니다. 참조는 비밀값 없는 변경 불가 기록 식별자를 사용하며, reader는
+S3 bucket/key/VersionId 또는 보존한 불변 키와 체크섬 등 실제 재배포 가능한 원본을 가리켜야 합니다.
+
+<details>
+<summary>미승인 템플릿 — 복사만으로 writer를 열 수 없음</summary>
+
+```json
+{
+  "formatVersion": 1,
+  "environment": "prod",
+  "canarySha256": null,
+  "devRestoreVerified": false,
+  "devRestoreRecord": null,
+  "prodBackupVerified": false,
+  "prodBackupRecord": null,
+  "readerRevision": null,
+  "approvedAt": null,
+  "approvedBy": null
+}
+```
+
+모든 확인을 실제 완료한 후 검토자가 승인 시각(UTC ISO 8601)과 신원, 기록 식별자 및 현재 canary
+해시를 작성합니다. 비밀 키는 넣지 않습니다. 배포 훅은 prod writer에서 승인서의 필드·타입·권한과
+canary 해시를 검증하며 미승인/누락이면 교체 전에 거절합니다. 승인서는 실제 외부 복원·보관·API
+확인의 자동 증명이 아닌 운영자의 확인서입니다. reader와 dev에는 이 prod 승인서를 요구하지 않습니다.
+
+</details>
+
+**현재 실제 dev/prod 백업 복원·전환 실측·prod 승인은 미수행입니다.** 이 상태를 승인 완료로
+간주하지 않습니다. CodeBuild의 writer 선택만으로 운영 전환을 완료했다고 기록하지 않습니다.
+
+### V28 잠금과 점검 배포
+
+V28의 CHECK 추가는 기존 `diaries` 전체 검사와 강한 테이블 잠금을 수반합니다. 사용자 수를 일기
+행 수로 대신하거나 작은 테스트 통과만으로 운영 잠금 시간을 추정하지 않습니다. 적용 이력이 있는
+V28 SQL은 체크섬을 유지하며, 잠금 정책은 별도 Flyway 연결 설정에서 관리합니다.
+
+Flyway 전용 비풀링 연결은 잠금 대기 5초, 개별 SQL 실행 60초를 제한합니다. 일반 JPA/Hikari
+연결의 timeout을 변경하지 않습니다. 이 값은 **정책상 제한**이며 예상 실행 시간이나 전체 잠금
+보유 시간의 상한이 아닙니다. 여러 SQL의 시간과 롤백·연결 장애 시간은 별개입니다. 점검 전 장기
+트랜잭션·writer를 배출하고 dev의 대표 행 수로 측정해 허용 시간을 승인합니다. 시간 초과 시 V28
+트랜잭션 롤백과 실제 schema/history를 확인하고 blocker를 해결한 후 재실행합니다. Flyway repair,
+제약 제거, timeout 무제한 확대로 우회하지 않습니다. 실패한 writer 배포를 정상으로 기록하지 않습니다.
+
+온라인 대규모 전환이 필요하면 NOT VALID 추가와 VALIDATE를 **별도 커밋**으로 나누는 새 마이그레이션
+계획을 검토합니다. 같은 SQL 트랜잭션에 붙이면 먼저 얻은 강한 잠금이 검증 끝까지 유지됩니다.
+기존 SQL 뒤에 새 VALIDATE만 추가하는 것으로 이미 실행된 V28의 검사 시간을 줄일 수는 없습니다.
+[PostgreSQL ALTER TABLE](https://www.postgresql.org/docs/18/sql-altertable.html),
+[세션 timeout](https://www.postgresql.org/docs/18/runtime-config-client.html)을 기준으로 합니다.
 
 ### 키 검증 자료의 명시적 관리
 
@@ -171,7 +259,7 @@ operation=initialize # 위 최초 준비 조건을 충족할 때만 사용. 신�
 if ! docker compose "${COMPOSE_ARGS[@]}" --file "$override" run --rm --no-deps -T \
   --user 0:0 --env LOADER_MAIN=com.harudle.diary.infrastructure.crypto.DiarySourceTextKeyCheckMain \
   --entrypoint sh backend -c \
-  'exec java ${JAVA_OPTS:-} -Xmx128m -Dloader.main="$LOADER_MAIN" -cp /app/app.jar org.springframework.boot.loader.launch.PropertiesLauncher "$1"' \
+  'exec java ${JAVA_OPTS:-} -Xmx128m -Xlog:disable -Dloader.main="$LOADER_MAIN" -cp /app/app.jar org.springframework.boot.loader.launch.PropertiesLauncher "$1"' \
   sh "$operation" >/dev/null 2>&1; then
   echo '키 검증 자료 관리 실패: 기존 키와 백업을 확인하세요.' >&2
   exit 1
@@ -221,7 +309,7 @@ run_key_command() {
   docker compose "${COMPOSE_ARGS[@]}" --file "$override" run --rm --no-deps -T \
     --env LOADER_MAIN=com.harudle.diary.infrastructure.crypto.DiarySourceTextKeyCheckMain \
     --entrypoint sh backend -c \
-    'exec java ${JAVA_OPTS:-} -Xmx128m -Dloader.main="$LOADER_MAIN" -cp /app/app.jar org.springframework.boot.loader.launch.PropertiesLauncher "$1"' \
+    'exec java ${JAVA_OPTS:-} -Xmx128m -Xlog:disable -Dloader.main="$LOADER_MAIN" -cp /app/app.jar org.springframework.boot.loader.launch.PropertiesLauncher "$1"' \
     sh "$1"
 }
 if ! run_key_command verify >/dev/null 2>&1; then
@@ -250,6 +338,28 @@ SH
 키 추가 때마다 기존 키·활성 키를 유지하고 `register`한 뒤 모든 호환 앱에 키링을 먼저
 반영·재배포합니다. 키 검증과 조회 확인 후 활성 키를 바꿉니다. 실행 중 앱의 키링은 시작 시 메모리
 상태이므로 호스트 `.env`만 수정한 것으로 반영 완료를 판단하지 않습니다.
+
+#### 키 등록과 컨테이너 재시작
+
+앱 시작의 키 목록 검사는 배포 전과 동일하게 완전 일치를 유지합니다. 신키 등록 후 구키만 가진
+컨테이너의 restart는 실패합니다. 부분 일치를 허용하면 신키 일기가 이미 저장된 뒤 그 일기를 읽을
+수 없는 구키 전용 앱도 시작할 수 있어, 이 오류를 숨기는 방향으로 검사를 완화하지 않습니다.
+
+1. 기존 키링/canary와 복구 reader 원본을 보존하고, 모든 writer·진행 요청·worker를 중지·배출합니다.
+   CodeDeploy·수동 배포·컨테이너/호스트 재시작 자동화를 정지하고, backend를 실제로 stop합니다.
+   후보 reader의 설정만으로 기존 컨테이너가 정지했다고 판단하지 않습니다.
+2. 기존 활성 키와 구키를 유지한 후보 키링으로 register합니다. 변경 후 키링/canary를 같은 백업
+   세대로 서버 밖에 보존합니다. 운영 canary를 분실한 경우는 register가 아닌 복원 절차를 따릅니다.
+3. 전체 키링으로 컨테이너를 **재생성**하고 verify/verify-data와 상세·재조회를 확인합니다. 기존
+   컨테이너의 restart는 환경 변수를 갱신하지 않습니다. 파일 단위 bind mount도 atomic 파일 교체를
+   즉시 반영한다고 가정하지 않습니다. 모든 서비스 인스턴스의 새 키링 반영을 확인합니다.
+4. 위 단계 이후 새 활성 키를 선택하고 승인서를 갱신한 뒤 writer를 엽니다. 활성 키 변경만으로
+   과거 행이 재암호화되지는 않습니다. 신키 일기가 생긴 이후에는 그 키가 없는 복구본을 사용하지 않습니다.
+
+등록 과정은 점검 구간이며 무중단을 보장하지 않습니다. 디렉터리 동기화 실패 등으로 명령이 실패해도
+최종 파일이 이미 공개됐을 수 있습니다. 파일을 지우거나 초기화를 반복하지 말고 신뢰 자료와 실제
+행을 대조합니다. register 재실행은 기존 값을 검증하고 부모 디렉터리를 다시 동기화합니다. 초기화
+공개 후의 오류는 파일시스템 상태와 백업을 별도로 확인하며, 전원 손실 리허설을 수행했다고 기록하지 않습니다.
 
 구키는 현재 DB뿐 아니라 보존 중인 과거 DB 백업의 복원에 필요한 기간까지 보관합니다.
 실행자·확인 시각·checked/failed·키 ID·키링/canary 백업 세대·DB 백업 식별자는 기록하되

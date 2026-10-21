@@ -32,6 +32,9 @@ public final class DiarySourceTextKeyCheckMain {
         int status = execute(args, new StandardEnvironment());
         if (status != 0) {
             System.err.println("Diary encryption key operation failed.");
+        } else if ("verify".equals(args[0])) {
+            // Deployment must prove this Main ran; JVM options can exit successfully before invoking it.
+            System.out.println("{\"verified\":true}");
         }
         System.exit(status);
     }

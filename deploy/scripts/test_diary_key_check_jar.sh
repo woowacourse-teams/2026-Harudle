@@ -19,8 +19,13 @@ unset SPRING_APPLICATION_JSON LOADER_PATH LOADER_HOME JAVA_TOOL_OPTIONS JDK_JAVA
 export LOADER_MAIN=com.harudle.diary.infrastructure.crypto.DiarySourceTextKeyCheckMain
 
 run_check() {
-  java -Xmx128m -cp "${jar_file}" org.springframework.boot.loader.launch.PropertiesLauncher "$@" \
+  java -Xlog:disable -Xmx128m -cp "${jar_file}" org.springframework.boot.loader.launch.PropertiesLauncher "$@" \
     >"${test_dir}/output" 2>&1
+}
+
+expect_verified() {
+  run_check verify
+  test "$(cat "${test_dir}/output")" = '{"verified":true}'
 }
 
 expect_failure() {
@@ -38,7 +43,7 @@ test ! -e "${DIARY_SOURCE_TEXT_KEY_VERIFICATION_FILE}"
 cp "${script_dir}/../../backend/src/test/resources/crypto/diary-key-checks-public-dev.json" \
   "${DIARY_SOURCE_TEXT_KEY_VERIFICATION_FILE}"
 cp "${DIARY_SOURCE_TEXT_KEY_VERIFICATION_FILE}" "${test_dir}/original.json"
-run_check verify
+expect_verified
 expect_failure verify-data
 expect_failure initialize
 cmp "${test_dir}/original.json" "${DIARY_SOURCE_TEXT_KEY_VERIFICATION_FILE}"
@@ -51,13 +56,13 @@ SPRING_APPLICATION_JSON='{"harudle":{"diary":{"source-text-encryption":{"keys":{
 SPRING_APPLICATION_JSON='{"harudle":{"diary":{"source-text-encryption":{"new-writes-enabled":true}}}}' \
   expect_failure verify
 DIARY_SOURCE_TEXT_RELEASE_MODE=writer expect_failure verify
-DIARY_SOURCE_TEXT_RELEASE_MODE=writer DIARY_SOURCE_TEXT_NEW_WRITES_ENABLED=true run_check verify
+DIARY_SOURCE_TEXT_RELEASE_MODE=writer DIARY_SOURCE_TEXT_NEW_WRITES_ENABLED=true expect_verified
 cmp "${test_dir}/original.json" "${DIARY_SOURCE_TEXT_KEY_VERIFICATION_FILE}"
 
 # Imported profile settings participate in the same binder as the serving application.
 printf 'harudle.diary.source-text-encryption.keys.primary=invalid\n' > "${test_dir}/bad.properties"
 SPRING_CONFIG_IMPORT="file:${test_dir}/bad.properties" expect_failure verify
-run_check verify
+expect_verified
 # System properties can override normal environment variables, but cannot reopen a reader revision.
 if java -Xmx128m -Dharudle.diary.source-text-encryption.new-writes-enabled=true -cp "${jar_file}" \
   org.springframework.boot.loader.launch.PropertiesLauncher verify >"${test_dir}/output" 2>&1; then
@@ -69,5 +74,12 @@ expect_failure unsupported
 export SPRING_APPLICATION_JSON='{"harudle":{"diary":{"source-text-encryption":{"active-key-id":"next","keys":{"next":"YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODk="}}}}}'
 expect_failure verify
 run_check register
-run_check verify
+expect_verified
+
+# A zero exit code alone does not establish that the application verifier executed.
+for jvm_exit_option in -version --dry-run; do
+  java "${jvm_exit_option}" -Xlog:disable -Xmx128m -cp "${jar_file}" \
+    org.springframework.boot.loader.launch.PropertiesLauncher verify >"${test_dir}/output" 2>&1
+  test "$(cat "${test_dir}/output")" != '{"verified":true}'
+done
 echo "PASS: packaged verify/register are database independent; initialization and data checks fail closed."

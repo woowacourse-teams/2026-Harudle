@@ -7,8 +7,10 @@ readonly TEST_DIR="$(mktemp -d)"
 trap 'rm -rf "${TEST_DIR}"' EXIT
 export HARUDLE_APP_DIR="${TEST_DIR}/app"
 export DIARY_KEY_TEST_DIR="${TEST_DIR}"
-mkdir -p "${HARUDLE_APP_DIR}" "${TEST_DIR}/bin"
+export TMPDIR="${TEST_DIR}/tmp"
+mkdir -p "${HARUDLE_APP_DIR}" "${TEST_DIR}/bin" "${TMPDIR}"
 test_count=0
+source "${SCRIPT_DIR}/diary_writer_approval.sh"
 
 cat > "${TEST_DIR}/bin/docker" <<'SH'
 #!/usr/bin/env bash
@@ -51,7 +53,6 @@ case "${command_name}" in
     printf '%s\n' "$@" > "${DIARY_KEY_TEST_DIR}/verify.args"
     printf '%s\n' "${last_file}" > "${DIARY_KEY_TEST_DIR}/override.path"
     cp "${last_file}" "${DIARY_KEY_TEST_DIR}/override.contents"
-    echo 'diary-key-test-secret'
     echo 'diary-key-test-secret' >&2
     if [[ "${DIARY_KEY_TEST_VERIFY_FAILURE:-0}" == 0 ]]; then
       for ((index = 0; index < ${#arguments[@]}; index++)); do
@@ -60,6 +61,8 @@ case "${command_name}" in
         fi
       done
       sh -c "${arguments[${#arguments[@]} - 1]}"
+    else
+      echo 'diary-key-test-secret'
     fi
     exit "${DIARY_KEY_TEST_VERIFY_FAILURE:-0}"
     ;;
@@ -78,6 +81,32 @@ cat > "${TEST_DIR}/bin/java" <<'SH'
 set -Eeuo pipefail
 printf '%s\n' "$@" > "${DIARY_KEY_TEST_DIR}/java.args"
 printf '%s\n' "${LOADER_MAIN:-}" > "${DIARY_KEY_TEST_DIR}/java.loader-main"
+# These JVM actions exit successfully before invoking a main method.
+for argument in "$@"; do
+  case "${argument}" in
+    -version) echo 'diary-key-test-secret' >&2; exit 0 ;;
+    --dry-run) exit 0 ;;
+  esac
+done
+# The dev Compose options write GC diagnostics to stdout unless the one-off disables them.
+if [[ " $* " == *' -Xlog:gc*,safepoint:stdout:'* && " $* " != *' -Xlog:disable '* ]]; then
+  echo 'diary-key-test-secret'
+fi
+case "${DIARY_KEY_TEST_RESULT:-valid}" in
+  valid) printf '%s\n' '{"verified":true}' ;;
+  empty) ;;
+  diagnostic) printf '%s\n' 'diary-key-test-secret' '{"verified":true}' ;;
+  extra-field) printf '%s\n' '{"verified":true,"extra":"diary-key-test-secret"}' ;;
+  false) printf '%s\n' '{"verified":false}' ;;
+  duplicate) printf '%s\n' '{"verified":true}' '{"verified":true}' ;;
+  no-newline) printf '%s' '{"verified":true}' ;;
+  extra-newline) printf '%s\n\n' '{"verified":true}' ;;
+  *) exit 1 ;;
+esac
+if [[ "${DIARY_KEY_TEST_CHANGE_CANARY:-0}" == 1 ]]; then
+  printf 'changed-public-canary\n' > "${HARUDLE_DIARY_KEY_VERIFICATION_FILE}"
+fi
+exit "${DIARY_KEY_TEST_JAVA_FAILURE:-0}"
 SH
 chmod +x "${TEST_DIR}/bin/docker" "${TEST_DIR}/bin/java"
 export PATH="${TEST_DIR}/bin:${PATH}"
@@ -88,6 +117,7 @@ prepare_case() {
   export DEPLOYMENT_GROUP_NAME="harudle-${environment}"
   export DIARY_KEY_TEST_RENDER_FAILURE=0 DIARY_KEY_TEST_QUIET_FAILURE=0
   export DIARY_KEY_TEST_VERIFY_FAILURE=0 DIARY_KEY_TEST_UP_FAILURE=0
+  export DIARY_KEY_TEST_RESULT=valid DIARY_KEY_TEST_JAVA_FAILURE=0 DIARY_KEY_TEST_CHANGE_CANARY=0
   export JAVA_OPTS='-Dpreflight.parity=true -Dpreflight.test.secret=diary-key-test-secret'
   export LOADER_MAIN=untrusted.test.Main
   : > "${TEST_DIR}/calls"
@@ -105,6 +135,17 @@ ENV
   printf 'services: {}\n' > "${HARUDLE_APP_DIR}/compose.diary-reader.yaml"
   printf 'services: {}\n' > "${HARUDLE_APP_DIR}/compose.diary-writer.yaml"
   printf '%s\n' "${release_mode}" > "${HARUDLE_APP_DIR}/diary-source-text-release-mode"
+  export HARUDLE_DIARY_WRITER_APPROVAL_FILE="${TEST_DIR}/approval.json"
+  export HARUDLE_DIARY_KEY_VERIFICATION_FILE="${TEST_DIR}/canary.json"
+  printf 'public-canary-fixture\n' > "${HARUDLE_DIARY_KEY_VERIFICATION_FILE}"
+  chmod 640 "${HARUDLE_DIARY_KEY_VERIFICATION_FILE}"
+  jq -n --arg digest "$(diary_approval_sha256 "${HARUDLE_DIARY_KEY_VERIFICATION_FILE}")" '{
+    formatVersion: 1, environment: "prod", canarySha256: $digest,
+    devRestoreVerified: true, devRestoreRecord: "dev-restore-fixture",
+    prodBackupVerified: true, prodBackupRecord: "prod-backup-fixture",
+    readerRevision: "immutable-artifact-fixture", approvedAt: "2026-01-01T00:00:00Z", approvedBy: "fixture"
+  }' > "${HARUDLE_DIARY_WRITER_APPROVAL_FILE}"
+  chmod 600 "${HARUDLE_DIARY_WRITER_APPROVAL_FILE}"
 }
 
 assert_private_output() {
@@ -116,6 +157,10 @@ assert_private_output() {
 
 assert_override_removed() {
   [[ ! -f "$(cat "${TEST_DIR}/override.path")" ]]
+  if compgen -G "${TMPDIR}/harudle-diary-key-*" >/dev/null; then
+    echo 'FAIL: 비공개 키 검증 임시 파일이 정리되지 않았습니다.' >&2
+    exit 1
+  fi
 }
 
 record_pass() {
@@ -142,6 +187,7 @@ for environment in dev prod; do
   grep -Fxq -- '-Dpreflight.parity=true' "${TEST_DIR}/java.args"
   grep -Fxq -- '-Dpreflight.test.secret=diary-key-test-secret' "${TEST_DIR}/java.args"
   grep -Fxq -- '-Xmx128m' "${TEST_DIR}/java.args"
+  grep -Fxq -- '-Xlog:disable' "${TEST_DIR}/java.args"
   grep -Fxq -- 'com.harudle.diary.infrastructure.crypto.DiarySourceTextKeyCheckMain' \
     "${TEST_DIR}/java.loader-main"
   grep -Fxq -- "${HARUDLE_APP_DIR}/compose.diary-reader.yaml" "${TEST_DIR}/verify.args"
@@ -170,11 +216,51 @@ for failure in 1 7; do
   printf 'render\nquiet\nverify\n' > "${TEST_DIR}/expected.calls"
   diff -u "${TEST_DIR}/expected.calls" "${TEST_DIR}/calls"
   [[ ! -f "${TEST_DIR}/up.args" ]]
-  grep -Fq 'Existing containers were not replaced.' "${TEST_DIR}/output"
+  grep -Fq '기존 컨테이너는 교체하지 않았습니다.' "${TEST_DIR}/output"
   assert_private_output
   assert_override_removed
   record_pass "verifier exit ${failure}: existing containers remain untouched"
 done
+
+assert_verifier_rejected() {
+  if bash "${SCRIPT_DIR}/application_start.sh" > "${TEST_DIR}/output" 2>&1; then
+    echo 'FAIL: 실제 검증 성공 증거가 없는 후보를 허용했습니다.' >&2
+    exit 1
+  fi
+  printf 'render\nquiet\nverify\n' > "${TEST_DIR}/expected.calls"
+  diff -u "${TEST_DIR}/expected.calls" "${TEST_DIR}/calls"
+  [[ ! -f "${TEST_DIR}/up.args" ]]
+  grep -Fq '기존 컨테이너는 교체하지 않았습니다.' "${TEST_DIR}/output"
+  assert_private_output
+  assert_override_removed
+  record_pass "$1"
+}
+
+for option in -version --dry-run; do
+  prepare_case dev reader
+  export JAVA_OPTS="${JAVA_OPTS} ${option}"
+  assert_verifier_rejected "${option}: Main을 실행하지 않은 JVM의 종료 0을 거절"
+done
+
+for result in empty diagnostic extra-field false duplicate no-newline extra-newline; do
+  prepare_case dev reader
+  export DIARY_KEY_TEST_RESULT="${result}"
+  assert_verifier_rejected "${result}: 정확한 한 줄 성공 JSON만 허용"
+done
+
+prepare_case dev reader
+export DIARY_KEY_TEST_JAVA_FAILURE=7
+assert_verifier_rejected '성공 JSON이 있어도 비정상 종료 코드를 거절'
+
+prepare_case dev reader
+export JAVA_OPTS="${JAVA_OPTS} -Xlog:gc*,safepoint:stdout:time,uptime,level,tags"
+bash "${SCRIPT_DIR}/application_start.sh" > "${TEST_DIR}/output" 2>&1
+grep -Fxq -- '-Xlog:gc*,safepoint:stdout:time,uptime,level,tags' "${TEST_DIR}/java.args"
+grep -Fxq -- '-Xlog:disable' "${TEST_DIR}/java.args"
+[[ -f "${TEST_DIR}/up.args" ]]
+assert_private_output
+assert_override_removed
+record_pass 'dev GC 옵션과 시스템 프로퍼티를 유지하고 one-off JVM 로그만 억제'
 
 prepare_case prod writer
 bash "${SCRIPT_DIR}/application_start.sh" > "${TEST_DIR}/output" 2>&1
@@ -183,6 +269,31 @@ grep -Fxq -- "${HARUDLE_APP_DIR}/compose.diary-writer.yaml" "${TEST_DIR}/up.args
 assert_private_output
 assert_override_removed
 record_pass 'writer revision: verifier and deployment use the same mode override'
+
+prepare_case prod writer
+rm "${HARUDLE_DIARY_WRITER_APPROVAL_FILE}"
+if bash "${SCRIPT_DIR}/application_start.sh" > "${TEST_DIR}/output" 2>&1; then
+  echo 'FAIL: 운영 writer 승인 없이 교체를 허용했습니다.' >&2
+  exit 1
+fi
+printf 'render\nquiet\n' > "${TEST_DIR}/expected.calls"
+diff -u "${TEST_DIR}/expected.calls" "${TEST_DIR}/calls"
+[[ ! -f "${TEST_DIR}/verify.args" && ! -f "${TEST_DIR}/up.args" ]]
+assert_private_output
+record_pass 'prod writer 승인 누락은 키 검증과 컨테이너 교체 전에 거절'
+
+prepare_case prod writer
+export DIARY_KEY_TEST_CHANGE_CANARY=1
+if bash "${SCRIPT_DIR}/application_start.sh" > "${TEST_DIR}/output" 2>&1; then
+  echo 'FAIL: 키 검증 중 변경된 canary의 과거 승인을 허용했습니다.' >&2
+  exit 1
+fi
+printf 'render\nquiet\nverify\n' > "${TEST_DIR}/expected.calls"
+diff -u "${TEST_DIR}/expected.calls" "${TEST_DIR}/calls"
+[[ ! -f "${TEST_DIR}/up.args" ]]
+assert_private_output
+assert_override_removed
+record_pass '키 검증 뒤 canary 승인 재확인 실패는 교체를 막음'
 
 for failure_point in render quiet; do
   prepare_case dev

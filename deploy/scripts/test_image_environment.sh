@@ -252,6 +252,32 @@ YAML
 expect_rejected 'Resolved image environment mismatch: DIARY_SOURCE_TEXT_RELEASE_MODE.' \
   'artifact와 다른 resolved release mode 거절'
 
+# JVM bootstrap diagnostics print these values before the application's safe logger exists.
+for setting in JAVA_TOOL_OPTIONS JDK_JAVA_OPTIONS _JAVA_OPTIONS; do
+  write_compose
+  write_settings dev
+  printf '%s=-Dtest.secret=image-env-test-secret\n' "${setting}" >> "${TEST_DIR}/.env"
+  expect_rejected 'JVM 자동 옵션 환경 변수는 배포에서 사용할 수 없습니다.' "${setting} env_file 거절"
+  if grep -Fq 'image-env-test-secret' "${TEST_DIR}/output"; then
+    echo 'FAIL: JVM 자동 옵션 값을 오류에 노출했습니다.' >&2
+    exit 1
+  fi
+
+  write_settings dev
+  override_setting "${setting}" '-Dtest.secret=image-env-test-secret'
+  expect_rejected 'JVM 자동 옵션 환경 변수는 배포에서 사용할 수 없습니다.' "${setting} 최종 Compose 환경 거절"
+  if grep -Fq 'image-env-test-secret' "${TEST_DIR}/output"; then
+    echo 'FAIL: JVM 자동 옵션 값을 오류에 노출했습니다.' >&2
+    exit 1
+  fi
+
+  write_compose
+  write_settings dev
+  printf '%s=\n' "${setting}" >> "${TEST_DIR}/.env"
+  (configure_compose "${TEST_DIR}")
+  record_pass "${setting} 빈 값 허용"
+done
+
 # 10. jq가 없으면 직접 검사와 BeforeInstall 모두 파일 정리 전에 중단한다.
 write_compose
 mkdir "${TEST_DIR}/no-jq-bin"

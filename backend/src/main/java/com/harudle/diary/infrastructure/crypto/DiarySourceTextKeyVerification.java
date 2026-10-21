@@ -75,6 +75,7 @@ public final class DiarySourceTextKeyVerification {
             Manifest manifest = read(file, environment);
             verifyRegisteredChecks(manifest);
             registerMissingKeys(file, manifest);
+            forceParentDirectory(file);
         }));
     }
 
@@ -169,7 +170,9 @@ public final class DiarySourceTextKeyVerification {
                 Set.of(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS),
                 PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")))) {
             writeFully(output, bytes);
+            output.force(true);
         }
+        forceParentDirectory(file);
     }
 
     private void replaceAtomically(Path file, byte[] bytes) throws IOException {
@@ -188,11 +191,12 @@ public final class DiarySourceTextKeyVerification {
     private void writeReplacement(Path file, byte[] bytes, PosixFileAttributes attributes) throws IOException {
         try (FileChannel output = FileChannel.open(file, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS)) {
             writeFully(output, bytes);
+            PosixFileAttributeView view = Files.getFileAttributeView(file, PosixFileAttributeView.class);
+            view.setOwner(attributes.owner());
+            view.setGroup(attributes.group());
+            view.setPermissions(attributes.permissions());
+            output.force(true);
         }
-        PosixFileAttributeView view = Files.getFileAttributeView(file, PosixFileAttributeView.class);
-        view.setOwner(attributes.owner());
-        view.setGroup(attributes.group());
-        view.setPermissions(attributes.permissions());
     }
 
     private void writeFully(FileChannel output, byte[] bytes) throws IOException {
@@ -200,7 +204,13 @@ public final class DiarySourceTextKeyVerification {
         while (buffer.hasRemaining()) {
             output.write(buffer);
         }
-        output.force(true);
+    }
+
+    /** File content synchronization alone does not persist a newly created or replaced directory entry. */
+    static void forceParentDirectory(Path file) throws IOException {
+        try (FileChannel directory = FileChannel.open(file.toAbsolutePath().getParent(), StandardOpenOption.READ)) {
+            directory.force(true);
+        }
     }
 
     private void withMutationLock(Path file, CheckedAction action) throws IOException {

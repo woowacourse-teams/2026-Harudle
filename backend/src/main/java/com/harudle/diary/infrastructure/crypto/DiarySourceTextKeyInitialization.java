@@ -49,6 +49,7 @@ public final class DiarySourceTextKeyInitialization {
             staging = target.resolveSibling(".diary-key-initialization-" + UUID.randomUUID() + ".json");
             createStagedEvidence(connection, staging, environment);
             Files.createLink(target, staging);
+            DiarySourceTextKeyVerification.forceParentDirectory(target);
         } catch (SQLException | IOException | RuntimeException exception) {
             throw new DiarySourceTextCryptoException();
         } finally {

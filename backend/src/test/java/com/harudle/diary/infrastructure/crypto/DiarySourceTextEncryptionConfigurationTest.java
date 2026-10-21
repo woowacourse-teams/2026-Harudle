@@ -6,18 +6,22 @@ import com.harudle.diary.domain.DiarySourceTextCipher;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 class DiarySourceTextEncryptionConfigurationTest {
 
     private static final String PREFIX = "harudle.diary.source-text-encryption.";
     private static final String KEY = Base64.getEncoder().encodeToString(new byte[32]);
+    private static final String NEW_KEY = newKey();
 
     @TempDir
     private Path directory;
@@ -96,6 +100,52 @@ class DiarySourceTextEncryptionConfigurationTest {
                 .createInitialEvidence(file, "dev");
         production(file, "", KEY).run(application -> assertThat(application).hasFailed());
         production(file, "prod", KEY).run(application -> assertThat(application).hasFailed());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"old", "new"})
+    @DisplayName("새 키 등록 후 구키나 신키만 가진 운영 앱은 재시작을 거절한다")
+    void refusesIncompleteKeyRingsAfterRegistration(String retainedKey) {
+        Path file = registerNewKey();
+        String material = "old".equals(retainedKey) ? KEY : NEW_KEY;
+
+        production(file, retainedKey, Map.of(retainedKey, material)).run(application -> assertThat(application)
+                .hasFailed().getFailure().hasRootCauseInstanceOf(DiarySourceTextCryptoException.class));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"old", "new"})
+    @DisplayName("새 키 등록 후 전체 키링을 가진 운영 앱은 구키나 신키를 활성화해 시작할 수 있다")
+    void allowsEitherActiveKeyWithCompleteRegisteredRing(String activeKey) {
+        Path file = registerNewKey();
+
+        production(file, activeKey, Map.of("old", KEY, "new", NEW_KEY)).run(application -> assertThat(application)
+                .hasNotFailed().hasSingleBean(DiarySourceTextCipher.class));
+    }
+
+    private Path registerNewKey() {
+        Path file = directory.resolve("keys.json");
+        new DiarySourceTextKeyVerification(new DiarySourceTextEncryptionProperties("old", Map.of("old", KEY)))
+                .createInitialEvidence(file, "dev");
+        new DiarySourceTextKeyVerification(
+                new DiarySourceTextEncryptionProperties("old", Map.of("old", KEY, "new", NEW_KEY))
+        ).register(file, "dev");
+        return file;
+    }
+
+    private ApplicationContextRunner production(Path file, String activeKey, Map<String, String> keys) {
+        ApplicationContextRunner configured = context.withPropertyValues(PREFIX + "active-key-id=" + activeKey,
+                "spring.profiles.active=prod", "DEPLOY_ENV=dev", PREFIX + "verification-file=" + file);
+        for (Map.Entry<String, String> key : keys.entrySet()) {
+            configured = configured.withPropertyValues(PREFIX + "keys." + key.getKey() + "=" + key.getValue());
+        }
+        return configured;
+    }
+
+    private static String newKey() {
+        byte[] bytes = new byte[32];
+        Arrays.fill(bytes, (byte) 1);
+        return Base64.getEncoder().encodeToString(bytes);
     }
 
     private ApplicationContextRunner production(Path file, String environment, String key) {
