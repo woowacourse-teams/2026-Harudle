@@ -42,6 +42,8 @@ import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.core.task.TaskRejectedException;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.TransientDataAccessResourceException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(OutputCaptureExtension.class)
@@ -151,6 +153,133 @@ class DiaryGenerationWorkerTest {
                 .doesNotContain("private-diary-input-in-error");
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    @DisplayName("생성 기록이나 일기 조회의 일시적인 DB 오류는 한 번 재조회하고 AI를 한 번 실행한다")
+    void retryTransientInputReadOnceBeforeGenerating(boolean failOnGenerationRead, CapturedOutput output) {
+        Fixture fixture = processingGeneration();
+        stubInput(fixture);
+        var exception = new TransientDataAccessResourceException("private-diary-input-in-error");
+        if (failOnGenerationRead) {
+            when(generationRepository.findById(fixture.generation().getId()))
+                    .thenThrow(exception).thenReturn(Optional.of(fixture.generation()));
+        } else {
+            when(diaryRepository.findById(fixture.diary().getId()))
+                    .thenThrow(exception).thenReturn(Optional.of(fixture.diary()));
+        }
+        when(claimService.claim(1)).thenReturn(List.of(fixture.generation().getId()));
+
+        worker(Runnable::run, 1).poll();
+
+        verify(claimService).claim(1);
+        verify(generationRepository, times(2)).findById(fixture.generation().getId());
+        verify(diaryRepository, times(failOnGenerationRead ? 1 : 2)).findById(fixture.diary().getId());
+        Diary diary = fixture.diary();
+        verify(generationExecutor).generate(new GenerateDiaryImageCommand(
+                diary.getUserId(), diary.getId(), diary.getDiaryDate(), diary.getSourceText(), fixture.requestKey()
+        ), fixture.generation().getId());
+        verifyNoInteractions(completionService);
+        assertThat(output).contains("event=generation_worker_input_read_retry")
+                .contains("generationId=" + fixture.generation().getId())
+                .doesNotContain("private-diary-input-in-error");
+    }
+
+    @Test
+    @DisplayName("두 번 모두 입력 조회에 실패하면 최종 실패를 저장하고 다음 작업을 실행한다")
+    void failAfterSecondTransientInputReadAndReleaseSlot() {
+        Fixture fixture = processingGeneration();
+        Fixture next = processingGeneration();
+        when(generationRepository.findById(fixture.generation().getId()))
+                .thenReturn(Optional.of(fixture.generation()));
+        when(diaryRepository.findById(fixture.diary().getId()))
+                .thenThrow(new TransientDataAccessResourceException("첫 조회 실패"))
+                .thenThrow(new TransientDataAccessResourceException("재조회 실패"));
+        stubInput(next);
+        when(claimService.claim(1)).thenReturn(List.of(fixture.generation().getId()))
+                .thenReturn(List.of(next.generation().getId()));
+        DiaryGenerationWorker worker = worker(Runnable::run, 1);
+
+        worker.poll();
+        worker.poll();
+
+        verify(diaryRepository, times(2)).findById(fixture.diary().getId());
+        verify(completionService).fail(fixture.generation().getId(), GenerationErrorCode.GENERATION_INTERNAL_ERROR);
+        verify(generationExecutor, never()).generate(any(), eq(fixture.generation().getId()));
+        verify(generationExecutor).generate(any(), eq(next.generation().getId()));
+    }
+
+    @Test
+    @DisplayName("생성 기록과 일기 조회가 차례로 실패해도 입력 조회 전체에서 한 번만 재시도한다")
+    void shareSingleRetryAcrossGenerationAndDiaryReads() {
+        Fixture fixture = processingGeneration();
+        when(generationRepository.findById(fixture.generation().getId()))
+                .thenThrow(new TransientDataAccessResourceException("생성 기록 조회 실패"))
+                .thenReturn(Optional.of(fixture.generation()));
+        when(diaryRepository.findById(fixture.diary().getId()))
+                .thenThrow(new TransientDataAccessResourceException("일기 조회 실패"));
+        when(claimService.claim(1)).thenReturn(List.of(fixture.generation().getId()));
+
+        worker(Runnable::run, 1).poll();
+
+        verify(diaryRepository).findById(fixture.diary().getId());
+        verify(generationExecutor, never()).generate(any(), any());
+        verify(completionService).fail(fixture.generation().getId(), GenerationErrorCode.GENERATION_INTERNAL_ERROR);
+    }
+
+    @Test
+    @DisplayName("일시적인 오류로 분류하지 않은 DB 조회 오류는 재조회하지 않는다")
+    void doNotRetryNonTransientInputReadFailure() {
+        Fixture fixture = processingGeneration();
+        when(generationRepository.findById(fixture.generation().getId()))
+                .thenReturn(Optional.of(fixture.generation()));
+        when(diaryRepository.findById(fixture.diary().getId()))
+                .thenThrow(new DataAccessResourceFailureException("DB 조회 실패"));
+        when(claimService.claim(1)).thenReturn(List.of(fixture.generation().getId()));
+
+        worker(Runnable::run, 1).poll();
+
+        verify(diaryRepository).findById(fixture.diary().getId());
+        verify(generationExecutor, never()).generate(any(), any());
+        verify(completionService).fail(fixture.generation().getId(), GenerationErrorCode.GENERATION_INTERNAL_ERROR);
+    }
+
+    @Test
+    @DisplayName("AI 실행 중 일시적인 DB 오류가 나도 입력 조회와 AI 실행을 반복하지 않는다")
+    void doNotRetryExecutorOnTransientDatabaseFailure(CapturedOutput output) {
+        Fixture fixture = processingGeneration();
+        stubInput(fixture);
+        when(claimService.claim(1)).thenReturn(List.of(fixture.generation().getId()));
+        when(generationExecutor.generate(any(), eq(fixture.generation().getId())))
+                .thenThrow(new TransientDataAccessResourceException("생성 결과 저장 실패"));
+
+        worker(Runnable::run, 1).poll();
+
+        verify(diaryRepository).findById(fixture.diary().getId());
+        verify(generationExecutor).generate(any(), eq(fixture.generation().getId()));
+        verify(completionService).fail(fixture.generation().getId(), GenerationErrorCode.GENERATION_INTERNAL_ERROR);
+        assertThat(output).doesNotContain("event=generation_worker_input_read_retry");
+    }
+
+    @Test
+    @DisplayName("재조회 시 이미 종료된 작업이면 AI를 실행하거나 실패 상태를 덮어쓰지 않는다")
+    void skipGenerationFinalizedBeforeInputRetry() {
+        Fixture fixture = processingGeneration();
+        when(generationRepository.findById(fixture.generation().getId()))
+                .thenReturn(Optional.of(fixture.generation()));
+        when(diaryRepository.findById(fixture.diary().getId())).thenAnswer(invocation -> {
+            fixture.generation().fail(GenerationErrorCode.GENERATION_INTERRUPTED, Instant.now());
+            throw new TransientDataAccessResourceException("일기 조회 실패");
+        });
+        when(claimService.claim(1)).thenReturn(List.of(fixture.generation().getId()));
+
+        worker(Runnable::run, 1).poll();
+
+        verify(generationRepository, times(2)).findById(fixture.generation().getId());
+        verify(diaryRepository).findById(fixture.diary().getId());
+        verify(generationExecutor, never()).generate(any(), any());
+        verifyNoInteractions(completionService);
+    }
+
     @Test
     @DisplayName("입력을 읽지 못하면 실패를 저장하고 다음 생성 작업을 실행한다")
     void persistInputFailureAndContinueWithNextGeneration() {
@@ -168,6 +297,7 @@ class DiaryGenerationWorkerTest {
         worker.poll();
 
         verify(completionService).fail(missingInput.generation().getId(), GenerationErrorCode.GENERATION_INTERNAL_ERROR);
+        verify(diaryRepository).findById(missingInput.diary().getId());
         verify(generationExecutor, never()).generate(any(), eq(missingInput.generation().getId()));
         verify(generationExecutor).generate(any(), eq(next.generation().getId()));
     }
@@ -182,6 +312,7 @@ class DiaryGenerationWorkerTest {
 
         worker(Runnable::run, 1).poll();
 
+        verify(diaryRepository).findById(fixture.diary().getId());
         verify(generationExecutor, never()).generate(any(), any());
         verify(completionService).fail(fixture.generation().getId(), GenerationErrorCode.GENERATION_INTERNAL_ERROR);
     }

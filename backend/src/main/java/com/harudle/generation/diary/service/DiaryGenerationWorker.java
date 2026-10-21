@@ -19,6 +19,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.task.TaskExecutor;
+import org.springframework.dao.TransientDataAccessException;
 import org.springframework.scheduling.annotation.Scheduled;
 
 public final class DiaryGenerationWorker {
@@ -117,15 +118,9 @@ public final class DiaryGenerationWorker {
     }
 
     private void generate(UUID generationId) {
-        DiaryGeneration generation = generationRepository.findById(generationId)
-                .orElseThrow(() -> new IllegalStateException("선점한 생성 기록을 찾을 수 없습니다."));
-        if (generation.getStatus() != GenerationStatus.PROCESSING) {
+        Optional<GenerateDiaryImageCommand> command = loadInputWithRetry(generationId);
+        if (command.isEmpty()) {
             return;
-        }
-        Diary diary = diaryRepository.findById(generation.getDiaryId())
-                .orElseThrow(() -> new IllegalStateException("생성할 일기를 찾을 수 없습니다."));
-        if (diary.isDeleted()) {
-            throw new IllegalStateException("삭제된 일기는 생성할 수 없습니다.");
         }
         DiaryGenerationExecutor executor = loadTestGenerationRegistry
                 .flatMap(registry -> registry.findExecutor(generationId))
@@ -133,13 +128,40 @@ public final class DiaryGenerationWorker {
         if (!executor.isConfigured()) {
             throw GenerationUnavailableException.adaptersNotConfigured();
         }
-        executor.generate(new GenerateDiaryImageCommand(
+        executor.generate(command.get(), generationId);
+    }
+
+    private Optional<GenerateDiaryImageCommand> loadInputWithRetry(UUID generationId) {
+        try {
+            return loadInput(generationId);
+        } catch (TransientDataAccessException exception) {
+            GenerationLogContext.withGenerationId(generationId, () -> LOGGER.atWarn()
+                    .addKeyValue("event", "generation_worker_input_read_retry")
+                    .addKeyValue("exceptionType", exception.getClass().getSimpleName())
+                    .log("event=generation_worker_input_read_retry generationId={} exceptionType={}",
+                            generationId, exception.getClass().getSimpleName()));
+            return loadInput(generationId);
+        }
+    }
+
+    private Optional<GenerateDiaryImageCommand> loadInput(UUID generationId) {
+        DiaryGeneration generation = generationRepository.findById(generationId)
+                .orElseThrow(() -> new IllegalStateException("선점한 생성 기록을 찾을 수 없습니다."));
+        if (generation.getStatus() != GenerationStatus.PROCESSING) {
+            return Optional.empty();
+        }
+        Diary diary = diaryRepository.findById(generation.getDiaryId())
+                .orElseThrow(() -> new IllegalStateException("생성할 일기를 찾을 수 없습니다."));
+        if (diary.isDeleted()) {
+            throw new IllegalStateException("삭제된 일기는 생성할 수 없습니다.");
+        }
+        return Optional.of(new GenerateDiaryImageCommand(
                 diary.getUserId(),
                 diary.getId(),
                 diary.getDiaryDate(),
                 diary.getSourceText(),
                 generation.getIdempotencyKey()
-        ), generationId);
+        ));
     }
 
     private boolean isLoadTestConfigured() {
