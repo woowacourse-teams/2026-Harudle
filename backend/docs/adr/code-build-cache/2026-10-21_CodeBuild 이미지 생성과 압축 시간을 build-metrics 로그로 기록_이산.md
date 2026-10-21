@@ -46,7 +46,7 @@
    로그 도입 당시에는 Docker 빌드 안에서 패키지 설치와 `pnpm check`를 모두 수행했다. 후속 구현안에서는 GitHub Actions가 PR에서 `pnpm check`를 실행한다. CodeBuild는 자체 S3 캐시에서 이미지를 재사용하거나, 새 이미지가 필요할 때 `pnpm build`를 실행한다. `frontend_docker_export_seconds`는 새 이미지를 만들 때만 기록하므로, 이미지 재사용 여부는 `frontend_image_reused` 로그와 함께 확인한다.
 
 3. **`POST_BUILD` 구간의 시간을 압축과 캐시 저장으로 나눠 볼 수 있다.**
-   `POST_BUILD`에서는 새로 만든 이미지의 `.tar` 압축(`gzip -1`)과 백엔드 증분 상태 저장(`backend_incremental_save_seconds`)이 일어난다. 프론트엔드 이미지를 재사용하면 해당 이미지의 압축은 생략한다. 압축 시간과 캐시 저장 로그를 따로 보면 `POST_BUILD`에서 오래 걸린 작업을 찾을 수 있다.
+   `POST_BUILD`에서는 새로 만든 이미지의 `.tar` 압축(`gzip -1`)과 백엔드 증분 상태 저장(`backend_incremental_save_seconds`)이 일어난다. 프론트엔드 이미지를 재사용하면 해당 이미지의 압축과 로컬 캐시 교체를 생략한다. 재사용에 실패해 새 이미지를 만들고 빌드 전후 입력이 같다면 기존 캐시의 지문과 체크섬이 같아도 새 이미지를 로컬 캐시에 저장한다. 압축 시간과 캐시 저장 로그를 따로 보면 `POST_BUILD`에서 오래 걸린 작업을 찾을 수 있다.
 
 4. **CloudWatch 검색과 알림 연결이 쉬워진다.**
    모든 시간 로그가 `[build-metrics] 이름=초` 형식으로 통일되어 CloudWatch Logs Insights나 검색창에서 `[build-metrics]` 하나로 한 번의 빌드에 걸린 주요 구간 시간을 모두 모아 볼 수 있다.

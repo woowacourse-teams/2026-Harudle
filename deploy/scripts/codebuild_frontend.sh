@@ -75,13 +75,6 @@ save() {
   local current
   [[ -s "$fingerprint_file" && -s "$image_archive" ]] || return 0
   mkdir -p "$cache_root"
-  if [[ -f "$cache_root/fingerprint" && -f "$cache_root/frontend-image.sha256" \
-      && "$(cat "$cache_root/fingerprint")" == "$(cat "$fingerprint_file")" \
-      && -s "$cache_root/frontend-image.tar.gz" ]] \
-      && (cd "$cache_root" && sha256sum --check --status frontend-image.sha256); then
-    return 0
-  fi
-
   if ! current="$(fingerprint)" || [[ "$current" != "$(cat "$fingerprint_file")" ]]; then
     echo '[build-metrics] frontend_image_cache_prepared=false (inputs changed during build)'
     return 0

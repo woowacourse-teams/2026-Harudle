@@ -89,9 +89,11 @@ phases:
       - >-
         bash deploy/scripts/codebuild_backend.sh save ||
         echo "Incremental cache save failed; continuing with the verified images."
-      - >-
-        bash deploy/scripts/codebuild_frontend.sh save ||
-        echo "Frontend image cache save failed; continuing with the verified images."
+      - |
+        if [[ "${frontend_image_reused:-false}" != true ]]; then
+          bash deploy/scripts/codebuild_frontend.sh save ||
+            echo "Frontend image cache save failed; continuing with the verified images."
+        fi
 
 artifacts:
   files:
