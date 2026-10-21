@@ -20,30 +20,24 @@ public class ProfileImageCleanupRepository {
         add(userId, objectKey, now, now);
     }
 
-    public void add(UUID userId, String objectKey, Instant now, Instant nextAttemptAt) {
+    public void add(UUID userId, String objectKey, Instant now, Instant deleteAfter) {
         jdbcTemplate.update("""
-                INSERT INTO profile_image_cleanup_tasks (object_key, user_id, created_at, next_attempt_at)
+                INSERT INTO profile_image_cleanup_tasks (object_key, user_id, created_at, delete_after)
                 VALUES (?, ?, ?, ?)
                 ON CONFLICT (object_key) DO NOTHING
-                """, objectKey, userId, Timestamp.from(now), Timestamp.from(nextAttemptAt));
+                """, objectKey, userId, Timestamp.from(now), Timestamp.from(deleteAfter));
     }
 
-    public List<PendingCleanup> findPending(Instant now, int limit) {
+    public List<PendingCleanup> findPending(UUID userId, Instant now, int limit) {
         return jdbcTemplate.query("""
                 SELECT user_id, object_key
                 FROM profile_image_cleanup_tasks
-                WHERE next_attempt_at <= ?
-                ORDER BY next_attempt_at, object_key
+                WHERE user_id = ? AND delete_after <= ?
+                ORDER BY delete_after, object_key
                 LIMIT ?
                 """, (row, index) -> new PendingCleanup(
                 row.getObject("user_id", UUID.class), row.getString("object_key")
-        ), Timestamp.from(now), limit);
-    }
-
-    public void defer(String objectKey, Instant nextAttemptAt) {
-        jdbcTemplate.update("""
-                UPDATE profile_image_cleanup_tasks SET next_attempt_at = ? WHERE object_key = ?
-                """, Timestamp.from(nextAttemptAt), objectKey);
+        ), userId, Timestamp.from(now), limit);
     }
 
     public void remove(String objectKey) {

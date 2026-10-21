@@ -56,7 +56,7 @@ public class ProfileImageUploadService {
         try {
             return storage.store(userId, webpBytes);
         } catch (ProfileImageStorageException exception) {
-            // S3 요청이 뒤늦게 완료될 수 있어 응답이 불명확한 업로드는 다음 정리 주기에 확인한다.
+            // S3 요청이 뒤늦게 완료될 수 있어 유예 후 다음 프로필 변경 때 확인한다.
             cleanupService.defer(userId, exception.getObjectKey());
             throw exception;
         }

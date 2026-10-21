@@ -155,7 +155,7 @@ class ProfileImageUploadServiceTest {
     }
 
     @Test
-    @DisplayName("업로드 응답이 실패하면 기존 DB를 유지하고 새 경로를 기록해 다음 주기에 정리한다")
+    @DisplayName("업로드 응답이 실패하면 기존 DB를 유지하고 유예 후 다음 프로필 변경에서 정리한다")
     void preservesCurrentImageWhenUploadFails() {
         ProfileImageStorageException failure = new ProfileImageStorageException("upload failed", newKey, null);
         when(storage.store(eq(user.getId()), any(byte[].class))).thenThrow(failure);
@@ -166,8 +166,12 @@ class ProfileImageUploadServiceTest {
         verify(storage, never()).delete(newKey);
         verify(storage, never()).delete(oldKey);
         assertThat(taskCount()).isEqualTo(1);
-        jdbc.update("UPDATE profile_image_cleanup_tasks SET next_attempt_at = ?", java.sql.Timestamp.from(NOW));
-        cleaner.retryPending();
+        cleaner.clean(user.getId(), newKey);
+        verify(storage, never()).delete(newKey);
+        assertThat(taskCount()).isEqualTo(1);
+
+        jdbc.update("UPDATE profile_image_cleanup_tasks SET delete_after = ?", java.sql.Timestamp.from(NOW));
+        service.changeDefault(user.getId(), 7);
         verify(storage).delete(newKey);
         assertThat(taskCount()).isZero();
     }
@@ -182,13 +186,45 @@ class ProfileImageUploadServiceTest {
         assertThat(saved().getProfileImageObjectKey()).isEqualTo(newKey);
         assertThat(taskCount()).isEqualTo(1);
         doNothing().when(storage).delete(oldKey);
-        jdbc.update("UPDATE profile_image_cleanup_tasks SET next_attempt_at = ?", java.sql.Timestamp.from(NOW));
-
-        cleaner.retryPending();
+        service.changeDefault(user.getId(), 7);
 
         assertThat(taskCount()).isZero();
         verify(storage, times(2)).delete(oldKey);
-        assertThat(saved().getProfileImageObjectKey()).isEqualTo(newKey);
+        assertThat(saved().getProfileImageObjectKey()).isNull();
+        assertThat(saved().getProfileImageCode()).isEqualTo((short) 7);
+    }
+
+    @Test
+    @DisplayName("사진 변경은 해당 회원의 삭제 가능한 작업만 정리하고 기본 이미지끼리 바꿔도 남은 작업을 처리한다")
+    void cleansOnlyEligibleTasksOfChangingUser() {
+        UUID otherUserId = UUID.randomUUID();
+        String otherKey = key(otherUserId, "33333333-3333-3333-3333-333333333333");
+        String previousFailureKey = key(user.getId(), "44444444-4444-4444-4444-444444444444");
+        String deferredKey = key(user.getId(), "55555555-5555-5555-5555-555555555555");
+        jdbc.update("""
+                INSERT INTO profile_image_cleanup_tasks (object_key, user_id, created_at, delete_after)
+                VALUES (?, ?, ?, ?), (?, ?, ?, ?), (?, ?, ?, ?)
+                """, otherKey, otherUserId, java.sql.Timestamp.from(NOW), java.sql.Timestamp.from(NOW),
+                previousFailureKey, user.getId(), java.sql.Timestamp.from(NOW), java.sql.Timestamp.from(NOW),
+                deferredKey, user.getId(), java.sql.Timestamp.from(NOW),
+                java.sql.Timestamp.from(Instant.now().plusSeconds(3600)));
+
+        service.changeDefault(user.getId(), 7);
+
+        verify(storage).delete(oldKey);
+        verify(storage).delete(previousFailureKey);
+        verify(storage, never()).delete(otherKey);
+        verify(storage, never()).delete(deferredKey);
+        assertThat(taskCount()).isEqualTo(2);
+
+        jdbc.update("UPDATE profile_image_cleanup_tasks SET delete_after = ? WHERE object_key = ?",
+                java.sql.Timestamp.from(NOW), deferredKey);
+        service.changeDefault(user.getId(), 8);
+
+        verify(storage).delete(deferredKey);
+        verify(storage, never()).delete(otherKey);
+        assertThat(taskCount()).isEqualTo(1);
+        assertThat(saved().getProfileImageCode()).isEqualTo((short) 8);
     }
 
     @Test

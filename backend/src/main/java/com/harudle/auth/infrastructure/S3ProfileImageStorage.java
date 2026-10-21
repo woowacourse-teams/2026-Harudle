@@ -21,6 +21,7 @@ import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequ
 public final class S3ProfileImageStorage {
 
     private static final String WEBP_CONTENT_TYPE = "image/webp";
+    private static final Duration DELETE_TIMEOUT = Duration.ofSeconds(2);
     private static final String UUID_PATTERN = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 
     private final S3Client s3Client;
@@ -82,6 +83,7 @@ public final class S3ProfileImageStorage {
         DeleteObjectRequest request = DeleteObjectRequest.builder()
                 .bucket(bucket)
                 .key(objectKey)
+                .overrideConfiguration(config -> config.apiCallTimeout(DELETE_TIMEOUT))
                 .build();
 
         try {

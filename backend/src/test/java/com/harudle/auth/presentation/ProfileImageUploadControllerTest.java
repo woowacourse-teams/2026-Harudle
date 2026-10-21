@@ -38,14 +38,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers(disabledWithoutDocker = true)
 @MockMvcIntegrationTest
-@TestPropertySource(properties = "harudle.profile.cleanup-interval=1d")
 class ProfileImageUploadControllerTest {
 
     private static final Instant NOW = Instant.parse("2026-10-20T00:00:00Z");

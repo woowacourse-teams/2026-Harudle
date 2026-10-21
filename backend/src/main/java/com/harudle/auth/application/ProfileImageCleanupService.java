@@ -11,7 +11,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -19,7 +18,8 @@ public class ProfileImageCleanupService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ProfileImageCleanupService.class);
     private static final int BATCH_SIZE = 50;
-    private static final Duration RETRY_DELAY = Duration.ofMinutes(1);
+    private static final Duration UPLOAD_CLEANUP_DELAY = Duration.ofMinutes(1);
+    private static final Duration CLEANUP_TIME_LIMIT = Duration.ofSeconds(5);
 
     private final ProfileImageCleanupRepository cleanupRepository;
     private final ProfileImageChangeService imageChangeService;
@@ -39,13 +39,11 @@ public class ProfileImageCleanupService {
     }
 
     public void clean(UUID userId, @Nullable String objectKey) {
-        if (objectKey == null) {
-            return;
-        }
-
         try {
-            cleanupRepository.add(userId, objectKey, clock.instant());
-            cleanPending(new PendingCleanup(userId, objectKey));
+            if (objectKey != null) {
+                cleanupRepository.add(userId, objectKey, clock.instant());
+            }
+            cleanPendingForUser(userId);
         } catch (RuntimeException exception) {
             logFailure(objectKey, exception);
         }
@@ -57,20 +55,24 @@ public class ProfileImageCleanupService {
         }
 
         try {
-            cleanupRepository.add(userId, objectKey, clock.instant(), clock.instant().plus(RETRY_DELAY));
+            cleanupRepository.add(userId, objectKey, clock.instant(), clock.instant().plus(UPLOAD_CLEANUP_DELAY));
         } catch (RuntimeException exception) {
             logFailure(objectKey, exception);
         }
     }
 
-    @Scheduled(fixedDelayString = "${harudle.profile.cleanup-interval:1m}",
-            initialDelayString = "${harudle.profile.cleanup-interval:1m}")
-    public void retryPending() {
+    private void cleanPendingForUser(UUID userId) {
         if (storageProvider.getIfAvailable() == null) {
             return;
         }
 
-        cleanupRepository.findPending(clock.instant(), BATCH_SIZE).forEach(this::cleanPending);
+        long startedAt = System.nanoTime();
+        for (PendingCleanup pending : cleanupRepository.findPending(userId, clock.instant(), BATCH_SIZE)) {
+            if (System.nanoTime() - startedAt >= CLEANUP_TIME_LIMIT.toNanos()) {
+                break;
+            }
+            cleanPending(pending);
+        }
     }
 
     private void cleanPending(PendingCleanup pending) {
@@ -89,11 +91,10 @@ public class ProfileImageCleanupService {
             cleanupRepository.remove(pending.objectKey());
         } catch (RuntimeException exception) {
             logFailure(pending.objectKey(), exception);
-            cleanupRepository.defer(pending.objectKey(), clock.instant().plus(RETRY_DELAY));
         }
     }
 
-    private void logFailure(String objectKey, RuntimeException exception) {
+    private void logFailure(@Nullable String objectKey, RuntimeException exception) {
         LOGGER.warn("event=profile_image_cleanup_deferred objectKey={} exceptionType={}",
                 objectKey, exception.getClass().getSimpleName());
     }

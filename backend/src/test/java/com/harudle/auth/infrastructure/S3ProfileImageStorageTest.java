@@ -126,6 +126,8 @@ class S3ProfileImageStorageTest {
         verify(s3Client).deleteObject(captor.capture());
         assertThat(captor.getValue().bucket()).isEqualTo("test-bucket");
         assertThat(captor.getValue().key()).isEqualTo(OBJECT_KEY);
+        assertThat(captor.getValue().overrideConfiguration().orElseThrow().apiCallTimeout())
+                .contains(Duration.ofSeconds(2));
         verifyNoInteractions(s3Presigner);
     }
 
