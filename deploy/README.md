@@ -112,15 +112,37 @@ CodeBuild의 `DIARY_SOURCE_TEXT_RELEASE_MODE`는 기본값이 `reader`입니다.
 ### 키 검증 자료의 명시적 관리
 
 이 파일은 환경·키 ID별 공개 검증용 암호문과 HMAC입니다. 사용자 원문·비밀 키는 포함하지
-않지만 변조되면 잘못된 키를 신뢰할 수 있으므로 root가 관리합니다. 일반 배포는 파일을
-읽기 전용으로 마운트하고 `verify`만 실행합니다. 후보 검증은 DB·Flyway·AI 클라이언트를
-시작하지 않으며 외부 로그 전송과 진단 원문 출력을 막습니다.
+않지만 변조되면 잘못된 키를 신뢰할 수 있으므로 root가 관리합니다. 일반 배포는 읽기 전용으로
+마운트한 파일에 `verify`만 실행합니다. `verify`와 `register`는 DB에 연결하지 않습니다.
+`initialize`는 최초 준비 조건을 JDBC로 검사하고, `verify-data`는 실제 v1 원문을 JDBC로 검증합니다.
+어느 명령도 Spring context·Flyway·AI 클라이언트를 시작하지 않습니다.
 
-`initialize`는 **최초 신뢰 설정 한 번만** 사용하고 기존 파일을 덮어쓰지 않습니다. 이미 v1
-행이 있으면 먼저 백업 키·실제 행 복호화로 키의 이력을 확인해야 합니다. 잘못된 키로 새 검증
-자료를 만드는 것은 과거 데이터 복구 검증이 아닙니다. 초기 신뢰 확인 책임자는 배포 담당자입니다.
-`register`는 기존 모든 검증을 통과한 뒤 새 키 ID만 추가합니다. 키를 삭제하거나 같은 ID의
-값을 바꾸지 않습니다. 관리 명령에는 잠금·원자 교체를 위해 부모 디렉터리를 쓰기 가능하게 마운트합니다.
+| 명령 | 용도 | 허용하지 않는 사용 |
+| --- | --- | --- |
+| `initialize` | 정상 기존 스키마와 현재 v0만 있는 최초 설치에서 canary 생성 | 운영 canary 분실·손상 복구, v1·미지원 버전이 있는 DB의 재초기화 |
+| `verify` | 기존 canary의 모든 키·환경·ID와 암복호화/HMAC 확인 | 파일 생성·복구·DB 데이터 전환 |
+| `register` | 기존 모든 canary를 검증한 뒤 새 키 ID만 추가 | 구키 삭제·동일 ID의 키 변경·누락 파일 재생성 |
+| `verify-data` | 현재 DB의 v1 전체를 인증 복호화하고 checked/failed만 집계 | canary 생성·v0 변환·#423의 전체 지문 검증 대체 |
+
+#### 최초 initialize 조건
+
+먼저 운영자가 모든 실제 writer와 진행 중인 작성 요청·worker를 중지·배출합니다. 현재 EC2·Compose
+구성에서 이를 확인할 수 없으면 backend를 정지하고 배포·재시작을 통제합니다. 후보 컨테이너에
+reader 설정을 넣는 것만으로 기존 앱과 다른 writer가 멈췄다고 판단하지 않습니다.
+
+`initialize`는 `public.diaries`의 SHARE 잠금을 얻은 뒤 schema와 저장 버전을 확인합니다.
+현재 v1이 한 건이라도 있거나 버전이 null/미지원이면 최종 canary를 생성하지 않고 거절합니다.
+DB 연결·권한·schema 상태가 불명확한 경우도 빈 DB로 취급하지 않습니다.
+
+정상 V28 이전 첫 업그레이드는 지원합니다. 필수 열과 `source_text VARCHAR(300) NOT NULL`,
+성공한 Flyway V1 이력, V28 이상 이력이 없는 알려진 기존 schema를 확인한 경우입니다.
+테이블이나 Flyway 이력이 준비되지 않은 새 DB는 먼저 검토된 기존 schema 준비 절차를 마쳐야 합니다.
+이 명령이 schema를 만들거나 Flyway를 대신 실행하지는 않습니다.
+
+현재 v1 0건은 최초 설치의 충분한 증거가 아닙니다. 과거 v1이 삭제되었거나 보존 DB 백업에 남아
+있을 수 있습니다. 운영 canary를 잃은 환경은 현재 v1 0건이어도 아래 복구 절차를 사용합니다.
+초기화는 임시 파일을 준비하고 DB 검사 트랜잭션의 커밋 성공을 확인한 뒤 최종 canary를 기존 파일
+덮어쓰기 없이 공개합니다. 실패·커밋 불명확 상태의 임시 파일을 최종 이름으로 바꿔 신뢰하지 않습니다.
 
 검토한 후보 이미지와 배포 파일을 로드한 뒤 배포 묶음 루트에서 실행하는 예입니다. `.env`는 root 소유 600,
 검증 파일은 root:10001 소유 640이며 컨테이너 UID/GID 10001이 부모 경로를 통과할 수 있어야 합니다.
@@ -145,11 +167,11 @@ services:
     logging: !override
       driver: none
 YAML
-operation=initialize # 신규 키 추가 시에만 register로 변경
+operation=initialize # 위 최초 준비 조건을 충족할 때만 사용. 신규 키 추가는 register
 if ! docker compose "${COMPOSE_ARGS[@]}" --file "$override" run --rm --no-deps -T \
   --user 0:0 --env LOADER_MAIN=com.harudle.diary.infrastructure.crypto.DiarySourceTextKeyCheckMain \
   --entrypoint sh backend -c \
-  'exec java ${JAVA_OPTS:-} -Xmx128m -cp /app/app.jar org.springframework.boot.loader.launch.PropertiesLauncher "$1"' \
+  'exec java ${JAVA_OPTS:-} -Xmx128m -Dloader.main="$LOADER_MAIN" -cp /app/app.jar org.springframework.boot.loader.launch.PropertiesLauncher "$1"' \
   sh "$operation" >/dev/null 2>&1; then
   echo '키 검증 자료 관리 실패: 기존 키와 백업을 확인하세요.' >&2
   exit 1
@@ -159,9 +181,81 @@ chmod 640 /etc/harudle/diary-key-checks.json
 SH
 ```
 
-실패 시 기존 파일을 지우고 재초기화하지 않습니다. 별도 권한의 서버 밖 암호화 보관소에
-키링과 검증 파일을 보존하고 격리 환경에서 복원·`verify`·실제 백업 행 읽기를 확인합니다.
-실행자, 보관 위치, 복원 시각과 결과를 기록합니다. 실제 서버 설정·백업·복원 훈련은 운영 적용 전 필수입니다.
+#### 운영 canary 분실·손상 복구
+
+canary 검사는 앱 시작과 배포 전에 실행합니다. 실행 중 앱의 파일 유실을 계속 감시해 자동으로
+쓰기를 중단하는 기능은 아닙니다. 분실·손상·키 불일치를 발견하면 운영자가 신규 쓰기를 차단하고
+진행 중 요청을 배출합니다. 기존 writer가 계속 실행되거나 안전하게 배출할 수 없으면 backend를
+정지합니다. 파일 복원 전에는 reader 재배포도 canary 검사에서 실패할 수 있습니다.
+
+1. 마지막으로 신뢰한 **같은 백업 세대의 키링과 canary를 함께 복원**합니다. 암호화 설정만 복원하며
+   오래된 `.env`의 DB 주소 등 다른 설정까지 무심코 되돌리지 않습니다. 현재 DB와 보존 중인 과거
+   DB 백업이 참조하는 모든 구키를 포함해야 합니다. 백업 위치·세대·키 ID 목록·검토자를 기록합니다.
+2. 파일 소유권·권한을 확인하고 `verify`를 통과시킵니다. canary를 새로 만드는 것은 복구가 아닙니다.
+3. 복원한 키로 `verify-data`를 수행해 현재 DB의 모든 v1 인증 복호화를 확인합니다. v0는 건너뛰므로
+   checked=0 또는 failed=0만으로 최초 설치나 전체 DB 암호화 완료를 증명하지 않습니다.
+4. reader로 키 검증·본인 상세·동일 요청 재조회를 확인한 뒤 writer를 엽니다. 실제 DB 백업도 격리된
+   환경에서 복원해 그 백업이 참조하는 키로 같은 검증과 조회를 확인합니다.
+5. 신뢰된 키링/canary 쌍을 확보하지 못하거나 실제 v1 검증에 실패하면 중단합니다. 파일 삭제 후
+   initialize, 임시 파일 이름 변경, 잘못된 키로 canary 재생성으로 우회하지 않고 별도 복구를 진행합니다.
+
+복원한 canary가 설치된 뒤 배포 묶음 루트에서 실행하는 예입니다. 원시 JVM/SQL 진단은 숨기고,
+허용된 두 집계 필드만 다시 출력합니다. 첫 `verify` 실패 시 데이터 검증도 진행하지 않습니다.
+
+```bash
+sudo bash <<'SH'
+set -euo pipefail
+set +x
+export DEPLOYMENT_GROUP_NAME=harudle-dev # 운영은 harudle-prod
+source deploy/scripts/compose_environment.sh
+configure_compose /opt/harudle
+override="$(mktemp)"
+trap 'rm -f -- "$override"' EXIT
+cat > "$override" <<'YAML'
+services:
+  backend:
+    logging: !override
+      driver: none
+YAML
+run_key_command() {
+  docker compose "${COMPOSE_ARGS[@]}" --file "$override" run --rm --no-deps -T \
+    --env LOADER_MAIN=com.harudle.diary.infrastructure.crypto.DiarySourceTextKeyCheckMain \
+    --entrypoint sh backend -c \
+    'exec java ${JAVA_OPTS:-} -Xmx128m -Dloader.main="$LOADER_MAIN" -cp /app/app.jar org.springframework.boot.loader.launch.PropertiesLauncher "$1"' \
+    sh "$1"
+}
+if ! run_key_command verify >/dev/null 2>&1; then
+  echo '복원한 키 검증 자료를 확인할 수 없습니다.' >&2
+  exit 1
+fi
+status=0
+result="$(run_key_command verify-data 2>/dev/null)" || status=$?
+if ! counts="$(jq -cse '
+  select(length == 1) | .[0] |
+  select(type == "object" and (keys | sort) == ["checked", "failed"]) |
+  select([.checked, .failed] | all(type == "number" and . >= 0 and floor == .)) |
+  {checked, failed}
+' <<<"$result" 2>/dev/null)"; then
+  echo '실제 v1 데이터 검증에 실패했습니다. 비공개 진단과 복구 자료를 확인하세요.' >&2
+  exit 1
+fi
+printf '%s\n' "$counts"
+if [[ "$status" != 0 ]]; then
+  echo '실제 v1 데이터 검증에 실패했습니다. 쓰기를 재개하지 마세요.' >&2
+  exit 1
+fi
+SH
+```
+
+키 추가 때마다 기존 키·활성 키를 유지하고 `register`한 뒤 모든 호환 앱에 키링을 먼저
+반영·재배포합니다. 키 검증과 조회 확인 후 활성 키를 바꿉니다. 실행 중 앱의 키링은 시작 시 메모리
+상태이므로 호스트 `.env`만 수정한 것으로 반영 완료를 판단하지 않습니다.
+
+구키는 현재 DB뿐 아니라 보존 중인 과거 DB 백업의 복원에 필요한 기간까지 보관합니다.
+실행자·확인 시각·checked/failed·키 ID·키링/canary 백업 세대·DB 백업 식별자는 기록하되
+원문·키 값·암호문·지문·SQL 진단은 기록하지 않습니다. **실제 dev/prod 복구·백업 복원은 이 저장소
+작업에서 수행하지 않았습니다.** 기존 v0 전환과 과거 평문/SHA의 보존·폐기는
+[후속 #423 / PR #450](https://github.com/woowacourse-teams/2026-Harudle/pull/450)의 계약을 따릅니다.
 
 ### Docker 빌드 최적화
 

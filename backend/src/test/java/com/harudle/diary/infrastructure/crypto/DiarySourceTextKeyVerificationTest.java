@@ -36,7 +36,7 @@ class DiarySourceTextKeyVerificationTest {
         Path file = file();
         DiarySourceTextKeyVerification verification = verifier("old", Map.of("old", OLD_KEY));
 
-        verification.initialize(file, "dev");
+        verification.createInitialEvidence(file, "dev");
         verification.verify(file, "dev");
 
         Map<String, Object> manifest = read(file);
@@ -54,7 +54,7 @@ class DiarySourceTextKeyVerificationTest {
     void verifyIsReadOnly() throws IOException {
         Path file = file();
         DiarySourceTextKeyVerification verification = verifier("old", Map.of("old", OLD_KEY));
-        verification.initialize(file, "dev");
+        verification.createInitialEvidence(file, "dev");
         Files.delete(lockFile());
         Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("r--------"));
         byte[] original = Files.readAllBytes(file);
@@ -71,7 +71,7 @@ class DiarySourceTextKeyVerificationTest {
     @DisplayName("같은 키 ID에 다른 32바이트 키를 넣으면 검증과 추가 등록이 모두 실패한다")
     void rejectChangedMaterialUnderExistingKeyId() throws IOException {
         Path file = file();
-        verifier("old", Map.of("old", OLD_KEY)).initialize(file, "dev");
+        verifier("old", Map.of("old", OLD_KEY)).createInitialEvidence(file, "dev");
         byte[] original = Files.readAllBytes(file);
         DiarySourceTextKeyVerification wrong = verifier("old", Map.of("old", NEW_KEY));
 
@@ -85,10 +85,10 @@ class DiarySourceTextKeyVerificationTest {
     @DisplayName("초기화는 이미 존재하는 검증 파일을 덮어쓰지 않는다")
     void initializeNeverOverwritesExistingEvidence() throws IOException {
         Path file = file();
-        verifier("old", Map.of("old", OLD_KEY)).initialize(file, "dev");
+        verifier("old", Map.of("old", OLD_KEY)).createInitialEvidence(file, "dev");
         byte[] original = Files.readAllBytes(file);
 
-        assertCryptoFailure(() -> verifier("old", Map.of("old", NEW_KEY)).initialize(file, "dev"));
+        assertCryptoFailure(() -> verifier("old", Map.of("old", NEW_KEY)).createInitialEvidence(file, "dev"));
 
         assertThat(Files.readAllBytes(file)).isEqualTo(original);
     }
@@ -108,7 +108,7 @@ class DiarySourceTextKeyVerificationTest {
     @DisplayName("신규 키는 명시적 등록 전에는 거절하고 등록 후에도 이전 검증 자료를 보존한다")
     void registerOnlyAddsNewKeysAndAllowsActiveKeyRotation() throws IOException {
         Path file = file();
-        verifier("old", Map.of("old", OLD_KEY)).initialize(file, "dev");
+        verifier("old", Map.of("old", OLD_KEY)).createInitialEvidence(file, "dev");
         Map<String, Object> oldCheck = check(read(file), "old");
         DiarySourceTextKeyVerification rotated = verifier("new", Map.of("old", OLD_KEY, "new", NEW_KEY));
 
@@ -126,7 +126,7 @@ class DiarySourceTextKeyVerificationTest {
     @DisplayName("기존 키를 삭제하거나 변조한 상태에서는 신규 키를 등록하지 못한다")
     void rejectRemovedOrChangedExistingKeysBeforeAddingNewOnes() throws IOException {
         Path file = file();
-        verifier("old", Map.of("old", OLD_KEY)).initialize(file, "dev");
+        verifier("old", Map.of("old", OLD_KEY)).createInitialEvidence(file, "dev");
         byte[] original = Files.readAllBytes(file);
 
         assertCryptoFailure(() -> verifier("new", Map.of("new", NEW_KEY)).register(file, "dev"));
@@ -142,7 +142,7 @@ class DiarySourceTextKeyVerificationTest {
     void registrationWithoutNewKeysIsIdempotent() throws IOException {
         Path file = file();
         DiarySourceTextKeyVerification verification = verifier("old", Map.of("old", OLD_KEY));
-        verification.initialize(file, "dev");
+        verification.createInitialEvidence(file, "dev");
         byte[] original = Files.readAllBytes(file);
         var modified = Files.getLastModifiedTime(file);
 
@@ -156,7 +156,7 @@ class DiarySourceTextKeyVerificationTest {
     @DisplayName("원자적으로 추가 등록한 파일도 기존 소유자와 그룹 및 접근 권한을 유지한다")
     void preservePermissionsAndOwnershipWhenReplacingManifest() throws IOException {
         Path file = file();
-        verifier("old", Map.of("old", OLD_KEY)).initialize(file, "dev");
+        verifier("old", Map.of("old", OLD_KEY)).createInitialEvidence(file, "dev");
         Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-r-----"));
         PosixFileAttributes original = Files.readAttributes(file, PosixFileAttributes.class);
 
@@ -176,7 +176,7 @@ class DiarySourceTextKeyVerificationTest {
     @DisplayName("동시 변경 잠금이 있으면 등록을 거절하지만 읽기 검증은 계속 수행한다")
     void rejectConcurrentMutationWithoutBlockingReadOnlyVerification() throws IOException {
         Path file = file();
-        verifier("old", Map.of("old", OLD_KEY)).initialize(file, "dev");
+        verifier("old", Map.of("old", OLD_KEY)).createInitialEvidence(file, "dev");
         byte[] original = Files.readAllBytes(file);
         try (FileChannel channel = FileChannel.open(lockFile(), StandardOpenOption.WRITE);
                 FileLock lock = channel.lock()) {
@@ -193,7 +193,7 @@ class DiarySourceTextKeyVerificationTest {
     void bindEvidenceToEnvironmentInMetadataAndAuthenticatedContext() throws IOException {
         Path file = file();
         DiarySourceTextKeyVerification verification = verifier("old", Map.of("old", OLD_KEY));
-        verification.initialize(file, "dev");
+        verification.createInitialEvidence(file, "dev");
         assertCryptoFailure(() -> verification.verify(file, "prod"));
         Map<String, Object> manifest = read(file);
         manifest.put("environment", "prod");
@@ -208,7 +208,7 @@ class DiarySourceTextKeyVerificationTest {
     void rejectUnsupportedEnvironment() {
         DiarySourceTextKeyVerification verification = verifier("old", Map.of("old", OLD_KEY));
         for (String environment : new String[] {null, "", "production", "test"}) {
-            assertCryptoFailure(() -> verification.initialize(file(), environment));
+            assertCryptoFailure(() -> verification.createInitialEvidence(file(), environment));
             assertCryptoFailure(() -> verification.verify(file(), environment));
             assertCryptoFailure(() -> verification.register(file(), environment));
         }
@@ -220,7 +220,7 @@ class DiarySourceTextKeyVerificationTest {
     void verifyKnownPlaintextAndExpectedFingerprint() throws IOException {
         Path file = file();
         DiarySourceTextKeyVerification verification = verifier("old", Map.of("old", OLD_KEY));
-        verification.initialize(file, "dev");
+        verification.createInitialEvidence(file, "dev");
         Map<String, Object> original = read(file);
         Map<String, Object> wrongFingerprint = read(file);
         check(wrongFingerprint, "old").put("protectedFingerprint", "a".repeat(64));
@@ -239,7 +239,7 @@ class DiarySourceTextKeyVerificationTest {
     @DisplayName("키 이름과 암호문의 키 식별자가 다르면 검증 자료를 거절한다")
     void rejectRelabeledCiphertext() throws IOException {
         Path file = file();
-        verifier("old", Map.of("old", OLD_KEY)).initialize(file, "dev");
+        verifier("old", Map.of("old", OLD_KEY)).createInitialEvidence(file, "dev");
         Map<String, Object> manifest = read(file);
         checks(manifest).put("new", checks(manifest).remove("old"));
         write(file, manifest);
@@ -252,7 +252,7 @@ class DiarySourceTextKeyVerificationTest {
     void rejectMalformedAndAmbiguousManifestWithoutLeakingItsContents() throws IOException {
         Path file = file();
         DiarySourceTextKeyVerification verification = verifier("old", Map.of("old", OLD_KEY));
-        verification.initialize(file, "dev");
+        verification.createInitialEvidence(file, "dev");
         String valid = Files.readString(file);
         String duplicate = valid.substring(0, valid.lastIndexOf('}')) + ",\"environment\":\"dev\"}";
         for (String invalid : new String[] {"private-invalid-content", "{}", valid + "{}", duplicate,
@@ -281,7 +281,7 @@ class DiarySourceTextKeyVerificationTest {
         Files.write(file, new byte[65_537]);
         assertCryptoFailure(() -> verification.verify(file, "dev"));
         Files.delete(file);
-        verification.initialize(file, "dev");
+        verification.createInitialEvidence(file, "dev");
         Path link = directory.resolve("link.json");
         Files.createSymbolicLink(link, file);
         assertCryptoFailure(() -> verification.verify(link, "dev"));

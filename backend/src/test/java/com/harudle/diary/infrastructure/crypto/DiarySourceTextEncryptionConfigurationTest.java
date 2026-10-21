@@ -66,7 +66,7 @@ class DiarySourceTextEncryptionConfigurationTest {
     void productionProfileVerifiesPersistedEvidence() {
         Path file = directory.resolve("keys.json");
         new DiarySourceTextKeyVerification(new DiarySourceTextEncryptionProperties("current", Map.of("current", KEY)))
-                .initialize(file, "dev");
+                .createInitialEvidence(file, "dev");
 
         production(file, "dev", KEY).run(application -> assertThat(application)
                 .hasNotFailed().hasSingleBean(DiarySourceTextCipher.class));
@@ -78,7 +78,7 @@ class DiarySourceTextEncryptionConfigurationTest {
         Path file = directory.resolve("keys.json");
         production(file, "dev", KEY).run(application -> assertThat(application).hasFailed());
         new DiarySourceTextKeyVerification(new DiarySourceTextEncryptionProperties("current", Map.of("current", KEY)))
-                .initialize(file, "dev");
+                .createInitialEvidence(file, "dev");
         byte[] wrongKeyBytes = new byte[32];
         wrongKeyBytes[0] = 1;
         String wrongKey = Base64.getEncoder().encodeToString(wrongKeyBytes);
@@ -93,7 +93,7 @@ class DiarySourceTextEncryptionConfigurationTest {
                 .run(application -> assertThat(application).hasFailed());
         Path file = directory.resolve("keys.json");
         new DiarySourceTextKeyVerification(new DiarySourceTextEncryptionProperties("current", Map.of("current", KEY)))
-                .initialize(file, "dev");
+                .createInitialEvidence(file, "dev");
         production(file, "", KEY).run(application -> assertThat(application).hasFailed());
         production(file, "prod", KEY).run(application -> assertThat(application).hasFailed());
     }

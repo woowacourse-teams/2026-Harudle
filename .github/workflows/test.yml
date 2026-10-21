@@ -150,11 +150,12 @@ jobs:
           chmod +x gradlew
           ./gradlew --no-daemon --console=plain --build-cache test --rerun
 
-      - name: Verify packaged key check without database
+      - name: Verify packaged key checks and guarded initialization
         if: github.event_name != 'push'
         run: |
           ./gradlew --no-daemon --console=plain --build-cache bootJar
           bash ../deploy/scripts/test_diary_key_check_jar.sh build/libs/harudle-0.0.1-SNAPSHOT.jar
+          bash ../deploy/scripts/test_diary_key_initialization_jar.sh build/libs/harudle-0.0.1-SNAPSHOT.jar
 
   frontend-test:
     name: Frontend Test

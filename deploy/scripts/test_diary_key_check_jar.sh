@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 jar_file="$(cd -- "$(dirname -- "$1")" && pwd)/$(basename -- "$1")"
 test_dir="$(mktemp -d)"
 trap 'rm -rf -- "${test_dir}"' EXIT
-# Public test keys only. No application context or database is started by this entry point.
+# Public test keys and fixed canary only. No database or application context is started.
+# An unreachable endpoint proves verify/register do not acquire a database dependency.
 export DIARY_SOURCE_TEXT_KEY_BASE64=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
 export DIARY_SOURCE_TEXT_ACTIVE_KEY_ID=primary
 export DIARY_SOURCE_TEXT_KEY_VERIFICATION_FILE="${test_dir}/checks.json"
 export DEPLOY_ENV=dev SPRING_PROFILES_ACTIVE=prod
 export DIARY_SOURCE_TEXT_RELEASE_MODE=reader DIARY_SOURCE_TEXT_NEW_WRITES_ENABLED=false
 export SPRING_CONFIG_IMPORT="optional:file:${test_dir}/absent.properties"
-unset SPRING_APPLICATION_JSON LOADER_PATH LOADER_HOME JAVA_TOOL_OPTIONS JDK_JAVA_OPTIONS
+export SPRING_DATASOURCE_URL="jdbc:postgresql://127.0.0.1:1/unavailable?connectTimeout=1"
+export SPRING_DATASOURCE_USERNAME=unavailable SPRING_DATASOURCE_PASSWORD=public-test-password
+unset SPRING_APPLICATION_JSON LOADER_PATH LOADER_HOME JAVA_TOOL_OPTIONS JDK_JAVA_OPTIONS _JAVA_OPTIONS
 export LOADER_MAIN=com.harudle.diary.infrastructure.crypto.DiarySourceTextKeyCheckMain
 
 run_check() {
@@ -29,9 +33,13 @@ expect_failure() {
 
 expect_failure verify
 test ! -e "${DIARY_SOURCE_TEXT_KEY_VERIFICATION_FILE}"
-run_check initialize
+expect_failure initialize
+test ! -e "${DIARY_SOURCE_TEXT_KEY_VERIFICATION_FILE}"
+cp "${script_dir}/../../backend/src/test/resources/crypto/diary-key-checks-public-dev.json" \
+  "${DIARY_SOURCE_TEXT_KEY_VERIFICATION_FILE}"
 cp "${DIARY_SOURCE_TEXT_KEY_VERIFICATION_FILE}" "${test_dir}/original.json"
 run_check verify
+expect_failure verify-data
 expect_failure initialize
 cmp "${test_dir}/original.json" "${DIARY_SOURCE_TEXT_KEY_VERIFICATION_FILE}"
 
@@ -62,4 +70,4 @@ export SPRING_APPLICATION_JSON='{"harudle":{"diary":{"source-text-encryption":{"
 expect_failure verify
 run_check register
 run_check verify
-echo "PASS: packaged key operations fail closed without starting a database or overwriting evidence."
+echo "PASS: packaged verify/register are database independent; initialization and data checks fail closed."

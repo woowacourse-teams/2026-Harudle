@@ -59,11 +59,8 @@ public final class DiarySourceTextKeyVerification {
         });
     }
 
-    /**
-     * Explicitly establishes initial trust with CREATE_NEW. The caller must first establish that these keys
-     * are trusted, including checking existing v1 data when present; this operation cannot prove that history.
-     */
-    public void initialize(Path file, String environment) {
+    /** Internal file primitive; production initialization must pass the database gate and staged publication. */
+    void createInitialEvidence(Path file, String environment) {
         safely(() -> withMutationLock(file, () -> {
             validateEnvironment(environment);
             require(!Files.exists(file, LinkOption.NOFOLLOW_LINKS));
