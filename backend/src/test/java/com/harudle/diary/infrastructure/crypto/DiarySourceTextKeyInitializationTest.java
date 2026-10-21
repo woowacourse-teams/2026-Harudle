@@ -118,7 +118,7 @@ class DiarySourceTextKeyInitializationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"1", "27"})
+    @ValueSource(strings = {"1", "23"})
     @DisplayName("실제 Flyway 이력이 있는 V28 이전의 알려진 평문 스키마도 최초 준비할 수 있다")
     void acceptKnownPreEncryptionSchemaWithSuccessfulFlywayHistory(String target) throws Exception {
         resetSchema(target);
@@ -137,8 +137,8 @@ class DiarySourceTextKeyInitializationTest {
     @ValueSource(strings = {"28", "999", "unknown"})
     @DisplayName("평문 모양이어도 V28 이상 또는 알 수 없는 이력이 있으면 초기화를 거절한다")
     void rejectPreEncryptionShapeWhoseHistoryCannotProveItsOrigin(String version) throws SQLException {
-        resetSchema("27");
-        execute(connection, "UPDATE flyway_schema_history SET version = ? WHERE version = '27'", version);
+        resetSchema("23");
+        execute(connection, "UPDATE flyway_schema_history SET version = ? WHERE version = '23'", version);
 
         assertCryptoFailure(() -> initialization.initialize(connection, file(), "dev"));
 
