@@ -1,3 +1,4 @@
+import { useToastContext } from '../../shared/ToastContext';
 import { css } from '@emotion/react';
 import { useEffect, useRef } from 'react';
 import moreIcon from '../../assets/icons/feed-more.svg';
@@ -16,13 +17,14 @@ interface DiaryDetailOptionsButtonProps {
 const DiaryDetailOptionsButton = ({
   diaryId,
 }: DiaryDetailOptionsButtonProps) => {
+  const { addToast } = useToastContext();
   const menuRef = useRef<BottomSheetHandle>(null);
   const confirmRef = useRef<ModalHandle>(null);
   const { request, execute: deleteDiary } = useDiaryDelete({ diaryId });
 
   useEffect((): void => {
     if (request.status === 'error') {
-      alert(request.error.message);
+      addToast({ type: 'error', message: request.error.message }, 2000);
     }
   }, [request]);
 

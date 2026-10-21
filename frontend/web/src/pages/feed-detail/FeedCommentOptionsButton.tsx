@@ -1,3 +1,4 @@
+import { useToastContext } from '../../shared/ToastContext';
 import { css } from '@emotion/react';
 import { useEffect, useRef } from 'react';
 import moreIcon from '../../assets/icons/feed-more.svg';
@@ -19,13 +20,14 @@ const FeedCommentOptionsButton = ({
   commentId,
   onDelete,
 }: FeedCommentOptionsButtonProps) => {
+  const { addToast } = useToastContext();
   const menuRef = useRef<BottomSheetHandle>(null);
   const confirmRef = useRef<ModalHandle>(null);
   const { request, execute } = useFeedCommentDelete({ commentId });
 
   useEffect((): void => {
     if (request.status === 'error') {
-      window.alert(request.error.message);
+      addToast({ type: 'error', message: request.error.message }, 2000);
     }
   }, [request]);
 

@@ -1,3 +1,5 @@
+import { useToastContext } from '../../shared/ToastContext';
+import { FEED_POST_COPY } from './copy';
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
@@ -23,6 +25,7 @@ interface FeedPublishState {
 const useFeedPublish = ({
   diaryId,
 }: Pick<FeedPublishRequest, 'diaryId'>): FeedPublishState => {
+  const { addToast } = useToastContext();
   const navigate = useNavigate();
   const [request, setRequest] = useState<ApiRequest<Feed>>({ status: 'idle' });
   const { captureError } = useErrorTracking();
@@ -45,6 +48,10 @@ const useFeedPublish = ({
         const feed = await publishFeed({ diaryId, categoryId });
         setFeedListCache(null);
         setRequest({ status: 'success', data: feed });
+        addToast(
+          { type: 'success', message: FEED_POST_COPY.publishSuccess },
+          2000,
+        );
         void navigate('/', { replace: true });
       } catch (error: unknown) {
         const requestError =
@@ -59,7 +66,7 @@ const useFeedPublish = ({
         setRequest({ status: 'error', error: requestError });
       }
     },
-    [diaryId, navigate, captureError, request.status, track],
+    [diaryId, navigate, captureError, request.status, track, addToast],
   );
 
   return { request, execute };

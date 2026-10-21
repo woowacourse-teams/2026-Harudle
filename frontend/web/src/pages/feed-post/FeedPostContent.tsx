@@ -1,3 +1,4 @@
+import { useToastContext } from '../../shared/ToastContext';
 import { css } from '@emotion/react';
 import { useEffect, useState, type FormEvent } from 'react';
 import sendIcon from '../../assets/icons/feed-send.svg';
@@ -17,6 +18,7 @@ interface FeedPostContentProps {
 }
 
 const FeedPostContent = ({ diaryId, imageUrl }: FeedPostContentProps) => {
+  const { addToast } = useToastContext();
   const { request: publishRequest, execute: publish } = useFeedPublish({
     diaryId,
   });
@@ -26,7 +28,10 @@ const FeedPostContent = ({ diaryId, imageUrl }: FeedPostContentProps) => {
 
   useEffect((): void => {
     if (publishRequest.status === 'error') {
-      window.alert(ERROR_MESSAGES.FEED_PUBLISH_FAILED);
+      addToast(
+        { type: 'error', message: ERROR_MESSAGES.FEED_PUBLISH_FAILED },
+        2000,
+      );
     }
   }, [publishRequest]);
 

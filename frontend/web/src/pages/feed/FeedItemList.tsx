@@ -1,3 +1,4 @@
+import { useToastContext } from '../../shared/ToastContext';
 import { css } from '@emotion/react';
 import { useEffect } from 'react';
 import type { Feed, FeedListRequest } from '../../domain/feeds/feedList';
@@ -37,6 +38,7 @@ const FeedItemList = ({
   updateLike,
   removeFeedFromList,
 }: FeedItemListProps) => {
+  const { addToast } = useToastContext();
   const { targetScrollRef, setFeedScroll } = useFeedScrollRestore({
     categoryId,
     sort,
@@ -46,7 +48,7 @@ const FeedItemList = ({
 
   useEffect(() => {
     if (loadMoreRequest.status === 'error') {
-      window.alert(FEED_COPY.loadMoreError);
+      addToast({ type: 'error', message: FEED_COPY.loadMoreError }, 2000);
     }
   }, [loadMoreRequest]);
 

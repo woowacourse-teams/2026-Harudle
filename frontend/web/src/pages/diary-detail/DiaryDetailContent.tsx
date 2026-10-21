@@ -1,3 +1,4 @@
+import { useToastContext } from '../../shared/ToastContext';
 import { DIARY_DETAIL_COPY } from './copy';
 import useDiaryDetail from './useDiaryDetail';
 import LoadingSpinner from '../../shared/LoadingSpinner';
@@ -110,6 +111,7 @@ const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
 export default DiaryDetailContent;
 
 const DiaryFeedDeleteAction = ({ feedId }: { feedId: Feed['id'] }) => {
+  const { addToast } = useToastContext();
   const navigate = useNavigate();
   const confirmRef = useRef<ModalHandle>(null);
   const { request: feedDeleteRequest, execute: deleteFeed } = useFeedDelete({
@@ -118,7 +120,10 @@ const DiaryFeedDeleteAction = ({ feedId }: { feedId: Feed['id'] }) => {
 
   useEffect((): void => {
     if (feedDeleteRequest.status === 'error') {
-      window.alert(feedDeleteRequest.error.message);
+      addToast(
+        { type: 'error', message: feedDeleteRequest.error.message },
+        2000,
+      );
     }
   }, [feedDeleteRequest]);
 
@@ -126,6 +131,10 @@ const DiaryFeedDeleteAction = ({ feedId }: { feedId: Feed['id'] }) => {
     void deleteFeed({
       onSuccess: (): void => {
         confirmRef.current?.close();
+        addToast(
+          { type: 'success', message: FEED_ACTION_COPY.deleteSuccess },
+          2000,
+        );
         void navigate('/');
       },
     });
