@@ -149,6 +149,36 @@ class DiaryCreationClaimServiceTest {
         verify(sourceTextCipher, never()).decrypt(any(), any(), anyString(), anyInt());
     }
 
+    @ParameterizedTest
+    @ValueSource(ints = {0xD800, 0xDC00})
+    @DisplayName("고립된 서로게이트 재요청은 정상 물음표 요청과 같게 처리하지 않고 복호화와 상태 변경 전에 거절한다")
+    void rejectMalformedReplayBeforeDecryptionOrStateChanges(int surrogate) {
+        when(requestFingerprintGenerator.generate(any(GenerateDiaryImageCommand.class))).thenCallRealMethod();
+        CreateDiaryCommand original = createCommand("?");
+        Diary diary = Diary.create(USER_ID, DIARY_DATE, original.sourceText(), DiarySourceTextTestSupport.cipher());
+        DiaryGeneration generation = createGeneration(original, diary);
+        ReflectionTestUtils.setField(generation, "updatedAt", NOW.minus(Duration.ofMinutes(31)));
+        when(diaryGenerationRepository.findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY))
+                .thenReturn(Optional.of(generation));
+        when(diaryRepository.findByIdIncludingDeletedForUpdate(diary.getId())).thenReturn(Optional.of(diary));
+        CreateDiaryCommand malformed = createCommand(String.valueOf((char) surrogate));
+
+        assertThatThrownBy(() -> claimService.claim(malformed, true))
+                .isExactlyInstanceOf(IllegalArgumentException.class)
+                .hasMessage("요청 지문에 유효하지 않은 문자가 포함되어 있습니다.")
+                .hasNoCause();
+        assertThatThrownBy(() -> claimService.findExistingClaim(malformed))
+                .isExactlyInstanceOf(IllegalArgumentException.class)
+                .hasMessage("요청 지문에 유효하지 않은 문자가 포함되어 있습니다.")
+                .hasNoCause();
+        verifyNoInteractions(sourceTextCipher, completionService, generationPromptRepository);
+        verify(diaryRepository, never()).save(any(Diary.class));
+        verify(diaryGenerationRepository, never()).saveAndFlush(any(DiaryGeneration.class));
+        assertThat(generation.getStatus()).isEqualTo(GenerationStatus.PROCESSING);
+        assertThat(generation.getCompletedAt()).isNull();
+        assertThat(diary.isDeleted()).isFalse();
+    }
+
     @Test
     @DisplayName("타인의 멱등성 키 재요청은 원문 복호화와 지문 처리 전에 거절한다")
     void rejectOtherUserBeforeReadingSourceText() {

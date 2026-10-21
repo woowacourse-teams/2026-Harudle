@@ -86,6 +86,8 @@ DB 버전 열과 키 ID는 암호화 비밀이 아니다. 버전 `0`은 기존 �
 
 손상된 형식, 지원하지 않는 버전, 누락된 키, 변조된 암호문과 잘못된 UTF-8은 고정된
 안전한 예외로 실패한다. 오류·원인에 원문·암호문·키를 넣지 않는다.
+요청 지문도 잘못된 유니코드를 `?`로 치환하지 않고 거절한다. 정상 입력의 기존 SHA 값은 유지하며,
+암호화를 다시 실행하지 않는 재요청에서도 서로 다른 입력을 같은 요청으로 판단하지 않게 한다.
 
 근거: [Java 21 Cipher의 GCM nonce·AAD 규칙](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/javax/crypto/Cipher.html).
 
