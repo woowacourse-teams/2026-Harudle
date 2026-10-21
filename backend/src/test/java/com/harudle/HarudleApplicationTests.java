@@ -69,6 +69,7 @@ class HarudleApplicationTests extends ServiceIntegrationTestSupport {
                 "notification_outbox",
                 "notifications",
                 "oauth_accounts",
+                "profile_image_cleanup_tasks",
                 "push_registration_states",
                 "push_registrations",
                 "refresh_tokens",
