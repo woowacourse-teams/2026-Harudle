@@ -5,6 +5,7 @@ source_root="${CODEBUILD_SRC_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../
 cache_root="/root/.cache/harudle-frontend"
 fingerprint_file="/tmp/harudle-frontend-fingerprint"
 image_archive="$source_root/build-artifacts/frontend-image.tar.gz"
+staged_cache_dir=""
 
 valid_image() {
   local tar_file="$1" image_config
@@ -71,7 +72,7 @@ restore() {
 }
 
 save() {
-  local current staged
+  local current
   [[ -s "$fingerprint_file" && -s "$image_archive" ]] || return 0
   mkdir -p "$cache_root"
   if [[ -f "$cache_root/fingerprint" && -f "$cache_root/frontend-image.sha256" \
@@ -86,14 +87,14 @@ save() {
     return 0
   fi
 
-  staged="$(mktemp -d "$cache_root/.new.XXXXXX")"
-  trap 'rm -rf -- "$staged"' EXIT
-  cp -- "$image_archive" "$staged/frontend-image.tar.gz"
-  (cd "$staged" && sha256sum frontend-image.tar.gz > frontend-image.sha256)
-  cp -- "$fingerprint_file" "$staged/fingerprint"
-  mv -f -- "$staged/frontend-image.tar.gz" "$cache_root/frontend-image.tar.gz"
-  mv -f -- "$staged/frontend-image.sha256" "$cache_root/frontend-image.sha256"
-  mv -f -- "$staged/fingerprint" "$cache_root/fingerprint"
+  staged_cache_dir="$(mktemp -d "$cache_root/.new.XXXXXX")"
+  trap 'rm -rf -- "$staged_cache_dir"' EXIT
+  cp -- "$image_archive" "$staged_cache_dir/frontend-image.tar.gz"
+  (cd "$staged_cache_dir" && sha256sum frontend-image.tar.gz > frontend-image.sha256)
+  cp -- "$fingerprint_file" "$staged_cache_dir/fingerprint"
+  mv -f -- "$staged_cache_dir/frontend-image.tar.gz" "$cache_root/frontend-image.tar.gz"
+  mv -f -- "$staged_cache_dir/frontend-image.sha256" "$cache_root/frontend-image.sha256"
+  mv -f -- "$staged_cache_dir/fingerprint" "$cache_root/fingerprint"
   echo '[build-metrics] frontend_image_cache_prepared=true'
 }
 
