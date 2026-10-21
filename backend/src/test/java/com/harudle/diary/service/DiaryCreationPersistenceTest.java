@@ -19,6 +19,7 @@ import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.diary.service.DiaryGenerationExecutor;
 import com.harudle.generation.diary.service.DiaryGenerationWorker;
 import com.harudle.generation.diary.service.PendingDiaryGenerationClaimService;
+import com.harudle.generation.diary.service.exception.GenerationCapacityExceededException;
 import com.harudle.generation.loadtest.LoadTestDiaryGenerationExecutor;
 import com.harudle.generation.loadtest.LoadTestGenerationRegistry;
 import com.harudle.generation.usage.service.exception.DailyGenerationLimitExceededException;
@@ -34,6 +35,12 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.UUID;
+import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.sql.Timestamp;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -54,7 +61,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest
+@SpringBootTest(properties = "harudle.generation.worker.concurrency=2")
 @Import({TestcontainersConfiguration.class, DiaryCreationPersistenceTest.FixedClockConfiguration.class})
 class DiaryCreationPersistenceTest {
 
@@ -314,6 +321,181 @@ class DiaryCreationPersistenceTest {
         assertThat(countRows("diaries")).isZero();
         assertThat(countRows("diary_generations")).isZero();
         assertThat(countRows("daily_generation_usage")).isZero();
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = GenerationStatus.class, names = {"PENDING", "PROCESSING"})
+    @DisplayName("대기 작업과 실행 중 작업 모두 접수 상한에 포함하고 거절 시 사용량을 유지한다")
+    void rejectNewRequestsAtCapacity(GenerationStatus initialStatus) {
+        for (int index = 0; index < 2; index++) {
+            CreateDiaryCommand command = createCommand(UUID.randomUUID());
+            if (initialStatus == GenerationStatus.PENDING) {
+                transactionService.enqueue(command, true);
+            } else {
+                transactionService.claim(command, true);
+            }
+        }
+
+        assertThatThrownBy(() -> diaryCreationService.create(createCommand(UUID.randomUUID())))
+                .isInstanceOf(GenerationCapacityExceededException.class);
+        assertThat(countRows("diaries")).isEqualTo(2);
+        assertThat(countRows("diary_generations")).isEqualTo(2);
+        assertThat(usedCount()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("회원과 게스트와 부하 테스트가 같은 접수 상한을 사용하고 거절된 체험은 유지한다")
+    void shareCapacityWithoutConsumingRejectedGuestTrialOrLoadTestUsage() {
+        transactionService.enqueue(createCommand(UUID.randomUUID()), true);
+        transactionService.claim(createCommand(UUID.randomUUID()), true);
+        GuestSession session = saveGuestSession();
+
+        assertThatThrownBy(() -> guestDiaryCreationService.create(RAW_GUEST_TOKEN, createGuestCommand()))
+                .isInstanceOf(GenerationCapacityExceededException.class);
+        var registry = mock(LoadTestGenerationRegistry.class);
+        when(registry.isConfigured()).thenReturn(true);
+        var loadTestService = new LoadTestDiaryCreationService(transactionService, registry);
+        assertThatThrownBy(() -> loadTestService.create(createCommand(UUID.randomUUID())))
+                .isInstanceOf(GenerationCapacityExceededException.class);
+
+        verify(registry, never()).register(any());
+        assertThat(guestSessionRepository.findById(session.getId()).orElseThrow().isUsed()).isFalse();
+        assertThat(countRows("diaries")).isEqualTo(2);
+        assertThat(countRows("diary_generations")).isEqualTo(2);
+        assertThat(usedCount()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("작업 하나가 완료되면 새 요청 하나를 더 접수한다")
+    void acceptNewRequestAfterOneGenerationCompletes() {
+        MemberDiaryCreationClaim first = transactionService.enqueue(createCommand(UUID.randomUUID()), true);
+        transactionService.enqueue(createCommand(UUID.randomUUID()), true);
+        transactionTemplate.executeWithoutResult(status -> {
+            DiaryGeneration generation = generationRepository.findById(first.claim().generationId()).orElseThrow();
+            generation.startProcessing();
+            generation.succeed(TestStoryboardFactory.create(), "generated/admission-completed.png", Instant.now());
+        });
+
+        CreateDiaryResult accepted = diaryCreationService.create(createCommand(UUID.randomUUID()));
+
+        assertThat(accepted.newlyCreated()).isTrue();
+        assertThat(generationRepository.countByStatusIn(List.of(GenerationStatus.PENDING, GenerationStatus.PROCESSING)))
+                .isEqualTo(2);
+        assertThat(countRows("diary_generations")).isEqualTo(3);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = GenerationStatus.class, names = {"PENDING", "PROCESSING"})
+    @DisplayName("접수 상한이 가득 차도 같은 요청은 기존 상태를 반환하고 사용량을 유지한다")
+    void replayExistingRequestAtCapacity(GenerationStatus initialStatus) {
+        MemberDiaryCreationClaim first = createMemberClaim(initialStatus);
+        transactionService.enqueue(createCommand(UUID.randomUUID()), true);
+
+        CreateDiaryResult replay = diaryCreationService.create(createCommand());
+
+        assertThat(replay.newlyCreated()).isFalse();
+        assertThat(replay.generation().id()).isEqualTo(first.claim().generationId());
+        assertThat(replay.generation().status()).isEqualTo(initialStatus);
+        assertThat(countRows("diary_generations")).isEqualTo(2);
+        assertThat(usedCount()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("120초 넘게 대기한 작업도 재요청 시 유지하고 사용량을 다시 차감하지 않는다")
+    void retainPendingRequestAfter120Seconds() {
+        MemberDiaryCreationClaim first = transactionService.enqueue(createCommand(), true);
+        Timestamp queuedAt = Timestamp.from(NOW.minusSeconds(121));
+        executeUpdate("UPDATE diary_generations SET created_at = ?, updated_at = ? WHERE id = ?",
+                queuedAt, queuedAt, first.claim().generationId());
+
+        MemberDiaryCreationClaim replay = transactionService.enqueue(createCommand(), false);
+
+        assertThat(replay.claim().generationId()).isEqualTo(first.claim().generationId());
+        assertThat(replay.claim().generationStatus()).isEqualTo(GenerationStatus.PENDING);
+        assertThat(usedCount()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("동시에 다른 요청 8개가 들어와도 동시 실행 수인 2개까지만 저장한다")
+    void concurrentNewRequestsCannotExceedCapacity() throws Exception {
+        List<CreateDiaryCommand> commands = IntStream.range(0, 8)
+                .mapToObj(index -> createCommand(UUID.randomUUID())).toList();
+
+        List<CreateDiaryResult> results = submitConcurrentRequests(commands);
+
+        assertThat(results.stream().filter(Objects::nonNull)).hasSize(2);
+        assertThat(countRows("diaries")).isEqualTo(2);
+        assertThat(countRows("diary_generations")).isEqualTo(2);
+        assertThat(usedCount()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("동시에 같은 요청을 보내도 기존 작업을 반환하고 작업과 사용량은 하나만 저장한다")
+    void concurrentReplaysReturnOneGenerationWithoutCapacityRejection() throws Exception {
+        List<CreateDiaryCommand> commands = IntStream.range(0, 8)
+                .mapToObj(index -> createCommand()).toList();
+
+        List<CreateDiaryResult> results = submitConcurrentRequests(commands);
+
+        assertThat(results).doesNotContainNull();
+        assertThat(results.stream().map(result -> result.generation().id()).distinct()).hasSize(1);
+        assertThat(results.stream().filter(CreateDiaryResult::newlyCreated)).hasSize(1);
+        assertThat(countRows("diaries")).isEqualTo(1);
+        assertThat(usedCount()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("접수 저장이 취소되면 잠금과 작업 수가 남지 않아 다음 요청을 접수한다")
+    void rolledBackAdmissionsDoNotOccupyCapacity() {
+        transactionTemplate.executeWithoutResult(status -> {
+            transactionService.enqueue(createCommand(UUID.randomUUID()), true);
+            transactionService.enqueue(createCommand(UUID.randomUUID()), true);
+            status.setRollbackOnly();
+        });
+
+        CreateDiaryResult accepted = diaryCreationService.create(createCommand());
+
+        assertThat(accepted.newlyCreated()).isTrue();
+        assertThat(countRows("diary_generations")).isEqualTo(1);
+        assertThat(usedCount()).isEqualTo(1);
+    }
+
+    private List<CreateDiaryResult> submitConcurrentRequests(List<CreateDiaryCommand> commands) throws Exception {
+        var executor = Executors.newFixedThreadPool(commands.size());
+        var ready = new CountDownLatch(commands.size());
+        var start = new CountDownLatch(1);
+        try {
+            var futures = commands.stream().map(command -> executor.submit(() -> {
+                ready.countDown();
+                if (!start.await(5, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("동시 접수 시작을 기다리지 못했습니다.");
+                }
+                try {
+                    return diaryCreationService.create(command);
+                } catch (GenerationCapacityExceededException exception) {
+                    return null;
+                }
+            })).toList();
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            var results = new java.util.ArrayList<CreateDiaryResult>();
+            for (var future : futures) {
+                results.add(future.get(10, TimeUnit.SECONDS));
+            }
+            return results;
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    private int usedCount() {
+        return transactionTemplate.execute(status -> ((Number) entityManager.createNativeQuery(
+                "SELECT used_count FROM daily_generation_usage WHERE user_id = :userId")
+                .setParameter("userId", USER_ID).getSingleResult()).intValue());
+    }
+
+    private CreateDiaryCommand createCommand(UUID idempotencyKey) {
+        return new CreateDiaryCommand(USER_ID, DIARY_DATE, "오늘 친구와 카페에 갔다.", idempotencyKey);
     }
 
     private MemberDiaryCreationClaim createMemberClaim(GenerationStatus initialStatus) {

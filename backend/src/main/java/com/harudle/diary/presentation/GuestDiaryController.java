@@ -72,6 +72,7 @@ class GuestDiaryController {
             ErrorType.IDEMPOTENCY_KEY_CONFLICT,
             ErrorType.AI_PROVIDER_ERROR,
             ErrorType.GENERATION_UNAVAILABLE,
+            ErrorType.GENERATION_CAPACITY_EXCEEDED,
             ErrorType.GENERATION_INTERRUPTED,
             ErrorType.IMAGE_STORAGE_ERROR,
             ErrorType.AI_PROVIDER_TIMEOUT

@@ -208,6 +208,11 @@ public enum ErrorType {
             "AI provider error",
             "AI 공급자 호출에 실패했습니다."
     ),
+    GENERATION_CAPACITY_EXCEEDED(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "Generation capacity exceeded",
+            "현재 생성 요청이 많습니다. 잠시 후 다시 시도해 주세요."
+    ),
     GENERATION_UNAVAILABLE(
             HttpStatus.SERVICE_UNAVAILABLE,
             "Generation unavailable",

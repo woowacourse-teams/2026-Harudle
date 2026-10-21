@@ -30,6 +30,7 @@ import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.dto.CreateDiaryResult;
 import com.harudle.diary.service.dto.DiaryGenerationResult;
 import com.harudle.generation.diary.domain.GenerationStatus;
+import com.harudle.generation.diary.service.exception.GenerationCapacityExceededException;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
 import com.harudle.generation.usage.domain.GenerationUsage;
@@ -183,5 +184,16 @@ class LoadTestDiaryControllerTest {
                         .contentType(MediaType.APPLICATION_JSON).content(BODY))
                 .andExpect(status().isBadRequest());
         verifyNoInteractions(creationService);
+    }
+
+    @Test
+    void rejectsLoadTestGenerationAtCapacity() throws Exception {
+        when(creationService.create(any())).thenThrow(new GenerationCapacityExceededException());
+
+        mvc.perform(post(PATH).header("Authorization", "Bearer test-token")
+                        .header("Idempotency-Key", KEY).contentType(MediaType.APPLICATION_JSON).content(BODY))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("GENERATION_CAPACITY_EXCEEDED"));
+        verifyNoInteractions(imageUrlProvider);
     }
 }

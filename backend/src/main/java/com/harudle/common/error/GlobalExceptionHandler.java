@@ -32,6 +32,7 @@ import com.harudle.generation.diary.service.exception.DiaryGenerationNotFoundExc
 import com.harudle.generation.usage.service.exception.DailyGenerationLimitExceededException;
 import com.harudle.generation.diary.service.exception.GenerationInProgressException;
 import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
+import com.harudle.generation.diary.service.exception.GenerationCapacityExceededException;
 import com.harudle.generation.diary.service.exception.IdempotencyKeyConflictException;
 import com.harudle.generation.diary.service.port.ImageStorageException;
 import com.harudle.guest.application.exception.GuestSessionExpiredException;
@@ -396,6 +397,11 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(ImageStorageException.class)
     ResponseEntity<ProblemDetail> handleImageStorage(HttpServletRequest request) {
         return createResponse(ErrorType.IMAGE_STORAGE_ERROR, request);
+    }
+
+    @ExceptionHandler(GenerationCapacityExceededException.class)
+    ResponseEntity<ProblemDetail> handleGenerationCapacityExceeded(HttpServletRequest request) {
+        return createResponse(ErrorType.GENERATION_CAPACITY_EXCEEDED, request);
     }
 
     @ExceptionHandler(GenerationUnavailableException.class)

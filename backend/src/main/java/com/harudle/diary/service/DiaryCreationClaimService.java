@@ -5,19 +5,23 @@ import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
 import com.harudle.generation.config.GenerationLifecycleProperties;
+import com.harudle.generation.config.GenerationWorkerProperties;
 import com.harudle.generation.diary.domain.DiaryGeneration;
 import com.harudle.generation.diary.domain.GenerationStatus;
 import com.harudle.generation.diary.service.DiaryGenerationCompletionService;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
+import com.harudle.generation.diary.repository.DiaryGenerationAdmissionLock;
 import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import com.harudle.generation.diary.service.RequestFingerprintGenerator;
 import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
 import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
+import com.harudle.generation.diary.service.exception.GenerationCapacityExceededException;
 import com.harudle.generation.diary.service.exception.IdempotencyKeyConflictException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -27,6 +31,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 class DiaryCreationClaimService {
 
+    private static final List<GenerationStatus> UNFINISHED_STATUSES =
+            List.of(GenerationStatus.PENDING, GenerationStatus.PROCESSING);
+
     private final DiaryRepository diaryRepository;
     private final GenerationPromptRepository generationPromptRepository;
     private final DiaryGenerationRepository diaryGenerationRepository;
@@ -34,6 +41,8 @@ class DiaryCreationClaimService {
     private final RequestFingerprintGenerator requestFingerprintGenerator;
     private final Clock clock;
     private final Duration processingTimeout;
+    private final DiaryGenerationAdmissionLock admissionLock;
+    private final int maxUnfinishedGenerations;
 
     DiaryCreationClaimService(
             DiaryRepository diaryRepository,
@@ -42,7 +51,9 @@ class DiaryCreationClaimService {
             DiaryGenerationCompletionService completionService,
             RequestFingerprintGenerator requestFingerprintGenerator,
             @Qualifier("serviceClock") Clock clock,
-            GenerationLifecycleProperties generationLifecycleProperties
+            GenerationLifecycleProperties generationLifecycleProperties,
+            DiaryGenerationAdmissionLock admissionLock,
+            GenerationWorkerProperties workerProperties
     ) {
         Duration processingTimeout = generationLifecycleProperties.processingTimeout();
         validateProcessingTimeout(processingTimeout);
@@ -53,6 +64,8 @@ class DiaryCreationClaimService {
         this.requestFingerprintGenerator = requestFingerprintGenerator;
         this.clock = clock;
         this.processingTimeout = processingTimeout;
+        this.admissionLock = admissionLock;
+        this.maxUnfinishedGenerations = workerProperties.concurrency();
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -89,6 +102,9 @@ class DiaryCreationClaimService {
             LocalDate usageDate,
             boolean queueForWorker
     ) {
+        if (queueForWorker) {
+            admissionLock.acquire();
+        }
         return diaryGenerationRepository
                 .findByIdempotencyKeyForUpdate(command.idempotencyKey())
                 .map(generation -> createExistingClaim(command, generation))
@@ -126,6 +142,10 @@ class DiaryCreationClaimService {
     ) {
         if (!generationAvailable) {
             throw GenerationUnavailableException.adaptersNotConfigured();
+        }
+        if (queueForWorker
+                && diaryGenerationRepository.countByStatusIn(UNFINISHED_STATUSES) >= maxUnfinishedGenerations) {
+            throw new GenerationCapacityExceededException();
         }
         Long promptId = generationPromptRepository.findFirstByOrderByIdDesc()
                 .orElseThrow(GenerationUnavailableException::promptNotConfigured)

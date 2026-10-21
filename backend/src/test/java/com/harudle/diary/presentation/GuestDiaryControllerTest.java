@@ -28,6 +28,7 @@ import com.harudle.diary.service.dto.DiaryDetailResult;
 import com.harudle.diary.service.dto.DiaryGenerationResult;
 import com.harudle.generation.diary.domain.GenerationStatus;
 import com.harudle.generation.diary.domain.GenerationTokenUsage;
+import com.harudle.generation.diary.service.exception.GenerationCapacityExceededException;
 import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.guest.application.exception.GuestSessionExpiredException;
@@ -121,6 +122,25 @@ class GuestDiaryControllerTest {
     @AfterEach
     void tearDown() {
         RestAssuredMockMvc.reset();
+    }
+
+    @Test
+    @DisplayName("게스트 생성도 접수 상한에 도달하면 503과 접수 거절 코드를 반환한다")
+    void rejectGuestGenerationAtCapacity() {
+        configureGuestSessionCookie();
+        when(guestDiaryCreationService.create(eq(RAW_TOKEN), any(CreateGuestDiaryCommand.class)))
+                .thenThrow(new GenerationCapacityExceededException());
+
+        MockMvcResponse response = guestPostRequest()
+                .contentType(ContentType.JSON)
+                .header("Idempotency-Key", IDEMPOTENCY_KEY)
+                .body(validRequestBody())
+                .post("/api/v1/guest/diaries");
+
+        assertThat(response.statusCode()).isEqualTo(503);
+        assertThat(response.jsonPath().getString("code")).isEqualTo("GENERATION_CAPACITY_EXCEEDED");
+        assertThat(response.header("Cache-Control")).contains("no-store");
+        verifyNoInteractions(imageUrlProvider);
     }
 
     @Test

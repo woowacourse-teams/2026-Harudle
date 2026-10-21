@@ -43,6 +43,7 @@ import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import com.harudle.generation.usage.domain.GenerationUsage;
 import com.harudle.generation.usage.service.exception.DailyGenerationLimitExceededException;
 import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
+import com.harudle.generation.diary.service.exception.GenerationCapacityExceededException;
 import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
 import com.harudle.generation.diary.service.port.dto.BackupObjectMetadata;
 import com.harudle.generation.diary.service.port.BackupObjectStorage;
@@ -573,6 +574,28 @@ class DiaryControllerTest {
 
         assertThat(response.statusCode()).isEqualTo(503);
         assertThat(response.jsonPath().getString("code")).isEqualTo("GENERATION_UNAVAILABLE");
+    }
+
+    @Test
+    @DisplayName("생성 접수 상한에 도달하면 503과 접수 거절 코드를 반환한다")
+    void rejectGenerationAtCapacity() {
+        when(diaryCreationService.create(any(CreateDiaryCommand.class)))
+                .thenThrow(new GenerationCapacityExceededException());
+
+        MockMvcResponse response = authenticatedRequest()
+                .contentType(ContentType.JSON)
+                .header("Idempotency-Key", IDEMPOTENCY_KEY)
+                .body("""
+                        {"diaryDate":"2026-08-06","sourceText":"오늘의 일기"}
+                        """)
+                .post("/api/v1/diaries");
+
+        assertThat(response.statusCode()).isEqualTo(503);
+        assertThat(response.jsonPath().getString("code")).isEqualTo("GENERATION_CAPACITY_EXCEEDED");
+        assertThat(response.contentType()).startsWith("application/problem+json");
+        assertThat(response.header("Cache-Control")).contains("no-store");
+        assertThat(response.jsonPath().getString("traceId")).isNotBlank();
+        verifyNoInteractions(imageUrlProvider);
     }
 
     @Test

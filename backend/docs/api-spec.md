@@ -323,8 +323,8 @@ Content-Type: application/json
 
 1. 요청 값과 Idempotency Key를 검증합니다.
 2. 정의된 정규 표현으로 인증 사용자 ID, `diaryDate`, `sourceText`의 SHA-256 요청 지문을 계산합니다.
-3. 트랜잭션에서 일기와 `PENDING` 생성 기록을 함께 저장합니다.
-4. 같은 키가 있으면 요청 지문을 검사합니다. 같은 요청은 기존 상태와 결과 또는 저장된 오류를 반환합니다. 다른 요청은 `409`로 거절합니다.
+3. 접수 트랜잭션의 DB 잠금을 얻습니다. 같은 키가 있으면 요청 지문을 검사합니다. 같은 요청은 기존 상태와 결과 또는 저장된 오류를 반환합니다. 다른 요청은 `409`로 거절합니다.
+4. 새 요청은 `PENDING`과 `PROCESSING`의 합이 `GENERATION_WORKER_CONCURRENCY`보다 적을 때만 일기와 작업을 저장합니다. 이미 상한에 도달했으면 `503 GENERATION_CAPACITY_EXCEEDED`로 거절합니다. 거절된 요청은 일기와 작업을 저장하지 않고 사용량도 차감하지 않습니다.
 5. 새 키를 선점한 경우에만 일일 사용량 행을 원자적으로 생성 또는 증가시키고 생성 가능 횟수를 확인합니다.
 6. 한도를 초과하면 전체 트랜잭션을 롤백하고 `429 DAILY_GENERATION_LIMIT_EXCEEDED`를 반환합니다.
 7. DB 트랜잭션을 커밋합니다.
@@ -332,6 +332,10 @@ Content-Type: application/json
 
 작업 처리기는 별도로 대기 작업을 선점하고 `PROCESSING`으로 변경합니다. 선점 트랜잭션이 끝나면
 스토리보드와 이미지를 생성하고 S3에 저장합니다. 마지막으로 같은 생성 기록에 성공 또는 실패를 저장합니다.
+
+접수 상한은 현재 백엔드 한 대의 동시 실행 수와 같습니다. 선점 전 작업도 상한에 포함합니다.
+회원과 게스트, 부하 테스트가 이 상한을 함께 사용합니다. 같은 요청의 재전송은 기존 작업으로 처리합니다.
+접수한 `PENDING` 작업은 120초를 기다렸다는 이유로 만료시키지 않습니다.
 
 일일 사용량 행은 PostgreSQL의 원자적 Upsert로 최초 행 생성과 증가를 함께 처리합니다. 최초 생성과 관리자 한도 변경이
 동시에 실행될 때는 사용자 행 잠금으로 두 작업을 직렬화하며, 사용 횟수가 제한보다 작은 경우에만 증가합니다.
@@ -405,7 +409,7 @@ Content-Type: application/json
 
 1. 원문 게스트 Token을 SHA-256으로 해시해 게스트 세션을 쓰기 잠금으로 조회합니다.
 2. 만료된 세션은 `401 GUEST_SESSION_EXPIRED`로 거절합니다.
-3. 미사용 세션이면 게스트 사용자 ID로 일기와 `PENDING` 생성 기록을 저장합니다.
+3. 미사용 세션이면 공통 접수 상한을 확인하고 게스트 사용자 ID로 일기와 `PENDING` 생성 기록을 저장합니다. 상한에 도달했으면 `503 GENERATION_CAPACITY_EXCEEDED`로 거절하고 체험 횟수도 차감하지 않습니다.
 4. 같은 트랜잭션에서 `guest_sessions.diary_id`와 `used_at`을 기록합니다.
 5. 게스트 생성은 회원의 `daily_generation_usage`를 조회하거나 변경하지 않습니다.
 6. 트랜잭션을 커밋한 뒤 이미지 생성을 기다리지 않고 접수 결과를 반환합니다. 이미지는 작업 처리기가 생성합니다.
@@ -816,6 +820,7 @@ Retry-After: 13800
 | `500` | `INTERNAL_SERVER_ERROR` | 서버 내부의 예기치 않은 오류 |
 | `502` | `AI_PROVIDER_ERROR` | LLM 또는 이미지 생성 Provider 호출 실패 |
 | `503` | `GENERATION_UNAVAILABLE` | 생성 어댑터 또는 생성 프롬프트를 사용할 수 없음 |
+| `503` | `GENERATION_CAPACITY_EXCEEDED` | 미완료 생성 작업이 동시 실행 수에 도달해 신규 접수를 거절함 |
 | `503` | `GENERATION_INTERRUPTED` | 서버 중단 등으로 생성 처리가 완료되지 못함 |
 | `503` | `IMAGE_STORAGE_ERROR` | 생성 이미지 S3 저장 실패 |
 | `504` | `AI_PROVIDER_TIMEOUT` | AI Provider 응답 시간 초과 |
