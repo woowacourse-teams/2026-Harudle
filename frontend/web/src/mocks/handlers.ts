@@ -1,6 +1,16 @@
 import { delay, http, HttpResponse } from 'msw';
 import { isLandingPath } from '../pages/landing/landingPaths';
 import { MOCK_SCENARIO_HEADER, MOCK_SCENARIOS } from './mockScenarios';
+import {
+  createMockGenerationJob,
+  getMockGeneration,
+  getMockGenerationStatus,
+  MOCK_GENERATION_COMPLETION_MS,
+  type MockGenerationJob,
+  type MockSucceededGeneration,
+  type MockDiaryGeneration,
+} from './diaryGeneration';
+import { isCanonicalUuid } from '../pages/landing/guestTrialUuid';
 import { getToday } from '../shared/utils';
 import profileImage from '../assets/images/profile-fallback.svg';
 import diaryImage from '../assets/images/diary-four-panel.webp';
@@ -16,14 +26,7 @@ interface CreateDiaryResponse {
   diaryDate: string;
   sourceText: string;
   createdAt: string;
-  generation: {
-    id: string;
-    status: 'SUCCEEDED';
-    title: string;
-    imageUrl: string;
-    imageUrlExpiresAt: string;
-    completedAt: string;
-  };
+  generation: MockSucceededGeneration;
   usage: {
     usageDate: string;
     usedCount: number;
@@ -38,14 +41,7 @@ interface DiaryDetailResponse {
   diaryDate: string;
   sourceText: string;
   createdAt: string;
-  generation: {
-    id: string;
-    status: 'SUCCEEDED';
-    title: string;
-    imageUrl: string;
-    imageUrlExpiresAt: string;
-    completedAt: string;
-  };
+  generation: MockDiaryGeneration;
 }
 
 interface ValidationError {
@@ -63,13 +59,19 @@ const MOCK_ACCESS_TOKEN = 'mock-access-token';
 const MOCK_CSRF_TOKEN = 'mock-csrf-token';
 
 let usedGenerationCount = 0;
-let mockDiarySequence = 1;
+let mockDiarySequence = 1_000;
 
 const createdDiaryRequests = new Map<
   string,
-  { fingerprint: string; response: CreateDiaryResponse }
+  {
+    fingerprint: string;
+    response: CreateDiaryResponse;
+    job: MockGenerationJob;
+    usageRestored: boolean;
+  }
 >();
 const createdDiaryDetails = new Map<string, DiaryDetailResponse>();
+const deletedDiaryIds = new Set<string>();
 
 const diaryThumbnailUrl = diaryImage;
 
@@ -133,9 +135,11 @@ const problemTitleByCode: Record<string, string> = {
   INVALID_IDEMPOTENCY_KEY: 'Invalid idempotency key',
   IDEMPOTENCY_KEY_CONFLICT: 'Idempotency key conflict',
   DIARY_NOT_FOUND: 'Diary not found',
+  GENERATION_NOT_FOUND: 'Generation not found',
   DUPLICATE_DIARY: 'Duplicate diary',
   DAILY_GENERATION_LIMIT_EXCEEDED: 'Daily generation limit exceeded',
   DIARY_GENERATION_FAILED: 'Diary generation failed',
+  AI_PROVIDER_ERROR: 'AI provider error',
   DIARY_DETAIL_REQUEST_FAILED: 'Diary detail request failed',
   DIARY_DELETE_FAILED: 'Diary delete failed',
   PROFILE_REQUEST_FAILED: 'Profile request failed',
@@ -317,6 +321,49 @@ const addDiaryToMockDiaries = (diary: CreateDiaryResponse): void => {
     items: [diaryItem],
   });
   mockDiaryDays.sort((a, b) => b.date.localeCompare(a.date));
+};
+
+// 폴링을 건너뛰어도 완료된 일기는 목록과 상세 조회에 반영한다.
+const syncCreatedDiaries = (): void => {
+  for (const record of createdDiaryRequests.values()) {
+    const { response, job } = record;
+    const generation = getMockGeneration(job, response.generation);
+    if (generation.status === 'FAILED' && !record.usageRestored) {
+      usedGenerationCount -= 1;
+      record.usageRestored = true;
+    }
+    if (
+      deletedDiaryIds.has(response.id) ||
+      generation.status !== 'SUCCEEDED' ||
+      createdDiaryDetails.has(response.id)
+    ) {
+      continue;
+    }
+    createdDiaryDetails.set(response.id, {
+      id: response.id,
+      publishedFeedId: null,
+      diaryDate: response.diaryDate,
+      sourceText: response.sourceText,
+      createdAt: response.createdAt,
+      generation,
+    });
+    addDiaryToMockDiaries(response);
+  }
+};
+
+export const resetDiaryGenerationMockState = (): void => {
+  const createdIds = new Set(
+    Array.from(createdDiaryRequests.values(), ({ response }) => response.id),
+  );
+  for (const day of mockDiaryDays) {
+    day.items = day.items.filter(({ id }) => !createdIds.has(id));
+    day.exist = day.items.length > 0;
+  }
+  createdDiaryRequests.clear();
+  createdDiaryDetails.clear();
+  deletedDiaryIds.clear();
+  usedGenerationCount = 0;
+  mockDiarySequence = 1_000;
 };
 
 // 홈 - 월간 일기 조회
@@ -504,6 +551,7 @@ export const handlers = [
   }),
 
   http.get('/api/v1/diaries', async ({ request }) => {
+    syncCreatedDiaries();
     const unauthorizedResponse = validateAccessToken(request);
 
     if (unauthorizedResponse) {
@@ -535,6 +583,7 @@ export const handlers = [
   }),
 
   http.get('/api/v1/me/generation-usage', async ({ request }) => {
+    syncCreatedDiaries();
     const unauthorizedResponse = validateAccessToken(request);
 
     if (unauthorizedResponse) {
@@ -558,7 +607,12 @@ export const handlers = [
       return unauthorizedResponse;
     }
 
+    syncCreatedDiaries();
     const diaryId = String(params.diaryId);
+    const pendingDiary = Array.from(createdDiaryRequests.values()).find(
+      ({ response }) =>
+        response.id === diaryId && !deletedDiaryIds.has(diaryId),
+    );
     const createdDiaryDetail = createdDiaryDetails.get(diaryId);
     const diaryDay = mockDiaryDays.find((day) =>
       day.items.some((diary) => diary.id === diaryId),
@@ -577,6 +631,24 @@ export const handlers = [
         detail: '일기 상세 정보를 불러오지 못했습니다. 다시 시도해주세요.',
         instance: `/api/v1/diaries/${diaryId}`,
       });
+    }
+
+    if (pendingDiary && !createdDiaryDetail) {
+      const generation = getMockGeneration(
+        pendingDiary.job,
+        pendingDiary.response.generation,
+      );
+      if (generation.status !== 'FAILED') {
+        const diary = pendingDiary.response;
+        return HttpResponse.json({
+          id: diary.id,
+          diaryDate: diary.diaryDate,
+          sourceText: diary.sourceText,
+          createdAt: diary.createdAt,
+          publishedFeedId: null,
+          generation,
+        });
+      }
     }
 
     if (createdDiaryDetail) {
@@ -659,6 +731,7 @@ export const handlers = [
     }
 
     createdDiaryDetails.delete(diaryId);
+    deletedDiaryIds.add(diaryId);
 
     return new HttpResponse(null, { status: 204 });
   }),
@@ -670,19 +743,7 @@ export const handlers = [
       return unauthorizedResponse;
     }
 
-    const isGenerationFailure =
-      request.headers.get(MOCK_SCENARIO_HEADER) ===
-      MOCK_SCENARIOS.diaryGenerationFailure;
-
-    await delay(isGenerationFailure ? 3_000 : 9_000);
-
-    if (isGenerationFailure) {
-      return createProblemDetails({
-        status: 503,
-        code: 'DIARY_GENERATION_FAILED',
-        detail: '일기를 만드는 중 문제가 발생했습니다. 다시 시도해주세요.',
-      });
-    }
+    await delay(300);
 
     const idempotencyKey = request.headers.get('Idempotency-Key');
 
@@ -715,11 +776,37 @@ export const handlers = [
       });
     }
 
+    syncCreatedDiaries();
     const diaryFingerprint = createDiaryFingerprint(requestBody);
     const existingRequest = createdDiaryRequests.get(idempotencyKey);
 
     if (existingRequest?.fingerprint === diaryFingerprint) {
-      return HttpResponse.json(existingRequest.response);
+      if (deletedDiaryIds.has(existingRequest.response.id)) {
+        return createProblemDetails({
+          status: 404,
+          code: 'DIARY_NOT_FOUND',
+          detail: '일기를 찾을 수 없습니다.',
+        });
+      }
+      if (
+        getMockGeneration(
+          existingRequest.job,
+          existingRequest.response.generation,
+        ).status === 'FAILED'
+      ) {
+        return createProblemDetails({
+          status: 502,
+          code: 'AI_PROVIDER_ERROR',
+          detail: '이미지 생성 요청에 실패했습니다.',
+        });
+      }
+      return HttpResponse.json({
+        ...existingRequest.response,
+        generation: getMockGeneration(
+          existingRequest.job,
+          existingRequest.response.generation,
+        ),
+      });
     }
 
     if (existingRequest) {
@@ -744,9 +831,14 @@ export const handlers = [
     mockDiarySequence += 1;
     usedGenerationCount += 1;
 
-    const createdAt = `${requestBody.diaryDate}T20:10:23+09:00`;
-    const completedAt = `${requestBody.diaryDate}T20:11:42+09:00`;
-    const imageUrlExpiresAt = `${requestBody.diaryDate}T20:20:23+09:00`;
+    const job = createMockGenerationJob(request);
+    const createdAt = new Date(job.acceptedAt).toISOString();
+    const completedAt = new Date(
+      job.acceptedAt + MOCK_GENERATION_COMPLETION_MS,
+    ).toISOString();
+    const imageUrlExpiresAt = new Date(
+      job.acceptedAt + 3_600_000,
+    ).toISOString();
     const diaryId = createMockUuid(diarySequence, 1);
 
     const response: CreateDiaryResponse = {
@@ -773,22 +865,65 @@ export const handlers = [
     createdDiaryRequests.set(idempotencyKey, {
       fingerprint: diaryFingerprint,
       response,
+      job,
+      usageRestored: false,
     });
-    createdDiaryDetails.set(diaryId, {
-      id: response.id,
-      publishedFeedId: null,
-      diaryDate: response.diaryDate,
-      sourceText: response.sourceText,
-      createdAt: response.createdAt,
-      generation: response.generation,
-    });
-    addDiaryToMockDiaries(response);
 
-    return HttpResponse.json(response, {
-      status: 201,
-      headers: {
-        Location: `/api/v1/diaries/${diaryId}`,
+    return HttpResponse.json(
+      {
+        ...response,
+        generation: getMockGeneration(job, response.generation),
       },
-    });
+      {
+        status: 202,
+        headers: {
+          Location: `/api/v1/diaries/${diaryId}`,
+        },
+      },
+    );
   }),
+
+  http.get(
+    '/api/v1/diary-generations/:generationId',
+    async ({ request, params }) => {
+      const unauthorizedResponse = validateAccessToken(request);
+      if (unauthorizedResponse) return unauthorizedResponse;
+
+      await delay(150);
+      const generationId = String(params.generationId);
+      const instance = `/api/v1/diary-generations/${generationId}`;
+      if (!isCanonicalUuid(generationId)) {
+        return createProblemDetails({
+          status: 400,
+          code: 'VALIDATION_ERROR',
+          detail: '생성 ID는 UUID 형식이어야 합니다.',
+          instance,
+        });
+      }
+
+      const record = Array.from(createdDiaryRequests.values()).find(
+        ({ response }) => response.generation.id === generationId,
+      );
+      if (!record || deletedDiaryIds.has(record.response.id)) {
+        return createProblemDetails({
+          status: 404,
+          code: 'GENERATION_NOT_FOUND',
+          detail: '생성 작업을 찾을 수 없습니다.',
+          instance,
+        });
+      }
+
+      syncCreatedDiaries();
+      const generation = getMockGeneration(
+        record.job,
+        record.response.generation,
+      );
+      return HttpResponse.json(
+        getMockGenerationStatus(generation, record.response.id),
+        {
+          headers: { 'Cache-Control': 'no-store' },
+        },
+      );
+    },
+  ),
 ];
