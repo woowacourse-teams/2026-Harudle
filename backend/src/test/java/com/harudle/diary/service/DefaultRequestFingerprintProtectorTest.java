@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 
 import com.harudle.diary.domain.Diary;
 import com.harudle.diary.domain.DiarySourceTextCipher;
+import com.harudle.diary.infrastructure.crypto.DiarySourceTextCryptoException;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.support.DiarySourceTextTestSupport;
 import java.time.LocalDate;
@@ -61,13 +62,14 @@ class DefaultRequestFingerprintProtectorTest {
     }
 
     @Test
-    @DisplayName("기존 평문 일기의 생성 실행은 저장된 SHA 지문 계약을 유지한다")
-    void preserveLegacyFingerprint() {
+    @DisplayName("전환하지 않은 평문 일기의 생성 실행은 기존 SHA 지문을 허용하지 않는다")
+    void rejectLegacyFingerprint() {
         ReflectionTestUtils.setField(diary, "sourceText", "기존 평문 일기");
         ReflectionTestUtils.setField(diary, "sourceTextVersion", DiarySourceTextCipher.LEGACY_VERSION);
         when(diaryRepository.findById(diary.getId())).thenReturn(Optional.of(diary));
 
-        assertThat(protector.protect(diary.getId(), USER_ID, RAW_FINGERPRINT)).isEqualTo(RAW_FINGERPRINT);
+        assertThatThrownBy(() -> protector.protect(diary.getId(), USER_ID, RAW_FINGERPRINT))
+                .isInstanceOf(DiarySourceTextCryptoException.class);
         verify(sourceTextCipher, never()).decrypt(any(), any(), anyString(), anyInt());
     }
 

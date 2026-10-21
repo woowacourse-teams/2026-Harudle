@@ -49,22 +49,31 @@ case "${command_name}" in
     fi
     ;;
   run)
-    echo verify >> "${DIARY_KEY_TEST_DIR}/calls"
-    printf '%s\n' "$@" > "${DIARY_KEY_TEST_DIR}/verify.args"
-    printf '%s\n' "${last_file}" > "${DIARY_KEY_TEST_DIR}/override.path"
+    for ((index = 0; index < ${#arguments[@]}; index++)); do
+      if [[ "${arguments[index]}" == backend ]]; then
+        backend_index="${index}"
+        break
+      fi
+    done
+    operation="${arguments[backend_index + 4]}"
+    echo "${operation}" >> "${DIARY_KEY_TEST_DIR}/calls"
+    printf '%s\n' "$@" > "${DIARY_KEY_TEST_DIR}/${operation}.args"
+    printf '%s\n' "${last_file}" >> "${DIARY_KEY_TEST_DIR}/override.paths"
     cp "${last_file}" "${DIARY_KEY_TEST_DIR}/override.contents"
     echo 'diary-key-test-secret' >&2
-    if [[ "${DIARY_KEY_TEST_VERIFY_FAILURE:-0}" == 0 ]]; then
+    failure="${DIARY_KEY_TEST_VERIFY_FAILURE:-0}"
+    [[ "${operation}" == verify ]] || failure="${DIARY_KEY_TEST_READY_FAILURE:-0}"
+    if [[ "${failure}" == 0 ]]; then
       for ((index = 0; index < ${#arguments[@]}; index++)); do
         if [[ "${arguments[index]}" == --env ]]; then
           export "${arguments[index + 1]}"
         fi
       done
-      sh -c "${arguments[${#arguments[@]} - 1]}"
+      sh "${arguments[@]:backend_index + 1}"
     else
       echo 'diary-key-test-secret'
     fi
-    exit "${DIARY_KEY_TEST_VERIFY_FAILURE:-0}"
+    exit "${failure}"
     ;;
   up)
     echo up >> "${DIARY_KEY_TEST_DIR}/calls"
@@ -79,8 +88,9 @@ SH
 cat > "${TEST_DIR}/bin/java" <<'SH'
 #!/usr/bin/env bash
 set -Eeuo pipefail
-printf '%s\n' "$@" > "${DIARY_KEY_TEST_DIR}/java.args"
-printf '%s\n' "${LOADER_MAIN:-}" > "${DIARY_KEY_TEST_DIR}/java.loader-main"
+operation="${!#}"
+printf '%s\n' "$@" > "${DIARY_KEY_TEST_DIR}/${operation}.java.args"
+printf '%s\n' "${LOADER_MAIN:-}" > "${DIARY_KEY_TEST_DIR}/${operation}.java.loader-main"
 # These JVM actions exit successfully before invoking a main method.
 for argument in "$@"; do
   case "${argument}" in
@@ -91,6 +101,32 @@ done
 # The dev Compose options write GC diagnostics to stdout unless the one-off disables them.
 if [[ " $* " == *' -Xlog:gc*,safepoint:stdout:'* && " $* " != *' -Xlog:disable '* ]]; then
   echo 'diary-key-test-secret'
+fi
+if [[ "${operation}" == ready ]]; then
+  case "${DIARY_KEY_TEST_READY_OPTION:-}" in
+    -version|--dry-run) exit 0 ;;
+  esac
+  result='{"command":"ready","legacyRows":0,"encryptedRows":12,"unsupportedRows":0,"processingLegacyRows":0,"orphanRows":1,"finalized":true}'
+  case "${DIARY_KEY_TEST_READY_RESULT:-valid}" in
+    valid) printf '%s\n' "${result}" ;;
+    empty) ;;
+    diagnostic) printf '%s\n' 'diary-key-test-secret' "${result}" ;;
+    extra-field) jq -c '.extra="diary-key-test-secret"' <<<"${result}" ;;
+    wrong-command) jq -c '.command="status"' <<<"${result}" ;;
+    not-finalized) jq -c '.finalized=false' <<<"${result}" ;;
+    legacy) jq -c '.legacyRows=1' <<<"${result}" ;;
+    unsupported) jq -c '.unsupportedRows=1' <<<"${result}" ;;
+    processing) jq -c '.processingLegacyRows=1' <<<"${result}" ;;
+    negative) jq -c '.encryptedRows=-1' <<<"${result}" ;;
+    string-count) jq -c '.encryptedRows="12"' <<<"${result}" ;;
+    fractional-count) jq -c '.orphanRows=0.5' <<<"${result}" ;;
+    duplicate) printf '%s\n' "${result}" "${result}" ;;
+    duplicate-field) printf '%s\n' "${result/\"legacyRows\":0/\"legacyRows\":1,\"legacyRows\":0}" ;;
+    no-newline) printf '%s' "${result}" ;;
+    extra-newline) printf '%s\n\n' "${result}" ;;
+    *) exit 1 ;;
+  esac
+  exit "${DIARY_KEY_TEST_READY_JAVA_FAILURE:-0}"
 fi
 case "${DIARY_KEY_TEST_RESULT:-valid}" in
   valid) printf '%s\n' '{"verified":true}' ;;
@@ -116,12 +152,13 @@ prepare_case() {
   export DIARY_KEY_TEST_ENV="${environment}"
   export DEPLOYMENT_GROUP_NAME="harudle-${environment}"
   export DIARY_KEY_TEST_RENDER_FAILURE=0 DIARY_KEY_TEST_QUIET_FAILURE=0
-  export DIARY_KEY_TEST_VERIFY_FAILURE=0 DIARY_KEY_TEST_UP_FAILURE=0
+  export DIARY_KEY_TEST_VERIFY_FAILURE=0 DIARY_KEY_TEST_READY_FAILURE=0 DIARY_KEY_TEST_UP_FAILURE=0
   export DIARY_KEY_TEST_RESULT=valid DIARY_KEY_TEST_JAVA_FAILURE=0 DIARY_KEY_TEST_CHANGE_CANARY=0
+  export DIARY_KEY_TEST_READY_RESULT=valid DIARY_KEY_TEST_READY_JAVA_FAILURE=0 DIARY_KEY_TEST_READY_OPTION=''
   export JAVA_OPTS='-Dpreflight.parity=true -Dpreflight.test.secret=diary-key-test-secret'
   export LOADER_MAIN=untrusted.test.Main
   : > "${TEST_DIR}/calls"
-  rm -f "${TEST_DIR}/verify.args" "${TEST_DIR}/up.args" "${TEST_DIR}/override.path"
+  rm -f "${TEST_DIR}/verify.args" "${TEST_DIR}/up.args" "${TEST_DIR}/override.paths"
   cat > "${HARUDLE_APP_DIR}/.env" <<ENV
 DEPLOY_ENV=${environment}
 S3_BUCKET=techcourse-project-2026
@@ -156,8 +193,10 @@ assert_private_output() {
 }
 
 assert_override_removed() {
-  [[ ! -f "$(cat "${TEST_DIR}/override.path")" ]]
-  if compgen -G "${TMPDIR}/harudle-diary-key-*" >/dev/null; then
+  while IFS= read -r path; do
+    [[ ! -f "${path}" ]]
+  done < "${TEST_DIR}/override.paths"
+  if compgen -G "${TMPDIR}/harudle-diary-*" >/dev/null; then
     echo 'FAIL: 비공개 키 검증 임시 파일이 정리되지 않았습니다.' >&2
     exit 1
   fi
@@ -171,7 +210,7 @@ record_pass() {
 for environment in dev prod; do
   prepare_case "${environment}" reader
   bash -x "${SCRIPT_DIR}/application_start.sh" > "${TEST_DIR}/output" 2>&1
-  printf 'render\nquiet\nverify\nup\n' > "${TEST_DIR}/expected.calls"
+  printf 'render\nquiet\nverify\nready\nup\n' > "${TEST_DIR}/expected.calls"
   diff -u "${TEST_DIR}/expected.calls" "${TEST_DIR}/calls"
   grep -Fxq -- '--no-deps' "${TEST_DIR}/verify.args"
   grep -Fxq -- '-T' "${TEST_DIR}/verify.args"
@@ -180,16 +219,16 @@ for environment in dev prod; do
   grep -Fxq -- '--env' "${TEST_DIR}/verify.args"
   grep -Fxq -- 'LOADER_MAIN=com.harudle.diary.infrastructure.crypto.DiarySourceTextKeyCheckMain' \
     "${TEST_DIR}/verify.args"
-  grep -Fq -- '-Dloader.main=com.harudle.diary.infrastructure.crypto.DiarySourceTextKeyCheckMain' \
+  grep -Fq -- '-Dloader.main="$LOADER_MAIN"' \
     "${TEST_DIR}/verify.args"
   grep -Fq -- 'exec java ${JAVA_OPTS:-} -Xmx128m' "${TEST_DIR}/verify.args"
-  grep -Fq -- 'org.springframework.boot.loader.launch.PropertiesLauncher verify' "${TEST_DIR}/verify.args"
-  grep -Fxq -- '-Dpreflight.parity=true' "${TEST_DIR}/java.args"
-  grep -Fxq -- '-Dpreflight.test.secret=diary-key-test-secret' "${TEST_DIR}/java.args"
-  grep -Fxq -- '-Xmx128m' "${TEST_DIR}/java.args"
-  grep -Fxq -- '-Xlog:disable' "${TEST_DIR}/java.args"
+  grep -Fq -- 'org.springframework.boot.loader.launch.PropertiesLauncher "$@"' "${TEST_DIR}/verify.args"
+  grep -Fxq -- '-Dpreflight.parity=true' "${TEST_DIR}/verify.java.args"
+  grep -Fxq -- '-Dpreflight.test.secret=diary-key-test-secret' "${TEST_DIR}/verify.java.args"
+  grep -Fxq -- '-Xmx128m' "${TEST_DIR}/verify.java.args"
+  grep -Fxq -- '-Xlog:disable' "${TEST_DIR}/verify.java.args"
   grep -Fxq -- 'com.harudle.diary.infrastructure.crypto.DiarySourceTextKeyCheckMain' \
-    "${TEST_DIR}/java.loader-main"
+    "${TEST_DIR}/verify.java.loader-main"
   grep -Fxq -- "${HARUDLE_APP_DIR}/compose.diary-reader.yaml" "${TEST_DIR}/verify.args"
   grep -Fq 'logging: !override' "${TEST_DIR}/override.contents"
   grep -Fq 'driver: none' "${TEST_DIR}/override.contents"
@@ -201,6 +240,11 @@ for environment in dev prod; do
   if [[ "${environment}" == dev ]]; then
     grep -Fxq -- "${HARUDLE_APP_DIR}/compose.dev.yaml" "${TEST_DIR}/verify.args"
   fi
+  grep -Fxq -- 'LOADER_MAIN=com.harudle.diary.infrastructure.crypto.DiarySourceTextBackfillMain' "${TEST_DIR}/ready.args"
+  grep -Fxq -- 'com.harudle.diary.infrastructure.crypto.DiarySourceTextBackfillMain' "${TEST_DIR}/ready.java.loader-main"
+  grep -Fxq -- '-Dpreflight.parity=true' "${TEST_DIR}/ready.java.args"
+  grep -Fxq -- '-Xlog:disable' "${TEST_DIR}/ready.java.args"
+  grep -Fxq -- 'ready' "${TEST_DIR}/ready.java.args"
   assert_private_output
   assert_override_removed
   record_pass "${environment}: verify before replacement without diagnostic or trace leaks"
@@ -255,16 +299,51 @@ assert_verifier_rejected '성공 JSON이 있어도 비정상 종료 코드를 �
 prepare_case dev reader
 export JAVA_OPTS="${JAVA_OPTS} -Xlog:gc*,safepoint:stdout:time,uptime,level,tags"
 bash "${SCRIPT_DIR}/application_start.sh" > "${TEST_DIR}/output" 2>&1
-grep -Fxq -- '-Xlog:gc*,safepoint:stdout:time,uptime,level,tags' "${TEST_DIR}/java.args"
-grep -Fxq -- '-Xlog:disable' "${TEST_DIR}/java.args"
+grep -Fxq -- '-Xlog:gc*,safepoint:stdout:time,uptime,level,tags' "${TEST_DIR}/verify.java.args"
+grep -Fxq -- '-Xlog:disable' "${TEST_DIR}/verify.java.args"
 [[ -f "${TEST_DIR}/up.args" ]]
 assert_private_output
 assert_override_removed
 record_pass 'dev GC 옵션과 시스템 프로퍼티를 유지하고 one-off JVM 로그만 억제'
 
+assert_ready_rejected() {
+  if bash "${SCRIPT_DIR}/application_start.sh" > "${TEST_DIR}/output" 2>&1; then
+    echo 'FAIL: 실제 전환 완료 증거가 없는 후보를 허용했습니다.' >&2
+    exit 1
+  fi
+  printf 'render\nquiet\nverify\nready\n' > "${TEST_DIR}/expected.calls"
+  diff -u "${TEST_DIR}/expected.calls" "${TEST_DIR}/calls"
+  [[ ! -f "${TEST_DIR}/up.args" ]]
+  grep -Fq '기존 컨테이너는 교체하지 않았습니다.' "${TEST_DIR}/output"
+  assert_private_output
+  assert_override_removed
+  record_pass "$1"
+}
+
+for failure in 1 2; do
+  prepare_case dev reader
+  export DIARY_KEY_TEST_READY_FAILURE="${failure}"
+  assert_ready_rejected "ready exit ${failure}: 기존 컨테이너 유지"
+done
+for option in -version --dry-run; do
+  prepare_case dev reader
+  export DIARY_KEY_TEST_READY_OPTION="${option}"
+  assert_ready_rejected "ready ${option}: Main 미실행 종료 0 거절"
+done
+for result in empty diagnostic extra-field wrong-command not-finalized legacy unsupported processing \
+  negative string-count fractional-count duplicate duplicate-field no-newline extra-newline; do
+  prepare_case dev reader
+  export DIARY_KEY_TEST_READY_RESULT="${result}"
+  assert_ready_rejected "ready ${result}: 단일 완료 JSON과 올바른 집계만 허용"
+done
+prepare_case dev reader
+export DIARY_KEY_TEST_READY_JAVA_FAILURE=7
+assert_ready_rejected 'ready 성공 JSON이 있어도 비정상 종료 거절'
+
 prepare_case prod writer
 bash "${SCRIPT_DIR}/application_start.sh" > "${TEST_DIR}/output" 2>&1
 grep -Fxq -- "${HARUDLE_APP_DIR}/compose.diary-writer.yaml" "${TEST_DIR}/verify.args"
+grep -Fxq -- "${HARUDLE_APP_DIR}/compose.diary-writer.yaml" "${TEST_DIR}/ready.args"
 grep -Fxq -- "${HARUDLE_APP_DIR}/compose.diary-writer.yaml" "${TEST_DIR}/up.args"
 assert_private_output
 assert_override_removed

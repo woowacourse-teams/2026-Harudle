@@ -19,6 +19,7 @@ import cleanup
 import ec2
 import prepare
 import transfer
+from fixture_test_support import encrypted_test_rows
 
 
 class ReusableMembersTest(unittest.TestCase):
@@ -48,7 +49,7 @@ class ReusableMembersTest(unittest.TestCase):
 
     def reset(self, name):
         directory = self.root / name
-        ec2.reset_run(directory, self.group, self.settings, self.sql, True)
+        ec2.reset_run(directory, self.group, self.settings, self.sql, True, encrypted_test_rows)
         return directory
 
     def test_same_members_data_and_images_are_reused_with_new_idempotency_keys(self):
@@ -114,7 +115,7 @@ class ReusableMembersTest(unittest.TestCase):
 
         self.delete.side_effect = lambda *args: steps.append('s3-cleanup')
         self.upload.side_effect = lambda *args: steps.append('upload')
-        ec2.reset_run(self.root / 'peak1', self.group, self.settings, sql, True)
+        ec2.reset_run(self.root / 'peak1', self.group, self.settings, sql, True, encrypted_test_rows)
         self.assertEqual(steps, ['db-cleanup', 'login'])
         self.upload.assert_called_once()
         self.delete.assert_not_called()
@@ -129,7 +130,7 @@ class ReusableMembersTest(unittest.TestCase):
             return self.sql(sql)
 
         with self.assertRaises(subprocess.CalledProcessError):
-            ec2.reset_run(self.root / 'peak1', self.group, self.settings, sql, True)
+            ec2.reset_run(self.root / 'peak1', self.group, self.settings, sql, True, encrypted_test_rows)
         self.delete.assert_not_called()
         self.upload.assert_not_called()
         self.assertTrue((directory / 'cleanup.json').exists())
@@ -182,7 +183,8 @@ class ReusableMembersTest(unittest.TestCase):
     def test_failed_seed_can_be_cleaned_and_retried_with_new_run_name(self):
         with self.assertRaises(subprocess.CalledProcessError):
             ec2.reset_run(self.root / 'smoke1', self.group, self.settings,
-                          Mock(side_effect=['t', '', subprocess.CalledProcessError(1, 'psql')]), True)
+                          Mock(side_effect=['t', '', subprocess.CalledProcessError(1, 'psql')]),
+                          True, encrypted_test_rows)
         self.assertFalse((self.group / 'baseline' / '.ready').exists())
         self.reset('smoke2')
         self.purge.assert_called_once()
@@ -279,7 +281,7 @@ class ReusableMembersPostgresTest(unittest.TestCase):
                     record['id'] for record in assets.seed_records(fixture)))
 
             with patch.object(ec2, 'upload') as upload, patch.object(cleanup, 'delete_images', side_effect=s3_deleted) as delete:
-                ec2.reset_run(root / 'smoke1', group, settings, self.sql, True)
+                ec2.reset_run(root / 'smoke1', group, settings, self.sql, True, encrypted_test_rows)
                 first = assets.load_fixture(root / 'smoke1')
                 snapshot = """SELECT jsonb_build_object(
                     'diaries', (SELECT jsonb_agg(d ORDER BY id) FROM diaries d),
@@ -309,7 +311,7 @@ class ReusableMembersPostgresTest(unittest.TestCase):
                          f"('{account['id']}', '{'a' * 64}', CURRENT_TIMESTAMP + INTERVAL '1 day'); "
                          f"INSERT INTO daily_generation_usage (user_id, usage_date, used_count, limit_count) "
                          f"VALUES ('{account['id']}', CURRENT_DATE, 3, 3);")
-                ec2.reset_run(root / 'peak1', group, settings, self.sql, True)
+                ec2.reset_run(root / 'peak1', group, settings, self.sql, True, encrypted_test_rows)
                 self.assertEqual(delete.call_count, 1)
                 self.assertIn(generated, delete.call_args.args[1])
                 upload.assert_called_once()
@@ -338,7 +340,7 @@ class ReusableMembersPostgresTest(unittest.TestCase):
             ec2.prepare_run(group, settings, self.sql)
             with patch.object(ec2, 'upload'), patch.object(cleanup, 'delete_images') as delete:
                 directory = root / 'peak1'
-                ec2.reset_run(directory, group, settings, self.sql, True)
+                ec2.reset_run(directory, group, settings, self.sql, True, encrypted_test_rows)
                 fixture = assets.load_fixture(directory)
                 unknown = self.add_generation(fixture, str(uuid.uuid4()))
                 with self.assertRaises(subprocess.CalledProcessError):

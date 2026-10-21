@@ -16,6 +16,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.mock.env.MockEnvironment;
 
 class DiarySourceTextEncryptionConfigurationTest {
 
@@ -146,6 +147,38 @@ class DiarySourceTextEncryptionConfigurationTest {
         byte[] bytes = new byte[32];
         Arrays.fill(bytes, (byte) 1);
         return Base64.getEncoder().encodeToString(bytes);
+    }
+
+    @Test
+    @DisplayName("실제 배포 모드가 있으면 local 프로필로 덮어도 검증 자료 누락과 같은 ID의 잘못된 키를 거절한다")
+    void deployedModeVerifiesEvidenceDespiteLocalProfileOverride() {
+        Path file = directory.resolve("deployment-keys.json");
+        MockEnvironment environment = new MockEnvironment() {
+            @Override
+            public Map<String, Object> getSystemEnvironment() {
+                return Map.of("DIARY_SOURCE_TEXT_RELEASE_MODE", "writer");
+            }
+        };
+        environment.setActiveProfiles("local");
+        environment.setProperty(PREFIX + "active-key-id", "current");
+        environment.setProperty(PREFIX + "keys.current", KEY);
+        environment.setProperty(PREFIX + "verification-file", file.toString());
+        environment.setProperty("DEPLOY_ENV", "dev");
+        ApplicationContextRunner deployed = context.withInitializer(application -> application.setEnvironment(environment));
+
+        deployed.run(application -> assertThat(application).hasFailed().getFailure()
+                .hasRootCauseInstanceOf(DiarySourceTextCryptoException.class));
+        new DiarySourceTextKeyVerification(new DiarySourceTextEncryptionProperties("current", Map.of("current", KEY)))
+                .createInitialEvidence(file, "dev");
+        byte[] wrongKeyBytes = new byte[32];
+        wrongKeyBytes[0] = 1;
+        environment.setProperty(PREFIX + "keys.current", Base64.getEncoder().encodeToString(wrongKeyBytes));
+        deployed.run(application -> assertThat(application).hasFailed().getFailure()
+                .hasRootCauseInstanceOf(DiarySourceTextCryptoException.class));
+
+        environment.setProperty(PREFIX + "keys.current", KEY);
+        deployed.run(application -> assertThat(application)
+                .hasNotFailed().hasSingleBean(DiarySourceTextCipher.class));
     }
 
     private ApplicationContextRunner production(Path file, String environment, String key) {
