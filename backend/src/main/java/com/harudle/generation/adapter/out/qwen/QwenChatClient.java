@@ -284,6 +284,11 @@ public final class QwenChatClient implements AutoCloseable {
             }
         }
 
+        @Override
+        public String toString() {
+            return "Request[content=<redacted>]";
+        }
+
         public Map<String, Object> payload() {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("model", model);

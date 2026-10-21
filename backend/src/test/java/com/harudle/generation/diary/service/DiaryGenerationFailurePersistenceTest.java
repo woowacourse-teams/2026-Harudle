@@ -2,6 +2,7 @@ package com.harudle.generation.diary.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.harudle.support.DiarySourceTextTestSupport;
 import com.harudle.diary.domain.Diary;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.generation.diary.domain.DiaryGeneration;
@@ -82,7 +83,8 @@ class DiaryGenerationFailurePersistenceTest extends ServiceIntegrationTestSuppor
         Diary diary = diaryRepository.saveAndFlush(Diary.create(
                 USER_ID,
                 DIARY_DATE,
-                "오늘 친구와 카페에 갔다."
+                "오늘 친구와 카페에 갔다.",
+                DiarySourceTextTestSupport.cipher()
         ));
         DiaryGeneration generation = diaryGenerationRepository.saveAndFlush(DiaryGeneration.start(
                 diary.getId(),
@@ -116,7 +118,8 @@ class DiaryGenerationFailurePersistenceTest extends ServiceIntegrationTestSuppor
         Diary diary = diaryRepository.saveAndFlush(Diary.create(
                 USER_ID,
                 DIARY_DATE,
-                "오늘 친구와 카페에 갔다."
+                "오늘 친구와 카페에 갔다.",
+                DiarySourceTextTestSupport.cipher()
         ));
         DiaryGeneration generation = diaryGenerationRepository.saveAndFlush(DiaryGeneration.start(
                 diary.getId(),

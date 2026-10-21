@@ -18,4 +18,8 @@ public final class GenerationUnavailableException extends RuntimeException {
     public static GenerationUnavailableException promptNotConfigured() {
         return new GenerationUnavailableException("사용할 생성 프롬프트가 없습니다.");
     }
+
+    public static GenerationUnavailableException newDiaryWritesDisabled() {
+        return new GenerationUnavailableException("신규 일기 생성이 일시 중지되었습니다.");
+    }
 }

@@ -11,6 +11,7 @@ import com.harudle.generation.diary.service.GenerationLifecycleMetrics;
 import com.harudle.generation.diary.service.RequestFingerprintGenerator;
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
 import com.harudle.generation.diary.service.port.ImageStorage;
+import com.harudle.generation.diary.service.port.RequestFingerprintProtector;
 import com.harudle.generation.diary.service.storyboard.StoryboardGenerationService;
 import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -94,6 +95,7 @@ class DiaryGenerationConfigurationTest {
                 RequestFingerprintGenerator.class,
                 () -> mock(RequestFingerprintGenerator.class)
         );
+        context.registerBean(RequestFingerprintProtector.class, () -> mock(RequestFingerprintProtector.class));
         context.registerBean(GenerationPromptRepository.class, () -> mock(GenerationPromptRepository.class));
         context.registerBean(DiaryGenerationRepository.class, () -> mock(DiaryGenerationRepository.class));
         context.registerBean(

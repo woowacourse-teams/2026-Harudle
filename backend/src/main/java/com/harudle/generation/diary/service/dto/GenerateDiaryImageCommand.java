@@ -43,4 +43,9 @@ public record GenerateDiaryImageCommand(
             throw new IllegalArgumentException("멱등성 키는 필수입니다.");
         }
     }
+
+    @Override
+    public String toString() {
+        return "GenerateDiaryImageCommand[diaryText=<redacted>]";
+    }
 }

@@ -53,6 +53,9 @@ flowchart TB
 | Backend 관리 포트 | `127.0.0.1:19091 → 8081` | `/actuator/prometheus` 수집 |
 | Backend 임시 파일 | `/tmp` tmpfs | 메모리 기반 `128m` |
 | 서버 환경 변수 | EC2 `/opt/harudle/.env` | 배포 간 유지, Backend `env_file` |
+| 원문 키 검증 자료 | 호스트 `/etc/harudle/diary-key-checks.json` → 컨테이너 `/var/run/harudle/diary-key-checks.json` | 읽기 전용, 배포 간 보존, 키와 함께 서버 밖에 백업 |
+| 신규 일기 작성 정책 | 배포본 `diary-source-text-release-mode` + `compose.diary-reader.yaml` 또는 `compose.diary-writer.yaml` | 최초 reader 성공 후 writer, 복구 시 배포본의 정책도 복원 |
+| prod writer 승인 | 호스트 `/etc/harudle/diary-writer-approval.json` | 실제 dev 복원 연습·prod 백업·reader 보존 기록을 운영자가 승인, 현재 canary 해시 변경 시 재검토 |
 | S3 인증 | EC2 IAM Role `ec2-project` | 임시 자격 증명 사용 |
 | GCP WIF 설정 파일 | 호스트 `/etc/harudle/gcp/gcp-wif.json` → 컨테이너 `/var/run/harudle/gcp-wif.json` | 읽기 전용 마운트 |
 
@@ -107,11 +110,17 @@ GitHub main
   → CodeDeploy → EC2 CodeDeploy Agent
       BeforeInstall    : ARM64 / Docker / Compose / jq / 서버 .env 확인
       AfterInstall     : 이미지 체크섬 검증 → docker load
-      ApplicationStart : 배포 환경 검사 → Compose 컨테이너 교체 (--no-build)
+      ApplicationStart : 배포 환경·writer 승인 검사 → 후보 키 검증 증거 → 승인 재확인 → Compose 컨테이너 교체 (--no-build)
       ValidateService  : 컨테이너 health + Frontend /health + 관리 포트 지표 확인
 ```
 
 CodeBuild가 이미지를 `docker save`로 묶어 전달하고 EC2가 로드한다.
+`DIARY_SOURCE_TEXT_RELEASE_MODE` 빌드 설정은 기본 `reader`이며 신규 작성을 차단한다.
+호환 reader 배포본을 성공·보존한 뒤 `writer`로 빌드해 신규 암호문 작성을 허용한다.
+복구 대상은 암호문·HMAC을 읽는 보존된 CodeDeploy 배포본이며 `:local` 이미지 태그가 아니다.
+prod writer는 실제 복원 연습과 백업 확인을 담은 운영자 승인 기록이 필요하다. CI가 이를 대신하지 않는다.
+Flyway는 비풀링 전용 연결에 잠금 대기 5초와 개별 SQL 실행 60초 제한을 두고 일반 JPA 풀과 분리한다.
+키 등록은 기존 서비스 중지·배출과 재시작 통제 아래 수행하며, 전체 키링 반영 후 신키 쓰기를 연다.
 EC2에서는 Gradle·Node 빌드를 수행하지 않는다. 네이티브 의존성과 베이스 이미지를
 바꿀 때는 최종 이미지의 `linux/arm64` 호환성을 확인한다.
 
@@ -146,6 +155,7 @@ AWS 배포 파이프라인과 GitHub 워크플로의 역할을 구분해 확인�
 | 이미지 빌드·배포 훅 | [buildspec.yml](buildspec.yml), [appspec.yml](appspec.yml), `deploy/scripts/` |
 | 이미지 저장·조회·삭제 | [이미지 저장소 분리 절차](docs/image-storage-isolation.md) |
 | RDS 연결·데이터 작업 | [DB 연결 설정](backend/src/main/resources/application.yml), [배포 환경 안내](deploy/README.md) |
+| 일기 원문 암호화·키 교체 | [원문 암호화 운영 안내](backend/docs/diary-source-text-encryption.md), `DIARY_SOURCE_TEXT_KEY_BASE64` (환경별 필수, 서버 `.env`에서 보존) |
 | 로그·지표·알람 | [모니터링 운영 안내](deploy/monitoring/README.md) |
 
 운영 기록에 과거 구성이 남아 있으면 현재 설정과 비교한다. 특히 로그 수집 방식,

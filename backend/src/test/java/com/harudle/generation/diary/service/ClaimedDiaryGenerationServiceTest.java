@@ -3,9 +3,11 @@ package com.harudle.generation.diary.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.harudle.common.logging.ExternalApiLogger;
@@ -32,6 +34,7 @@ import com.harudle.generation.diary.service.exception.DiaryGenerationFailedExcep
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
 import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageStorageException;
+import com.harudle.generation.diary.service.port.RequestFingerprintProtector;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
 import com.harudle.generation.diary.service.port.dto.DiaryImageGenerationRequest;
 import com.harudle.generation.diary.service.port.dto.GeneratedImage;
@@ -75,6 +78,11 @@ class ClaimedDiaryGenerationServiceTest {
     private static final UUID DIARY_ID = UUID.fromString("6b66acba-0136-4822-8a59-f355dd7c977d");
     private static final UUID IDEMPOTENCY_KEY = UUID.fromString("7e5cc251-fdde-4cc0-a54e-2c8142750609");
 
+    private static final String PROTECTED_FINGERPRINT = "f".repeat(64);
+
+    @Mock
+    private RequestFingerprintProtector requestFingerprintProtector;
+
     @Mock
     private GenerationPromptRepository generationPromptRepository;
 
@@ -103,8 +111,11 @@ class ClaimedDiaryGenerationServiceTest {
     @BeforeEach
     void setUp() {
         requestFingerprintGenerator = new RequestFingerprintGenerator();
+        lenient().when(requestFingerprintProtector.protect(any(), any(), any()))
+                .thenReturn(PROTECTED_FINGERPRINT);
         generationService = new ClaimedDiaryGenerationService(
                 requestFingerprintGenerator,
+                requestFingerprintProtector,
                 generationPromptRepository,
                 diaryGenerationRepository,
                 storyboardGenerationService,
@@ -147,9 +158,32 @@ class ClaimedDiaryGenerationServiceTest {
 
         CompletedDiaryGeneration result = generationService.generate(command, generation.getId());
 
+        verify(requestFingerprintProtector).protect(
+                command.diaryId(), command.userId(), requestFingerprintGenerator.generate(command)
+        );
         assertThat(result.title()).isEqualTo("친구와 보낸 하루");
         assertThat(result.tokenUsage()).isEqualTo(tokenUsage);
         verify(imageStorage, never()).delete(any(String.class));
+    }
+
+    @Test
+    @DisplayName("생성 실행은 원본 SHA가 아닌 저장 계약의 보호된 지문과 비교한다")
+    void rejectRawFingerprintWhenProtectedFingerprintIsRequired() {
+        GenerateDiaryImageCommand command = createCommand();
+        DiaryGeneration rawFingerprintGeneration = DiaryGeneration.start(
+                command.diaryId(), 1L, command.idempotencyKey(), requestFingerprintGenerator.generate(command)
+        );
+        when(diaryGenerationRepository.findById(rawFingerprintGeneration.getId()))
+                .thenReturn(Optional.of(rawFingerprintGeneration));
+
+        assertThatThrownBy(() -> generationService.generate(command, rawFingerprintGeneration.getId()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("선점한 그림일기 생성 요청과 실행 명령이 일치하지 않습니다.");
+        verify(requestFingerprintProtector).protect(
+                command.diaryId(), command.userId(), requestFingerprintGenerator.generate(command)
+        );
+        verifyNoInteractions(generationPromptRepository, storyboardGenerationService, diaryImageGenerator,
+                imageStorage, completionService);
     }
 
     @Test
@@ -162,8 +196,8 @@ class ClaimedDiaryGenerationServiceTest {
                 json, new QwenChatClient.Usage(100, 500, 110, 600, null), "stop", null));
         var qwen = new QwenStoryboardGenerator(client, QwenStoryboardSettings.defaults(), codec,
                 mock(ExternalApiLogger.class), new QwenStageMetrics(new SimpleMeterRegistry(), "qwen3.8-max"));
-        var service = new ClaimedDiaryGenerationService(requestFingerprintGenerator, generationPromptRepository,
-                diaryGenerationRepository, orchestrate(qwen, Optional.empty(), "qwen", "none"),
+        var service = new ClaimedDiaryGenerationService(requestFingerprintGenerator, requestFingerprintProtector,
+                generationPromptRepository, diaryGenerationRepository, orchestrate(qwen, Optional.empty(), "qwen", "none"),
                 diaryImageGenerator, imageStorage, completionService,
                 lifecycleMetrics);
         var providerInfo = new StoryboardProviderInfo("qwen", "qwen3.8-max");
@@ -642,8 +676,9 @@ class ClaimedDiaryGenerationServiceTest {
     }
 
     private ClaimedDiaryGenerationService claimedService(StoryboardGenerationService storyboardService) {
-        return new ClaimedDiaryGenerationService(requestFingerprintGenerator, generationPromptRepository,
-                diaryGenerationRepository, storyboardService, diaryImageGenerator, imageStorage, completionService,
+        return new ClaimedDiaryGenerationService(requestFingerprintGenerator, requestFingerprintProtector,
+                generationPromptRepository, diaryGenerationRepository, storyboardService,
+                diaryImageGenerator, imageStorage, completionService,
                 lifecycleMetrics);
     }
 
@@ -662,7 +697,7 @@ class ClaimedDiaryGenerationServiceTest {
                 command.diaryId(),
                 1L,
                 command.idempotencyKey(),
-                requestFingerprintGenerator.generate(command)
+                PROTECTED_FINGERPRINT
         );
     }
 

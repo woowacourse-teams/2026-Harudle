@@ -17,4 +17,9 @@ public record DiaryDetailResponse(
         @Schema(description = "연결된 활성 피드 ID. 게시 전 또는 피드 삭제 후에는 null", type = "string", format = "uuid")
         @Nullable UUID publishedFeedId
 ) {
+
+    @Override
+    public String toString() {
+        return "DiaryDetailResponse[sourceText=<redacted>]";
+    }
 }

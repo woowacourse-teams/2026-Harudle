@@ -12,6 +12,7 @@ import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
 import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
 import com.harudle.generation.diary.service.port.ImageStorage;
+import com.harudle.generation.diary.service.port.RequestFingerprintProtector;
 import com.harudle.generation.diary.service.storyboard.StoryboardGenerationService;
 import com.harudle.generation.prompt.infrastructure.GenerationPromptBootstrapService;
 import com.harudle.generation.prompt.infrastructure.GenerationPromptInitializer;
@@ -48,6 +49,7 @@ class DiaryGenerationConfiguration {
     @Bean
     DiaryGenerationExecutor diaryGenerationExecutor(
             RequestFingerprintGenerator requestFingerprintGenerator,
+            RequestFingerprintProtector requestFingerprintProtector,
             GenerationPromptRepository generationPromptRepository,
             DiaryGenerationRepository diaryGenerationRepository,
             ObjectProvider<StoryboardGenerationService> storyboardServiceProvider,
@@ -73,6 +75,7 @@ class DiaryGenerationConfiguration {
 
         DiaryGenerationExecutor executor = new ClaimedDiaryGenerationService(
                 requestFingerprintGenerator,
+                requestFingerprintProtector,
                 generationPromptRepository,
                 diaryGenerationRepository,
                 storyboardService.orElseThrow(),

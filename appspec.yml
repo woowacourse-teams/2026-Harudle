@@ -6,6 +6,12 @@ files:
     destination: /opt/harudle
   - source: deploy/compose.prod.yaml
     destination: /opt/harudle
+  - source: deploy/compose.diary-reader.yaml
+    destination: /opt/harudle
+  - source: deploy/compose.diary-writer.yaml
+    destination: /opt/harudle
+  - source: deploy/diary-source-text-release-mode
+    destination: /opt/harudle
   - source: deploy/monitoring
     destination: /opt/harudle/monitoring
   - source: build-artifacts

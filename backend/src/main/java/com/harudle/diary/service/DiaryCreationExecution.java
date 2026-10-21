@@ -13,4 +13,9 @@ record DiaryCreationExecution(
         DiaryGenerationResult generation,
         boolean newlyCreated
 ) {
+
+    @Override
+    public String toString() {
+        return "DiaryCreationExecution[sourceText=<redacted>]";
+    }
 }
