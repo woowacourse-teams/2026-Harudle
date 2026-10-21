@@ -22,6 +22,7 @@ import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.diary.repository.DiaryGenerationAdmissionLock;
 import com.harudle.generation.diary.service.DiaryGenerationCompletionService;
 import com.harudle.generation.diary.service.RequestFingerprintGenerator;
+import com.harudle.generation.diary.service.GenerationQueueMetrics;
 import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
 import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
 import com.harudle.generation.diary.service.exception.GenerationCapacityExceededException;
@@ -75,6 +76,9 @@ class DiaryCreationClaimServiceTest {
     @Mock
     private DiaryGenerationAdmissionLock admissionLock;
 
+    @Mock
+    private GenerationQueueMetrics queueMetrics;
+
     private DiaryCreationClaimService claimService;
 
     @BeforeEach
@@ -98,7 +102,8 @@ class DiaryCreationClaimServiceTest {
                         Duration.ofMinutes(1)
                 ),
                 admissionLock,
-                new GenerationWorkerProperties(concurrency, Duration.ofSeconds(5))
+                new GenerationWorkerProperties(concurrency, Duration.ofSeconds(5)),
+                queueMetrics
         );
     }
 
@@ -121,6 +126,7 @@ class DiaryCreationClaimServiceTest {
                 .countByStatusIn(List.of(GenerationStatus.PENDING, GenerationStatus.PROCESSING));
         verify(diaryRepository, never()).save(any(Diary.class));
         verify(diaryGenerationRepository, never()).saveAndFlush(any(DiaryGeneration.class));
+        verify(queueMetrics).capacityRejected();
     }
 
     @Test
@@ -141,6 +147,7 @@ class DiaryCreationClaimServiceTest {
 
         assertThat(claim.newlyCreated()).isTrue();
         assertThat(claim.generationStatus()).isEqualTo(GenerationStatus.PENDING);
+        verify(queueMetrics, never()).capacityRejected();
     }
 
     @ParameterizedTest
@@ -198,6 +205,7 @@ class DiaryCreationClaimServiceTest {
         assertThat(claim.generationId()).isEqualTo(generation.getId());
         assertThat(claim.generationStatus()).isEqualTo(GenerationStatus.PENDING);
         verify(admissionLock).acquire();
+        verify(queueMetrics, never()).capacityRejected();
         verify(diaryGenerationRepository, never()).countByStatusIn(any());
         verify(diaryRepository, never()).save(any(Diary.class));
         verify(diaryGenerationRepository, never()).saveAndFlush(any(DiaryGeneration.class));

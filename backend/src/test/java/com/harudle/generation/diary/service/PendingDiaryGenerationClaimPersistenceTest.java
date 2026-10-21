@@ -7,6 +7,7 @@ import com.harudle.generation.diary.domain.DiaryGeneration;
 import com.harudle.generation.diary.domain.GenerationStatus;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.support.ServiceIntegrationTestSupport;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
@@ -51,6 +52,12 @@ class PendingDiaryGenerationClaimPersistenceTest extends ServiceIntegrationTestS
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private MeterRegistry meterRegistry;
+
+    @Autowired
+    private GenerationQueueMetrics queueMetrics;
+
     private UUID userId;
     private Long promptId;
 
@@ -76,6 +83,7 @@ class PendingDiaryGenerationClaimPersistenceTest extends ServiceIntegrationTestS
     @Test
     @DisplayName("대기 작업만 생성 시각과 ID 순서로 정해진 개수만큼 가져온다")
     void claimPendingGenerationsInOrderWithinLimit() {
+        long initialWaitCount = waitCount();
         insertGeneration(THIRD_ID, GenerationStatus.PENDING, CREATED_AT.plusSeconds(1));
         insertGeneration(SECOND_ID, GenerationStatus.PENDING, CREATED_AT);
         insertGeneration(FIRST_ID, GenerationStatus.PENDING, CREATED_AT);
@@ -87,6 +95,7 @@ class PendingDiaryGenerationClaimPersistenceTest extends ServiceIntegrationTestS
         insertGeneration(failedId, GenerationStatus.FAILED, CREATED_AT.minusSeconds(1));
 
         assertThat(claimService.claim(2)).containsExactly(FIRST_ID, SECOND_ID);
+        assertThat(waitCount()).isEqualTo(initialWaitCount + 2);
 
         assertThat(findStatus(FIRST_ID)).isEqualTo(GenerationStatus.PROCESSING);
         assertThat(findStatus(SECOND_ID)).isEqualTo(GenerationStatus.PROCESSING);
@@ -96,6 +105,7 @@ class PendingDiaryGenerationClaimPersistenceTest extends ServiceIntegrationTestS
         assertThat(findStatus(failedId)).isEqualTo(GenerationStatus.FAILED);
         assertThat(claimService.claim(2)).containsExactly(THIRD_ID);
         assertThat(claimService.claim(2)).isEmpty();
+        assertThat(waitCount()).isEqualTo(initialWaitCount + 3);
     }
 
     @Test
@@ -198,16 +208,20 @@ class PendingDiaryGenerationClaimPersistenceTest extends ServiceIntegrationTestS
     @DisplayName("상태 변경을 취소하면 잠금이 풀리고 같은 작업을 다시 가져올 수 있다")
     void reclaimGenerationAfterRollback() {
         insertGeneration(FIRST_ID, GenerationStatus.PENDING, CREATED_AT);
+        long initialWaitCount = waitCount();
 
         transactionTemplate.executeWithoutResult(status -> {
             DiaryGeneration generation = diaryGenerationRepository.findPendingForUpdateSkipLocked(1).getFirst();
             generation.startProcessing();
+            queueMetrics.claimedAfterCommit(generation.getCreatedAt(), Instant.now());
             diaryGenerationRepository.flush();
             status.setRollbackOnly();
         });
 
         assertThat(findStatus(FIRST_ID)).isEqualTo(GenerationStatus.PENDING);
+        assertThat(waitCount()).isEqualTo(initialWaitCount);
         assertThat(claimService.claim(1)).containsExactly(FIRST_ID);
+        assertThat(waitCount()).isEqualTo(initialWaitCount + 1);
     }
 
     @Test
@@ -232,6 +246,10 @@ class PendingDiaryGenerationClaimPersistenceTest extends ServiceIntegrationTestS
             });
         }
         assertThat(findStatus(FIRST_ID)).isEqualTo(GenerationStatus.PROCESSING);
+    }
+
+    private long waitCount() {
+        return meterRegistry.get("harudle.generation.queue.wait").timer().count();
     }
 
     private void insertGeneration(UUID generationId, GenerationStatus status, Instant createdAt) {

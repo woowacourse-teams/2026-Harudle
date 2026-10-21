@@ -13,6 +13,7 @@ import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.diary.repository.DiaryGenerationAdmissionLock;
 import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import com.harudle.generation.diary.service.RequestFingerprintGenerator;
+import com.harudle.generation.diary.service.GenerationQueueMetrics;
 import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
 import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
 import com.harudle.generation.diary.service.exception.GenerationCapacityExceededException;
@@ -43,6 +44,7 @@ class DiaryCreationClaimService {
     private final Duration processingTimeout;
     private final DiaryGenerationAdmissionLock admissionLock;
     private final int maxUnfinishedGenerations;
+    private final GenerationQueueMetrics queueMetrics;
 
     DiaryCreationClaimService(
             DiaryRepository diaryRepository,
@@ -53,7 +55,8 @@ class DiaryCreationClaimService {
             @Qualifier("serviceClock") Clock clock,
             GenerationLifecycleProperties generationLifecycleProperties,
             DiaryGenerationAdmissionLock admissionLock,
-            GenerationWorkerProperties workerProperties
+            GenerationWorkerProperties workerProperties,
+            GenerationQueueMetrics queueMetrics
     ) {
         Duration processingTimeout = generationLifecycleProperties.processingTimeout();
         validateProcessingTimeout(processingTimeout);
@@ -66,6 +69,7 @@ class DiaryCreationClaimService {
         this.processingTimeout = processingTimeout;
         this.admissionLock = admissionLock;
         this.maxUnfinishedGenerations = workerProperties.concurrency();
+        this.queueMetrics = queueMetrics;
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -145,6 +149,7 @@ class DiaryCreationClaimService {
         }
         if (queueForWorker
                 && diaryGenerationRepository.countByStatusIn(UNFINISHED_STATUSES) >= maxUnfinishedGenerations) {
+            queueMetrics.capacityRejected();
             throw new GenerationCapacityExceededException();
         }
         Long promptId = generationPromptRepository.findFirstByOrderByIdDesc()

@@ -174,6 +174,10 @@ public class DiaryGeneration {
         return status;
     }
 
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
     public Storyboard getStoryboard() {
         return storyboard;
     }
