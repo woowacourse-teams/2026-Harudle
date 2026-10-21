@@ -96,6 +96,38 @@ AI 호출과 결과 저장 중 발생한 오류에는 이 재조회 규칙을 �
 앱 종료가 시작되면 새 선점을 멈춥니다. 이미 실행 중인 작업은 기존 종료 절차를 따릅니다.
 서버 중단으로 남은 처리 중 작업에는 기존 시간 초과 정리 규칙을 적용하며 자동 재시도는 추가하지 않습니다.
 
+### dev 부하 테스트 후 재시작 확인
+
+**k6와 dev 백엔드를 멈추고, 별도 명령으로 미완료 테스트 작업을 지운 뒤 백엔드를 켭니다.**
+테스트 ID는 메모리에만 남습니다. DB의 테스트 대기 작업을 그대로 두고 다시 켜면 실제 AI가 호출될 수 있습니다.
+정리 명령은 앱이 꺼진 상태에서 사용할 수 있습니다. 선택한 이유는 [중단된 테스트 작업 정리 ADR](<../backend/docs/adr/async-diary-generation/2026-10-21_중단된 부하 테스트 작업을 어떻게 정리할 것인가_캐모.md>)에 기록했습니다.
+
+1. k6를 종료합니다. dev 사용 시간을 팀과 맞추고 정리 중 다른 배포나 백엔드 시작을 하지 않습니다.
+2. dev EC2에서 백엔드 컨테이너를 중단합니다. 컨테이너 설정을 읽어야 하므로 `down`으로 삭제하지 않습니다.
+
+```bash
+cd /opt/harudle
+sudo docker compose --project-name harudle --env-file .env \
+  --file compose.prod.yaml --file compose.dev.yaml stop backend
+```
+
+3. `peak1`을 정리할 테스트 실행 이름으로 바꾸고 아래 명령을 실행합니다.
+
+```bash
+sudo python3 /opt/harudle/load-test/cleanup_stopped.py peak1 --client-stopped
+```
+
+4. 명령이 성공하고 출력의 `remainingTestWork`가 0이면 기존 재시작이나 배포 절차를 진행합니다. 같은 컨테이너를 켤 때는 위 Compose 명령의 `stop backend`를 `start backend`로 바꿉니다. 이미지와 환경 변수 변경은 기존 배포 훅으로 적용합니다.
+
+명령은 지정한 실행의 미완료 테스트 작업과 연결된 일기를 지우고 차감한 생성 횟수를 돌려줍니다.
+일반 회원과 게스트의 작업, 완료된 테스트 데이터는 유지합니다. S3 파일은 삭제하지 않습니다.
+실행 중인 백엔드, prod 설정, 준비 때와 다른 DB 주소는 거절합니다. Docker, Python과 기존 `runs/` 파일이 필요합니다.
+다른 실행의 미완료 테스트 작업이 남으면 지정한 실행을 정리한 뒤 오류로 끝납니다. 백엔드는 중단한 채 해당 실행도 정리합니다.
+
+`application_start.sh`와 앱 시작 코드는 이 명령을 자동으로 실행하지 않습니다. 정리 명령도 백엔드를 직접 켜거나 끄지 않습니다.
+자동 재시작이 먼저 이뤄지면 실제 AI 호출 가능성은 남으므로, 갑자기 꺼진 경우에도 실행 상태부터 확인합니다.
+출력 항목과 오류 처리, 완료 데이터 정리는 [부하 테스트 안내](../backend/load-test/README.md#dev-백엔드를-재시작해야-할-때)를 따릅니다.
+
 ## CodePipeline 배포
 
 CodeBuild는 백엔드와 프론트엔드 ARM64 이미지를 빌드한 뒤 이미지 압축본, `appspec.yml`, 운영 Compose 파일과 배포 스크립트를 하나의 CodePipeline 아티팩트로 만듭니다. CodeDeploy는 EC2에서 이미지를 로드하고 `/opt/harudle/compose.prod.yaml`로 컨테이너를 재기동합니다. EC2에서는 Gradle이나 Node 빌드를 수행하지 않습니다.

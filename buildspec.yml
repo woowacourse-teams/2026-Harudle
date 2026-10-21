@@ -86,6 +86,7 @@ artifacts:
     - backend/load-test/prepare.py
     - backend/load-test/assets.py
     - backend/load-test/cleanup.py
+    - backend/load-test/cleanup_stopped.py
     - backend/load-test/ec2.py
     - backend/load-test/transfer.py
     - build-artifacts/*
