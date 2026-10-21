@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import sendIcon from '../../assets/icons/feed-send.svg';
 import type { Category } from '../../domain/category/categoryList';
 import type { DiaryDetailResponse } from '../../domain/diary/diaryDetail';
+import type { DiaryGenerationSuccess } from '../../domain/diary/diaryGeneration';
 import ActionButton from '../../shared/ActionButton';
 import DiaryImage from '../../shared/DiaryImage';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
@@ -14,7 +15,7 @@ import FeedPostCategorySelect from './FeedPostCategorySelect';
 
 interface FeedPostContentProps {
   readonly diaryId: DiaryDetailResponse['id'];
-  readonly imageUrl: DiaryDetailResponse['generation']['imageUrl'];
+  readonly imageUrl: DiaryGenerationSuccess['imageUrl'];
 }
 
 const FeedPostContent = ({ diaryId, imageUrl }: FeedPostContentProps) => {

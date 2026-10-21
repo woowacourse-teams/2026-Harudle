@@ -56,7 +56,7 @@ jest.mock('../../domain/feeds/feedPublish', () => ({
   ): ReturnType<typeof publishFeed> => mockPublishFeed(...args),
 }));
 
-const diary: DiaryDetailResponse = {
+const diary = {
   id: 'diary-1',
   publishedFeedId: null,
   diaryDate: '2026-10-12',
@@ -70,7 +70,7 @@ const diary: DiaryDetailResponse = {
     imageUrlExpiresAt: '2099-10-12T12:00:00+09:00',
     completedAt: '2026-10-12T10:01:00+09:00',
   },
-};
+} satisfies DiaryDetailResponse;
 const categories: CategoryListResponse = [
   { id: 2, name: '우테코', sortOrder: 1, active: true },
   { id: 1, name: '일상', sortOrder: 0, active: true },
