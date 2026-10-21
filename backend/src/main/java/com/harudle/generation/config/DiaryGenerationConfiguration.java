@@ -21,6 +21,7 @@ import com.harudle.generation.prompt.infrastructure.GenerationPromptInitializer;
 import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import com.harudle.generation.loadtest.LoadTestGenerationRegistry;
 import io.micrometer.core.instrument.MeterRegistry;
+import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.beans.factory.ObjectProvider;
@@ -34,7 +35,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import org.springframework.context.event.ContextClosedEvent;
+import org.springframework.context.support.AbstractApplicationContext;
+import org.springframework.context.support.DefaultLifecycleProcessor;
 import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.scheduling.concurrent.ExecutorConfigurationSupport;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
@@ -46,6 +50,10 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
         GenerationWorkerProperties.class
 })
 class DiaryGenerationConfiguration {
+
+    private static final Duration WORKER_SHUTDOWN_TIMEOUT = Duration.ofMinutes(6);
+    // HTTP 요청 처리가 멈춘 뒤, 다른 실행기와 DB 연결이 종료되기 전에 생성 작업을 마칠 시간을 준다.
+    private static final int WORKER_SHUTDOWN_PHASE = ExecutorConfigurationSupport.DEFAULT_PHASE + 1;
 
     @Bean
     @ConditionalOnMissingBean(name = "taskScheduler")
@@ -64,6 +72,7 @@ class DiaryGenerationConfiguration {
         executor.setQueueCapacity(0);
         executor.setThreadNamePrefix("generation-worker-");
         executor.setStrictEarlyShutdown(true);
+        executor.setPhase(WORKER_SHUTDOWN_PHASE);
         return executor;
     }
 
@@ -85,11 +94,18 @@ class DiaryGenerationConfiguration {
 
     @Bean
     ApplicationListener<ContextClosedEvent> generationWorkerShutdownListener(
-            ApplicationContext context, DiaryGenerationWorker worker
+            ApplicationContext context,
+            DiaryGenerationWorker worker,
+            @Qualifier("generationWorkerTaskExecutor") ThreadPoolTaskExecutor executor
     ) {
         return event -> {
             if (event.getApplicationContext() == context) {
                 worker.requestStop();
+                DefaultLifecycleProcessor lifecycleProcessor = context.getBean(
+                        AbstractApplicationContext.LIFECYCLE_PROCESSOR_BEAN_NAME,
+                        DefaultLifecycleProcessor.class
+                );
+                lifecycleProcessor.setTimeoutForShutdownPhase(executor.getPhase(), WORKER_SHUTDOWN_TIMEOUT.toMillis());
             }
         };
     }
