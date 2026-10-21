@@ -17,10 +17,12 @@ import com.harudle.TestcontainersConfiguration;
 import com.harudle.auth.domain.OAuthAccount;
 import com.harudle.auth.domain.OAuthProvider;
 import com.harudle.auth.domain.User;
+import com.harudle.auth.domain.exception.NicknameAlreadyInUseException;
 import com.harudle.auth.infrastructure.OAuthAccountRepository;
 import com.harudle.auth.infrastructure.ProfileImageCleanupRepository;
 import com.harudle.auth.infrastructure.S3ProfileImageStorage;
 import com.harudle.auth.infrastructure.UserRepository;
+import com.harudle.auth.infrastructure.nickname.NicknameCandidateRepository;
 import com.harudle.common.security.AuthTimeConfiguration;
 import java.time.Instant;
 import java.util.UUID;
@@ -52,7 +54,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @DataJpaTest(showSql = false)
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import({TestcontainersConfiguration.class, AuthTimeConfiguration.class, ProfileImageChangeService.class,
-        ProfileImageUploadService.class, ProfileImageCleanupService.class, ProfileImageCleanupRepository.class})
+        ProfileImageUploadService.class, ProfileImageCleanupService.class, ProfileImageCleanupRepository.class,
+        ProfileChangeService.class, NicknameChangeService.class, NicknameCandidateRepository.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class ProfileImageUploadServiceTest {
 
@@ -63,6 +66,8 @@ class ProfileImageUploadServiceTest {
     private ProfileImageUploadService service;
     @Autowired
     private ProfileImageChangeService changes;
+    @Autowired
+    private ProfileChangeService profileChanges;
     @Autowired
     private ProfileImageCleanupService cleaner;
     @Autowired
@@ -138,14 +143,18 @@ class ProfileImageUploadServiceTest {
     }
 
     @Test
-    @DisplayName("DB 저장 실패가 확정되면 기존 프로필과 삭제 기록을 롤백하고 새 파일만 정리한다")
+    @DisplayName("사진 DB 저장이 실패하면 닉네임과 후보 점유도 롤백하고 새 파일만 정리한다")
     void rollsBackAndDeletesNewImageWhenDatabaseFails() {
         jdbc.execute("ALTER TABLE users ADD CONSTRAINT test_profile_image_failure "
                 + "CHECK (profile_image_object_key IS DISTINCT FROM '" + newKey + "')");
         try {
-            assertThatThrownBy(() -> service.upload(user.getId(), image()))
+            assertThatThrownBy(() -> service.changeProfile(user.getId(), "행복한 고양이", null, image()))
                     .isInstanceOf(DataIntegrityViolationException.class);
+            assertThat(saved().getNickname()).isEqualTo("초록");
             assertThat(saved().getProfileImageObjectKey()).isEqualTo(oldKey);
+            assertThat(jdbc.queryForObject(
+                    "SELECT assigned_user_id FROM nickname_candidates WHERE nickname = '행복한 고양이'",
+                    UUID.class)).isNull();
             verify(storage).delete(newKey);
             verify(storage, never()).delete(oldKey);
             assertThat(taskCount()).isZero();
@@ -160,8 +169,9 @@ class ProfileImageUploadServiceTest {
         ProfileImageStorageException failure = new ProfileImageStorageException("upload failed", newKey, null);
         when(storage.store(eq(user.getId()), any(byte[].class))).thenThrow(failure);
 
-        assertThatThrownBy(() -> service.upload(user.getId(), image())).isSameAs(failure);
+        assertThatThrownBy(() -> service.changeProfile(user.getId(), "새닉네임", null, image())).isSameAs(failure);
 
+        assertThat(saved().getNickname()).isEqualTo("초록");
         assertThat(saved().getProfileImageObjectKey()).isEqualTo(oldKey);
         verify(storage, never()).delete(newKey);
         verify(storage, never()).delete(oldKey);
@@ -181,8 +191,9 @@ class ProfileImageUploadServiceTest {
     void retriesFailedDeletionWithoutFailingUpload() {
         doThrow(new ProfileImageStorageException("delete failed", oldKey, null)).when(storage).delete(oldKey);
 
-        service.upload(user.getId(), image());
+        service.changeProfile(user.getId(), "새닉네임", null, image());
 
+        assertThat(saved().getNickname()).isEqualTo("새닉네임");
         assertThat(saved().getProfileImageObjectKey()).isEqualTo(newKey);
         assertThat(taskCount()).isEqualTo(1);
         doNothing().when(storage).delete(oldKey);
@@ -289,13 +300,64 @@ class ProfileImageUploadServiceTest {
     void rejectsUploadWhenStorageIsDisabled() {
         var provider = new StaticListableBeanFactory().getBeanProvider(S3ProfileImageStorage.class);
         ProfileImageUploadService disabledService = new ProfileImageUploadService(
-                processor, changes, cleaner, provider
+                processor, changes, profileChanges, cleaner, provider
         );
 
         assertThatThrownBy(() -> disabledService.upload(user.getId(), image()))
                 .isInstanceOf(ProfileImageStorageException.class);
         assertThat(saved().getProfileImageObjectKey()).isEqualTo(oldKey);
         verifyNoInteractions(storage);
+    }
+
+    @Test
+    @DisplayName("닉네임과 기본 이미지를 함께 확정한 뒤 이전 개인 사진을 삭제한다")
+    void changesNicknameAndDefaultImageTogether() {
+        doAnswer(invocation -> {
+            assertThat(saved().getNickname()).isEqualTo("새닉네임");
+            assertThat(saved().getProfileImageCode()).isEqualTo((short) 7);
+            assertThat(saved().getProfileImageObjectKey()).isNull();
+            return null;
+        }).when(storage).delete(oldKey);
+
+        service.changeProfile(user.getId(), "새닉네임", 7, null);
+
+        verify(storage).delete(oldKey);
+        verifyNoInteractions(processor);
+        assertThat(taskCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("닉네임과 업로드 사진을 함께 확정한 뒤 이전 파일을 삭제한다")
+    void changesNicknameAndUploadedImageTogether() {
+        doAnswer(invocation -> {
+            assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+            assertThat(saved().getNickname()).isEqualTo("새닉네임");
+            assertThat(saved().getProfileImageObjectKey()).isEqualTo(newKey);
+            return null;
+        }).when(storage).delete(oldKey);
+
+        service.changeProfile(user.getId(), "새닉네임", null, image());
+
+        verify(storage).delete(oldKey);
+        assertThat(saved().getProfileImageCode()).isEqualTo((short) 3);
+        assertThat(taskCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("중복 닉네임이면 기존 프로필을 유지하고 이미 업로드한 새 사진만 정리한다")
+    void deletesNewUploadWhenNicknameIsTaken() {
+        User other = new User(null, "다른회원", NOW);
+        other.assignInitialPublicProfile("사용중인닉네임", 1, NOW);
+        users.save(other);
+
+        assertThatThrownBy(() -> service.changeProfile(user.getId(), "사용중인닉네임", null, image()))
+                .isInstanceOf(NicknameAlreadyInUseException.class);
+
+        assertThat(saved().getNickname()).isEqualTo("초록");
+        assertThat(saved().getProfileImageObjectKey()).isEqualTo(oldKey);
+        verify(storage).delete(newKey);
+        verify(storage, never()).delete(oldKey);
+        assertThat(taskCount()).isZero();
     }
 
     private User saved() {

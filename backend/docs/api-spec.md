@@ -112,6 +112,7 @@ Idempotency-Key: 7e5cc251-fdde-4cc0-a54e-2c8142750609
 | `POST` | `/api/v1/auth/logout` | 불필요 | Refresh Token Cookie를 이용한 현재 로그인 세션 종료 |
 | `POST` | `/api/v1/guest/session` | 불필요 | 로그인 전 체험용 게스트 세션 발급 또는 재사용 |
 | `GET` | `/api/v1/me` | 필요 | 내 프로필 조회 |
+| `PATCH` | `/api/v1/me/profile` | 필요 | 닉네임과 프로필 이미지 통합 변경 |
 | `PATCH` | `/api/v1/me/profile-image` | 필요 | 내 기본 프로필 이미지 변경 |
 | `POST` | `/api/v1/me/profile-image` | 필요 | 내 개인 프로필 이미지 업로드 |
 
@@ -388,6 +389,51 @@ Cache-Control: no-store
 각 이미지 URL과 같은 객체에 `profileImageUrlExpiresAt`을 반환합니다. 개인 사진은 만료 시각이 있고 기본 이미지는 `null`입니다.
 기존 글과 댓글도 다시 조회할 때 바뀐 사진을 표시합니다. 다른 사람이 열어둔 화면을 실시간으로 갱신하지는 않습니다.
 탈퇴 회원의 댓글은 이미지 URL과 만료 시각이 모두 `null`이며, 알림의 탈퇴한 행위자는 기존처럼 `actor: null`입니다.
+
+### 4.9 닉네임과 프로필 이미지 통합 변경
+
+하나의 모달에서 저장할 때 사용하는 API입니다. 변경한 항목만 `multipart/form-data`로 보냅니다.
+로그인 인증은 `Authorization: Bearer {accessToken}`을 사용하며 CSRF Cookie/Header는 필요하지 않습니다.
+
+| 항목 | 보내는 값 | 생략하면 |
+| --- | --- | --- |
+| `nickname` | 기존 규칙에 맞는 1~10자 닉네임 | 현재 닉네임 유지 |
+| `imageCode` | 기본 이미지 번호 1~10 | 파일도 없으면 현재 사진 유지 |
+| `image` | 5MiB 이하 JPEG 또는 PNG 파일 한 장 | 번호도 없으면 현재 사진 유지 |
+
+적어도 한 항목은 보내야 합니다. `imageCode`와 `image`를 동시에 보내거나 빈 닉네임을 보내면 거절합니다.
+사진 제한과 변환 규칙은 개인 사진 업로드 API와 같습니다.
+
+닉네임과 기본 이미지 변경 예시:
+
+```shell
+curl -X PATCH 'http://localhost:8080/api/v1/me/profile' \
+  -H 'Authorization: Bearer {accessToken}' \
+  -F 'nickname=새닉네임' \
+  -F 'imageCode=7'
+```
+
+개인 사진으로 바꾸려면 `imageCode` 대신 `-F 'image=@profile.png'`를 보냅니다.
+닉네임만 바꾸려면 사진 항목을, 사진만 바꾸려면 `nickname`을 생략합니다.
+
+- 성공 응답은 본문 없는 `204 No Content`이며 `Cache-Control: no-store`를 반환합니다.
+- 닉네임, 사진 정보, 닉네임 후보 사용 상태와 이전 파일의 삭제 작업은 한 DB 트랜잭션에서 확정합니다.
+- 닉네임 중복이나 사진 DB 저장 실패 시 닉네임과 사진 정보를 모두 이전 상태로 유지합니다. 새로 업로드한 파일만 기존 정리 규칙에 따라 처리합니다.
+- 사진 변환과 업로드는 DB 트랜잭션 밖에서 처리합니다. 업로드 실패 시 닉네임도 바뀌지 않습니다.
+- 이전 사진 삭제만 실패하면 새 프로필은 유지하고 다음 이미지 변경에서 정리를 재시도합니다.
+- 저장 성공 후 `GET /api/v1/me`를 다시 조회해 닉네임과 사진을 반영합니다. 재조회 실패는 이미 성공한 저장을 취소하지 않습니다.
+- 기존 `/nickname`과 `/profile-image` API는 그대로 사용할 수 있습니다.
+
+| HTTP 상태 | 오류 코드 | 상황 |
+| --- | --- | --- |
+| `400` | `VALIDATION_ERROR` | 변경 항목 없음, 잘못된 닉네임이나 이미지 번호, 사진 두 종류 동시 전달, 잘못된 파일 |
+| `401` | `UNAUTHORIZED` | Access Token 누락 또는 유효하지 않은 토큰 |
+| `401` | `INVALID_CURRENT_USER` | 사용자가 없거나 탈퇴했거나 연결된 OAuth 계정이 없음 |
+| `409` | `NICKNAME_ALREADY_IN_USE` | 다른 회원이 사용 중인 닉네임 |
+| `409` | `PUBLIC_PROFILE_NOT_ASSIGNED` | 공개 프로필이 아직 배정되지 않음 |
+| `413` | `PAYLOAD_TOO_LARGE` | 원본 파일이 5MiB 초과 또는 공용 요청 크기 제한 초과 |
+| `415` | `UNSUPPORTED_MEDIA_TYPE` | JPEG/PNG가 아니거나 요청이 multipart/form-data 형식이 아님 |
+| `503` | `PROFILE_IMAGE_STORAGE_ERROR` | S3 저장 실패 또는 저장소 연결 비활성화 |
 
 ## 5. 일기 및 생성 API
 

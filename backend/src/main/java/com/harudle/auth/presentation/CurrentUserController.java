@@ -25,6 +25,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -93,6 +94,38 @@ public class CurrentUserController {
             @Valid @RequestBody ChangeNicknameRequest request
     ) {
         nicknameChangeService.change(extractUserId(jwt), request.nickname());
+
+        return ResponseEntity.noContent()
+                .cacheControl(CacheControl.noStore())
+                .build();
+    }
+
+    @Operation(
+            summary = "내 닉네임과 프로필 이미지 함께 변경",
+            description = "multipart/form-data로 nickname, imageCode 또는 image를 전송합니다. "
+                    + "생략한 항목은 유지하며 imageCode와 image는 함께 보낼 수 없습니다. "
+                    + "닉네임과 이미지 정보는 모두 저장하거나 모두 취소합니다. 성공 후 GET /api/v1/me로 다시 조회합니다."
+    )
+    @ApiResponse(responseCode = "204", description = "프로필 변경 완료")
+    @ApiErrorResponses(value = {
+            ErrorType.UNAUTHORIZED,
+            ErrorType.INVALID_CURRENT_USER,
+            ErrorType.VALIDATION_ERROR,
+            ErrorType.NICKNAME_ALREADY_IN_USE,
+            ErrorType.PUBLIC_PROFILE_NOT_ASSIGNED,
+            ErrorType.PROFILE_IMAGE_STORAGE_ERROR
+    }, framework = {
+            @ApiFrameworkError(status = 413, name = "원본 이미지 크기 초과", detail = "프로필 이미지는 5MiB 이하여야 합니다."),
+            @ApiFrameworkError(status = 415, name = "미지원 이미지 형식", detail = "프로필 이미지는 JPEG 또는 PNG만 지원합니다.")
+    })
+    @PatchMapping(value = "/profile", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Void> changeProfile(
+            @AuthenticationPrincipal Jwt jwt,
+            @Valid @ModelAttribute ChangeProfileRequest request
+    ) {
+        profileImageUploadService.changeProfile(
+                extractUserId(jwt), request.nickname(), request.imageCode(), request.image()
+        );
 
         return ResponseEntity.noContent()
                 .cacheControl(CacheControl.noStore())

@@ -295,6 +295,27 @@ class SecurityConfigTest {
     }
 
     @Test
+    @DisplayName("통합 프로필 문서에 선택 가능한 multipart 항목과 인증 및 응답을 명시한다")
+    void documentsCombinedProfileChange() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile'].patch.security[0].bearerAuth").isArray())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile'].patch.security[0].csrfToken").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile'].patch.responses['204']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile'].patch.responses['409'].content"
+                        + "['application/problem+json'].examples.NICKNAME_ALREADY_IN_USE.value.code")
+                        .value("NICKNAME_ALREADY_IN_USE"))
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile'].patch.requestBody.content"
+                        + "['multipart/form-data'].schema['$ref']").value("#/components/schemas/ChangeProfileRequest"))
+                .andExpect(jsonPath("$.components.schemas.ChangeProfileRequest.required").doesNotExist())
+                .andExpect(jsonPath("$.components.schemas.ChangeProfileRequest.properties.nickname").exists())
+                .andExpect(jsonPath("$.components.schemas.ChangeProfileRequest.properties.imageCode.minimum").value(1))
+                .andExpect(jsonPath("$.components.schemas.ChangeProfileRequest.properties.imageCode.maximum").value(10))
+                .andExpect(jsonPath("$.components.schemas.ChangeProfileRequest.properties.image.format")
+                        .value("binary"));
+    }
+
+    @Test
     @DisplayName("OpenAPI 문서에 API별 Problem Details 코드와 예시를 명시한다")
     void documentsApiErrorResponses() throws Exception {
         mockMvc.perform(get("/v3/api-docs"))

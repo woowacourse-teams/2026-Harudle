@@ -33,6 +33,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
@@ -308,6 +311,159 @@ class ProfileImageUploadControllerTest {
         verify(storage, never()).delete(newKey);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM profile_image_cleanup_tasks WHERE object_key = ?",
                 Integer.class, newKey)).isEqualTo(1);
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = "새닉네임")
+    @DisplayName("통합 수정은 기본 이미지를 저장하고 닉네임은 보낸 경우에만 바꾼다")
+    void changesDefaultImageAndOptionalNickname(String nickname) {
+        User user = saveUser(true);
+        String previous = setPreviousImage(user);
+        var request = RestAssuredMockMvc.given()
+                .header(HttpHeaders.AUTHORIZATION, bearer(user.getId()))
+                .contentType(MediaType.MULTIPART_FORM_DATA_VALUE)
+                .param("imageCode", "7");
+        if (nickname != null) {
+            request.param("nickname", nickname);
+        }
+
+        MockMvcResponse response = request.patch("/api/v1/me/profile");
+
+        assertThat(response.statusCode()).isEqualTo(204);
+        assertThat(response.header(HttpHeaders.CACHE_CONTROL)).isEqualTo("no-store");
+        User saved = users.findById(user.getId()).orElseThrow();
+        assertThat(saved.getNickname()).isEqualTo(nickname == null ? user.getNickname() : nickname);
+        assertThat(saved.getProfileImageCode()).isEqualTo((short) 7);
+        assertThat(saved.getProfileImageObjectKey()).isNull();
+        verify(storage).delete(previous);
+        verifyNoInteractions(encoder);
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = "새닉네임")
+    @DisplayName("통합 수정은 개인 사진을 저장하고 닉네임은 보낸 경우에만 바꾼다")
+    void changesUploadedImageAndOptionalNickname(String nickname) throws IOException {
+        User user = saveUser(true);
+        var request = RestAssuredMockMvc.given()
+                .header(HttpHeaders.AUTHORIZATION, bearer(user.getId()))
+                .multiPart("image", "profile.png", imageBytes("png", 20, 10), "image/png");
+        if (nickname != null) {
+            request.param("nickname", nickname);
+        }
+
+        MockMvcResponse response = request.patch("/api/v1/me/profile");
+
+        assertThat(response.statusCode()).isEqualTo(204);
+        User saved = users.findById(user.getId()).orElseThrow();
+        assertThat(saved.getNickname()).isEqualTo(nickname == null ? user.getNickname() : nickname);
+        assertThat(saved.getProfileImageObjectKey()).isEqualTo(key(user.getId()));
+        assertThat(saved.getProfileImageCode()).isEqualTo((short) 3);
+    }
+
+    @Test
+    @DisplayName("통합 수정에서 닉네임만 보내면 사진은 유지한다")
+    void keepsImageWhenOnlyNicknameIsSent() {
+        User user = saveUser(true);
+        String previous = setPreviousImage(user);
+
+        MockMvcResponse response = RestAssuredMockMvc.given()
+                .header(HttpHeaders.AUTHORIZATION, bearer(user.getId()))
+                .contentType(MediaType.MULTIPART_FORM_DATA_VALUE)
+                .param("nickname", "새닉네임")
+                .patch("/api/v1/me/profile");
+
+        assertThat(response.statusCode()).isEqualTo(204);
+        User saved = users.findById(user.getId()).orElseThrow();
+        assertThat(saved.getNickname()).isEqualTo("새닉네임");
+        assertThat(saved.getProfileImageObjectKey()).isEqualTo(previous);
+        verifyNoInteractions(encoder, storage);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "11", "not-a-number"})
+    @DisplayName("기본 이미지 번호가 잘못되면 닉네임과 사진을 모두 유지한다")
+    void rejectsInvalidImageCodeWithoutChangingNickname(String imageCode) {
+        User user = saveUser(true);
+        String previous = setPreviousImage(user);
+
+        MockMvcResponse response = RestAssuredMockMvc.given()
+                .header(HttpHeaders.AUTHORIZATION, bearer(user.getId()))
+                .contentType(MediaType.MULTIPART_FORM_DATA_VALUE)
+                .param("nickname", "새닉네임")
+                .param("imageCode", imageCode)
+                .patch("/api/v1/me/profile");
+
+        assertThat(response.statusCode()).isEqualTo(400);
+        assertThat(response.jsonPath().getString("code")).isEqualTo("VALIDATION_ERROR");
+        User saved = users.findById(user.getId()).orElseThrow();
+        assertThat(saved.getNickname()).isEqualTo(user.getNickname());
+        assertThat(saved.getProfileImageObjectKey()).isEqualTo(previous);
+        verifyNoInteractions(encoder, storage);
+    }
+
+    @Test
+    @DisplayName("기본 이미지와 개인 사진을 함께 보내면 파일 처리 전에 거절한다")
+    void rejectsBothImageSources() {
+        User user = saveUser(true);
+
+        MockMvcResponse response = RestAssuredMockMvc.given()
+                .header(HttpHeaders.AUTHORIZATION, bearer(user.getId()))
+                .param("nickname", "새닉네임")
+                .param("imageCode", "7")
+                .multiPart("image", "profile.png", new byte[] {1}, "image/png")
+                .patch("/api/v1/me/profile");
+
+        assertThat(response.statusCode()).isEqualTo(400);
+        assertThat(users.findById(user.getId()).orElseThrow().getNickname()).isEqualTo(user.getNickname());
+        verifyNoInteractions(encoder, storage);
+    }
+
+    @Test
+    @DisplayName("통합 수정에서 변경 항목이 없으면 거절한다")
+    void rejectsEmptyProfileChange() {
+        User user = saveUser(true);
+
+        MockMvcResponse response = RestAssuredMockMvc.given()
+                .header(HttpHeaders.AUTHORIZATION, bearer(user.getId()))
+                .contentType(MediaType.MULTIPART_FORM_DATA_VALUE)
+                .patch("/api/v1/me/profile");
+
+        assertThat(response.statusCode()).isEqualTo(400);
+        assertThat(response.jsonPath().getString("code")).isEqualTo("VALIDATION_ERROR");
+        verifyNoInteractions(encoder, storage);
+    }
+
+    @Test
+    @DisplayName("통합 수정에서 빈 닉네임이면 사진도 바꾸지 않는다")
+    void rejectsBlankNicknameWithoutChangingImage() {
+        User user = saveUser(true);
+        String previous = setPreviousImage(user);
+
+        MockMvcResponse response = RestAssuredMockMvc.given()
+                .header(HttpHeaders.AUTHORIZATION, bearer(user.getId()))
+                .contentType(MediaType.MULTIPART_FORM_DATA_VALUE)
+                .param("nickname", "")
+                .param("imageCode", "7")
+                .patch("/api/v1/me/profile");
+
+        assertThat(response.statusCode()).isEqualTo(400);
+        assertThat(response.jsonPath().getString("code")).isEqualTo("VALIDATION_ERROR");
+        assertThat(users.findById(user.getId()).orElseThrow().getProfileImageObjectKey()).isEqualTo(previous);
+        verifyNoInteractions(encoder, storage);
+    }
+
+    @Test
+    @DisplayName("통합 수정도 로그인하지 않으면 거절한다")
+    void requiresAuthenticationForCombinedProfile() {
+        MockMvcResponse response = RestAssuredMockMvc.given()
+                .contentType(MediaType.MULTIPART_FORM_DATA_VALUE)
+                .param("nickname", "새닉네임")
+                .patch("/api/v1/me/profile");
+
+        assertThat(response.statusCode()).isEqualTo(401);
+        verifyNoInteractions(encoder, storage);
     }
 
     private MockMvcResponse upload(User user, byte[] bytes) {
