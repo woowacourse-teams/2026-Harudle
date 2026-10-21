@@ -8,7 +8,7 @@
 
 ## 배경
 
-기존에는 [codebuild_backend.sh](../../../deploy/scripts/codebuild_backend.sh)에서 백엔드 Gradle과 관련된 4가지 값만 `[build-metrics]` 로그로 남겼다.
+기존에는 [codebuild_backend.sh](../../../../deploy/scripts/codebuild_backend.sh)에서 백엔드 Gradle과 관련된 4가지 값만 `[build-metrics]` 로그로 남겼다.
 
 - `backend_incremental_state_restored`: 이전 컴파일 결과 복원 여부
 - `backend_incremental_restore_seconds`: 복원한 파일을 작업 폴더에 복사한 시간
@@ -21,7 +21,7 @@
 
 ## 결정
 
-[buildspec.yml](../../../buildspec.yml)의 `build` 단계와 `post_build` 단계에 아래 4개의 `[build-metrics]` 로그를 추가한다. 기존 백엔드 스크립트와 같은 `[build-metrics] 키=값` 형식을 사용한다. 후속 이미지 재사용 구현안에서는 프론트엔드 이미지를 새로 만들 때만 프론트엔드의 생성과 압축 시간 로그가 남는다.
+[buildspec.yml](../../../../buildspec.yml)의 `build` 단계와 `post_build` 단계에 아래 4개의 `[build-metrics]` 로그를 추가한다. 기존 백엔드 스크립트와 같은 `[build-metrics] 키=값` 형식을 사용한다. 후속 이미지 재사용 구현안에서는 프론트엔드 이미지를 새로 만들 때만 프론트엔드의 생성과 압축 시간 로그가 남는다.
 
 1. `backend_docker_export_seconds`
 2. `frontend_docker_export_seconds`
