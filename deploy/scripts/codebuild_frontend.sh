@@ -92,6 +92,7 @@ save() {
   cp -- "$image_archive" "$staged_cache_dir/frontend-image.tar.gz"
   (cd "$staged_cache_dir" && sha256sum frontend-image.tar.gz > frontend-image.sha256)
   cp -- "$fingerprint_file" "$staged_cache_dir/fingerprint"
+  rm -f -- "$cache_root/fingerprint"
   mv -f -- "$staged_cache_dir/frontend-image.tar.gz" "$cache_root/frontend-image.tar.gz"
   mv -f -- "$staged_cache_dir/frontend-image.sha256" "$cache_root/frontend-image.sha256"
   mv -f -- "$staged_cache_dir/fingerprint" "$cache_root/fingerprint"
