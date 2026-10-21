@@ -32,7 +32,7 @@ public final class DiarySourceTextMigration {
     private static final String JOINED_ROWS = """
             SELECT d.id, d.user_id, d.diary_date, d.source_text, d.source_text_version,
                    g.id AS generation_id, g.idempotency_key, g.request_fingerprint
-            FROM diaries d LEFT JOIN diary_generations g ON g.diary_id = d.id
+            FROM public.diaries d LEFT JOIN public.diary_generations g ON g.diary_id = d.id
             """;
 
     private final Connection connection;
@@ -52,7 +52,7 @@ public final class DiarySourceTextMigration {
     }
 
     public Status status() {
-        return safely(this::readStatus);
+        return safely(() -> inspect(this::readStatus));
     }
 
     public MigrationResult migrate(int batchSize, int maxBatches) {
@@ -60,7 +60,7 @@ public final class DiarySourceTextMigration {
     }
 
     public VerificationResult verify(int batchSize) {
-        return safely(() -> exclusively(() -> verifyLocked(batchSize)));
+        return safely(() -> exclusively(() -> inspect(() -> verifyLocked(batchSize))));
     }
 
     public VerificationResult finalizeMigration(int batchSize) {
@@ -70,7 +70,10 @@ public final class DiarySourceTextMigration {
     /** Requires a validated v1-only CHECK, a non-null version with no default, and no legacy or unknown rows. */
     public void requireReady() {
         safely(() -> {
-            requireReadyInternal();
+            inspect(() -> {
+                requireReadyInternal();
+                return null;
+            });
             return null;
         });
     }
@@ -81,7 +84,8 @@ public final class DiarySourceTextMigration {
         Counters counters = new Counters();
         UUID cursor = null;
         for (int batch = 0; batch < maxBatches; batch++) {
-            List<UUID> candidates = legacyCandidates(cursor, batchSize);
+            UUID pageCursor = cursor;
+            List<UUID> candidates = inspect(() -> legacyCandidates(pageCursor, batchSize));
             migrateCandidates(candidates, counters);
             if (candidates.size() < batchSize) {
                 break;
@@ -89,7 +93,7 @@ public final class DiarySourceTextMigration {
             cursor = candidates.getLast();
         }
         return new MigrationResult(counters.attempted, counters.migrated, counters.skippedProcessing,
-                counters.failed, counters.orphanMigrated, readStatus());
+                counters.failed, counters.orphanMigrated, inspect(this::readStatus));
     }
 
     private void migrateCandidates(List<UUID> candidates, Counters counters) {
@@ -100,8 +104,14 @@ public final class DiarySourceTextMigration {
 
     private Outcome migrateCandidate(UUID diaryId) {
         try {
-            return transaction(() -> migrateRow(diaryId));
+            return transaction(() -> {
+                lockAndRequireSchema(false);
+                return migrateRow(diaryId);
+            });
         } catch (SQLException | RuntimeException exception) {
+            if (unusable || exception instanceof SchemaViolationException) {
+                throw new DiarySourceTextMigrationException();
+            }
             return Outcome.FAILED;
         }
     }
@@ -152,7 +162,7 @@ public final class DiarySourceTextMigration {
     }
 
     private List<UUID> legacyCandidates(UUID cursor, int batchSize) throws SQLException {
-        String sql = "SELECT id FROM diaries WHERE source_text_version = 0"
+        String sql = "SELECT id FROM public.diaries WHERE source_text_version = 0"
                 + (cursor == null ? "" : " AND id > ?") + " ORDER BY id LIMIT ?";
         try (PreparedStatement statement = prepare(sql)) {
             int limitIndex = bindCursor(statement, cursor);
@@ -174,7 +184,7 @@ public final class DiarySourceTextMigration {
     private Generation lockGeneration(UUID diaryId) throws SQLException {
         try (PreparedStatement statement = prepare("""
                 SELECT id, idempotency_key, request_fingerprint, status
-                FROM diary_generations WHERE diary_id = ? FOR UPDATE
+                FROM public.diary_generations WHERE diary_id = ? FOR UPDATE
                 """)) {
             statement.setObject(1, diaryId);
             try (ResultSet row = statement.executeQuery()) {
@@ -188,7 +198,7 @@ public final class DiarySourceTextMigration {
     private StoredDiary lockDiary(UUID diaryId) throws SQLException {
         try (PreparedStatement statement = prepare("""
                 SELECT id, user_id, diary_date, source_text, source_text_version
-                FROM diaries WHERE id = ? FOR UPDATE
+                FROM public.diaries WHERE id = ? FOR UPDATE
                 """)) {
             statement.setObject(1, diaryId);
             try (ResultSet row = statement.executeQuery()) {
@@ -199,7 +209,7 @@ public final class DiarySourceTextMigration {
 
     private boolean hasGeneration(UUID diaryId) throws SQLException {
         try (PreparedStatement statement = prepare(
-                "SELECT EXISTS (SELECT 1 FROM diary_generations WHERE diary_id = ?)")) {
+                "SELECT EXISTS (SELECT 1 FROM public.diary_generations WHERE diary_id = ?)")) {
             statement.setObject(1, diaryId);
             return readBoolean(statement);
         }
@@ -207,7 +217,7 @@ public final class DiarySourceTextMigration {
 
     private void updateDiary(UUID diaryId, String encrypted) throws SQLException {
         try (PreparedStatement statement = prepare("""
-                UPDATE diaries SET source_text = ?, source_text_version = 1
+                UPDATE public.diaries SET source_text = ?, source_text_version = 1
                 WHERE id = ? AND source_text_version = 0
                 """)) {
             statement.setString(1, encrypted);
@@ -218,7 +228,7 @@ public final class DiarySourceTextMigration {
 
     private void updateFingerprint(Generation generation, String fingerprint) throws SQLException {
         try (PreparedStatement statement = prepare("""
-                UPDATE diary_generations SET request_fingerprint = ? WHERE id = ? AND request_fingerprint = ?
+                UPDATE public.diary_generations SET request_fingerprint = ? WHERE id = ? AND request_fingerprint = ?
                 """)) {
             statement.setString(1, fingerprint);
             statement.setObject(2, generation.id());
@@ -286,17 +296,19 @@ public final class DiarySourceTextMigration {
     }
 
     private VerificationResult finalizeLocked(int batchSize) throws SQLException {
-        VerificationResult verified = verifyLocked(batchSize);
+        VerificationResult verified = inspect(() -> verifyLocked(batchSize));
         if (verified.failed() > 0 || verified.remaining().legacyRows() > 0
                 || verified.remaining().unsupportedRows() > 0) {
             return verified;
         }
-        long blocked = transaction(this::finalizeSchema);
-        return new VerificationResult(verified.checked(), blocked, readStatus());
+        long blocked = transaction(() -> {
+            lockAndRequireSchema(true);
+            return finalizeSchema();
+        });
+        return new VerificationResult(verified.checked(), blocked, inspect(this::readStatus));
     }
 
     private long finalizeSchema() throws SQLException {
-        execute("LOCK TABLE diaries IN ACCESS EXCLUSIVE MODE");
         Status current = readStatus();
         long invalid = current.legacyRows() + current.unsupportedRows();
         if (invalid > 0) {
@@ -304,13 +316,13 @@ public final class DiarySourceTextMigration {
         }
         Constraint constraint = readConstraint();
         if (!constraint.exists()) {
-            execute("ALTER TABLE diaries ADD CONSTRAINT " + ENCRYPTED_ONLY_CONSTRAINT
+            execute("ALTER TABLE public.diaries ADD CONSTRAINT " + ENCRYPTED_ONLY_CONSTRAINT
                     + " CHECK (source_text_version = 1) NOT VALID");
         } else {
             require(constraint.exact());
         }
-        execute("ALTER TABLE diaries VALIDATE CONSTRAINT " + ENCRYPTED_ONLY_CONSTRAINT);
-        execute("ALTER TABLE diaries ALTER COLUMN source_text_version DROP DEFAULT");
+        execute("ALTER TABLE public.diaries VALIDATE CONSTRAINT " + ENCRYPTED_ONLY_CONSTRAINT);
+        execute("ALTER TABLE public.diaries ALTER COLUMN source_text_version DROP DEFAULT");
         requireReadyInternal();
         return 0;
     }
@@ -328,7 +340,7 @@ public final class DiarySourceTextMigration {
                                              OR d.source_text_version NOT IN (0, 1)) AS unsupported,
                        count(*) FILTER (WHERE d.source_text_version = 0 AND g.status = 'PROCESSING') AS processing,
                        count(*) FILTER (WHERE g.id IS NULL) AS orphans
-                FROM diaries d LEFT JOIN diary_generations g ON g.diary_id = d.id
+                FROM public.diaries d LEFT JOIN public.diary_generations g ON g.diary_id = d.id
                 """)) {
             try (ResultSet row = statement.executeQuery()) {
                 require(row.next());
@@ -342,7 +354,7 @@ public final class DiarySourceTextMigration {
         Constraint constraint = readConstraint();
         try (PreparedStatement statement = prepare("""
                 SELECT a.attnotnull, a.atthasdef FROM pg_attribute a
-                WHERE a.attrelid = 'diaries'::regclass AND a.attname = 'source_text_version' AND NOT a.attisdropped
+                WHERE a.attrelid = 'public.diaries'::regclass AND a.attname = 'source_text_version' AND NOT a.attisdropped
                 """)) {
             try (ResultSet row = statement.executeQuery()) {
                 require(row.next());
@@ -360,7 +372,7 @@ public final class DiarySourceTextMigration {
                        a.attnum = ANY(c.conkey) AS correct_column
                 FROM pg_constraint c JOIN pg_attribute a
                   ON a.attrelid = c.conrelid AND a.attname = 'source_text_version' AND NOT a.attisdropped
-                WHERE c.conrelid = 'diaries'::regclass AND c.conname = ?
+                WHERE c.conrelid = 'public.diaries'::regclass AND c.conname = ?
                 """)) {
             statement.setString(1, ENCRYPTED_ONLY_CONSTRAINT);
             try (ResultSet row = statement.executeQuery()) {
@@ -423,16 +435,114 @@ public final class DiarySourceTextMigration {
         }
     }
 
+    private <T> T inspect(SqlOperation<T> operation) throws SQLException {
+        return transaction(() -> {
+            lockAndRequireSchema(false);
+            return operation.run();
+        });
+    }
+
+    /** Keeps schema identity and row visibility stable until this transaction has completed. */
+    private void lockAndRequireSchema(boolean exclusiveDiaries) {
+        try {
+            execute("SET LOCAL row_security = off");
+            execute("LOCK TABLE public.diary_generations IN ACCESS SHARE MODE");
+            execute("LOCK TABLE public.diaries IN " + (exclusiveDiaries ? "ACCESS EXCLUSIVE" : "ACCESS SHARE")
+                    + " MODE");
+            requireOrdinaryTable("diaries");
+            requireOrdinaryTable("diary_generations");
+            requireColumn("diaries", "id", "uuid");
+            requireColumn("diaries", "user_id", "uuid");
+            requireColumn("diaries", "diary_date", "date");
+            requireColumn("diaries", "source_text", "text");
+            requireColumn("diaries", "source_text_version", "integer");
+            requireColumn("diary_generations", "id", "uuid");
+            requireColumn("diary_generations", "diary_id", "uuid");
+            requireSingleColumnKey("diaries", "id", "p");
+            requireSingleColumnKey("diary_generations", "id", "p");
+            requireSingleColumnKey("diary_generations", "diary_id", "u");
+        } catch (SQLException | RuntimeException exception) {
+            throw new SchemaViolationException();
+        }
+    }
+
+    private void requireOrdinaryTable(String table) throws SQLException {
+        try (PreparedStatement statement = prepare("""
+                SELECT c.relkind, c.relrowsecurity, c.relforcerowsecurity,
+                       EXISTS (SELECT 1 FROM pg_catalog.pg_inherits i
+                               WHERE i.inhrelid = c.oid OR i.inhparent = c.oid) AS inherited
+                FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = 'public' AND c.relname = ?
+                """)) {
+            statement.setString(1, table);
+            try (ResultSet row = statement.executeQuery()) {
+                require(row.next() && "r".equals(row.getString("relkind"))
+                        && !row.getBoolean("relrowsecurity") && !row.getBoolean("relforcerowsecurity")
+                        && !row.getBoolean("inherited"));
+            }
+        }
+    }
+
+    private void requireColumn(String table, String column, String type) throws SQLException {
+        try (PreparedStatement statement = prepare("""
+                SELECT a.attnotnull, a.attgenerated = '' AND a.attidentity = '' AS plain_column,
+                       n.nspname = 'pg_catalog' AS built_in,
+                       pg_catalog.format_type(a.atttypid, a.atttypmod) AS formatted_type
+                FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_type t ON t.oid = a.atttypid
+                JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+                WHERE a.attrelid = pg_catalog.to_regclass(?) AND a.attname = ?
+                  AND a.attnum > 0 AND NOT a.attisdropped
+                """)) {
+            statement.setString(1, "public." + table);
+            statement.setString(2, column);
+            try (ResultSet row = statement.executeQuery()) {
+                require(row.next() && row.getBoolean("attnotnull") && row.getBoolean("plain_column")
+                        && row.getBoolean("built_in") && type.equals(row.getString("formatted_type")));
+            }
+        }
+    }
+
+    private void requireSingleColumnKey(String table, String column, String kind) throws SQLException {
+        try (PreparedStatement statement = prepare("""
+                SELECT EXISTS (
+                    SELECT 1 FROM pg_catalog.pg_constraint c JOIN pg_catalog.pg_attribute a
+                      ON a.attrelid = c.conrelid AND a.attname = ? AND NOT a.attisdropped
+                    WHERE c.conrelid = pg_catalog.to_regclass(?) AND c.contype::text = ?
+                      AND c.convalidated AND NOT c.condeferrable AND c.conkey = ARRAY[a.attnum]
+                      AND a.attnotnull AND a.atttypid = 'pg_catalog.uuid'::regtype
+                )
+                """)) {
+            statement.setString(1, column);
+            statement.setString(2, "public." + table);
+            statement.setString(3, kind);
+            require(readBoolean(statement));
+        }
+    }
+
+    private static final class SchemaViolationException extends RuntimeException {
+    }
+
     private <T> T transaction(SqlOperation<T> operation) throws SQLException {
         require(!unusable);
-        connection.setAutoCommit(false);
+        try {
+            connection.setAutoCommit(false);
+        } catch (SQLException | RuntimeException exception) {
+            abort();
+            throw new DiarySourceTextMigrationException();
+        }
+        boolean commitAttempted = false;
         try {
             execute("SET LOCAL lock_timeout = '2s'");
             execute("SET LOCAL statement_timeout = '10s'");
             T result = operation.run();
+            commitAttempted = true;
             connection.commit();
             return result;
         } catch (SQLException | RuntimeException exception) {
+            if (commitAttempted) {
+                abort();
+                throw new DiarySourceTextMigrationException();
+            }
             rollbackSafely();
             throw exception;
         } finally {
@@ -443,19 +553,20 @@ public final class DiarySourceTextMigration {
     private void rollbackSafely() throws SQLException {
         try {
             connection.rollback();
-        } catch (SQLException exception) {
+        } catch (SQLException | RuntimeException exception) {
             abort();
             throw new DiarySourceTextMigrationException();
         }
     }
 
     private void restoreAutoCommit() throws SQLException {
-        if (unusable || connection.isClosed()) {
+        if (unusable) {
             return;
         }
         try {
+            require(!connection.isClosed());
             connection.setAutoCommit(true);
-        } catch (SQLException exception) {
+        } catch (SQLException | RuntimeException exception) {
             abort();
             throw new DiarySourceTextMigrationException();
         }
@@ -482,10 +593,9 @@ public final class DiarySourceTextMigration {
     }
 
     private void releaseExecutionLock() throws SQLException {
-        if (unusable || connection.isClosed()) {
-            throw new DiarySourceTextMigrationException();
-        }
+        require(!unusable);
         try {
+            require(!connection.isClosed());
             require(advisory("SELECT pg_advisory_unlock(?)"));
         } catch (SQLException | RuntimeException exception) {
             abort();
@@ -504,8 +614,12 @@ public final class DiarySourceTextMigration {
         unusable = true;
         try {
             connection.abort(Runnable::run);
-        } catch (SQLException ignored) {
-            // The dedicated connection must never be returned to a pool after an uncertain lock/rollback result.
+        } catch (SQLException | RuntimeException ignored) {
+            try {
+                connection.close();
+            } catch (SQLException | RuntimeException closeFailure) {
+                // An uncertain connection must never be reused by its owner.
+            }
         }
     }
 

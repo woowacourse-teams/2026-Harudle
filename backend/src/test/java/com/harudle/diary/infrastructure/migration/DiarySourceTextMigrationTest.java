@@ -8,6 +8,8 @@ import com.harudle.diary.infrastructure.crypto.AesGcmDiarySourceTextCipher;
 import com.harudle.diary.infrastructure.crypto.DiarySourceTextEncryptionProperties;
 import com.harudle.generation.diary.service.RequestFingerprintGenerator;
 import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -22,16 +24,19 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -60,7 +65,6 @@ class DiarySourceTextMigrationTest {
     private long promptId;
     private int nextDiaryId;
 
-    @BeforeAll
     static void migrateSchema() {
         Flyway.configure()
                 .configuration(Map.of("flyway.postgresql.transactional.lock", "false"))
@@ -70,6 +74,11 @@ class DiarySourceTextMigrationTest {
 
     @BeforeEach
     void setUp() throws SQLException {
+        Flyway.configure()
+                .configuration(Map.of("flyway.postgresql.transactional.lock", "false"))
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .cleanDisabled(false).load().clean();
+        migrateSchema();
         connection = openConnection();
         execute("DROP TRIGGER IF EXISTS migration_test_fingerprint_failure ON diary_generations");
         execute("DROP FUNCTION IF EXISTS migration_test_reject_fingerprint()");
@@ -94,7 +103,7 @@ class DiarySourceTextMigrationTest {
 
     @AfterEach
     void tearDown() throws SQLException {
-        if (connection != null) {
+        if (connection != null && !connection.isClosed()) {
             if (!connection.getAutoCommit()) {
                 connection.rollback();
             }
@@ -384,10 +393,31 @@ class DiarySourceTextMigrationTest {
         migration.requireReady();
 
         execute("ALTER TABLE diaries ALTER COLUMN source_text_version DROP NOT NULL");
-        assertThat(migration.status().finalized()).isFalse();
+        assertThatThrownBy(migration::status).isInstanceOf(DiarySourceTextMigrationException.class);
         assertThatThrownBy(migration::requireReady).isInstanceOf(DiarySourceTextMigrationException.class);
         execute("ALTER TABLE diaries ALTER COLUMN source_text_version SET NOT NULL");
         migration.requireReady();
+    }
+
+    @Test
+    @DisplayName("NULL version을 허용한 복원 스키마는 행 집계 전에 전체 작업을 거절한다")
+    void rejectNullableVersionSchemaInsteadOfReportingAnUnsupportedRow() throws SQLException {
+        Fixture fixture = insertLegacy("NULL version의 원문은 그대로 둔다", null, false);
+        execute("ALTER TABLE diaries ALTER COLUMN source_text_version DROP NOT NULL");
+        execute("UPDATE diaries SET source_text_version = NULL WHERE id = ?", fixture.diaryId());
+
+        assertThatThrownBy(migration::status).isExactlyInstanceOf(DiarySourceTextMigrationException.class);
+        assertThatThrownBy(() -> migration.migrate(1, 1))
+                .isExactlyInstanceOf(DiarySourceTextMigrationException.class);
+        assertThatThrownBy(() -> migration.verify(1)).isExactlyInstanceOf(DiarySourceTextMigrationException.class);
+        assertThatThrownBy(() -> migration.finalizeMigration(1))
+                .isExactlyInstanceOf(DiarySourceTextMigrationException.class);
+        assertThatThrownBy(migration::requireReady).isExactlyInstanceOf(DiarySourceTextMigrationException.class);
+
+        assertThat(scalar("SELECT source_text FROM diaries WHERE id = ?", fixture.diaryId()))
+                .isEqualTo(fixture.source());
+        assertThat(scalar("SELECT source_text_version FROM diaries WHERE id = ?", fixture.diaryId())).isNull();
+        assertConnectionRetained();
     }
 
     @Test
@@ -482,6 +512,277 @@ class DiarySourceTextMigrationTest {
             worker.shutdownNow();
             worker.awaitTermination(10, TimeUnit.SECONDS);
             migrationConnection.close();
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"diaries", "diary_generations"})
+    @DisplayName("양쪽 테이블의 RLS는 숨은 손상 원문이나 PROCESSING 생성을 성공·orphan으로 오인하지 않는다")
+    void refuseRowSecurityOnEitherMigrationTable(String hiddenTable) throws Exception {
+        boolean hiddenGeneration = "diary_generations".equals(hiddenTable);
+        Fixture fixture = insertLegacy("RLS 아래의 원문", hiddenGeneration ? "PROCESSING" : "SUCCEEDED", false);
+        if (!hiddenGeneration) {
+            migration.migrate(1, 1);
+            execute("UPDATE diaries SET source_text = ? WHERE id = ?",
+                    cipher.encrypt(UUID.randomUUID(), USER_ID, fixture.source()), fixture.diaryId());
+        }
+        Stored before = stored(fixture.diaryId());
+        String role = "migration_rls_" + UUID.randomUUID().toString().replace("-", "");
+        execute("CREATE ROLE " + role);
+        execute("GRANT SELECT, UPDATE ON diaries, diary_generations TO " + role);
+        execute("ALTER TABLE " + hiddenTable + " ENABLE ROW LEVEL SECURITY");
+        execute("ALTER TABLE " + hiddenTable + " FORCE ROW LEVEL SECURITY");
+        execute("CREATE POLICY hide_migration_rows ON " + hiddenTable + " USING (false)");
+        try (Connection restricted = openConnection()) {
+            executeOn(restricted, "SET ROLE " + role);
+            assertThat(scalar(restricted, "SELECT COUNT(*) FROM public." + hiddenTable)).isEqualTo(0L);
+            var hidden = new DiarySourceTextMigration(restricted, cipher, fingerprints);
+
+            assertThatThrownBy(() -> hidden.migrate(1, 1)).isInstanceOf(DiarySourceTextMigrationException.class);
+            assertThatThrownBy(() -> hidden.verify(1)).isInstanceOf(DiarySourceTextMigrationException.class);
+            assertThatThrownBy(() -> hidden.finalizeMigration(1))
+                    .isInstanceOf(DiarySourceTextMigrationException.class);
+            assertThatThrownBy(hidden::requireReady).isInstanceOf(DiarySourceTextMigrationException.class);
+        } finally {
+            execute("REVOKE SELECT, UPDATE ON diaries, diary_generations FROM " + role);
+            execute("DROP ROLE " + role);
+        }
+        assertThat(stored(fixture.diaryId())).isEqualTo(before);
+    }
+
+    @Test
+    @DisplayName("복원 DB에서 한 일기에 생성 기록이 둘이면 한쪽 SHA만 바꾸거나 keyset에서 누락하지 않는다")
+    void rejectDuplicateGenerationsBeforeChangingEitherRepresentation() throws SQLException {
+        Fixture fixture = insertLegacy("중복 생성 기록의 원문", "SUCCEEDED", false);
+        execute("ALTER TABLE diary_generations DROP CONSTRAINT uq_diary_generations_diary");
+        execute("""
+                INSERT INTO diary_generations (id, diary_id, prompt_id, idempotency_key, request_fingerprint,
+                    status, title, image_object_key, completed_at)
+                SELECT ?, diary_id, prompt_id, ?, request_fingerprint,
+                    status, title, 'generated/duplicate.png', completed_at
+                FROM diary_generations WHERE id = ?
+                """, UUID.randomUUID(), UUID.randomUUID(), fixture.generationId());
+        Stored before = stored(fixture.diaryId());
+
+        assertThatThrownBy(() -> migration.migrate(1, 10)).isInstanceOf(DiarySourceTextMigrationException.class);
+        assertThatThrownBy(() -> migration.verify(1)).isInstanceOf(DiarySourceTextMigrationException.class);
+        assertThatThrownBy(() -> migration.finalizeMigration(1)).isInstanceOf(DiarySourceTextMigrationException.class);
+
+        assertThat(stored(fixture.diaryId())).isEqualTo(before);
+        assertThat(scalar("SELECT COUNT(*) FROM diary_generations WHERE request_fingerprint = ?",
+                rawFingerprint(fixture))).isEqualTo(2L);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    @DisplayName("PK 없는 복원 DB의 101개 중복 UUID와 null ID는 keyset 누락 전에 거절한다")
+    void rejectDuplicateOrNullCursorIdsBeforePaginating(boolean nullable) throws SQLException {
+        execute("ALTER TABLE diaries DROP CONSTRAINT pk_diaries CASCADE");
+        if (nullable) {
+            execute("ALTER TABLE diaries ALTER COLUMN id DROP NOT NULL");
+        }
+        UUID id = UUID.randomUUID();
+        String encrypted = cipher.encrypt(id, USER_ID, "복원 DB 중복 ID");
+        for (int index = 0; index < 101; index++) {
+            execute("""
+                    INSERT INTO diaries (id, user_id, diary_date, source_text, source_text_version)
+                    VALUES (?, ?, ?, ?, 1)
+                    """, id, USER_ID, DIARY_DATE, encrypted);
+        }
+        if (nullable) {
+            execute("""
+                    INSERT INTO diaries (id, user_id, diary_date, source_text, source_text_version)
+                    VALUES (NULL, ?, ?, ?, 1)
+                    """, USER_ID, DIARY_DATE, encrypted);
+        }
+
+        assertThatThrownBy(() -> migration.verify(1)).isInstanceOf(DiarySourceTextMigrationException.class);
+        assertThatThrownBy(() -> migration.finalizeMigration(1)).isInstanceOf(DiarySourceTextMigrationException.class);
+        assertThatThrownBy(migration::status).isInstanceOf(DiarySourceTextMigrationException.class);
+        assertThatThrownBy(migration::requireReady).isInstanceOf(DiarySourceTextMigrationException.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    @DisplayName("실제 커밋 뒤 응답이 유실되면 전환과 완료 모두 성공 결과 없이 중단하고 연결을 폐기한다")
+    void abortTheWholeOperationWhenCommitAcknowledgementIsLost(boolean finalizing) throws Exception {
+        Fixture first = insertLegacy("커밋 응답 유실 첫 행", "SUCCEEDED", false);
+        Fixture second = insertLegacy("계속 처리하면 안 되는 다음 행", "SUCCEEDED", false);
+        if (finalizing) {
+            migration.migrate(10, 1);
+        }
+        AtomicInteger commits = new AtomicInteger();
+        Connection original = connection;
+        Connection uncertain = (Connection) Proxy.newProxyInstance(
+                Connection.class.getClassLoader(), new Class<?>[]{Connection.class}, (proxy, method, arguments) -> {
+                    if ("commit".equals(method.getName()) && commits.incrementAndGet() == 2) {
+                        original.commit();
+                        throw new SQLException("private-commit-response-lost");
+                    }
+                    try {
+                        return method.invoke(original, arguments);
+                    } catch (InvocationTargetException exception) {
+                        throw exception.getCause();
+                    }
+                }
+        );
+        var interrupted = new DiarySourceTextMigration(uncertain, cipher, fingerprints);
+
+        assertThatThrownBy(() -> {
+            if (finalizing) {
+                interrupted.finalizeMigration(10);
+            } else {
+                interrupted.migrate(10, 1);
+            }
+        }).isExactlyInstanceOf(DiarySourceTextMigrationException.class).hasMessage(FAILURE_MESSAGE).hasNoCause();
+
+        assertThat(original.isClosed()).isTrue();
+        assertThat(commits).hasValue(2);
+        connection = openConnection();
+        assertEncrypted(first, cipher);
+        if (finalizing) {
+            new DiarySourceTextMigration(connection, cipher, fingerprints).requireReady();
+        } else {
+            assertThat(stored(second.diaryId()).version()).isZero();
+            assertThat(stored(second.diaryId()).fingerprint()).isEqualTo(rawFingerprint(second));
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"isClosed", "setAutoCommit"})
+    @DisplayName("행 커밋 뒤 연결 상태 확인이나 복원이 실패하면 다음 행을 처리하지 않는다")
+    void abortBeforeTheNextRowWhenConnectionRestorationFails(String failingMethod) throws Exception {
+        Fixture first = insertLegacy("상태 복원 실패 첫 행", "SUCCEEDED", false);
+        Fixture second = insertLegacy("상태가 불명확하면 건드리지 않을 행", "SUCCEEDED", false);
+        Connection original = connection;
+        AtomicInteger commits = new AtomicInteger();
+        Connection uncertain = (Connection) Proxy.newProxyInstance(
+                Connection.class.getClassLoader(), new Class<?>[]{Connection.class}, (proxy, method, arguments) -> {
+                    if (failingMethod.equals(method.getName()) && commits.get() == 2
+                            && (!"setAutoCommit".equals(failingMethod) || Boolean.TRUE.equals(arguments[0]))) {
+                        throw new SQLException("private-connection-restoration-failed");
+                    }
+                    try {
+                        Object result = method.invoke(original, arguments);
+                        if ("commit".equals(method.getName())) {
+                            commits.incrementAndGet();
+                        }
+                        return result;
+                    } catch (InvocationTargetException exception) {
+                        throw exception.getCause();
+                    }
+                }
+        );
+
+        assertThatThrownBy(() -> new DiarySourceTextMigration(uncertain, cipher, fingerprints).migrate(10, 1))
+                .isExactlyInstanceOf(DiarySourceTextMigrationException.class).hasMessage(FAILURE_MESSAGE).hasNoCause();
+
+        assertThat(original.isClosed()).isTrue();
+        assertThat(commits).hasValue(2);
+        connection = openConnection();
+        assertEncrypted(first, cipher);
+        assertThat(stored(second.diaryId()).version()).isZero();
+        assertThat(stored(second.diaryId()).fingerprint()).isEqualTo(rawFingerprint(second));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"status", "verify", "migrate", "finalize", "ready"})
+    @DisplayName("스키마 조회 트랜잭션의 커밋 응답 유실도 작업 전체를 실패시키고 연결을 폐기한다")
+    void abortWhenAnInspectionTransactionLosesCommitAcknowledgement(String operation) throws Exception {
+        insertEncryptedOrphan("읽기 검사 커밋 응답 유실");
+        migration.finalizeMigration(1);
+        Connection original = connection;
+        AtomicInteger commits = new AtomicInteger();
+        Connection uncertain = (Connection) Proxy.newProxyInstance(
+                Connection.class.getClassLoader(), new Class<?>[]{Connection.class}, (proxy, method, arguments) -> {
+                    if ("commit".equals(method.getName())) {
+                        commits.incrementAndGet();
+                        original.commit();
+                        throw new SQLException("private-inspection-commit-response-lost");
+                    }
+                    try {
+                        return method.invoke(original, arguments);
+                    } catch (InvocationTargetException exception) {
+                        throw exception.getCause();
+                    }
+                }
+        );
+        var interrupted = new DiarySourceTextMigration(uncertain, cipher, fingerprints);
+
+        assertThatThrownBy(() -> {
+            switch (operation) {
+                case "status" -> interrupted.status();
+                case "verify" -> interrupted.verify(1);
+                case "migrate" -> interrupted.migrate(1, 1);
+                case "finalize" -> interrupted.finalizeMigration(1);
+                case "ready" -> interrupted.requireReady();
+                default -> throw new AssertionError("Unknown test operation.");
+            }
+        }).isExactlyInstanceOf(DiarySourceTextMigrationException.class).hasMessage(FAILURE_MESSAGE).hasNoCause();
+
+        assertThat(original.isClosed()).isTrue();
+        assertThat(commits).hasValue(1);
+        connection = openConnection();
+        assertThat(new DiarySourceTextMigration(connection, cipher, fingerprints).verify(1).failed()).isZero();
+    }
+
+    @Test
+    @DisplayName("전수 검증 중에는 두 테이블의 DDL을 막아 검사한 스키마가 중간에 바뀌지 않는다")
+    void retainSchemaLocksUntilVerificationCompletes() throws Exception {
+        Fixture fixture = insertLegacy("DDL 경합 검증", "SUCCEEDED", false);
+        migration.migrate(1, 1);
+        CountDownLatch verifying = new CountDownLatch(1);
+        CountDownLatch finish = new CountDownLatch(1);
+        DiarySourceTextCipher paused = new DiarySourceTextCipher() {
+            @Override
+            public String encrypt(UUID diaryId, UUID userId, String text) {
+                return cipher.encrypt(diaryId, userId, text);
+            }
+
+            @Override
+            public String decrypt(UUID diaryId, UUID userId, String storedText, int version) {
+                verifying.countDown();
+                try {
+                    if (!finish.await(5, TimeUnit.SECONDS)) {
+                        throw new AssertionError("Verification release timed out.");
+                    }
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new AssertionError(exception);
+                }
+                return cipher.decrypt(diaryId, userId, storedText, version);
+            }
+
+            @Override
+            public String protectRequestFingerprint(UUID diaryId, UUID userId, String text, int version, String raw) {
+                return cipher.protectRequestFingerprint(diaryId, userId, text, version, raw);
+            }
+        };
+        ExecutorService worker = Executors.newSingleThreadExecutor();
+        try (Connection verifier = openConnection(); Connection ddl = openConnection()) {
+            Future<DiarySourceTextMigration.VerificationResult> pending = worker.submit(() ->
+                    new DiarySourceTextMigration(verifier, paused, fingerprints).verify(1));
+            try {
+                assertThat(verifying.await(5, TimeUnit.SECONDS)).isTrue();
+                executeOn(ddl, "SET lock_timeout = '100ms'");
+                assertThatThrownBy(() -> executeOn(ddl,
+                        "ALTER TABLE public.diary_generations DROP CONSTRAINT uq_diary_generations_diary"))
+                        .isInstanceOf(SQLException.class);
+            } finally {
+                finish.countDown();
+            }
+            assertThat(pending.get(10, TimeUnit.SECONDS).failed()).isZero();
+            assertEncrypted(fixture, cipher);
+        } finally {
+            finish.countDown();
+            worker.shutdownNow();
+            worker.awaitTermination(10, TimeUnit.SECONDS);
+        }
+    }
+
+    private void executeOn(Connection selected, String sql) throws SQLException {
+        try (PreparedStatement statement = selected.prepareStatement(sql)) {
+            statement.execute();
         }
     }
 
