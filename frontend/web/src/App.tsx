@@ -17,11 +17,14 @@ import AdminGuard from './pages/admin/AdminGuard';
 import NotFoundPage from './pages/not-found/NotFoundPage';
 import PwaAnalyticsTracker from './pages/setting/PwaAnalyticsTracker';
 import FeedPostPage from './pages/feed-post/FeedPostPage';
+import DiaryGenerationNotice from './shared/DiaryGenerationNotice';
 
 const App = () => {
   return (
     <div css={appStyle}>
       <PwaAnalyticsTracker />
+      <DiaryGenerationNotice />
+
       <Routes>
         <Route element={<EntryRoute />}>
           <Route element={<PublicFeedRoute />}>

@@ -8,7 +8,6 @@ import {
   type ReactNode,
 } from 'react';
 import { RequestError, type ApiRequest } from '../../shared/api';
-import { DIARY_CONTENT_SESSION_KEY } from '../../shared/constants';
 import {
   generateDiary,
   DIARY_GENERATION_ERROR_CODE,
@@ -17,13 +16,14 @@ import {
 } from '../../domain/diary/diaryGenerate';
 import { useAnalytics } from '../../posthog/useAnalytics';
 
+interface DiaryGenerateExecuteOptions extends DiaryGenerateRequest {
+  readonly onSuccess?: (response: DiaryGenerateResponse) => void;
+  readonly onError?: (error: Error) => void;
+}
+
 interface DiaryGenerateContextValue {
   request: ApiRequest<DiaryGenerateResponse>;
-  execute: ({
-    diaryDate,
-    sourceText,
-    idempotencyKey,
-  }: DiaryGenerateRequest) => Promise<void>;
+  execute: (options: DiaryGenerateExecuteOptions) => Promise<void>;
   resetRequest: () => void;
 }
 
@@ -54,29 +54,19 @@ export const DiaryGenerateProvider = ({
       diaryDate,
       sourceText,
       idempotencyKey,
-    }: DiaryGenerateRequest): Promise<void> => {
+      onSuccess,
+      onError,
+    }: DiaryGenerateExecuteOptions): Promise<void> => {
       setRequest({
         status: 'loading',
       });
+      let diaryGenerateResponse: DiaryGenerateResponse;
+
       try {
-        const diaryGenerateResponse = await generateDiary({
+        diaryGenerateResponse = await generateDiary({
           diaryDate,
           sourceText,
           idempotencyKey,
-        });
-
-        setRequest({
-          status: 'success',
-          data: diaryGenerateResponse,
-        });
-
-        sessionStorage.removeItem(DIARY_CONTENT_SESSION_KEY); // TOOD: 별도 로직으로 분리 (책임분리)
-
-        track('diary_created', {
-          diary_id: diaryGenerateResponse.id,
-          diary_date: diaryGenerateResponse.diaryDate,
-          remaining_generation_count:
-            diaryGenerateResponse.usage.remainingCount,
         });
       } catch (error: unknown) {
         if (error instanceof Error) {
@@ -93,8 +83,23 @@ export const DiaryGenerateProvider = ({
             status: 'error',
             error: error,
           });
+          onError?.(error);
         }
+        return;
       }
+
+      setRequest({
+        status: 'success',
+        data: diaryGenerateResponse,
+      });
+
+      track('diary_created', {
+        diary_id: diaryGenerateResponse.id,
+        diary_date: diaryGenerateResponse.diaryDate,
+        remaining_generation_count: diaryGenerateResponse.usage.remainingCount,
+      });
+
+      onSuccess?.(diaryGenerateResponse);
     },
     [track, captureError],
   );
