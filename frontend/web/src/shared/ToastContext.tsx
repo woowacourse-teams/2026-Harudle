@@ -19,7 +19,13 @@ interface RemoveToastAction {
   readonly id: ToastItem['id'];
 }
 
-type ToastAction = AddToastAction | RemoveToastAction;
+interface UpdateToastAction {
+  readonly type: 'update';
+  readonly id: ToastItem['id'];
+  readonly toast: Partial<ToastProps>;
+}
+
+type ToastAction = AddToastAction | RemoveToastAction | UpdateToastAction;
 
 const TOAST_MAX_LENGTH = 2;
 
@@ -28,7 +34,13 @@ interface ToastContextValue {
   readonly addToast: (
     toast: ToastProps,
     durationMs: number | 'infinite',
+    id?: ToastItem['id'],
   ) => ToastItem['id'];
+  readonly deleteToast: (id: ToastItem['id']) => void;
+  readonly updateToast: (
+    id: ToastItem['id'],
+    toast: Partial<ToastProps>,
+  ) => void;
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
@@ -39,9 +51,16 @@ const toastReducer = (
 ): readonly ToastItem[] => {
   switch (action.type) {
     case 'add':
+      if (toasts.some((toast): boolean => toast.id === action.toast.id)) {
+        return toasts;
+      }
       return [...toasts, action.toast];
     case 'remove':
       return toasts.filter((toast): boolean => toast.id !== action.id);
+    case 'update':
+      return toasts.map((toast): ToastItem => {
+        return toast.id === action.id ? { ...toast, ...action.toast } : toast;
+      });
   }
 };
 
@@ -51,9 +70,8 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
   const addToast = (
     toast: ToastProps,
     durationMs: number | 'infinite',
+    id: ToastItem['id'] = crypto.randomUUID(),
   ): ToastItem['id'] => {
-    const id = crypto.randomUUID();
-
     if (toasts.length >= TOAST_MAX_LENGTH) {
       const oldestId = toasts[0].id;
       dispatch({ type: 'remove', id: oldestId });
@@ -70,8 +88,21 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
     return id;
   };
 
+  const deleteToast = (id: ToastItem['id']): void => {
+    dispatch({ type: 'remove', id });
+  };
+
+  const updateToast = (
+    id: ToastItem['id'],
+    toast: Partial<ToastProps>,
+  ): void => {
+    dispatch({ type: 'update', id, toast });
+  };
+
   return (
-    <ToastContext.Provider value={{ toasts, addToast }}>
+    <ToastContext.Provider
+      value={{ toasts, addToast, deleteToast, updateToast }}
+    >
       {children}
       {createPortal(
         <div css={toastListStyle}>
