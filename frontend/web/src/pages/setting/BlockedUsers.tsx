@@ -43,6 +43,7 @@ const BlockedUsersList = () => {
   const [busy, setBusy] = useState<string | 'more' | null>(null);
   const busyRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
+  const [refreshFailed, setRefreshFailed] = useState(false);
   const mountedRef = useRef(true);
 
   useEffect((): (() => void) => {
@@ -76,6 +77,7 @@ const BlockedUsersList = () => {
     try {
       const data = await getBlockedUsers({ cursor });
       if (!mountedRef.current) return;
+      if (cursor === undefined) setRefreshFailed(false);
       setRequest((previous): ApiRequest<BlockedUsersResponse> => ({
         status: 'success',
         data: {
@@ -95,7 +97,7 @@ const BlockedUsersList = () => {
         },
       }));
     } catch (caught: unknown) {
-      if (mountedRef.current)
+      if (mountedRef.current && !refreshFailed)
         setError(
           caught instanceof Error
             ? caught.message
@@ -115,8 +117,29 @@ const BlockedUsersList = () => {
     try {
       await setUserBlocked(user.userId, false);
       setFeedListCache(null);
-      const data = await getBlockedUsers();
-      if (mountedRef.current) setRequest({ status: 'success', data });
+      if (!mountedRef.current) return;
+      setRequest((previous): ApiRequest<BlockedUsersResponse> =>
+        previous.status === 'success'
+          ? {
+              status: 'success',
+              data: {
+                ...previous.data,
+                items: previous.data.items.filter(
+                  (item): boolean => item.userId !== user.userId,
+                ),
+              },
+            }
+          : previous,
+      );
+      try {
+        const data = await getBlockedUsers();
+        if (mountedRef.current) {
+          setRequest({ status: 'success', data });
+          setRefreshFailed(false);
+        }
+      } catch {
+        if (mountedRef.current) setRefreshFailed(true);
+      }
     } catch (caught: unknown) {
       if (mountedRef.current)
         setError(
@@ -154,7 +177,9 @@ const BlockedUsersList = () => {
       )}
       {request.status === 'success' && (
         <>
-          {request.data.items.length === 0 && <p>차단한 사용자가 없어요.</p>}
+          {request.data.items.length === 0 && !request.data.hasNext && (
+            <p>차단한 사용자가 없어요.</p>
+          )}
           <ul>
             {request.data.items.map((user) => (
               <li key={user.userId} css={rowStyle}>
@@ -196,6 +221,21 @@ const BlockedUsersList = () => {
               더 불러오기
             </button>
           )}
+        </>
+      )}
+      {refreshFailed && (
+        <>
+          <p role="status">차단을 해제했어요.</p>
+          <p role="alert">차단 목록을 갱신하지 못했어요. 다시 불러와 주세요.</p>
+          <button
+            type="button"
+            disabled={busy !== null}
+            onClick={(): void => {
+              void load();
+            }}
+          >
+            차단 목록 다시 불러오기
+          </button>
         </>
       )}
       {error && <p role="alert">{error}</p>}

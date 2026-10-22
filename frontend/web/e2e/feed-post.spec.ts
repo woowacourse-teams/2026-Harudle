@@ -160,15 +160,22 @@ test('게시 실패 후 카테고리를 유지하며 사용자가 재시도할 �
     .getByRole('button', { name: FEED_POST_COPY.publishAction, exact: true })
     .click();
   await page.getByRole('radio', { name: '우테코' }).check();
-  const dialogPromise = page.waitForEvent('dialog');
-  const publishClick = page
+  const failureMessage = '피드에 올리지 못했어요. 다시 시도해 주세요.';
+  // 토스트 PR 병합 전후 모두 실제 실패 안내와 재시도 흐름을 검증한다.
+  const failureNotice = Promise.race([
+    page.waitForEvent('dialog').then(async (dialog): Promise<void> => {
+      expect(dialog.type()).toBe('alert');
+      expect(dialog.message()).toBe(failureMessage);
+      await dialog.accept();
+    }),
+    page
+      .getByText(failureMessage, { exact: true })
+      .waitFor({ state: 'visible' }),
+  ]);
+  await page
     .getByRole('button', { name: FEED_POST_COPY.publishAction })
     .click();
-  const dialog = await dialogPromise;
-  expect(dialog.type()).toBe('alert');
-  expect(dialog.message()).toBe('피드에 올리지 못했어요. 다시 시도해 주세요.');
-  await dialog.accept();
-  await publishClick;
+  await failureNotice;
   await expect(page.getByRole('radio', { name: '우테코' })).toBeChecked();
   await page.setExtraHTTPHeaders({});
   await page

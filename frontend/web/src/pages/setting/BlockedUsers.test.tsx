@@ -23,6 +23,73 @@ beforeEach((): void => {
   jest.mocked(setUserBlocked).mockReset();
 });
 describe('설정의 차단 목록', (): void => {
+  it('해제 직후 목록에서 제거하고 갱신 실패는 DELETE 없이 GET만 재시도한다', async (): Promise<void> => {
+    const remaining = { ...user, userId: 'user-2', nickname: '네오' };
+    let failRefresh: (error: Error) => void = (): void => undefined;
+    jest
+      .mocked(getBlockedUsers)
+      .mockResolvedValueOnce({
+        items: [user, remaining],
+        nextCursor: null,
+        hasNext: false,
+      })
+      .mockImplementationOnce(
+        (): ReturnType<typeof getBlockedUsers> =>
+          new Promise((_resolve, reject): void => {
+            failRefresh = reject;
+          }),
+      )
+      .mockRejectedValueOnce(new Error('목록 갱신 실패'))
+      .mockResolvedValueOnce({
+        items: [remaining],
+        nextCursor: null,
+        hasNext: false,
+      });
+    jest.mocked(setUserBlocked).mockResolvedValue(undefined);
+    render(<BlockedUsers />);
+    await userEvent.click(
+      screen.getByRole('button', { name: '차단한 사용자' }),
+    );
+    await userEvent.click(
+      await screen.findByRole('button', { name: '탈퇴한 사용자 차단 해제' }),
+    );
+    await waitFor((): void =>
+      expect(screen.queryByText('탈퇴한 사용자')).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText('네오')).toBeVisible();
+    expect(setFeedListCache).toHaveBeenCalledWith(null);
+    await act(async (): Promise<void> => {
+      failRefresh(new Error('목록 갱신 실패'));
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('차단을 해제했어요.');
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      '차단 목록을 갱신하지 못했어요.',
+    );
+    await userEvent.click(
+      screen.getByRole('button', { name: '차단 목록 다시 불러오기' }),
+    );
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      '차단 목록을 갱신하지 못했어요.',
+    );
+    expect(
+      screen.getByRole('button', { name: '차단 목록 다시 불러오기' }),
+    ).toBeEnabled();
+    await userEvent.click(
+      screen.getByRole('button', { name: '차단 목록 다시 불러오기' }),
+    );
+    await waitFor((): void =>
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByRole('button', { name: '차단 목록 다시 불러오기' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('네오')).toBeVisible();
+    expect(setUserBlocked).toHaveBeenCalledTimes(1);
+    expect(getBlockedUsers).toHaveBeenCalledTimes(4);
+    expect(getBlockedUsers).toHaveBeenNthCalledWith(3, { cursor: undefined });
+    expect(getBlockedUsers).toHaveBeenNthCalledWith(4, { cursor: undefined });
+  });
+
   it('해제 중 접었다 펼쳐도 중복 조회하지 않고 숨겨진 동안 완료된 결과를 유지한다', async (): Promise<void> => {
     let blocked = true;
     let finishUnblock: () => void = (): void => undefined;
