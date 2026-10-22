@@ -1049,18 +1049,36 @@ export const handlers = [
       }
 
       if (
-        scenario === MOCK_SCENARIOS.diaryGenerationOutOfOrder &&
+        (scenario === MOCK_SCENARIOS.diaryGenerationOutOfOrder ||
+          scenario === MOCK_SCENARIOS.diaryGenerationDelayedSuccess ||
+          scenario === MOCK_SCENARIOS.diaryGenerationDelayedFailure ||
+          scenario === MOCK_SCENARIOS.diaryGenerationDelayedNotFound) &&
         !delayedStatusRequestIds.has(generationId)
       ) {
-        // 첫 미완료 응답을 다음 조회의 성공 응답보다 늦게 보낸다.
+        // 첫 응답을 다음 조회의 완료 및 새 작업 시작보다 늦게 보낸다.
         delayedStatusRequestIds.add(generationId);
         await delay(10_000);
+        if (scenario === MOCK_SCENARIOS.diaryGenerationDelayedNotFound) {
+          return createProblemDetails({
+            status: 404,
+            code: 'GENERATION_NOT_FOUND',
+            detail: '생성 작업을 찾을 수 없습니다.',
+            instance,
+          });
+        }
+
+        const status =
+          scenario === MOCK_SCENARIOS.diaryGenerationDelayedSuccess
+            ? 'SUCCEEDED'
+            : scenario === MOCK_SCENARIOS.diaryGenerationDelayedFailure
+              ? 'FAILED'
+              : 'PROCESSING';
         return HttpResponse.json(
           {
             id: generationId,
-            status: 'PROCESSING',
-            diaryId: null,
-            errorCode: null,
+            status,
+            diaryId: status === 'SUCCEEDED' ? record.response.id : null,
+            errorCode: status === 'FAILED' ? 'AI_PROVIDER_ERROR' : null,
           },
           { headers: { 'Cache-Control': 'no-store' } },
         );

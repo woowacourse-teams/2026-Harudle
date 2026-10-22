@@ -25,6 +25,8 @@ test.use({ storageState: AUTHENTICATED_STORAGE_STATE });
 const TODAY = new Date('2026-08-30T12:00:00+09:00');
 const VALID_DIARY_CONTENT =
   '오늘은 친구와 공원을 산책하며 즐거운 이야기를 나누었다.';
+const NEXT_DIARY_CONTENT =
+  '두 번째 일기는 가족과 저녁을 먹으며 나눈 이야기를 기록했다.';
 const GENERATED_DIARY_TITLE = '오늘 하루의 소중한 기록';
 const LOADING_MESSAGE = '네컷만화를 만들고 있어요';
 const SUCCESS_MESSAGE = '네컷만화가 완성됐어요!';
@@ -36,6 +38,40 @@ interface DiaryScenarioOptions {
   readonly scenario?: (typeof MOCK_SCENARIOS)[keyof typeof MOCK_SCENARIOS];
   readonly previousUrl?: string;
 }
+
+interface SavedGenerationState {
+  readonly generationId: string | null;
+  readonly toastId: string | null;
+  readonly draft: string | null;
+}
+
+const readGenerationState = (page: Page): Promise<SavedGenerationState> => {
+  return page.evaluate(
+    ([generationKey, toastKey, contentKey]): SavedGenerationState => ({
+      generationId: localStorage.getItem(generationKey),
+      toastId: localStorage.getItem(toastKey),
+      draft: sessionStorage.getItem(contentKey),
+    }),
+    [
+      DIARY_GENERATION_ID_KEY,
+      DIARY_GENERATION_TOAST_ID_KEY,
+      DIARY_CONTENT_SESSION_KEY,
+    ],
+  );
+};
+
+const startNextGeneration = async (page: Page): Promise<void> => {
+  await page.setExtraHTTPHeaders({});
+  await page
+    .locator('main button')
+    .filter({ has: page.locator('img') })
+    .last()
+    .click();
+  await expect(page).toHaveURL('/diary-write');
+  await submitDiary(page, NEXT_DIARY_CONTENT);
+  await expect(page).toHaveURL('/album');
+  await expect(page.getByText(LOADING_MESSAGE, { exact: true })).toBeVisible();
+};
 
 const goToDiaryWritePage = async (
   page: Page,
@@ -398,6 +434,131 @@ test.describe('일기 생성', (): void => {
     await expect(page.getByText(LOADING_MESSAGE)).toHaveCount(0);
     await expect(getToasts(page)).toHaveCount(1);
     await expectGenerationCleared(page);
+  });
+
+  for (const { name, scenario, initialScenario, completionMessage, status } of [
+    {
+      name: '성공',
+      scenario: MOCK_SCENARIOS.diaryGenerationDelayedSuccess,
+      initialScenario: undefined,
+      completionMessage: SUCCESS_MESSAGE,
+      status: 200,
+    },
+    {
+      name: '실패',
+      scenario: MOCK_SCENARIOS.diaryGenerationDelayedFailure,
+      initialScenario: MOCK_SCENARIOS.diaryGenerationFailure,
+      completionMessage: GENERATION_ERROR_MESSAGE,
+      status: 200,
+    },
+    {
+      name: '조회 오류',
+      scenario: MOCK_SCENARIOS.diaryGenerationDelayedNotFound,
+      initialScenario: undefined,
+      completionMessage: SUCCESS_MESSAGE,
+      status: 404,
+    },
+  ]) {
+    test(`이전 작업의 늦은 ${name} 응답이 새 작업의 토스트와 저장 상태를 건드리지 않는다`, async ({
+      page,
+    }): Promise<void> => {
+      await startGeneration(page, { scenario: initialScenario });
+      const previousState = await readGenerationState(page);
+      await page.setExtraHTTPHeaders({ [MOCK_SCENARIO_HEADER]: scenario });
+
+      const firstRequestPromise = page.waitForRequest((request): boolean => {
+        return (
+          request.method() === 'GET' && isGenerationStatusUrl(request.url())
+        );
+      });
+      await page.clock.fastForward(5_000);
+      const firstRequest = await firstRequestPromise;
+      const delayedResponse = page.waitForResponse((response): boolean => {
+        return response.request() === firstRequest;
+      });
+      // MSW의 공통 응답 지연(150ms)을 지나 첫 조회의 추가 지연을 시작한다.
+      await page.clock.runFor(500);
+
+      // 첫 조회는 대기시킨 채 두 번째 조회로 이전 작업을 완료한다.
+      await advanceToPoll(page, 5_000);
+      await expect(
+        page.getByText(completionMessage, { exact: true }),
+      ).toBeVisible();
+      await expectGenerationCleared(page);
+
+      await startNextGeneration(page);
+      const nextState = await readGenerationState(page);
+      expect(nextState.generationId).not.toBeNull();
+      expect(nextState.generationId).not.toBe(previousState.generationId);
+      expect(nextState.toastId).not.toBeNull();
+      expect(nextState.toastId).not.toBe(previousState.toastId);
+      expect(nextState.draft).toBe(NEXT_DIARY_CONTENT);
+      await expect(getToasts(page)).toHaveCount(2);
+
+      // 네트워크 지연을 기다리는 동안 새 작업의 생성 시간이 흐르지 않게 한다.
+      await page.clock.pauseAt(await page.evaluate((): number => Date.now()));
+      const nextResponse = page.waitForResponse((response): boolean => {
+        return (
+          new URL(response.url()).pathname ===
+          `/api/v1/diary-generations/${nextState.generationId}`
+        );
+      });
+      await page.clock.fastForward(5_000);
+      await page.clock.runFor(500);
+      const response = await delayedResponse;
+      expect(response.status()).toBe(status);
+      await response.finished();
+      await expect((await nextResponse).json()).resolves.toMatchObject({
+        status: 'PROCESSING',
+      });
+
+      // 늦은 응답을 처리한 뒤에도 새 작업의 폴링이 계속되어야 한다.
+      expect(await readGenerationState(page)).toEqual(nextState);
+      await expect(
+        page.getByText(LOADING_MESSAGE, { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText(completionMessage, { exact: true }),
+      ).toHaveCount(1);
+      await expect(getToasts(page)).toHaveCount(2);
+      await expect(page.getByTestId('diary-generation-skeleton')).toBeVisible();
+
+      await page.clock.resume();
+      await advanceToPoll(page, 5_000);
+      await expect(
+        page.getByText(LOADING_MESSAGE, { exact: true }),
+      ).toHaveCount(0);
+      await expectGenerationCleared(page);
+      expect((await readGenerationState(page)).draft).toBeNull();
+      await expect(getToasts(page).last()).toContainText(SUCCESS_MESSAGE);
+    });
+  }
+
+  test('이전 작업의 완료 토스트를 닫아도 새 작업의 토스트 ID와 작성 내용을 유지한다', async ({
+    page,
+  }): Promise<void> => {
+    await startGeneration(page);
+    await advanceToPoll(page, 10_000);
+    const previousToast = getToasts(page).filter({ hasText: SUCCESS_MESSAGE });
+    await expect(previousToast).toBeVisible();
+    await expectGenerationCleared(page);
+
+    await startNextGeneration(page);
+    const nextState = await readGenerationState(page);
+    await expect(getToasts(page)).toHaveCount(2);
+    await previousToast.getByRole('button', { name: '×', exact: true }).click();
+
+    await expect(getToasts(page)).toHaveCount(1);
+    await expect(getToasts(page)).toContainText(LOADING_MESSAGE);
+    expect(await readGenerationState(page)).toEqual(nextState);
+
+    await advanceToPoll(page, 5_000);
+    await expect(getToasts(page)).toContainText(LOADING_MESSAGE);
+    expect(await readGenerationState(page)).toEqual(nextState);
+    await advanceToPoll(page, 5_000);
+    await expect(getToasts(page)).toContainText(SUCCESS_MESSAGE);
+    await expectGenerationCleared(page);
+    expect((await readGenerationState(page)).draft).toBeNull();
   });
 
   test('네컷 모아보기에서 생성이 완료되면 목록과 생성 횟수가 반영된다', async ({

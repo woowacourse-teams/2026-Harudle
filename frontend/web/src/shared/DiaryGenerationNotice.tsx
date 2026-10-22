@@ -7,7 +7,10 @@ import {
   DIARY_CONTENT_SESSION_KEY,
   DIARY_GENERATION_TOAST_ID_KEY,
 } from './constants';
-import { removeGenerationId } from '../domain/diary/diaryGenerationStore';
+import {
+  getGenerationId,
+  removeGenerationId,
+} from '../domain/diary/diaryGenerationStore';
 import { DIARY_GENERATION_FAILURE_MESSAGES } from './errorMessage';
 import { RequestError } from './api';
 import { AuthenticationRequiredError } from './auth';
@@ -27,7 +30,9 @@ const DiaryGenerationNotice = () => {
         message: '네컷만화를 만들고 있어요',
         description: '완성되면 알려드릴게요.',
         onClose: () => {
-          localStorage.removeItem(DIARY_GENERATION_TOAST_ID_KEY);
+          if (localStorage.getItem(DIARY_GENERATION_TOAST_ID_KEY) === toastId) {
+            localStorage.removeItem(DIARY_GENERATION_TOAST_ID_KEY);
+          }
           deleteToast(toastId);
         },
       },
@@ -38,6 +43,8 @@ const DiaryGenerationNotice = () => {
 
     const execute = async (): Promise<void> => {
       const generationStatus = await getDiaryGenerationStatus({ generationId });
+      if (getGenerationId() !== generationId) return;
+
       switch (generationStatus.status) {
         case 'SUCCEEDED': {
           const savedToastId = localStorage.getItem(
@@ -145,6 +152,8 @@ const DiaryGenerationNotice = () => {
 
     const intervalId = setInterval(() => {
       void execute().catch((error: unknown): void => {
+        if (getGenerationId() !== generationId) return;
+
         if (
           error instanceof AuthenticationRequiredError ||
           (error instanceof RequestError &&
