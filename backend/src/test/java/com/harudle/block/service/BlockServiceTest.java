@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -119,8 +120,8 @@ class BlockServiceTest {
         when(repository.findAfter(eq(ACTOR), any(), eq(3))).thenReturn(List.of(
                 row(TARGET, false), row(deleted, true), row(extra, false)));
         when(readers.getIfAvailable()).thenReturn(profiles);
-        when(profiles.readAll(Set.of(TARGET))).thenReturn(Map.of(TARGET,
-                new Profile(TARGET, "차단한 회원", URI.create("https://example.com/profile.svg"))));
+        Profile targetProfile = profile(TARGET);
+        when(profiles.readAll(Set.of(TARGET))).thenReturn(Map.of(TARGET, targetProfile));
         var page = service.list(ACTOR, null, 2);
         assertThat(page.items()).extracting(item -> item.userId()).containsExactly(TARGET, deleted);
         assertThat(page.items().get(1).nickname()).isEqualTo("탈퇴한 사용자");
@@ -151,5 +152,13 @@ class BlockServiceTest {
 
     private BlockSnapshot row(UUID target, boolean inactive) {
         return new BlockSnapshot(UUID.randomUUID(), target, NOW, inactive);
+    }
+
+    private Profile profile(UUID userId) {
+        Profile profile = mock(Profile.class);
+        when(profile.id()).thenReturn(userId);
+        when(profile.nickname()).thenReturn("차단한 회원");
+        when(profile.profileImageUrl()).thenReturn(URI.create("https://example.com/profile.svg"));
+        return profile;
     }
 }

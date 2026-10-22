@@ -3,6 +3,7 @@ package com.harudle.block.infrastructure;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.harudle.auth.presentation.AuthenticationRequiredException;
@@ -79,8 +80,7 @@ class BlockPersistenceTest extends BlockDatabaseTestSupport {
         target = member(null);
         when(profiles.readAll(any())).thenAnswer(invocation -> {
             Set<UUID> ids = invocation.getArgument(0);
-            return ids.stream().collect(Collectors.toMap(id -> id,
-                    id -> new Profile(id, "차단 회원", URI.create("https://example.com/profile.svg"))));
+            return ids.stream().collect(Collectors.toMap(id -> id, this::profile));
         });
     }
 
@@ -247,6 +247,14 @@ class BlockPersistenceTest extends BlockDatabaseTestSupport {
         jdbc.update("DELETE FROM users WHERE id = ?", target);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM user_blocks WHERE blocker_id = ? OR blocked_id = ?",
                 Long.class, actor, actor)).isZero();
+    }
+
+    private Profile profile(UUID userId) {
+        Profile profile = mock(Profile.class);
+        when(profile.id()).thenReturn(userId);
+        when(profile.nickname()).thenReturn("차단 회원");
+        when(profile.profileImageUrl()).thenReturn(URI.create("https://example.com/profile.svg"));
+        return profile;
     }
 
     private UUID user(String email) {
