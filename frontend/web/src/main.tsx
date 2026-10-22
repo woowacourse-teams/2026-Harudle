@@ -8,7 +8,6 @@ import { BrowserRouter } from 'react-router';
 import posthog from 'posthog-js';
 import { PostHogProvider } from '@posthog/react';
 import { PostHogErrorBoundary } from '@posthog/react';
-import { DiaryGenerateProvider } from './pages/diary-generating/DiaryGenerateContext';
 import { PwaInstallProvider } from './pages/setting/PwaInstallContext';
 import { ToastProvider } from './shared/ToastContext';
 import { enableMocking } from './mocks/enableMocking';
@@ -33,15 +32,13 @@ void enableMocking().then(() => {
     <StrictMode>
       <ToastProvider>
         <PwaInstallProvider>
-          <DiaryGenerateProvider>
-            {isPostHogInitialized ? (
-              <PostHogProvider client={posthog}>
-                <PostHogErrorBoundary>{app}</PostHogErrorBoundary>
-              </PostHogProvider>
-            ) : (
-              app
-            )}
-          </DiaryGenerateProvider>
+          {isPostHogInitialized ? (
+            <PostHogProvider client={posthog}>
+              <PostHogErrorBoundary>{app}</PostHogErrorBoundary>
+            </PostHogProvider>
+          ) : (
+            app
+          )}
         </PwaInstallProvider>
       </ToastProvider>
     </StrictMode>,

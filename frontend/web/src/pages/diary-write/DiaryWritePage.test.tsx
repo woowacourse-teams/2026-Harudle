@@ -13,7 +13,6 @@ import type {
   generateDiary,
   DiaryGenerateResponse,
 } from '../../domain/diary/diaryGenerate';
-import { DiaryGenerateProvider } from '../diary-generating/DiaryGenerateContext';
 import {
   DIARY_CONTENT_SESSION_KEY,
   DIARY_GENERATION_ID_KEY,
@@ -83,11 +82,7 @@ afterEach((): void => {
 });
 
 const renderAndSubmitDiary = async (): Promise<void> => {
-  render(
-    <DiaryGenerateProvider>
-      <DiaryWritePage />
-    </DiaryGenerateProvider>,
-  );
+  render(<DiaryWritePage />);
   const user = userEvent.setup();
   await user.type(screen.getByRole('textbox'), acceptedResponse.sourceText);
   await user.click(
@@ -96,6 +91,18 @@ const renderAndSubmitDiary = async (): Promise<void> => {
 };
 
 describe('일기 생성 접수 후 성공·실패 처리', (): void => {
+  it('요청 접수 중에는 제출 버튼을 비활성화한다', async (): Promise<void> => {
+    mockGenerateDiary.mockImplementationOnce(
+      (): Promise<DiaryGenerateResponse> => new Promise((): void => {}),
+    );
+    await renderAndSubmitDiary();
+
+    expect(
+      screen.getByRole('button', { name: DIARY_WRITE_COPY.createAction }),
+    ).toBeDisabled();
+    expect(mockGenerateDiary).toHaveBeenCalledTimes(1);
+  });
+
   it('요청 접수에 성공하면 일기 ID가 아닌 generation.id를 저장한다', async (): Promise<void> => {
     await renderAndSubmitDiary();
 

@@ -6,7 +6,6 @@ import FeedPage from './pages/feed/FeedPage';
 import FeedDetailPage from './pages/feed-detail/FeedDetailPage';
 import { Route, Routes } from 'react-router';
 import DiaryWritePage from './pages/diary-write/DiaryWritePage';
-import DiaryGeneratingPage from './pages/diary-generating/DiaryGeneratingPage';
 
 import SettingPage from './pages/setting/SettingPage';
 import LoginPage from './pages/login/LoginPage';
@@ -38,7 +37,6 @@ const App = () => {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
         <Route path="/diary-write" element={<DiaryWritePage />} />
-        <Route path="/diary-generating" element={<DiaryGeneratingPage />} />
         <Route path="/diary/:diaryId" element={<DiaryDetailPage />} />
         <Route path="/diary/:diaryId/feed-post" element={<FeedPostPage />} />
         <Route path="/setting" element={<SettingPage />} />

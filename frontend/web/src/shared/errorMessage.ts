@@ -44,8 +44,6 @@ const DIARY_GENERATE = {
     '네컷만화 생성 상태를 불러오지 못했어요. 다시 시도해 주세요.',
   INVALID_DIARY_GENERATION_STATUS_RESPONSE:
     'DiaryGenerationStatus 응답 형식이 일치하지 않습니다.',
-  DIARY_GENERATE_PROVIDER_REQUIRED:
-    'useDiaryGenerateContext는 DiaryGenerateProvider 내부에서만 사용할 수 있습니다.',
 } as const;
 
 const DIARY_DELETE = {

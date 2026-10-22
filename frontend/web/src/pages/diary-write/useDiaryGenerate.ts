@@ -1,12 +1,4 @@
-import { useErrorTracking } from '../../posthog/useErrorTracking';
-import { ERROR_MESSAGES } from '../../shared/errorMessage';
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useState,
-  type ReactNode,
-} from 'react';
+import { useCallback, useState } from 'react';
 import { RequestError, type ApiRequest } from '../../shared/api';
 import {
   generateDiary,
@@ -15,39 +7,24 @@ import {
   type DiaryGenerateResponse,
 } from '../../domain/diary/diaryGenerate';
 import { useAnalytics } from '../../posthog/useAnalytics';
+import { useErrorTracking } from '../../posthog/useErrorTracking';
 
 interface DiaryGenerateExecuteOptions extends DiaryGenerateRequest {
   readonly onSuccess?: (response: DiaryGenerateResponse) => void;
   readonly onError?: (error: Error) => void;
 }
 
-interface DiaryGenerateContextValue {
-  request: ApiRequest<DiaryGenerateResponse>;
-  execute: (options: DiaryGenerateExecuteOptions) => Promise<void>;
-  resetRequest: () => void;
+interface DiaryGenerateState {
+  readonly request: ApiRequest<DiaryGenerateResponse>;
+  readonly execute: (options: DiaryGenerateExecuteOptions) => Promise<void>;
 }
 
-export const DiaryGenerateContext =
-  createContext<DiaryGenerateContextValue | null>(null);
-
-export const DiaryGenerateProvider = ({
-  children,
-}: {
-  children: ReactNode;
-}) => {
+const useDiaryGenerate = (): DiaryGenerateState => {
   const { track } = useAnalytics();
   const { captureError } = useErrorTracking();
   const [request, setRequest] = useState<ApiRequest<DiaryGenerateResponse>>({
     status: 'idle',
   });
-
-  const resetRequest = useCallback(
-    () =>
-      setRequest({
-        status: 'idle',
-      }),
-    [],
-  );
 
   const execute = useCallback(
     async ({
@@ -57,9 +34,7 @@ export const DiaryGenerateProvider = ({
       onSuccess,
       onError,
     }: DiaryGenerateExecuteOptions): Promise<void> => {
-      setRequest({
-        status: 'loading',
-      });
+      setRequest({ status: 'loading' });
       let diaryGenerateResponse: DiaryGenerateResponse;
 
       try {
@@ -79,50 +54,24 @@ export const DiaryGenerateProvider = ({
           if (!isExpectedGenerationError) {
             captureError(error, { feature: 'diary', operation: 'create' });
           }
-          setRequest({
-            status: 'error',
-            error: error,
-          });
+          setRequest({ status: 'error', error });
           onError?.(error);
         }
         return;
       }
 
-      setRequest({
-        status: 'success',
-        data: diaryGenerateResponse,
-      });
-
+      setRequest({ status: 'success', data: diaryGenerateResponse });
       track('diary_created', {
         diary_id: diaryGenerateResponse.id,
         diary_date: diaryGenerateResponse.diaryDate,
         remaining_generation_count: diaryGenerateResponse.usage.remainingCount,
       });
-
       onSuccess?.(diaryGenerateResponse);
     },
     [track, captureError],
   );
 
-  return (
-    <DiaryGenerateContext.Provider
-      value={{
-        request,
-        execute,
-        resetRequest,
-      }}
-    >
-      {children}
-    </DiaryGenerateContext.Provider>
-  );
+  return { request, execute };
 };
 
-export const useDiaryGenerateContext = () => {
-  const diaryGenerateContext = useContext(DiaryGenerateContext);
-
-  if (!diaryGenerateContext) {
-    throw new Error(ERROR_MESSAGES.DIARY_GENERATE_PROVIDER_REQUIRED);
-  }
-
-  return diaryGenerateContext;
-};
+export default useDiaryGenerate;

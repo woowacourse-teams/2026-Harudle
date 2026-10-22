@@ -57,21 +57,6 @@ export interface DiaryGenerateRequest {
   idempotencyKey: string;
 }
 
-export const isDiaryGenerateRequest = (
-  value: unknown,
-): value is DiaryGenerateRequest => {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'diaryDate' in value &&
-    typeof value.diaryDate === 'string' &&
-    'sourceText' in value &&
-    typeof value.sourceText === 'string' &&
-    'idempotencyKey' in value &&
-    typeof value.idempotencyKey === 'string'
-  );
-};
-
 export interface DiaryGenerateResponse {
   id: string;
   diaryDate: string;

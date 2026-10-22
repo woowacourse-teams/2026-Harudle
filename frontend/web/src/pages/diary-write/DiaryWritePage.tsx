@@ -7,7 +7,7 @@ import { useLayoutEffect, useState } from 'react';
 import backIcon from '../../assets/icons/back.svg';
 import { css } from '@emotion/react';
 import { theme } from '../../styles/theme';
-import { useDiaryGenerateContext } from '../diary-generating/DiaryGenerateContext';
+import useDiaryGenerate from './useDiaryGenerate';
 import { getToday } from '../../shared/utils';
 import { DIARY_CONTENT_SESSION_KEY } from '../../shared/constants';
 import {
@@ -25,7 +25,7 @@ const DiaryWritePage = () => {
   const [diaryContentError, setDiaryContentError] = useState<string | null>(
     null,
   );
-  const { execute } = useDiaryGenerateContext();
+  const { request, execute } = useDiaryGenerate();
 
   useLayoutEffect(() => {
     if (getGenerationId()) {
@@ -110,7 +110,11 @@ const DiaryWritePage = () => {
           />
 
           <div css={submitButtonContainerStyle}>
-            <ActionButton type="submit" label={DIARY_WRITE_COPY.createAction} />
+            <ActionButton
+              type="submit"
+              label={DIARY_WRITE_COPY.createAction}
+              disabled={request.status === 'loading'}
+            />
           </div>
         </form>
       </main>

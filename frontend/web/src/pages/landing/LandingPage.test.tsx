@@ -1,4 +1,4 @@
-import { DIARY_GENERATING_COPY } from '../diary-generating/copy';
+import { GUEST_TRIAL_COPY } from './trialCopy';
 import {
   afterEach,
   beforeEach,
@@ -52,9 +52,6 @@ jest.mock('./useGuestDiaryCreation', () => ({
 }));
 jest.mock('../../posthog/useAnalytics', () => ({
   useAnalytics: () => ({ track: mockTrack }),
-}));
-jest.mock('../diary-generating/DiaryGeneratingPage', () => ({
-  FINAL_STEP: 5,
 }));
 jest.mock('react-router', () => ({
   Link: ({
@@ -267,19 +264,19 @@ describe('게스트 체험 랜딩 작성 화면', () => {
       screen.getByText('완성되면 이곳에서 네컷만화를 보여드릴게요.'),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(DIARY_GENERATING_COPY.stepLabels[0]),
+      screen.getByText(GUEST_TRIAL_COPY.generationStepLabels[0]),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(DIARY_GENERATING_COPY.stepLabels[1]),
+      screen.getByText(GUEST_TRIAL_COPY.generationStepLabels[1]),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(DIARY_GENERATING_COPY.stepLabels[2]),
+      screen.getByText(GUEST_TRIAL_COPY.generationStepLabels[2]),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(DIARY_GENERATING_COPY.stepLabels[3]),
+      screen.getByText(GUEST_TRIAL_COPY.generationStepLabels[3]),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(DIARY_GENERATING_COPY.stepLabels[4]),
+      screen.getByText(GUEST_TRIAL_COPY.generationStepLabels[4]),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('link', { name: '카카오로 시작하고 계속 만들기' }),
