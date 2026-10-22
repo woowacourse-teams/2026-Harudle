@@ -78,7 +78,9 @@ const FeedItem = ({
       </div>
       <FeedActions
         onCommentClick={() => {
-          void navigate(`/feeds/${feed.id}`);
+          void navigate(`/feeds/${feed.id}`, {
+            state: { fromFeed: true },
+          });
         }}
         shareUrl={feed.shareUrl}
         feedId={feed.id}
