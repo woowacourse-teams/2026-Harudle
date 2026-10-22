@@ -12,18 +12,25 @@ import { theme } from '../../styles/theme';
 import type { ApiRequest } from '../../shared/api';
 
 const BlockedUsers = () => {
-  const [expanded, setExpanded] = useState(false);
+  const [visibility, setVisibility] = useState<
+    'unopened' | 'expanded' | 'collapsed'
+  >('unopened');
+  const expanded = visibility === 'expanded';
   return (
     <section css={sectionStyle}>
       <button
         type="button"
         css={toggleStyle}
         aria-expanded={expanded}
-        onClick={(): void => setExpanded(!expanded)}
+        onClick={(): void => setVisibility(expanded ? 'collapsed' : 'expanded')}
       >
         차단한 사용자
       </button>
-      {expanded && <BlockedUsersList />}
+      {visibility !== 'unopened' && (
+        <div hidden={!expanded}>
+          <BlockedUsersList />
+        </div>
+      )}
     </section>
   );
 };
