@@ -1,7 +1,4 @@
-import { useToastContext } from '../../shared/ToastContext';
-import { FEED_POST_COPY } from './copy';
 import { useCallback, useState } from 'react';
-import { useNavigate } from 'react-router';
 import {
   publishFeed,
   type FeedPublishRequest,
@@ -15,6 +12,8 @@ import { useAnalytics } from '../../posthog/useAnalytics';
 
 interface FeedPublishOptions {
   readonly categoryId: FeedPublishRequest['categoryId'];
+  readonly onSuccess?: (response: Feed) => void;
+  readonly onError?: (error: Error) => void;
 }
 
 interface FeedPublishState {
@@ -25,14 +24,16 @@ interface FeedPublishState {
 const useFeedPublish = ({
   diaryId,
 }: Pick<FeedPublishRequest, 'diaryId'>): FeedPublishState => {
-  const { addToast } = useToastContext();
-  const navigate = useNavigate();
   const [request, setRequest] = useState<ApiRequest<Feed>>({ status: 'idle' });
   const { captureError } = useErrorTracking();
   const { track } = useAnalytics();
 
   const execute = useCallback(
-    async ({ categoryId }: FeedPublishOptions): Promise<void> => {
+    async ({
+      categoryId,
+      onSuccess,
+      onError,
+    }: FeedPublishOptions): Promise<void> => {
       if (request.status === 'loading') return;
       setRequest({ status: 'loading' });
 
@@ -48,11 +49,7 @@ const useFeedPublish = ({
         const feed = await publishFeed({ diaryId, categoryId });
         setFeedListCache(null);
         setRequest({ status: 'success', data: feed });
-        addToast(
-          { type: 'success', message: FEED_POST_COPY.publishSuccess },
-          2000,
-        );
-        void navigate('/', { replace: true });
+        onSuccess?.(feed);
       } catch (error: unknown) {
         const requestError =
           error instanceof Error
@@ -64,9 +61,10 @@ const useFeedPublish = ({
           diary_id: diaryId,
         });
         setRequest({ status: 'error', error: requestError });
+        onError?.(requestError);
       }
     },
-    [diaryId, navigate, captureError, request.status, track, addToast],
+    [diaryId, captureError, request.status, track],
   );
 
   return { request, execute };
