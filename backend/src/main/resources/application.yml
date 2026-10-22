@@ -64,6 +64,14 @@ spring:
             scope:
               - profile_nickname
             client-name: Kakao
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            redirect-uri: "${BACKEND_BASE_URL:http://localhost:8080}/login/oauth2/code/{registrationId}"
+            scope:
+              - openid
+              - email
+              - profile
 
         provider:
           kakao:

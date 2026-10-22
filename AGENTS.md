@@ -25,6 +25,7 @@ flowchart TB
     rds[("해당 환경 전용 RDS PostgreSQL<br/>Private 접근")]
     s3[("S3 · techcourse-project-2026<br/>생성 이미지 / 참조 이미지")]
     kakao["Kakao OAuth"]
+    google["Google OpenID Connect"]
     gemini["Gemini · 스토리보드 / 이미지 생성"]
 
     browser -->|"HTTPS"| host
@@ -32,6 +33,7 @@ flowchart TB
     backend -->|"이미지 저장·조회 / Presigned URL 발급"| s3
     browser -->|"Presigned GET · 이미지 직접 조회"| s3
     backend -->|"HTTPS"| kakao
+    backend -->|"HTTPS"| google
     backend -->|"HTTPS"| gemini
 ```
 
@@ -40,6 +42,10 @@ flowchart TB
   API 문서의 활성화 여부는 백엔드 설정으로 결정한다.
 - TLS는 호스트에서 종료된다. 인증·리다이렉트 변경 시 두 Nginx와 백엔드의
   전달 헤더 설정을 함께 확인한다.
+- Google 로그인은 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`을 필수로 읽는다.
+  시작 경로는 `/oauth2/authorization/google`, 콜백은 `${BACKEND_BASE_URL}/login/oauth2/code/google`이다.
+  `openid`, `email`, `profile`을 요청하며, 인증 검증에는 Spring Security의 기본 Google 설정을 사용한다.
+  로컬 설정은 `backend/README.md`, 서버 키와 콜백 등록은 `deploy/README.md`를 따른다.
 - 백엔드는 DB에 저장한 S3 Object Key로 Presigned GET URL을 발급하고,
   브라우저가 S3에서 직접 이미지를 가져온다. 기본 URL 유효 시간은 `15m`이며
   `S3_ACCESS_URL_TTL`로 설정한다. 브라우저의 이미지 fetch에는 S3 CORS 설정이 필요하다.
