@@ -271,6 +271,103 @@ test.describe('일기 생성', (): void => {
     expect(draft).toBeNull();
   });
 
+  for (const action of ['보러가기', '×']) {
+    test(`진행 토스트를 닫아도 완료 알림을 다시 표시하고 ${action} 버튼으로 닫을 수 있다`, async ({
+      page,
+    }): Promise<void> => {
+      const requests = collectStatusRequests(page);
+      const toast = await startGeneration(page);
+      const generationId = await page.evaluate(
+        (key): string | null => localStorage.getItem(key),
+        DIARY_GENERATION_ID_KEY,
+      );
+
+      await toast.getByRole('button', { name: '×', exact: true }).click();
+      await expect(getToasts(page)).toHaveCount(0);
+      const savedIds = await page.evaluate(
+        ([generationKey, toastKey]): (string | null)[] => [
+          localStorage.getItem(generationKey),
+          localStorage.getItem(toastKey),
+        ],
+        [DIARY_GENERATION_ID_KEY, DIARY_GENERATION_TOAST_ID_KEY],
+      );
+      expect(savedIds).toEqual([generationId, null]);
+      await expect(page.getByTestId('diary-generation-skeleton')).toBeVisible();
+
+      await advanceToPoll(page, 5_000);
+      await expect(getToasts(page)).toHaveCount(0);
+      await advanceToPoll(page, 5_000);
+      await expect(toast).toContainText(SUCCESS_MESSAGE);
+      await expect(getToasts(page)).toHaveCount(1);
+      await expectGenerationCleared(page);
+      await expectPollingStopped(page, requests);
+
+      await toast.getByRole('button', { name: action, exact: true }).click();
+      await expect(getToasts(page)).toHaveCount(0);
+      if (action === '보러가기') {
+        await expect(page).toHaveURL(/\/diary\/[0-9a-f-]+$/);
+        await expect(page.getByText(GENERATED_DIARY_TITLE)).toBeVisible();
+        await expect(page.getByText(VALID_DIARY_CONTENT)).toBeVisible();
+      } else {
+        await expect(page).toHaveURL('/album');
+      }
+    });
+  }
+
+  for (const { name, scenario, message, pollAfterMs, responseStatus } of [
+    {
+      name: '생성 실패',
+      scenario: MOCK_SCENARIOS.diaryGenerationFailure,
+      message: GENERATION_ERROR_MESSAGE,
+      pollAfterMs: 10_000,
+      responseStatus: 200,
+    },
+    {
+      name: '생성 작업 조회 불가',
+      scenario: MOCK_SCENARIOS.diaryGenerationNotFound,
+      message: '생성 작업을 찾을 수 없습니다.',
+      pollAfterMs: 5_000,
+      responseStatus: 404,
+    },
+  ]) {
+    for (const action of ['다시 작성하기', '×']) {
+      test(`진행 토스트를 닫은 뒤 ${name} 시 오류 알림을 다시 표시하고 ${action}가 동작한다`, async ({
+        page,
+      }): Promise<void> => {
+        const requests = collectStatusRequests(page);
+        const toast = await startGeneration(page, { scenario });
+        await toast.getByRole('button', { name: '×', exact: true }).click();
+        await expect(getToasts(page)).toHaveCount(0);
+
+        await advanceToPoll(page, pollAfterMs, responseStatus);
+        await expect(toast).toContainText(message);
+        await expect(toast.locator('[data-type]')).toHaveAttribute(
+          'data-type',
+          'error',
+        );
+        await expect(getToasts(page)).toHaveCount(1);
+        await expectGenerationCleared(page);
+        await expectPollingStopped(page, requests);
+        const draft = await page.evaluate(
+          (key): string | null => sessionStorage.getItem(key),
+          DIARY_CONTENT_SESSION_KEY,
+        );
+        expect(draft).toBe(VALID_DIARY_CONTENT);
+
+        await toast.getByRole('button', { name: action, exact: true }).click();
+        await expect(getToasts(page)).toHaveCount(0);
+        if (action === '다시 작성하기') {
+          await expect(page).toHaveURL('/diary-write');
+          await expect(page.getByRole('textbox')).toHaveValue(
+            VALID_DIARY_CONTENT,
+          );
+        } else {
+          await expect(page).toHaveURL('/album');
+        }
+      });
+    }
+  }
+
   test('성공 응답 뒤에 이전 미완료 응답이 도착해도 성공 토스트와 폴링 종료 상태를 유지한다', async ({
     page,
   }): Promise<void> => {

@@ -27,6 +27,7 @@ const DiaryGenerationNotice = () => {
         message: '네컷만화를 만들고 있어요',
         description: '완성되면 알려드릴게요.',
         onClose: () => {
+          localStorage.removeItem(DIARY_GENERATION_TOAST_ID_KEY);
           deleteToast(toastId);
         },
       },
@@ -55,6 +56,28 @@ const DiaryGenerationNotice = () => {
                 },
               },
             });
+          } else {
+            // 요청은 성공했는데 id가 없다는 것은 사용자가 토스트를 지운 것이기 때문에
+            // 새 토스트를 넣어준다.
+            addToast(
+              {
+                type: 'success',
+                message: '네컷만화가 완성됐어요!',
+                description: '',
+                action: {
+                  label: '보러가기',
+                  onClick: (): void => {
+                    deleteToast(toastId);
+                    void navigate(`/diary/${generationStatus.diaryId}`);
+                  },
+                },
+                onClose: () => {
+                  deleteToast(toastId);
+                },
+              },
+              'infinite',
+              toastId,
+            );
           }
 
           removeGenerationId();
@@ -66,9 +89,9 @@ const DiaryGenerationNotice = () => {
           const savedToastId = localStorage.getItem(
             DIARY_GENERATION_TOAST_ID_KEY,
           );
+          const [message, description] =
+            DIARY_GENERATION_FAILURE_MESSAGES[generationStatus.errorCode];
           if (savedToastId) {
-            const [message, description] =
-              DIARY_GENERATION_FAILURE_MESSAGES[generationStatus.errorCode];
             updateToast(savedToastId, {
               type: 'error',
               message,
@@ -81,6 +104,26 @@ const DiaryGenerationNotice = () => {
                 },
               },
             });
+          } else {
+            addToast(
+              {
+                type: 'error',
+                message,
+                description,
+                action: {
+                  label: '다시 작성하기',
+                  onClick: (): void => {
+                    deleteToast(toastId);
+                    void navigate('/diary-write');
+                  },
+                },
+                onClose: (): void => {
+                  deleteToast(toastId);
+                },
+              },
+              'infinite',
+              toastId,
+            );
           }
 
           removeGenerationId();
@@ -124,6 +167,26 @@ const DiaryGenerationNotice = () => {
                 },
               },
             });
+          } else {
+            addToast(
+              {
+                type: 'error',
+                message: error.message,
+                description: '다시 시도해주세요',
+                action: {
+                  label: '다시 작성하기',
+                  onClick: (): void => {
+                    deleteToast(toastId);
+                    void navigate('/diary-write');
+                  },
+                },
+                onClose: (): void => {
+                  deleteToast(toastId);
+                },
+              },
+              'infinite',
+              toastId,
+            );
           }
           clearInterval(intervalId);
           removeGenerationId();
