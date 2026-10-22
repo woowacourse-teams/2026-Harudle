@@ -8,6 +8,8 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.flywaydb.core.Flyway;
@@ -113,6 +115,52 @@ class DiaryGenerationPendingMigrationTest {
             assertThat(result.getBoolean("indisvalid")).isTrue();
             assertThat(result.getString("definition")).contains("(created_at, id)");
             assertThat(result.getString("predicate")).isEqualTo("((status)::text = 'PENDING'::text)");
+            assertThat(result.next()).isFalse();
+        }
+    }
+
+    @Test
+    @DisplayName("기존 생성 기록을 유지하며 전체 상태 인덱스를 추가한다")
+    void createStatusIndexAndPreserveExistingGenerations() throws SQLException {
+        Flyway.configure()
+                .configuration(Map.of("flyway.postgresql.transactional.lock", "false"))
+                .dataSource(
+                        POSTGRESQL_CONTAINER.getJdbcUrl(),
+                        POSTGRESQL_CONTAINER.getUsername(),
+                        POSTGRESQL_CONTAINER.getPassword()
+                )
+                .target(MigrationVersion.fromVersion("28"))
+                .load()
+                .migrate();
+        Map<UUID, String> previousRecords = new LinkedHashMap<>();
+        for (String status : List.of("PENDING", "PROCESSING", "SUCCEEDED", "FAILED")) {
+            UUID generationId = insertGeneration(status);
+            previousRecords.put(generationId, readGeneration(generationId));
+        }
+
+        flyway().migrate();
+
+        for (Map.Entry<UUID, String> record : previousRecords.entrySet()) {
+            assertThat(readGeneration(record.getKey())).isEqualTo(record.getValue());
+        }
+        try (Connection connection = openConnection();
+                PreparedStatement statement = connection.prepareStatement("""
+                        SELECT index.indisvalid,
+                               index.indisready,
+                               pg_get_indexdef(index.indexrelid) AS definition,
+                               pg_get_expr(index.indpred, index.indrelid) AS predicate
+                        FROM pg_index AS index
+                        JOIN pg_class AS relation ON relation.oid = index.indexrelid
+                        JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+                        WHERE namespace.nspname = 'public'
+                          AND relation.relname = 'idx_diary_generations_status'
+                        """);
+                ResultSet result = statement.executeQuery()) {
+            assertThat(result.next()).isTrue();
+            assertThat(result.getBoolean("indisvalid")).isTrue();
+            assertThat(result.getBoolean("indisready")).isTrue();
+            assertThat(result.getString("definition")).contains("USING btree (status)");
+            assertThat(result.getString("predicate")).isNull();
             assertThat(result.next()).isFalse();
         }
     }
