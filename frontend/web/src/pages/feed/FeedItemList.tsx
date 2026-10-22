@@ -50,7 +50,7 @@ const FeedItemList = ({
     if (loadMoreRequest.status === 'error') {
       addToast({ type: 'error', message: FEED_COPY.loadMoreError }, 2000);
     }
-  }, [loadMoreRequest]);
+  }, [loadMoreRequest, addToast]);
 
   if (request.status === 'idle' || request.status === 'loading') {
     return <LoadingSpinner />;

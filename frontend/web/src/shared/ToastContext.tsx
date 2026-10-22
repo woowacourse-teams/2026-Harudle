@@ -1,5 +1,11 @@
 import { css, keyframes, type SerializedStyles } from '@emotion/react';
-import { createContext, useContext, useReducer, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useReducer,
+  type ReactNode,
+} from 'react';
 import { createPortal } from 'react-dom';
 import Toast, { type ToastProps } from './Toast';
 import { ERROR_MESSAGES } from './errorMessage';
@@ -39,7 +45,7 @@ const toastReducer = (
 ): readonly ToastItem[] => {
   switch (action.type) {
     case 'add':
-      return [...toasts, action.toast];
+      return [...toasts, action.toast].slice(-TOAST_MAX_LENGTH);
     case 'remove':
       return toasts.filter((toast): boolean => toast.id !== action.id);
   }
@@ -48,27 +54,22 @@ const toastReducer = (
 export const ToastProvider = ({ children }: { children: ReactNode }) => {
   const [toasts, dispatch] = useReducer(toastReducer, []);
 
-  const addToast = (
-    toast: ToastProps,
-    durationMs: number | 'infinite',
-  ): ToastItem['id'] => {
-    const id = crypto.randomUUID();
+  const addToast = useCallback(
+    (toast: ToastProps, durationMs: number | 'infinite'): ToastItem['id'] => {
+      const id = crypto.randomUUID();
 
-    if (toasts.length >= TOAST_MAX_LENGTH) {
-      const oldestId = toasts[0].id;
-      dispatch({ type: 'remove', id: oldestId });
-    }
+      dispatch({ type: 'add', toast: { ...toast, id, durationMs } });
 
-    dispatch({ type: 'add', toast: { ...toast, id, durationMs } });
+      if (durationMs !== 'infinite') {
+        setTimeout(() => {
+          dispatch({ type: 'remove', id });
+        }, durationMs);
+      }
 
-    if (durationMs !== 'infinite') {
-      setTimeout(() => {
-        dispatch({ type: 'remove', id });
-      }, durationMs);
-    }
-
-    return id;
-  };
+      return id;
+    },
+    [],
+  );
 
   return (
     <ToastContext.Provider value={{ toasts, addToast }}>

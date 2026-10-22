@@ -125,7 +125,7 @@ const DiaryFeedDeleteAction = ({ feedId }: { feedId: Feed['id'] }) => {
         2000,
       );
     }
-  }, [feedDeleteRequest]);
+  }, [feedDeleteRequest, addToast]);
 
   const handleFeedDeleteConfirm = (): void => {
     void deleteFeed({

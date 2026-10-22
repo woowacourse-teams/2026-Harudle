@@ -29,7 +29,7 @@ const FeedCommentOptionsButton = ({
     if (request.status === 'error') {
       addToast({ type: 'error', message: request.error.message }, 2000);
     }
-  }, [request]);
+  }, [request, addToast]);
 
   const handleDeleteClick = (): void => {
     menuRef.current?.close();

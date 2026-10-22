@@ -33,7 +33,7 @@ const FeedPostContent = ({ diaryId, imageUrl }: FeedPostContentProps) => {
         2000,
       );
     }
-  }, [publishRequest]);
+  }, [publishRequest, addToast]);
 
   const isPublishing = publishRequest.status === 'loading';
 
