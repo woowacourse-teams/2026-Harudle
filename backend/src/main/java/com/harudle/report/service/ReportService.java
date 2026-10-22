@@ -33,9 +33,10 @@ public class ReportService {
         if (reporterId == null || !reports.isActiveMember(reporterId)) {
             throw new AuthenticationRequiredException();
         }
-        var existing = reports.findByReporterAndTarget(reporterId, submission.targetType(), submission.targetId());
+        var existing = reports.findReceiptIdByReporterAndTarget(
+                reporterId, submission.targetType(), submission.targetId());
         if (existing.isPresent()) {
-            return new ReportReceipt(existing.get().id(), true);
+            return new ReportReceipt(existing.get(), true);
         }
         UUID targetUserId = targets
                 .findVisibleTargetAuthorId(reporterId, submission.targetType(), submission.targetId())
@@ -49,8 +50,8 @@ public class ReportService {
             return new ReportReceipt(report.id(), false);
         }
         // ON CONFLICT waits for the winner; a new READ COMMITTED statement reads that committed receipt.
-        return reports.findByReporterAndTarget(reporterId, submission.targetType(), submission.targetId())
-                .map(saved -> new ReportReceipt(saved.id(), true))
+        return reports.findReceiptIdByReporterAndTarget(reporterId, submission.targetType(), submission.targetId())
+                .map(id -> new ReportReceipt(id, true))
                 .orElseThrow(() -> new IllegalStateException("신고 접수 결과를 확인할 수 없습니다."));
     }
 }

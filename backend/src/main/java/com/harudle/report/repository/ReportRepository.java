@@ -8,7 +8,7 @@ public interface ReportRepository {
 
     boolean isActiveMember(UUID userId);
 
-    Optional<ReportSnapshot> findByReporterAndTarget(UUID reporterId, ReportTargetType targetType, UUID targetId);
+    Optional<UUID> findReceiptIdByReporterAndTarget(UUID reporterId, ReportTargetType targetType, UUID targetId);
 
     /** Returns false for a report already submitted by the same reporter for the same target. */
     boolean insert(ReportSnapshot report);

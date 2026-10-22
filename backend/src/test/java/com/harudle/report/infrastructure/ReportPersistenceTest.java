@@ -196,7 +196,8 @@ class ReportPersistenceTest {
 
         assertThat(insert(report)).isTrue();
 
-        assertThat(reports.findByReporterAndTarget(reporter, type, targetId)).contains(report);
+        assertThat(reports.findReceiptIdByReporterAndTarget(reporter, type, targetId)).contains(report.id());
+        assertStoredSubmission(report);
         assertThat(jdbc.queryForObject("SELECT status FROM reports WHERE id = ?", String.class, report.id()))
                 .isEqualTo("RECEIVED");
         assertThat(jdbc.queryForObject("SELECT comment_count FROM feeds WHERE id = ?", Integer.class, feed))
@@ -248,14 +249,17 @@ class ReportPersistenceTest {
         assertThat(jdbc.queryForObject("""
                 SELECT count(*) FROM reports WHERE reporter_id = ? AND target_type = 'FEED' AND target_id = ?
                 """, Long.class, reporter, feed)).isEqualTo(1);
-        assertThat(reports.findByReporterAndTarget(reporter, ReportTargetType.FEED, feed))
-                .hasValueSatisfying(saved -> {
-                    assertThat(saved.id()).isEqualTo(savedId);
-                    assertThat(saved.reporterId()).isEqualTo(reporter).isNotEqualTo(forgedReporter);
-                    assertThat(saved.targetUserId()).isEqualTo(author).isNotEqualTo(forgedTargetUser);
-                    assertThat(saved.reason()).isEqualTo(ReportReason.SPAM);
-                    assertThat(saved.description()).isEqualTo("최초 접수 설명");
-                });
+        assertThat(reports.findReceiptIdByReporterAndTarget(reporter, ReportTargetType.FEED, feed))
+                .contains(savedId);
+        assertThat(jdbc.queryForMap("""
+                SELECT reporter_id, target_user_id, reason, description FROM reports WHERE id = ?
+                """, savedId))
+                .containsEntry("reporter_id", reporter)
+                .containsEntry("target_user_id", author)
+                .containsEntry("reason", "SPAM")
+                .containsEntry("description", "최초 접수 설명");
+        assertThat(reporter).isNotEqualTo(forgedReporter);
+        assertThat(author).isNotEqualTo(forgedTargetUser);
     }
 
     @Test
@@ -280,7 +284,9 @@ class ReportPersistenceTest {
             jdbc.update("UPDATE users SET name = '후속 변경' WHERE id = ?", reporter);
         });
 
-        assertThat(reports.findByReporterAndTarget(reporter, ReportTargetType.FEED, feed)).contains(initial);
+        assertThat(reports.findReceiptIdByReporterAndTarget(reporter, ReportTargetType.FEED, feed))
+                .contains(initial.id());
+        assertStoredSubmission(initial);
         assertThat(reportCount()).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT name FROM users WHERE id = ?", String.class, reporter))
                 .isEqualTo("후속 변경");
@@ -320,8 +326,11 @@ class ReportPersistenceTest {
             assertThat(executor.awaitTermination(15, TimeUnit.SECONDS)).isTrue();
         }
         assertThat(reportCount()).isEqualTo(1);
-        assertThat(reports.findByReporterAndTarget(reporter, ReportTargetType.FEED, feed))
-                .hasValueSatisfying(stored -> assertThat(attempts).contains(stored));
+        UUID winningId = reports.findReceiptIdByReporterAndTarget(reporter, ReportTargetType.FEED, feed)
+                .orElseThrow();
+        ReportSnapshot winner = attempts.stream().filter(attempt -> attempt.id().equals(winningId))
+                .findFirst().orElseThrow();
+        assertStoredSubmission(winner);
     }
 
     @Test
@@ -348,7 +357,7 @@ class ReportPersistenceTest {
             throw new IllegalStateException("의도적인 후속 업무 실패");
         })).isInstanceOf(IllegalStateException.class);
 
-        assertThat(reports.findByReporterAndTarget(reporter, ReportTargetType.FEED, feed)).isEmpty();
+        assertThat(reports.findReceiptIdByReporterAndTarget(reporter, ReportTargetType.FEED, feed)).isEmpty();
         assertThat(insert(report)).isTrue();
     }
 
@@ -364,8 +373,9 @@ class ReportPersistenceTest {
         jdbc.update("DELETE FROM users WHERE id = ?", commenter);
         jdbc.update("DELETE FROM users WHERE id = ?", author);
         assertThat(reportCount()).isEqualTo(3);
-        assertThat(reports.findByReporterAndTarget(reporter, ReportTargetType.COMMENT, comment))
-                .contains(commentReport);
+        assertThat(reports.findReceiptIdByReporterAndTarget(reporter, ReportTargetType.COMMENT, comment))
+                .contains(commentReport.id());
+        assertStoredSubmission(commentReport);
         jdbc.update("DELETE FROM users WHERE id = ?", reporter);
 
         assertThat(reportCount()).isEqualTo(3);
@@ -373,7 +383,7 @@ class ReportPersistenceTest {
                 .isEqualTo(3);
         assertThat(jdbc.queryForObject("SELECT target_user_id FROM reports WHERE id = ?", UUID.class,
                 feedReport.id())).isEqualTo(author);
-        assertThat(reports.findByReporterAndTarget(reporter, ReportTargetType.FEED, feed)).isEmpty();
+        assertThat(reports.findReceiptIdByReporterAndTarget(reporter, ReportTargetType.FEED, feed)).isEmpty();
     }
 
     @ParameterizedTest
@@ -387,7 +397,8 @@ class ReportPersistenceTest {
 
         assertThat(targets.findVisibleTargetAuthorId(reporter, type, targetId)).isEmpty();
         assertThat(insert(report)).isTrue();
-        assertThat(reports.findByReporterAndTarget(reporter, type, targetId)).contains(report);
+        assertThat(reports.findReceiptIdByReporterAndTarget(reporter, type, targetId)).contains(report.id());
+        assertStoredSubmission(report);
     }
 
     @Test
@@ -474,8 +485,9 @@ class ReportPersistenceTest {
         ReportSnapshot accepted = report(reporter, ReportTargetType.FEED, feed, author,
                 ReportReason.OTHER, description);
         assertThat(insert(accepted)).isTrue();
-        assertThat(reports.findByReporterAndTarget(reporter, ReportTargetType.FEED, feed))
-                .contains(accepted);
+        assertThat(reports.findReceiptIdByReporterAndTarget(reporter, ReportTargetType.FEED, feed))
+                .contains(accepted.id());
+        assertStoredSubmission(accepted);
         assertThat(accepted.toString()).contains("description=[REDACTED]").doesNotContain(description);
         ReportSnapshot tooLong = report(reporter, ReportTargetType.COMMENT, comment, commenter,
                 ReportReason.OTHER, "😀".repeat(501));
@@ -544,6 +556,21 @@ class ReportPersistenceTest {
         UUID id = UUID.randomUUID();
         fixtureReports.add(id);
         return new ReportSnapshot(id, actor, type, target, targetAuthor, reason, description, CREATED_AT);
+    }
+
+    private void assertStoredSubmission(ReportSnapshot expected) {
+        assertThat(jdbc.queryForMap("""
+                SELECT reporter_id, target_type, target_id, target_user_id, reason, description
+                FROM reports WHERE id = ?
+                """, expected.id()))
+                .containsEntry("reporter_id", expected.reporterId())
+                .containsEntry("target_type", expected.targetType().name())
+                .containsEntry("target_id", expected.targetId())
+                .containsEntry("target_user_id", expected.targetUserId())
+                .containsEntry("reason", expected.reason().name())
+                .containsEntry("description", expected.description());
+        assertThat(jdbc.queryForObject("SELECT created_at FROM reports WHERE id = ?", Timestamp.class, expected.id()))
+                .isEqualTo(Timestamp.from(expected.createdAt()));
     }
 
     private boolean insert(ReportSnapshot report) {

@@ -76,21 +76,21 @@ class ReportServiceTest {
                 .isInstanceOf(AuthenticationRequiredException.class);
         assertThatThrownBy(() -> service.submit(REPORTER, submission(ReportTargetType.USER)))
                 .isInstanceOf(AuthenticationRequiredException.class);
-        verify(reports, never()).findByReporterAndTarget(any(), any(), any());
+        verify(reports, never()).findReceiptIdByReporterAndTarget(any(), any(), any());
         verifyNoInteractions(targets);
     }
 
     @Test
     @DisplayName("대상이 사라진 뒤에도 본인의 기존 접수를 반환하고 최초 사유를 변경하지 않는다")
     void acknowledgesPreviousReceiptWithoutReadingDeletedTarget() {
-        ReportSnapshot previous = previous();
+        UUID previousId = UUID.randomUUID();
         when(reports.isActiveMember(REPORTER)).thenReturn(true);
-        when(reports.findByReporterAndTarget(REPORTER, ReportTargetType.FEED, TARGET))
-                .thenReturn(Optional.of(previous));
+        when(reports.findReceiptIdByReporterAndTarget(REPORTER, ReportTargetType.FEED, TARGET))
+                .thenReturn(Optional.of(previousId));
 
         ReportReceipt receipt = service.submit(REPORTER, submission(ReportTargetType.FEED));
 
-        assertThat(receipt).isEqualTo(new ReportReceipt(previous.id(), true));
+        assertThat(receipt).isEqualTo(new ReportReceipt(previousId, true));
         verifyNoInteractions(targets);
         verify(reports, never()).insert(any());
     }
@@ -118,23 +118,18 @@ class ReportServiceTest {
     @Test
     @DisplayName("동시에 먼저 저장한 신고가 있으면 그 접수 ID를 반환한다")
     void returnsWinningReceiptAfterInsertConflict() {
-        ReportSnapshot previous = previous();
+        UUID previousId = UUID.randomUUID();
         when(reports.isActiveMember(REPORTER)).thenReturn(true);
-        when(reports.findByReporterAndTarget(REPORTER, ReportTargetType.FEED, TARGET))
-                .thenReturn(Optional.empty(), Optional.of(previous));
+        when(reports.findReceiptIdByReporterAndTarget(REPORTER, ReportTargetType.FEED, TARGET))
+                .thenReturn(Optional.empty(), Optional.of(previousId));
         when(targets.findVisibleTargetAuthorId(REPORTER, ReportTargetType.FEED, TARGET))
                 .thenReturn(Optional.of(AUTHOR));
 
         assertThat(service.submit(REPORTER, submission(ReportTargetType.FEED)))
-                .isEqualTo(new ReportReceipt(previous.id(), true));
+                .isEqualTo(new ReportReceipt(previousId, true));
     }
 
     private ReportSubmission submission(ReportTargetType type) {
         return new ReportSubmission(type, TARGET, ReportReason.OTHER, "나중 요청의 사유");
-    }
-
-    private ReportSnapshot previous() {
-        return new ReportSnapshot(UUID.randomUUID(), REPORTER, ReportTargetType.FEED, TARGET,
-                AUTHOR, ReportReason.SPAM, "처음 제출한 내용", NOW.minusSeconds(1));
     }
 }
