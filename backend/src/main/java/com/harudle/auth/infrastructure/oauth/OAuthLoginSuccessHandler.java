@@ -31,12 +31,11 @@ import org.springframework.stereotype.Component;
 @Component
 public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
 
-    private static final String KAKAO_REGISTRATION_ID = "kakao";
     private static final String UNKNOWN_PROVIDER = "unknown";
     private static final String NO_STORE = "no-store";
 
     private final OAuthLoginService oAuthLoginService;
-    private final KakaoLoginCommandMapper kakaoLoginCommandMapper;
+    private final OAuthLoginCommandResolver oAuthLoginCommandResolver;
     private final UserRepository userRepository;
     private final RefreshTokenService refreshTokenService;
     private final RefreshTokenCookieWriter refreshTokenCookieWriter;
@@ -49,7 +48,7 @@ public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
 
     public OAuthLoginSuccessHandler(
             OAuthLoginService oAuthLoginService,
-            KakaoLoginCommandMapper kakaoLoginCommandMapper,
+            OAuthLoginCommandResolver oAuthLoginCommandResolver,
             UserRepository userRepository,
             RefreshTokenService refreshTokenService,
             RefreshTokenCookieWriter refreshTokenCookieWriter,
@@ -62,7 +61,7 @@ public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
             Clock authClock
     ) {
         this.oAuthLoginService = oAuthLoginService;
-        this.kakaoLoginCommandMapper = kakaoLoginCommandMapper;
+        this.oAuthLoginCommandResolver = oAuthLoginCommandResolver;
         this.userRepository = userRepository;
         this.refreshTokenService = refreshTokenService;
         this.refreshTokenCookieWriter = refreshTokenCookieWriter;
@@ -114,10 +113,10 @@ public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
 
     private IssuedRefreshToken completeLogin(Authentication authentication) {
         OAuth2AuthenticationToken oauthAuthentication = extractOAuthAuthentication(authentication);
-        validateRegistrationId(oauthAuthentication);
 
         Instant now = Instant.now(clock);
-        OAuthLoginCommand command = kakaoLoginCommandMapper.map(
+        OAuthLoginCommand command = oAuthLoginCommandResolver.resolve(
+                oauthAuthentication.getAuthorizedClientRegistrationId(),
                 oauthAuthentication.getPrincipal().getAttributes()
         );
         OAuthLoginResult loginResult = oAuthLoginService.login(command, now);
@@ -130,14 +129,6 @@ public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
             return oauthAuthentication;
         }
         throw new OAuthLoginConsistencyException("OAuth2 인증 정보가 필요합니다.");
-    }
-
-    private void validateRegistrationId(OAuth2AuthenticationToken authentication) {
-        if (KAKAO_REGISTRATION_ID.equals(authentication.getAuthorizedClientRegistrationId())) {
-            return;
-        }
-
-        throw new UnsupportedOAuthProviderException();
     }
 
     private User findUser(OAuthLoginResult loginResult) {

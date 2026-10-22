@@ -250,6 +250,95 @@ class OAuthLoginServiceTest {
     }
 
     @Test
+    @DisplayName("카카오와 구글의 고유값과 이메일이 같아도 별도 회원을 생성한다")
+    void createsSeparateGoogleUserWhenKakaoIdentityMatches() {
+        OAuthLoginResult kakaoResult = oAuthLoginService.login(
+                createCommand("12345", "same@example.com", "카카오 이름"), LOGIN_AT
+        );
+        OAuthLoginCommand googleCommand = new OAuthLoginCommand(
+                OAuthProvider.GOOGLE,
+                "12345",
+                "same@example.com",
+                "구글 이름"
+        );
+
+        OAuthLoginResult googleResult = oAuthLoginService.login(googleCommand, LOGIN_AT);
+        flushAndClear();
+
+        User kakaoUser = userRepository.findById(kakaoResult.userId()).orElseThrow();
+        User googleUser = userRepository.findById(googleResult.userId()).orElseThrow();
+
+        assertThat(googleResult.userId()).isNotEqualTo(kakaoResult.userId());
+        assertThat(userRepository.count()).isEqualTo(2);
+        assertThat(oAuthAccountRepository.count()).isEqualTo(2);
+        assertThat(googleUser.getName()).isEqualTo("구글 이름");
+        assertThat(kakaoUser.getName()).isEqualTo("카카오 이름");
+        assertThat(googleUser.getNickname()).isNotEqualTo(kakaoUser.getNickname());
+        assertThat(findAccount(OAuthProvider.GOOGLE, "12345").getUser().getId()).isEqualTo(googleUser.getId());
+        assertThat(findAccount("12345").getUser().getId()).isEqualTo(kakaoUser.getId());
+        assertThat(assignedCandidateCount()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("구글 재로그인에서 이름이 없어도 기존 회원과 이름, 공개 닉네임을 유지한다")
+    void logsInExistingGoogleUserWithoutName() {
+        OAuthLoginCommand firstCommand = new OAuthLoginCommand(
+                OAuthProvider.GOOGLE,
+                "12345",
+                "old@example.com",
+                "구글 이름"
+        );
+        OAuthLoginResult first = oAuthLoginService.login(firstCommand, LOGIN_AT);
+        flushAndClear();
+        String nickname = userRepository.findById(first.userId()).orElseThrow().getNickname();
+        OAuthLoginCommand secondCommand = new OAuthLoginCommand(
+                OAuthProvider.GOOGLE,
+                "12345",
+                "new@example.com",
+                null
+        );
+
+        OAuthLoginResult second = oAuthLoginService.login(secondCommand, LOGIN_AT.plusSeconds(60));
+        flushAndClear();
+
+        User savedUser = userRepository.findById(second.userId()).orElseThrow();
+        OAuthAccount savedAccount = findAccount(OAuthProvider.GOOGLE, "12345");
+
+        assertThat(second.userId()).isEqualTo(first.userId());
+        assertThat(userRepository.count()).isEqualTo(1);
+        assertThat(oAuthAccountRepository.count()).isEqualTo(1);
+        assertThat(savedUser.getName()).isEqualTo("구글 이름");
+        assertThat(savedUser.getNickname()).isEqualTo(nickname);
+        assertThat(savedAccount.getProviderEmail()).isEqualTo("new@example.com");
+        assertThat(savedAccount.getLastLoginAt()).isEqualTo(LOGIN_AT.plusSeconds(60));
+        assertThat(assignedCandidateCount()).isEqualTo(1);
+        verify(profileImageCodeGenerator, times(1)).generate();
+    }
+
+    @Test
+    @DisplayName("구글 이름과 이메일이 없어도 자동 닉네임으로 신규 회원을 생성한다")
+    void createsGoogleUserWithoutNameAndEmail() {
+        OAuthLoginCommand command = new OAuthLoginCommand(
+                OAuthProvider.GOOGLE,
+                "12345",
+                null,
+                null
+        );
+
+        OAuthLoginResult result = oAuthLoginService.login(command, LOGIN_AT);
+        flushAndClear();
+
+        User savedUser = userRepository.findById(result.userId()).orElseThrow();
+        OAuthAccount savedAccount = findAccount(OAuthProvider.GOOGLE, "12345");
+
+        assertThat(savedUser.getNickname()).isNotBlank();
+        assertThat(savedUser.getName()).isEqualTo(savedUser.getNickname());
+        assertThat(savedUser.getPrimaryEmail()).isNull();
+        assertThat(savedAccount.getProviderEmail()).isNull();
+        assertThat(savedAccount.getUser().getId()).isEqualTo(savedUser.getId());
+    }
+
+    @Test
     @DisplayName("소셜 이름과 이메일이 없어도 자동 닉네임을 기본 이름으로 회원을 생성한다")
     void createsNewUserWithoutEmail() {
         OAuthLoginCommand command = createCommand(
@@ -430,9 +519,13 @@ class OAuthLoginServiceTest {
     }
 
     private OAuthAccount findAccount(String providerSubject) {
+        return findAccount(OAuthProvider.KAKAO, providerSubject);
+    }
+
+    private OAuthAccount findAccount(OAuthProvider provider, String providerSubject) {
         return oAuthAccountRepository
                 .findByProviderAndProviderSubject(
-                        OAuthProvider.KAKAO,
+                        provider,
                         providerSubject
                 )
                 .orElseThrow();
