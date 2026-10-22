@@ -37,7 +37,6 @@ const DiaryGenerationNotice = () => {
     const execute = async (): Promise<void> => {
       const generationStatus = await getDiaryGenerationStatus({ generationId });
       switch (generationStatus.status) {
-        // swtich-case never타입 써보기
         case 'SUCCEEDED': {
           const savedToastId = localStorage.getItem(
             DIARY_GENERATION_TOAST_ID_KEY,
@@ -94,7 +93,8 @@ const DiaryGenerationNotice = () => {
           return;
         }
         default: {
-          return;
+          const exhaustiveCheck: never = generationStatus;
+          return exhaustiveCheck;
         }
       }
     };
@@ -137,7 +137,3 @@ const DiaryGenerationNotice = () => {
 };
 
 export default DiaryGenerationNotice;
-
-// 폴링을 어떻게 구현할래?
-// 처음 렌더링 됐을 때만 setTimeout걸면 되려나?
-// setInterval을 걸면 안되는 이유는?
