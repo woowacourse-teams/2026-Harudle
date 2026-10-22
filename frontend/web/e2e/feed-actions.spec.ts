@@ -27,7 +27,7 @@ test('공유 바텀시트에서 공개 링크를 복사한다', async ({ page, c
   await expect(sheet).toBeVisible();
   await page.screenshot({ path: 'test-results/feed-link-copied.png' });
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
-    `${new URL(page.url()).origin}/feeds/00000000-0000-4000-8000-000000000002`,
+    `${new URL(page.url()).origin}/feeds/00000000-0000-4000-8000-000000000002?utm_source=feed_share`,
   );
   await expect(sheet.getByRole('button', { name: '링크 복사' })).toBeVisible();
 });
@@ -39,9 +39,9 @@ test('본인 피드 삭제를 취소하거나 확인하고 성공한 항목만 �
   const articles = page.getByRole('article');
   await expect(articles).toHaveCount(20);
   const ownFeed = articles
-    .filter({ has: page.locator('header button') })
+    .filter({ has: page.getByRole('button', { name: '옵션 더보기 아이콘' }) })
     .first();
-  await ownFeed.locator('header').getByRole('button').click();
+  await ownFeed.getByRole('button', { name: '옵션 더보기 아이콘' }).click();
   await page
     .getByRole('dialog')
     .filter({
@@ -59,7 +59,7 @@ test('본인 피드 삭제를 취소하거나 확인하고 성공한 항목만 �
   await confirm.getByRole('button', { name: '취소' }).click();
   await expect(articles).toHaveCount(20);
 
-  await ownFeed.locator('header').getByRole('button').click();
+  await ownFeed.getByRole('button', { name: '옵션 더보기 아이콘' }).click();
   await page
     .getByRole('dialog')
     .filter({

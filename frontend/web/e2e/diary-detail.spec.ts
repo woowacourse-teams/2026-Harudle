@@ -109,7 +109,7 @@ test.describe('일기 상세', () => {
     await expect(page.getByLabel('조회할 월')).toBeVisible();
   });
 
-  test('다른 월에서 상세 화면에 진입한 뒤 돌아가면 선택한 월을 유지한다', async ({
+  test('월을 선택하고 상세 화면에 진입해도 상단 뒤로가기는 앨범 기본 경로로 이동한다', async ({
     page,
   }) => {
     await page.goto('/album?yearMonth=2026-07');
@@ -121,7 +121,7 @@ test.describe('일기 상세', () => {
     await clickSampleDiary(page);
     await page.getByRole('button', { name: '뒤로 가기' }).click();
 
-    await expect(page).toHaveURL('/album?yearMonth=2026-08');
+    await expect(page).toHaveURL('/album');
     await expect(monthInput).toHaveValue('2026-08');
   });
 
@@ -129,9 +129,7 @@ test.describe('일기 상세', () => {
     page,
   }) => {
     await goToSampleDiaryDetail(page);
-    await page
-      .getByRole('button', { name: DIARY_DETAIL_COPY.menuAction })
-      .click();
+    await page.locator('header button:has(img[alt=""])').click();
 
     await page
       .getByRole('button', { name: DIARY_DETAIL_COPY.deleteAction })
@@ -160,11 +158,11 @@ test.describe('일기 상세', () => {
     ).toHaveCount(0);
   });
 
-  test('일기 삭제에 실패하면 에러 메시지를 보여준다', async ({ page }) => {
+  test('일기 삭제에 실패하면 모달을 닫고 오류 토스트를 보여준다', async ({
+    page,
+  }) => {
     await goToSampleDiaryDetail(page, MOCK_SCENARIOS.diaryDeleteFailure);
-    await page
-      .getByRole('button', { name: DIARY_DETAIL_COPY.menuAction })
-      .click();
+    await page.locator('header button:has(img[alt=""])').click();
 
     await page
       .getByRole('button', { name: DIARY_DETAIL_COPY.deleteAction })
@@ -175,17 +173,13 @@ test.describe('일기 상세', () => {
         exact: true,
       }),
     });
-    const errorPromise = page.waitForEvent('dialog');
-    const confirmClickPromise = confirmModal
+    await confirmModal
       .getByRole('button', { name: DIARY_DETAIL_COPY.deleteAction })
       .click();
-
-    const errorDialog = await errorPromise;
-    expect(errorDialog.message()).toBe(
-      '일기 삭제에 실패했습니다. 다시 시도해주세요.',
-    );
-    await errorDialog.accept();
-    await confirmClickPromise;
+    await expect(confirmModal).toBeHidden();
+    await expect(
+      page.getByText('일기 삭제에 실패했습니다. 다시 시도해주세요.'),
+    ).toBeVisible();
 
     await expect(page).toHaveURL(SAMPLE_DIARY_URL);
     await expect(
@@ -207,9 +201,7 @@ test.describe('일기 상세', () => {
       }
     });
 
-    await page
-      .getByRole('button', { name: DIARY_DETAIL_COPY.menuAction })
-      .click();
+    await page.locator('header button:has(img[alt=""])').click();
     await page
       .getByRole('button', { name: DIARY_DETAIL_COPY.deleteAction })
       .click();
@@ -314,14 +306,11 @@ test.describe('일기 상세', () => {
       };
     }, diaryImageUrl);
 
-    const errorPromise = page.waitForEvent('dialog');
-    const downloadClickPromise = page
+    await page
       .getByRole('button', { name: DIARY_DETAIL_COPY.downloadAction })
       .click();
-    const errorDialog = await errorPromise;
-
-    expect(errorDialog.message()).toBe(ERROR_MESSAGES.DIARY_IMAGE_SAVE_FAILED);
-    await errorDialog.accept();
-    await downloadClickPromise;
+    await expect(
+      page.getByText(ERROR_MESSAGES.DIARY_IMAGE_SAVE_FAILED),
+    ).toBeVisible();
   });
 });
