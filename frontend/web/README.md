@@ -118,6 +118,22 @@ main ── CI/CD → harudle.com
 
 프론트엔드 버전 증가 기준과 Git 태그, GitHub Release 생성 절차는 [릴리스 가이드](./docs/releases.md), 버전별 변경은 [CHANGELOG](./CHANGELOG.md)에서 확인합니다.
 
+## GitHub Actions 패키지 캐시
+
+PR CI는 `actions/setup-node`의 `cache: pnpm`으로 내려받은 패키지를 저장하고 복원합니다.
+매번 `pnpm install --frozen-lockfile`을 실행하며, 타입 검사, 린트와 테스트도 계속 실행합니다.
+이 캐시에는 `node_modules`나 프론트 빌드 결과가 포함되지 않습니다.
+
+`develop-frontend`에 패키지 목록, lockfile, pnpm 설정, 패치 또는 CI 설정 변경이 들어오면
+별도 워크플로인 [frontend-cache.yml](../../.github/workflows/frontend-cache.yml)이 패키지를 설치하고 캐시를 저장합니다.
+소스나 문서만 바뀌면 실행하지 않으며, 이 작업에서는 타입 검사, 린트, 테스트와 빌드를 실행하지 않습니다.
+`dev`, `stage`, `main`에는 별도의 패키지 캐시 생성 작업을 추가하지 않습니다.
+
+`develop-frontend` 대상의 다음 PR은 병합 대상 브랜치의 캐시를 가져올 수 있습니다.
+PR CI와 같은 Node.js, pnpm 버전과 lockfile 경로를 사용합니다. lockfile이 달라지면 새 캐시를 만듭니다.
+병합 후 캐시 생성 실행의 `Post Set up Node.js` 저장 로그를 확인하고, 다음 PR의
+`Set up Node.js`에서 해당 캐시를 복원했는지 확인합니다. 캐시가 없어도 패키지를 내려받아 검증을 진행합니다.
+
 ## 커밋 메시지
 
 [Angular 컨벤션 기반의 Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0-beta.4/)를 따릅니다.

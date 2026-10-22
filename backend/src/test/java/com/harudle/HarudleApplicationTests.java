@@ -72,6 +72,7 @@ class HarudleApplicationTests extends ServiceIntegrationTestSupport {
                 "push_registration_states",
                 "push_registrations",
                 "refresh_tokens",
+                "reports",
                 "share_links",
                 "users"
         );

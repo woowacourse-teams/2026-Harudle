@@ -18,7 +18,7 @@ const goToSetting = async (
 };
 
 const expectProfile = async (page: Page) => {
-  await expect(page.getByText('하루들', { exact: true })).toBeVisible();
+  await expect(page.getByRole('strong')).toHaveText('하루들');
   await expect(page.getByText('kakao', { exact: true })).toBeVisible();
 };
 
@@ -51,18 +51,44 @@ test.describe('설정', () => {
     await expectProfile(page);
   });
 
-  test('로그아웃하면 공개 피드를 보여주고 설정 클릭 시 로그인 안내를 보여준다', async ({
+  test('로그아웃하면 페이지를 다시 불러와 이전 사용자 피드를 초기화하고 로그인 안내를 보여준다', async ({
     page,
   }) => {
-    await goToSetting(page);
+    await page.goto('/');
+    await expect(page.getByRole('article')).toHaveCount(20);
+    await expect(
+      page.getByRole('button', { name: '옵션 더보기 아이콘' }).first(),
+    ).toBeVisible();
+    await page
+      .getByRole('navigation')
+      .getByRole('button', { name: '설정' })
+      .click();
     await expectProfile(page);
     await page.setExtraHTTPHeaders({
       [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.authRefreshFailure,
     });
-    await page.getByRole('button', { name: '로그아웃' }).click();
+    await Promise.all([
+      page.waitForRequest(
+        (request): boolean =>
+          request.isNavigationRequest() &&
+          request.resourceType() === 'document' &&
+          new URL(request.url()).pathname === '/',
+      ),
+      page.getByRole('button', { name: '로그아웃' }).click(),
+    ]);
 
     await expect(page).toHaveURL('/');
     await expect(page.getByRole('combobox')).toBeVisible();
+    await expect(page.getByRole('article')).toHaveCount(20);
+    await expect(
+      page.getByRole('button', { name: '옵션 더보기 아이콘' }),
+    ).toHaveCount(0);
+    expect(
+      await page.evaluate(() => ({
+        hasEverLoggedIn: localStorage.getItem('harudle.has-ever-logged-in'),
+        hasCompletedOAuth: localStorage.getItem('harudle.has-completed-oauth'),
+      })),
+    ).toEqual({ hasEverLoggedIn: 'true', hasCompletedOAuth: null });
     await page
       .getByRole('navigation')
       .getByRole('button', { name: '설정' })

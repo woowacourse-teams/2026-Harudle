@@ -103,6 +103,16 @@ public enum ErrorType {
             "Feed not found",
             "피드를 찾을 수 없습니다."
     ),
+    INVALID_REPORT(
+            HttpStatus.BAD_REQUEST,
+            "Invalid report",
+            "신고 대상이나 내용이 올바르지 않습니다."
+    ),
+    REPORT_TARGET_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "Report target not found",
+            "신고할 대상을 찾을 수 없습니다."
+    ),
     COMMENT_NOT_FOUND(
             HttpStatus.NOT_FOUND,
             "Comment not found",

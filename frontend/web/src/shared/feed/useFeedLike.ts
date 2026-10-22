@@ -4,6 +4,11 @@ import {
   type FeedLikeResponse,
 } from '../../domain/feeds/feedLike';
 import type { Feed } from '../../domain/feeds/feedList';
+import {
+  getFeedListCache,
+  setFeedListCache,
+} from '../../domain/feeds/feedListCache';
+import { updateFeedLike } from '../../domain/feeds/feedListUpdates';
 import { useErrorTracking } from '../../posthog/useErrorTracking';
 import type { ApiRequest } from '../../shared/api';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
@@ -45,6 +50,14 @@ const useFeedLike = ({ feedId }: UseFeedLikeProps): FeedLikeState => {
           action: likedByMe ? 'like' : 'unlike',
         });
         const like = await setFeedLike({ feedId, likedByMe });
+        const cached = getFeedListCache();
+        if (cached !== null) {
+          setFeedListCache({
+            ...cached,
+            data: updateFeedLike(cached.data, feedId, like),
+          });
+        }
+
         setRequest({ status: 'success', data: like });
         onSuccess(like);
       } catch (error: unknown) {
