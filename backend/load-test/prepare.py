@@ -43,6 +43,16 @@ def member_identity(fixture):
     return uuid.UUID(fixture.get('memberSetId', fixture['runId']))
 
 
+def data_identity(fixture):
+    return uuid.UUID(fixture.get('baselineId', fixture['runId']))
+
+
+def diary_ids(fixture):
+    return [str(uuid.uuid5(data_identity(fixture), f'diary-{i}-{month}-{j}'))
+            for i in range(MEMBERS) for month in [fixture['currentMonth'], fixture['previousMonth']]
+            for j in range(fixture['diariesPerMonth'])]
+
+
 def account_statements(fixture):
     member_set = member_identity(fixture)
     statements = []
@@ -60,6 +70,14 @@ def account_statements(fixture):
 def reset_guard(accounts):
     ids = ', '.join(quote(member['id']) for member in accounts['members'])
     email = quote('%@' + member_identity(accounts).hex + '.loadtest.invalid')
+    allowed = ', '.join(quote(value) for value in diary_ids(accounts)) if 'baselineId' in accounts else ''
+    extra = f' AND id NOT IN ({allowed})' if allowed else ''
+    baseline = f"""
+    IF (SELECT COUNT(*) FROM diaries WHERE id IN ({allowed}) AND user_id IN ({ids})
+        AND deleted_at IS NULL) <> {len(diary_ids(accounts))} THEN
+        RAISE EXCEPTION 'The baseline diaries changed or are missing';
+    END IF;
+""" if allowed else ''
     return f"""
 DO $$
 BEGIN
@@ -68,13 +86,23 @@ BEGIN
         AND deleted_at IS NULL AND role = 'USER') <> {MEMBERS} THEN
         RAISE EXCEPTION 'The reusable test members changed';
     END IF;
-    IF EXISTS (SELECT 1 FROM diaries WHERE user_id IN ({ids})) THEN
+    IF EXISTS (SELECT 1 FROM diaries WHERE user_id IN ({ids}){extra}) THEN
         RAISE EXCEPTION 'Clean the previous test before reset';
     END IF;
+{baseline}
 END $$;
 DELETE FROM refresh_tokens WHERE user_id IN ({ids});
 DELETE FROM daily_generation_usage WHERE user_id IN ({ids});
 """
+
+
+def login_sql(fixture):
+    statements = [database_guard(), reset_guard(fixture)]
+    for member in fixture['members']:
+        token = hashlib.sha256(member['refreshToken'].encode()).hexdigest()
+        statements.append("INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES "
+                          f"({quote(member['id'])}, '{token}', CURRENT_TIMESTAMP + INTERVAL '1 day');")
+    return '\n'.join(statements) + '\nCOMMIT;'
 
 
 def build_fixture(base_url, per_month, accounts=None, run_name=None):
@@ -85,7 +113,8 @@ def build_fixture(base_url, per_month, accounts=None, run_name=None):
     today = datetime.now(ZoneInfo("Asia/Seoul")).date()
     current = today.replace(day=1)
     previous = (current - timedelta(days=1)).replace(day=1)
-    category = "부하" + run_id.hex[:12]
+    baseline_id = uuid.uuid5(member_identity(accounts), f'baseline-{current}') if accounts is not None else run_id
+    category = "부하" + baseline_id.hex[:12]
     members, image_keys, statements = [], [], [database_guard()]
     if accounts is not None:
         statements.append(reset_guard(accounts))
@@ -102,7 +131,7 @@ def build_fixture(base_url, per_month, accounts=None, run_name=None):
     }, ensure_ascii=False)
 
     def identifier(key):
-        return str(uuid.uuid5(run_id, key))
+        return str(uuid.uuid5(baseline_id, key))
 
     for i in range(MEMBERS):
         user_id = identifier(f"member-{i}") if accounts is None else accounts['members'][i]['id']
@@ -111,11 +140,11 @@ def build_fixture(base_url, per_month, accounts=None, run_name=None):
             "INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES "
             f"({quote(user_id)}, '{hashlib.sha256(refresh.encode()).hexdigest()}', CURRENT_TIMESTAMP + INTERVAL '1 day');")
         member = {"id": user_id, "refreshToken": refresh,
-                  "idempotencyKey": identifier(f"create-{i}"), "diaryId": None, "feedId": None}
+                  "idempotencyKey": str(uuid.uuid5(run_id, f"create-{i}")), "diaryId": None, "feedId": None}
         for month in [current, previous]:
             for j in range(per_month):
                 diary_id = identifier(f"diary-{i}-{month}-{j}")
-                generation_id, key = seed_image(run_id, i, month, j)
+                generation_id, key = seed_image(baseline_id, i, month, j)
                 image_keys.append(key)
                 diary_date = month.replace(day=min(j + 1, today.day if month == current else 28))
                 statements.append(
@@ -162,7 +191,7 @@ def build_fixture(base_url, per_month, accounts=None, run_name=None):
         statements[1:1] = account_statements(fixture)
     else:
         fixture.update(version=3, memberSetId=accounts['memberSetId'], memberSetName=accounts['memberSetName'],
-                       cleanupKey=accounts['cleanupKey'], runName=run_name)
+                       cleanupKey=accounts['cleanupKey'], runName=run_name, baselineId=str(baseline_id))
     return fixture, "\n".join(statements), image_keys
 
 

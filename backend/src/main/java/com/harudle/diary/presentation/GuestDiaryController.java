@@ -55,11 +55,11 @@ class GuestDiaryController {
 
     @Operation(
             summary = "게스트 일기 생성",
-            description = "게스트 세션의 1회 체험 권한으로 일기와 4컷 이미지를 생성합니다."
+            description = "게스트 체험 권한으로 일기와 대기 작업을 저장합니다. 이미지는 작업 처리기가 생성합니다."
     )
     @ApiResponses({
-            @ApiResponse(responseCode = "201", description = "새 게스트 일기 생성 완료"),
-            @ApiResponse(responseCode = "200", description = "멱등 재요청의 기존 게스트 일기 반환")
+            @ApiResponse(responseCode = "202", description = "새 게스트 일기와 대기 작업 접수 완료"),
+            @ApiResponse(responseCode = "200", description = "멱등 재요청의 기존 게스트 일기와 생성 상태 반환")
     })
     @ApiErrorResponses({
             ErrorType.VALIDATION_ERROR,
@@ -70,9 +70,9 @@ class GuestDiaryController {
             ErrorType.DIARY_NOT_FOUND,
             ErrorType.GUEST_TRIAL_ALREADY_USED,
             ErrorType.IDEMPOTENCY_KEY_CONFLICT,
-            ErrorType.GENERATION_IN_PROGRESS,
             ErrorType.AI_PROVIDER_ERROR,
             ErrorType.GENERATION_UNAVAILABLE,
+            ErrorType.GENERATION_CAPACITY_EXCEEDED,
             ErrorType.GENERATION_INTERRUPTED,
             ErrorType.IMAGE_STORAGE_ERROR,
             ErrorType.AI_PROVIDER_TIMEOUT
@@ -106,7 +106,7 @@ class GuestDiaryController {
         }
 
         URI location = URI.create(BASE_PATH + "/" + result.id());
-        return ResponseEntity.created(location)
+        return ResponseEntity.accepted().location(location)
                 .cacheControl(CacheControl.noStore())
                 .body(response);
     }

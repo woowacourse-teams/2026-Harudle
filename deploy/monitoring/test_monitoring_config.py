@@ -1,7 +1,8 @@
 """Operational regression checks for the bounded CloudWatch scrape contract.
 
-Uses only the Python standard library. Run from deploy/monitoring after copying,
-or set HARUDLE_MONITORING_CONFIG_DIR to the directory containing the three files.
+Uses only the Python standard library. Run in a checkout or copied deployment,
+or set HARUDLE_MONITORING_CONFIG_DIR to its monitoring directory. Compose files
+must be available in that directory's parent for the dev logging check.
 These checks do not simulate CloudWatch ingestion or prove its counter conversion;
 the deployment check must confirm raw endpoint types and EMF delta records.
 """
@@ -29,6 +30,10 @@ EXISTING_DIMENSIONS = {
     "hikaricp_connections_pending": [["job", "pool"]],
 }
 NEW_DIMENSIONS = {
+    "harudle_generation_queue_size": [["job", "status"]],
+    "harudle_generation_queue_wait_seconds_sum": [["job"]],
+    "harudle_generation_queue_wait_seconds_count": [["job"]],
+    "harudle_generation_capacity_rejections_total": [["job"]],
     "harudle_generation_duration_seconds_sum": [["job", "result"]],
     "harudle_generation_duration_seconds_count": [["job", "result"]],
     "harudle_gemini_tokens_total": [["job", "stage", "kind"]],
@@ -39,6 +44,13 @@ RESOURCE_METRICS = {
     "hikaricp_connections_acquire_seconds_max": "Seconds",
     "hikaricp_connections_timeout_total": "Count",
     "jvm_memory_used_bytes": "Bytes",
+}
+DEV_DIAGNOSTICS = {
+    "jvm_memory_committed_bytes": "Bytes",
+    "jvm_memory_max_bytes": "Bytes",
+    "jvm_gc_pause_seconds_count": "Count",
+    "jvm_gc_pause_seconds_sum": "Seconds",
+    "jvm_gc_pause_seconds_max": "Seconds",
 }
 
 
@@ -84,6 +96,8 @@ class MonitoringConfigTests(unittest.TestCase):
                     )
             expected = EXISTING_DIMENSIONS.keys() | NEW_DIMENSIONS.keys()
             expected |= RESOURCE_METRICS.keys()
+            if environment == "dev":
+                expected |= DEV_DIAGNOSTICS.keys()
             self.assertEqual(set(processor["metric_unit"]), expected)
 
     def test_connection_metrics_preserve_pool_and_heap_preserves_memory_pool(self):
@@ -99,7 +113,8 @@ class MonitoringConfigTests(unittest.TestCase):
                         self.assertEqual(declaration["dimensions"], [["job", "area", "id"]])
                         self.assertEqual(declaration["source_labels"], ["job", "area"])
                         self.assertIsNotNone(re.fullmatch(declaration["label_matcher"], "harudle-backend;heap"))
-                        self.assertIsNone(re.fullmatch(declaration["label_matcher"], "harudle-backend;nonheap"))
+                        matches_nonheap = re.fullmatch(declaration["label_matcher"], "harudle-backend;nonheap")
+                        self.assertEqual(matches_nonheap is not None, environment == "dev")
                         self.assertIsNone(re.fullmatch(declaration["label_matcher"], "another-app;heap"))
                     else:
                         self.assertEqual(declaration["dimensions"], [["job", "pool"]])
@@ -129,6 +144,10 @@ class MonitoringConfigTests(unittest.TestCase):
             "harudle_generation_duration_seconds_bucket",
             "harudle_generation_duration_seconds",  # Quantiles are not request samples.
             "harudle_generation_duration_seconds_max",
+            "harudle_generation_queue_wait_seconds_bucket",
+            "harudle_generation_queue_wait_seconds_max",
+            "harudle_generation_queue_size_extra",
+            "harudle_generation_capacity_rejections_total_created",
             "harudle_generation_duration_seconds_sum_unbounded_suffix",
             "harudle_gemini_tokens_total_created",
             "http_server_requests_seconds_bucket",
@@ -144,16 +163,18 @@ class MonitoringConfigTests(unittest.TestCase):
         ):
             with self.subTest(metric=name):
                 self.assertIsNone(keep.fullmatch(name))
-                for environment in ("dev", "prod"):
+                environments = ("prod",) if name in DEV_DIAGNOSTICS else ("dev", "prod")
+                for environment in environments:
                     self.assertEqual(matching_declarations(read_processor(environment)[2], name), [])
 
-    def test_environments_collect_the_same_metrics_without_replacing_host_configuration(self):
+    def test_dev_diagnostics_preserve_the_existing_collection_contract(self):
         normalized = []
         for environment, namespace in (("dev", "Harudle/Dev"), ("prod", "Harudle/Prod")):
             configuration, prometheus, processor = read_processor(environment)
             self.assertEqual(prometheus["log_group_name"], f"/harudle/{environment}/prometheus-emf")
             self.assertEqual(processor["metric_namespace"], namespace)
-            self.assertEqual(prometheus["prometheus_config_path"], "/opt/harudle/monitoring/prometheus.yaml")
+            suffix = ".dev" if environment == "dev" else ""
+            self.assertEqual(prometheus["prometheus_config_path"], f"/opt/harudle/monitoring/prometheus{suffix}.yaml")
             item = copy.deepcopy(configuration)
             metrics = item["metrics"]
             self.assertEqual(metrics["namespace"], "CWAgent")
@@ -162,8 +183,54 @@ class MonitoringConfigTests(unittest.TestCase):
             self.assertEqual(set(metrics["metrics_collected"]), {"procstat"})
             item["logs"]["metrics_collected"]["prometheus"]["log_group_name"] = "ENVIRONMENT"
             item["logs"]["metrics_collected"]["prometheus"]["emf_processor"]["metric_namespace"] = "ENVIRONMENT"
+            if environment == "dev":
+                # Strip only the deliberate dev additions before comparing the shared contract.
+                native = item["metrics"]["metrics_collected"]["procstat"][0]
+                self.assertEqual(native["metrics_collection_interval"], 10)
+                native["metrics_collection_interval"] = 60
+                prom = item["logs"]["metrics_collected"]["prometheus"]
+                prom["prometheus_config_path"] = "/opt/harudle/monitoring/prometheus.yaml"
+                emf = prom["emf_processor"]
+                for name in DEV_DIAGNOSTICS:
+                    del emf["metric_unit"][name]
+                emf["metric_declaration"] = [d for d in emf["metric_declaration"]
+                                              if d["metric_selectors"] != ["^jvm_gc_pause_seconds_(count|sum|max)$"]]
+                memory = matching_declarations(emf, "jvm_memory_used_bytes")[0]
+                memory["label_matcher"] = "^harudle-backend;heap$"
+                memory["metric_selectors"] = ["^jvm_memory_used_bytes$"]
             normalized.append(item)
         self.assertEqual(*normalized)
+
+    def test_dev_scrape_collects_gc_and_nonheap_without_identifiers_or_histograms(self):
+        _, _, processor = read_processor("dev")
+        source = (CONFIG_DIR / "prometheus.dev.yaml").read_text()
+        regexes = re.findall(r"^\s+regex:\s*'([^']+)'\s*$", source, re.MULTILINE)
+        self.assertEqual(len(regexes), 1)
+        keep = re.compile(regexes[0])
+        self.assertRegex(source, r"scrape_interval:\s*10s\b")
+        self.assertRegex(source, r"scrape_timeout:\s*5s\b")
+        self.assertIn("127.0.0.1:19091", source)
+        for name in EXISTING_DIMENSIONS.keys() | NEW_DIMENSIONS.keys() | RESOURCE_METRICS.keys() | DEV_DIAGNOSTICS.keys():
+            self.assertIsNotNone(keep.fullmatch(name), name)
+        for name, unit in DEV_DIAGNOSTICS.items():
+            declarations = matching_declarations(processor, name)
+            self.assertEqual(len(declarations), 1)
+            self.assertEqual(processor["metric_unit"][name], unit)
+            expected = ["job", "gc", "action", "cause"] if name.startswith("jvm_gc_") else ["job", "area", "id"]
+            self.assertEqual(declarations[0]["dimensions"], [expected])
+        for name in ("jvm_gc_pause_seconds_bucket", "jvm_gc_pause_seconds", "jvm_gc_pause_seconds_sum_extra",
+                     "jvm_memory_used_bytes_extra", "process_cpu_usage", "untrusted_user_id"):
+            self.assertIsNone(keep.fullmatch(name))
+            self.assertEqual(matching_declarations(processor, name), [])
+        self.assertNotIn("traceId", json.dumps(processor))
+
+    def test_gc_logging_is_dev_only_and_preserves_heap_and_collector_selection(self):
+        deploy = CONFIG_DIR.parent
+        source = (deploy / "compose.dev.yaml").read_text()
+        self.assertIn("-XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError", source)
+        self.assertIn("-Xlog:gc*,safepoint:stdout:time,uptime,level,tags", source)
+        self.assertNotRegex(source, r"-Xmx|-Xms|-XX:[+-]Use\w+GC|mem_limit")
+        self.assertNotIn("-Xlog:", (deploy / "compose.prod.yaml").read_text())
 
     def test_procstat_selects_backend_java_without_counting_parent_or_other_java(self):
         configuration, _, _ = read_processor("prod")

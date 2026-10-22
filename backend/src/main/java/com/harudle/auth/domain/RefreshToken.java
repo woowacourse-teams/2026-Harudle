@@ -11,6 +11,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.UUID;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -27,6 +28,9 @@ public class RefreshToken {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
+
+    @Column(name = "session_id")
+    private UUID sessionId;
 
     @JdbcTypeCode(SqlTypes.CHAR)
     @Column(name = "token_hash", nullable = false, length = TOKEN_HASH_LENGTH, unique = true)
@@ -51,7 +55,18 @@ public class RefreshToken {
             Instant expiresAt,
             Instant createdAt
     ) {
+        this(user, null, tokenHash, expiresAt, createdAt);
+    }
+
+    public RefreshToken(
+            User user,
+            UUID sessionId,
+            String tokenHash,
+            Instant expiresAt,
+            Instant createdAt
+    ) {
         this.user = Objects.requireNonNull(user, "user는 필수입니다.");
+        this.sessionId = sessionId;
         this.tokenHash = validateTokenHash(tokenHash);
         this.expiresAt = Objects.requireNonNull(expiresAt, "expiresAt은 필수입니다.");
         this.createdAt = Objects.requireNonNull(createdAt, "createdAt은 필수입니다.");
@@ -114,6 +129,10 @@ public class RefreshToken {
 
     public User getUser() {
         return user;
+    }
+
+    public UUID getSessionId() {
+        return sessionId;
     }
 
     public String getTokenHash() {

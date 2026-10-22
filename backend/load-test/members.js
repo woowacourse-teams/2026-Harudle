@@ -1,6 +1,6 @@
 import http from 'k6/http';
 import execution from 'k6/execution';
-import { check, fail } from 'k6';
+import { check, fail, sleep } from 'k6';
 import { Counter, Rate, Trend } from 'k6/metrics';
 
 const fixture = JSON.parse(open(__ENV.MEMBERS_FILE || './runs/peak/members.json'));
@@ -16,6 +16,8 @@ const completedJourneys = new Counter('completed_journeys');
 const journeyDuration = new Trend('journey_duration', true);
 const visits = new Counter('member_visits');
 const generationDuration = new Trend('generation_duration', true);
+const generationPollRequests = new Counter('generation_status_requests');
+const generationPollFailures = new Rate('generation_status_failures');
 const apiDuration = new Trend('ordinary_api_duration', true);
 const expectedJourneys = smoke
   ? { create_publish: 1, browse: 2, react: 2, records: 2 }
@@ -56,6 +58,7 @@ export const options = {
     completed_journeys: [`count==${smoke ? 7 : 340}`],
     ordinary_api_duration: ['p(95)<1000'],
     generation_duration: ['min>=30000', 'p(95)<45000'],
+    generation_status_failures: ['rate<0.01'],
     ...(smoke ? {} : { dropped_iterations: ['count==0'] }),
     ...Object.fromEntries(Object.entries(expectedJourneys).flatMap(([name, count]) => [
       [`completed_journeys{journey:${name}}`, [`count==${count}`]],
@@ -107,6 +110,7 @@ export function setup() {
       const stub = setupRequest('GET', '/api/v1/load-test/ai-stub', null, { headers });
       requireValue(stub.environment === 'dev' && stub.delayMs === 30000 && stub.storage === 'real'
         && stub.output === 'test-image', 'dev AI Stub uses the fixed test image at 30 seconds');
+      requireValue(stub.execution === 'db-queue', 'load tests use the DB queue worker');
       const categories = setupRequest('GET', '/api/v1/categories', null, { headers });
       const category = categories.find((item) => item.name === fixture.categoryName);
       requireValue(!!category, 'run-specific active category exists');
@@ -121,28 +125,60 @@ export function setup() {
   return { sessions, categoryId };
 }
 
-function request(session, method, path, payload, name, generation = false, expectedStatus = 200, extraHeaders = {}) {
+function request(session, method, path, payload, name, expectedStatus = 200, extraHeaders = {}) {
   const response = http.request(method, `${baseUrl}${path}`, payload === null ? null : JSON.stringify(payload), {
     headers: {
       Authorization: `Bearer ${session.accessToken}`, 'X-XSRF-TOKEN': session.csrfToken,
       'Content-Type': 'application/json', ...extraHeaders,
     },
     cookies: { 'XSRF-TOKEN': { value: session.csrfToken, replace: true } },
-    timeout: generation ? '75s' : '15s', redirects: 0,
+    timeout: '15s', redirects: 0,
     tags: { kind: 'business', name },
   });
   businessRequests.add(1, { api: name });
   const success = response.status === expectedStatus;
   businessFailures.add(!success, { api: name });
-  if (generation) generationDuration.add(response.timings.duration);
-  else apiDuration.add(response.timings.duration);
+  apiDuration.add(response.timings.duration);
+  const responseTraceId = response.headers?.['X-Trace-Id'] || '';
+  const traceId = /^[0-9a-f]{32}$/i.test(responseTraceId) ? responseTraceId : 'unavailable';
+  if (response.timings.duration >= 1000) {
+    // Keep slow-request evidence without logging URLs, bodies, cookies or tokens.
+    console.warn(`${name}: slow response HTTP ${response.status}, durationMs=${response.timings.duration}, waitingMs=${response.timings.waiting}, traceId=${traceId}`);
+  }
   if (!success) {
     let errorCode = 'unknown';
     try { errorCode = response.json().code || 'unknown'; } catch (_) { /* No response body is logged. */ }
-    console.error(`${name}: received HTTP ${response.status}, code=${errorCode}`);
+    console.error(`${name}: received HTTP ${response.status}, code=${errorCode}, traceId=${traceId}`);
   }
   requireValue(success, `${name}: HTTP ${expectedStatus}`);
   return json(response, name);
+}
+
+function waitForGeneration(session, diary, startedAt) {
+  const deadline = startedAt + 75000;
+  while (Date.now() < deadline) {
+    const response = http.request('GET', `${baseUrl}/api/v1/diary-generations/${diary.generation.id}`, null, {
+      headers: { Authorization: `Bearer ${session.accessToken}` }, redirects: 0,
+      timeout: `${Math.max(1, Math.min(15000, deadline - Date.now()))}ms`,
+      tags: { kind: 'generation_poll', name: 'GET generation status' },
+    });
+    generationPollRequests.add(1);
+    generationPollFailures.add(response.status !== 200);
+    requireValue(response.status === 200, 'generation status: HTTP 200');
+    const generation = json(response, 'generation status');
+    requireValue(generation.id === diary.generation.id,
+      'generation status belongs to the accepted job');
+    if (generation.status === 'SUCCEEDED') {
+      requireValue(generation.diaryId === diary.id, 'completed generation belongs to the accepted diary');
+      generationDuration.add(Date.now() - startedAt);
+      return generation;
+    }
+    requireValue(['PENDING', 'PROCESSING'].includes(generation.status),
+      'generation has not failed');
+    const remaining = deadline - Date.now();
+    if (remaining > 0) sleep(Math.min(1, remaining / 1000));
+  }
+  fail('generation did not finish within 75 seconds');
 }
 
 function journey(name, action) {
@@ -161,9 +197,12 @@ function journey(name, action) {
 
 export function memberVisit(data) {
   const iteration = execution.scenario.iterationInTest;
+  // At 5m, the arrival timer can win against the executor's duration cancellation.
+  // Skip that boundary slot before accessing an account or sending any requests.
+  if (!smoke && iteration === expectedVisits) return;
+  if (iteration >= expectedVisits) fail('Unexpected extra visit');
   // 73 and 200 are coprime: every member visits once, with roles spread over time.
   const index = smoke ? smokeMembers[iteration] : (iteration * 73) % 200;
-  if (iteration >= expectedVisits) fail('Unexpected extra visit');
   const member = fixture.members[index];
   const session = data.sessions[index];
   const jar = http.cookieJar();
@@ -175,11 +214,14 @@ export function memberVisit(data) {
   if (index < 20) journey('create_publish', () => {
     const usage = request(session, 'GET', '/api/v1/me/generation-usage', null, 'GET generation-usage');
     requireValue(usage.remainingCount > 0, 'generation quota remains');
+    const startedAt = Date.now();
     const diary = request(session, 'POST', '/api/v1/load-test/diaries', {
       diaryDate: fixture.date, sourceText: `부하 테스트 ${fixture.runId}. 오늘 팀원과 개발하고 산책했다.`,
-    }, 'POST load-test diaries', true, 201, { 'Idempotency-Key': member.idempotencyKey });
-    requireValue(!!diary.id && diary.generation.status === 'SUCCEEDED', 'new diary generation succeeded');
-    const feed = request(session, 'POST', '/api/v1/feeds', { diaryId: diary.id, categoryId: data.categoryId }, 'POST feeds', false, 201);
+    }, 'POST load-test diaries', 202, { 'Idempotency-Key': member.idempotencyKey });
+    requireValue(!!diary.id && !!diary.generation.id && diary.generation.status === 'PENDING',
+      'new load-test diary is queued');
+    waitForGeneration(session, diary, startedAt);
+    const feed = request(session, 'POST', '/api/v1/feeds', { diaryId: diary.id, categoryId: data.categoryId }, 'POST feeds', 201);
     const detail = request(session, 'GET', `/api/v1/feeds/${feed.id}`, null, 'GET feeds/:id');
     requireValue(detail.id === feed.id && detail.isMine === true, 'created feed is visible to its author');
   });
@@ -204,7 +246,7 @@ export function memberVisit(data) {
     request(session, 'GET', `/api/v1/feeds/${feedId}`, null, 'GET feeds/:id');
     const comments = request(session, 'GET', `/api/v1/feeds/${feedId}/comments`, null, 'GET comments');
     requireValue(Array.isArray(comments.items), 'comments list is readable');
-    const comment = request(session, 'POST', `/api/v1/feeds/${feedId}/comments`, { content: `부하 테스트 ${fixture.runId}` }, 'POST comments', false, 201);
+    const comment = request(session, 'POST', `/api/v1/feeds/${feedId}/comments`, { content: `부하 테스트 ${fixture.runId}` }, 'POST comments', 201);
     requireValue(!!comment.id && comment.isMine === true, 'comment is created by this member');
     const like = request(session, 'PUT', `/api/v1/feeds/${feedId}/like`, null, 'PUT like');
     requireValue(like.likedByMe === true, 'like was applied');

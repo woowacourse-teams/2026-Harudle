@@ -109,10 +109,19 @@ harudle:
     image-base-url: ${PROFILE_IMAGE_BASE_URL:http://localhost:5173/profile-images/v1}
   feed:
     public-base-url: ${FEED_PUBLIC_BASE_URL:http://localhost:5173/feeds}
+  push:
+    fcm:
+      enabled: ${HARUDLE_PUSH_FCM_ENABLED:false}
+      project-id: ${FIREBASE_PROJECT_ID:}
   generation:
+    worker:
+      concurrency: ${GENERATION_WORKER_CONCURRENCY:1}
+      poll-interval: ${GENERATION_WORKER_POLL_INTERVAL:5s}
     lifecycle:
       processing-timeout: ${GENERATION_PROCESSING_TIMEOUT:30m}
       cleanup-interval: ${GENERATION_CLEANUP_INTERVAL:1m}
+      pending-timeout: ${GENERATION_PENDING_TIMEOUT:120s}
+      pending-cleanup-interval: ${GENERATION_PENDING_CLEANUP_INTERVAL:5s}
     prompt-bootstrap:
       enabled: ${HARUDLE_GENERATION_PROMPT_BOOTSTRAP_ENABLED:false}
       storyboard-prompt-text: ${HARUDLE_GENERATION_PROMPT_BOOTSTRAP_STORYBOARD_PROMPT_TEXT:}

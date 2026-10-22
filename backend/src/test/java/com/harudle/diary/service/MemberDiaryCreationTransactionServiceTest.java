@@ -15,10 +15,13 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -64,6 +67,29 @@ class MemberDiaryCreationTransactionServiceTest {
         assertThat(memberClaim.usage()).isEqualTo(usage);
         verify(generationUsageService).incrementUsage(USER_ID, DIARY_DATE);
         verify(generationUsageService, never()).getTodayUsage(USER_ID);
+    }
+
+    @Test
+    @DisplayName("대기 작업의 같은 요청을 다시 접수해도 회원 사용량은 한 번만 증가한다")
+    void incrementUsageOnlyOnceForPendingCreation() {
+        CreateDiaryCommand command = createCommand();
+        DiaryCreationClaim newClaim = createClaim(true, GenerationStatus.PENDING);
+        DiaryCreationClaim existingClaim = createClaim(false, GenerationStatus.PENDING);
+        GenerationUsage usage = new GenerationUsage(DIARY_DATE, 1, 3);
+        when(generationUsageService.getCurrentUsageDate()).thenReturn(DIARY_DATE);
+        when(claimService.enqueue(command, true, DIARY_DATE)).thenReturn(newClaim, existingClaim);
+        when(generationUsageService.incrementUsage(USER_ID, DIARY_DATE)).thenReturn(usage);
+        when(generationUsageService.getTodayUsage(USER_ID)).thenReturn(usage);
+
+        MemberDiaryCreationClaim first = transactionService.enqueue(command, true);
+        MemberDiaryCreationClaim replay = transactionService.enqueue(command, true);
+
+        assertThat(first.claim()).isSameAs(newClaim);
+        assertThat(replay.claim()).isSameAs(existingClaim);
+        assertThat(first.usage()).isEqualTo(usage);
+        assertThat(replay.usage()).isEqualTo(usage);
+        verify(generationUsageService).incrementUsage(USER_ID, DIARY_DATE);
+        verify(generationUsageService).getTodayUsage(USER_ID);
     }
 
     @Test
@@ -128,6 +154,34 @@ class MemberDiaryCreationTransactionServiceTest {
         verify(generationUsageService, never()).getTodayUsage(USER_ID);
     }
 
+    @ParameterizedTest
+    @EnumSource(value = GenerationStatus.class, names = {"PENDING", "PROCESSING", "SUCCEEDED"})
+    @DisplayName("아직 선점되지 않은 대기 작업에만 접수 시 선택한 실행기를 연결한다")
+    void registerOnlyPendingGeneration(GenerationStatus status) {
+        CreateDiaryCommand command = createCommand();
+        DiaryCreationClaim claim = createClaim(false, status);
+        when(generationUsageService.getCurrentUsageDate()).thenReturn(DIARY_DATE);
+        when(claimService.enqueue(command, true, DIARY_DATE)).thenReturn(claim);
+        AtomicReference<UUID> registeredId = new AtomicReference<>();
+
+        transactionService.enqueue(command, true, registeredId::set);
+
+        assertThat(registeredId.get()).isEqualTo(status == GenerationStatus.PENDING ? GENERATION_ID : null);
+    }
+
+    @Test
+    @DisplayName("멱등성 키 경합에서 찾은 대기 작업에도 선택한 실행기를 연결한다")
+    void registerRecoveredPendingGeneration() {
+        CreateDiaryCommand command = createCommand();
+        DiaryCreationClaim claim = createClaim(false, GenerationStatus.PENDING);
+        when(claimService.findExistingClaim(command)).thenReturn(Optional.of(claim));
+        AtomicReference<UUID> registeredId = new AtomicReference<>();
+
+        transactionService.findExistingClaim(command, registeredId::set);
+
+        assertThat(registeredId.get()).isEqualTo(GENERATION_ID);
+    }
+
     private CreateDiaryCommand createCommand() {
         return new CreateDiaryCommand(
                 USER_ID,
@@ -138,13 +192,17 @@ class MemberDiaryCreationTransactionServiceTest {
     }
 
     private DiaryCreationClaim createClaim(boolean newlyCreated) {
+        return createClaim(newlyCreated, GenerationStatus.PROCESSING);
+    }
+
+    private DiaryCreationClaim createClaim(boolean newlyCreated, GenerationStatus status) {
         return new DiaryCreationClaim(
                 DIARY_ID,
                 DIARY_DATE,
                 "오늘 친구와 카페에 갔다.",
                 CREATED_AT,
                 GENERATION_ID,
-                GenerationStatus.PROCESSING,
+                status,
                 null,
                 null,
                 null,

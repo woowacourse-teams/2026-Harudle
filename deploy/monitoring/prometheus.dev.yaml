@@ -1,0 +1,16 @@
+# Dev diagnostics only. Keep prometheus.yaml as the production scrape contract.
+global:
+  scrape_interval: 10s
+  scrape_timeout: 5s
+
+scrape_configs:
+  - job_name: harudle-backend
+    metrics_path: /actuator/prometheus
+    sample_limit: 5000
+    static_configs:
+      - targets:
+          - 127.0.0.1:19091
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: '^(harudle_(generation_(executions|finalizations|unexpected_failures|capacity_rejections)|gemini_stage_calls|s3_operation_calls|s3_url_signs|image_load_failures)_total|harudle_generation_duration_seconds_(sum|count)|harudle_generation_queue_(wait_seconds_(sum|count)|size)|harudle_gemini_tokens_total|http_server_requests_seconds_count|hikaricp_connections_(pending|acquire_seconds_(sum|count|max)|timeout_total)|jvm_memory_(used|committed|max)_bytes|jvm_gc_pause_seconds_(sum|count|max))$'
+        action: keep

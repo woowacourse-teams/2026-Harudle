@@ -2,6 +2,7 @@ package com.harudle.diary.service;
 
 import com.harudle.diary.service.dto.CreateGuestDiaryCommand;
 import com.harudle.diary.service.dto.CreateGuestDiaryResult;
+import com.harudle.generation.diary.service.DiaryGenerationExecutor;
 import java.util.Optional;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -10,46 +11,43 @@ import org.springframework.stereotype.Service;
 public class GuestDiaryCreationService {
 
     private final GuestDiaryCreationTransactionService transactionService;
-    private final DiaryCreationExecutionService executionService;
+    private final DiaryGenerationExecutor generationExecutor;
 
     GuestDiaryCreationService(
             GuestDiaryCreationTransactionService transactionService,
-            DiaryCreationExecutionService executionService
+            DiaryGenerationExecutor generationExecutor
     ) {
         this.transactionService = transactionService;
-        this.executionService = executionService;
+        this.generationExecutor = generationExecutor;
     }
 
     public CreateGuestDiaryResult create(
             String rawSessionToken,
             CreateGuestDiaryCommand command
     ) {
-        GuestDiaryCreationClaim guestClaim = claim(
+        GuestDiaryCreationClaim guestClaim = enqueue(
                 rawSessionToken,
                 command,
-                executionService.isGenerationAvailable()
+                generationExecutor.isConfigured()
         );
-        DiaryCreationExecution execution = executionService.execute(
-                guestClaim.command(),
-                guestClaim.claim()
-        );
+        DiaryCreationClaim claim = guestClaim.claim();
         return new CreateGuestDiaryResult(
-                execution.diaryId(),
-                execution.diaryDate(),
-                execution.sourceText(),
-                execution.createdAt(),
-                execution.generation(),
-                execution.newlyCreated()
+                claim.diaryId(),
+                claim.diaryDate(),
+                claim.sourceText(),
+                claim.createdAt(),
+                claim.toGenerationResult(),
+                claim.newlyCreated()
         );
     }
 
-    private GuestDiaryCreationClaim claim(
+    private GuestDiaryCreationClaim enqueue(
             String rawSessionToken,
             CreateGuestDiaryCommand command,
             boolean generationAvailable
     ) {
         try {
-            return transactionService.claim(rawSessionToken, command, generationAvailable);
+            return transactionService.enqueue(rawSessionToken, command, generationAvailable);
         } catch (DataIntegrityViolationException exception) {
             Optional<GuestDiaryCreationClaim> existingClaim =
                     transactionService.findExistingClaim(rawSessionToken, command);

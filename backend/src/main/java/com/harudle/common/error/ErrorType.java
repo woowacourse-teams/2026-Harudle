@@ -38,6 +38,26 @@ public enum ErrorType {
             "Invalid current user",
             "현재 로그인 사용자를 확인할 수 없습니다."
     ),
+    INVALID_PUSH_SESSION(
+            HttpStatus.UNAUTHORIZED,
+            "Invalid push session",
+            "현재 로그인 세션으로 푸시를 등록할 수 없습니다."
+    ),
+    PUSH_REGISTRATION_CONFLICT(
+            HttpStatus.CONFLICT,
+            "Push registration conflict",
+            "다른 로그인 세션에서 사용 중인 푸시 등록입니다."
+    ),
+    STALE_PUSH_REGISTRATION(
+            HttpStatus.CONFLICT,
+            "Stale push registration",
+            "푸시 등록 상태가 변경되었습니다. 현재 등록 상태를 확인해 주세요."
+    ),
+    STALE_PUSH_STATE(
+            HttpStatus.CONFLICT,
+            "Stale push state",
+            "푸시 수신 선택이 변경되었습니다. 현재 상태를 확인해 주세요."
+    ),
     NICKNAME_ALREADY_IN_USE(
             HttpStatus.CONFLICT,
             "Nickname already in use",
@@ -72,6 +92,11 @@ public enum ErrorType {
             HttpStatus.NOT_FOUND,
             "Diary not found",
             "일기를 찾을 수 없습니다."
+    ),
+    GENERATION_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "Generation not found",
+            "생성 작업을 찾을 수 없습니다."
     ),
     FEED_NOT_FOUND(
             HttpStatus.NOT_FOUND,
@@ -183,6 +208,11 @@ public enum ErrorType {
             "AI provider error",
             "AI 공급자 호출에 실패했습니다."
     ),
+    GENERATION_CAPACITY_EXCEEDED(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "Generation capacity exceeded",
+            "현재 생성 요청이 많습니다. 잠시 후 다시 시도해 주세요."
+    ),
     GENERATION_UNAVAILABLE(
             HttpStatus.SERVICE_UNAVAILABLE,
             "Generation unavailable",
@@ -192,6 +222,11 @@ public enum ErrorType {
             HttpStatus.SERVICE_UNAVAILABLE,
             "Generation interrupted",
             "생성 처리가 완료되지 못했습니다."
+    ),
+    GENERATION_PENDING_TIMEOUT(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "Generation pending timeout",
+            "생성 대기 시간이 초과되었습니다. 다시 요청해 주세요."
     ),
     IMAGE_STORAGE_ERROR(
             HttpStatus.SERVICE_UNAVAILABLE,
@@ -253,6 +288,7 @@ public enum ErrorType {
             case GENERATION_INTERNAL_ERROR -> INTERNAL_SERVER_ERROR;
             case AI_PROVIDER_TIMEOUT -> AI_PROVIDER_TIMEOUT;
             case GENERATION_INTERRUPTED -> GENERATION_INTERRUPTED;
+            case GENERATION_PENDING_TIMEOUT -> GENERATION_PENDING_TIMEOUT;
             case IMAGE_STORAGE_ERROR -> IMAGE_STORAGE_ERROR;
         };
     }
