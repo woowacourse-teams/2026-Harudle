@@ -26,6 +26,10 @@
             "harudle_generation_executions_total": "Count",
             "harudle_generation_finalizations_total": "Count",
             "harudle_generation_unexpected_failures_total": "Count",
+            "harudle_generation_queue_size": "Count",
+            "harudle_generation_queue_wait_seconds_sum": "Seconds",
+            "harudle_generation_queue_wait_seconds_count": "Count",
+            "harudle_generation_capacity_rejections_total": "Count",
             "harudle_gemini_stage_calls_total": "Count",
             "harudle_s3_operation_calls_total": "Count",
             "harudle_s3_url_signs_total": "Count",
@@ -47,6 +51,24 @@
             "harudle_gemini_tokens_total": "Count"
           },
           "metric_declaration": [
+            {
+              "source_labels": ["job"],
+              "label_matcher": "^harudle-backend$",
+              "dimensions": [["job", "status"]],
+              "metric_selectors": ["^harudle_generation_queue_size$"]
+            },
+            {
+              "source_labels": ["job"],
+              "label_matcher": "^harudle-backend$",
+              "dimensions": [["job"]],
+              "metric_selectors": ["^harudle_generation_queue_wait_seconds_(sum|count)$"]
+            },
+            {
+              "source_labels": ["job"],
+              "label_matcher": "^harudle-backend$",
+              "dimensions": [["job"]],
+              "metric_selectors": ["^harudle_generation_capacity_rejections_total$"]
+            },
             {
               "source_labels": ["job"],
               "label_matcher": "^harudle-backend$",

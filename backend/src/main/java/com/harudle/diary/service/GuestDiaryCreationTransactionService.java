@@ -36,6 +36,24 @@ class GuestDiaryCreationTransactionService {
             CreateGuestDiaryCommand guestCommand,
             boolean generationAvailable
     ) {
+        return claim(rawSessionToken, guestCommand, generationAvailable, false);
+    }
+
+    @Transactional
+    GuestDiaryCreationClaim enqueue(
+            String rawSessionToken,
+            CreateGuestDiaryCommand guestCommand,
+            boolean generationAvailable
+    ) {
+        return claim(rawSessionToken, guestCommand, generationAvailable, true);
+    }
+
+    private GuestDiaryCreationClaim claim(
+            String rawSessionToken,
+            CreateGuestDiaryCommand guestCommand,
+            boolean generationAvailable,
+            boolean queueForWorker
+    ) {
         Instant now = currentTime();
         GuestSession session = guestSessionResolver.resolveForUpdate(rawSessionToken, now);
         CreateDiaryCommand command = guestCommand.toDiaryCommand(session.getGuestUserId());
@@ -44,7 +62,9 @@ class GuestDiaryCreationTransactionService {
             return findReplayClaim(session, command);
         }
 
-        DiaryCreationClaim claim = claimService.claim(command, generationAvailable);
+        DiaryCreationClaim claim = queueForWorker
+                ? claimService.enqueue(command, generationAvailable)
+                : claimService.claim(command, generationAvailable);
         session.useForDiary(claim.diaryId(), now);
         return new GuestDiaryCreationClaim(command, claim);
     }
