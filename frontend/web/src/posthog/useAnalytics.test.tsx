@@ -7,10 +7,12 @@ import {
   jest,
 } from '@jest/globals';
 import { act, renderHook, waitFor } from '@testing-library/react';
+import * as React from 'react';
 import { setAccessToken } from '../shared/auth';
-import useFeedList from '../pages/feed/useFeedList';
+import type UseFeedList from '../pages/feed/useFeedList';
 import type { FeedListResponse, getFeedList } from '../domain/feeds/feedList';
 import { useAnalytics } from './useAnalytics';
+import * as analyticsModule from './useAnalytics';
 import useNicknameUpdate from '../pages/setting/useNicknameUpdate';
 import type { updateUserNickname } from '../domain/user/profile';
 
@@ -55,7 +57,17 @@ const emptyResponse: FeedListResponse = {
   hasNext: false,
 };
 
+let useFeedList: typeof UseFeedList;
+
 beforeEach((): void => {
+  // 분석 세션과 React는 유지하고, 이전 테스트의 피드 캐시만 격리한다.
+  jest.isolateModules((): void => {
+    jest.doMock('react', () => React);
+    jest.doMock('./useAnalytics', () => analyticsModule);
+    useFeedList = jest.requireActual<
+      typeof import('../pages/feed/useFeedList')
+    >('../pages/feed/useFeedList').default;
+  });
   mockIsEnabled = false;
   const { result, unmount } = renderHook((): ReturnType<typeof useAnalytics> =>
     useAnalytics(),
