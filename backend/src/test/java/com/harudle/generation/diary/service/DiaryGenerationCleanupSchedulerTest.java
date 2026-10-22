@@ -79,6 +79,99 @@ class DiaryGenerationCleanupSchedulerTest {
     }
 
     @Test
+    @DisplayName("처리 중인 작업 하나의 정리가 실패해도 나머지를 처리하고 다음 주기에 다시 확인한다")
+    void continueProcessingCleanupAfterFailureAndRetryOnNextRun(CapturedOutput output) {
+        UUID failedId = UUID.randomUUID();
+        UUID expiredId = UUID.randomUUID();
+        UUID completedId = UUID.randomUUID();
+        when(generationLifecycleProperties.processingTimeout()).thenReturn(PROCESSING_TIMEOUT);
+        when(diaryGenerationRepository.findStaleProcessingIds(
+                org.mockito.ArgumentMatchers.eq(GenerationStatus.PROCESSING),
+                org.mockito.ArgumentMatchers.eq(NOW.minus(PROCESSING_TIMEOUT)),
+                org.mockito.ArgumentMatchers.any()
+        )).thenReturn(List.of(failedId, expiredId, completedId), List.of(failedId));
+        when(completionService.interruptIfStale(failedId, NOW, PROCESSING_TIMEOUT))
+                .thenThrow(new IllegalStateException("private-processing-input"))
+                .thenReturn(true);
+        when(completionService.interruptIfStale(expiredId, NOW, PROCESSING_TIMEOUT)).thenReturn(true);
+        when(completionService.interruptIfStale(completedId, NOW, PROCESSING_TIMEOUT)).thenReturn(false);
+
+        scheduler.expireStaleProcessingGenerations();
+
+        verify(completionService).interruptIfStale(expiredId, NOW, PROCESSING_TIMEOUT);
+        verify(completionService).interruptIfStale(completedId, NOW, PROCESSING_TIMEOUT);
+        assertThat(output)
+                .contains("event=generation_processing_expiry_failed generationId=" + failedId
+                        + " exceptionType=IllegalStateException")
+                .contains("event=generation_cleanup_run candidateCount=3 interruptedCount=1 failedCount=1")
+                .doesNotContain("event=generation_cleanup_failed")
+                .doesNotContain("private-processing-input");
+
+        scheduler.expireStaleProcessingGenerations();
+
+        verify(completionService, times(2)).interruptIfStale(failedId, NOW, PROCESSING_TIMEOUT);
+        assertThat(output).contains("event=generation_cleanup_run candidateCount=1 interruptedCount=1 failedCount=0");
+    }
+
+    @Test
+    @DisplayName("대기 작업 하나의 정리가 실패해도 나머지를 처리하고 다음 주기에 다시 확인한다")
+    void continuePendingCleanupAfterFailureAndRetryOnNextRun(CapturedOutput output) {
+        UUID failedId = UUID.randomUUID();
+        UUID expiredId = UUID.randomUUID();
+        UUID claimedId = UUID.randomUUID();
+        when(generationLifecycleProperties.pendingTimeout()).thenReturn(PENDING_TIMEOUT);
+        when(diaryGenerationRepository.findStalePendingIds(NOW.minus(PENDING_TIMEOUT), 100))
+                .thenReturn(List.of(failedId, expiredId, claimedId), List.of(failedId));
+        when(completionService.expirePendingIfStale(failedId, NOW, PENDING_TIMEOUT))
+                .thenThrow(new IllegalStateException("private-pending-input"))
+                .thenReturn(true);
+        when(completionService.expirePendingIfStale(expiredId, NOW, PENDING_TIMEOUT)).thenReturn(true);
+        when(completionService.expirePendingIfStale(claimedId, NOW, PENDING_TIMEOUT)).thenReturn(false);
+
+        scheduler.expireStalePendingGenerations();
+
+        verify(completionService).expirePendingIfStale(expiredId, NOW, PENDING_TIMEOUT);
+        verify(completionService).expirePendingIfStale(claimedId, NOW, PENDING_TIMEOUT);
+        assertThat(output)
+                .contains("event=generation_pending_expiry_failed generationId=" + failedId
+                        + " exceptionType=IllegalStateException")
+                .contains("event=generation_pending_cleanup_run candidateCount=3 expiredCount=1 failedCount=1")
+                .doesNotContain("event=generation_pending_cleanup_failed")
+                .doesNotContain("private-pending-input");
+
+        scheduler.expireStalePendingGenerations();
+
+        verify(completionService, times(2)).expirePendingIfStale(failedId, NOW, PENDING_TIMEOUT);
+        assertThat(output).contains("event=generation_pending_cleanup_run candidateCount=1 expiredCount=1 failedCount=0");
+    }
+
+    @Test
+    @DisplayName("처리 중인 작업의 정리 조회가 실패하면 다음 실행에서 다시 조회한다")
+    void retryProcessingCleanupQueryOnNextRunWithoutLoggingPrivateMessage(CapturedOutput output) {
+        when(generationLifecycleProperties.processingTimeout()).thenReturn(PROCESSING_TIMEOUT);
+        when(diaryGenerationRepository.findStaleProcessingIds(
+                org.mockito.ArgumentMatchers.eq(GenerationStatus.PROCESSING),
+                org.mockito.ArgumentMatchers.eq(NOW.minus(PROCESSING_TIMEOUT)),
+                org.mockito.ArgumentMatchers.any()
+        )).thenThrow(new IllegalStateException("private-processing-query"))
+                .thenReturn(List.of());
+
+        assertThatThrownBy(scheduler::expireStaleProcessingGenerations).isInstanceOf(IllegalStateException.class);
+        scheduler.expireStaleProcessingGenerations();
+
+        verify(diaryGenerationRepository, times(2)).findStaleProcessingIds(
+                org.mockito.ArgumentMatchers.eq(GenerationStatus.PROCESSING),
+                org.mockito.ArgumentMatchers.eq(NOW.minus(PROCESSING_TIMEOUT)),
+                org.mockito.ArgumentMatchers.any()
+        );
+        verifyNoInteractions(completionService);
+        assertThat(output).contains("event=generation_cleanup_failed")
+                .contains("failedCount=0")
+                .contains("exceptionType=IllegalStateException")
+                .doesNotContain("private-processing-query");
+    }
+
+    @Test
     @DisplayName("대기 기한이 지난 ID를 최대 100개 조회하고 상태를 다시 확인해 만료한다")
     void expireStalePendingGenerations(CapturedOutput output) {
         UUID expiredId = UUID.randomUUID();
