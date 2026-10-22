@@ -21,14 +21,18 @@ public class BlockInteractionPolicy {
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
-    public boolean lockAndIsBlocked(UUID first, UUID second) {
+    public void lockPair(UUID first, UUID second) {
         Objects.requireNonNull(first);
         Objects.requireNonNull(second);
-        if (first.equals(second)) {
-            return false;
+        if (!first.equals(second)) {
+            repository.lockPair(pairKey(first, second));
         }
-        repository.lockPair(pairKey(first, second));
-        return repository.existsBetween(first, second);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public boolean lockAndIsBlocked(UUID first, UUID second) {
+        lockPair(first, second);
+        return !first.equals(second) && repository.existsBetween(first, second);
     }
 
     // 해시 충돌은 다른 쌍도 직렬화할 뿐이며 차단 판정에는 실제 두 UUID를 사용한다.

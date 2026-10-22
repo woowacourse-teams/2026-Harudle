@@ -12,6 +12,7 @@ import com.harudle.block.service.exception.BlockTargetNotFoundException;
 import com.harudle.block.service.exception.BlockUnavailableException;
 import com.harudle.profile.service.port.PublicProfileReader;
 import com.harudle.profile.service.port.PublicProfileReader.Profile;
+import com.harudle.push.service.port.FeedPushPublicationGuard;
 import java.time.Clock;
 import java.util.List;
 import java.util.Map;
@@ -30,15 +31,17 @@ import org.springframework.transaction.annotation.Transactional;
 public class BlockService {
     private final BlockRepository repository;
     private final BlockInteractionPolicy policy;
+    private final FeedPushPublicationGuard publicationGuard;
     private final ObjectProvider<PublicProfileReader> profileReaders;
     private final BlockCursorCodec cursors;
     private final Clock clock;
 
     public BlockService(BlockRepository repository, BlockInteractionPolicy policy,
-            ObjectProvider<PublicProfileReader> profileReaders, BlockCursorCodec cursors,
-            @Qualifier("serviceClock") Clock clock) {
+            FeedPushPublicationGuard publicationGuard, ObjectProvider<PublicProfileReader> profileReaders,
+            BlockCursorCodec cursors, @Qualifier("serviceClock") Clock clock) {
         this.repository = repository;
         this.policy = policy;
+        this.publicationGuard = publicationGuard;
         this.profileReaders = profileReaders;
         this.cursors = cursors;
         this.clock = clock;
@@ -47,10 +50,11 @@ public class BlockService {
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public void block(UUID actorId, UUID targetId) {
         validateActorAndTarget(actorId, targetId);
-        policy.lockAndIsBlocked(actorId, targetId);
+        policy.lockPair(actorId, targetId);
         if (!repository.isActiveTarget(actorId, targetId)) {
             throw new BlockTargetNotFoundException();
         }
+        publicationGuard.lockForBlock(actorId, targetId);
         repository.insert(new UserBlock(actorId, targetId, clock.instant()));
         repository.cancelUnsentBetween(actorId, targetId);
     }
@@ -58,7 +62,7 @@ public class BlockService {
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public void unblock(UUID actorId, UUID targetId) {
         validateActorAndTarget(actorId, targetId);
-        policy.lockAndIsBlocked(actorId, targetId);
+        policy.lockPair(actorId, targetId);
         // 상대의 현재 상태를 검사하지 않고 본인이 저장한 방향만 해제한다.
         repository.deleteOwn(actorId, targetId);
     }

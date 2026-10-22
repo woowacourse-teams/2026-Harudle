@@ -9,6 +9,7 @@ import com.harudle.block.service.BlockService;
 import com.harudle.comment.service.CommentService;
 import com.harudle.feed.service.exception.FeedNotFoundException;
 import com.harudle.generation.diary.service.DiaryGenerationWorker;
+import com.harudle.push.service.port.FeedPushPublicationGuard;
 import com.harudle.support.BlockDatabaseTestSupport;
 import java.util.ArrayList;
 import java.util.List;
@@ -24,6 +25,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -48,11 +50,14 @@ class BlockedInteractionPersistenceTest extends BlockDatabaseTestSupport {
     @Autowired private FeedLikeService likes;
     @Autowired private CommentService comments;
     @Autowired private BlockService blocks;
+    @Autowired private FeedPublicationService publication;
+    @MockitoSpyBean private FeedPushPublicationGuard publicationGuard;
     @MockitoSpyBean private BlockInteractionPolicy policy;
     @MockitoBean private JwtDecoder jwtDecoder;
     @MockitoBean(enforceOverride = true) private DiaryGenerationWorker generationWorker;
 
     private final List<UUID> users = new ArrayList<>();
+    private final List<Long> prompts = new ArrayList<>();
     private UUID viewer;
     private UUID author;
     private UUID feed;
@@ -75,6 +80,8 @@ class BlockedInteractionPersistenceTest extends BlockDatabaseTestSupport {
     void tearDown() {
         users.forEach(user -> jdbc.update("DELETE FROM users WHERE id = ?", user));
         users.clear();
+        prompts.forEach(prompt -> jdbc.update("DELETE FROM generation_prompts WHERE id = ?", prompt));
+        prompts.clear();
     }
 
     @ParameterizedTest
@@ -130,6 +137,37 @@ class BlockedInteractionPersistenceTest extends BlockDatabaseTestSupport {
             executor.shutdownNow();
             assertThat(executor.awaitTermination(15, TimeUnit.SECONDS)).isTrue();
         }
+    }
+
+    @Test
+    @DisplayName("풀 기본격리가 RR이어도 실제 피드 게시와 푸시 예약은 RC 트랜잭션을 사용한다")
+    void publicationStartsReadCommittedBeforeTheAuthorGate() {
+        assertThat(jdbc.queryForObject("SHOW transaction_isolation", String.class)).isEqualTo("repeatable read");
+        UUID diary = UUID.randomUUID();
+        Long prompt = jdbc.queryForObject("""
+                INSERT INTO generation_prompts (storyboard_prompt_text, image_style_prompt_text, image_asset_object_key)
+                VALUES ('테스트', '테스트', ?) RETURNING id
+                """, Long.class, "references/push-publication/" + diary);
+        prompts.add(prompt);
+        jdbc.update("INSERT INTO diaries (id, user_id, diary_date, source_text) VALUES (?, ?, CURRENT_DATE, '원문')",
+                diary, author);
+        jdbc.update("""
+                INSERT INTO diary_generations
+                    (id, diary_id, prompt_id, idempotency_key, request_fingerprint, status, title, image_object_key)
+                VALUES (?, ?, ?, ?, ?, 'SUCCEEDED', '게시 검증', ?)
+                """, UUID.randomUUID(), diary, prompt, UUID.randomUUID(), "c".repeat(64), "generated/" + diary);
+        var isolation = new AtomicReference<String>();
+        FeedPushPublicationGuard target = AopTestUtils.getUltimateTargetObject(publicationGuard);
+        doAnswer(invocation -> {
+            isolation.set(jdbc.queryForObject("SHOW transaction_isolation", String.class));
+            return invocation.callRealMethod();
+        }).when(target).lockForPublication(author);
+        Long category = jdbc.queryForObject("SELECT id FROM categories WHERE name = '일상'", Long.class);
+
+        var result = publication.publish(author, diary, category);
+
+        assertThat(isolation.get()).isEqualTo("read committed");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM feeds WHERE id = ?", Long.class, result.id())).isEqualTo(1);
     }
 
     private Object interact(Action action) {

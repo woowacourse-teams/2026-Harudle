@@ -20,13 +20,13 @@ import com.harudle.block.service.exception.BlockTargetNotFoundException;
 import com.harudle.block.service.exception.BlockUnavailableException;
 import com.harudle.profile.service.port.PublicProfileReader;
 import com.harudle.profile.service.port.PublicProfileReader.Profile;
+import com.harudle.push.service.port.FeedPushPublicationGuard;
 import java.net.URI;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,13 +45,14 @@ class BlockServiceTest {
     private static final Instant NOW = Instant.parse("2026-10-22T00:00:00Z");
     @Mock private BlockRepository repository;
     @Mock private BlockInteractionPolicy policy;
+    @Mock private FeedPushPublicationGuard publicationGuard;
     @Mock private ObjectProvider<PublicProfileReader> readers;
     @Mock private PublicProfileReader profiles;
     private BlockService service;
 
     @BeforeEach
     void setUp() {
-        service = new BlockService(repository, policy, readers, new BlockCursorCodec(),
+        service = new BlockService(repository, policy, publicationGuard, readers, new BlockCursorCodec(),
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -60,12 +61,12 @@ class BlockServiceTest {
     void savesDirectionAndCancelsUnsentJobsUnderPairLock() {
         when(repository.isActiveMember(ACTOR)).thenReturn(true);
         when(repository.isActiveTarget(ACTOR, TARGET)).thenReturn(true);
-        when(policy.lockAndIsBlocked(ACTOR, TARGET)).thenReturn(true);
         service.block(ACTOR, TARGET);
-        var order = inOrder(policy, repository);
+        var order = inOrder(policy, repository, publicationGuard);
         order.verify(repository).isActiveMember(ACTOR);
-        order.verify(policy).lockAndIsBlocked(ACTOR, TARGET);
+        order.verify(policy).lockPair(ACTOR, TARGET);
         order.verify(repository).isActiveTarget(ACTOR, TARGET);
+        order.verify(publicationGuard).lockForBlock(ACTOR, TARGET);
         var saved = ArgumentCaptor.forClass(UserBlock.class);
         order.verify(repository).insert(saved.capture());
         order.verify(repository).cancelUnsentBetween(ACTOR, TARGET);
@@ -81,7 +82,7 @@ class BlockServiceTest {
         assertThatThrownBy(() -> service.unblock(ACTOR, TARGET)).isInstanceOf(AuthenticationRequiredException.class);
         when(repository.isActiveMember(ACTOR)).thenReturn(true);
         assertThatThrownBy(() -> service.block(ACTOR, ACTOR)).isInstanceOf(InvalidBlockException.class);
-        verifyNoInteractions(policy);
+        verifyNoInteractions(policy, publicationGuard);
         verify(repository, never()).insert(any());
     }
 
@@ -92,17 +93,21 @@ class BlockServiceTest {
         assertThatThrownBy(() -> service.block(ACTOR, TARGET)).isInstanceOf(BlockTargetNotFoundException.class);
         verify(repository, never()).insert(any());
         verify(repository, never()).cancelUnsentBetween(any(), any());
+        verifyNoInteractions(publicationGuard);
     }
 
     @Test
     @DisplayName("해제는 대상이 탈퇴했거나 상대가 차단했어도 본인 방향만 삭제한다")
     void unblocksOwnDirectionWithoutRequiringActiveTarget() {
         when(repository.isActiveMember(ACTOR)).thenReturn(true);
-        when(policy.lockAndIsBlocked(ACTOR, TARGET)).thenReturn(true);
         service.unblock(ACTOR, TARGET);
-        verify(repository).deleteOwn(ACTOR, TARGET);
+        var order = inOrder(policy, repository, publicationGuard);
+        order.verify(repository).isActiveMember(ACTOR);
+        order.verify(policy).lockPair(ACTOR, TARGET);
+        order.verify(repository).deleteOwn(ACTOR, TARGET);
         verify(repository, never()).isActiveTarget(any(), any());
         verify(repository, never()).deleteOwn(TARGET, ACTOR);
+        verifyNoInteractions(publicationGuard);
     }
 
     @Test

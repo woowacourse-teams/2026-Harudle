@@ -3,7 +3,9 @@ package com.harudle.block.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import com.harudle.block.repository.BlockRepository;
@@ -26,6 +28,16 @@ class BlockInteractionPolicyTest {
     }
 
     @Test
+    @DisplayName("차단 변경용 잠금은 같은 쌍을 잠그고 차단 여부를 추가 조회하지 않는다")
+    void locksPairWithoutReadingBlock() {
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        policy.lockPair(first, second);
+        verify(repository).lockPair(BlockInteractionPolicy.pairKey(first, second));
+        verifyNoMoreInteractions(repository);
+    }
+
+    @Test
     @DisplayName("잠금을 먼저 얻은 뒤 실제 양방향 차단 여부를 조회한다")
     void readsBlockAfterAcquiringPairLock() {
         UUID first = UUID.randomUUID();
@@ -41,6 +53,7 @@ class BlockInteractionPolicyTest {
     @DisplayName("본인 피드의 반응은 회원 쌍 잠금이나 차단 조회 없이 유지한다")
     void allowsOwnInteractionWithoutPairLock() {
         UUID actor = UUID.randomUUID();
+        policy.lockPair(actor, actor);
         assertThat(policy.lockAndIsBlocked(actor, actor)).isFalse();
         verifyNoInteractions(repository);
     }

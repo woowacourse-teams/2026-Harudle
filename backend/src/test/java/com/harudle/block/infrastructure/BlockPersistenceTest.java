@@ -15,6 +15,7 @@ import com.harudle.block.service.exception.BlockTargetNotFoundException;
 import com.harudle.common.testdata.DevTestDataVisibility;
 import com.harudle.profile.service.port.PublicProfileReader;
 import com.harudle.profile.service.port.PublicProfileReader.Profile;
+import com.harudle.push.infrastructure.PostgresFeedPushPublicationGuard;
 import com.harudle.support.BlockDatabaseTestSupport;
 import jakarta.persistence.EntityManager;
 import java.net.URI;
@@ -55,7 +56,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @Import({JpaBlockRepository.class, BlockService.class, BlockInteractionPolicy.class, BlockCursorCodec.class,
-        DevTestDataVisibility.class, BlockPersistenceTest.ClockConfiguration.class})
+        PostgresFeedPushPublicationGuard.class, DevTestDataVisibility.class, BlockPersistenceTest.ClockConfiguration.class})
 class BlockPersistenceTest extends BlockDatabaseTestSupport {
     private static final Instant NOW = Instant.parse("2026-10-22T00:00:00Z");
     @Autowired private BlockService service;
