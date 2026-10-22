@@ -2,6 +2,7 @@ package com.harudle.report.infrastructure;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -13,10 +14,14 @@ import com.harudle.HarudleApplication;
 import com.harudle.common.testdata.DevTestDataVisibility;
 import com.harudle.generation.diary.service.DiaryGenerationWorker;
 import com.harudle.report.domain.ReportReason;
+import com.harudle.report.domain.ReportSubmission;
 import com.harudle.report.domain.ReportTargetType;
 import com.harudle.report.repository.ReportRepository;
 import com.harudle.report.repository.ReportSnapshot;
 import com.harudle.report.repository.ReportTargetReader;
+import com.harudle.report.service.ReportReceipt;
+import com.harudle.report.service.ReportService;
+import com.harudle.report.service.exception.ReportTargetNotFoundException;
 import jakarta.persistence.EntityManager;
 import jakarta.servlet.http.Cookie;
 import java.sql.Timestamp;
@@ -31,6 +36,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -54,6 +60,7 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.IllegalTransactionStateException;
@@ -92,8 +99,11 @@ class ReportPersistenceTest {
     @Autowired
     private ReportRepository reports;
 
-    @Autowired
+    @MockitoSpyBean
     private ReportTargetReader targets;
+
+    @Autowired
+    private ReportService reportService;
 
     @Autowired
     private EntityManager entityManager;
@@ -260,6 +270,56 @@ class ReportPersistenceTest {
                 .containsEntry("description", "최초 접수 설명");
         assertThat(reporter).isNotEqualTo(forgedReporter);
         assertThat(author).isNotEqualTo(forgedTargetUser);
+    }
+
+    @Test
+    @DisplayName("동시 재요청의 최초 조회 뒤 접수와 대상 삭제가 완료되어도 본인 접수를 재사용한다")
+    void reusesCommittedReceiptWhenTargetDisappearsBetweenDuplicateChecks() throws Exception {
+        var targetLookupStarted = new CountDownLatch(1);
+        var resumeTargetLookup = new CountDownLatch(1);
+        var pauseFirstLookup = new AtomicBoolean(true);
+        doAnswer(invocation -> {
+            if (pauseFirstLookup.compareAndSet(true, false)) {
+                assertThat(jdbc.queryForObject("SHOW transaction_isolation", String.class)).isEqualTo("read committed");
+                targetLookupStarted.countDown();
+                if (!resumeTargetLookup.await(10, TimeUnit.SECONDS)) {
+                    throw new AssertionError("동시 신고 대상 조회 재개 신호를 기다리지 못했습니다.");
+                }
+            }
+            return invocation.callRealMethod();
+        }).when(targets).findVisibleTargetAuthorId(reporter, ReportTargetType.FEED, feed);
+        ReportSubmission retry = new ReportSubmission(ReportTargetType.FEED, feed, ReportReason.HARASSMENT,
+                "덮어쓰면 안 되는 재요청");
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<ReportReceipt> delayed = executor.submit(() -> reportService.submit(reporter, retry));
+            assertThat(targetLookupStarted.await(10, TimeUnit.SECONDS)).isTrue();
+            // 지연 요청은 첫 접수 조회에서 빈 결과를 읽고, 아직 대상 조회 SQL은 실행하지 않았다.
+            ReportReceipt initial = reportService.submit(reporter,
+                    new ReportSubmission(ReportTargetType.FEED, feed, ReportReason.SPAM, "먼저 접수된 설명"));
+            fixtureReports.add(initial.id());
+            assertThat(initial.duplicate()).isFalse();
+            jdbc.update("UPDATE feeds SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", feed);
+            resumeTargetLookup.countDown();
+
+            assertThat(delayed.get(15, TimeUnit.SECONDS)).isEqualTo(new ReportReceipt(initial.id(), true));
+            assertThat(jdbc.queryForMap("""
+                    SELECT reporter_id, target_user_id, reason, description FROM reports WHERE id = ?
+                    """, initial.id()))
+                    .containsEntry("reporter_id", reporter)
+                    .containsEntry("target_user_id", author)
+                    .containsEntry("reason", "SPAM")
+                    .containsEntry("description", "먼저 접수된 설명");
+            assertThat(jdbc.queryForObject("""
+                    SELECT count(*) FROM reports WHERE reporter_id = ? AND target_type = 'FEED' AND target_id = ?
+                    """, Long.class, reporter, feed)).isEqualTo(1);
+            assertThatThrownBy(() -> reportService.submit(commenter, retry))
+                    .isInstanceOf(ReportTargetNotFoundException.class);
+        } finally {
+            resumeTargetLookup.countDown();
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(15, TimeUnit.SECONDS)).isTrue();
+        }
     }
 
     @Test

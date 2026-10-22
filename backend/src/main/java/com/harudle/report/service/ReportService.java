@@ -38,9 +38,15 @@ public class ReportService {
         if (existing.isPresent()) {
             return new ReportReceipt(existing.get(), true);
         }
-        UUID targetUserId = targets
-                .findVisibleTargetAuthorId(reporterId, submission.targetType(), submission.targetId())
-                .orElseThrow(ReportTargetNotFoundException::new);
+        var targetAuthorId = targets
+                .findVisibleTargetAuthorId(reporterId, submission.targetType(), submission.targetId());
+        if (targetAuthorId.isEmpty()) {
+            // 첫 조회 뒤 다른 요청의 접수와 대상 삭제가 완료됐을 수 있으므로 본인의 접수만 다시 확인한다.
+            return reports.findReceiptIdByReporterAndTarget(reporterId, submission.targetType(), submission.targetId())
+                    .map(id -> new ReportReceipt(id, true))
+                    .orElseThrow(ReportTargetNotFoundException::new);
+        }
+        UUID targetUserId = targetAuthorId.get();
         if (reporterId.equals(targetUserId)) {
             throw new InvalidReportException();
         }

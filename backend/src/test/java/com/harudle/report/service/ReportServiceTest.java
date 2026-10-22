@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -106,12 +107,41 @@ class ReportServiceTest {
         verify(reports, never()).insert(any());
     }
 
-    @Test
-    @DisplayName("공개 대상이 존재하지 않으면 새 접수를 저장하지 않는다")
-    void rejectsMissingTarget() {
+    @ParameterizedTest
+    @EnumSource(ReportTargetType.class)
+    @DisplayName("대상 조회에 실패해도 첫 조회 뒤 완료된 본인의 접수가 있으면 그 접수 번호를 반환한다")
+    void acknowledgesReceiptCommittedBeforeTargetDisappeared(ReportTargetType type) {
+        UUID winningId = UUID.randomUUID();
         when(reports.isActiveMember(REPORTER)).thenReturn(true);
-        assertThatThrownBy(() -> service.submit(REPORTER, submission(ReportTargetType.FEED)))
+        when(reports.findReceiptIdByReporterAndTarget(REPORTER, type, TARGET))
+                .thenReturn(Optional.empty(), Optional.of(winningId));
+        when(targets.findVisibleTargetAuthorId(REPORTER, type, TARGET)).thenReturn(Optional.empty());
+
+        assertThat(service.submit(REPORTER, submission(type)))
+                .isEqualTo(new ReportReceipt(winningId, true));
+
+        var order = inOrder(reports, targets);
+        order.verify(reports).isActiveMember(REPORTER);
+        order.verify(reports).findReceiptIdByReporterAndTarget(REPORTER, type, TARGET);
+        order.verify(targets).findVisibleTargetAuthorId(REPORTER, type, TARGET);
+        order.verify(reports).findReceiptIdByReporterAndTarget(REPORTER, type, TARGET);
+        verify(reports, never()).insert(any());
+    }
+
+    @ParameterizedTest
+    @EnumSource(ReportTargetType.class)
+    @DisplayName("공개 대상도 없고 재확인한 본인의 접수도 없으면 새 접수를 저장하지 않고 거절한다")
+    void rejectsMissingTargetWithoutAnyReceipt(ReportTargetType type) {
+        when(reports.isActiveMember(REPORTER)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.submit(REPORTER, submission(type)))
                 .isInstanceOf(ReportTargetNotFoundException.class);
+
+        var order = inOrder(reports, targets);
+        order.verify(reports).isActiveMember(REPORTER);
+        order.verify(reports).findReceiptIdByReporterAndTarget(REPORTER, type, TARGET);
+        order.verify(targets).findVisibleTargetAuthorId(REPORTER, type, TARGET);
+        order.verify(reports).findReceiptIdByReporterAndTarget(REPORTER, type, TARGET);
         verify(reports, never()).insert(any());
     }
 
