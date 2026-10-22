@@ -61,7 +61,7 @@ const useDiaryGenerate = (): DiaryGenerateState => {
       }
 
       setRequest({ status: 'success', data: diaryGenerateResponse });
-      track('diary_created', {
+      track('diary_written', {
         diary_id: diaryGenerateResponse.id,
         diary_date: diaryGenerateResponse.diaryDate,
         remaining_generation_count: diaryGenerateResponse.usage.remainingCount,
