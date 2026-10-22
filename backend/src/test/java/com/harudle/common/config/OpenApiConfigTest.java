@@ -13,6 +13,16 @@ import org.junit.jupiter.api.Test;
 class OpenApiConfigTest {
 
     @Test
+    void documentsReportPostWithBothBearerAndCsrfInTheSameRequirement() {
+        PathItem report = new PathItem().post(new Operation()
+                .addSecurityItem(new SecurityRequirement().addList("bearerAuth")));
+        new OpenApiConfig().csrfSecurityCustomizer().customise(new OpenAPI()
+                .paths(new Paths().addPathItem("/api/v1/reports", report)));
+        assertThat(report.getPost().getSecurity()).singleElement()
+                .satisfies(requirement -> assertThat(requirement).containsOnlyKeys("bearerAuth", "csrfToken"));
+    }
+
+    @Test
     void documentsNotificationReadPatchWithBearerAndCsrfOnlyForTheExactMethodAndPath() {
         Paths paths = new Paths();
         for (String path : List.of("/api/v1/notifications", "/api/v1/notifications/{notificationId}")) {

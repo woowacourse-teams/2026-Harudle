@@ -13,6 +13,8 @@ import com.harudle.comment.service.exception.CommentAccessDeniedException;
 import com.harudle.comment.service.exception.CommentIntegrationUnavailableException;
 import com.harudle.comment.service.exception.CommentNotFoundException;
 import com.harudle.comment.service.exception.InvalidCommentCursorException;
+import com.harudle.report.domain.InvalidReportException;
+import com.harudle.report.service.exception.ReportTargetNotFoundException;
 import com.harudle.category.service.exception.CategoryInactiveException;
 import com.harudle.category.service.exception.CategoryNotFoundException;
 import com.harudle.category.domain.exception.InvalidCategoryException;
@@ -240,6 +242,16 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(FeedNotFoundException.class)
     ResponseEntity<ProblemDetail> handleFeedNotFound(HttpServletRequest request) {
         return createResponse(ErrorType.FEED_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(InvalidReportException.class)
+    ResponseEntity<ProblemDetail> handleInvalidReport(HttpServletRequest request) {
+        return createResponse(ErrorType.INVALID_REPORT, request);
+    }
+
+    @ExceptionHandler(ReportTargetNotFoundException.class)
+    ResponseEntity<ProblemDetail> handleReportTargetNotFound(HttpServletRequest request) {
+        return createResponse(ErrorType.REPORT_TARGET_NOT_FOUND, request);
     }
 
     @ExceptionHandler(CommentNotFoundException.class)
