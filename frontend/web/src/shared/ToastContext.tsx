@@ -30,7 +30,6 @@ type ToastAction = AddToastAction | RemoveToastAction;
 const TOAST_MAX_LENGTH = 2;
 
 interface ToastContextValue {
-  readonly toasts: readonly ToastItem[];
   readonly addToast: (
     toast: ToastProps,
     durationMs: number | 'infinite',
@@ -72,7 +71,7 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
   );
 
   return (
-    <ToastContext.Provider value={{ toasts, addToast }}>
+    <ToastContext.Provider value={{ addToast }}>
       {children}
       {createPortal(
         <div css={toastListStyle}>
