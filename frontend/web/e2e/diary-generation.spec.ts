@@ -239,11 +239,7 @@ test.describe('일기 생성', (): void => {
     expect(
       await loadingToast.evaluate((node): boolean => node.isConnected),
     ).toBe(true);
-    const generationId = await page.evaluate(
-      (key): string | null => localStorage.getItem(key),
-      DIARY_GENERATION_ID_KEY,
-    );
-    expect(generationId).toBeNull();
+    await expectGenerationCleared(page);
     await expectPollingStopped(page, requests);
     await toast.getByRole('button', { name: '다시 작성하기' }).click();
     await expect(page).toHaveURL('/diary-write');

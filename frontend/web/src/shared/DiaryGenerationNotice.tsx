@@ -124,6 +124,7 @@ const DiaryGenerationNotice = () => {
           }
           clearInterval(intervalId);
           removeGenerationId();
+          localStorage.removeItem(DIARY_GENERATION_TOAST_ID_KEY);
         }
       });
     }, 5000);
