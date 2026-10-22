@@ -10,7 +10,10 @@ import com.harudle.generation.diary.service.exception.AiProviderFailureType;
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
 import com.harudle.generation.diary.service.port.dto.DiaryImageGenerationRequest;
 import com.harudle.generation.diary.service.port.dto.GeneratedImage;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -88,5 +91,50 @@ class FallbackDiaryImageGeneratorTest {
         assertThatThrownBy(() -> generator.generate(request)).isSameAs(second).hasSuppressedException(first);
         verify(primary).generate(request);
         verify(fallback).generate(request);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"RATE_LIMITED,true", "RATE_LIMITED,false", "TIMEOUT,true", "TIMEOUT,false"})
+    @DisplayName("통계 조회나 증가가 실패해도 같은 요청으로 대체 생성을 한 번 실행하고 이미지를 반환한다")
+    void metricsFailureDoesNotPreventSuccessfulFallback(AiGenerationErrorType errorType, boolean lookupFails) {
+        var primaryFailure = new AiGenerationException(errorType, "Gemini failure");
+        when(primary.generate(request)).thenThrow(primaryFailure);
+        when(fallback.generate(request)).thenReturn(image);
+        var generator = new FallbackDiaryImageGenerator(primary, fallback, failingMetrics(lookupFails));
+
+        assertThat(generator.generate(request)).isSameAs(image);
+
+        verify(primary).generate(same(request));
+        verify(fallback).generate(same(request));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"RATE_LIMITED,true", "RATE_LIMITED,false", "TIMEOUT,true", "TIMEOUT,false"})
+    @DisplayName("통계 조회나 증가가 실패해도 대체 생성 오류와 원래 Gemini 오류를 보존한다")
+    void metricsFailureDoesNotReplaceFallbackFailure(AiGenerationErrorType errorType, boolean lookupFails) {
+        var primaryFailure = new AiGenerationException(errorType, "Gemini failure");
+        var fallbackFailure = new AiGenerationException(errorType, "Codex failure");
+        when(primary.generate(request)).thenThrow(primaryFailure);
+        when(fallback.generate(request)).thenThrow(fallbackFailure);
+        var generator = new FallbackDiaryImageGenerator(primary, fallback, failingMetrics(lookupFails));
+
+        assertThatThrownBy(() -> generator.generate(request)).isSameAs(fallbackFailure);
+        assertThat(fallbackFailure.getSuppressed()).containsExactly(primaryFailure);
+
+        verify(primary).generate(same(request));
+        verify(fallback).generate(same(request));
+    }
+
+    private MeterRegistry failingMetrics(boolean lookupFails) {
+        var registry = mock(MeterRegistry.class);
+        var failure = new IllegalArgumentException("metrics unavailable");
+        if (lookupFails) {
+            when(registry.counter(anyString(), any(String[].class))).thenThrow(failure);
+        } else {
+            var counter = mock(Counter.class);
+            when(registry.counter(anyString(), any(String[].class))).thenReturn(counter);
+            doThrow(failure).when(counter).increment();
+        }
+        return registry;
     }
 }

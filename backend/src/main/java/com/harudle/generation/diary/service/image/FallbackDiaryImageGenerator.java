@@ -41,7 +41,7 @@ public final class FallbackDiaryImageGenerator implements DiaryImageGenerator {
                 throw primaryFailure;
             }
             log.info("Image provider fallback: primary=gemini fallback=codex reason={}", reason);
-            metrics.counter("harudle.image.fallback.calls", "provider", "codex", "reason", reason).increment();
+            recordFallbackMetric(reason);
             try {
                 return fallback.generate(request);
             } catch (RuntimeException fallbackFailure) {
@@ -50,6 +50,15 @@ public final class FallbackDiaryImageGenerator implements DiaryImageGenerator {
                 }
                 throw fallbackFailure;
             }
+        }
+    }
+
+    private void recordFallbackMetric(String reason) {
+        try {
+            metrics.counter("harudle.image.fallback.calls", "provider", "codex", "reason", reason).increment();
+        } catch (RuntimeException exception) {
+            log.warn("event=metrics_recording_failed component=image_fallback reason={} exceptionType={}",
+                    reason, exception.getClass().getSimpleName());
         }
     }
 }
