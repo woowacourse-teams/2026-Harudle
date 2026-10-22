@@ -74,6 +74,7 @@ const createdDiaryRequests = new Map<
 const createdDiaryDetails = new Map<string, DiaryDetailResponse>();
 const deletedDiaryIds = new Set<string>();
 const failedStatusRequestIds = new Set<string>();
+const delayedStatusRequestIds = new Set<string>();
 
 const diaryThumbnailUrl = diaryImage;
 
@@ -469,6 +470,7 @@ export const resetDiaryGenerationMockState = (): void => {
   createdDiaryDetails.clear();
   deletedDiaryIds.clear();
   failedStatusRequestIds.clear();
+  delayedStatusRequestIds.clear();
   getMockSessionStorage()?.removeItem(RESUMABLE_GENERATION_STORAGE_KEY);
   usedGenerationCount = 0;
   mockDiarySequence = 1_000;
@@ -1044,6 +1046,24 @@ export const handlers = [
           detail: '생성 상태를 잠시 불러올 수 없습니다.',
           instance,
         });
+      }
+
+      if (
+        scenario === MOCK_SCENARIOS.diaryGenerationOutOfOrder &&
+        !delayedStatusRequestIds.has(generationId)
+      ) {
+        // 첫 미완료 응답을 다음 조회의 성공 응답보다 늦게 보낸다.
+        delayedStatusRequestIds.add(generationId);
+        await delay(10_000);
+        return HttpResponse.json(
+          {
+            id: generationId,
+            status: 'PROCESSING',
+            diaryId: null,
+            errorCode: null,
+          },
+          { headers: { 'Cache-Control': 'no-store' } },
+        );
       }
 
       syncCreatedDiaries();

@@ -275,6 +275,38 @@ test.describe('일기 생성', (): void => {
     expect(draft).toBeNull();
   });
 
+  test('성공 응답 뒤에 이전 미완료 응답이 도착해도 성공 토스트와 폴링 종료 상태를 유지한다', async ({
+    page,
+  }): Promise<void> => {
+    const requests = collectStatusRequests(page);
+    const toast = await startGeneration(page, {
+      scenario: MOCK_SCENARIOS.diaryGenerationOutOfOrder,
+    });
+    const firstRequestPromise = page.waitForRequest((request): boolean => {
+      return request.method() === 'GET' && isGenerationStatusUrl(request.url());
+    });
+    await page.clock.fastForward(5_000);
+    const firstRequest = await firstRequestPromise;
+    const delayedResponse = page.waitForResponse((response): boolean => {
+      return response.request() === firstRequest;
+    });
+
+    await advanceToPoll(page, 5_000);
+    await expect(toast).toContainText(SUCCESS_MESSAGE);
+    expect(requests).toHaveLength(2);
+    await expectGenerationCleared(page);
+
+    await page.clock.fastForward(10_000);
+    await expect((await delayedResponse).json()).resolves.toMatchObject({
+      status: 'PROCESSING',
+    });
+    await expectPollingStopped(page, requests);
+    await expect(toast).toContainText(SUCCESS_MESSAGE);
+    await expect(page.getByText(LOADING_MESSAGE)).toHaveCount(0);
+    await expect(getToasts(page)).toHaveCount(1);
+    await expectGenerationCleared(page);
+  });
+
   test('네컷 모아보기에서 생성이 완료되면 목록과 생성 횟수가 반영된다', async ({
     page,
   }): Promise<void> => {

@@ -9,6 +9,7 @@ export const MOCK_SCENARIOS = {
   diaryGenerationRequestFailure: 'diary-generation-request-failure',
   diaryGenerationNotFound: 'diary-generation-not-found',
   diaryGenerationStatusFailureOnce: 'diary-generation-status-failure-once',
+  diaryGenerationOutOfOrder: 'diary-generation-out-of-order',
   diaryGenerationResume: 'diary-generation-resume',
   diaryDetailFailure: 'diary-detail-failure',
   diaryLongKoreanTitle: 'diary-long-korean-title',
