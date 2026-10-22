@@ -15,9 +15,6 @@ const useDiaryDelete = ({ diaryId }: { diaryId: string }) => {
 
       try {
         await deleteDiary({ diaryId });
-
-        setRequest({ status: 'success', data: undefined });
-        onSuccess();
       } catch (error: unknown) {
         if (error instanceof Error) {
           captureError(error, {
@@ -30,7 +27,11 @@ const useDiaryDelete = ({ diaryId }: { diaryId: string }) => {
             error: error,
           });
         }
+        return;
       }
+
+      setRequest({ status: 'success', data: undefined });
+      onSuccess();
     },
     [diaryId, captureError],
   );

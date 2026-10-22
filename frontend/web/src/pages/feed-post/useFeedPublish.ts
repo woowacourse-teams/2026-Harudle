@@ -37,6 +37,7 @@ const useFeedPublish = ({
       if (request.status === 'loading') return;
       setRequest({ status: 'loading' });
 
+      let feed: Feed;
       try {
         track('api_requested', {
           feature: 'feed',
@@ -46,10 +47,7 @@ const useFeedPublish = ({
           diary_id: diaryId,
           category_id: categoryId,
         });
-        const feed = await publishFeed({ diaryId, categoryId });
-        setFeedListCache(null);
-        setRequest({ status: 'success', data: feed });
-        onSuccess?.(feed);
+        feed = await publishFeed({ diaryId, categoryId });
       } catch (error: unknown) {
         const requestError =
           error instanceof Error
@@ -62,7 +60,12 @@ const useFeedPublish = ({
         });
         setRequest({ status: 'error', error: requestError });
         onError?.(requestError);
+        return;
       }
+
+      setFeedListCache(null);
+      setRequest({ status: 'success', data: feed });
+      onSuccess?.(feed);
     },
     [diaryId, captureError, request.status, track],
   );
