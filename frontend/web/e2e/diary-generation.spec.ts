@@ -1,5 +1,6 @@
 import { DIARY_WRITE_COPY } from '../src/pages/diary-write/copy';
 import { ALBUM_COPY } from '../src/pages/album/copy';
+import { FEED_COPY } from '../src/pages/feed/copy';
 import { DIARY_GENERATION_FAILURE_MESSAGES } from '../src/shared/errorMessage';
 import { expect, test, type Page } from '@playwright/test';
 import {
@@ -19,7 +20,7 @@ const [GENERATION_ERROR_MESSAGE] =
 
 const goToDiaryWritePage = async (
   page: Page,
-  options: { generationFailure?: boolean } = {},
+  options: { generationFailure?: boolean; previousUrl?: string } = {},
 ): Promise<void> => {
   await page.clock.install({ time: TODAY });
 
@@ -29,14 +30,26 @@ const goToDiaryWritePage = async (
     });
   }
 
-  await page.goto('/diary-write');
+  const previousUrl = options.previousUrl ?? '/album';
+  await page.goto(previousUrl);
+  // 실제 화면 이동으로 이전 페이지를 브라우저 기록에 남긴다.
+  if (previousUrl.startsWith('/album')) {
+    await page
+      .locator('main button')
+      .filter({ has: page.locator('img') })
+      .last()
+      .click();
+  } else {
+    await page.getByRole('button', { name: FEED_COPY.createAction }).click();
+  }
+  await expect(page).toHaveURL('/diary-write');
 };
 
 const submitDiary = async (
   page: Page,
   content = VALID_DIARY_CONTENT,
 ): Promise<void> => {
-  await page.getByRole('textbox').fill(content);
+  await page.getByPlaceholder(DIARY_WRITE_COPY.placeholder).fill(content);
   await page.locator('form').getByRole('button').click();
 };
 
@@ -52,6 +65,21 @@ const expectRemainingCount = async (
 };
 
 test.describe('일기 생성', (): void => {
+  for (const { name, previousUrl } of [
+    { name: '피드', previousUrl: '/?categoryId=1&sort=POPULAR' },
+    { name: '네컷 모아보기', previousUrl: '/album?from=previous' },
+  ]) {
+    test(`${name}에서 생성 요청 접수에 성공하면 원래 화면으로 돌아가 로딩 토스트 하나를 표시한다`, async ({
+      page,
+    }): Promise<void> => {
+      await goToDiaryWritePage(page, { previousUrl });
+      await submitDiary(page);
+      await expect(page).toHaveURL(previousUrl);
+      await expect(page.getByText('네컷만화를 만들고 있어요')).toBeVisible();
+      await expect(page.locator('div:has(> span[data-type])')).toHaveCount(1);
+    });
+  }
+
   test('생성을 접수하면 앨범으로 이동하고 완료 토스트에서 결과를 볼 수 있다', async ({
     page,
   }): Promise<void> => {

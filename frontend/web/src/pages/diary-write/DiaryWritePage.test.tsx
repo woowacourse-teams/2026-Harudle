@@ -114,7 +114,7 @@ describe('일기 생성 접수 후 성공·실패 처리', (): void => {
     expect(sessionStorage.getItem(DIARY_CONTENT_SESSION_KEY)).toBe(
       acceptedResponse.sourceText,
     );
-    expect(mockNavigate).toHaveBeenCalledWith('/album');
+    expect(mockNavigate).toHaveBeenCalledWith(-1);
     expect(mockAddToast).not.toHaveBeenCalled();
     expect(mockGenerateDiary).toHaveBeenCalledWith({
       diaryDate: expect.any(String),

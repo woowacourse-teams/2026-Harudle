@@ -60,7 +60,7 @@ const DiaryWritePage = () => {
       idempotencyKey: crypto.randomUUID(),
       onSuccess: (response): void => {
         setGenerationId(response.generation.id);
-        void navigate('/album');
+        void navigate(-1);
       },
       onError: (error): void => {
         addToast({ type: 'error', message: error.message }, 2000);
@@ -76,7 +76,7 @@ const DiaryWritePage = () => {
             type="button"
             aria-label="뒤로 가기"
             css={headerButtonStyle}
-            onClick={() => navigate('/album')}
+            onClick={() => navigate(-1)}
           >
             <img
               src={backIcon}

@@ -1,4 +1,5 @@
 export const FEED_COPY = {
+  createAction: '네컷만화 만들기',
   allCategories: '전체',
   categoryGroupLabel: '피드 카테고리',
   categoryLoadError: '카테고리를 불러오지 못했어요. 다시 시도해 주세요.',

@@ -4,9 +4,13 @@ import { isFeedSort, type FeedSort } from '../../domain/feeds/feedList';
 import BottomNavigationLayout from '../../shared/BottomNavigationLayout';
 import FeedFilterBar from './FeedFilterBar';
 import FeedItemList from './FeedItemList';
-import { useSearchParams } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { useAnalytics } from '../../posthog/useAnalytics';
 import useFeedList from './useFeedList';
+import plusIcon from '../../assets/icons/plus.svg';
+import { theme } from '../../styles/theme';
+import { FEED_COPY } from './copy';
+import useDiaryGenerationId from '../../shared/useDiaryGenerationId';
 
 const FEED_QUERY_KEYS = {
   CATEGORY_ID: 'categoryId',
@@ -14,6 +18,8 @@ const FEED_QUERY_KEYS = {
 } as const;
 
 const FeedPage = () => {
+  const navigate = useNavigate();
+  const generationId = useDiaryGenerationId();
   const { track } = useAnalytics();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -67,7 +73,21 @@ const FeedPage = () => {
   };
 
   return (
-    <BottomNavigationLayout>
+    <BottomNavigationLayout
+      headerRight={
+        <button
+          type="button"
+          aria-label={FEED_COPY.createAction}
+          disabled={generationId !== null}
+          css={createButtonStyle}
+          onClick={(): void => {
+            void navigate('/diary-write');
+          }}
+        >
+          <span css={createIconStyle} />
+        </button>
+      }
+    >
       <main css={feedPageContentStyle}>
         <FeedFilterBar
           selectedCategoryId={categoryId}
@@ -93,6 +113,30 @@ const FeedPage = () => {
 };
 
 export default FeedPage;
+
+const createButtonStyle = css`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+  }
+`;
+
+const createIconStyle = css`
+  width: 24px;
+  height: 24px;
+  background-color: ${theme.colors.foreground.brand};
+  mask: url(${plusIcon}) center / contain no-repeat;
+`;
 
 const feedPageContentStyle = css`
   position: relative;

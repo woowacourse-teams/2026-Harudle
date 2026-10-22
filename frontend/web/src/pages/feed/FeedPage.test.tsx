@@ -21,6 +21,7 @@ const mockSetSearchParams =
   jest.fn<(update: (previous: URLSearchParams) => URLSearchParams) => void>();
 
 jest.mock('react-router', () => ({
+  useNavigate: () => jest.fn(),
   useSearchParams: () => [mockSearchParams, mockSetSearchParams],
 }));
 jest.mock('../../posthog/useAnalytics', () => ({
@@ -43,6 +44,7 @@ jest.mock('./FeedItemList', () => ({
 jest.mock('../../assets/icons/feed-sort-down.svg', () => 'sort.svg');
 jest.mock('../../assets/icons/autorenew.svg', () => 'retry.svg');
 jest.mock('../../assets/icons/feed-refresh.svg', () => 'feed-refresh.svg');
+jest.mock('../../assets/icons/plus.svg', () => 'plus.svg');
 jest.mock('../../domain/category/categoryList', () => ({
   getCategoryList: async (): Promise<CategoryListResponse> => [
     { id: 1, name: '일상', sortOrder: 0, active: true },
