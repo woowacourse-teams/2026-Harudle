@@ -12,6 +12,7 @@
 
 ## 주제별 ADR
 
+- [인프라 v2: 앱과 DB 서버 분리](infra-v2-architecture/README.md)
 - [이미지 비동기 생성: DB 큐, 작업 확보, 상태 조회와 성능 검증](async-diary-generation/README.md)
 - [피드 삭제 정책: 피드와 연결 데이터의 삭제 방식을 어떻게 정할 것인가](feed-deletion-policy/2026-10-11_피드와%20연결%20데이터의%20삭제%20방식을%20어떻게%20정할%20것인가_캐모.md)
 - [CodeBuild 캐시 효과를 전체 빌드 시간으로 판단](code-build-cache/2026-10-21_CodeBuild%20캐시%20효과를%20전체%20빌드%20시간으로%20판단_이산.md)
