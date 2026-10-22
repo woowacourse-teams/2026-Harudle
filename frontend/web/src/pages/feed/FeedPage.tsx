@@ -1,4 +1,5 @@
 import { css } from '@emotion/react';
+import { useRef } from 'react';
 import type { Category } from '../../domain/category/categoryList';
 import { isFeedSort, type FeedSort } from '../../domain/feeds/feedList';
 import BottomNavigationLayout from '../../shared/BottomNavigationLayout';
@@ -11,6 +12,8 @@ import plusIcon from '../../assets/icons/plus.svg';
 import { theme } from '../../styles/theme';
 import { FEED_COPY } from './copy';
 import useDiaryGenerationId from '../../shared/useDiaryGenerationId';
+import type { BottomSheetHandle } from '../../shared/BottomSheet';
+import NeedLoginBottomSheet from '../../shared/NeedLoginBottomSheet';
 
 const FEED_QUERY_KEYS = {
   CATEGORY_ID: 'categoryId',
@@ -19,6 +22,7 @@ const FEED_QUERY_KEYS = {
 
 const FeedPage = () => {
   const navigate = useNavigate();
+  const loginSheetRef = useRef<BottomSheetHandle>(null);
   const generationId = useDiaryGenerationId();
   const { track } = useAnalytics();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -72,6 +76,15 @@ const FeedPage = () => {
     });
   };
 
+  const handleCreate = (): void => {
+    if (localStorage.getItem('harudle.has-completed-oauth') === null) {
+      loginSheetRef.current?.open();
+      return;
+    }
+
+    void navigate('/diary-write');
+  };
+
   return (
     <BottomNavigationLayout
       headerRight={
@@ -80,9 +93,7 @@ const FeedPage = () => {
           aria-label={FEED_COPY.createAction}
           disabled={generationId !== null}
           css={createButtonStyle}
-          onClick={(): void => {
-            void navigate('/diary-write');
-          }}
+          onClick={handleCreate}
         >
           <span aria-hidden="true" css={createIconBackgroundStyle}>
             <span css={createIconStyle} />
@@ -110,6 +121,10 @@ const FeedPage = () => {
           removeFeedFromList={removeFeedFromList}
         />
       </main>
+      <NeedLoginBottomSheet
+        description={FEED_COPY.createLoginDescription}
+        ref={loginSheetRef}
+      />
     </BottomNavigationLayout>
   );
 };

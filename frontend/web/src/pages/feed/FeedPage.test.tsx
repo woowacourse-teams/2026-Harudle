@@ -45,6 +45,8 @@ jest.mock('../../assets/icons/feed-sort-down.svg', () => 'sort.svg');
 jest.mock('../../assets/icons/autorenew.svg', () => 'retry.svg');
 jest.mock('../../assets/icons/feed-refresh.svg', () => 'feed-refresh.svg');
 jest.mock('../../assets/icons/plus.svg', () => 'plus.svg');
+jest.mock('../../assets/icons/kakao.svg', () => 'kakao.svg');
+jest.mock('../../assets/icons/bottom-sheet-close.svg', () => 'close.svg');
 jest.mock('../../domain/category/categoryList', () => ({
   getCategoryList: async (): Promise<CategoryListResponse> => [
     { id: 1, name: '일상', sortOrder: 0, active: true },
