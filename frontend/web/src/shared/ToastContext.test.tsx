@@ -8,6 +8,93 @@ jest.mock('../assets/icons/toast-loading.svg', () => 'toast-loading.svg');
 
 afterEach((): void => {
   cleanup();
+  jest.useRealTimers();
+});
+
+describe('토스트 개수 제한과 무기한 알림 보존', (): void => {
+  it('연속 추가 시 가장 오래된 일반 알림을 제거한다', (): void => {
+    jest.useFakeTimers();
+    const { result } = renderHook(useToastContext, { wrapper: ToastProvider });
+
+    act((): void => {
+      result.current.addToast({ type: 'success', message: '첫 알림' }, 2000);
+      result.current.addToast(
+        { type: 'success', message: '두 번째 알림' },
+        2000,
+      );
+      result.current.addToast(
+        { type: 'success', message: '세 번째 알림' },
+        2000,
+      );
+    });
+
+    expect(screen.queryByText('첫 알림')).not.toBeInTheDocument();
+    expect(screen.getByText('두 번째 알림')).toBeInTheDocument();
+    expect(screen.getByText('세 번째 알림')).toBeInTheDocument();
+  });
+
+  it('다른 알림이 추가되어도 생성 알림을 완료 상태로 갱신할 수 있다', (): void => {
+    jest.useFakeTimers();
+    const { result } = renderHook(useToastContext, { wrapper: ToastProvider });
+
+    act((): void => {
+      result.current.addToast(
+        { type: 'loading', message: '생성 중' },
+        'infinite',
+        'generation-1',
+      );
+    });
+    act((): void => {
+      result.current.addToast({ type: 'error', message: '첫 오류' }, 2000);
+    });
+    act((): void => {
+      result.current.addToast({ type: 'error', message: '다음 오류' }, 2000);
+    });
+
+    expect(screen.getByText('생성 중')).toBeInTheDocument();
+    expect(screen.queryByText('첫 오류')).not.toBeInTheDocument();
+    expect(screen.getByText('다음 오류')).toBeInTheDocument();
+
+    act((): void => {
+      jest.advanceTimersByTime(2000);
+      result.current.updateToast('generation-1', {
+        type: 'success',
+        message: '네컷만화가 완성됐어요!',
+        action: { label: '보러가기', onClick: jest.fn() },
+      });
+    });
+
+    expect(screen.getByText('네컷만화가 완성됐어요!')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '보러가기' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('다음 오류')).not.toBeInTheDocument();
+  });
+
+  it('개수 제한에 도달해도 중복 추가가 다른 알림을 제거하지 않는다', (): void => {
+    jest.useFakeTimers();
+    const { result } = renderHook(useToastContext, { wrapper: ToastProvider });
+
+    act((): void => {
+      result.current.addToast({ type: 'success', message: '일반 알림' }, 2000);
+      result.current.addToast(
+        { type: 'loading', message: '생성 중' },
+        'infinite',
+        'generation-1',
+      );
+    });
+    act((): void => {
+      result.current.addToast(
+        { type: 'loading', message: '중복 생성' },
+        'infinite',
+        'generation-1',
+      );
+    });
+
+    expect(screen.getByText('일반 알림')).toBeInTheDocument();
+    expect(screen.getByText('생성 중')).toBeInTheDocument();
+    expect(screen.queryByText('중복 생성')).not.toBeInTheDocument();
+  });
 });
 
 describe('토스트 ID 지정과 중복 방지', (): void => {

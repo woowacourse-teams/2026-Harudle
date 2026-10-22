@@ -50,11 +50,23 @@ const toastReducer = (
   action: ToastAction,
 ): readonly ToastItem[] => {
   switch (action.type) {
-    case 'add':
+    case 'add': {
       if (toasts.some((toast): boolean => toast.id === action.toast.id)) {
         return toasts;
       }
-      return [...toasts, action.toast];
+
+      const nextToasts = [...toasts, action.toast];
+      if (nextToasts.length <= TOAST_MAX_LENGTH) {
+        return nextToasts;
+      }
+
+      const oldestFiniteToastIndex = nextToasts.findIndex(
+        (toast): boolean => toast.durationMs !== 'infinite',
+      );
+      return nextToasts.filter(
+        (_, index): boolean => index !== oldestFiniteToastIndex,
+      );
+    }
     case 'remove':
       return toasts.filter((toast): boolean => toast.id !== action.id);
     case 'update':
@@ -72,11 +84,6 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
     durationMs: number | 'infinite',
     id: ToastItem['id'] = crypto.randomUUID(),
   ): ToastItem['id'] => {
-    if (toasts.length >= TOAST_MAX_LENGTH) {
-      const oldestId = toasts[0].id;
-      dispatch({ type: 'remove', id: oldestId });
-    }
-
     dispatch({ type: 'add', toast: { ...toast, id, durationMs } });
 
     if (durationMs !== 'infinite') {
