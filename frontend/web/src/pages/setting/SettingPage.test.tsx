@@ -11,15 +11,23 @@ import SettingPage from './SettingPage';
 import { RequestError } from '../../shared/api';
 import type {
   getUserProfile,
-  updateUserNickname,
+  updateUserProfile,
 } from '../../domain/user/profile';
 
 const mockGetProfile = jest.fn<typeof getUserProfile>();
-const mockUpdateNickname = jest.fn<typeof updateUserNickname>();
+const mockUpdateProfile = jest.fn<typeof updateUserProfile>();
+const mockAddToast = jest.fn();
 
 jest.mock('../../domain/user/profile', () => ({
+  ...jest.requireActual<typeof import('../../domain/user/profile')>(
+    '../../domain/user/profile',
+  ),
   getUserProfile: () => mockGetProfile(),
-  updateUserNickname: (nickname: string) => mockUpdateNickname(nickname),
+  updateUserProfile: (...args: Parameters<typeof updateUserProfile>) =>
+    mockUpdateProfile(...args),
+}));
+jest.mock('../../shared/ToastContext', () => ({
+  useToastContext: () => ({ addToast: mockAddToast }),
 }));
 jest.mock('../../shared/BottomNavigationLayout', () => ({
   __esModule: true,
@@ -44,24 +52,25 @@ const profile = {
   id: 'user-1',
   name: '정연준',
   nickname: '연준',
-  profileImageUrl: '/profile.svg',
+  profileImageUrl: '/profile-images/v1/5.png',
   email: null,
   role: 'USER' as const,
   oauthProviders: ['kakao' as const],
   createdAt: '2026-10-12T00:00:00Z',
 };
 
-beforeEach(() => {
+beforeEach((): void => {
   Object.defineProperty(globalThis, '__APP_VERSION__', {
     value: '1.1.0',
     configurable: true,
   });
   mockGetProfile.mockReset().mockResolvedValue(profile);
-  mockUpdateNickname.mockReset().mockResolvedValue(undefined);
+  mockUpdateProfile.mockReset().mockResolvedValue(undefined);
+  mockAddToast.mockReset();
 });
 
-const openNicknameModal = async () => {
-  const user = userEvent.setup();
+const openProfileModal = async () => {
+  const user = userEvent.setup({ applyAccept: false });
   render(<SettingPage />);
   await screen.findByText('연준');
   const dialog = screen.getByRole('dialog', { hidden: true });
@@ -69,207 +78,277 @@ const openNicknameModal = async () => {
     showModal: { value: () => dialog.setAttribute('open', '') },
     close: { value: () => dialog.removeAttribute('open') },
   });
-  await user.click(screen.getByRole('button', { name: '수정' }));
+  await user.click(screen.getByRole('button', { name: '프로필 수정' }));
   return { user, dialog, input: screen.getByLabelText('닉네임') };
 };
 
-describe('설정 프로필과 닉네임 수정', () => {
-  it('응답 본문 없이 저장에 성공하면 닉네임을 반영하고 모달을 닫는다', async () => {
-    const { user, dialog, input } = await openNicknameModal();
-    expect(screen.getByText('정연준')).toBeInTheDocument();
-    expect(input).toHaveValue('연준');
-    await user.clear(input);
-    await user.type(input, '새닉네임');
-    await user.click(screen.getByRole('button', { name: '저장' }));
-    await waitFor(() => expect(dialog).not.toHaveAttribute('open'));
-    expect(mockUpdateNickname).toHaveBeenCalledWith('새닉네임');
-    expect(screen.getByText('새닉네임')).toBeInTheDocument();
-    expect(screen.getByText('정연준')).toBeInTheDocument();
-    expect(mockGetProfile).toHaveBeenCalledTimes(1);
+const problem = (
+  status: 400 | 409 | 413 | 415 | 503,
+  code: string,
+): RequestError =>
+  new RequestError({
+    type: 'about:blank',
+    title: 'Error',
+    status,
+    code,
+    detail: '서버 오류',
+    instance: '/api/v1/me/profile',
   });
 
-  it('중복 오류의 서버 메시지를 표시하고 닉네임을 바꿔 다시 저장할 수 있다', async () => {
-    mockUpdateNickname.mockRejectedValueOnce(
-      new RequestError({
-        type: 'about:blank',
-        title: 'Conflict',
-        status: 409,
-        detail: '서버 상세 문구',
-        instance: '/api/v1/me/nickname',
-        code: 'NICKNAME_ALREADY_IN_USE',
-      }),
+describe('통합 프로필 수정', (): void => {
+  it('사진과 닉네임을 한 번 저장하고 조회한 프로필을 반영한 뒤 완료를 알린다', async (): Promise<void> => {
+    const { user, dialog, input } = await openProfileModal();
+    expect(screen.getByRole('button', { name: '저장' })).toBeDisabled();
+    await user.clear(input);
+    await user.type(input, '새닉네임');
+    await user.click(screen.getByRole('button', { name: '박쥐 프로필 사진' }));
+    mockGetProfile.mockResolvedValueOnce({
+      ...profile,
+      nickname: '새닉네임',
+      profileImageUrl: '/profile-images/v1/8.png',
+    });
+    await user.click(screen.getByRole('button', { name: '저장' }));
+    await waitFor(() => expect(dialog).not.toHaveAttribute('open'));
+    expect(mockUpdateProfile).toHaveBeenCalledTimes(1);
+    expect(mockUpdateProfile).toHaveBeenCalledWith({
+      nickname: '새닉네임',
+      image: { type: 'default', code: 8 },
+    });
+    expect(screen.getByText('새닉네임')).toBeInTheDocument();
+    expect(mockAddToast).toHaveBeenCalledWith(
+      { type: 'success', message: '프로필을 수정했어요.' },
+      2000,
     );
-    const { user, dialog, input } = await openNicknameModal();
+  });
+
+  it('닉네임만 바꾸면 사진은 보내지 않고, 취소하면 서버 값을 다시 채운다', async (): Promise<void> => {
+    const { user, dialog, input } = await openProfileModal();
+    await user.type(input, '취소');
+    await user.click(screen.getByRole('button', { name: '취소' }));
+    expect(mockUpdateProfile).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: '프로필 사진 수정' }));
+    expect(input).toHaveValue('연준');
+    await user.clear(input);
+    await user.type(input, '새이름');
+    await user.click(screen.getByRole('button', { name: '저장' }));
+    await waitFor(() => expect(dialog).not.toHaveAttribute('open'));
+    expect(mockUpdateProfile).toHaveBeenCalledWith({ nickname: '새이름' });
+  });
+
+  it('닉네임 중복은 입력 아래에 표시하고 사진 선택을 유지한다', async (): Promise<void> => {
+    mockUpdateProfile.mockRejectedValueOnce(
+      problem(409, 'NICKNAME_ALREADY_IN_USE'),
+    );
+    const { user, dialog, input } = await openProfileModal();
     await user.clear(input);
     await user.type(input, '네오');
+    await user.click(screen.getByRole('button', { name: '박쥐 프로필 사진' }));
     await user.click(screen.getByRole('button', { name: '저장' }));
-    expect(await screen.findByText('서버 상세 문구')).toBeInTheDocument();
+    expect(
+      await screen.findByText('이미 사용 중인 닉네임이에요.'),
+    ).toBeInTheDocument();
+    expect(input).toHaveAttribute('aria-invalid', 'true');
     expect(dialog).toHaveAttribute('open');
-    expect(screen.getByText('연준')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '박쥐 프로필 사진' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    expect(mockAddToast).not.toHaveBeenCalled();
     await user.clear(input);
     await user.type(input, '새닉네임');
+    expect(
+      screen.queryByText('이미 사용 중인 닉네임이에요.'),
+    ).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '저장' }));
     await waitFor(() => expect(dialog).not.toHaveAttribute('open'));
   });
 
-  it('취소 후 다시 열면 기존 닉네임으로 초기화한다', async () => {
-    const { user, dialog, input } = await openNicknameModal();
-    await user.clear(input);
-    await user.type(input, '취소할값');
-    await user.click(screen.getByRole('button', { name: '취소' }));
-    expect(dialog).not.toHaveAttribute('open');
-    expect(mockUpdateNickname).not.toHaveBeenCalled();
-    await user.click(screen.getByRole('button', { name: '수정' }));
-    expect(input).toHaveValue('연준');
-  });
-
-  it('서버 검증 오류 메시지를 그대로 표시한다', async () => {
-    const reason = '닉네임 앞뒤의 공백을 제거해 주세요.';
-    const problem = {
-      type: 'about:blank',
-      title: 'Bad Request',
-      status: 400 as const,
-      detail: '입력값을 확인해 주세요.',
-      instance: '/api/v1/me/nickname',
-      code: 'VALIDATION_ERROR',
-    };
-    mockUpdateNickname
-      .mockRejectedValueOnce(
-        new RequestError({
-          ...problem,
-          errors: [{ field: 'nickname', reason }],
-        }),
-      )
-      .mockRejectedValueOnce(new RequestError(problem));
-    const { user, dialog, input } = await openNicknameModal();
-    fireEvent.change(input, { target: { value: ' 하루' } });
-    await user.click(screen.getByRole('button', { name: '저장' }));
-    expect(await screen.findByText(reason)).toBeInTheDocument();
-    expect(dialog).toHaveAttribute('open');
-    expect(screen.getByText('연준')).toBeInTheDocument();
-
-    fireEvent.change(input, { target: { value: '하루' } });
-    expect(screen.queryByText(reason)).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: '저장' }));
-    expect(await screen.findByText(problem.detail)).toBeInTheDocument();
-  });
-
-  it('공백은 거부하고 입력을 Unicode 10자로 제한하며 글자 수를 표시한다', async () => {
-    const { user, input } = await openNicknameModal();
-    expect(screen.getByText('2 / 10')).toBeInTheDocument();
+  it('빈 닉네임과 한글 조합 중 제출을 막고 조합이 끝난 뒤 10자로 제한한다', async (): Promise<void> => {
+    const { user, input } = await openProfileModal();
     fireEvent.change(input, { target: { value: '   ' } });
     await user.click(screen.getByRole('button', { name: '저장' }));
     expect(
       screen.getByText('닉네임은 1자 이상 10자 이하로 입력해 주세요.'),
     ).toBeInTheDocument();
-    expect(mockUpdateNickname).not.toHaveBeenCalled();
-
+    fireEvent.compositionStart(input);
     fireEvent.change(input, { target: { value: '가'.repeat(11) } });
-    expect(input).toHaveValue('가'.repeat(10));
-    expect(screen.getByText('10 / 10')).toBeInTheDocument();
-    fireEvent.change(input, { target: { value: '😀'.repeat(11) } });
-    expect(input).toHaveValue('😀'.repeat(10));
-    await user.click(screen.getByRole('button', { name: '저장' }));
-    await waitFor(() =>
-      expect(mockUpdateNickname).toHaveBeenCalledWith('😀'.repeat(10)),
-    );
-  });
-
-  it('기존 닉네임이 10자를 넘어도 변경 없는 저장은 허용한다', async () => {
-    const nickname = ' 기존회원의아주긴닉네임 ';
-    mockGetProfile.mockResolvedValueOnce({ ...profile, nickname });
-    const user = userEvent.setup();
-    render(<SettingPage />);
-    await screen.findByText(nickname.trim());
-    const dialog = screen.getByRole('dialog', { hidden: true });
-    Object.defineProperties(dialog, {
-      showModal: { value: () => dialog.setAttribute('open', '') },
-      close: { value: () => dialog.removeAttribute('open') },
-    });
-    await user.click(screen.getByRole('button', { name: '수정' }));
-    await user.click(screen.getByRole('button', { name: '저장' }));
-    await waitFor(() =>
-      expect(mockUpdateNickname).toHaveBeenCalledWith(nickname),
-    );
-  });
-  it('저장 중 버튼 제출은 막고 배경으로 닫은 뒤 재열어도 진행 상태를 유지한다', async () => {
-    let completeSave: (() => void) | undefined;
-    mockUpdateNickname.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          completeSave = resolve;
-        }),
-    );
-    const { user, dialog, input } = await openNicknameModal();
-    await user.clear(input);
-    await user.type(input, '새닉네임');
-    await user.click(screen.getByRole('button', { name: '저장' }));
-
-    expect(input).toBeDisabled();
-    expect(screen.getByRole('button', { name: '저장 중...' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '취소' })).toBeDisabled();
     const form = input.closest('form');
-    if (!form) throw new Error('닉네임 입력 폼을 찾을 수 없습니다.');
+    if (!form) throw new Error('프로필 폼을 찾을 수 없습니다.');
     fireEvent.submit(form);
-    expect(mockUpdateNickname).toHaveBeenCalledTimes(1);
-
-    await user.click(screen.getByRole('button', { name: '취소' }));
-    expect(dialog).toHaveAttribute('open');
-    expect(fireEvent(dialog, new Event('cancel', { cancelable: true }))).toBe(
-      true,
-    );
-    await user.click(dialog);
-    expect(dialog).not.toHaveAttribute('open');
-    await user.click(screen.getByRole('button', { name: '수정' }));
-    expect(dialog).toHaveAttribute('open');
-    expect(input).toHaveValue('새닉네임');
-    expect(input).toBeDisabled();
-    expect(screen.getByRole('button', { name: '저장 중...' })).toBeDisabled();
-    fireEvent.submit(form);
-    expect(mockUpdateNickname).toHaveBeenCalledTimes(1);
-
-    await act(async () => {
-      completeSave?.();
-    });
-    await waitFor(() => expect(dialog).not.toHaveAttribute('open'));
-    expect(screen.getByText('새닉네임')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: '수정' }));
-    expect(input).toHaveValue('새닉네임');
-    expect(fireEvent(dialog, new Event('cancel', { cancelable: true }))).toBe(
-      true,
-    );
-    await user.click(dialog);
-    expect(dialog).not.toHaveAttribute('open');
+    expect(input).toHaveValue('가'.repeat(11));
+    expect(mockUpdateProfile).not.toHaveBeenCalled();
+    fireEvent.compositionEnd(input);
+    expect(input).toHaveValue('가'.repeat(10));
   });
 
-  it('저장이 실패하면 입력과 취소를 다시 허용하고 재열기 시 오류를 초기화한다', async () => {
+  it.each([
+    [
+      new File(['gif'], 'photo.gif', { type: 'image/gif' }),
+      'JPEG, PNG 사진을 선택해 주세요.',
+    ],
+    [
+      new File([new Uint8Array(5 * 1024 * 1024 + 1)], 'photo.png', {
+        type: 'image/png',
+      }),
+      '사진은 5MiB까지 올릴 수 있어요.',
+    ],
+  ])(
+    '잘못된 파일은 기본 안내 대신 오류만 보여주고 기본 사진으로 복구할 수 있다',
+    async (file, message): Promise<void> => {
+      const { user } = await openProfileModal();
+      await user.upload(screen.getByLabelText('프로필 사진 파일'), file);
+      expect(screen.getByText(message)).toBeInTheDocument();
+      expect(
+        screen.queryByText('JPEG, PNG 파일을 5MiB까지 올릴 수 있어요.'),
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '저장' })).toBeDisabled();
+      await user.click(
+        screen.getByRole('button', { name: '박쥐 프로필 사진' }),
+      );
+      expect(screen.queryByText(message)).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '저장' })).toBeEnabled();
+    },
+  );
+
+  it('개인 사진을 미리 보여주고 선택한 파일만 저장 요청에 담는다', async (): Promise<void> => {
+    const { user, dialog } = await openProfileModal();
+    const file = new File(['png'], 'photo.png', { type: 'image/png' });
+    await user.upload(screen.getByLabelText('프로필 사진 파일'), file);
+    await waitFor(() =>
+      expect(screen.getByAltText('선택한 프로필 사진')).toHaveAttribute(
+        'src',
+        'data:image/png;base64,cG5n',
+      ),
+    );
+    await user.click(screen.getByRole('button', { name: '저장' }));
+    await waitFor(() => expect(dialog).not.toHaveAttribute('open'));
+    expect(mockUpdateProfile).toHaveBeenCalledWith({
+      image: { type: 'upload', file },
+    });
+  });
+
+  it('저장 뒤 조회만 실패하면 입력을 잠그고 저장을 반복하지 않고 조회만 재시도한다', async (): Promise<void> => {
+    const { user, dialog, input } = await openProfileModal();
+    await user.click(screen.getByRole('button', { name: '박쥐 프로필 사진' }));
+    mockGetProfile.mockRejectedValueOnce(new Error('조회 실패'));
+    await user.click(screen.getByRole('button', { name: '저장' }));
+    expect(
+      await screen.findByText('수정한 프로필을 불러오지 못했어요.'),
+    ).toBeInTheDocument();
+    expect(input).toBeDisabled();
+    expect(mockAddToast).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: '다시 불러오기' }));
+    await waitFor(() => expect(dialog).not.toHaveAttribute('open'));
+    expect(mockUpdateProfile).toHaveBeenCalledTimes(1);
+    expect(mockGetProfile).toHaveBeenCalledTimes(3);
+    expect(mockAddToast).toHaveBeenCalledTimes(1);
+  });
+
+  it('응답 유실 뒤 조회에 성공해도 저장 완료로 안내하지 않는다', async (): Promise<void> => {
+    const { ProfileSaveResultUnknownError } =
+      await import('../../domain/user/profile');
+    mockUpdateProfile.mockRejectedValueOnce(
+      new ProfileSaveResultUnknownError(),
+    );
+    const { user, dialog } = await openProfileModal();
+    await user.click(screen.getByRole('button', { name: '박쥐 프로필 사진' }));
+    await user.click(screen.getByRole('button', { name: '저장' }));
+    expect(
+      await screen.findByText(
+        '저장 결과를 확인하지 못했어요. 다시 불러와 주세요.',
+      ),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '닫기' }));
+    await user.click(screen.getByRole('button', { name: '프로필 수정' }));
+    expect(screen.getByRole('button', { name: '다시 불러오기' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: '다시 불러오기' }));
+    await waitFor(() => expect(dialog).not.toHaveAttribute('open'));
+    expect(mockUpdateProfile).toHaveBeenCalledTimes(1);
+    expect(mockAddToast).not.toHaveBeenCalled();
+  });
+
+  it('저장 중 창을 닫아도 중복 저장을 막고, 확인된 실패는 본문과 설명이 나뉜 토스트로 알린다', async (): Promise<void> => {
     let failSave: ((error: Error) => void) | undefined;
-    mockUpdateNickname.mockImplementationOnce(
+    mockUpdateProfile.mockImplementationOnce(
       () =>
         new Promise((_, reject) => {
           failSave = reject;
         }),
     );
-    const { user, dialog, input } = await openNicknameModal();
-    await user.clear(input);
-    await user.type(input, '새닉네임');
+    const { user, dialog, input } = await openProfileModal();
+    await user.click(screen.getByRole('button', { name: '박쥐 프로필 사진' }));
     await user.click(screen.getByRole('button', { name: '저장' }));
-    await act(async () => {
-      failSave?.(new Error('Network error'));
+    const form = input.closest('form');
+    if (!form) throw new Error('프로필 폼을 찾을 수 없습니다.');
+    fireEvent.submit(form);
+    expect(mockUpdateProfile).toHaveBeenCalledTimes(1);
+    expect(input).toBeDisabled();
+    await user.click(dialog);
+    expect(dialog).not.toHaveAttribute('open');
+    expect(
+      screen.getByRole('button', { name: '프로필 사진 수정' }),
+    ).toBeDisabled();
+    expect(
+      screen.queryByText('프로필을 저장하고 있어요. 잠시만 기다려 주세요.'),
+    ).not.toBeInTheDocument();
+    await act(async (): Promise<void> => {
+      failSave?.(problem(503, 'PROFILE_IMAGE_STORAGE_ERROR'));
     });
+    expect(mockAddToast).toHaveBeenCalledWith(
+      {
+        type: 'error',
+        message: '프로필을 저장하지 못했어요.',
+        description: '다시 수정해 주세요.',
+      },
+      2000,
+    );
+    expect(screen.getByRole('button', { name: '프로필 수정' })).toBeEnabled();
+  });
+
+  it('이전 사진 주소 재조회가 늦게 끝나도 새로 저장한 프로필을 덮어쓰지 않는다', async (): Promise<void> => {
+    const { user, dialog } = await openProfileModal();
+    let finishOldRead: ((value: typeof profile) => void) | undefined;
+    mockGetProfile.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishOldRead = resolve;
+        }),
+    );
+    const avatar = screen
+      .getByRole('button', { name: '프로필 사진 수정' })
+      .querySelector('img');
+    if (!avatar) throw new Error('현재 프로필 사진을 찾을 수 없습니다.');
+    fireEvent.error(avatar);
+    mockGetProfile.mockResolvedValueOnce({
+      ...profile,
+      nickname: '새프로필',
+      profileImageUrl: '/profile-images/v1/8.png',
+    });
+    await user.click(screen.getByRole('button', { name: '박쥐 프로필 사진' }));
+    await user.click(screen.getByRole('button', { name: '저장' }));
+    await waitFor(() => expect(dialog).not.toHaveAttribute('open'));
+    await act(async (): Promise<void> => {
+      finishOldRead?.(profile);
+    });
+    expect(screen.getByText('새프로필')).toBeInTheDocument();
+    expect(screen.queryByText('연준')).not.toBeInTheDocument();
+  });
+
+  it('창이 열려 있을 때 저장 실패는 빨간 안내만 표시하고 입력을 유지한다', async (): Promise<void> => {
+    mockUpdateProfile.mockRejectedValueOnce(
+      problem(503, 'PROFILE_IMAGE_STORAGE_ERROR'),
+    );
+    const { user, dialog } = await openProfileModal();
+    await user.click(screen.getByRole('button', { name: '박쥐 프로필 사진' }));
+    await user.click(screen.getByRole('button', { name: '저장' }));
     expect(
       await screen.findByText(
-        '닉네임을 수정하지 못했어요. 다시 시도해 주세요.',
+        '프로필을 저장하지 못했어요. 다시 시도해 주세요.',
       ),
     ).toBeInTheDocument();
-    expect(input).not.toBeDisabled();
-    expect(screen.getByRole('button', { name: '취소' })).not.toBeDisabled();
-    await user.click(screen.getByRole('button', { name: '취소' }));
-    expect(dialog).not.toHaveAttribute('open');
-    await user.click(screen.getByRole('button', { name: '수정' }));
-    expect(input).toHaveValue('연준');
+    expect(dialog).toHaveAttribute('open');
     expect(
-      screen.queryByText('닉네임을 수정하지 못했어요. 다시 시도해 주세요.'),
-    ).not.toBeInTheDocument();
+      screen.getByRole('button', { name: '박쥐 프로필 사진' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    expect(mockAddToast).not.toHaveBeenCalled();
   });
 });

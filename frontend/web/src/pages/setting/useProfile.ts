@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { type ApiRequest } from '../../shared/api';
 import {
   getUserProfile,
@@ -6,6 +6,7 @@ import {
 } from '../../domain/user/profile';
 
 const useProfile = () => {
+  const refreshVersion = useRef(0);
   const [request, setRequest] = useState<ApiRequest<ProfileResponse>>({
     status: 'idle',
   });
@@ -36,14 +37,22 @@ const useProfile = () => {
     void execute();
   }, []);
 
-  const updateNickname = (nickname: string): void => {
-    setRequest((previous) => {
-      if (previous.status !== 'success') return previous;
-      return { status: 'success', data: { ...previous.data, nickname } };
-    });
+  const updateProfile = (profile: ProfileResponse): void => {
+    refreshVersion.current += 1;
+    setRequest({ status: 'success', data: profile });
   };
 
-  return { profileRequest: request, updateNickname };
+  const refreshProfile = async (): Promise<void> => {
+    const version = ++refreshVersion.current;
+    try {
+      const profile = await getUserProfile();
+      if (version === refreshVersion.current) updateProfile(profile);
+    } catch {
+      // 사진 주소 재조회에 실패해도 현재 프로필과 대체 이미지를 유지한다.
+    }
+  };
+
+  return { profileRequest: request, updateProfile, refreshProfile };
 };
 
 export default useProfile;
