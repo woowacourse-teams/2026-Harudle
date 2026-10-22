@@ -46,12 +46,11 @@ const ReportDialog = ({ ref }: ReportDialogProps) => {
     ref,
     (): ReportDialogHandle => ({
       open: (nextTarget): void => {
-        if (!submittingRef.current) {
-          setTarget(nextTarget);
-          setReason('');
-          setDescription('');
-          setRequest({ status: 'idle' });
-        }
+        if (submittingRef.current) return;
+        setTarget(nextTarget);
+        setReason('');
+        setDescription('');
+        setRequest({ status: 'idle' });
         modalRef.current?.open();
       },
     }),
@@ -82,9 +81,11 @@ const ReportDialog = ({ ref }: ReportDialogProps) => {
   return (
     <Modal
       ref={modalRef}
+      dismissible={!isSubmitting}
       title={target ? REPORT_TITLES[target.targetType] : REPORT_COPY.menuTitle}
       footer={
-        request.status === 'success' ? (
+        target !== null &&
+        (request.status === 'success' ? (
           <button
             type="button"
             css={submitStyle}
@@ -111,71 +112,72 @@ const ReportDialog = ({ ref }: ReportDialogProps) => {
               {isSubmitting ? REPORT_COPY.submitting : REPORT_COPY.submit}
             </button>
           </>
-        )
+        ))
       }
     >
-      {request.status === 'success' ? (
-        <p role="status">
-          {request.data.duplicate
-            ? REPORT_COPY.duplicate
-            : REPORT_COPY.received}
-        </p>
-      ) : (
-        <form
-          id={formId}
-          onSubmit={(event): void => {
-            void handleSubmit(event);
-          }}
-        >
-          <fieldset disabled={isSubmitting} css={reasonStyle}>
-            <legend css={labelStyle}>{REPORT_COPY.reason}</legend>
-            {REPORT_REASONS.map((option): ReactElement => (
-              <label css={optionStyle} key={option.value}>
-                <input
-                  type="radio"
-                  name={formId}
-                  value={option.value}
-                  checked={reason === option.value}
-                  onChange={(): void => {
-                    setReason(option.value);
-                    setRequest({ status: 'idle' });
-                  }}
-                />
-                {option.label}
-              </label>
-            ))}
-          </fieldset>
-          <label css={labelStyle} htmlFor={`${formId}-description`}>
-            {REPORT_COPY.description}
-          </label>
-          <textarea
-            id={`${formId}-description`}
-            rows={4}
-            css={descriptionStyle}
-            value={description}
-            disabled={isSubmitting}
-            aria-describedby={`${formId}-hint`}
-            onChange={(event): void => {
-              setDescription(event.target.value);
-              setRequest({ status: 'idle' });
-            }}
-          />
-          <p id={`${formId}-hint`} css={hintStyle}>
-            {REPORT_COPY.descriptionHint}
+      {target !== null &&
+        (request.status === 'success' ? (
+          <p role="status">
+            {request.data.duplicate
+              ? REPORT_COPY.duplicate
+              : REPORT_COPY.received}
           </p>
-          <p css={hintStyle}>{Array.from(description.trim()).length} / 500</p>
-          {!isDescriptionValid && (
-            <p role="alert" css={errorStyle}>
-              {REPORT_ERRORS.description}
+        ) : (
+          <form
+            id={formId}
+            onSubmit={(event): void => {
+              void handleSubmit(event);
+            }}
+          >
+            <fieldset disabled={isSubmitting} css={reasonStyle}>
+              <legend css={labelStyle}>{REPORT_COPY.reason}</legend>
+              {REPORT_REASONS.map((option): ReactElement => (
+                <label css={optionStyle} key={option.value}>
+                  <input
+                    type="radio"
+                    name={formId}
+                    value={option.value}
+                    checked={reason === option.value}
+                    onChange={(): void => {
+                      setReason(option.value);
+                      setRequest({ status: 'idle' });
+                    }}
+                  />
+                  {option.label}
+                </label>
+              ))}
+            </fieldset>
+            <label css={labelStyle} htmlFor={`${formId}-description`}>
+              {REPORT_COPY.description}
+            </label>
+            <textarea
+              id={`${formId}-description`}
+              rows={4}
+              css={descriptionStyle}
+              value={description}
+              disabled={isSubmitting}
+              aria-describedby={`${formId}-hint`}
+              onChange={(event): void => {
+                setDescription(event.target.value);
+                setRequest({ status: 'idle' });
+              }}
+            />
+            <p id={`${formId}-hint`} css={hintStyle}>
+              {REPORT_COPY.descriptionHint}
             </p>
-          )}
-          {request.status === 'error' && (
-            <p role="alert" css={errorStyle}>
-              {request.error.message}
-            </p>
-          )}
-        </form>
-      )}
+            <p css={hintStyle}>{Array.from(description.trim()).length} / 500</p>
+            {!isDescriptionValid && (
+              <p role="alert" css={errorStyle}>
+                {REPORT_ERRORS.description}
+              </p>
+            )}
+            {request.status === 'error' && (
+              <p role="alert" css={errorStyle}>
+                {request.error.message}
+              </p>
+            )}
+          </form>
+        ))}
     </Modal>
   );
 };

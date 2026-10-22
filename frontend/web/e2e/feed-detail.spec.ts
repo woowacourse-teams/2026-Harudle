@@ -69,6 +69,7 @@ test('비회원도 공개 상세를 보고 피드·댓글 신고를 누르면 �
   });
   await page.goto(detailPath);
   await expect(page.getByRole('article')).toBeVisible();
+  await expect(page.locator('input[type="radio"]')).toHaveCount(0);
   await expect(page).toHaveURL(detailPath);
   await page
     .getByRole('article')
@@ -109,6 +110,103 @@ test('비회원도 공개 상세를 보고 피드·댓글 신고를 누르면 �
 
 test.describe('로그인 회원의 상세 메뉴', (): void => {
   test.use({ storageState: AUTHENTICATED_STORAGE_STATE });
+
+  test('신고 응답 대기 중에는 닫기를 막고 완료 후 다른 대상을 선택할 수 있다', async ({
+    page,
+  }): Promise<void> => {
+    await page.goto(detailPath);
+    const comment = page
+      .getByRole('listitem')
+      .filter({ hasText: '마지막 장면 너무 공감돼요!' })
+      .first();
+    await expect(comment).toBeVisible();
+    await expect(page.locator('input[type="radio"]')).toHaveCount(0);
+    // MSW가 처리하는 실제 fetch를 보존하고 첫 신고만 명시적으로 대기시킨다.
+    await page.evaluate((): void => {
+      const fetch = window.fetch.bind(window);
+      let waitForReport = true;
+      window.fetch = async (info, init): Promise<Response> => {
+        const url =
+          typeof info === 'string'
+            ? info
+            : info instanceof URL
+              ? info.href
+              : info.url;
+        if (
+          waitForReport &&
+          init?.method === 'POST' &&
+          new URL(url, window.location.href).pathname === '/api/v1/reports'
+        ) {
+          waitForReport = false;
+          await new Promise<void>((resolve): void => {
+            window.addEventListener('release-report', (): void => resolve(), {
+              once: true,
+            });
+            document.documentElement.dataset.reportWaiting = 'true';
+          });
+          delete document.documentElement.dataset.reportWaiting;
+        }
+        return fetch(info, init);
+      };
+    });
+
+    await comment.getByRole('button', { name: '댓글 더보기' }).click();
+    const menu = page.getByRole('dialog').filter({
+      has: page.getByRole('heading', { name: '신고하기', exact: true }),
+    });
+    await menu.getByRole('button', { name: '댓글 신고' }).click();
+    const form = page.getByRole('dialog').filter({
+      has: page.getByRole('heading', { name: '댓글 신고', exact: true }),
+    });
+    await form.getByRole('radio', { name: '스팸·광고' }).check();
+    await form.getByRole('textbox').fill('신고 대상이 바뀌면 안 되는 내용');
+    await form.getByRole('button', { name: '신고 접수', exact: true }).click();
+    await page.waitForFunction(
+      (): boolean => document.documentElement.dataset.reportWaiting === 'true',
+    );
+    await expect(form.getByRole('button', { name: '취소' })).toBeDisabled();
+    await page.keyboard.press('Escape');
+    await expect(form).toBeVisible();
+    await page.mouse.click(8, 8);
+    await expect(form).toBeVisible();
+    await expect(form.getByRole('textbox')).toHaveValue(
+      '신고 대상이 바뀌면 안 되는 내용',
+    );
+
+    await page.evaluate((): void => {
+      window.dispatchEvent(new Event('release-report'));
+    });
+    await expect(form.getByRole('status')).toHaveText(
+      '신고가 접수되었어요. 운영자가 내용을 확인할게요.',
+    );
+    await form.getByRole('button', { name: '확인', exact: true }).click();
+    await expect(form).not.toBeVisible();
+    await comment.getByRole('button', { name: '댓글 더보기' }).click();
+    await menu.getByRole('button', { name: '작성자 신고' }).click();
+    const authorForm = page.getByRole('dialog').filter({
+      has: page.getByRole('heading', { name: '작성자 신고', exact: true }),
+    });
+    await expect(authorForm.getByRole('textbox')).toBeEmpty();
+    await authorForm.getByRole('radio', { name: '기타' }).check();
+    const received = page.waitForResponse(
+      (response): boolean =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname === '/api/v1/reports',
+    );
+    await authorForm
+      .getByRole('button', { name: '신고 접수', exact: true })
+      .click();
+    const response = await received;
+    const body: unknown = response.request().postDataJSON();
+    expect(body).toEqual({
+      targetType: 'USER',
+      targetId: '00000000-0000-4000-8000-000000000100',
+      reason: 'OTHER',
+    });
+    await expect(authorForm.getByRole('status')).toHaveText(
+      '신고가 접수되었어요. 운영자가 내용을 확인할게요.',
+    );
+  });
 
   test('본인 피드 삭제를 취소하면 유지하고 확인하면 삭제한다', async ({
     page,

@@ -63,11 +63,16 @@ CSRF 누락·불일치는 `INVALID_CSRF_TOKEN`(403)이다.
    자기신고 거절, 저장 순서다. 이미 접수한 대상이 사라져도 본인의 기존 접수는 안내한다.
 4. `report/infrastructure/JpaReportTargetReader`: 사용자·피드·댓글의 실제 작성자와 공개성을 DB에서 확인한다.
 5. `report/infrastructure/JpaReportRepository`: UNIQUE와 `ON CONFLICT DO NOTHING`으로 동시 중복을 막는다.
-   경쟁 요청이 먼저 저장했다면 READ COMMITTED의 후속 조회로 그 접수 ID를 읽는다. 기존 행을 덮어쓰지 않는다.
+   경쟁 요청이 먼저 저장했다면 READ COMMITTED의 후속 조회로 그 접수 ID를 읽는다. 중복 확인은 ID만
+   조회하며 사유·상세·작성 시각을 읽거나 기존 행을 덮어쓰지 않는다.
 6. `frontend/web/src/domain/reports/reportSubmission.ts`: 인증·CSRF와 API 응답 검증을 담당한다.
    로그인 토큰 복원 중 CSRF가 바뀌는 경우, 저장 전에 거절된 `INVALID_CSRF_TOKEN`에 한해 한 번 재시도한다.
-7. `frontend/web/src/shared/report/ReportDialog.tsx`: 사유 선택·입력·접수 중 잠금·실패 재시도·성공 안내를 담당한다.
-   피드 목록·상세와 댓글의 더보기 메뉴에서 같은 신고창을 사용한다.
+7. `frontend/web/src/shared/report/ReportOptionsButton.tsx`: 타인 콘텐츠의 더보기와 신고 대상을 선택하는
+   메뉴, 로그인 안내, 신고창 진입을 한곳에서 담당한다. 본인 콘텐츠는 기존 삭제 버튼을
+   사용하므로 삭제 결과 토스트와 신고 요청 상태를 같은 컴포넌트에서 관리하지 않는다.
+8. `frontend/web/src/shared/report/ReportDialog.tsx`: 첫 대상 선택 시 입력 폼을 만들고, 사유 선택·입력·
+   접수 중 잠금·실패 재시도·성공 안내를 담당한다. 접수 중에는 취소 버튼뿐 아니라 Escape와 바깥 클릭으로도
+   창을 닫을 수 없다. 공통 Modal의 닫기 제한은 선택 옵션으로 제공하고 기존 사용처의 기본 동작은 유지한다.
 
 백엔드 경로는 `backend/src/main/java/com/harudle/` 기준이다.
 
@@ -90,5 +95,5 @@ DB 테스트는 동시 8건의 단일 저장, 첫 사유 보존, 롤백, 삭제 
 현재 로컬 실제 DB 검증은 PostgreSQL 15.13에서 수행했다. HTTP부터 DB까지의 실제 접수·중복·삭제 후
 재조회와 위조한 신고자/작성자 ID를 무시하는 검증, 마이그레이션 번호 중복 검사를 포함해
 최신 기준 브랜치에서 백엔드 선택 검증 104개가 통과했다.
-프론트 전체 검사(타입·린트·서식·테스트·빌드)와 401개 테스트도 통과했으며, 로컬 MSW 화면에서
+프론트 전체 검사(타입·린트·서식·테스트·빌드)와 403개 테스트도 통과했으며, 로컬 MSW 화면에서
 신고 입력·접수·중복 안내를 확인했다. PostgreSQL 18 CI는 PR 준비 후 별도로 확인한다.

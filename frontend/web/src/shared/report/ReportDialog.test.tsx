@@ -21,7 +21,9 @@ const openReport = (): ReportDialogHandle => {
   render(<ReportDialog ref={ref} />);
   document.querySelectorAll('dialog').forEach((dialog): void => {
     Object.defineProperties(dialog, {
-      showModal: { value: (): void => dialog.setAttribute('open', '') },
+      showModal: {
+        value: jest.fn((): void => dialog.setAttribute('open', '')),
+      },
       close: { value: (): void => dialog.removeAttribute('open') },
     });
   });
@@ -36,6 +38,14 @@ beforeEach((): void => {
 });
 
 describe('신고 입력과 접수 결과', (): void => {
+  it('처음 열기 전에는 신고 폼과 사유 및 제출 버튼을 만들지 않는다', (): void => {
+    render(<ReportDialog ref={createRef<ReportDialogHandle>()} />);
+
+    expect(document.querySelector('form')).toBeNull();
+    expect(document.querySelector('input[type="radio"]')).toBeNull();
+    expect(document.querySelector('footer')).toBeNull();
+  });
+
   it('사유를 선택하고 접수하는 동안 중복 제출과 대상 교체를 막는다', async (): Promise<void> => {
     const user = userEvent.setup();
     let finish: ((value: reports.ReportReceipt) => void) | undefined;
@@ -59,6 +69,18 @@ describe('신고 입력과 접수 결과', (): void => {
       screen.getByRole('button', { name: REPORT_COPY.submitting }),
     ).toBeDisabled();
     expect(screen.getByRole('textbox')).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: REPORT_COPY.cancel }),
+    ).toBeDisabled();
+    const dialog = screen.getByRole('dialog');
+    if (!(dialog instanceof HTMLDialogElement))
+      throw new Error('신고창은 네이티브 dialog여야 합니다.');
+    const cancel = new Event('cancel', { cancelable: true });
+    fireEvent(dialog, cancel);
+    expect(cancel.defaultPrevented).toBe(true);
+    fireEvent.click(dialog);
+    await user.click(screen.getByRole('button', { name: REPORT_COPY.cancel }));
+    expect(dialog).toHaveAttribute('open');
     const form = screen.getByRole('textbox').closest('form');
     if (!form) throw new Error('신고 입력 폼이 없습니다.');
     fireEvent.submit(form);
@@ -69,6 +91,7 @@ describe('신고 입력과 접수 결과', (): void => {
       }),
     );
     expect(submit).toHaveBeenCalledTimes(1);
+    expect(dialog.showModal).toHaveBeenCalledTimes(1);
     expect(submit).toHaveBeenCalledWith({
       ...target,
       reason: 'SPAM',
@@ -83,6 +106,29 @@ describe('신고 입력과 접수 결과', (): void => {
     expect(screen.getByRole('status')).toHaveTextContent(REPORT_COPY.received);
     await user.click(screen.getByRole('button', { name: REPORT_COPY.close }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    submit.mockResolvedValueOnce(receipt);
+    act((): void =>
+      handle.open({
+        targetType: 'USER',
+        targetId: '20000000-0000-4000-8000-000000000001',
+      }),
+    );
+    expect(
+      screen.getByRole('heading', { name: '작성자 신고' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('textbox')).toHaveValue('');
+    await user.click(screen.getByRole('radio', { name: '기타' }));
+    await user.click(screen.getByRole('button', { name: REPORT_COPY.submit }));
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      REPORT_COPY.received,
+    );
+    expect(submit).toHaveBeenLastCalledWith({
+      targetType: 'USER',
+      targetId: '20000000-0000-4000-8000-000000000001',
+      reason: 'OTHER',
+      description: '',
+    });
   });
 
   it('실패해도 입력을 유지하고 재시도 후 이미 접수된 신고임을 알린다', async (): Promise<void> => {
