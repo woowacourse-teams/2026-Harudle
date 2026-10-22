@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.harudle.HarudleApplication;
 import com.harudle.common.testdata.DevTestDataVisibility;
+import com.harudle.generation.diary.service.DiaryGenerationWorker;
 import com.harudle.report.domain.ReportReason;
 import com.harudle.report.domain.ReportTargetType;
 import com.harudle.report.repository.ReportRepository;
@@ -81,6 +82,9 @@ class ReportPersistenceTest {
 
     @MockitoBean
     private JwtDecoder jwtDecoder;
+
+    @MockitoBean(enforceOverride = true)
+    private DiaryGenerationWorker generationWorker;
 
     @Autowired
     private MockMvc mockMvc;
@@ -508,7 +512,7 @@ class ReportPersistenceTest {
                 """, String.class)).containsExactly("id", "reporter_id", "target_type", "target_id", "target_user_id",
                 "reason", "description", "status", "created_at");
         assertThat(jdbc.queryForObject("""
-                SELECT count(*) FROM flyway_schema_history WHERE version = '29' AND success
+                SELECT count(*) FROM flyway_schema_history WHERE version = '30' AND success
                 """, Long.class)).isEqualTo(1);
     }
 
