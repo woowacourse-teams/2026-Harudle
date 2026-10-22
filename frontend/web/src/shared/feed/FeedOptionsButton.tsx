@@ -45,7 +45,6 @@ const FeedOptionsButton = ({ feedId, onDelete }: FeedOptionsButtonProps) => {
       <button
         type="button"
         css={moreButtonStyle}
-        aria-label="피드 더보기"
         disabled={request.status === 'loading'}
         onClick={() => menuRef.current?.open()}
       >

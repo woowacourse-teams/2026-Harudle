@@ -48,7 +48,6 @@ const FeedCommentOptionsButton = ({
       <button
         type="button"
         css={moreButtonStyle}
-        aria-label="댓글 더보기"
         disabled={request.status === 'loading'}
         onClick={() => menuRef.current?.open()}
       >

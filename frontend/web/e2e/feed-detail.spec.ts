@@ -3,7 +3,7 @@ import { AUTHENTICATED_STORAGE_STATE } from './auth';
 
 const detailPath = '/feeds/00000000-0000-4000-8000-000000000001';
 
-test('상세 직접 진입과 새로고침에서 세션을 복원해 본인 관리 메뉴를 표시한다', async ({
+test('상세 직접 진입과 새로고침에서 세션을 복원해 본인 피드를 표시한다', async ({
   browser,
 }): Promise<void> => {
   const context = await browser.newContext({
@@ -23,15 +23,22 @@ test('상세 직접 진입과 새로고침에서 세션을 복원해 본인 관�
 
     await page.goto(detailPath);
     await expect(
-      page.getByRole('article').getByRole('button', { name: '피드 더보기' }),
+      page
+        .getByRole('article')
+        .getByRole('button', { name: '옵션 더보기 아이콘' }),
     ).toBeVisible();
     await expect(page).toHaveURL(detailPath);
     await page.reload();
     await expect(
-      page.getByRole('article').getByRole('button', { name: '피드 더보기' }),
+      page
+        .getByRole('article')
+        .getByRole('button', { name: '옵션 더보기 아이콘' }),
     ).toBeVisible();
     await expect(page).toHaveURL(detailPath);
-    await page.getByRole('button', { name: '피드 더보기' }).click();
+    await page
+      .getByRole('article')
+      .getByRole('button', { name: '옵션 더보기 아이콘' })
+      .click();
     const menu = page.getByRole('dialog').filter({
       has: page.getByRole('heading', { name: '피드 관리', exact: true }),
     });
@@ -214,7 +221,7 @@ test.describe('로그인 회원의 상세 메뉴', (): void => {
     await page.goto(detailPath);
     const options = page
       .getByRole('article')
-      .getByRole('button', { name: '피드 더보기' });
+      .getByRole('button', { name: '옵션 더보기 아이콘' });
     const menu = page.getByRole('dialog').filter({
       has: page.getByRole('heading', { name: '피드 관리', exact: true }),
     });

@@ -478,7 +478,9 @@ describe('피드 카드 액션', (): void => {
     );
     await screen.findByRole('article');
     prepareDialogs();
-    await user.click(screen.getByRole('button', { name: '피드 더보기' }));
+    await user.click(
+      screen.getByRole('button', { name: '옵션 더보기 아이콘' }),
+    );
     await user.click(screen.getByRole('button', { name: /피드 삭제$/ }));
     await user.click(screen.getByRole('button', { name: /피드 삭제$/ }));
     await user.click(screen.getByRole('button', { name: '삭제 중...' }));
@@ -512,7 +514,9 @@ describe('피드 카드 액션', (): void => {
     await screen.findByRole('article');
     prepareDialogs();
 
-    await user.click(screen.getByRole('button', { name: '피드 더보기' }));
+    await user.click(
+      screen.getByRole('button', { name: '옵션 더보기 아이콘' }),
+    );
     await user.click(screen.getByRole('button', { name: /피드 삭제$/ }));
     expect(screen.getByRole('dialog')).toHaveTextContent(
       '앨범의 원본 네컷만화는 그대로 남아요.',
@@ -521,7 +525,9 @@ describe('피드 카드 액션', (): void => {
     expect(mockDeleteFeed).not.toHaveBeenCalled();
     expect(screen.getByRole('article')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: '피드 더보기' }));
+    await user.click(
+      screen.getByRole('button', { name: '옵션 더보기 아이콘' }),
+    );
     await user.click(screen.getByRole('button', { name: /피드 삭제$/ }));
     await user.click(screen.getByRole('button', { name: /피드 삭제$/ }));
     expect(
@@ -739,7 +745,9 @@ describe('피드 목록 더 보기', (): void => {
     );
     await user.click(await screen.findByRole('button', { name: '더 보기' }));
     prepareDialogs();
-    await user.click(screen.getByRole('button', { name: '피드 더보기' }));
+    await user.click(
+      screen.getByRole('button', { name: '옵션 더보기 아이콘' }),
+    );
     await user.click(screen.getByRole('button', { name: /피드 삭제$/ }));
     await user.click(screen.getByRole('button', { name: /피드 삭제$/ }));
     expect(screen.queryByRole('article')).not.toBeInTheDocument();
@@ -807,7 +815,7 @@ describe('피드 목록 조회 상태', () => {
     );
 
     expect(
-      await screen.findByRole('button', { name: '피드 더보기' }),
+      await screen.findByRole('button', { name: '옵션 더보기 아이콘' }),
     ).toBeInTheDocument();
   });
 
