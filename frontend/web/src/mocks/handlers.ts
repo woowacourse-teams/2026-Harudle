@@ -1,4 +1,5 @@
 import { delay, http, HttpResponse } from 'msw';
+import { reportHandlers } from './reportHandlers';
 import { isLandingPath } from '../pages/landing/landingPaths';
 import { MOCK_SCENARIO_HEADER, MOCK_SCENARIOS } from './mockScenarios';
 import { getToday } from '../shared/utils';
@@ -323,6 +324,7 @@ const addDiaryToMockDiaries = (diary: CreateDiaryResponse): void => {
 let mockNickname = '하루들';
 
 export const handlers = [
+  ...reportHandlers,
   http.get('/oauth2/authorization/kakao', async ({ request }) => {
     await delay(300);
 

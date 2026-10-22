@@ -320,7 +320,16 @@ describe('피드 상세 댓글 삭제', (): void => {
     render(<FeedDetailPage />);
     const row = (await screen.findByText(comment.content)).closest('li');
     if (!row) throw new Error('댓글이 없습니다.');
-    expect(within(row).queryByRole('button')).not.toBeInTheDocument();
+    prepareDialogs();
+    await userEvent.click(
+      within(row).getByRole('button', { name: '댓글 더보기' }),
+    );
+    expect(
+      screen.queryByRole('button', { name: /댓글 삭제$/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '댓글 신고' }),
+    ).toBeInTheDocument();
   });
 
   it('취소·실패는 댓글과 개수를 유지하고 재시도 성공 후 갱신한다', async (): Promise<void> => {

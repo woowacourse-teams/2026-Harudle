@@ -95,14 +95,14 @@ const FeedDetailContent = ({ feedId }: FeedDetailContentProps) => {
                 {formatPublishedAt(feed.publishedAt)}
               </span>
             </div>
-            {feed.isMine && (
-              <FeedOptionsButton
-                feedId={feed.id}
-                onDelete={() => {
-                  void navigate('/');
-                }}
-              />
-            )}
+            <FeedOptionsButton
+              feedId={feed.id}
+              authorId={feed.author.id}
+              isMine={feed.isMine}
+              onDelete={() => {
+                void navigate('/');
+              }}
+            />
           </header>
 
           <div onContextMenu={(event) => event.preventDefault()}>

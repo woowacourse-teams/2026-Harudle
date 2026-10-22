@@ -35,9 +35,12 @@ const FeedCommentItem = ({ comment, onDelete }: FeedCommentItemProps) => {
         </div>
         <p css={textStyle}>{comment.content}</p>
       </div>
-      {comment.isMine && (
-        <FeedCommentOptionsButton commentId={comment.id} onDelete={onDelete} />
-      )}
+      <FeedCommentOptionsButton
+        commentId={comment.id}
+        authorId={comment.author.id}
+        isMine={comment.isMine}
+        onDelete={onDelete}
+      />
     </li>
   );
 };

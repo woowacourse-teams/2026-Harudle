@@ -478,9 +478,7 @@ describe('피드 카드 액션', (): void => {
     );
     await screen.findByRole('article');
     prepareDialogs();
-    await user.click(
-      screen.getByRole('button', { name: '옵션 더보기 아이콘' }),
-    );
+    await user.click(screen.getByRole('button', { name: '피드 더보기' }));
     await user.click(screen.getByRole('button', { name: /피드 삭제$/ }));
     await user.click(screen.getByRole('button', { name: /피드 삭제$/ }));
     await user.click(screen.getByRole('button', { name: '삭제 중...' }));
@@ -514,9 +512,7 @@ describe('피드 카드 액션', (): void => {
     await screen.findByRole('article');
     prepareDialogs();
 
-    await user.click(
-      screen.getByRole('button', { name: '옵션 더보기 아이콘' }),
-    );
+    await user.click(screen.getByRole('button', { name: '피드 더보기' }));
     await user.click(screen.getByRole('button', { name: /피드 삭제$/ }));
     expect(screen.getByRole('dialog')).toHaveTextContent(
       '앨범의 원본 네컷만화는 그대로 남아요.',
@@ -525,9 +521,7 @@ describe('피드 카드 액션', (): void => {
     expect(mockDeleteFeed).not.toHaveBeenCalled();
     expect(screen.getByRole('article')).toBeInTheDocument();
 
-    await user.click(
-      screen.getByRole('button', { name: '옵션 더보기 아이콘' }),
-    );
+    await user.click(screen.getByRole('button', { name: '피드 더보기' }));
     await user.click(screen.getByRole('button', { name: /피드 삭제$/ }));
     await user.click(screen.getByRole('button', { name: /피드 삭제$/ }));
     expect(
@@ -745,9 +739,7 @@ describe('피드 목록 더 보기', (): void => {
     );
     await user.click(await screen.findByRole('button', { name: '더 보기' }));
     prepareDialogs();
-    await user.click(
-      screen.getByRole('button', { name: '옵션 더보기 아이콘' }),
-    );
+    await user.click(screen.getByRole('button', { name: '피드 더보기' }));
     await user.click(screen.getByRole('button', { name: /피드 삭제$/ }));
     await user.click(screen.getByRole('button', { name: /피드 삭제$/ }));
     expect(screen.queryByRole('article')).not.toBeInTheDocument();
@@ -801,11 +793,11 @@ describe('피드 목록 조회 상태', () => {
       screen.getByRole('button', { name: '공유 아이콘' }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: '옵션 더보기 아이콘' }),
-    ).not.toBeInTheDocument();
+      screen.getByRole('button', { name: '피드 더보기' }),
+    ).toBeInTheDocument();
   });
 
-  it('본인 피드에만 더보기 버튼을 표시한다', async (): Promise<void> => {
+  it('본인 피드에도 관리용 더보기 버튼을 표시한다', async (): Promise<void> => {
     mockGetFeedList.mockResolvedValue({
       ...response,
       items: [{ ...feed, isMine: true }],
@@ -815,7 +807,7 @@ describe('피드 목록 조회 상태', () => {
     );
 
     expect(
-      await screen.findByRole('button', { name: '옵션 더보기 아이콘' }),
+      await screen.findByRole('button', { name: '피드 더보기' }),
     ).toBeInTheDocument();
   });
 

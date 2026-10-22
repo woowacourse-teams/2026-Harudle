@@ -58,7 +58,12 @@ const FeedItem = ({
             {formatPublishedAt(publishedAt)}
           </time>
         </div>
-        {isMine && <FeedOptionsButton feedId={feed.id} onDelete={onDelete} />}
+        <FeedOptionsButton
+          feedId={feed.id}
+          authorId={author.id}
+          isMine={isMine}
+          onDelete={onDelete}
+        />
       </header>
       <div onContextMenu={(event) => event.preventDefault()}>
         <DiaryImage
