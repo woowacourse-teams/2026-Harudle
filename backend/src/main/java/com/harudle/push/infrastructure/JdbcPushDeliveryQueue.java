@@ -39,8 +39,15 @@ class JdbcPushDeliveryQueue {
                 AND s.revoked_at IS NULL
             JOIN users u ON u.id = r.user_id AND u.deleted_at IS NULL
             JOIN feeds f ON f.id = o.feed_id AND f.deleted_at IS NULL
+            JOIN diaries d ON d.id = f.diary_id AND d.deleted_at IS NULL
+            JOIN users author ON author.id = d.user_id AND author.deleted_at IS NULL
             WHERE o.id = ? AND o.status = 'PROCESSING' AND o.lock_token = ?
               AND o.locked_until > ?
+              AND NOT EXISTS (
+                  SELECT 1 FROM user_blocks b
+                  WHERE (b.blocker_id = r.user_id AND b.blocked_id = d.user_id)
+                     OR (b.blocker_id = d.user_id AND b.blocked_id = r.user_id)
+              )
               AND EXISTS (SELECT 1 FROM refresh_tokens rt
                   WHERE rt.session_id = s.id AND rt.user_id = s.user_id
                     AND rt.revoked_at IS NULL AND rt.expires_at > ?)

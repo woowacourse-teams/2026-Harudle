@@ -31,7 +31,7 @@ public class FeedQueryService {
     public FeedResult getDetail(@Nullable UUID viewerId, UUID feedId) {
         Objects.requireNonNull(feedId, "피드 ID는 필수입니다.");
         FeedSnapshot feed = (visibility.enabled() ? feeds.findVisibleSnapshotById(feedId, viewerId)
-                : feeds.findActiveSnapshotById(feedId)).orElseThrow(FeedNotFoundException::new);
+                : feeds.findActiveSnapshotById(feedId, viewerId)).orElseThrow(FeedNotFoundException::new);
         PublicProfileReader.Profile author = collaborators.profiles()
                 .readAll(Set.of(feed.authorId())).get(feed.authorId());
         if (author == null) {

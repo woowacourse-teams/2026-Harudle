@@ -21,6 +21,11 @@ class JpaFeedPushOutbox implements FeedPushOutbox {
             JOIN users u ON u.id = r.user_id AND u.deleted_at IS NULL
             JOIN auth_sessions s ON s.id = r.session_id AND s.user_id = r.user_id AND s.revoked_at IS NULL
             WHERE f.id = :feedId AND f.deleted_at IS NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM user_blocks b
+                  WHERE (b.blocker_id = r.user_id AND b.blocked_id = d.user_id)
+                     OR (b.blocker_id = d.user_id AND b.blocked_id = r.user_id)
+              )
               AND EXISTS (
                   SELECT 1 FROM refresh_tokens rt
                   WHERE rt.session_id = s.id AND rt.user_id = s.user_id
