@@ -9,7 +9,7 @@ import { theme } from '../../styles/theme';
 import FeedActions from '../../shared/feed/FeedActions';
 import { useNavigate } from 'react-router';
 import FeedOptionsButton from '../../shared/feed/FeedOptionsButton';
-import ReportOptionsButton from '../../shared/report/ReportOptionsButton';
+import ContentOptionsButton from '../../shared/content/ContentOptionsButton';
 
 interface FeedItemProps {
   readonly feed: Feed;
@@ -62,9 +62,10 @@ const FeedItem = ({
         {isMine ? (
           <FeedOptionsButton feedId={feed.id} onDelete={onDelete} />
         ) : (
-          <ReportOptionsButton
+          <ContentOptionsButton
             target={{ targetType: 'FEED', targetId: feed.id }}
             authorId={author.id}
+            authorNickname={author.nickname}
           />
         )}
       </header>

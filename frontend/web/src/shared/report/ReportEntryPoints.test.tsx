@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as reports from '../../domain/reports/reportSubmission';
-import ReportOptionsButton from './ReportOptionsButton';
+import ContentOptionsButton from '../content/ContentOptionsButton';
 import { REPORT_COPY } from './copy';
 
 jest.mock('react-router', () => ({ useNavigate: () => jest.fn() }));
@@ -73,9 +73,10 @@ describe('타인 콘텐츠의 신고 진입', (): void => {
         duplicate: false,
       });
       render(
-        <ReportOptionsButton
+        <ContentOptionsButton
           target={{ targetType: contentType, targetId: contentId }}
           authorId={authorId}
+          authorNickname="네오"
         />,
       );
       prepareDialogs();
@@ -90,7 +91,7 @@ describe('타인 콘텐츠의 신고 진입', (): void => {
       await user.click(screen.getByRole('button', { name: menu }));
       expect(
         screen.queryByRole('heading', {
-          name: REPORT_COPY.menuTitle,
+          name: contentType === 'FEED' ? '피드 메뉴' : '댓글 메뉴',
         }),
       ).not.toBeInTheDocument();
       expect(screen.getByRole('heading', { name: menu })).toBeInTheDocument();
@@ -117,12 +118,13 @@ describe('타인 콘텐츠의 신고 진입', (): void => {
       const submit = jest.spyOn(reports, 'submitReport');
       localStorage.clear();
       render(
-        <ReportOptionsButton
+        <ContentOptionsButton
           target={{
             targetType,
             targetId: targetType === 'FEED' ? feedId : commentId,
           }}
           authorId={authorId}
+          authorNickname="네오"
         />,
       );
       prepareDialogs();
@@ -138,7 +140,7 @@ describe('타인 콘텐츠의 신고 진입', (): void => {
       );
       expect(
         screen.queryByRole('heading', {
-          name: REPORT_COPY.menuTitle,
+          name: targetType === 'FEED' ? '피드 메뉴' : '댓글 메뉴',
         }),
       ).not.toBeInTheDocument();
       expect(
@@ -152,9 +154,10 @@ describe('타인 콘텐츠의 신고 진입', (): void => {
   it('탈퇴한 작성자의 댓글은 댓글 신고만 제공한다', async (): Promise<void> => {
     const user = userEvent.setup();
     render(
-      <ReportOptionsButton
+      <ContentOptionsButton
         target={{ targetType: 'COMMENT', targetId: commentId }}
         authorId={null}
+        authorNickname="탈퇴한 회원"
       />,
     );
     prepareDialogs();
@@ -164,6 +167,9 @@ describe('타인 콘텐츠의 신고 진입', (): void => {
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: '작성자 신고' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '작성자 차단' }),
     ).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '댓글 신고' }));
     expect(

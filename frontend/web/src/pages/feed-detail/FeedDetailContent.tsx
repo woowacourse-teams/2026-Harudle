@@ -2,7 +2,7 @@ import { css } from '@emotion/react';
 import categoryChevronIcon from '../../assets/icons/feed-category-chevron.svg';
 import FeedActions from '../../shared/feed/FeedActions';
 import FeedOptionsButton from '../../shared/feed/FeedOptionsButton';
-import ReportOptionsButton from '../../shared/report/ReportOptionsButton';
+import ContentOptionsButton from '../../shared/content/ContentOptionsButton';
 import profileFallbackImage from '../../assets/images/profile-fallback.svg';
 import type { Feed } from '../../domain/feeds/feedList';
 import { useNavigate } from 'react-router';
@@ -100,9 +100,10 @@ const FeedDetailContent = ({ feedId }: FeedDetailContentProps) => {
                 }}
               />
             ) : (
-              <ReportOptionsButton
+              <ContentOptionsButton
                 target={{ targetType: 'FEED', targetId: feed.id }}
                 authorId={feed.author.id}
+                authorNickname={feed.author.nickname}
               />
             )}
           </header>

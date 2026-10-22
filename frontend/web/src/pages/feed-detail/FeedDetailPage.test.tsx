@@ -349,6 +349,40 @@ describe('피드 상세 댓글 더 보기', (): void => {
 });
 
 describe('피드 상세 댓글 삭제', (): void => {
+  it('탈퇴 댓글은 fallback을 표시하고 작성자 차단 메뉴는 만들지 않는다', async (): Promise<void> => {
+    mockGetFeedComments.mockResolvedValue({
+      items: [
+        {
+          ...comment,
+          isMine: false,
+          author: { id: null, nickname: '탈퇴한 회원', profileImageUrl: null },
+        },
+      ],
+      nextCursor: null,
+      hasNext: false,
+    });
+    render(<FeedDetailPage />);
+    const row = (await screen.findByText('탈퇴한 회원')).closest('li');
+    if (!row) throw new Error('댓글이 없습니다.');
+    prepareDialogs();
+    await userEvent.click(
+      within(row).getByRole('button', { name: '댓글 더보기' }),
+    );
+    expect(
+      screen.getByRole('button', { name: '댓글 신고' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '작성자 신고' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '작성자 차단' }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(row).getByRole('img', { name: '프로필 이미지' }),
+    ).toHaveAttribute('src', 'fallback.svg');
+    expect(within(row).getByText(comment.content)).toBeVisible();
+  });
+
   it('다른 사용자의 댓글에는 삭제 메뉴를 표시하지 않는다', async (): Promise<void> => {
     mockGetFeedComments.mockResolvedValue({
       items: [{ ...comment, isMine: false }],

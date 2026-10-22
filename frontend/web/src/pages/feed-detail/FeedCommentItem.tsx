@@ -1,6 +1,6 @@
 import { css } from '@emotion/react';
 import FeedCommentOptionsButton from './FeedCommentOptionsButton';
-import ReportOptionsButton from '../../shared/report/ReportOptionsButton';
+import ContentOptionsButton from '../../shared/content/ContentOptionsButton';
 import { theme } from '../../styles/theme';
 import type { FeedComment } from '../../domain/feeds/feedComments';
 import profileFallbackImage from '../../assets/images/profile-fallback.svg';
@@ -39,9 +39,10 @@ const FeedCommentItem = ({ comment, onDelete }: FeedCommentItemProps) => {
       {comment.isMine ? (
         <FeedCommentOptionsButton commentId={comment.id} onDelete={onDelete} />
       ) : (
-        <ReportOptionsButton
+        <ContentOptionsButton
           target={{ targetType: 'COMMENT', targetId: comment.id }}
           authorId={comment.author.id}
+          authorNickname={comment.author.nickname}
         />
       )}
     </li>

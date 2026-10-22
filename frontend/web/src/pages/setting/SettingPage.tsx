@@ -13,6 +13,7 @@ import logoutIcon from '../../assets/icons/logout.svg';
 import articlePersonIcon from '../../assets/icons/article_person.svg';
 import PwaInstallButton from './PwaInstallButton';
 import LoadingSpinner from '../../shared/LoadingSpinner';
+import BlockedUsers from './BlockedUsers';
 
 const PRIVACY_POLICY_URL = 'https://harudle.notion.site/';
 
@@ -114,6 +115,8 @@ const SettingPageContent = () => {
           />
         </a>
       </div>
+
+      <BlockedUsers />
 
       <PwaInstallButton />
 

@@ -134,7 +134,7 @@ test('비회원도 공개 상세를 보고 피드·댓글 신고를 누르면 �
     .getByRole('button', { name: '피드 더보기' })
     .click();
   const reportMenu = page.getByRole('dialog').filter({
-    has: page.getByRole('heading', { name: '신고하기', exact: true }),
+    has: page.getByRole('heading', { name: /^(피드|댓글) 메뉴$/, exact: true }),
   });
   await expect(reportMenu.getByRole('button', { name: /삭제$/ })).toHaveCount(
     0,
@@ -210,7 +210,10 @@ test.describe('로그인 회원의 상세 메뉴', (): void => {
 
     await comment.getByRole('button', { name: '댓글 더보기' }).click();
     const menu = page.getByRole('dialog').filter({
-      has: page.getByRole('heading', { name: '신고하기', exact: true }),
+      has: page.getByRole('heading', {
+        name: /^(피드|댓글) 메뉴$/,
+        exact: true,
+      }),
     });
     await menu.getByRole('button', { name: '댓글 신고' }).click();
     const form = page.getByRole('dialog').filter({
@@ -324,7 +327,10 @@ test.describe('로그인 회원의 상세 메뉴', (): void => {
         .first();
       await comment.getByRole('button', { name: '댓글 더보기' }).click();
       const menu = page.getByRole('dialog').filter({
-        has: page.getByRole('heading', { name: '신고하기', exact: true }),
+        has: page.getByRole('heading', {
+          name: /^(피드|댓글) 메뉴$/,
+          exact: true,
+        }),
       });
       await expect(
         menu.getByRole('button', { name: /댓글 삭제$/ }),
