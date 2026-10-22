@@ -2,7 +2,18 @@ import { DIARY_WRITE_COPY } from '../src/pages/diary-write/copy';
 import { ALBUM_COPY } from '../src/pages/album/copy';
 import { FEED_COPY } from '../src/pages/feed/copy';
 import { DIARY_GENERATION_FAILURE_MESSAGES } from '../src/shared/errorMessage';
-import { expect, test, type Page } from '@playwright/test';
+import {
+  DIARY_CONTENT_SESSION_KEY,
+  DIARY_GENERATION_ID_KEY,
+  DIARY_GENERATION_TOAST_ID_KEY,
+} from '../src/shared/constants';
+import {
+  expect,
+  test,
+  type Locator,
+  type Page,
+  type Request,
+} from '@playwright/test';
 import {
   MOCK_SCENARIO_HEADER,
   MOCK_SCENARIOS,
@@ -15,22 +26,25 @@ const TODAY = new Date('2026-08-30T12:00:00+09:00');
 const VALID_DIARY_CONTENT =
   '오늘은 친구와 공원을 산책하며 즐거운 이야기를 나누었다.';
 const GENERATED_DIARY_TITLE = '오늘 하루의 소중한 기록';
+const LOADING_MESSAGE = '네컷만화를 만들고 있어요';
+const SUCCESS_MESSAGE = '네컷만화가 완성됐어요!';
+const REQUEST_ERROR_MESSAGE = '네컷만화 생성 요청을 접수하지 못했어요.';
 const [GENERATION_ERROR_MESSAGE] =
   DIARY_GENERATION_FAILURE_MESSAGES.AI_PROVIDER_ERROR;
 
+interface DiaryScenarioOptions {
+  readonly scenario?: (typeof MOCK_SCENARIOS)[keyof typeof MOCK_SCENARIOS];
+  readonly previousUrl?: string;
+}
+
 const goToDiaryWritePage = async (
   page: Page,
-  options: { generationFailure?: boolean; previousUrl?: string } = {},
+  { scenario, previousUrl = '/album' }: DiaryScenarioOptions = {},
 ): Promise<void> => {
   await page.clock.install({ time: TODAY });
-
-  if (options.generationFailure) {
-    await page.setExtraHTTPHeaders({
-      [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.diaryGenerationFailure,
-    });
+  if (scenario) {
+    await page.setExtraHTTPHeaders({ [MOCK_SCENARIO_HEADER]: scenario });
   }
-
-  const previousUrl = options.previousUrl ?? '/album';
   await page.goto(previousUrl);
   // 실제 화면 이동으로 이전 페이지를 브라우저 기록에 남긴다.
   if (previousUrl.startsWith('/album')) {
@@ -53,6 +67,65 @@ const submitDiary = async (
   await page.locator('form').getByRole('button').click();
 };
 
+const startGeneration = async (
+  page: Page,
+  options: DiaryScenarioOptions = {},
+): Promise<Locator> => {
+  await goToDiaryWritePage(page, options);
+  await submitDiary(page);
+  await expect(page).toHaveURL(options.previousUrl ?? '/album');
+  const generationId = await page.evaluate(
+    (key): string | null => localStorage.getItem(key),
+    DIARY_GENERATION_ID_KEY,
+  );
+  if (!generationId) throw new Error('생성 작업 ID가 저장되지 않았습니다.');
+  const toast = getToasts(page);
+  await expect(toast).toContainText(LOADING_MESSAGE);
+  return toast;
+};
+
+const getToasts = (page: Page): Locator => {
+  return page.locator('div:has(> span[data-type])');
+};
+
+const isGenerationStatusUrl = (url: string): boolean => {
+  return new URL(url).pathname.startsWith('/api/v1/diary-generations/');
+};
+
+const collectStatusRequests = (page: Page): Request[] => {
+  const requests: Request[] = [];
+  page.on('request', (request): void => {
+    if (request.method() === 'GET' && isGenerationStatusUrl(request.url())) {
+      requests.push(request);
+    }
+  });
+  return requests;
+};
+
+const advanceToPoll = async (
+  page: Page,
+  milliseconds: number,
+  status = 200,
+): Promise<void> => {
+  const response = page.waitForResponse((response): boolean => {
+    return (
+      isGenerationStatusUrl(response.url()) && response.status() === status
+    );
+  });
+  await page.clock.fastForward(milliseconds);
+  await response;
+};
+
+const expectPollingStopped = async (
+  page: Page,
+  requests: Request[],
+): Promise<void> => {
+  expect(requests.length).toBeGreaterThan(0);
+  const count = requests.length;
+  await page.clock.fastForward(15_000);
+  expect(requests).toHaveLength(count);
+};
+
 const expectRemainingCount = async (
   page: Page,
   count: number,
@@ -64,6 +137,19 @@ const expectRemainingCount = async (
   ).toBeVisible();
 };
 
+const expectGenerationCleared = async (page: Page): Promise<void> => {
+  const ids = await page.evaluate(
+    ([generationKey, toastKey]): (string | null)[] => {
+      return [
+        localStorage.getItem(generationKey),
+        localStorage.getItem(toastKey),
+      ];
+    },
+    [DIARY_GENERATION_ID_KEY, DIARY_GENERATION_TOAST_ID_KEY],
+  );
+  expect(ids).toEqual([null, null]);
+};
+
 test.describe('일기 생성', (): void => {
   for (const { name, previousUrl } of [
     { name: '피드', previousUrl: '/?categoryId=1&sort=POPULAR' },
@@ -72,93 +158,227 @@ test.describe('일기 생성', (): void => {
     test(`${name}에서 생성 요청 접수에 성공하면 원래 화면으로 돌아가 로딩 토스트 하나를 표시한다`, async ({
       page,
     }): Promise<void> => {
-      await goToDiaryWritePage(page, { previousUrl });
-      await submitDiary(page);
+      await startGeneration(page, { previousUrl });
       await expect(page).toHaveURL(previousUrl);
-      await expect(page.getByText('네컷만화를 만들고 있어요')).toBeVisible();
-      await expect(page.locator('div:has(> span[data-type])')).toHaveCount(1);
+      await expect(getToasts(page)).toHaveCount(1);
     });
   }
 
-  test('생성을 접수하면 앨범으로 이동하고 완료 토스트에서 결과를 볼 수 있다', async ({
+  test('생성 요청 접수에 실패하면 작성 내용과 화면을 유지하고 오류 토스트를 표시한다', async ({
     page,
   }): Promise<void> => {
-    await goToDiaryWritePage(page);
+    const requests = collectStatusRequests(page);
+    await goToDiaryWritePage(page, {
+      scenario: MOCK_SCENARIOS.diaryGenerationRequestFailure,
+    });
     await submitDiary(page);
-
-    await expect(page).toHaveURL('/album');
-    await expect(page.getByText('네컷만화를 만들고 있어요')).toBeVisible();
+    await expect(page.getByText(REQUEST_ERROR_MESSAGE)).toBeVisible();
+    await expect(page).toHaveURL('/diary-write');
+    await expect(page.getByRole('textbox')).toHaveValue(VALID_DIARY_CONTENT);
+    await expect(page.getByText(LOADING_MESSAGE)).toHaveCount(0);
+    await expect(getToasts(page)).toHaveCount(1);
+    await expectGenerationCleared(page);
     await page.clock.fastForward(10_000);
-    await expect(page.getByText('네컷만화가 완성됐어요!')).toBeVisible();
-    await page.getByRole('button', { name: '보러가기' }).click();
+    expect(requests).toHaveLength(0);
+  });
 
+  test('생성 작업이 실패하면 같은 로딩 토스트를 실패로 갱신하고 폴링을 멈춘다', async ({
+    page,
+  }): Promise<void> => {
+    const requests = collectStatusRequests(page);
+    const toast = await startGeneration(page, {
+      scenario: MOCK_SCENARIOS.diaryGenerationFailure,
+    });
+    const loadingToast = await toast.elementHandle();
+    if (!loadingToast) throw new Error('로딩 토스트가 없습니다.');
+    await advanceToPoll(page, 5_000);
+    await expect(toast).toContainText(LOADING_MESSAGE);
+    await advanceToPoll(page, 5_000);
+    await expect(toast).toContainText(GENERATION_ERROR_MESSAGE);
+    await expect(page.getByText(LOADING_MESSAGE)).toHaveCount(0);
+    await expect(getToasts(page)).toHaveCount(1);
+    expect(
+      await loadingToast.evaluate((node): boolean => node.isConnected),
+    ).toBe(true);
+    await expectGenerationCleared(page);
+    await expectPollingStopped(page, requests);
+  });
+
+  test('실패 토스트의 다시 작성하기를 누르면 토스트가 사라지고 이전 내용이 남는다', async ({
+    page,
+  }): Promise<void> => {
+    const toast = await startGeneration(page, {
+      scenario: MOCK_SCENARIOS.diaryGenerationFailure,
+    });
+    await advanceToPoll(page, 10_000);
+    await expect(toast).toContainText(GENERATION_ERROR_MESSAGE);
+    await toast.getByRole('button', { name: '다시 작성하기' }).click();
+    await expect(page).toHaveURL('/diary-write');
+    await expect(getToasts(page)).toHaveCount(0);
+    await expect(page.getByRole('textbox')).toHaveValue(VALID_DIARY_CONTENT);
+  });
+
+  test('생성 작업을 찾을 수 없으면 같은 토스트를 오류로 갱신하고 폴링을 멈춘다', async ({
+    page,
+  }): Promise<void> => {
+    const requests = collectStatusRequests(page);
+    const toast = await startGeneration(page, {
+      scenario: MOCK_SCENARIOS.diaryGenerationNotFound,
+    });
+    const loadingToast = await toast.elementHandle();
+    if (!loadingToast) throw new Error('로딩 토스트가 없습니다.');
+    await advanceToPoll(page, 5_000, 404);
+    await expect(toast).toContainText('생성 작업을 찾을 수 없습니다.');
+    await expect(toast).toContainText('다시 시도해주세요');
+    await expect(toast.locator('[data-type]')).toHaveAttribute(
+      'data-type',
+      'error',
+    );
+    await expect(getToasts(page)).toHaveCount(1);
+    await expect(page.getByText(LOADING_MESSAGE)).toHaveCount(0);
+    expect(
+      await loadingToast.evaluate((node): boolean => node.isConnected),
+    ).toBe(true);
+    const generationId = await page.evaluate(
+      (key): string | null => localStorage.getItem(key),
+      DIARY_GENERATION_ID_KEY,
+    );
+    expect(generationId).toBeNull();
+    await expectPollingStopped(page, requests);
+    await toast.getByRole('button', { name: '다시 작성하기' }).click();
+    await expect(page).toHaveURL('/diary-write');
+    await expect(getToasts(page)).toHaveCount(0);
+    await expect(page.getByRole('textbox')).toHaveValue(VALID_DIARY_CONTENT);
+  });
+
+  test('성공 토스트의 보러가기를 누르면 생성된 만화를 확인하고 토스트가 사라진다', async ({
+    page,
+  }): Promise<void> => {
+    const requests = collectStatusRequests(page);
+    const toast = await startGeneration(page);
+    await advanceToPoll(page, 10_000);
+    await expect(toast).toContainText(SUCCESS_MESSAGE);
+    await expect(getToasts(page)).toHaveCount(1);
+    await expectGenerationCleared(page);
+    await expectPollingStopped(page, requests);
+    await toast.getByRole('button', { name: '보러가기' }).click();
     await expect(page).toHaveURL(/\/diary\/[0-9a-f-]+$/);
+    await expect(getToasts(page)).toHaveCount(0);
     await expect(page.getByText(GENERATED_DIARY_TITLE)).toBeVisible();
     await expect(page.getByText('2026-08-30')).toBeVisible();
     await expect(page.getByRole('img', { name: '네컷만화' })).toBeVisible();
     await expect(page.getByText(VALID_DIARY_CONTENT)).toBeVisible();
+    const draft = await page.evaluate(
+      (key): string | null => sessionStorage.getItem(key),
+      DIARY_CONTENT_SESSION_KEY,
+    );
+    expect(draft).toBeNull();
+  });
+
+  test('네컷 모아보기에서 생성이 완료되면 목록과 생성 횟수가 반영된다', async ({
+    page,
+  }): Promise<void> => {
+    const toast = await startGeneration(page);
+    await expect(page.getByTestId('diary-generation-skeleton')).toBeVisible();
+    await expectRemainingCount(page, 2);
+    const countLabel = page.getByText(/^총 \d+편$/);
+    const countBefore = Number(
+      (await countLabel.innerText()).replace(/\D/g, ''),
+    );
+    await advanceToPoll(page, 10_000);
+    await expect(toast).toContainText(SUCCESS_MESSAGE);
+    await expect(page.getByTestId('diary-generation-skeleton')).toBeHidden();
+    await expect(page.getByText(GENERATED_DIARY_TITLE)).toBeVisible();
+    await expect(countLabel).toHaveText(`총 ${countBefore + 1}편`);
+    await expectRemainingCount(page, 2);
+  });
+
+  test('생성 중 새로고침해도 토스트 하나를 복원하고 동일 작업의 완료를 확인한다', async ({
+    page,
+  }): Promise<void> => {
+    const toast = await startGeneration(page, {
+      scenario: MOCK_SCENARIOS.diaryGenerationResume,
+    });
+    const id = await page.evaluate(
+      (key): string | null => localStorage.getItem(key),
+      DIARY_GENERATION_ID_KEY,
+    );
+    await page.reload();
+    await expect(toast).toContainText(LOADING_MESSAGE);
+    await expect(getToasts(page)).toHaveCount(1);
+    const restoredId = await page.evaluate(
+      (key): string | null => localStorage.getItem(key),
+      DIARY_GENERATION_ID_KEY,
+    );
+    expect(restoredId).toBe(id);
+    await advanceToPoll(page, 10_000);
+    await expect(toast).toContainText(SUCCESS_MESSAGE);
+    await expect(getToasts(page)).toHaveCount(1);
+    await expectGenerationCleared(page);
+    await toast.getByRole('button', { name: '보러가기' }).click();
+    await expect(page.getByText(GENERATED_DIARY_TITLE)).toBeVisible();
+    await expect(page.getByText(VALID_DIARY_CONTENT)).toBeVisible();
+  });
+
+  test('다른 화면으로 이동해도 같은 토스트를 유지하고 생성 결과를 표시한다', async ({
+    page,
+  }): Promise<void> => {
+    const toast = await startGeneration(page);
+    await page.getByRole('button', { name: '설정', exact: true }).click();
+    await expect(page).toHaveURL('/setting');
+    await expect(toast).toContainText(LOADING_MESSAGE);
+    await expect(getToasts(page)).toHaveCount(1);
+    await advanceToPoll(page, 10_000);
+    await expect(page).toHaveURL('/setting');
+    await expect(toast).toContainText(SUCCESS_MESSAGE);
+    await page
+      .getByRole('button', { name: '네컷 모아보기', exact: true })
+      .click();
+    await expect(page).toHaveURL('/album');
+    await expect(page.getByText(GENERATED_DIARY_TITLE)).toBeVisible();
+    await expectRemainingCount(page, 2);
+  });
+
+  test('일시적인 상태 조회 오류가 나도 작업을 유지하고 다음 폴링에서 회복한다', async ({
+    page,
+  }): Promise<void> => {
+    const requests = collectStatusRequests(page);
+    const toast = await startGeneration(page, {
+      scenario: MOCK_SCENARIOS.diaryGenerationStatusFailureOnce,
+    });
+    await advanceToPoll(page, 5_000, 503);
+    await expect(toast).toContainText(LOADING_MESSAGE);
+    await expect(getToasts(page)).toHaveCount(1);
+    const generationId = await page.evaluate(
+      (key): string | null => localStorage.getItem(key),
+      DIARY_GENERATION_ID_KEY,
+    );
+    expect(generationId).not.toBeNull();
+    await advanceToPoll(page, 5_000);
+    await expect(toast).toContainText(SUCCESS_MESSAGE);
+    expect(requests).toHaveLength(2);
+    await expectGenerationCleared(page);
+    await expectPollingStopped(page, requests);
   });
 
   test('10자 미만의 일기는 제출할 수 없다', async ({ page }): Promise<void> => {
     await goToDiaryWritePage(page);
     await submitDiary(page, '123456789');
-
     await expect(page.getByText(DIARY_WRITE_COPY.minLengthError)).toBeVisible();
     await expect(page).toHaveURL('/diary-write');
     await expect(page.getByRole('textbox')).toHaveValue('123456789');
+    await expect(getToasts(page)).toHaveCount(0);
   });
 
-  test('생성에 실패하면 토스트에서 작성 화면으로 돌아가 내용을 다시 작성할 수 있다', async ({
+  test('생성 작업이 실패하면 앨범의 남은 생성 횟수를 복구한다', async ({
     page,
   }): Promise<void> => {
-    await goToDiaryWritePage(page, { generationFailure: true });
-    await submitDiary(page);
-
-    await expect(page).toHaveURL('/album');
-    await expect(page.getByText('네컷만화를 만들고 있어요')).toBeVisible();
-    await page.clock.fastForward(10_000);
-    await expect(page.getByText(GENERATION_ERROR_MESSAGE)).toBeVisible();
-    await page.getByRole('button', { name: '다시 작성하기' }).click();
-
-    await expect(page).toHaveURL('/diary-write');
-    await expect(page.getByRole('textbox')).toHaveValue(VALID_DIARY_CONTENT);
-  });
-
-  test('다른 화면에서 생성이 완료되어도 앨범 목록과 남은 횟수에 반영된다', async ({
-    page,
-  }): Promise<void> => {
-    await goToDiaryWritePage(page);
-    await submitDiary(page);
-
-    await expect(page).toHaveURL('/album');
-    await expect(page.getByTestId('diary-generation-skeleton')).toBeVisible();
+    const toast = await startGeneration(page, {
+      scenario: MOCK_SCENARIOS.diaryGenerationFailure,
+    });
     await expectRemainingCount(page, 2);
-    await page.getByRole('button', { name: '설정', exact: true }).click();
-
-    await expect(page).toHaveURL('/setting');
-    await page.clock.fastForward(10_000);
-    await expect(page.getByText('네컷만화가 완성됐어요!')).toBeVisible();
-    await page
-      .getByRole('button', { name: '네컷 모아보기', exact: true })
-      .click();
-
-    await expect(page).toHaveURL('/album');
-    await expect(page.getByTestId('diary-generation-skeleton')).toBeHidden();
-    await expect(page.getByText(GENERATED_DIARY_TITLE)).toBeVisible();
-    await expectRemainingCount(page, 2);
-  });
-
-  test('앨범에서 생성이 실패하면 오류를 안내하고 남은 횟수를 다시 조회한다', async ({
-    page,
-  }): Promise<void> => {
-    await goToDiaryWritePage(page, { generationFailure: true });
-    await submitDiary(page);
-
-    await expect(page).toHaveURL('/album');
-    await expectRemainingCount(page, 2);
-    await page.clock.fastForward(10_000);
-
-    await expect(page.getByText(GENERATION_ERROR_MESSAGE)).toBeVisible();
+    await advanceToPoll(page, 10_000);
+    await expect(toast).toContainText(GENERATION_ERROR_MESSAGE);
     await expect(page.getByTestId('diary-generation-skeleton')).toBeHidden();
     await expect(page.getByText(GENERATED_DIARY_TITLE)).toHaveCount(0);
     await expectRemainingCount(page, 3);

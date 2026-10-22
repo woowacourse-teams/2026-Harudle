@@ -57,6 +57,7 @@ const MOCK_USAGE_DATE = getMockDate(mockToday.day);
 const DAILY_GENERATION_LIMIT = 3;
 const MOCK_ACCESS_TOKEN = 'mock-access-token';
 const MOCK_CSRF_TOKEN = 'mock-csrf-token';
+const RESUMABLE_GENERATION_STORAGE_KEY = 'harudle:mock:resumable-generation:v1';
 
 let usedGenerationCount = 0;
 let mockDiarySequence = 1_000;
@@ -72,6 +73,7 @@ const createdDiaryRequests = new Map<
 >();
 const createdDiaryDetails = new Map<string, DiaryDetailResponse>();
 const deletedDiaryIds = new Set<string>();
+const failedStatusRequestIds = new Set<string>();
 
 const diaryThumbnailUrl = diaryImage;
 
@@ -140,6 +142,7 @@ const problemTitleByCode: Record<string, string> = {
   DAILY_GENERATION_LIMIT_EXCEEDED: 'Daily generation limit exceeded',
   DIARY_GENERATION_FAILED: 'Diary generation failed',
   AI_PROVIDER_ERROR: 'AI provider error',
+  GENERATION_UNAVAILABLE: 'Generation unavailable',
   DIARY_DETAIL_REQUEST_FAILED: 'Diary detail request failed',
   DIARY_DELETE_FAILED: 'Diary delete failed',
   PROFILE_REQUEST_FAILED: 'Profile request failed',
@@ -225,6 +228,109 @@ const isUuid = (value: string | null): value is string => {
       value,
     )
   );
+};
+
+const createMockDiaryResponse = (
+  body: CreateDiaryRequest,
+  job: MockGenerationJob,
+  diarySequence: number,
+  usedCount: number,
+): CreateDiaryResponse => ({
+  id: createMockUuid(diarySequence, 1),
+  diaryDate: body.diaryDate,
+  sourceText: body.sourceText,
+  createdAt: new Date(job.acceptedAt).toISOString(),
+  generation: {
+    id: createMockUuid(diarySequence, 2),
+    status: 'SUCCEEDED',
+    title: '오늘 하루의 소중한 기록',
+    imageUrl: diaryThumbnailUrl,
+    imageUrlExpiresAt: new Date(job.acceptedAt + 3_600_000).toISOString(),
+    completedAt: new Date(
+      job.acceptedAt + MOCK_GENERATION_COMPLETION_MS,
+    ).toISOString(),
+  },
+  usage: {
+    usageDate: MOCK_USAGE_DATE,
+    usedCount,
+    limitCount: DAILY_GENERATION_LIMIT,
+    remainingCount: DAILY_GENERATION_LIMIT - usedCount,
+  },
+});
+
+interface ResumableGeneration {
+  readonly idempotencyKey: string;
+  readonly requestBody: CreateDiaryRequest;
+  readonly acceptedAt: number;
+  readonly diarySequence: number;
+  readonly usedCount: number;
+}
+
+const isResumableGeneration = (
+  value: unknown,
+): value is ResumableGeneration => {
+  return (
+    isRecord(value) &&
+    typeof value.idempotencyKey === 'string' &&
+    isUuid(value.idempotencyKey) &&
+    isCreateDiaryRequest(value.requestBody) &&
+    typeof value.acceptedAt === 'number' &&
+    Number.isFinite(value.acceptedAt) &&
+    value.acceptedAt > 0 &&
+    !Number.isNaN(new Date(value.acceptedAt + 3_600_000).getTime()) &&
+    typeof value.diarySequence === 'number' &&
+    Number.isSafeInteger(value.diarySequence) &&
+    value.diarySequence >= 1_000 &&
+    value.diarySequence < 10_000_000_000 &&
+    typeof value.usedCount === 'number' &&
+    Number.isInteger(value.usedCount) &&
+    value.usedCount >= 1 &&
+    value.usedCount <= DAILY_GENERATION_LIMIT
+  );
+};
+
+const getMockSessionStorage = (): Storage | null => {
+  try {
+    return globalThis.sessionStorage ?? null;
+  } catch {
+    return null;
+  }
+};
+
+const restoreResumableGeneration = (): void => {
+  try {
+    const saved = getMockSessionStorage()?.getItem(
+      RESUMABLE_GENERATION_STORAGE_KEY,
+    );
+    if (!saved) return;
+    const snapshot: unknown = JSON.parse(saved);
+    if (!isResumableGeneration(snapshot)) return;
+
+    const {
+      idempotencyKey,
+      requestBody,
+      acceptedAt,
+      diarySequence,
+      usedCount,
+    } = snapshot;
+    const job = { acceptedAt, shouldFail: false };
+    const response = createMockDiaryResponse(
+      requestBody,
+      job,
+      diarySequence,
+      usedCount,
+    );
+    createdDiaryRequests.set(idempotencyKey, {
+      fingerprint: createDiaryFingerprint(requestBody),
+      response,
+      job,
+      usageRestored: false,
+    });
+    usedGenerationCount = usedCount;
+    mockDiarySequence = diarySequence + 1;
+  } catch {
+    // 저장된 모킹 데이터가 잘못되어도 기본 시나리오는 계속 사용한다.
+  }
 };
 
 const mockDiaryDays = [
@@ -362,12 +468,17 @@ export const resetDiaryGenerationMockState = (): void => {
   createdDiaryRequests.clear();
   createdDiaryDetails.clear();
   deletedDiaryIds.clear();
+  failedStatusRequestIds.clear();
+  getMockSessionStorage()?.removeItem(RESUMABLE_GENERATION_STORAGE_KEY);
   usedGenerationCount = 0;
   mockDiarySequence = 1_000;
 };
 
 // 홈 - 월간 일기 조회
 let mockNickname = '하루들';
+
+// 새로고침 재개 시나리오에서 저장한 생성 요청만 복원한다.
+restoreResumableGeneration();
 
 export const handlers = [
   http.get('/oauth2/authorization/kakao', async ({ request }) => {
@@ -745,6 +856,17 @@ export const handlers = [
 
     await delay(300);
 
+    if (
+      request.headers.get(MOCK_SCENARIO_HEADER) ===
+      MOCK_SCENARIOS.diaryGenerationRequestFailure
+    ) {
+      return createProblemDetails({
+        status: 503,
+        code: 'GENERATION_UNAVAILABLE',
+        detail: '네컷만화 생성 요청을 접수하지 못했어요.',
+      });
+    }
+
     const idempotencyKey = request.headers.get('Idempotency-Key');
 
     if (!isUuid(idempotencyKey)) {
@@ -832,35 +954,12 @@ export const handlers = [
     usedGenerationCount += 1;
 
     const job = createMockGenerationJob(request);
-    const createdAt = new Date(job.acceptedAt).toISOString();
-    const completedAt = new Date(
-      job.acceptedAt + MOCK_GENERATION_COMPLETION_MS,
-    ).toISOString();
-    const imageUrlExpiresAt = new Date(
-      job.acceptedAt + 3_600_000,
-    ).toISOString();
-    const diaryId = createMockUuid(diarySequence, 1);
-
-    const response: CreateDiaryResponse = {
-      id: diaryId,
-      diaryDate: requestBody.diaryDate,
-      sourceText: requestBody.sourceText,
-      createdAt,
-      generation: {
-        id: createMockUuid(diarySequence, 2),
-        status: 'SUCCEEDED',
-        title: '오늘 하루의 소중한 기록',
-        imageUrl: diaryThumbnailUrl,
-        imageUrlExpiresAt,
-        completedAt,
-      },
-      usage: {
-        usageDate: MOCK_USAGE_DATE,
-        usedCount: usedGenerationCount,
-        limitCount: DAILY_GENERATION_LIMIT,
-        remainingCount: DAILY_GENERATION_LIMIT - usedGenerationCount,
-      },
-    };
+    const response = createMockDiaryResponse(
+      requestBody,
+      job,
+      diarySequence,
+      usedGenerationCount,
+    );
 
     createdDiaryRequests.set(idempotencyKey, {
       fingerprint: diaryFingerprint,
@@ -868,6 +967,22 @@ export const handlers = [
       job,
       usageRestored: false,
     });
+
+    if (
+      request.headers.get(MOCK_SCENARIO_HEADER) ===
+      MOCK_SCENARIOS.diaryGenerationResume
+    ) {
+      getMockSessionStorage()?.setItem(
+        RESUMABLE_GENERATION_STORAGE_KEY,
+        JSON.stringify({
+          idempotencyKey,
+          requestBody,
+          acceptedAt: job.acceptedAt,
+          diarySequence,
+          usedCount: usedGenerationCount,
+        } satisfies ResumableGeneration),
+      );
+    }
 
     return HttpResponse.json(
       {
@@ -877,7 +992,7 @@ export const handlers = [
       {
         status: 202,
         headers: {
-          Location: `/api/v1/diaries/${diaryId}`,
+          Location: `/api/v1/diaries/${response.id}`,
         },
       },
     );
@@ -904,11 +1019,29 @@ export const handlers = [
       const record = Array.from(createdDiaryRequests.values()).find(
         ({ response }) => response.generation.id === generationId,
       );
-      if (!record || deletedDiaryIds.has(record.response.id)) {
+      const scenario = request.headers.get(MOCK_SCENARIO_HEADER);
+      if (
+        scenario === MOCK_SCENARIOS.diaryGenerationNotFound ||
+        !record ||
+        deletedDiaryIds.has(record.response.id)
+      ) {
         return createProblemDetails({
           status: 404,
           code: 'GENERATION_NOT_FOUND',
           detail: '생성 작업을 찾을 수 없습니다.',
+          instance,
+        });
+      }
+
+      if (
+        scenario === MOCK_SCENARIOS.diaryGenerationStatusFailureOnce &&
+        !failedStatusRequestIds.has(generationId)
+      ) {
+        failedStatusRequestIds.add(generationId);
+        return createProblemDetails({
+          status: 503,
+          code: 'GENERATION_UNAVAILABLE',
+          detail: '생성 상태를 잠시 불러올 수 없습니다.',
           instance,
         });
       }
