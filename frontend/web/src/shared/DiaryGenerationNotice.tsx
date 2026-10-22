@@ -10,6 +10,7 @@ import {
 import { removeGenerationId } from '../domain/diary/diaryGenerationStore';
 import { DIARY_GENERATION_FAILURE_MESSAGES } from './errorMessage';
 import { RequestError } from './api';
+import { AuthenticationRequiredError } from './auth';
 
 const DiaryGenerationNotice = () => {
   const generationId = useDiaryGenerationId();
@@ -102,8 +103,10 @@ const DiaryGenerationNotice = () => {
     const intervalId = setInterval(() => {
       void execute().catch((error: unknown): void => {
         if (
-          error instanceof RequestError &&
-          error.problem.code === 'GENERATION_NOT_FOUND'
+          error instanceof AuthenticationRequiredError ||
+          (error instanceof RequestError &&
+            (error.problem.code === 'GENERATION_NOT_FOUND' ||
+              error.problem.code === 'INVALID_REFRESH_TOKEN'))
         ) {
           const savedToastId = localStorage.getItem(
             DIARY_GENERATION_TOAST_ID_KEY,
@@ -111,7 +114,7 @@ const DiaryGenerationNotice = () => {
           if (savedToastId) {
             updateToast(savedToastId, {
               type: 'error',
-              message: error.problem.detail,
+              message: error.message,
               description: '다시 시도해주세요',
               action: {
                 label: '다시 작성하기',

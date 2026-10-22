@@ -348,6 +348,48 @@ test.describe('일기 생성', (): void => {
     await expect(page.getByText(VALID_DIARY_CONTENT)).toBeVisible();
   });
 
+  test('만화 생성 중 로그아웃하면 생성 기록을 삭제하고 폴링과 반복 새로고침을 멈춘다', async ({
+    page,
+  }): Promise<void> => {
+    const requests = collectStatusRequests(page);
+    const navigations: Request[] = [];
+    page.on('request', (request): void => {
+      if (
+        request.isNavigationRequest() &&
+        request.resourceType() === 'document'
+      ) {
+        navigations.push(request);
+      }
+    });
+
+    const toast = await startGeneration(page);
+    await advanceToPoll(page, 5_000);
+    await expect(toast).toContainText(LOADING_MESSAGE);
+    await page.getByRole('button', { name: '설정', exact: true }).click();
+    await expect(page.getByText('kakao', { exact: true })).toBeVisible();
+    // Mock 서버에는 세션이 없으므로 로그아웃 이후의 세션 만료를 명시한다.
+    await page.setExtraHTTPHeaders({
+      [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.authRefreshFailure,
+    });
+    await page.getByRole('button', { name: '로그아웃', exact: true }).click();
+    await expect(page).toHaveURL('/');
+    await expect(page.getByRole('combobox')).toBeVisible();
+
+    // 로그아웃 후 첫 폴링은 인증 오류로 정리되고 공개 피드를 다시 불러온다.
+    const redirected = page.waitForEvent('load');
+    await page.clock.fastForward(5_000);
+    await redirected;
+    await expect(page.getByRole('combobox')).toBeVisible();
+    await expectGenerationCleared(page);
+    await expect(page.getByText(LOADING_MESSAGE)).toHaveCount(0);
+
+    const navigationCount = navigations.length;
+    await expectPollingStopped(page, requests);
+    expect(navigations).toHaveLength(navigationCount);
+    await expect(page).toHaveURL('/');
+    await expectGenerationCleared(page);
+  });
+
   test('다른 화면으로 이동해도 같은 토스트를 유지하고 생성 결과를 표시한다', async ({
     page,
   }): Promise<void> => {
