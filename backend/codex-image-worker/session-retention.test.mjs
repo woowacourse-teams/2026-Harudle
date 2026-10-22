@@ -56,6 +56,21 @@ test("startup cleanup removes old abandoned worker sessions while preserving act
   for (const file of [active, recent, unrelated]) assert.match(await readFile(file, "utf8"), /private diary/);
 });
 
+test("finishing one concurrent generation preserves the other generation's active session", async t => {
+  const f = await fixture(t);
+  const otherRun = path.join(f.root, "harudle-codex-image-PARALLEL");
+  const first = await f.session("first.jsonl", f.run, 2 * 60 * 60 * 1000);
+  const second = await f.session("second.jsonl", otherRun, 2 * 60 * 60 * 1000);
+  f.retention.begin(f.run);
+  f.retention.begin(otherRun);
+  await f.retention.finish(f.run);
+  await missing(first);
+  assert.match(await readFile(second, "utf8"), /private diary/);
+  await f.retention.finish(otherRun);
+  await missing(second);
+  assert.equal(await readFile(path.join(f.home, "auth.json"), "utf8"), "keep OAuth credentials");
+});
+
 test("periodic cleanup retries a leftover session after its retention time", async t => {
   const f = await fixture(t);
   const file = await f.session("leftover.jsonl");

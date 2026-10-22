@@ -7,6 +7,8 @@ services:
     environment:
       CODEX_IMAGE_WORKER_TOKEN: ${CODEX_IMAGE_WORKER_TOKEN:?Set the same internal token on the backend}
       CODEX_IMAGE_TIMEOUT_MS: ${CODEX_IMAGE_TIMEOUT_MS:-300000}
+      CODEX_IMAGE_CONCURRENCY: ${CODEX_IMAGE_CONCURRENCY:-1}
+      CODEX_IMAGE_QUEUE_CAPACITY: ${CODEX_IMAGE_QUEUE_CAPACITY:-1}
     volumes:
       - codex-auth:/home/node/.codex
     expose:

@@ -495,5 +495,9 @@ Codex SDK worker에 같은 Storyboard, 스타일 지시문과 참조 이미지�
 Gemini와 Codex를 각각 한 번 호출하며, 일반 생성과 관리자 이미지 복구에 동일하게 적용합니다.
 기본값 none에서는 기존 Gemini 생성과 재시도 설정을 유지합니다.
 
+Codex worker는 `CODEX_IMAGE_CONCURRENCY`로 동시 생성 수를, `CODEX_IMAGE_QUEUE_CAPACITY`로 대기 수를 정합니다.
+기본값은 각각 1이며, 입력 수신과 대기, 생성 시간을 합쳐 기존 worker 제한 시간 300초를 적용합니다.
+접수 한도가 차면 503으로 거절합니다. 백엔드의 `GENERATION_WORKER_CONCURRENCY`는 일기 전체의 동시 실행 수입니다.
+
 OAuth 로그인, 내부 HTTP 토큰, 제한 시간과 선택적 컨테이너 구성은
 [codex-image-worker/README.md](codex-image-worker/README.md)를 참고하세요.
