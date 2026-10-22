@@ -84,7 +84,9 @@ const FeedPage = () => {
             void navigate('/diary-write');
           }}
         >
-          <span css={createIconStyle} />
+          <span aria-hidden="true" css={createIconBackgroundStyle}>
+            <span css={createIconStyle} />
+          </span>
         </button>
       }
     >
@@ -118,12 +120,27 @@ const createButtonStyle = css`
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   border: none;
+  border-radius: 50%;
   background: none;
   cursor: pointer;
+  transform: translateY(3px);
+
+  &:active:not(:disabled) > span {
+    background-color: color-mix(
+      in srgb,
+      ${theme.colors.background.brandWeak} 88%,
+      ${theme.colors.background.brandSolid}
+    );
+  }
+
+  &:focus-visible {
+    outline: 2px solid ${theme.colors.stroke.focusRing};
+    outline-offset: 2px;
+  }
 
   &:disabled {
     opacity: 0.65;
@@ -131,9 +148,19 @@ const createButtonStyle = css`
   }
 `;
 
+const createIconBackgroundStyle = css`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background-color: ${theme.colors.background.brandWeak};
+`;
+
 const createIconStyle = css`
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   background-color: ${theme.colors.foreground.brand};
   mask: url(${plusIcon}) center / contain no-repeat;
 `;
