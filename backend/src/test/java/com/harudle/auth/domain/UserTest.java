@@ -7,6 +7,7 @@ import java.time.Instant;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class UserTest {
@@ -29,6 +30,34 @@ class UserTest {
         assertThat(user.isAdmin()).isFalse();
         assertThat(user.getDailyGenerationLimit()).isEqualTo(3);
         assertThat(user.getCreatedAt()).isEqualTo(CREATED_AT);
+    }
+
+    @Test
+    @DisplayName("소셜 이름이 제공되면 이름만 갱신하고 공개 닉네임과 이미지는 유지한다")
+    void updatesNameWithoutChangingPublicProfile() {
+        User user = new User(null, "기존 이름", CREATED_AT);
+        user.assignInitialPublicProfile("재미있는 하루", 3, CREATED_AT);
+
+        user.updateNameIfProvided("새 이름", CREATED_AT.plusSeconds(60));
+
+        assertThat(user.getName()).isEqualTo("새 이름");
+        assertThat(user.getNickname()).isEqualTo("재미있는 하루");
+        assertThat(user.getProfileImageCode()).isEqualTo((short) 3);
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {" "})
+    @DisplayName("소셜 이름이 제공되지 않으면 기존 이름과 공개 프로필을 유지한다")
+    void keepsNameWhenNameIsNotProvided(String name) {
+        User user = new User(null, "기존 이름", CREATED_AT);
+        user.assignInitialPublicProfile("재미있는 하루", 3, CREATED_AT);
+
+        user.updateNameIfProvided(name, CREATED_AT.plusSeconds(60));
+
+        assertThat(user.getName()).isEqualTo("기존 이름");
+        assertThat(user.getNickname()).isEqualTo("재미있는 하루");
+        assertThat(user.getProfileImageCode()).isEqualTo((short) 3);
     }
 
     @Test
