@@ -383,13 +383,15 @@ describe('피드 상세 댓글 삭제', (): void => {
 
     await openDelete(user);
     await user.click(screen.getByRole('button', { name: /댓글 삭제$/ }));
-    expect(mockAddToast).toHaveBeenCalledWith(
-      { type: 'error', message: '삭제 실패' },
-      2000,
-    );
+    expect(
+      within(screen.getByRole('dialog')).getByRole('alert'),
+    ).toHaveTextContent('삭제 실패');
     expect(screen.getByText(comment.content)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '1' })).toBeInTheDocument();
 
+    await user.click(screen.getByRole('button', { name: '취소' }));
+    await openDelete(user);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /댓글 삭제$/ }));
     expect(
       await screen.findByText('첫 번째 댓글을 남겨보세요.'),

@@ -534,10 +534,7 @@ describe('피드 카드 액션', (): void => {
     });
     expect(screen.getByRole('dialog')).toHaveAttribute('open');
     expect(screen.getByRole('article')).toBeInTheDocument();
-    expect(mockAddToast).toHaveBeenCalledWith(
-      { type: 'error', message: '피드 삭제 실패' },
-      2000,
-    );
+    expect(screen.getByRole('alert')).toHaveTextContent('피드 삭제 실패');
     await user.click(screen.getByRole('button', { name: /피드 삭제$/ }));
     expect(
       await screen.findByText('아직 이 카테고리에 공유된 피드가 없어요.'),

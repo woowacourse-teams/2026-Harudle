@@ -14,6 +14,7 @@ interface ConfirmModalProps {
   confirmLabel: string;
   ref: Ref<ModalHandle>;
   onConfirm: () => void;
+  errorMessage?: string;
 }
 
 const ConfirmModal = ({
@@ -22,6 +23,7 @@ const ConfirmModal = ({
   confirmLabel,
   ref,
   onConfirm,
+  errorMessage,
 }: ConfirmModalProps): ReactElement => {
   const modalRef = useRef<ModalHandle>(null);
 
@@ -52,11 +54,21 @@ const ConfirmModal = ({
       }
     >
       <p>{description}</p>
+      {errorMessage && (
+        <p role="alert" css={errorStyle}>
+          {errorMessage}
+        </p>
+      )}
     </Modal>
   );
 };
 
 export default ConfirmModal;
+
+const errorStyle = css`
+  margin-top: 8px;
+  color: ${theme.colors.foreground.critical};
+`;
 
 const buttonStyle = css`
   flex: 1;
