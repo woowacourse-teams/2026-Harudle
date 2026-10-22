@@ -77,6 +77,10 @@ flowchart TB
 기본 동시 실행 수는 `1`, `GENERATION_WORKER_POLL_INTERVAL`의
 기본 확인 간격은 `5s`다. 환경 변수를 바꾸면 로컬 백엔드는 재시작하고, 배포 컨테이너는
 재생성해야 한다.
+Codex 이미지 대체 생성을 켜면 별도의 HTTP worker가 일반 생성과 관리자 복구의 Codex 요청을 함께 처리한다.
+Worker 한 대의 동시 생성 수는 `CODEX_IMAGE_CONCURRENCY`, 대기 수는 `CODEX_IMAGE_QUEUE_CAPACITY`로 정하며 기본값은 각각 1이다.
+입력 수신 중인 요청도 접수 한도에 포함하고, 한도가 차면 503을 반환한다. 기존 300초 제한은 입력 수신과 대기, 생성을 합쳐 적용한다.
+백엔드의 일기 작업 동시 실행 수와 별도로 설정한다. 실행과 취소, 로그 확인 방법은 `backend/codex-image-worker/README.md`를 따른다.
 앱 종료가 시작되면 새 선점을 멈추고, 생성 처리기의 종료 단계에서 진행 중인 작업을 최대 6분 기다린다.
 이 단계는 HTTP 종료 단계 뒤에 두고 다른 실행기와 DB 연결을 닫기 전에 진행한다. 작업이 먼저 끝나면 다음 종료 절차로 넘어간다.
 로컬과 배포 Compose의 백엔드 종료 유예는 7분, CodeDeploy의 `ApplicationStart` 훅 제한은 600초다.
