@@ -19,6 +19,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -45,7 +46,7 @@ public class FeedPublicationService {
         this.clock = clock;
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public FeedResult publish(UUID actorId, UUID diaryId, long categoryId) {
         Objects.requireNonNull(actorId, "사용자 ID는 필수입니다.");
         Objects.requireNonNull(diaryId, "일기 ID는 필수입니다.");

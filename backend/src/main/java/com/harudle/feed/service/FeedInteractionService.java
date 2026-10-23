@@ -1,5 +1,6 @@
 package com.harudle.feed.service;
 
+import com.harudle.block.service.BlockInteractionPolicy;
 import com.harudle.feed.domain.Feed;
 import com.harudle.feed.repository.FeedInteractionRepository;
 import com.harudle.feed.service.exception.FeedNotFoundException;
@@ -14,9 +15,11 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(propagation = Propagation.MANDATORY)
 public class FeedInteractionService implements FeedInteractionPort {
     private final FeedInteractionRepository feeds;
+    private final BlockInteractionPolicy blocks;
 
-    public FeedInteractionService(FeedInteractionRepository feeds) {
+    public FeedInteractionService(FeedInteractionRepository feeds, BlockInteractionPolicy blocks) {
         this.feeds = feeds;
+        this.blocks = blocks;
     }
 
     @Override
@@ -32,6 +35,10 @@ public class FeedInteractionService implements FeedInteractionPort {
         Feed feed = lockFeed(feedId);
         UUID authorId = feeds.findActiveAuthorIdForInteraction(feed.getDiaryId(), actorId)
                 .orElseThrow(FeedNotFoundException::new);
+        // 피드 행 → 사용자 쌍 순서로 잠근다. 차단과 반응 저장 중 먼저 완료된 작업을 기준으로 판단한다.
+        if (blocks.lockAndIsBlocked(actorId, authorId)) {
+            throw new FeedNotFoundException();
+        }
         return new Target(feedId, authorId, counts(feed));
     }
 

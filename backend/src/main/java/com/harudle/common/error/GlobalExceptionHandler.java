@@ -9,6 +9,10 @@ import com.harudle.auth.domain.exception.InvalidNicknameException;
 import com.harudle.auth.domain.exception.NicknameAlreadyInUseException;
 import com.harudle.auth.domain.exception.PublicProfileNotAssignedException;
 import com.harudle.auth.presentation.AuthenticationRequiredException;
+import com.harudle.block.domain.InvalidBlockException;
+import com.harudle.block.service.exception.BlockTargetNotFoundException;
+import com.harudle.block.service.exception.BlockUnavailableException;
+import com.harudle.block.service.exception.InvalidBlockCursorException;
 import com.harudle.comment.service.exception.CommentAccessDeniedException;
 import com.harudle.comment.service.exception.CommentIntegrationUnavailableException;
 import com.harudle.comment.service.exception.CommentNotFoundException;
@@ -252,6 +256,26 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(ReportTargetNotFoundException.class)
     ResponseEntity<ProblemDetail> handleReportTargetNotFound(HttpServletRequest request) {
         return createResponse(ErrorType.REPORT_TARGET_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(InvalidBlockException.class)
+    ResponseEntity<ProblemDetail> handleInvalidBlock(HttpServletRequest request) {
+        return createResponse(ErrorType.INVALID_BLOCK, request);
+    }
+
+    @ExceptionHandler(BlockTargetNotFoundException.class)
+    ResponseEntity<ProblemDetail> handleBlockTargetNotFound(HttpServletRequest request) {
+        return createResponse(ErrorType.BLOCK_TARGET_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(BlockUnavailableException.class)
+    ResponseEntity<ProblemDetail> handleBlockUnavailable(HttpServletRequest request) {
+        return createResponse(ErrorType.BLOCK_UNAVAILABLE, request);
+    }
+
+    @ExceptionHandler(InvalidBlockCursorException.class)
+    ResponseEntity<ProblemDetail> handleInvalidBlockCursor(HttpServletRequest request) {
+        return createResponse(ErrorType.INVALID_CURSOR, request);
     }
 
     @ExceptionHandler(CommentNotFoundException.class)

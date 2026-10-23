@@ -4,6 +4,7 @@ import com.harudle.share.repository.PublicShareSnapshot;
 import com.harudle.share.repository.ShareLinkRepository;
 import com.harudle.share.service.exception.ShareNotFoundException;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,8 +18,8 @@ public class ShareLinkQueryService {
     }
 
     @Transactional(readOnly = true)
-    public PublicShareResult getPublicShare(UUID shareId) {
-        PublicShareSnapshot snapshot = shareLinkRepository.findPublicSnapshotById(shareId)
+    public PublicShareResult getPublicShare(UUID shareId, @Nullable UUID viewerId) {
+        PublicShareSnapshot snapshot = shareLinkRepository.findPublicSnapshotById(shareId, viewerId)
                 .orElseThrow(ShareNotFoundException::new);
         return new PublicShareResult(
                 snapshot.title(),
