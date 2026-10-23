@@ -11,6 +11,8 @@ import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.storyboard.StoryboardAttemptRunner;
 import com.harudle.generation.diary.service.storyboard.StoryboardGenerationService;
 import com.harudle.generation.loadtest.LoadTestAiStub;
+import com.harudle.generation.loadtest.LoadTestDiaryGenerationExecutor;
+import com.harudle.generation.loadtest.LoadTestGenerationRegistry;
 import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
@@ -33,8 +35,7 @@ class LoadTestDiaryConfiguration {
     }
 
     @Bean
-    LoadTestDiaryCreationService loadTestDiaryCreationService(
-            MemberDiaryCreationTransactionService memberTransactionService,
+    LoadTestDiaryGenerationExecutor loadTestDiaryGenerationExecutor(
             RequestFingerprintGenerator fingerprintGenerator,
             GenerationPromptRepository prompts,
             DiaryGenerationRepository generations,
@@ -52,8 +53,19 @@ class LoadTestDiaryConfiguration {
                 fingerprintGenerator, prompts, generations, storyboardService,
                 request -> stub.generateImage(request.referenceImage()), imageStorage, completionService, lifecycleMetrics
         );
-        var executionService = new DiaryCreationExecutionService(
-                new ObservedDiaryGenerationExecutor(generationService, meterRegistry));
-        return new LoadTestDiaryCreationService(new DiaryCreationService(memberTransactionService, executionService));
+        return new LoadTestDiaryGenerationExecutor(new ObservedDiaryGenerationExecutor(generationService, meterRegistry));
+    }
+
+    @Bean
+    LoadTestGenerationRegistry loadTestGenerationRegistry(LoadTestDiaryGenerationExecutor executor) {
+        return new LoadTestGenerationRegistry(executor);
+    }
+
+    @Bean
+    LoadTestDiaryCreationService loadTestDiaryCreationService(
+            MemberDiaryCreationTransactionService transactionService,
+            LoadTestGenerationRegistry registry
+    ) {
+        return new LoadTestDiaryCreationService(transactionService, registry);
     }
 }

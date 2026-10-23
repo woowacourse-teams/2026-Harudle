@@ -72,20 +72,21 @@ class FeedController {
             ErrorType.VALIDATION_ERROR, ErrorType.UNAUTHORIZED, ErrorType.FORBIDDEN,
             ErrorType.DIARY_NOT_FOUND, ErrorType.CATEGORY_NOT_FOUND,
             ErrorType.DIARY_NOT_PUBLISHABLE, ErrorType.DIARY_ALREADY_PUBLISHED, ErrorType.CATEGORY_INACTIVE,
-            ErrorType.FEED_UNAVAILABLE, ErrorType.IMAGE_STORAGE_ERROR
+            ErrorType.FEED_UNAVAILABLE, ErrorType.IMAGE_STORAGE_ERROR, ErrorType.PROFILE_IMAGE_STORAGE_ERROR
     })
     @PostMapping
     ResponseEntity<FeedResponse> publish(Authentication authentication, @Valid @RequestBody PublishFeedRequest request) {
         UUID actorId = userIds.resolve(authentication);
         FeedResult result = publicationService.publish(actorId, request.diaryId(), request.categoryId());
         return ResponseEntity.created(URI.create(BASE_PATH + "/" + result.id()))
-                .body(responseAssembler.toResponse(result));
+                .body(responseAssembler.toPublishResponse(result));
     }
 
     @Operation(summary = "공개 피드 목록 조회", description = "최신순 또는 현재 좋아요 수 기준 인기순으로 조회합니다.")
     @ApiErrorResponses({
             ErrorType.VALIDATION_ERROR, ErrorType.INVALID_CURSOR, ErrorType.UNAUTHORIZED,
-            ErrorType.CATEGORY_NOT_FOUND, ErrorType.FEED_UNAVAILABLE, ErrorType.IMAGE_STORAGE_ERROR
+            ErrorType.CATEGORY_NOT_FOUND, ErrorType.FEED_UNAVAILABLE, ErrorType.IMAGE_STORAGE_ERROR,
+            ErrorType.PROFILE_IMAGE_STORAGE_ERROR
     })
     @GetMapping
     FeedPageResponse getList(
@@ -105,7 +106,7 @@ class FeedController {
     )
     @ApiErrorResponses({
             ErrorType.VALIDATION_ERROR, ErrorType.UNAUTHORIZED, ErrorType.FEED_NOT_FOUND,
-            ErrorType.FEED_UNAVAILABLE, ErrorType.IMAGE_STORAGE_ERROR
+            ErrorType.FEED_UNAVAILABLE, ErrorType.IMAGE_STORAGE_ERROR, ErrorType.PROFILE_IMAGE_STORAGE_ERROR
     })
     @GetMapping("/{feedId}")
     FeedResponse getDetail(

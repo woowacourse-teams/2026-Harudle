@@ -66,6 +66,7 @@ class CurrentUserServiceTest {
         assertThat(result.name()).isEqualTo("하루들");
         assertThat(result.nickname()).isEqualTo("신나는 수달");
         assertThat(result.profileImageUrl()).isEqualTo(URI.create("https://www.harudle.com/profile-images/v1/3.png"));
+        assertThat(result.profileImageUrlExpiresAt()).isNull();
         assertThat(result.email()).isEqualTo("user@example.com");
         assertThat(result.oauthProvider()).isEqualTo(OAuthProvider.KAKAO);
         assertThat(result.createdAt()).isEqualTo(CREATED_AT);

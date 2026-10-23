@@ -22,6 +22,16 @@ public final class ObservedImageUrlProvider implements ImageUrlProvider {
     }
 
     @Override
+    public ImageUrlProvider forRead() {
+        return new ObservedImageUrlProvider(delegate.forRead(), meterRegistry);
+    }
+
+    @Override
+    public ImageUrlProvider forPublication() {
+        return new ObservedImageUrlProvider(delegate.forPublication(), meterRegistry);
+    }
+
+    @Override
     public ImageUrlProvider forResponse() {
         return new ObservedImageUrlProvider(delegate.forResponse(), meterRegistry);
     }

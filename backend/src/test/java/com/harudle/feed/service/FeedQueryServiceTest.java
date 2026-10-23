@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.harudle.common.testdata.DevTestDataVisibility;
 import com.harudle.category.service.port.CategoryReader;
 import com.harudle.feed.repository.FeedQueryRepository;
 import com.harudle.feed.repository.FeedSnapshot;
@@ -33,11 +34,12 @@ class FeedQueryServiceTest {
     @Mock private PublicProfileReader profiles;
     @Mock private CategoryReader categories;
     @Mock private FeedLikeReader likes;
+    @Mock private DevTestDataVisibility visibility;
     private FeedQueryService service;
 
     @BeforeEach
     void setUp() {
-        service = new FeedQueryService(feeds, collaborators);
+        service = new FeedQueryService(feeds, collaborators, visibility);
     }
 
     @Test
@@ -81,7 +83,7 @@ class FeedQueryServiceTest {
         when(collaborators.profiles()).thenReturn(profiles);
         when(collaborators.categories()).thenReturn(categories);
         when(profiles.readAll(Set.of(AUTHOR))).thenReturn(Map.of(AUTHOR,
-                new PublicProfileReader.Profile(AUTHOR, "현재닉네임", URI.create("https://example.com/profile.png"))));
+                new PublicProfileReader.Profile(AUTHOR, "현재닉네임", URI.create("https://example.com/profile.png"), null)));
         when(categories.get(1)).thenReturn(new CategoryReader.Category(1, "변경된이름", 0, false));
     }
 

@@ -138,6 +138,6 @@ class FeedPublicationServiceTest {
     private void validCategoryAndProfile() {
         when(categories.lockActiveForPublication(1)).thenReturn(CATEGORY);
         when(profiles.readAll(Set.of(ACTOR))).thenReturn(Map.of(ACTOR,
-                new PublicProfileReader.Profile(ACTOR, "캐모", URI.create("https://example.com/profile.png"))));
+                new PublicProfileReader.Profile(ACTOR, "캐모", URI.create("https://example.com/profile.png"), null)));
     }
 }

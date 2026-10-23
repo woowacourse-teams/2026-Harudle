@@ -1,5 +1,13 @@
 import { delay, http, HttpResponse } from 'msw';
 import diaryImage from '../assets/images/diary-four-panel.webp';
+import {
+  createMockGenerationJob,
+  getMockGeneration,
+  getMockGenerationStatus,
+  MOCK_GENERATION_COMPLETION_MS,
+  type MockGenerationJob,
+  type MockSucceededGeneration,
+} from './diaryGeneration';
 import { isCanonicalUuid } from '../pages/landing/guestTrialUuid';
 
 interface GuestDiaryRequest {
@@ -12,18 +20,12 @@ interface GuestDiaryResponse {
   diaryDate: string;
   sourceText: string;
   createdAt: string;
-  generation: {
-    id: string;
-    status: 'SUCCEEDED';
-    title: string;
-    imageUrl: string;
-    imageUrlExpiresAt: string;
-    completedAt: string;
-  };
+  generation: MockSucceededGeneration;
 }
 
 interface GuestDiaryRecord {
   fingerprint: string;
+  job: MockGenerationJob;
   response: GuestDiaryResponse;
 }
 
@@ -45,7 +47,7 @@ interface ProblemDetailsOptions {
 
 export const GUEST_TRIAL_MOCK_CSRF_TOKEN = 'mock-csrf-token';
 
-const GUEST_TRIAL_STATE_STORAGE_KEY = 'harudle:mock:guest-trial';
+const GUEST_TRIAL_STATE_STORAGE_KEY = 'harudle:mock:guest-trial:v2';
 const MOCK_TRACE_ID = '019d71beebed75b19e45f9c51863bcbd';
 
 const createInitialState = (): GuestTrialMockState => ({
@@ -205,6 +207,7 @@ const createMockUuid = (sequence: number): string => {
 const createGuestDiaryResponse = (
   request: GuestDiaryRequest,
   sequence: number,
+  job: MockGenerationJob,
 ): GuestDiaryResponse => {
   const diaryId = createMockUuid(sequence);
 
@@ -212,14 +215,16 @@ const createGuestDiaryResponse = (
     id: diaryId,
     diaryDate: request.diaryDate,
     sourceText: request.sourceText,
-    createdAt: `${request.diaryDate}T20:10:23+09:00`,
+    createdAt: new Date(job.acceptedAt).toISOString(),
     generation: {
       id: createMockUuid(sequence + 500),
       status: 'SUCCEEDED',
       title: '평범해서 더 기억하고 싶은 하루',
       imageUrl: diaryImage,
-      imageUrlExpiresAt: `${request.diaryDate}T21:10:23+09:00`,
-      completedAt: `${request.diaryDate}T20:11:42+09:00`,
+      imageUrlExpiresAt: new Date(job.acceptedAt + 3_600_000).toISOString(),
+      completedAt: new Date(
+        job.acceptedAt + MOCK_GENERATION_COMPLETION_MS,
+      ).toISOString(),
     },
   };
 };
@@ -321,12 +326,35 @@ export const guestTrialHandlers = [
       const existingRequest = state.requests[idempotencyKey];
 
       if (existingRequest?.fingerprint === fingerprint) {
+        if (
+          getMockGeneration(
+            existingRequest.job,
+            existingRequest.response.generation,
+          ).status === 'FAILED'
+        ) {
+          return createProblemDetails({
+            status: 502,
+            code: 'AI_PROVIDER_ERROR',
+            title: 'AI provider error',
+            detail: '이미지 생성 요청에 실패했습니다.',
+            instance,
+          });
+        }
         await delay(150);
-        return HttpResponse.json(existingRequest.response, {
-          headers: {
-            'Cache-Control': 'no-store',
+        return HttpResponse.json(
+          {
+            ...existingRequest.response,
+            generation: getMockGeneration(
+              existingRequest.job,
+              existingRequest.response.generation,
+            ),
           },
-        });
+          {
+            headers: {
+              'Cache-Control': 'no-store',
+            },
+          },
+        );
       }
 
       if (existingRequest) {
@@ -349,11 +377,14 @@ export const guestTrialHandlers = [
         });
       }
 
-      await delay(800);
+      await delay(300);
+
+      const job = createMockGenerationJob(request);
 
       const response = createGuestDiaryResponse(
         requestBody,
         state.nextDiarySequence,
+        job,
       );
       const nextState: GuestTrialMockState = {
         ...state,
@@ -361,7 +392,7 @@ export const guestTrialHandlers = [
         nextDiarySequence: state.nextDiarySequence + 1,
         requests: {
           ...state.requests,
-          [idempotencyKey]: { fingerprint, response },
+          [idempotencyKey]: { fingerprint, response, job },
         },
         diaries: {
           ...state.diaries,
@@ -371,13 +402,19 @@ export const guestTrialHandlers = [
 
       saveState(nextState);
 
-      return HttpResponse.json(response, {
-        status: 201,
-        headers: {
-          'Cache-Control': 'no-store',
-          Location: `/api/v1/guest/diaries/${response.id}`,
+      return HttpResponse.json(
+        {
+          ...response,
+          generation: getMockGeneration(job, response.generation),
         },
-      });
+        {
+          status: 202,
+          headers: {
+            'Cache-Control': 'no-store',
+            Location: `/api/v1/guest/diaries/${response.id}`,
+          },
+        },
+      );
     });
   }),
 
@@ -395,7 +432,13 @@ export const guestTrialHandlers = [
 
     const diary = state.diaries[diaryId];
 
-    if (!diary) {
+    const record = Object.values(state.requests).find(
+      ({ response }) => response.id === diaryId,
+    );
+    const generation =
+      diary && record ? getMockGeneration(record.job, diary.generation) : null;
+
+    if (!diary || !generation || generation.status === 'FAILED') {
       return createProblemDetails({
         status: 404,
         code: 'DIARY_NOT_FOUND',
@@ -405,10 +448,58 @@ export const guestTrialHandlers = [
       });
     }
 
-    return HttpResponse.json(diary, {
-      headers: {
-        'Cache-Control': 'no-store',
+    return HttpResponse.json(
+      { ...diary, generation },
+      {
+        headers: {
+          'Cache-Control': 'no-store',
+        },
       },
-    });
+    );
   }),
+  http.get(
+    '/api/v1/guest/diary-generations/:generationId',
+    async ({ params }) => {
+      await delay(150);
+      const generationId = String(params.generationId);
+      const instance = `/api/v1/guest/diary-generations/${generationId}`;
+      const state = loadState();
+      const sessionError = validateGuestSession(state, instance);
+      if (sessionError) return sessionError;
+
+      if (!isCanonicalUuid(generationId)) {
+        return createProblemDetails({
+          status: 400,
+          code: 'VALIDATION_ERROR',
+          title: 'Validation failed',
+          detail: '생성 ID는 UUID 형식이어야 합니다.',
+          instance,
+        });
+      }
+
+      const record = Object.values(state.requests).find(
+        ({ response }) => response.generation.id === generationId,
+      );
+      if (!record) {
+        return createProblemDetails({
+          status: 404,
+          code: 'GENERATION_NOT_FOUND',
+          title: 'Generation not found',
+          detail: '생성 작업을 찾을 수 없습니다.',
+          instance,
+        });
+      }
+
+      const generation = getMockGeneration(
+        record.job,
+        record.response.generation,
+      );
+      return HttpResponse.json(
+        getMockGenerationStatus(generation, record.response.id),
+        {
+          headers: { 'Cache-Control': 'no-store' },
+        },
+      );
+    },
+  ),
 ];
