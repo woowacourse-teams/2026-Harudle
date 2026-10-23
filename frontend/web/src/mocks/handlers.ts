@@ -528,12 +528,8 @@ export const handlers = [
       );
     }
     if (image instanceof File) {
-      if (image.size > 5 * 1024 * 1024)
-        return problem(
-          413,
-          'HTTP_413',
-          '프로필 이미지는 5MiB 이하여야 합니다.',
-        );
+      if (image.size > 5_000_000)
+        return problem(413, 'HTTP_413', '프로필 이미지는 5MB 이하여야 합니다.');
       if (!['image/jpeg', 'image/png'].includes(image.type))
         return problem(
           415,

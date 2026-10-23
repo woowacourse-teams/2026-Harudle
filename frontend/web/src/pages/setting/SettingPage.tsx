@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import { type ModalHandle } from '../../shared/Modal';
 import ProfileEditModal from './ProfileEditModal';
 import profileFallbackImage from '../../assets/images/profile-fallback.svg';
@@ -35,7 +35,6 @@ export default SettingPage;
 const SettingPageContent = () => {
   const { profileRequest, updateProfile, refreshProfile } = useProfile();
   const profileModalRef = useRef<ModalHandle>(null);
-  const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
   const hasRetriedImage = useRef(false);
   const { request, handleLogout } = useLogout();
 
@@ -61,7 +60,6 @@ const SettingPageContent = () => {
           type="button"
           css={profileImageButtonStyle}
           aria-label="프로필 사진 수정"
-          disabled={isUpdatingProfile}
           onClick={() => profileModalRef.current?.open()}
         >
           <img
@@ -88,10 +86,9 @@ const SettingPageContent = () => {
         <button
           type="button"
           css={editNicknameButtonStyle}
-          disabled={isUpdatingProfile}
           onClick={() => profileModalRef.current?.open()}
         >
-          {isUpdatingProfile ? '저장 중...' : '프로필 수정'}
+          프로필 수정
         </button>
       </div>
       <div css={settingCardStyle}>
@@ -148,7 +145,6 @@ const SettingPageContent = () => {
           hasRetriedImage.current = false;
           updateProfile(profile);
         }}
-        onBusyChange={setIsUpdatingProfile}
       />
       {request.status === 'error' && (
         <div css={logoutErrorStyle}>{request.error.message}</div>

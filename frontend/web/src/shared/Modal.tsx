@@ -2,6 +2,7 @@ import {
   useImperativeHandle,
   useRef,
   type MouseEvent,
+  type SyntheticEvent,
   type ReactNode,
   type ReactPortal,
   type Ref,
@@ -19,29 +20,63 @@ interface ModalProps {
   title: string;
   children: ReactNode;
   footer?: ReactNode;
+  dismissible?: boolean;
   ref: Ref<ModalHandle>;
 }
 
-const Modal = ({ title, children, footer, ref }: ModalProps): ReactPortal => {
+const Modal = ({
+  title,
+  children,
+  footer,
+  ref,
+  dismissible = true,
+}: ModalProps): ReactPortal => {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const closedProgrammatically = useRef(false);
 
   useImperativeHandle(ref, (): ModalHandle => {
     return {
       open: (): void => {
+        closedProgrammatically.current = false;
         dialogRef.current?.showModal();
       },
       close: (): void => {
+        closedProgrammatically.current = true;
         dialogRef.current?.close();
       },
     };
   }, []);
 
   const handleBackdropClick = (e: MouseEvent<HTMLDialogElement>): void => {
-    if (e.target === e.currentTarget) dialogRef.current?.close();
+    if (dismissible && e.target === e.currentTarget) dialogRef.current?.close();
+  };
+
+  const handleCancel = (event: SyntheticEvent<HTMLDialogElement>): void => {
+    if (!dismissible) event.preventDefault();
+  };
+  const handleClose = (): void => {
+    const dialog = dialogRef.current;
+    if (
+      !dismissible &&
+      !closedProgrammatically.current &&
+      dialog &&
+      !dialog.open
+    )
+      dialog.showModal();
+    closedProgrammatically.current = false;
   };
 
   return createPortal(
-    <dialog ref={dialogRef} css={dialogStyle} onClick={handleBackdropClick}>
+    <dialog
+      ref={dialogRef}
+      css={dialogStyle}
+      onClick={handleBackdropClick}
+      onCancel={handleCancel}
+      onClose={handleClose}
+      onKeyDown={(event): void => {
+        if (!dismissible && event.key === 'Escape') event.preventDefault();
+      }}
+    >
       <div css={panelStyle}>
         <h2 css={titleStyle}>{title}</h2>
         <div css={contentStyle}>{children}</div>
