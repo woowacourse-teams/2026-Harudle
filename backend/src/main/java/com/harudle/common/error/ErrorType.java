@@ -243,6 +243,16 @@ public enum ErrorType {
             "Image storage error",
             "생성 이미지를 저장하거나 불러오지 못했습니다."
     ),
+    PROFILE_IMAGE_CAPACITY_EXCEEDED(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "Profile image capacity exceeded",
+            "현재 사진을 처리 중입니다. 잠시 후 다시 시도해 주세요."
+    ),
+    PROFILE_IMAGE_STORAGE_ERROR(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "Profile image storage error",
+            "프로필 이미지를 저장하거나 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."
+    ),
     AI_PROVIDER_TIMEOUT(
             HttpStatus.GATEWAY_TIMEOUT,
             "AI provider timeout",

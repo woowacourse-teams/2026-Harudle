@@ -35,7 +35,8 @@ class FeedResponseAssembler {
         return new FeedResponse(
                 result.id(),
                 new FeedResponse.Author(
-                        result.author().id(), result.author().nickname(), result.author().profileImageUrl()
+                        result.author().id(), result.author().nickname(), result.author().profileImageUrl(),
+                        result.author().profileImageUrlExpiresAt()
                 ),
                 new FeedResponse.Category(result.category().id(), result.category().name()),
                 accessUrl.url(),
