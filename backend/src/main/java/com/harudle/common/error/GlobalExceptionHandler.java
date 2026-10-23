@@ -403,7 +403,7 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             AiGenerationException exception,
             HttpServletRequest request
     ) {
-        return createResponse(ErrorType.from(exception.errorType()), request);
+        return createResponse(ErrorType.from(exception), request);
     }
 
     @ExceptionHandler(ImageStorageException.class)

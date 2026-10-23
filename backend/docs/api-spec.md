@@ -538,8 +538,9 @@ Cookie: guest_session={guestToken}
 | `SUCCEEDED` | 생성 완료 | 완성된 일기의 ID | `null` |
 | `FAILED` | 생성 실패 | `null` | 저장된 생성 오류 코드 |
 
-실패 상태의 `errorCode`는 `AI_PROVIDER_ERROR`, `AI_PROVIDER_RATE_LIMITED`, `AI_PROVIDER_TIMEOUT`,
-`AI_OUTPUT_TRUNCATED`, `AI_RESPONSE_PROCESSING_ERROR`, `GENERATION_INTERNAL_ERROR`,
+실패 상태의 `errorCode`는 `AI_PROVIDER_ERROR`, `AI_PROVIDER_CONNECTION_ERROR`, `AI_PROVIDER_SERVER_ERROR`,
+`AI_PROVIDER_CONFIGURATION_ERROR`, `AI_PROVIDER_REQUEST_REJECTED`, `AI_PROVIDER_RATE_LIMITED`,
+`AI_PROVIDER_TIMEOUT`, `AI_CONTENT_BLOCKED`, `AI_OUTPUT_TRUNCATED`, `AI_RESPONSE_PROCESSING_ERROR`, `GENERATION_INTERNAL_ERROR`,
 `GENERATION_INTERRUPTED`, `GENERATION_PENDING_TIMEOUT`, `IMAGE_STORAGE_ERROR` 중 하나입니다.
 작업이 실패한 것은 상태 조회 API의 오류가 아니므로 `200 OK`와 `FAILED`로 반환합니다.
 
@@ -852,7 +853,15 @@ Retry-After: 13800
 | `415` | `UNSUPPORTED_MEDIA_TYPE` | 지원하지 않는 요청 미디어 타입 |
 | `429` | `DAILY_GENERATION_LIMIT_EXCEEDED` | KST 기준 일일 생성 3회 초과 |
 | `500` | `INTERNAL_SERVER_ERROR` | 서버 내부의 예기치 않은 오류 |
-| `502` | `AI_PROVIDER_ERROR` | LLM 또는 이미지 생성 Provider 호출 실패 |
+| `400` | `AI_CONTENT_BLOCKED` | AI 서비스의 명시적인 콘텐츠 제한으로 생성 중단 |
+| `502` | `AI_PROVIDER_ERROR` | 원인을 구분하지 못한 외부 AI 호출 실패 |
+| `502` | `AI_PROVIDER_CONNECTION_ERROR` | 우리 서버와 외부 AI 서비스 사이의 연결 실패 |
+| `502` | `AI_PROVIDER_SERVER_ERROR` | 외부 AI 서비스의 일시적인 서버 오류 |
+| `502` | `AI_PROVIDER_REQUEST_REJECTED` | 외부 AI 서비스가 요청을 거부함. 사용자 입력 문제로 단정하지 않음 |
+| `502` | `AI_OUTPUT_TRUNCATED` | AI 출력 토큰 한도에 도달해 생성 결과가 잘림 |
+| `502` | `AI_RESPONSE_PROCESSING_ERROR` | JSON 변환 실패나 이미지 누락 등 AI 응답 처리 실패 |
+| `503` | `AI_PROVIDER_CONFIGURATION_ERROR` | 외부 AI 서비스 인증이나 접근 권한 설정 문제 |
+| `503` | `AI_PROVIDER_RATE_LIMITED` | 외부 AI 서비스 이용 제한. 사용자 개인의 일일 생성 한도와 구분 |
 | `503` | `GENERATION_UNAVAILABLE` | 생성 어댑터 또는 생성 프롬프트를 사용할 수 없음 |
 | `503` | `GENERATION_CAPACITY_EXCEEDED` | 미완료 생성 작업이 동시 실행 수에 도달해 신규 접수를 거절함 |
 | `503` | `GENERATION_INTERRUPTED` | 서버 중단 등으로 생성 처리가 완료되지 못함 |
@@ -875,7 +884,17 @@ Retry-After: 13800
 - 실패한 생성을 새 Idempotency Key로 재시도하면 새로운 요청으로 처리하고 생성 횟수를 차감합니다.
 - 이미지 업로드 후 생성 완료 저장 결과가 불명확하면 DB 상태를 다시 확인하고, 성공 결과가 참조할 가능성이 없는 이미지만
   best-effort로 삭제합니다.
-- 요청을 거절하는 오류 응답은 RFC 9457 Problem Details 형식으로 반환합니다. 상태 조회에서 확인한 생성 실패는 `200 OK`와 `FAILED`로 반환합니다.
+- 요청을 거절하는 오류 응답은 RFC 9457 Problem Details 형식으로 반환합니다.
+  상태 조회에서 확인한 생성 실패는 `200 OK`와 `FAILED`, 저장된 `errorCode`로 반환합니다.
+- AI 실패는 내부 `errorType`과 `providerFailureType`을 함께 확인해 저장 코드와 응답 코드를 정합니다.
+  동일한 멱등성 키로 실패 요청을 다시 보내면 저장된 오류 코드에 맞는 안내 문구를 반환합니다.
+- Gemini 응답은 본문이나 이미지를 읽기 전에 프롬프트 차단 사유와 첫 번째 후보의 종료 사유를 확인합니다.
+  명시적인 콘텐츠 제한만 `AI_CONTENT_BLOCKED`로 분류하며, 빈 응답이나 이미지 누락만으로 차단을 판단하지 않습니다.
+  생성 차단은 보조 AI 호출 대상으로 처리하지 않습니다.
+  출력 토큰 한도 도달은 결과 처리까지 실패한 경우에만 `AI_OUTPUT_TRUNCATED`로 분류합니다.
+- Problem Details 응답에는 원인별 `code`와 미리 정한 한국어 `detail`을 반환합니다.
+  외부 API 오류 원문과 프롬프트는 노출하지 않습니다.
+  `action` 필드는 추가하지 않습니다. DB의 기존 `error_code` 문자열 컬럼을 사용하며 스키마 변경은 필요하지 않습니다.
 
 ## 10. 비동기 생성 운영 조건
 

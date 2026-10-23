@@ -28,6 +28,7 @@ import com.harudle.generation.diary.service.dto.CompletedDiaryGeneration;
 import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
 import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
+import com.harudle.generation.diary.service.exception.AiProviderFailureType;
 import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
 import com.harudle.generation.diary.service.port.ImageStorage;
@@ -253,6 +254,7 @@ class ClaimedDiaryGenerationServiceTest {
     @DisplayName("세분화한 AI 오류 유형을 해당 내부 생성 오류 코드로 저장한다")
     void generateClaimedDiaryImageMarksClassifiedAiFailure(
             AiGenerationErrorType errorType,
+            AiProviderFailureType providerFailureType,
             GenerationErrorCode expectedErrorCode
     ) {
         GenerateDiaryImageCommand command = createCommand();
@@ -260,7 +262,9 @@ class ClaimedDiaryGenerationServiceTest {
         GenerationPrompt prompt = mock(GenerationPrompt.class);
         AiGenerationException exception = new AiGenerationException(
                 errorType,
-                "Gemini 생성에 실패했습니다."
+                "Gemini 생성에 실패했습니다.",
+                null,
+                providerFailureType
         );
         when(prompt.getStoryboardPromptText()).thenReturn("스토리보드 프롬프트");
         when(diaryGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
@@ -707,13 +711,31 @@ class ClaimedDiaryGenerationServiceTest {
 
     private static Stream<Arguments> classifiedAiFailures() {
         return Stream.of(
-                Arguments.of(AiGenerationErrorType.RATE_LIMITED, GenerationErrorCode.AI_PROVIDER_RATE_LIMITED),
-                Arguments.of(AiGenerationErrorType.OUTPUT_TRUNCATED, GenerationErrorCode.AI_OUTPUT_TRUNCATED),
+                Arguments.of(AiGenerationErrorType.PROVIDER_ERROR, AiProviderFailureType.NETWORK_ERROR,
+                        GenerationErrorCode.AI_PROVIDER_CONNECTION_ERROR),
+                Arguments.of(AiGenerationErrorType.PROVIDER_ERROR, AiProviderFailureType.TRANSIENT_SERVER_ERROR,
+                        GenerationErrorCode.AI_PROVIDER_SERVER_ERROR),
+                Arguments.of(AiGenerationErrorType.PROVIDER_ERROR, AiProviderFailureType.AUTH_CONFIGURATION_ERROR,
+                        GenerationErrorCode.AI_PROVIDER_CONFIGURATION_ERROR),
+                Arguments.of(AiGenerationErrorType.PROVIDER_ERROR, AiProviderFailureType.REQUEST_REJECTED,
+                        GenerationErrorCode.AI_PROVIDER_REQUEST_REJECTED),
+                Arguments.of(AiGenerationErrorType.PROVIDER_ERROR, AiProviderFailureType.CANCELLED,
+                        GenerationErrorCode.GENERATION_INTERRUPTED),
+                Arguments.of(AiGenerationErrorType.PROVIDER_ERROR, AiProviderFailureType.UNKNOWN,
+                        GenerationErrorCode.AI_PROVIDER_ERROR),
+                Arguments.of(AiGenerationErrorType.RATE_LIMITED, AiProviderFailureType.UNKNOWN,
+                        GenerationErrorCode.AI_PROVIDER_RATE_LIMITED),
+                Arguments.of(AiGenerationErrorType.CONTENT_BLOCKED, AiProviderFailureType.UNKNOWN,
+                        GenerationErrorCode.AI_CONTENT_BLOCKED),
+                Arguments.of(AiGenerationErrorType.OUTPUT_TRUNCATED, AiProviderFailureType.UNKNOWN,
+                        GenerationErrorCode.AI_OUTPUT_TRUNCATED),
                 Arguments.of(
                         AiGenerationErrorType.RESPONSE_PROCESSING_ERROR,
+                        AiProviderFailureType.UNKNOWN,
                         GenerationErrorCode.AI_RESPONSE_PROCESSING_ERROR
                 ),
-                Arguments.of(AiGenerationErrorType.INTERNAL_ERROR, GenerationErrorCode.GENERATION_INTERNAL_ERROR)
+                Arguments.of(AiGenerationErrorType.INTERNAL_ERROR, AiProviderFailureType.UNKNOWN,
+                        GenerationErrorCode.GENERATION_INTERNAL_ERROR)
         );
     }
 }

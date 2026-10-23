@@ -9,7 +9,6 @@ import com.harudle.generation.diary.domain.StoryboardProviderInfo;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.diary.service.dto.CompletedDiaryGeneration;
 import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
-import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
 import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
 import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
@@ -151,7 +150,7 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
             String imageObjectKey = storeImage(generationId, generatedImage);
             return new GeneratedDiaryImage(storyboard, imageObjectKey, generatedStoryboard.tokenUsage(), providerInfo);
         } catch (AiGenerationException exception) {
-            failGeneration(generationId, mapAiGenerationErrorCode(exception.errorType()), providerInfo);
+            failGeneration(generationId, exception.errorCode(), providerInfo);
             throw exception;
         } catch (ImageStorageException exception) {
             failGeneration(generationId, GenerationErrorCode.IMAGE_STORAGE_ERROR, providerInfo);
@@ -199,17 +198,6 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
                 generation.getCompletedAt(),
                 generation.getTokenUsage()
         );
-    }
-
-    private GenerationErrorCode mapAiGenerationErrorCode(AiGenerationErrorType errorType) {
-        return switch (errorType) {
-            case PROVIDER_ERROR -> GenerationErrorCode.AI_PROVIDER_ERROR;
-            case RATE_LIMITED -> GenerationErrorCode.AI_PROVIDER_RATE_LIMITED;
-            case TIMEOUT -> GenerationErrorCode.AI_PROVIDER_TIMEOUT;
-            case OUTPUT_TRUNCATED -> GenerationErrorCode.AI_OUTPUT_TRUNCATED;
-            case RESPONSE_PROCESSING_ERROR -> GenerationErrorCode.AI_RESPONSE_PROCESSING_ERROR;
-            case INTERNAL_ERROR -> GenerationErrorCode.GENERATION_INTERNAL_ERROR;
-        };
     }
 
     private record GeneratedDiaryImage(
