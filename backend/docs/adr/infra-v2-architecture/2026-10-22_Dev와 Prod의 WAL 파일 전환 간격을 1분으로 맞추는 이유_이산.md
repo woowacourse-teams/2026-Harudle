@@ -86,6 +86,6 @@ S3의 물리 백업과 WAL로 복원하고, 복구 가능한 마지막 데이터
 - [일간 물리 백업 방식](<2026-10-22_Dev와 Prod의 일간 물리 백업을 증분 방식으로 만드는 이유_이산.md>)
 - [Dev와 Prod의 복구 목표](<2026-10-22_Dev와 Prod의 DB 복구 목표를 어떻게 나눌 것인가_이산.md>)
 - [pgBackRest 선정](<2026-10-22_EC2 PostgreSQL 백업 도구로 pgBackRest를 사용하는 이유_이산.md>)
-- [PostgreSQL 16 archive_timeout 설명](https://www.postgresql.org/docs/16/runtime-config-wal.html#GUC-ARCHIVE-TIMEOUT)
+- [PostgreSQL 18 archive_timeout 설명](https://www.postgresql.org/docs/18/runtime-config-wal.html#GUC-ARCHIVE-TIMEOUT)
 - [Crunchy Postgres Operator 60초 기본값](https://access.crunchydata.com/documentation/postgres-operator/latest/releases/5.1.x)
 - [pgBackRest archive-timeout 설명](https://pgbackrest.org/configuration.html#section-archive/option-archive-timeout)
