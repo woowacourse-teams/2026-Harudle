@@ -1,6 +1,11 @@
 import { useCallback, useState } from 'react';
 import { deleteFeed } from '../../domain/feeds/feedDelete';
 import type { Feed } from '../../domain/feeds/feedList';
+import {
+  getFeedListCache,
+  setFeedListCache,
+} from '../../domain/feeds/feedListCache';
+import { removeFeed } from '../../domain/feeds/feedListUpdates';
 import { useErrorTracking } from '../../posthog/useErrorTracking';
 import type { ApiRequest } from '../../shared/api';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
@@ -41,6 +46,14 @@ const useFeedDelete = ({ feedId }: UseFeedDeleteProps): FeedDeleteState => {
         });
         setRequest({ status: 'error', error: requestError });
         return;
+      }
+
+      const cached = getFeedListCache();
+      if (cached !== null) {
+        setFeedListCache({
+          ...cached,
+          data: removeFeed(cached.data, feedId),
+        });
       }
 
       setRequest({ status: 'success', data: undefined });

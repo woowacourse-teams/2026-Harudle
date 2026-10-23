@@ -23,13 +23,13 @@ class ProfileImageCleanupMigrationTest {
             new PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"));
 
     @Test
-    @DisplayName("V31은 기존 삭제 작업과 유예 시각을 유지하면서 회원별 조회 구조로 변경한다")
+    @DisplayName("V34는 기존 삭제 작업과 유예 시각을 유지하면서 회원별 조회 구조로 변경한다")
     void preservesPendingTasksWhenRenamingDeletionTime() {
         var dataSource = new DriverManagerDataSource(
                 POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword()
         );
         var jdbc = new JdbcTemplate(dataSource);
-        migrate(dataSource, "30");
+        migrate(dataSource, "33");
         UUID userId = UUID.randomUUID();
         String key = "harudle/profile-images/dev/" + userId + "/" + UUID.randomUUID() + ".webp";
         Instant createdAt = Instant.parse("2026-10-20T00:00:00Z");
@@ -39,7 +39,7 @@ class ProfileImageCleanupMigrationTest {
                 VALUES (?, ?, ?, ?)
                 """, key, userId, java.sql.Timestamp.from(createdAt), java.sql.Timestamp.from(deleteAfter));
 
-        assertThat(migrate(dataSource, "31")).isEqualTo(1);
+        assertThat(migrate(dataSource, "34")).isEqualTo(1);
 
         var repository = new ProfileImageCleanupRepository(jdbc);
         assertThat(repository.findPending(userId, createdAt, 50)).isEmpty();

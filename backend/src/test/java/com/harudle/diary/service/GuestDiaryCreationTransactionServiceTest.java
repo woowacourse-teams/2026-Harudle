@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 
 import com.harudle.diary.service.dto.CreateGuestDiaryCommand;
 import com.harudle.generation.diary.domain.GenerationStatus;
+import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
 import com.harudle.guest.application.GuestSessionResolver;
 import com.harudle.guest.application.exception.GuestTrialAlreadyUsedException;
 import com.harudle.guest.domain.GuestSession;
@@ -72,6 +73,46 @@ class GuestDiaryCreationTransactionServiceTest {
         assertThat(result.command().userId()).isEqualTo(GUEST_USER_ID);
         assertThat(session.isUsedForDiary(DIARY_ID)).isTrue();
         assertThat(session.getUsedAt()).isEqualTo(NOW);
+    }
+
+    @Test
+    @DisplayName("게스트 대기 작업을 다시 접수하면 같은 일기를 반환하고 체험 권한을 다시 사용하지 않는다")
+    void enqueueAndReplayGuestDiary() {
+        GuestSession session = createSession();
+        CreateGuestDiaryCommand guestCommand = createGuestCommand();
+        DiaryCreationClaim newClaim = createClaim(true, GenerationStatus.PENDING);
+        DiaryCreationClaim existingClaim = createClaim(false, GenerationStatus.PENDING);
+        when(guestSessionResolver.resolveForUpdate(RAW_TOKEN, NOW)).thenReturn(session);
+        when(claimService.enqueue(guestCommand.toDiaryCommand(GUEST_USER_ID), true))
+                .thenReturn(newClaim);
+        when(claimService.findExistingClaim(guestCommand.toDiaryCommand(GUEST_USER_ID)))
+                .thenReturn(Optional.of(existingClaim));
+
+        GuestDiaryCreationClaim first = transactionService.enqueue(RAW_TOKEN, guestCommand, true);
+        GuestDiaryCreationClaim replay = transactionService.enqueue(RAW_TOKEN, guestCommand, false);
+
+        assertThat(first.claim()).isSameAs(newClaim);
+        assertThat(replay.claim()).isSameAs(existingClaim);
+        assertThat(session.isUsedForDiary(DIARY_ID)).isTrue();
+        assertThat(session.getUsedAt()).isEqualTo(NOW);
+        verify(claimService).enqueue(guestCommand.toDiaryCommand(GUEST_USER_ID), true);
+        verify(claimService, never()).enqueue(guestCommand.toDiaryCommand(GUEST_USER_ID), false);
+    }
+
+    @Test
+    @DisplayName("게스트 대기 작업을 저장하지 못하면 체험 권한도 사용하지 않는다")
+    void doNotUseGuestTrialWhenEnqueueFails() {
+        GuestSession session = createSession();
+        CreateGuestDiaryCommand guestCommand = createGuestCommand();
+        when(guestSessionResolver.resolveForUpdate(RAW_TOKEN, NOW)).thenReturn(session);
+        when(claimService.enqueue(guestCommand.toDiaryCommand(GUEST_USER_ID), false))
+                .thenThrow(GenerationUnavailableException.adaptersNotConfigured());
+
+        assertThatThrownBy(() -> transactionService.enqueue(RAW_TOKEN, guestCommand, false))
+                .isInstanceOf(GenerationUnavailableException.class);
+
+        assertThat(session.isUsed()).isFalse();
+        assertThat(session.getDiaryId()).isNull();
     }
 
     @Test
@@ -150,13 +191,17 @@ class GuestDiaryCreationTransactionServiceTest {
     }
 
     private DiaryCreationClaim createClaim(boolean newlyCreated) {
+        return createClaim(newlyCreated, GenerationStatus.PROCESSING);
+    }
+
+    private DiaryCreationClaim createClaim(boolean newlyCreated, GenerationStatus status) {
         return new DiaryCreationClaim(
                 DIARY_ID,
                 DIARY_DATE,
                 "오늘 친구와 카페에 갔다.",
                 CREATED_AT,
                 GENERATION_ID,
-                GenerationStatus.PROCESSING,
+                status,
                 null,
                 null,
                 null,

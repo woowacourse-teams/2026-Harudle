@@ -113,7 +113,8 @@ public class CurrentUserController {
             ErrorType.VALIDATION_ERROR,
             ErrorType.NICKNAME_ALREADY_IN_USE,
             ErrorType.PUBLIC_PROFILE_NOT_ASSIGNED,
-            ErrorType.PROFILE_IMAGE_STORAGE_ERROR
+            ErrorType.PROFILE_IMAGE_STORAGE_ERROR,
+            ErrorType.PROFILE_IMAGE_CAPACITY_EXCEEDED
     }, framework = {
             @ApiFrameworkError(status = 413, name = "원본 이미지 크기 초과", detail = "프로필 이미지는 5MiB 이하여야 합니다."),
             @ApiFrameworkError(status = 415, name = "미지원 이미지 형식", detail = "프로필 이미지는 JPEG 또는 PNG만 지원합니다.")
@@ -168,7 +169,8 @@ public class CurrentUserController {
             ErrorType.INVALID_CURRENT_USER,
             ErrorType.VALIDATION_ERROR,
             ErrorType.PUBLIC_PROFILE_NOT_ASSIGNED,
-            ErrorType.PROFILE_IMAGE_STORAGE_ERROR
+            ErrorType.PROFILE_IMAGE_STORAGE_ERROR,
+            ErrorType.PROFILE_IMAGE_CAPACITY_EXCEEDED
     }, framework = {
             @ApiFrameworkError(status = 413, name = "원본 이미지 크기 초과", detail = "프로필 이미지는 5MiB 이하여야 합니다."),
             @ApiFrameworkError(status = 415, name = "미지원 이미지 형식", detail = "프로필 이미지는 JPEG 또는 PNG만 지원합니다.")

@@ -1,0 +1,14 @@
+{
+  "name": "harudle-codex-image-poc",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "verify": "node verify.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@openai/codex-sdk": "0.162.1"
+  }
+}

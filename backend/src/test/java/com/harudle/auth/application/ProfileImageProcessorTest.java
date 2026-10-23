@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
@@ -11,11 +14,17 @@ import com.harudle.auth.infrastructure.CwebpProfileImageEncoder;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.net.URLClassLoader;
+import java.io.File;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.zip.CRC32;
 import javax.imageio.ImageIO;
@@ -148,6 +157,87 @@ class ProfileImageProcessorTest {
 
         assertThat(decoded.getRGB(0, 0) >>> 24).isEqualTo(128);
         assertThat(decoded.getRGB(1, 1) >>> 24).isZero();
+    }
+
+    @Test
+    @DisplayName("변환 중에는 추가 요청을 즉시 거절하고 완료 후에는 다시 처리한다")
+    void rejectsConcurrentProcessingAndReleasesPermit() throws Exception {
+        byte[] bytes = imageBytes("png", 10, 10);
+        CountDownLatch encoding = new CountDownLatch(1);
+        CountDownLatch finish = new CountDownLatch(1);
+        when(imageEncoder.encode(any())).thenAnswer(invocation -> {
+            encoding.countDown();
+            assertThat(finish.await(10, TimeUnit.SECONDS)).isTrue();
+            return new byte[] {1};
+        });
+        try (var executor = Executors.newFixedThreadPool(10)) {
+            var first = executor.submit(() -> imageProcessor.process(bytes));
+            try {
+                assertThat(encoding.await(5, TimeUnit.SECONDS)).isTrue();
+                var rejected = java.util.stream.IntStream.range(0, 9)
+                        .mapToObj(index -> executor.submit(() ->
+                                assertThatThrownBy(() -> imageProcessor.process(bytes))
+                                        .isInstanceOf(ProfileImageCapacityExceededException.class)))
+                        .toList();
+                for (var request : rejected) {
+                    request.get(5, TimeUnit.SECONDS);
+                }
+            } finally {
+                finish.countDown();
+            }
+            assertThat(first.get(5, TimeUnit.SECONDS)).containsExactly((byte) 1);
+        }
+        assertThat(imageProcessor.process(bytes)).containsExactly((byte) 1);
+    }
+
+    @Test
+    @DisplayName("읽기나 WebP 변환이 실패해도 다음 요청을 처리한다")
+    void releasesPermitAfterFailure() throws IOException {
+        assertRejected("broken".getBytes(StandardCharsets.UTF_8), HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+        byte[] bytes = imageBytes("png", 10, 10);
+        when(imageEncoder.encode(any())).thenThrow(new IllegalStateException("conversion failed"))
+                .thenReturn(new byte[] {1});
+        assertThatThrownBy(() -> imageProcessor.process(bytes)).isInstanceOf(IllegalStateException.class);
+        assertThat(imageProcessor.process(bytes)).containsExactly((byte) 1);
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"png", "jpeg"})
+    @DisplayName("5000픽셀 사진을 64MiB 힙에서 실제 WebP로 변환한다")
+    void processesLargeImageWithLimitedHeap(String format) throws Exception {
+        requireWebpTools();
+        Path input = directory.resolve("large." + format);
+        Path output = directory.resolve("limited.webp");
+        Path log = directory.resolve("limited.log");
+        Files.write(input, imageBytes(format, 5000, 5000));
+        assertThat(Files.size(input)).isLessThan(5L * 1024 * 1024);
+        Process child = new ProcessBuilder(
+                Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                "-Xmx64m", "-Djava.awt.headless=true", "-cp", testClasspath(),
+                ProfileImageLimitedHeapProbe.class.getName(), input.toString(), output.toString()
+        ).redirectErrorStream(true).redirectOutput(log.toFile()).start();
+        try {
+            assertThat(child.waitFor(30, TimeUnit.SECONDS)).isTrue();
+            assertThat(child.exitValue()).withFailMessage(Files.readString(log)).isZero();
+            BufferedImage decoded = decodeWebp(Files.readAllBytes(output));
+            assertThat(decoded.getWidth()).isEqualTo(512);
+            assertThat(decoded.getHeight()).isEqualTo(512);
+        } finally {
+            child.destroyForcibly();
+        }
+    }
+
+    private String testClasspath() throws Exception {
+        List<String> paths = new ArrayList<>();
+        for (ClassLoader loader = getClass().getClassLoader(); loader != null; loader = loader.getParent()) {
+            if (loader instanceof URLClassLoader urlLoader) {
+                for (var url : urlLoader.getURLs()) {
+                    paths.add(Path.of(url.toURI()).toString());
+                }
+            }
+        }
+        paths.add(System.getProperty("java.class.path"));
+        return String.join(File.pathSeparator, paths);
     }
 
     private void assertRejected(byte[] bytes, HttpStatus status) {

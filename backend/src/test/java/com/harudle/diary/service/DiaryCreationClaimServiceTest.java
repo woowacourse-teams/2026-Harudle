@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -13,14 +14,18 @@ import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
 import com.harudle.generation.config.GenerationLifecycleProperties;
+import com.harudle.generation.config.GenerationWorkerProperties;
 import com.harudle.generation.diary.domain.DiaryGeneration;
 import com.harudle.generation.diary.domain.GenerationErrorCode;
 import com.harudle.generation.diary.domain.GenerationStatus;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
+import com.harudle.generation.diary.repository.DiaryGenerationAdmissionLock;
 import com.harudle.generation.diary.service.DiaryGenerationCompletionService;
 import com.harudle.generation.diary.service.RequestFingerprintGenerator;
+import com.harudle.generation.diary.service.GenerationQueueMetrics;
 import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
 import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
+import com.harudle.generation.diary.service.exception.GenerationCapacityExceededException;
 import com.harudle.generation.diary.service.exception.IdempotencyKeyConflictException;
 import com.harudle.generation.prompt.domain.GenerationPrompt;
 import com.harudle.generation.prompt.repository.GenerationPromptRepository;
@@ -30,11 +35,15 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.Optional;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -64,14 +73,24 @@ class DiaryCreationClaimServiceTest {
     @Mock
     private RequestFingerprintGenerator requestFingerprintGenerator;
 
+    @Mock
+    private DiaryGenerationAdmissionLock admissionLock;
+
+    @Mock
+    private GenerationQueueMetrics queueMetrics;
+
     private DiaryCreationClaimService claimService;
 
     @BeforeEach
     void setUp() {
         lenient().when(requestFingerprintGenerator.generate(any(GenerateDiaryImageCommand.class)))
                 .thenAnswer(invocation -> fingerprintFor(invocation.getArgument(0)));
+        claimService = createClaimService(1);
+    }
+
+    private DiaryCreationClaimService createClaimService(int concurrency) {
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
-        claimService = new DiaryCreationClaimService(
+        return new DiaryCreationClaimService(
                 diaryRepository,
                 generationPromptRepository,
                 diaryGenerationRepository,
@@ -80,14 +99,63 @@ class DiaryCreationClaimServiceTest {
                 clock,
                 new GenerationLifecycleProperties(
                         Duration.ofMinutes(30),
-                        Duration.ofMinutes(1)
-                )
+                        Duration.ofMinutes(1),
+                        Duration.ofSeconds(120),
+                        Duration.ofSeconds(5)
+                ),
+                admissionLock,
+                new GenerationWorkerProperties(concurrency, Duration.ofSeconds(5)),
+                queueMetrics
         );
     }
 
+    @ParameterizedTest
+    @ValueSource(longs = {1, 2})
+    @DisplayName("미완료 작업이 동시 실행 수에 도달했으면 새 일기와 작업을 저장하지 않는다")
+    void rejectNewGenerationAtCapacity(long unfinishedCount) {
+        when(diaryGenerationRepository.findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY))
+                .thenReturn(Optional.empty());
+        when(diaryGenerationRepository.countByStatusIn(List.of(GenerationStatus.PENDING, GenerationStatus.PROCESSING)))
+                .thenReturn(unfinishedCount);
+
+        assertThatThrownBy(() -> claimService.enqueue(createCommand("오늘의 일기"), true))
+                .isInstanceOf(GenerationCapacityExceededException.class);
+
+        var order = inOrder(admissionLock, diaryGenerationRepository);
+        order.verify(admissionLock).acquire();
+        order.verify(diaryGenerationRepository).findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY);
+        order.verify(diaryGenerationRepository)
+                .countByStatusIn(List.of(GenerationStatus.PENDING, GenerationStatus.PROCESSING));
+        verify(diaryRepository, never()).save(any(Diary.class));
+        verify(diaryGenerationRepository, never()).saveAndFlush(any(DiaryGeneration.class));
+        verify(queueMetrics).capacityRejected();
+    }
+
     @Test
-    @DisplayName("일기와 처리 중 생성 기록을 저장해 신규 생성을 선점한다")
-    void claimNewDiaryCreation() {
+    @DisplayName("동시 실행 수가 3이면 미완료 작업이 2개일 때 한 건을 더 접수한다")
+    void acceptNewGenerationBelowConfiguredCapacity() {
+        claimService = createClaimService(3);
+        when(diaryGenerationRepository.findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY))
+                .thenReturn(Optional.empty());
+        when(diaryGenerationRepository.countByStatusIn(List.of(GenerationStatus.PENDING, GenerationStatus.PROCESSING)))
+                .thenReturn(2L);
+        GenerationPrompt prompt = createPrompt();
+        when(generationPromptRepository.findFirstByOrderByIdDesc()).thenReturn(Optional.of(prompt));
+        when(diaryRepository.save(any(Diary.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(diaryGenerationRepository.saveAndFlush(any(DiaryGeneration.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        DiaryCreationClaim claim = claimService.enqueue(createCommand("오늘의 일기"), true);
+
+        assertThat(claim.newlyCreated()).isTrue();
+        assertThat(claim.generationStatus()).isEqualTo(GenerationStatus.PENDING);
+        verify(queueMetrics, never()).capacityRejected();
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = GenerationStatus.class, names = {"PENDING", "PROCESSING"})
+    @DisplayName("생성 방식에 맞는 상태로 일기와 생성 기록을 함께 저장한다")
+    void claimNewDiaryCreation(GenerationStatus initialStatus) {
         CreateDiaryCommand command = createCommand("오늘 친구와 카페에 갔다.");
         GenerationPrompt prompt = createPrompt();
         when(diaryGenerationRepository.findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY))
@@ -97,14 +165,66 @@ class DiaryCreationClaimServiceTest {
         when(diaryGenerationRepository.saveAndFlush(any(DiaryGeneration.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        DiaryCreationClaim claim = claimService.claim(command, true, DIARY_DATE);
+        DiaryCreationClaim claim = initialStatus == GenerationStatus.PENDING
+                ? claimService.enqueue(command, true, DIARY_DATE)
+                : claimService.claim(command, true, DIARY_DATE);
 
         assertThat(claim.newlyCreated()).isTrue();
         assertThat(claim.sourceText()).isEqualTo(command.sourceText());
-        assertThat(claim.generationStatus()).isEqualTo(GenerationStatus.PROCESSING);
+        assertThat(claim.generationStatus()).isEqualTo(initialStatus);
+        assertThat(claim.title()).isNull();
+        assertThat(claim.imageObjectKey()).isNull();
+        assertThat(claim.completedAt()).isNull();
         ArgumentCaptor<DiaryGeneration> generationCaptor = ArgumentCaptor.forClass(DiaryGeneration.class);
         verify(diaryGenerationRepository).saveAndFlush(generationCaptor.capture());
+        assertThat(generationCaptor.getValue().getStatus()).isEqualTo(initialStatus);
         assertThat(generationCaptor.getValue().getUsageDate()).isEqualTo(DIARY_DATE);
+    }
+
+    @Test
+    @DisplayName("대기 중인 같은 요청은 실행 가능 여부와 관계없이 기존 작업을 반환한다")
+    void enqueueExistingPendingCreation() {
+        CreateDiaryCommand command = createCommand("오늘 친구와 카페에 갔다.");
+        Diary diary = Diary.create(USER_ID, DIARY_DATE, command.sourceText());
+        DiaryGeneration generation = DiaryGeneration.pending(
+                diary.getId(),
+                1L,
+                IDEMPOTENCY_KEY,
+                requestFingerprintGenerator.generate(new GenerateDiaryImageCommand(
+                        USER_ID, diary.getId(), DIARY_DATE, command.sourceText(), IDEMPOTENCY_KEY
+                )),
+                DIARY_DATE
+        );
+        when(diaryGenerationRepository.findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY))
+                .thenReturn(Optional.of(generation));
+        when(diaryRepository.findByIdIncludingDeletedForUpdate(diary.getId()))
+                .thenReturn(Optional.of(diary));
+
+        DiaryCreationClaim claim = claimService.enqueue(command, false);
+
+        assertThat(claim.newlyCreated()).isFalse();
+        assertThat(claim.diaryId()).isEqualTo(diary.getId());
+        assertThat(claim.generationId()).isEqualTo(generation.getId());
+        assertThat(claim.generationStatus()).isEqualTo(GenerationStatus.PENDING);
+        verify(admissionLock).acquire();
+        verify(queueMetrics, never()).capacityRejected();
+        verify(diaryGenerationRepository, never()).countByStatusIn(any());
+        verify(diaryRepository, never()).save(any(Diary.class));
+        verify(diaryGenerationRepository, never()).saveAndFlush(any(DiaryGeneration.class));
+    }
+
+    @Test
+    @DisplayName("실행할 수 없는 신규 요청은 대기 작업도 저장하지 않는다")
+    void rejectNewPendingCreationWhenGenerationIsUnavailable() {
+        CreateDiaryCommand command = createCommand("오늘의 일기");
+        when(diaryGenerationRepository.findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> claimService.enqueue(command, false))
+                .isInstanceOf(GenerationUnavailableException.class);
+
+        verify(diaryRepository, never()).save(any(Diary.class));
+        verify(diaryGenerationRepository, never()).saveAndFlush(any(DiaryGeneration.class));
     }
 
     @Test

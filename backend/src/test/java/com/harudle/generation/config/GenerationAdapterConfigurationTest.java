@@ -160,6 +160,38 @@ class GenerationAdapterConfigurationTest {
     }
 
     @Test
+    void configureCodexOnlyAsAnOptInImageFallbackAndDisableGeminiRetries() {
+        GeminiClientFactory factory = spy(new ExpressGeminiClientFactory("test-api-key"));
+        contextRunner.withPropertyValues(enabledAdapterProperties()).withPropertyValues(
+                        "harudle.generation.image.fallback-provider=codex",
+                        "harudle.generation.image.codex-url=http://127.0.0.1:8090",
+                        "harudle.generation.image.codex-token=test-internal-worker-token-32-characters")
+                .withInitializer(context -> context.addBeanFactoryPostProcessor(beanFactory ->
+                        beanFactory.registerSingleton("geminiClientFactory", factory)))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).hasSingleBean(DiaryImageGenerator.class);
+                    assertThat(context.getBean(DiaryImageGenerator.class)).isInstanceOf(
+                            com.harudle.generation.diary.service.image.FallbackDiaryImageGenerator.class);
+                    var options = ArgumentCaptor.forClass(HttpOptions.class);
+                    var clients = ArgumentCaptor.forClass(ClientOptions.class);
+                    verify(factory, times(2)).create(options.capture(), clients.capture());
+                    var imageOptions = options.getAllValues().stream()
+                            .filter(value -> value.timeout().orElseThrow() == 180_000).findFirst().orElseThrow();
+                    assertThat(imageOptions.retryOptions().orElseThrow().attempts()).contains(1);
+                    assertThat(imageOptions.retryOptions().orElseThrow().httpStatusCodes()).contains(List.of());
+                });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"codex", "unknown"})
+    void invalidImageFallbackConfigurationFailsAtStartup(String fallback) {
+        contextRunner.withPropertyValues(enabledAdapterProperties())
+                .withPropertyValues("harudle.generation.image.fallback-provider=" + fallback)
+                .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
     @DisplayName("Qwen이 보조로 선택되어도 전용 키가 없으면 시작에 실패한다")
     void requireTokenPlanKeyForFallback() {
         contextRunner.withPropertyValues(enabledAdapterProperties())

@@ -1,6 +1,7 @@
 package com.harudle.auth.application;
 
 import com.harudle.auth.infrastructure.S3ProfileImageStorage;
+import com.harudle.auth.domain.policy.NicknamePolicy;
 import java.io.IOException;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
@@ -52,6 +53,9 @@ public class ProfileImageUploadService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "변경할 프로필 정보를 보내 주세요.");
         }
         if (image != null) {
+            if (nickname != null) {
+                NicknamePolicy.normalizeAndValidate(nickname);
+            }
             upload(userId, image, nickname);
             return;
         }

@@ -116,6 +116,7 @@ class ProfileImageUploadControllerTest {
         URI url = URI.create("https://s3.example/profile.webp?signature=example");
         Instant expiresAt = Instant.now().plusSeconds(900);
         when(storage.createAccessUrl(key(user.getId()))).thenReturn(new ImageAccessUrl(url, expiresAt));
+        when(imageUrlProvider.forRead()).thenReturn(imageUrlProvider);
         when(imageUrlProvider.createAccessUrl("generated/profile-read-test.webp"))
                 .thenReturn(new ImageAccessUrl(URI.create("https://s3.example/comic.webp"), expiresAt));
         MockMvcResponse before = RestAssuredMockMvc.get("/api/v1/feeds/" + feedId);
@@ -432,6 +433,24 @@ class ProfileImageUploadControllerTest {
 
         assertThat(response.statusCode()).isEqualTo(400);
         assertThat(response.jsonPath().getString("code")).isEqualTo("VALIDATION_ERROR");
+        verifyNoInteractions(encoder, storage);
+    }
+
+    @Test
+    @DisplayName("통합 수정에서 빈 닉네임과 사진을 보내면 변환 전에 400 오류를 반환한다")
+    void rejectsBlankNicknameBeforeImageUpload() throws IOException {
+        User user = saveUser(true);
+        String previous = setPreviousImage(user);
+
+        MockMvcResponse response = RestAssuredMockMvc.given()
+                .header(HttpHeaders.AUTHORIZATION, bearer(user.getId()))
+                .multiPart("image", "profile.png", imageBytes("png", 10, 10), "image/png")
+                .param("nickname", "")
+                .patch("/api/v1/me/profile");
+
+        assertThat(response.statusCode()).isEqualTo(400);
+        assertThat(response.jsonPath().getString("code")).isEqualTo("VALIDATION_ERROR");
+        assertThat(users.findById(user.getId()).orElseThrow().getProfileImageObjectKey()).isEqualTo(previous);
         verifyNoInteractions(encoder, storage);
     }
 

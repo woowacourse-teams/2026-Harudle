@@ -34,6 +34,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.support.StaticListableBeanFactory;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -357,6 +359,18 @@ class ProfileImageUploadServiceTest {
         assertThat(saved().getProfileImageObjectKey()).isEqualTo(oldKey);
         verify(storage).delete(newKey);
         verify(storage, never()).delete(oldKey);
+        assertThat(taskCount()).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", " ", "앞뒤 ", "너무긴닉네임열한글자입니다", "금지!"})
+    @DisplayName("닉네임 형식이 잘못되면 사진 변환과 업로드 전에 거절한다")
+    void rejectsInvalidNicknameBeforeProcessing(String nickname) {
+        assertThatThrownBy(() -> service.changeProfile(user.getId(), nickname, null, image()))
+                .isInstanceOf(com.harudle.auth.domain.exception.InvalidNicknameException.class);
+        verifyNoInteractions(processor, storage);
+        assertThat(saved().getNickname()).isEqualTo("초록");
+        assertThat(saved().getProfileImageObjectKey()).isEqualTo(oldKey);
         assertThat(taskCount()).isZero();
     }
 

@@ -3,11 +3,14 @@ package com.harudle.auth.application;
 import com.harudle.auth.infrastructure.CwebpProfileImageEncoder;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
+import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.Iterator;
+import java.util.concurrent.Semaphore;
 import javax.imageio.ImageIO;
+import javax.imageio.ImageReadParam;
 import javax.imageio.ImageReader;
 import javax.imageio.stream.ImageInputStream;
 import javax.imageio.stream.MemoryCacheImageInputStream;
@@ -21,6 +24,7 @@ public class ProfileImageProcessor {
     private static final long MAX_IMAGE_PIXELS = 25_000_000;
     private static final int MAX_IMAGE_SIZE = 512;
 
+    private final Semaphore processingPermit = new Semaphore(1);
     private final CwebpProfileImageEncoder imageEncoder;
 
     public ProfileImageProcessor(CwebpProfileImageEncoder imageEncoder) {
@@ -30,11 +34,14 @@ public class ProfileImageProcessor {
     public byte[] process(byte[] bytes) {
         validateFileSize(bytes);
 
-        BufferedImage source = decode(bytes);
-        BufferedImage cropped = cropSquare(source);
-        BufferedImage resized = resize(cropped);
-
-        return imageEncoder.encode(resized);
+        if (!processingPermit.tryAcquire()) {
+            throw new ProfileImageCapacityExceededException();
+        }
+        try {
+            return imageEncoder.encode(resize(decode(bytes)));
+        } finally {
+            processingPermit.release();
+        }
     }
 
     private void validateFileSize(byte[] bytes) {
@@ -65,8 +72,10 @@ public class ProfileImageProcessor {
         try {
             reader.setInput(input, true, true);
             validateFormat(reader.getFormatName());
-            validateDimensions(reader.getWidth(0), reader.getHeight(0));
-            BufferedImage image = reader.read(0);
+            int width = reader.getWidth(0);
+            int height = reader.getHeight(0);
+            validateDimensions(width, height);
+            BufferedImage image = reader.read(0, centeredReadParam(reader, width, height));
 
             if (image == null) {
                 throw unsupportedImage();
@@ -96,15 +105,13 @@ public class ProfileImageProcessor {
         }
     }
 
-    private BufferedImage cropSquare(BufferedImage source) {
-        int width = source.getWidth();
-        int height = source.getHeight();
+    private ImageReadParam centeredReadParam(ImageReader reader, int width, int height) {
         int size = Math.min(width, height);
-
-        int x = (width - size) / 2;
-        int y = (height - size) / 2;
-
-        return source.getSubimage(x, y, size, size);
+        int sampling = Math.max(1, size / MAX_IMAGE_SIZE);
+        ImageReadParam param = reader.getDefaultReadParam();
+        param.setSourceRegion(new Rectangle((width - size) / 2, (height - size) / 2, size, size));
+        param.setSourceSubsampling(sampling, sampling, 0, 0);
+        return param;
     }
 
     private BufferedImage resize(BufferedImage source) {
