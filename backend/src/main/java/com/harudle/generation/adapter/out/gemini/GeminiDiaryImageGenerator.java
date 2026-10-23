@@ -9,10 +9,11 @@ import com.google.genai.types.GenerateContentConfig;
 import com.google.genai.types.GenerateContentResponse;
 import com.google.genai.types.ImageConfig;
 import com.google.genai.types.Part;
+import com.harudle.generation.adapter.out.image.DiaryImagePrompt;
 import com.harudle.generation.config.GeminiGenerationProperties;
-import com.harudle.generation.diary.service.port.dto.DiaryImageGenerationRequest;
-import com.harudle.generation.diary.service.port.DiaryImageGenerator;
 import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
+import com.harudle.generation.diary.service.port.DiaryImageGenerator;
+import com.harudle.generation.diary.service.port.dto.DiaryImageGenerationRequest;
 import com.harudle.generation.diary.service.port.dto.GeneratedImage;
 import com.harudle.generation.diary.service.port.dto.ReferenceImage;
 import java.io.IOException;
@@ -27,13 +28,6 @@ public final class GeminiDiaryImageGenerator implements DiaryImageGenerator {
     private static final String OPERATION = "image_generation";
     private static final String TRANSLATION_OPERATION = "그림일기 이미지 생성";
     private static final String REQUEST_PREPARATION_ERROR = "REQUEST_PREPARATION_ERROR";
-    private static final String FINAL_TASK_HEADER = "[Final Task]";
-    private static final String REFERENCE_IMAGE_INSTRUCTION = """
-            [The Only Style Reference]
-            The following image is the single binding style and canonical protagonist reference described by \
-            the system instruction. Apply only its visual style and protagonist construction. Do not copy its \
-            story, panel count, composition, props, poses, or text, and do not assume another reference asset.
-            """.strip();
     private static final long INLINE_REQUEST_LIMIT_BYTES = 20L * 1024 * 1024;
     private static final long INLINE_REQUEST_OVERHEAD_BYTES = 8192L;
 
@@ -137,10 +131,7 @@ public final class GeminiDiaryImageGenerator implements DiaryImageGenerator {
     }
 
     private String createFinalTask(DiaryImageGenerationRequest request) {
-        String storyPrompt = promptRenderer.render(request.storyboard());
-        return FINAL_TASK_HEADER
-                + "\n"
-                + storyPrompt;
+        return DiaryImagePrompt.finalTask(request, promptRenderer);
     }
 
     private static byte[] readReferenceImage(
@@ -177,7 +168,7 @@ public final class GeminiDiaryImageGenerator implements DiaryImageGenerator {
             String finalTask
     ) {
         return Content.fromParts(
-                Part.fromText(REFERENCE_IMAGE_INSTRUCTION),
+                Part.fromText(DiaryImagePrompt.REFERENCE_INSTRUCTION),
                 Part.fromBytes(referenceImageBytes, referenceImage.mediaType().toString()),
                 Part.fromText(finalTask)
         );

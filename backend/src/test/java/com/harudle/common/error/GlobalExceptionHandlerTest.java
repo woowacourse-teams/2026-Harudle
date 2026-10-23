@@ -473,6 +473,20 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    @DisplayName("저장된 대기 만료 오류는 503과 대기 만료 코드로 반환한다")
+    void returnPendingGenerationTimeout() {
+        DiaryGenerationFailedException exception = new DiaryGenerationFailedException(
+                GenerationErrorCode.GENERATION_PENDING_TIMEOUT
+        );
+
+        ResponseEntity<ProblemDetail> response = exceptionHandler.handleDiaryGenerationFailed(exception, request);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(503);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getProperties()).containsEntry("code", "GENERATION_PENDING_TIMEOUT");
+    }
+
+    @Test
     @DisplayName("예상하지 못한 내부 오류는 기존 내부 서버 오류로 반환한다")
     void returnInternalServerErrorForInternalAiFailure() {
         AiGenerationException exception = new AiGenerationException(

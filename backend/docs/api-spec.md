@@ -10,9 +10,9 @@ MVP의 HTTP API 명세입니다.
 현재 버전은 다음 조건을 전제로 합니다.
 
 - Kakao OAuth2 로그인 지원
-- 이미지 생성은 동기 방식으로 처리
-- FE는 생성 API 응답을 기다리는 동안 단계 애니메이션 표시
-- 별도의 생성 상태 조회 API와 SQS는 사용하지 않음. 새 피드의 푸시 예약은 피드 명세의 Outbox 계약을 따름
+- 생성 API는 일기와 대기 작업을 저장한 뒤 반환하며, 이미지는 서버의 작업 처리기가 생성
+- 생성 접수 완료와 이미지 생성 완료를 구분하며, 프론트엔드 연결은 별도 작업
+- 생성 ID로 상태를 조회하는 API를 제공하며 SQS는 사용하지 않음. 새 피드의 푸시 예약은 피드 명세의 Outbox 계약을 따름
 - 하나의 일기당 하나의 4컷 이미지 생성
 - 사용자당 KST 기준 하루 최대 3회 생성
 - 동일한 일기 텍스트도 다시 생성할 수 있으며 각 요청은 일일 생성 횟수에 포함
@@ -82,7 +82,7 @@ Idempotency-Key: 7e5cc251-fdde-4cc0-a54e-2c8142750609
   저장합니다.
 - 멱등성 키는 사용량을 차감하기 전에 원자적으로 선점하거나 기존 기록을 조회합니다.
 - 같은 키와 같은 요청이 `SUCCEEDED` 상태라면 AI를 재호출하지 않고 기존 결과를 반환합니다.
-- 같은 키와 같은 요청이 유효한 `PROCESSING` 상태라면 `409 GENERATION_IN_PROGRESS`를 반환합니다.
+- 같은 키와 같은 요청이 `PENDING` 또는 유효한 `PROCESSING` 상태라면 `200`과 저장된 작업 상태를 반환합니다.
 - 같은 키와 같은 요청이 `FAILED` 상태라면 AI를 재호출하거나 사용량을 다시 차감하지 않고 저장된 실패를 반환합니다.
 - 같은 키를 다른 요청 본문에 사용하면 `409 IDEMPOTENCY_KEY_CONFLICT`를 반환합니다.
 - 실패한 생성을 다시 시도하려면 새로운 `Idempotency-Key`를 사용해야 하며 새 요청은 일일 생성 횟수에 포함됩니다.
@@ -117,9 +117,11 @@ Idempotency-Key: 7e5cc251-fdde-4cc0-a54e-2c8142750609
 
 | Method | Endpoint | 인증 | 설명 |
 | --- | --- | ---: | --- |
-| `POST` | `/api/v1/diaries` | 필요 | 일기 작성 및 4컷 이미지 동기 생성 |
-| `POST` | `/api/v1/guest/diaries` | 게스트 세션 | 로그인 전 1회 일기 작성 및 4컷 이미지 동기 생성 |
+| `POST` | `/api/v1/diaries` | 필요 | 일기 작성 및 4컷 이미지 생성 접수 |
+| `POST` | `/api/v1/guest/diaries` | 게스트 세션 | 로그인 전 1회 일기 작성 및 4컷 이미지 생성 접수 |
 | `GET` | `/api/v1/guest/diaries/{diaryId}` | 게스트 세션 | 게스트 세션에 연결된 일기 생성 결과 조회 |
+| `GET` | `/api/v1/diary-generations/{generationId}` | 필요 | 본인의 생성 작업 상태 조회 |
+| `GET` | `/api/v1/guest/diary-generations/{generationId}` | 게스트 세션 | 현재 게스트 세션의 생성 작업 상태 조회 |
 | `GET` | `/api/v1/me/generation-usage` | 필요 | 오늘 생성 사용량 조회 |
 | `GET` | `/api/v1/diaries` | 필요 | 연·월 기준 내 일기 조회 |
 | `GET` | `/api/v1/diaries/{diaryId}` | 필요 | 일기·생성 결과 및 연결된 활성 피드 ID 상세 조회 |
@@ -321,26 +323,32 @@ Content-Type: application/json
 
 1. 요청 값과 Idempotency Key를 검증합니다.
 2. 정의된 정규 표현으로 인증 사용자 ID, `diaryDate`, `sourceText`의 SHA-256 요청 지문을 계산합니다.
-3. 트랜잭션에서 일기와 `PROCESSING` 생성 기록을 저장해 Idempotency Key를 먼저 선점합니다.
-4. 키가 이미 존재하면 트랜잭션을 롤백하고 요청 지문과 기존 생성 상태에 따라 기존 성공·실패를 반환하거나 `409`를 반환합니다.
+3. 접수 트랜잭션의 DB 잠금을 얻습니다. 같은 키가 있으면 요청 지문을 검사합니다. 같은 요청은 기존 상태와 결과 또는 저장된 오류를 반환합니다. 다른 요청은 `409`로 거절합니다.
+4. 새 요청은 `PENDING`과 `PROCESSING`의 합이 `GENERATION_WORKER_CONCURRENCY`보다 적을 때만 일기와 작업을 저장합니다. 이미 상한에 도달했으면 `503 GENERATION_CAPACITY_EXCEEDED`로 거절합니다. 거절된 요청은 일기와 작업을 저장하지 않고 사용량도 차감하지 않습니다.
 5. 새 키를 선점한 경우에만 일일 사용량 행을 원자적으로 생성 또는 증가시키고 생성 가능 횟수를 확인합니다.
 6. 한도를 초과하면 전체 트랜잭션을 롤백하고 `429 DAILY_GENERATION_LIMIT_EXCEEDED`를 반환합니다.
 7. DB 트랜잭션을 커밋합니다.
-8. LLM을 호출해 일기를 네 개 장면으로 분리합니다.
-9. 이미지 생성 API를 호출합니다.
-10. 완성된 하나의 4컷 이미지를 S3에 저장합니다.
-11. 생성 기록이 여전히 `PROCESSING`인 경우에만 `SUCCEEDED`로 변경합니다.
-12. 완성 결과를 반환합니다.
+8. 이미지 생성을 기다리지 않고 일기 ID, 생성 ID, `PENDING` 상태와 사용량을 반환합니다.
+
+작업 처리기는 별도로 대기 작업을 선점하고 `PROCESSING`으로 변경합니다. 선점 트랜잭션이 끝나면
+스토리보드와 이미지를 생성하고 S3에 저장합니다. 마지막으로 같은 생성 기록에 성공 또는 실패를 저장합니다.
+
+접수 상한은 현재 백엔드 한 대의 동시 실행 수와 같습니다. 선점 전 작업도 상한에 포함합니다.
+회원과 게스트, 부하 테스트가 이 상한을 함께 사용합니다. 같은 요청의 재전송은 기존 작업으로 처리합니다.
+기본 설정에서 저장한 지 120초 이상 지난 `PENDING` 작업은 자동 만료 대상입니다.
+5초 간격으로 확인해 `FAILED`와 `GENERATION_PENDING_TIMEOUT` 오류를 저장합니다.
+만료된 작업은 실행하지 않습니다. 실제 실패 저장 시점은 확인 간격과 DB 처리 시간에 따라 늦어질 수 있습니다.
+이미 `PROCESSING`인 작업에는 이 대기 제한을 적용하지 않습니다.
 
 일일 사용량 행은 PostgreSQL의 원자적 Upsert로 최초 행 생성과 증가를 함께 처리합니다. 최초 생성과 관리자 한도 변경이
 동시에 실행될 때는 사용자 행 잠금으로 두 작업을 직렬화하며, 사용 횟수가 제한보다 작은 경우에만 증가합니다.
 
 외부 AI API 호출 중에는 DB 트랜잭션이나 DB 커넥션을 점유하지 않습니다.
 
-성공 응답:
+신규 접수 응답:
 
 ```http
-HTTP/1.1 201 Created
+HTTP/1.1 202 Accepted
 Location: /api/v1/diaries/6b66acba-0136-4822-8a59-f355dd7c977d
 ```
 
@@ -352,11 +360,11 @@ Location: /api/v1/diaries/6b66acba-0136-4822-8a59-f355dd7c977d
   "createdAt": "2026-08-06T20:10:23+09:00",
   "generation": {
     "id": "17ac16ef-c45a-40bb-92ea-aed37659ef1c",
-    "status": "SUCCEEDED",
-    "title": "친구와 보낸 카페 시간",
-    "imageUrl": "https://presigned-s3-url.example/...",
-    "imageUrlExpiresAt": "2026-08-06T20:20:23+09:00",
-    "completedAt": "2026-08-06T20:11:42+09:00"
+    "status": "PENDING",
+    "title": null,
+    "imageUrl": null,
+    "imageUrlExpiresAt": null,
+    "completedAt": null
   },
   "usage": {
     "usageDate": "2026-08-06",
@@ -373,12 +381,13 @@ Location: /api/v1/diaries/6b66acba-0136-4822-8a59-f355dd7c977d
 HTTP/1.1 200 OK
 ```
 
-FE 동작:
+현재 구현 범위:
 
-- API 응답이 오기 전까지 네 단계 애니메이션을 순서대로 표시합니다.
-- 애니메이션은 실제 백엔드 진행 상태와 연결되지 않습니다.
-- 성공 응답을 받으면 결과 화면으로 이동합니다.
-- 별도의 생성 진행 상태 조회 API는 제공하지 않습니다.
+- 신규 접수는 `202 Accepted`, 같은 요청의 기존 상태와 결과는 `200 OK`로 반환합니다.
+- `202`는 작업을 접수했다는 뜻입니다. 응답의 `id`는 일기 ID, `generation.id`는 생성 작업 ID입니다.
+- `Location`은 기존 일기 상세 조회 주소를 가리킵니다. 상태를 반복 조회할 때는 `generation.id`로 생성 상태 조회 API를 호출합니다.
+- `PENDING`과 `PROCESSING`은 이미지 생성 완료를 뜻하지 않습니다. 이미지 URL과 완료 시간은 `null`입니다.
+- 프론트엔드의 상태 조회와 모달 연결은 별도 작업입니다.
 
 ### 5.2 게스트 일기 작성 및 4컷 생성
 
@@ -403,20 +412,20 @@ Content-Type: application/json
 
 1. 원문 게스트 Token을 SHA-256으로 해시해 게스트 세션을 쓰기 잠금으로 조회합니다.
 2. 만료된 세션은 `401 GUEST_SESSION_EXPIRED`로 거절합니다.
-3. 미사용 세션이면 게스트 사용자 ID로 일기와 `PROCESSING` 생성 기록을 선점합니다.
+3. 미사용 세션이면 공통 접수 상한을 확인하고 게스트 사용자 ID로 일기와 `PENDING` 생성 기록을 저장합니다. 상한에 도달했으면 `503 GENERATION_CAPACITY_EXCEEDED`로 거절하고 체험 횟수도 차감하지 않습니다.
 4. 같은 트랜잭션에서 `guest_sessions.diary_id`와 `used_at`을 기록합니다.
 5. 게스트 생성은 회원의 `daily_generation_usage`를 조회하거나 변경하지 않습니다.
-6. 트랜잭션을 커밋한 뒤 신규 요청만 외부 AI 생성을 실행합니다.
+6. 트랜잭션을 커밋한 뒤 이미지 생성을 기다리지 않고 접수 결과를 반환합니다. 이미지는 작업 처리기가 생성합니다.
 7. 사용한 세션의 동일한 키와 동일한 요청은 기존 결과를 반환하고 다시 생성하지 않습니다.
 8. 사용한 세션에서 새로운 키로 생성하면 `409 GUEST_TRIAL_ALREADY_USED`를 반환합니다.
 
 게스트 사용권은 AI 호출 완료 시점이 아니라 일기 생성을 선점한 시점에 사용됩니다. 외부 생성이 실패하더라도 다른 키로 두
 번째 일기를 만들 수 없으며, 동일한 키의 재요청은 저장된 실패 결과를 반환합니다.
 
-신규 생성 성공 응답:
+신규 접수 응답:
 
 ```http
-HTTP/1.1 201 Created
+HTTP/1.1 202 Accepted
 Location: /api/v1/guest/diaries/593363cb-1dc3-46bc-a858-5926f7601ca9
 Cache-Control: no-store
 ```
@@ -429,16 +438,19 @@ Cache-Control: no-store
   "createdAt": "2026-08-20T09:00:00+09:00",
   "generation": {
     "id": "17ac16ef-c45a-40bb-92ea-aed37659ef1c",
-    "status": "SUCCEEDED",
-    "title": "친구와 보낸 카페 시간",
-    "imageUrl": "https://presigned-s3-url.example/...",
-    "imageUrlExpiresAt": "2026-08-20T09:10:00+09:00",
-    "completedAt": "2026-08-20T09:01:00+09:00"
+    "status": "PENDING",
+    "title": null,
+    "imageUrl": null,
+    "imageUrlExpiresAt": null,
+    "completedAt": null
   }
 }
 ```
 
-동일한 멱등 요청의 기존 성공 결과는 `200 OK`로 반환합니다. 게스트 응답에는 회원 일일 사용량을 포함하지 않습니다.
+신규 접수는 `202 Accepted`로 반환합니다. 응답의 `id`는 일기 ID, `generation.id`는 생성 작업 ID입니다.
+`Location`은 기존 게스트 일기 조회 주소를 가리킵니다.
+동일한 멱등 요청의 대기 상태, 처리 중 상태 또는 기존 성공 결과는 `200 OK`로 반환합니다.
+게스트 응답에는 회원 일일 사용량을 포함하지 않습니다.
 
 ### 5.3 게스트 일기 결과 조회
 
@@ -491,6 +503,80 @@ HTTP/1.1 200 OK
 }
 ```
 
+### 5.5 생성 작업 상태 조회
+
+회원은 Access Token으로 조회합니다. `generationId`에는 접수 응답의 `generation.id`를 사용합니다.
+
+```http
+GET /api/v1/diary-generations/17ac16ef-c45a-40bb-92ea-aed37659ef1c
+Authorization: Bearer {accessToken}
+```
+
+게스트는 현재 세션 쿠키로 조회합니다. Access Token과 CSRF 헤더는 필요하지 않습니다.
+
+```http
+GET /api/v1/guest/diary-generations/17ac16ef-c45a-40bb-92ea-aed37659ef1c
+Cookie: guest_session={guestToken}
+```
+
+두 API는 같은 응답 형식을 사용합니다. 조회에 성공하면 생성 상태와 관계없이 `200 OK`입니다.
+매번 현재 상태를 확인하도록 `Cache-Control: no-store`를 반환합니다.
+
+```json
+{
+  "id": "17ac16ef-c45a-40bb-92ea-aed37659ef1c",
+  "status": "SUCCEEDED",
+  "diaryId": "6b66acba-0136-4822-8a59-f355dd7c977d",
+  "errorCode": null
+}
+```
+
+| 상태 | 뜻 | `diaryId` | `errorCode` |
+| --- | --- | --- | --- |
+| `PENDING` | 실행 대기 | `null` | `null` |
+| `PROCESSING` | 이미지 생성 중 | `null` | `null` |
+| `SUCCEEDED` | 생성 완료 | 완성된 일기의 ID | `null` |
+| `FAILED` | 생성 실패 | `null` | 저장된 생성 오류 코드 |
+
+실패 상태의 `errorCode`는 `AI_PROVIDER_ERROR`, `AI_PROVIDER_CONNECTION_ERROR`, `AI_PROVIDER_SERVER_ERROR`,
+`AI_PROVIDER_CONFIGURATION_ERROR`, `AI_PROVIDER_REQUEST_REJECTED`, `AI_PROVIDER_RATE_LIMITED`,
+`AI_PROVIDER_TIMEOUT`, `AI_CONTENT_BLOCKED`, `AI_OUTPUT_TRUNCATED`, `AI_RESPONSE_PROCESSING_ERROR`, `GENERATION_INTERNAL_ERROR`,
+`GENERATION_INTERRUPTED`, `GENERATION_PENDING_TIMEOUT`, `IMAGE_STORAGE_ERROR` 중 하나입니다.
+작업이 실패한 것은 상태 조회 API의 오류가 아니므로 `200 OK`와 `FAILED`로 반환합니다.
+
+기본 설정에서 저장한 지 120초 이상 지난 `PENDING` 작업은 대기 만료 대상입니다.
+5초 간격으로 확인하며, 실패 저장이 끝나면 회원과 게스트에게 아래 결과를 반환합니다.
+실제 실패 저장 시점은 확인 간격과 DB 처리 시간에 따라 늦어질 수 있습니다.
+대기 만료는 `PROCESSING` 작업에는 적용하지 않습니다.
+
+```http
+HTTP/1.1 200 OK
+Cache-Control: no-store
+Content-Type: application/json
+```
+
+```json
+{
+  "id": "17ac16ef-c45a-40bb-92ea-aed37659ef1c",
+  "status": "FAILED",
+  "diaryId": null,
+  "errorCode": "GENERATION_PENDING_TIMEOUT"
+}
+```
+
+대기 만료 시 일기는 숨기고, 회원의 생성 횟수는 요청을 접수한 사용 날짜에 한 번 돌려줍니다.
+게스트의 체험 사용 상태는 유지합니다. 생성 기록은 남으므로 같은 요청 키를 다시 보내도 새 작업을 만들지 않습니다.
+
+- 회원은 로그인한 사용자가 소유한 작업만 조회할 수 있습니다.
+- 게스트는 세션의 소유자와 세션에 연결된 일기를 모두 확인합니다.
+- 존재하지 않는 작업과 다른 사람의 작업은 모두 `404 GENERATION_NOT_FOUND`로 반환합니다.
+- 실패 처리로 일기가 소프트 삭제되어도 본인은 `FAILED`와 오류 코드를 확인할 수 있습니다.
+- 사용자가 삭제한 대기 또는 처리 중 또는 성공한 일기는 `404 GENERATION_NOT_FOUND`로 반환합니다.
+- 인증이 없으면 회원은 `401 UNAUTHORIZED`, 게스트는 `401 GUEST_SESSION_REQUIRED`입니다.
+- 만료된 게스트 세션은 `401 GUEST_SESSION_EXPIRED`, UUID 형식이 아닌 ID는 `400 VALIDATION_ERROR`입니다.
+- 이 조회는 상태를 바꾸거나 작업을 선점하지 않습니다. 이미지 URL도 발급하지 않습니다.
+- `SUCCEEDED`를 받으면 `diaryId`로 기존 일기 상세 API를 호출합니다. `FAILED`를 받으면 반복 조회를 끝냅니다.
+
 ## 6. 히스토리 API
 
 ### 6.1 월간 조회
@@ -509,6 +595,14 @@ Query Parameter:
 
 해당 월의 모든 날짜를 최신 날짜부터 내림차순으로 반환합니다. 일기가 없는 날짜도 `exist: false`로 포함하며,
 같은 날짜의 일기는 생성 시각이 최신인 순서로 반환합니다.
+
+R2가 활성화되어 있으면 피드와 월간 조회는 API 요청마다 응답의 첫 이미지에서 S3를 확인해 사용할 저장소를 한 번 선택합니다.
+선택 결과는 같은 응답 안에서만 공유하며, 나머지 이미지의 S3 존재 여부는 확인하지 않습니다. 다음 요청은 다시 확인하고,
+동시에 들어온 요청도 서로의 선택 결과를 공유하지 않습니다.
+S3를 선택하면 기존 `image-240.webp` 썸네일 URL을 발급합니다. R2를 선택하면 같은 폴더에서 PNG, JPG, WebP 순서로
+원본을 찾아 그 URL을 `thumbnailUrl`에 넣습니다. R2에 별도 썸네일 파일은 필요하지 않습니다.
+R2 원본 탐색은 응답 전체가 공유하는 시간 예산 안에서 수행합니다. 원본 부재, 조회 오류 또는 예산 소진 시 해당 항목의
+기존 S3 URL을 반환하고 모든 날짜와 일기 데이터를 유지합니다. 빈 달은 저장소를 확인하지 않습니다. 응답 필드는 유지하고 URL은 매번 새로 발급합니다.
 
 ```http
 HTTP/1.1 200 OK
@@ -743,11 +837,11 @@ Retry-After: 13800
 | `403` | `INVALID_CSRF_TOKEN` | 쿠키를 사용하는 인증·게스트 변경 요청의 CSRF Token 누락 또는 불일치 |
 | `404` | `API_NOT_FOUND` | 존재하지 않는 API 경로 요청 |
 | `404` | `DIARY_NOT_FOUND` | 상세 조회·피드 게시 대상 일기가 없거나 삭제됨 |
+| `404` | `GENERATION_NOT_FOUND` | 생성 작업이 없거나 본인 소유 또는 게스트 세션 연결 조건에 맞지 않음 |
 | `404` | `FEED_NOT_FOUND` | 공개 피드가 없거나 피드/원본 일기가 삭제됨 |
 | `404` | `CATEGORY_NOT_FOUND` | 게시하거나 목록을 조회할 카테고리가 없음 |
 | `405` | `METHOD_NOT_ALLOWED` | 지원하지 않는 HTTP 메서드 요청 |
 | `406` | `NOT_ACCEPTABLE` | 생성할 수 없는 응답 미디어 타입 요청 |
-| `409` | `GENERATION_IN_PROGRESS` | 동일 멱등 요청이 아직 처리 중 |
 | `409` | `GENERATION_FAILED` | 생성 결과가 실패 상태임 |
 | `409` | `DIARY_NOT_PUBLISHABLE` | 피드에 게시할 만화 생성이 완료되지 않음 |
 | `409` | `DIARY_ALREADY_PUBLISHED` | 일기의 활성 피드가 이미 존재함 |
@@ -769,6 +863,7 @@ Retry-After: 13800
 | `503` | `AI_PROVIDER_CONFIGURATION_ERROR` | 외부 AI 서비스 인증이나 접근 권한 설정 문제 |
 | `503` | `AI_PROVIDER_RATE_LIMITED` | 외부 AI 서비스 이용 제한. 사용자 개인의 일일 생성 한도와 구분 |
 | `503` | `GENERATION_UNAVAILABLE` | 생성 어댑터 또는 생성 프롬프트를 사용할 수 없음 |
+| `503` | `GENERATION_CAPACITY_EXCEEDED` | 미완료 생성 작업이 동시 실행 수에 도달해 신규 접수를 거절함 |
 | `503` | `GENERATION_INTERRUPTED` | 서버 중단 등으로 생성 처리가 완료되지 못함 |
 | `503` | `IMAGE_STORAGE_ERROR` | 생성 이미지 S3 저장 실패 |
 | `504` | `AI_PROVIDER_TIMEOUT` | AI Provider 응답 시간 초과 |
@@ -782,27 +877,30 @@ Retry-After: 13800
 ## 9. 생성 실패 처리
 
 - 요청 검증 또는 멱등성 검증에서 실패하면 생성 횟수를 차감하지 않습니다.
-- 멱등성 선점과 사용량 차감 트랜잭션이 커밋된 요청은 외부 처리의 성공·실패·중단 여부와 관계없이 생성 횟수에 포함합니다.
+- 접수 트랜잭션에서 회원 사용량을 증가시킵니다. 생성 실패와 중단 시에는 기존 사용량 복구 규칙을 적용합니다.
 - AI 또는 S3 처리에 실패하면 생성 기록을 `FAILED`로 변경하고 오류 코드와 완료 시간을 저장하며, 연결된 일기를 같은
   트랜잭션에서 소프트 삭제합니다.
 - 동일한 Idempotency Key로 실패 요청을 재전송하면 저장된 실패를 반환하며 AI 재호출과 추가 차감은 하지 않습니다.
 - 실패한 생성을 새 Idempotency Key로 재시도하면 새로운 요청으로 처리하고 생성 횟수를 차감합니다.
 - 이미지 업로드 후 생성 완료 저장 결과가 불명확하면 DB 상태를 다시 확인하고, 성공 결과가 참조할 가능성이 없는 이미지만
   best-effort로 삭제합니다.
-- 실패 응답은 RFC 9457 Problem Details 형식으로 반환합니다.
+- 요청을 거절하는 오류 응답은 RFC 9457 Problem Details 형식으로 반환합니다.
+  상태 조회에서 확인한 생성 실패는 `200 OK`와 `FAILED`, 저장된 `errorCode`로 반환합니다.
 - AI 실패는 내부 `errorType`과 `providerFailureType`을 함께 확인해 저장 코드와 응답 코드를 정합니다.
-  최초 실패와 동일한 멱등성 키의 재요청은 같은 오류 코드와 안내 문구를 반환합니다.
+  동일한 멱등성 키로 실패 요청을 다시 보내면 저장된 오류 코드에 맞는 안내 문구를 반환합니다.
 - Gemini 응답은 본문이나 이미지를 읽기 전에 프롬프트 차단 사유와 첫 번째 후보의 종료 사유를 확인합니다.
   명시적인 콘텐츠 제한만 `AI_CONTENT_BLOCKED`로 분류하며, 빈 응답이나 이미지 누락만으로 차단을 판단하지 않습니다.
   생성 차단은 보조 AI 호출 대상으로 처리하지 않습니다.
   출력 토큰 한도 도달은 결과 처리까지 실패한 경우에만 `AI_OUTPUT_TRUNCATED`로 분류합니다.
-- 사용자에게는 원인별 `code`와 미리 정한 한국어 `detail`을 반환합니다. 외부 API 오류 원문과 프롬프트는 노출하지 않습니다.
+- Problem Details 응답에는 원인별 `code`와 미리 정한 한국어 `detail`을 반환합니다.
+  외부 API 오류 원문과 프롬프트는 노출하지 않습니다.
   `action` 필드는 추가하지 않습니다. DB의 기존 `error_code` 문자열 컬럼을 사용하며 스키마 변경은 필요하지 않습니다.
 
-## 10. 동기 생성 운영 조건
+## 10. 비동기 생성 운영 조건
 
-- FE 요청 제한 시간, ELB Idle Timeout, Spring 서버 제한 시간 및 외부 HTTP 클라이언트 Read Timeout을 예상 최대 생성 시간보다
-  길게 설정합니다.
+- 작업 처리기는 백엔드 앱 시작 시 항상 등록됩니다. 동시 실행 수와 확인 간격만 설정합니다.
+- 생성 어댑터가 준비되지 않으면 신규 접수를 거절합니다. 같은 요청의 기존 상태와 결과는 반환할 수 있습니다.
+- 일반 생성 요청은 저장 완료까지만 기다립니다. 외부 호출 제한 시간은 작업 처리기의 실행에 적용됩니다.
 - AI API를 호출하는 동안 DB 트랜잭션이나 DB 커넥션을 점유하지 않습니다.
 - 클라이언트가 응답을 받지 못해 재요청하더라도 동일한 `Idempotency-Key`를 사용합니다.
 - `PROCESSING` 제한 시간은 외부 호출 전체 제한 시간보다 길게 설정합니다.
@@ -810,4 +908,7 @@ Retry-After: 13800
 - 주기적 복구 스케줄러도 제한 시간을 넘긴 `PROCESSING`을 배치로 선정해 각각 `FAILED`로 전환하고,
   연결된 일기를 같은 트랜잭션에서 소프트 삭제합니다.
 - 외부 작업 완료 시 상태 변경은 `PROCESSING` 상태에만 허용해 재요청 복구가 만든 `FAILED` 상태를 덮어쓰지 않습니다.
-- 동시 생성량이 증가하거나 외부 API의 `429`, 타임아웃이 자주 발생하면 비동기 큐 도입을 재검토합니다.
+- 대기 작업 조회 부하와 처리 시간을 측정하고, 필요한 경우 동시 실행 수와 확인 간격을 조정하거나 SQS 도입을 재검토합니다.
+- 부하 테스트 API도 같은 대기열과 작업 처리기를 사용합니다. 이 API가 접수한 생성 ID를 메모리에서 가짜 AI 실행기에 연결합니다.
+- 테스트 연결은 요청을 받은 백엔드 프로세스에서만 유지됩니다. 서버를 재시작하면 남은 테스트 작업은 일반 작업과 구분할 수 없습니다.
+- 부하 테스트 실행기는 dev에서만 등록하며, 일반 작업과 테스트 작업의 동시 실행 수를 함께 제한합니다.

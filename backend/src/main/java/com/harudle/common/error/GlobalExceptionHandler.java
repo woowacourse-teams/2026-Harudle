@@ -13,6 +13,8 @@ import com.harudle.comment.service.exception.CommentAccessDeniedException;
 import com.harudle.comment.service.exception.CommentIntegrationUnavailableException;
 import com.harudle.comment.service.exception.CommentNotFoundException;
 import com.harudle.comment.service.exception.InvalidCommentCursorException;
+import com.harudle.report.domain.InvalidReportException;
+import com.harudle.report.service.exception.ReportTargetNotFoundException;
 import com.harudle.category.service.exception.CategoryInactiveException;
 import com.harudle.category.service.exception.CategoryNotFoundException;
 import com.harudle.category.domain.exception.InvalidCategoryException;
@@ -28,9 +30,11 @@ import com.harudle.feed.service.exception.FeedNotFoundException;
 import com.harudle.feed.service.exception.InvalidFeedCursorException;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
 import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
+import com.harudle.generation.diary.service.exception.DiaryGenerationNotFoundException;
 import com.harudle.generation.usage.service.exception.DailyGenerationLimitExceededException;
 import com.harudle.generation.diary.service.exception.GenerationInProgressException;
 import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
+import com.harudle.generation.diary.service.exception.GenerationCapacityExceededException;
 import com.harudle.generation.diary.service.exception.IdempotencyKeyConflictException;
 import com.harudle.generation.diary.service.port.ImageStorageException;
 import com.harudle.guest.application.exception.GuestSessionExpiredException;
@@ -201,6 +205,11 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return createResponse(ErrorType.DIARY_NOT_FOUND, request);
     }
 
+    @ExceptionHandler(DiaryGenerationNotFoundException.class)
+    ResponseEntity<ProblemDetail> handleGenerationNotFound(HttpServletRequest request) {
+        return createResponse(ErrorType.GENERATION_NOT_FOUND, request);
+    }
+
     @ExceptionHandler(CategoryNotFoundException.class)
     ResponseEntity<ProblemDetail> handleCategoryNotFound(HttpServletRequest request) {
         return createResponse(ErrorType.CATEGORY_NOT_FOUND, request);
@@ -233,6 +242,16 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(FeedNotFoundException.class)
     ResponseEntity<ProblemDetail> handleFeedNotFound(HttpServletRequest request) {
         return createResponse(ErrorType.FEED_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(InvalidReportException.class)
+    ResponseEntity<ProblemDetail> handleInvalidReport(HttpServletRequest request) {
+        return createResponse(ErrorType.INVALID_REPORT, request);
+    }
+
+    @ExceptionHandler(ReportTargetNotFoundException.class)
+    ResponseEntity<ProblemDetail> handleReportTargetNotFound(HttpServletRequest request) {
+        return createResponse(ErrorType.REPORT_TARGET_NOT_FOUND, request);
     }
 
     @ExceptionHandler(CommentNotFoundException.class)
@@ -390,6 +409,11 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(ImageStorageException.class)
     ResponseEntity<ProblemDetail> handleImageStorage(HttpServletRequest request) {
         return createResponse(ErrorType.IMAGE_STORAGE_ERROR, request);
+    }
+
+    @ExceptionHandler(GenerationCapacityExceededException.class)
+    ResponseEntity<ProblemDetail> handleGenerationCapacityExceeded(HttpServletRequest request) {
+        return createResponse(ErrorType.GENERATION_CAPACITY_EXCEEDED, request);
     }
 
     @ExceptionHandler(GenerationUnavailableException.class)
