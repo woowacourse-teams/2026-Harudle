@@ -26,6 +26,10 @@ public class FeedListRepository {
               AND diary.deletedAt IS NULL
               AND author.deletedAt IS NULL
               AND generation.status = :succeeded
+              AND NOT EXISTS (SELECT hiddenFeed.id FROM Feed hiddenFeed, ModerationRestriction moderation
+                  WHERE hiddenFeed.diaryId = diary.id
+                    AND moderation.targetType = com.harudle.moderation.domain.ModerationTargetType.FEED
+                    AND moderation.targetId = hiddenFeed.id AND moderation.restricted = true)
             """;
     private static final String AFTER_LATEST = """
             (feed.publishedAt < :cursorPublishedAt
