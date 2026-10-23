@@ -110,7 +110,8 @@ Dev는 앱 EC2와 DB EC2를 따로 사용한다. 2026-10-23에 새 앱 서버에
 DB 사설 IP로 접속하고, 백엔드와 프론트엔드가 모두 `healthy`인 것을 확인했다.
 Prod도 앱 EC2와 DB EC2를 따로 사용하며, 앱 `.env`에는 DB 사설 IP를 설정했다.
 Prod 전환은 같은 날 팀이 알려준 내용이며, 두 환경의 DB 주소와 서버 사양은 AWS EC2 API로 확인했다.
-Prod의 컨테이너 상태와 실제 DB 접속은 이번 작업에서 직접 확인하지 않았다.
+Prod 앱과 DB 컨테이너의 `healthy` 상태는 확인했다.
+Prod 앱에서 DB 계정으로 직접 접속하는 별도 시험은 수행하지 않았다.
 
 ```mermaid
 flowchart LR
@@ -218,9 +219,23 @@ CodeBuild는 프론트엔드 입력이 같으면 이전 이미지를 재사용�
 - 앱용 설정을 적용한 호스트 CloudWatch Agent는 `127.0.0.1:19091/actuator/prometheus`를
   수집해 환경별 EMF 로그로 보낸다. Agent 설정은 배포 아티팩트 전달 후 호스트에 별도 적용한다.
 - 새 Dev 앱 서버에는 Agent를 설치하고 `cloudwatch-agent.host.json`을 적용했다.
-  메모리와 루트 디스크 사용률을 1분마다 수집하도록 설정했고 자동 시작과 `running`을 확인했다.
-  CloudWatch에 실제 지표가 도착했는지는 확인하지 않았다. 새 서버의 앱용 Prometheus 설정은
-  아직 적용하지 않았다. Agent 설치만으로 앱 지표 수집이 완료됐다고 판단하지 않는다.
+  메모리 사용률과 여유 비율, Swap 사용률, 루트 디스크 사용률을 1분마다 수집한다.
+  Dev Java와 API 지표 수집 설정은 적용 완료다. `cloudwatch-agent.dev.json`으로
+  새 서버의 Java RSS와 Prometheus 앱 지표를 수집하며, CloudWatch 지표 도착도 확인했다.
+  이전 Dev 서버에서는 앱용 Agent 설정만 제거하고 호스트 자원 수집은 유지했다.
+- Dev DB EC2에도 Agent를 설치하고 `cloudwatch-agent.db.json`을 적용했다.
+  메모리와 Swap, 루트 및 `/srv/harudle/db-data`의 사용률과 남은 용량을 1분마다 수집한다.
+  새 앱 서버와 DB 서버의 메모리, Swap 및 DB 디스크 여유 공간이 CloudWatch에 도착한 것을 확인했다.
+- `DASHBOARD-harudle-dev`의 앱 대상은 `i-08ff5dddb7ac94f5c`, DB 대상은
+  `i-04fca55979b3240d6`이다. RDS 그래프는 EC2와 데이터 EBS 지표로 교체했다.
+  데이터 EBS는 `vol-00886d19a64c23e1f`다. 앱과 DB를 함께 덮어쓰던 공통 InstanceId 선택기는 제거했다.
+  DB 전체 연결 수는 별도 수집이 필요하며 앱의 HikariPool 지표와 구분한다.
+  대시보드 변경이 개별 경보의 대상도 바꾸는 것은 아니다.
+- Prod DB EC2 `i-01baa5c11a6224cd7`에도 `cloudwatch-agent.db.json`을 적용하고
+  Agent 자동 시작과 `running`을 확인했다. 데이터 디스크는 Dev와 같은 `/srv/harudle/db-data`다.
+  CloudWatch에서 메모리 여유 비율, Swap 사용률, 두 디스크 여유 공간의 실제 데이터 도착을 확인했다.
+  `DASHBOARD-harudle-prod`의 RDS 그래프를 이 DB EC2와 데이터 EBS
+  `vol-048d203fac554e776`의 지표로 교체했다. 기존 Prod 앱 그래프는 유지했다.
 - Frontend `/health`는 Nginx의 응답 여부를 확인한다. DB와 S3, Gemini의 실제 기능은
   각각의 기능 검증과 로그로 확인한다.
 
