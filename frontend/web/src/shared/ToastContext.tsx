@@ -84,24 +84,24 @@ const toastReducer = (
 export const ToastProvider = ({ children }: { children: ReactNode }) => {
   const [toasts, dispatch] = useReducer(toastReducer, []);
 
-const addToast = useCallback(
-  (
-    toast: ToastProps,
-    durationMs: number | 'infinite',
-    id: ToastItem['id'] = crypto.randomUUID(),
-  ): ToastItem['id'] => {
-    dispatch({ type: 'add', toast: { ...toast, id, durationMs } });
+  const addToast = useCallback(
+    (
+      toast: ToastProps,
+      durationMs: number | 'infinite',
+      id: ToastItem['id'] = crypto.randomUUID(),
+    ): ToastItem['id'] => {
+      dispatch({ type: 'add', toast: { ...toast, id, durationMs } });
 
-    if (durationMs !== 'infinite') {
-      setTimeout((): void => {
-        dispatch({ type: 'remove', id });
-      }, durationMs);
-    }
+      if (durationMs !== 'infinite') {
+        setTimeout((): void => {
+          dispatch({ type: 'remove', id });
+        }, durationMs);
+      }
 
-    return id;
-  },
-  [],
-);
+      return id;
+    },
+    [],
+  );
 
   const deleteToast = (id: ToastItem['id']): void => {
     dispatch({ type: 'remove', id });
@@ -115,10 +115,7 @@ const addToast = useCallback(
   };
 
   return (
-    <ToastContext.Provider
-      value={{ addToast, deleteToast, updateToast }}
-    >
-
+    <ToastContext.Provider value={{ addToast, deleteToast, updateToast }}>
       {children}
       {createPortal(
         <div css={toastListStyle}>
