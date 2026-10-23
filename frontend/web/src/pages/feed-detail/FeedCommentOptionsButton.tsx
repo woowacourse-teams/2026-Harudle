@@ -1,5 +1,5 @@
 import { css } from '@emotion/react';
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import moreIcon from '../../assets/icons/feed-more.svg';
 import deleteIcon from '../../assets/icons/delete.svg';
 import type { FeedComment } from '../../domain/feeds/feedComments';
@@ -21,16 +21,11 @@ const FeedCommentOptionsButton = ({
 }: FeedCommentOptionsButtonProps) => {
   const menuRef = useRef<BottomSheetHandle>(null);
   const confirmRef = useRef<ModalHandle>(null);
-  const { request, execute } = useFeedCommentDelete({ commentId });
-
-  useEffect((): void => {
-    if (request.status === 'error') {
-      window.alert(request.error.message);
-    }
-  }, [request]);
+  const { request, reset, execute } = useFeedCommentDelete({ commentId });
 
   const handleDeleteClick = (): void => {
     menuRef.current?.close();
+    reset();
     confirmRef.current?.open();
   };
 
@@ -66,6 +61,9 @@ const FeedCommentOptionsButton = ({
       </BottomSheet>
 
       <ConfirmModal
+        errorMessage={
+          request.status === 'error' ? request.error.message : undefined
+        }
         title={FEED_DETAIL_COPY.commentDeleteConfirmTitle}
         description={FEED_DETAIL_COPY.commentDeleteConfirmDescription}
         confirmLabel={

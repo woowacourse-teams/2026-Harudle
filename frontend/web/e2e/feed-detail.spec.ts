@@ -1,3 +1,9 @@
+import { FEED_DETAIL_COPY } from '../src/pages/feed-detail/copy';
+import {
+  MOCK_SCENARIO_HEADER,
+  MOCK_SCENARIOS,
+} from '../src/mocks/mockScenarios';
+import { ERROR_MESSAGES } from '../src/shared/errorMessage';
 import { expect, test } from '@playwright/test';
 import { AUTHENTICATED_STORAGE_STATE } from './auth';
 
@@ -159,6 +165,66 @@ test.describe('피드 상세 좋아요', (): void => {
 
 test.describe('피드 상세 삭제', (): void => {
   test.use({ storageState: AUTHENTICATED_STORAGE_STATE });
+
+  test('댓글 삭제: 실패하면 열린 모달 안에 오류를 표시하고 재시도할 수 있다', async ({
+    page,
+  }): Promise<void> => {
+    await page.setExtraHTTPHeaders({
+      [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.feedCommentDeleteFailure,
+    });
+    await page.goto(detailPath);
+    await page
+      .getByRole('listitem')
+      .getByRole('button', { name: '옵션 더보기 아이콘' })
+      .first()
+      .click();
+    await page
+      .getByRole('dialog')
+      .filter({
+        has: page.getByRole('heading', {
+          name: FEED_DETAIL_COPY.commentManageTitle,
+          exact: true,
+        }),
+      })
+      .getByRole('button', { name: /댓글 삭제$/ })
+      .click();
+    const modal = page.getByRole('dialog').filter({
+      has: page.getByRole('heading', {
+        name: FEED_DETAIL_COPY.commentDeleteConfirmTitle,
+        exact: true,
+      }),
+    });
+    const submit = modal.getByRole('button', {
+      name: FEED_DETAIL_COPY.commentDeleteAction,
+      exact: true,
+    });
+    await submit.click();
+
+    await expect(modal).toBeVisible();
+    await expect(modal.getByRole('alert')).toHaveText(
+      ERROR_MESSAGES.FEED_COMMENT_DELETION_FAILED,
+    );
+    await expect(modal.getByRole('alert')).toBeVisible();
+    await expect(
+      page.getByText(ERROR_MESSAGES.FEED_COMMENT_DELETION_FAILED, {
+        exact: true,
+      }),
+    ).toHaveCount(1);
+    await expect(page).toHaveURL(detailPath);
+    await expect(
+      modal.getByRole('button', { name: '취소', exact: true }),
+    ).toBeEnabled();
+    await expect(submit).toBeEnabled();
+
+    await page.setExtraHTTPHeaders({});
+    await submit.click();
+    await expect(modal).toBeHidden();
+    await expect(
+      page.getByText(ERROR_MESSAGES.FEED_COMMENT_DELETION_FAILED, {
+        exact: true,
+      }),
+    ).toHaveCount(0);
+  });
 
   test('상세에서 삭제하고 목록으로 돌아오면 삭제한 피드가 다시 표시되지 않는다', async ({
     page,
