@@ -19,6 +19,11 @@ import type { deleteFeedComment } from '../../domain/feeds/feedCommentDelete';
 import FeedDetailPage from './FeedDetailPage';
 import FeedDetailContent from './FeedDetailContent';
 
+const mockAddToast = jest.fn();
+jest.mock('../../shared/ToastContext', () => ({
+  useToastContext: () => ({ addToast: mockAddToast }),
+}));
+
 const mockNavigate = jest.fn();
 let mockLocationState: unknown = null;
 const mockTrack = jest.fn();
@@ -235,9 +240,6 @@ describe('피드 상세 댓글 더 보기', (): void => {
 
   it('실패는 컴포넌트에서 알리고 기존 댓글을 유지한 채 같은 커서로 재시도한다', async (): Promise<void> => {
     const user = userEvent.setup();
-    const alert = jest
-      .spyOn(window, 'alert')
-      .mockImplementation((): void => {});
     mockGetFeedComments
       .mockResolvedValueOnce(firstPage)
       .mockRejectedValueOnce(new Error('추가 조회 실패'))
@@ -249,8 +251,12 @@ describe('피드 상세 댓글 더 보기', (): void => {
     render(<FeedDetailPage />);
 
     await user.click(await screen.findByRole('button', { name: '더 보기' }));
-    expect(alert).toHaveBeenCalledWith(
-      '댓글을 더 불러오지 못했어요. 다시 시도해 주세요.',
+    expect(mockAddToast).toHaveBeenCalledWith(
+      {
+        type: 'error',
+        message: '댓글을 더 불러오지 못했어요. 다시 시도해 주세요.',
+      },
+      2000,
     );
     expect(screen.getByText(comment.content)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '더 보기' })).toBeEnabled();
@@ -259,7 +265,7 @@ describe('피드 상세 댓글 더 보기', (): void => {
     expect(await screen.findByText(secondComment.content)).toBeInTheDocument();
     expect(mockGetFeedComments.mock.calls[1][0].cursor).toBe('cursor-1');
     expect(mockGetFeedComments.mock.calls[2][0].cursor).toBe('cursor-1');
-    expect(alert).toHaveBeenCalledTimes(1);
+    expect(mockAddToast).toHaveBeenCalledTimes(1);
   });
 
   it('추가 조회 중 삭제한 댓글을 유지하고 중복 클릭을 막으며 새 댓글을 추가한다', async (): Promise<void> => {
@@ -371,9 +377,6 @@ describe('피드 상세 댓글 삭제', (): void => {
   });
 
   it('취소·실패는 댓글과 개수를 유지하고 재시도 성공 후 갱신한다', async (): Promise<void> => {
-    const alert = jest
-      .spyOn(window, 'alert')
-      .mockImplementation((): void => {});
     mockDeleteComment
       .mockRejectedValueOnce(new Error('삭제 실패'))
       .mockResolvedValueOnce(undefined);
@@ -389,10 +392,15 @@ describe('피드 상세 댓글 삭제', (): void => {
 
     await openDelete(user);
     await user.click(screen.getByRole('button', { name: /댓글 삭제$/ }));
-    expect(alert).toHaveBeenCalledWith('삭제 실패');
+    expect(
+      within(screen.getByRole('dialog')).getByRole('alert'),
+    ).toHaveTextContent('삭제 실패');
     expect(screen.getByText(comment.content)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '1' })).toBeInTheDocument();
 
+    await user.click(screen.getByRole('button', { name: '취소' }));
+    await openDelete(user);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /댓글 삭제$/ }));
     expect(
       await screen.findByText('첫 번째 댓글을 남겨보세요.'),

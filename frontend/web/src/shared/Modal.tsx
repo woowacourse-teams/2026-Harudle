@@ -20,7 +20,7 @@ interface ModalProps {
   title: string;
   children: ReactNode;
   footer?: ReactNode;
-  readonly dismissible?: boolean;
+  dismissible?: boolean;
   ref: Ref<ModalHandle>;
 }
 
@@ -28,21 +28,24 @@ const Modal = ({
   title,
   children,
   footer,
-  dismissible = true,
   ref,
+  dismissible = true,
 }: ModalProps): ReactPortal => {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const closedProgrammatically = useRef(false);
 
   useImperativeHandle(ref, (): ModalHandle => {
     return {
       open: (): void => {
+        closedProgrammatically.current = false;
         dialogRef.current?.showModal();
       },
       close: (): void => {
-        if (dismissible) dialogRef.current?.close();
+        closedProgrammatically.current = true;
+        dialogRef.current?.close();
       },
     };
-  }, [dismissible]);
+  }, []);
 
   const handleBackdropClick = (e: MouseEvent<HTMLDialogElement>): void => {
     if (dismissible && e.target === e.currentTarget) dialogRef.current?.close();
@@ -51,6 +54,17 @@ const Modal = ({
   const handleCancel = (event: SyntheticEvent<HTMLDialogElement>): void => {
     if (!dismissible) event.preventDefault();
   };
+  const handleClose = (): void => {
+    const dialog = dialogRef.current;
+    if (
+      !dismissible &&
+      !closedProgrammatically.current &&
+      dialog &&
+      !dialog.open
+    )
+      dialog.showModal();
+    closedProgrammatically.current = false;
+  };
 
   return createPortal(
     <dialog
@@ -58,6 +72,10 @@ const Modal = ({
       css={dialogStyle}
       onClick={handleBackdropClick}
       onCancel={handleCancel}
+      onClose={handleClose}
+      onKeyDown={(event): void => {
+        if (!dismissible && event.key === 'Escape') event.preventDefault();
+      }}
     >
       <div css={panelStyle}>
         <h2 css={titleStyle}>{title}</h2>

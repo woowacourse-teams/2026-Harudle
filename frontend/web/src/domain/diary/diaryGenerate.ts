@@ -1,6 +1,14 @@
 import { API_BASE_URL, isProblemDetails, RequestError } from '../../shared/api';
 import { authFetch } from '../../shared/auth';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
+import {
+  isDiaryGeneration,
+  isGenerationFailureCode,
+  isGenerationStatus,
+  type DiaryGeneration,
+  type GenerationFailureCode,
+  type GenerationStatus,
+} from './diaryGeneration';
 
 export const DIARY_GENERATION_ERROR_CODE = {
   DAILY_LIMIT_EXCEEDED: 'DAILY_GENERATION_LIMIT_EXCEEDED',
@@ -49,34 +57,12 @@ export interface DiaryGenerateRequest {
   idempotencyKey: string;
 }
 
-export const isDiaryGenerateRequest = (
-  value: unknown,
-): value is DiaryGenerateRequest => {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'diaryDate' in value &&
-    typeof value.diaryDate === 'string' &&
-    'sourceText' in value &&
-    typeof value.sourceText === 'string' &&
-    'idempotencyKey' in value &&
-    typeof value.idempotencyKey === 'string'
-  );
-};
-
 export interface DiaryGenerateResponse {
   id: string;
   diaryDate: string;
   sourceText: string;
   createdAt: string;
-  generation: {
-    id: string;
-    status: GenerationStatus;
-    title: string | null;
-    imageUrl: string | null;
-    imageUrlExpiresAt: string | null;
-    completedAt: string | null;
-  };
+  generation: DiaryGeneration;
   usage: {
     usageDate: string;
     usedCount: number;
@@ -100,24 +86,7 @@ export const isDiaryGenerateResponse = (
     'createdAt' in value &&
     typeof value.createdAt === 'string' &&
     'generation' in value &&
-    typeof value.generation === 'object' &&
-    value.generation !== null &&
-    'id' in value.generation &&
-    typeof value.generation.id === 'string' &&
-    'status' in value.generation &&
-    isGenerationStatus(value.generation.status) &&
-    'title' in value.generation &&
-    (typeof value.generation.title === 'string' ||
-      value.generation.title === null) &&
-    'imageUrl' in value.generation &&
-    (typeof value.generation.imageUrl === 'string' ||
-      value.generation.imageUrl === null) &&
-    'imageUrlExpiresAt' in value.generation &&
-    (typeof value.generation.imageUrlExpiresAt === 'string' ||
-      value.generation.imageUrlExpiresAt === null) &&
-    'completedAt' in value.generation &&
-    (typeof value.generation.completedAt === 'string' ||
-      value.generation.completedAt === null) &&
+    isDiaryGeneration(value.generation) &&
     'usage' in value &&
     typeof value.usage === 'object' &&
     value.usage !== null &&
@@ -132,7 +101,85 @@ export const isDiaryGenerateResponse = (
   );
 };
 
-export type GenerationStatus = 'PROCESSING' | 'SUCCEEDED' | 'FAILED';
+export const getDiaryGenerationStatus = async ({
+  generationId,
+}: DiaryGenerationStatusRequest): Promise<DiaryGenerationStatusResponse> => {
+  const response = await authFetch(
+    `${API_BASE_URL}/diary-generations/${generationId}`,
+  );
 
-export const isGenerationStatus = (value: unknown): value is GenerationStatus =>
-  value === 'PROCESSING' || value === 'SUCCEEDED' || value === 'FAILED';
+  if (!response.ok) {
+    const errorData: unknown = await response.json().catch(() => null);
+
+    if (isProblemDetails(errorData)) {
+      throw new RequestError(errorData);
+    }
+
+    throw new Error(ERROR_MESSAGES.DIARY_GENERATION_STATUS_FETCH_FAILED);
+  }
+
+  const data: unknown = await response.json();
+
+  if (!isDiaryGenerationStatusResponse(data)) {
+    throw new Error(ERROR_MESSAGES.INVALID_DIARY_GENERATION_STATUS_RESPONSE);
+  }
+
+  return data;
+};
+
+export interface DiaryGenerationStatusRequest {
+  generationId: string;
+}
+
+interface DiaryGenerationStatusInProgressResponse {
+  id: string;
+  status: Extract<GenerationStatus, 'PENDING' | 'PROCESSING'>;
+  diaryId: null;
+  errorCode: null;
+}
+
+interface DiaryGenerationStatusSuccessResponse {
+  id: string;
+  status: Extract<GenerationStatus, 'SUCCEEDED'>;
+  diaryId: string;
+  errorCode: null;
+}
+
+interface DiaryGenerationStatusFailureResponse {
+  id: string;
+  status: Extract<GenerationStatus, 'FAILED'>;
+  diaryId: null;
+  errorCode: GenerationFailureCode;
+}
+
+export type DiaryGenerationStatusResponse =
+  | DiaryGenerationStatusInProgressResponse
+  | DiaryGenerationStatusSuccessResponse
+  | DiaryGenerationStatusFailureResponse;
+
+export const isDiaryGenerationStatusResponse = (
+  value: unknown,
+): value is DiaryGenerationStatusResponse => {
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    !('id' in value) ||
+    typeof value.id !== 'string' ||
+    !('status' in value) ||
+    !isGenerationStatus(value.status) ||
+    !('diaryId' in value) ||
+    !('errorCode' in value)
+  ) {
+    return false;
+  }
+
+  switch (value.status) {
+    case 'PENDING':
+    case 'PROCESSING':
+      return value.diaryId === null && value.errorCode === null;
+    case 'SUCCEEDED':
+      return typeof value.diaryId === 'string' && value.errorCode === null;
+    case 'FAILED':
+      return value.diaryId === null && isGenerationFailureCode(value.errorCode);
+  }
+};
