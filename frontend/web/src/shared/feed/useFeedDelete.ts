@@ -20,6 +20,7 @@ interface FeedDeleteOptions {
 
 interface FeedDeleteState {
   readonly request: ApiRequest<void>;
+  readonly reset: () => void;
   readonly execute: (options: FeedDeleteOptions) => Promise<void>;
 }
 
@@ -62,7 +63,9 @@ const useFeedDelete = ({ feedId }: UseFeedDeleteProps): FeedDeleteState => {
     [feedId, request.status, captureError],
   );
 
-  return { request, execute };
+  const reset = (): void => setRequest({ status: 'idle' });
+
+  return { request, execute, reset };
 };
 
 export default useFeedDelete;

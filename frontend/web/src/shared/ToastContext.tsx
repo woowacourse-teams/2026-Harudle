@@ -1,5 +1,11 @@
 import { css, keyframes, type SerializedStyles } from '@emotion/react';
-import { createContext, useContext, useReducer, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useReducer,
+  type ReactNode,
+} from 'react';
 import { createPortal } from 'react-dom';
 import Toast, { type ToastProps } from './Toast';
 import { ERROR_MESSAGES } from './errorMessage';
@@ -30,7 +36,6 @@ type ToastAction = AddToastAction | RemoveToastAction | UpdateToastAction;
 const TOAST_MAX_LENGTH = 2;
 
 interface ToastContextValue {
-  readonly toasts: readonly ToastItem[];
   readonly addToast: (
     toast: ToastProps,
     durationMs: number | 'infinite',
@@ -79,7 +84,8 @@ const toastReducer = (
 export const ToastProvider = ({ children }: { children: ReactNode }) => {
   const [toasts, dispatch] = useReducer(toastReducer, []);
 
-  const addToast = (
+const addToast = useCallback(
+  (
     toast: ToastProps,
     durationMs: number | 'infinite',
     id: ToastItem['id'] = crypto.randomUUID(),
@@ -87,13 +93,15 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
     dispatch({ type: 'add', toast: { ...toast, id, durationMs } });
 
     if (durationMs !== 'infinite') {
-      setTimeout(() => {
+      setTimeout((): void => {
         dispatch({ type: 'remove', id });
       }, durationMs);
     }
 
     return id;
-  };
+  },
+  [],
+);
 
   const deleteToast = (id: ToastItem['id']): void => {
     dispatch({ type: 'remove', id });
@@ -108,8 +116,9 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <ToastContext.Provider
-      value={{ toasts, addToast, deleteToast, updateToast }}
+      value={{ addToast, deleteToast, updateToast }}
     >
+
       {children}
       {createPortal(
         <div css={toastListStyle}>

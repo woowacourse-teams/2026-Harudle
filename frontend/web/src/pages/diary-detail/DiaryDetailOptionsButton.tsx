@@ -1,6 +1,7 @@
 import { useToastContext } from '../../shared/ToastContext';
 import { css } from '@emotion/react';
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
+import { useNavigate } from 'react-router';
 import moreIcon from '../../assets/icons/feed-more.svg';
 import deleteIcon from '../../assets/icons/delete.svg';
 import BottomSheet, { type BottomSheetHandle } from '../../shared/BottomSheet';
@@ -18,18 +19,14 @@ const DiaryDetailOptionsButton = ({
   diaryId,
 }: DiaryDetailOptionsButtonProps) => {
   const { addToast } = useToastContext();
+  const navigate = useNavigate();
   const menuRef = useRef<BottomSheetHandle>(null);
   const confirmRef = useRef<ModalHandle>(null);
-  const { request, execute: deleteDiary } = useDiaryDelete({ diaryId });
-
-  useEffect((): void => {
-    if (request.status === 'error') {
-      addToast({ type: 'error', message: request.error.message }, 2000);
-    }
-  }, [request]);
+  const { request, reset, execute: deleteDiary } = useDiaryDelete({ diaryId });
 
   const handleDeleteClick = (): void => {
     menuRef.current?.close();
+    reset();
     confirmRef.current?.open();
   };
 
@@ -38,14 +35,23 @@ const DiaryDetailOptionsButton = ({
       return;
     }
 
-    confirmRef.current?.close();
-    void deleteDiary();
+    void deleteDiary({
+      onSuccess: (): void => {
+        confirmRef.current?.close();
+        addToast(
+          { type: 'success', message: DIARY_DETAIL_COPY.deleteSuccess },
+          2000,
+        );
+        void navigate('/album');
+      },
+    });
   };
 
   return (
     <>
       <button
         type="button"
+        aria-label={DIARY_DETAIL_COPY.menuAction}
         css={menuButtonStyle}
         disabled={request.status === 'loading'}
         onClick={() => menuRef.current?.open()}
@@ -64,6 +70,9 @@ const DiaryDetailOptionsButton = ({
         </button>
       </BottomSheet>
       <ConfirmModal
+        errorMessage={
+          request.status === 'error' ? request.error.message : undefined
+        }
         ref={confirmRef}
         title={DIARY_DETAIL_COPY.deleteConfirmTitle}
         description={DIARY_DETAIL_COPY.deleteConfirm}

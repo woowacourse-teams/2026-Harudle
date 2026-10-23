@@ -1,6 +1,6 @@
 import { useToastContext } from '../ToastContext';
 import { css } from '@emotion/react';
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import moreIcon from '../../assets/icons/feed-more.svg';
 import deleteIcon from '../../assets/icons/delete.svg';
 import type { Feed } from '../../domain/feeds/feedList';
@@ -20,16 +20,11 @@ const FeedOptionsButton = ({ feedId, onDelete }: FeedOptionsButtonProps) => {
   const { addToast } = useToastContext();
   const menuRef = useRef<BottomSheetHandle>(null);
   const confirmRef = useRef<ModalHandle>(null);
-  const { request, execute } = useFeedDelete({ feedId });
-
-  useEffect((): void => {
-    if (request.status === 'error') {
-      addToast({ type: 'error', message: request.error.message }, 2000);
-    }
-  }, [request]);
+  const { request, reset, execute } = useFeedDelete({ feedId });
 
   const handleDeleteClick = (): void => {
     menuRef.current?.close();
+    reset();
     confirmRef.current?.open();
   };
 
@@ -69,6 +64,9 @@ const FeedOptionsButton = ({ feedId, onDelete }: FeedOptionsButtonProps) => {
       </BottomSheet>
 
       <ConfirmModal
+        errorMessage={
+          request.status === 'error' ? request.error.message : undefined
+        }
         title={FEED_ACTION_COPY.deleteConfirmTitle}
         description={FEED_ACTION_COPY.deleteConfirmDescription}
         confirmLabel={

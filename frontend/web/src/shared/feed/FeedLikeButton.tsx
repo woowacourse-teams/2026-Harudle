@@ -30,7 +30,7 @@ const FeedLikeButton = ({
     if (request.status === 'error') {
       addToast({ type: 'error', message: request.error.message }, 2000);
     }
-  }, [request]);
+  }, [request, addToast]);
 
   const handleLike = (): void => {
     if (localStorage.getItem('harudle.has-completed-oauth') === null) {

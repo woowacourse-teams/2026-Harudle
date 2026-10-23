@@ -15,7 +15,7 @@ import DiaryImage from '../../shared/DiaryImage';
 import DiaryImageCopyButton from './DiaryImageCopyButton';
 import ActionButton from '../../shared/ActionButton';
 import DiaryDetailOptionsButton from './DiaryDetailOptionsButton';
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import ConfirmModal from '../../shared/ConfirmModal';
 import type { ModalHandle } from '../../shared/Modal';
 import { FEED_ACTION_COPY } from '../../shared/feed/copy';
@@ -114,18 +114,13 @@ const DiaryFeedDeleteAction = ({ feedId }: { feedId: Feed['id'] }) => {
   const { addToast } = useToastContext();
   const navigate = useNavigate();
   const confirmRef = useRef<ModalHandle>(null);
-  const { request: feedDeleteRequest, execute: deleteFeed } = useFeedDelete({
+  const {
+    request: feedDeleteRequest,
+    reset,
+    execute: deleteFeed,
+  } = useFeedDelete({
     feedId,
   });
-
-  useEffect((): void => {
-    if (feedDeleteRequest.status === 'error') {
-      addToast(
-        { type: 'error', message: feedDeleteRequest.error.message },
-        2000,
-      );
-    }
-  }, [feedDeleteRequest]);
 
   const handleFeedDeleteConfirm = (): void => {
     void deleteFeed({
@@ -146,9 +141,17 @@ const DiaryFeedDeleteAction = ({ feedId }: { feedId: Feed['id'] }) => {
         icon={<span css={deleteIconStyle} />}
         label={DIARY_DETAIL_COPY.feedDeleteAction}
         disabled={feedDeleteRequest.status === 'loading'}
-        onClick={(): void => confirmRef.current?.open()}
+        onClick={(): void => {
+          reset();
+          confirmRef.current?.open();
+        }}
       />
       <ConfirmModal
+        errorMessage={
+          feedDeleteRequest.status === 'error'
+            ? feedDeleteRequest.error.message
+            : undefined
+        }
         ref={confirmRef}
         title={FEED_ACTION_COPY.deleteConfirmTitle}
         description={FEED_ACTION_COPY.deleteConfirmDescription}

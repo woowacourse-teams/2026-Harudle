@@ -1,6 +1,7 @@
 import { useToastContext } from '../../shared/ToastContext';
 import { css } from '@emotion/react';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
+import { useNavigate } from 'react-router';
 import sendIcon from '../../assets/icons/feed-send.svg';
 import type { Category } from '../../domain/category/categoryList';
 import type { DiaryDetailResponse } from '../../domain/diary/diaryDetail';
@@ -20,21 +21,13 @@ interface FeedPostContentProps {
 
 const FeedPostContent = ({ diaryId, imageUrl }: FeedPostContentProps) => {
   const { addToast } = useToastContext();
+  const navigate = useNavigate();
   const { request: publishRequest, execute: publish } = useFeedPublish({
     diaryId,
   });
   const [selectedCategoryId, setSelectedCategoryId] = useState<
     Category['id'] | null
   >(null);
-
-  useEffect((): void => {
-    if (publishRequest.status === 'error') {
-      addToast(
-        { type: 'error', message: ERROR_MESSAGES.FEED_PUBLISH_FAILED },
-        2000,
-      );
-    }
-  }, [publishRequest]);
 
   const isPublishing = publishRequest.status === 'loading';
 
@@ -47,6 +40,19 @@ const FeedPostContent = ({ diaryId, imageUrl }: FeedPostContentProps) => {
     if (!selectedCategoryId) return;
     void publish({
       categoryId: selectedCategoryId,
+      onSuccess: (): void => {
+        addToast(
+          { type: 'success', message: FEED_POST_COPY.publishSuccess },
+          2000,
+        );
+        void navigate('/', { replace: true });
+      },
+      onError: (): void => {
+        addToast(
+          { type: 'error', message: ERROR_MESSAGES.FEED_PUBLISH_FAILED },
+          2000,
+        );
+      },
     });
   };
 
