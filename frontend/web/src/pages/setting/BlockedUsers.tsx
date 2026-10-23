@@ -10,6 +10,7 @@ import { setFeedListCache } from '../../domain/feeds/feedListCache';
 import profileFallbackImage from '../../assets/images/profile-fallback.svg';
 import autorenewIcon from '../../assets/icons/autorenew.svg';
 import LoadingSpinner from '../../shared/LoadingSpinner';
+import ActionButton from '../../shared/ActionButton';
 import { useToastContext } from '../../shared/ToastContext';
 import { SETTING_COPY } from './copy';
 import { theme } from '../../styles/theme';
@@ -53,16 +54,19 @@ const BlockedUsersList = () => {
   const busyRef = useRef(false);
   const [listRetry, setListRetry] = useState<ListRetry | null>(null);
   const mountedRef = useRef(true);
+  const readControllerRef = useRef<AbortController | null>(null);
 
   useEffect((): (() => void) => {
     mountedRef.current = true;
     const controller = new AbortController();
+    readControllerRef.current = controller;
     void getBlockedUsers({ signal: controller.signal })
       .then((data): void => {
-        if (mountedRef.current) setRequest({ status: 'success', data });
+        if (mountedRef.current && !controller.signal.aborted)
+          setRequest({ status: 'success', data });
       })
       .catch((caught: unknown): void => {
-        if (!controller.signal.aborted)
+        if (mountedRef.current && !controller.signal.aborted)
           setRequest({
             status: 'error',
             error:
@@ -70,10 +74,15 @@ const BlockedUsersList = () => {
                 ? caught
                 : new Error(SETTING_COPY.blockedUsersLoadError),
           });
+      })
+      .finally((): void => {
+        if (readControllerRef.current === controller)
+          readControllerRef.current = null;
       });
     return (): void => {
       mountedRef.current = false;
-      controller.abort();
+      readControllerRef.current?.abort();
+      readControllerRef.current = null;
     };
   }, []);
 
@@ -81,9 +90,12 @@ const BlockedUsersList = () => {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy('more');
+    readControllerRef.current?.abort();
+    const controller = new AbortController();
+    readControllerRef.current = controller;
     try {
-      const data = await getBlockedUsers({ cursor });
-      if (!mountedRef.current) return;
+      const data = await getBlockedUsers({ cursor, signal: controller.signal });
+      if (!mountedRef.current || controller.signal.aborted) return;
       setListRetry(null);
       setRequest((previous): ApiRequest<BlockedUsersResponse> => ({
         status: 'success',
@@ -104,7 +116,7 @@ const BlockedUsersList = () => {
         },
       }));
     } catch (caught: unknown) {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || controller.signal.aborted) return;
       if (request.status !== 'success') {
         setRequest({
           status: 'error',
@@ -119,6 +131,8 @@ const BlockedUsersList = () => {
         );
       }
     } finally {
+      if (readControllerRef.current === controller)
+        readControllerRef.current = null;
       busyRef.current = false;
       if (mountedRef.current) setBusy(null);
     }
@@ -146,14 +160,21 @@ const BlockedUsersList = () => {
             }
           : previous,
       );
+      readControllerRef.current?.abort();
+      const controller = new AbortController();
+      readControllerRef.current = controller;
       try {
-        const data = await getBlockedUsers();
-        if (mountedRef.current) {
+        const data = await getBlockedUsers({ signal: controller.signal });
+        if (mountedRef.current && !controller.signal.aborted) {
           setRequest({ status: 'success', data });
           setListRetry(null);
         }
       } catch {
-        if (mountedRef.current) setListRetry({ kind: 'refresh' });
+        if (mountedRef.current && !controller.signal.aborted)
+          setListRetry({ kind: 'refresh' });
+      } finally {
+        if (readControllerRef.current === controller)
+          readControllerRef.current = null;
       }
     } catch {
       if (mountedRef.current)
@@ -219,17 +240,18 @@ const BlockedUsersList = () => {
             ))}
           </ul>
           {request.data.hasNext && listRetry === null && (
-            <button
-              type="button"
+            <ActionButton
+              variant="secondary"
               disabled={busy !== null}
+              label={
+                busy === 'more'
+                  ? SETTING_COPY.blockedUsersLoading
+                  : SETTING_COPY.blockedUsersLoadMore
+              }
               onClick={(): void => {
                 if (request.data.nextCursor) void load(request.data.nextCursor);
               }}
-            >
-              {busy === 'more'
-                ? SETTING_COPY.blockedUsersLoading
-                : SETTING_COPY.blockedUsersLoadMore}
-            </button>
+            />
           )}
         </>
       )}
