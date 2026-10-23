@@ -135,6 +135,21 @@ http://localhost:8080/login/oauth2/code/google
 
 운영 서버의 키와 콜백 등록은 [배포 안내](../deploy/README.md#google-로그인-설정)를 따릅니다.
 
+## Apple 로그인 설정 연결
+
+기본값은 `APPLE_LOGIN_ENABLED=false`이며, 이때 Apple 키 없이 기존 Google과 Kakao 설정을 사용합니다.
+`true`로 켜려면 `APPLE_CLIENT_ID`(Services ID), `APPLE_TEAM_ID`, `APPLE_KEY_ID`,
+`APPLE_PRIVATE_KEY_PATH`(실행 중인 서버에서 읽을 수 있는 `.p8` 파일 경로)를 설정합니다.
+실제 개인 키는 Git에 올리지 않습니다. 생성기는 등록 시 키를 한 번 읽으므로 키 파일 교체 후에는 재시작합니다.
+
+시작 경로는 `/oauth2/authorization/apple`, 콜백은 `${BACKEND_BASE_URL}/login/oauth2/code/apple`입니다.
+실제 Apple 인증에는 Apple 계정에 등록한 HTTPS 도메인의 `BACKEND_BASE_URL`을 사용합니다.
+`openid`, `email`을 요청하고 Apple 요청에만 `response_mode=form_post`를 추가합니다.
+토큰 요청 시에는 5분짜리 `client_secret`을 새로 생성하며, 사용자 인증 토큰의 검증은 Spring이 처리합니다.
+
+현재는 인증 흐름 연결 단계입니다. Apple POST 콜백을 위한 세션 쿠키와 CSRF 처리는 아직 적용하지 않았으므로,
+이 설정 연결만으로 실제 브라우저 로그인이 완료되는 상태는 아닙니다.
+
 ## Gemini Client 인증
 
 외부 생성 어댑터를 활성화하면 `GEMINI_AUTH_MODE`로 Client 생성 방식을 선택합니다.

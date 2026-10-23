@@ -82,6 +82,13 @@ spring:
 
 app:
   auth:
+    apple:
+      enabled: ${APPLE_LOGIN_ENABLED:false}
+      client-id: ${APPLE_CLIENT_ID:}
+      team-id: ${APPLE_TEAM_ID:}
+      key-id: ${APPLE_KEY_ID:}
+      private-key-path: ${APPLE_PRIVATE_KEY_PATH:}
+      redirect-uri: "${BACKEND_BASE_URL:http://localhost:8080}/login/oauth2/code/apple"
     frontend-origins: "${FRONTEND_ORIGINS:${FRONTEND_ORIGIN:http://localhost:5173}}"
     success-redirect: "${FRONTEND_SUCCESS_REDIRECT:http://localhost:5173/auth/callback}"
     failure-redirect: "${FRONTEND_FAILURE_REDIRECT:http://localhost:5173/auth/callback?error=oauth_failed}"

@@ -46,6 +46,8 @@ flowchart TB
   시작 경로는 `/oauth2/authorization/google`, 콜백은 `${BACKEND_BASE_URL}/login/oauth2/code/google`이다.
   `openid`, `email`, `profile`을 요청하며, 인증 검증에는 Spring Security의 기본 Google 설정을 사용한다.
   로컬 설정은 `backend/README.md`, 서버 키와 콜백 등록은 `deploy/README.md`를 따른다.
+- Apple 연결은 `APPLE_LOGIN_ENABLED=true`일 때만 등록한다. 필요한 식별값과 개인 키 경로는
+  `backend/README.md`를 따른다. 현재 Apple POST 콜백의 세션 쿠키와 CSRF 처리는 미적용 상태다.
 - 백엔드는 DB에 저장한 S3 Object Key로 Presigned GET URL을 발급하고,
   브라우저가 S3에서 직접 이미지를 가져온다. 기본 URL 유효 시간은 `15m`이며
   `S3_ACCESS_URL_TTL`로 설정한다. 브라우저의 이미지 fetch에는 S3 CORS 설정이 필요하다.
