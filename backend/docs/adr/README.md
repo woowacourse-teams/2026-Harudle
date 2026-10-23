@@ -12,6 +12,7 @@
 
 ## 주제별 ADR
 
+- [인프라 v2: 앱과 DB 서버 분리](infra-v2-architecture/README.md)
 - [이미지 비동기 생성: DB 큐, 작업 확보, 상태 조회와 성능 검증](async-diary-generation/README.md)
 - [피드 삭제 정책: 피드와 연결 데이터의 삭제 방식을 어떻게 정할 것인가](feed-deletion-policy/2026-10-11_피드와%20연결%20데이터의%20삭제%20방식을%20어떻게%20정할%20것인가_캐모.md)
 - [프로필 이미지 선택과 개인 이미지 업로드](profiles-and-categories/2026-10-20_프로필%20이미지%20선택과%20개인%20이미지%20업로드.md)
