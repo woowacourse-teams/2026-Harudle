@@ -2,7 +2,7 @@
 
 피드 목록·상세·댓글과 설정에서 동작하는 화면·요청·실패 처리를 정리합니다. 실제 서버의 차단 판정·동시 요청·알림 정책은 [백엔드 시나리오](https://github.com/woowacourse-teams/2026-Harudle/blob/feat/425-user-blocking-backend/backend/docs/user-blocking-scenarios.md)에서 별도로 리뷰합니다.
 
-[화면 PDF](https://github.com/user-attachments/files/33855220/harudle-pr457-frontend-review.pdf)는 최종 차단 UI의 실제 로컬 캡처 12개를 담은 3쪽 자료입니다. 가상 API를 사용했으며 백엔드 구현을 이 PR에 포함하지 않습니다.
+[화면 PDF](https://github.com/user-attachments/files/33856076/harudle-pr463-frontend-review.pdf)는 최종 차단 UI의 실제 로컬 캡처 12개를 담은 3쪽 자료입니다. 가상 API를 사용했으며 백엔드 구현을 이 PR에 포함하지 않습니다.
 
 ## FE01. 메뉴 진입
 
