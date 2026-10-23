@@ -144,3 +144,16 @@ flowchart TD
 | `GET /api/v1/blocks?size=20&cursor=...` | `{items:[{userId,nickname,profileImageUrl,blockedAt}],nextCursor,hasNext}` |
 
 신고 API는 머지된 #455에 있습니다. 차단 API와 서버의 피드·댓글·알림 필터는 별도 백엔드 PR에서 추가하므로 **백엔드 반영·배포 후 프론트를 배포**합니다. MSW 검증이 실제 서버 통합 검증을 대신하지는 않습니다. 신고·차단 뒤 콘텐츠 노출과 동시 요청의 서버 정책은 [백엔드 시나리오](https://github.com/woowacourse-teams/2026-Harudle/blob/feat/425-user-blocking-backend/backend/docs/user-blocking-scenarios.md)에서 확인합니다.
+
+<details>
+<summary>개발 브랜치 통합 시 확인</summary>
+
+두 개발 브랜치를 통합할 때 기존 신고 UI와 다음 부분이 겹칩니다.
+
+- `FeedItem.tsx`, `FeedDetailContent.tsx`, `FeedCommentItem.tsx`: 공통 `ContentOptionsButton`, 작성자·탈퇴 처리와 본인 삭제 흐름을 유지합니다.
+- `ReportEntryPoints.test.tsx`, `e2e/feed-detail.spec.ts`: 공통 메뉴의 신고·차단·삭제 회귀를 유지합니다.
+- 공통 메뉴로 대체된 미사용 `ReportOptionsButton.tsx`를 정리합니다.
+
+최종 통합 시 최신 변경으로 병합 결과를 다시 검증하고, dev에 반영된 프로필 이미지·Nginx·Webpack 설정도 보존합니다.
+
+</details>
