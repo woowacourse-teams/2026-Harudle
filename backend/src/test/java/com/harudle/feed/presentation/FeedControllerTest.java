@@ -208,7 +208,10 @@ class FeedControllerTest {
                 .andExpect(jsonPath("$.likeCount").value(12))
                 .andExpect(jsonPath("$.commentCount").value(3))
                 .andExpect(jsonPath("$.shareUrl").value("https://harudle.example/feeds/" + FEED))
-                .andExpect(jsonPath("$.publishedAt").value("2026-10-11T10:00:00+09:00"));
+                .andExpect(jsonPath("$.publishedAt").value("2026-10-11T10:00:00+09:00"))
+                .andExpect(jsonPath("$.author.profileImageUrl")
+                        .value("https://example.com/profile.webp?signature=example"))
+                .andExpect(jsonPath("$.author.profileImageUrlExpiresAt").value("2026-10-11T01:15:00Z"));
         verify(queryService).getDetail(null, FEED);
         verify(imageUrlProvider).forRead();
     }
@@ -279,6 +282,9 @@ class FeedControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[0].id").value(FEED.toString()))
                 .andExpect(jsonPath("$.items[0].likedByMe").value(false))
+                .andExpect(jsonPath("$.items[0].author.profileImageUrl")
+                        .value("https://example.com/profile.webp?signature=example"))
+                .andExpect(jsonPath("$.items[0].author.profileImageUrlExpiresAt").value("2026-10-11T01:15:00Z"))
                 .andExpect(jsonPath("$.items[0].shareUrl").value("https://harudle.example/feeds/" + FEED))
                 .andExpect(jsonPath("$.items[0].sourceText").doesNotExist())
                 .andExpect(jsonPath("$.items[0].imageObjectKey").doesNotExist())
@@ -536,7 +542,9 @@ class FeedControllerTest {
 
     private static FeedResult result(boolean liked, boolean mine) {
         return new FeedResult(FEED,
-                new PublicProfileReader.Profile(ACTOR, "캐모", URI.create("https://example.com/profile.png")),
+                new PublicProfileReader.Profile(
+                        ACTOR, "캐모", URI.create("https://example.com/profile.webp?signature=example"),
+                        Instant.parse("2026-10-11T01:15:00Z")),
                 new CategoryReader.Category(1, "일상", 0, true),
                 "generated/comic.webp", Instant.parse("2026-10-11T01:00:00Z"), 12, 3, liked, mine);
     }

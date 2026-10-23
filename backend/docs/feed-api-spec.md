@@ -96,7 +96,8 @@ R2 원본 탐색은 응답 전체가 공유하는 시간 예산 안에서 수행
   "author": {
     "id": "550e8400-e29b-41d4-a716-446655440001",
     "nickname": "캐모",
-    "profileImageUrl": "https://example.com/profile.png"
+    "profileImageUrl": "https://example.com/profile.webp?signature=example",
+    "profileImageUrlExpiresAt": "2026-10-21T00:15:00Z"
   },
   "category": { "id": 1, "name": "일상" },
   "imageUrl": "https://example.com/generated/comic.webp?signature=example",
@@ -109,6 +110,12 @@ R2 원본 탐색은 응답 전체가 공유하는 시간 예산 안에서 수행
   "shareUrl": "https://www.harudle.com/feeds/550e8400-e29b-41d4-a716-446655440000"
 }
 ```
+
+작성자 사진은 조회 시점의 현재 프로필을 사용하므로 이전 게시물도 다시 조회하면 새 사진을 표시한다.
+개인 사진은 S3 서명 URL과 `author.profileImageUrlExpiresAt`을 반환한다. 만료 시각은 UTC 문자열이며 기본 유효 시간은 15분이다.
+기본 이미지는 고정 URL을 반환하고 만료 시각은 `null`이다. 만료된 주소는 피드를 다시 조회해 갱신한다.
+댓글의 `author`와 알림의 `actor`도 같은 이미지 URL과 만료 시각 규칙을 사용한다.
+개인 사진 주소 발급에 실패하면 `503 PROFILE_IMAGE_STORAGE_ERROR`를 반환한다.
 
 원본 일기 내용·제목·일기 ID·작성자의 이메일·이미지 Object Key는 공개 응답에 포함하지 않는다.
 기존 `ImageUrlProvider`로 DB 트랜잭션 이후에 S3/R2 접근 URL을 발급한다.

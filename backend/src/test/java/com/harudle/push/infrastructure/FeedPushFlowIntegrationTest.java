@@ -79,7 +79,7 @@ class FeedPushFlowIntegrationTest {
         when(categories.lockActiveForPublication(categoryId))
                 .thenReturn(new CategoryReader.Category(categoryId, "일상", 0, true));
         when(profiles.readAll(Set.of(author))).thenReturn(Map.of(author,
-                new PublicProfileReader.Profile(author, "작성자", URI.create("https://example.com/profile.png"))));
+                new PublicProfileReader.Profile(author, "작성자", URI.create("https://example.com/profile.png"), null)));
     }
 
     @AfterEach
