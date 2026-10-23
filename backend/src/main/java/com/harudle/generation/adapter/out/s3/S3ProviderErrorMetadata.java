@@ -43,25 +43,32 @@ record S3ProviderErrorMetadata(
     static S3ProviderErrorMetadata from(Throwable exception, boolean configurationOperation) {
         AwsServiceException serviceException = findServiceException(exception);
         if (serviceException == null) {
-            if (isCredentialsResolutionFailure(exception)) {
-                return new S3ProviderErrorMetadata(
-                        "AUTHENTICATION_ERROR",
-                        true,
-                        null,
-                        null,
-                        null
-                );
-            }
-            String failureType = configurationOperation ? "CONFIGURATION_ERROR" : "CLIENT_ERROR";
+            return fromClientFailure(exception, configurationOperation);
+        }
+        return fromServiceException(serviceException);
+    }
+
+    private static S3ProviderErrorMetadata fromClientFailure(Throwable exception, boolean configurationOperation) {
+        if (isCredentialsResolutionFailure(exception)) {
             return new S3ProviderErrorMetadata(
-                    failureType,
-                    configurationOperation,
+                    "AUTHENTICATION_ERROR",
+                    true,
                     null,
                     null,
                     null
             );
         }
+        String failureType = configurationOperation ? "CONFIGURATION_ERROR" : "CLIENT_ERROR";
+        return new S3ProviderErrorMetadata(
+                failureType,
+                configurationOperation,
+                null,
+                null,
+                null
+        );
+    }
 
+    private static S3ProviderErrorMetadata fromServiceException(AwsServiceException serviceException) {
         AwsErrorDetails errorDetails = serviceException.awsErrorDetails();
         String code = errorDetails == null ? null : errorDetails.errorCode();
         int statusCode = serviceException.statusCode();

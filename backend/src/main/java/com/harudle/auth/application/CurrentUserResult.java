@@ -4,6 +4,7 @@ import com.harudle.auth.domain.OAuthAccount;
 import com.harudle.auth.domain.OAuthProvider;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.domain.UserRole;
+import java.net.URI;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
@@ -11,6 +12,8 @@ import java.util.UUID;
 public record CurrentUserResult(
         UUID id,
         String name,
+        String nickname,
+        URI profileImageUrl,
         String email,
         UserRole role,
         OAuthProvider oauthProvider,
@@ -25,13 +28,15 @@ public record CurrentUserResult(
         createdAt = Objects.requireNonNull(createdAt, "createdAt은 필수입니다.");
     }
 
-    public static CurrentUserResult from(User user, OAuthAccount oauthAccount) {
+    public static CurrentUserResult from(User user, OAuthAccount oauthAccount, URI profileImageUrl) {
         Objects.requireNonNull(user, "user는 필수입니다.");
         Objects.requireNonNull(oauthAccount, "oauthAccount는 필수입니다.");
 
         return new CurrentUserResult(
                 user.getId(),
                 user.getName(),
+                user.getNickname(),
+                profileImageUrl,
                 user.getPrimaryEmail(),
                 user.getRole(),
                 oauthAccount.getProvider(),

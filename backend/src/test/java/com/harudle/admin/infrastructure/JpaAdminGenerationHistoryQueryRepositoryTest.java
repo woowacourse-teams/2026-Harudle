@@ -1,41 +1,42 @@
 package com.harudle.admin.infrastructure;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.harudle.admin.query.AdminGenerationHistorySnapshot;
 import com.harudle.admin.repository.AdminGenerationHistoryQueryRepository;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.UserRepository;
-import com.harudle.generation.domain.GenerationErrorCode;
-import com.harudle.generation.domain.GenerationPrompt;
-import com.harudle.generation.domain.GenerationStatus;
-import com.harudle.generation.repository.GenerationPromptRepository;
+import com.harudle.generation.diary.domain.GenerationErrorCode;
+import com.harudle.generation.diary.domain.GenerationStatus;
+import com.harudle.generation.diary.domain.StoryPanel;
+import com.harudle.generation.diary.domain.Storyboard;
+import com.harudle.generation.diary.domain.StoryboardProviderInfo;
+import com.harudle.generation.diary.repository.DiaryGenerationRepository;
+import com.harudle.generation.prompt.domain.GenerationPrompt;
+import com.harudle.generation.prompt.repository.GenerationPromptRepository;
+import com.harudle.support.ServiceIntegrationTestSupport;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
-import org.springframework.data.domain.PageRequest;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest
-class JpaAdminGenerationHistoryQueryRepositoryTest {
+class JpaAdminGenerationHistoryQueryRepositoryTest extends ServiceIntegrationTestSupport {
 
-    private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:18-alpine");
     private static final Instant CREATED_AT = Instant.parse("2026-08-06T00:00:00Z");
     private static final UUID FIRST_GENERATION_ID = UUID.fromString(
             "00000000-0000-0000-0000-000000000001"
@@ -46,12 +47,11 @@ class JpaAdminGenerationHistoryQueryRepositoryTest {
     private static final UUID THIRD_GENERATION_ID = UUID.fromString(
             "00000000-0000-0000-0000-000000000003"
     );
-    @Container
-    @ServiceConnection
-    static final PostgreSQLContainer POSTGRESQL_CONTAINER = new PostgreSQLContainer(POSTGRES_IMAGE);
-
     @Autowired
     private AdminGenerationHistoryQueryRepository generationHistoryQueryRepository;
+
+    @Autowired
+    private DiaryGenerationRepository diaryGenerations;
 
     @Autowired
     private GenerationPromptRepository generationPromptRepository;
@@ -61,9 +61,6 @@ class JpaAdminGenerationHistoryQueryRepositoryTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
-
-    @MockitoBean
-    private JwtDecoder jwtDecoder;
 
     private GenerationPrompt generationPrompt;
     private User firstUser;
@@ -78,6 +75,31 @@ class JpaAdminGenerationHistoryQueryRepositoryTest {
                 "생성 이력 테스트 이미지 스타일",
                 "references/admin-history.png"
         ));
+    }
+
+    @Test
+    void backupCursorKeepsEqualTimestampTargetsAndExcludesOtherEnvironmentStatusAndFutureCompletion() {
+        UUID future = new UUID(0, 4);
+        UUID development = new UUID(0, 5);
+        UUID failed = new UUID(0, 6);
+        for (UUID id : List.of(FIRST_GENERATION_ID, SECOND_GENERATION_ID, THIRD_GENERATION_ID, future, development)) {
+            Instant requestedAt = id.equals(future) ? CREATED_AT.plusSeconds(10) : CREATED_AT;
+            insertGeneration(id, firstUser.getId(), requestedAt, GenerationStatus.SUCCEEDED, null);
+            jdbcTemplate.update("UPDATE diary_generations SET image_object_key = ? WHERE id = ?",
+                    "harudle/generated/diary-images/" + (id.equals(development) ? "dev/" : "prod/") + id + "/image.png", id);
+        }
+        insertGeneration(failed, firstUser.getId(), CREATED_AT, GenerationStatus.FAILED, GenerationErrorCode.AI_PROVIDER_ERROR);
+        String pattern = "harudle/generated/diary-images/prod/%";
+        Instant cutoff = CREATED_AT.plusSeconds(1);
+        var first = diaryGenerations.findImageBackupTargets(GenerationStatus.SUCCEEDED, cutoff, pattern, PageRequest.of(0, 2));
+        assertThat(first).extracting(target -> target.generationId()).containsExactly(FIRST_GENERATION_ID, SECOND_GENERATION_ID);
+        var cursor = first.getLast();
+        var next = diaryGenerations.findImageBackupTargetsAfter(GenerationStatus.SUCCEEDED, cutoff, pattern,
+                cursor.completedAt(), cursor.generationId(), PageRequest.of(0, 2));
+        assertThat(next).extracting(target -> target.generationId()).containsExactly(THIRD_GENERATION_ID);
+        var last = next.getLast();
+        assertThat(diaryGenerations.findImageBackupTargetsAfter(GenerationStatus.SUCCEEDED, cutoff, pattern,
+                last.completedAt(), last.generationId(), PageRequest.of(0, 2))).isEmpty();
     }
 
     @AfterEach
@@ -126,6 +148,44 @@ class JpaAdminGenerationHistoryQueryRepositoryTest {
                 .extracting(AdminGenerationHistorySnapshot::id)
                 .containsExactly(THIRD_GENERATION_ID, SECOND_GENERATION_ID, FIRST_GENERATION_ID);
         assertThat(result.getContent().getFirst().userName()).isEqualTo("두 번째 사용자");
+        assertThat(result.getContent().getFirst().storyboardProvider()).isNull();
+        assertThat(result.getContent().getFirst().storyboardModel()).isNull();
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = GenerationStatus.class, names = {"SUCCEEDED", "FAILED"})
+    @DisplayName("성공 또는 이미지 단계 실패의 Provider와 모델을 JPA로 저장하고 관리자 이력에서 조회한다")
+    void persistAndProjectStoryboardProviderInfo(GenerationStatus status) {
+        insertGeneration(FIRST_GENERATION_ID, firstUser.getId(), CREATED_AT, GenerationStatus.PROCESSING, null);
+        var generation = diaryGenerations.findById(FIRST_GENERATION_ID).orElseThrow();
+        var info = new StoryboardProviderInfo("qwen", "qwen3.8-max");
+        if (status == GenerationStatus.SUCCEEDED) {
+            var storyboard = new Storyboard("테스트 결과", "같은 캐릭터", IntStream.rangeClosed(1, 4)
+                    .mapToObj(number -> new StoryPanel(number, "캡션 " + number,
+                            "장면", "등장인물", "감정", List.of())).toList());
+            generation.succeed(storyboard, "generated/provider-test.png", null, info, CREATED_AT.plusSeconds(1));
+        } else {
+            generation.fail(GenerationErrorCode.IMAGE_STORAGE_ERROR, info, CREATED_AT.plusSeconds(1));
+        }
+        diaryGenerations.saveAndFlush(generation);
+
+        var result = generationHistoryQueryRepository.search(null, status, null, null, PageRequest.of(0, 20));
+
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().getFirst().storyboardProvider()).isEqualTo("qwen");
+        assertThat(result.getContent().getFirst().storyboardModel()).isEqualTo("qwen3.8-max");
+        assertThat(result.getContent().getFirst().status()).isEqualTo(status);
+    }
+
+    @Test
+    @DisplayName("Provider와 모델 중 하나만 저장하는 부분 기록은 DB 제약으로 거절한다")
+    void rejectIncompleteProviderInfoAtDatabaseBoundary() {
+        insertGeneration(FIRST_GENERATION_ID, firstUser.getId(), CREATED_AT, GenerationStatus.PROCESSING, null);
+
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                "UPDATE diary_generations SET storyboard_provider = ? WHERE id = ?", "qwen", FIRST_GENERATION_ID))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("ck_diary_generations_storyboard_provider_info");
     }
 
     @Test

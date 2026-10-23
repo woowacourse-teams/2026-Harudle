@@ -1,5 +1,7 @@
 package com.harudle.auth.domain;
 
+import com.harudle.auth.domain.policy.NicknamePolicy;
+import com.harudle.auth.domain.policy.ProfileImageCodePolicy;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -7,6 +9,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.Objects;
 import java.util.UUID;
 
 @Entity
@@ -22,6 +25,12 @@ public class User {
 
     @Column(nullable = false, length = 30)
     private String name;
+
+    @Column(name = "nickname", length = 30)
+    private String nickname;
+
+    @Column(name = "profile_image_code")
+    private Short profileImageCode;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -57,6 +66,38 @@ public class User {
         this.updatedAt = now;
     }
 
+    public void assignInitialPublicProfile(String rawNickname, int imageCode, Instant now) {
+        Objects.requireNonNull(now, "now는 필수입니다.");
+
+        if (this.nickname != null) {
+            throw new IllegalStateException("공개 프로필은 이미 배정되었습니다.");
+        }
+
+        String validatedNickname = NicknamePolicy.normalizeAndValidate(rawNickname);
+        short validatedImageCode = ProfileImageCodePolicy.validateAndConvert(imageCode);
+
+        this.nickname = validatedNickname;
+
+        if (this.profileImageCode == null) {
+            this.profileImageCode = validatedImageCode;
+        }
+
+        this.updatedAt = now;
+    }
+
+    public void changeNickname(String rawNickname, Instant now) {
+        Objects.requireNonNull(now, "now는 필수입니다.");
+
+        if (this.nickname == null || this.profileImageCode == null) {
+            throw new IllegalStateException("공개 프로필을 먼저 배정해야 합니다.");
+        }
+
+        String validatedNickname = NicknamePolicy.normalizeAndValidate(rawNickname);
+
+        this.nickname = validatedNickname;
+        this.updatedAt = now;
+    }
+
     public boolean isDeleted() {
         return deletedAt != null;
     }
@@ -71,6 +112,14 @@ public class User {
 
     public String getName() {
         return name;
+    }
+
+    public String getNickname() {
+        return nickname;
+    }
+
+    public Short getProfileImageCode() {
+        return profileImageCode;
     }
 
     public UserRole getRole() {

@@ -1,5 +1,7 @@
 package com.harudle.guest.presentation;
 
+import com.harudle.common.error.ApiErrorResponses;
+import com.harudle.common.error.ErrorType;
 import com.harudle.guest.application.GuestSessionService;
 import com.harudle.guest.application.IssuedGuestSession;
 import com.harudle.guest.infrastructure.cookie.GuestSessionCookieReader;
@@ -48,6 +50,7 @@ public class GuestSessionController {
             description = "유효한 게스트 세션 쿠키가 있으면 재사용하고, 없으면 새 세션을 발급합니다."
     )
     @ApiResponse(responseCode = "204", description = "게스트 세션 발급 또는 재사용 완료")
+    @ApiErrorResponses(ErrorType.INVALID_CSRF_TOKEN)
     @PostMapping("/session")
     public ResponseEntity<Void> issue(
             HttpServletRequest request,

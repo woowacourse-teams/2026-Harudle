@@ -2,8 +2,8 @@ package com.harudle.admin.presentation.dto;
 
 import com.harudle.admin.query.AdminGenerationHistoryPage;
 import com.harudle.admin.query.AdminGenerationHistorySnapshot;
-import com.harudle.generation.domain.GenerationErrorCode;
-import com.harudle.generation.domain.GenerationStatus;
+import com.harudle.generation.diary.domain.GenerationErrorCode;
+import com.harudle.generation.diary.domain.GenerationStatus;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -41,7 +41,9 @@ public record AdminGenerationHistoryResponse(
             Instant requestedAt,
             GenerationStatus status,
             Instant completedAt,
-            GenerationErrorCode errorCode
+            GenerationErrorCode errorCode,
+            String storyboardProvider,
+            String storyboardModel
     ) {
 
         private static GenerationResponse from(AdminGenerationHistorySnapshot generation) {
@@ -51,7 +53,9 @@ public record AdminGenerationHistoryResponse(
                     generation.requestedAt(),
                     generation.status(),
                     generation.completedAt(),
-                    generation.errorCode()
+                    generation.errorCode(),
+                    generation.storyboardProvider(),
+                    generation.storyboardModel()
             );
         }
     }

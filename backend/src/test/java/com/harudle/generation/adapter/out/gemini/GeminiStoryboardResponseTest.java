@@ -2,6 +2,7 @@ package com.harudle.generation.adapter.out.gemini;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.harudle.generation.adapter.out.storyboard.StoryboardResponse;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -27,17 +28,33 @@ class GeminiStoryboardResponseTest {
                       "emotion": "Visible excitement.",
                       "props": ["smartphone"]
                     }
-                  ]
+                  ],
+                  "visual_plan": {
+                    "environment_rule": "Keep the same cafe across the panels.",
+                    "focal_colors": [{
+                      "prop": "smartphone",
+                      "component": "phone case",
+                      "color_hex": "#A99BE8",
+                      "panel_numbers": [1]
+                    }]
+                  }
                 }
                 """;
 
-        GeminiStoryboardResponse response = jsonMapper.readValue(
+        StoryboardResponse response = jsonMapper.readValue(
                 responseJson,
-                GeminiStoryboardResponse.class
+                StoryboardResponse.class
         );
 
         assertThat(response.title()).isEqualTo("인스타 맛집의 함정");
         assertThat(response.castContinuity()).isEqualTo("One recurring protagonist.");
+        assertThat(response.visualPlan().environmentRule()).isEqualTo("Keep the same cafe across the panels.");
+        assertThat(response.visualPlan().focalColors()).singleElement().satisfies(color -> {
+            assertThat(color.prop()).isEqualTo("smartphone");
+            assertThat(color.component()).isEqualTo("phone case");
+            assertThat(color.colorHex()).isEqualTo("#A99BE8");
+            assertThat(color.panelNumbers()).containsExactly(1);
+        });
         assertThat(response.panels()).singleElement().satisfies(panel -> {
             assertThat(panel.panelNumber()).isEqualTo(1);
             assertThat(panel.storyRole()).isEqualTo("setup");

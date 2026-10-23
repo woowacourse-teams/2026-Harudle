@@ -1,7 +1,7 @@
 package com.harudle.admin.presentation.dto;
 
 import com.harudle.admin.query.AdminUserSnapshot;
-import com.harudle.generation.domain.GenerationUsage;
+import com.harudle.generation.usage.domain.GenerationUsage;
 import java.time.LocalDate;
 
 public record AdminGenerationUsageResponse(

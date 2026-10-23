@@ -1,28 +1,32 @@
 package com.harudle.generation.config;
 
-import com.harudle.generation.infrastructure.GenerationPromptBootstrapService;
-import com.harudle.generation.infrastructure.GenerationPromptInitializer;
-import com.harudle.generation.configuration.GenerationLifecycleProperties;
-import com.harudle.generation.repository.DiaryGenerationRepository;
-import com.harudle.generation.repository.GenerationPromptRepository;
-import com.harudle.generation.service.ClaimedDiaryGenerationService;
-import com.harudle.generation.service.DiaryGenerationCompletionService;
-import com.harudle.generation.service.DiaryGenerationExecutor;
-import com.harudle.generation.service.RequestFingerprintGenerator;
-import com.harudle.generation.service.dto.CompletedDiaryGeneration;
-import com.harudle.generation.service.dto.GenerateDiaryImageCommand;
-import com.harudle.generation.service.exception.GenerationUnavailableException;
-import com.harudle.generation.service.port.DiaryImageGenerator;
-import com.harudle.generation.service.port.ImageStorage;
-import com.harudle.generation.service.port.StoryboardGenerator;
+import com.harudle.generation.diary.repository.DiaryGenerationRepository;
+import com.harudle.generation.diary.service.ClaimedDiaryGenerationService;
+import com.harudle.generation.diary.service.DiaryGenerationCompletionService;
+import com.harudle.generation.diary.service.DiaryGenerationExecutor;
+import com.harudle.generation.diary.service.GenerationLifecycleMetrics;
+import com.harudle.generation.diary.service.ObservedDiaryGenerationExecutor;
+import com.harudle.generation.diary.service.RequestFingerprintGenerator;
+import com.harudle.generation.diary.service.dto.CompletedDiaryGeneration;
+import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
+import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
+import com.harudle.generation.diary.service.port.DiaryImageGenerator;
+import com.harudle.generation.diary.service.port.ImageStorage;
+import com.harudle.generation.diary.service.storyboard.StoryboardGenerationService;
+import com.harudle.generation.prompt.infrastructure.GenerationPromptBootstrapService;
+import com.harudle.generation.prompt.infrastructure.GenerationPromptInitializer;
+import com.harudle.generation.prompt.repository.GenerationPromptRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 @Configuration(proxyBeanMethods = false)
 @EnableScheduling
@@ -33,38 +37,51 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 class DiaryGenerationConfiguration {
 
     @Bean
+    @ConditionalOnMissingBean(name = "taskScheduler")
+    ThreadPoolTaskScheduler taskScheduler() {
+        ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+        scheduler.setPoolSize(1);
+        scheduler.setThreadNamePrefix("generation-scheduler-");
+        return scheduler;
+    }
+
+    @Bean
     DiaryGenerationExecutor diaryGenerationExecutor(
             RequestFingerprintGenerator requestFingerprintGenerator,
             GenerationPromptRepository generationPromptRepository,
             DiaryGenerationRepository diaryGenerationRepository,
-            ObjectProvider<StoryboardGenerator> storyboardGeneratorProvider,
+            ObjectProvider<StoryboardGenerationService> storyboardServiceProvider,
             ObjectProvider<DiaryImageGenerator> diaryImageGeneratorProvider,
             ObjectProvider<ImageStorage> imageStorageProvider,
-            DiaryGenerationCompletionService completionService
+            DiaryGenerationCompletionService completionService,
+            GenerationLifecycleMetrics lifecycleMetrics,
+            MeterRegistry meterRegistry
     ) {
-        Optional<StoryboardGenerator> storyboardGenerator = findAdapter(storyboardGeneratorProvider);
+        Optional<StoryboardGenerationService> storyboardService = findAdapter(storyboardServiceProvider);
         Optional<DiaryImageGenerator> diaryImageGenerator = findAdapter(diaryImageGeneratorProvider);
         Optional<ImageStorage> imageStorage = findAdapter(imageStorageProvider);
-        if (storyboardGenerator.isEmpty()
+        if (storyboardService.isEmpty()
                 && diaryImageGenerator.isEmpty()
                 && imageStorage.isEmpty()) {
             return new UnavailableDiaryGenerationExecutor();
         }
-        if (storyboardGenerator.isEmpty()
+        if (storyboardService.isEmpty()
                 || diaryImageGenerator.isEmpty()
                 || imageStorage.isEmpty()) {
             throw new IllegalStateException("AI 생성 어댑터는 모두 함께 구성해야 합니다.");
         }
 
-        return new ClaimedDiaryGenerationService(
+        DiaryGenerationExecutor executor = new ClaimedDiaryGenerationService(
                 requestFingerprintGenerator,
                 generationPromptRepository,
                 diaryGenerationRepository,
-                storyboardGenerator.orElseThrow(),
+                storyboardService.orElseThrow(),
                 diaryImageGenerator.orElseThrow(),
                 imageStorage.orElseThrow(),
-                completionService
+                completionService,
+                lifecycleMetrics
         );
+        return new ObservedDiaryGenerationExecutor(executor, meterRegistry);
     }
 
     @Bean
