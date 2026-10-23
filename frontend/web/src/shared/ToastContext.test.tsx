@@ -116,7 +116,6 @@ describe('토스트 ID 지정과 중복 방지', (): void => {
       expect(secondId).toBe(firstId);
     });
 
-    expect(result.current.toasts).toHaveLength(1);
     expect(screen.getAllByText('네컷만화를 만들고 있어요')).toHaveLength(1);
     expect(screen.queryByText('중복 생성 알림')).not.toBeInTheDocument();
   });
@@ -136,7 +135,8 @@ describe('토스트 ID 지정과 중복 방지', (): void => {
       expect(firstId).not.toBe(secondId);
     });
 
-    expect(result.current.toasts).toHaveLength(2);
+    expect(screen.getAllByText('첫 알림')).toHaveLength(1);
+    expect(screen.getAllByText('다음 알림')).toHaveLength(1);
   });
 
   it('갱신된 결과 토스트를 같은 ID의 추가 요청이 덮어쓰지 않는다', (): void => {
@@ -159,9 +159,8 @@ describe('토스트 ID 지정과 중복 방지', (): void => {
       );
     });
 
-    expect(screen.getByText('네컷만화가 완성됐어요!')).toBeInTheDocument();
+    expect(screen.getAllByText('네컷만화가 완성됐어요!')).toHaveLength(1);
     expect(screen.queryByText('생성 중')).not.toBeInTheDocument();
-    expect(result.current.toasts).toHaveLength(1);
   });
 
   it('Provider가 새로 마운트되면 같은 ID로 새 토스트를 표시할 수 있다', (): void => {
