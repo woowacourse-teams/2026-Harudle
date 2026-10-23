@@ -1,7 +1,19 @@
+# Include this file from Nginx's http context (conf.d or sites-enabled).
+log_format harudle_host_latency escape=json
+    '{"event":"proxy_request_completed","stage":"host_proxy",'
+    '"timestamp":"$time_iso8601","proxyRequestId":"$request_id",'
+    '"traceId":"$upstream_http_x_trace_id","method":"$request_method","uri":"$uri",'
+    '"status":$status,"requestSeconds":$request_time,'
+    '"upstreamConnectSeconds":"$upstream_connect_time",'
+    '"upstreamHeaderSeconds":"$upstream_header_time",'
+    '"upstreamResponseSeconds":"$upstream_response_time",'
+    '"bodyBytesSent":$body_bytes_sent,"requestCompleted":"$request_completion"}';
+
 server {
     listen 80;
     listen [::]:80;
     server_name harudle.com www.harudle.com;
+    access_log /var/log/nginx/access.log harudle_host_latency;
 
     location / {
         proxy_pass http://127.0.0.1:3000;

@@ -3,10 +3,12 @@ package com.harudle.generation.config;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.harudle.common.logging.ExternalApiLogger;
-import com.harudle.generation.adapter.out.r2.R2BackupObjectStorage;
+import com.harudle.generation.adapter.out.r2.ObservedBackupObjectStorage;
 import com.harudle.generation.diary.service.port.BackupObjectStorage;
 import com.harudle.generation.diary.service.ImageBackupService;
 import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.net.URI;
 import java.time.Duration;
 import org.junit.jupiter.api.DisplayName;
@@ -31,7 +33,8 @@ class R2StorageConfigurationTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
             .withUserConfiguration(R2StorageConfiguration.class, ImageBackupConfiguration.class)
-            .withBean(ExternalApiLogger.class, ExternalApiLogger::new);
+            .withBean(ExternalApiLogger.class, ExternalApiLogger::new)
+            .withBean(MeterRegistry.class, SimpleMeterRegistry::new);
 
     @Test
     @DisplayName("기본값에서는 자격 증명 없이 R2 클라이언트를 등록하지 않는다")
@@ -80,7 +83,7 @@ class R2StorageConfigurationTest {
             assertThat(properties.listLookupBudget()).isEqualTo(Duration.ofSeconds(2));
             assertThat(properties.singleLookupBudget()).isEqualTo(Duration.ofSeconds(2));
             assertThat(context).hasSingleBean(BackupObjectStorage.class);
-            assertThat(context.getBean(BackupObjectStorage.class)).isInstanceOf(R2BackupObjectStorage.class);
+            assertThat(context.getBean(BackupObjectStorage.class)).isInstanceOf(ObservedBackupObjectStorage.class);
             assertThat(context).doesNotHaveBean(ImageBackupService.class);
             assertThat(properties.toString())
                     .contains("accessKeyId=***", "secretAccessKey=***")

@@ -143,7 +143,12 @@ function request(session, method, path, payload, name, expectedStatus = 200, ext
   const traceId = /^[0-9a-f]{32}$/i.test(responseTraceId) ? responseTraceId : 'unavailable';
   if (response.timings.duration >= 1000) {
     // Keep slow-request evidence without logging URLs, bodies, cookies or tokens.
-    console.warn(`${name}: slow response HTTP ${response.status}, durationMs=${response.timings.duration}, waitingMs=${response.timings.waiting}, traceId=${traceId}`);
+    const phases = ['blocked', 'connecting', 'tls_handshaking', 'sending', 'waiting', 'receiving'];
+    const timing = phases.map((phase) => {
+      const value = response.timings[phase];
+      return `${phase}Ms=${Number.isFinite(value) && value >= 0 ? value : 'unavailable'}`;
+    }).join(', ');
+    console.warn(`${name}: slow response HTTP ${response.status}, durationMs=${response.timings.duration}, ${timing}, traceId=${traceId}`);
   }
   if (!success) {
     let errorCode = 'unknown';

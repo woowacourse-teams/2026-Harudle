@@ -340,7 +340,7 @@ API 응답 시간과 작업 완료까지 걸린 시간은 따로 봅니다. 생�
 `summary.json`, `report.html`, `k6.log`도 함께 보관합니다.
 
 실패가 있으면 `k6.log`에서 실패한 API와 오류 코드를 찾습니다.
-일반 API가 1초 이상 걸리면 성공한 요청도 API 이름, 응답 시간, 응답을 기다린 시간과 서버의 `traceId`를 `k6.log`에 남깁니다. 서버 로그에서 같은 ID를 검색하면 해당 요청을 찾을 수 있습니다. URL과 로그인 정보, 응답 본문은 기록하지 않습니다.
+일반 API가 1초 이상 걸리면 성공한 요청도 API 이름, 응답 시간, 연결 대기와 연결, TLS, 전송, 첫 응답 대기, 수신 시간과 서버의 `traceId`를 `k6.log`에 남깁니다. 서버 로그에서 같은 ID를 검색하면 해당 요청을 찾을 수 있습니다. URL과 로그인 정보, 응답 본문은 기록하지 않습니다.
 응답이 느리면 같은 시간대의 [dev CloudWatch 대시보드](https://ap-northeast-2.console.aws.amazon.com/cloudwatch/home?region=ap-northeast-2#dashboards/dashboard/DASHBOARD-harudle-dev)에서 CPU, 메모리, DB 연결 대기를 확인합니다.
 
 GC 원인을 재시험할 때는 [GC 로그와 1초 단위 OS 기록 절차](../../deploy/monitoring/README.md#dev-부하테스트에서-gc-원인을-확인합니다)를 먼저 적용합니다. GC 종류와 힙 크기를 유지한 채 새 실행 이름으로 비교합니다.
@@ -386,3 +386,5 @@ S3 버전 관리에 남은 이전 버전은 영구 삭제하지 않습니다.
 ```bash
 LOAD_TEST_POSTGRES_TEST=1 python3 -m unittest discover -s backend/load-test -p test_reuse.py
 ```
+
+느린 요청의 S3와 R2 호출 횟수, 피드 조회 시간, 두 Nginx 로그는 [요청 지연 확인 절차](../../deploy/monitoring/request-latency.md)에 따라 비교합니다. 이 지표를 보려면 해당 코드 배포와 로그 설정 적용을 먼저 마칩니다.

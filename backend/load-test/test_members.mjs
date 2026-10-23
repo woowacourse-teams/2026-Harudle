@@ -99,9 +99,22 @@ test('slow ordinary requests log API timing without secrets or response bodies',
     json: () => ({ privateValue: 'private-response' }),
   });
   vm.runInContext("request({ accessToken: 'private-token', csrfToken: 'private-csrf' }, 'GET', '/api/v1/feeds?cursor=private-cursor', null, 'GET feeds latest')", r.context);
-  assert.deepEqual(r.warnings, ['GET feeds latest: slow response HTTP 200, durationMs=10774, waitingMs=10764, traceId=217c9d38b6924cf98ebadba8f78d6438']);
+  assert.deepEqual(r.warnings, ['GET feeds latest: slow response HTTP 200, durationMs=10774, blockedMs=unavailable, connectingMs=unavailable, tls_handshakingMs=unavailable, sendingMs=unavailable, waitingMs=10764, receivingMs=unavailable, traceId=217c9d38b6924cf98ebadba8f78d6438']);
   assert.ok(!r.warnings.join('').includes('private-'));
   assert.equal(r.metrics.business_requests.length, 1);
+});
+
+test('slow requests retain finite transport timings and reject invalid timings', () => {
+  const r = runner();
+  r.context.http.request = () => ({
+    status: 200,
+    timings: { duration: 2000, blocked: 2, connecting: 3, tls_handshaking: 4,
+      sending: -1, waiting: NaN, receiving: Infinity },
+    json: () => ({}),
+  });
+  vm.runInContext("request({}, 'GET', '/api/v1/feeds', null, 'GET feeds latest')", r.context);
+  assert.match(r.warnings[0], /blockedMs=2, connectingMs=3, tls_handshakingMs=4/);
+  assert.match(r.warnings[0], /sendingMs=unavailable, waitingMs=unavailable, receivingMs=unavailable/);
 });
 
 test('missing or malformed response trace IDs are not copied into logs', () => {
