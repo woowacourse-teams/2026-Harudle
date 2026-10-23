@@ -79,6 +79,23 @@ def service_widgets(environment, instance_id):
                   f'InstanceId="{instance_id}" pattern="{search_pattern}"\', \'Average\', 60)')
     widgets.append(widget("Java 힙 사용량", [expression(f"SUM({heap_search})/1048576", "힙 사용량 (MiB)")]))
     widgets.append(widget("Java 실제 메모리 (RSS)", [expression(f"SUM({rss_search})/1048576", "RSS (MiB)")]))
+    job = ("job", "harudle-backend")
+    widgets.append(widget("생성 시작 전 평균 대기 시간", [
+        metric(namespace, "harudle_generation_queue_wait_seconds_sum", job,
+               stat="Sum", id="waitseconds", visible=False),
+        metric(namespace, "harudle_generation_queue_wait_seconds_count", job,
+               stat="Sum", id="claims", visible=False),
+        expression("IF(claims>0,waitseconds/claims)", "평균 대기 시간 (초)"),
+    ]))
+    widgets.append(widget("생성 대기와 처리 중 작업 수", [
+        metric(namespace, "harudle_generation_queue_size", job + ("status", status),
+               stat="Maximum", label=label)
+        for status, label in (("PENDING", "대기 작업 수"), ("PROCESSING", "처리 중 작업 수"))
+    ]))
+    widgets.append(widget("생성 접수 거절 횟수", [
+        metric(namespace, "harudle_generation_capacity_rejections_total", job,
+               stat="Sum", label="접수 상한으로 거절한 횟수"),
+    ]))
     if environment == "dev":
         def gc_search(suffix, statistic):
             return (f'SEARCH(\'{{"{namespace}",job,gc,action,cause}} '

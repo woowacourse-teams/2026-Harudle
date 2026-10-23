@@ -17,7 +17,7 @@ WORKDIR /workspace/web
 ARG REACT_APP_POSTHOG_KEY
 ARG REACT_APP_POSTHOG_HOST
 
-RUN pnpm check
+RUN pnpm build
 
 FROM nginx:1.29-alpine3.22 AS runtime
 
