@@ -18,6 +18,11 @@ import type { publishFeed } from '../../domain/feeds/feedPublish';
 import FeedPostPage from './FeedPostPage';
 import { FEED_POST_COPY } from './copy';
 
+const mockAddToast = jest.fn();
+jest.mock('../../shared/ToastContext', () => ({
+  useToastContext: () => ({ addToast: mockAddToast }),
+}));
+
 const mockNavigate = jest.fn();
 const mockTrack = jest.fn();
 jest.mock('../../posthog/useAnalytics', () => ({
@@ -86,7 +91,6 @@ const feed: Feed = {
 };
 
 beforeEach((): void => {
-  jest.spyOn(window, 'alert').mockImplementation((): void => {});
   mockDiaryId = diary.id;
   mockLocationState = {
     imageUrl: diary.generation.imageUrl,
@@ -140,6 +144,10 @@ describe('피드 게시 화면', (): void => {
       categoryId: 1,
     });
     expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true });
+    expect(mockAddToast).toHaveBeenCalledWith(
+      { type: 'success', message: FEED_POST_COPY.publishSuccess },
+      2000,
+    );
     expect(mockTrack).toHaveBeenCalledWith(
       'api_requested',
       expect.objectContaining({
@@ -177,9 +185,10 @@ describe('피드 게시 화면', (): void => {
     await act(async (): Promise<void> => {
       rejectPublish?.(new Error('실패'));
     });
-    expect(window.alert).toHaveBeenCalledTimes(1);
-    expect(window.alert).toHaveBeenCalledWith(
-      '피드에 올리지 못했어요. 다시 시도해 주세요.',
+    expect(mockAddToast).toHaveBeenCalledTimes(1);
+    expect(mockAddToast).toHaveBeenCalledWith(
+      { type: 'error', message: '피드에 올리지 못했어요. 다시 시도해 주세요.' },
+      2000,
     );
     expect(screen.getByRole('radio', { name: '우테코' })).toBeChecked();
     await user.click(button);
