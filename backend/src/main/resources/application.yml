@@ -4,7 +4,7 @@ server:
       timeout: 10m
       cookie:
         http-only: true
-        same-site: lax
+        same-site: ${SESSION_COOKIE_SAME_SITE:lax}
         secure: ${SESSION_COOKIE_SECURE:false}
 
 logging:

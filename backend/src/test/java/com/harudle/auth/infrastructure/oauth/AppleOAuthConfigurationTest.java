@@ -20,6 +20,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.security.oauth2.client.autoconfigure.OAuth2ClientAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -157,6 +159,18 @@ class AppleOAuthConfigurationTest {
         }
     }
 
+    @ParameterizedTest
+    @CsvSource({"lax,true", "none,false"})
+    @DisplayName("Apple을 켠 환경에서 부적절한 세션 쿠키 설정이면 시작을 거절한다")
+    void rejectsIncompatibleSessionCookie(String sameSite, boolean secure) throws Exception {
+        enabledRunner().withPropertyValues(
+                "server.servlet.session.cookie.same-site=" + sameSite,
+                "server.servlet.session.cookie.secure=" + secure
+        ).run(context -> assertThat(context.getStartupFailure())
+                .hasRootCauseInstanceOf(IllegalArgumentException.class)
+                .hasStackTraceContaining("Apple 로그인에는 SameSite=None과 Secure 세션 쿠키가 필요합니다."));
+    }
+
     private ApplicationContextRunner enabledRunner() throws Exception {
         var key = new ECKeyGenerator(Curve.P_256).generate();
         Path path = directory.resolve("test-only.p8");
@@ -166,7 +180,9 @@ class AppleOAuthConfigurationTest {
                 "app.auth.apple.enabled=true", "app.auth.apple.client-id=com.harudle.web",
                 "app.auth.apple.team-id=test-team", "app.auth.apple.key-id=test-key",
                 "app.auth.apple.private-key-path=" + path,
-                "app.auth.apple.redirect-uri=https://www.harudle.com/login/oauth2/code/apple"
+                "app.auth.apple.redirect-uri=https://www.harudle.com/login/oauth2/code/apple",
+                "server.servlet.session.cookie.same-site=none",
+                "server.servlet.session.cookie.secure=true"
         );
     }
 

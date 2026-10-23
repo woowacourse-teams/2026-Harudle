@@ -19,6 +19,7 @@ import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequest
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
 import org.springframework.security.oauth2.core.endpoint.OAuth2ParameterNames;
+import org.springframework.util.Assert;
 import org.springframework.util.LinkedMultiValueMap;
 
 @Configuration(proxyBeanMethods = false)
@@ -30,8 +31,12 @@ public class AppleOAuthConfiguration {
     public ClientRegistrationRepository appleClientRegistrationRepository(
             OAuth2ClientProperties existingProperties,
             AppleClientSecretProperties apple,
-            @Value("${app.auth.apple.redirect-uri}") String redirectUri
+            @Value("${app.auth.apple.redirect-uri}") String redirectUri,
+            @Value("${server.servlet.session.cookie.same-site:lax}") String sameSite,
+            @Value("${server.servlet.session.cookie.secure:false}") boolean secure
     ) {
+        Assert.isTrue("none".equalsIgnoreCase(sameSite) && secure,
+                "Apple 로그인에는 SameSite=None과 Secure 세션 쿠키가 필요합니다.");
         var registrations = new ArrayList<>(
                 new OAuth2ClientPropertiesMapper(existingProperties).asClientRegistrations().values());
         registrations.add(ClientRegistration.withRegistrationId("apple")

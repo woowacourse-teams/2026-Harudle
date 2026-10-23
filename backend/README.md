@@ -147,8 +147,16 @@ http://localhost:8080/login/oauth2/code/google
 `openid`, `email`을 요청하고 Apple 요청에만 `response_mode=form_post`를 추가합니다.
 토큰 요청 시에는 5분짜리 `client_secret`을 새로 생성하며, 사용자 인증 토큰의 검증은 Spring이 처리합니다.
 
-현재는 인증 흐름 연결 단계입니다. Apple POST 콜백을 위한 세션 쿠키와 CSRF 처리는 아직 적용하지 않았으므로,
-이 설정 연결만으로 실제 브라우저 로그인이 완료되는 상태는 아닙니다.
+Apple을 켠 HTTPS 환경에는 `SESSION_COOKIE_SAME_SITE=none`, `SESSION_COOKIE_SECURE=true`를 함께 설정합니다.
+두 조건이 맞지 않으면 앱 시작 시 거절합니다. Apple을 끄면 기존 기본값 `lax`를 사용할 수 있습니다.
+로그인 시작 주소와 콜백의 호스트를 맞춰야 원래 세션 쿠키를 사용할 수 있습니다.
+`POST /login/oauth2/code/apple`만 일반 CSRF 검사에서 제외하며, 세션의 `state` 확인은 유지합니다.
+기존 refresh와 logout 및 게스트 API의 CSRF 보호와 refresh_token 쿠키 설정은 유지합니다.
+Apple의 `user_cancelled_authorize`는 사용자 취소로 분류합니다.
+
+브라우저에서는 HTTPS 로그인 시작 응답의 `JSESSIONID`가 `SameSite=None; Secure`인지 확인하고,
+Apple POST 콜백에 같은 세션의 쿠키가 전송되는지 확인합니다. Google과 Kakao 로그인도 함께 확인합니다.
+서버 자동 테스트는 이 브라우저 쿠키 전송 동작과 실제 Apple 인증 성공까지 증명하지는 않습니다.
 
 ## Gemini Client 인증
 
