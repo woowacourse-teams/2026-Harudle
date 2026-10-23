@@ -91,21 +91,35 @@ const ProfilePhotoField = ({
   };
   return (
     <div css={photoSectionStyle}>
-      <img
-        css={previewStyle}
-        key={preview}
-        src={preview || profileFallbackImage}
-        alt="선택한 프로필 사진"
-        onError={(event) => {
-          if (event.currentTarget.getAttribute('src') === profileFallbackImage)
-            return;
-          event.currentTarget.src = profileFallbackImage;
-          if (photo.type === 'upload') {
-            setPhotoError(PROFILE_COPY.fileReadError);
-            onChange({ type: 'upload', file: photo.file }, false);
-          }
-        }}
-      />
+      <div css={previewSectionStyle}>
+        <img
+          css={previewStyle}
+          key={preview}
+          src={preview || profileFallbackImage}
+          alt="선택한 프로필 사진"
+          onError={(event) => {
+            if (
+              event.currentTarget.getAttribute('src') === profileFallbackImage
+            )
+              return;
+            event.currentTarget.src = profileFallbackImage;
+            if (photo.type === 'upload') {
+              setPhotoError(PROFILE_COPY.fileReadError);
+              onChange({ type: 'upload', file: photo.file }, false);
+            }
+          }}
+        />
+        {photo.type !== 'current' && (
+          <button
+            type="button"
+            css={restoreButtonStyle}
+            disabled={disabled}
+            onClick={(): void => selectPhoto({ type: 'current' })}
+          >
+            {PROFILE_COPY.restorePhoto}
+          </button>
+        )}
+      </div>
       <div css={candidatesStyle} aria-label="기본 프로필 사진">
         {PROFILE_IMAGES.map(({ code, name, url }) => (
           <button
@@ -142,15 +156,6 @@ const ProfilePhotoField = ({
           }}
         >
           {PROFILE_COPY.retryImages}
-        </button>
-      )}
-      {photo.type !== 'current' && (
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={(): void => selectPhoto({ type: 'current' })}
-        >
-          {PROFILE_COPY.restorePhoto}
         </button>
       )}
       <input
@@ -200,10 +205,15 @@ const photoSectionStyle = css`
   gap: 8px;
 `;
 
+const previewSectionStyle = css`
+  position: relative;
+  display: flex;
+  justify-content: center;
+`;
+
 const previewStyle = css`
   width: 112px;
   height: 112px;
-  align-self: center;
   border-radius: 50%;
   object-fit: cover;
   margin: 8px 0;
@@ -242,6 +252,30 @@ const selectedPhotoStyle = css`
   border-color: ${theme.colors.stroke.brandSolid};
   box-shadow: inset 0 0 0 1px ${theme.colors.stroke.brandSolid};
   background-color: ${theme.colors.background.brandWeak};
+`;
+
+const restoreButtonStyle = css`
+  position: absolute;
+  right: 0;
+  bottom: 8px;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background-color: ${theme.colors.background.neutralSubtle};
+  color: ${theme.colors.foreground.neutralMuted};
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background-color: ${theme.colors.background.neutralWeak};
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
 `;
 
 const uploadButtonStyle = css`

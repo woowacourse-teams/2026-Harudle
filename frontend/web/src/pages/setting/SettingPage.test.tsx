@@ -296,7 +296,7 @@ describe('프로필 리뷰 수정 회귀', (): void => {
     );
     fireEvent.error(screen.getByAltText('선택한 프로필 사진'));
     expect(screen.getByRole('button', { name: '저장' })).toBeDisabled();
-    await user.click(screen.getByRole('button', { name: '기존 사진 사용' }));
+    await user.click(screen.getByRole('button', { name: '되돌리기' }));
     expect(screen.getByRole('button', { name: '저장' })).toBeEnabled();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:profile-preview');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
