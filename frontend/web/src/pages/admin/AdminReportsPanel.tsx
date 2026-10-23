@@ -165,21 +165,19 @@ const ReportList = ({
           </ul>
           {request.data.content.length === 0 && <p>{COPY.empty}</p>}
           <div css={pageStyle}>
-            <button
-              type="button"
+            <ActionButton
+              label="이전 페이지"
+              variant="secondary"
               disabled={page === 0}
               onClick={(): void => onPage(page - 1)}
-            >
-              이전 페이지
-            </button>
+            />
             <span>{page + 1}쪽</span>
-            <button
-              type="button"
+            <ActionButton
+              label="다음 페이지"
+              variant="secondary"
               disabled={!request.data.hasNext}
               onClick={(): void => onPage(page + 1)}
-            >
-              다음 페이지
-            </button>
+            />
           </div>
         </>
       ) : null}
@@ -470,8 +468,19 @@ const reportButtonStyle = (active: boolean) => css`
 `;
 const pageStyle = css`
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
+  button {
+    flex: 1;
+    min-width: 0;
+    padding-inline: 12px;
+    white-space: nowrap;
+  }
+  span {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
 `;
 const emptyStyle = css`
   padding: 24px;

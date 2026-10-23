@@ -200,29 +200,27 @@ const AdminModerationPanel = ({
             <p>조치 이력이 없어요.</p>
           )}
           <div css={pageStyle}>
-            <button
-              type="button"
+            <ActionButton
+              label="이전 이력"
+              variant="secondary"
               disabled={reading || historyPage === 0}
               onClick={(): void => {
                 setStale(true);
                 setReading(true);
                 setHistoryPage((page): number => page - 1);
               }}
-            >
-              이전 이력
-            </button>
+            />
             <span>{historyPage + 1}쪽</span>
-            <button
-              type="button"
+            <ActionButton
+              label="다음 이력"
+              variant="secondary"
               disabled={reading || !request.data.history.hasNext}
               onClick={(): void => {
                 setStale(true);
                 setReading(true);
                 setHistoryPage((page): number => page + 1);
               }}
-            >
-              다음 이력
-            </button>
+            />
           </div>
         </>
       ) : null}
@@ -282,6 +280,17 @@ const historyStyle = css`
 `;
 const pageStyle = css`
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
+  button {
+    flex: 1;
+    min-width: 0;
+    padding-inline: 12px;
+    white-space: nowrap;
+  }
+  span {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
 `;
