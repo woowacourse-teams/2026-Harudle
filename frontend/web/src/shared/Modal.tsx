@@ -2,7 +2,6 @@ import {
   useImperativeHandle,
   useRef,
   type MouseEvent,
-  type SyntheticEvent,
   type ReactNode,
   type ReactPortal,
   type Ref,
@@ -20,17 +19,10 @@ interface ModalProps {
   title: string;
   children: ReactNode;
   footer?: ReactNode;
-  readonly dismissible?: boolean;
   ref: Ref<ModalHandle>;
 }
 
-const Modal = ({
-  title,
-  children,
-  footer,
-  dismissible = true,
-  ref,
-}: ModalProps): ReactPortal => {
+const Modal = ({ title, children, footer, ref }: ModalProps): ReactPortal => {
   const dialogRef = useRef<HTMLDialogElement>(null);
 
   useImperativeHandle(ref, (): ModalHandle => {
@@ -39,26 +31,17 @@ const Modal = ({
         dialogRef.current?.showModal();
       },
       close: (): void => {
-        if (dismissible) dialogRef.current?.close();
+        dialogRef.current?.close();
       },
     };
-  }, [dismissible]);
+  }, []);
 
   const handleBackdropClick = (e: MouseEvent<HTMLDialogElement>): void => {
-    if (dismissible && e.target === e.currentTarget) dialogRef.current?.close();
-  };
-
-  const handleCancel = (event: SyntheticEvent<HTMLDialogElement>): void => {
-    if (!dismissible) event.preventDefault();
+    if (e.target === e.currentTarget) dialogRef.current?.close();
   };
 
   return createPortal(
-    <dialog
-      ref={dialogRef}
-      css={dialogStyle}
-      onClick={handleBackdropClick}
-      onCancel={handleCancel}
-    >
+    <dialog ref={dialogRef} css={dialogStyle} onClick={handleBackdropClick}>
       <div css={panelStyle}>
         <h2 css={titleStyle}>{title}</h2>
         <div css={contentStyle}>{children}</div>

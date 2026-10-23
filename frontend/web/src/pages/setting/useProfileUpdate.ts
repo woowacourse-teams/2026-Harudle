@@ -10,36 +10,21 @@ import { RequestError } from '../../shared/api';
 import { useAnalytics } from '../../posthog/useAnalytics';
 import { PROFILE_COPY } from './copy';
 
-interface ProfileUpdateError {
-  readonly status: 'error';
-  readonly error: Error;
-}
+type ReloadReason = 'saved' | 'unknown' | 'unavailable';
+type ProfileUpdateRequest =
+  | { readonly status: 'idle' | 'saving' | 'refreshing' }
+  | { readonly status: 'error'; readonly error: Error }
+  | { readonly status: 'reload-required'; readonly reason: ReloadReason };
 
-interface ProfileReloadRequired {
-  readonly status: 'reload-required';
-  readonly reason: 'saved' | 'unknown' | 'unavailable';
-}
-
-interface ProfileUpdateSuccess {
-  readonly status: 'success';
+interface SavedProfile {
   readonly profile: ProfileResponse;
   readonly saved: boolean;
 }
 
-type ProfileUpdateResult =
-  ProfileUpdateError | ProfileReloadRequired | ProfileUpdateSuccess;
-
-type ProfileUpdateRequest =
-  | { readonly status: 'idle' | 'saving' | 'refreshing' }
-  | ProfileUpdateError
-  | ProfileReloadRequired;
-
 interface UseProfileUpdateResult {
   readonly request: ProfileUpdateRequest;
-  readonly execute: (changes: ProfileChanges) => Promise<ProfileUpdateResult>;
-  readonly reload: (
-    reason: ProfileReloadRequired['reason'],
-  ) => Promise<ProfileUpdateResult>;
+  readonly execute: (changes: ProfileChanges) => Promise<SavedProfile | null>;
+  readonly reload: (reason: ReloadReason) => Promise<SavedProfile | null>;
   readonly reset: () => void;
 }
 
@@ -49,55 +34,46 @@ const useProfileUpdate = (): UseProfileUpdateResult => {
     status: 'idle',
   });
 
-  const reload = async (
-    reason: ProfileReloadRequired['reason'],
-  ): Promise<ProfileUpdateResult> => {
+  const reload = async (reason: ReloadReason): Promise<SavedProfile | null> => {
     setRequest({ status: 'refreshing' });
     try {
       const profile = await getUserProfile();
       updateNickname(profile.nickname);
       setRequest({ status: 'idle' });
-      return { status: 'success', profile, saved: reason === 'saved' };
+      return { profile, saved: reason === 'saved' };
     } catch {
-      const result: ProfileReloadRequired = {
-        status: 'reload-required',
-        reason,
-      };
-      setRequest(result);
-      return result;
+      setRequest({ status: 'reload-required', reason });
+      return null;
     }
   };
 
   const execute = async (
     changes: ProfileChanges,
-  ): Promise<ProfileUpdateResult> => {
+  ): Promise<SavedProfile | null> => {
     setRequest({ status: 'saving' });
     try {
       await updateUserProfile(changes);
     } catch (error: unknown) {
-      let result: ProfileUpdateError | ProfileReloadRequired;
       if (error instanceof ProfileSaveResultUnknownError) {
-        result = { status: 'reload-required', reason: 'unknown' };
+        setRequest({ status: 'reload-required', reason: 'unknown' });
       } else if (
         error instanceof RequestError &&
         error.problem.code === 'PUBLIC_PROFILE_NOT_ASSIGNED'
       ) {
-        result = { status: 'reload-required', reason: 'unavailable' };
+        setRequest({ status: 'reload-required', reason: 'unavailable' });
       } else {
-        result = {
+        setRequest({
           status: 'error',
           error:
             error instanceof Error ? error : new Error(PROFILE_COPY.saveError),
-        };
+        });
       }
-      setRequest(result);
-      return result;
+      return null;
     }
     return reload('saved');
   };
 
   const reset = (): void => setRequest({ status: 'idle' });
-
   return { request, execute, reload, reset };
 };
 

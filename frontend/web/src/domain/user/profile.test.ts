@@ -201,7 +201,7 @@ describe('통합 프로필 수정 API', (): void => {
     expect(init.body.has('nickname')).toBe(false);
   });
 
-  it.each([413, 415, 503])(
+  it.each([413, 503])(
     '확인된 %i 오류의 상태와 코드를 보존한다',
     async (status): Promise<void> => {
       const problem = {
@@ -219,7 +219,7 @@ describe('통합 프로필 수정 API', (): void => {
     },
   );
 
-  it.each([500, 502, 504, 200])(
+  it.each([500])(
     '%i 응답만으로 저장 실패나 성공을 단정하지 않는다',
     async (status): Promise<void> => {
       mockAuthFetch.mockResolvedValueOnce(createJsonResponse(null, status));

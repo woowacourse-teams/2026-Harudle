@@ -76,15 +76,12 @@ const ProfileEditModal = ({
 }: ProfileEditModalProps) => {
   const modalRef = useRef<ModalHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const readerRef = useRef<FileReader | null>(null);
   const pending = useRef(false);
   const composing = useRef(false);
-  const [closeRequested, setCloseRequested] = useState(false);
   const [nickname, setNickname] = useState('');
   const [nicknameError, setNicknameError] = useState('');
   const [photo, setPhoto] = useState<SelectedPhoto>({ type: 'current' });
   const [photoError, setPhotoError] = useState('');
-  const [isReading, setIsReading] = useState(false);
   const [brokenImages, setBrokenImages] = useState<number[]>([]);
   const { request, execute, reload, reset } = useProfileUpdate();
   const { addToast } = useToastContext();
@@ -127,25 +124,15 @@ const ProfileEditModal = ({
         ? PROFILE_IMAGES[photo.code - 1]?.url
         : profile.profileImageUrl;
 
-  useEffect(() => () => readerRef.current?.abort(), []);
-
   useEffect(() => {
-    if (closeRequested && !isBusy) {
-      modalRef.current?.close();
-    }
-  }, [closeRequested, isBusy]);
-
-  const cancelRead = (): void => {
-    readerRef.current?.abort();
-    readerRef.current = null;
-    setIsReading(false);
-  };
+    return (): void => {
+      if (photo.type === 'upload') URL.revokeObjectURL(photo.preview);
+    };
+  }, [photo]);
 
   useImperativeHandle(ref, () => ({
     open: (): void => {
-      setCloseRequested(false);
       if (!pending.current && !needsReload) {
-        cancelRead();
         setNickname(profile.nickname);
         setNicknameError('');
         setPhoto({ type: 'current' });
@@ -169,9 +156,9 @@ const ProfileEditModal = ({
         : needsReload
           ? await reload(request.reason)
           : null;
-      if (result?.status === 'success') {
+      if (result) {
         onSaved(result.profile);
-        setCloseRequested(true);
+        modalRef.current?.close();
         if (result.saved)
           addToast({ type: 'success', message: PROFILE_COPY.success }, 2000);
       }
@@ -183,8 +170,7 @@ const ProfileEditModal = ({
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
-    if (locked || isReading || composing.current || !changed || photoMessage)
-      return;
+    if (locked || composing.current || !changed || photoMessage) return;
     if (
       nickname !== profile.nickname &&
       (!nickname.trim() || Array.from(nickname).length > 10)
@@ -209,7 +195,6 @@ const ProfileEditModal = ({
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = '';
     if (!file) return;
-    cancelRead();
     if (serverError?.field === 'photo') reset();
     if (!['image/jpeg', 'image/png'].includes(file.type)) {
       setPhotoError(PROFILE_COPY.fileTypeError);
@@ -223,32 +208,14 @@ const ProfileEditModal = ({
       );
       return;
     }
-    const reader = new FileReader();
-    readerRef.current = reader;
-    setIsReading(true);
-    reader.onload = (): void => {
-      if (readerRef.current !== reader) return;
-      if (typeof reader.result === 'string') {
-        setPhoto({ type: 'upload', file, preview: reader.result });
-        setPhotoError('');
-      } else setPhotoError(PROFILE_COPY.fileReadError);
-      readerRef.current = null;
-      setIsReading(false);
-    };
-    reader.onerror = (): void => {
-      if (readerRef.current !== reader) return;
-      setPhotoError(PROFILE_COPY.fileReadError);
-      readerRef.current = null;
-      setIsReading(false);
-    };
-    reader.readAsDataURL(file);
+    setPhoto({ type: 'upload', file, preview: URL.createObjectURL(file) });
+    setPhotoError('');
   };
 
   return (
     <Modal
       ref={modalRef}
       title={PROFILE_COPY.title}
-      dismissible={!isBusy}
       footer={
         <>
           <button
@@ -264,9 +231,7 @@ const ProfileEditModal = ({
             form="profile-form"
             css={saveNicknameButtonStyle}
             disabled={
-              isBusy ||
-              isReading ||
-              (!needsReload && (!changed || Boolean(photoMessage)))
+              isBusy || (!needsReload && (!changed || Boolean(photoMessage)))
             }
             onClick={needsReload ? () => void runUpdate() : undefined}
           >
@@ -310,7 +275,6 @@ const ProfileEditModal = ({
                 aria-pressed={selectedCode === code}
                 disabled={locked || brokenImages.includes(code)}
                 onClick={() => {
-                  cancelRead();
                   setPhoto({ type: 'default', code });
                   setPhotoError('');
                   if (serverError?.field === 'photo') reset();

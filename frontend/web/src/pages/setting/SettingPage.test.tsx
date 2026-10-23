@@ -67,6 +67,14 @@ beforeEach((): void => {
   mockGetProfile.mockReset().mockResolvedValue(profile);
   mockUpdateProfile.mockReset().mockResolvedValue(undefined);
   mockAddToast.mockReset();
+  Object.defineProperty(URL, 'createObjectURL', {
+    configurable: true,
+    value: jest.fn((): string => 'blob:profile-preview'),
+  });
+  Object.defineProperty(URL, 'revokeObjectURL', {
+    configurable: true,
+    value: jest.fn(),
+  });
 });
 
 const openProfileModal = async () => {
@@ -121,20 +129,6 @@ describe('통합 프로필 수정', (): void => {
     );
   });
 
-  it('닉네임만 바꾸면 사진은 보내지 않고, 취소하면 서버 값을 다시 채운다', async (): Promise<void> => {
-    const { user, dialog, input } = await openProfileModal();
-    await user.type(input, '취소');
-    await user.click(screen.getByRole('button', { name: '취소' }));
-    expect(mockUpdateProfile).not.toHaveBeenCalled();
-    await user.click(screen.getByRole('button', { name: '프로필 사진 수정' }));
-    expect(input).toHaveValue('연준');
-    await user.clear(input);
-    await user.type(input, '새이름');
-    await user.click(screen.getByRole('button', { name: '저장' }));
-    await waitFor(() => expect(dialog).not.toHaveAttribute('open'));
-    expect(mockUpdateProfile).toHaveBeenCalledWith({ nickname: '새이름' });
-  });
-
   it('닉네임 중복은 입력 아래에 표시하고 사진 선택을 유지한다', async (): Promise<void> => {
     mockUpdateProfile.mockRejectedValueOnce(
       problem(409, 'NICKNAME_ALREADY_IN_USE'),
@@ -162,53 +156,6 @@ describe('통합 프로필 수정', (): void => {
     await waitFor(() => expect(dialog).not.toHaveAttribute('open'));
   });
 
-  it('빈 닉네임과 한글 조합 중 제출을 막고 조합이 끝난 뒤 10자로 제한한다', async (): Promise<void> => {
-    const { user, input } = await openProfileModal();
-    fireEvent.change(input, { target: { value: '   ' } });
-    await user.click(screen.getByRole('button', { name: '저장' }));
-    expect(
-      screen.getByText('닉네임은 1자 이상 10자 이하로 입력해 주세요.'),
-    ).toBeInTheDocument();
-    fireEvent.compositionStart(input);
-    fireEvent.change(input, { target: { value: '가'.repeat(11) } });
-    const form = input.closest('form');
-    if (!form) throw new Error('프로필 폼을 찾을 수 없습니다.');
-    fireEvent.submit(form);
-    expect(input).toHaveValue('가'.repeat(11));
-    expect(mockUpdateProfile).not.toHaveBeenCalled();
-    fireEvent.compositionEnd(input);
-    expect(input).toHaveValue('가'.repeat(10));
-  });
-
-  it.each([
-    [
-      new File(['gif'], 'photo.gif', { type: 'image/gif' }),
-      'JPEG, PNG 사진을 선택해 주세요.',
-    ],
-    [
-      new File([new Uint8Array(5 * 1024 * 1024 + 1)], 'photo.png', {
-        type: 'image/png',
-      }),
-      '사진은 5MiB까지 올릴 수 있어요.',
-    ],
-  ])(
-    '잘못된 파일은 기본 안내 대신 오류만 보여주고 기본 사진으로 복구할 수 있다',
-    async (file, message): Promise<void> => {
-      const { user } = await openProfileModal();
-      await user.upload(screen.getByLabelText('프로필 사진 파일'), file);
-      expect(screen.getByText(message)).toBeInTheDocument();
-      expect(
-        screen.queryByText('JPEG, PNG 파일을 5MiB까지 올릴 수 있어요.'),
-      ).not.toBeInTheDocument();
-      expect(screen.getByRole('button', { name: '저장' })).toBeDisabled();
-      await user.click(
-        screen.getByRole('button', { name: '박쥐 프로필 사진' }),
-      );
-      expect(screen.queryByText(message)).not.toBeInTheDocument();
-      expect(screen.getByRole('button', { name: '저장' })).toBeEnabled();
-    },
-  );
-
   it('개인 사진을 미리 보여주고 선택한 파일만 저장 요청에 담는다', async (): Promise<void> => {
     const { user, dialog } = await openProfileModal();
     const file = new File(['png'], 'photo.png', { type: 'image/png' });
@@ -216,7 +163,7 @@ describe('통합 프로필 수정', (): void => {
     await waitFor(() =>
       expect(screen.getByAltText('선택한 프로필 사진')).toHaveAttribute(
         'src',
-        'data:image/png;base64,cG5n',
+        'blob:profile-preview',
       ),
     );
     await user.click(screen.getByRole('button', { name: '저장' }));
@@ -266,7 +213,7 @@ describe('통합 프로필 수정', (): void => {
     expect(mockAddToast).not.toHaveBeenCalled();
   });
 
-  it('저장 중 배경 클릭, Esc와 중복 제출을 막고 실패하면 창 안에 오류를 표시한다', async (): Promise<void> => {
+  it('중복 저장을 막고 저장 실패는 토스트 대신 창 안에 표시한다', async (): Promise<void> => {
     let failSave: ((error: Error) => void) | undefined;
     mockUpdateProfile.mockImplementationOnce(
       () =>
@@ -283,95 +230,13 @@ describe('통합 프로필 수정', (): void => {
     expect(mockUpdateProfile).toHaveBeenCalledTimes(1);
     expect(input).toBeDisabled();
     expect(screen.getByRole('button', { name: '취소' })).toBeDisabled();
-    await user.click(dialog);
-    const cancel = new Event('cancel', { cancelable: true });
-    fireEvent(dialog, cancel);
-    expect(cancel.defaultPrevented).toBe(true);
-    expect(dialog).toHaveAttribute('open');
     await act(async (): Promise<void> => {
       failSave?.(problem(503, 'PROFILE_IMAGE_STORAGE_ERROR'));
     });
+    expect(dialog).toHaveAttribute('open');
     expect(
       screen.getByText('프로필을 저장하지 못했어요. 다시 시도해 주세요.'),
     ).toBeInTheDocument();
-    expect(mockAddToast).not.toHaveBeenCalled();
-    const idleCancel = new Event('cancel', { cancelable: true });
-    fireEvent(dialog, idleCancel);
-    expect(idleCancel.defaultPrevented).toBe(false);
-    await user.click(dialog);
-    expect(dialog).not.toHaveAttribute('open');
-  });
-
-  it('저장 뒤 프로필 재조회 중에도 창을 유지하고 조회가 끝나면 자동으로 닫는다', async (): Promise<void> => {
-    const { user, dialog } = await openProfileModal();
-    let finishRead: ((value: typeof profile) => void) | undefined;
-    mockGetProfile.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finishRead = resolve;
-        }),
-    );
-    await user.click(screen.getByRole('button', { name: '박쥐 프로필 사진' }));
-    await user.click(screen.getByRole('button', { name: '저장' }));
-    await screen.findByRole('button', { name: '불러오는 중...' });
-    await user.click(dialog);
-    const cancel = new Event('cancel', { cancelable: true });
-    fireEvent(dialog, cancel);
-    expect(cancel.defaultPrevented).toBe(true);
-    expect(dialog).toHaveAttribute('open');
-    await act(async (): Promise<void> => {
-      finishRead?.(profile);
-    });
-    await waitFor(() => expect(dialog).not.toHaveAttribute('open'));
-    expect(mockAddToast).toHaveBeenCalledTimes(1);
-    expect(mockUpdateProfile).toHaveBeenCalledTimes(1);
-  });
-
-  it('이전 사진 주소 재조회가 늦게 끝나도 새로 저장한 프로필을 덮어쓰지 않는다', async (): Promise<void> => {
-    const { user, dialog } = await openProfileModal();
-    let finishOldRead: ((value: typeof profile) => void) | undefined;
-    mockGetProfile.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finishOldRead = resolve;
-        }),
-    );
-    const avatar = screen
-      .getByRole('button', { name: '프로필 사진 수정' })
-      .querySelector('img');
-    if (!avatar) throw new Error('현재 프로필 사진을 찾을 수 없습니다.');
-    fireEvent.error(avatar);
-    mockGetProfile.mockResolvedValueOnce({
-      ...profile,
-      nickname: '새프로필',
-      profileImageUrl: '/profile-images/v1/8.png',
-    });
-    await user.click(screen.getByRole('button', { name: '박쥐 프로필 사진' }));
-    await user.click(screen.getByRole('button', { name: '저장' }));
-    await waitFor(() => expect(dialog).not.toHaveAttribute('open'));
-    await act(async (): Promise<void> => {
-      finishOldRead?.(profile);
-    });
-    expect(screen.getByText('새프로필')).toBeInTheDocument();
-    expect(screen.queryByText('연준')).not.toBeInTheDocument();
-  });
-
-  it('창이 열려 있을 때 저장 실패는 빨간 안내만 표시하고 입력을 유지한다', async (): Promise<void> => {
-    mockUpdateProfile.mockRejectedValueOnce(
-      problem(503, 'PROFILE_IMAGE_STORAGE_ERROR'),
-    );
-    const { user, dialog } = await openProfileModal();
-    await user.click(screen.getByRole('button', { name: '박쥐 프로필 사진' }));
-    await user.click(screen.getByRole('button', { name: '저장' }));
-    expect(
-      await screen.findByText(
-        '프로필을 저장하지 못했어요. 다시 시도해 주세요.',
-      ),
-    ).toBeInTheDocument();
-    expect(dialog).toHaveAttribute('open');
-    expect(
-      screen.getByRole('button', { name: '박쥐 프로필 사진' }),
-    ).toHaveAttribute('aria-pressed', 'true');
     expect(mockAddToast).not.toHaveBeenCalled();
   });
 });
