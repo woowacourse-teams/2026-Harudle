@@ -359,6 +359,29 @@ openssl rand -base64 32
 
 운영 환경에서는 `SESSION_COOKIE_SECURE=true`, `REFRESH_COOKIE_SECURE=true`를 유지합니다. 컨테이너 Nginx는 `/api/**`, `/oauth2/**`, `/login/oauth2/**` 요청을 백엔드로 전달합니다.
 
+## Apple 개인 키와 배포 설정
+
+키는 Git에 넣지 않고 서버에 별도로 설치합니다. `/secure/path/AuthKey.p8`은 전달받은 키 경로로 바꿉니다.
+아래 권한은 백엔드 실행 그룹(`10001`)이 키를 읽을 수 있게 합니다.
+
+```bash
+sudo install -d -o root -g 10001 -m 0750 /etc/harudle/secrets/apple
+sudo install -o root -g 10001 -m 0640 /secure/path/AuthKey.p8 /etc/harudle/secrets/apple/AuthKey.p8
+```
+
+dev와 prod Compose는 이 폴더를 `/var/run/harudle/apple/`에 읽기 전용으로 연결합니다.
+서버 `/opt/harudle/.env`에 `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`와 아래 값을 설정합니다.
+
+```dotenv
+APPLE_LOGIN_ENABLED=true
+APPLE_PRIVATE_KEY_PATH=/var/run/harudle/apple/AuthKey.p8
+SESSION_COOKIE_SAME_SITE=none
+SESSION_COOKIE_SECURE=true
+```
+
+Apple에 `${BACKEND_BASE_URL}/login/oauth2/code/apple` HTTPS 콜백을 등록하고 로그인 시작 호스트와 맞춥니다.
+설정 후 배포 훅으로 백엔드를 재생성합니다. 준비 전에는 `APPLE_LOGIN_ENABLED=false`를 유지합니다.
+
 ## Google 로그인 설정
 
 배포 전에 해당 서버의 `/opt/harudle/.env`에 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`을 설정합니다.
