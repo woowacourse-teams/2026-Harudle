@@ -5,6 +5,7 @@ import {
   MOCK_SCENARIOS,
 } from '../src/mocks/mockScenarios';
 import { FEED_POST_COPY } from '../src/pages/feed-post/copy';
+import { ERROR_MESSAGES } from '../src/shared/errorMessage';
 
 test.use({ storageState: AUTHENTICATED_STORAGE_STATE });
 const DIARY_ID = '00000000-0000-4000-8000-000000000001';
@@ -160,22 +161,13 @@ test('게시 실패 후 카테고리를 유지하며 사용자가 재시도할 �
     .getByRole('button', { name: FEED_POST_COPY.publishAction, exact: true })
     .click();
   await page.getByRole('radio', { name: '우테코' }).check();
-  const failureMessage = '피드에 올리지 못했어요. 다시 시도해 주세요.';
-  // 토스트 PR 병합 전후 모두 실제 실패 안내와 재시도 흐름을 검증한다.
-  const failureNotice = Promise.race([
-    page.waitForEvent('dialog').then(async (dialog): Promise<void> => {
-      expect(dialog.type()).toBe('alert');
-      expect(dialog.message()).toBe(failureMessage);
-      await dialog.accept();
-    }),
-    page
-      .getByText(failureMessage, { exact: true })
-      .waitFor({ state: 'visible' }),
-  ]);
   await page
     .getByRole('button', { name: FEED_POST_COPY.publishAction })
     .click();
-  await failureNotice;
+  await expect(
+    page.getByText(ERROR_MESSAGES.FEED_PUBLISH_FAILED),
+  ).toBeVisible();
+  await expect(page).toHaveURL(POST_URL);
   await expect(page.getByRole('radio', { name: '우테코' })).toBeChecked();
   await page.setExtraHTTPHeaders({});
   await page

@@ -577,6 +577,12 @@ export const feedHandlers = [
       const error = validateCommentMutation(request);
       if (error) return error;
       const commentId = String(params.commentId);
+      if (
+        request.headers.get(MOCK_SCENARIO_HEADER) ===
+        MOCK_SCENARIOS.feedCommentDeleteFailure
+      ) {
+        return new HttpResponse(null, { status: 503 });
+      }
       if (!isCanonicalUuid(commentId))
         return problem(request, 400, 'VALIDATION_ERROR');
       const comment = comments.find(({ id }): boolean => id === commentId);
@@ -613,6 +619,12 @@ export const feedHandlers = [
       const error = validateMutation(request);
       if (error) return error;
       const feedId = String(params.feedId);
+      if (
+        request.headers.get(MOCK_SCENARIO_HEADER) ===
+        MOCK_SCENARIOS.feedDeleteFailure
+      ) {
+        return new HttpResponse(null, { status: 503 });
+      }
       if (!isCanonicalUuid(feedId))
         return problem(request, 400, 'VALIDATION_ERROR');
       const feed = feeds.find(({ id }): boolean => id === feedId);

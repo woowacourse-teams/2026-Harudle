@@ -23,6 +23,18 @@ const guestDiaryResponse = {
   },
 } as const;
 
+const pendingGuestDiaryResponse = {
+  ...guestDiaryResponse,
+  generation: {
+    id: guestDiaryResponse.generation.id,
+    status: 'PENDING',
+    title: null,
+    imageUrl: null,
+    imageUrlExpiresAt: null,
+    completedAt: null,
+  },
+} as const;
+
 const createResponse = (data: unknown, status: number): Response => {
   return {
     ok: status >= 200 && status < 300,
@@ -55,6 +67,7 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
   fetchMock.mockReset();
   jest.restoreAllMocks();
+  jest.useRealTimers();
 });
 
 describe('게스트 체험 API', () => {
@@ -124,6 +137,109 @@ describe('게스트 체험 API', () => {
       `/api/v1/guest/diaries/${guestDiaryResponse.id}`,
       { credentials: 'include' },
     );
+  });
+
+  it.each([202, 200])(
+    '%i 생성 응답이 대기 중이면 완료될 때까지 조회한다',
+    async (status) => {
+      jest.useFakeTimers();
+      const fetchSpy = mockFetch([
+        createResponse({ token: 'csrf-token' }, 200),
+        createResponse(pendingGuestDiaryResponse, status),
+        createResponse(
+          {
+            ...pendingGuestDiaryResponse,
+            generation: {
+              ...pendingGuestDiaryResponse.generation,
+              status: 'PROCESSING',
+            },
+          },
+          200,
+        ),
+        createResponse(guestDiaryResponse, 200),
+      ]);
+      const result = createGuestDiary({
+        request: {
+          diaryDate: guestDiaryResponse.diaryDate,
+          sourceText: guestDiaryResponse.sourceText,
+        },
+        idempotencyKey: '7e5cc251-fdde-4cc0-a54e-2c8142750609',
+      });
+      const assertion = expect(result).resolves.toEqual(guestDiaryResponse);
+
+      await jest.runAllTimersAsync();
+      await assertion;
+
+      expect(fetchSpy).toHaveBeenCalledTimes(4);
+      expect(fetchSpy).toHaveBeenLastCalledWith(
+        `/api/v1/guest/diaries/${guestDiaryResponse.id}`,
+        { credentials: 'include' },
+      );
+    },
+  );
+
+  it('결과 조회가 대기 중이면 완성된 결과를 기다린다', async () => {
+    jest.useFakeTimers();
+    mockFetch([
+      createResponse(pendingGuestDiaryResponse, 200),
+      createResponse(guestDiaryResponse, 200),
+    ]);
+    const assertion = expect(
+      getGuestDiary(guestDiaryResponse.id),
+    ).resolves.toEqual(guestDiaryResponse);
+
+    await jest.runAllTimersAsync();
+    await assertion;
+  });
+
+  it('대기 중 응답의 이미지 필드가 null이 아니면 거부한다', async () => {
+    mockFetch([
+      createResponse(
+        {
+          ...pendingGuestDiaryResponse,
+          generation: {
+            ...pendingGuestDiaryResponse.generation,
+            imageUrl: guestDiaryResponse.generation.imageUrl,
+          },
+        },
+        200,
+      ),
+    ]);
+
+    await expect(getGuestDiary(guestDiaryResponse.id)).rejects.toThrow(
+      '게스트 일기 응답 형식이 일치하지 않습니다',
+    );
+  });
+
+  it('대기 중 조회가 실패하면 폴링을 중단한다', async () => {
+    jest.useFakeTimers();
+    const fetchSpy = mockFetch([
+      createResponse(pendingGuestDiaryResponse, 200),
+      createResponse(null, 404),
+    ]);
+    const assertion = expect(
+      getGuestDiary(guestDiaryResponse.id),
+    ).rejects.toThrow('게스트 일기 조회에 실패했습니다');
+
+    await jest.runAllTimersAsync();
+    await assertion;
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('대기 상태가 계속되면 제한 횟수 이후 폴링을 중단한다', async () => {
+    jest.useFakeTimers();
+    const fetchSpy = mockFetch(
+      Array.from({ length: 61 }, (): Response =>
+        createResponse(pendingGuestDiaryResponse, 200),
+      ),
+    );
+    const assertion = expect(
+      getGuestDiary(guestDiaryResponse.id),
+    ).rejects.toThrow('게스트 일기 결과를 불러오지 못했습니다');
+
+    await jest.runAllTimersAsync();
+    await assertion;
+    expect(fetchSpy).toHaveBeenCalledTimes(61);
   });
 
   it('생성 요청에 사용할 UUID를 만든다', () => {

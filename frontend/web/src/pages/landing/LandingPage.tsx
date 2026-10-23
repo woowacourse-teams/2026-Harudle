@@ -13,7 +13,7 @@ import generationStep3Image from '../../assets/images/generation-step-3-selectin
 import generationStep4Image from '../../assets/images/generation-step-4-painting.png';
 import generationCompleteImage from '../../assets/images/generation-step-5-complete.png';
 import { theme } from '../../styles/theme';
-import DiaryGenerateStepper from '../diary-generating/DiaryGenerateStepper';
+import DiaryGenerateStepper from './DiaryGenerateStepper';
 import LandingContent from './LandingContent';
 import LandingLoginCta from './LandingLoginCta';
 import { getKoreanToday, validateGuestDiary } from './guestDiaryValidation';
