@@ -3,26 +3,24 @@
 A는 화면을 보고 행동하는 회원, B는 상대 작성자, C는 제3자입니다.
 **A→B는 A가 저장한 차단 한 건**입니다. 어느 한 방향이라도 남아 있으면 로그인한 A와 B 사이에 숨김·접촉 제한을 적용합니다.
 
-| 확인할 상황                              | 흐름도                       |
-| ---------------------------------------- | ---------------------------- |
-| 피드·댓글에서 차단, 취소, 대기, 실패     | [S01 차단 진입](#s01)        |
-| 비회원, 만료된 인증, CSRF 재시도         | [S02 인증과 요청](#s02)      |
-| 새 차단, 중복 요청, 자기 차단, 대상 탈퇴 | [S03 차단 저장](#s03)        |
-| 한쪽·양쪽 차단과 해제 결과               | [S04 방향별 해제](#s04)      |
-| 설정 목록, 페이지, 탈퇴한 사용자         | [S05 차단 목록 조회](#s05)   |
-| 해제 토스트, 목록 갱신 실패, 재시도      | [S06 해제 화면](#s06)        |
-| 피드 목록·상세·공유 URL·비로그인         | [S07 피드 조회](#s07)        |
-| 제3자 피드의 댓글, 탈퇴한 댓글 작성자    | [S08 댓글 조회](#s08)        |
-| 댓글·좋아요와 차단이 동시에 들어옴       | [S09 반응 저장과 경쟁](#s09) |
-| 차단 후 본인 삭제·신고                   | [S10 삭제와 신고](#s10)      |
-| 기존 인앱 알림·미읽음 수·읽음 처리       | [S11 인앱 알림](#s11)        |
-| 새 피드 게시와 차단이 동시에 들어옴      | [S12 푸시 예약](#s12)        |
-| 예약된 푸시, 재시도, 이미 전송된 푸시    | [S13 푸시 발송](#s13)        |
-| 무엇을 숨기고 무엇을 보존하는가          | [S14 보존 범위](#s14)        |
+| 확인할 상황                              | 흐름도                                                                                                                                                                                                            |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 피드·댓글에서 차단, 취소, 대기, 실패     | [S01 차단 진입](#s01-%ED%94%BC%EB%93%9C%EB%8C%93%EA%B8%80%EC%97%90%EC%84%9C-%EC%B0%A8%EB%8B%A8%ED%95%98%EA%B8%B0)                                                                                                 |
+| 비회원, 만료된 인증, CSRF 재시도         | [S02 인증과 요청](#s02-%EC%9D%B8%EC%A6%9Dcsrf%EC%9D%91%EB%8B%B5%EC%9D%84-%ED%99%95%EC%9D%B8%ED%95%98%EA%B8%B0)                                                                                                    |
+| 새 차단, 중복 요청, 자기 차단, 대상 탈퇴 | [S03 차단 저장](#s03-%EC%84%9C%EB%B2%84%EC%97%90-%EC%B0%A8%EB%8B%A8%EC%9D%84-%EC%A0%80%EC%9E%A5%ED%95%98%EA%B8%B0)                                                                                                |
+| 한쪽·양쪽 차단과 해제 결과               | [S04 방향별 해제](#s04-%EB%B3%B8%EC%9D%B8-%EB%B0%A9%ED%96%A5%EB%A7%8C-%ED%95%B4%EC%A0%9C%ED%95%98%EA%B8%B0)                                                                                                       |
+| 설정 목록, 페이지, 탈퇴한 사용자         | [S05 차단 목록 조회](#s05-%EC%84%A4%EC%A0%95%EC%9D%98-%EC%B0%A8%EB%8B%A8-%EB%AA%A9%EB%A1%9D%EA%B3%BC-%EB%8B%A4%EC%9D%8C-%ED%8E%98%EC%9D%B4%EC%A7%80)                                                              |
+| 해제 토스트, 목록 갱신 실패, 재시도      | [S06 해제 화면](#s06-%ED%95%B4%EC%A0%9C-%EC%84%B1%EA%B3%B5%EC%8B%A4%ED%8C%A8%EC%99%80-%EB%AA%A9%EB%A1%9D-%EA%B0%B1%EC%8B%A0-%EC%8B%A4%ED%8C%A8)                                                                   |
+| 피드 목록·상세·공유 URL·비로그인         | [S07 피드 조회](#s07-%ED%94%BC%EB%93%9C-%EB%AA%A9%EB%A1%9D%EC%83%81%EC%84%B8%EA%B3%B5%EC%9C%A0-url)                                                                                                               |
+| 제3자 피드의 댓글, 탈퇴한 댓글 작성자    | [S08 댓글 조회](#s08-%EB%8C%93%EA%B8%80-%EB%AA%A9%EB%A1%9D%EC%9D%80-%EB%B6%80%EB%AA%A8-%ED%94%BC%EB%93%9C%EC%99%80-%EB%8C%93%EA%B8%80-%EC%9E%91%EC%84%B1%EC%9E%90%EB%A5%BC-%EB%94%B0%EB%A1%9C-%ED%99%95%EC%9D%B8) |
+| 댓글·좋아요와 차단이 동시에 들어옴       | [S09 반응 저장과 경쟁](#s09-%EB%8C%93%EA%B8%80%EC%A2%8B%EC%95%84%EC%9A%94%EB%A5%BC-%EC%A0%80%EC%9E%A5%ED%95%A0-%EB%95%8C%EC%99%80-%EC%B0%A8%EB%8B%A8%EC%9D%B4-%EA%B2%B9%EC%B9%A0-%EB%95%8C)                       |
+| 차단 후 본인 삭제·신고                   | [S10 삭제와 신고](#s10-%EC%B0%A8%EB%8B%A8-%ED%9B%84%EC%97%90%EB%8F%84-%EA%B0%80%EB%8A%A5%ED%95%9C-%EB%B3%B8%EC%9D%B8-%EC%82%AD%EC%A0%9C%EC%8B%A0%EA%B3%A0)                                                        |
+| 기존 인앱 알림·미읽음 수·읽음 처리       | [S11 인앱 알림](#s11-%EC%9D%B8%EC%95%B1-%EC%95%8C%EB%A6%BC-%EB%AA%A9%EB%A1%9D%EB%AF%B8%EC%9D%BD%EC%9D%8C-%EC%88%98%EC%9D%BD%EC%9D%8C-%EC%B2%98%EB%A6%AC)                                                          |
+| 새 피드 게시와 차단이 동시에 들어옴      | [S12 푸시 예약](#s12-%EC%83%88-%ED%94%BC%EB%93%9C-%EA%B2%8C%EC%8B%9C%ED%91%B8%EC%8B%9C-%EC%98%88%EC%95%BD%EA%B3%BC-%EC%B0%A8%EB%8B%A8%EC%9D%98-%EA%B2%BD%EC%9F%81)                                                |
+| 예약된 푸시, 재시도, 이미 전송된 푸시    | [S13 푸시 발송](#s13-%EC%98%88%EC%95%BD%EB%90%9C-%ED%91%B8%EC%8B%9C-%EB%B0%9C%EC%86%A1%EC%8B%A4%ED%8C%A8%EC%B0%A8%EB%8B%A8)                                                                                       |
+| 무엇을 숨기고 무엇을 보존하는가          | [S14 보존 범위](#s14-%EC%88%A8%EA%B9%80%EA%B3%BC-%EB%8D%B0%EC%9D%B4%ED%84%B0-%EB%B3%B4%EC%A1%B4-%EB%B2%94%EC%9C%84)                                                                                               |
 
 화면은 PR 본문의 **프론트 화면 PDF**에서 함께 확인할 수 있습니다. 각 절의 참고 링크는 해당 흐름의 구현과 회귀 테스트입니다.
-
-<a id="s01"></a>
 
 ## S01. 피드·댓글에서 차단하기
 
@@ -46,8 +44,6 @@ flowchart TD
 - 로그인 이력은 화면 진입 판단에 사용합니다. 실제 권한은 다음 서버 인증 단계에서 확인합니다.
 
 참고: [메뉴](../../frontend/web/src/shared/content/ContentOptionsButton.tsx), [차단 확인창](../../frontend/web/src/shared/block/BlockDialog.tsx), [진입·잠금 테스트](../../frontend/web/src/shared/content/BlockEntryPoints.test.tsx).
-
-<a id="s02"></a>
 
 ## S02. 인증·CSRF·응답을 확인하기
 
@@ -79,8 +75,6 @@ flowchart TD
 기존 `authFetch`의 **401 후 토큰 복원·한 번 재요청**과, 차단 API의 **명확한 CSRF403에 대한 한 번 재시도**는 별개입니다. 네트워크 오류만으로 서버 저장이 롤백됐다고 단정할 수는 없습니다. 같은 방향의 PUT·DELETE는 반복해도 기록이 중복되지 않도록 처리합니다.
 
 참고: [보안 체인](../src/main/java/com/harudle/common/security/BlockSecurityConfiguration.java), [프론트 API](../../frontend/web/src/domain/blocks/blocks.ts), [CSRF·응답 계약 테스트](../../frontend/web/src/domain/blocks/blocks.test.ts).
-
-<a id="s03"></a>
 
 ## S03. 서버에 차단을 저장하기
 
@@ -115,8 +109,6 @@ flowchart TD
 
 참고: [BlockService](../src/main/java/com/harudle/block/service/BlockService.java), [저장·취소 SQL](../src/main/java/com/harudle/block/infrastructure/JpaBlockRepository.java), [DB 제약·롤백 테스트](../src/test/java/com/harudle/block/infrastructure/BlockPersistenceTest.java).
 
-<a id="s04"></a>
-
 ## S04. 본인 방향만 해제하기
 
 ```mermaid
@@ -141,8 +133,6 @@ flowchart TD
 B가 탈퇴했거나 물리적으로 삭제됐어도 DELETE는 대상의 활성 여부를 요구하지 않습니다. 없는 행의 반복 해제도 204입니다. A 자신에 대한 요청과 비활성 A는 별도 검증에서 거절됩니다. 취소된 푸시 작업을 다시 예약하지 않습니다.
 
 참고: [해제 서비스](../src/main/java/com/harudle/block/service/BlockService.java), [본인 방향 DELETE](../src/main/java/com/harudle/block/infrastructure/JpaBlockRepository.java), [양방향·탈퇴 해제 테스트](../src/test/java/com/harudle/block/infrastructure/BlockPersistenceTest.java).
-
-<a id="s05"></a>
 
 ## S05. 설정의 차단 목록과 다음 페이지
 
@@ -176,8 +166,6 @@ flowchart TD
 
 참고: [서버 목록](../src/main/java/com/harudle/block/service/BlockService.java), [커서](../src/main/java/com/harudle/block/service/BlockCursorCodec.java), [설정 목록·페이지 재시도](../../frontend/web/src/pages/setting/BlockedUsers.tsx), [경계 행 삭제 테스트](../src/test/java/com/harudle/block/infrastructure/BlockPersistenceTest.java).
 
-<a id="s06"></a>
-
 ## S06. 해제 성공·실패와 목록 갱신 실패
 
 ```mermaid
@@ -203,8 +191,6 @@ flowchart TD
 
 참고: [설정 목록](../../frontend/web/src/pages/setting/BlockedUsers.tsx), [기존 토스트](../../frontend/web/src/shared/ToastContext.tsx), [단위 회귀](../../frontend/web/src/pages/setting/BlockedUsers.test.tsx), [실제 브라우저 회귀](../../frontend/web/e2e/user-blocking.spec.ts).
 
-<a id="s07"></a>
-
 ## S07. 피드 목록·상세·공유 URL
 
 ```mermaid
@@ -228,8 +214,6 @@ flowchart TD
 - 이미 진행 중인 조회·이미 내려간 이미지까지 회수하지는 않습니다. 차단 성공 화면은 이전 메모리 상태를 버리고 새로 조회합니다.
 
 참고: [목록 SQL](../src/main/java/com/harudle/feed/repository/FeedListRepository.java), [상세](../src/main/java/com/harudle/feed/service/FeedQueryService.java), [공유 URL](../src/main/java/com/harudle/feed/presentation/FeedResponseAssembler.java), [노출 통합 테스트](../src/test/java/com/harudle/feed/service/BlockedContentVisibilityPersistenceTest.java).
-
-<a id="s08"></a>
 
 ## S08. 댓글 목록은 부모 피드와 댓글 작성자를 따로 확인
 
@@ -256,8 +240,6 @@ A가 B를 차단한 예시입니다.
 | 부모 피드·일기 삭제 또는 피드 작성자 탈퇴 | 부모 경로가 유효하지 않아 댓글 목록 404                                                    |
 
 참고: [부모 검사](../src/main/java/com/harudle/comment/service/CommentService.java), [댓글 필터 SQL](../src/main/java/com/harudle/comment/infrastructure/JpaCommentRepository.java), [탈퇴 작성자 응답](../src/main/java/com/harudle/comment/presentation/CommentAuthorResponse.java), [통합 테스트](../src/test/java/com/harudle/feed/service/BlockedContentVisibilityPersistenceTest.java).
-
-<a id="s09"></a>
 
 ## S09. 댓글·좋아요를 저장할 때와 차단이 겹칠 때
 
@@ -307,8 +289,6 @@ sequenceDiagram
 
 참고: [반응 공통 검사](../src/main/java/com/harudle/feed/service/FeedInteractionService.java), [사용자 쌍 잠금](../src/main/java/com/harudle/block/service/BlockInteractionPolicy.java), [차단 선행 경쟁 테스트](../src/test/java/com/harudle/feed/service/BlockedInteractionPersistenceTest.java), [반응 선행 잠금 테스트](../src/test/java/com/harudle/block/infrastructure/BlockPersistenceTest.java).
 
-<a id="s10"></a>
-
 ## S10. 차단 후에도 가능한 본인 삭제·신고
 
 ```mermaid
@@ -334,8 +314,6 @@ flowchart TD
 - 신규 신고는 대상 활성 조건을 따릅니다. 삭제된 댓글은 신규 신고할 수 없지만, 본인의 기존 접수는 안내합니다. 댓글 작성자만 탈퇴한 경우는 부모와 댓글이 유효하면 신규 신고가 가능합니다.
 
 참고: [댓글 삭제](../src/main/java/com/harudle/comment/service/CommentService.java), [피드 삭제](../src/main/java/com/harudle/feed/service/FeedDeletionService.java), [기존 접수·신규 접수](../src/main/java/com/harudle/report/service/ReportService.java), [차단 후 신고 테스트](../src/test/java/com/harudle/feed/service/BlockedContentVisibilityPersistenceTest.java).
-
-<a id="s11"></a>
 
 ## S11. 인앱 알림 목록·미읽음 수·읽음 처리
 
@@ -373,8 +351,6 @@ flowchart TD
 목록과 전체 미읽음 수는 같은 페이지 조회 트랜잭션의 스냅샷을 사용합니다. 필요한 활성 프로필을 제공받지 못하면 503입니다. 읽기 중 생긴 차단으로 이미 진행 중인 응답을 강제 취소하지는 않습니다. 외부 푸시 수신이 인앱 읽음 상태를 바꾸지는 않습니다.
 
 참고: [목록·읽음 서비스](../src/main/java/com/harudle/notification/service/NotificationService.java), [공통 노출 조건 SQL](../src/main/java/com/harudle/notification/infrastructure/JpaNotificationRepository.java), [알림 통합 테스트](../src/test/java/com/harudle/notification/infrastructure/NotificationPersistenceTest.java).
-
-<a id="s12"></a>
 
 ## S12. 새 피드 게시·푸시 예약과 차단의 경쟁
 
@@ -423,8 +399,6 @@ sequenceDiagram
 
 참고: [피드 게시](../src/main/java/com/harudle/feed/service/FeedPublicationService.java), [예약 SQL](../src/main/java/com/harudle/push/infrastructure/JpaFeedPushOutbox.java), [공유·배타 잠금](../src/main/java/com/harudle/push/infrastructure/PostgresFeedPushPublicationGuard.java), [두 순서의 DB 경쟁 테스트](../src/test/java/com/harudle/push/infrastructure/BlockedPushDeliveryPersistenceTest.java).
 
-<a id="s13"></a>
-
 ## S13. 예약된 푸시 발송·실패·차단
 
 ```mermaid
@@ -457,8 +431,6 @@ flowchart TD
 `SENT`는 기기 수신 확인이 아닙니다. 중복 외부 전송을 완전히 없애거나 도착 가능한 개수를 제한하는 보장도 없습니다. 앱의 발송 시도 기한 24시간과 FCM 전달 TTL 7일은 별개입니다. 푸시에는 일반 안내와 이벤트·피드 ID를 담고 일기 원문·댓글 본문을 복사하지 않습니다.
 
 참고: [발송 워커](../src/main/java/com/harudle/push/infrastructure/FeedPushDeliveryWorker.java), [선점·재검사·상태 변경](../src/main/java/com/harudle/push/infrastructure/JdbcPushDeliveryQueue.java), [FCM 메시지](../src/main/java/com/harudle/push/infrastructure/FcmFeedPushSender.java), [차단 발송 테스트](../src/test/java/com/harudle/push/infrastructure/BlockedPushDeliveryPersistenceTest.java).
-
-<a id="s14"></a>
 
 ## S14. 숨김과 데이터 보존 범위
 
