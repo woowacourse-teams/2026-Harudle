@@ -20,7 +20,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 class OAuthLoginCommandResolverTest {
 
     @ParameterizedTest
-    @CsvSource({"kakao,KAKAO", "google,GOOGLE"})
+    @CsvSource({"kakao,KAKAO", "google,GOOGLE", "apple,APPLE"})
     @DisplayName("제공자를 지원하는 변환 객체에만 로그인 명령 생성을 요청한다")
     void delegatesToSupportingMapper(String registrationId, OAuthProvider provider) {
         OAuthLoginCommandMapper unsupportedMapper = mock(OAuthLoginCommandMapper.class);
