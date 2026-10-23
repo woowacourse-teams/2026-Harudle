@@ -245,6 +245,11 @@ CodeBuild는 프론트엔드 입력이 같으면 이전 이미지를 재사용�
 - Frontend `/health`는 Nginx의 응답 여부를 확인한다. DB와 S3, Gemini의 실제 기능은
   각각의 기능 검증과 로그로 확인한다.
 
+- API 완료 로그에 요청별 S3와 R2 확인 횟수, URL 서명 시간, 피드 데이터 조회 시간을 기록한다.
+  프론트엔드 Nginx는 응답 추적 ID와 프록시 시간을 JSON으로 남긴다. 호스트 Nginx 예시에도
+  같은 형식이 있지만 실제 HTTPS 설정에는 별도로 적용해야 한다. 필드 뜻과 CloudWatch 필터
+  적용 순서는 [요청 지연 확인 절차](deploy/monitoring/request-latency.md)를 따른다.
+
 ## 작업별 확인 위치
 
 변경하는 구성에 해당하는 문서와 실제 설정을 함께 읽는다.

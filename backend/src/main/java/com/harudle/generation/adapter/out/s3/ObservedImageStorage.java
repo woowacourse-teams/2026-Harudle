@@ -1,5 +1,6 @@
 package com.harudle.generation.adapter.out.s3;
 
+import com.harudle.observability.RequestOperationTimings;
 import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageLookupBudget;
 import com.harudle.generation.diary.service.port.dto.GeneratedImage;
@@ -87,6 +88,10 @@ public final class ObservedImageStorage implements ImageStorage {
             failureType = S3MetricFailureType.from(exception, false);
             throw exception;
         } finally {
+            if ("head_object".equals(operation)) {
+                RequestOperationTimings.record(RequestOperationTimings.Operation.S3_HEAD,
+                        System.nanoTime() - startedAt, "failure".equals(result), "missing".equals(result));
+            }
             try {
                 record(operation, result, failureType, System.nanoTime() - startedAt);
             } catch (RuntimeException exception) {
