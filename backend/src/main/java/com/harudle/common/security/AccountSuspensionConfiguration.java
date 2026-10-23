@@ -7,12 +7,14 @@ import org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilte
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 
 @Configuration(proxyBeanMethods = false)
 public class AccountSuspensionConfiguration {
+    // 서블릿 초기 등록 단계에서 JPA 서비스가 먼저 생성되지 않도록 제재 정책을 지연 주입한다.
     @Bean
     FilterRegistrationBean<AccountSuspensionFilter> accountSuspensionFilterRegistration(
-            AccountAccessPolicy accountAccess,
+            @Lazy AccountAccessPolicy accountAccess,
             ProblemDetailResponseWriter problems,
             SecurityFilterProperties securityFilters) {
         // SecurityContext는 보안 체인이 controller를 포함한 나머지 servlet chain을 호출하는 동안 유지된다.

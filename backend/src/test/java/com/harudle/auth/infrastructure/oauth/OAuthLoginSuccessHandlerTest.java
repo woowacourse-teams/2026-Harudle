@@ -322,7 +322,7 @@ class OAuthLoginSuccessHandlerTest {
         handler.onAuthenticationSuccess(new MockHttpServletRequest(), response, createKakaoAuthentication());
 
         assertThat(response.getRedirectedUrl())
-                .isEqualTo("http://localhost:5173/auth/callback?error=oauth_failed");
+                .isEqualTo("http://localhost:5173/auth/callback?error=account_suspended");
         assertThat(response.getHeader(HttpHeaders.SET_COOKIE)).isNull();
         verify(failureRedirector).redirect(response, OAuthFailureReason.ACCOUNT_SUSPENDED);
         verify(oAuthEventLogger).infoRejected("kakao", OAuthFailureReason.ACCOUNT_SUSPENDED);
