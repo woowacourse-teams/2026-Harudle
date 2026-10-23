@@ -2,6 +2,7 @@ import { css } from '@emotion/react';
 import categoryChevronIcon from '../../assets/icons/feed-category-chevron.svg';
 import FeedActions from '../../shared/feed/FeedActions';
 import FeedOptionsButton from '../../shared/feed/FeedOptionsButton';
+import ContentOptionsButton from '../../shared/content/ContentOptionsButton';
 import profileFallbackImage from '../../assets/images/profile-fallback.svg';
 import type { Feed } from '../../domain/feeds/feedList';
 import { useNavigate } from 'react-router';
@@ -91,12 +92,18 @@ const FeedDetailContent = ({ feedId }: FeedDetailContentProps) => {
                 {formatPublishedAt(feed.publishedAt)}
               </span>
             </div>
-            {feed.isMine && (
+            {feed.isMine ? (
               <FeedOptionsButton
                 feedId={feed.id}
                 onDelete={() => {
                   void navigate('/');
                 }}
+              />
+            ) : (
+              <ContentOptionsButton
+                target={{ targetType: 'FEED', targetId: feed.id }}
+                authorId={feed.author.id}
+                authorNickname={feed.author.nickname}
               />
             )}
           </header>

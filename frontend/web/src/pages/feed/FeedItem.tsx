@@ -9,6 +9,7 @@ import { theme } from '../../styles/theme';
 import FeedActions from '../../shared/feed/FeedActions';
 import { useNavigate } from 'react-router';
 import FeedOptionsButton from '../../shared/feed/FeedOptionsButton';
+import ContentOptionsButton from '../../shared/content/ContentOptionsButton';
 
 interface FeedItemProps {
   readonly feed: Feed;
@@ -58,7 +59,15 @@ const FeedItem = ({
             {formatPublishedAt(publishedAt)}
           </time>
         </div>
-        {isMine && <FeedOptionsButton feedId={feed.id} onDelete={onDelete} />}
+        {isMine ? (
+          <FeedOptionsButton feedId={feed.id} onDelete={onDelete} />
+        ) : (
+          <ContentOptionsButton
+            target={{ targetType: 'FEED', targetId: feed.id }}
+            authorId={author.id}
+            authorNickname={author.nickname}
+          />
+        )}
       </header>
       <div onContextMenu={(event) => event.preventDefault()}>
         <DiaryImage
