@@ -25,7 +25,13 @@ interface RemoveToastAction {
   readonly id: ToastItem['id'];
 }
 
-type ToastAction = AddToastAction | RemoveToastAction;
+interface UpdateToastAction {
+  readonly type: 'update';
+  readonly id: ToastItem['id'];
+  readonly toast: Partial<ToastProps>;
+}
+
+type ToastAction = AddToastAction | RemoveToastAction | UpdateToastAction;
 
 const TOAST_MAX_LENGTH = 2;
 
@@ -33,7 +39,13 @@ interface ToastContextValue {
   readonly addToast: (
     toast: ToastProps,
     durationMs: number | 'infinite',
+    id?: ToastItem['id'],
   ) => ToastItem['id'];
+  readonly deleteToast: (id: ToastItem['id']) => void;
+  readonly updateToast: (
+    id: ToastItem['id'],
+    toast: Partial<ToastProps>,
+  ) => void;
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
@@ -43,10 +55,29 @@ const toastReducer = (
   action: ToastAction,
 ): readonly ToastItem[] => {
   switch (action.type) {
-    case 'add':
-      return [...toasts, action.toast].slice(-TOAST_MAX_LENGTH);
+    case 'add': {
+      if (toasts.some((toast): boolean => toast.id === action.toast.id)) {
+        return toasts;
+      }
+
+      const nextToasts = [...toasts, action.toast];
+      if (nextToasts.length <= TOAST_MAX_LENGTH) {
+        return nextToasts;
+      }
+
+      const oldestFiniteToastIndex = nextToasts.findIndex(
+        (toast): boolean => toast.durationMs !== 'infinite',
+      );
+      return nextToasts.filter(
+        (_, index): boolean => index !== oldestFiniteToastIndex,
+      );
+    }
     case 'remove':
       return toasts.filter((toast): boolean => toast.id !== action.id);
+    case 'update':
+      return toasts.map((toast): ToastItem => {
+        return toast.id === action.id ? { ...toast, ...action.toast } : toast;
+      });
   }
 };
 
@@ -54,13 +85,15 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
   const [toasts, dispatch] = useReducer(toastReducer, []);
 
   const addToast = useCallback(
-    (toast: ToastProps, durationMs: number | 'infinite'): ToastItem['id'] => {
-      const id = crypto.randomUUID();
-
+    (
+      toast: ToastProps,
+      durationMs: number | 'infinite',
+      id: ToastItem['id'] = crypto.randomUUID(),
+    ): ToastItem['id'] => {
       dispatch({ type: 'add', toast: { ...toast, id, durationMs } });
 
       if (durationMs !== 'infinite') {
-        setTimeout(() => {
+        setTimeout((): void => {
           dispatch({ type: 'remove', id });
         }, durationMs);
       }
@@ -70,8 +103,19 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
     [],
   );
 
+  const deleteToast = (id: ToastItem['id']): void => {
+    dispatch({ type: 'remove', id });
+  };
+
+  const updateToast = (
+    id: ToastItem['id'],
+    toast: Partial<ToastProps>,
+  ): void => {
+    dispatch({ type: 'update', id, toast });
+  };
+
   return (
-    <ToastContext.Provider value={{ addToast }}>
+    <ToastContext.Provider value={{ addToast, deleteToast, updateToast }}>
       {children}
       {createPortal(
         <div css={toastListStyle}>

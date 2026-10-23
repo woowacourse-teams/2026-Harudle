@@ -16,9 +16,10 @@ export interface ToastProps {
   readonly message: string;
   readonly description?: string;
   readonly action?: ToastAction;
+  readonly onClose?: () => void;
 }
 
-const Toast = ({ type, message, description, action }: ToastProps) => {
+const Toast = ({ type, message, description, action, onClose }: ToastProps) => {
   return (
     <div css={toastStyle}>
       <span css={iconStyle} data-type={type}>
@@ -33,6 +34,12 @@ const Toast = ({ type, message, description, action }: ToastProps) => {
       {action && (
         <button type="button" css={actionButtonStyle} onClick={action.onClick}>
           {action.label}
+        </button>
+      )}
+
+      {onClose && (
+        <button type="button" css={closeButtonStyle} onClick={onClose}>
+          ×
         </button>
       )}
     </div>
@@ -133,5 +140,18 @@ const actionButtonStyle = css`
   font-size: 12px;
   font-weight: 500;
   line-height: 18px;
+  cursor: pointer;
+`;
+
+const closeButtonStyle = css`
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  background-color: transparent;
+  color: ${theme.colors.foreground.neutralMuted};
+  font-size: 20px;
+  line-height: 1;
   cursor: pointer;
 `;
