@@ -55,25 +55,27 @@ public class OAuthLoginService {
         User user = account.getUser();
         validateActiveUser(user);
 
+        user.updateNameIfProvided(command.displayName(), now);
         account.recordLogin(command.providerEmail(), now);
 
         return new OAuthLoginResult(user.getId());
     }
 
     private OAuthLoginResult createNewAccount(OAuthLoginCommand command, Instant now) {
+        String nickname = nicknameCandidateRepository.lockNextAvailable();
+        String displayName = command.displayName() == null ? nickname : command.displayName();
         RequiredOAuthProfile profile = new RequiredOAuthProfile(
                 command.providerEmail(),
-                command.displayName()
+                displayName
         );
 
-        User user = createUser(profile, now);
+        User user = createUser(profile, nickname, now);
         createOAuthAccount(user, command, profile.email(), now);
 
         return new OAuthLoginResult(user.getId());
     }
 
-    private User createUser(RequiredOAuthProfile profile, Instant now) {
-        String nickname = nicknameCandidateRepository.lockNextAvailable();
+    private User createUser(RequiredOAuthProfile profile, String nickname, Instant now) {
         int imageCode = profileImageCodeGenerator.generate();
 
         User user = new User(profile.email(), profile.displayName(), now);

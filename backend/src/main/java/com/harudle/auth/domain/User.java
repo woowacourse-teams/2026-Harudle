@@ -98,6 +98,17 @@ public class User {
         this.updatedAt = now;
     }
 
+    public void updateNameIfProvided(String name, Instant now) {
+        Objects.requireNonNull(now, "now는 필수입니다.");
+
+        if (name == null || name.isBlank()) {
+            return;
+        }
+
+        this.name = name;
+        this.updatedAt = now;
+    }
+
     public boolean isDeleted() {
         return deletedAt != null;
     }
