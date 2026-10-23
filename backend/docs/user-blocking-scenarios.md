@@ -26,11 +26,13 @@ flowchart TD
     START["차단 GET·PUT·DELETE"] --> BEARER{"Bearer 인증 통과?"}
     BEARER -->|아니요| UNAUTH["401 · 변경 없음"]
     BEARER -->|예| METHOD{"변경 요청인가?"}
-    METHOD -->|GET| MEMBER["DB의 활성 OAuth 회원 확인"]
+    METHOD -->|GET| ACTOR["인증 주체 A 추출"]
     METHOD -->|PUT·DELETE| CSRF{"CSRF 쿠키·헤더 일치?"}
     CSRF -->|아니요| REJECT["저장 전 403 INVALID_CSRF_TOKEN"]
-    CSRF -->|예| MEMBER
-    MEMBER --> ACTOR["인증 주체를 행위자로 사용 · 본인 범위에서 처리"]
+    CSRF -->|예| ACTOR
+    ACTOR --> MEMBER{"DB의 활성 OAuth 회원인가?"}
+    MEMBER -->|아니요| UNAUTH
+    MEMBER -->|예| HANDLE["본인 범위에서 처리"]
 ```
 
 - JWT의 인증 주체를 사용하며 요청으로 다른 `blockerId`를 지정할 수 없습니다. JWT 유효성과 DB 활성 회원 여부는 각각 확인합니다.
