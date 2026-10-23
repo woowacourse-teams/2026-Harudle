@@ -65,7 +65,7 @@ flowchart TD
 
 기존 `authFetch`의 401 후 토큰 복원·한 번 재요청을 그대로 사용합니다. 위 CSRF 재시도는 별도이며, 저장 전에 거절된 코드가 명확할 때만 한 번 수행합니다. 일반 403·5xx·네트워크 오류를 자동 재전송하지 않습니다. 네트워크 오류만으로 서버 저장이 롤백됐다고 단정하지 않습니다.
 
-차단 목록 GET도 `authFetch`를 사용하고 응답 필드·날짜·페이지 연속성을 검사합니다. Access Token을 브라우저 저장소에 추가로 보관하거나 기존 인증 코드를 변경하지 않습니다.
+차단 목록 GET도 `authFetch`를 사용하고 응답 필드·날짜·hasNext와 nextCursor의 관계를 검사합니다. Access Token을 브라우저 저장소에 추가로 보관하거나 기존 인증 코드를 변경하지 않습니다.
 
 참고: [차단 API](../src/domain/blocks/blocks.ts), [신고 API](../src/domain/reports/reportSubmission.ts), [차단 인증 회귀](../src/domain/blocks/blocks.auth.test.ts), [신고 인증 회귀](../src/domain/reports/reportSubmission.auth.test.ts).
 
@@ -96,7 +96,7 @@ flowchart TD
     ERROR -->|다시 불러오기| GET
     GET -->|성공| LIST["사용자 행 또는 빈 목록"]
     LIST --> MORE{"다음 페이지 있음?"}
-    MORE -->|예| NEXT["같은 커서로 GET · 중복 없이 추가"]
+    MORE -->|예| NEXT["다음 커서로 GET · 중복 없이 추가"]
     NEXT -->|성공| LIST
     NEXT -->|실패| RETRY["기존 행·커서 유지 · 내부 새로고침으로 GET만 재시도"]
     MORE -->|아니요| ENDING["더 불러오기 숨김"]
