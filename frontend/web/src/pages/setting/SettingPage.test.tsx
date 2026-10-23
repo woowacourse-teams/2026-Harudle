@@ -266,7 +266,7 @@ describe('통합 프로필 수정', (): void => {
     expect(mockAddToast).not.toHaveBeenCalled();
   });
 
-  it('저장 중 창을 닫아도 중복 저장을 막고, 확인된 실패는 본문과 설명이 나뉜 토스트로 알린다', async (): Promise<void> => {
+  it('저장 중 배경 클릭, Esc와 중복 제출을 막고 실패하면 창 안에 오류를 표시한다', async (): Promise<void> => {
     let failSave: ((error: Error) => void) | undefined;
     mockUpdateProfile.mockImplementationOnce(
       () =>
@@ -282,26 +282,49 @@ describe('통합 프로필 수정', (): void => {
     fireEvent.submit(form);
     expect(mockUpdateProfile).toHaveBeenCalledTimes(1);
     expect(input).toBeDisabled();
+    expect(screen.getByRole('button', { name: '취소' })).toBeDisabled();
     await user.click(dialog);
-    expect(dialog).not.toHaveAttribute('open');
-    expect(
-      screen.getByRole('button', { name: '프로필 사진 수정' }),
-    ).toBeDisabled();
-    expect(
-      screen.queryByText('프로필을 저장하고 있어요. 잠시만 기다려 주세요.'),
-    ).not.toBeInTheDocument();
+    const cancel = new Event('cancel', { cancelable: true });
+    fireEvent(dialog, cancel);
+    expect(cancel.defaultPrevented).toBe(true);
+    expect(dialog).toHaveAttribute('open');
     await act(async (): Promise<void> => {
       failSave?.(problem(503, 'PROFILE_IMAGE_STORAGE_ERROR'));
     });
-    expect(mockAddToast).toHaveBeenCalledWith(
-      {
-        type: 'error',
-        message: '프로필을 저장하지 못했어요.',
-        description: '다시 수정해 주세요.',
-      },
-      2000,
+    expect(
+      screen.getByText('프로필을 저장하지 못했어요. 다시 시도해 주세요.'),
+    ).toBeInTheDocument();
+    expect(mockAddToast).not.toHaveBeenCalled();
+    const idleCancel = new Event('cancel', { cancelable: true });
+    fireEvent(dialog, idleCancel);
+    expect(idleCancel.defaultPrevented).toBe(false);
+    await user.click(dialog);
+    expect(dialog).not.toHaveAttribute('open');
+  });
+
+  it('저장 뒤 프로필 재조회 중에도 창을 유지하고 조회가 끝나면 자동으로 닫는다', async (): Promise<void> => {
+    const { user, dialog } = await openProfileModal();
+    let finishRead: ((value: typeof profile) => void) | undefined;
+    mockGetProfile.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishRead = resolve;
+        }),
     );
-    expect(screen.getByRole('button', { name: '프로필 수정' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: '박쥐 프로필 사진' }));
+    await user.click(screen.getByRole('button', { name: '저장' }));
+    await screen.findByRole('button', { name: '불러오는 중...' });
+    await user.click(dialog);
+    const cancel = new Event('cancel', { cancelable: true });
+    fireEvent(dialog, cancel);
+    expect(cancel.defaultPrevented).toBe(true);
+    expect(dialog).toHaveAttribute('open');
+    await act(async (): Promise<void> => {
+      finishRead?.(profile);
+    });
+    await waitFor(() => expect(dialog).not.toHaveAttribute('open'));
+    expect(mockAddToast).toHaveBeenCalledTimes(1);
+    expect(mockUpdateProfile).toHaveBeenCalledTimes(1);
   });
 
   it('이전 사진 주소 재조회가 늦게 끝나도 새로 저장한 프로필을 덮어쓰지 않는다', async (): Promise<void> => {

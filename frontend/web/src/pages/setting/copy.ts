@@ -13,8 +13,6 @@ export const PROFILE_COPY = {
   refreshError: '수정한 프로필을 불러오지 못했어요.',
   unknownResult: '저장 결과를 확인하지 못했어요. 다시 불러와 주세요.',
   unavailable: '프로필 정보를 확인할 수 없어요. 다시 불러와 주세요.',
-  closedSaveError: '프로필을 저장하지 못했어요.',
-  editAgain: '다시 수정해 주세요.',
   reload: '다시 불러오기',
   success: '프로필을 수정했어요.',
 } as const;

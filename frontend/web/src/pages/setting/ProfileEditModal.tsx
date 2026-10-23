@@ -75,11 +75,11 @@ const ProfileEditModal = ({
   ref,
 }: ProfileEditModalProps) => {
   const modalRef = useRef<ModalHandle>(null);
-  const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const readerRef = useRef<FileReader | null>(null);
   const pending = useRef(false);
   const composing = useRef(false);
+  const [closeRequested, setCloseRequested] = useState(false);
   const [nickname, setNickname] = useState('');
   const [nicknameError, setNicknameError] = useState('');
   const [photo, setPhoto] = useState<SelectedPhoto>({ type: 'current' });
@@ -129,6 +129,12 @@ const ProfileEditModal = ({
 
   useEffect(() => () => readerRef.current?.abort(), []);
 
+  useEffect(() => {
+    if (closeRequested && !isBusy) {
+      modalRef.current?.close();
+    }
+  }, [closeRequested, isBusy]);
+
   const cancelRead = (): void => {
     readerRef.current?.abort();
     readerRef.current = null;
@@ -137,6 +143,7 @@ const ProfileEditModal = ({
 
   useImperativeHandle(ref, () => ({
     open: (): void => {
+      setCloseRequested(false);
       if (!pending.current && !needsReload) {
         cancelRead();
         setNickname(profile.nickname);
@@ -164,21 +171,9 @@ const ProfileEditModal = ({
           : null;
       if (result?.status === 'success') {
         onSaved(result.profile);
-        modalRef.current?.close();
+        setCloseRequested(true);
         if (result.saved)
           addToast({ type: 'success', message: PROFILE_COPY.success }, 2000);
-      } else if (
-        result?.status === 'error' &&
-        !formRef.current?.closest('dialog')?.open
-      ) {
-        addToast(
-          {
-            type: 'error',
-            message: PROFILE_COPY.closedSaveError,
-            description: PROFILE_COPY.editAgain,
-          },
-          2000,
-        );
       }
     } finally {
       pending.current = false;
@@ -253,6 +248,7 @@ const ProfileEditModal = ({
     <Modal
       ref={modalRef}
       title={PROFILE_COPY.title}
+      dismissible={!isBusy}
       footer={
         <>
           <button
@@ -285,7 +281,7 @@ const ProfileEditModal = ({
         </>
       }
     >
-      <form id="profile-form" ref={formRef} onSubmit={handleSubmit}>
+      <form id="profile-form" onSubmit={handleSubmit}>
         <div css={photoSectionStyle}>
           <img
             css={previewStyle}
