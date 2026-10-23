@@ -131,7 +131,9 @@ const USER = {
   PROFILE_FETCH_FAILED:
     '프로필을 조회하는 중 문제가 발생했습니다. 다시 시도해주세요.',
   NICKNAME_UPDATE_FAILED: '닉네임을 수정하지 못했어요. 다시 시도해 주세요.',
-  INVALID_PROFILE_RESPONSE: 'Profile 응답 형식이 일치하지 않습니다.',
+  PROFILE_UPDATE_FAILED: '프로필을 저장하지 못했어요. 다시 시도해 주세요.',
+  INVALID_PROFILE_RESPONSE:
+    '프로필 정보를 확인할 수 없어요. 다시 불러와 주세요.',
 } as const;
 
 const GUEST = {
