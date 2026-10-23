@@ -7,6 +7,8 @@ import { REPORT_COPY } from './copy';
 
 jest.mock('react-router', () => ({ useNavigate: () => jest.fn() }));
 jest.mock('../../assets/icons/feed-more.svg', () => 'more.svg');
+jest.mock('../../assets/icons/report.svg', () => 'report.svg');
+jest.mock('../../assets/icons/block.svg', () => 'block.svg');
 jest.mock('../../assets/icons/bottom-sheet-close.svg', () => 'close.svg');
 jest.mock('../../assets/icons/kakao.svg', () => 'kakao.svg');
 

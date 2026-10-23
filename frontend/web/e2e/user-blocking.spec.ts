@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { AUTHENTICATED_STORAGE_STATE } from './auth';
 import {
   MOCK_SCENARIO_HEADER,
@@ -8,6 +8,27 @@ import {
 test.use({ storageState: AUTHENTICATED_STORAGE_STATE });
 const otherFeed = '/feeds/00000000-0000-4000-8000-000000000002';
 const ownFeed = '/feeds/00000000-0000-4000-8000-000000000001';
+
+const blockNeoAndOpenSettings = async (page: Page): Promise<void> => {
+  await page.goto(otherFeed);
+  await page.getByRole('button', { name: '피드 더보기', exact: true }).click();
+  await page.getByRole('button', { name: '작성자 차단', exact: true }).click();
+  await page
+    .getByRole('dialog')
+    .filter({
+      has: page.getByRole('heading', { name: '작성자 차단 확인', exact: true }),
+    })
+    .getByRole('button', { name: '차단하기', exact: true })
+    .click();
+  await expect(page).toHaveURL('/');
+  await page.goto('/setting');
+  await page
+    .getByRole('button', { name: '차단한 사용자', exact: true })
+    .click();
+  await expect(
+    page.getByRole('button', { name: '네오 차단 해제', exact: true }),
+  ).toBeVisible();
+};
 
 test('목록에서 차단 실패 후 재시도하면 숨기고 설정에서 해제하면 다시 보인다', async ({
   page,
@@ -21,10 +42,10 @@ test('목록에서 차단 실패 후 재시도하면 숨기고 설정에서 해�
   const dialog = page.getByRole('dialog').filter({
     has: page.getByRole('heading', { name: '작성자 차단 확인', exact: true }),
   });
-  await expect(dialog).toContainText('네오님을 차단할까요?');
   await expect(dialog).toContainText(
-    '로그아웃하면 공개 콘텐츠는 볼 수 있어요.',
+    '네오님이 작성한 피드와 댓글을 더 이상 볼 수 없어요.',
   );
+  await expect(dialog).not.toContainText('설정의 차단 목록');
   await page.setExtraHTTPHeaders({
     [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.blockMutationFailure,
   });
@@ -140,4 +161,93 @@ test('비회원 작성자 차단은 로그인 안내로 연결한다', async ({
     }),
   ).toBeHidden();
   expect(mutations).toBe(0);
+});
+
+test('차단 해제 실패는 토스트로 알리고 사용자 행을 유지한다', async ({
+  page,
+}): Promise<void> => {
+  await blockNeoAndOpenSettings(page);
+  const blockSection = page.locator('section').filter({
+    has: page.getByRole('button', { name: '차단한 사용자', exact: true }),
+  });
+  let deletions = 0;
+  let listReads = 0;
+  page.on('request', (request): void => {
+    const path = new URL(request.url()).pathname;
+    if (request.method() === 'DELETE' && path.startsWith('/api/v1/blocks/'))
+      deletions += 1;
+    if (request.method() === 'GET' && path === '/api/v1/blocks') listReads += 1;
+  });
+  await page.setExtraHTTPHeaders({
+    [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.blockMutationFailure,
+  });
+  await blockSection
+    .getByRole('button', { name: '네오 차단 해제', exact: true })
+    .click();
+
+  const errorMessage = '차단을 해제하지 못했어요. 다시 시도해 주세요.';
+  await expect(page.getByText(errorMessage, { exact: true })).toBeVisible();
+  await expect(
+    blockSection.getByText(errorMessage, { exact: true }),
+  ).toHaveCount(0);
+  await expect(blockSection.getByRole('alert')).toHaveCount(0);
+  await expect(
+    blockSection.getByRole('button', { name: '네오 차단 해제', exact: true }),
+  ).toBeEnabled();
+  expect(deletions).toBe(1);
+  expect(listReads).toBe(0);
+});
+
+test('해제 성공 후 목록 갱신 실패는 목록 안에서 GET만 재시도한다', async ({
+  page,
+}): Promise<void> => {
+  await blockNeoAndOpenSettings(page);
+  const blockSection = page.locator('section').filter({
+    has: page.getByRole('button', { name: '차단한 사용자', exact: true }),
+  });
+  let deletions = 0;
+  let listReads = 0;
+  page.on('request', (request): void => {
+    const path = new URL(request.url()).pathname;
+    if (request.method() === 'DELETE' && path.startsWith('/api/v1/blocks/'))
+      deletions += 1;
+    if (request.method() === 'GET' && path === '/api/v1/blocks') listReads += 1;
+  });
+  await page.setExtraHTTPHeaders({
+    [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.blockListFailure,
+  });
+  await blockSection
+    .getByRole('button', { name: '네오 차단 해제', exact: true })
+    .click();
+
+  await expect(
+    page.getByText('차단을 해제했어요.', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    blockSection.getByText('차단을 해제했어요.', { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    blockSection.getByRole('button', { name: '네오 차단 해제', exact: true }),
+  ).toHaveCount(0);
+  await expect(blockSection.getByRole('alert')).toHaveText(
+    '차단 목록을 갱신하지 못했어요.',
+  );
+  const retry = blockSection.getByRole('button', {
+    name: '차단 목록 다시 불러오기',
+    exact: true,
+  });
+  await expect(retry).toBeEnabled();
+  await expect(retry.locator('img')).toHaveCount(1);
+  expect(deletions).toBe(1);
+  expect(listReads).toBe(1);
+
+  await page.setExtraHTTPHeaders({});
+  await retry.click();
+  await expect(blockSection.getByRole('alert')).toHaveCount(0);
+  await expect(retry).toHaveCount(0);
+  await expect(
+    blockSection.getByText('차단한 사용자가 없어요.', { exact: true }),
+  ).toBeVisible();
+  expect(deletions).toBe(1);
+  expect(listReads).toBe(2);
 });

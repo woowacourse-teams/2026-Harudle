@@ -37,6 +37,10 @@ jest.mock('../../assets/images/loading-animation.webp', () => 'loading.webp');
 jest.mock('../../assets/images/request-fail.png', () => 'request-fail.png');
 jest.mock('../../assets/icons/call_made.svg', () => 'call.svg');
 jest.mock('../../assets/icons/logout.svg', () => 'logout.svg');
+jest.mock('../../assets/icons/autorenew.svg', () => 'autorenew.svg');
+jest.mock('../../shared/ToastContext', () => ({
+  useToastContext: () => ({ addToast: jest.fn() }),
+}));
 jest.mock('../../assets/icons/article_person.svg', () => 'article.svg');
 jest.mock('../../assets/images/profile-fallback.svg', () => 'fallback.svg');
 

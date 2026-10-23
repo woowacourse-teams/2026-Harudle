@@ -1,6 +1,8 @@
 import { css } from '@emotion/react';
 import { useRef, useState } from 'react';
 import moreIcon from '../../assets/icons/feed-more.svg';
+import reportIcon from '../../assets/icons/report.svg';
+import blockIcon from '../../assets/icons/block.svg';
 import type { ReportTarget } from '../../domain/reports/reportSubmission';
 import { theme } from '../../styles/theme';
 import BottomSheet, { type BottomSheetHandle } from '../BottomSheet';
@@ -73,6 +75,13 @@ const ContentOptionsButton = ({
           css={actionButtonStyle}
           onClick={(): void => handleReportClick(target)}
         >
+          <img
+            src={reportIcon}
+            alt=""
+            aria-hidden="true"
+            width={24}
+            height={24}
+          />
           {REPORT_TITLES[target.targetType]}
         </button>
         {authorId !== null && (
@@ -84,6 +93,13 @@ const ContentOptionsButton = ({
                 handleReportClick({ targetType: 'USER', targetId: authorId })
               }
             >
+              <img
+                src={reportIcon}
+                alt=""
+                aria-hidden="true"
+                width={24}
+                height={24}
+              />
               {REPORT_TITLES.USER}
             </button>
             <button
@@ -91,6 +107,13 @@ const ContentOptionsButton = ({
               css={actionButtonStyle}
               onClick={handleBlockClick}
             >
+              <img
+                src={blockIcon}
+                alt=""
+                aria-hidden="true"
+                width={24}
+                height={24}
+              />
               작성자 차단
             </button>
           </>

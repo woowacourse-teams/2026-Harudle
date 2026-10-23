@@ -8,6 +8,10 @@ import {
 } from '../../domain/blocks/blocks';
 import { setFeedListCache } from '../../domain/feeds/feedListCache';
 import profileFallbackImage from '../../assets/images/profile-fallback.svg';
+import autorenewIcon from '../../assets/icons/autorenew.svg';
+import LoadingSpinner from '../../shared/LoadingSpinner';
+import { useToastContext } from '../../shared/ToastContext';
+import { SETTING_COPY } from './copy';
 import { theme } from '../../styles/theme';
 import type { ApiRequest } from '../../shared/api';
 
@@ -24,7 +28,7 @@ const BlockedUsers = () => {
         aria-expanded={expanded}
         onClick={(): void => setVisibility(expanded ? 'collapsed' : 'expanded')}
       >
-        차단한 사용자
+        {SETTING_COPY.blockedUsersTitle}
       </button>
       {visibility !== 'unopened' && (
         <div hidden={!expanded}>
@@ -36,14 +40,18 @@ const BlockedUsers = () => {
 };
 export default BlockedUsers;
 
+type ListRetry =
+  | { readonly kind: 'refresh' }
+  | { readonly kind: 'more'; readonly cursor: string };
+
 const BlockedUsersList = () => {
+  const { addToast } = useToastContext();
   const [request, setRequest] = useState<ApiRequest<BlockedUsersResponse>>({
     status: 'loading',
   });
   const [busy, setBusy] = useState<string | 'more' | null>(null);
   const busyRef = useRef(false);
-  const [error, setError] = useState<string | null>(null);
-  const [refreshFailed, setRefreshFailed] = useState(false);
+  const [listRetry, setListRetry] = useState<ListRetry | null>(null);
   const mountedRef = useRef(true);
 
   useEffect((): (() => void) => {
@@ -60,7 +68,7 @@ const BlockedUsersList = () => {
             error:
               caught instanceof Error
                 ? caught
-                : new Error('차단 목록을 불러오지 못했어요.'),
+                : new Error(SETTING_COPY.blockedUsersLoadError),
           });
       });
     return (): void => {
@@ -73,11 +81,10 @@ const BlockedUsersList = () => {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy('more');
-    setError(null);
     try {
       const data = await getBlockedUsers({ cursor });
       if (!mountedRef.current) return;
-      if (cursor === undefined) setRefreshFailed(false);
+      setListRetry(null);
       setRequest((previous): ApiRequest<BlockedUsersResponse> => ({
         status: 'success',
         data: {
@@ -97,12 +104,20 @@ const BlockedUsersList = () => {
         },
       }));
     } catch (caught: unknown) {
-      if (mountedRef.current && !refreshFailed)
-        setError(
-          caught instanceof Error
-            ? caught.message
-            : '차단 목록을 불러오지 못했어요.',
+      if (!mountedRef.current) return;
+      if (request.status !== 'success') {
+        setRequest({
+          status: 'error',
+          error:
+            caught instanceof Error
+              ? caught
+              : new Error(SETTING_COPY.blockedUsersLoadError),
+        });
+      } else {
+        setListRetry(
+          cursor === undefined ? { kind: 'refresh' } : { kind: 'more', cursor },
         );
+      }
     } finally {
       busyRef.current = false;
       if (mountedRef.current) setBusy(null);
@@ -113,11 +128,11 @@ const BlockedUsersList = () => {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(user.userId);
-    setError(null);
     try {
       await setUserBlocked(user.userId, false);
       setFeedListCache(null);
       if (!mountedRef.current) return;
+      addToast({ type: 'success', message: SETTING_COPY.unblockSuccess }, 2000);
       setRequest((previous): ApiRequest<BlockedUsersResponse> =>
         previous.status === 'success'
           ? {
@@ -135,18 +150,14 @@ const BlockedUsersList = () => {
         const data = await getBlockedUsers();
         if (mountedRef.current) {
           setRequest({ status: 'success', data });
-          setRefreshFailed(false);
+          setListRetry(null);
         }
       } catch {
-        if (mountedRef.current) setRefreshFailed(true);
+        if (mountedRef.current) setListRetry({ kind: 'refresh' });
       }
-    } catch (caught: unknown) {
+    } catch {
       if (mountedRef.current)
-        setError(
-          caught instanceof Error
-            ? caught.message
-            : '차단을 해제하지 못했어요. 다시 시도해주세요.',
-        );
+        addToast({ type: 'error', message: SETTING_COPY.unblockError }, 2000);
     } finally {
       busyRef.current = false;
       if (mountedRef.current) setBusy(null);
@@ -155,30 +166,25 @@ const BlockedUsersList = () => {
 
   return (
     <div css={listStyle}>
-      <p css={hintStyle}>
-        내가 차단한 사용자만 표시해요. 해제하면 내가 한 차단만 해제돼요.
-      </p>
       {request.status === 'loading' && (
-        <p role="status">차단 목록을 불러오는 중…</p>
+        <div role="status" aria-label={SETTING_COPY.blockedUsersLoading}>
+          <LoadingSpinner />
+        </div>
       )}
       {request.status === 'error' && (
-        <>
-          <p role="alert">{request.error.message}</p>
-          <button
-            type="button"
-            disabled={busy !== null}
-            onClick={(): void => {
-              void load();
-            }}
-          >
-            다시 불러오기
-          </button>
-        </>
+        <BlockedUsersLoadError
+          message={SETTING_COPY.blockedUsersLoadError}
+          retryLabel={SETTING_COPY.blockedUsersRetry}
+          disabled={busy !== null}
+          onRetry={(): void => {
+            void load();
+          }}
+        />
       )}
       {request.status === 'success' && (
         <>
           {request.data.items.length === 0 && !request.data.hasNext && (
-            <p>차단한 사용자가 없어요.</p>
+            <p css={emptyStyle}>{SETTING_COPY.blockedUsersEmpty}</p>
           )}
           <ul>
             {request.data.items.map((user) => (
@@ -205,12 +211,14 @@ const BlockedUsersList = () => {
                     void unblock(user);
                   }}
                 >
-                  {busy === user.userId ? '해제 중…' : '해제'}
+                  {busy === user.userId
+                    ? SETTING_COPY.unblocking
+                    : SETTING_COPY.unblock}
                 </button>
               </li>
             ))}
           </ul>
-          {request.data.hasNext && (
+          {request.data.hasNext && listRetry === null && (
             <button
               type="button"
               disabled={busy !== null}
@@ -218,30 +226,61 @@ const BlockedUsersList = () => {
                 if (request.data.nextCursor) void load(request.data.nextCursor);
               }}
             >
-              더 불러오기
+              {busy === 'more'
+                ? SETTING_COPY.blockedUsersLoading
+                : SETTING_COPY.blockedUsersLoadMore}
             </button>
           )}
         </>
       )}
-      {refreshFailed && (
-        <>
-          <p role="status">차단을 해제했어요.</p>
-          <p role="alert">차단 목록을 갱신하지 못했어요. 다시 불러와 주세요.</p>
-          <button
-            type="button"
-            disabled={busy !== null}
-            onClick={(): void => {
-              void load();
-            }}
-          >
-            차단 목록 다시 불러오기
-          </button>
-        </>
+      {listRetry && (
+        <BlockedUsersLoadError
+          message={
+            listRetry.kind === 'more'
+              ? SETTING_COPY.blockedUsersLoadMoreError
+              : SETTING_COPY.blockedUsersRefreshError
+          }
+          retryLabel={
+            listRetry.kind === 'more'
+              ? SETTING_COPY.blockedUsersLoadMoreRetry
+              : SETTING_COPY.blockedUsersRetry
+          }
+          disabled={busy !== null}
+          onRetry={(): void => {
+            void load(listRetry.kind === 'more' ? listRetry.cursor : undefined);
+          }}
+        />
       )}
-      {error && <p role="alert">{error}</p>}
     </div>
   );
 };
+
+interface BlockedUsersLoadErrorProps {
+  readonly message: string;
+  readonly retryLabel: string;
+  readonly disabled: boolean;
+  readonly onRetry: () => void;
+}
+
+const BlockedUsersLoadError = ({
+  message,
+  retryLabel,
+  disabled,
+  onRetry,
+}: BlockedUsersLoadErrorProps) => (
+  <div css={loadErrorStyle}>
+    <p role="alert">{message}</p>
+    <button
+      type="button"
+      css={retryButtonStyle}
+      aria-label={retryLabel}
+      disabled={disabled}
+      onClick={onRetry}
+    >
+      <img src={autorenewIcon} alt="" />
+    </button>
+  </div>
+);
 
 const sectionStyle = css`
   border: 1px solid ${theme.colors.stroke.outline};
@@ -265,8 +304,7 @@ const listStyle = css`
   font-size: 14px;
   line-height: 22px;
 `;
-const hintStyle = css`
-  padding-bottom: 12px;
+const emptyStyle = css`
   color: ${theme.colors.foreground.neutralMuted};
 `;
 const rowStyle = css`
@@ -295,5 +333,40 @@ const unblockStyle = css`
   cursor: pointer;
   &:disabled {
     opacity: 0.5;
+  }
+`;
+
+const loadErrorStyle = css`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  color: ${theme.colors.foreground.neutralMuted};
+`;
+const retryButtonStyle = css`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+
+  img {
+    display: block;
+  }
+
+  &:hover,
+  &:active {
+    background-color: ${theme.colors.background.brandWeak};
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
   }
 `;

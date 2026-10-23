@@ -1,0 +1,15 @@
+export const SETTING_COPY = {
+  blockedUsersTitle: '차단한 사용자',
+  blockedUsersLoading: '차단 목록을 불러오는 중…',
+  blockedUsersEmpty: '차단한 사용자가 없어요.',
+  blockedUsersLoadMore: '더 불러오기',
+  blockedUsersLoadError: '차단 목록을 불러오지 못했어요.',
+  blockedUsersRefreshError: '차단 목록을 갱신하지 못했어요.',
+  blockedUsersLoadMoreError: '차단 목록을 더 불러오지 못했어요.',
+  blockedUsersRetry: '차단 목록 다시 불러오기',
+  blockedUsersLoadMoreRetry: '다음 차단 목록 다시 불러오기',
+  unblock: '해제',
+  unblocking: '해제 중…',
+  unblockSuccess: '차단을 해제했어요.',
+  unblockError: '차단을 해제하지 못했어요. 다시 시도해 주세요.',
+} as const;

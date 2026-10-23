@@ -13,6 +13,8 @@ import { setUserBlocked } from '../../domain/blocks/blocks';
 jest.mock('../../domain/blocks/blocks', () => ({ setUserBlocked: jest.fn() }));
 jest.mock('react-router', () => ({ useNavigate: () => jest.fn() }));
 jest.mock('../../assets/icons/feed-more.svg', () => 'more.svg');
+jest.mock('../../assets/icons/report.svg', () => 'report.svg');
+jest.mock('../../assets/icons/block.svg', () => 'block.svg');
 jest.mock('../../assets/icons/kakao.svg', () => 'kakao.svg');
 jest.mock('../../assets/icons/bottom-sheet-close.svg', () => 'close.svg');
 beforeEach((): void => {
@@ -70,7 +72,11 @@ describe('작성자 차단 진입', (): void => {
       .getByRole('heading', { name: '작성자 차단 확인' })
       .closest('dialog');
     if (!dialog) throw new Error('차단 확인 창이 없습니다.');
-    expect(within(dialog).getByText('네오님을 차단할까요?')).toBeVisible();
+    expect(
+      within(dialog).getByText(
+        '네오님이 작성한 피드와 댓글을 더 이상 볼 수 없어요.',
+      ),
+    ).toBeVisible();
     await userEvent.click(within(dialog).getByRole('button', { name: '취소' }));
     expect(dialog).not.toHaveAttribute('open');
     expect(setUserBlocked).not.toHaveBeenCalled();
@@ -114,6 +120,7 @@ describe('작성자 차단 진입', (): void => {
     expect(
       within(dialog).getByRole('button', { name: '차단 중…' }),
     ).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: '취소' })).toBeDisabled();
     expect(
       fireEvent(
         dialog,

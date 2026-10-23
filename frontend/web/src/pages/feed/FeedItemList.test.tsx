@@ -79,6 +79,8 @@ jest.mock('../../assets/icons/feed-comment.svg', () => 'feed-comment.svg');
 jest.mock('../../assets/icons/feed-send.svg', () => 'feed-send.svg');
 jest.mock('../../assets/icons/feed-more.svg', () => 'feed-more.svg');
 jest.mock('../../assets/icons/delete.svg', () => 'delete.svg');
+jest.mock('../../assets/icons/report.svg', () => 'report.svg');
+jest.mock('../../assets/icons/block.svg', () => 'block.svg');
 jest.mock('../../assets/icons/link.svg', () => 'link.svg');
 jest.mock('../../assets/icons/check.svg', () => 'check.svg');
 jest.mock(
