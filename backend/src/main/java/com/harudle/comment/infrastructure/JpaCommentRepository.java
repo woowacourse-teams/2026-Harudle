@@ -65,6 +65,20 @@ class JpaCommentRepository implements CommentRepository {
               AND c.deleted_at IS NULL AND f.deleted_at IS NULL AND d.deleted_at IS NULL
               AND feed_author.deleted_at IS NULL
             """;
+    private static final String VISIBLE_FEED_BLOCK_CONDITION = """
+              AND NOT EXISTS (
+                  SELECT 1 FROM user_blocks b
+                  WHERE (b.blocker_id = CAST(:viewerId AS uuid) AND b.blocked_id = d.user_id)
+                     OR (b.blocker_id = d.user_id AND b.blocked_id = CAST(:viewerId AS uuid))
+              )
+            """;
+    private static final String VISIBLE_COMMENT_BLOCK_CONDITION = """
+              AND NOT EXISTS (
+                  SELECT 1 FROM user_blocks b
+                  WHERE (b.blocker_id = CAST(:viewerId AS uuid) AND b.blocked_id = c.author_id)
+                     OR (b.blocker_id = c.author_id AND b.blocked_id = CAST(:viewerId AS uuid))
+              )
+            """;
     private static final String AFTER_PREDICATE = """
               AND (c.created_at > :afterCreatedAt
                    OR (c.created_at = :afterCreatedAt AND c.id > :afterId))
@@ -90,13 +104,14 @@ class JpaCommentRepository implements CommentRepository {
     @Transactional(readOnly = true)
     public boolean existsVisibleFeed(UUID feedId, @Nullable UUID viewerId) {
         Objects.requireNonNull(feedId, "feedId는 필수입니다.");
-        if (!visibility.enabled()) {
-            return count(VISIBLE_FEED_QUERY, "feedId", feedId) > 0;
+        String sql = VISIBLE_FEED_QUERY + VISIBLE_FEED_BLOCK_CONDITION;
+        if (visibility.enabled()) {
+            sql += """
+                     AND (feed_author.primary_email IS NULL OR feed_author.primary_email NOT LIKE '%.loadtest.invalid'
+                          OR
+                    """ + DevTestDataVisibility.TEST_VIEWER_SQL + ")";
         }
-        Query query = entityManager.createNativeQuery(VISIBLE_FEED_QUERY + """
-                 AND (feed_author.primary_email IS NULL OR feed_author.primary_email NOT LIKE '%.loadtest.invalid'
-                      OR
-                """ + DevTestDataVisibility.TEST_VIEWER_SQL + ")")
+        Query query = entityManager.createNativeQuery(sql)
                 .setParameter("feedId", feedId).setParameter("viewerId", viewerId);
         return ((Number) query.getSingleResult()).longValue() > 0;
     }
@@ -142,15 +157,18 @@ class JpaCommentRepository implements CommentRepository {
     @Override
     @Transactional(readOnly = true)
     @SuppressWarnings("unchecked")
-    public List<CommentSnapshot> findAfter(UUID feedId, Optional<CommentCursor> cursor, int limit) {
+    public List<CommentSnapshot> findAfter(
+            UUID feedId, Optional<CommentCursor> cursor, int limit, @Nullable UUID viewerId
+    ) {
         Objects.requireNonNull(feedId, "feedId는 필수입니다.");
         Objects.requireNonNull(cursor, "cursor는 필수입니다.");
         if (limit < 1 || limit > 51 || cursor.filter(value -> !feedId.equals(value.feedId())).isPresent()) {
             throw new IllegalArgumentException("댓글 조회 조건이 올바르지 않습니다.");
         }
         Query query = entityManager.createNativeQuery(
-                LIST_QUERY + (cursor.isPresent() ? AFTER_PREDICATE : "") + ORDER_QUERY
-        ).setParameter("feedId", feedId).setMaxResults(limit);
+                LIST_QUERY + VISIBLE_FEED_BLOCK_CONDITION + VISIBLE_COMMENT_BLOCK_CONDITION
+                        + (cursor.isPresent() ? AFTER_PREDICATE : "") + ORDER_QUERY
+        ).setParameter("feedId", feedId).setParameter("viewerId", viewerId).setMaxResults(limit);
         cursor.ifPresent(value -> query.setParameter("afterCreatedAt", value.createdAt())
                 .setParameter("afterId", value.id()));
         List<Object[]> rows = query.getResultList();

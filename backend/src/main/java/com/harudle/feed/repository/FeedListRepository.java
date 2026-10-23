@@ -26,6 +26,11 @@ public class FeedListRepository {
               AND diary.deletedAt IS NULL
               AND author.deletedAt IS NULL
               AND generation.status = :succeeded
+              AND NOT EXISTS (
+                  SELECT block.id FROM UserBlock block
+                  WHERE (block.blockerId = :viewerId AND block.blockedId = diary.userId)
+                     OR (block.blockerId = diary.userId AND block.blockedId = :viewerId)
+              )
             """;
     private static final String AFTER_LATEST = """
             (feed.publishedAt < :cursorPublishedAt
@@ -65,9 +70,7 @@ public class FeedListRepository {
                 : " ORDER BY feed.publishedAt DESC, feed.id DESC");
         TypedQuery<FeedSnapshot> query = entityManager.createQuery(hql.toString(), FeedSnapshot.class)
                 .setParameter("succeeded", GenerationStatus.SUCCEEDED).setMaxResults(limit);
-        if (visibility.enabled()) {
-            query.setParameter("viewerId", viewerId);
-        }
+        query.setParameter("viewerId", viewerId);
         if (categoryId != null) {
             query.setParameter("categoryId", categoryId);
         }
