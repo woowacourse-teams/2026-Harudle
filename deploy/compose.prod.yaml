@@ -6,15 +6,26 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    volumes:
+      - type: bind
+        source: /etc/harudle/gcp/gcp-wif.json
+        target: /var/run/harudle/gcp-wif.json
+        read_only: true
+        bind:
+          create_host_path: false
     environment:
       SERVER_PORT: 8080
       SERVER_FORWARD_HEADERS_STRATEGY: framework
+      MANAGEMENT_SERVER_PORT: 8081
+      CONSOLE_LOG_STRUCTURED_FORMAT: logstash
     expose:
       - "8080"
+    ports:
+      - "127.0.0.1:19091:8081"
     healthcheck:
       test: >-
         code=$$(curl -sS -o /dev/null -w '%{http_code}'
-        http://127.0.0.1:8080/api/v1/public/shares/00000000-0000-0000-0000-000000000000);
+        http://127.0.0.1:8080/api/v1/feeds/00000000-0000-0000-0000-000000000000);
         [ "$$code" -ge 200 ] && [ "$$code" -lt 500 ]
       interval: 30s
       timeout: 5s
@@ -34,7 +45,6 @@ services:
         awslogs-region: "${AWS_REGION:-ap-northeast-2}"
         awslogs-group: "/harudle/prod/backend"
         awslogs-create-group: "true"
-        awslogs-multiline-pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}'
 
   frontend:
     image: harudle-frontend:local

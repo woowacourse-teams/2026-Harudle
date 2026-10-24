@@ -3,7 +3,8 @@ package com.harudle.generation.adapter.out.s3;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.harudle.generation.configuration.S3StorageProperties;
+import com.harudle.generation.config.S3StorageProperties;
+import com.harudle.generation.diary.domain.ImageVariantKeys;
 import java.time.Duration;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -29,8 +30,8 @@ class ImageObjectKeyFactoryTest {
 
         String objectKey = factory.create(GENERATION_ID, MediaType.parseMediaType(mimeType));
 
-        assertThat(objectKey).isEqualTo(
-                "generated/diary-images/550e8400-e29b-41d4-a716-446655440000/image." + extension
+        assertThat(objectKey).matches(
+                "generated/diary-images/550e8400-e29b-41d4-a716-446655440000/[0-9a-f-]{36}/image[.]" + extension
         );
     }
 
@@ -41,8 +42,8 @@ class ImageObjectKeyFactoryTest {
 
         String objectKey = factory.create(GENERATION_ID, MediaType.IMAGE_PNG);
 
-        assertThat(objectKey).isEqualTo(
-                "generated/diary-images/550e8400-e29b-41d4-a716-446655440000/image.png"
+        assertThat(objectKey).matches(
+                "generated/diary-images/550e8400-e29b-41d4-a716-446655440000/[0-9a-f-]{36}/image[.]png"
         );
     }
 
@@ -59,11 +60,56 @@ class ImageObjectKeyFactoryTest {
                 .hasMessageContaining("지원하지 않는 이미지 MediaType");
     }
 
+    @Test
+    void eachUploadHasItsOwnKey() {
+        ImageObjectKeyFactory factory = createFactory("generated/diary-images");
+        String first = factory.create(GENERATION_ID, MediaType.IMAGE_PNG);
+        String second = factory.create(GENERATION_ID, MediaType.IMAGE_PNG);
+        assertThat(first).isNotEqualTo(second);
+        assertThat(factory.generationId(first)).contains(GENERATION_ID);
+        assertThat(factory.generationId(second)).contains(GENERATION_ID);
+    }
+
+    @Test
+    void optimizedKeyHasMatchingThumbnail() {
+        ImageObjectKeyFactory factory = createFactory("generated/diary-images");
+        String detailKey = factory.createOptimized(GENERATION_ID);
+
+        assertThat(detailKey).endsWith("/image-960.webp");
+        assertThat(factory.generationId(detailKey)).contains(GENERATION_ID);
+        String thumbnailKey = detailKey.replace("image-960.webp", "image-240.webp");
+        assertThat(ImageVariantKeys.toThumbnailKeyIfOptimizedDetail(detailKey)).isEqualTo(thumbnailKey);
+        assertThat(ImageVariantKeys.derivedImageKeysExceptDetail(detailKey)).containsExactly(thumbnailKey);
+        assertThat(factory.generationId(
+                thumbnailKey
+        )).contains(GENERATION_ID);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"image.png", "image.jpg", "image.webp"})
+    void legacyKeysDoNotAcquireNewCompanionImages(String filename) {
+        String key = "generated/diary-images/" + GENERATION_ID + "/" + filename;
+        assertThat(ImageVariantKeys.toThumbnailKeyIfOptimizedDetail(key)).isEqualTo(key);
+        assertThat(ImageVariantKeys.derivedImageKeysExceptDetail(key)).isEmpty();
+    }
+
+    @Test
+    void recognizesLegacyKeysButRejectsUnknownPaths() {
+        ImageObjectKeyFactory factory = createFactory("generated/diary-images");
+        assertThat(factory.generationId("generated/diary-images/" + GENERATION_ID + "/image.png"))
+                .contains(GENERATION_ID);
+        assertThat(factory.generationId("generated/diary-images/" + GENERATION_ID + "/reference.png")).isEmpty();
+        assertThat(factory.generationId("generated/diary-images-other/" + GENERATION_ID + "/image.png")).isEmpty();
+        assertThat(factory.generationId("generated/diary-images/not-a-uuid/image.png")).isEmpty();
+    }
+
     private static ImageObjectKeyFactory createFactory(String generatedPrefix) {
         S3StorageProperties properties = new S3StorageProperties(
                 "test-bucket",
                 "ap-northeast-2",
+                "dev",
                 generatedPrefix,
+                "harudle/references/generation/dev",
                 DataSize.ofMegabytes(20),
                 Duration.ofMinutes(15)
         );

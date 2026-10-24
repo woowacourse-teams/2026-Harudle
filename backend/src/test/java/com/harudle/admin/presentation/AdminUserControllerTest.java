@@ -2,14 +2,15 @@ package com.harudle.admin.presentation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.harudle.support.MockMvcIntegrationTest;
 import com.harudle.auth.application.AccessTokenService;
 import com.harudle.auth.domain.OAuthAccount;
 import com.harudle.auth.domain.OAuthProvider;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.OAuthAccountRepository;
 import com.harudle.auth.infrastructure.UserRepository;
-import com.harudle.generation.domain.GenerationPrompt;
-import com.harudle.generation.repository.GenerationPromptRepository;
+import com.harudle.generation.prompt.domain.GenerationPrompt;
+import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import io.restassured.http.ContentType;
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
 import io.restassured.module.mockmvc.response.MockMvcResponse;
@@ -23,31 +24,19 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest
-@AutoConfigureMockMvc
+@MockMvcIntegrationTest
 class AdminUserControllerTest {
 
-    private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:18-alpine");
     private static final Instant CREATED_AT = Instant.parse("2026-08-25T01:00:00Z");
     private static final ZoneId SERVICE_ZONE = ZoneId.of("Asia/Seoul");
     private static final String IDEMPOTENCY_KEY = "b7a8a9aa-0b1c-4d2e-8f3a-4b5c6d7e8f90";
     private static final String ANOTHER_IDEMPOTENCY_KEY = "c8b9baab-1c2d-4e3f-9a4b-5c6d7e8f9012";
-
-    @Container
-    @ServiceConnection
-    static final PostgreSQLContainer POSTGRESQL_CONTAINER = new PostgreSQLContainer(POSTGRES_IMAGE);
 
     @Autowired
     private MockMvc mockMvc;

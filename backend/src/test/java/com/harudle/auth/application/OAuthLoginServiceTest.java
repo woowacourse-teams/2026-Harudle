@@ -2,42 +2,50 @@ package com.harudle.auth.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
+import com.harudle.TestcontainersConfiguration;
 import com.harudle.auth.domain.OAuthAccount;
 import com.harudle.auth.domain.OAuthProvider;
 import com.harudle.auth.domain.User;
+import com.harudle.auth.domain.exception.NicknamePoolExhaustedException;
 import com.harudle.auth.infrastructure.OAuthAccountRepository;
 import com.harudle.auth.infrastructure.UserRepository;
+import com.harudle.auth.infrastructure.nickname.NicknameCandidateRepository;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.junit.jupiter.Container;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
-@Testcontainers(disabledWithoutDocker = true)
+@Testcontainers
 @DataJpaTest(showSql = false)
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import(OAuthLoginService.class)
+@Import({TestcontainersConfiguration.class, OAuthLoginService.class, NicknameCandidateRepository.class})
 class OAuthLoginServiceTest {
 
-    private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:18-alpine");
     private static final Instant CREATED_AT = Instant.parse("2026-08-11T10:00:00Z");
     private static final Instant LOGIN_AT = Instant.parse("2026-08-12T10:00:00Z");
     private static final Instant DELETED_AT = Instant.parse("2026-08-12T09:00:00Z");
-
-    @Container
-    @ServiceConnection
-    static final PostgreSQLContainer POSTGRESQL_CONTAINER = new PostgreSQLContainer(POSTGRES_IMAGE);
 
     @Autowired
     private OAuthLoginService oAuthLoginService;
@@ -45,8 +53,11 @@ class OAuthLoginServiceTest {
     @Autowired
     private UserRepository userRepository;
 
-    @Autowired
+    @MockitoSpyBean
     private OAuthAccountRepository oAuthAccountRepository;
+
+    @MockitoBean
+    private ProfileImageCodeGenerator profileImageCodeGenerator;
 
     @Autowired
     private TestEntityManager entityManager;
@@ -54,9 +65,16 @@ class OAuthLoginServiceTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    @Test
-    @DisplayName("처음 로그인한 사용자의 계정과 OAuth 계정을 함께 생성한다")
-    void createsNewUserAndOAuthAccount() {
+    @BeforeEach
+    void setUp() {
+        when(profileImageCodeGenerator.generate()).thenReturn(3);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, 3, 5})
+    @DisplayName("처음 로그인한 사용자의 공개 프로필과 OAuth 계정을 함께 생성한다")
+    void createsNewUserAndOAuthAccount(int imageCode) {
+        when(profileImageCodeGenerator.generate()).thenReturn(imageCode);
         OAuthLoginCommand command = createCommand(
                 "12345",
                 "user@example.com",
@@ -73,12 +91,16 @@ class OAuthLoginServiceTest {
         assertThat(oAuthAccountRepository.count()).isEqualTo(1);
         assertThat(savedUser.getPrimaryEmail()).isEqualTo("user@example.com");
         assertThat(savedUser.getName()).isEqualTo("하루들");
+        assertThat(savedUser.getNickname()).isNotBlank();
+        assertThat(savedUser.getProfileImageCode()).isEqualTo((short) imageCode);
+        assertThat(findCandidateOwner(savedUser.getNickname())).isEqualTo(savedUser.getId());
         assertThat(savedUser.getCreatedAt()).isEqualTo(LOGIN_AT);
         assertThat(savedAccount.getUser().getId()).isEqualTo(savedUser.getId());
         assertThat(savedAccount.getProvider()).isEqualTo(OAuthProvider.KAKAO);
         assertThat(savedAccount.getProviderSubject()).isEqualTo("12345");
         assertThat(savedAccount.getProviderEmail()).isEqualTo("user@example.com");
         assertThat(savedAccount.getLastLoginAt()).isEqualTo(LOGIN_AT);
+        verify(profileImageCodeGenerator, times(1)).generate();
     }
 
     @Test
@@ -89,6 +111,7 @@ class OAuthLoginServiceTest {
                 "서비스 이름",
                 CREATED_AT
         );
+        existingUser.assignInitialPublicProfile("초록", 5, CREATED_AT);
         saveAccount(
                 existingUser,
                 "12345",
@@ -112,9 +135,83 @@ class OAuthLoginServiceTest {
         assertThat(userRepository.count()).isEqualTo(1);
         assertThat(oAuthAccountRepository.count()).isEqualTo(1);
         assertThat(savedUser.getName()).isEqualTo("서비스 이름");
+        assertThat(savedUser.getNickname()).isEqualTo("초록");
+        assertThat(savedUser.getProfileImageCode()).isEqualTo((short) 5);
+        verifyNoInteractions(profileImageCodeGenerator);
         assertThat(savedAccount.getProviderEmail()).isEqualTo("new@example.com");
         assertThat(savedAccount.getLastLoginAt()).isEqualTo(LOGIN_AT);
         assertThat(savedAccount.getCreatedAt()).isEqualTo(CREATED_AT);
+    }
+
+    @Test
+    @DisplayName("다시 로그인해도 최초 닉네임·이미지·후보 점유를 유지한다")
+    void preservesPublicProfileOnRepeatedLogin() {
+        OAuthLoginCommand command = createCommand("12345", "user@example.com", "하루들");
+        OAuthLoginResult first = oAuthLoginService.login(command, LOGIN_AT);
+        flushAndClear();
+        String nickname = userRepository.findById(first.userId()).orElseThrow().getNickname();
+
+        OAuthLoginResult second = oAuthLoginService.login(command, LOGIN_AT.plusSeconds(60));
+        flushAndClear();
+        User user = userRepository.findById(second.userId()).orElseThrow();
+
+        assertThat(second.userId()).isEqualTo(first.userId());
+        assertThat(user.getNickname()).isEqualTo(nickname);
+        assertThat(user.getProfileImageCode()).isEqualTo((short) 3);
+        assertThat(findCandidateOwner(nickname)).isEqualTo(user.getId());
+        assertThat(assignedCandidateCount()).isEqualTo(1);
+        verify(profileImageCodeGenerator, times(1)).generate();
+    }
+
+    @Test
+    @DisplayName("서로 다른 신규 OAuth 회원에게 서로 다른 후보를 배정한다")
+    void assignsDifferentNicknamesToNewUsers() {
+        OAuthLoginResult first = oAuthLoginService.login(
+                createCommand("11111", "same@example.com", "첫회원"), LOGIN_AT
+        );
+        OAuthLoginResult second = oAuthLoginService.login(
+                createCommand("22222", "same@example.com", "둘째회원"), LOGIN_AT
+        );
+        flushAndClear();
+        User firstUser = userRepository.findById(first.userId()).orElseThrow();
+        User secondUser = userRepository.findById(second.userId()).orElseThrow();
+
+        assertThat(firstUser.getNickname()).isNotEqualTo(secondUser.getNickname());
+        assertThat(findCandidateOwner(firstUser.getNickname())).isEqualTo(firstUser.getId());
+        assertThat(findCandidateOwner(secondUser.getNickname())).isEqualTo(secondUser.getId());
+        assertThat(assignedCandidateCount()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("후보가 소진되면 신규 회원과 OAuth 계정을 저장하지 않는다")
+    void rejectsSignupWhenCandidatesAreExhausted() {
+        jdbcTemplate.update("DELETE FROM nickname_candidates");
+
+        assertThatThrownBy(() -> oAuthLoginService.login(
+                createCommand("12345", "user@example.com", "하루들"), LOGIN_AT
+        )).isInstanceOf(NicknamePoolExhaustedException.class);
+        assertThat(userRepository.count()).isZero();
+        assertThat(oAuthAccountRepository.count()).isZero();
+        verifyNoInteractions(profileImageCodeGenerator);
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    @DisplayName("OAuth 저장 실패는 이미 저장한 회원과 후보 점유까지 롤백한다")
+    void rollsBackUserAndCandidateWhenOAuthSaveFails() {
+        doAnswer(invocation -> {
+            assertThat(userRepository.count()).isEqualTo(1);
+            assertThat(assignedCandidateCount()).isEqualTo(1);
+            throw new IllegalStateException("OAuth 계정 저장 실패");
+        }).when(oAuthAccountRepository).save(any(OAuthAccount.class));
+
+        assertThatThrownBy(() -> oAuthLoginService.login(
+                createCommand("12345", "user@example.com", "하루들"), LOGIN_AT
+        )).isInstanceOf(IllegalStateException.class).hasMessage("OAuth 계정 저장 실패");
+
+        assertThat(userRepository.count()).isZero();
+        assertThat(oAuthAccountRepository.count()).isZero();
+        assertThat(assignedCandidateCount()).isZero();
     }
 
     @Test
@@ -321,6 +418,21 @@ class OAuthLoginServiceTest {
                         providerSubject
                 )
                 .orElseThrow();
+    }
+
+    private UUID findCandidateOwner(String nickname) {
+        return jdbcTemplate.queryForObject(
+                "SELECT assigned_user_id FROM nickname_candidates WHERE nickname = ?",
+                UUID.class,
+                nickname
+        );
+    }
+
+    private long assignedCandidateCount() {
+        return jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM nickname_candidates WHERE assigned_user_id IS NOT NULL",
+                Long.class
+        );
     }
 
     private void markUserAsDeleted(User user) {

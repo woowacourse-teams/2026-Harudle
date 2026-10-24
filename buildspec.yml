@@ -11,6 +11,7 @@ phases:
       - set -euo pipefail
       - docker version
       - docker buildx version
+      - jq --version
       - >-
         if [[ "$(uname -m)" != "aarch64" && "$(uname -m)" != "arm64" ]]; then
           docker run --privileged --rm tonistiigi/binfmt --install arm64;
@@ -24,24 +25,75 @@ phases:
   build:
     commands:
       - set -euo pipefail
-      - docker buildx build --platform linux/arm64 --pull --load --tag harudle-backend:local ./backend
-      - >-
-        docker buildx build
-        --platform linux/arm64
-        --pull
-        --load
-        --build-arg REACT_APP_POSTHOG_KEY
-        --build-arg REACT_APP_POSTHOG_HOST
-        --tag harudle-frontend:local
-        ./frontend
-      - test "$(docker image inspect --format '{{.Architecture}}' harudle-backend:local)" = "arm64"
-      - test "$(docker image inspect --format '{{.Architecture}}' harudle-frontend:local)" = "arm64"
+      - |
+        cache_root=/root/.cache/harudle-buildkit
+        cache_export_root="$(mktemp -d /tmp/harudle-buildkit.XXXXXX)"
+        mkdir -p "$cache_root" build-artifacts
+
+        for service in backend frontend; do
+          cache_directory="$cache_root/$service"
+          cache_export_directory="$cache_export_root/$service"
+          cache_args=()
+          build_args=()
+
+          if [[ "$service" == backend ]]; then
+            if [[ -f "$cache_directory/index.json" ]]; then
+              echo "Restoring backend build cache."
+              cache_args=(--cache-from "type=local,src=$cache_directory")
+            else
+              echo "No backend build cache; building without a restored cache."
+            fi
+            # Only persist layers before application sources are copied.
+            docker buildx build \
+              --platform linux/arm64 \
+              --progress plain \
+              --pull \
+              --target dependencies \
+              --output type=cacheonly \
+              "${cache_args[@]}" \
+              --cache-to "type=local,dest=$cache_export_directory,mode=min,ignore-error=true" \
+              ./backend
+          else
+            echo "Frontend external build cache is disabled."
+            build_args=(--build-arg REACT_APP_POSTHOG_KEY --build-arg REACT_APP_POSTHOG_HOST)
+          fi
+
+          docker buildx build \
+            --platform linux/arm64 \
+            --progress plain \
+            --pull \
+            --output "type=docker,dest=build-artifacts/$service-image.tar" \
+            "${cache_args[@]}" \
+            "${build_args[@]}" \
+            --tag "harudle-$service:local" \
+            "./$service"
+
+          image_archive="build-artifacts/$service-image.tar"
+          image_config="$(tar -xOf "$image_archive" manifest.json | jq -er --arg tag "harudle-$service:local" '
+            select(length == 1) | .[0] | select(.RepoTags | index($tag)) | .Config
+          ')"
+          tar -xOf "$image_archive" -- "$image_config" | jq -e '
+            .architecture == "arm64" and .os == "linux"
+          '
+
+          # Export into a fresh directory so obsolete cache blobs do not accumulate.
+          if [[ "$service" == backend && -f "$cache_export_directory/index.json" ]]; then
+            rm -rf -- "$cache_directory"
+            mv -- "$cache_export_directory" "$cache_directory"
+          fi
+
+          if [[ "$service" == backend && -d "$cache_directory" ]]; then
+            echo "Backend build cache directory size: "
+            du -sh "$cache_directory"
+          fi
+        done
   post_build:
     commands:
       - set -euo pipefail
       - mkdir -p build-artifacts
-      - docker save harudle-backend:local | gzip -1 > build-artifacts/backend-image.tar.gz
-      - docker save harudle-frontend:local | gzip -1 > build-artifacts/frontend-image.tar.gz
+      - gzip -1 build-artifacts/backend-image.tar
+      - gzip -1 build-artifacts/frontend-image.tar
+      - gzip -t build-artifacts/backend-image.tar.gz build-artifacts/frontend-image.tar.gz
       - (cd build-artifacts && sha256sum backend-image.tar.gz frontend-image.tar.gz > image-checksums.sha256)
       - chmod 0755 deploy/scripts/*.sh
       - test -s build-artifacts/backend-image.tar.gz
@@ -52,6 +104,20 @@ artifacts:
     - appspec.yml
     - deploy/compose.dev.yaml
     - deploy/compose.prod.yaml
+    - deploy/monitoring/**/*
     - deploy/scripts/**/*
+    - backend/src/main/resources/db/maintenance/backfill_user_public_profiles.sql
+    - backend/src/main/resources/load-test-diary.png
+    - backend/load-test/prepare.py
+    - backend/load-test/assets.py
+    - backend/load-test/cleanup.py
+    - backend/load-test/ec2.py
+    - backend/load-test/transfer.py
     - build-artifacts/*
   discard-paths: no
+
+# CodeBuild must also have an S3 cache location configured on the project.
+# Leave the key unset so the cache is updated after each build.
+cache:
+  paths:
+    - "/root/.cache/harudle-buildkit/backend/**/*"

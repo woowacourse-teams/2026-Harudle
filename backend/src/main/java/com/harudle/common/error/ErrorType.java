@@ -1,7 +1,7 @@
 package com.harudle.common.error;
 
-import com.harudle.generation.domain.GenerationErrorCode;
-import com.harudle.generation.service.exception.AiGenerationErrorType;
+import com.harudle.generation.diary.domain.GenerationErrorCode;
+import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import java.net.URI;
 import java.util.Locale;
 import org.springframework.http.HttpStatus;
@@ -12,6 +12,11 @@ public enum ErrorType {
             HttpStatus.BAD_REQUEST,
             "Validation failed",
             "요청 값이 올바르지 않습니다."
+    ),
+    INVALID_CURSOR(
+            HttpStatus.BAD_REQUEST,
+            "Invalid cursor",
+            "페이지 커서가 올바르지 않거나 조회 조건과 일치하지 않습니다."
     ),
     INVALID_IDEMPOTENCY_KEY(
             HttpStatus.BAD_REQUEST,
@@ -32,6 +37,16 @@ public enum ErrorType {
             HttpStatus.UNAUTHORIZED,
             "Invalid current user",
             "현재 로그인 사용자를 확인할 수 없습니다."
+    ),
+    NICKNAME_ALREADY_IN_USE(
+            HttpStatus.CONFLICT,
+            "Nickname already in use",
+            "이미 사용 중인 닉네임입니다."
+    ),
+    PUBLIC_PROFILE_NOT_ASSIGNED(
+            HttpStatus.CONFLICT,
+            "Public profile not assigned",
+            "공개 프로필을 먼저 배정해야 합니다."
     ),
     GUEST_SESSION_REQUIRED(
             HttpStatus.UNAUTHORIZED,
@@ -57,6 +72,61 @@ public enum ErrorType {
             HttpStatus.NOT_FOUND,
             "Diary not found",
             "일기를 찾을 수 없습니다."
+    ),
+    FEED_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "Feed not found",
+            "피드를 찾을 수 없습니다."
+    ),
+    COMMENT_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "Comment not found",
+            "댓글을 찾을 수 없습니다."
+    ),
+    COMMENT_UNAVAILABLE(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "Comment unavailable",
+            "댓글 작성자 정보를 조회할 수 없습니다."
+    ),
+    NOTIFICATION_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "Notification not found",
+            "알림을 찾을 수 없습니다."
+    ),
+    NOTIFICATION_UNAVAILABLE(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "Notification unavailable",
+            "알림의 회원 정보를 조회할 수 없습니다."
+    ),
+    CATEGORY_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "Category not found",
+            "카테고리를 찾을 수 없습니다."
+    ),
+    DIARY_NOT_PUBLISHABLE(
+            HttpStatus.CONFLICT,
+            "Diary not publishable",
+            "이미지 생성이 완료된 일기만 게시할 수 있습니다."
+    ),
+    DIARY_ALREADY_PUBLISHED(
+            HttpStatus.CONFLICT,
+            "Diary already published",
+            "이미 피드로 게시된 일기입니다."
+    ),
+    CATEGORY_INACTIVE(
+            HttpStatus.CONFLICT,
+            "Inactive category",
+            "비활성 카테고리에는 피드를 게시할 수 없습니다."
+    ),
+    CATEGORY_NAME_ALREADY_USED(
+            HttpStatus.CONFLICT,
+            "Category name already used",
+            "이미 사용 중인 카테고리 이름입니다."
+    ),
+    FEED_UNAVAILABLE(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "Feed unavailable",
+            "피드 연동 기능이 아직 구성되지 않았습니다."
     ),
     SHARE_NOT_FOUND(
             HttpStatus.NOT_FOUND,
@@ -178,7 +248,9 @@ public enum ErrorType {
 
     static ErrorType from(GenerationErrorCode errorCode) {
         return switch (errorCode) {
-            case AI_PROVIDER_ERROR -> AI_PROVIDER_ERROR;
+            case AI_PROVIDER_ERROR, AI_PROVIDER_RATE_LIMITED, AI_OUTPUT_TRUNCATED,
+                    AI_RESPONSE_PROCESSING_ERROR -> AI_PROVIDER_ERROR;
+            case GENERATION_INTERNAL_ERROR -> INTERNAL_SERVER_ERROR;
             case AI_PROVIDER_TIMEOUT -> AI_PROVIDER_TIMEOUT;
             case GENERATION_INTERRUPTED -> GENERATION_INTERRUPTED;
             case IMAGE_STORAGE_ERROR -> IMAGE_STORAGE_ERROR;
@@ -187,8 +259,9 @@ public enum ErrorType {
 
     static ErrorType from(AiGenerationErrorType errorType) {
         return switch (errorType) {
-            case PROVIDER_ERROR -> AI_PROVIDER_ERROR;
+            case PROVIDER_ERROR, RATE_LIMITED, OUTPUT_TRUNCATED, RESPONSE_PROCESSING_ERROR -> AI_PROVIDER_ERROR;
             case TIMEOUT -> AI_PROVIDER_TIMEOUT;
+            case INTERNAL_ERROR -> INTERNAL_SERVER_ERROR;
         };
     }
 }

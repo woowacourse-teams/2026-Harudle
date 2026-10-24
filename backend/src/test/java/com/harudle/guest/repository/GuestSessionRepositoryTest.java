@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.guest.domain.GuestSession;
+import com.harudle.support.ServiceIntegrationTestSupport;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.time.Instant;
@@ -13,31 +14,18 @@ import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest
 @Transactional
-class GuestSessionRepositoryTest {
+class GuestSessionRepositoryTest extends ServiceIntegrationTestSupport {
 
-    private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:18-alpine");
     private static final String TOKEN_HASH = "a".repeat(64);
     private static final String ANOTHER_TOKEN_HASH = "b".repeat(64);
     private static final Instant CREATED_AT = Instant.parse("2026-08-19T00:00:00Z");
     private static final Instant EXPIRES_AT = Instant.parse("2026-09-19T00:00:00Z");
-
-    @Container
-    @ServiceConnection
-    private static final PostgreSQLContainer POSTGRESQL_CONTAINER = new PostgreSQLContainer(POSTGRES_IMAGE);
 
     @Autowired
     private GuestSessionRepository guestSessionRepository;
@@ -47,9 +35,6 @@ class GuestSessionRepositoryTest {
 
     @PersistenceContext
     private EntityManager entityManager;
-
-    @MockitoBean
-    private JwtDecoder jwtDecoder;
 
     @Test
     @DisplayName("게스트 세션을 저장하고 토큰 해시로 조회한다")

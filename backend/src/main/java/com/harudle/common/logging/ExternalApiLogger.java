@@ -5,6 +5,7 @@ import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.spi.LoggingEventBuilder;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -15,13 +16,21 @@ public final class ExternalApiLogger {
     private static final Pattern SAFE_FIELD_VALUE_PATTERN = Pattern.compile("[A-Za-z0-9_.:/+\\-]{1,128}");
     private static final String EMPTY_FIELD_VALUE = "none";
     private static final String INVALID_FIELD_VALUE = "invalid";
+    private static final int MAX_CAUSE_DEPTH = 16;
     private static final String EXTERNAL_API_FAILURE_EVENT = "external_api_failure";
     private static final String COMPENSATION_FAILURE_EVENT = "compensation_failure";
     private static final String LOG_FORMAT =
             "event={} provider={} operation={} failureType={} providerStatus={} "
                     + "providerCode={} providerRequestId={} exceptionType={}";
+    private static final String RESPONSE_DIAGNOSTICS_FORMAT = LOG_FORMAT
+            + " finishReason={} candidateTokenCount={} thoughtTokenCount={}"
+            + " maxOutputTokens={} responseLength={}";
 
     public void warn(ExternalApiFailure failure, Throwable exception) {
+        if ("gemini".equals(failure.provider())) {
+            warnWithRootCause(failure, exception);
+            return;
+        }
         warn(EXTERNAL_API_FAILURE_EVENT, failure, exception);
     }
 
@@ -30,8 +39,9 @@ public final class ExternalApiLogger {
     }
 
     private void warn(String event, ExternalApiFailure failure, Throwable exception) {
-        LOGGER.warn(
-                LOG_FORMAT,
+        withSafeFields(LOGGER.atWarn(), event, failure, exception)
+                .setCause(sanitizedStackTrace(exception))
+                .log(LOG_FORMAT,
                 event,
                 safe(failure.provider()),
                 safe(failure.operation()),
@@ -39,14 +49,55 @@ public final class ExternalApiLogger {
                 safe(failure.providerStatus()),
                 safe(failure.providerCode()),
                 safe(failure.providerRequestId()),
-                exception.getClass().getSimpleName(),
-                sanitizedStackTrace(exception)
+                exception.getClass().getSimpleName()
         );
     }
 
+    private void warnWithRootCause(ExternalApiFailure failure, Throwable exception) {
+        withSafeFields(LOGGER.atWarn(), EXTERNAL_API_FAILURE_EVENT, failure, exception)
+                .addKeyValue("rootCauseType", rootCauseType(exception))
+                .setCause(sanitizedStackTrace(exception))
+                .log(LOG_FORMAT + " rootCauseType={}",
+                        EXTERNAL_API_FAILURE_EVENT,
+                        safe(failure.provider()),
+                        safe(failure.operation()),
+                        safe(failure.failureType()),
+                        safe(failure.providerStatus()),
+                        safe(failure.providerCode()),
+                        safe(failure.providerRequestId()),
+                        exception.getClass().getSimpleName(),
+                        rootCauseType(exception)
+                );
+    }
+
     public void error(ExternalApiFailure failure, Throwable exception) {
-        LOGGER.error(
-                LOG_FORMAT,
+        withSafeFields(LOGGER.atError(), EXTERNAL_API_FAILURE_EVENT, failure, exception)
+                .setCause(sanitizedStackTrace(exception))
+                .log(LOG_FORMAT,
+                EXTERNAL_API_FAILURE_EVENT,
+                safe(failure.provider()),
+                safe(failure.operation()),
+                safe(failure.failureType()),
+                safe(failure.providerStatus()),
+                safe(failure.providerCode()),
+                safe(failure.providerRequestId()),
+                exception.getClass().getSimpleName()
+        );
+    }
+
+    public void error(
+            ExternalApiFailure failure,
+            Throwable exception,
+            ExternalApiResponseDiagnostics diagnostics
+    ) {
+        withSafeFields(LOGGER.atError(), EXTERNAL_API_FAILURE_EVENT, failure, exception)
+                .addKeyValue("finishReason", safe(diagnostics.finishReason()))
+                .addKeyValue("candidateTokenCount", number(diagnostics.candidateTokenCount()))
+                .addKeyValue("thoughtTokenCount", number(diagnostics.thoughtTokenCount()))
+                .addKeyValue("maxOutputTokens", number(diagnostics.maxOutputTokens()))
+                .addKeyValue("responseLength", number(diagnostics.responseLength()))
+                .setCause(sanitizedStackTrace(exception))
+                .log(RESPONSE_DIAGNOSTICS_FORMAT,
                 EXTERNAL_API_FAILURE_EVENT,
                 safe(failure.provider()),
                 safe(failure.operation()),
@@ -55,8 +106,43 @@ public final class ExternalApiLogger {
                 safe(failure.providerCode()),
                 safe(failure.providerRequestId()),
                 exception.getClass().getSimpleName(),
-                sanitizedStackTrace(exception)
+                safe(diagnostics.finishReason()),
+                number(diagnostics.candidateTokenCount()),
+                number(diagnostics.thoughtTokenCount()),
+                number(diagnostics.maxOutputTokens()),
+                number(diagnostics.responseLength())
         );
+    }
+
+    private static LoggingEventBuilder withSafeFields(
+            LoggingEventBuilder builder,
+            String event,
+            ExternalApiFailure failure,
+            Throwable exception
+    ) {
+        return builder.addKeyValue("event", event)
+                .addKeyValue("provider", safe(failure.provider()))
+                .addKeyValue("operation", safe(failure.operation()))
+                .addKeyValue("failureType", safe(failure.failureType()))
+                .addKeyValue("providerStatus", safe(failure.providerStatus()))
+                .addKeyValue("providerCode", safe(failure.providerCode()))
+                .addKeyValue("providerRequestId", safe(failure.providerRequestId()))
+                .addKeyValue("exceptionType", exception.getClass().getSimpleName());
+    }
+
+    private static String rootCauseType(Throwable exception) {
+        Throwable cause = exception;
+        for (int depth = 0; depth < MAX_CAUSE_DEPTH && cause.getCause() != null; depth++) {
+            if (cause.getCause() == cause) {
+                break;
+            }
+            cause = cause.getCause();
+        }
+        return safe(cause.getClass().getSimpleName());
+    }
+
+    private static String number(@Nullable Integer value) {
+        return value == null ? EMPTY_FIELD_VALUE : value.toString();
     }
 
     private static String safe(@Nullable String value) {

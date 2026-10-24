@@ -5,9 +5,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
-import com.harudle.generation.service.exception.GenerationInProgressException;
+import com.harudle.generation.diary.service.exception.GenerationInProgressException;
 import com.harudle.share.repository.ShareLinkRepository;
 import com.harudle.share.service.exception.ShareGenerationFailedException;
+import com.harudle.support.ServiceIntegrationTestSupport;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
@@ -25,29 +26,16 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest
-class ShareLinkServiceTest {
+class ShareLinkServiceTest extends ServiceIntegrationTestSupport {
 
-    private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:18-alpine");
     private static final UUID USER_ID = UUID.fromString("fdc5a50e-7bd7-488d-a76c-bcae8d82983b");
     private static final UUID OTHER_USER_ID = UUID.fromString("c092031d-4bfa-4fab-8ac8-bd8664803b79");
     private static final UUID DIARY_ID = UUID.fromString("0999af9c-24d2-41b2-bf22-ab8f15bf7a17");
     private static final UUID GENERATION_ID = UUID.fromString("eb610a27-6833-4d83-bbd3-bc56a196b5dc");
-
-    @Container
-    @ServiceConnection
-    private static final PostgreSQLContainer POSTGRESQL_CONTAINER = new PostgreSQLContainer(POSTGRES_IMAGE);
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -60,9 +48,6 @@ class ShareLinkServiceTest {
 
     @Autowired
     private ShareLinkRepository shareLinkRepository;
-
-    @MockitoBean
-    private JwtDecoder jwtDecoder;
 
     @BeforeEach
     void setUp() {

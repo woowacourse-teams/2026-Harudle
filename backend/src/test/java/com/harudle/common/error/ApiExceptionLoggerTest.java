@@ -2,6 +2,7 @@ package com.harudle.common.error;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.IOException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,7 +28,7 @@ class ApiExceptionLoggerTest {
     @DisplayName("API 내부 오류를 공통 필드와 라우트 패턴으로 기록한다")
     void logApiException(CapturedOutput output) {
         request.setAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE, PATH_PATTERN);
-        IllegalStateException exception = new IllegalStateException("서버 내부 불변식 오류");
+        IllegalStateException exception = new IllegalStateException("민감할 수 있는 내부 오류 상세");
 
         apiExceptionLogger.error(ErrorType.INTERNAL_SERVER_ERROR, exception, request);
 
@@ -38,7 +39,36 @@ class ApiExceptionLoggerTest {
                 .contains("method=GET")
                 .contains("path=" + PATH_PATTERN)
                 .contains("exceptionType=IllegalStateException")
-                .contains("java.lang.IllegalStateException: 서버 내부 불변식 오류")
+                .contains("java.lang.IllegalStateException: message omitted")
+                .doesNotContain("민감할 수 있는 내부 오류 상세")
                 .doesNotContain("path=" + REQUEST_URI);
+    }
+
+    @Test
+    @DisplayName("원인과 억제된 예외의 유형·스택은 보존하고 메시지는 제거한다")
+    void preservesSafeExceptionChain(CapturedOutput output) {
+        IOException cause = new IOException("secret-s3-object-key");
+        IllegalStateException exception = new IllegalStateException("secret-prompt", cause);
+        exception.addSuppressed(new IllegalArgumentException("secret-request-url"));
+
+        apiExceptionLogger.error(ErrorType.INTERNAL_SERVER_ERROR, exception, request);
+
+        assertThat(output)
+                .contains("java.lang.IllegalStateException: message omitted")
+                .contains("Caused by: java.io.IOException: message omitted")
+                .contains("Suppressed: java.lang.IllegalArgumentException: message omitted")
+                .contains("ApiExceptionLoggerTest.java:")
+                .doesNotContain("secret-s3-object-key", "secret-prompt", "secret-request-url");
+    }
+
+    @Test
+    @DisplayName("라우트 패턴을 찾지 못하면 원본 URI를 로그에 남기지 않는다")
+    void avoidsLoggingRawUriWithoutRoutePattern(CapturedOutput output) {
+        apiExceptionLogger.error(ErrorType.INTERNAL_SERVER_ERROR,
+                new IllegalStateException("서버 오류"), request);
+
+        assertThat(output)
+                .contains("path=UNMATCHED")
+                .doesNotContain(REQUEST_URI);
     }
 }

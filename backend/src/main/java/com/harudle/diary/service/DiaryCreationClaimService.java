@@ -4,18 +4,20 @@ import com.harudle.diary.domain.Diary;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
-import com.harudle.generation.configuration.GenerationLifecycleProperties;
-import com.harudle.generation.domain.DiaryGeneration;
-import com.harudle.generation.domain.GenerationStatus;
-import com.harudle.generation.repository.DiaryGenerationRepository;
-import com.harudle.generation.repository.GenerationPromptRepository;
-import com.harudle.generation.service.RequestFingerprintGenerator;
-import com.harudle.generation.service.dto.GenerateDiaryImageCommand;
-import com.harudle.generation.service.exception.GenerationUnavailableException;
-import com.harudle.generation.service.exception.IdempotencyKeyConflictException;
+import com.harudle.generation.config.GenerationLifecycleProperties;
+import com.harudle.generation.diary.domain.DiaryGeneration;
+import com.harudle.generation.diary.domain.GenerationStatus;
+import com.harudle.generation.diary.service.DiaryGenerationCompletionService;
+import com.harudle.generation.diary.repository.DiaryGenerationRepository;
+import com.harudle.generation.prompt.repository.GenerationPromptRepository;
+import com.harudle.generation.diary.service.RequestFingerprintGenerator;
+import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
+import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
+import com.harudle.generation.diary.service.exception.IdempotencyKeyConflictException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -28,6 +30,7 @@ class DiaryCreationClaimService {
     private final DiaryRepository diaryRepository;
     private final GenerationPromptRepository generationPromptRepository;
     private final DiaryGenerationRepository diaryGenerationRepository;
+    private final DiaryGenerationCompletionService completionService;
     private final RequestFingerprintGenerator requestFingerprintGenerator;
     private final Clock clock;
     private final Duration processingTimeout;
@@ -36,6 +39,7 @@ class DiaryCreationClaimService {
             DiaryRepository diaryRepository,
             GenerationPromptRepository generationPromptRepository,
             DiaryGenerationRepository diaryGenerationRepository,
+            DiaryGenerationCompletionService completionService,
             RequestFingerprintGenerator requestFingerprintGenerator,
             @Qualifier("serviceClock") Clock clock,
             GenerationLifecycleProperties generationLifecycleProperties
@@ -45,6 +49,7 @@ class DiaryCreationClaimService {
         this.diaryRepository = diaryRepository;
         this.generationPromptRepository = generationPromptRepository;
         this.diaryGenerationRepository = diaryGenerationRepository;
+        this.completionService = completionService;
         this.requestFingerprintGenerator = requestFingerprintGenerator;
         this.clock = clock;
         this.processingTimeout = processingTimeout;
@@ -52,10 +57,19 @@ class DiaryCreationClaimService {
 
     @Transactional(propagation = Propagation.MANDATORY)
     DiaryCreationClaim claim(CreateDiaryCommand command, boolean generationAvailable) {
+        return claim(command, generationAvailable, null);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    DiaryCreationClaim claim(
+            CreateDiaryCommand command,
+            boolean generationAvailable,
+            LocalDate usageDate
+    ) {
         return diaryGenerationRepository
                 .findByIdempotencyKeyForUpdate(command.idempotencyKey())
                 .map(generation -> createExistingClaim(command, generation))
-                .orElseGet(() -> createNewClaim(command, generationAvailable));
+                .orElseGet(() -> createNewClaim(command, generationAvailable, usageDate));
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -83,7 +97,8 @@ class DiaryCreationClaimService {
 
     private DiaryCreationClaim createNewClaim(
             CreateDiaryCommand command,
-            boolean generationAvailable
+            boolean generationAvailable,
+            LocalDate usageDate
     ) {
         if (!generationAvailable) {
             throw GenerationUnavailableException.adaptersNotConfigured();
@@ -101,7 +116,8 @@ class DiaryCreationClaimService {
                 diary.getId(),
                 promptId,
                 command.idempotencyKey(),
-                requestFingerprintGenerator.generate(generationCommand)
+                requestFingerprintGenerator.generate(generationCommand),
+                usageDate
         );
         DiaryGeneration savedGeneration = diaryGenerationRepository.saveAndFlush(generation);
         return toClaim(diary, savedGeneration, true);
@@ -109,7 +125,7 @@ class DiaryCreationClaimService {
 
     private void interruptIfStale(DiaryGeneration generation, Diary diary) {
         Instant currentTime = clock.instant();
-        generation.interruptIfStale(currentTime, processingTimeout);
+        completionService.interruptIfStale(generation.getId(), currentTime, processingTimeout);
         if (generation.getStatus() == GenerationStatus.FAILED) {
             diary.delete(generation.getCompletedAt());
         }
@@ -141,7 +157,8 @@ class DiaryCreationClaimService {
                 generation.getImageObjectKey(),
                 generation.getCompletedAt(),
                 generation.getErrorCode(),
-                newlyCreated
+                newlyCreated,
+                generation.getTokenUsage()
         );
     }
 

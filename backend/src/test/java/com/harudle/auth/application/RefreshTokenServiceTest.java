@@ -3,6 +3,7 @@ package com.harudle.auth.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.harudle.TestcontainersConfiguration;
 import com.harudle.auth.domain.RefreshToken;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.RefreshTokenRepository;
@@ -20,33 +21,25 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
 @DataJpaTest(showSql = false)
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @EnableConfigurationProperties(AuthProperties.class)
 @Import({
+        TestcontainersConfiguration.class,
         RefreshTokenService.class,
         RefreshTokenGenerator.class,
         RefreshTokenHasher.class
 })
 class RefreshTokenServiceTest {
 
-    private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:18-alpine");
     private static final Instant CREATED_AT = Instant.parse("2026-08-12T10:00:00Z");
     private static final Instant ROTATED_AT = Instant.parse("2026-08-12T11:00:00Z");
     private static final Duration REFRESH_TOKEN_TTL = Duration.ofDays(14);
-
-    @Container
-    @ServiceConnection
-    static final PostgreSQLContainer POSTGRESQL_CONTAINER = new PostgreSQLContainer(POSTGRES_IMAGE);
 
     @Autowired
     private RefreshTokenService refreshTokenService;

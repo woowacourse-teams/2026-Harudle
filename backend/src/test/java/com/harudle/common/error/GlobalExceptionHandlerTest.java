@@ -4,15 +4,33 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.harudle.generation.service.exception.AiGenerationErrorType;
-import com.harudle.generation.service.exception.AiGenerationException;
-import com.harudle.generation.service.exception.GenerationUnavailableException;
+import com.harudle.auth.domain.policy.NicknamePolicy;
+import com.harudle.category.service.exception.CategoryInactiveException;
+import com.harudle.category.service.exception.CategoryNotFoundException;
+import com.harudle.comment.service.exception.CommentIntegrationUnavailableException;
+import com.harudle.generation.diary.domain.GenerationErrorCode;
+import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
+import com.harudle.generation.diary.service.exception.AiGenerationException;
+import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
+import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
+import com.harudle.notification.service.exception.NotificationIntegrationUnavailableException;
+import java.io.EOFException;
+import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.ConversionNotSupportedException;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.HttpMethod;
@@ -24,6 +42,8 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.http.converter.HttpMessageNotWritableException;
 import org.springframework.mock.http.MockHttpInputMessage;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.DirectFieldBindingResult;
 import org.springframework.validation.method.MethodValidationResult;
@@ -32,7 +52,12 @@ import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.context.request.ServletWebRequest;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
@@ -49,6 +74,22 @@ class GlobalExceptionHandlerTest {
             HttpMethod.GET.name(),
             "/api/v1/test"
     );
+
+    @ParameterizedTest
+    @CsvSource({"missing, 404, CATEGORY_NOT_FOUND", "inactive, 409, CATEGORY_INACTIVE"})
+    @DisplayName("카테고리 조회와 게시 오류는 공통 오류 응답과 상태 코드로 전달한다")
+    void returnsCategoryError(String error, int expectedStatus, String expectedCode) throws Exception {
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new CategoryErrorController())
+                .setControllerAdvice(exceptionHandler)
+                .build();
+
+        mockMvc.perform(get("/api/v1/test/category").param("error", error))
+                .andExpect(status().is(expectedStatus))
+                .andExpect(jsonPath("$.code").value(expectedCode))
+                .andExpect(jsonPath("$.traceId").value(TRACE_ID))
+                .andExpect(jsonPath("$.detail").value(ErrorType.valueOf(expectedCode).detail()));
+        verifyNoInteractions(apiExceptionLogger);
+    }
 
     @Test
     @DisplayName("지원하지 않는 HTTP 메서드 오류에 공통 필드와 Allow 헤더를 보존한다")
@@ -116,6 +157,29 @@ class GlobalExceptionHandlerTest {
                                 "비어 있을 수 없습니다."
                         )))
         );
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "' 신나는 하루', 닉네임 앞뒤의 공백을 제거해 주세요.",
+            "'신나는 하루 ', 닉네임 앞뒤의 공백을 제거해 주세요.",
+            "'신나는  하루', 닉네임에는 공백을 연속으로 사용할 수 없습니다.",
+            "'신나는   하루', 닉네임에는 공백을 연속으로 사용할 수 없습니다.",
+            "'하루🙂', '닉네임은 한글, 영문, 숫자와 공백만 사용할 수 있습니다.'",
+            "'하루!', '닉네임은 한글, 영문, 숫자와 공백만 사용할 수 있습니다.'"
+    })
+    @DisplayName("닉네임 공백과 허용 문자 오류는 HTTP 400과 필드별 수정 안내로 전달한다")
+    void returnsNicknameValidationReasonToClient(String nickname, String reason) throws Exception {
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new NicknameValidationController())
+                .setControllerAdvice(exceptionHandler)
+                .build();
+
+        mockMvc.perform(get("/api/v1/test/nickname").param("nickname", nickname))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.errors[0].field").value("nickname"))
+                .andExpect(jsonPath("$.errors[0].reason").value(reason));
+        verifyNoInteractions(apiExceptionLogger);
     }
 
     @Test
@@ -196,6 +260,58 @@ class GlobalExceptionHandlerTest {
         assertFrameworkError(response, 500, "INTERNAL_SERVER_ERROR");
     }
 
+    @ParameterizedTest
+    @MethodSource("disconnectedClientCauses")
+    @DisplayName("응답 작성 중 연결 종료는 재응답과 서버 오류 로그를 남기지 않는다")
+    void handleHttpMessageNotWritableForDisconnectedClient(Throwable cause) throws Exception {
+        HttpMessageNotWritableException exception = new HttpMessageNotWritableException(
+                "응답 본문을 작성할 수 없습니다.",
+                new RuntimeException("직렬화 중 I/O 오류", cause)
+        );
+
+        ResponseEntity<Object> response = handleFrameworkException(exception);
+
+        assertThat(response).isNull();
+        verifyNoInteractions(apiExceptionLogger);
+    }
+
+    private static Stream<Throwable> disconnectedClientCauses() {
+        return Stream.of(
+                new AsyncRequestNotUsableException("응답 연결 종료", new IOException("Socket closed")),
+                new EOFException("응답 연결 종료"),
+                new IOException("Broken pipe"),
+                new IOException("Connection reset by peer")
+        );
+    }
+
+    @Test
+    @DisplayName("실제 응답 변환 오류는 기존 내부 서버 오류와 로그를 유지한다")
+    void handleHttpMessageNotWritableForSerializationFailure() throws Exception {
+        HttpMessageNotWritableException exception = new HttpMessageNotWritableException(
+                "응답 본문을 작성할 수 없습니다.",
+                new IllegalStateException("응답 필드를 변환할 수 없습니다.")
+        );
+
+        ResponseEntity<Object> response = handleFrameworkException(exception);
+
+        assertFrameworkError(response, 500, "INTERNAL_SERVER_ERROR");
+        verify(apiExceptionLogger).error(response.getStatusCode(), exception, request);
+    }
+
+    @Test
+    @DisplayName("외부 API 연결 오류는 클라이언트 연결 종료로 처리하지 않는다")
+    void handleHttpMessageNotWritableForUpstreamFailure() throws Exception {
+        HttpMessageNotWritableException exception = new HttpMessageNotWritableException(
+                "응답 본문을 작성할 수 없습니다.",
+                new RestClientException("외부 API 호출 실패", new IOException("Broken pipe"))
+        );
+
+        ResponseEntity<Object> response = handleFrameworkException(exception);
+
+        assertFrameworkError(response, 500, "INTERNAL_SERVER_ERROR");
+        verify(apiExceptionLogger).error(response.getStatusCode(), exception, request);
+    }
+
     @Test
     @DisplayName("서버 내부 타입 변환 오류는 내부 서버 오류 코드로 반환한다")
     void handleConversionNotSupported() throws Exception {
@@ -247,6 +363,40 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    @DisplayName("알림 프로필 연동 실패는 기존 503과 traceId를 보존하고 공통 오류 로그를 한 번 기록한다")
+    void logsNotificationIntegrationUnavailable() {
+        NotificationIntegrationUnavailableException exception = new NotificationIntegrationUnavailableException();
+
+        ResponseEntity<ProblemDetail> response = exceptionHandler.handleNotificationUnavailable(exception, request);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(503);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getDetail()).isEqualTo(ErrorType.NOTIFICATION_UNAVAILABLE.detail());
+        assertThat(response.getBody().getProperties())
+                .containsEntry("code", "NOTIFICATION_UNAVAILABLE")
+                .containsEntry("traceId", TRACE_ID);
+        verify(apiExceptionLogger).error(ErrorType.NOTIFICATION_UNAVAILABLE, exception, request);
+        verifyNoMoreInteractions(apiExceptionLogger);
+    }
+
+    @Test
+    @DisplayName("댓글 프로필 연동 실패도 기존 503과 traceId를 보존하고 공통 오류 로그를 한 번 기록한다")
+    void logsCommentIntegrationUnavailable() {
+        CommentIntegrationUnavailableException exception = new CommentIntegrationUnavailableException();
+
+        ResponseEntity<ProblemDetail> response = exceptionHandler.handleCommentUnavailable(exception, request);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(503);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getDetail()).isEqualTo(ErrorType.COMMENT_UNAVAILABLE.detail());
+        assertThat(response.getBody().getProperties())
+                .containsEntry("code", "COMMENT_UNAVAILABLE")
+                .containsEntry("traceId", TRACE_ID);
+        verify(apiExceptionLogger).error(ErrorType.COMMENT_UNAVAILABLE, exception, request);
+        verifyNoMoreInteractions(apiExceptionLogger);
+    }
+
+    @Test
     @DisplayName("외부 연동 예외는 전역 예외 처리기에서 중복 기록하지 않는다")
     void doNotLogTranslatedExternalFailure() {
         AiGenerationException exception = new AiGenerationException(
@@ -265,6 +415,70 @@ class GlobalExceptionHandlerTest {
                 .containsEntry("code", "AI_PROVIDER_ERROR")
                 .containsEntry("traceId", TRACE_ID);
         verifyNoInteractions(apiExceptionLogger);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = AiGenerationErrorType.class, names = {
+            "RATE_LIMITED", "OUTPUT_TRUNCATED", "RESPONSE_PROCESSING_ERROR"
+    })
+    @DisplayName("세부 AI 오류 분류는 사용자 API에서 기존 AI 제공자 오류로 반환한다")
+    void returnExistingApiErrorForDetailedAiFailure(AiGenerationErrorType errorType) {
+        AiGenerationException exception = new AiGenerationException(
+                errorType,
+                "Gemini 생성에 실패했습니다."
+        );
+
+        ResponseEntity<ProblemDetail> response = exceptionHandler.handleAiGeneration(exception, request);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(502);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getProperties()).containsEntry("code", "AI_PROVIDER_ERROR");
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = GenerationErrorCode.class, names = {
+            "AI_PROVIDER_RATE_LIMITED", "AI_OUTPUT_TRUNCATED", "AI_RESPONSE_PROCESSING_ERROR"
+    })
+    @DisplayName("저장된 세부 AI 오류 코드도 사용자 API에서는 기존 오류로 반환한다")
+    void returnExistingApiErrorForStoredAiFailure(GenerationErrorCode errorCode) {
+        DiaryGenerationFailedException exception = new DiaryGenerationFailedException(
+                errorCode
+        );
+
+        ResponseEntity<ProblemDetail> response = exceptionHandler.handleDiaryGenerationFailed(exception, request);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(502);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getProperties()).containsEntry("code", "AI_PROVIDER_ERROR");
+    }
+
+    @Test
+    @DisplayName("예상하지 못한 내부 오류는 기존 내부 서버 오류로 반환한다")
+    void returnInternalServerErrorForInternalAiFailure() {
+        AiGenerationException exception = new AiGenerationException(
+                AiGenerationErrorType.INTERNAL_ERROR,
+                "Gemini 요청을 준비하지 못했습니다."
+        );
+
+        ResponseEntity<ProblemDetail> response = exceptionHandler.handleAiGeneration(exception, request);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(500);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getProperties()).containsEntry("code", "INTERNAL_SERVER_ERROR");
+    }
+
+    @Test
+    @DisplayName("저장된 내부 생성 오류도 기존 내부 서버 오류로 반환한다")
+    void returnInternalServerErrorForStoredInternalFailure() {
+        DiaryGenerationFailedException exception = new DiaryGenerationFailedException(
+                GenerationErrorCode.GENERATION_INTERNAL_ERROR
+        );
+
+        ResponseEntity<ProblemDetail> response = exceptionHandler.handleDiaryGenerationFailed(exception, request);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(500);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getProperties()).containsEntry("code", "INTERNAL_SERVER_ERROR");
     }
 
     private ResponseEntity<Object> handleFrameworkException(Exception exception) throws Exception {
@@ -305,5 +519,26 @@ class GlobalExceptionHandlerTest {
     private static final class ValidationRequest {
 
         private String content;
+    }
+
+    @RestController
+    private static final class CategoryErrorController {
+
+        @GetMapping("/api/v1/test/category")
+        String categoryError(@RequestParam("error") String error) {
+            if ("missing".equals(error)) {
+                throw new CategoryNotFoundException();
+            }
+            throw new CategoryInactiveException();
+        }
+    }
+
+    @RestController
+    private static final class NicknameValidationController {
+
+        @GetMapping("/api/v1/test/nickname")
+        String validateNickname(@RequestParam("nickname") String nickname) {
+            return NicknamePolicy.normalizeAndValidate(nickname);
+        }
     }
 }

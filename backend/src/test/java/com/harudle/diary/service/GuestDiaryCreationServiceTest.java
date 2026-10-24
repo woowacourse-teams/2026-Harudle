@@ -9,7 +9,7 @@ import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.dto.CreateGuestDiaryCommand;
 import com.harudle.diary.service.dto.CreateGuestDiaryResult;
 import com.harudle.diary.service.dto.DiaryGenerationResult;
-import com.harudle.generation.domain.GenerationStatus;
+import com.harudle.generation.diary.domain.GenerationStatus;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Optional;

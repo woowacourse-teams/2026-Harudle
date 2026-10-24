@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.harudle.share.service.exception.ShareNotFoundException;
+import com.harudle.support.ServiceIntegrationTestSupport;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
@@ -16,31 +17,18 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest
-class ShareLinkQueryServiceTest {
+class ShareLinkQueryServiceTest extends ServiceIntegrationTestSupport {
 
-    private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:18-alpine");
     private static final UUID USER_ID = UUID.fromString("17c1414e-40c6-4479-9025-3bdb2a08a09a");
     private static final UUID DIARY_ID = UUID.fromString("1357d730-a710-4a94-9bee-494b569c3779");
     private static final UUID GENERATION_ID = UUID.fromString("9a08ce23-fb30-4744-a9d2-1c3b9cc8796a");
     private static final UUID SHARE_ID = UUID.fromString("3ab878d7-abba-43d7-87cb-5a771a86587b");
     private static final LocalDate DIARY_DATE = LocalDate.of(2026, 8, 6);
     private static final Instant DIARY_CREATED_AT = Instant.parse("2026-08-06T11:10:23Z");
-
-    @Container
-    @ServiceConnection
-    private static final PostgreSQLContainer POSTGRESQL_CONTAINER = new PostgreSQLContainer(POSTGRES_IMAGE);
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -50,9 +38,6 @@ class ShareLinkQueryServiceTest {
 
     @Autowired
     private ShareLinkQueryService shareLinkQueryService;
-
-    @MockitoBean
-    private JwtDecoder jwtDecoder;
 
     @BeforeEach
     void setUp() {
