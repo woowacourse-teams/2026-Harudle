@@ -19,6 +19,7 @@ export interface ModalHandle {
 
 interface ModalProps {
   title: string;
+  readonly className?: string;
   children: ReactNode;
   footer?: ReactNode;
   dismissible?: boolean;
@@ -27,6 +28,7 @@ interface ModalProps {
 
 const Modal = ({
   title,
+  className,
   children,
   footer,
   ref,
@@ -71,6 +73,7 @@ const Modal = ({
   return createPortal(
     <dialog
       ref={dialogRef}
+      className={className}
       aria-labelledby={titleId}
       css={dialogStyle}
       onClick={handleBackdropClick}
