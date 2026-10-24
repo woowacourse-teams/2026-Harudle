@@ -18,6 +18,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -228,6 +230,79 @@ class CurrentUserControllerTest {
         assertThat(unauthenticatedWithoutCsrf.jsonPath().getString("code")).isEqualTo("UNAUTHORIZED");
 
         assertThat(changeNickname(user, "새별명").statusCode()).isEqualTo(204);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, 10})
+    @DisplayName("기본 프로필 이미지를 변경하면 내 정보 조회에 반영되고 닉네임과 다른 회원은 유지된다")
+    void changesDefaultProfileImage(int imageCode) {
+        User user = saveProfileUser();
+        User other = saveProfileUser();
+
+        MockMvcResponse response = changeDefaultProfileImage(user, Map.of("imageCode", imageCode));
+
+        assertThat(response.statusCode()).isEqualTo(204);
+        assertThat(response.body().asString()).isEmpty();
+        assertThat(response.header(HttpHeaders.CACHE_CONTROL)).isEqualTo("no-store");
+        MockMvcResponse profile = RestAssuredMockMvc.given()
+                .header(HttpHeaders.AUTHORIZATION, bearerToken(user.getId()))
+                .get("/api/v1/me");
+        assertThat(profile.statusCode()).isEqualTo(200);
+        assertThat(profile.jsonPath().getString("nickname")).isEqualTo(user.getNickname());
+        assertThat(profile.jsonPath().getString("profileImageUrl"))
+                .isEqualTo("https://www.harudle.com/profile-images/v1/" + imageCode + ".png");
+        User saved = userRepository.findById(user.getId()).orElseThrow();
+        assertThat(saved.getProfileImageCode()).isEqualTo((short) imageCode);
+        assertThat(userRepository.findById(other.getId()).orElseThrow().getProfileImageCode()).isEqualTo((short) 3);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{}", "{\"imageCode\":null}", "{\"imageCode\":0}", "{\"imageCode\":11}"})
+    @DisplayName("기본 이미지 번호가 없거나 범위를 벗어나면 기존 프로필을 유지한다")
+    void rejectsInvalidDefaultProfileImage(String body) {
+        User user = saveProfileUser();
+
+        MockMvcResponse response = changeDefaultProfileImage(user, body);
+
+        assertThat(response.statusCode()).isEqualTo(400);
+        assertThat(response.jsonPath().getString("code")).isEqualTo("VALIDATION_ERROR");
+        assertThat(response.jsonPath().getString("errors[0].field")).isEqualTo("imageCode");
+        User saved = userRepository.findById(user.getId()).orElseThrow();
+        assertThat(saved.getProfileImageCode()).isEqualTo((short) 3);
+        assertThat(saved.getNickname()).isEqualTo(user.getNickname());
+    }
+
+    @Test
+    @DisplayName("공개 프로필이 배정되지 않은 회원은 기본 이미지를 변경할 수 없다")
+    void rejectsDefaultProfileImageChangeWithoutPublicProfile() {
+        User user = saveUser("profile-legacy@example.com", "기존회원");
+        saveOAuthAccount(user, user.getId().toString(), null);
+
+        MockMvcResponse response = changeDefaultProfileImage(user, Map.of("imageCode", 7));
+
+        assertThat(response.statusCode()).isEqualTo(409);
+        assertThat(response.jsonPath().getString("code")).isEqualTo("PUBLIC_PROFILE_NOT_ASSIGNED");
+        assertThat(userRepository.findById(user.getId()).orElseThrow().getProfileImageCode()).isNull();
+    }
+
+    @Test
+    @DisplayName("Access Token 없이 기본 프로필 이미지를 변경할 수 없다")
+    void rejectsUnauthenticatedDefaultProfileImageChange() {
+        MockMvcResponse response = RestAssuredMockMvc.given()
+                .contentType(MediaType.APPLICATION_JSON_VALUE)
+                .body(Map.of("imageCode", 7))
+                .patch("/api/v1/me/profile-image");
+
+        assertThat(response.statusCode()).isEqualTo(401);
+        assertThat(response.jsonPath().getString("code")).isEqualTo("UNAUTHORIZED");
+    }
+
+    private MockMvcResponse changeDefaultProfileImage(User user, Object body) {
+        return RestAssuredMockMvc.given()
+                .header(HttpHeaders.AUTHORIZATION, bearerToken(user.getId()))
+                .contentType(MediaType.APPLICATION_JSON_VALUE)
+                .body(body)
+                .patch("/api/v1/me/profile-image");
     }
 
     private MockMvcResponse changeNickname(User user, String nickname) {

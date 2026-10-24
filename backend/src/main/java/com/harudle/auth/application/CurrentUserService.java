@@ -5,7 +5,6 @@ import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.OAuthAccountRepository;
 import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.profile.service.ProfileImageUrlResolver;
-import java.net.URI;
 import java.util.Objects;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -40,13 +39,11 @@ public class CurrentUserService {
         OAuthAccount oauthAccount = oauthAccountRepository.findByUser_Id(userId)
                 .orElseThrow(InvalidCurrentUserException::new);
 
-        Short imageCode = user.getProfileImageCode();
-        URI profileImageUrl = null;
-        if (imageCode != null) {
-            profileImageUrl = profileImageUrlResolver.resolve(imageCode);
-        }
+        ProfileImageUrlResolver.ResolvedImage image = profileImageUrlResolver.resolve(
+                user.getProfileImageCode(), user.getProfileImageObjectKey()
+        );
 
-        return CurrentUserResult.from(user, oauthAccount, profileImageUrl);
+        return CurrentUserResult.from(user, oauthAccount, image.url(), image.expiresAt());
     }
 
     private void validateActiveUser(User user) {

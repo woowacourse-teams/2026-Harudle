@@ -2,7 +2,7 @@ import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import {
   isGenerationStatus,
   type GenerationStatus,
-} from '../../domain/diary/diaryGenerate';
+} from '../../domain/diary/diaryGeneration';
 import { API_BASE_URL, isProblemDetails, RequestError } from '../../shared/api';
 import { authFetch, requestCsrfToken } from '../../shared/auth';
 

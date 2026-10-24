@@ -84,7 +84,7 @@ class FeedListAndInteractionPersistenceTest {
         when(categories.get(dailyCategory)).thenReturn(new CategoryReader.Category(dailyCategory, "일상", 0, true));
         when(categories.get(otherCategory)).thenReturn(new CategoryReader.Category(otherCategory, "우테코", 1, true));
         when(profiles.readAll(anySet())).thenReturn(Map.of(AUTHOR,
-                new PublicProfileReader.Profile(AUTHOR, "캐모", URI.create("https://example.com/profile.png"))));
+                new PublicProfileReader.Profile(AUTHOR, "캐모", URI.create("https://example.com/profile.png"), null)));
         when(likes.findLikedFeedIds(org.mockito.ArgumentMatchers.any(), anySet())).thenReturn(Set.of(FIRST));
         createFeed(FIRST, dailyCategory, PUBLISHED, 9);
         createFeed(SECOND, dailyCategory, PUBLISHED, 9);

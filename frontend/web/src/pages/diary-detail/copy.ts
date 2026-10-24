@@ -13,4 +13,5 @@ export const DIARY_DETAIL_COPY = {
   notFound: '네컷만화를 찾을 수 없어요.',
   loadErrorTitle: '네컷만화를 불러오지 못했어요',
   reloadAction: '다시 불러오기',
+  deleteSuccess: '네컷만화를 삭제했어요.',
 } as const;

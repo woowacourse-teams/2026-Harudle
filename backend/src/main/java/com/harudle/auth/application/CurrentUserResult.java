@@ -8,12 +8,14 @@ import java.net.URI;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 
 public record CurrentUserResult(
         UUID id,
         String name,
         String nickname,
-        URI profileImageUrl,
+        @Nullable URI profileImageUrl,
+        @Nullable Instant profileImageUrlExpiresAt,
         String email,
         UserRole role,
         OAuthProvider oauthProvider,
@@ -28,7 +30,10 @@ public record CurrentUserResult(
         createdAt = Objects.requireNonNull(createdAt, "createdAt은 필수입니다.");
     }
 
-    public static CurrentUserResult from(User user, OAuthAccount oauthAccount, URI profileImageUrl) {
+    public static CurrentUserResult from(
+            User user, OAuthAccount oauthAccount, @Nullable URI profileImageUrl,
+            @Nullable Instant profileImageUrlExpiresAt
+    ) {
         Objects.requireNonNull(user, "user는 필수입니다.");
         Objects.requireNonNull(oauthAccount, "oauthAccount는 필수입니다.");
 
@@ -37,6 +42,7 @@ public record CurrentUserResult(
                 user.getName(),
                 user.getNickname(),
                 profileImageUrl,
+                profileImageUrlExpiresAt,
                 user.getPrimaryEmail(),
                 user.getRole(),
                 oauthAccount.getProvider(),

@@ -37,7 +37,7 @@
 <details>
 <summary>DB 변경과 통합 시 확인</summary>
 
-`V32__add_admin_moderation.sql`은 신고 심사 필드와 `moderation_states`, `moderation_events`를 추가한다. 기존 신고·일기·댓글 본문을 변경하지 않는다.
+`V35__add_admin_moderation.sql`은 신고 심사 필드와 `moderation_states`, `moderation_events`를 추가한다. 기존 신고·일기·댓글 본문을 변경하지 않는다.
 
 대기 중인 차단 PR의 V31과 번호를 분리했다. 다른 대기 PR에도 마이그레이션 번호가 겹치는 부분이 있으므로 **최종 머지·배포 전에 최신 develop-backend와 전체 번호·순서를 다시 확인**한다. 이미 적용된 마이그레이션의 내용을 바꾸거나 `outOfOrder`로 순서를 우회하지 않는다.
 

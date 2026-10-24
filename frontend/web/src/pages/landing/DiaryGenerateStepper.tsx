@@ -1,8 +1,9 @@
-import { DIARY_GENERATING_COPY } from './copy';
+import { GUEST_TRIAL_COPY } from './trialCopy';
 import { css } from '@emotion/react';
 import { theme } from '../../styles/theme';
 import checkIcon from '../../assets/icons/check.svg';
-import { FINAL_STEP } from './useDiaryGenerationProgress';
+
+const FINAL_STEP = GUEST_TRIAL_COPY.generationStepLabels.length;
 
 const DiaryGenerateStepper = ({ loadingStep }: { loadingStep: number }) => {
   const progress =
@@ -14,7 +15,7 @@ const DiaryGenerateStepper = ({ loadingStep }: { loadingStep: number }) => {
         <div css={progressBarStyle(progress)} />
       </div>
 
-      {DIARY_GENERATING_COPY.stepLabels.map((label, index) => {
+      {GUEST_TRIAL_COPY.generationStepLabels.map((label, index) => {
         const step = index + 1;
         const isComplete =
           step === FINAL_STEP ? step === loadingStep : step < loadingStep;

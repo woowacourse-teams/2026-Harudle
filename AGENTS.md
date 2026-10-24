@@ -4,11 +4,17 @@
 팀이 제공한 운영 설명을 기준으로 한다. 실제 AWS 리소스의 적용 상태가 필요하면
 관련 운영 기록을 확인한다. 이 문서의 경로는 저장소 루트를 기준으로 한다.
 
+2026-10-23에 Dev 앱을 새 `harudle-dev`로 옮기고, DB 연결을 별도 EC2인
+`harudle-dev-db`의 PostgreSQL로 전환했다. 같은 날 팀 확인에 따라 Prod도 RDS에서
+별도 EC2의 PostgreSQL로 전환했고, 앱 `.env`의 DB 주소를 해당 DB 사설 IP로 변경했다.
+새 Dev 앱 서버는 구축 중 `harudle-dev2`라고 불렀으며, 현재 AWS Name 태그는 `harudle-dev`다.
+ADR의 목표 구성과 실제 적용 상태를 구분한다.
+
 ## 런타임 구성
 
 ```mermaid
 flowchart TB
-    browser["사용자 브라우저<br/>harudle.com / www.harudle.com"]
+    browser["사용자 브라우저<br/>harudle.com / www.harudle.com / dev.harudle.com"]
 
     subgraph ec2["EC2 · Ubuntu ARM64 · ap-northeast-2"]
         host["Host Nginx + Certbot<br/>80 / 443 · HTTPS 종료"]
@@ -22,13 +28,13 @@ flowchart TB
         frontend -->|"API / OAuth · backend:8080"| backend
     end
 
-    rds[("해당 환경 전용 RDS PostgreSQL<br/>Private 접근")]
+    db[("환경별 PostgreSQL<br/>Dev와 Prod 각각 별도 DB EC2 / 사설 IP 연결")]
     s3[("S3 · techcourse-project-2026<br/>생성 이미지 / 참조 이미지")]
     kakao["Kakao OAuth"]
     gemini["Gemini · 스토리보드 / 이미지 생성"]
 
     browser -->|"HTTPS"| host
-    backend -->|"JDBC · 5432"| rds
+    backend -->|"JDBC / 5432"| db
     backend -->|"이미지 저장·조회 / Presigned URL 발급"| s3
     browser -->|"Presigned GET · 이미지 직접 조회"| s3
     backend -->|"HTTPS"| kakao
@@ -100,16 +106,20 @@ dev 부하 테스트 중 백엔드가 중단되면 k6와 백엔드를 멈추고,
 
 ## dev / prod 구성
 
-dev와 prod는 각각 별도 EC2와 별도 RDS 인스턴스를 사용한다.
-RDS 인스턴스 분리는 2026-10-15 팀 확인 기준이다.
+Dev는 앱 EC2와 DB EC2를 따로 사용한다. 2026-10-23에 새 앱 서버에서
+DB 사설 IP로 접속하고, 백엔드와 프론트엔드가 모두 `healthy`인 것을 확인했다.
+Prod도 앱 EC2와 DB EC2를 따로 사용하며, 앱 `.env`에는 DB 사설 IP를 설정했다.
+Prod 전환은 같은 날 팀이 알려준 내용이며, 두 환경의 DB 주소와 서버 사양은 AWS EC2 API로 확인했다.
+Prod 앱과 DB 컨테이너의 `healthy` 상태는 확인했다.
+Prod 앱에서 DB 계정으로 직접 접속하는 별도 시험은 수행하지 않았다.
 
 ```mermaid
 flowchart LR
     subgraph dev["dev 환경"]
-        devBackend["dev EC2 · Backend"] -->|"JDBC · 5432"| devRds[("dev 전용 RDS PostgreSQL")]
+        devBackend["harudle-dev<br/>앱 EC2"] -->|"사설 IP / 5432"| devDb[("harudle-dev-db<br/>10.0.100.99")]
     end
     subgraph prod["prod 환경"]
-        prodBackend["prod EC2 · Backend"] -->|"JDBC · 5432"| prodRds[("prod 전용 RDS PostgreSQL")]
+        prodBackend["harudle-prod<br/>앱 EC2"] -->|"DB 사설 IP"| prodDb[("harudle-prod-db<br/>10.0.100.153")]
     end
 ```
 
@@ -119,8 +129,11 @@ flowchart LR
 | `DEPLOY_ENV` | `dev` | `prod` |
 | Spring 활성 프로필 | `prod` | `prod` |
 | Compose | `compose.prod.yaml` + `compose.dev.yaml` | `compose.prod.yaml` |
-| RDS | dev 전용 PostgreSQL 인스턴스 | prod 전용 PostgreSQL 인스턴스 |
-| DB 연결 대상 | dev 서버 `.env`의 dev RDS `DB_HOST` | prod 서버 `.env`의 prod RDS `DB_HOST` |
+| 앱 EC2 | `harudle-dev` / `t4g.small` / 사설 IP `10.0.0.234` | `harudle-prod` / `t4g.small` / 사설 IP `10.0.0.183` |
+| DB EC2 | `harudle-dev-db` / `t4g.small` / PostgreSQL | `harudle-prod-db` / `t4g.small` / PostgreSQL |
+| DB 공인 IP | `54.116.226.98` | `43.202.26.248` |
+| DB 사설 IP | `10.0.100.99` | `10.0.100.153` |
+| DB 연결 대상 | `.env`의 `DB_HOST=10.0.100.99`, 포트 `5432` | `.env`의 `DB_HOST=10.0.100.153`로 변경했다는 팀 확인 |
 | S3 버킷 | `techcourse-project-2026` | `techcourse-project-2026` |
 | 생성 이미지 prefix | `harudle/generated/diary-images/dev` | `harudle/generated/diary-images/prod` |
 | 참조 이미지 prefix | `harudle/references/generation/dev` | `harudle/references/generation/prod` |
@@ -129,10 +142,49 @@ flowchart LR
 Compose 파일은 `deploy/`에 있고 서버에는 `/opt/harudle/`에 설치된다.
 환경은 Spring 프로필만으로 판단하지 않고 `DEPLOY_ENV`와 배포 그룹으로 구분한다.
 배포 훅은 서버 `.env`와 Compose가 해석한 최종 이미지 설정을 검사한다.
-RDS 연결 대상은 `DEPLOY_ENV`와 별도로 각 서버 `.env`의 `DB_HOST`, `DB_PORT`,
+DB 연결 대상은 `DEPLOY_ENV`와 별도로 각 서버 `.env`의 `DB_HOST`, `DB_PORT`,
 `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`로 설정한다. DB 마이그레이션·데이터 작업·
-부하 시험·모니터링에서는 해당 환경의 RDS 인스턴스를 대상으로 한다.
+부하 시험·모니터링에서는 해당 환경의 실제 DB를 대상으로 한다.
 S3 prefix 변경은 기존 DB의 이미지·참조 이미지 Object Key를 자동으로 바꾸지 않는다.
+개인 프로필 이미지는 같은 S3 연결을 사용하며 `harudle/profile-images/{DEPLOY_ENV}/{회원ID}/{UUID}.webp`에 저장한다.
+프로필 경로는 `DEPLOY_ENV`에서 자동 구성하고 조회 주소는 기존 `S3_ACCESS_URL_TTL`을 따른다.
+프로필 교체 후 삭제할 파일은 `profile_image_cleanup_tasks`에 남기고 커밋 후 정리한다.
+정기 실행 없이 이미지 변경 시 해당 회원의 삭제 대기 작업만 처리하며, 현재 사용 중인 파일은 삭제하지 않는다.
+실패한 작업은 해당 회원의 다음 이미지 변경에서 재시도한다.
+
+위 IP는 2026-10-23 AWS EC2 조회 기준이다. 앱의 DB 연결에는 사설 IP를 사용한다.
+공인 IP 기록은 DB의 외부 직접 접속을 허용한다는 뜻이 아니다. 관리자 접속은 SSH 터널을 사용한다.
+인스턴스를 중지하거나 다시 만들면 주소가 달라질 수 있으므로 접속 전 현재 주소를 확인한다.
+
+### 새 Dev 서버에서 확인한 설정
+
+- `dev.harudle.com`은 새 앱 서버의 공인 IP `15.164.84.71`로 변경했다.
+  공인 IP는 바뀔 수 있으므로 서버 작업 전 현재 연결 대상을 확인한다.
+  기존 Dev 앱 서버 `54.117.6.110`은 AWS Name 태그가 `harudle-delete-me`로 변경돼 남아 있다.
+  기존 RDS의 삭제 여부는 확인하지 않았다.
+- 앱 서버는 Ubuntu 26.04 ARM64이고, `/swapfile`에 Swap 2GiB를 적용했다.
+  파일 권한은 `600`이며 `/etc/fstab`에 등록했다. 재부팅 시험은 하지 않았다.
+- Docker와 Compose, Host Nginx와 Certbot을 설치했다. 호스트 Java는 Corretto 21,
+  Node.js는 24, pnpm은 11.20.0이다. 실제 앱은 배포 이미지 안의 런타임을 사용한다.
+  현재 프론트엔드는 React 정적 파일을 제공하는 Nginx이며 Node.js SSR 전환은 적용하지 않았다.
+- `/opt/harudle/.env`는 기존 Dev 값을 복사한 뒤 DB 주소를 사설 IP로 변경했다.
+  소유자는 `root:root`, 권한은 `600`이다. `HARUDLE_PUSH_FCM_ENABLED=false`와
+  `FIREBASE_PROJECT_ID=harudle-2ef80`도 설정했다. 환경 변수 변경은 컨테이너 재생성 후 적용된다.
+- WIF 파일은 기존 Dev에서 `/etc/harudle/gcp/gcp-wif.json`으로 복사했다.
+  소유자는 `root:10001`, 권한은 `640`이다. 백엔드 사용자 `10001:10001`이 읽을 수 있고,
+  컨테이너의 `/var/run/harudle/gcp-wif.json`에 읽기 전용으로 마운트된다.
+  파일이 없으면 컨테이너 생성이 실패한다. 파일 내용과 비밀번호, 개인키는 저장소나 로그에 남기지 않는다.
+- Host Nginx의 `/etc/nginx/sites-available/harudle-dev`를 활성화했다.
+  HTTP는 HTTPS로 전환하고, HTTPS 요청은 `127.0.0.1:3000`으로 전달한다.
+  업로드 제한은 `25m`, 연결 제한은 10초, 송수신 제한은 기존 Dev와 같은 300초다.
+  Host와 사용자 IP, 원래 HTTPS 여부를 전달한다. 저장소 예시의 240초와 실제 호스트 설정을 구분한다.
+- Certbot 인증서 발급과 갱신 시험에 성공했고 자동 갱신 타이머를 활성화했다.
+  화면 HTTPS `200`, 관리 포트의 Prometheus 응답 `200`, 두 컨테이너의 `healthy`를 확인했다.
+  로그인과 일기 생성은 별도로 시험하지 않았다.
+- 앱은 DB 사설 IP `10.0.100.99:5432`에 직접 연결한다. 이 주소에서 기존 DB 계정의
+  `SELECT 1`이 성공했다. 공인 IP `54.116.226.98:5432` 접속은 시간 초과됐다.
+  관리자 SSH 터널 성공과 앱의 직접 접속 성공은 별도로 확인한다.
+  이 접속 시험으로 DB TLS 검증이나 백업, 복원, EBS 암호화 적용까지 확인한 것은 아니다.
 
 ## 배포 구성
 
@@ -170,9 +222,27 @@ CodeBuild는 프론트엔드 입력이 같으면 이전 이미지를 재사용�
 
 - 배포 Compose의 Backend·Frontend 로그는 Docker `awslogs` 드라이버로
   환경별 CloudWatch Logs 그룹에 전송한다. 루트 `compose.yaml`의 `json-file`과 구분한다.
-- 호스트 CloudWatch Agent는 `127.0.0.1:19091/actuator/prometheus`를 수집해
-  환경별 EMF 로그로 보낸다. Agent 설정은 배포 아티팩트 전달 후 호스트에 별도 적용한다.
-- Frontend `/health`는 Nginx의 응답 여부를 확인한다. RDS·S3·Gemini의 실제 기능은
+- 앱용 설정을 적용한 호스트 CloudWatch Agent는 `127.0.0.1:19091/actuator/prometheus`를
+  수집해 환경별 EMF 로그로 보낸다. Agent 설정은 배포 아티팩트 전달 후 호스트에 별도 적용한다.
+- 새 Dev 앱 서버에는 Agent를 설치하고 `cloudwatch-agent.host.json`을 적용했다.
+  메모리 사용률과 여유 비율, Swap 사용률, 루트 디스크 사용률을 1분마다 수집한다.
+  Dev Java와 API 지표 수집 설정은 적용 완료다. `cloudwatch-agent.dev.json`으로
+  새 서버의 Java RSS와 Prometheus 앱 지표를 수집하며, CloudWatch 지표 도착도 확인했다.
+  이전 Dev 서버에서는 앱용 Agent 설정만 제거하고 호스트 자원 수집은 유지했다.
+- Dev DB EC2에도 Agent를 설치하고 `cloudwatch-agent.db.json`을 적용했다.
+  메모리와 Swap, 루트 및 `/srv/harudle/db-data`의 사용률과 남은 용량을 1분마다 수집한다.
+  새 앱 서버와 DB 서버의 메모리, Swap 및 DB 디스크 여유 공간이 CloudWatch에 도착한 것을 확인했다.
+- `DASHBOARD-harudle-dev`의 앱 대상은 `i-08ff5dddb7ac94f5c`, DB 대상은
+  `i-04fca55979b3240d6`이다. RDS 그래프는 EC2와 데이터 EBS 지표로 교체했다.
+  데이터 EBS는 `vol-00886d19a64c23e1f`다. 앱과 DB를 함께 덮어쓰던 공통 InstanceId 선택기는 제거했다.
+  DB 전체 연결 수는 별도 수집이 필요하며 앱의 HikariPool 지표와 구분한다.
+  대시보드 변경이 개별 경보의 대상도 바꾸는 것은 아니다.
+- Prod DB EC2 `i-01baa5c11a6224cd7`에도 `cloudwatch-agent.db.json`을 적용하고
+  Agent 자동 시작과 `running`을 확인했다. 데이터 디스크는 Dev와 같은 `/srv/harudle/db-data`다.
+  CloudWatch에서 메모리 여유 비율, Swap 사용률, 두 디스크 여유 공간의 실제 데이터 도착을 확인했다.
+  `DASHBOARD-harudle-prod`의 RDS 그래프를 이 DB EC2와 데이터 EBS
+  `vol-048d203fac554e776`의 지표로 교체했다. 기존 Prod 앱 그래프는 유지했다.
+- Frontend `/health`는 Nginx의 응답 여부를 확인한다. DB와 S3, Gemini의 실제 기능은
   각각의 기능 검증과 로그로 확인한다.
 
 ## 작업별 확인 위치
@@ -187,7 +257,7 @@ CodeBuild는 프론트엔드 입력이 같으면 이전 이미지를 재사용�
 | 프록시·HTTPS·OAuth 경로 | [Host Nginx 예시](deploy/nginx/harudle.conf.example), [Frontend Nginx](frontend/nginx/default.conf) |
 | 이미지 빌드·배포 훅 | [buildspec.yml](buildspec.yml), [appspec.yml](appspec.yml), `deploy/scripts/` |
 | 이미지 저장·조회·삭제 | [이미지 저장소 분리 절차](docs/image-storage-isolation.md) |
-| RDS 연결·데이터 작업 | [DB 연결 설정](backend/src/main/resources/application.yml), [배포 환경 안내](deploy/README.md) |
+| DB 연결·데이터 작업 | [DB 연결 설정](backend/src/main/resources/application.yml), [배포 환경 안내](deploy/README.md) |
 | 로그·지표·알람 | [모니터링 운영 안내](deploy/monitoring/README.md) |
 
 운영 기록에 과거 구성이 남아 있으면 현재 설정과 비교한다. 특히 로그 수집 방식,
