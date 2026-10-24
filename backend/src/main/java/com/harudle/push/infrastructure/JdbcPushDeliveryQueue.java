@@ -41,6 +41,10 @@ class JdbcPushDeliveryQueue {
             JOIN feeds f ON f.id = o.feed_id AND f.deleted_at IS NULL
             WHERE o.id = ? AND o.status = 'PROCESSING' AND o.lock_token = ?
               AND o.locked_until > ?
+              AND NOT EXISTS (SELECT 1 FROM feeds hidden_feed
+                  JOIN moderation_states moderation ON moderation.target_type = 'FEED'
+                    AND moderation.target_id = hidden_feed.id AND moderation.restricted
+                  WHERE hidden_feed.diary_id = f.diary_id)
               AND EXISTS (SELECT 1 FROM refresh_tokens rt
                   WHERE rt.session_id = s.id AND rt.user_id = s.user_id
                     AND rt.revoked_at IS NULL AND rt.expires_at > ?)

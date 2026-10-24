@@ -35,6 +35,10 @@ class JpaCommentRepository implements CommentRepository {
             JOIN users feed_author ON feed_author.id = d.user_id
             WHERE f.id = :feedId AND f.deleted_at IS NULL AND d.deleted_at IS NULL
               AND feed_author.deleted_at IS NULL
+              AND NOT EXISTS (SELECT 1 FROM feeds hidden_feed
+                  JOIN moderation_states moderation ON moderation.target_type = 'FEED'
+                    AND moderation.target_id = hidden_feed.id AND moderation.restricted
+                  WHERE hidden_feed.diary_id = f.diary_id)
             """;
     private static final String FIND_ACTIVE_QUERY = """
             SELECT c.id, c.feed_id, c.author_id, c.content, c.created_at,
@@ -63,7 +67,13 @@ class JpaCommentRepository implements CommentRepository {
             JOIN users feed_author ON feed_author.id = d.user_id
             WHERE c.feed_id = :feedId
               AND c.deleted_at IS NULL AND f.deleted_at IS NULL AND d.deleted_at IS NULL
+              AND NOT EXISTS (SELECT 1 FROM moderation_states moderation
+                  WHERE moderation.target_type = 'COMMENT' AND moderation.target_id = c.id AND moderation.restricted)
               AND feed_author.deleted_at IS NULL
+              AND NOT EXISTS (SELECT 1 FROM feeds hidden_feed
+                  JOIN moderation_states moderation ON moderation.target_type = 'FEED'
+                    AND moderation.target_id = hidden_feed.id AND moderation.restricted
+                  WHERE hidden_feed.diary_id = f.diary_id)
             """;
     private static final String AFTER_PREDICATE = """
               AND (c.created_at > :afterCreatedAt
