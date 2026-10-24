@@ -47,6 +47,7 @@ jest.mock('./AdminModerationPanel', () => ({
   ),
 }));
 jest.mock('../../assets/images/loading-animation.webp', () => 'loading.webp');
+jest.mock('../../assets/icons/feed-refresh.svg', () => 'feed-refresh.svg');
 jest.mock('../../assets/icons/toast-success.svg', () => 'success.svg');
 jest.mock('../../assets/icons/toast-error.svg', () => 'error.svg');
 jest.mock('../../assets/icons/toast-loading.svg', () => 'loading.svg');
@@ -259,7 +260,15 @@ describe('관리자 신고 심사', (): void => {
     await userEvent.click(
       screen.getByRole('button', { name: '댓글 신고 report-2' }),
     );
-    expect(await screen.findByText('대상 댓글 · comment-2')).toBeVisible();
+    expect(
+      await screen.findByRole('region', { name: '신고 대상' }),
+    ).toHaveTextContent('댓글');
+    await userEvent.click(
+      screen.getByText('식별 정보', { selector: 'summary' }),
+    );
+    expect(screen.getByRole('region', { name: '신고 정보' })).toHaveTextContent(
+      'comment-2',
+    );
     expect(screen.getByTestId('COMMENT-comment-2')).toHaveTextContent(
       '조치 불가',
     );
@@ -271,8 +280,14 @@ describe('관리자 신고 심사', (): void => {
     ).toBeEnabled();
     expect(signal?.aborted).toBe(true);
     await act(async (): Promise<void> => finish(first));
-    expect(screen.getByText('대상 댓글 · comment-2')).toBeVisible();
-    expect(screen.queryByText('대상 피드 · feed-1')).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '신고 정보' })).toHaveTextContent(
+      'comment-2',
+    );
+    expect(
+      within(screen.getByRole('region', { name: '신고 정보' })).queryByText(
+        'feed-1',
+      ),
+    ).not.toBeInTheDocument();
   });
   it('최초 심사 관리자가 삭제되어도 종결 사유를 유지하고 읽기 전용으로 보여준다', async (): Promise<void> => {
     jest.mocked(getAdminReport).mockResolvedValueOnce({
@@ -286,12 +301,38 @@ describe('관리자 신고 심사', (): void => {
     expect(
       await screen.findByRole('heading', { name: '신고 상세 · 처리 완료' }),
     ).toBeVisible();
-    expect(screen.getByText(/처리자 삭제된 관리자/)).toBeVisible();
+    expect(screen.getByText('처리자 ID', { selector: 'dt' })).toBeVisible();
+    expect(screen.getByText('삭제된 관리자', { selector: 'dd' })).toBeVisible();
     expect(screen.getByText('정책 위반 확인')).toBeVisible();
     expect(
       within(screen.getByLabelText('신고 상세')).queryByRole('button', {
         name: '처리 완료',
       }),
     ).not.toBeInTheDocument();
+  });
+  it('신고 내용을 라벨로 구분하고 펼친 식별 정보에서 전체 ID를 읽을 수 있다', async (): Promise<void> => {
+    render(<AdminReportsPanel />, { wrapper: ToastProvider });
+    await userEvent.click(
+      await screen.findByRole('button', { name: '피드 신고 report-1' }),
+    );
+    const info = await screen.findByRole('region', { name: '신고 정보' });
+    for (const label of ['사유', '상세 내용', '접수 일시']) {
+      expect(within(info).getByText(label, { selector: 'dt' })).toBeVisible();
+    }
+    expect(
+      within(info).getByText('광고 반복', { selector: 'dd' }),
+    ).toBeVisible();
+    const summary = within(info).getByText('식별 정보', {
+      selector: 'summary',
+    });
+    await userEvent.click(summary);
+    expect(summary.closest('details')).toHaveAttribute('open');
+    for (const id of ['report-1', 'feed-1', 'user-1']) {
+      expect(within(info).getByText(id, { selector: 'dd' })).toBeVisible();
+    }
+    expect(
+      within(info).getByText('대상 작성자 ID', { selector: 'dt' }),
+    ).toBeVisible();
+    expect(screen.getByRole('button', { name: '다시 불러오기' })).toBeEnabled();
   });
 });

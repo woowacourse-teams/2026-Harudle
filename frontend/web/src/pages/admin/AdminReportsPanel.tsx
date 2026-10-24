@@ -1,4 +1,5 @@
 import { css } from '@emotion/react';
+import refreshIcon from '../../assets/icons/feed-refresh.svg';
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import type { ApiRequest } from '../../shared/api';
@@ -127,17 +128,20 @@ const ReportList = ({
       {request.status === 'loading' ? (
         <LoadingSpinner />
       ) : request.status === 'error' ? (
-        <>
-          <p role="alert">{COPY.listError}</p>
-          <ActionButton
-            label={COPY.retry}
-            variant="secondary"
-            onClick={(): void => {
-              setRequest({ status: 'loading' });
-              setRevision((value): number => value + 1);
-            }}
-          />
-        </>
+        <div css={errorBoxStyle} role="alert">
+          <p>{COPY.listError}</p>
+          <div css={compactActionsStyle}>
+            <ActionButton
+              label={COPY.retry}
+              variant="secondary"
+              icon={<img src={refreshIcon} alt="" aria-hidden="true" />}
+              onClick={(): void => {
+                setRequest({ status: 'loading' });
+                setRevision((value): number => value + 1);
+              }}
+            />
+          </div>
+        </div>
       ) : request.status === 'success' ? (
         <>
           <p>전체 {request.data.totalElements}건</p>
@@ -273,50 +277,88 @@ const ReportDetail = ({ id, onReviewed }: DetailProps) => {
     });
   };
   if (request.status === 'loading') return <LoadingSpinner />;
+  const feedback =
+    request.status === 'error'
+      ? COPY.detailError
+      : refreshError
+        ? COPY.refreshError
+        : stale
+          ? '최신 상태를 다시 불러온 뒤 처리해 주세요.'
+          : null;
   return (
     <div css={detailStyle} aria-label="신고 상세">
-      {request.status === 'error' && <p role="alert">{COPY.detailError}</p>}
       {request.status === 'success' && (
         <>
-          <section css={cardStyle}>
+          <section css={cardStyle} aria-label="신고 정보">
             <h2>
               신고 상세 · {REPORT_STATUS_LABELS[request.data.report.status]}
             </h2>
-            <p>
-              대상 {REPORT_TARGET_LABELS[request.data.report.targetType]} ·{' '}
-              {request.data.report.targetId}
-            </p>
-            <p>신고자 {request.data.report.reporterId ?? '탈퇴한 사용자'}</p>
-            <p>사유 {REPORT_REASON_LABELS[request.data.report.reason]}</p>
-            <p css={contentStyle}>
-              {request.data.report.description || '상세 내용 없음'}
-            </p>
-            <small>
-              접수{' '}
-              {new Date(request.data.report.createdAt).toLocaleString('ko-KR')}
-            </small>
+            <dl css={metadataStyle}>
+              <dt>사유</dt>
+              <dd>{REPORT_REASON_LABELS[request.data.report.reason]}</dd>
+              <dt>상세 내용</dt>
+              <dd css={contentStyle}>
+                {request.data.report.description || '상세 내용 없음'}
+              </dd>
+              <dt>접수 일시</dt>
+              <dd>
+                <time dateTime={request.data.report.createdAt}>
+                  {new Date(request.data.report.createdAt).toLocaleString(
+                    'ko-KR',
+                  )}
+                </time>
+              </dd>
+            </dl>
+            <details css={identifiersStyle}>
+              <summary>식별 정보</summary>
+              <dl css={metadataStyle}>
+                <dt>신고 ID</dt>
+                <dd>{request.data.report.id}</dd>
+                <dt>대상 ID</dt>
+                <dd>{request.data.report.targetId}</dd>
+                <dt>신고자 ID</dt>
+                <dd>{request.data.report.reporterId ?? '탈퇴한 사용자'}</dd>
+                <dt>대상 작성자 ID</dt>
+                <dd>{request.data.report.targetUserId}</dd>
+              </dl>
+            </details>
           </section>
-          <section css={cardStyle}>
+          <section css={cardStyle} aria-label="신고 대상">
             <h3>신고 대상</h3>
-            <p>
-              작성자 {request.data.target.authorNickname ?? '탈퇴한 사용자'}
-            </p>
-            <p>
-              {request.data.target.deleted ||
-              request.data.target.parentDeleted ||
-              !request.data.target.exists
-                ? '삭제되었거나 찾을 수 없는 콘텐츠'
-                : request.data.target.parentHidden
-                  ? '다른 연결된 피드의 관리자 숨김이 유지돼요.'
-                  : request.data.target.hidden
-                    ? '관리자 숨김 상태'
-                    : request.data.target.publiclyVisible
-                      ? '공개 상태'
-                      : '비공개 상태'}
-            </p>
-            {request.data.target.title && (
-              <strong>{request.data.target.title}</strong>
-            )}
+            <dl css={metadataStyle}>
+              <dt>유형</dt>
+              <dd>{REPORT_TARGET_LABELS[request.data.report.targetType]}</dd>
+              <dt>작성자</dt>
+              <dd>{request.data.target.authorNickname ?? '탈퇴한 사용자'}</dd>
+              <dt>노출 상태</dt>
+              <dd>
+                {request.data.target.deleted ||
+                request.data.target.parentDeleted ||
+                !request.data.target.exists
+                  ? '삭제되었거나 찾을 수 없는 콘텐츠'
+                  : request.data.target.parentHidden
+                    ? '다른 연결된 피드의 관리자 숨김이 유지돼요.'
+                    : request.data.target.hidden
+                      ? '관리자 숨김 상태'
+                      : request.data.target.publiclyVisible
+                        ? '공개 상태'
+                        : '비공개 상태'}
+              </dd>
+              {request.data.target.title && (
+                <>
+                  <dt>제목</dt>
+                  <dd>{request.data.target.title}</dd>
+                </>
+              )}
+              {request.data.target.commentContent && (
+                <>
+                  <dt>댓글 내용</dt>
+                  <dd css={contentStyle}>
+                    {request.data.target.commentContent}
+                  </dd>
+                </>
+              )}
+            </dl>
             {request.data.target.imageUrl && (
               <img
                 css={imageStyle}
@@ -324,38 +366,47 @@ const ReportDetail = ({ id, onReviewed }: DetailProps) => {
                 alt="신고 대상 피드 이미지"
               />
             )}
-            {request.data.target.commentContent && (
-              <p css={contentStyle}>{request.data.target.commentContent}</p>
-            )}
           </section>
           <section css={cardStyle}>
             <h3>신고 처리</h3>
             {request.data.report.status === 'RECEIVED' ? (
               <>
                 <p>{COPY.reviewHint}</p>
-                <ActionButton
-                  label="처리 완료"
-                  disabled={stale || reading}
-                  onClick={(): void => review('RESOLVED')}
-                />
-                <ActionButton
-                  label="반려"
-                  variant="secondary"
-                  disabled={stale || reading}
-                  onClick={(): void => review('DISMISSED')}
-                />
+                <div css={compactActionsStyle}>
+                  <ActionButton
+                    label="처리 완료"
+                    disabled={stale || reading}
+                    onClick={(): void => review('RESOLVED')}
+                  />
+                  <ActionButton
+                    label="반려"
+                    variant="secondary"
+                    disabled={stale || reading}
+                    onClick={(): void => review('DISMISSED')}
+                  />
+                </div>
               </>
             ) : (
-              <>
-                <p>{request.data.report.reviewReason ?? '처리 사유 없음'}</p>
-                <small>
-                  처리자 {request.data.report.reviewedBy ?? '삭제된 관리자'} ·{' '}
-                  {request.data.report.reviewedAt &&
-                    new Date(request.data.report.reviewedAt).toLocaleString(
-                      'ko-KR',
-                    )}
-                </small>
-              </>
+              <dl css={metadataStyle}>
+                <dt>처리 사유</dt>
+                <dd css={contentStyle}>
+                  {request.data.report.reviewReason ?? '처리 사유 없음'}
+                </dd>
+                <dt>처리자 ID</dt>
+                <dd>{request.data.report.reviewedBy ?? '삭제된 관리자'}</dd>
+                {request.data.report.reviewedAt && (
+                  <>
+                    <dt>처리 일시</dt>
+                    <dd>
+                      <time dateTime={request.data.report.reviewedAt}>
+                        {new Date(
+                          request.data.report.reviewedAt,
+                        ).toLocaleString('ko-KR')}
+                      </time>
+                    </dd>
+                  </>
+                )}
+              </dl>
             )}
           </section>
           {request.data.report.targetType !== 'USER' && (
@@ -382,23 +433,28 @@ const ReportDetail = ({ id, onReviewed }: DetailProps) => {
           />
         </>
       )}
-      {(refreshError || stale) && (
-        <p role="alert">
-          {refreshError
-            ? COPY.refreshError
-            : '최신 상태를 다시 불러온 뒤 처리해 주세요.'}
-        </p>
-      )}
-      <button type="button" disabled={reading} onClick={reload}>
-        {COPY.retry}
-      </button>
+      <div
+        css={feedback ? errorBoxStyle : undefined}
+        role={feedback ? 'alert' : undefined}
+      >
+        {feedback && <p>{feedback}</p>}
+        <div css={compactActionsStyle}>
+          <ActionButton
+            label={COPY.retry}
+            variant="secondary"
+            icon={<img src={refreshIcon} alt="" aria-hidden="true" />}
+            disabled={reading}
+            onClick={reload}
+          />
+        </div>
+      </div>
       <AdminReasonModal ref={dialogRef} />
     </div>
   );
 };
 const panelStyle = css`
   display: grid;
-  gap: 20px;
+  gap: 16px;
 `;
 const columnsStyle = css`
   display: grid;
@@ -425,7 +481,7 @@ const filterStyle = (active: boolean) => css`
 const cardStyle = css`
   display: grid;
   gap: 12px;
-  padding: 20px;
+  padding: 16px;
   border: 1px solid ${theme.colors.stroke.outline};
   border-radius: 16px;
   background: ${theme.colors.background.surface};
@@ -441,7 +497,7 @@ const cardStyle = css`
 `;
 const detailStyle = css`
   display: grid;
-  gap: 16px;
+  gap: 12px;
   min-width: 0;
 `;
 const listStyle = css`
@@ -474,7 +530,10 @@ const pageStyle = css`
   button {
     flex: 1;
     min-width: 0;
-    padding-inline: 12px;
+    height: 40px;
+    padding: 8px 12px;
+    font-size: 14px;
+    line-height: 20px;
     white-space: nowrap;
   }
   span {
@@ -495,4 +554,65 @@ const imageStyle = css`
   max-height: 500px;
   object-fit: contain;
   border-radius: 12px;
+`;
+
+const metadataStyle = css`
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 10px 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  dt {
+    color: ${theme.colors.foreground.neutralMuted};
+  }
+  dd {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  @media (max-width: 480px) {
+    grid-template-columns: 80px minmax(0, 1fr);
+    gap: 8px 10px;
+  }
+`;
+const identifiersStyle = css`
+  padding-top: 12px;
+  border-top: 1px solid ${theme.colors.stroke.divider};
+  summary {
+    width: max-content;
+    color: ${theme.colors.foreground.neutralMuted};
+    font-size: 13px;
+    cursor: pointer;
+  }
+  &[open] summary {
+    margin-bottom: 12px;
+  }
+`;
+const compactActionsStyle = css`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  button {
+    width: max-content;
+    max-width: 100%;
+    height: 40px;
+    padding: 8px 16px;
+    font-size: 14px;
+    line-height: 20px;
+  }
+  button > span {
+    width: 20px;
+    height: 20px;
+  }
+`;
+const errorBoxStyle = css`
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 8px;
+  background: ${theme.colors.background.criticalWeak};
+  color: ${theme.colors.foreground.neutral};
+  border-left: 3px solid ${theme.colors.stroke.critical};
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 `;

@@ -26,6 +26,7 @@ jest.mock('./adminModerationApi', () => ({
   setAdminModeration: jest.fn(),
 }));
 jest.mock('../../assets/images/loading-animation.webp', () => 'loading.webp');
+jest.mock('../../assets/icons/feed-refresh.svg', () => 'refresh.svg');
 jest.mock('../../assets/icons/toast-success.svg', () => 'success.svg');
 jest.mock('../../assets/icons/toast-error.svg', () => 'error.svg');
 jest.mock('../../assets/icons/toast-loading.svg', () => 'loading.svg');
@@ -290,9 +291,8 @@ describe('관리자 조치 확인', (): void => {
     render(<AdminModerationPanel targetType="USER" targetId="user-1" />, {
       wrapper: ToastProvider,
     });
-    expect(
-      await screen.findByText('처리자 삭제된 관리자 · 버전 1'),
-    ).toBeVisible();
+    expect(await screen.findByText('삭제된 관리자')).toBeVisible();
+    expect(screen.getByText('버전 1')).toBeVisible();
     expect(screen.getByText('반복 위반')).toBeVisible();
     expect(screen.getByRole('button', { name: '사용자 정지' })).toBeEnabled();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();

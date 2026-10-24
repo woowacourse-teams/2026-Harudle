@@ -3,6 +3,7 @@ import {
   useRef,
   useState,
   useEffect,
+  useId,
   type FormEvent,
   type Ref,
 } from 'react';
@@ -28,6 +29,7 @@ interface Props {
   readonly ref: Ref<AdminReasonModalHandle>;
 }
 const AdminReasonModal = ({ ref }: Props) => {
+  const hintId = useId();
   const modalRef = useRef<ModalHandle>(null);
   const submittingRef = useRef(false);
   const mountedRef = useRef(true);
@@ -139,13 +141,15 @@ const AdminReasonModal = ({ ref }: Props) => {
               <textarea
                 value={reason}
                 disabled={pending || conflict}
-                rows={4}
+                rows={3}
+                aria-describedby={hintId}
                 onChange={(event): void => setReason(event.target.value)}
               />
             </label>
-            <p>
-              {COPY.reasonHint} ({Array.from(reason.trim()).length}/500)
-            </p>
+            <div css={hintStyle} id={hintId}>
+              <span>{COPY.reasonHint}</span>
+              <span>{Array.from(reason.trim()).length}/500</span>
+            </div>
           </form>
           {request.status === 'error' && (
             <p css={errorStyle} role="alert">
@@ -169,9 +173,26 @@ const fieldStyle = css`
     border-radius: 12px;
     font: inherit;
     resize: vertical;
+    color: ${theme.colors.foreground.neutral};
+    line-height: 1.5;
+    &:focus-visible {
+      outline: 3px solid ${theme.colors.stroke.focusRing};
+      outline-offset: 2px;
+    }
   }
 `;
+const hintStyle = css`
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: ${theme.colors.foreground.neutralMuted};
+`;
 const errorStyle = css`
-  color: ${theme.colors.foreground.critical};
-  margin-top: 8px;
+  color: ${theme.colors.foreground.neutral};
+  background: ${theme.colors.background.criticalWeak};
+  border-left: 3px solid ${theme.colors.stroke.critical};
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-top: 12px;
 `;
