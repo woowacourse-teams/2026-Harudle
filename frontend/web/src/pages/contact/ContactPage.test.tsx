@@ -46,14 +46,16 @@ beforeEach((): void => {
 });
 
 describe('공개 문의 화면', (): void => {
-  it('주소와 직접 발송 안내를 표시하고 처음 방문해도 홈으로 돌아갈 수 있다', (): void => {
+  it('주소와 회신 안내를 표시하고 처음 방문해도 홈으로 돌아갈 수 있다', (): void => {
     renderContactPage();
 
     expect(
       screen.getByRole('heading', { level: 1, name: '문의하기' }),
     ).toBeInTheDocument();
     expect(screen.getByText(CONTACT_COPY.emailAddress)).toBeInTheDocument();
-    expect(screen.getByText(CONTACT_COPY.mailNotice)).toBeInTheDocument();
+    expect(
+      screen.getByText(/보내주신 메일로 답변드려요\./),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: CONTACT_COPY.backLabel }),
     ).toHaveAttribute('href', '/');
@@ -124,7 +126,11 @@ describe('공개 문의 화면', (): void => {
     );
     await waitFor((): void => {
       expect(mockAddToast).toHaveBeenCalledWith(
-        { type: 'error', message: CONTACT_COPY.copyFailed },
+        {
+          type: 'error',
+          message: CONTACT_COPY.copyFailed,
+          description: CONTACT_COPY.copyFallback,
+        },
         3_000,
       );
     });
@@ -154,7 +160,11 @@ describe('공개 문의 화면', (): void => {
 
     await waitFor((): void => {
       expect(mockAddToast).toHaveBeenCalledWith(
-        { type: 'error', message: CONTACT_COPY.copyUnsupported },
+        {
+          type: 'error',
+          message: CONTACT_COPY.copyFailed,
+          description: CONTACT_COPY.copyFallback,
+        },
         3_000,
       );
     });

@@ -33,7 +33,7 @@ const ContactPage = () => {
 
     try {
       if (typeof navigator.clipboard?.writeText !== 'function') {
-        throw new Error(CONTACT_COPY.copyUnsupported);
+        throw new Error(CONTACT_COPY.copyFailed);
       }
 
       await navigator.clipboard.writeText(CONTACT_COPY.emailAddress);
@@ -50,10 +50,8 @@ const ContactPage = () => {
       addToast(
         {
           type: 'error',
-          message:
-            typeof navigator.clipboard?.writeText === 'function'
-              ? CONTACT_COPY.copyFailed
-              : CONTACT_COPY.copyUnsupported,
+          message: CONTACT_COPY.copyFailed,
+          description: CONTACT_COPY.copyFallback,
         },
         3_000,
       );
@@ -107,7 +105,6 @@ const ContactPage = () => {
             disabled={copyRequest.status === 'loading'}
             onClick={() => void handleCopyEmail()}
           />
-          <p css={mailNoticeStyle}>{CONTACT_COPY.mailNotice}</p>
         </div>
       </main>
     </div>
@@ -197,18 +194,11 @@ const replyNoticeStyle = css`
   font-size: 14px;
   line-height: 22px;
   word-break: keep-all;
+  white-space: pre-line;
 `;
 
 const actionsStyle = css`
   display: flex;
   flex-direction: column;
   gap: 12px;
-`;
-
-const mailNoticeStyle = css`
-  color: ${theme.colors.foreground.neutralMuted};
-  font-size: 13px;
-  line-height: 20px;
-  text-align: center;
-  word-break: keep-all;
 `;
