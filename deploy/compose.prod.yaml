@@ -8,14 +8,14 @@ services:
       - .env
     volumes:
       - type: bind
-        source: /etc/harudle/diary-key-checks.json
-        target: /var/run/harudle/diary-key-checks.json
+        source: /etc/harudle/gcp/gcp-wif.json
+        target: /var/run/harudle/gcp-wif.json
         read_only: true
         bind:
           create_host_path: false
       - type: bind
-        source: /etc/harudle/gcp/gcp-wif.json
-        target: /var/run/harudle/gcp-wif.json
+        source: /etc/harudle/diary-key-checks.json
+        target: /var/run/harudle/diary-key-checks.json
         read_only: true
         bind:
           create_host_path: false
