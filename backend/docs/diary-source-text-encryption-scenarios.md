@@ -40,7 +40,7 @@ reader의 신규 작성 차단이나 접수 한도 등 기존 조건을 통과�
 
 관련 코드: [접수 서비스](../src/main/java/com/harudle/diary/service/DiaryCreationClaimService.java),
 [일기 저장 표현](../src/main/java/com/harudle/diary/domain/Diary.java),
-[저장 형식 준비 V36](../src/main/resources/db/migration/V36__encrypt_diary_source_text.sql).
+[저장 형식 준비 V38](../src/main/resources/db/migration/V38__encrypt_diary_source_text.sql).
 
 ## S02. worker가 저장한 작업을 실행할 때
 
@@ -189,5 +189,5 @@ reader는 신규 일기 접수를 막는 복구용 모드다. 기존 조회·동
 
 상세 명령과 키 등록 순서는 [운영 안내](diary-source-text-encryption.md),
 승인·복구용 원본 보존 조건은 [배포 안내](../../deploy/README.md)를 따른다.
-V36은 저장 형식을 준비하는 단계이며 기존 DB 전체를 암호화하지 않는다.
+V38은 저장 형식을 준비하는 단계이며 기존 DB 전체를 암호화하지 않는다.
 실제 운영 전환·백업 복원·prod 승인·중단 시간 측정의 완료를 이 문서가 증명하지 않는다.

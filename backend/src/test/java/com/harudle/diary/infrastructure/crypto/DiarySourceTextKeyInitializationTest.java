@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -15,6 +17,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Map;
 import java.util.UUID;
@@ -31,6 +34,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -60,7 +64,7 @@ class DiarySourceTextKeyInitializationTest {
 
     @BeforeEach
     void setUp() throws SQLException {
-        resetSchema("36");
+        resetSchema("38");
     }
 
     @AfterEach
@@ -75,7 +79,7 @@ class DiarySourceTextKeyInitializationTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
-    @DisplayName("빈 V36 DB와 v0만 있는 DB는 최초 자료를 만들고 연결 및 기존 행을 보존한다")
+    @DisplayName("빈 V38 DB와 v0만 있는 DB는 최초 자료를 만들고 연결 및 기존 행을 보존한다")
     void initializeOnlyWhenTheKnownSchemaHasNoEncryptedData(boolean legacyExists) throws Exception {
         if (legacyExists) {
             insertDiary("기존 평문 일기", 0, false);
@@ -119,23 +123,61 @@ class DiarySourceTextKeyInitializationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"1", "23", "35"})
-    @DisplayName("실제 Flyway 이력이 있는 V36 이전의 알려진 평문 스키마도 최초 준비할 수 있다")
+    @DisplayName("실제 Flyway 이력이 있는 V38 이전의 알려진 평문 스키마도 최초 준비할 수 있다")
     void acceptKnownPreEncryptionSchemaWithSuccessfulFlywayHistory(String target) throws Exception {
         resetSchema(target);
         execute(connection, "INSERT INTO diaries (id, user_id, diary_date, source_text) VALUES (?, ?, ?, ?)",
-                DIARY_ID, USER_ID, LocalDate.of(2026, 10, 21), "V36 적용 전 평문");
+                DIARY_ID, USER_ID, LocalDate.of(2026, 10, 21), "V38 적용 전 평문");
 
         initialization.initialize(connection, file(), "dev");
 
         verification.verify(file(), "dev");
         assertThat(scalar(connection, "SELECT source_text FROM diaries WHERE id = ?", DIARY_ID))
-                .isEqualTo("V36 적용 전 평문");
+                .isEqualTo("V38 적용 전 평문");
         assertConnectionRetained(connection);
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"36", "999", "unknown"})
-    @DisplayName("평문 모양이어도 V36 이상 또는 알 수 없는 이력이 있으면 초기화를 거절한다")
+    @ValueSource(booleans = {false, true})
+    @DisplayName("배포본의 후속 SQL 이력은 허용하되 마지막 번호를 암호화 적용 이력으로 오인하지 않는다")
+    void distinguishEncryptionFromKnownLaterMigrations(boolean encryptionApplied) throws Throwable {
+        resetSchema(encryptionApplied ? "38" : "35");
+        execute(connection, "INSERT INTO diaries (id, user_id, diary_date, source_text) VALUES (?, ?, ?, ?)",
+                DIARY_ID, USER_ID, LocalDate.of(2026, 10, 21), "후속 마이그레이션과 구분할 평문");
+        int firstLaterVersion = nextFixtureMigrationVersion();
+        insertHistory(firstLaterVersion);
+        insertHistory(firstLaterVersion + 1);
+
+        withAdditionalMigrationResources(() -> {
+            new DiarySourceTextKeyInitialization(verification).initialize(connection, file(), "dev");
+        }, firstLaterVersion, firstLaterVersion + 1);
+
+        verification.verify(file(), "dev");
+        assertThat(scalar(connection, "SELECT source_text FROM diaries WHERE id = ?", DIARY_ID))
+                .isEqualTo("후속 마이그레이션과 구분할 평문");
+        assertConnectionRetained(connection);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    @DisplayName("배포본 SQL 집합에 없는 이력은 알려진 최대 번호보다 작거나 커도 초기화를 거절한다")
+    void rejectUnbundledHistoryBelowOrAboveKnownMaximum(boolean aboveMaximum) throws Throwable {
+        int missingVersion = nextFixtureMigrationVersion();
+        int bundledVersion = missingVersion + 1;
+        insertHistory(aboveMaximum ? bundledVersion + 1 : missingVersion);
+
+        withAdditionalMigrationResources(() -> {
+            var bundled = new DiarySourceTextKeyInitialization(verification);
+            assertCryptoFailure(() -> bundled.initialize(connection, file(), "dev"));
+        }, bundledVersion);
+
+        assertThat(file()).doesNotExist();
+        assertConnectionRetained(connection);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"38", "999", "unknown"})
+    @DisplayName("평문 모양이어도 V38 이상 또는 알 수 없는 이력이 있으면 초기화를 거절한다")
     void rejectPreEncryptionShapeWhoseHistoryCannotProveItsOrigin(String version) throws SQLException {
         resetSchema("23");
         execute(connection, "UPDATE flyway_schema_history SET version = ? WHERE version = '23'", version);
@@ -456,6 +498,40 @@ class DiarySourceTextKeyInitializationTest {
                 INSERT INTO diaries (id, user_id, diary_date, source_text, source_text_version, deleted_at)
                 VALUES (?, ?, ?, ?, ?, CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE NULL END)
                 """, diaryId, USER_ID, LocalDate.of(2026, 10, 21), source, version, deleted);
+    }
+
+    private int nextFixtureMigrationVersion() throws Exception {
+        return Arrays.stream(new PathMatchingResourcePatternResolver()
+                        .getResources("classpath*:db/migration/V*__*.sql"))
+                .map(resource -> resource.getFilename())
+                .mapToInt(filename -> Integer.parseInt(filename.substring(1, filename.indexOf("__"))))
+                .max().orElseThrow() + 1;
+    }
+
+    private void insertHistory(int version) throws SQLException {
+        execute(connection, """
+                INSERT INTO flyway_schema_history
+                    (installed_rank, version, description, type, script, installed_by, execution_time, success)
+                VALUES (?, ?, 'Public initialization fixture', 'SQL', ?, current_user, 0, true)
+                """, version, Integer.toString(version), "V" + version + "__key_initialization_fixture.sql");
+    }
+
+    private void withAdditionalMigrationResources(ThrowingCallable operation, int... versions) throws Throwable {
+        Path root = Files.createTempDirectory(directory, "migration-resources-");
+        Path migrations = Files.createDirectories(root.resolve("db/migration"));
+        for (int version : versions) {
+            Files.writeString(migrations.resolve("V" + version + "__key_initialization_fixture.sql"),
+                    "-- Public initialization fixture; no production migration is added.\n");
+        }
+        ClassLoader original = Thread.currentThread().getContextClassLoader();
+        try (URLClassLoader augmented = new URLClassLoader(new URL[]{root.toUri().toURL()}, original)) {
+            Thread.currentThread().setContextClassLoader(augmented);
+            try {
+                operation.call();
+            } finally {
+                Thread.currentThread().setContextClassLoader(original);
+            }
+        }
     }
 
     private Path file() {
