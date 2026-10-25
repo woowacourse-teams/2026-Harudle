@@ -676,16 +676,17 @@ Cookie: guest_session={guestToken}
   "id": "17ac16ef-c45a-40bb-92ea-aed37659ef1c",
   "status": "SUCCEEDED",
   "diaryId": "6b66acba-0136-4822-8a59-f355dd7c977d",
-  "errorCode": null
+  "errorCode": null,
+  "action": null
 }
 ```
 
-| 상태 | 뜻 | `diaryId` | `errorCode` |
-| --- | --- | --- | --- |
-| `PENDING` | 실행 대기 | `null` | `null` |
-| `PROCESSING` | 이미지 생성 중 | `null` | `null` |
-| `SUCCEEDED` | 생성 완료 | 완성된 일기의 ID | `null` |
-| `FAILED` | 생성 실패 | `null` | 저장된 생성 오류 코드 |
+| 상태 | 뜻 | `diaryId` | `errorCode` | `action` |
+| --- | --- | --- | --- | --- |
+| `PENDING` | 실행 대기 | `null` | `null` | `null` |
+| `PROCESSING` | 이미지 생성 중 | `null` | `null` | `null` |
+| `SUCCEEDED` | 생성 완료 | 완성된 일기의 ID | `null` | `null` |
+| `FAILED` | 생성 실패 | `null` | 저장된 생성 오류 코드 | 사용자에게 표시할 상황 설명과 다음 행동 |
 
 실패 상태의 `errorCode`는 `AI_PROVIDER_ERROR`, `AI_PROVIDER_CONNECTION_ERROR`, `AI_PROVIDER_SERVER_ERROR`,
 `AI_PROVIDER_CONFIGURATION_ERROR`, `AI_PROVIDER_REQUEST_REJECTED`, `AI_PROVIDER_RATE_LIMITED`,
@@ -694,7 +695,7 @@ Cookie: guest_session={guestToken}
 작업이 실패한 것은 상태 조회 API의 오류가 아니므로 `200 OK`와 `FAILED`로 반환합니다.
 
 기본 설정에서 저장한 지 120초 이상 지난 `PENDING` 작업은 대기 만료 대상입니다.
-5초 간격으로 확인하며, 실패 저장이 끝나면 회원과 게스트에게 아래 결과를 반환합니다.
+5초 간격으로 확인하며, 실패 저장이 끝나면 회원과 게스트에게 각 이용 조건에 맞는 `action`을 반환합니다.
 실제 실패 저장 시점은 확인 간격과 DB 처리 시간에 따라 늦어질 수 있습니다.
 대기 만료는 `PROCESSING` 작업에는 적용하지 않습니다.
 
@@ -704,12 +705,27 @@ Cache-Control: no-store
 Content-Type: application/json
 ```
 
+회원의 대기 만료 응답:
+
 ```json
 {
   "id": "17ac16ef-c45a-40bb-92ea-aed37659ef1c",
   "status": "FAILED",
   "diaryId": null,
-  "errorCode": "GENERATION_PENDING_TIMEOUT"
+  "errorCode": "GENERATION_PENDING_TIMEOUT",
+  "action": "대기 시간이 지나 생성을 시작하지 못했어요. 잠시 후 다시 생성해 주세요."
+}
+```
+
+게스트의 대기 만료 응답:
+
+```json
+{
+  "id": "17ac16ef-c45a-40bb-92ea-aed37659ef1c",
+  "status": "FAILED",
+  "diaryId": null,
+  "errorCode": "GENERATION_PENDING_TIMEOUT",
+  "action": "대기 시간이 지나 체험 생성을 시작하지 못했어요. 로그인 후 다시 생성해 주세요."
 }
 ```
 
@@ -724,7 +740,9 @@ Content-Type: application/json
 - 인증이 없으면 회원은 `401 UNAUTHORIZED`, 게스트는 `401 GUEST_SESSION_REQUIRED`입니다.
 - 만료된 게스트 세션은 `401 GUEST_SESSION_EXPIRED`, UUID 형식이 아닌 ID는 `400 VALIDATION_ERROR`입니다.
 - 이 조회는 상태를 바꾸거나 작업을 선점하지 않습니다. 이미지 URL도 발급하지 않습니다.
-- `SUCCEEDED`를 받으면 `diaryId`로 기존 일기 상세 API를 호출합니다. `FAILED`를 받으면 반복 조회를 끝냅니다.
+- `SUCCEEDED`를 받으면 `diaryId`로 기존 일기 상세 API를 호출합니다. `FAILED`를 받으면 반복 조회를 끝내고 `action`을 텍스트로 표시합니다.
+- `action`은 버튼 종류나 이동 경로를 지정하는 값이 아닙니다. 문구를 해석해 동작을 결정하지 않습니다.
+- 프론트가 모르는 `errorCode`여도 유효한 `action` 문자열이 있으면 표시합니다. 문구가 없거나 잘못된 형식이면 기존 일반 안내를 표시합니다.
 
 ## 6. 히스토리 API
 
@@ -931,7 +949,8 @@ Retry-After: 13800
   "detail": "오늘 생성 가능한 횟수를 모두 사용했습니다.",
   "instance": "/api/v1/diaries",
   "code": "DAILY_GENERATION_LIMIT_EXCEEDED",
-  "traceId": "019d71beebed75b19e45f9c51863bcbd"
+  "traceId": "019d71beebed75b19e45f9c51863bcbd",
+  "action": "오늘 만들 수 있는 횟수를 모두 사용했어요. 내일 다시 생성해 주세요."
 }
 ```
 
@@ -948,6 +967,7 @@ Retry-After: 13800
 | `instance` | O | 오류가 발생한 요청 경로 |
 | `code` | O | 클라이언트 분기 처리용 서비스 오류 코드 |
 | `traceId` | O | 로그 및 모니터링 추적 ID |
+| `action` | X | 생성 및 관련 접수와 조회 오류에서 사용자에게 표시할 상황 설명과 다음 행동. 제공하지 않는 오류는 필드 생략 |
 | `errors` | X | 필드 검증 오류 목록 |
 
 검증 오류 예시:
@@ -1014,6 +1034,7 @@ Retry-After: 13800
 | `503` | `GENERATION_UNAVAILABLE` | 생성 어댑터 또는 생성 프롬프트를 사용할 수 없음 |
 | `503` | `GENERATION_CAPACITY_EXCEEDED` | 미완료 생성 작업이 동시 실행 수에 도달해 신규 접수를 거절함 |
 | `503` | `GENERATION_INTERRUPTED` | 서버 중단 등으로 생성 처리가 완료되지 못함 |
+| `503` | `GENERATION_PENDING_TIMEOUT` | 접수된 작업이 대기 제한 시간을 넘겨 실행 전에 만료됨 |
 | `503` | `IMAGE_STORAGE_ERROR` | 생성 이미지 S3 저장 실패 |
 | `504` | `AI_PROVIDER_TIMEOUT` | AI Provider 응답 시간 초과 |
 
@@ -1034,16 +1055,23 @@ Retry-After: 13800
 - 이미지 업로드 후 생성 완료 저장 결과가 불명확하면 DB 상태를 다시 확인하고, 성공 결과가 참조할 가능성이 없는 이미지만
   best-effort로 삭제합니다.
 - 요청을 거절하는 오류 응답은 RFC 9457 Problem Details 형식으로 반환합니다.
-  상태 조회에서 확인한 생성 실패는 `200 OK`와 `FAILED`, 저장된 `errorCode`로 반환합니다.
+  상태 조회에서 확인한 생성 실패는 `200 OK`와 `FAILED`, 저장된 `errorCode`, 안내 문구인 `action`으로 반환합니다.
 - AI 실패는 내부 `errorType`과 `providerFailureType`을 함께 확인해 저장 코드와 응답 코드를 정합니다.
   동일한 멱등성 키로 실패 요청을 다시 보내면 저장된 오류 코드에 맞는 안내 문구를 반환합니다.
 - Gemini 응답은 본문이나 이미지를 읽기 전에 프롬프트 차단 사유와 첫 번째 후보의 종료 사유를 확인합니다.
   명시적인 콘텐츠 제한만 `AI_CONTENT_BLOCKED`로 분류하며, 빈 응답이나 이미지 누락만으로 차단을 판단하지 않습니다.
   생성 차단은 보조 AI 호출 대상으로 처리하지 않습니다.
   출력 토큰 한도 도달은 결과 처리까지 실패한 경우에만 `AI_OUTPUT_TRUNCATED`로 분류합니다.
-- Problem Details 응답에는 원인별 `code`와 미리 정한 한국어 `detail`을 반환합니다.
+- 생성 실패의 Problem Details 응답에는 원인별 `code`, 미리 정한 한국어 `detail`, 사용자 안내 문구인 `action`을 반환합니다.
+  `action`은 사용자에게 필요한 상황과 다음 행동을 설명하며, 서버 설정이나 응답 파싱 같은 기술적인 설명은 제외합니다.
   외부 API 오류 원문과 프롬프트는 노출하지 않습니다.
-  `action` 필드는 추가하지 않습니다. DB의 기존 `error_code` 문자열 컬럼을 사용하며 스키마 변경은 필요하지 않습니다.
+- 같은 실패를 상태 조회와 같은 키의 재요청으로 확인하면 회원 또는 게스트의 이용 조건에 맞는 동일한 `action`을 반환합니다.
+  상태 조회는 `errorCode`, Problem Details는 `code`를 사용합니다. 내부 처리 실패는 각각 `GENERATION_INTERNAL_ERROR`와 `INTERNAL_SERVER_ERROR`로 구분합니다.
+- 접수 후 실패한 게스트 체험은 복구하지 않으며 `action`으로 로그인 후 생성을 안내합니다. 콘텐츠 차단은 내용 수정도 함께 안내합니다.
+  접수 전 `GENERATION_CAPACITY_EXCEEDED` 거절은 회원 생성 횟수와 게스트 체험을 차감하지 않고, 두 경우 모두 “현재 요청이 많아요. 잠시 후 다시 시도해 주세요.”를 안내합니다.
+- `action`은 `GenerationErrorAction`에서 관리하며 DB에 저장하지 않습니다. DB의 기존 `error_code` 문자열 컬럼을 사용하므로 스키마 변경은 필요하지 않습니다.
+
+오류별 실제 안내 문구는 [생성 실패 안내 ADR](adr/gemini-failure-handling/2026-10-26_%EC%83%9D%EC%84%B1%20%EC%8B%A4%ED%8C%A8%20%EC%9B%90%EC%9D%B8%EA%B3%BC%20%EB%8B%A4%EC%9D%8C%20%ED%96%89%EB%8F%99%EC%9D%84%20%EC%82%AC%EC%9A%A9%EC%9E%90%20%EC%9D%91%EB%8B%B5%EC%97%90%20%EC%A0%9C%EA%B3%B5.md)의 표를 따릅니다.
 
 ## 10. 비동기 생성 운영 조건
 
