@@ -63,7 +63,7 @@ class AccountSuspensionFilterIntegrationTest {
     void reset() {
         restrictions.suspended.set(false);
         restrictions.unavailable.set(false);
-        restrictions.reads.set(0);
+        restrictions.requestReads.set(0);
         controller.calls.set(0);
     }
 
@@ -82,7 +82,7 @@ class AccountSuspensionFilterIntegrationTest {
         assertThat(response.headers().firstValue("Cache-Control")).contains("no-store");
         assertThat(response.body()).contains("ACCOUNT_SUSPENDED");
         assertThat(controller.calls.get()).isZero();
-        assertThat(restrictions.reads.get()).isEqualTo(1);
+        assertThat(restrictions.requestReads.get()).isEqualTo(1);
     }
 
     @Test
@@ -94,6 +94,7 @@ class AccountSuspensionFilterIntegrationTest {
         restrictions.suspended.set(false);
         assertThat(get("/api/v1/me", "member").statusCode()).isEqualTo(200);
         assertThat(controller.calls.get()).isEqualTo(2);
+        assertThat(restrictions.requestReads.get()).isEqualTo(3);
     }
 
     @Test
@@ -101,8 +102,9 @@ class AccountSuspensionFilterIntegrationTest {
     void preservesAnonymousPublicReading() throws Exception {
         restrictions.suspended.set(true);
         assertThat(get("/api/v1/feeds", null).statusCode()).isEqualTo(200);
-        assertThat(restrictions.reads.get()).isZero();
+        assertThat(restrictions.requestReads.get()).isZero();
         assertThat(get("/api/v1/feeds", "member").statusCode()).isEqualTo(403);
+        assertThat(restrictions.requestReads.get()).isEqualTo(1);
         assertThat(controller.calls.get()).isEqualTo(1);
     }
 
@@ -112,7 +114,7 @@ class AccountSuspensionFilterIntegrationTest {
     void preservesCleanupEndpoints(String path) throws Exception {
         restrictions.suspended.set(true);
         assertThat(get(path, "member").statusCode()).isEqualTo(200);
-        assertThat(restrictions.reads.get()).isZero();
+        assertThat(restrictions.requestReads.get()).isZero();
         assertThat(controller.calls.get()).isEqualTo(1);
     }
 
@@ -123,6 +125,7 @@ class AccountSuspensionFilterIntegrationTest {
         HttpResponse<String> response = get("/api/v1/me", "member");
         assertThat(response.statusCode()).isEqualTo(500);
         assertThat(response.body()).contains("INTERNAL_SERVER_ERROR").doesNotContain("ACCOUNT_SUSPENDED", "secret");
+        assertThat(restrictions.requestReads.get()).isEqualTo(1);
         assertThat(controller.calls.get()).isZero();
     }
 
@@ -130,7 +133,7 @@ class AccountSuspensionFilterIntegrationTest {
     @DisplayName("잘못된 Bearer는 기존 보안 체인에서 거절하고 제재 저장소를 조회하지 않는다")
     void preservesInvalidBearerRejection() throws Exception {
         assertThat(get("/api/v1/me", "invalid").statusCode()).isEqualTo(401);
-        assertThat(restrictions.reads.get()).isZero();
+        assertThat(restrictions.requestReads.get()).isZero();
         assertThat(controller.calls.get()).isZero();
     }
 
@@ -194,10 +197,16 @@ class AccountSuspensionFilterIntegrationTest {
     static class Restrictions implements AccountRestrictionReader {
         private final AtomicBoolean suspended = new AtomicBoolean();
         private final AtomicBoolean unavailable = new AtomicBoolean();
-        private final AtomicInteger reads = new AtomicInteger();
+        private final AtomicInteger requestReads = new AtomicInteger();
+
         @Override
         public boolean isSuspended(UUID userId) {
-            reads.incrementAndGet();
+            throw new AssertionError("일반 Bearer 요청은 토큰 발급용 잠금 조회를 사용하면 안 됩니다.");
+        }
+
+        @Override
+        public boolean isSuspendedForRequest(UUID userId) {
+            requestReads.incrementAndGet();
             if (unavailable.get()) {
                 throw new DataAccessResourceFailureException("secret database error");
             }

@@ -52,7 +52,7 @@ final class AccountSuspensionFilter extends OncePerRequestFilter {
             return;
         }
         try {
-            accountAccess.requireAllowed(userId.get());
+            accountAccess.requireAllowedForRequest(userId.get());
         } catch (AccountSuspendedException exception) {
             reject(request, response, ErrorType.ACCOUNT_SUSPENDED);
             return;

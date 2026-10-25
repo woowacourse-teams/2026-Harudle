@@ -27,12 +27,22 @@ public class JpaModerationRepository implements ModerationRepository, AccountRes
     }
 
     @Override
+    @Transactional(readOnly = true, isolation = Isolation.READ_COMMITTED)
+    public boolean isSuspendedForRequest(UUID userId) {
+        return hasUserSuspension(userId);
+    }
+
+    @Override
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public boolean isSuspended(UUID userId) {
         // 발급 트랜잭션에서는 제재의 user FOR UPDATE와 반대 순서로 token을 잡지 않도록
         // 사용자의 공유 gate를 먼저 획득하고 발급 커밋까지 유지한다.
         entityManager.createNativeQuery("SELECT id FROM users WHERE id = :id FOR KEY SHARE")
                 .setParameter("id", userId).getResultList();
+        return hasUserSuspension(userId);
+    }
+
+    private boolean hasUserSuspension(UUID userId) {
         return ((Number) entityManager.createNativeQuery("""
                 SELECT count(*) FROM moderation_states
                 WHERE target_type = 'USER' AND target_id = :id AND restricted
