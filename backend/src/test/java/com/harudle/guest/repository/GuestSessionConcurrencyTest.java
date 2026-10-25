@@ -7,6 +7,7 @@ import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.diary.domain.Diary;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.guest.domain.GuestSession;
+import com.harudle.support.ServiceIntegrationTestSupport;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -17,33 +18,21 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest
-class GuestSessionConcurrencyTest {
+class GuestSessionConcurrencyTest extends ServiceIntegrationTestSupport {
 
-    private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:18-alpine");
     private static final String TOKEN_HASH = "a".repeat(64);
     private static final Instant CREATED_AT = Instant.parse("2026-08-19T00:00:00Z");
     private static final Instant USED_AT = Instant.parse("2026-08-20T00:00:00Z");
     private static final Instant EXPIRES_AT = Instant.parse("2026-09-19T00:00:00Z");
     private static final LocalDate DIARY_DATE = LocalDate.of(2026, 8, 20);
-
-    @Container
-    @ServiceConnection
-    private static final PostgreSQLContainer POSTGRESQL_CONTAINER = new PostgreSQLContainer(POSTGRES_IMAGE);
 
     @Autowired
     private GuestSessionRepository guestSessionRepository;
@@ -57,13 +46,20 @@ class GuestSessionConcurrencyTest {
     @Autowired
     private TransactionTemplate transactionTemplate;
 
-    @MockitoBean
-    private JwtDecoder jwtDecoder;
+    private UUID guestUserId;
+
+    @AfterEach
+    void tearDown() {
+        if (guestUserId != null) {
+            userRepository.deleteById(guestUserId);
+        }
+    }
 
     @Test
     @DisplayName("동시에 같은 게스트 세션을 사용하면 하나의 일기만 연결된다")
     void serializesConcurrentGuestSessionUsage() throws Exception {
         User guestUser = userRepository.saveAndFlush(new User(null, "게스트", CREATED_AT));
+        guestUserId = guestUser.getId();
         List<UUID> diaryIds = saveDiaries(guestUser.getId());
         guestSessionRepository.saveAndFlush(GuestSession.create(
                 guestUser.getId(),
@@ -102,6 +98,7 @@ class GuestSessionConcurrencyTest {
             assertThat(savedSession.getUsedAt()).isEqualTo(USED_AT);
         } finally {
             executorService.shutdownNow();
+            assertThat(executorService.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
         }
     }
 

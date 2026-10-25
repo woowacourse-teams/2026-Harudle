@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { type ModalHandle } from '../../shared/Modal';
-import NicknameEditModal from './NicknameEditModal';
+import ProfileEditModal from './ProfileEditModal';
 import profileFallbackImage from '../../assets/images/profile-fallback.svg';
 import { css } from '@emotion/react';
 import BottomNavigationLayout from '../../shared/BottomNavigationLayout';
@@ -34,8 +34,9 @@ const SettingPage = () => {
 export default SettingPage;
 
 const SettingPageContent = () => {
-  const { profileRequest, updateNickname } = useProfile();
-  const nicknameModalRef = useRef<ModalHandle>(null);
+  const { profileRequest, updateProfile, refreshProfile } = useProfile();
+  const profileModalRef = useRef<ModalHandle>(null);
+  const hasRetriedImage = useRef(false);
   const { request, handleLogout } = useLogout();
 
   if (profileRequest.status === 'idle' || profileRequest.status === 'loading') {
@@ -56,18 +57,29 @@ const SettingPageContent = () => {
   return (
     <div css={settingPageContentStyle}>
       <div css={profileStyle}>
-        <img
-          css={profileImageStyle}
-          src={profileImageUrl || profileFallbackImage}
-          alt=""
-          onError={(event) => {
-            if (
-              event.currentTarget.getAttribute('src') !== profileFallbackImage
-            ) {
-              event.currentTarget.src = profileFallbackImage;
-            }
-          }}
-        />
+        <button
+          type="button"
+          css={profileImageButtonStyle}
+          aria-label="프로필 사진 수정"
+          onClick={() => profileModalRef.current?.open()}
+        >
+          <img
+            css={profileImageStyle}
+            src={profileImageUrl || profileFallbackImage}
+            alt=""
+            onError={(event) => {
+              if (
+                event.currentTarget.getAttribute('src') !== profileFallbackImage
+              ) {
+                event.currentTarget.src = profileFallbackImage;
+                if (!hasRetriedImage.current) {
+                  hasRetriedImage.current = true;
+                  void refreshProfile();
+                }
+              }
+            }}
+          />
+        </button>
         <div css={nicknameStyle}>
           <span css={nicknameLabelStyle}>닉네임</span>
           <strong>{currentNickname}</strong>
@@ -75,9 +87,9 @@ const SettingPageContent = () => {
         <button
           type="button"
           css={editNicknameButtonStyle}
-          onClick={() => nicknameModalRef.current?.open()}
+          onClick={() => profileModalRef.current?.open()}
         >
-          수정
+          프로필 수정
         </button>
       </div>
       <div css={settingCardStyle}>
@@ -129,10 +141,13 @@ const SettingPageContent = () => {
         <span>로그아웃</span>
         <img css={logoutIconStyle} src={logoutIcon} alt="" aria-hidden="true" />
       </button>
-      <NicknameEditModal
-        ref={nicknameModalRef}
-        currentNickname={currentNickname}
-        onSaved={updateNickname}
+      <ProfileEditModal
+        ref={profileModalRef}
+        profile={profileRequest.data}
+        onSaved={(profile) => {
+          hasRetriedImage.current = false;
+          updateProfile(profile);
+        }}
       />
       {request.status === 'error' && (
         <div css={logoutErrorStyle}>{request.error.message}</div>
@@ -274,6 +289,21 @@ const profileImageStyle = css`
   border-radius: 50%;
   object-fit: cover;
   background-color: ${theme.colors.stroke.brandWeak};
+`;
+
+const profileImageButtonStyle = css`
+  display: flex;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
 `;
 
 const nicknameStyle = css`

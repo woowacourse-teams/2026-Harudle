@@ -3,11 +3,15 @@ package com.harudle.auth.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.harudle.TestcontainersConfiguration;
 import com.harudle.auth.domain.OAuthAccount;
 import com.harudle.auth.domain.OAuthProvider;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.OAuthAccountRepository;
 import com.harudle.auth.infrastructure.UserRepository;
+import com.harudle.profile.configuration.ProfileConfiguration;
+import com.harudle.profile.service.ProfileImageUrlResolver;
+import java.net.URI;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.UUID;
@@ -17,27 +21,20 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
-@DataJpaTest(showSql = false)
+@DataJpaTest(showSql = false, properties = {
+        "harudle.profile.image-base-url=https://www.harudle.com/profile-images/v1"
+})
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import(CurrentUserService.class)
+@Import({TestcontainersConfiguration.class, CurrentUserService.class, ProfileConfiguration.class, ProfileImageUrlResolver.class})
 class CurrentUserServiceTest {
 
-    private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:18-alpine");
     private static final Instant CREATED_AT = Instant.parse("2026-08-11T10:00:00Z");
     private static final Instant DELETED_AT = Instant.parse("2026-08-12T09:00:00Z");
-
-    @Container
-    @ServiceConnection
-    static final PostgreSQLContainer POSTGRESQL_CONTAINER = new PostgreSQLContainer(POSTGRES_IMAGE);
 
     @Autowired
     private CurrentUserService currentUserService;
@@ -57,7 +54,9 @@ class CurrentUserServiceTest {
     @Test
     @DisplayName("현재 사용자의 프로필과 OAuth 제공자를 조회한다")
     void findsCurrentUser() {
-        User user = saveUser("user@example.com", "하루들");
+        User user = new User("user@example.com", "하루들", CREATED_AT);
+        user.assignInitialPublicProfile("신나는 수달", 3, CREATED_AT);
+        user = userRepository.save(user);
         saveOAuthAccount(user, "12345", "user@example.com");
         flushAndClear();
 
@@ -65,6 +64,8 @@ class CurrentUserServiceTest {
 
         assertThat(result.id()).isEqualTo(user.getId());
         assertThat(result.name()).isEqualTo("하루들");
+        assertThat(result.nickname()).isEqualTo("신나는 수달");
+        assertThat(result.profileImageUrl()).isEqualTo(URI.create("https://www.harudle.com/profile-images/v1/3.png"));
         assertThat(result.email()).isEqualTo("user@example.com");
         assertThat(result.oauthProvider()).isEqualTo(OAuthProvider.KAKAO);
         assertThat(result.createdAt()).isEqualTo(CREATED_AT);

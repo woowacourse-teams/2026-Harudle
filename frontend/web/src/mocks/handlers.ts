@@ -13,7 +13,6 @@ import {
 } from './diaryGeneration';
 import { isCanonicalUuid } from '../pages/landing/guestTrialUuid';
 import { getToday } from '../shared/utils';
-import profileImage from '../assets/images/profile-fallback.svg';
 import diaryImage from '../assets/images/diary-four-panel.webp';
 import { getMockPublishedFeedId, hasMockFeed } from './feedHandlers';
 
@@ -479,6 +478,7 @@ export const resetDiaryGenerationMockState = (): void => {
 
 // 홈 - 월간 일기 조회
 let mockNickname = '하루들';
+let mockProfileImageUrl = '/profile-images/v1/5.png';
 
 // 새로고침 재개 시나리오에서 저장한 생성 요청만 복원한다.
 restoreResumableGeneration();
@@ -609,7 +609,7 @@ export const handlers = [
         id: '08d69a34-6d70-4d42-a158-671bc67733c9',
         name: '하루들',
         nickname: mockNickname,
-        profileImageUrl: profileImage,
+        profileImageUrl: mockProfileImageUrl,
         email: 'harudle.official@gmail.com',
         role: 'ADMIN',
         oauthProviders: ['kakao'],
@@ -621,6 +621,102 @@ export const handlers = [
         },
       },
     );
+  }),
+
+  http.patch('/api/v1/me/profile', async ({ request }) => {
+    const unauthorizedResponse = validateAccessToken(request);
+    if (unauthorizedResponse) return unauthorizedResponse;
+
+    await delay(300);
+    const data = await request.formData();
+    const nickname = data.get('nickname');
+    const imageCode = data.get('imageCode');
+    const image = data.get('image');
+    const problem = (
+      status: number,
+      code: string,
+      detail: string,
+      errors?: ValidationError[],
+    ): Response =>
+      createProblemDetails({
+        status,
+        code,
+        detail,
+        errors,
+        instance: '/api/v1/me/profile',
+      });
+
+    if ((!nickname && !imageCode && !image) || (imageCode && image)) {
+      return problem(
+        400,
+        'VALIDATION_ERROR',
+        '변경할 프로필 정보를 확인해 주세요.',
+      );
+    }
+    if (typeof nickname === 'string') {
+      if (!nickname.trim() || Array.from(nickname).length > 10) {
+        return problem(400, 'VALIDATION_ERROR', '입력값을 확인해 주세요.', [
+          {
+            field: 'nickname',
+            reason: '닉네임은 1자 이상 10자 이하로 입력해 주세요.',
+          },
+        ]);
+      }
+      if (
+        !/^[가-힣ㄱ-ㅎㅏ-ㅣA-Za-z0-9 ]+$/.test(nickname) ||
+        nickname !== nickname.trim() ||
+        nickname.includes('  ')
+      ) {
+        return problem(400, 'VALIDATION_ERROR', '입력값을 확인해 주세요.', [
+          {
+            field: 'nickname',
+            reason: '닉네임의 문자와 공백을 확인해 주세요.',
+          },
+        ]);
+      }
+      if (nickname !== mockNickname && ['네오', '하루들2'].includes(nickname)) {
+        return problem(
+          409,
+          'NICKNAME_ALREADY_IN_USE',
+          '이미 사용 중인 닉네임이에요.',
+        );
+      }
+    }
+    if (imageCode !== null && !/^(10|[1-9])$/.test(String(imageCode))) {
+      return problem(
+        400,
+        'VALIDATION_ERROR',
+        '프로필 이미지 번호를 확인해 주세요.',
+      );
+    }
+    if (image instanceof File) {
+      if (image.size > 5_000_000)
+        return problem(413, 'HTTP_413', '프로필 이미지는 5MB 이하여야 합니다.');
+      if (!['image/jpeg', 'image/png'].includes(image.type))
+        return problem(
+          415,
+          'HTTP_415',
+          '프로필 이미지는 JPEG 또는 PNG만 지원합니다.',
+        );
+      if (!image.size)
+        return problem(
+          400,
+          'VALIDATION_ERROR',
+          '프로필 이미지 파일을 읽을 수 없습니다.',
+        );
+    }
+
+    // 모든 검증을 통과한 뒤 두 값을 함께 반영한다. Mock에서는 이미지 변환을 하지 않는다.
+    if (typeof nickname === 'string') mockNickname = nickname;
+    if (imageCode !== null || image instanceof File) {
+      if (mockProfileImageUrl.startsWith('blob:'))
+        URL.revokeObjectURL(mockProfileImageUrl);
+      mockProfileImageUrl =
+        image instanceof File
+          ? URL.createObjectURL(image)
+          : `/profile-images/v1/${String(imageCode)}.png`;
+    }
+    return new HttpResponse(null, { status: 204 });
   }),
 
   http.patch('/api/v1/me/nickname', async ({ request }) => {

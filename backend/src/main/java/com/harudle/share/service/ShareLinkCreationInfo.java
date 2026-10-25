@@ -1,6 +1,6 @@
 package com.harudle.share.service;
 
-import com.harudle.generation.domain.GenerationStatus;
+import com.harudle.generation.diary.domain.GenerationStatus;
 import java.util.UUID;
 
 public record ShareLinkCreationInfo(

@@ -8,7 +8,7 @@ import static org.mockito.Mockito.when;
 import com.harudle.admin.query.AdminGenerationHistoryPage;
 import com.harudle.admin.repository.AdminGenerationHistoryQueryRepository;
 import com.harudle.admin.service.exception.AdminGenerationHistoryDateRangeException;
-import com.harudle.generation.domain.GenerationStatus;
+import com.harudle.generation.diary.domain.GenerationStatus;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;

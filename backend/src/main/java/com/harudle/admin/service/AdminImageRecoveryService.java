@@ -1,0 +1,140 @@
+package com.harudle.admin.service;
+
+import com.harudle.generation.diary.domain.GenerationStatus;
+import com.harudle.generation.diary.domain.DiaryGeneration;
+import com.harudle.generation.diary.domain.ImageVariantKeys;
+import com.harudle.generation.diary.repository.DiaryGenerationRepository;
+import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
+import com.harudle.generation.diary.service.port.DiaryImageGenerator;
+import com.harudle.generation.diary.service.port.ImageStorage;
+import com.harudle.generation.diary.service.port.dto.DiaryImageGenerationRequest;
+import com.harudle.generation.diary.service.port.dto.GeneratedImage;
+import com.harudle.generation.prompt.repository.GenerationPromptRepository;
+import java.util.Locale;
+import java.util.UUID;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
+
+@Service
+public class AdminImageRecoveryService {
+    private final DiaryGenerationRepository generations;
+    private final GenerationPromptRepository prompts;
+    private final ObjectProvider<DiaryImageGenerator> generators;
+    private final ObjectProvider<ImageStorage> storages;
+    private final RecoveryExecutionGate executionGate;
+
+    public AdminImageRecoveryService(DiaryGenerationRepository generations,
+            GenerationPromptRepository prompts, ObjectProvider<DiaryImageGenerator> generators,
+            ObjectProvider<ImageStorage> storages, RecoveryExecutionGate executionGate) {
+        this.generations = generations;
+        this.prompts = prompts;
+        this.generators = generators;
+        this.storages = storages;
+        this.executionGate = executionGate;
+    }
+
+    public UploadResult upload(String imageObjectKey, byte[] bytes) {
+        return executionGate.execute(() -> uploadImage(imageObjectKey, bytes));
+    }
+
+    private UploadResult uploadImage(String imageObjectKey, byte[] bytes) {
+        if (imageObjectKey == null || imageObjectKey.isBlank()
+                || imageObjectKey.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 1024) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "유효한 S3 이미지 키가 필요합니다.");
+        }
+        ImageStorage storage = storages.getIfAvailable();
+        if (storage == null) {
+            throw GenerationUnavailableException.adaptersNotConfigured();
+        }
+        var image = RecoveryImageUpload.decode(bytes);
+        if (!expectedContentType(imageObjectKey).equals(image.mediaType().toString())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "업로드 이미지 형식이 기존 키 확장자와 다릅니다. 필요한 형식: "
+                            + expectedContentType(imageObjectKey));
+        }
+        boolean restored = storage.restoreIfMissing(imageObjectKey, image);
+        return new UploadResult(imageObjectKey, restored ? "RESTORED" : "ALREADY_EXISTS");
+    }
+
+    public Result restore(UUID generationId) {
+        return executionGate.execute(() -> restoreImage(generationId));
+    }
+
+    private Result restoreImage(UUID generationId) {
+        var generation = generations.findById(generationId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "생성 기록이 없습니다."));
+        String key = generation.getImageObjectKey();
+        if (generation.getStatus() != GenerationStatus.SUCCEEDED || generation.getStoryboard() == null
+                || key == null || key.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "스토리보드와 기존 이미지 키가 있는 성공 기록만 복구할 수 있습니다.");
+        }
+        ImageStorage storage = storages.getIfAvailable();
+        DiaryImageGenerator generator = generators.getIfAvailable();
+        if (storage == null || generator == null) {
+            throw GenerationUnavailableException.adaptersNotConfigured();
+        }
+        if (ImageVariantKeys.isOptimizedDetailKey(key)) {
+            return restoreOptimizedImage(generationId, key, generation, storage, generator);
+        }
+        if (storage.exists(key)) {
+            return new Result(generationId, key, "ALREADY_EXISTS");
+        }
+        String expectedType = expectedContentType(key);
+        var image = generateImage(generation, storage, generator);
+        if (!expectedType.equals(image.mediaType().getType() + "/" + image.mediaType().getSubtype())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "생성 이미지 형식이 기존 키 확장자와 달라 업로드하지 않았습니다. 필요한 형식: " + expectedType);
+        }
+        boolean restored = storage.restoreIfMissing(key, image);
+        return new Result(generationId, key, restored ? "RESTORED" : "ALREADY_EXISTS");
+    }
+
+    private Result restoreOptimizedImage(UUID generationId, String key,
+            DiaryGeneration generation, ImageStorage storage, DiaryImageGenerator generator) {
+        if (storage.exists(key)) {
+            boolean restored = storage.restoreMissingThumbnail(key);
+            return new Result(generationId, key, restored ? "RESTORED" : "ALREADY_EXISTS");
+        }
+        var image = loadOriginalOrGenerateImage(key, generation, storage, generator);
+        boolean restored = storage.restoreOptimizedIfMissing(key, image);
+        return new Result(generationId, key, restored ? "RESTORED" : "ALREADY_EXISTS");
+    }
+
+    private GeneratedImage loadOriginalOrGenerateImage(String detailKey, DiaryGeneration generation,
+            ImageStorage storage, DiaryImageGenerator generator) {
+        for (String originalKey : ImageVariantKeys.originalImageKeyCandidates(detailKey)) {
+            if (storage.exists(originalKey)) {
+                var original = storage.load(originalKey);
+                return new GeneratedImage(original.resource(), original.mediaType());
+            }
+        }
+        if (storage.exists(ImageVariantKeys.toThumbnailKeyIfOptimizedDetail(detailKey))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "썸네일만 남아 있는 이미지는 자동 재생성하지 않습니다. 남은 이미지의 검수가 필요합니다.");
+        }
+        return generateImage(generation, storage, generator);
+    }
+
+    private GeneratedImage generateImage(DiaryGeneration generation, ImageStorage storage,
+            DiaryImageGenerator generator) {
+        var prompt = prompts.findFirstByOrderByIdDesc()
+                .orElseThrow(GenerationUnavailableException::promptNotConfigured);
+        var reference = storage.load(prompt.getImageAssetObjectKey());
+        return generator.generate(new DiaryImageGenerationRequest(
+                generation.getStoryboard(), prompt.getImageStylePromptText(), reference));
+    }
+
+    private static String expectedContentType(String key) {
+        String lower = key.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".png")) return "image/png";
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+        if (lower.endsWith(".webp")) return "image/webp";
+        throw new ResponseStatusException(HttpStatus.CONFLICT, "복구할 이미지 키의 확장자를 지원하지 않습니다.");
+    }
+
+    public record Result(UUID generationId, String imageObjectKey, String status) { }
+
+    public record UploadResult(String imageObjectKey, String status) { }
+}

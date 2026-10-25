@@ -21,8 +21,12 @@ repositories {
 
 dependencies {
     implementation 'com.google.genai:google-genai:1.65.0'
+    implementation 'com.google.auth:google-auth-library-oauth2-http:1.33.0'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation platform('software.amazon.awssdk:bom:2.48.0')
     implementation 'software.amazon.awssdk:s3'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-flyway'
     implementation 'org.springframework.boot:spring-boot-starter-security'
@@ -45,6 +49,31 @@ dependencies {
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
+tasks.register('resolveProductionDependencies') {
+    group = 'build setup'
+    description = 'Downloads the artifacts required to compile and package the production application.'
+
+    def dependencyFiles = files(
+        configurations.named('compileClasspath'),
+        configurations.named('runtimeClasspath'),
+        configurations.named('annotationProcessor')
+    )
+    inputs.files(dependencyFiles)
+
+    doLast {
+        logger.lifecycle("Resolved ${dependencyFiles.files.size()} production dependency artifacts.")
+    }
+}
+
 tasks.named('test') {
     useJUnitPlatform()
+
+    def contextCacheMaxSize = providers.gradleProperty('testContextCacheMaxSize')
+    if (contextCacheMaxSize.present) {
+        def cacheSize = contextCacheMaxSize.get()
+        if (!cacheSize.isInteger() || cacheSize.toInteger() < 1) {
+            throw new GradleException('testContextCacheMaxSize must be a positive integer')
+        }
+        systemProperty 'spring.test.context.cache.maxSize', cacheSize.toInteger()
+    }
 }

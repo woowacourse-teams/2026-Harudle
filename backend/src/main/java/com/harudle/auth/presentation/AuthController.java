@@ -6,6 +6,7 @@ import com.harudle.auth.application.InvalidRefreshTokenException;
 import com.harudle.auth.application.RefreshedTokens;
 import com.harudle.auth.infrastructure.token.RefreshTokenCookieReader;
 import com.harudle.auth.infrastructure.token.RefreshTokenCookieWriter;
+import com.harudle.common.error.ApiErrorResponses;
 import com.harudle.common.error.ErrorType;
 import com.harudle.common.error.ProblemDetailFactory;
 import com.harudle.common.security.LegacyCsrfCookieCleaner;
@@ -85,6 +86,10 @@ public class AuthController {
             summary = "Access Token 재발급",
             description = "Refresh Token 쿠키를 검증하고 Access Token과 회전된 Refresh Token을 발급합니다."
     )
+    @ApiErrorResponses({
+            ErrorType.INVALID_REFRESH_TOKEN,
+            ErrorType.INVALID_CSRF_TOKEN
+    })
     @PostMapping("/refresh")
     public ResponseEntity<RefreshTokenResponse> refresh(
             HttpServletRequest request,
@@ -109,6 +114,7 @@ public class AuthController {
             description = "Refresh Token 쿠키로 현재 세션을 폐기하고 쿠키를 삭제합니다."
     )
     @ApiResponse(responseCode = "204", description = "로그아웃 완료")
+    @ApiErrorResponses(ErrorType.INVALID_CSRF_TOKEN)
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(
             HttpServletRequest request,

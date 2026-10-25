@@ -1,8 +1,8 @@
 package com.harudle.admin.presentation.dto;
 
 import com.harudle.admin.query.AdminUserDetail;
-import com.harudle.generation.domain.GenerationErrorCode;
-import com.harudle.generation.domain.GenerationStatus;
+import com.harudle.generation.diary.domain.GenerationErrorCode;
+import com.harudle.generation.diary.domain.GenerationStatus;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;

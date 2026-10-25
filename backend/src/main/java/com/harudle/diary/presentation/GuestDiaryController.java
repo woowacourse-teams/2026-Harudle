@@ -1,5 +1,7 @@
 package com.harudle.diary.presentation;
 
+import com.harudle.common.error.ApiErrorResponses;
+import com.harudle.common.error.ErrorType;
 import com.harudle.common.validation.IdempotencyKeyParser;
 import com.harudle.diary.service.GuestDiaryCreationService;
 import com.harudle.diary.service.GuestDiaryQueryService;
@@ -59,6 +61,22 @@ class GuestDiaryController {
             @ApiResponse(responseCode = "201", description = "새 게스트 일기 생성 완료"),
             @ApiResponse(responseCode = "200", description = "멱등 재요청의 기존 게스트 일기 반환")
     })
+    @ApiErrorResponses({
+            ErrorType.VALIDATION_ERROR,
+            ErrorType.INVALID_IDEMPOTENCY_KEY,
+            ErrorType.GUEST_SESSION_REQUIRED,
+            ErrorType.GUEST_SESSION_EXPIRED,
+            ErrorType.INVALID_CSRF_TOKEN,
+            ErrorType.DIARY_NOT_FOUND,
+            ErrorType.GUEST_TRIAL_ALREADY_USED,
+            ErrorType.IDEMPOTENCY_KEY_CONFLICT,
+            ErrorType.GENERATION_IN_PROGRESS,
+            ErrorType.AI_PROVIDER_ERROR,
+            ErrorType.GENERATION_UNAVAILABLE,
+            ErrorType.GENERATION_INTERRUPTED,
+            ErrorType.IMAGE_STORAGE_ERROR,
+            ErrorType.AI_PROVIDER_TIMEOUT
+    })
     @PostMapping
     public ResponseEntity<GuestDiaryResponse> create(
             HttpServletRequest servletRequest,
@@ -97,6 +115,13 @@ class GuestDiaryController {
             summary = "게스트 일기 결과 조회",
             description = "현재 게스트 세션에 연결된 일기 생성 결과를 조회합니다."
     )
+    @ApiErrorResponses({
+            ErrorType.VALIDATION_ERROR,
+            ErrorType.GUEST_SESSION_REQUIRED,
+            ErrorType.GUEST_SESSION_EXPIRED,
+            ErrorType.DIARY_NOT_FOUND,
+            ErrorType.IMAGE_STORAGE_ERROR
+    })
     @GetMapping("/{diaryId}")
     public ResponseEntity<GuestDiaryResponse> getDetail(
             HttpServletRequest servletRequest,

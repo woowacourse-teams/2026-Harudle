@@ -6,8 +6,18 @@ files:
     destination: /opt/harudle
   - source: deploy/compose.prod.yaml
     destination: /opt/harudle
+  - source: deploy/monitoring
+    destination: /opt/harudle/monitoring
   - source: build-artifacts
     destination: /opt/harudle/images
+  - source: backend/src/main/resources/db/maintenance/backfill_user_public_profiles.sql
+    destination: /opt/harudle/maintenance
+  - source: deploy/scripts/run_profile_backfill.sh
+    destination: /opt/harudle/maintenance
+  - source: backend/load-test
+    destination: /opt/harudle/load-test
+  - source: backend/src/main/resources/load-test-diary.png
+    destination: /opt/harudle/load-test
 
 hooks:
   BeforeInstall:
