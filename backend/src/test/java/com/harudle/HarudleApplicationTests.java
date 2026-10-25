@@ -77,6 +77,7 @@ class HarudleApplicationTests extends ServiceIntegrationTestSupport {
                 "refresh_tokens",
                 "reports",
                 "share_links",
+                "user_terms_acceptances",
                 "users"
         );
     }
