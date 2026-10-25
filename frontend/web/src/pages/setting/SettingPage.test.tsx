@@ -56,7 +56,6 @@ jest.mock('../../assets/icons/logout.svg', () => 'logout.svg');
 jest.mock('../../assets/icons/autorenew.svg', () => 'autorenew.svg');
 jest.mock('../../assets/icons/article_person.svg', () => 'article.svg');
 jest.mock('../../assets/icons/block.svg', () => 'block.svg');
-jest.mock('../../assets/icons/chevron-right.svg', () => 'chevron-right.svg');
 jest.mock('../../assets/images/profile-fallback.svg', () => 'fallback.svg');
 
 const profile = {
