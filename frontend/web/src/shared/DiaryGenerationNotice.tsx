@@ -24,6 +24,8 @@ const DiaryGenerationNotice = () => {
   useEffect(() => {
     if (!generationId) return;
 
+    let active = true;
+    let settled = false;
     const toastId = addToast(
       {
         type: 'loading',
@@ -42,11 +44,13 @@ const DiaryGenerationNotice = () => {
     localStorage.setItem(DIARY_GENERATION_TOAST_ID_KEY, toastId);
 
     const execute = async (): Promise<void> => {
+      if (!active) return;
       const generationStatus = await getDiaryGenerationStatus({ generationId });
-      if (getGenerationId() !== generationId) return;
+      if (!active || getGenerationId() !== generationId) return;
 
       switch (generationStatus.status) {
         case 'SUCCEEDED': {
+          settled = true;
           const savedToastId = localStorage.getItem(
             DIARY_GENERATION_TOAST_ID_KEY,
           );
@@ -93,6 +97,7 @@ const DiaryGenerationNotice = () => {
           return;
         }
         case 'FAILED': {
+          settled = true;
           const savedToastId = localStorage.getItem(
             DIARY_GENERATION_TOAST_ID_KEY,
           );
@@ -152,7 +157,7 @@ const DiaryGenerationNotice = () => {
 
     const intervalId = setInterval(() => {
       void execute().catch((error: unknown): void => {
-        if (getGenerationId() !== generationId) return;
+        if (!active || getGenerationId() !== generationId) return;
 
         if (
           error instanceof AuthenticationRequiredError ||
@@ -160,6 +165,7 @@ const DiaryGenerationNotice = () => {
             (error.problem.code === 'GENERATION_NOT_FOUND' ||
               error.problem.code === 'INVALID_REFRESH_TOKEN'))
         ) {
+          settled = true;
           const savedToastId = localStorage.getItem(
             DIARY_GENERATION_TOAST_ID_KEY,
           );
@@ -205,7 +211,14 @@ const DiaryGenerationNotice = () => {
     }, 5000);
 
     return () => {
+      active = false;
       clearInterval(intervalId);
+      if (!settled) {
+        deleteToast(toastId);
+        if (localStorage.getItem(DIARY_GENERATION_TOAST_ID_KEY) === toastId) {
+          localStorage.removeItem(DIARY_GENERATION_TOAST_ID_KEY);
+        }
+      }
     };
   }, [generationId, navigate]);
 

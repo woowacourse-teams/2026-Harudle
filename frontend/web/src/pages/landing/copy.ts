@@ -68,7 +68,7 @@ export const LANDING_COPY = {
     copyright: '© 2026 Harudle',
     links: [
       { label: '개인정보처리방침', href: 'https://harudle.notion.site/' },
-      { label: '문의하기', href: 'mailto:harudle.official@gmail.com' },
+      { label: '문의하기', href: '/contact' },
       {
         label: 'Instagram',
         href: 'https://www.instagram.com/harudle.official/',

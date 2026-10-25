@@ -4,11 +4,12 @@ import PublicFeedRoute from './PublicFeedRoute';
 import AlbumPage from './pages/album/AlbumPage/AlbumPage';
 import FeedPage from './pages/feed/FeedPage';
 import FeedDetailPage from './pages/feed-detail/FeedDetailPage';
-import { Route, Routes } from 'react-router';
+import { Route, Routes, useMatch } from 'react-router';
 import DiaryWritePage from './pages/diary-write/DiaryWritePage';
 
 import SettingPage from './pages/setting/SettingPage';
 import LoginPage from './pages/login/LoginPage';
+import ContactPage from './pages/contact/ContactPage';
 import DiaryDetailPage from './pages/diary-detail/DiaryDetailPage';
 import AuthCallbackPage from './pages/login/AuthCallbackPage';
 import LandingRoutes from './pages/landing/LandingRoutes';
@@ -19,10 +20,12 @@ import FeedPostPage from './pages/feed-post/FeedPostPage';
 import DiaryGenerationNotice from './shared/DiaryGenerationNotice';
 
 const App = () => {
+  const isContactPage = useMatch('/contact') !== null;
+
   return (
     <div css={appStyle}>
       <PwaAnalyticsTracker />
-      <DiaryGenerationNotice />
+      {!isContactPage && <DiaryGenerationNotice />}
 
       <Routes>
         <Route element={<EntryRoute />}>
@@ -35,6 +38,7 @@ const App = () => {
           <Route path="/feeds/:feedId" element={<FeedDetailPage />} />
         </Route>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/contact" element={<ContactPage />} />
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
         <Route path="/diary-write" element={<DiaryWritePage />} />
         <Route path="/diary/:diaryId" element={<DiaryDetailPage />} />

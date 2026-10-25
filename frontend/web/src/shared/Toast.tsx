@@ -26,7 +26,11 @@ const Toast = ({ type, message, description, action, onClose }: ToastProps) => {
         <span css={iconImageStyles[type]} />
       </span>
 
-      <div css={contentStyle}>
+      <div
+        css={contentStyle}
+        role={type === 'error' ? 'alert' : 'status'}
+        aria-atomic="true"
+      >
         <p>{message}</p>
         {description && <p css={descriptionStyle}>{description}</p>}
       </div>

@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { Link } from 'react-router';
 import { type ModalHandle } from '../../shared/Modal';
 import ProfileEditModal from './ProfileEditModal';
 import profileFallbackImage from '../../assets/images/profile-fallback.svg';
@@ -24,6 +25,10 @@ const SettingPage = () => {
       <main css={contentStyle}>
         <div css={pageTitleStyle}>설정</div>
         <SettingPageContent />
+        <Link css={contactLinkStyle} to="/contact">
+          <span>문의하기</span>
+          <img css={iconStyle} src={callMadeIcon} alt="" aria-hidden="true" />
+        </Link>
         <p css={versionStyle}>버전 {__APP_VERSION__}</p>
       </main>
     </BottomNavigationLayout>
@@ -180,6 +185,25 @@ const settingPageContentStyle = css`
 
   & > * {
     flex-shrink: 0;
+  }
+`;
+
+const contactLinkStyle = css`
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 56px;
+  padding: 0 16px;
+  border: 1px solid ${theme.colors.stroke.outline};
+  border-radius: 16px;
+  color: ${theme.colors.foreground.neutral};
+  font-size: 15px;
+  line-height: 24px;
+  text-decoration: none;
+
+  &:active {
+    background-color: ${theme.colors.background.neutralSubtle};
   }
 `;
 
