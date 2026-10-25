@@ -582,7 +582,7 @@ class ReportPersistenceTest {
                 SELECT column_name FROM information_schema.columns
                 WHERE table_schema = 'public' AND table_name = 'reports' ORDER BY ordinal_position
                 """, String.class)).containsExactly("id", "reporter_id", "target_type", "target_id", "target_user_id",
-                "reason", "description", "status", "created_at");
+                "reason", "description", "status", "created_at", "reviewed_by", "reviewed_at", "review_reason");
         assertThat(jdbc.queryForObject("""
                 SELECT count(*) FROM flyway_schema_history WHERE version = '30' AND success
                 """, Long.class)).isEqualTo(1);

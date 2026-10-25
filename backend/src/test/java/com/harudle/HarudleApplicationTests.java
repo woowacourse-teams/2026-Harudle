@@ -65,6 +65,8 @@ class HarudleApplicationTests extends ServiceIntegrationTestSupport {
                 "feeds",
                 "generation_prompts",
                 "guest_sessions",
+                "moderation_events",
+                "moderation_states",
                 "nickname_candidates",
                 "notification_outbox",
                 "notifications",
