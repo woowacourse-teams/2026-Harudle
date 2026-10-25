@@ -336,7 +336,7 @@ public enum ErrorType {
     GENERATION_PENDING_TIMEOUT(
             HttpStatus.SERVICE_UNAVAILABLE,
             "Generation pending timeout",
-            "생성 대기 시간이 초과되었습니다. 다시 요청해 주세요."
+            "생성 대기 시간이 초과되었습니다."
     ),
     IMAGE_STORAGE_ERROR(
             HttpStatus.SERVICE_UNAVAILABLE,
@@ -401,7 +401,7 @@ public enum ErrorType {
         return URI.create(PROBLEM_TYPE_URN_PREFIX + slug);
     }
 
-    static ErrorType from(GenerationErrorCode errorCode) {
+    public static ErrorType from(GenerationErrorCode errorCode) {
         return switch (errorCode) {
             case AI_PROVIDER_ERROR -> AI_PROVIDER_ERROR;
             case AI_PROVIDER_CONNECTION_ERROR -> AI_PROVIDER_CONNECTION_ERROR;

@@ -431,21 +431,21 @@ class GlobalExceptionHandlerTest {
 
     @ParameterizedTest
     @CsvSource({
-            "RATE_LIMITED,UNKNOWN,503,AI_PROVIDER_RATE_LIMITED",
-            "TIMEOUT,UNKNOWN,504,AI_PROVIDER_TIMEOUT",
-            "CONTENT_BLOCKED,UNKNOWN,400,AI_CONTENT_BLOCKED",
-            "OUTPUT_TRUNCATED,UNKNOWN,502,AI_OUTPUT_TRUNCATED",
-            "RESPONSE_PROCESSING_ERROR,UNKNOWN,502,AI_RESPONSE_PROCESSING_ERROR",
-            "PROVIDER_ERROR,NETWORK_ERROR,502,AI_PROVIDER_CONNECTION_ERROR",
-            "PROVIDER_ERROR,TRANSIENT_SERVER_ERROR,502,AI_PROVIDER_SERVER_ERROR",
-            "PROVIDER_ERROR,AUTH_CONFIGURATION_ERROR,503,AI_PROVIDER_CONFIGURATION_ERROR",
-            "PROVIDER_ERROR,REQUEST_REJECTED,502,AI_PROVIDER_REQUEST_REJECTED",
-            "PROVIDER_ERROR,CANCELLED,503,GENERATION_INTERRUPTED",
-            "PROVIDER_ERROR,UNKNOWN,502,AI_PROVIDER_ERROR"
+            "RATE_LIMITED,UNKNOWN,503,AI_PROVIDER_RATE_LIMITED,지금은 생성 요청이 제한되고 있어요. 잠시 후 다시 생성해 주세요.",
+            "TIMEOUT,UNKNOWN,504,AI_PROVIDER_TIMEOUT,생성 시간이 초과됐어요. 잠시 후 다시 생성해 주세요.",
+            "CONTENT_BLOCKED,UNKNOWN,400,AI_CONTENT_BLOCKED,작성한 내용으로 생성할 수 없어요. 내용을 바꿔 다시 시도해 주세요.",
+            "OUTPUT_TRUNCATED,UNKNOWN,502,AI_OUTPUT_TRUNCATED,생성 결과를 끝까지 완성하지 못했어요. 잠시 후 다시 생성해 주세요.",
+            "RESPONSE_PROCESSING_ERROR,UNKNOWN,502,AI_RESPONSE_PROCESSING_ERROR,생성을 완료하지 못했어요. 잠시 후 다시 생성해 주세요.",
+            "PROVIDER_ERROR,NETWORK_ERROR,502,AI_PROVIDER_CONNECTION_ERROR,생성 서비스에 연결하지 못했어요. 잠시 후 다시 생성해 주세요.",
+            "PROVIDER_ERROR,TRANSIENT_SERVER_ERROR,502,AI_PROVIDER_SERVER_ERROR,생성 서비스에 문제가 생겼어요. 잠시 후 다시 생성해 주세요.",
+            "PROVIDER_ERROR,AUTH_CONFIGURATION_ERROR,503,AI_PROVIDER_CONFIGURATION_ERROR,현재 생성 기능을 이용하기 어려워요. 나중에 다시 이용해 주세요.",
+            "PROVIDER_ERROR,REQUEST_REJECTED,502,AI_PROVIDER_REQUEST_REJECTED,현재 생성 기능을 이용하기 어려워요. 나중에 다시 이용해 주세요.",
+            "PROVIDER_ERROR,CANCELLED,503,GENERATION_INTERRUPTED,생성이 도중에 중단됐어요. 잠시 후 다시 생성해 주세요.",
+            "PROVIDER_ERROR,UNKNOWN,502,AI_PROVIDER_ERROR,생성을 완료하지 못했어요. 잠시 후 다시 생성해 주세요."
     })
     @DisplayName("AI 실패 원인과 저장된 실패의 응답이 같고 외부 오류 원문을 노출하지 않는다")
     void returnDetailedAiFailure(AiGenerationErrorType errorType, AiProviderFailureType providerFailureType,
-            int expectedStatus, String expectedCode) {
+            int expectedStatus, String expectedCode, String expectedAction) {
         AiGenerationException exception = new AiGenerationException(
                 errorType,
                 "private-provider-message",
@@ -460,7 +460,7 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getStatusCode().value()).isEqualTo(expectedStatus);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().getProperties()).containsEntry("code", expectedCode)
-                .containsEntry("traceId", TRACE_ID).doesNotContainKey("action");
+                .containsEntry("traceId", TRACE_ID).containsEntry("action", expectedAction);
         assertThat(response.getBody().getDetail()).isNotBlank().doesNotContain("private-provider");
         assertThat(storedResponse.getStatusCode()).isEqualTo(response.getStatusCode());
         assertThat(storedResponse.getBody().getProperties()).isEqualTo(response.getBody().getProperties());
@@ -494,7 +494,60 @@ class GlobalExceptionHandlerTest {
 
         assertThat(response.getStatusCode().value()).isEqualTo(503);
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getProperties()).containsEntry("code", "GENERATION_PENDING_TIMEOUT");
+        assertThat(response.getBody().getProperties()).containsEntry("code", "GENERATION_PENDING_TIMEOUT")
+                .containsEntry("action", "대기 시간이 지나 생성을 시작하지 못했어요. 잠시 후 다시 생성해 주세요.");
+    }
+
+    @ParameterizedTest
+    @EnumSource(GenerationErrorCode.class)
+    @DisplayName("게스트의 접수 후 실패는 오류 종류와 관계없이 로그인 문구를 반환한다")
+    void guideGuestToLoginAfterFailedGeneration(GenerationErrorCode errorCode) {
+        var exception = new DiaryGenerationFailedException(errorCode, true);
+
+        var response = exceptionHandler.handleDiaryGenerationFailed(exception, request);
+
+        assertThat(response.getBody()).isNotNull();
+        String expectedAction = switch (errorCode) {
+            case AI_CONTENT_BLOCKED -> "작성한 내용으로 생성할 수 없어요. 내용을 바꾼 뒤 로그인해서 다시 생성해 주세요.";
+            case AI_PROVIDER_TIMEOUT -> "체험 생성 시간이 초과됐어요. 로그인 후 다시 생성해 주세요.";
+            case GENERATION_PENDING_TIMEOUT -> "대기 시간이 지나 체험 생성을 시작하지 못했어요. 로그인 후 다시 생성해 주세요.";
+            default -> "체험 생성에 실패했어요. 로그인 후 다시 생성해 주세요.";
+        };
+        assertThat(response.getBody().getProperties()).containsEntry("action", expectedAction);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "DAILY_GENERATION_LIMIT_EXCEEDED,오늘 만들 수 있는 횟수를 모두 사용했어요. 내일 다시 생성해 주세요.",
+            "GENERATION_IN_PROGRESS,이미 생성 중이에요. 새로 요청하지 말고 현재 생성이 끝날 때까지 기다려 주세요.",
+            "IDEMPOTENCY_KEY_CONFLICT,이전 요청과 내용이 달라요. 기존 요청의 결과를 확인한 뒤 새로 작성해 주세요.",
+            "INVALID_IDEMPOTENCY_KEY,요청 정보를 확인하지 못했어요. 작성한 내용을 보관한 뒤 생성 화면을 다시 열어 주세요.",
+            "GENERATION_UNAVAILABLE,현재 생성 기능을 이용하기 어려워요. 나중에 다시 이용해 주세요.",
+            "GENERATION_NOT_FOUND,생성 기록을 찾을 수 없어요. 이전 화면으로 돌아가 생성 결과를 확인해 주세요.",
+            "GENERATION_FAILED,완성된 그림일기가 없어요. 생성에 성공한 일기를 선택한 뒤 다시 공유해 주세요.",
+            "GUEST_SESSION_REQUIRED,체험 정보를 확인할 수 없어요. 체험 화면에 다시 들어가 주세요.",
+            "GUEST_SESSION_EXPIRED,체험 정보가 만료됐어요. 체험 화면에 다시 들어가 주세요.",
+            "GUEST_TRIAL_ALREADY_USED,무료 체험을 이미 사용했어요. 로그인 후 다시 생성해 주세요.",
+            "IMAGE_STORAGE_ERROR,이미지를 저장하거나 불러오지 못했어요. 잠시 후 다시 시도해 주세요."
+    })
+    @DisplayName("생성 요청과 조회 오류에도 원인에 맞는 행동 안내를 제공한다")
+    void includeActionForGenerationRequestError(ErrorType errorType, String expectedAction) {
+        var factory = new ProblemDetailFactory(new RequestTraceId(() -> TRACE_ID));
+
+        ProblemDetail response = factory.create(errorType, request);
+
+        assertThat(response.getProperties()).containsEntry("action", expectedAction);
+    }
+
+    @Test
+    @DisplayName("접수 용량 초과는 로그인 대신 잠시 후 재시도 문구를 반환한다")
+    void guideCapacityRejectedRequestToRetry() {
+        var response = exceptionHandler.handleGenerationCapacityExceeded(request);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(503);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getProperties()).containsEntry("code", "GENERATION_CAPACITY_EXCEEDED")
+                .containsEntry("action", "현재 요청이 많아요. 잠시 후 다시 시도해 주세요.");
     }
 
     @Test

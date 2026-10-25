@@ -36,6 +36,8 @@ class GuestDiaryGenerationController {
     ResponseEntity<DiaryGenerationStatusResponse> getStatus(HttpServletRequest request, @PathVariable UUID generationId) {
         String rawToken = cookieReader.read(request).orElseThrow(GuestSessionRequiredException::new);
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
-                .body(DiaryGenerationStatusResponse.from(queryService.getGuestStatus(rawToken, generationId)));
+                .body(DiaryGenerationStatusResponse.from(
+                        queryService.getGuestStatus(rawToken, generationId), true
+                ));
     }
 }

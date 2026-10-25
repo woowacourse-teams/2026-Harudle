@@ -117,7 +117,10 @@ class GuestDiaryCreationServiceTest {
 
         assertThatThrownBy(() -> guestDiaryCreationService.create(RAW_TOKEN, command))
                 .isInstanceOfSatisfying(DiaryGenerationFailedException.class,
-                        exception -> assertThat(exception.errorCode()).isEqualTo(GenerationErrorCode.AI_PROVIDER_TIMEOUT));
+                        exception -> {
+                            assertThat(exception.errorCode()).isEqualTo(GenerationErrorCode.AI_PROVIDER_TIMEOUT);
+                            assertThat(exception.guest()).isTrue();
+                        });
     }
 
     @Test
