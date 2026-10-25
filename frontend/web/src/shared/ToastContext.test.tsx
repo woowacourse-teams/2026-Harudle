@@ -187,3 +187,37 @@ describe('토스트 ID 지정과 중복 방지', (): void => {
     expect(screen.getByText('새 알림')).toBeInTheDocument();
   });
 });
+
+describe('토스트 갱신의 상태 안내', (): void => {
+  it('같은 토스트의 진행 상태를 오류로 바꾸면 새 메시지와 설명을 하나의 경고 영역으로 제공한다', (): void => {
+    const { result } = renderHook(useToastContext, { wrapper: ToastProvider });
+
+    act((): void => {
+      result.current.addToast(
+        { type: 'loading', message: '문의를 준비하고 있어요.' },
+        'infinite',
+        'contact',
+      );
+    });
+    expect(screen.getByRole('status')).toHaveTextContent(
+      '문의를 준비하고 있어요.',
+    );
+
+    act((): void => {
+      result.current.updateToast('contact', {
+        type: 'error',
+        message: '문의 내용을 복사하지 못했어요.',
+        description: '다시 시도해 주세요.',
+      });
+    });
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    const announcement = screen.getByRole('alert');
+    expect(announcement).toHaveAttribute('aria-atomic', 'true');
+    expect(announcement).toHaveTextContent('문의 내용을 복사하지 못했어요.');
+    expect(announcement).toHaveTextContent('다시 시도해 주세요.');
+    expect(
+      screen.queryByText('문의를 준비하고 있어요.'),
+    ).not.toBeInTheDocument();
+  });
+});

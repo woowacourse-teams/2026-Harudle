@@ -4,7 +4,7 @@ import PublicFeedRoute from './PublicFeedRoute';
 import AlbumPage from './pages/album/AlbumPage/AlbumPage';
 import FeedPage from './pages/feed/FeedPage';
 import FeedDetailPage from './pages/feed-detail/FeedDetailPage';
-import { Route, Routes } from 'react-router';
+import { Route, Routes, useMatch } from 'react-router';
 import DiaryWritePage from './pages/diary-write/DiaryWritePage';
 
 import SettingPage from './pages/setting/SettingPage';
@@ -20,10 +20,12 @@ import FeedPostPage from './pages/feed-post/FeedPostPage';
 import DiaryGenerationNotice from './shared/DiaryGenerationNotice';
 
 const App = () => {
+  const isContactPage = useMatch('/contact') !== null;
+
   return (
     <div css={appStyle}>
       <PwaAnalyticsTracker />
-      <DiaryGenerationNotice />
+      {!isContactPage && <DiaryGenerationNotice />}
 
       <Routes>
         <Route element={<EntryRoute />}>

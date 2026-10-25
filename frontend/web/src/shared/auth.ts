@@ -23,6 +23,10 @@ export const setAccessToken = (token: string | null): void => {
 type AuthFetchRequestInfo = Parameters<typeof fetch>[0];
 type AuthFetchRequestInit = Parameters<typeof fetch>[1];
 
+// 문의는 로그인 문제의 해결 경로이므로 늦은 인증 실패로 화면을 벗어나지 않는다.
+const isContactPage = (): boolean =>
+  /^\/contact\/*$/i.test(window.location.pathname);
+
 export const publicFetch = async (
   info: AuthFetchRequestInfo,
   init?: AuthFetchRequestInit,
@@ -67,7 +71,7 @@ export const authFetch = async (
 ) => {
   try {
     if (localStorage.getItem('harudle.has-completed-oauth') === null) {
-      window.location.replace('/');
+      if (!isContactPage()) window.location.replace('/');
       throw new AuthenticationRequiredError();
     }
 
@@ -114,7 +118,7 @@ export const authFetch = async (
       error instanceof RequestError &&
       error.problem.code === 'INVALID_REFRESH_TOKEN'
     ) {
-      if (!isHandlingAuthFailure) {
+      if (!isContactPage() && !isHandlingAuthFailure) {
         isHandlingAuthFailure = true;
 
         alert('세션이 만료되었습니다. 다시 로그인 해주세요.');
