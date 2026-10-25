@@ -17,7 +17,7 @@ import java.util.UUID;
 
 /**
  * Uses a dedicated auto-commit connection, leaving healthy connections open for their owner.
- * An uncertain rollback or advisory-lock result aborts the connection instead of returning it for reuse.
+ * An uncertain transaction or advisory-lock result aborts the connection instead of returning it for reuse.
  * CLI operations share an advisory lock; live requests remain protected by generation-then-diary row locks.
  * No plaintext, ciphertext, fingerprints or SQL diagnostics are included in returned failures.
  */
@@ -527,58 +527,70 @@ public final class DiarySourceTextMigration {
         require(!unusable);
         try {
             connection.setAutoCommit(false);
-        } catch (SQLException | RuntimeException exception) {
-            abort();
-            throw new DiarySourceTextMigrationException();
+        } catch (SQLException | RuntimeException | Error exception) {
+            abort(exception);
+            throw exception;
         }
         boolean commitAttempted = false;
+        boolean transactionEnded = false;
+        Throwable failure = null;
         try {
             execute("SET LOCAL lock_timeout = '2s'");
             execute("SET LOCAL statement_timeout = '10s'");
             T result = operation.run();
             commitAttempted = true;
             connection.commit();
+            transactionEnded = true;
             return result;
-        } catch (SQLException | RuntimeException exception) {
+        } catch (SQLException | RuntimeException | Error exception) {
+            failure = exception;
             if (commitAttempted) {
-                abort();
-                throw new DiarySourceTextMigrationException();
+                abort(exception);
+            } else {
+                transactionEnded = rollbackSafely(exception);
             }
-            rollbackSafely();
             throw exception;
         } finally {
-            restoreAutoCommit();
+            // Enabling auto-commit may commit an open transaction; only restore after a confirmed end.
+            if (transactionEnded) {
+                restoreAutoCommit(failure);
+            }
         }
     }
 
-    private void rollbackSafely() throws SQLException {
+    private boolean rollbackSafely(Throwable failure) {
         try {
             connection.rollback();
-        } catch (SQLException | RuntimeException exception) {
-            abort();
-            throw new DiarySourceTextMigrationException();
+            return true;
+        } catch (SQLException | RuntimeException | Error exception) {
+            suppressCleanupFailure(failure);
+            abort(failure);
+            return false;
         }
     }
 
-    private void restoreAutoCommit() throws SQLException {
+    private void restoreAutoCommit(Throwable failure) {
         if (unusable) {
             return;
         }
         try {
             require(!connection.isClosed());
             connection.setAutoCommit(true);
-        } catch (SQLException | RuntimeException exception) {
-            abort();
-            throw new DiarySourceTextMigrationException();
+        } catch (SQLException | RuntimeException | Error exception) {
+            handleCleanupFailure(exception, failure);
         }
     }
 
     private <T> T exclusively(SqlOperation<T> operation) throws SQLException {
         acquireExecutionLock();
+        Throwable failure = null;
         try {
             return operation.run();
+        } catch (SQLException | RuntimeException | Error exception) {
+            failure = exception;
+            throw exception;
         } finally {
-            releaseExecutionLock();
+            releaseExecutionLock(failure);
         }
     }
 
@@ -586,22 +598,35 @@ public final class DiarySourceTextMigration {
         boolean acquired;
         try {
             acquired = advisory("SELECT pg_try_advisory_lock(?)");
-        } catch (SQLException | RuntimeException exception) {
-            abort();
+        } catch (SQLException | RuntimeException | Error exception) {
+            abort(exception);
             throw exception;
         }
         require(acquired);
     }
 
-    private void releaseExecutionLock() throws SQLException {
-        require(!unusable);
+    private void releaseExecutionLock(Throwable failure) {
+        if (unusable) {
+            return;
+        }
         try {
             require(!connection.isClosed());
             require(advisory("SELECT pg_advisory_unlock(?)"));
-        } catch (SQLException | RuntimeException exception) {
-            abort();
-            throw new DiarySourceTextMigrationException();
+        } catch (SQLException | RuntimeException | Error exception) {
+            handleCleanupFailure(exception, failure);
         }
+    }
+
+    private void handleCleanupFailure(Throwable cleanupFailure, Throwable failure) {
+        abort(failure == null ? cleanupFailure : failure);
+        if (failure != null) {
+            suppressCleanupFailure(failure);
+            return;
+        }
+        if (cleanupFailure instanceof Error error) {
+            throw error;
+        }
+        throw new DiarySourceTextMigrationException();
     }
 
     private boolean advisory(String sql) throws SQLException {
@@ -611,16 +636,30 @@ public final class DiarySourceTextMigration {
         }
     }
 
-    private void abort() {
+    private void abort(Throwable failure) {
         unusable = true;
         try {
             connection.abort(Runnable::run);
-        } catch (SQLException | RuntimeException ignored) {
-            try {
-                connection.close();
-            } catch (SQLException | RuntimeException closeFailure) {
-                // An uncertain connection must never be reused by its owner.
-            }
+        } catch (SQLException | RuntimeException | Error exception) {
+            suppressCleanupFailure(failure);
+            closeAfterAbortFailure(failure);
+        }
+    }
+
+    private void closeAfterAbortFailure(Throwable failure) {
+        try {
+            connection.close();
+        } catch (SQLException | RuntimeException | Error exception) {
+            // The instance stays unusable even when the driver cannot confirm physical connection disposal.
+            suppressCleanupFailure(failure);
+        }
+    }
+
+    private static void suppressCleanupFailure(Throwable failure) {
+        try {
+            failure.addSuppressed(new DiarySourceTextMigrationException());
+        } catch (RuntimeException | Error ignored) {
+            // Cleanup diagnostics must not replace the original failure, including under memory pressure.
         }
     }
 

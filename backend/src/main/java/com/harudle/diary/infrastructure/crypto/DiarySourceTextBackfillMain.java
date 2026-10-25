@@ -60,7 +60,7 @@ public final class DiarySourceTextBackfillMain {
                 );
                 return run(options, migration);
             }
-        } catch (RuntimeException | SQLException exception) {
+        } catch (RuntimeException | SQLException | Error exception) {
             return 1;
         }
     }

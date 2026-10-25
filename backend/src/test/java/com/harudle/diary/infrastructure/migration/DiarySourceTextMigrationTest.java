@@ -31,6 +31,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterEach;
@@ -247,6 +248,79 @@ class DiarySourceTextMigrationTest {
         execute("DROP TRIGGER migration_test_fingerprint_failure ON diary_generations");
         assertThat(migration.migrate(10, 1).migrated()).isEqualTo(1);
         assertEncrypted(fixture, cipher);
+    }
+
+    @Test
+    @DisplayName("원문 UPDATE 뒤 HMAC 저장 전 Error가 나면 두 필드를 함께 롤백하고 다음 행은 처리하지 않는다")
+    void rollBackBothFieldsWhenAnErrorInterruptsFingerprintUpdate() throws Exception {
+        Fixture first = insertLegacy("Error 중 원문과 지문 원자성", "SUCCEEDED", false);
+        Fixture second = insertLegacy("중단 후 처리하지 않을 다음 원문", "SUCCEEDED", false);
+        Stored firstBefore = stored(first.diaryId());
+        Stored secondBefore = stored(second.diaryId());
+        AssertionError failure = new AssertionError("injected migration interruption");
+        AtomicBoolean interruptOnce = new AtomicBoolean(true);
+        AtomicInteger diaryUpdates = new AtomicInteger();
+        AtomicInteger rollbacks = new AtomicInteger();
+        List<String> events = new ArrayList<>();
+        Connection original = connection;
+        Connection interruptedConnection = (Connection) Proxy.newProxyInstance(
+                Connection.class.getClassLoader(), new Class<?>[]{Connection.class}, (proxy, method, arguments) -> {
+                    if ("rollback".equals(method.getName())) {
+                        rollbacks.incrementAndGet();
+                        events.add("rollback");
+                    }
+                    if ("setAutoCommit".equals(method.getName()) && Boolean.TRUE.equals(arguments[0])) {
+                        events.add("auto-commit");
+                    }
+                    try {
+                        Object result = method.invoke(original, arguments);
+                        if (!"prepareStatement".equals(method.getName())) {
+                            return result;
+                        }
+                        String sql = (String) arguments[0];
+                        PreparedStatement statement = (PreparedStatement) result;
+                        return Proxy.newProxyInstance(PreparedStatement.class.getClassLoader(),
+                                new Class<?>[]{PreparedStatement.class}, (statementProxy, operation, values) -> {
+                                    if ("executeUpdate".equals(operation.getName())
+                                            && sql.contains("UPDATE public.diary_generations SET request_fingerprint")
+                                            && interruptOnce.compareAndSet(true, false)) {
+                                        events.add("fingerprint-error");
+                                        throw failure;
+                                    }
+                                    try {
+                                        Object updated = operation.invoke(statement, values);
+                                        if ("executeUpdate".equals(operation.getName())
+                                                && sql.contains("UPDATE public.diaries SET source_text")) {
+                                            diaryUpdates.incrementAndGet();
+                                            events.add("diary-updated");
+                                        }
+                                        if ("executeQuery".equals(operation.getName())
+                                                && sql.contains("pg_advisory_unlock")) {
+                                            events.add("unlock");
+                                        }
+                                        return updated;
+                                    } catch (InvocationTargetException exception) {
+                                        throw exception.getCause();
+                                    }
+                                });
+                    } catch (InvocationTargetException exception) {
+                        throw exception.getCause();
+                    }
+                });
+        var interrupted = new DiarySourceTextMigration(interruptedConnection, cipher, fingerprints);
+
+        assertThatThrownBy(() -> interrupted.migrate(10, 1)).isSameAs(failure);
+
+        assertThat(diaryUpdates).hasValue(1);
+        assertThat(rollbacks).hasValue(1);
+        assertThat(events).containsSubsequence(
+                "diary-updated", "fingerprint-error", "rollback", "auto-commit", "unlock");
+        assertThat(stored(first.diaryId())).isEqualTo(firstBefore);
+        assertThat(stored(second.diaryId())).isEqualTo(secondBefore);
+        assertConnectionRetained();
+        assertThat(interrupted.migrate(10, 1).migrated()).isEqualTo(2);
+        assertEncrypted(first, cipher);
+        assertEncrypted(second, cipher);
     }
 
     @Test
