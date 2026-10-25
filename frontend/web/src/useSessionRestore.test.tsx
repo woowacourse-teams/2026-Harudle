@@ -183,3 +183,46 @@ describe('useSessionRestore', () => {
     },
   );
 });
+
+describe('세션 종료의 비공개 생성 상태 정리', (): void => {
+  const expired = (): RequestError =>
+    new RequestError({
+      type: 'about:blank',
+      title: 'Expired',
+      status: 401,
+      detail: '세션 만료',
+      instance: '/api/v1/auth/refresh',
+      code: 'INVALID_REFRESH_TOKEN',
+    });
+  it('확인된 만료는 이전 회원의 생성 ID와 토스트 ID를 지운다', async (): Promise<void> => {
+    localStorage.setItem('harudle.has-ever-logged-in', 'true');
+    localStorage.setItem('harudle:diary-generation-id', 'old-generation');
+    localStorage.setItem('harudle:diary-generation-toast-id', 'old-toast');
+    mockRestoreAccessToken.mockRejectedValueOnce(expired());
+    const { result } = renderHook(() => useSessionRestore());
+    await waitFor(() => expect(result.current.isRestoring).toBe(false));
+    expect(localStorage.getItem('harudle:diary-generation-id')).toBeNull();
+    expect(
+      localStorage.getItem('harudle:diary-generation-toast-id'),
+    ).toBeNull();
+  });
+  it('이미 떠난 복원의 늦은 만료 오류는 새 화면의 생성 기록을 지우지 않는다', async (): Promise<void> => {
+    localStorage.setItem('harudle.has-ever-logged-in', 'true');
+    let reject: ((error: Error) => void) | undefined;
+    mockRestoreAccessToken.mockImplementationOnce(
+      (): Promise<void> =>
+        new Promise((_resolve, fail): void => {
+          reject = fail;
+        }),
+    );
+    const { unmount } = renderHook(() => useSessionRestore());
+    unmount();
+    localStorage.setItem('harudle:diary-generation-id', 'new-generation');
+    await act(async (): Promise<void> => {
+      reject?.(expired());
+    });
+    expect(localStorage.getItem('harudle:diary-generation-id')).toBe(
+      'new-generation',
+    );
+  });
+});

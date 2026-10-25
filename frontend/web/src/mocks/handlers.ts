@@ -1,6 +1,12 @@
 import { delay, http, HttpResponse } from 'msw';
 import { isLandingPath } from '../pages/landing/landingPaths';
 import { MOCK_SCENARIO_HEADER, MOCK_SCENARIOS } from './mockScenarios';
+import { legalHandlers } from './legalHandlers';
+import {
+  isMockSessionLoggedOut,
+  markMockSessionLoggedOut,
+  resetMockSession,
+} from './mockAuthSession';
 import {
   createMockGenerationJob,
   getMockGeneration,
@@ -484,6 +490,7 @@ restoreResumableGeneration();
 
 export const handlers = [
   http.get('/oauth2/authorization/kakao', async ({ request }) => {
+    resetMockSession();
     await delay(300);
 
     if (
@@ -513,10 +520,12 @@ export const handlers = [
 
   http.post('/api/v1/auth/refresh', async ({ request }) => {
     await delay(300);
+    if (globalThis.location.pathname === '/auth/callback') resetMockSession();
 
     if (
       request.headers.get(MOCK_SCENARIO_HEADER) ===
-      MOCK_SCENARIOS.authRefreshFailure
+        MOCK_SCENARIOS.authRefreshFailure ||
+      isMockSessionLoggedOut()
     ) {
       return createProblemDetails({
         status: 401,
@@ -554,11 +563,13 @@ export const handlers = [
   }),
 
   http.post('/api/v1/auth/logout', async ({ request }) => {
-    const unauthorizedResponse = validateAccessToken(request);
-
-    if (unauthorizedResponse) {
-      return unauthorizedResponse;
-    }
+    if (request.headers.get('X-XSRF-TOKEN') !== MOCK_CSRF_TOKEN)
+      return createProblemDetails({
+        status: 403,
+        code: 'INVALID_CSRF_TOKEN',
+        detail: 'CSRF Token이 올바르지 않아요.',
+        instance: '/api/v1/auth/logout',
+      });
 
     await delay(300);
 
@@ -573,6 +584,7 @@ export const handlers = [
       });
     }
 
+    markMockSessionLoggedOut();
     return new HttpResponse(null, {
       status: 204,
       headers: {
@@ -1193,4 +1205,5 @@ export const handlers = [
       );
     },
   ),
+  ...legalHandlers,
 ];

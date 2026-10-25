@@ -3,14 +3,17 @@ import harudleLogo from '../../assets/images/harudle-logo.webp';
 import loginHero from '../../assets/images/login-shared-comic.png';
 import kakaoIcon from '../../assets/icons/kakao.svg';
 import { theme } from '../../styles/theme';
-import { useNavigate } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { isMswEnabled } from '../../shared/environment';
 import { LOGIN_COPY } from './copy';
+import { rememberLoginReturnPath } from '../consent/returnPath';
 
 const LoginPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const handleKakaoLogin = () => {
+  const handleKakaoLogin = (): void => {
+    rememberLoginReturnPath(location.state);
     if (isMswEnabled) {
       navigate('/auth/callback');
       return;
@@ -49,9 +52,9 @@ const LoginPage = () => {
         </button>
 
         <p css={noticeStyle}>
-          로그인하면 이용약관 및{' '}
-          <a href="https://harudle.notion.site/">개인정보처리방침</a>에 동의한
-          것으로 간주됩니다.
+          <Link to="/legal/terms">{LOGIN_COPY.terms}</Link>
+          <span aria-hidden="true"> · </span>
+          <Link to="/legal/privacy">{LOGIN_COPY.privacy}</Link>
         </p>
       </div>
     </div>

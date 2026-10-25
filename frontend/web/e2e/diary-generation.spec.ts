@@ -552,10 +552,8 @@ test.describe('일기 생성', (): void => {
     await expect(getToasts(page)).toContainText(LOADING_MESSAGE);
     expect(await readGenerationState(page)).toEqual(nextState);
 
-    await advanceToPoll(page, 5_000);
-    await expect(getToasts(page)).toContainText(LOADING_MESSAGE);
-    expect(await readGenerationState(page)).toEqual(nextState);
-    await advanceToPoll(page, 5_000);
+    // 준비 과정의 실제 경과 시간과 관계없이 완료 시점 이후를 확인한다.
+    await advanceToPoll(page, 10_000);
     await expect(getToasts(page)).toContainText(SUCCESS_MESSAGE);
     await expectGenerationCleared(page);
     expect((await readGenerationState(page)).draft).toBeNull();
@@ -633,11 +631,7 @@ test.describe('일기 생성', (): void => {
     await expect(page).toHaveURL('/');
     await expect(page.getByRole('combobox')).toBeVisible();
 
-    // 로그아웃 후 첫 폴링은 인증 오류로 정리되고 공개 피드를 다시 불러온다.
-    const redirected = page.waitForEvent('load');
-    await page.clock.fastForward(5_000);
-    await redirected;
-    await expect(page.getByRole('combobox')).toBeVisible();
+    // 서버 로그아웃 성공 때 바로 정리하며, 익명 화면에서 private polling을 재개하지 않는다.
     await expectGenerationCleared(page);
     await expect(page.getByText(LOADING_MESSAGE)).toHaveCount(0);
 

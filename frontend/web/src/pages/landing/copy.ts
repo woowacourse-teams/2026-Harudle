@@ -67,7 +67,8 @@ export const LANDING_COPY = {
     tagline: '우리끼리 통하는 네컷만화',
     copyright: '© 2026 Harudle',
     links: [
-      { label: '개인정보처리방침', href: 'https://harudle.notion.site/' },
+      { label: '이용약관', href: '/legal/terms' },
+      { label: '개인정보처리방침', href: '/legal/privacy' },
       { label: '문의하기', href: 'mailto:harudle.official@gmail.com' },
       {
         label: 'Instagram',

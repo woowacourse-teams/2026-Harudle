@@ -16,32 +16,56 @@ import AdminGuard from './pages/admin/AdminGuard';
 import NotFoundPage from './pages/not-found/NotFoundPage';
 import PwaAnalyticsTracker from './pages/setting/PwaAnalyticsTracker';
 import FeedPostPage from './pages/feed-post/FeedPostPage';
-import DiaryGenerationNotice from './shared/DiaryGenerationNotice';
+import LegalDocumentPage from './pages/legal/LegalDocumentPage';
+import AgreementRoute from './AgreementRoute';
+import ConsentPage from './pages/consent/ConsentPage';
 
 const App = () => {
   return (
     <div css={appStyle}>
       <PwaAnalyticsTracker />
-      <DiaryGenerationNotice />
 
       <Routes>
-        <Route element={<EntryRoute />}>
-          <Route element={<PublicFeedRoute />}>
-            <Route path="/" element={<FeedPage />} />
+        <Route element={<PublicFeedRoute />}>
+          <Route element={<AgreementRoute />}>
+            <Route element={<EntryRoute />}>
+              <Route path="/" element={<FeedPage />} />
+            </Route>
           </Route>
         </Route>
-        <Route path="/album" element={<AlbumPage />} />
         <Route element={<PublicFeedRoute />}>
-          <Route path="/feeds/:feedId" element={<FeedDetailPage />} />
+          <Route element={<AgreementRoute />}>
+            <Route path="/feeds/:feedId" element={<FeedDetailPage />} />
+          </Route>
         </Route>
+        <Route element={<AgreementRoute />}>
+          <Route path="/album" element={<AlbumPage />} />
+          <Route path="/diary-write" element={<DiaryWritePage />} />
+          <Route path="/diary/:diaryId" element={<DiaryDetailPage />} />
+          <Route path="/diary/:diaryId/feed-post" element={<FeedPostPage />} />
+          <Route path="/setting" element={<SettingPage />} />
+          <Route path="/admin/*" element={<AdminGuard />} />
+        </Route>
+        <Route
+          path="/legal/terms"
+          element={<LegalDocumentPage type="TERMS" />}
+        />
+        <Route
+          path="/legal/terms/:version"
+          element={<LegalDocumentPage type="TERMS" />}
+        />
+        <Route
+          path="/legal/privacy"
+          element={<LegalDocumentPage type="PRIVACY" />}
+        />
+        <Route
+          path="/legal/privacy/:version"
+          element={<LegalDocumentPage type="PRIVACY" />}
+        />
+        <Route path="/consent" element={<ConsentPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
-        <Route path="/diary-write" element={<DiaryWritePage />} />
-        <Route path="/diary/:diaryId" element={<DiaryDetailPage />} />
-        <Route path="/diary/:diaryId/feed-post" element={<FeedPostPage />} />
-        <Route path="/setting" element={<SettingPage />} />
         <Route path="/landing/*" element={<LandingRoutes />} />
-        <Route path="/admin/*" element={<AdminGuard />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </div>

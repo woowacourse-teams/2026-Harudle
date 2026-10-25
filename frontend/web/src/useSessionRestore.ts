@@ -3,6 +3,7 @@ import { RequestError } from './shared/api';
 import { restoreAccessToken } from './shared/auth';
 import { useErrorTracking } from './posthog/useErrorTracking';
 import { useAnalytics } from './posthog/useAnalytics';
+import { clearGenerationForEndedSession } from './domain/diary/diaryGenerationStore';
 
 interface SessionRestoreState {
   readonly isRestoring: boolean;
@@ -42,6 +43,7 @@ const useSessionRestore = (): SessionRestoreState => {
           error instanceof RequestError &&
           error.problem.code === 'INVALID_REFRESH_TOKEN'
         ) {
+          if (isActive) clearGenerationForEndedSession();
           return;
         }
         if (error instanceof Error) {

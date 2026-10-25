@@ -133,6 +133,10 @@ test.describe('설정', () => {
     const otherPage = await context.newPage();
     await goToSetting(otherPage);
     await expectProfile(otherPage);
+    await otherPage
+      .getByRole('button', { name: '프로필 수정', exact: true })
+      .click();
+    await otherPage.getByLabel('닉네임').fill('새닉네임');
 
     await context.setExtraHTTPHeaders({
       [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.authRefreshFailure,
@@ -141,17 +145,17 @@ test.describe('설정', () => {
     await expect(page).toHaveURL('/');
     await expect(page.getByRole('combobox')).toBeVisible();
 
-    const logoutRequests: string[] = [];
+    const memberRequests: string[] = [];
     otherPage.on('request', (request) => {
-      if (request.url().endsWith('/api/v1/auth/logout')) {
-        logoutRequests.push(request.url());
+      if (new URL(request.url()).pathname === '/api/v1/me/profile') {
+        memberRequests.push(request.url());
       }
     });
-    await otherPage.getByRole('button', { name: '로그아웃' }).click();
+    await otherPage.getByRole('button', { name: '저장', exact: true }).click();
 
     await expect(otherPage).toHaveURL('/');
     await expect(otherPage.getByRole('combobox')).toBeVisible();
-    expect(logoutRequests).toEqual([]);
+    expect(memberRequests).toEqual([]);
     await otherPage.close();
   });
 

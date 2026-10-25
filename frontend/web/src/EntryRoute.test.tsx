@@ -11,6 +11,7 @@ jest.mock('react-router', () => ({
 afterEach(() => {
   jest.restoreAllMocks();
   localStorage.removeItem(HAS_SEEN_LANDING_KEY);
+  localStorage.removeItem('harudle.has-completed-oauth');
 });
 
 describe('랜딩 방문 여부에 따른 진입', () => {
@@ -23,6 +24,14 @@ describe('랜딩 방문 여부에 따른 진입', () => {
 
   it('랜딩을 본 적이 있으면 피드를 표시한다', () => {
     localStorage.setItem(HAS_SEEN_LANDING_KEY, 'true');
+    render(<EntryRoute />);
+    expect(screen.getByText('피드')).toBeInTheDocument();
+    expect(screen.queryByText(/이동:/)).not.toBeInTheDocument();
+  });
+
+  it('로그인 완료 후에는 랜딩 방문 기록이 없어도 피드에 진입한다', (): void => {
+    localStorage.removeItem(HAS_SEEN_LANDING_KEY);
+    localStorage.setItem('harudle.has-completed-oauth', 'true');
     render(<EntryRoute />);
     expect(screen.getByText('피드')).toBeInTheDocument();
     expect(screen.queryByText(/이동:/)).not.toBeInTheDocument();

@@ -3,6 +3,7 @@ import type { JSX } from 'react';
 import kakaoIcon from '../../assets/icons/kakao.svg';
 import { theme } from '../../styles/theme';
 import { useAnalytics } from '../../posthog/useAnalytics';
+import { rememberLoginReturnPath } from '../consent/returnPath';
 
 const KAKAO_OAUTH_PATH = '/oauth2/authorization/kakao';
 
@@ -24,6 +25,7 @@ const LandingLoginCta = (props: LandingLoginCtaProps): JSX.Element => {
   const { track } = useAnalytics();
 
   const handleClick = (): void => {
+    rememberLoginReturnPath({ returnTo: '/' });
     if (props.analyticsEvent === 'landing_direct_login_clicked') {
       track('landing_direct_login_clicked', { location: props.location });
       return;
