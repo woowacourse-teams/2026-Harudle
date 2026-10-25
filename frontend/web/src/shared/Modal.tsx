@@ -1,7 +1,6 @@
 import {
   useImperativeHandle,
   useRef,
-  useId,
   type MouseEvent,
   type SyntheticEvent,
   type ReactNode,
@@ -19,7 +18,6 @@ export interface ModalHandle {
 
 interface ModalProps {
   title: string;
-  readonly className?: string;
   children: ReactNode;
   footer?: ReactNode;
   dismissible?: boolean;
@@ -28,13 +26,11 @@ interface ModalProps {
 
 const Modal = ({
   title,
-  className,
   children,
   footer,
   ref,
   dismissible = true,
 }: ModalProps): ReactPortal => {
-  const titleId = useId();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const closedProgrammatically = useRef(false);
 
@@ -73,8 +69,6 @@ const Modal = ({
   return createPortal(
     <dialog
       ref={dialogRef}
-      className={className}
-      aria-labelledby={titleId}
       css={dialogStyle}
       onClick={handleBackdropClick}
       onCancel={handleCancel}
@@ -84,9 +78,7 @@ const Modal = ({
       }}
     >
       <div css={panelStyle}>
-        <h2 id={titleId} css={titleStyle}>
-          {title}
-        </h2>
+        <h2 css={titleStyle}>{title}</h2>
         <div css={contentStyle}>{children}</div>
         {footer && <footer css={footerStyle}>{footer}</footer>}
       </div>

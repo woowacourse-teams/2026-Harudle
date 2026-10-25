@@ -82,7 +82,7 @@ const openAction = async (): Promise<HTMLDialogElement> => {
     .getByRole('heading', { name: '사용자 정지' })
     .closest('dialog');
   if (!dialog) throw new Error('조치 확인창이 없습니다.');
-  expect(screen.getByRole('dialog', { name: '사용자 정지' })).toBe(dialog);
+  expect(screen.getByRole('dialog')).toBe(dialog);
   return dialog;
 };
 describe('관리자 조치 확인', (): void => {

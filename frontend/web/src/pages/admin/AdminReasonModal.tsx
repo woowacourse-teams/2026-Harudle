@@ -99,7 +99,6 @@ const AdminReasonModal = ({ ref }: Props) => {
   return (
     <Modal
       ref={modalRef}
-      css={adminModalStyle}
       title={action?.title ?? COPY.confirm}
       dismissible={!pending}
       footer={
@@ -163,13 +162,6 @@ const AdminReasonModal = ({ ref }: Props) => {
   );
 };
 export default AdminReasonModal;
-const adminModalStyle = css`
-  font-family: 'Avenir Next', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
-  button,
-  textarea {
-    font-family: inherit;
-  }
-`;
 const fieldStyle = css`
   display: grid;
   gap: 8px;
