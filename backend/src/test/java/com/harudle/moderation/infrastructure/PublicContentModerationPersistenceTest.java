@@ -82,7 +82,7 @@ class PublicContentModerationPersistenceTest extends AdminModerationDatabaseTest
 
         assertThat(feedLists.findAfter(FeedSort.LATEST, category, null, 1, null))
                 .extracting(item -> item.id()).containsExactly(older);
-        assertThat(feeds.findActiveSnapshotById(feed)).isEmpty();
+        assertThat(feeds.findActiveSnapshotById(feed, null)).isEmpty();
         assertThat(feeds.findVisibleSnapshotById(feed, actor)).isEmpty();
         assertThatThrownBy(() -> feedDetails.getDetail(null, feed)).isInstanceOf(FeedNotFoundException.class);
         assertThatThrownBy(() -> feedDetails.getDetail(actor, feed)).isInstanceOf(FeedNotFoundException.class);
@@ -90,7 +90,7 @@ class PublicContentModerationPersistenceTest extends AdminModerationDatabaseTest
         restrict("FEED", feed, false);
         assertThat(feedLists.findAfter(FeedSort.LATEST, category, null, 1, null))
                 .extracting(item -> item.id()).containsExactly(feed);
-        assertThat(feeds.findActiveSnapshotById(feed)).isPresent();
+        assertThat(feeds.findActiveSnapshotById(feed, null)).isPresent();
     }
 
     @Test
@@ -99,17 +99,17 @@ class PublicContentModerationPersistenceTest extends AdminModerationDatabaseTest
         UUID next = comment(feed, actor, PUBLISHED.plusSeconds(1));
         restrict("COMMENT", comment, true);
 
-        assertThat(comments.findAfter(feed, Optional.empty(), 1))
+        assertThat(comments.findAfter(feed, Optional.empty(), 1, null))
                 .extracting(item -> item.id()).containsExactly(next);
         assertThat(comments.existsVisibleFeed(feed, null)).isTrue();
         restrict("COMMENT", comment, false);
-        assertThat(comments.findAfter(feed, Optional.empty(), 1))
+        assertThat(comments.findAfter(feed, Optional.empty(), 1, null))
                 .extracting(item -> item.id()).containsExactly(comment);
 
         restrict("FEED", feed, true);
         assertThat(comments.existsVisibleFeed(feed, null)).isFalse();
         assertThat(comments.existsVisibleFeed(feed, actor)).isFalse();
-        assertThat(comments.findAfter(feed, Optional.empty(), 50)).isEmpty();
+        assertThat(comments.findAfter(feed, Optional.empty(), 50, null)).isEmpty();
     }
 
     @ParameterizedTest
@@ -149,7 +149,7 @@ class PublicContentModerationPersistenceTest extends AdminModerationDatabaseTest
         assertThat(number("SELECT comment_count FROM feeds WHERE id = ?", feed)).isZero();
         restrict("COMMENT", comment, false);
         restrict("FEED", feed, false);
-        assertThat(comments.findAfter(feed, Optional.empty(), 50)).isEmpty();
+        assertThat(comments.findAfter(feed, Optional.empty(), 50, null)).isEmpty();
         assertThat(diaries.findActiveSnapshotById(diary)).isPresent();
     }
 
@@ -158,15 +158,15 @@ class PublicContentModerationPersistenceTest extends AdminModerationDatabaseTest
     void retainShareRestrictionAfterFeedDeletionWithoutHidingPrivateDiary() {
         UUID share = UUID.randomUUID();
         jdbc.update("INSERT INTO share_links (id, generation_id) VALUES (?, ?)", share, generation);
-        assertThat(shares.findPublicSnapshotById(share)).isPresent();
+        assertThat(shares.findPublicSnapshotById(share, null)).isPresent();
         restrict("FEED", feed, true);
         jdbc.update("UPDATE feeds SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", feed);
 
-        assertThat(shares.findPublicSnapshotById(share)).isEmpty();
+        assertThat(shares.findPublicSnapshotById(share, null)).isEmpty();
         assertThat(diaries.findActiveSnapshotById(diary)).isPresent();
         restrict("FEED", feed, false);
-        assertThat(shares.findPublicSnapshotById(share)).isPresent();
-        assertThat(feeds.findActiveSnapshotById(feed)).isEmpty();
+        assertThat(shares.findPublicSnapshotById(share, null)).isPresent();
+        assertThat(feeds.findActiveSnapshotById(feed, null)).isEmpty();
     }
 
     @Test
@@ -181,11 +181,11 @@ class PublicContentModerationPersistenceTest extends AdminModerationDatabaseTest
                 replacement, diary, category, Timestamp.from(PUBLISHED.plusSeconds(1)));
         UUID replacementComment = comment(replacement, actor, PUBLISHED.plusSeconds(1));
 
-        assertThat(feeds.findActiveSnapshotById(replacement)).isEmpty();
+        assertThat(feeds.findActiveSnapshotById(replacement, null)).isEmpty();
         assertThat(feedLists.findAfter(FeedSort.LATEST, category, null, 50, null))
                 .noneMatch(item -> item.id().equals(replacement));
         assertThat(comments.existsVisibleFeed(replacement, null)).isFalse();
-        assertThat(comments.findAfter(replacement, Optional.empty(), 50)).isEmpty();
+        assertThat(comments.findAfter(replacement, Optional.empty(), 50, null)).isEmpty();
         assertThat(reportTargets.findVisibleTargetAuthorId(actor, ReportTargetType.FEED, replacement)).isEmpty();
         assertThat(reportTargets.findVisibleTargetAuthorId(actor, ReportTargetType.COMMENT, replacementComment))
                 .isEmpty();

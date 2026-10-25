@@ -23,6 +23,10 @@ import com.harudle.auth.domain.exception.PublicProfileNotAssignedException;
 import com.harudle.auth.application.ProfileImageStorageException;
 import com.harudle.auth.application.ProfileImageCapacityExceededException;
 import com.harudle.auth.presentation.AuthenticationRequiredException;
+import com.harudle.block.domain.InvalidBlockException;
+import com.harudle.block.service.exception.BlockTargetNotFoundException;
+import com.harudle.block.service.exception.BlockUnavailableException;
+import com.harudle.block.service.exception.InvalidBlockCursorException;
 import com.harudle.comment.service.exception.CommentAccessDeniedException;
 import com.harudle.comment.service.exception.CommentIntegrationUnavailableException;
 import com.harudle.comment.service.exception.CommentNotFoundException;
@@ -63,6 +67,7 @@ import com.harudle.notification.service.exception.NotificationIntegrationUnavail
 import com.harudle.notification.service.exception.NotificationNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.Objects;
 import org.jspecify.annotations.NullMarked;
@@ -334,6 +339,26 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return createResponse(ErrorType.REPORT_TARGET_NOT_FOUND, request);
     }
 
+    @ExceptionHandler(InvalidBlockException.class)
+    ResponseEntity<ProblemDetail> handleInvalidBlock(HttpServletRequest request) {
+        return createResponse(ErrorType.INVALID_BLOCK, request);
+    }
+
+    @ExceptionHandler(BlockTargetNotFoundException.class)
+    ResponseEntity<ProblemDetail> handleBlockTargetNotFound(HttpServletRequest request) {
+        return createResponse(ErrorType.BLOCK_TARGET_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(BlockUnavailableException.class)
+    ResponseEntity<ProblemDetail> handleBlockUnavailable(HttpServletRequest request) {
+        return createResponse(ErrorType.BLOCK_UNAVAILABLE, request);
+    }
+
+    @ExceptionHandler(InvalidBlockCursorException.class)
+    ResponseEntity<ProblemDetail> handleInvalidBlockCursor(HttpServletRequest request) {
+        return createResponse(ErrorType.INVALID_CURSOR, request);
+    }
+
     @ExceptionHandler(CommentNotFoundException.class)
     ResponseEntity<ProblemDetail> handleCommentNotFound(HttpServletRequest request) {
         return createResponse(ErrorType.COMMENT_NOT_FOUND, request);
@@ -524,8 +549,21 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             RuntimeException exception,
             HttpServletRequest request
     ) {
+        if (isLockTimeout(exception)) {
+            apiExceptionLogger.error(ErrorType.DATABASE_LOCK_TIMEOUT, exception, request);
+            return createResponse(ErrorType.DATABASE_LOCK_TIMEOUT, request);
+        }
         apiExceptionLogger.error(ErrorType.INTERNAL_SERVER_ERROR, exception, request);
         return createResponse(ErrorType.INTERNAL_SERVER_ERROR, request);
+    }
+
+    private static boolean isLockTimeout(Throwable exception) {
+        for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+            if (cause instanceof SQLException sql && "55P03".equals(sql.getSQLState())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
