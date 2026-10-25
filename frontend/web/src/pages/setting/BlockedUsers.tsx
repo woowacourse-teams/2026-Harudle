@@ -1,5 +1,5 @@
 import { css } from '@emotion/react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 import {
   getBlockedUsers,
   setUserBlocked,
@@ -208,7 +208,7 @@ const BlockedUsersList = () => {
             <p css={emptyStyle}>{SETTING_COPY.blockedUsersEmpty}</p>
           )}
           <ul>
-            {request.data.items.map((user) => (
+            {request.data.items.map((user): ReactElement => (
               <li key={user.userId} css={rowStyle}>
                 <img
                   src={user.profileImageUrl || profileFallbackImage}

@@ -24,7 +24,7 @@ flowchart TD
 - 탈퇴 댓글은 작성자 ID·이미지가 없을 수 있습니다. 목록 전체를 잘못된 응답으로 거절하지 않으며 작성자 신고·차단은 제공하지 않습니다.
 - 로그인 이력은 화면 진입 판단에만 사용하고 실제 권한은 서버가 확인합니다.
 
-참고: [공통 메뉴](../src/shared/content/ContentOptionsButton.tsx), [댓글 응답 검사](../src/domain/feeds/feedComments.ts), [신고 진입 회귀](../src/shared/report/ReportEntryPoints.test.tsx).
+참고: [공통 메뉴](../src/shared/content/ContentOptionsButton.tsx), [댓글 응답 검사](../src/domain/feeds/feedComments.ts), [신고 진입 회귀](../src/shared/content/ReportEntryPoints.test.tsx).
 
 ## FE02. 신고 접수와 중복 안내
 

@@ -17,11 +17,9 @@ jest.mock('msw', () => {
       return new MockResponse(JSON.stringify(data), init);
     }
   }
-  const handler = (method: string) => (path: string, resolver: unknown) => ({
-    method,
-    path,
-    resolver,
-  });
+  const handler =
+    (method: string): ((path: string, resolver: unknown) => object) =>
+    (path: string, resolver: unknown): object => ({ method, path, resolver });
   return {
     delay: (): Promise<void> => Promise.resolve(),
     http: {

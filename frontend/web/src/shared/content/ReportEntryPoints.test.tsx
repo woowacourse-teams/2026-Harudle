@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as reports from '../../domain/reports/reportSubmission';
-import ContentOptionsButton from '../content/ContentOptionsButton';
-import { REPORT_COPY } from './copy';
+import ContentOptionsButton from './ContentOptionsButton';
+import { REPORT_COPY } from '../report/copy';
 
 jest.mock('react-router', () => ({ useNavigate: () => jest.fn() }));
 jest.mock('../../assets/icons/feed-more.svg', () => 'more.svg');
