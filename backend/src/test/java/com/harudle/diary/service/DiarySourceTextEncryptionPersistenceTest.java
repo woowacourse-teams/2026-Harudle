@@ -457,7 +457,7 @@ class DiarySourceTextEncryptionPersistenceTest extends ServiceIntegrationTestSup
                 .extracting(item -> item.id())
                 .containsExactly(created.diaryId());
         assertThat(queryService.getCurrentStreak(USER_ID).streakCount()).isEqualTo(1);
-        assertThat(shareQueryService.getPublicShare(shareId).title()).isEqualTo("오늘의 그림일기");
+        assertThat(shareQueryService.getPublicShare(shareId, null).title()).isEqualTo("오늘의 그림일기");
     }
 
     private CreateDiaryCommand createCommand(String sourceText) {
