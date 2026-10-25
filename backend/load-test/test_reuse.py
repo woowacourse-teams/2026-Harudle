@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 
 import assets
 import cleanup
+import cleanup_stopped
 import ec2
 import prepare
 import transfer
@@ -252,6 +253,96 @@ class ReusableMembersPostgresTest(unittest.TestCase):
                  f"status, storyboard, title, '{key}', completed_at, usage_date FROM diary_generations LIMIT 1;")
         return {'id': generation, 'userId': user, 'imageKey': key}
 
+    def stopped_run(self, root):
+        group = root / 'members'
+        settings = {'PGHOST': 'isolated', 'PGPORT': '5432', 'PGDATABASE': 'harudle_dev'}
+        ec2.prepare_run(group, settings, self.sql)
+        with patch.object(ec2, 'upload'):
+            ec2.reset_run(root / 'peak1', group, settings, self.sql, True)
+        return assets.load_fixture(root / 'peak1')
+
+    def unfinished_generation(self, fixture, key, status='PENDING', usage_date='CURRENT_DATE'):
+        record = self.add_generation(fixture, key)
+        self.sql(f"UPDATE diary_generations SET status = '{status}', image_object_key = NULL, "
+                 f"completed_at = NULL, usage_date = {usage_date} WHERE id = '{record['id']}';")
+        return record
+
+    def test_stopped_cleanup_removes_only_run_unfinished_work_and_refunds_each_usage_date_once(self):
+        with tempfile.TemporaryDirectory() as temporary, contextlib.redirect_stdout(io.StringIO()):
+            fixture = self.stopped_run(Path(temporary))
+            keys = [member['idempotencyKey'] for member in fixture['members']]
+            pending = self.unfinished_generation(fixture, keys[0])
+            processing = self.unfinished_generation(fixture, keys[1], 'PROCESSING', 'CURRENT_DATE - 1')
+            completed = self.add_generation(fixture, keys[2])
+            failed = self.add_generation(fixture, keys[3])
+            self.sql(f"UPDATE diary_generations SET status = 'FAILED', image_object_key = NULL "
+                     f"WHERE id = '{failed['id']}';")
+            other_run = self.unfinished_generation(fixture, str(uuid.uuid4()))
+            ordinary = self.unfinished_generation(fixture, str(uuid.uuid4()))
+            outsider = str(uuid.uuid4())
+            self.sql(f"INSERT INTO users (id, name, nickname, profile_image_code, role) VALUES "
+                     f"('{outsider}', '일반회원', '일반회원', 1, 'USER'); "
+                     f"UPDATE diaries SET user_id = '{outsider}' WHERE id = "
+                     f"(SELECT diary_id FROM diary_generations WHERE id = '{ordinary['id']}'); "
+                     "INSERT INTO daily_generation_usage (user_id, usage_date, used_count, limit_count) VALUES "
+                     f"('{pending['userId']}', CURRENT_DATE, 2, 3), "
+                     f"('{pending['userId']}', CURRENT_DATE - 1, 1, 3);")
+            baseline_count = self.sql('SELECT COUNT(*) FROM feeds;')
+
+            result = json.loads(self.sql(cleanup_stopped.cleanup_sql(fixture)))
+
+            self.assertEqual(result, {'removedGenerations': 2, 'removedDiaries': 2,
+                                      'updatedUsageRows': 2, 'remainingTestWork': 1})
+            self.assertEqual(self.sql(f"SELECT COUNT(*) FROM diary_generations WHERE id IN "
+                                      f"('{pending['id']}', '{processing['id']}');"), '0')
+            for record in [completed, failed, other_run, ordinary]:
+                self.assertEqual(self.sql(f"SELECT COUNT(*) FROM diary_generations WHERE id = '{record['id']}';"), '1')
+            self.assertEqual(self.sql('SELECT COUNT(*) FROM feeds;'), baseline_count)
+            usage = f"SELECT used_count FROM daily_generation_usage WHERE user_id = '{pending['userId']}' "
+            self.assertEqual(self.sql(usage + 'AND usage_date = CURRENT_DATE;'), '1')
+            self.assertEqual(self.sql(usage + 'AND usage_date = CURRENT_DATE - 1;'), '0')
+
+            repeated = json.loads(self.sql(cleanup_stopped.cleanup_sql(fixture)))
+            self.assertEqual(repeated, {'removedGenerations': 0, 'removedDiaries': 0,
+                                        'updatedUsageRows': 0, 'remainingTestWork': 1})
+            self.assertEqual(self.sql(usage + 'AND usage_date = CURRENT_DATE;'), '1')
+            self.assertEqual(self.sql(usage + 'AND usage_date = CURRENT_DATE - 1;'), '0')
+
+    def test_stopped_cleanup_rolls_back_usage_and_work_when_deletion_fails(self):
+        with tempfile.TemporaryDirectory() as temporary, contextlib.redirect_stdout(io.StringIO()):
+            fixture = self.stopped_run(Path(temporary))
+            pending = self.unfinished_generation(fixture, fixture['members'][0]['idempotencyKey'])
+            self.sql("INSERT INTO daily_generation_usage (user_id, usage_date, used_count, limit_count) "
+                     f"VALUES ('{pending['userId']}', CURRENT_DATE, 1, 3); "
+                     "CREATE FUNCTION reject_test_delete() RETURNS trigger LANGUAGE plpgsql AS $$ "
+                     "BEGIN RAISE EXCEPTION 'Test deletion failure'; END $$; "
+                     "CREATE TRIGGER reject_test_delete BEFORE DELETE ON diaries "
+                     "FOR EACH ROW EXECUTE FUNCTION reject_test_delete();")
+
+            with self.assertRaises(subprocess.CalledProcessError):
+                self.sql(cleanup_stopped.cleanup_sql(fixture))
+
+            self.assertEqual(self.sql(f"SELECT used_count FROM daily_generation_usage "
+                                      f"WHERE user_id = '{pending['userId']}' AND usage_date = CURRENT_DATE;"), '1')
+            self.assertEqual(self.sql(f"SELECT COUNT(*) FROM diary_generations WHERE id = '{pending['id']}';"), '1')
+            self.sql('DROP TRIGGER reject_test_delete ON diaries;')
+            self.assertEqual(json.loads(self.sql(cleanup_stopped.cleanup_sql(fixture)))['removedGenerations'], 1)
+
+    def test_stopped_cleanup_rejects_unfinished_work_with_an_image_or_feed(self):
+        with tempfile.TemporaryDirectory() as temporary, contextlib.redirect_stdout(io.StringIO()):
+            fixture = self.stopped_run(Path(temporary))
+            record = self.add_generation(fixture, fixture['members'][0]['idempotencyKey'])
+            self.sql(f"UPDATE diary_generations SET status = 'PROCESSING' WHERE id = '{record['id']}';")
+            with self.assertRaises(subprocess.CalledProcessError):
+                self.sql(cleanup_stopped.cleanup_sql(fixture))
+            self.sql(f"UPDATE diary_generations SET image_object_key = NULL WHERE id = '{record['id']}'; "
+                     "INSERT INTO feeds (id, diary_id, category_id) "
+                     f"SELECT '{uuid.uuid4()}', diary_id, (SELECT MIN(id) FROM categories) "
+                     f"FROM diary_generations WHERE id = '{record['id']}';")
+            with self.assertRaises(subprocess.CalledProcessError):
+                self.sql(cleanup_stopped.cleanup_sql(fixture))
+            self.assertEqual(self.sql(f"SELECT COUNT(*) FROM diary_generations WHERE id = '{record['id']}';"), '1')
+
     def test_two_runs_restore_login_and_quota_keep_accounts_and_preserve_unrelated_data(self):
         with tempfile.TemporaryDirectory() as temporary, contextlib.redirect_stdout(io.StringIO()):
             root = Path(temporary)
@@ -346,11 +437,12 @@ class ReusableMembersPostgresTest(unittest.TestCase):
                 delete.assert_not_called()
                 self.assertEqual(self.sql('SELECT COUNT(*) FROM diaries;'), '401')
                 current_key = fixture['members'][0]['idempotencyKey']
-                self.sql(f"UPDATE diary_generations SET idempotency_key = '{current_key}', status = 'PROCESSING' "
-                         f"WHERE id = '{unknown['id']}';")
-                with self.assertRaises(subprocess.CalledProcessError):
-                    cleanup.cleanup(directory, execute_sql=self.sql, client_stopped=True)
-                delete.assert_not_called()
+                for status in ['PENDING', 'PROCESSING']:
+                    self.sql(f"UPDATE diary_generations SET idempotency_key = '{current_key}', status = '{status}' "
+                             f"WHERE id = '{unknown['id']}';")
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        cleanup.cleanup(directory, execute_sql=self.sql, client_stopped=True)
+                    delete.assert_not_called()
                 self.sql(f"UPDATE diary_generations SET status = 'SUCCEEDED' WHERE id = '{unknown['id']}';")
                 cleanup.cleanup(directory, execute_sql=self.sql, client_stopped=True)
                 self.assertIn(unknown, delete.call_args.args[1])

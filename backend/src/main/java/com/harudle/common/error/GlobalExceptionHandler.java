@@ -1,5 +1,13 @@
 package com.harudle.common.error;
 
+import com.harudle.auth.application.AccountSuspendedException;
+import com.harudle.admin.service.exception.AdminReportNotFoundException;
+import com.harudle.admin.service.exception.AdminReportReviewConflictException;
+import com.harudle.admin.service.exception.InvalidAdminReportReviewException;
+import com.harudle.moderation.service.ModerationTargetNotFoundException;
+import com.harudle.moderation.service.ModerationConflictException;
+import com.harudle.moderation.domain.InvalidModerationChangeException;
+import com.harudle.moderation.service.ModerationAccessDeniedException;
 import com.harudle.admin.service.exception.AdminUserNotFoundException;
 import com.harudle.admin.service.exception.AdminGenerationLimitBelowUsageException;
 import com.harudle.admin.service.exception.AdminGenerationUsageConflictException;
@@ -8,11 +16,15 @@ import com.harudle.admin.service.exception.AdminInactiveUserException;
 import com.harudle.auth.domain.exception.InvalidNicknameException;
 import com.harudle.auth.domain.exception.NicknameAlreadyInUseException;
 import com.harudle.auth.domain.exception.PublicProfileNotAssignedException;
+import com.harudle.auth.application.ProfileImageStorageException;
+import com.harudle.auth.application.ProfileImageCapacityExceededException;
 import com.harudle.auth.presentation.AuthenticationRequiredException;
 import com.harudle.comment.service.exception.CommentAccessDeniedException;
 import com.harudle.comment.service.exception.CommentIntegrationUnavailableException;
 import com.harudle.comment.service.exception.CommentNotFoundException;
 import com.harudle.comment.service.exception.InvalidCommentCursorException;
+import com.harudle.report.domain.InvalidReportException;
+import com.harudle.report.service.exception.ReportTargetNotFoundException;
 import com.harudle.category.service.exception.CategoryInactiveException;
 import com.harudle.category.service.exception.CategoryNotFoundException;
 import com.harudle.category.domain.exception.InvalidCategoryException;
@@ -22,15 +34,18 @@ import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
 import com.harudle.diary.service.exception.DiaryNotPublishableException;
 import com.harudle.feed.service.exception.DiaryAlreadyPublishedException;
+import com.harudle.feed.service.exception.ContentRestrictedException;
 import com.harudle.feed.service.exception.FeedAccessDeniedException;
 import com.harudle.feed.service.exception.FeedIntegrationUnavailableException;
 import com.harudle.feed.service.exception.FeedNotFoundException;
 import com.harudle.feed.service.exception.InvalidFeedCursorException;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
 import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
+import com.harudle.generation.diary.service.exception.DiaryGenerationNotFoundException;
 import com.harudle.generation.usage.service.exception.DailyGenerationLimitExceededException;
 import com.harudle.generation.diary.service.exception.GenerationInProgressException;
 import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
+import com.harudle.generation.diary.service.exception.GenerationCapacityExceededException;
 import com.harudle.generation.diary.service.exception.IdempotencyKeyConflictException;
 import com.harudle.generation.diary.service.port.ImageStorageException;
 import com.harudle.guest.application.exception.GuestSessionExpiredException;
@@ -139,6 +154,51 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return createValidationResponse(headers, status, request);
     }
 
+    @ExceptionHandler(AccountSuspendedException.class)
+    ResponseEntity<ProblemDetail> handleAccountSuspendedException(HttpServletRequest request) {
+        return createResponse(ErrorType.ACCOUNT_SUSPENDED, request);
+    }
+
+    @ExceptionHandler(AdminReportNotFoundException.class)
+    ResponseEntity<ProblemDetail> handleAdminReportNotFoundException(HttpServletRequest request) {
+        return createResponse(ErrorType.ADMIN_REPORT_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(AdminReportReviewConflictException.class)
+    ResponseEntity<ProblemDetail> handleAdminReportReviewConflictException(HttpServletRequest request) {
+        return createResponse(ErrorType.ADMIN_REPORT_REVIEW_CONFLICT, request);
+    }
+
+    @ExceptionHandler(InvalidAdminReportReviewException.class)
+    ResponseEntity<ProblemDetail> handleInvalidAdminReportReviewException(HttpServletRequest request) {
+        return createResponse(ErrorType.INVALID_ADMIN_REPORT_REVIEW, request);
+    }
+
+    @ExceptionHandler(ModerationTargetNotFoundException.class)
+    ResponseEntity<ProblemDetail> handleModerationTargetNotFoundException(HttpServletRequest request) {
+        return createResponse(ErrorType.MODERATION_TARGET_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(ModerationConflictException.class)
+    ResponseEntity<ProblemDetail> handleModerationConflictException(HttpServletRequest request) {
+        return createResponse(ErrorType.MODERATION_CONFLICT, request);
+    }
+
+    @ExceptionHandler(InvalidModerationChangeException.class)
+    ResponseEntity<ProblemDetail> handleInvalidModerationChangeException(HttpServletRequest request) {
+        return createResponse(ErrorType.INVALID_MODERATION_CHANGE, request);
+    }
+
+    @ExceptionHandler(ModerationAccessDeniedException.class)
+    ResponseEntity<ProblemDetail> handleModerationAccessDeniedException(HttpServletRequest request) {
+        return createResponse(ErrorType.FORBIDDEN, request);
+    }
+
+    @ExceptionHandler(ContentRestrictedException.class)
+    ResponseEntity<ProblemDetail> handleContentRestricted(HttpServletRequest request) {
+        return createResponse(ErrorType.CONTENT_RESTRICTED, request);
+    }
+
     @ExceptionHandler(ConstraintViolationException.class)
     ResponseEntity<ProblemDetail> handleValidation(HttpServletRequest request) {
         return createResponse(ErrorType.VALIDATION_ERROR, request);
@@ -201,6 +261,11 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return createResponse(ErrorType.DIARY_NOT_FOUND, request);
     }
 
+    @ExceptionHandler(DiaryGenerationNotFoundException.class)
+    ResponseEntity<ProblemDetail> handleGenerationNotFound(HttpServletRequest request) {
+        return createResponse(ErrorType.GENERATION_NOT_FOUND, request);
+    }
+
     @ExceptionHandler(CategoryNotFoundException.class)
     ResponseEntity<ProblemDetail> handleCategoryNotFound(HttpServletRequest request) {
         return createResponse(ErrorType.CATEGORY_NOT_FOUND, request);
@@ -233,6 +298,16 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(FeedNotFoundException.class)
     ResponseEntity<ProblemDetail> handleFeedNotFound(HttpServletRequest request) {
         return createResponse(ErrorType.FEED_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(InvalidReportException.class)
+    ResponseEntity<ProblemDetail> handleInvalidReport(HttpServletRequest request) {
+        return createResponse(ErrorType.INVALID_REPORT, request);
+    }
+
+    @ExceptionHandler(ReportTargetNotFoundException.class)
+    ResponseEntity<ProblemDetail> handleReportTargetNotFound(HttpServletRequest request) {
+        return createResponse(ErrorType.REPORT_TARGET_NOT_FOUND, request);
     }
 
     @ExceptionHandler(CommentNotFoundException.class)
@@ -390,6 +465,25 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(ImageStorageException.class)
     ResponseEntity<ProblemDetail> handleImageStorage(HttpServletRequest request) {
         return createResponse(ErrorType.IMAGE_STORAGE_ERROR, request);
+    }
+
+    @ExceptionHandler(ProfileImageCapacityExceededException.class)
+    ResponseEntity<ProblemDetail> handleProfileImageCapacityExceeded(HttpServletRequest request) {
+        return createResponse(ErrorType.PROFILE_IMAGE_CAPACITY_EXCEEDED, request);
+    }
+
+    @ExceptionHandler(ProfileImageStorageException.class)
+    ResponseEntity<ProblemDetail> handleProfileImageStorage(
+            ProfileImageStorageException exception,
+            HttpServletRequest request
+    ) {
+        apiExceptionLogger.error(ErrorType.PROFILE_IMAGE_STORAGE_ERROR, exception, request);
+        return createResponse(ErrorType.PROFILE_IMAGE_STORAGE_ERROR, request);
+    }
+
+    @ExceptionHandler(GenerationCapacityExceededException.class)
+    ResponseEntity<ProblemDetail> handleGenerationCapacityExceeded(HttpServletRequest request) {
+        return createResponse(ErrorType.GENERATION_CAPACITY_EXCEEDED, request);
     }
 
     @ExceptionHandler(GenerationUnavailableException.class)

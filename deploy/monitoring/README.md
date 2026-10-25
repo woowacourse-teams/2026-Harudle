@@ -1,5 +1,44 @@
 # 서버 모니터링
 
+2026-10-23에 Dev 대시보드의 앱과 DB 대상, Prod 대시보드의 DB 대상을 EC2로 변경했다.
+아래 RDS 지표 설명은 이전 구성의 참고 자료다. 현재 Dev와 Prod DB는 별도 EC2의 PostgreSQL을 사용한다.
+
+| 대상 | InstanceId | Agent 설정 |
+| --- | --- | --- |
+| Dev 앱 `harudle-dev` | `i-08ff5dddb7ac94f5c` | `cloudwatch-agent.host.json`과 `cloudwatch-agent.dev.json` |
+| Dev DB `harudle-dev-db` | `i-04fca55979b3240d6` | `cloudwatch-agent.db.json` |
+| Prod DB `harudle-prod-db` | `i-01baa5c11a6224cd7` | `cloudwatch-agent.db.json` |
+
+**Dev Java와 API 지표 수집 설정은 적용 완료다.** 새 앱 서버에 `cloudwatch-agent.dev.json`을
+적용했고 CloudWatch에서 Java RSS와 앱 연결 풀 지표 도착을 확인했다.
+
+Prod DB에도 Agent를 설치하고 자동 시작을 설정했다. 메모리와 Swap, 루트 및 데이터 디스크의
+여유 공간이 CloudWatch에 도착하고 Prod 대시보드 조회식이 값을 반환하는 것을 확인했다.
+
+앱용 호스트 설정은 메모리 사용률과 여유 비율, Swap 사용률, 루트 디스크 사용률을 수집한다.
+DB 설정은 루트와 데이터 디스크 `/srv/harudle/db-data`의 사용률과 남은 바이트도 수집한다.
+DB 설정을 다른 서버에 적용할 때는 실제 데이터 디스크 마운트 경로를 확인한다.
+설정 파일은 `/opt/harudle/monitoring/`에 배치하고 기존 설정을 보관한 뒤 Agent에 적용한다.
+
+```bash
+sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+  -a append-config -m ec2 -s \
+  -c file:/opt/harudle/monitoring/cloudwatch-agent.db.json
+```
+
+현재 `DASHBOARD-harudle-dev`와 `DASHBOARD-harudle-prod`는 앱과 DB의 InstanceId를 각각 사용한다.
+공통 `InstanceId` 속성 변수는 두 대상을 같은 값으로 덮어쓸 수 있어 제거했다.
+DB CPU와 크레딧, 상태 검사는 `AWS/EC2`, 메모리와 디스크는 `CWAgent`에서 조회한다.
+Dev 데이터 디스크의 `AWS/EBS` 대상은 `vol-00886d19a64c23e1f`,
+Prod 데이터 디스크는 `vol-048d203fac554e776`이다.
+EBS의 `VolumeAvgReadLatency`와 `VolumeAvgWriteLatency`는 밀리초이며
+기존 RDS 지연 지표의 초 단위와 다르다. [EBS 공식 지표 안내](https://docs.aws.amazon.com/ebs/latest/userguide/using_cloudwatch_ebs.html)
+
+RDS의 `DatabaseConnections`는 EC2 기본 지표로 바꿀 수 없어 해당 칸은 DB EC2 상태 검사로 교체했다.
+PostgreSQL 전체 연결 수는 별도 수집이 필요하다. 기존 HikariPool 그래프는 앱 연결 풀만 보여준다.
+아래 `prepare_dashboard.py`의 RDS 입력은 EC2 PostgreSQL 지표로 자동 변환하지 않는다.
+대시보드 수정과 CloudWatch 경보의 대상 변경도 별도 작업이다.
+
 **dev와 prod에서 API 응답과 오류, EC2 서버 자원, RDS 자원, Java 메모리를 함께 확인합니다.** dev는 부하테스트 원인 분석을 위해 GC와 힙 외 메모리도 수집합니다.
 
 **처음에는 배포, Agent 설정 적용, 로그 필터 6개 등록, 대시보드 저장을 모두 해야 합니다.** 대시보드 JSON만 넣으면 새 지표가 수집되지 않습니다. 같은 설정을 쓰는 이후 배포에서는 이 작업을 반복하지 않습니다. 수집 설정이나 서버가 바뀌면 해당 부분을 다시 적용합니다.
@@ -11,6 +50,9 @@
 | API 평균, P95, P99 | 요청을 처리하는 데 걸린 시간. 전체 API, 일반 API, 일기 생성을 구분합니다. |
 | RPS | 1초에 처리를 끝낸 API 요청 수입니다. 실패 응답도 포함합니다. |
 | 작업별 TPS | 일기 생성, 피드 게시, 피드 목록 조회, 피드 상세 조회가 1초에 몇 건 성공했는지 보여줍니다. |
+| 생성 시작 전 평균 대기 시간 | 작업 저장부터 선점까지 기다린 평균 시간입니다. |
+| 생성 대기와 처리 중 작업 수 | 각 구간에서 수집한 상태별 최대 작업 수입니다. |
+| 생성 접수 거절 횟수 | 접수 상한에 도달해 새 요청을 거절한 횟수입니다. |
 | EC2 서버 자원 | 서버 CPU, 전체 메모리, 디스크 사용량과 서버 상태를 확인합니다. |
 | RDS 자원 | DB 서버의 CPU, 남은 메모리와 저장 공간, 연결 수, 디스크 처리 시간을 확인합니다. |
 | DB 연결 획득 시간 | DB 연결을 얻기까지 걸린 평균 시간과 최근 최대 시간입니다. |
@@ -25,6 +67,41 @@ P95가 500ms라면 요청의 약 95%가 500ms 안에 끝났다는 뜻입니다. 
 API 시간은 서버의 처리 시간입니다. 사용자와 서버 사이의 통신 시간은 포함하지 않습니다. 자동 상태 확인과 지표 수집 요청도 새 API 그래프에서 제외합니다.
 
 일기 생성과 피드 게시는 **DB 저장이 확정된 뒤** 성공으로 셉니다. 중복 생성 결과의 재조회와 취소된 DB 저장은 성공 횟수를 늘리지 않습니다. 피드 조회는 200 응답을 성공으로 셉니다. 같은 목록을 두 번 조회하면 두 건입니다.
+
+## 비동기 생성의 대기와 접수 거절
+
+생성 실행기의 기존 시간 지표와 작업 시작 전의 대기 시간을 따로 확인합니다.
+다음 지표는 dev와 prod의 수집 설정에 모두 포함했습니다.
+
+| Prometheus 지표 | 뜻과 단위 |
+| --- | --- |
+| `harudle_generation_queue_wait_seconds_sum` | 선점에 성공한 작업들의 대기 시간 합계입니다. 단위는 초입니다. |
+| `harudle_generation_queue_wait_seconds_count` | 대기 시간을 기록한 작업 수입니다. |
+| `harudle_generation_queue_size{status="PENDING"}` | 수집 시점에 DB에서 조회한 대기 작업 수입니다. |
+| `harudle_generation_queue_size{status="PROCESSING"}` | 수집 시점에 DB에서 조회한 처리 중 작업 수입니다. |
+| `harudle_generation_capacity_rejections_total` | 접수 상한으로 새 요청을 거절한 누적 횟수입니다. |
+
+대기 시간은 작업의 저장 시각부터 선점 시각까지 측정합니다. 선점 저장이 취소되면 집계하지 않습니다.
+접수 거절은 저장이 취소되는 요청이므로 거절 시점에 바로 집계합니다. 같은 요청의 기존 작업을 반환할 때는 거절 횟수를 늘리지 않습니다.
+
+작업 수는 지표 수집마다 상태별로 두 번 조회합니다. 현재 수집 간격은 dev가 10초, prod가 1분입니다.
+DB 조회에 실패하면 작업 수를 0으로 표시하지 않고 측정 불가 값인 `NaN`을 반환합니다. 다음 수집 때 다시 조회합니다.
+수집 간격 사이의 짧은 상태 변화는 작업 수 그래프에서 놓칠 수 있습니다. 선점별 대기 시간과 거절 횟수를 함께 봅니다.
+
+대시보드의 평균 대기 시간은 같은 구간의 시간 합계를 작업 수로 나눈 값입니다. 이 값으로 P95를 알 수는 없습니다.
+작업 수 그래프는 상태별 최대값을 표시합니다. 각 최대값의 발생 시점이 다를 수 있으므로 두 값을 더해 접수 상한 준수 여부를 판단하지 않습니다.
+CloudWatch에서 시간 합계와 횟수는 Agent가 변환한 증가분의 `Sum`으로 확인합니다.
+사용자 ID와 생성 ID는 지표 구분값으로 붙이지 않습니다.
+
+적용과 확인은 다음 순서로 진행합니다.
+
+1. 변경한 백엔드를 배포하고, 아래의 Agent 설정 적용 절차를 다시 실행합니다. 배포만으로 Agent의 활성 설정이 바뀌지는 않습니다.
+2. dev의 `/actuator/prometheus`에서 위 지표 이름과 두 상태가 보이는지 확인합니다.
+3. dev에서 Stub 작업으로 접수 상한을 채운 뒤 새 요청 하나를 보냅니다. `503 GENERATION_CAPACITY_EXCEEDED` 응답과 거절 누적값의 증가를 확인합니다.
+4. 먼저 접수한 작업이 선점되면 대기 시간의 기록 수가 늘어나는지 확인합니다. 같은 요청을 다시 보내도 작업 수와 거절 횟수가 늘지 않아야 합니다.
+5. 아래 대시보드 생성 절차로 JSON을 다시 만들고 저장합니다. 평균 대기 시간, 상태별 작업 수, 접수 거절 횟수 그래프의 실제 수집값을 확인합니다.
+
+현재 변경은 저장소의 코드와 설정 파일에 반영한 상태입니다. 실제 서버 적용과 CloudWatch 유입 확인은 별도 작업입니다.
 
 ## dev/prod 배포 전에 확인
 

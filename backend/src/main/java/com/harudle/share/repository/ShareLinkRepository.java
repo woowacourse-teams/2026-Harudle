@@ -26,6 +26,10 @@ public interface ShareLinkRepository extends
               AND diary.id = generation.diaryId
               AND diary.deletedAt IS NULL
               AND generation.status = com.harudle.generation.diary.domain.GenerationStatus.SUCCEEDED
+              AND NOT EXISTS (SELECT hiddenFeed.id FROM Feed hiddenFeed, ModerationRestriction moderation
+                  WHERE hiddenFeed.diaryId = diary.id
+                    AND moderation.targetType = com.harudle.moderation.domain.ModerationTargetType.FEED
+                    AND moderation.targetId = hiddenFeed.id AND moderation.restricted = true)
             """)
     Optional<PublicShareSnapshot> findPublicSnapshotById(@Param("shareId") UUID shareId);
 }

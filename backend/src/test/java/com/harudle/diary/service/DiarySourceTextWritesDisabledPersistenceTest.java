@@ -12,10 +12,11 @@ import com.harudle.diary.domain.DiarySourceTextCipher;
 import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.dto.CreateGuestDiaryCommand;
 import com.harudle.generation.diary.domain.GenerationStatus;
-import com.harudle.generation.diary.service.DiaryGenerationExecutor;
 import com.harudle.generation.diary.service.RequestFingerprintGenerator;
 import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
 import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
+import com.harudle.generation.loadtest.LoadTestDiaryGenerationExecutor;
+import com.harudle.generation.loadtest.LoadTestGenerationRegistry;
 import com.harudle.generation.prompt.domain.GenerationPrompt;
 import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import com.harudle.guest.domain.GuestSession;
@@ -35,7 +36,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.test.context.TestPropertySource;
@@ -112,7 +113,7 @@ class DiarySourceTextWritesDisabledPersistenceTest extends ServiceIntegrationTes
     void rejectMemberCreationWithoutConsumingUsage() {
         CreateDiaryCommand command = createCommand(USER_ID);
 
-        assertThatThrownBy(() -> memberTransactionService.claim(command, true))
+        assertThatThrownBy(() -> memberTransactionService.enqueue(command, true))
                 .isInstanceOf(GenerationUnavailableException.class)
                 .hasMessage("신규 일기 생성이 일시 중지되었습니다.");
 
@@ -122,11 +123,11 @@ class DiarySourceTextWritesDisabledPersistenceTest extends ServiceIntegrationTes
     @Test
     @DisplayName("부하테스트 생성도 공통 선점의 작성 차단을 우회하지 못한다")
     void rejectLoadTestCreationBeforeCallingGenerationExecutor() {
-        DiaryGenerationExecutor executor = mock(DiaryGenerationExecutor.class);
+        LoadTestDiaryGenerationExecutor executor = mock(LoadTestDiaryGenerationExecutor.class);
         when(executor.isConfigured()).thenReturn(true);
-        LoadTestDiaryCreationService service = new LoadTestDiaryCreationService(new DiaryCreationService(
-                memberTransactionService, new DiaryCreationExecutionService(executor)
-        ));
+        LoadTestDiaryCreationService service = new LoadTestDiaryCreationService(
+                memberTransactionService, new LoadTestGenerationRegistry(executor)
+        );
         CreateDiaryCommand command = createCommand(USER_ID);
 
         assertThatThrownBy(() -> service.create(command)).isInstanceOf(GenerationUnavailableException.class);
@@ -144,7 +145,7 @@ class DiarySourceTextWritesDisabledPersistenceTest extends ServiceIntegrationTes
         ));
         CreateGuestDiaryCommand command = new CreateGuestDiaryCommand(DIARY_DATE, SOURCE_TEXT, UUID.randomUUID());
 
-        assertThatThrownBy(() -> guestTransactionService.claim(RAW_GUEST_TOKEN, command, true))
+        assertThatThrownBy(() -> guestTransactionService.enqueue(RAW_GUEST_TOKEN, command, true))
                 .isInstanceOf(GenerationUnavailableException.class);
 
         GuestSession unchanged = guestSessionRepository.findById(session.getId()).orElseThrow();
@@ -154,26 +155,32 @@ class DiarySourceTextWritesDisabledPersistenceTest extends ServiceIntegrationTes
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {0, 1})
-    @DisplayName("작성 차단 복구 버전도 기존 평문과 암호문 상세 및 성공한 멱등 요청을 보존한다")
-    void preserveDetailAndReplayForBothStorageVersions(int sourceTextVersion) {
+    @CsvSource({"0,PENDING", "1,PENDING", "0,SUCCEEDED", "1,SUCCEEDED"})
+    @DisplayName("작성 차단 중에도 기존 평문과 암호문의 대기 및 성공 요청을 변경 없이 복원한다")
+    void preserveDetailAndReplayForBothStorageVersions(int sourceTextVersion, GenerationStatus generationStatus) {
         CreateDiaryCommand command = createCommand(USER_ID);
-        UUID diaryId = insertSucceededDiary(command, sourceTextVersion);
+        UUID diaryId = insertDiary(command, sourceTextVersion, generationStatus);
         Object[] before = (Object[]) readValue(
                 "SELECT source_text, source_text_version FROM diaries WHERE id = ?", diaryId
         );
 
-        MemberDiaryCreationClaim replayed = memberTransactionService.claim(command, true);
+        Object storedFingerprint = readValue(
+                "SELECT request_fingerprint FROM diary_generations WHERE diary_id = ?", diaryId
+        );
+
+        MemberDiaryCreationClaim replayed = memberTransactionService.enqueue(command, true);
 
         assertThat(queryService.getDetail(USER_ID, diaryId).sourceText()).isEqualTo(SOURCE_TEXT);
         assertThat(replayed.claim().diaryId()).isEqualTo(diaryId);
         assertThat(replayed.claim().sourceText()).isEqualTo(SOURCE_TEXT);
-        assertThat(replayed.claim().generationStatus()).isEqualTo(GenerationStatus.SUCCEEDED);
+        assertThat(replayed.claim().generationStatus()).isEqualTo(generationStatus);
         assertThat(replayed.claim().newlyCreated()).isFalse();
         assertThat(replayed.usage().usedCount()).isZero();
         assertThat((Object[]) readValue(
                 "SELECT source_text, source_text_version FROM diaries WHERE id = ?", diaryId
         )).containsExactly(before);
+        assertThat(readValue("SELECT request_fingerprint FROM diary_generations WHERE diary_id = ?", diaryId))
+                .isEqualTo(storedFingerprint);
         assertThat(readValue("SELECT COUNT(*) FROM diaries WHERE user_id = ?", USER_ID)).isEqualTo(1L);
     }
 
@@ -181,7 +188,7 @@ class DiarySourceTextWritesDisabledPersistenceTest extends ServiceIntegrationTes
         return new CreateDiaryCommand(userId, DIARY_DATE, SOURCE_TEXT, UUID.randomUUID());
     }
 
-    private UUID insertSucceededDiary(CreateDiaryCommand command, int sourceTextVersion) {
+    private UUID insertDiary(CreateDiaryCommand command, int sourceTextVersion, GenerationStatus generationStatus) {
         UUID diaryId = UUID.randomUUID();
         String storedText = sourceTextVersion == 0 ? SOURCE_TEXT
                 : sourceTextCipher.encrypt(diaryId, command.userId(), SOURCE_TEXT);
@@ -199,9 +206,12 @@ class DiarySourceTextWritesDisabledPersistenceTest extends ServiceIntegrationTes
                 INSERT INTO diary_generations (
                     id, diary_id, prompt_id, idempotency_key, request_fingerprint,
                     status, title, image_object_key, completed_at
-                ) VALUES (?, ?, ?, ?, ?, 'SUCCEEDED', ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, UUID.randomUUID(), diaryId, prompt.getId(), command.idempotencyKey(), storedFingerprint,
-                "기존 그림일기", "generated/%s.png".formatted(diaryId), authClock.instant());
+                generationStatus.name(),
+                generationStatus == GenerationStatus.SUCCEEDED ? "기존 그림일기" : null,
+                generationStatus == GenerationStatus.SUCCEEDED ? "generated/%s.png".formatted(diaryId) : null,
+                generationStatus == GenerationStatus.SUCCEEDED ? authClock.instant() : null);
         return diaryId;
     }
 

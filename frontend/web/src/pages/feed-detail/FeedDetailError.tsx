@@ -5,6 +5,7 @@ import backIcon from '../../assets/icons/back.svg';
 import harudleLogo from '../../assets/images/harudle-logo.webp';
 import { theme } from '../../styles/theme';
 import { FEED_DETAIL_COPY } from './copy';
+import useFeedDetailBack from './useFeedDetailBack';
 
 interface FeedDetailErrorProps {
   readonly errorMessage: string;
@@ -12,6 +13,7 @@ interface FeedDetailErrorProps {
 
 const FeedDetailError = ({ errorMessage }: FeedDetailErrorProps) => {
   const navigate = useNavigate();
+  const handleBack = useFeedDetailBack();
   return (
     <div css={pageStyle}>
       <header css={pageHeaderStyle}>
@@ -24,13 +26,7 @@ const FeedDetailError = ({ errorMessage }: FeedDetailErrorProps) => {
         >
           <img css={logoStyle} src={harudleLogo} alt="하루들" />
         </button>
-        <button
-          type="button"
-          css={backButtonStyle}
-          onClick={() => {
-            void navigate('/');
-          }}
-        >
+        <button type="button" css={backButtonStyle} onClick={handleBack}>
           <img src={backIcon} alt="뒤로가기 아이콘" />
         </button>
       </header>

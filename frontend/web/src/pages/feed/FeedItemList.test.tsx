@@ -7,6 +7,7 @@ import {
   jest,
 } from '@jest/globals';
 import userEvent from '@testing-library/user-event';
+import * as React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import type {
   Feed,
@@ -14,9 +15,43 @@ import type {
   getFeedList,
 } from '../../domain/feeds/feedList';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
-import FeedItemList from './FeedItemList';
+import FeedItemListView from './FeedItemList';
 import type { setFeedLike } from '../../domain/feeds/feedLike';
 import type { deleteFeed } from '../../domain/feeds/feedDelete';
+import useFeedList from './useFeedList';
+
+const FeedItemList = ({
+  categoryId,
+  sort,
+  onCategoryClick,
+}: Pick<
+  React.ComponentProps<typeof FeedItemListView>,
+  'categoryId' | 'sort' | 'onCategoryClick'
+>) => {
+  const feedList = useFeedList({ categoryId, sort });
+
+  return (
+    <FeedItemListView
+      categoryId={categoryId}
+      sort={sort}
+      onCategoryClick={onCategoryClick}
+      {...feedList}
+    />
+  );
+};
+
+let mockUseFeedList: typeof useFeedList;
+jest.mock('./useFeedList', () => ({
+  __esModule: true,
+  default: (
+    options: Parameters<typeof useFeedList>[0],
+  ): ReturnType<typeof useFeedList> => mockUseFeedList(options),
+}));
+
+const mockAddToast = jest.fn();
+jest.mock('../../shared/ToastContext', () => ({
+  useToastContext: () => ({ addToast: mockAddToast }),
+}));
 
 const mockTrack =
   jest.fn<(event: string, properties: Record<string, unknown>) => void>();
@@ -108,6 +143,14 @@ const emptyResponse: FeedListResponse = {
 };
 
 beforeEach((): void => {
+  // React 인스턴스는 유지하고, 목록 캐시는 테스트마다 새 모듈로 격리한다.
+  jest.isolateModules((): void => {
+    jest.doMock('react', () => React);
+    mockUseFeedList =
+      jest.requireActual<typeof import('./useFeedList')>(
+        './useFeedList',
+      ).default;
+  });
   localStorage.setItem('harudle.has-completed-oauth', 'true');
   mockGetFeedList.mockReset();
   mockGetFeedList.mockResolvedValue(response);
@@ -156,14 +199,15 @@ describe('피드 카드 액션', (): void => {
 
     await user.click(await screen.findByRole('button', { name: '3' }));
 
-    expect(mockNavigate).toHaveBeenCalledWith(`/feeds/${feed.id}`);
+    expect(mockNavigate).toHaveBeenCalledWith(`/feeds/${feed.id}`, {
+      state: { fromFeed: true },
+    });
   });
 
   it('비로그인 좋아요는 요청 없이 로그인 안내를 열고 닫거나 로그인 페이지로 이동한다', async (): Promise<void> => {
     localStorage.removeItem('harudle.has-completed-oauth');
     // 과거 로그인 경험만 있어도 현재 로그아웃 상태면 안내한다.
     localStorage.setItem('harudle.has-ever-logged-in', 'true');
-    const alert = jest.spyOn(window, 'alert').mockImplementation(() => {});
     const user = userEvent.setup();
     render(
       <FeedItemList onCategoryClick={mockOnCategoryClick} sort="LATEST" />,
@@ -177,7 +221,7 @@ describe('피드 카드 액션', (): void => {
     expect(sheet).toHaveTextContent('좋아요를 누르려면 로그인해 주세요.');
     expect(mockSetFeedLike).not.toHaveBeenCalled();
     expect(mockNavigate).not.toHaveBeenCalled();
-    expect(alert).not.toHaveBeenCalled();
+    expect(mockAddToast).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole('button', { name: '계속 둘러보기' }));
     expect(sheet).not.toHaveAttribute('open');
@@ -235,9 +279,6 @@ describe('피드 카드 액션', (): void => {
   });
 
   it('좋아요 처리 중 중복 요청을 막고 실패하면 기존 수를 유지한 채 재시도한다', async (): Promise<void> => {
-    const alert = jest
-      .spyOn(window, 'alert')
-      .mockImplementation((): void => {});
     const user = userEvent.setup();
     let rejectLike: ((reason: Error) => void) | undefined;
     mockSetFeedLike.mockImplementationOnce(
@@ -261,12 +302,14 @@ describe('피드 카드 액션', (): void => {
     });
     expect(button).toBeEnabled();
     expect(button).toHaveTextContent('12');
-    expect(alert).toHaveBeenCalledWith('좋아요 변경 실패');
+    expect(mockAddToast).toHaveBeenCalledWith(
+      { type: 'error', message: '좋아요 변경 실패' },
+      2000,
+    );
     await user.click(button);
     expect(
       await screen.findByRole('button', { name: '13' }),
     ).toBeInTheDocument();
-    alert.mockRestore();
   });
 
   it('링크 복사 성공 후 2초 동안 완료 아이콘과 복사됨을 표시한다', async () => {
@@ -274,7 +317,6 @@ describe('피드 카드 액션', (): void => {
     const writeText = jest
       .spyOn(navigator.clipboard, 'writeText')
       .mockResolvedValue(undefined);
-    const alert = jest.spyOn(window, 'alert').mockImplementation(() => {});
     render(
       <FeedItemList onCategoryClick={mockOnCategoryClick} sort="LATEST" />,
     );
@@ -295,13 +337,15 @@ describe('피드 카드 액션', (): void => {
     await act(async () => {
       fireEvent.click(copyButton);
     });
-    expect(writeText).toHaveBeenCalledWith(feed.shareUrl);
+    expect(writeText).toHaveBeenCalledWith(
+      `${feed.shareUrl}?utm_source=feed_share`,
+    );
     expect(mockTrack).toHaveBeenCalledWith('feed_link_copy_clicked', {
       feature: 'feed',
       operation: 'copy_link',
       feed_id: feed.id,
     });
-    expect(alert).not.toHaveBeenCalled();
+    expect(mockAddToast).not.toHaveBeenCalled();
     expect(sheet).toHaveAttribute('open');
     const copiedButton = screen.getByRole('button', { name: '복사됨' });
     expect(copiedButton.querySelector('span')).toHaveStyle({
@@ -328,7 +372,6 @@ describe('피드 카드 액션', (): void => {
     ).toHaveStyle({ mask: 'url(link.svg) center/contain no-repeat' });
     expect(mockSetFeedLike).not.toHaveBeenCalled();
     writeText.mockRestore();
-    alert.mockRestore();
   });
 
   it('링크 복사에 실패하면 바텀시트를 유지하고 재시도할 수 있다', async () => {
@@ -398,7 +441,9 @@ describe('피드 카드 액션', (): void => {
     prepareDialogs();
     await user.click(shareButtons[1]);
     await user.click(screen.getByRole('button', { name: '링크 복사' }));
-    expect(writeText).toHaveBeenCalledWith(secondFeed.shareUrl);
+    expect(writeText).toHaveBeenCalledWith(
+      `${secondFeed.shareUrl}?utm_source=feed_share`,
+    );
     expect(mockTrack).toHaveBeenCalledWith('feed_link_copy_clicked', {
       feature: 'feed',
       operation: 'copy_link',
@@ -458,9 +503,6 @@ describe('피드 카드 액션', (): void => {
 
   it('삭제 실패와 중복 클릭은 카드를 유지하고 재시도 성공 후 제거한다', async (): Promise<void> => {
     const user = userEvent.setup();
-    const alert = jest
-      .spyOn(window, 'alert')
-      .mockImplementation((): void => {});
     let rejectDelete: ((reason: Error) => void) | undefined;
     mockGetFeedList.mockResolvedValue({
       ...response,
@@ -492,13 +534,16 @@ describe('피드 카드 액션', (): void => {
     });
     expect(screen.getByRole('dialog')).toHaveAttribute('open');
     expect(screen.getByRole('article')).toBeInTheDocument();
-    expect(alert).toHaveBeenCalledWith('피드 삭제 실패');
+    expect(screen.getByRole('alert')).toHaveTextContent('피드 삭제 실패');
     await user.click(screen.getByRole('button', { name: /피드 삭제$/ }));
     expect(
       await screen.findByText('아직 이 카테고리에 공유된 피드가 없어요.'),
     ).toBeInTheDocument();
     expect(mockDeleteFeed).toHaveBeenCalledTimes(2);
-    alert.mockRestore();
+    expect(mockAddToast).toHaveBeenCalledWith(
+      { type: 'success', message: '피드를 삭제했어요.' },
+      2000,
+    );
   });
 
   it('삭제 취소는 피드를 유지하고 확인 성공 후에만 목록에서 제거한다', async (): Promise<void> => {
@@ -638,11 +683,8 @@ describe('피드 목록 더 보기', (): void => {
     expect(screen.getByRole('button', { name: '13' })).toBeInTheDocument();
   });
 
-  it('추가 조회 실패를 alert로 안내하고 같은 커서로 다시 더 보기 할 수 있다', async (): Promise<void> => {
+  it('추가 조회 실패를 토스트로 안내하고 같은 커서로 다시 더 보기 할 수 있다', async (): Promise<void> => {
     const user = userEvent.setup();
-    const alert = jest
-      .spyOn(window, 'alert')
-      .mockImplementation((): void => {});
     mockGetFeedList
       .mockResolvedValueOnce(firstPage)
       .mockRejectedValueOnce(new Error('추가 조회 실패'))
@@ -651,8 +693,12 @@ describe('피드 목록 더 보기', (): void => {
       <FeedItemList onCategoryClick={mockOnCategoryClick} sort="LATEST" />,
     );
     await user.click(await screen.findByRole('button', { name: '더 보기' }));
-    expect(alert).toHaveBeenCalledWith(
-      '피드를 더 불러오지 못했어요. 다시 시도해 주세요.',
+    expect(mockAddToast).toHaveBeenCalledWith(
+      {
+        type: 'error',
+        message: '피드를 더 불러오지 못했어요. 다시 시도해 주세요.',
+      },
+      2000,
     );
     expect(screen.getByRole('article')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '더 보기' })).toBeEnabled();
@@ -801,11 +847,11 @@ describe('피드 목록 조회 상태', () => {
       screen.getByRole('button', { name: '공유 아이콘' }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: '옵션 더보기 아이콘' }),
-    ).not.toBeInTheDocument();
+      screen.getByRole('button', { name: '피드 더보기' }),
+    ).toBeInTheDocument();
   });
 
-  it('본인 피드에만 더보기 버튼을 표시한다', async (): Promise<void> => {
+  it('본인 피드에도 관리용 더보기 버튼을 표시한다', async (): Promise<void> => {
     mockGetFeedList.mockResolvedValue({
       ...response,
       items: [{ ...feed, isMine: true }],

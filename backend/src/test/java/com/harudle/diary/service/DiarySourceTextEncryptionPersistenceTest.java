@@ -11,15 +11,22 @@ import static org.mockito.Mockito.when;
 
 import com.harudle.diary.domain.DiarySourceTextCipher;
 import com.harudle.diary.infrastructure.crypto.DiarySourceTextCryptoException;
+import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.dto.CreateDiaryResult;
 import com.harudle.diary.service.dto.DiaryDetailResult;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.generation.config.StoryboardProviderProperties;
+import com.harudle.generation.config.GenerationWorkerProperties;
 import com.harudle.generation.diary.domain.GenerationStatus;
 import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import com.harudle.generation.diary.domain.StoryPanel;
 import com.harudle.generation.diary.domain.Storyboard;
+import com.harudle.generation.diary.repository.DiaryGenerationRepository;
+import com.harudle.generation.diary.service.DiaryGenerationCompletionService;
+import com.harudle.generation.diary.service.DiaryGenerationExecutor;
+import com.harudle.generation.diary.service.DiaryGenerationWorker;
+import com.harudle.generation.diary.service.PendingDiaryGenerationClaimService;
 import com.harudle.generation.diary.service.RequestFingerprintGenerator;
 import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
@@ -105,6 +112,21 @@ class DiarySourceTextEncryptionPersistenceTest extends ServiceIntegrationTestSup
     private RequestFingerprintGenerator fingerprintGenerator;
 
     @Autowired
+    private PendingDiaryGenerationClaimService pendingClaimService;
+
+    @Autowired
+    private DiaryGenerationRepository generationRepository;
+
+    @Autowired
+    private DiaryRepository diaryRepository;
+
+    @Autowired
+    private DiaryGenerationExecutor generationExecutor;
+
+    @Autowired
+    private DiaryGenerationCompletionService completionService;
+
+    @Autowired
     private GenerationPromptRepository promptRepository;
 
     @MockitoBean
@@ -170,7 +192,7 @@ class DiarySourceTextEncryptionPersistenceTest extends ServiceIntegrationTestSup
     }
 
     @Test
-    @DisplayName("암호문과 HMAC으로 선점한 실제 생성은 평문을 AI에 전달하고 성공 및 멱등 응답까지 완료한다")
+    @DisplayName("암호문과 HMAC으로 접수한 작업은 처리기가 원문으로 실행하고 완료 후 같은 요청으로 재조회한다")
     void completeRealCreationWithEncryptedSourceAndProtectedFingerprint() {
         CreateDiaryCommand command = createCommand(SOURCE_TEXT);
         GenerationTokenUsage tokenUsage = new GenerationTokenUsage(120, 350, 80, 550);
@@ -200,6 +222,20 @@ class DiarySourceTextEncryptionPersistenceTest extends ServiceIntegrationTestSup
 
         CreateDiaryResult created = creationService.create(command);
         StoredSource stored = findStoredSource(created.id());
+        CreateDiaryResult pendingReplay = creationService.create(command);
+        assertThat(created.generation().status()).isEqualTo(GenerationStatus.PENDING);
+        assertThat(pendingReplay.generation()).isEqualTo(created.generation());
+        assertThat(pendingReplay.newlyCreated()).isFalse();
+        assertThat(pendingReplay.usage().usedCount()).isEqualTo(1);
+        verify(storyboardGenerator, never()).generate(any(StoryboardGenerationRequest.class));
+
+        DiaryGenerationWorker worker = new DiaryGenerationWorker(
+                pendingClaimService, generationRepository, diaryRepository, sourceTextCipher,
+                generationExecutor, Optional.empty(), completionService, Runnable::run,
+                new GenerationWorkerProperties(1, Duration.ofSeconds(5))
+        );
+        worker.poll();
+
         CreateDiaryResult replayed = creationService.create(command);
         DiaryDetailResult detail = queryService.getDetail(USER_ID, created.id());
 
@@ -216,8 +252,7 @@ class DiarySourceTextEncryptionPersistenceTest extends ServiceIntegrationTestSup
         assertThat(stored.text()).isNotEqualTo(SOURCE_TEXT).doesNotContain(SOURCE_TEXT);
         assertThat(created.newlyCreated()).isTrue();
         assertThat(created.sourceText()).isEqualTo(SOURCE_TEXT);
-        assertThat(created.generation().status()).isEqualTo(GenerationStatus.SUCCEEDED);
-        assertThat(created.generation().tokenUsage()).isEqualTo(tokenUsage);
+        assertThat(created.generation().tokenUsage()).isNull();
         assertThat(detail.sourceText()).isEqualTo(SOURCE_TEXT);
         assertThat(detail.generation().status()).isEqualTo(GenerationStatus.SUCCEEDED);
         assertThat(detail.generation().title()).isEqualTo(storyboard.title());
@@ -226,7 +261,9 @@ class DiarySourceTextEncryptionPersistenceTest extends ServiceIntegrationTestSup
         assertThat(detail.generation().tokenUsage()).isEqualTo(tokenUsage);
         assertThat(replayed.id()).isEqualTo(created.id());
         assertThat(replayed.newlyCreated()).isFalse();
-        assertThat(replayed.generation()).isEqualTo(created.generation());
+        assertThat(replayed.generation().id()).isEqualTo(created.generation().id());
+        assertThat(replayed.generation().status()).isEqualTo(GenerationStatus.SUCCEEDED);
+        assertThat(replayed.generation().tokenUsage()).isEqualTo(tokenUsage);
         assertThat(replayed.usage().usedCount()).isEqualTo(1);
         assertThat(findStoredSource(created.id())).isEqualTo(stored);
         assertThat(countUserDiaries()).isEqualTo(1);

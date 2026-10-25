@@ -160,6 +160,36 @@ jobs:
           bash ../deploy/scripts/test_diary_key_check_jar.sh build/libs/harudle-0.0.1-SNAPSHOT.jar
           bash ../deploy/scripts/test_diary_key_initialization_jar.sh build/libs/harudle-0.0.1-SNAPSHOT.jar
 
+  codex-image-worker-test:
+    name: Codex image worker (offline)
+    if: github.base_ref != 'develop-frontend'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: backend/codex-image-worker
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: backend/codex-image-worker/package-lock.json
+
+      - name: Install worker dependencies
+        run: npm ci
+
+      - name: Test worker without OAuth or external inference
+        run: npm test
+
+      - name: Test diagnostic secret masking
+        run: python3 -m unittest discover -s ../tools/codex-image-poc -p 'test_*.py'
+
   frontend-test:
     name: Frontend Test
     if: github.event_name != 'push' && github.base_ref != 'develop-backend'
@@ -189,7 +219,4 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run frontend checks
-        run: |
-          pnpm --dir web typecheck
-          pnpm --dir web lint
-          pnpm --dir web test --ci --runInBand
+        run: pnpm --dir web check

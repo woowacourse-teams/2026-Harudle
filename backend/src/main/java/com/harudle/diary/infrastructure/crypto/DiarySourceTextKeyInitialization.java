@@ -27,7 +27,7 @@ import java.util.UUID;
 public final class DiarySourceTextKeyInitialization {
 
     private static final int QUERY_TIMEOUT_SECONDS = 10;
-    private static final int LAST_KNOWN_MIGRATION = 28;
+    private static final int LAST_KNOWN_MIGRATION = 36;
 
     private final DiarySourceTextKeyVerification verification;
 
@@ -110,11 +110,11 @@ public final class DiarySourceTextKeyInitialization {
             History history
     ) throws SQLException {
         if (!columns.containsKey("source_text_version")) {
-            require(!history.version28());
+            require(!history.encryptionApplied());
             requireColumn(columns, "source_text", "character varying(300)");
             return;
         }
-        require(history.version28());
+        require(history.encryptionApplied());
         requireColumn(columns, "source_text", "text");
         requireColumn(columns, "source_text_version", "integer");
         try (PreparedStatement statement = prepare(connection, """
@@ -298,6 +298,6 @@ public final class DiarySourceTextKeyInitialization {
     private record Column(String type, boolean required, boolean builtIn, boolean plain) {
     }
 
-    private record History(boolean version28) {
+    private record History(boolean encryptionApplied) {
     }
 }

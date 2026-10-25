@@ -98,6 +98,7 @@ class DevTestDataVisibilityIntegrationTest {
         createFeed(dummyInNormalCategory, testMember, category, "2026-10-15T02:00:00Z", 98);
         jdbc.update("INSERT INTO comments (id, feed_id, author_id, content) VALUES (?, ?, ?, '더미 댓글')",
                 UUID.randomUUID(), dummy, testMember);
+        when(images.forRead()).thenReturn(images);
         when(images.createAccessUrl(anyString())).thenReturn(new ImageAccessUrl(
                 URI.create("https://example.com/diary.png"), Instant.parse("2026-10-17T12:00:00Z")));
     }

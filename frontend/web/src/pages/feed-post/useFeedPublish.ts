@@ -1,10 +1,10 @@
 import { useCallback, useState } from 'react';
-import { useNavigate } from 'react-router';
 import {
   publishFeed,
   type FeedPublishRequest,
 } from '../../domain/feeds/feedPublish';
 import type { Feed } from '../../domain/feeds/feedList';
+import { setFeedListCache } from '../../domain/feeds/feedListCache';
 import { useErrorTracking } from '../../posthog/useErrorTracking';
 import type { ApiRequest } from '../../shared/api';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
@@ -12,6 +12,8 @@ import { useAnalytics } from '../../posthog/useAnalytics';
 
 interface FeedPublishOptions {
   readonly categoryId: FeedPublishRequest['categoryId'];
+  readonly onSuccess?: (response: Feed) => void;
+  readonly onError?: (error: Error) => void;
 }
 
 interface FeedPublishState {
@@ -22,16 +24,20 @@ interface FeedPublishState {
 const useFeedPublish = ({
   diaryId,
 }: Pick<FeedPublishRequest, 'diaryId'>): FeedPublishState => {
-  const navigate = useNavigate();
   const [request, setRequest] = useState<ApiRequest<Feed>>({ status: 'idle' });
   const { captureError } = useErrorTracking();
   const { track } = useAnalytics();
 
   const execute = useCallback(
-    async ({ categoryId }: FeedPublishOptions): Promise<void> => {
+    async ({
+      categoryId,
+      onSuccess,
+      onError,
+    }: FeedPublishOptions): Promise<void> => {
       if (request.status === 'loading') return;
       setRequest({ status: 'loading' });
 
+      let feed: Feed;
       try {
         track('api_requested', {
           feature: 'feed',
@@ -41,9 +47,7 @@ const useFeedPublish = ({
           diary_id: diaryId,
           category_id: categoryId,
         });
-        const feed = await publishFeed({ diaryId, categoryId });
-        setRequest({ status: 'success', data: feed });
-        void navigate('/', { replace: true });
+        feed = await publishFeed({ diaryId, categoryId });
       } catch (error: unknown) {
         const requestError =
           error instanceof Error
@@ -55,9 +59,15 @@ const useFeedPublish = ({
           diary_id: diaryId,
         });
         setRequest({ status: 'error', error: requestError });
+        onError?.(requestError);
+        return;
       }
+
+      setFeedListCache(null);
+      setRequest({ status: 'success', data: feed });
+      onSuccess?.(feed);
     },
-    [diaryId, navigate, captureError, request.status, track],
+    [diaryId, captureError, request.status, track],
   );
 
   return { request, execute };

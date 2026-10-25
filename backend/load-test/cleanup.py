@@ -135,8 +135,8 @@ BEGIN
     PERFORM 1 FROM diary_generations g JOIN diaries d ON d.id = g.diary_id
         WHERE d.user_id IN ({ids}) FOR UPDATE OF g;
     IF EXISTS (SELECT 1 FROM diary_generations g JOIN diaries d ON d.id = g.diary_id
-               WHERE d.user_id IN ({ids}) AND g.status = 'PROCESSING') THEN
-        RAISE EXCEPTION 'Generation is still processing. Wait before cleanup';
+               WHERE d.user_id IN ({ids}) AND g.status IN ('PENDING', 'PROCESSING')) THEN
+        RAISE EXCEPTION 'Generation is still processing or pending. Wait before cleanup';
     END IF;
     IF EXISTS (SELECT 1 FROM diary_generations g JOIN diaries d ON d.id = g.diary_id
                WHERE d.user_id IN ({ids}) AND NOT EXISTS (
