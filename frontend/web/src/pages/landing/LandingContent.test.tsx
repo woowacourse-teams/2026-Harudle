@@ -47,6 +47,18 @@ afterEach(() => {
 });
 
 describe('브랜드 소개와 체험을 연결하는 랜딩', () => {
+  it('문의 안내는 같은 탭에서 열고 외부 링크는 기존처럼 새 탭에서 연다', (): void => {
+    render(<LandingContent trialSection={null} />);
+
+    const contact = screen.getByRole('link', { name: '문의하기' });
+    expect(contact).toHaveAttribute('href', '/contact');
+    expect(contact).not.toHaveAttribute('target');
+    expect(screen.getByRole('link', { name: 'Instagram' })).toHaveAttribute(
+      'target',
+      '_blank',
+    );
+  });
+
   it('첫 화면에서는 체험을 주 행동으로 안내하고 로그인은 기존 OAuth로 연결한다', () => {
     render(
       <LandingContent trialSection={<textarea aria-label="체험 내용" />} />,

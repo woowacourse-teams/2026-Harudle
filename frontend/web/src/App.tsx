@@ -9,6 +9,7 @@ import DiaryWritePage from './pages/diary-write/DiaryWritePage';
 
 import SettingPage from './pages/setting/SettingPage';
 import LoginPage from './pages/login/LoginPage';
+import ContactPage from './pages/contact/ContactPage';
 import DiaryDetailPage from './pages/diary-detail/DiaryDetailPage';
 import AuthCallbackPage from './pages/login/AuthCallbackPage';
 import LandingRoutes from './pages/landing/LandingRoutes';
@@ -35,6 +36,7 @@ const App = () => {
           <Route path="/feeds/:feedId" element={<FeedDetailPage />} />
         </Route>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/contact" element={<ContactPage />} />
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
         <Route path="/diary-write" element={<DiaryWritePage />} />
         <Route path="/diary/:diaryId" element={<DiaryDetailPage />} />

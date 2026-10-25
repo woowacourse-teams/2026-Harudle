@@ -20,6 +20,21 @@ const mockGetProfile = jest.fn<typeof getUserProfile>();
 const mockUpdateProfile = jest.fn<typeof updateUserProfile>();
 const mockAddToast = jest.fn();
 
+jest.mock('react-router', () => ({
+  Link: ({
+    to,
+    children,
+    ...props
+  }: {
+    to: string;
+    children: import('react').ReactNode;
+  }) => (
+    <a href={to} {...props}>
+      {children}
+    </a>
+  ),
+}));
+
 jest.mock('../../domain/user/profile', () => ({
   ...jest.requireActual<typeof import('../../domain/user/profile')>(
     '../../domain/user/profile',
@@ -111,6 +126,21 @@ const problem = (
   });
 
 describe('통합 프로필 수정', (): void => {
+  it('프로필을 불러오지 못해도 문의 화면으로 이동할 수 있다', async (): Promise<void> => {
+    mockGetProfile.mockRejectedValueOnce(new Error('프로필 조회 실패'));
+    render(<SettingPage />);
+
+    expect(screen.getByRole('link', { name: '문의하기' })).toHaveAttribute(
+      'href',
+      '/contact',
+    );
+    await screen.findByText('프로필 조회 실패');
+    expect(screen.getByRole('link', { name: '문의하기' })).toHaveAttribute(
+      'href',
+      '/contact',
+    );
+  });
+
   it('사진과 닉네임을 한 번 저장하고 조회한 프로필을 반영한 뒤 완료를 알린다', async (): Promise<void> => {
     const { user, dialog, input } = await openProfileModal();
     expect(screen.getByRole('button', { name: '저장' })).toBeDisabled();
