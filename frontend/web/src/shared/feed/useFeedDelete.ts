@@ -1,6 +1,11 @@
 import { useCallback, useState } from 'react';
 import { deleteFeed } from '../../domain/feeds/feedDelete';
 import type { Feed } from '../../domain/feeds/feedList';
+import {
+  getFeedListCache,
+  setFeedListCache,
+} from '../../domain/feeds/feedListCache';
+import { removeFeed } from '../../domain/feeds/feedListUpdates';
 import { useErrorTracking } from '../../posthog/useErrorTracking';
 import type { ApiRequest } from '../../shared/api';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
@@ -15,6 +20,7 @@ interface FeedDeleteOptions {
 
 interface FeedDeleteState {
   readonly request: ApiRequest<void>;
+  readonly reset: () => void;
   readonly execute: (options: FeedDeleteOptions) => Promise<void>;
 }
 
@@ -43,13 +49,23 @@ const useFeedDelete = ({ feedId }: UseFeedDeleteProps): FeedDeleteState => {
         return;
       }
 
+      const cached = getFeedListCache();
+      if (cached !== null) {
+        setFeedListCache({
+          ...cached,
+          data: removeFeed(cached.data, feedId),
+        });
+      }
+
       setRequest({ status: 'success', data: undefined });
       onSuccess();
     },
     [feedId, request.status, captureError],
   );
 
-  return { request, execute };
+  const reset = (): void => setRequest({ status: 'idle' });
+
+  return { request, execute, reset };
 };
 
 export default useFeedDelete;

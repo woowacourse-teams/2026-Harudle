@@ -149,7 +149,8 @@ public final class DiarySourceTextMigration {
             require(!hasGeneration(diary.id()));
             return;
         }
-        require("SUCCEEDED".equals(generation.status()) || "FAILED".equals(generation.status()));
+        require("PENDING".equals(generation.status()) || "SUCCEEDED".equals(generation.status())
+                || "FAILED".equals(generation.status()));
         require(equalFingerprint(rawFingerprint(diary, generation.idempotencyKey()), generation.fingerprint()));
     }
 

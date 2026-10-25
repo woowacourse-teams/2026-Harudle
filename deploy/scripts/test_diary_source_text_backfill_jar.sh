@@ -43,16 +43,21 @@ CREATE TABLE diary_generations (
 );
 -- Minimal CLI harness history; the integration suite separately applies the real Flyway migrations.
 CREATE TABLE flyway_schema_history (version VARCHAR(50), type VARCHAR(20), success BOOLEAN);
-INSERT INTO flyway_schema_history VALUES ('1', 'SQL', true), ('28', 'SQL', true);
+INSERT INTO flyway_schema_history VALUES ('1', 'SQL', true), ('36', 'SQL', true);
 INSERT INTO diaries VALUES
   ('10000000-0000-4000-8000-000000000001', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
    '2026-10-20', 'orphan fixture', 0),
   ('20000000-0000-4000-8000-000000000002', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-   '2026-10-20', 'packaged migration fixture', 0);
+   '2026-10-20', 'packaged migration fixture', 0),
+  ('50000000-0000-4000-8000-000000000005', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+   '2026-10-20', 'pending migration fixture', 0);
 INSERT INTO diary_generations VALUES
   ('30000000-0000-4000-8000-000000000003', '20000000-0000-4000-8000-000000000002', 'SUCCEEDED',
    '40000000-0000-4000-8000-000000000004',
-   '0f422a577acaf0bdb71c0604c7156d2eb4cd75817aecae72e6aee077e1e7fe20');
+   '0f422a577acaf0bdb71c0604c7156d2eb4cd75817aecae72e6aee077e1e7fe20'),
+  ('60000000-0000-4000-8000-000000000006', '50000000-0000-4000-8000-000000000005', 'PENDING',
+   '70000000-0000-4000-8000-000000000007',
+   '744dab8ccca8db62d32d8e3a68de75a04b0c047a2b8efc7b9fedc40e6ae39aae');
 SQL
 
 export DIARY_SOURCE_TEXT_KEY_BASE64=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
@@ -84,18 +89,18 @@ run_check() {
 }
 
 run_check 0 status
-jq -e '.legacyRows == 2 and .finalized == false' "${test_dir}/result" >/dev/null
+jq -e '.legacyRows == 3 and .finalized == false' "${test_dir}/result" >/dev/null
 run_check 1 ready
 run_check 1 verify
-jq -e '.checked == 2 and .failed == 2' "${test_dir}/result" >/dev/null
+jq -e '.checked == 3 and .failed == 3' "${test_dir}/result" >/dev/null
 run_check 2 migrate --batch-size 1 --max-batches 1
-jq -e '.migrated == 1 and .orphanMigrated == 1 and .legacyRows == 1' "${test_dir}/result" >/dev/null
+jq -e '.migrated == 1 and .orphanMigrated == 1 and .legacyRows == 2' "${test_dir}/result" >/dev/null
 run_check 0 migrate --batch-size 100 --max-batches 1
-jq -e '.migrated == 1 and .legacyRows == 0' "${test_dir}/result" >/dev/null
+jq -e '.migrated == 2 and .legacyRows == 0' "${test_dir}/result" >/dev/null
 run_check 0 verify
-jq -e '.checked == 2 and .failed == 0 and .finalized == false' "${test_dir}/result" >/dev/null
+jq -e '.checked == 3 and .failed == 0 and .finalized == false' "${test_dir}/result" >/dev/null
 run_check 0 finalize
-jq -e '.checked == 2 and .failed == 0 and .finalized == true' "${test_dir}/result" >/dev/null
+jq -e '.checked == 3 and .failed == 0 and .finalized == true' "${test_dir}/result" >/dev/null
 run_check 0 ready
 run_check 0 migrate
 jq -e '.migrated == 0 and .finalized == true' "${test_dir}/result" >/dev/null

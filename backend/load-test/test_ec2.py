@@ -133,7 +133,7 @@ class Ec2PreparationTest(unittest.TestCase):
                 self.assertNotIn('*', source)
                 (destination / Path(source).name).write_bytes((root / source).read_bytes())
         result = subprocess.run(['python3', '-c',
-                                 'import ec2, transfer; assert ec2.TEST_IMAGE.is_file(); print(ec2.TEST_IMAGE.name)'],
+                                 'import ec2, transfer, cleanup_stopped; assert ec2.TEST_IMAGE.is_file(); print(ec2.TEST_IMAGE.name)'],
                                 cwd=destination, check=True, capture_output=True, text=True)
         self.assertEqual(result.stdout.strip(), 'load-test-diary.png')
         self.assertFalse((destination / 'runs').exists())

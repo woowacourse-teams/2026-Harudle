@@ -6,19 +6,24 @@ import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
 import com.harudle.generation.config.GenerationLifecycleProperties;
+import com.harudle.generation.config.GenerationWorkerProperties;
 import com.harudle.generation.diary.domain.DiaryGeneration;
 import com.harudle.generation.diary.domain.GenerationStatus;
 import com.harudle.generation.diary.service.DiaryGenerationCompletionService;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
+import com.harudle.generation.diary.repository.DiaryGenerationAdmissionLock;
 import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import com.harudle.generation.diary.service.RequestFingerprintGenerator;
+import com.harudle.generation.diary.service.GenerationQueueMetrics;
 import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
 import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
+import com.harudle.generation.diary.service.exception.GenerationCapacityExceededException;
 import com.harudle.generation.diary.service.exception.IdempotencyKeyConflictException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -27,6 +32,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 class DiaryCreationClaimService {
+
+    private static final List<GenerationStatus> UNFINISHED_STATUSES =
+            List.of(GenerationStatus.PENDING, GenerationStatus.PROCESSING);
 
     private final DiaryRepository diaryRepository;
     private final GenerationPromptRepository generationPromptRepository;
@@ -37,6 +45,9 @@ class DiaryCreationClaimService {
     private final boolean newWritesEnabled;
     private final Clock clock;
     private final Duration processingTimeout;
+    private final DiaryGenerationAdmissionLock admissionLock;
+    private final int maxUnfinishedGenerations;
+    private final GenerationQueueMetrics queueMetrics;
 
     DiaryCreationClaimService(
             DiaryRepository diaryRepository,
@@ -47,7 +58,10 @@ class DiaryCreationClaimService {
             DiarySourceTextCipher sourceTextCipher,
             DiarySourceTextWriteProperties sourceTextWriteProperties,
             @Qualifier("serviceClock") Clock clock,
-            GenerationLifecycleProperties generationLifecycleProperties
+            GenerationLifecycleProperties generationLifecycleProperties,
+            DiaryGenerationAdmissionLock admissionLock,
+            GenerationWorkerProperties workerProperties,
+            GenerationQueueMetrics queueMetrics
     ) {
         Duration processingTimeout = generationLifecycleProperties.processingTimeout();
         validateProcessingTimeout(processingTimeout);
@@ -60,6 +74,9 @@ class DiaryCreationClaimService {
         this.newWritesEnabled = sourceTextWriteProperties.newWritesEnabled();
         this.clock = clock;
         this.processingTimeout = processingTimeout;
+        this.admissionLock = admissionLock;
+        this.maxUnfinishedGenerations = workerProperties.concurrency();
+        this.queueMetrics = queueMetrics;
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -73,10 +90,36 @@ class DiaryCreationClaimService {
             boolean generationAvailable,
             LocalDate usageDate
     ) {
+        return claim(command, generationAvailable, usageDate, false);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    DiaryCreationClaim enqueue(CreateDiaryCommand command, boolean generationAvailable) {
+        return enqueue(command, generationAvailable, null);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    DiaryCreationClaim enqueue(
+            CreateDiaryCommand command,
+            boolean generationAvailable,
+            LocalDate usageDate
+    ) {
+        return claim(command, generationAvailable, usageDate, true);
+    }
+
+    private DiaryCreationClaim claim(
+            CreateDiaryCommand command,
+            boolean generationAvailable,
+            LocalDate usageDate,
+            boolean queueForWorker
+    ) {
+        if (queueForWorker) {
+            admissionLock.acquire();
+        }
         return diaryGenerationRepository
                 .findByIdempotencyKeyForUpdate(command.idempotencyKey())
                 .map(generation -> createExistingClaim(command, generation))
-                .orElseGet(() -> createNewClaim(command, generationAvailable, usageDate));
+                .orElseGet(() -> createNewClaim(command, generationAvailable, usageDate, queueForWorker));
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -110,13 +153,19 @@ class DiaryCreationClaimService {
     private DiaryCreationClaim createNewClaim(
             CreateDiaryCommand command,
             boolean generationAvailable,
-            LocalDate usageDate
+            LocalDate usageDate,
+            boolean queueForWorker
     ) {
         if (!newWritesEnabled) {
             throw GenerationUnavailableException.newDiaryWritesDisabled();
         }
         if (!generationAvailable) {
             throw GenerationUnavailableException.adaptersNotConfigured();
+        }
+        if (queueForWorker
+                && diaryGenerationRepository.countByStatusIn(UNFINISHED_STATUSES) >= maxUnfinishedGenerations) {
+            queueMetrics.capacityRejected();
+            throw new GenerationCapacityExceededException();
         }
         Long promptId = generationPromptRepository.findFirstByOrderByIdDesc()
                 .orElseThrow(GenerationUnavailableException::promptNotConfigured)
@@ -128,15 +177,15 @@ class DiaryCreationClaimService {
                 sourceTextCipher
         ));
         GenerateDiaryImageCommand generationCommand = createGenerationCommand(command, diary);
-        DiaryGeneration generation = DiaryGeneration.start(
-                diary.getId(),
-                promptId,
-                command.idempotencyKey(),
-                diary.protectRequestFingerprint(
-                        sourceTextCipher, requestFingerprintGenerator.generate(generationCommand)
-                ),
-                usageDate
+        String fingerprint = diary.protectRequestFingerprint(
+                sourceTextCipher, requestFingerprintGenerator.generate(generationCommand)
         );
+        DiaryGeneration generation = DiaryGeneration.pending(
+                diary.getId(), promptId, command.idempotencyKey(), fingerprint, usageDate
+        );
+        if (!queueForWorker) {
+            generation.startProcessing();
+        }
         DiaryGeneration savedGeneration = diaryGenerationRepository.saveAndFlush(generation);
         return toClaim(diary, savedGeneration, true);
     }

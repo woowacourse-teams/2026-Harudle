@@ -60,7 +60,7 @@ class DiarySourceTextKeyInitializationTest {
 
     @BeforeEach
     void setUp() throws SQLException {
-        resetSchema("28");
+        resetSchema("36");
     }
 
     @AfterEach
@@ -75,7 +75,7 @@ class DiarySourceTextKeyInitializationTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
-    @DisplayName("빈 V28 DB와 v0만 있는 DB는 최초 자료를 만들고 연결 및 기존 행을 보존한다")
+    @DisplayName("빈 V36 DB와 v0만 있는 DB는 최초 자료를 만들고 연결 및 기존 행을 보존한다")
     void initializeOnlyWhenTheKnownSchemaHasNoEncryptedData(boolean legacyExists) throws Exception {
         if (legacyExists) {
             insertDiary("기존 평문 일기", 0, false);
@@ -118,24 +118,24 @@ class DiarySourceTextKeyInitializationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"1", "23"})
-    @DisplayName("실제 Flyway 이력이 있는 V28 이전의 알려진 평문 스키마도 최초 준비할 수 있다")
+    @ValueSource(strings = {"1", "23", "35"})
+    @DisplayName("실제 Flyway 이력이 있는 V36 이전의 알려진 평문 스키마도 최초 준비할 수 있다")
     void acceptKnownPreEncryptionSchemaWithSuccessfulFlywayHistory(String target) throws Exception {
         resetSchema(target);
         execute(connection, "INSERT INTO diaries (id, user_id, diary_date, source_text) VALUES (?, ?, ?, ?)",
-                DIARY_ID, USER_ID, LocalDate.of(2026, 10, 21), "V28 적용 전 평문");
+                DIARY_ID, USER_ID, LocalDate.of(2026, 10, 21), "V36 적용 전 평문");
 
         initialization.initialize(connection, file(), "dev");
 
         verification.verify(file(), "dev");
         assertThat(scalar(connection, "SELECT source_text FROM diaries WHERE id = ?", DIARY_ID))
-                .isEqualTo("V28 적용 전 평문");
+                .isEqualTo("V36 적용 전 평문");
         assertConnectionRetained(connection);
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"28", "999", "unknown"})
-    @DisplayName("평문 모양이어도 V28 이상 또는 알 수 없는 이력이 있으면 초기화를 거절한다")
+    @ValueSource(strings = {"36", "999", "unknown"})
+    @DisplayName("평문 모양이어도 V36 이상 또는 알 수 없는 이력이 있으면 초기화를 거절한다")
     void rejectPreEncryptionShapeWhoseHistoryCannotProveItsOrigin(String version) throws SQLException {
         resetSchema("23");
         execute(connection, "UPDATE flyway_schema_history SET version = ? WHERE version = '23'", version);

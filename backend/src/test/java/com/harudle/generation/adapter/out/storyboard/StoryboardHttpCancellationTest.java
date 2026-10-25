@@ -1,5 +1,7 @@
 package com.harudle.generation.adapter.out.storyboard;
 
+import com.harudle.generation.adapter.out.http.SingleAttemptHttpTransport;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
@@ -300,7 +302,7 @@ class StoryboardHttpCancellationTest {
         var logger = new ExternalApiLogger();
         if ("gemini".equals(provider)) {
             var scope = new GeminiStoryboardCallScope();
-            OkHttpClient http = StoryboardHttpTransport.builder(HTTP_TIMEOUT).eventListenerFactory(call -> {
+            OkHttpClient http = SingleAttemptHttpTransport.builder(HTTP_TIMEOUT).eventListenerFactory(call -> {
                 calls.add(call);
                 return scope.create(call);
             }).build();

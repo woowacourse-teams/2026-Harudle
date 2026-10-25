@@ -13,15 +13,22 @@ import static org.mockito.Mockito.when;
 import com.harudle.diary.domain.DiarySourceTextCipher;
 import com.harudle.diary.infrastructure.crypto.DiarySourceTextCryptoException;
 import com.harudle.diary.infrastructure.migration.DiarySourceTextMigration;
+import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.dto.CreateDiaryResult;
 import com.harudle.diary.service.dto.DiaryDetailResult;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.generation.config.StoryboardProviderProperties;
+import com.harudle.generation.config.GenerationWorkerProperties;
 import com.harudle.generation.diary.domain.GenerationStatus;
 import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import com.harudle.generation.diary.domain.StoryPanel;
 import com.harudle.generation.diary.domain.Storyboard;
+import com.harudle.generation.diary.repository.DiaryGenerationRepository;
+import com.harudle.generation.diary.service.DiaryGenerationCompletionService;
+import com.harudle.generation.diary.service.DiaryGenerationExecutor;
+import com.harudle.generation.diary.service.DiaryGenerationWorker;
+import com.harudle.generation.diary.service.PendingDiaryGenerationClaimService;
 import com.harudle.generation.diary.service.RequestFingerprintGenerator;
 import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
@@ -59,6 +66,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -111,6 +120,21 @@ class DiarySourceTextEncryptionPersistenceTest extends ServiceIntegrationTestSup
 
     @Autowired
     private RequestFingerprintGenerator fingerprintGenerator;
+
+    @Autowired
+    private PendingDiaryGenerationClaimService pendingClaimService;
+
+    @Autowired
+    private DiaryGenerationRepository generationRepository;
+
+    @Autowired
+    private DiaryRepository diaryRepository;
+
+    @Autowired
+    private DiaryGenerationExecutor generationExecutor;
+
+    @Autowired
+    private DiaryGenerationCompletionService completionService;
 
     @Autowired
     private GenerationPromptRepository promptRepository;
@@ -177,9 +201,11 @@ class DiarySourceTextEncryptionPersistenceTest extends ServiceIntegrationTestSup
         assertThat(countUserDiaries()).isEqualTo(1);
     }
 
-    @Test
-    @DisplayName("암호문과 HMAC으로 선점한 실제 생성은 평문을 AI에 전달하고 성공 및 멱등 응답까지 완료한다")
-    void completeRealCreationWithEncryptedSourceAndProtectedFingerprint() {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    @DisplayName("신규 암호문과 평문에서 전환한 대기 작업은 처리기가 원문으로 실행하고 같은 요청으로 재조회한다")
+    void completeRealCreationWithEncryptedSourceAndProtectedFingerprint(boolean migrateLegacyPending)
+            throws SQLException {
         CreateDiaryCommand command = createCommand(SOURCE_TEXT);
         GenerationTokenUsage tokenUsage = new GenerationTokenUsage(120, 350, 80, 550);
         Storyboard storyboard = new Storyboard(
@@ -207,7 +233,49 @@ class DiarySourceTextEncryptionPersistenceTest extends ServiceIntegrationTestSup
                 });
 
         CreateDiaryResult created = creationService.create(command);
+        CreateDiaryResult pendingReplay = creationService.create(command);
+        assertThat(created.generation().status()).isEqualTo(GenerationStatus.PENDING);
+        assertThat(pendingReplay.generation()).isEqualTo(created.generation());
+        assertThat(pendingReplay.newlyCreated()).isFalse();
+        assertThat(pendingReplay.usage().usedCount()).isEqualTo(1);
+        verify(storyboardGenerator, never()).generate(any(StoryboardGenerationRequest.class));
+
+        if (migrateLegacyPending) {
+            String rawFingerprint = fingerprintGenerator.generate(new GenerateDiaryImageCommand(
+                    USER_ID, created.id(), DIARY_DATE, SOURCE_TEXT, command.idempotencyKey()
+            ));
+            // Recreate an already accepted v0 queue entry before running the real conversion tool.
+            transactionTemplate.executeWithoutResult(status -> {
+                createQuery("UPDATE diaries SET source_text = ?, source_text_version = 0 WHERE id = ?",
+                        SOURCE_TEXT, created.id()).executeUpdate();
+                createQuery("UPDATE diary_generations SET request_fingerprint = ? WHERE id = ?",
+                        rawFingerprint, created.generation().id()).executeUpdate();
+            });
+            Object[] before = (Object[]) readValue(
+                    "SELECT status, created_at, usage_date FROM diary_generations WHERE id = ?",
+                    created.generation().id()
+            );
+            try (Connection connection = dataSource.getConnection()) {
+                var migrated = new DiarySourceTextMigration(connection, sourceTextCipher, fingerprintGenerator)
+                        .migrate(10, 1);
+                assertThat(migrated.migrated()).isEqualTo(1);
+                assertThat(migrated.skippedProcessing()).isZero();
+                assertThat(migrated.failed()).isZero();
+            }
+            assertThat((Object[]) readValue(
+                    "SELECT status, created_at, usage_date FROM diary_generations WHERE id = ?",
+                    created.generation().id()
+            )).containsExactly(before);
+        }
         StoredSource stored = findStoredSource(created.id());
+
+        DiaryGenerationWorker worker = new DiaryGenerationWorker(
+                pendingClaimService, generationRepository, diaryRepository, sourceTextCipher,
+                generationExecutor, Optional.empty(), completionService, Runnable::run,
+                new GenerationWorkerProperties(1, Duration.ofSeconds(5))
+        );
+        worker.poll();
+
         CreateDiaryResult replayed = creationService.create(command);
         DiaryDetailResult detail = queryService.getDetail(USER_ID, created.id());
 
@@ -224,8 +292,7 @@ class DiarySourceTextEncryptionPersistenceTest extends ServiceIntegrationTestSup
         assertThat(stored.text()).isNotEqualTo(SOURCE_TEXT).doesNotContain(SOURCE_TEXT);
         assertThat(created.newlyCreated()).isTrue();
         assertThat(created.sourceText()).isEqualTo(SOURCE_TEXT);
-        assertThat(created.generation().status()).isEqualTo(GenerationStatus.SUCCEEDED);
-        assertThat(created.generation().tokenUsage()).isEqualTo(tokenUsage);
+        assertThat(created.generation().tokenUsage()).isNull();
         assertThat(detail.sourceText()).isEqualTo(SOURCE_TEXT);
         assertThat(detail.generation().status()).isEqualTo(GenerationStatus.SUCCEEDED);
         assertThat(detail.generation().title()).isEqualTo(storyboard.title());
@@ -234,7 +301,9 @@ class DiarySourceTextEncryptionPersistenceTest extends ServiceIntegrationTestSup
         assertThat(detail.generation().tokenUsage()).isEqualTo(tokenUsage);
         assertThat(replayed.id()).isEqualTo(created.id());
         assertThat(replayed.newlyCreated()).isFalse();
-        assertThat(replayed.generation()).isEqualTo(created.generation());
+        assertThat(replayed.generation().id()).isEqualTo(created.generation().id());
+        assertThat(replayed.generation().status()).isEqualTo(GenerationStatus.SUCCEEDED);
+        assertThat(replayed.generation().tokenUsage()).isEqualTo(tokenUsage);
         assertThat(replayed.usage().usedCount()).isEqualTo(1);
         assertThat(findStoredSource(created.id())).isEqualTo(stored);
         assertThat(countUserDiaries()).isEqualTo(1);

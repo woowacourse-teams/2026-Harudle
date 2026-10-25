@@ -49,7 +49,8 @@ class LoadTestDiaryController {
     @GetMapping("/ai-stub")
     ResponseEntity<Status> status() {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
-                .body(new Status("dev", LoadTestAiStub.DELAY.toMillis(), "test-image", "real"));
+                .body(new Status("dev", LoadTestAiStub.DELAY.toMillis(), "test-image", "real",
+                        "db-queue"));
     }
 
     @PostMapping("/diaries")
@@ -73,8 +74,10 @@ class LoadTestDiaryController {
         if (!result.newlyCreated()) {
             return ResponseEntity.ok(response);
         }
-        return ResponseEntity.created(URI.create(DiaryController.BASE_PATH + "/" + result.id())).body(response);
+        return ResponseEntity.accepted()
+                .location(URI.create(DiaryController.BASE_PATH + "/" + result.id()))
+                .body(response);
     }
 
-    record Status(String environment, long delayMs, String output, String storage) {}
+    record Status(String environment, long delayMs, String output, String storage, String execution) {}
 }

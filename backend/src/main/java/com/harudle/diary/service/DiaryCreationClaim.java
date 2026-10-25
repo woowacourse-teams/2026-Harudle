@@ -1,8 +1,10 @@
 package com.harudle.diary.service;
 
+import com.harudle.diary.service.dto.DiaryGenerationResult;
 import com.harudle.generation.diary.domain.GenerationErrorCode;
 import com.harudle.generation.diary.domain.GenerationStatus;
 import com.harudle.generation.diary.domain.GenerationTokenUsage;
+import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -36,6 +38,15 @@ record DiaryCreationClaim(
     ) {
         this(diaryId, diaryDate, sourceText, createdAt, generationId, generationStatus,
                 title, imageObjectKey, completedAt, errorCode, newlyCreated, null);
+    }
+
+    DiaryGenerationResult toGenerationResult() {
+        if (generationStatus == GenerationStatus.FAILED) {
+            throw new DiaryGenerationFailedException(errorCode);
+        }
+        return new DiaryGenerationResult(
+                generationId, generationStatus, title, imageObjectKey, completedAt, tokenUsage
+        );
     }
 
     @Override

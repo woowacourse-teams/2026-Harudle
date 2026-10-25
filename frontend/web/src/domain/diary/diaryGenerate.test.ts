@@ -1,10 +1,13 @@
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { RequestError, type ProblemDetails } from '../../shared/api';
+import { GENERATION_FAILURE_CODES } from './diaryGeneration';
 import {
   generateDiary,
+  isDiaryGenerateResponse,
+  isDiaryGenerationStatusResponse,
   type DiaryGenerateRequest,
-  type GenerationStatus,
+  type DiaryGenerateResponse,
 } from './diaryGenerate';
 
 const mockAuthFetch = jest.fn<(...args: unknown[]) => Promise<Response>>();
@@ -26,12 +29,15 @@ const createErrorResponse = (json: () => Promise<unknown>): Response =>
     json,
   }) as Response;
 
-const createSuccessResponse = (status: GenerationStatus): Response => {
+const createSuccessResponse = (
+  status: DiaryGenerateResponse['generation']['status'],
+  httpStatus: 200 | 202 = status === 'PENDING' ? 202 : 200,
+): Response => {
   const isSucceeded = status === 'SUCCEEDED';
 
   return {
     ok: true,
-    status: 201,
+    status: httpStatus,
     json: async () => ({
       id: '4f688273-37a3-453a-8348-b6596f4b4a61',
       diaryDate: diaryGenerateRequest.diaryDate,
@@ -43,8 +49,7 @@ const createSuccessResponse = (status: GenerationStatus): Response => {
         title: isSucceeded ? '친구와 함께한 산책' : null,
         imageUrl: isSucceeded ? 'https://example.com/diary.png' : null,
         imageUrlExpiresAt: isSucceeded ? '2026-09-09T20:20:23+09:00' : null,
-        completedAt:
-          status === 'PROCESSING' ? null : '2026-09-09T20:11:42+09:00',
+        completedAt: isSucceeded ? '2026-09-09T20:11:42+09:00' : null,
       },
       usage: {
         usageDate: '2026-09-09',
@@ -62,7 +67,7 @@ afterEach(() => {
 
 describe('일기 생성 API', () => {
   it('생성 요청의 URL, 메서드, 헤더와 본문을 전달한다', async () => {
-    mockAuthFetch.mockResolvedValueOnce(createSuccessResponse('SUCCEEDED'));
+    mockAuthFetch.mockResolvedValueOnce(createSuccessResponse('PENDING'));
 
     await generateDiary(diaryGenerateRequest);
 
@@ -80,10 +85,17 @@ describe('일기 생성 API', () => {
     });
   });
 
-  it.each<GenerationStatus>(['PROCESSING', 'SUCCEEDED', 'FAILED'])(
-    '생성 상태가 %s인 정상 응답을 반환한다',
-    async (status) => {
-      mockAuthFetch.mockResolvedValueOnce(createSuccessResponse(status));
+  it.each([
+    { httpStatus: 202, status: 'PENDING' },
+    { httpStatus: 200, status: 'PENDING' },
+    { httpStatus: 200, status: 'PROCESSING' },
+    { httpStatus: 200, status: 'SUCCEEDED' },
+  ] as const)(
+    '$httpStatus 응답에서 $status 상태를 반환한다',
+    async ({ httpStatus, status }): Promise<void> => {
+      mockAuthFetch.mockResolvedValueOnce(
+        createSuccessResponse(status, httpStatus),
+      );
 
       await expect(generateDiary(diaryGenerateRequest)).resolves.toMatchObject({
         generation: { status },
@@ -151,4 +163,115 @@ describe('일기 생성 API', () => {
       ERROR_MESSAGES.DIARY_GENERATION_FAILED,
     );
   });
+});
+
+describe('일기 생성 접수 응답 타입 가드', (): void => {
+  const pendingGeneration = {
+    id: 'fc6f08df-61af-4420-b600-e5496c92e36f',
+    status: 'PENDING',
+    title: null,
+    imageUrl: null,
+    imageUrlExpiresAt: null,
+    completedAt: null,
+  };
+  const succeededGeneration = {
+    ...pendingGeneration,
+    status: 'SUCCEEDED',
+    title: '친구와 함께한 산책',
+    imageUrl: 'https://example.com/diary.png',
+    imageUrlExpiresAt: '2026-09-09T20:20:23+09:00',
+    completedAt: '2026-09-09T20:11:42+09:00',
+  };
+
+  it.each([
+    { ...pendingGeneration, status: 'FAILED' },
+    { ...pendingGeneration, status: 'UNKNOWN' },
+    { ...pendingGeneration, title: '아직 완성되지 않은 제목' },
+    { ...pendingGeneration, status: 'PROCESSING', imageUrl: 'image.png' },
+    { ...pendingGeneration, imageUrlExpiresAt: '2026-09-09T20:20:23+09:00' },
+    { ...pendingGeneration, completedAt: '2026-09-09T20:11:42+09:00' },
+    { ...succeededGeneration, title: null },
+    { ...succeededGeneration, imageUrl: null },
+    { ...succeededGeneration, imageUrlExpiresAt: null },
+    { ...succeededGeneration, completedAt: null },
+    { ...pendingGeneration, id: undefined },
+    { ...pendingGeneration, title: undefined },
+  ])(
+    '상태와 결과 필드가 맞지 않는 응답을 거부한다: %j',
+    async (generation): Promise<void> => {
+      const data: unknown = await createSuccessResponse('PENDING').json();
+      if (typeof data !== 'object' || data === null) {
+        throw new Error('테스트 응답은 객체여야 합니다.');
+      }
+      expect(isDiaryGenerateResponse({ ...data, generation })).toBe(false);
+    },
+  );
+});
+
+describe('일기 생성 상태 응답 타입 가드', (): void => {
+  const pendingResponse = {
+    id: 'fc6f08df-61af-4420-b600-e5496c92e36f',
+    status: 'PENDING',
+    diaryId: null,
+    errorCode: null,
+  };
+
+  it.each([
+    pendingResponse,
+    { ...pendingResponse, status: 'PROCESSING' },
+    { ...pendingResponse, status: 'SUCCEEDED', diaryId: 'diary-id' },
+    { ...pendingResponse, status: 'FAILED', errorCode: 'AI_PROVIDER_ERROR' },
+  ])('정상 상태 응답을 허용한다: $status', (response): void => {
+    expect(isDiaryGenerationStatusResponse(response)).toBe(true);
+  });
+
+  it.each([
+    null,
+    {},
+    { ...pendingResponse, id: 1 },
+    { ...pendingResponse, status: 'UNKNOWN' },
+    { ...pendingResponse, diaryId: 1 },
+    { ...pendingResponse, diaryId: undefined },
+    { ...pendingResponse, errorCode: 1 },
+    { ...pendingResponse, errorCode: undefined },
+    { ...pendingResponse, diaryId: 'diary-id' },
+    { ...pendingResponse, errorCode: 'AI_PROVIDER_ERROR' },
+    { ...pendingResponse, status: 'PROCESSING', diaryId: 'diary-id' },
+    {
+      ...pendingResponse,
+      status: 'PROCESSING',
+      errorCode: 'AI_PROVIDER_ERROR',
+    },
+    { ...pendingResponse, status: 'SUCCEEDED' },
+    {
+      ...pendingResponse,
+      status: 'SUCCEEDED',
+      diaryId: 'diary-id',
+      errorCode: 'AI_PROVIDER_ERROR',
+    },
+    { ...pendingResponse, status: 'FAILED' },
+    {
+      ...pendingResponse,
+      status: 'FAILED',
+      diaryId: 'diary-id',
+      errorCode: 'AI_PROVIDER_ERROR',
+    },
+    { ...pendingResponse, status: 'FAILED', errorCode: '' },
+    { ...pendingResponse, status: 'FAILED', errorCode: 'UNKNOWN_ERROR' },
+  ])('필수 필드나 타입이 잘못된 응답을 거부한다: %j', (response): void => {
+    expect(isDiaryGenerationStatusResponse(response)).toBe(false);
+  });
+
+  it.each(GENERATION_FAILURE_CODES)(
+    '명세의 생성 실패 코드를 허용한다: %s',
+    (errorCode): void => {
+      expect(
+        isDiaryGenerationStatusResponse({
+          ...pendingResponse,
+          status: 'FAILED',
+          errorCode,
+        }),
+      ).toBe(true);
+    },
+  );
 });

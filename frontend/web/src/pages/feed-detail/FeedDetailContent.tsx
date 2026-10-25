@@ -2,6 +2,7 @@ import { css } from '@emotion/react';
 import categoryChevronIcon from '../../assets/icons/feed-category-chevron.svg';
 import FeedActions from '../../shared/feed/FeedActions';
 import FeedOptionsButton from '../../shared/feed/FeedOptionsButton';
+import ReportOptionsButton from '../../shared/report/ReportOptionsButton';
 import profileFallbackImage from '../../assets/images/profile-fallback.svg';
 import type { Feed } from '../../domain/feeds/feedList';
 import { useNavigate } from 'react-router';
@@ -16,6 +17,7 @@ import useFeedDetail from './useFeedDetail';
 import { formatPublishedAt } from '../../shared/feed/formatPublishedAt';
 import DiaryImage from '../../shared/DiaryImage';
 import { theme } from '../../styles/theme';
+import useFeedDetailBack from './useFeedDetailBack';
 
 interface FeedDetailContentProps {
   readonly feedId: Feed['id'];
@@ -23,6 +25,7 @@ interface FeedDetailContentProps {
 
 const FeedDetailContent = ({ feedId }: FeedDetailContentProps) => {
   const navigate = useNavigate();
+  const handleBack = useFeedDetailBack();
   const {
     request: feedDetailRequest,
     updateLike,
@@ -56,13 +59,7 @@ const FeedDetailContent = ({ feedId }: FeedDetailContentProps) => {
         >
           <img css={logoStyle} src={harudleLogo} alt="하루들" />
         </button>
-        <button
-          type="button"
-          css={backButtonStyle}
-          onClick={() => {
-            void navigate('/');
-          }}
-        >
+        <button type="button" css={backButtonStyle} onClick={handleBack}>
           <img src={backIcon} alt="뒤로가기 아이콘" />
         </button>
       </header>
@@ -95,12 +92,17 @@ const FeedDetailContent = ({ feedId }: FeedDetailContentProps) => {
                 {formatPublishedAt(feed.publishedAt)}
               </span>
             </div>
-            {feed.isMine && (
+            {feed.isMine ? (
               <FeedOptionsButton
                 feedId={feed.id}
                 onDelete={() => {
                   void navigate('/');
                 }}
+              />
+            ) : (
+              <ReportOptionsButton
+                target={{ targetType: 'FEED', targetId: feed.id }}
+                authorId={feed.author.id}
               />
             )}
           </header>

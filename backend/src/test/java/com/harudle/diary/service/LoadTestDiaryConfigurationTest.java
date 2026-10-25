@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
+import com.harudle.generation.loadtest.LoadTestDiaryGenerationExecutor;
+import com.harudle.generation.loadtest.LoadTestGenerationRegistry;
 import com.harudle.generation.diary.service.DiaryGenerationCompletionService;
 import com.harudle.generation.diary.service.DiaryGenerationExecutor;
 import com.harudle.generation.diary.service.GenerationLifecycleMetrics;
@@ -59,13 +61,15 @@ class LoadTestDiaryConfigurationTest {
                 .withBean(GenerationLifecycleMetrics.class, () -> mock(GenerationLifecycleMetrics.class))
                 .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
                 .withBean(DiaryCreationService.class, () -> normalCreation)
-                .withBean(DiaryGenerationExecutor.class, () -> normalExecutor)
+                .withBean(DiaryGenerationExecutor.class, () -> normalExecutor, definition -> definition.setPrimary(true))
                 .withBean(StoryboardGenerationService.class, () -> normalStoryboard)
                 .withBean(DiaryImageGenerator.class, () -> normalImageGenerator)
                 .run(application -> {
                     assertThat(application).hasNotFailed().hasSingleBean(LoadTestDiaryCreationService.class);
                     assertThat(application.getBean(DiaryCreationService.class)).isSameAs(normalCreation);
                     assertThat(application.getBean(DiaryGenerationExecutor.class)).isSameAs(normalExecutor);
+                    assertThat(application).hasSingleBean(LoadTestDiaryGenerationExecutor.class)
+                            .hasSingleBean(LoadTestGenerationRegistry.class);
                     assertThat(application.getBean(StoryboardGenerationService.class)).isSameAs(normalStoryboard);
                     assertThat(application.getBean(DiaryImageGenerator.class)).isSameAs(normalImageGenerator);
                 });

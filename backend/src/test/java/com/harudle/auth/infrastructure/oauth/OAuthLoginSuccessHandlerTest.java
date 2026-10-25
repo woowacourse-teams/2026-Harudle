@@ -12,6 +12,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.harudle.auth.application.InactiveUserException;
+import com.harudle.auth.application.AccountSuspendedException;
 import com.harudle.auth.application.IssuedRefreshToken;
 import com.harudle.auth.application.OAuthLoginCommand;
 import com.harudle.auth.application.OAuthLoginResult;
@@ -309,6 +310,23 @@ class OAuthLoginSuccessHandlerTest {
                 any(OAuthLoginConsistencyException.class)
         );
         verifyNoInteractions(refreshTokenService);
+    }
+
+    @Test
+    @DisplayName("제재 회원의 OAuth 로그인은 refresh 쿠키 없이 예상된 거절로 종료한다")
+    void rejectsSuspendedAccountWithoutIssuingCookie() throws Exception {
+        when(oAuthLoginService.login(any(OAuthLoginCommand.class), eq(LOGIN_AT)))
+                .thenThrow(new AccountSuspendedException());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        handler.onAuthenticationSuccess(new MockHttpServletRequest(), response, createKakaoAuthentication());
+
+        assertThat(response.getRedirectedUrl())
+                .isEqualTo("http://localhost:5173/auth/callback?error=account_suspended");
+        assertThat(response.getHeader(HttpHeaders.SET_COOKIE)).isNull();
+        verify(failureRedirector).redirect(response, OAuthFailureReason.ACCOUNT_SUSPENDED);
+        verify(oAuthEventLogger).infoRejected("kakao", OAuthFailureReason.ACCOUNT_SUSPENDED);
+        verifyNoInteractions(userRepository, refreshTokenService);
     }
 
     private Authentication createKakaoAuthentication() {

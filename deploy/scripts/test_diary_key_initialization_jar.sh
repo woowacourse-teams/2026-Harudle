@@ -73,7 +73,7 @@ expect_failure initialize
 test ! -e "${DIARY_SOURCE_TEXT_KEY_VERIFICATION_FILE}"
 
 # Apply the repository's real legacy DDL. The small history fixture is only the CLI harness;
-# the JUnit PostgreSQL integration suite separately runs actual Flyway V1, V23 and V28 migrations.
+# the JUnit PostgreSQL integration suite separately runs actual Flyway V1, V23 and V36 migrations.
 sql < "${repo_dir}/backend/src/main/resources/db/migration/V1__create_initial_schema.sql"
 sql <<'SQL'
 CREATE TABLE public.flyway_schema_history (
@@ -93,13 +93,13 @@ run_check verify
 expect_failure initialize
 cmp "${test_dir}/trusted-backup.json" "${DIARY_SOURCE_TEXT_KEY_VERIFICATION_FILE}"
 
-sql < "${repo_dir}/backend/src/main/resources/db/migration/V28__encrypt_diary_source_text.sql"
+sql < "${repo_dir}/backend/src/main/resources/db/migration/V36__encrypt_diary_source_text.sql"
 sql <<'SQL'
 INSERT INTO public.flyway_schema_history
   (installed_rank, version, description, type, script, installed_by, execution_time, success)
-VALUES (2, '28', 'public CLI v1 fixture', 'SQL', 'V28__encrypt_diary_source_text.sql', current_user, 0, true);
+VALUES (2, '36', 'public CLI v1 fixture', 'SQL', 'V36__encrypt_diary_source_text.sql', current_user, 0, true);
 SQL
-# V28 empty and v0-only schemas are also valid first-initialization targets.
+# V36 empty and v0-only schemas are also valid first-initialization targets.
 rm "${DIARY_SOURCE_TEXT_KEY_VERIFICATION_FILE}"
 run_check initialize
 sql <<'SQL'

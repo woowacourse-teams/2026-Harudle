@@ -20,17 +20,21 @@ CLIENT_IMAGE = 'postgres:18-alpine'
 FIXTURE_MAIN = 'com.harudle.diary.infrastructure.crypto.DiarySourceTextLoadTestFixtureMain'
 
 
-def backend_settings(require_writer=False):
-    for command in ['docker', 'aws']:
+def backend_settings(stopped=False, require_writer=False):
+    for command in (['docker'] if stopped else ['docker', 'aws']):
         if not shutil.which(command):
             raise ValueError(f'{command} is required on EC2')
-    result = subprocess.run([
+    command = [
         'docker', 'compose', '--project-name', 'harudle', '--env-file', str(APP_DIR / '.env'),
-        '--file', str(APP_DIR / 'compose.prod.yaml'), 'ps', '--status', 'running', '--quiet', 'backend',
-    ], check=True, capture_output=True, text=True)
+        '--file', str(APP_DIR / 'compose.prod.yaml'), 'ps',
+    ]
+    command += ['--all'] if stopped else ['--status', 'running']
+    result = subprocess.run(command + ['--quiet', 'backend'], check=True, capture_output=True, text=True)
     container = result.stdout.strip()
     if not re.fullmatch(r'[0-9a-f]{12,64}', container):
-        raise ValueError('Exactly one running backend is required')
+        raise ValueError('Exactly one backend container is required; keep it with docker compose stop, not down')
+    if stopped:
+        ensure_backend_stopped(container)
     result = subprocess.run(['docker', 'inspect', '--format', '{{json .Config.Env}}', container],
                             check=True, capture_output=True, text=True)
     values = dict(item.split('=', 1) for item in json.loads(result.stdout))
@@ -49,17 +53,26 @@ def backend_settings(require_writer=False):
     return container, settings
 
 
+def ensure_backend_stopped(container):
+    result = subprocess.run(['docker', 'inspect', '--format', '{{json .State}}', container],
+                            check=True, capture_output=True, text=True)
+    state = json.loads(result.stdout)
+    if (not isinstance(state, dict) or state.get('Status') != 'exited' or state.get('Running') is not False
+            or state.get('Restarting') is not False or state.get('Pid') != 0):
+        raise ValueError('Stop the backend container before cleaning unfinished test work')
+
+
 def database_target(settings):
     return {key: settings[key] for key in ['PGHOST', 'PGPORT', 'PGDATABASE']}
 
 
-def execute_sql(container, settings, sql):
+def execute_sql(container, settings, sql, network=None):
     require_encrypted_seed(sql)
-    command = ['docker', 'run', '--rm', '-i', '--network', f'container:{container}']
+    command = ['docker', 'run', '--rm', '-i', '--network', network or f'container:{container}']
     for key in settings:
         command += ['--env', key]
     command += [CLIENT_IMAGE, 'psql', '-X', '-qAt', '--no-password', '-v', 'ON_ERROR_STOP=1', '-f', '-']
-    # Only the client runs in Docker. The actual DB is the backend's dev RDS.
+    # Only the client runs in Docker. Connect to the actual dev DB configured on the backend.
     result = subprocess.run(command, input=sql, env={**os.environ, **settings},
                             check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return result.stdout.strip()

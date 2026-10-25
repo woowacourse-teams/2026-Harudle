@@ -30,6 +30,9 @@ public class FeedInteractionService implements FeedInteractionPort {
     public Target lockActiveForInteraction(UUID feedId, UUID actorId) {
         Objects.requireNonNull(actorId);
         Feed feed = lockFeed(feedId);
+        if (feeds.isHiddenForPublicUse(feedId)) {
+            throw new FeedNotFoundException();
+        }
         UUID authorId = feeds.findActiveAuthorIdForInteraction(feed.getDiaryId(), actorId)
                 .orElseThrow(FeedNotFoundException::new);
         return new Target(feedId, authorId, counts(feed));

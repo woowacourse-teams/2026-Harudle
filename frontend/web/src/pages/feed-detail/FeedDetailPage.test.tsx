@@ -19,13 +19,20 @@ import type { deleteFeedComment } from '../../domain/feeds/feedCommentDelete';
 import FeedDetailPage from './FeedDetailPage';
 import FeedDetailContent from './FeedDetailContent';
 
+const mockAddToast = jest.fn();
+jest.mock('../../shared/ToastContext', () => ({
+  useToastContext: () => ({ addToast: mockAddToast }),
+}));
+
 const mockNavigate = jest.fn();
+let mockLocationState: unknown = null;
 const mockTrack = jest.fn();
 jest.mock('../../posthog/useAnalytics', () => ({
   useAnalytics: () => ({ track: mockTrack }),
 }));
 jest.mock('react-router', () => ({
   useNavigate: () => mockNavigate,
+  useLocation: () => ({ state: mockLocationState }),
   useParams: () => ({ feedId: 'feed-1' }),
 }));
 jest.mock('../../assets/images/harudle-logo.webp', () => 'logo.webp');
@@ -108,6 +115,7 @@ const openDelete = async (
 };
 
 beforeEach((): void => {
+  mockLocationState = null;
   localStorage.clear();
   mockGetFeedDetail.mockReset().mockResolvedValue(feed);
   mockGetFeedComments
@@ -118,6 +126,41 @@ beforeEach((): void => {
 
 afterEach((): void => {
   jest.restoreAllMocks();
+});
+
+describe('피드 상세 뒤로가기', (): void => {
+  it.each([false, true])(
+    '목록에서 진입하면 이전 화면으로 돌아간다 (조회 실패: %s)',
+    async (isError): Promise<void> => {
+      mockLocationState = { fromFeed: true };
+      if (isError)
+        mockGetFeedDetail.mockRejectedValueOnce(new Error('조회 실패'));
+      const user = userEvent.setup();
+      render(<FeedDetailPage />);
+
+      await user.click(
+        await screen.findByRole('button', { name: '뒤로가기 아이콘' }),
+      );
+
+      expect(mockNavigate).toHaveBeenCalledWith(-1);
+    },
+  );
+
+  it.each([false, true])(
+    '직접 진입하면 상세 기록을 홈으로 교체한다 (조회 실패: %s)',
+    async (isError): Promise<void> => {
+      if (isError)
+        mockGetFeedDetail.mockRejectedValueOnce(new Error('조회 실패'));
+      const user = userEvent.setup();
+      render(<FeedDetailPage />);
+
+      await user.click(
+        await screen.findByRole('button', { name: '뒤로가기 아이콘' }),
+      );
+
+      expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true });
+    },
+  );
 });
 
 describe('피드 상세 댓글 더 보기', (): void => {
@@ -197,9 +240,6 @@ describe('피드 상세 댓글 더 보기', (): void => {
 
   it('실패는 컴포넌트에서 알리고 기존 댓글을 유지한 채 같은 커서로 재시도한다', async (): Promise<void> => {
     const user = userEvent.setup();
-    const alert = jest
-      .spyOn(window, 'alert')
-      .mockImplementation((): void => {});
     mockGetFeedComments
       .mockResolvedValueOnce(firstPage)
       .mockRejectedValueOnce(new Error('추가 조회 실패'))
@@ -211,8 +251,12 @@ describe('피드 상세 댓글 더 보기', (): void => {
     render(<FeedDetailPage />);
 
     await user.click(await screen.findByRole('button', { name: '더 보기' }));
-    expect(alert).toHaveBeenCalledWith(
-      '댓글을 더 불러오지 못했어요. 다시 시도해 주세요.',
+    expect(mockAddToast).toHaveBeenCalledWith(
+      {
+        type: 'error',
+        message: '댓글을 더 불러오지 못했어요. 다시 시도해 주세요.',
+      },
+      2000,
     );
     expect(screen.getByText(comment.content)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '더 보기' })).toBeEnabled();
@@ -221,7 +265,7 @@ describe('피드 상세 댓글 더 보기', (): void => {
     expect(await screen.findByText(secondComment.content)).toBeInTheDocument();
     expect(mockGetFeedComments.mock.calls[1][0].cursor).toBe('cursor-1');
     expect(mockGetFeedComments.mock.calls[2][0].cursor).toBe('cursor-1');
-    expect(alert).toHaveBeenCalledTimes(1);
+    expect(mockAddToast).toHaveBeenCalledTimes(1);
   });
 
   it('추가 조회 중 삭제한 댓글을 유지하고 중복 클릭을 막으며 새 댓글을 추가한다', async (): Promise<void> => {
@@ -320,13 +364,19 @@ describe('피드 상세 댓글 삭제', (): void => {
     render(<FeedDetailPage />);
     const row = (await screen.findByText(comment.content)).closest('li');
     if (!row) throw new Error('댓글이 없습니다.');
-    expect(within(row).queryByRole('button')).not.toBeInTheDocument();
+    prepareDialogs();
+    await userEvent.click(
+      within(row).getByRole('button', { name: '댓글 더보기' }),
+    );
+    expect(
+      screen.queryByRole('button', { name: /댓글 삭제$/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '댓글 신고' }),
+    ).toBeInTheDocument();
   });
 
   it('취소·실패는 댓글과 개수를 유지하고 재시도 성공 후 갱신한다', async (): Promise<void> => {
-    const alert = jest
-      .spyOn(window, 'alert')
-      .mockImplementation((): void => {});
     mockDeleteComment
       .mockRejectedValueOnce(new Error('삭제 실패'))
       .mockResolvedValueOnce(undefined);
@@ -342,10 +392,15 @@ describe('피드 상세 댓글 삭제', (): void => {
 
     await openDelete(user);
     await user.click(screen.getByRole('button', { name: /댓글 삭제$/ }));
-    expect(alert).toHaveBeenCalledWith('삭제 실패');
+    expect(
+      within(screen.getByRole('dialog')).getByRole('alert'),
+    ).toHaveTextContent('삭제 실패');
     expect(screen.getByText(comment.content)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '1' })).toBeInTheDocument();
 
+    await user.click(screen.getByRole('button', { name: '취소' }));
+    await openDelete(user);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /댓글 삭제$/ }));
     expect(
       await screen.findByText('첫 번째 댓글을 남겨보세요.'),

@@ -109,7 +109,7 @@ class FeedPublicationPersistenceTest {
         when(categories.lockActiveForPublication(categoryId)).thenReturn(category);
         when(categories.get(categoryId)).thenReturn(category);
         when(profiles.readAll(Set.of(ACTOR))).thenReturn(Map.of(ACTOR,
-                new PublicProfileReader.Profile(ACTOR, "캐모", URI.create("https://example.com/profile.png"))));
+                new PublicProfileReader.Profile(ACTOR, "캐모", URI.create("https://example.com/profile.png"), null)));
     }
 
     @AfterEach

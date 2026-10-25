@@ -2,6 +2,8 @@ package com.harudle.diary.infrastructure.migration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.spy;
 
 import com.harudle.diary.domain.DiarySourceTextCipher;
 import com.harudle.diary.infrastructure.crypto.AesGcmDiarySourceTextCipher;
@@ -112,29 +114,32 @@ class DiarySourceTextMigrationTest {
     }
 
     @Test
-    @DisplayName("성공·실패·삭제 및 생성 기록 없는 원문을 전환하고 다른 업무 데이터는 보존한다")
+    @DisplayName("대기·성공·실패·삭제 및 생성 기록 없는 원문을 전환하고 다른 업무 데이터는 보존한다")
     void migrateAllLegacyDiaryKindsWithMatchingFingerprints() throws SQLException {
         Fixture succeeded = insertLegacy("친구와 보낸 하루 😀", "SUCCEEDED", false);
         Fixture failed = insertLegacy("실패해도 원문은 보호한다", "FAILED", true);
+        Fixture pending = insertLegacy("대기 중인 일기도 전환한다", "PENDING", false);
         Fixture deleted = insertLegacy("삭제한 일기의 원문", "SUCCEEDED", true);
         Fixture orphan = insertLegacy("old:암호문처럼 보이지만 평문인 내용", null, false);
         List<Object> before = businessState(failed.diaryId());
+        List<Object> pendingBefore = businessState(pending.diaryId());
 
         var result = migration.migrate(2, 10);
 
-        assertThat(result.attempted()).isEqualTo(4);
-        assertThat(result.migrated()).isEqualTo(4);
+        assertThat(result.attempted()).isEqualTo(5);
+        assertThat(result.migrated()).isEqualTo(5);
         assertThat(result.orphanMigrated()).isEqualTo(1);
         assertThat(result.skippedProcessing()).isZero();
         assertThat(result.failed()).isZero();
         assertThat(result.remaining().legacyRows()).isZero();
-        assertThat(result.remaining().encryptedRows()).isEqualTo(4);
+        assertThat(result.remaining().encryptedRows()).isEqualTo(5);
         assertThat(result.remaining().orphanRows()).isEqualTo(1);
-        for (Fixture fixture : List.of(succeeded, failed, deleted, orphan)) {
+        for (Fixture fixture : List.of(succeeded, failed, pending, deleted, orphan)) {
             assertEncrypted(fixture, cipher);
         }
         assertThat(businessState(failed.diaryId())).isEqualTo(before);
-        assertThat(scalar("SELECT COUNT(*) FROM diary_generations")).isEqualTo(3L);
+        assertThat(businessState(pending.diaryId())).isEqualTo(pendingBefore);
+        assertThat(scalar("SELECT COUNT(*) FROM diary_generations")).isEqualTo(4L);
         assertThat(scalar("SELECT COUNT(*) FROM daily_generation_usage")).isEqualTo(0L);
         assertThat(migration.verify(2).failed()).isZero();
         assertConnectionRetained();
@@ -175,11 +180,12 @@ class DiarySourceTextMigrationTest {
         assertEncrypted(third, cipher);
     }
 
-    @Test
-    @DisplayName("잘못된 과거 원문과 SHA는 보정하지 않고 집계하며 수정 후 재실행할 수 있다")
-    void retainMalformedLegacyRowsAndResumeAfterRepair() throws SQLException {
+    @ParameterizedTest
+    @ValueSource(strings = {"SUCCEEDED", "PENDING"})
+    @DisplayName("대기와 성공 기록의 잘못된 과거 원문과 SHA는 보정하지 않고 집계하며 수정 후 재실행할 수 있다")
+    void retainMalformedLegacyRowsAndResumeAfterRepair(String mismatchStatus) throws SQLException {
         Fixture padded = insertLegacy("  앞뒤 공백을 자동 삭제하면 안 된다  ", "SUCCEEDED", false);
-        Fixture mismatch = insertLegacy("원문과 지문이 달라진 일기", "SUCCEEDED", false);
+        Fixture mismatch = insertLegacy("원문과 지문이 달라진 일기", mismatchStatus, false);
         Fixture blank = insertLegacy("원래 유효했던 일기", "FAILED", true);
         Fixture good = insertLegacy("계속 처리할 정상 일기", "SUCCEEDED", false);
         execute("UPDATE diary_generations SET request_fingerprint = ? WHERE diary_id = ?",
@@ -480,6 +486,84 @@ class DiarySourceTextMigrationTest {
             worker.shutdownNow();
             worker.awaitTermination(10, TimeUnit.SECONDS);
             migrationConnection.close();
+        }
+    }
+
+    @Test
+    @DisplayName("배치가 대기 작업을 잠그면 처리기는 건너뛰고 전환 커밋 후 암호문과 HMAC으로 선점한다")
+    void skipMigrationLockedPendingUntilBothRepresentationsHaveCommitted() throws Exception {
+        Fixture fixture = insertLegacy("배치가 먼저 잠근 대기 작업", "PENDING", false);
+        List<Object> before = businessState(fixture.diaryId());
+        CountDownLatch locked = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        DiarySourceTextCipher paused = spy(cipher);
+        doAnswer(invocation -> {
+            locked.countDown();
+            if (!release.await(5, TimeUnit.SECONDS)) {
+                throw new AssertionError("Migration release timed out.");
+            }
+            return invocation.callRealMethod();
+        }).when(paused).encrypt(fixture.diaryId(), USER_ID, fixture.source());
+        ExecutorService worker = Executors.newSingleThreadExecutor();
+        try (Connection migrator = openConnection(); Connection queue = openConnection()) {
+            Future<DiarySourceTextMigration.MigrationResult> pending = worker.submit(() ->
+                    new DiarySourceTextMigration(migrator, paused, fingerprints).migrate(10, 1));
+            try {
+                assertThat(locked.await(5, TimeUnit.SECONDS)).isTrue();
+                queue.setAutoCommit(false);
+                assertThat(claimPending(queue)).isNull();
+                queue.commit();
+                assertThat(stored(fixture.diaryId()).version()).isZero();
+            } finally {
+                release.countDown();
+            }
+
+            var result = pending.get(10, TimeUnit.SECONDS);
+            assertThat(result.migrated()).isEqualTo(1);
+            assertThat(result.failed()).isZero();
+            assertThat(businessState(fixture.diaryId())).isEqualTo(before);
+            assertEncrypted(fixture, cipher);
+
+            assertThat(claimPending(queue)).isEqualTo(fixture.generationId());
+            queue.commit();
+            assertThat(scalar("SELECT status FROM diary_generations WHERE id = ?", fixture.generationId()))
+                    .isEqualTo("PROCESSING");
+            assertEncrypted(fixture, cipher);
+        } finally {
+            release.countDown();
+            worker.shutdownNow();
+            worker.awaitTermination(10, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    @DisplayName("처리기가 대기 작업을 먼저 선점하면 배치는 커밋 후 PROCESSING을 확인하고 원문과 SHA를 보존한다")
+    void skipPendingThatWasClaimedByWorkerWhileMigrationWaited() throws Exception {
+        Fixture fixture = insertLegacy("처리기가 먼저 선점한 대기 작업", "PENDING", false);
+        Stored before = stored(fixture.diaryId());
+        connection.setAutoCommit(false);
+        assertThat(claimPending(connection)).isEqualTo(fixture.generationId());
+        ExecutorService worker = Executors.newSingleThreadExecutor();
+        try (Connection migrator = openConnection()) {
+            int pid = ((Number) scalar(migrator, "SELECT pg_backend_pid()")).intValue();
+            Future<DiarySourceTextMigration.MigrationResult> pending = worker.submit(() ->
+                    new DiarySourceTextMigration(migrator, cipher, fingerprints).migrate(10, 1));
+            awaitDatabaseLock(pid);
+            connection.commit();
+            connection.setAutoCommit(true);
+
+            var result = pending.get(10, TimeUnit.SECONDS);
+            assertThat(result.migrated()).isZero();
+            assertThat(result.skippedProcessing()).isEqualTo(1);
+            assertThat(result.failed()).isZero();
+            assertThat(result.remaining().processingLegacyRows()).isEqualTo(1);
+            assertThat(stored(fixture.diaryId())).isEqualTo(before);
+            assertThat(scalar("SELECT status FROM diary_generations WHERE id = ?", fixture.generationId()))
+                    .isEqualTo("PROCESSING");
+        } finally {
+            releaseTransaction();
+            worker.shutdownNow();
+            worker.awaitTermination(10, TimeUnit.SECONDS);
         }
     }
 
@@ -804,7 +888,7 @@ class DiarySourceTextMigrationTest {
                     """, generationId, diaryId, promptId, fixture.idempotencyKey(), rawFingerprint(fixture), status,
                     "기존 제목", "SUCCEEDED".equals(status) ? "generated/%s.png".formatted(diaryId) : null,
                     "FAILED".equals(status) ? "AI_PROVIDER_ERROR" : null, CREATED_AT, CREATED_AT,
-                    "PROCESSING".equals(status) ? null : CREATED_AT);
+                    "PROCESSING".equals(status) || "PENDING".equals(status) ? null : CREATED_AT);
         }
         return fixture;
     }
@@ -860,6 +944,24 @@ class DiarySourceTextMigrationTest {
                             fixture.diaryId(), USER_ID, stored.source(), 1, rawFingerprint(fixture)
                     ));
         }
+    }
+
+    private UUID claimPending(Connection queue) throws SQLException {
+        UUID generationId;
+        try (PreparedStatement statement = prepare(queue, """
+                SELECT id FROM diary_generations
+                WHERE status = 'PENDING' AND created_at > ?
+                ORDER BY created_at, id LIMIT 1 FOR UPDATE SKIP LOCKED
+                """, CREATED_AT.minusSeconds(120)); ResultSet rows = statement.executeQuery()) {
+            generationId = rows.next() ? rows.getObject(1, UUID.class) : null;
+        }
+        if (generationId != null) {
+            try (PreparedStatement statement = prepare(queue,
+                    "UPDATE diary_generations SET status = 'PROCESSING' WHERE id = ?", generationId)) {
+                assertThat(statement.executeUpdate()).isEqualTo(1);
+            }
+        }
+        return generationId;
     }
 
     private Object versionDefault() throws SQLException {

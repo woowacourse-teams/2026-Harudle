@@ -47,7 +47,9 @@ class NotificationServiceTest {
     private static final UUID FEED = UUID.randomUUID();
     private static final UUID FIRST = UUID.randomUUID();
     private static final Instant NOW = Instant.parse("2026-10-12T03:00:00Z");
-    private static final Profile PROFILE = new Profile(ACTOR, "네오", URI.create("https://example.com/profile.svg"));
+    private static final Profile PROFILE = new Profile(
+            ACTOR, "네오", URI.create("https://example.com/profile.svg"), null
+    );
 
     @Mock private NotificationRepository repository;
     @Mock private ObjectProvider<PublicProfileReader> profileProvider;
@@ -142,7 +144,7 @@ class NotificationServiceTest {
     void invalidProfileUrlsCannotBeReturned(String url) {
         listReady();
         activeActorPage();
-        availableProfile(Map.of(ACTOR, new Profile(ACTOR, "네오", URI.create(url))));
+        availableProfile(Map.of(ACTOR, new Profile(ACTOR, "네오", URI.create(url), null)));
         assertThatThrownBy(() -> service.list(RECIPIENT, null, 20))
                 .isInstanceOf(NotificationIntegrationUnavailableException.class);
     }
@@ -153,9 +155,9 @@ class NotificationServiceTest {
         activeActorPage();
         when(profileProvider.getIfAvailable()).thenReturn(profiles);
         when(profiles.readAll(Set.of(ACTOR)))
-                .thenReturn(Map.of(ACTOR, new Profile(RECIPIENT, "네오", PROFILE.profileImageUrl())))
-                .thenReturn(Map.of(ACTOR, new Profile(ACTOR, "네오", null)))
-                .thenReturn(Map.of(ACTOR, new Profile(ACTOR, " ", PROFILE.profileImageUrl())))
+                .thenReturn(Map.of(ACTOR, new Profile(RECIPIENT, "네오", PROFILE.profileImageUrl(), null)))
+                .thenReturn(Map.of(ACTOR, new Profile(ACTOR, "네오", null, null)))
+                .thenReturn(Map.of(ACTOR, new Profile(ACTOR, " ", PROFILE.profileImageUrl(), null)))
                 .thenReturn(null);
         for (int i = 0; i < 4; i++) {
             assertThatThrownBy(() -> service.list(RECIPIENT, null, 20))
