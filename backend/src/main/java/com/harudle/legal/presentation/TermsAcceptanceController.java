@@ -33,7 +33,8 @@ class TermsAcceptanceController {
     }
 
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
-    @Operation(summary = "본인의 현재 약관 수락 상태 조회")
+    @Operation(summary = "본인의 약관 수락 상태 조회", description = "문서 참조는 현재 열람할 버전이며, 수락 시각은 서비스 접근에 "
+            + "인정되는 실제 기록의 최초 시각입니다. 공지성 개정으로 이전 버전의 수락이 유지될 수 있습니다.")
     @ApiErrorResponses({ErrorType.UNAUTHORIZED, ErrorType.ACCOUNT_SUSPENDED})
     ResponseEntity<TermsAcceptanceStatus> status(Authentication authentication) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())

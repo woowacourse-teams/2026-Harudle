@@ -12,6 +12,7 @@ import com.harudle.legal.application.TermsAcceptance;
 import com.harudle.legal.application.TermsAcceptanceCommand;
 import com.harudle.legal.application.TermsAcceptanceRepository;
 import com.harudle.legal.application.TermsAcceptanceService;
+import com.harudle.legal.application.TermsDocumentReference;
 import com.harudle.legal.domain.LegalDocumentType;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -22,6 +23,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -306,13 +308,12 @@ class TermsAcceptanceFilterIntegrationTest {
         private final AtomicReference<TermsAcceptance> saved = new AtomicReference<>();
 
         @Override
-        public Optional<MemberState> findMember(UUID userId, String version, String contentHash) {
+        public Optional<MemberState> findMember(UUID userId, List<TermsDocumentReference> acceptedTerms) {
             reads.incrementAndGet();
             if (unavailable.get()) throw new DataAccessResourceFailureException("secret database error");
             if (!active.get()) return Optional.empty();
             return Optional.of(new MemberState(Optional.ofNullable(saved.get())
-                    .filter(acceptance -> acceptance.termsVersion().equals(version)
-                            && acceptance.termsContentHash().equals(contentHash))));
+                    .filter(acceptance -> acceptedTerms.stream().anyMatch(terms -> terms.matches(acceptance)))));
         }
         @Override
         public void insert(UUID userId, TermsAcceptance acceptance) {

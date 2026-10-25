@@ -70,13 +70,29 @@ flowchart LR
 
 기본 비활성 상태에서 약관 저장소 장애가 기존 회원 API를 막지 않는지도 검사한다. 켜진 상태의 장애는 “동의 안 함”으로 분류하지 않고 서버 오류로 거절한다.
 
+## 6. 약관 개정과 기존 수락
+
+~~~mermaid
+flowchart TD
+    A["새 버전 문서 추가 · 기존 전문 보존"] --> B{"이전 수락을 유지할 개정인가?"}
+    B -->|공지·오탈자 등 유지 결정| C["현재 버전과 이전 버전을 인정 목록에 유지"]
+    C --> D["기존 회원은 이전 수락으로 계속 이용"]
+    B -->|중요 개정 · 재동의 결정| E["인정 목록에서 이전 버전 제외"]
+    E --> F["기존 이력 보존 · 추가 수락 필요"]
+    F --> G["현재 전문 확인 후 직접 수락"]
+    D -->|현재 문서를 직접 수락하면| H["현재 버전 이력 별도 저장"]
+    G --> H
+~~~
+
+현재 게시 문서와 수락을 인정하는 버전은 각각 명시한다. 유효한 이력이 여럿이면 현재 버전을 우선하며, 기록 시각이 더 늦다는 이유로 과거 버전을 선택하지 않는다. 개인정보 고지만 바뀌면 약관 재수락을 요구하지 않고 기존 수락 당시 고지 참조를 보존한다. 새 수락 요청은 언제나 현재 약관·현재 고지의 정확한 버전과 내용 식별값을 제출해야 한다.
+
 <details>
 <summary>검증 근거</summary>
 
-- LegalDocumentCatalogTest: 고정 내용 식별값, 과거 버전 보존, 현재 버전 선택과 시작 시 검증.
+- LegalDocumentCatalogTest: 고정 내용 식별값, 과거 전문 보존, 게시·수락 인정 버전의 분리와 시작 시 검증.
 - LegalDocumentControllerTest: 공개 전문·버전 조회와 없는 문서.
-- TermsAcceptanceServiceTest: 명시적 수락·변조 거절·기존 수락 시각 보존·설정과 장애.
+- TermsAcceptanceServiceTest: 명시적 수락·변조 거절·공지성/중요 개정·버전별 최초 시각 보존·설정과 장애.
 - TermsAcceptanceFilterIntegrationTest: 실제 HTTP와 여러 보안 체인, 미수락·제재 우선·예외 경로·비활성 설정.
-- TermsAcceptancePersistenceTest: 실제 PostgreSQL 저장과 UNIQUE 경합, 활성 OAuth 회원 조건.
+- TermsAcceptancePersistenceTest: 실제 PostgreSQL 저장과 UNIQUE 경합, 복수 인정 버전의 정확한 해시·선택 순서, 활성 OAuth 회원 조건.
 
 </details>

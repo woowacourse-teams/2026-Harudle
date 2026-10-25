@@ -37,6 +37,7 @@ class LegalDocumentCatalogTest {
         assertThat(terms.effectiveDate()).hasToString("2026-10-22");
         assertThat(terms.sections()).isNotEmpty();
         assertThat(catalog.current(LegalDocumentType.PRIVACY).contentHash()).isEqualTo(PRIVACY_HASH);
+        assertThat(catalog.acceptedTerms()).containsExactly(TermsDocumentReference.from(terms));
     }
 
     @ParameterizedTest
@@ -131,6 +132,37 @@ class LegalDocumentCatalogTest {
                 LegalDocumentType.TERMS, "2026-10-23", LegalDocumentType.PRIVACY, "2026-08-24")))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("현재 공개 버전")
                 .hasCauseInstanceOf(LegalDocumentNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("게시 버전과 유효 수락 목록을 분리하고 현재 문서의 수락을 항상 우선한다")
+    void explicitlyRetainsPreviousAcceptancesAndPrioritizesTheCurrentVersion() {
+        var published = catalog();
+        var terms = published.current(LegalDocumentType.TERMS);
+        var privacy = published.current(LegalDocumentType.PRIVACY);
+        var previous = new LegalDocument(LegalDocumentType.TERMS, "2026-10-21", "이전 이용약관",
+                LocalDate.of(2026, 10, 21), "1".repeat(64), terms.sourceUrl(), terms.sections());
+        var catalog = new LegalDocumentCatalog(List.of(previous, terms, privacy), Map.of(
+                LegalDocumentType.TERMS, terms.version(), LegalDocumentType.PRIVACY, privacy.version()),
+                List.of(previous.version(), terms.version()));
+
+        assertThat(catalog.documents()).containsExactly(terms, privacy);
+        assertThat(catalog.acceptedTerms()).containsExactly(
+                TermsDocumentReference.from(terms), TermsDocumentReference.from(previous));
+        assertThatThrownBy(() -> catalog.acceptedTerms().clear()).isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    @Test
+    @DisplayName("인정할 과거 약관이 manifest에 없거나 현재 버전의 수락을 제외하면 시작을 거절한다")
+    void rejectsInvalidAcceptancePoliciesAtStartup() {
+        var published = catalog();
+        var versions = Map.of(LegalDocumentType.TERMS, "2026-10-22", LegalDocumentType.PRIVACY, "2026-08-24");
+
+        assertThatThrownBy(() -> new LegalDocumentCatalog(published.documents(), versions,
+                List.of("2026-10-22", "not-published")))
+                .isInstanceOf(IllegalStateException.class).hasCauseInstanceOf(LegalDocumentNotFoundException.class);
+        assertThatThrownBy(() -> new LegalDocumentCatalog(published.documents(), versions, List.of("not-published")))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("현재 공개 약관");
     }
 
     private LegalDocumentCatalog catalog() {

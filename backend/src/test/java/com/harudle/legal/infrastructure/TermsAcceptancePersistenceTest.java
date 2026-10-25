@@ -15,6 +15,7 @@ import com.harudle.legal.application.TermsAcceptance;
 import com.harudle.legal.application.TermsAcceptanceCommand;
 import com.harudle.legal.application.TermsAcceptanceService;
 import com.harudle.legal.application.TermsAcceptanceStatus;
+import com.harudle.legal.application.TermsDocumentReference;
 import com.harudle.legal.domain.LegalDocumentType;
 import com.harudle.support.AdminModerationDatabaseTestSupport;
 import java.sql.Timestamp;
@@ -113,6 +114,46 @@ class TermsAcceptancePersistenceTest extends AdminModerationDatabaseTestSupport 
     }
 
     @Test
+    @DisplayName("복수 인정 버전 조회는 과거의 정확한 버전·해시 쌍만 인정하고 저장된 이력을 변경하지 않는다")
+    void readsARetainedPreviousVersionOnlyWhenItsContentHashMatches() {
+        UUID member = createUser(true, false, NOW);
+        var previous = previousReceipt(NOW.minusSeconds(60));
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> repository.insert(member, previous));
+        var current = TermsDocumentReference.from(catalog.current(LegalDocumentType.TERMS));
+        var allowed = new TermsDocumentReference(previous.termsVersion(), previous.termsContentHash());
+
+        assertThat(repository.findMember(member, List.of(current, allowed)).orElseThrow().acceptance())
+                .contains(previous);
+        assertThat(repository.findMember(member, List.of(current,
+                new TermsDocumentReference(previous.termsVersion(), "0".repeat(64))))
+                .orElseThrow().acceptance()).isEmpty();
+        assertThat(rowCount(member)).isEqualTo(1);
+        assertThat(stored(member)).isEqualTo(previous);
+    }
+
+    @Test
+    @DisplayName("이전 버전이 있어도 현재 수락을 저장하고 시각과 무관하게 현재 버전을 우선하며 두 최초 시각을 보존한다")
+    void recordsAndPrioritizesTheCurrentVersionWithoutOverwritingPreviousReceipts() {
+        UUID member = createUser(true, false, NOW);
+        var previous = previousReceipt(LATER);
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> repository.insert(member, previous));
+
+        var first = service.accept(member, currentCommand());
+        when(clock.instant()).thenReturn(LATER.plusSeconds(60));
+        var repeated = service.accept(member, currentCommand());
+        var current = TermsDocumentReference.from(catalog.current(LegalDocumentType.TERMS));
+        var allowed = new TermsDocumentReference(previous.termsVersion(), previous.termsContentHash());
+
+        assertThat(first.acceptedAt()).isEqualTo(NOW);
+        assertThat(repeated.acceptedAt()).isEqualTo(NOW);
+        assertThat(repository.findMember(member, List.of(current, allowed)).orElseThrow().acceptance())
+                .get().extracting(TermsAcceptance::termsVersion, TermsAcceptance::acceptedAt)
+                .containsExactly(current.version(), NOW);
+        assertThat(repository.findMember(member, List.of(allowed, current)).orElseThrow().acceptance()).contains(previous);
+        assertThat(rowCount(member)).isEqualTo(2);
+    }
+
+    @Test
     @DisplayName("동시 수락은 첫 INSERT의 커밋을 기다린 뒤 같은 최초 시각과 한 행만 반환한다")
     void concurrentAcceptanceReadsTheFirstCommittedReceipt() throws Exception {
         UUID member = createUser(true, false, NOW);
@@ -202,6 +243,11 @@ class TermsAcceptancePersistenceTest extends AdminModerationDatabaseTestSupport 
         var privacy = catalog.current(LegalDocumentType.PRIVACY);
         return new TermsAcceptanceCommand(terms.version(), terms.contentHash(),
                 privacy.version(), privacy.contentHash(), true, true);
+    }
+
+    private TermsAcceptance previousReceipt(Instant time) {
+        var privacy = catalog.current(LegalDocumentType.PRIVACY);
+        return new TermsAcceptance("2026-10-21", "1".repeat(64), privacy.version(), privacy.contentHash(), time);
     }
 
     private UUID createUser(boolean oauthMember, boolean deleted, Instant createdAt) {

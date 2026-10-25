@@ -5,6 +5,7 @@ import com.harudle.legal.domain.LegalDocument;
 import com.harudle.legal.domain.LegalDocumentType;
 import com.harudle.legal.infrastructure.LegalProperties;
 import java.time.Clock;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -30,7 +31,7 @@ public class TermsAcceptanceService {
 
     @Transactional(readOnly = true, isolation = Isolation.READ_COMMITTED)
     public TermsAcceptanceStatus status(UUID userId) {
-        return response(member(userId).acceptance());
+        return response(member(userId, catalog.acceptedTerms()).acceptance());
     }
 
     @Transactional(readOnly = true, isolation = Isolation.READ_COMMITTED)
@@ -43,11 +44,13 @@ public class TermsAcceptanceService {
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public TermsAcceptanceStatus accept(UUID userId, TermsAcceptanceCommand command) {
         Objects.requireNonNull(command, "수락 내용은 필수입니다.");
-        var state = member(userId);
+        LegalDocument terms = catalog.current(LegalDocumentType.TERMS);
+        // 과거 수락을 접근에 인정하더라도, 현재 문서를 명시적으로 수락한 기록은 별도로 남긴다.
+        var currentTerms = List.of(TermsDocumentReference.from(terms));
+        var state = member(userId, currentTerms);
         if (!command.accepted() || !command.ageConfirmed()) {
             throw new InvalidTermsAcceptanceException();
         }
-        LegalDocument terms = catalog.current(LegalDocumentType.TERMS);
         LegalDocument privacy = catalog.current(LegalDocumentType.PRIVACY);
         if (!terms.version().equals(command.termsVersion())
                 || !terms.contentHash().equals(command.termsContentHash())
@@ -60,17 +63,16 @@ public class TermsAcceptanceService {
                     privacy.version(), privacy.contentHash(), clock.instant()));
         }
         // 동시 요청이 먼저 저장했다면 READ COMMITTED의 후속 조회로 최초 수락 시각을 반환한다.
-        var saved = member(userId).acceptance().orElseThrow(
+        var saved = member(userId, currentTerms).acceptance().orElseThrow(
                 () -> new IllegalStateException("수락 기록을 확인할 수 없습니다."));
         return response(Optional.of(saved));
     }
 
-    private TermsAcceptanceRepository.MemberState member(UUID userId) {
+    private TermsAcceptanceRepository.MemberState member(UUID userId, List<TermsDocumentReference> acceptedTerms) {
         if (userId == null) {
             throw new AuthenticationRequiredException();
         }
-        LegalDocument terms = catalog.current(LegalDocumentType.TERMS);
-        return acceptances.findMember(userId, terms.version(), terms.contentHash())
+        return acceptances.findMember(userId, acceptedTerms)
                 .orElseThrow(AuthenticationRequiredException::new);
     }
 

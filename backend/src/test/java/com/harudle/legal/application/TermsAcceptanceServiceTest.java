@@ -41,6 +41,7 @@ class TermsAcceptanceServiceTest {
     void setUp() {
         when(catalog.current(LegalDocumentType.TERMS)).thenReturn(TERMS);
         when(catalog.current(LegalDocumentType.PRIVACY)).thenReturn(PRIVACY);
+        when(catalog.acceptedTerms()).thenReturn(List.of(TermsDocumentReference.from(TERMS)));
         service = service(true, NOW);
     }
 
@@ -77,6 +78,91 @@ class TermsAcceptanceServiceTest {
         assertThat(acceptances.saved).contains(winner);
         assertThat(acceptances.reads).isEqualTo(2);
         assertThat(acceptances.inserts).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("공지성 개정은 이전 수락으로 접근을 유지하면서 현재 열람 문서와 실제 수락 시각을 반환한다")
+    void preservesAccessForAnExplicitlyRetainedAcceptance() {
+        var previous = document(LegalDocumentType.TERMS, "2026-10-21", "c".repeat(64));
+        var receipt = receipt(previous, NOW.minusSeconds(60));
+        acceptances.saved.add(receipt);
+        when(catalog.acceptedTerms()).thenReturn(List.of(
+                TermsDocumentReference.from(TERMS), TermsDocumentReference.from(previous)));
+
+        var status = service.status(USER_ID);
+
+        assertThat(status.requiresAcceptance()).isFalse();
+        assertThat(status.acceptedAt()).isEqualTo(receipt.acceptedAt());
+        assertThat(status.terms().version()).isEqualTo(TERMS.version());
+        assertThatCode(() -> service.requireAccepted(USER_ID)).doesNotThrowAnyException();
+        assertThat(acceptances.inserts).isEmpty();
+    }
+
+    @Test
+    @DisplayName("이전 수락이 유효해도 현재 버전을 직접 수락하면 버전별로 기록하고 현재 수락을 우선 반환한다")
+    void recordsTheCurrentVersionSeparatelyAndPreservesEachFirstTimestamp() {
+        var previous = document(LegalDocumentType.TERMS, "2026-10-21", "c".repeat(64));
+        // 시계 차이로 이전 기록의 시각이 더 늦어도 현재 버전을 우선한다.
+        var previousReceipt = receipt(previous, NOW.plusSeconds(120));
+        acceptances.saved.add(previousReceipt);
+        when(catalog.acceptedTerms()).thenReturn(List.of(
+                TermsDocumentReference.from(TERMS), TermsDocumentReference.from(previous)));
+
+        var first = service.accept(USER_ID, currentCommand());
+        var repeated = service(true, NOW.plusSeconds(60)).accept(USER_ID, currentCommand());
+
+        assertThat(first.acceptedAt()).isEqualTo(NOW);
+        assertThat(repeated).isEqualTo(first);
+        assertThat(service.status(USER_ID)).isEqualTo(first);
+        assertThat(acceptances.saved).containsExactly(previousReceipt, receipt(TERMS, NOW));
+        assertThat(acceptances.inserts).containsExactly(receipt(TERMS, NOW));
+    }
+
+    @Test
+    @DisplayName("중요 개정으로 이전 버전을 인정 목록에서 제외하면 기존 기록은 보존하고 재수락을 요구한다")
+    void requiresAcceptanceWhenThePreviousVersionIsNoLongerAllowed() {
+        var previousReceipt = receipt(document(LegalDocumentType.TERMS, "2026-10-21", "c".repeat(64)),
+                NOW.minusSeconds(60));
+        acceptances.saved.add(previousReceipt);
+
+        assertThat(service.status(USER_ID).requiresAcceptance()).isTrue();
+        assertThat(service.status(USER_ID).acceptedAt()).isNull();
+        assertThatThrownBy(() -> service.requireAccepted(USER_ID)).isInstanceOf(TermsAcceptanceRequiredException.class);
+
+        service.accept(USER_ID, currentCommand());
+
+        assertThatCode(() -> service.requireAccepted(USER_ID)).doesNotThrowAnyException();
+        assertThat(acceptances.saved).containsExactly(previousReceipt, receipt(TERMS, NOW));
+    }
+
+    @Test
+    @DisplayName("이전 수락을 접근에 인정해도 이전 문서를 새로 제출하면 현재 문서 재확인을 요구한다")
+    void neverAcceptsAnOldSubmissionEvenWhenItsPreviousReceiptWouldBeAllowed() {
+        var previous = document(LegalDocumentType.TERMS, "2026-10-21", "c".repeat(64));
+        when(catalog.acceptedTerms()).thenReturn(List.of(
+                TermsDocumentReference.from(TERMS), TermsDocumentReference.from(previous)));
+        var command = new TermsAcceptanceCommand(previous.version(), previous.contentHash(),
+                PRIVACY.version(), PRIVACY.contentHash(), true, true);
+
+        assertThatThrownBy(() -> service.accept(USER_ID, command)).isInstanceOf(LegalDocumentChangedException.class);
+        assertThat(acceptances.saved).isEmpty();
+    }
+
+    @Test
+    @DisplayName("개인정보 고지만 개정하면 기존 약관 수락과 당시 고지 기록은 유지하고 현재 고지를 안내한다")
+    void privacyNoticeChangesDoNotInvalidateTermsOrRewriteTheOriginalNotice() {
+        var receipt = receipt(TERMS, NOW.minusSeconds(60));
+        acceptances.saved.add(receipt);
+        var privacy = document(LegalDocumentType.PRIVACY, "2026-10-25", "d".repeat(64));
+        when(catalog.current(LegalDocumentType.PRIVACY)).thenReturn(privacy);
+
+        var status = service.status(USER_ID);
+
+        assertThat(status.requiresAcceptance()).isFalse();
+        assertThat(status.acceptedAt()).isEqualTo(receipt.acceptedAt());
+        assertThat(status.privacyNotice().version()).isEqualTo(privacy.version());
+        assertThat(acceptances.saved).containsExactly(receipt);
+        assertThat(acceptances.inserts).isEmpty();
     }
 
     @ParameterizedTest
@@ -182,6 +268,10 @@ class TermsAcceptanceServiceTest {
                 PRIVACY.version(), PRIVACY.contentHash(), true, true);
     }
 
+    private static TermsAcceptance receipt(LegalDocument terms, Instant time) {
+        return new TermsAcceptance(terms.version(), terms.contentHash(), PRIVACY.version(), PRIVACY.contentHash(), time);
+    }
+
     private static Stream<TermsAcceptanceCommand> changedDocuments() {
         return Stream.of(
                 new TermsAcceptanceCommand("2026-10-21", TERMS.contentHash(),
@@ -204,23 +294,25 @@ class TermsAcceptanceServiceTest {
         private boolean activeMember = true;
         private boolean unavailable;
         private int reads;
-        private Optional<TermsAcceptance> saved = Optional.empty();
+        private final List<TermsAcceptance> saved = new ArrayList<>();
         private final List<TermsAcceptance> inserts = new ArrayList<>();
         private TermsAcceptance concurrentWinner;
 
         @Override
-        public Optional<MemberState> findMember(UUID userId, String version, String contentHash) {
+        public Optional<MemberState> findMember(UUID userId, List<TermsDocumentReference> acceptedTerms) {
             reads++;
             if (unavailable) throw new DataAccessResourceFailureException("test unavailable");
             if (!activeMember) return Optional.empty();
-            return Optional.of(new MemberState(saved.filter(acceptance -> acceptance.termsVersion().equals(version)
-                    && acceptance.termsContentHash().equals(contentHash))));
+            return Optional.of(new MemberState(acceptedTerms.stream()
+                    .flatMap(terms -> saved.stream().filter(terms::matches)).findFirst()));
         }
 
         @Override
         public void insert(UUID userId, TermsAcceptance acceptance) {
             inserts.add(acceptance);
-            if (saved.isEmpty()) saved = Optional.of(concurrentWinner == null ? acceptance : concurrentWinner);
+            if (saved.stream().noneMatch(receipt -> receipt.termsVersion().equals(acceptance.termsVersion()))) {
+                saved.add(concurrentWinner == null ? acceptance : concurrentWinner);
+            }
         }
     }
 }

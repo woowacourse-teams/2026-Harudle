@@ -2,10 +2,15 @@ package com.harudle.legal.infrastructure;
 
 import com.harudle.legal.application.TermsAcceptance;
 import com.harudle.legal.application.TermsAcceptanceRepository;
+import com.harudle.legal.application.TermsDocumentReference;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;
@@ -20,16 +25,32 @@ class JdbcTermsAcceptanceRepository implements TermsAcceptanceRepository {
     }
 
     @Override
-    public Optional<MemberState> findMember(UUID userId, String version, String contentHash) {
+    public Optional<MemberState> findMember(UUID userId, List<TermsDocumentReference> acceptedTerms) {
+        if (acceptedTerms.isEmpty()) throw new IllegalArgumentException("인정할 약관 버전은 필수입니다.");
+        String values = IntStream.range(0, acceptedTerms.size())
+                .mapToObj(index -> "(?, ?, " + index + ")").collect(Collectors.joining(", "));
+        List<Object> parameters = new ArrayList<>();
+        acceptedTerms.forEach(terms -> {
+            parameters.add(terms.version());
+            parameters.add(terms.contentHash());
+        });
+        parameters.add(userId);
         return jdbc.query("""
+                WITH accepted_terms (version, content_hash, priority) AS (VALUES %s)
                 SELECT a.terms_version, a.terms_content_hash, a.privacy_notice_version,
                        a.privacy_notice_content_hash, a.accepted_at
                 FROM users u
-                LEFT JOIN user_terms_acceptances a
-                  ON a.user_id = u.id AND a.terms_version = ? AND a.terms_content_hash = ?
+                LEFT JOIN LATERAL (
+                    SELECT receipt.* FROM user_terms_acceptances receipt
+                    JOIN accepted_terms allowed
+                      ON receipt.terms_version = allowed.version AND receipt.terms_content_hash = allowed.content_hash
+                    WHERE receipt.user_id = u.id
+                    ORDER BY allowed.priority
+                    LIMIT 1
+                ) a ON TRUE
                 WHERE u.id = ? AND u.deleted_at IS NULL
                   AND EXISTS (SELECT 1 FROM oauth_accounts o WHERE o.user_id = u.id)
-                """, (rs, row) -> {
+                """.formatted(values), (rs, row) -> {
                     if (rs.getTimestamp("accepted_at") == null) {
                         return new MemberState(Optional.empty());
                     }
@@ -37,7 +58,7 @@ class JdbcTermsAcceptanceRepository implements TermsAcceptanceRepository {
                             rs.getString("terms_version"), rs.getString("terms_content_hash"),
                             rs.getString("privacy_notice_version"), rs.getString("privacy_notice_content_hash"),
                             rs.getTimestamp("accepted_at").toInstant())));
-                }, version, contentHash, userId).stream().findFirst();
+                }, parameters.toArray()).stream().findFirst();
     }
 
     @Override

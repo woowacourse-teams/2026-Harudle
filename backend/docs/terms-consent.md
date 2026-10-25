@@ -20,7 +20,11 @@
 
 JSON 리소스의 UTF-8 바이트에 대한 SHA-256을 고정 manifest와 대조한다. 같은 버전의 글·공백을 바꾸면 시작 단계에서 실패한다. 공개한 버전을 고치지 말고 새 버전 파일을 추가한다. 현재 버전은 CURRENT_VERSIONS에서 선택하고, 과거 버전은 삭제하지 않아 해당 URL로 다시 읽을 수 있게 한다.
 
+게시 버전과 서비스 접근에 인정할 수락 버전은 분리한다. ACCEPTED_TERMS_VERSIONS에는 현재 약관과 수락을 계속 인정할 과거 약관을 명시한다. 공지·오탈자 개정이면 기존 버전을 유지할 수 있고, 재동의가 필요한 개정이면 그 이전 버전을 제외한다. 어떤 개정에 재동의가 필요한지는 팀이 결정하며 날짜나 버전 문자열로 자동 판단하지 않는다. 배포 목록에 없는 버전을 인정하거나 현재 버전의 수락을 제외하는 설정은 시작 단계에서 거절한다.
+
 수락 기록은 회원과 약관 버전별 한 행이다. 동시에 제출하거나 결과를 받지 못해 다시 제출해도 최초 시각을 덮어쓰지 않는다. 시각은 서버 Clock을 사용하며 요청에 회원 ID·시각·IP·User-Agent를 받지 않는다. 기존 회원의 기록을 채우는 데이터 전환은 없다.
+
+상태 조회는 현재 약관 수락을 우선하고, 없다면 인정 목록에 적은 과거 버전 순서로 확인한다. 과거 수락으로 접근이 허용되더라도 현재 약관을 직접 선택해 제출하면 현재 버전의 이력을 별도로 저장한다. 과거 문서를 새로 제출하는 요청은 허용하지 않는다.
 
 ## API
 
@@ -38,7 +42,7 @@ JSON 리소스의 UTF-8 바이트에 대한 SHA-256을 고정 manifest와 대조
 
 수락 요청에는 termsVersion, termsContentHash, privacyNoticeVersion, privacyNoticeContentHash, accepted: true, ageConfirmed: true를 보낸다. 화면에 표시한 문서의 식별값을 그대로 사용한다.
 
-응답의 enforcementEnabled는 운영 적용 여부, requiresAcceptance는 현재 서비스 이용을 위해 추가 수락이 필요한지, acceptedAt은 실제 저장된 최초 수락 시각이다. 필수 적용이 꺼져 있으면 requiresAcceptance는 false여도 acceptedAt이 null일 수 있다. 이를 “동의 완료”로 표시하지 않는다.
+응답의 enforcementEnabled는 운영 적용 여부, requiresAcceptance는 현재 서비스 이용을 위해 추가 수락이 필요한지다. terms와 privacyNotice는 지금 열람할 문서의 참조다. acceptedAt은 서비스 접근에 인정되는 수락 기록의 실제 최초 시각이며 현재 버전을 우선한다. 공지성 개정으로 이전 수락이 유지되면 이전 버전의 시각일 수 있으므로 “현재 문서를 이 시각에 수락했다”는 뜻으로 표시하지 않는다. 당시의 약관·개인정보 고지 버전과 시각은 원래 저장 행에 그대로 남는다. 필수 적용이 꺼져 있으면 requiresAcceptance는 false여도 acceptedAt이 null일 수 있다. 이를 “동의 완료”로 표시하지 않는다.
 
 </details>
 
@@ -52,6 +56,8 @@ LEGAL_REQUIRE_TERMS_ACCEPTANCE의 기본값은 false다. 백엔드가 먼저 배
 4. 신규·기존 계정으로 [상황별 흐름](terms-consent-scenarios.md)을 확인한 뒤 운영자가 환경별로 필수 적용을 켠다.
 
 이 PR은 운영 환경 변수를 변경하거나 강제 적용을 켜지 않는다. 비활성화는 서비스 접근 제한만 해제하며 이미 저장한 수락 이력을 지우지 않는다.
+
+이 적용은 회원 Bearer API의 약관 확인이다. 비회원 AI 체험의 안내·동의와 실제 개인정보 처리의 보유·파기·위탁 범위까지 완료된 것으로 취급하지 않는다. [정책 대조의 미확인 사항](terms-policy-review.md#운영-확인이-필요한-불일치)은 별도 정리 후 활성화한다.
 
 <details>
 <summary>원문 수정 제안과 별도 운영 확인</summary>

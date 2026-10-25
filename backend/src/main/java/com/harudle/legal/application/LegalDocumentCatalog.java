@@ -12,6 +12,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Stream;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Component;
@@ -31,27 +32,47 @@ public class LegalDocumentCatalog {
             LegalDocumentType.TERMS, "2026-10-22",
             LegalDocumentType.PRIVACY, "2026-08-24"
     );
+    // 공지성 개정은 이전 수락을 유지하고, 재동의가 필요한 개정은 이전 버전을 이 목록에서 제외한다.
+    private static final List<String> ACCEPTED_TERMS_VERSIONS = List.of("2026-10-22");
     private final List<LegalDocument> allDocuments;
     private final Map<LegalDocumentType, String> currentVersions;
     private final List<LegalDocument> currentDocuments;
+    private final List<TermsDocumentReference> acceptedTerms;
 
     @Autowired
     public LegalDocumentCatalog(ObjectMapper mapper, ResourceLoader resources) {
-        this(loadDocuments(mapper, resources), CURRENT_VERSIONS);
+        this(loadDocuments(mapper, resources), CURRENT_VERSIONS, ACCEPTED_TERMS_VERSIONS);
     }
 
     LegalDocumentCatalog(List<LegalDocument> allDocuments, Map<LegalDocumentType, String> currentVersions) {
+        this(allDocuments, currentVersions, List.of(currentVersions.get(LegalDocumentType.TERMS)));
+    }
+
+    LegalDocumentCatalog(List<LegalDocument> allDocuments, Map<LegalDocumentType, String> currentVersions,
+            List<String> acceptedTermsVersions) {
         this.allDocuments = List.copyOf(allDocuments);
         this.currentVersions = Map.copyOf(currentVersions);
         try {
             this.currentDocuments = this.currentVersions.keySet().stream().sorted().map(this::current).toList();
+            String currentTermsVersion = current(LegalDocumentType.TERMS).version();
+            if (!acceptedTermsVersions.contains(currentTermsVersion)) {
+                throw new IllegalArgumentException("현재 공개 약관의 수락은 항상 유효해야 합니다.");
+            }
+            this.acceptedTerms = Stream.concat(Stream.of(currentTermsVersion), acceptedTermsVersions.stream())
+                    .distinct().map(version -> find(LegalDocumentType.TERMS, version))
+                    .map(TermsDocumentReference::from).toList();
         } catch (LegalDocumentNotFoundException exception) {
-            throw new IllegalStateException("현재 공개 버전이 배포 문서 목록에 없습니다.", exception);
+            throw new IllegalStateException("현재 공개 버전 또는 수락 인정 버전이 배포 문서 목록에 없습니다.", exception);
         }
     }
 
     public List<LegalDocument> documents() {
         return currentDocuments;
+    }
+
+    /** 현재 버전을 먼저 조회하며, 명시적으로 유지한 과거 버전의 수락도 서비스 접근에 인정한다. */
+    public List<TermsDocumentReference> acceptedTerms() {
+        return acceptedTerms;
     }
 
     public LegalDocument current(LegalDocumentType type) {
