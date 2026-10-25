@@ -30,6 +30,7 @@ import ActionButton from '../../shared/ActionButton';
 import LoadingSpinner from '../../shared/LoadingSpinner';
 import PageHeader from '../../shared/PageHeader';
 import { theme } from '../../styles/theme';
+import logoutIcon from '../../assets/icons/logout.svg';
 import { CONSENT_COPY } from './copy';
 import { getReturnPath } from './returnPath';
 import { LOGIN_COPY } from '../login/copy';
@@ -66,6 +67,7 @@ const ConsentPage = () => {
   const operation = useRef<AbortController | null>(null);
   const busy = useRef(false);
   const isMutating = mutation.status === 'loading';
+  const allChecked = termsChecked && ageChecked;
 
   useEffect((): (() => void) => {
     const controller = new AbortController();
@@ -184,7 +186,7 @@ const ConsentPage = () => {
       const csrfToken = await requestCsrfToken();
       if (controller.signal.aborted) return;
       await logout({ csrfToken });
-      if (controller.signal.aborted) return;
+      // 서버 로그아웃이 끝났다면 화면을 벗어났어도 회원 상태를 정리한다.
       clearGenerationForEndedSession();
       setAccessToken(null);
       try {
@@ -197,7 +199,7 @@ const ConsentPage = () => {
       } catch {
         // 선택 분석 SDK의 오류가 이미 성공한 로그아웃을 되돌리지 않게 한다.
       }
-      window.location.replace('/landing');
+      if (!controller.signal.aborted) window.location.replace('/landing');
     } catch {
       if (!controller.signal.aborted)
         setMutation({
@@ -246,9 +248,11 @@ const ConsentPage = () => {
               <ActionButton
                 label={CONSENT_COPY.retry}
                 variant="secondary"
-                onClick={(): void =>
-                  setAttempt((current): number => current + 1)
-                }
+                disabled={isMutating}
+                onClick={(): void => {
+                  if (!busy.current)
+                    setAttempt((current): number => current + 1);
+                }}
               />
             )}
           </div>
@@ -270,41 +274,59 @@ const ConsentPage = () => {
               <h2 css={headingStyle}>{CONSENT_COPY.heading}</h2>
               <p css={descriptionStyle}>{CONSENT_COPY.description}</p>
             </div>
-            <div css={agreementCardStyle}>
-              <div css={agreementRowStyle}>
-                <label css={checkboxLabelStyle}>
-                  <input
-                    type="checkbox"
-                    checked={termsChecked}
-                    disabled={isMutating}
-                    onChange={(event): void =>
-                      setTermsChecked(event.target.checked)
-                    }
-                  />
-                  {CONSENT_COPY.terms}
-                </label>
-                <Link
-                  to={`/legal/terms/${form.terms.version}`}
-                  aria-label={CONSENT_COPY.termsView}
-                  onClick={preventNavigationWhileMutating}
-                  aria-disabled={isMutating}
-                  tabIndex={isMutating ? -1 : undefined}
-                >
-                  {CONSENT_COPY.view}
-                </Link>
-              </div>
-              <div css={agreementRowStyle}>
-                <label css={checkboxLabelStyle}>
-                  <input
-                    type="checkbox"
-                    checked={ageChecked}
-                    disabled={isMutating}
-                    onChange={(event): void =>
-                      setAgeChecked(event.target.checked)
-                    }
-                  />
-                  {CONSENT_COPY.minimumAge}
-                </label>
+            <div css={agreementGroupStyle}>
+              <label css={[checkboxLabelStyle, selectAllStyle]}>
+                <input
+                  ref={(input): void => {
+                    if (input)
+                      input.indeterminate = termsChecked !== ageChecked;
+                  }}
+                  type="checkbox"
+                  checked={allChecked}
+                  disabled={isMutating}
+                  onChange={(event): void => {
+                    setTermsChecked(event.target.checked);
+                    setAgeChecked(event.target.checked);
+                  }}
+                />
+                {CONSENT_COPY.selectAll}
+              </label>
+              <div css={agreementCardStyle}>
+                <div css={agreementRowStyle}>
+                  <label css={checkboxLabelStyle}>
+                    <input
+                      type="checkbox"
+                      checked={termsChecked}
+                      disabled={isMutating}
+                      onChange={(event): void =>
+                        setTermsChecked(event.target.checked)
+                      }
+                    />
+                    {CONSENT_COPY.terms}
+                  </label>
+                  <Link
+                    to={`/legal/terms/${form.terms.version}`}
+                    aria-label={CONSENT_COPY.termsView}
+                    onClick={preventNavigationWhileMutating}
+                    aria-disabled={isMutating}
+                    tabIndex={isMutating ? -1 : undefined}
+                  >
+                    {CONSENT_COPY.view}
+                  </Link>
+                </div>
+                <div css={agreementRowStyle}>
+                  <label css={checkboxLabelStyle}>
+                    <input
+                      type="checkbox"
+                      checked={ageChecked}
+                      disabled={isMutating}
+                      onChange={(event): void =>
+                        setAgeChecked(event.target.checked)
+                      }
+                    />
+                    {CONSENT_COPY.minimumAge}
+                  </label>
+                </div>
               </div>
             </div>
             <div css={privacyStyle}>
@@ -339,18 +361,19 @@ const ConsentPage = () => {
         )}
         {!isLoading &&
           !(request.status === 'success' && request.data === null) && (
-            <button
-              type="button"
-              css={declineStyle}
+            <ActionButton
+              variant="secondary"
+              icon={<img src={logoutIcon} alt="" />}
               disabled={isMutating}
               onClick={(): void => {
                 void handleLogout();
               }}
-            >
-              {isMutating && mutationType === 'logout'
-                ? CONSENT_COPY.loggingOut
-                : CONSENT_COPY.decline}
-            </button>
+              label={
+                isMutating && mutationType === 'logout'
+                  ? CONSENT_COPY.loggingOut
+                  : CONSENT_COPY.decline
+              }
+            />
           )}
       </main>
     </div>
@@ -409,6 +432,16 @@ const agreementCardStyle = css`
   border-radius: 16px;
   overflow: hidden;
 `;
+const agreementGroupStyle = css`
+  display: grid;
+  gap: 12px;
+`;
+const selectAllStyle = css`
+  min-height: 44px;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 700;
+`;
 const agreementRowStyle = css`
   display: flex;
   align-items: center;
@@ -452,20 +485,6 @@ const privacyStyle = css`
 const actionStyle = css`
   margin-top: auto;
   padding-top: 24px;
-`;
-const declineStyle = css`
-  min-height: 40px;
-  padding: 8px 0;
-  border: none;
-  background: none;
-  color: ${theme.colors.foreground.neutralMuted};
-  font-size: 14px;
-  line-height: 22px;
-  cursor: pointer;
-  &:disabled {
-    opacity: 0.5;
-    cursor: default;
-  }
 `;
 const mutationErrorStyle = css`
   color: ${theme.colors.foreground.critical};

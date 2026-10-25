@@ -22,6 +22,10 @@ import type { logout } from '../../domain/user/logout';
 import ConsentPage from './ConsentPage';
 import terms from '../../mocks/legal/terms-2026-10-22.json';
 import privacy from '../../mocks/legal/privacy-2026-08-24.json';
+import {
+  DIARY_GENERATION_ID_KEY,
+  DIARY_GENERATION_TOAST_ID_KEY,
+} from '../../shared/constants';
 
 const mockGetStatus = jest.fn<typeof getAgreementStatus>();
 const mockAcceptTerms = jest.fn<typeof acceptTerms>();
@@ -74,6 +78,7 @@ jest.mock('../../posthog/useAnalytics', () => ({
   useAnalytics: () => ({ resetUser: mockResetUser }),
 }));
 jest.mock('../../assets/images/loading-animation.webp', () => 'loading.webp');
+jest.mock('../../assets/icons/logout.svg', () => 'logout.svg');
 
 const status: AgreementStatus = {
   minimumAge: 14,
@@ -95,6 +100,7 @@ const catalog: LegalDocumentsResponse = {
   ],
 };
 beforeEach((): void => {
+  localStorage.clear();
   mockLocationState = { returnTo: '/setting?tab=account#profile' };
   mockGetStatus.mockReset().mockResolvedValue(status);
   mockAcceptTerms.mockReset().mockResolvedValue(accepted);
@@ -138,7 +144,7 @@ describe('명시적 이용약관 동의', (): void => {
     expect(
       screen.getByRole('checkbox', { name: '[필수] 만 14세 이상입니다' }),
     ).not.toBeChecked();
-    expect(screen.getAllByRole('checkbox')).toHaveLength(2);
+    expect(screen.getAllByRole('checkbox')).toHaveLength(3);
     const submit = screen.getByRole('button', { name: '동의하고 시작하기' });
     expect(submit).toBeDisabled();
     await user.click(termsCheckbox);
@@ -165,6 +171,9 @@ describe('명시적 이용약관 동의', (): void => {
     expect(
       screen.getByRole('link', { name: '이용약관 전문 보기' }),
     ).toHaveAttribute('aria-disabled', 'true');
+    expect(
+      screen.getByRole('checkbox', { name: '모두 확인하고 동의하기' }),
+    ).toBeDisabled();
     expect(mockNavigate).not.toHaveBeenCalled();
     await act(async (): Promise<void> => {
       resolveAcceptance?.(accepted);
@@ -172,6 +181,50 @@ describe('명시적 이용약관 동의', (): void => {
     expect(mockNavigate).toHaveBeenCalledWith('/setting?tab=account#profile', {
       replace: true,
     });
+  });
+  it('전체 확인은 두 필수 항목만 묶고 개별 변경과 부분 선택을 함께 표시한다', async (): Promise<void> => {
+    render(<ConsentPage />);
+    const user = userEvent.setup();
+    const selectAll = await screen.findByRole('checkbox', {
+      name: '모두 확인하고 동의하기',
+    });
+    const terms = screen.getByRole('checkbox', {
+      name: '[필수] 이용약관 동의',
+    });
+    const age = screen.getByRole('checkbox', {
+      name: '[필수] 만 14세 이상입니다',
+    });
+    const submit = screen.getByRole('button', { name: '동의하고 시작하기' });
+    expect(selectAll).not.toBeChecked();
+    expect(selectAll).not.toBePartiallyChecked();
+    expect(
+      screen.getByRole('link', { name: '개인정보처리방침 전문 보기' }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole('checkbox')).toHaveLength(3);
+
+    await user.click(terms);
+    expect(selectAll).toBePartiallyChecked();
+    expect(submit).toBeDisabled();
+    await user.click(selectAll);
+    expect(terms).toBeChecked();
+    expect(age).toBeChecked();
+    expect(selectAll).toBeChecked();
+    expect(selectAll).not.toBePartiallyChecked();
+    expect(submit).toBeEnabled();
+
+    await user.click(age);
+    expect(terms).toBeChecked();
+    expect(selectAll).not.toBeChecked();
+    expect(selectAll).toBePartiallyChecked();
+    expect(submit).toBeDisabled();
+    await user.click(age);
+    expect(selectAll).toBeChecked();
+    await user.click(selectAll);
+    expect(terms).not.toBeChecked();
+    expect(age).not.toBeChecked();
+    expect(selectAll).not.toBePartiallyChecked();
+    expect(submit).toBeDisabled();
+    expect(mockAcceptTerms).not.toHaveBeenCalled();
   });
   it('저장 실패는 선택을 유지하고 같은 버튼으로 재시도한다', async (): Promise<void> => {
     mockAcceptTerms.mockRejectedValueOnce(new Error('실패'));
@@ -228,6 +281,12 @@ describe('명시적 이용약관 동의', (): void => {
       screen.getByRole('checkbox', { name: '[필수] 만 14세 이상입니다' }),
     ).not.toBeChecked();
     expect(
+      screen.getByRole('checkbox', { name: '모두 확인하고 동의하기' }),
+    ).not.toBeChecked();
+    expect(
+      screen.getByRole('checkbox', { name: '모두 확인하고 동의하기' }),
+    ).not.toBePartiallyChecked();
+    expect(
       screen.getByRole('button', { name: '동의하고 시작하기' }),
     ).toBeDisabled();
     expect(screen.getByRole('alert')).toHaveTextContent('문서가 바뀌었어요.');
@@ -280,6 +339,66 @@ describe('명시적 이용약관 동의', (): void => {
     );
     expect(mockLogout).toHaveBeenCalledWith({ csrfToken: 'csrf' });
     expect(mockRestore).toHaveBeenCalledTimes(1);
+  });
+
+  it('조회 오류 화면에서도 로그아웃 중에는 재조회를 잠그고 실패 뒤 다시 허용한다', async (): Promise<void> => {
+    mockGetStatus.mockRejectedValueOnce(new Error('일시적인 조회 실패'));
+    let rejectLogout: ((reason: Error) => void) | undefined;
+    mockLogout.mockImplementationOnce(
+      (): Promise<void> =>
+        new Promise((_resolve, reject): void => {
+          rejectLogout = reject;
+        }),
+    );
+    render(<ConsentPage />);
+    const user = userEvent.setup();
+    const retry = await screen.findByRole('button', { name: '다시 불러오기' });
+    await user.click(
+      screen.getByRole('button', { name: '로그아웃하고 둘러보기' }),
+    );
+    await waitFor(() => expect(mockLogout).toHaveBeenCalledTimes(1));
+    expect(retry).toBeDisabled();
+    await user.click(retry);
+    expect(mockGetStatus).toHaveBeenCalledTimes(1);
+    await act(async (): Promise<void> => {
+      rejectLogout?.(new Error('일시적인 로그아웃 실패'));
+    });
+    expect(retry).toBeEnabled();
+    expect(mockSetToken).not.toHaveBeenCalled();
+    await user.click(retry);
+    expect(
+      await screen.findByRole('checkbox', { name: '모두 확인하고 동의하기' }),
+    ).toBeEnabled();
+    expect(mockGetStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it('로그아웃 요청 후 화면을 벗어나도 서버 성공은 토큰과 회원별 표시 상태를 정리한다', async (): Promise<void> => {
+    let resolveLogout: (() => void) | undefined;
+    mockLogout.mockImplementationOnce(
+      (): Promise<void> =>
+        new Promise((resolve): void => {
+          resolveLogout = resolve;
+        }),
+    );
+    localStorage.setItem('harudle.has-completed-oauth', 'true');
+    localStorage.setItem(DIARY_GENERATION_ID_KEY, 'previous-generation');
+    localStorage.setItem(DIARY_GENERATION_TOAST_ID_KEY, 'previous-toast');
+    const { unmount } = render(<ConsentPage />);
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole('button', { name: '로그아웃하고 둘러보기' }),
+    );
+    await waitFor(() => expect(mockLogout).toHaveBeenCalledTimes(1));
+    unmount();
+    await act(async (): Promise<void> => {
+      resolveLogout?.();
+    });
+    expect(mockSetToken).toHaveBeenCalledWith(null);
+    expect(localStorage.getItem('harudle.has-completed-oauth')).toBeNull();
+    expect(localStorage.getItem(DIARY_GENERATION_ID_KEY)).toBeNull();
+    expect(localStorage.getItem(DIARY_GENERATION_TOAST_ID_KEY)).toBeNull();
+    expect(mockResetUser).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   it('분석 SDK 초기화에 실패해도 서버에서 성공한 로그아웃을 실패로 안내하지 않는다', async (): Promise<void> => {

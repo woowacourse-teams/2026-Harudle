@@ -9,6 +9,7 @@ import {
 import { act, render, waitFor } from '@testing-library/react';
 import { StrictMode } from 'react';
 import AuthCallbackPage from './AuthCallbackPage';
+import { ERROR_MESSAGES } from '../../shared/errorMessage';
 
 const mockCsrf = jest.fn<() => Promise<string>>();
 const mockSetToken = jest.fn();
@@ -110,23 +111,54 @@ describe('OAuth 콜백의 단일 교환과 복귀', (): void => {
     expect(mockConsumeReturnPath).not.toHaveBeenCalled();
     expect(mockNavigate).not.toHaveBeenCalled();
   });
-  it('제재된 OAuth 실패는 다른 계정 쿠키를 교환하지 않고 한 번만 안내한다', async (): Promise<void> => {
+  it.each([
+    ['?error=account_suspended', '관리자에 의해 이용이 제한된 계정이에요.'],
+    ['?error=%3Cscript%3Eunknown%3C%2Fscript%3E', ERROR_MESSAGES.LOGIN_FAILED],
+    ['?error=', ERROR_MESSAGES.LOGIN_FAILED],
+  ] as const)(
+    'OAuth 실패 %s는 다른 계정 쿠키를 교환하지 않고 알려진 문구만 한 번 안내한다',
+    async (search, message): Promise<void> => {
+      mockSearch = search;
+      localStorage.setItem('harudle.has-completed-oauth', 'true');
+      render(
+        <StrictMode>
+          <AuthCallbackPage />
+        </StrictMode>,
+      );
+      await waitFor(() =>
+        expect(mockNavigate).toHaveBeenCalledWith('/login', { replace: true }),
+      );
+      expect(window.alert).toHaveBeenCalledWith(message);
+      expect(window.alert).toHaveBeenCalledTimes(1);
+      expect(mockNavigate).toHaveBeenCalledTimes(1);
+      expect(mockCsrf).not.toHaveBeenCalled();
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(mockSetToken).not.toHaveBeenCalled();
+      expect(mockIdentify).not.toHaveBeenCalled();
+      expect(mockConsumeReturnPath).not.toHaveBeenCalled();
+    },
+  );
+  it('성공 교환 도중 실패 콜백으로 바뀌면 늦은 성공과 복귀 경로 소비를 무시한다', async (): Promise<void> => {
+    let resolve: ((response: Response) => void) | undefined;
+    mockFetch.mockImplementationOnce(
+      (): Promise<Response> =>
+        new Promise((complete): void => {
+          resolve = complete;
+        }),
+    );
+    const { rerender } = render(<AuthCallbackPage />);
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
     mockSearch = '?error=account_suspended';
-    render(
-      <StrictMode>
-        <AuthCallbackPage />
-      </StrictMode>,
-    );
-    await waitFor(() =>
-      expect(mockNavigate).toHaveBeenCalledWith('/login', { replace: true }),
-    );
-    expect(window.alert).toHaveBeenCalledWith(
-      '관리자에 의해 이용이 제한된 계정이에요.',
-    );
-    expect(window.alert).toHaveBeenCalledTimes(1);
-    expect(mockCsrf).not.toHaveBeenCalled();
-    expect(mockFetch).not.toHaveBeenCalled();
+    rerender(<AuthCallbackPage />);
+    expect(mockNavigate).toHaveBeenCalledWith('/login', { replace: true });
+    await act(async (): Promise<void> => {
+      resolve?.(jsonResponse());
+    });
+    expect(mockSetToken).not.toHaveBeenCalled();
+    expect(mockIdentify).not.toHaveBeenCalled();
     expect(mockConsumeReturnPath).not.toHaveBeenCalled();
+    expect(mockNavigate).toHaveBeenCalledTimes(1);
+    expect(window.alert).toHaveBeenCalledTimes(1);
   });
   it('StrictMode 교환 실패도 알림과 로그인 이동을 한 번만 처리한다', async (): Promise<void> => {
     mockFetch.mockRejectedValueOnce(new Error('로그인 실패'));

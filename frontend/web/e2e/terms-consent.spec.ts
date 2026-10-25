@@ -41,6 +41,11 @@ test('기존 회원은 전문 열람 후 두 항목을 직접 확인하고 원�
     name: '[필수] 만 14세 이상입니다',
     exact: true,
   });
+  const selectAll = page.getByRole('checkbox', {
+    name: '모두 확인하고 동의하기',
+    exact: true,
+  });
+  await expect(selectAll).not.toBeChecked();
   await expect(termsCheckbox).not.toBeChecked();
   await expect(ageCheckbox).not.toBeChecked();
   expect(profileReads).toBe(0);
@@ -52,10 +57,19 @@ test('기존 회원은 전문 열람 후 두 항목을 직접 확인하고 원�
   await expect(page).toHaveURL('/consent');
   await expect(termsCheckbox).not.toBeChecked();
   await termsCheckbox.check();
+  await expect(selectAll).toHaveJSProperty('indeterminate', true);
   await expect(
     page.getByRole('button', { name: '동의하고 시작하기', exact: true }),
   ).toBeDisabled();
   await ageCheckbox.check();
+  await expect(selectAll).toBeChecked();
+  await selectAll.uncheck();
+  await expect(termsCheckbox).not.toBeChecked();
+  await expect(ageCheckbox).not.toBeChecked();
+  await selectAll.check();
+  await expect(termsCheckbox).toBeChecked();
+  await expect(ageCheckbox).toBeChecked();
+  await expect(selectAll).toHaveJSProperty('indeterminate', false);
   await page
     .getByRole('button', { name: '동의하고 시작하기', exact: true })
     .click();
@@ -109,6 +123,9 @@ test('동의 저장 중 제출·이동을 잠그고 실패 뒤 선택을 유지�
   await expect(
     page.getByRole('link', { name: '개인정보처리방침 전문 보기', exact: true }),
   ).toHaveAttribute('aria-disabled', 'true');
+  await expect(
+    page.getByRole('checkbox', { name: '모두 확인하고 동의하기', exact: true }),
+  ).toBeDisabled();
   await expect(page.getByRole('alert')).toContainText(
     '동의를 저장하지 못했어요.',
   );

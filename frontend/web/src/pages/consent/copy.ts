@@ -3,6 +3,7 @@ export const CONSENT_COPY = {
   accountActions: '계정 이용 안내',
   heading: '하루들 이용 동의',
   description: '이용약관을 확인해 주세요.',
+  selectAll: '모두 확인하고 동의하기',
   terms: '[필수] 이용약관 동의',
   minimumAge: '[필수] 만 14세 이상입니다',
   termsView: '이용약관 전문 보기',

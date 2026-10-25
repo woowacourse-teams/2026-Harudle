@@ -2,10 +2,10 @@
 
 로그인·설정·소개 화면에서 이용약관과 개인정보처리방침 전문을 연다. 로그인 성공 자체를 동의로 간주하지 않고, 서버가 수락을 요구하면 첫 이용 전에 확인 화면으로 안내한다.
 
-- **직접 확인:** 이용약관과 만 14세 이상 여부를 각각 기본 미선택으로 표시한다. 생년월일·실명 인증을 추가하지 않는다.
+- **직접 확인:** 이용약관과 만 14세 이상 여부를 각각 기본 미선택으로 표시한다. `모두 확인하고 동의하기`로 두 항목을 함께 선택·해제할 수 있고 하나만 선택하면 부분 선택으로 표시한다. 생년월일·실명 인증을 추가하지 않는다.
 - **개인정보처리방침:** 별도 고지로 열람한다. 개인정보 처리 전체에 대한 일괄 동의 체크를 받지 않는다.
 - **실패:** 선택을 유지해 다시 제출한다. 문서 버전이 바뀌면 최신 문서를 읽고 선택을 초기화한다.
-- **거절:** 로그아웃한 뒤 소개 화면으로 이동한다. 토큰 갱신에 실패하는 계정도 쿠키·CSRF 기반 로그아웃을 사용할 수 있다.
+- **거절:** 시작 버튼 아래의 로그아웃 아이콘·테두리가 있는 보조 버튼으로 구분한다. 서버 로그아웃 성공 후 화면을 벗어났어도 토큰·로그인 표시·생성 추적을 정리한다. 토큰 갱신에 실패하는 계정도 쿠키·CSRF 기반 로그아웃을 사용할 수 있다.
 - **기존 동작:** 약관 확인이 끝나기 전에 개인 일기 생성 상태를 조회하지 않는다. 세션이 끝나면 생성 상태·토스트 식별자를 함께 정리한다.
 
 ```mermaid
@@ -20,6 +20,8 @@ flowchart LR
 
 기존 PageHeader·ActionButton·LoadingSpinner와 ApiRequest 요청 상태를 재사용한다. 인증 요청은 기존 authFetch가 맡고, 공개 전문은 publicFetch를 사용한다. 분석 SDK 초기화 오류가 정상 로그아웃을 막지 않게 한다.
 
+동의 상태는 화면 경로가 바뀔 때 확인한다. 피드의 필터·정렬·해시만 바뀌면 화면과 목록 상태를 유지한다. 이용 중 인증된 API가 `TERMS_ACCEPTANCE_REQUIRED`를 반환하면 상태를 다시 확인해 최신 전체 경로와 함께 동의 화면으로 안내한다. 병렬 거절 응답은 재확인을 중복 시작하지 않으며, 실패한 저장 요청은 자동 재전송하지 않는다.
+
 [백엔드 #476](https://github.com/woowacourse-teams/2026-Harudle/pull/476)의 문서·동의 API가 먼저 필요하다. 필수 적용은 기본 비활성 상태이며 정책 대조·기존 회원 안내와 양쪽 배포를 확인한 뒤 환경별로 켠다. 상세 경계는 [백엔드의 상황별 흐름](https://github.com/woowacourse-teams/2026-Harudle/blob/feat/428-terms-consent-backend/backend/docs/terms-consent-scenarios.md), [원문 정책 대조](https://github.com/woowacourse-teams/2026-Harudle/blob/feat/428-terms-consent-backend/backend/docs/terms-policy-review.md)를 참고한다.
 
 <details>
@@ -30,6 +32,8 @@ flowchart LR
 ![약관 전문](terms-consent-ui/terms-read.png)
 
 ![처음 동의할 때](terms-consent-ui/consent-initial.png)
+
+![두 필수 항목을 모두 확인한 상태](terms-consent-ui/consent-selected.png)
 
 ![실패 후 선택을 유지한 재시도](terms-consent-ui/consent-error.png)
 

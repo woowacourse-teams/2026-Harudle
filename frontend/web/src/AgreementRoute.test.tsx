@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import type {
   AgreementStatus,
   getAgreementStatus,
 } from './domain/legal/agreements';
 import AgreementRoute from './AgreementRoute';
 import { RequestError } from './shared/api';
+import { TERMS_ACCEPTANCE_REQUIRED_EVENT } from './shared/auth';
 import terms from './mocks/legal/terms-2026-10-22.json';
 import privacy from './mocks/legal/privacy-2026-08-24.json';
 
@@ -18,9 +19,23 @@ let mockLocation = {
   hash: '#profile',
 };
 const mockRedirect = jest.fn();
+const MockMemberScreen = () => {
+  const [selection, setSelection] = useState(0);
+  return (
+    <>
+      <p>회원 화면</p>
+      <button
+        type="button"
+        onClick={(): void => setSelection((current): number => current + 1)}
+      >
+        목록 선택 {selection}
+      </button>
+    </>
+  );
+};
 jest.mock('react-router', () => ({
   useLocation: () => mockLocation,
-  Outlet: () => <p>회원 화면</p>,
+  Outlet: () => <MockMemberScreen />,
   Navigate: (props: unknown) => {
     mockRedirect(props);
     return <p>동의 화면으로 이동</p>;
@@ -172,5 +187,98 @@ describe('회원 약관 동의 가드', (): void => {
       });
     });
     expect(screen.getByText('동의 화면으로 이동')).toBeInTheDocument();
+  });
+
+  it('검색·해시 변경은 회원 화면의 상태와 진행 중 조회를 유지한다', async (): Promise<void> => {
+    const user = userEvent.setup();
+    const { rerender } = render(<AgreementRoute />);
+    await user.click(
+      await screen.findByRole('button', { name: '목록 선택 0' }),
+    );
+    mockLocation = {
+      pathname: '/setting',
+      search: '?tab=privacy',
+      hash: '#terms',
+    };
+    rerender(<AgreementRoute />);
+    expect(
+      screen.getByRole('button', { name: '목록 선택 1' }),
+    ).toBeInTheDocument();
+    expect(mockGetStatus).toHaveBeenCalledTimes(1);
+    expect(mockGetStatus.mock.calls[0]?.[0]?.signal?.aborted).toBe(false);
+  });
+
+  it('약관 거절 이벤트는 화면을 닫고 한 번 재검사한 뒤 최신 전체 경로를 동의 화면에 전달한다', async (): Promise<void> => {
+    const { rerender } = render(<AgreementRoute />);
+    await screen.findByText('회원 화면');
+    mockLocation = {
+      pathname: '/setting',
+      search: '?tab=privacy',
+      hash: '#terms',
+    };
+    rerender(<AgreementRoute />);
+    let resolveStatus: ((value: AgreementStatus) => void) | undefined;
+    mockGetStatus.mockImplementationOnce(
+      (): Promise<AgreementStatus> =>
+        new Promise((resolve): void => {
+          resolveStatus = resolve;
+        }),
+    );
+    act((): void => {
+      window.dispatchEvent(new Event(TERMS_ACCEPTANCE_REQUIRED_EVENT));
+    });
+    expect(screen.queryByText('회원 화면')).not.toBeInTheDocument();
+    expect(screen.queryByText('비공개 생성 상태 조회')).not.toBeInTheDocument();
+    await waitFor(() => expect(mockGetStatus).toHaveBeenCalledTimes(2));
+    act((): void => {
+      window.dispatchEvent(new Event(TERMS_ACCEPTANCE_REQUIRED_EVENT));
+    });
+    act((): void => {
+      window.dispatchEvent(new Event(TERMS_ACCEPTANCE_REQUIRED_EVENT));
+    });
+    expect(mockGetStatus).toHaveBeenCalledTimes(2);
+    await act(async (): Promise<void> => {
+      resolveStatus?.({
+        ...allowed,
+        requiresAcceptance: true,
+        acceptedAt: null,
+      });
+    });
+    expect(mockRedirect).toHaveBeenLastCalledWith({
+      to: '/consent',
+      replace: true,
+      state: { returnTo: '/setting?tab=privacy#terms' },
+    });
+    act((): void => {
+      window.dispatchEvent(new Event(TERMS_ACCEPTANCE_REQUIRED_EVENT));
+    });
+    expect(mockGetStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it('초기 검사·조회 오류 중의 이벤트는 재조회 반복을 만들지 않고 직접 재시도할 수 있다', async (): Promise<void> => {
+    let rejectStatus: ((error: Error) => void) | undefined;
+    mockGetStatus.mockImplementationOnce(
+      (): Promise<AgreementStatus> =>
+        new Promise((_resolve, reject): void => {
+          rejectStatus = reject;
+        }),
+    );
+    const user = userEvent.setup();
+    render(<AgreementRoute />);
+    act((): void => {
+      window.dispatchEvent(new Event(TERMS_ACCEPTANCE_REQUIRED_EVENT));
+    });
+    expect(mockGetStatus).toHaveBeenCalledTimes(1);
+    await act(async (): Promise<void> => {
+      rejectStatus?.(new Error('일시적인 조회 실패'));
+    });
+    await screen.findByRole('alert');
+    act((): void => {
+      window.dispatchEvent(new Event(TERMS_ACCEPTANCE_REQUIRED_EVENT));
+    });
+    expect(mockGetStatus).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole('button', { name: '다시 불러오기' }));
+    expect(await screen.findByText('회원 화면')).toBeInTheDocument();
+    expect(mockGetStatus).toHaveBeenCalledTimes(2);
   });
 });

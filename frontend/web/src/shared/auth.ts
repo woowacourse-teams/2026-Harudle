@@ -5,6 +5,9 @@ let accessToken: string | null = null;
 let refreshRequest: Promise<void> | null = null; // Single-Flight 패턴
 let isHandlingAuthFailure = false;
 
+export const TERMS_ACCEPTANCE_REQUIRED_EVENT =
+  'harudle:terms-acceptance-required';
+
 export class AuthenticationRequiredError extends Error {
   constructor() {
     super(ERROR_MESSAGES.OAUTH_LOGIN_HISTORY_REQUIRED);
@@ -131,18 +134,34 @@ export const authFetch = async (
 
 // 여기서 뭘 return 해줘야 사용하는 곳에서 편하게 쓸까?
 // 아마 이 내부에서 try/catch를 하는 것은 별로 좋지 않다.
-const fetchWithAccessToken = (
+const fetchWithAccessToken = async (
   info: AuthFetchRequestInfo,
   init: AuthFetchRequestInit | undefined,
-  accessToken: string,
+  usedToken: string,
 ): Promise<Response> => {
   const headers = new Headers(init?.headers);
-  headers.set('Authorization', `Bearer ${accessToken}`);
+  headers.set('Authorization', `Bearer ${usedToken}`);
 
-  return fetch(info, {
+  const response = await fetch(info, {
     ...init,
     headers,
   });
+  if (response.status === 403 && !init?.signal?.aborted) {
+    try {
+      const problem: unknown = await response.clone().json();
+      if (
+        isProblemDetails(problem) &&
+        problem.status === 403 &&
+        problem.code === 'TERMS_ACCEPTANCE_REQUIRED' &&
+        accessToken === usedToken &&
+        !init?.signal?.aborted
+      )
+        window.dispatchEvent(new Event(TERMS_ACCEPTANCE_REQUIRED_EVENT));
+    } catch {
+      // 원래 응답은 각 API가 처리하며, 안내 이벤트 때문에 요청 결과를 바꾸지 않는다.
+    }
+  }
+  return response;
 };
 
 export interface RefreshTokenResponse {
