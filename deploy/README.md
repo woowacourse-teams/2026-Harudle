@@ -379,3 +379,9 @@ openssl rand -base64 32
 ```
 
 운영 환경에서는 `SESSION_COOKIE_SECURE=true`, `REFRESH_COOKIE_SECURE=true`를 유지합니다. 컨테이너 Nginx는 `/api/**`, `/oauth2/**`, `/login/oauth2/**` 요청을 백엔드로 전달합니다.
+
+## 약관 수락의 단계적 적용
+
+LEGAL_REQUIRE_TERMS_ACCEPTANCE의 기본값은 false다. 문서·수락 API와 프론트가 함께 준비되고, 정책·시행일·기존 회원 안내를 확정한 뒤 환경별로 true로 설정해 적용한다. 백엔드만 먼저 배포할 때는 false를 유지한다. 변경 후에는 기존 환경 변수와 마찬가지로 백엔드 컨테이너를 재생성해야 한다.
+
+동의 시각을 과거 가입일로 채우거나 운영 데이터를 자동 삭제하는 작업은 포함하지 않는다. 필수 적용을 끄더라도 수락 기록은 보존한다. 상세 순서는 [약관 열람과 수락](../backend/docs/terms-consent.md)을 따른다.

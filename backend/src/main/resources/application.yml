@@ -92,6 +92,8 @@ app:
       ttl: 14d
 
 harudle:
+  legal:
+    require-terms-acceptance: ${LEGAL_REQUIRE_TERMS_ACCEPTANCE:false}
   admin:
     image-recovery:
       interval: ${ADMIN_IMAGE_RECOVERY_INTERVAL:10s}

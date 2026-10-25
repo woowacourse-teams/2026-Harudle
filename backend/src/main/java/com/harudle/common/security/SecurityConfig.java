@@ -107,6 +107,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/actuator/prometheus").permitAll()
                         .requestMatchers("/actuator/**").denyAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/categories").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/legal/documents",
+                                "/api/v1/legal/documents/*/*").permitAll()
                         .requestMatchers(
                                 HttpMethod.POST,
                                 "/api/v1/guest/session",

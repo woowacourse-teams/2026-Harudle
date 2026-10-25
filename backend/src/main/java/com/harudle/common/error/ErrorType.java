@@ -78,6 +78,26 @@ public enum ErrorType {
             "Guest session expired",
             "게스트 세션이 만료되었습니다."
     ),
+    LEGAL_DOCUMENT_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "Legal document not found",
+            "해당 버전의 문서를 찾을 수 없습니다."
+    ),
+    TERMS_ACCEPTANCE_REQUIRED(
+            HttpStatus.FORBIDDEN,
+            "Terms acceptance required",
+            "서비스 이용 전에 현재 이용약관을 확인하고 동의해 주세요."
+    ),
+    LEGAL_DOCUMENT_CHANGED(
+            HttpStatus.CONFLICT,
+            "Legal document changed",
+            "문서가 변경되었습니다. 최신 내용을 확인한 뒤 다시 동의해 주세요."
+    ),
+    INVALID_TERMS_ACCEPTANCE(
+            HttpStatus.BAD_REQUEST,
+            "Invalid terms acceptance",
+            "약관 동의 여부와 문서 버전을 확인해 주세요."
+    ),
     ACCOUNT_SUSPENDED(
             HttpStatus.FORBIDDEN,
             "Account suspended",
