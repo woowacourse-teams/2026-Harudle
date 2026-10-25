@@ -34,6 +34,10 @@ class JpaNotificationRepository implements NotificationRepository {
             """;
     private static final String VISIBLE_PARENT_CONDITION = """
              f.deleted_at IS NULL AND d.deleted_at IS NULL AND feed_author.deleted_at IS NULL
+              AND NOT EXISTS (SELECT 1 FROM feeds hidden_feed
+                  JOIN moderation_states moderation ON moderation.target_type = 'FEED'
+                    AND moderation.target_id = hidden_feed.id AND moderation.restricted
+                  WHERE hidden_feed.diary_id = f.diary_id)
             """;
     private static final String VISIBLE_BLOCK_CONDITION = """
               AND NOT EXISTS (
@@ -51,6 +55,11 @@ class JpaNotificationRepository implements NotificationRepository {
                   SELECT 1 FROM feed_likes l
                   WHERE l.id = n.source_action_id
                     AND l.feed_id = n.feed_id AND l.user_id = n.actor_user_id
+              ))
+              AND (n.type <> 'COMMENT' OR NOT EXISTS (
+                  SELECT 1 FROM moderation_states moderation
+                  WHERE moderation.target_type = 'COMMENT' AND moderation.target_id = n.source_action_id
+                    AND moderation.restricted
               ))
             """;
     private static final String LIST_QUERY = """

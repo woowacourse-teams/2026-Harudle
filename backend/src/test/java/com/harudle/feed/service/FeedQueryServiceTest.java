@@ -87,7 +87,7 @@ class FeedQueryServiceTest {
         when(collaborators.profiles()).thenReturn(profiles);
         when(collaborators.categories()).thenReturn(categories);
         when(profiles.readAll(Set.of(AUTHOR))).thenReturn(Map.of(AUTHOR,
-                new PublicProfileReader.Profile(AUTHOR, "현재닉네임", URI.create("https://example.com/profile.png"))));
+                new PublicProfileReader.Profile(AUTHOR, "현재닉네임", URI.create("https://example.com/profile.png"), null)));
         when(categories.get(1)).thenReturn(new CategoryReader.Category(1, "변경된이름", 0, false));
     }
 

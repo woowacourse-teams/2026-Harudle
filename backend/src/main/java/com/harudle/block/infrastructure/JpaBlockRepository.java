@@ -52,15 +52,6 @@ class JpaBlockRepository implements BlockRepository {
     private static final String AFTER = """
               AND (b.created_at < :createdAt OR (b.created_at = :createdAt AND b.id < :id))
             """;
-    private static final String CANCEL_UNSENT = """
-            UPDATE notification_outbox o
-            SET status = 'CANCELLED', lock_token = NULL, locked_until = NULL,
-                sent_at = NULL, updated_at = CURRENT_TIMESTAMP
-            FROM feeds f JOIN diaries d ON d.id = f.diary_id
-            WHERE o.feed_id = f.id AND o.status IN ('PENDING', 'PROCESSING')
-              AND ((o.recipient_user_id = :first AND d.user_id = :second)
-                OR (o.recipient_user_id = :second AND d.user_id = :first))
-            """;
 
     private final EntityManager entityManager;
     private final DevTestDataVisibility visibility;
@@ -115,13 +106,6 @@ class JpaBlockRepository implements BlockRepository {
     public void deleteOwn(UUID blockerId, UUID blockedId) {
         entityManager.createNativeQuery("DELETE FROM user_blocks WHERE blocker_id = :actor AND blocked_id = :target")
                 .setParameter("actor", blockerId).setParameter("target", blockedId).executeUpdate();
-    }
-
-    @Override
-    @Transactional(propagation = Propagation.MANDATORY)
-    public void cancelUnsentBetween(UUID first, UUID second) {
-        entityManager.createNativeQuery(CANCEL_UNSENT).setParameter("first", first)
-                .setParameter("second", second).executeUpdate();
     }
 
     @Override

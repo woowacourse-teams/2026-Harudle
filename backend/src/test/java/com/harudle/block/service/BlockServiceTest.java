@@ -19,8 +19,10 @@ import com.harudle.block.repository.BlockRepository;
 import com.harudle.block.repository.BlockSnapshot;
 import com.harudle.block.service.exception.BlockTargetNotFoundException;
 import com.harudle.block.service.exception.BlockUnavailableException;
+import com.harudle.common.persistence.PostgresTransactionLockTimeout;
 import com.harudle.profile.service.port.PublicProfileReader;
 import com.harudle.profile.service.port.PublicProfileReader.Profile;
+import com.harudle.push.service.port.FeedPushOutbox;
 import com.harudle.push.service.port.FeedPushPublicationGuard;
 import java.net.URI;
 import java.time.Clock;
@@ -46,14 +48,17 @@ class BlockServiceTest {
     private static final Instant NOW = Instant.parse("2026-10-22T00:00:00Z");
     @Mock private BlockRepository repository;
     @Mock private BlockInteractionPolicy policy;
+    @Mock private PostgresTransactionLockTimeout lockTimeout;
     @Mock private FeedPushPublicationGuard publicationGuard;
+    @Mock private FeedPushOutbox pushOutbox;
     @Mock private ObjectProvider<PublicProfileReader> readers;
     @Mock private PublicProfileReader profiles;
     private BlockService service;
 
     @BeforeEach
     void setUp() {
-        service = new BlockService(repository, policy, publicationGuard, readers, new BlockCursorCodec(),
+        service = new BlockService(repository, policy, lockTimeout, publicationGuard, pushOutbox,
+                readers, new BlockCursorCodec(),
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -63,14 +68,15 @@ class BlockServiceTest {
         when(repository.isActiveMember(ACTOR)).thenReturn(true);
         when(repository.isActiveTarget(ACTOR, TARGET)).thenReturn(true);
         service.block(ACTOR, TARGET);
-        var order = inOrder(policy, repository, publicationGuard);
+        var order = inOrder(policy, repository, lockTimeout, publicationGuard, pushOutbox);
         order.verify(repository).isActiveMember(ACTOR);
+        order.verify(lockTimeout).apply();
         order.verify(policy).lockPair(ACTOR, TARGET);
         order.verify(repository).isActiveTarget(ACTOR, TARGET);
         order.verify(publicationGuard).lockForBlock(ACTOR, TARGET);
         var saved = ArgumentCaptor.forClass(UserBlock.class);
         order.verify(repository).insert(saved.capture());
-        order.verify(repository).cancelUnsentBetween(ACTOR, TARGET);
+        order.verify(pushOutbox).cancelUnsentBetweenUsers(ACTOR, TARGET);
         assertThat(saved.getValue().getBlockerId()).isEqualTo(ACTOR);
         assertThat(saved.getValue().getBlockedId()).isEqualTo(TARGET);
         assertThat(saved.getValue().getCreatedAt()).isEqualTo(NOW);
@@ -83,7 +89,7 @@ class BlockServiceTest {
         assertThatThrownBy(() -> service.unblock(ACTOR, TARGET)).isInstanceOf(AuthenticationRequiredException.class);
         when(repository.isActiveMember(ACTOR)).thenReturn(true);
         assertThatThrownBy(() -> service.block(ACTOR, ACTOR)).isInstanceOf(InvalidBlockException.class);
-        verifyNoInteractions(policy, publicationGuard);
+        verifyNoInteractions(policy, lockTimeout, publicationGuard, pushOutbox);
         verify(repository, never()).insert(any());
     }
 
@@ -93,8 +99,18 @@ class BlockServiceTest {
         when(repository.isActiveMember(ACTOR)).thenReturn(true);
         assertThatThrownBy(() -> service.block(ACTOR, TARGET)).isInstanceOf(BlockTargetNotFoundException.class);
         verify(repository, never()).insert(any());
-        verify(repository, never()).cancelUnsentBetween(any(), any());
-        verifyNoInteractions(publicationGuard);
+        verifyNoInteractions(publicationGuard, pushOutbox);
+    }
+
+    @Test
+    @DisplayName("미발송 푸시 취소 실패를 삼키지 않아 차단 저장 트랜잭션도 취소한다")
+    void propagatesPushCancellationFailure() {
+        when(repository.isActiveMember(ACTOR)).thenReturn(true);
+        when(repository.isActiveTarget(ACTOR, TARGET)).thenReturn(true);
+        IllegalStateException failure = new IllegalStateException("푸시 작업 취소 실패");
+        when(pushOutbox.cancelUnsentBetweenUsers(ACTOR, TARGET)).thenThrow(failure);
+
+        assertThatThrownBy(() -> service.block(ACTOR, TARGET)).isSameAs(failure);
     }
 
     @Test
@@ -102,13 +118,14 @@ class BlockServiceTest {
     void unblocksOwnDirectionWithoutRequiringActiveTarget() {
         when(repository.isActiveMember(ACTOR)).thenReturn(true);
         service.unblock(ACTOR, TARGET);
-        var order = inOrder(policy, repository, publicationGuard);
+        var order = inOrder(policy, repository, lockTimeout, publicationGuard);
         order.verify(repository).isActiveMember(ACTOR);
+        order.verify(lockTimeout).apply();
         order.verify(policy).lockPair(ACTOR, TARGET);
         order.verify(repository).deleteOwn(ACTOR, TARGET);
         verify(repository, never()).isActiveTarget(any(), any());
         verify(repository, never()).deleteOwn(TARGET, ACTOR);
-        verifyNoInteractions(publicationGuard);
+        verifyNoInteractions(publicationGuard, pushOutbox);
     }
 
     @Test

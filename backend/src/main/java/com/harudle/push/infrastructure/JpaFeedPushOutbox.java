@@ -11,7 +11,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
-class JpaFeedPushOutbox implements FeedPushOutbox {
+public class JpaFeedPushOutbox implements FeedPushOutbox {
     private static final String AUTHOR = """
             SELECT d.user_id FROM feeds f JOIN diaries d ON d.id = f.diary_id
             WHERE f.id = :feedId AND f.deleted_at IS NULL
@@ -31,6 +31,10 @@ class JpaFeedPushOutbox implements FeedPushOutbox {
                   WHERE (b.blocker_id = r.user_id AND b.blocked_id = d.user_id)
                      OR (b.blocker_id = d.user_id AND b.blocked_id = r.user_id)
               )
+              AND NOT EXISTS (SELECT 1 FROM feeds hidden_feed
+                  JOIN moderation_states moderation ON moderation.target_type = 'FEED'
+                    AND moderation.target_id = hidden_feed.id AND moderation.restricted
+                  WHERE hidden_feed.diary_id = f.diary_id)
               AND EXISTS (
                   SELECT 1 FROM refresh_tokens rt
                   WHERE rt.session_id = s.id AND rt.user_id = s.user_id
@@ -44,6 +48,16 @@ class JpaFeedPushOutbox implements FeedPushOutbox {
             SET status = 'CANCELLED', lock_token = NULL, locked_until = NULL,
                 sent_at = NULL, updated_at = CURRENT_TIMESTAMP
             WHERE feed_id = :feedId AND status IN ('PENDING', 'PROCESSING')
+            """;
+
+    private static final String CANCEL_BETWEEN_USERS = """
+            UPDATE notification_outbox o
+            SET status = 'CANCELLED', lock_token = NULL, locked_until = NULL,
+                sent_at = NULL, updated_at = CURRENT_TIMESTAMP
+            FROM feeds f JOIN diaries d ON d.id = f.diary_id
+            WHERE o.feed_id = f.id AND o.status IN ('PENDING', 'PROCESSING')
+              AND ((o.recipient_user_id = :first AND d.user_id = :second)
+                OR (o.recipient_user_id = :second AND d.user_id = :first))
             """;
 
     private final EntityManager entityManager;
@@ -88,6 +102,17 @@ class JpaFeedPushOutbox implements FeedPushOutbox {
         Objects.requireNonNull(feedId, "feedId는 필수입니다.");
         return entityManager.createNativeQuery(CANCEL)
                 .setParameter("feedId", feedId)
+                .executeUpdate();
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public int cancelUnsentBetweenUsers(UUID firstUserId, UUID secondUserId) {
+        Objects.requireNonNull(firstUserId, "첫 번째 회원 ID는 필수입니다.");
+        Objects.requireNonNull(secondUserId, "두 번째 회원 ID는 필수입니다.");
+        return entityManager.createNativeQuery(CANCEL_BETWEEN_USERS)
+                .setParameter("first", firstUserId)
+                .setParameter("second", secondUserId)
                 .executeUpdate();
     }
 

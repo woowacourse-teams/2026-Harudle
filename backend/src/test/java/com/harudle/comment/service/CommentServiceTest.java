@@ -60,7 +60,9 @@ class CommentServiceTest {
     private static final UUID FEED_ID = UUID.randomUUID();
     private static final UUID COMMENT_ID = UUID.randomUUID();
     private static final Instant NOW = Instant.parse("2026-10-12T02:00:00Z");
-    private static final Profile PROFILE = new Profile(ACTOR_ID, "연준", URI.create("https://images.example.com/profile.svg"));
+    private static final Profile PROFILE = new Profile(
+            ACTOR_ID, "연준", URI.create("https://images.example.com/profile.svg"), null
+    );
 
     @Mock private CommentRepository repository;
     @Mock private FeedInteractionPort feeds;
@@ -143,7 +145,7 @@ class CommentServiceTest {
     void rejectsNonHttpOrRelativeProfileUrls(String url) {
         activeActor();
         when(feeds.lockActiveForInteraction(FEED_ID, ACTOR_ID)).thenReturn(new Target(FEED_ID, AUTHOR_ID, new Counts(0, 0)));
-        availableProfiles(Map.of(ACTOR_ID, new Profile(ACTOR_ID, "연준", URI.create(url))), Set.of(ACTOR_ID));
+        availableProfiles(Map.of(ACTOR_ID, new Profile(ACTOR_ID, "연준", URI.create(url), null)), Set.of(ACTOR_ID));
         assertThatThrownBy(() -> service.create(ACTOR_ID, FEED_ID, "안녕"))
                 .isInstanceOf(CommentIntegrationUnavailableException.class);
         verify(repository, never()).create(any(), any(), any(), any(), any());
@@ -155,8 +157,8 @@ class CommentServiceTest {
         when(feeds.lockActiveForInteraction(FEED_ID, ACTOR_ID)).thenReturn(new Target(FEED_ID, AUTHOR_ID, new Counts(0, 0)));
         when(profileProvider.getIfAvailable()).thenReturn(profiles);
         when(profiles.readAll(Set.of(ACTOR_ID)))
-                .thenReturn(Map.of(ACTOR_ID, new Profile(AUTHOR_ID, "다른 회원", PROFILE.profileImageUrl())))
-                .thenReturn(Map.of(ACTOR_ID, new Profile(ACTOR_ID, "연준", null)));
+                .thenReturn(Map.of(ACTOR_ID, new Profile(AUTHOR_ID, "다른 회원", PROFILE.profileImageUrl(), null)))
+                .thenReturn(Map.of(ACTOR_ID, new Profile(ACTOR_ID, "연준", null, null)));
         assertThatThrownBy(() -> service.create(ACTOR_ID, FEED_ID, "안녕"))
                 .isInstanceOf(CommentIntegrationUnavailableException.class);
         assertThatThrownBy(() -> service.create(ACTOR_ID, FEED_ID, "안녕"))
@@ -206,7 +208,7 @@ class CommentServiceTest {
                 snapshot(COMMENT_ID, ACTOR_ID), withdrawnSnapshot(withdrawnId, AUTHOR_ID),
                 snapshot(lookAheadId, lookAheadAuthor)));
         // 제공자가 불필요한 과거 프로필을 함께 반환해도 DB의 탈퇴 판정을 우선해 공개하지 않는다.
-        Profile oldProfile = new Profile(AUTHOR_ID, "공개하면 안 되는 이전 닉네임", PROFILE.profileImageUrl());
+        Profile oldProfile = new Profile(AUTHOR_ID, "공개하면 안 되는 이전 닉네임", PROFILE.profileImageUrl(), null);
         availableProfiles(Map.of(ACTOR_ID, PROFILE, AUTHOR_ID, oldProfile), Set.of(ACTOR_ID));
         when(codec.encode(new CommentCursor(FEED_ID, NOW, withdrawnId))).thenReturn("next-withdrawn");
 
@@ -418,12 +420,12 @@ class CommentServiceTest {
 
     private static Stream<Profile> invalidActiveProfiles() {
         return Stream.of(
-                new Profile(AUTHOR_ID, "다른 회원", PROFILE.profileImageUrl()),
-                new Profile(ACTOR_ID, null, PROFILE.profileImageUrl()),
-                new Profile(ACTOR_ID, " ", PROFILE.profileImageUrl()),
-                new Profile(ACTOR_ID, "연준", null),
-                new Profile(ACTOR_ID, "연준", URI.create("/profiles/one.svg")),
-                new Profile(ACTOR_ID, "연준", URI.create("javascript:alert(1)"))
+                new Profile(AUTHOR_ID, "다른 회원", PROFILE.profileImageUrl(), null),
+                new Profile(ACTOR_ID, null, PROFILE.profileImageUrl(), null),
+                new Profile(ACTOR_ID, " ", PROFILE.profileImageUrl(), null),
+                new Profile(ACTOR_ID, "연준", null, null),
+                new Profile(ACTOR_ID, "연준", URI.create("/profiles/one.svg"), null),
+                new Profile(ACTOR_ID, "연준", URI.create("javascript:alert(1)"), null)
         );
     }
 }

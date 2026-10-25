@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type ApiRequest } from '../../../shared/api';
 import { getGenerationUsage } from '../../../domain/generationUsage';
+import useDiaryGenerationId from '../../../shared/useDiaryGenerationId';
 
 const useGenerationUsage = () => {
+  const generationId = useDiaryGenerationId();
   const [request, setRequest] = useState<ApiRequest<number>>({
     status: 'idle',
   });
@@ -50,7 +52,7 @@ const useGenerationUsage = () => {
     return () => {
       abortControllerRef.current?.abort();
     };
-  }, [execute]);
+  }, [execute, generationId]);
 
   return { request, execute };
 };

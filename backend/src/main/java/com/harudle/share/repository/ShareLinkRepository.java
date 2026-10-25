@@ -32,6 +32,10 @@ public interface ShareLinkRepository extends
                   WHERE (block.blockerId = :viewerId AND block.blockedId = diary.userId)
                      OR (block.blockerId = diary.userId AND block.blockedId = :viewerId)
               )
+              AND NOT EXISTS (SELECT hiddenFeed.id FROM Feed hiddenFeed, ModerationRestriction moderation
+                  WHERE hiddenFeed.diaryId = diary.id
+                    AND moderation.targetType = com.harudle.moderation.domain.ModerationTargetType.FEED
+                    AND moderation.targetId = hiddenFeed.id AND moderation.restricted = true)
             """)
     Optional<PublicShareSnapshot> findPublicSnapshotById(@Param("shareId") UUID shareId,
             @Param("viewerId") @Nullable UUID viewerId);

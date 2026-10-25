@@ -26,6 +26,10 @@ class JpaReportTargetReader implements ReportTargetReader {
             JOIN users feed_author ON feed_author.id = d.user_id
             WHERE f.id = :targetId AND f.deleted_at IS NULL AND d.deleted_at IS NULL
               AND feed_author.deleted_at IS NULL
+              AND NOT EXISTS (SELECT 1 FROM feeds hidden_feed
+                  JOIN moderation_states moderation ON moderation.target_type = 'FEED'
+                    AND moderation.target_id = hidden_feed.id AND moderation.restricted
+                  WHERE hidden_feed.diary_id = f.diary_id)
             """;
     private static final String COMMENT_QUERY = """
             SELECT comment_author.id FROM comments c
@@ -35,6 +39,12 @@ class JpaReportTargetReader implements ReportTargetReader {
             JOIN users feed_author ON feed_author.id = d.user_id
             WHERE c.id = :targetId AND c.deleted_at IS NULL AND f.deleted_at IS NULL
               AND d.deleted_at IS NULL AND feed_author.deleted_at IS NULL
+              AND NOT EXISTS (SELECT 1 FROM feeds hidden_feed
+                  JOIN moderation_states moderation ON moderation.target_type = 'FEED'
+                    AND moderation.target_id = hidden_feed.id AND moderation.restricted
+                  WHERE hidden_feed.diary_id = f.diary_id)
+              AND NOT EXISTS (SELECT 1 FROM moderation_states moderation
+                  WHERE moderation.target_type = 'COMMENT' AND moderation.target_id = c.id AND moderation.restricted)
             """;
 
     private final EntityManager entityManager;

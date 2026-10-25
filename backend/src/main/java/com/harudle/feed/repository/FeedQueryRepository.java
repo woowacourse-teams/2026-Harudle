@@ -1,7 +1,7 @@
 package com.harudle.feed.repository;
 
-import com.harudle.feed.domain.Feed;
 import com.harudle.common.testdata.DevTestDataVisibility;
+import com.harudle.feed.domain.Feed;
 import java.util.Optional;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
@@ -30,6 +30,10 @@ public interface FeedQueryRepository extends Repository<Feed, UUID> {
                   WHERE (block.blockerId = :viewerId AND block.blockedId = diary.userId)
                      OR (block.blockerId = diary.userId AND block.blockedId = :viewerId)
               )
+              AND NOT EXISTS (SELECT hiddenFeed.id FROM Feed hiddenFeed, ModerationRestriction moderation
+                  WHERE hiddenFeed.diaryId = diary.id
+                    AND moderation.targetType = com.harudle.moderation.domain.ModerationTargetType.FEED
+                    AND moderation.targetId = hiddenFeed.id AND moderation.restricted = true)
             """;
 
     @Query(ACTIVE_SNAPSHOT)

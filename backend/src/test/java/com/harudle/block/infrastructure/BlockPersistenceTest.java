@@ -13,10 +13,13 @@ import com.harudle.block.service.BlockCursorCodec;
 import com.harudle.block.service.BlockInteractionPolicy;
 import com.harudle.block.service.BlockService;
 import com.harudle.block.service.exception.BlockTargetNotFoundException;
+import com.harudle.common.persistence.PostgresTransactionLockTimeout;
 import com.harudle.common.testdata.DevTestDataVisibility;
 import com.harudle.profile.service.port.PublicProfileReader;
 import com.harudle.profile.service.port.PublicProfileReader.Profile;
+import com.harudle.push.infrastructure.JpaFeedPushOutbox;
 import com.harudle.push.infrastructure.PostgresFeedPushPublicationGuard;
+import com.harudle.push.service.port.FeedPushOutbox;
 import com.harudle.support.BlockDatabaseTestSupport;
 import jakarta.persistence.EntityManager;
 import java.net.URI;
@@ -57,12 +60,14 @@ import org.springframework.transaction.support.TransactionTemplate;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @Import({JpaBlockRepository.class, BlockService.class, BlockInteractionPolicy.class, BlockCursorCodec.class,
-        PostgresFeedPushPublicationGuard.class, DevTestDataVisibility.class, BlockPersistenceTest.ClockConfiguration.class})
+        PostgresTransactionLockTimeout.class, PostgresFeedPushPublicationGuard.class, JpaFeedPushOutbox.class,
+        DevTestDataVisibility.class, BlockPersistenceTest.ClockConfiguration.class})
 class BlockPersistenceTest extends BlockDatabaseTestSupport {
     private static final Instant NOW = Instant.parse("2026-10-22T00:00:00Z");
     @Autowired private BlockService service;
     @Autowired private BlockInteractionPolicy policy;
     @Autowired private BlockRepository repository;
+    @Autowired private FeedPushOutbox pushOutbox;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private EntityManager entityManager;
     @Autowired private PlatformTransactionManager transactionManager;
@@ -183,6 +188,10 @@ class BlockPersistenceTest extends BlockDatabaseTestSupport {
         service.block(actor, target);
         assertThat(jobStatus(pending)).isEqualTo("CANCELLED");
         assertThat(jobStatus(processing)).isEqualTo("CANCELLED");
+        assertThat(jdbc.queryForObject("SELECT lock_token FROM notification_outbox WHERE id = ?",
+                UUID.class, processing)).isNull();
+        assertThat(jdbc.queryForObject("SELECT locked_until FROM notification_outbox WHERE id = ?",
+                Timestamp.class, processing)).isNull();
         assertThat(jobStatus(sent)).isEqualTo("SENT");
         assertThat(jobStatus(unrelated)).isEqualTo("PENDING");
         service.unblock(actor, target);
@@ -239,6 +248,8 @@ class BlockPersistenceTest extends BlockDatabaseTestSupport {
     @DisplayName("정책 잠금은 트랜잭션을 요구하고 DB는 자기 차단을 거절하며 양쪽 회원 삭제에 정리한다")
     void enforcesTransactionAndDatabaseConstraints() {
         assertThatThrownBy(() -> policy.lockAndIsBlocked(actor, target))
+                .isInstanceOf(IllegalTransactionStateException.class);
+        assertThatThrownBy(() -> pushOutbox.cancelUnsentBetweenUsers(actor, target))
                 .isInstanceOf(IllegalTransactionStateException.class);
         assertThatThrownBy(() -> jdbc.update("INSERT INTO user_blocks (id, blocker_id, blocked_id) VALUES (?, ?, ?)",
                 UUID.randomUUID(), actor, actor)).isInstanceOf(DataIntegrityViolationException.class);

@@ -5,12 +5,17 @@ import com.harudle.block.service.BlockService;
 import com.harudle.block.service.dto.BlockPageResult;
 import com.harudle.common.error.ApiErrorResponses;
 import com.harudle.common.error.ErrorType;
+import com.harudle.common.validation.CanonicalUuidParser;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import java.util.Set;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.CacheControl;
@@ -44,10 +49,13 @@ class BlockController {
             + "같은 대상의 반복 요청은 최초 차단 시각을 유지합니다. 상대가 차단했는지는 반환하지 않습니다.")
     @ApiResponse(responseCode = "204", description = "차단 완료 또는 이미 본인이 차단한 대상")
     @ApiErrorResponses({ErrorType.VALIDATION_ERROR, ErrorType.INVALID_BLOCK, ErrorType.BLOCK_TARGET_NOT_FOUND,
-            ErrorType.UNAUTHORIZED, ErrorType.INVALID_CSRF_TOKEN})
+            ErrorType.UNAUTHORIZED, ErrorType.INVALID_CSRF_TOKEN, ErrorType.DATABASE_LOCK_TIMEOUT})
     @PutMapping("/{userId}")
-    ResponseEntity<Void> block(Authentication authentication, @PathVariable UUID userId) {
-        service.block(userIdResolver.resolve(authentication), userId);
+    ResponseEntity<Void> block(
+            Authentication authentication,
+            @Parameter(schema = @Schema(type = "string", format = "uuid")) @PathVariable String userId
+    ) {
+        service.block(userIdResolver.resolve(authentication), targetUserId(userId));
         return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build();
     }
 
@@ -55,10 +63,13 @@ class BlockController {
             + "이미 해제한 경우도 동일하게 응답하며, 상대 방향의 차단 여부는 알리지 않습니다.")
     @ApiResponse(responseCode = "204", description = "본인 방향의 차단 해제 완료")
     @ApiErrorResponses({ErrorType.VALIDATION_ERROR, ErrorType.INVALID_BLOCK,
-            ErrorType.UNAUTHORIZED, ErrorType.INVALID_CSRF_TOKEN})
+            ErrorType.UNAUTHORIZED, ErrorType.INVALID_CSRF_TOKEN, ErrorType.DATABASE_LOCK_TIMEOUT})
     @DeleteMapping("/{userId}")
-    ResponseEntity<Void> unblock(Authentication authentication, @PathVariable UUID userId) {
-        service.unblock(userIdResolver.resolve(authentication), userId);
+    ResponseEntity<Void> unblock(
+            Authentication authentication,
+            @Parameter(schema = @Schema(type = "string", format = "uuid")) @PathVariable String userId
+    ) {
+        service.unblock(userIdResolver.resolve(authentication), targetUserId(userId));
         return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build();
     }
 
@@ -72,5 +83,10 @@ class BlockController {
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .body(service.list(userIdResolver.resolve(authentication), cursor, size));
+    }
+
+    private static UUID targetUserId(String userId) {
+        return CanonicalUuidParser.parse(userId)
+                .orElseThrow(() -> new ConstraintViolationException("회원 ID의 형식이 올바르지 않습니다.", Set.of()));
     }
 }

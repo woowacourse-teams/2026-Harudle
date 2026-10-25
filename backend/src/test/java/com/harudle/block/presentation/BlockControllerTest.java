@@ -139,10 +139,42 @@ class BlockControllerTest {
         verifyNoInteractions(service);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "1-1-1-1-1",
+            "00000000-0000-0000-0000-00000000000g",
+            " 00000000-0000-0000-0000-000000000001 "
+    })
+    @DisplayName("차단과 해제의 대상 ID가 정규 UUID 형식이 아니면 서비스 호출 없이 400으로 거절한다")
+    void rejectsNonCanonicalTargetWithoutCallingService(String userId) {
+        var put = authorized().put(PATH + "/{userId}", userId);
+        var delete = authorized().delete(PATH + "/{userId}", userId);
+
+        assertThat(put.statusCode()).isEqualTo(400);
+        assertThat(delete.statusCode()).isEqualTo(400);
+        assertThat(put.jsonPath().getString("code")).isEqualTo("VALIDATION_ERROR");
+        assertThat(delete.jsonPath().getString("code")).isEqualTo("VALIDATION_ERROR");
+        verifyNoInteractions(service);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "11111111-abcd-4abc-8abc-111111111111",
+            "11111111-ABCD-4ABC-8ABC-111111111111"
+    })
+    @DisplayName("정규 길이의 소문자와 대문자 대상 UUID는 같은 회원 ID로 차단과 해제를 처리한다")
+    void acceptsCanonicalTargetRegardlessOfHexLetterCase(String userId) {
+        UUID target = UUID.fromString(userId);
+
+        assertThat(authorized().put(PATH + "/{userId}", userId).statusCode()).isEqualTo(204);
+        assertThat(authorized().delete(PATH + "/{userId}", userId).statusCode()).isEqualTo(204);
+        verify(service).block(ACTOR, target);
+        verify(service).unblock(ACTOR, target);
+    }
+
     @Test
-    @DisplayName("잘못된 회원 UUID와 커서는 검증 오류를 반환한다")
-    void validatesTargetAndCursor() {
-        assertThat(authorized().put(PATH + "/invalid-id").statusCode()).isEqualTo(400);
+    @DisplayName("잘못된 커서는 검증 오류를 반환한다")
+    void validatesCursor() {
         when(service.list(eq(ACTOR), any(), anyInt())).thenThrow(new InvalidBlockCursorException());
         var response = authorized().get(PATH + "?cursor=invalid");
         assertThat(response.statusCode()).isEqualTo(400);

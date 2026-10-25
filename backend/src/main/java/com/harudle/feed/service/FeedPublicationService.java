@@ -1,11 +1,13 @@
 package com.harudle.feed.service;
 
 import com.harudle.category.service.port.CategoryReader;
+import com.harudle.common.persistence.PostgresTransactionLockTimeout;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.port.DiaryPublicationReader;
 import com.harudle.feed.domain.Feed;
 import com.harudle.feed.repository.FeedRepository;
 import com.harudle.feed.service.dto.FeedResult;
+import com.harudle.feed.service.exception.ContentRestrictedException;
 import com.harudle.feed.service.exception.DiaryAlreadyPublishedException;
 import com.harudle.profile.service.port.PublicProfileReader;
 import com.harudle.push.service.port.FeedPushOutbox;
@@ -33,17 +35,20 @@ public class FeedPublicationService {
     private final FeedRepository feeds;
     private final FeedCollaborators collaborators;
     private final Clock clock;
+    private final PostgresTransactionLockTimeout lockTimeout;
 
     public FeedPublicationService(
             DiaryPublicationReader diaryPublicationReader,
             FeedRepository feeds,
             FeedCollaborators collaborators,
-            @Qualifier("serviceClock") Clock clock
+            @Qualifier("serviceClock") Clock clock,
+            PostgresTransactionLockTimeout lockTimeout
     ) {
         this.diaryPublicationReader = diaryPublicationReader;
         this.feeds = feeds;
         this.collaborators = collaborators;
         this.clock = clock;
+        this.lockTimeout = lockTimeout;
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -53,10 +58,14 @@ public class FeedPublicationService {
         if (categoryId <= 0) {
             throw new IllegalArgumentException("카테고리 ID는 양수여야 합니다.");
         }
+        lockTimeout.apply();
         FeedPushOutbox pushOutbox = collaborators.pushOutbox();
         CategoryReader categories = collaborators.categories();
         PublicProfileReader profiles = collaborators.profiles();
         DiaryPublicationReader.PublishableDiary diary = diaryPublicationReader.lockAndRead(actorId, diaryId);
+        if (feeds.isRestrictedForPublication(diaryId)) {
+            throw new ContentRestrictedException();
+        }
         CategoryReader.Category category = categories.lockActiveForPublication(categoryId);
         if (feeds.existsByDiaryIdAndDeletedAtIsNull(diaryId)) {
             throw new DiaryAlreadyPublishedException();

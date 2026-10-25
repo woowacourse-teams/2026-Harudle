@@ -48,6 +48,10 @@ class JdbcPushDeliveryQueue {
                   WHERE (b.blocker_id = r.user_id AND b.blocked_id = d.user_id)
                      OR (b.blocker_id = d.user_id AND b.blocked_id = r.user_id)
               )
+              AND NOT EXISTS (SELECT 1 FROM feeds hidden_feed
+                  JOIN moderation_states moderation ON moderation.target_type = 'FEED'
+                    AND moderation.target_id = hidden_feed.id AND moderation.restricted
+                  WHERE hidden_feed.diary_id = f.diary_id)
               AND EXISTS (SELECT 1 FROM refresh_tokens rt
                   WHERE rt.session_id = s.id AND rt.user_id = s.user_id
                     AND rt.revoked_at IS NULL AND rt.expires_at > ?)

@@ -10,8 +10,10 @@ import com.harudle.block.service.dto.BlockPageResult;
 import com.harudle.block.service.dto.BlockedUserResult;
 import com.harudle.block.service.exception.BlockTargetNotFoundException;
 import com.harudle.block.service.exception.BlockUnavailableException;
+import com.harudle.common.persistence.PostgresTransactionLockTimeout;
 import com.harudle.profile.service.port.PublicProfileReader;
 import com.harudle.profile.service.port.PublicProfileReader.Profile;
+import com.harudle.push.service.port.FeedPushOutbox;
 import com.harudle.push.service.port.FeedPushPublicationGuard;
 import java.time.Clock;
 import java.util.List;
@@ -31,17 +33,23 @@ import org.springframework.transaction.annotation.Transactional;
 public class BlockService {
     private final BlockRepository repository;
     private final BlockInteractionPolicy policy;
+    private final PostgresTransactionLockTimeout lockTimeout;
     private final FeedPushPublicationGuard publicationGuard;
+    private final FeedPushOutbox pushOutbox;
     private final ObjectProvider<PublicProfileReader> profileReaders;
     private final BlockCursorCodec cursors;
     private final Clock clock;
 
     public BlockService(BlockRepository repository, BlockInteractionPolicy policy,
-            FeedPushPublicationGuard publicationGuard, ObjectProvider<PublicProfileReader> profileReaders,
+            PostgresTransactionLockTimeout lockTimeout,
+            FeedPushPublicationGuard publicationGuard, FeedPushOutbox pushOutbox,
+            ObjectProvider<PublicProfileReader> profileReaders,
             BlockCursorCodec cursors, @Qualifier("serviceClock") Clock clock) {
         this.repository = repository;
         this.policy = policy;
+        this.lockTimeout = lockTimeout;
         this.publicationGuard = publicationGuard;
+        this.pushOutbox = pushOutbox;
         this.profileReaders = profileReaders;
         this.cursors = cursors;
         this.clock = clock;
@@ -50,18 +58,20 @@ public class BlockService {
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public void block(UUID actorId, UUID targetId) {
         validateActorAndTarget(actorId, targetId);
+        lockTimeout.apply();
         policy.lockPair(actorId, targetId);
         if (!repository.isActiveTarget(actorId, targetId)) {
             throw new BlockTargetNotFoundException();
         }
         publicationGuard.lockForBlock(actorId, targetId);
         repository.insert(new UserBlock(actorId, targetId, clock.instant()));
-        repository.cancelUnsentBetween(actorId, targetId);
+        pushOutbox.cancelUnsentBetweenUsers(actorId, targetId);
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public void unblock(UUID actorId, UUID targetId) {
         validateActorAndTarget(actorId, targetId);
+        lockTimeout.apply();
         policy.lockPair(actorId, targetId);
         // 상대의 현재 상태를 검사하지 않고 본인이 저장한 방향만 해제한다.
         repository.deleteOwn(actorId, targetId);

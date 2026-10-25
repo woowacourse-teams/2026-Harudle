@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import com.harudle.block.service.BlockInteractionPolicy;
+import com.harudle.common.persistence.PostgresTransactionLockTimeout;
 import com.harudle.feed.domain.Feed;
 import com.harudle.feed.repository.FeedInteractionRepository;
 import com.harudle.feed.service.exception.FeedNotFoundException;
@@ -18,6 +19,7 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -29,11 +31,12 @@ class FeedInteractionServiceTest {
     private static final UUID AUTHOR = UUID.randomUUID();
     @Mock private FeedInteractionRepository feeds;
     @Mock private BlockInteractionPolicy blocks;
+    @Mock private PostgresTransactionLockTimeout lockTimeout;
     private FeedInteractionService service;
 
     @BeforeEach
     void setUp() {
-        service = new FeedInteractionService(feeds, blocks);
+        service = new FeedInteractionService(feeds, blocks, lockTimeout);
     }
 
     @Test
@@ -95,7 +98,8 @@ class FeedInteractionServiceTest {
         var target = service.lockActiveForInteraction(feed.getId(), actor);
 
         assertThat(target.authorId()).isEqualTo(AUTHOR);
-        var order = inOrder(feeds, blocks);
+        var order = inOrder(lockTimeout, feeds, blocks);
+        order.verify(lockTimeout).apply();
         order.verify(feeds).findByIdForUpdate(feed.getId());
         order.verify(feeds).findActiveAuthorIdForInteraction(feed.getDiaryId(), actor);
         order.verify(blocks).lockAndIsBlocked(actor, AUTHOR);
@@ -125,6 +129,20 @@ class FeedInteractionServiceTest {
         assertThatThrownBy(() -> service.lockActiveForInteraction(feed.getId(), actor))
                 .isInstanceOf(FeedNotFoundException.class);
         verify(blocks, never()).lockAndIsBlocked(any(), any());
+    }
+
+    @Test
+    @DisplayName("숨긴 피드는 접촉 전에 거절하지만 본인 댓글 정리용 잠금과 계수 변경은 유지한다")
+    void rejectHiddenContactWithoutBlockingCleanup() {
+        Feed feed = activeFeed();
+        when(feeds.isHiddenForPublicUse(feed.getId())).thenReturn(true);
+
+        assertThatThrownBy(() -> service.lockActiveForInteraction(feed.getId(), AUTHOR))
+                .isInstanceOf(FeedNotFoundException.class);
+        verify(feeds, never()).findActiveAuthorIdForInteraction(feed.getDiaryId(), AUTHOR);
+        assertThat(service.lockActive(feed.getId()).authorId()).isEqualTo(AUTHOR);
+        assertThat(service.adjustCounter(feed.getId(), CounterKind.COMMENT, CounterChange.ADDED).commentCount())
+                .isEqualTo(1);
     }
 
     private Feed activeFeed() {

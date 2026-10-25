@@ -19,7 +19,5 @@ public interface BlockRepository {
 
     void deleteOwn(UUID blockerId, UUID blockedId);
 
-    void cancelUnsentBetween(UUID first, UUID second);
-
     List<BlockSnapshot> findAfter(UUID blockerId, Optional<BlockCursor> cursor, int limit);
 }

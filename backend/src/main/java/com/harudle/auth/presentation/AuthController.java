@@ -1,6 +1,7 @@
 package com.harudle.auth.presentation;
 
 import com.harudle.auth.application.AuthService;
+import com.harudle.auth.application.AccountSuspendedException;
 import com.harudle.auth.application.InactiveUserException;
 import com.harudle.auth.application.InvalidRefreshTokenException;
 import com.harudle.auth.application.RefreshedTokens;
@@ -88,6 +89,7 @@ public class AuthController {
     )
     @ApiErrorResponses({
             ErrorType.INVALID_REFRESH_TOKEN,
+            ErrorType.ACCOUNT_SUSPENDED,
             ErrorType.INVALID_CSRF_TOKEN
     })
     @PostMapping("/refresh")
@@ -128,6 +130,16 @@ public class AuthController {
         return ResponseEntity.noContent()
                 .cacheControl(CacheControl.noStore())
                 .build();
+    }
+
+    @ExceptionHandler(AccountSuspendedException.class)
+    public ResponseEntity<ProblemDetail> handleSuspendedAccount(
+            HttpServletRequest request, HttpServletResponse response) {
+        refreshTokenCookieWriter.clear(response);
+        return ResponseEntity.status(ErrorType.ACCOUNT_SUSPENDED.status())
+                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .cacheControl(CacheControl.noStore())
+                .body(problemDetailFactory.create(ErrorType.ACCOUNT_SUSPENDED, request));
     }
 
     @ExceptionHandler({InvalidRefreshTokenException.class, InactiveUserException.class})

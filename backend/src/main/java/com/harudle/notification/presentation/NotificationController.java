@@ -46,7 +46,7 @@ class NotificationController {
             + "좋아요 취소 시 숨기며, 재좋아요하면 새 좋아요의 새 알림만 미읽음으로 표시합니다. "
             + "알림 DB 이력은 보존하고 COMMENT 알림은 댓글이 삭제돼도 유지합니다.")
     @ApiErrorResponses({ErrorType.VALIDATION_ERROR, ErrorType.UNAUTHORIZED, ErrorType.INVALID_CURSOR,
-            ErrorType.NOTIFICATION_UNAVAILABLE})
+            ErrorType.NOTIFICATION_UNAVAILABLE, ErrorType.PROFILE_IMAGE_STORAGE_ERROR})
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     ResponseEntity<NotificationPageResponse> list(Authentication authentication,
             @RequestParam(required = false) @Nullable String cursor,

@@ -24,7 +24,7 @@ export type ApiRequest<T> =
 export type ApiRequestStatus = ApiRequest<void>['status'];
 
 export type ErrorStatus =
-  400 | 401 | 403 | 404 | 404 | 409 | 409 | 429 | 502 | 503 | 504;
+  400 | 401 | 403 | 404 | 409 | 413 | 415 | 429 | 500 | 502 | 503 | 504;
 
 export interface ErrorDetail {
   field: string;
@@ -49,7 +49,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => {
 const isErrorStatus = (value: unknown): value is ErrorStatus => {
   return (
     typeof value === 'number' &&
-    [400, 401, 403, 404, 409, 429, 502, 503, 504].includes(value)
+    [400, 401, 403, 404, 409, 413, 415, 429, 500, 502, 503, 504].includes(value)
   );
 };
 

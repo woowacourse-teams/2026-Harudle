@@ -73,7 +73,7 @@ flowchart TD
 
 </details>
 
-참고: [BlockService](../src/main/java/com/harudle/block/service/BlockService.java), [저장·취소 SQL](../src/main/java/com/harudle/block/infrastructure/JpaBlockRepository.java), [DB 제약·롤백 테스트](../src/test/java/com/harudle/block/infrastructure/BlockPersistenceTest.java).
+참고: [BlockService](../src/main/java/com/harudle/block/service/BlockService.java), [차단 저장 SQL](../src/main/java/com/harudle/block/infrastructure/JpaBlockRepository.java), [미발송 예약 취소 SQL](../src/main/java/com/harudle/push/infrastructure/JpaFeedPushOutbox.java), [DB 제약·롤백 테스트](../src/test/java/com/harudle/block/infrastructure/BlockPersistenceTest.java).
 
 ## S04. 본인 방향만 해제하기
 
@@ -209,6 +209,7 @@ sequenceDiagram
 ```
 
 - 좋아요 취소도 차단 검사 대상입니다. 차단 중에는 기존 좋아요를 취소하지 않고 404로 거절합니다.
+- 본인 댓글 삭제는 허용합니다. 좋아요 철회 허용은 숨긴 피드의 집계를 응답하지 않는 계약과 본인 반응 관리 흐름을 함께 검토할 때 다루며, 이번 변경에서는 기존 정책을 유지합니다.
 - 차단이 없을 때 중복 좋아요·이미 없는 좋아요 취소는 멱등 처리합니다. 중복 좋아요는 새 알림을 만들지 않습니다.
 - 자기 피드 반응은 상대와의 쌍 잠금·차단 조회를 생략하고, 본인에게 인앱 알림을 만들지 않습니다.
 - 반응이 먼저 완료됐다면 이후 차단이 그 반응을 소급 삭제하지 않습니다. 저장 과정이 실패하면 반응·집계·새 인앱 알림이 함께 롤백됩니다.
@@ -381,4 +382,4 @@ flowchart TD
 
 상대가 나를 차단했는지는 목록·차단 API 응답으로 반환하지 않습니다. 목록에는 본인이 저장한 방향만 제공합니다. 관리자 신고 심사·계정 제재는 후속 #427의 범위입니다.
 
-참고: [정책 설명](user-blocking.md), [DB 제약·삭제 규칙](../src/main/resources/db/migration/V31__create_user_blocks.sql), [본인 목록 응답](../src/main/java/com/harudle/block/service/dto/BlockedUserResult.java).
+참고: [정책 설명](user-blocking.md), [DB 제약·삭제 규칙](../src/main/resources/db/migration/V36__create_user_blocks.sql), [본인 목록 응답](../src/main/java/com/harudle/block/service/dto/BlockedUserResult.java).

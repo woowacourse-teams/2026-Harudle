@@ -1,14 +1,37 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import {
   MOCK_SCENARIO_HEADER,
   MOCK_SCENARIOS,
 } from '../src/mocks/mockScenarios';
+
+const generateGuestDiary = async (page: Page): Promise<void> => {
+  const acceptedResponse = page.waitForResponse(
+    (response): boolean =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname === '/api/v1/guest/diaries',
+  );
+  await page
+    .getByRole('button', { name: '네컷만화 만들기', exact: true })
+    .click();
+  await expect(
+    page.getByRole('status', { name: '네컷만화를 만들고 있어요' }),
+  ).toBeVisible();
+  expect((await acceptedResponse).status()).toBe(202);
+  const resultResponse = page.waitForResponse(
+    (response): boolean =>
+      response.request().method() === 'GET' &&
+      new URL(response.url()).pathname.startsWith('/api/v1/guest/diaries/'),
+  );
+  await page.clock.fastForward(10_000);
+  expect((await resultResponse).ok()).toBe(true);
+};
 
 test.describe('통합 랜딩의 1회 체험', () => {
   test('소개에서 바로 생성하고 재방문 시 추가 생성을 막는다', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
+    await page.clock.install();
     await page.goto('/landing');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(
       '우리끼리 통하는네컷만화',
@@ -35,12 +58,7 @@ test.describe('통합 랜딩의 1회 체험', () => {
     await textbox.fill(
       '친구와 회의하다 서로 다른 페이지를 보고 있었다는 걸 알고 한참 웃었다.',
     );
-    await page
-      .getByRole('button', { name: '네컷만화 만들기', exact: true })
-      .click();
-    await expect(
-      page.getByRole('status', { name: '네컷만화를 만들고 있어요' }),
-    ).toBeVisible();
+    await generateGuestDiary(page);
     await expect(
       page
         .locator('article[aria-labelledby="landing-trial-result-title"]')
@@ -61,13 +79,12 @@ test.describe('통합 랜딩의 1회 체험', () => {
   });
 
   test('게스트 결과 조회는 landing 하위에서 유지한다', async ({ page }) => {
+    await page.clock.install();
     await page.goto('/landing');
     await page
       .getByRole('textbox', { name: '네컷만화로 만들 내용' })
       .fill('친구와 함께 공원에서 산책하며 오래 웃었던 순간이었다.');
-    await page
-      .getByRole('button', { name: '네컷만화 만들기', exact: true })
-      .click();
+    await generateGuestDiary(page);
     await expect(
       page
         .locator('article[aria-labelledby="landing-trial-result-title"]')
