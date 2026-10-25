@@ -43,7 +43,7 @@ CREATE TABLE diary_generations (
 );
 -- Minimal CLI harness history; the integration suite separately applies the real Flyway migrations.
 CREATE TABLE flyway_schema_history (version VARCHAR(50), type VARCHAR(20), success BOOLEAN);
-INSERT INTO flyway_schema_history VALUES ('1', 'SQL', true), ('36', 'SQL', true);
+INSERT INTO flyway_schema_history VALUES ('1', 'SQL', true), ('38', 'SQL', true);
 INSERT INTO diaries VALUES
   ('10000000-0000-4000-8000-000000000001', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
    '2026-10-20', 'orphan fixture', 0),

@@ -25,6 +25,11 @@ public interface FeedQueryRepository extends Repository<Feed, UUID> {
               AND feed.deletedAt IS NULL
               AND diary.deletedAt IS NULL
               AND generation.status = com.harudle.generation.diary.domain.GenerationStatus.SUCCEEDED
+              AND NOT EXISTS (
+                  SELECT block.id FROM UserBlock block
+                  WHERE (block.blockerId = :viewerId AND block.blockedId = diary.userId)
+                     OR (block.blockerId = diary.userId AND block.blockedId = :viewerId)
+              )
               AND NOT EXISTS (SELECT hiddenFeed.id FROM Feed hiddenFeed, ModerationRestriction moderation
                   WHERE hiddenFeed.diaryId = diary.id
                     AND moderation.targetType = com.harudle.moderation.domain.ModerationTargetType.FEED
@@ -32,7 +37,8 @@ public interface FeedQueryRepository extends Repository<Feed, UUID> {
             """;
 
     @Query(ACTIVE_SNAPSHOT)
-    Optional<FeedSnapshot> findActiveSnapshotById(@Param("feedId") UUID feedId);
+    Optional<FeedSnapshot> findActiveSnapshotById(@Param("feedId") UUID feedId,
+            @Param("viewerId") @Nullable UUID viewerId);
 
     @Query(ACTIVE_SNAPSHOT + """
              AND EXISTS (SELECT author.id FROM User author WHERE author.id = diary.userId

@@ -113,6 +113,11 @@ public enum ErrorType {
             "Invalid moderation change",
             "조치 사유와 버전을 확인해 주세요."
     ),
+    DATABASE_LOCK_TIMEOUT(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "Database lock timeout",
+            "다른 요청을 처리하고 있어요. 잠시 후 다시 시도해 주세요."
+    ),
     FORBIDDEN(
             HttpStatus.FORBIDDEN,
             "Forbidden",
@@ -152,6 +157,21 @@ public enum ErrorType {
             HttpStatus.NOT_FOUND,
             "Report target not found",
             "신고할 대상을 찾을 수 없습니다."
+    ),
+    INVALID_BLOCK(
+            HttpStatus.BAD_REQUEST,
+            "Invalid block",
+            "차단 대상이 올바르지 않습니다."
+    ),
+    BLOCK_TARGET_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "Block target not found",
+            "차단할 회원을 찾을 수 없습니다."
+    ),
+    BLOCK_UNAVAILABLE(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "Block unavailable",
+            "차단한 회원 정보를 조회할 수 없습니다."
     ),
     COMMENT_NOT_FOUND(
             HttpStatus.NOT_FOUND,

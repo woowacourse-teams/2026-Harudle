@@ -149,14 +149,15 @@ class DiarySourceTextEncryptionConfigurationTest {
         return Base64.getEncoder().encodeToString(bytes);
     }
 
-    @Test
+    @ParameterizedTest
+    @ValueSource(strings = {"reader", "writer", ""})
     @DisplayName("실제 배포 모드가 있으면 local 프로필로 덮어도 검증 자료 누락과 같은 ID의 잘못된 키를 거절한다")
-    void deployedModeVerifiesEvidenceDespiteLocalProfileOverride() {
+    void deployedModeVerifiesEvidenceDespiteLocalProfileOverride(String releaseMode) {
         Path file = directory.resolve("deployment-keys.json");
         MockEnvironment environment = new MockEnvironment() {
             @Override
             public Map<String, Object> getSystemEnvironment() {
-                return Map.of("DIARY_SOURCE_TEXT_RELEASE_MODE", "writer");
+                return Map.of("DIARY_SOURCE_TEXT_RELEASE_MODE", releaseMode);
             }
         };
         environment.setActiveProfiles("local");

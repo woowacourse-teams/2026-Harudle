@@ -17,6 +17,8 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 
 /**
  * Creates first key evidence only for a known schema containing no encrypted diary rows.
@@ -27,13 +29,36 @@ import java.util.UUID;
 public final class DiarySourceTextKeyInitialization {
 
     private static final int QUERY_TIMEOUT_SECONDS = 10;
-    private static final int LAST_KNOWN_MIGRATION = 36;
+    private static final int ENCRYPTION_SCHEMA_MIGRATION = 38;
 
     private final DiarySourceTextKeyVerification verification;
+    private final Set<Integer> knownMigrationVersions;
 
     public DiarySourceTextKeyInitialization(DiarySourceTextKeyVerification verification) {
         require(verification != null);
         this.verification = verification;
+        this.knownMigrationVersions = knownMigrationVersions();
+    }
+
+    private Set<Integer> knownMigrationVersions() {
+        try {
+            Resource[] scripts = new PathMatchingResourcePatternResolver()
+                    .getResources("classpath*:db/migration/V*__*.sql");
+            Set<Integer> versions = new HashSet<>();
+            for (Resource script : scripts) {
+                String filename = script.getFilename();
+                require(filename != null && filename.matches("V[1-9][0-9]?__.+\\.sql"));
+                int version = Integer.parseInt(filename.substring(1, filename.indexOf("__")));
+                require(versions.add(version));
+                if (version == ENCRYPTION_SCHEMA_MIGRATION) {
+                    require(filename.equals("V" + ENCRYPTION_SCHEMA_MIGRATION + "__encrypt_diary_source_text.sql"));
+                }
+            }
+            require(versions.contains(1) && versions.contains(ENCRYPTION_SCHEMA_MIGRATION));
+            return Set.copyOf(versions);
+        } catch (IOException | RuntimeException exception) {
+            throw new DiarySourceTextCryptoException();
+        }
     }
 
     public void initialize(Connection connection, Path file, String environment) {
@@ -178,11 +203,11 @@ public final class DiarySourceTextKeyInitialization {
         Set<Integer> versions = new HashSet<>();
         try (PreparedStatement statement = prepare(connection,
                 "SELECT version, type, success FROM public.flyway_schema_history LIMIT "
-                        + (LAST_KNOWN_MIGRATION + 1))) {
+                        + (knownMigrationVersions.size() + 1))) {
             readVersions(statement, versions);
         }
         require(versions.contains(1));
-        return new History(versions.contains(LAST_KNOWN_MIGRATION));
+        return new History(versions.contains(ENCRYPTION_SCHEMA_MIGRATION));
     }
 
     private void readVersions(PreparedStatement statement, Set<Integer> versions) throws SQLException {
@@ -191,7 +216,7 @@ public final class DiarySourceTextKeyInitialization {
                 String version = row.getString("version");
                 require(version != null && version.matches("[1-9][0-9]?"));
                 int number = Integer.parseInt(version);
-                require(number <= LAST_KNOWN_MIGRATION && versions.add(number)
+                require(knownMigrationVersions.contains(number) && versions.add(number)
                         && row.getBoolean("success") && "SQL".equals(row.getString("type")));
             }
         }

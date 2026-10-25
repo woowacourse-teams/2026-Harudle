@@ -85,7 +85,8 @@ public class CommentService {
         if (!commentRepository.existsVisibleFeed(feedId, viewerId)) {
             throw new FeedNotFoundException();
         }
-        List<CommentSnapshot> found = commentRepository.findAfter(feedId, cursorCodec.decode(feedId, cursor), size + 1);
+        List<CommentSnapshot> found = commentRepository.findAfter(
+                feedId, cursorCodec.decode(feedId, cursor), size + 1, viewerId);
         boolean hasNext = found.size() > size;
         List<CommentSnapshot> page = found.stream().limit(size).toList();
         if (page.isEmpty()) {
