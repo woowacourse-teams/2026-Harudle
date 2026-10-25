@@ -177,7 +177,7 @@ class DiarySourceTextKeyInitializationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"38", "999", "unknown"})
-    @DisplayName("평문 모양이어도 V38 이상 또는 알 수 없는 이력이 있으면 초기화를 거절한다")
+    @DisplayName("평문 모양이어도 암호화 V38 적용 또는 알 수 없는 이력이 있으면 초기화를 거절한다")
     void rejectPreEncryptionShapeWhoseHistoryCannotProveItsOrigin(String version) throws SQLException {
         resetSchema("23");
         execute(connection, "UPDATE flyway_schema_history SET version = ? WHERE version = '23'", version);
