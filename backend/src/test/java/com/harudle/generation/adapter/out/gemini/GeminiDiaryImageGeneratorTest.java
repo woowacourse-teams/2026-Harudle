@@ -196,11 +196,12 @@ class GeminiDiaryImageGeneratorTest {
                 .counter().count()).isEqualTo(1);
     }
 
-    @Test
+    @ParameterizedTest
+    @ValueSource(strings = {"SAFETY", "OTHER", "JAILBREAK"})
     @DisplayName("이미지 프롬프트 차단도 후보나 이미지가 없는 일반 응답과 구분한다")
-    void rejectBlockedImagePrompt() {
+    void rejectBlockedImagePrompt(String reason) {
         when(response.promptFeedback()).thenReturn(Optional.of(
-                GenerateContentResponsePromptFeedback.fromJson("{\"blockReason\":\"SAFETY\"}")));
+                GenerateContentResponsePromptFeedback.fromJson("{\"blockReason\":\"" + reason + "\"}")));
 
         assertThatThrownBy(() -> generator.generate(createRequest(createReferenceImage())))
                 .isInstanceOfSatisfying(AiGenerationException.class,

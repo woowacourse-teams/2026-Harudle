@@ -350,11 +350,12 @@ class GeminiStoryboardGeneratorTest {
                 .counter().count()).isEqualTo(1);
     }
 
-    @Test
+    @ParameterizedTest
+    @ValueSource(strings = {"SAFETY", "OTHER", "JAILBREAK"})
     @DisplayName("후보 없이 프롬프트가 차단된 응답도 생성 차단으로 분류한다")
-    void rejectBlockedStoryboardPrompt() {
+    void rejectBlockedStoryboardPrompt(String reason) {
         when(response.promptFeedback()).thenReturn(Optional.of(
-                GenerateContentResponsePromptFeedback.fromJson("{\"blockReason\":\"SAFETY\"}")));
+                GenerateContentResponsePromptFeedback.fromJson("{\"blockReason\":\"" + reason + "\"}")));
 
         assertThatThrownBy(() -> generator.generate(createRequest()))
                 .isInstanceOfSatisfying(AiGenerationException.class,

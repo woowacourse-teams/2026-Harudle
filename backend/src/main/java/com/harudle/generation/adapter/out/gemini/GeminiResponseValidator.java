@@ -6,7 +6,7 @@ import java.util.Set;
 final class GeminiResponseValidator {
 
     private static final Set<String> BLOCKED_PROMPT_REASONS = Set.of(
-            "SAFETY", "BLOCKLIST", "PROHIBITED_CONTENT", "IMAGE_SAFETY", "MODEL_ARMOR"
+            "SAFETY", "OTHER", "BLOCKLIST", "PROHIBITED_CONTENT", "IMAGE_SAFETY", "MODEL_ARMOR", "JAILBREAK"
     );
     private static final Set<String> BLOCKED_FINISH_REASONS = Set.of(
             "SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "LANGUAGE",
