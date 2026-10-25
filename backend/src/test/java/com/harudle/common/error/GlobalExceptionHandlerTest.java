@@ -76,6 +76,17 @@ class GlobalExceptionHandlerTest {
             "/api/v1/test"
     );
 
+    @Test
+    @DisplayName("사진 처리 한도를 넘으면 재시도 가능한 503 오류를 반환한다")
+    void handlesProfileImageCapacityExceeded() {
+        ResponseEntity<ProblemDetail> response = exceptionHandler.handleProfileImageCapacityExceeded(request);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(503);
+        assertThat(response.getBody().getProperties()).containsEntry("code", "PROFILE_IMAGE_CAPACITY_EXCEEDED");
+        assertThat(response.getBody().getDetail()).isEqualTo(ErrorType.PROFILE_IMAGE_CAPACITY_EXCEEDED.detail());
+        verifyNoInteractions(apiExceptionLogger);
+    }
+
     @ParameterizedTest
     @CsvSource({"missing, 404, CATEGORY_NOT_FOUND", "inactive, 409, CATEGORY_INACTIVE"})
     @DisplayName("카테고리 조회와 게시 오류는 공통 오류 응답과 상태 코드로 전달한다")

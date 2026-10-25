@@ -92,6 +92,8 @@ app:
       ttl: 14d
 
 harudle:
+  database:
+    interaction-lock-timeout: ${INTERACTION_LOCK_TIMEOUT:1s}
   admin:
     image-recovery:
       interval: ${ADMIN_IMAGE_RECOVERY_INTERVAL:10s}

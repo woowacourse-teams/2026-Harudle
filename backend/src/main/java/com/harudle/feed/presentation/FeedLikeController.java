@@ -39,7 +39,7 @@ class FeedLikeController {
     @Operation(summary = "피드 좋아요 추가", description = "로그인 회원의 좋아요를 설정합니다. 반복 요청은 중복 추가하지 않습니다.")
     @ApiResponse(responseCode = "200", description = "좋아요 상태와 현재 좋아요 수")
     @ApiErrorResponses({ErrorType.VALIDATION_ERROR, ErrorType.UNAUTHORIZED, ErrorType.INVALID_CSRF_TOKEN,
-            ErrorType.FEED_NOT_FOUND})
+            ErrorType.FEED_NOT_FOUND, ErrorType.DATABASE_LOCK_TIMEOUT})
     @PutMapping
     ResponseEntity<FeedLikeResponse> like(Authentication authentication, @PathVariable UUID feedId) {
         UUID userId = authenticatedUserIdResolver.resolve(authentication);
@@ -50,7 +50,7 @@ class FeedLikeController {
     @Operation(summary = "피드 좋아요 취소", description = "로그인 회원의 좋아요를 취소합니다. 이미 취소한 요청도 성공합니다.")
     @ApiResponse(responseCode = "200", description = "좋아요 상태와 현재 좋아요 수")
     @ApiErrorResponses({ErrorType.VALIDATION_ERROR, ErrorType.UNAUTHORIZED, ErrorType.INVALID_CSRF_TOKEN,
-            ErrorType.FEED_NOT_FOUND})
+            ErrorType.FEED_NOT_FOUND, ErrorType.DATABASE_LOCK_TIMEOUT})
     @DeleteMapping
     ResponseEntity<FeedLikeResponse> unlike(Authentication authentication, @PathVariable UUID feedId) {
         UUID userId = authenticatedUserIdResolver.resolve(authentication);

@@ -12,4 +12,5 @@ export const FEED_ACTION_COPY = {
   deleteConfirmDescription:
     '피드에서만 삭제돼요. 앨범의 원본 네컷만화는 그대로 남아요.',
   deletingAction: '삭제 중...',
+  deleteSuccess: '피드를 삭제했어요.',
 } as const;
