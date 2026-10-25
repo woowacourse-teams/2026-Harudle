@@ -110,6 +110,7 @@ class HarudleApplicationTests extends ServiceIntegrationTestSupport {
                 "refresh_tokens",
                 "reports",
                 "share_links",
+                "user_blocks",
                 "users"
         );
     }

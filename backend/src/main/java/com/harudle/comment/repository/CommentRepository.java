@@ -20,5 +20,5 @@ public interface CommentRepository {
 
     boolean delete(UUID commentId, UUID feedId, Instant deletedAt);
 
-    List<CommentSnapshot> findAfter(UUID feedId, Optional<CommentCursor> cursor, int limit);
+    List<CommentSnapshot> findAfter(UUID feedId, Optional<CommentCursor> cursor, int limit, @Nullable UUID viewerId);
 }

@@ -96,13 +96,8 @@ app:
       ttl: 14d
 
 harudle:
-  diary:
-    source-text-encryption:
-      verification-file: ${DIARY_SOURCE_TEXT_KEY_VERIFICATION_FILE:}
-      new-writes-enabled: ${DIARY_SOURCE_TEXT_NEW_WRITES_ENABLED:true}
-      active-key-id: ${DIARY_SOURCE_TEXT_ACTIVE_KEY_ID:primary}
-      keys:
-        primary: ${DIARY_SOURCE_TEXT_KEY_BASE64:}
+  database:
+    interaction-lock-timeout: ${INTERACTION_LOCK_TIMEOUT:1s}
   admin:
     image-recovery:
       interval: ${ADMIN_IMAGE_RECOVERY_INTERVAL:10s}
@@ -120,6 +115,13 @@ harudle:
     image-base-url: ${PROFILE_IMAGE_BASE_URL:http://localhost:5173/profile-images/v1}
   feed:
     public-base-url: ${FEED_PUBLIC_BASE_URL:http://localhost:5173/feeds}
+  diary:
+    source-text-encryption:
+      verification-file: ${DIARY_SOURCE_TEXT_KEY_VERIFICATION_FILE:}
+      new-writes-enabled: ${DIARY_SOURCE_TEXT_NEW_WRITES_ENABLED:true}
+      active-key-id: ${DIARY_SOURCE_TEXT_ACTIVE_KEY_ID:primary}
+      keys:
+        primary: ${DIARY_SOURCE_TEXT_KEY_BASE64:}
   push:
     fcm:
       enabled: ${HARUDLE_PUSH_FCM_ENABLED:false}

@@ -2,6 +2,9 @@ package com.harudle.feed.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -58,20 +61,21 @@ class FeedQueryServiceTest {
         when(collaborators.likes()).thenReturn(likes);
         when(likes.findLikedFeedIds(AUTHOR, Set.of(FEED))).thenReturn(Set.of(FEED));
         var result = service.getDetail(AUTHOR, FEED);
+        verify(feeds).findActiveSnapshotById(FEED, AUTHOR);
         assertThat(result.isMine()).isTrue();
         assertThat(result.likedByMe()).isTrue();
     }
 
     @Test
     void rejectsMissingOrDeletedFeedWithoutReadingCollaborators() {
-        when(feeds.findActiveSnapshotById(FEED)).thenReturn(Optional.empty());
+        when(feeds.findActiveSnapshotById(eq(FEED), nullable(UUID.class))).thenReturn(Optional.empty());
         assertThatThrownBy(() -> service.getDetail(null, FEED)).isInstanceOf(FeedNotFoundException.class);
         verifyNoInteractions(collaborators);
     }
 
     @Test
     void hidesUnavailableAuthorsProfile() {
-        when(feeds.findActiveSnapshotById(FEED)).thenReturn(Optional.of(snapshot()));
+        when(feeds.findActiveSnapshotById(eq(FEED), nullable(UUID.class))).thenReturn(Optional.of(snapshot()));
         when(collaborators.profiles()).thenReturn(profiles);
         when(profiles.readAll(Set.of(AUTHOR))).thenReturn(Map.of());
         assertThatThrownBy(() -> service.getDetail(null, FEED)).isInstanceOf(FeedNotFoundException.class);
@@ -79,7 +83,7 @@ class FeedQueryServiceTest {
     }
 
     private void activeFeedAndProfiles() {
-        when(feeds.findActiveSnapshotById(FEED)).thenReturn(Optional.of(snapshot()));
+        when(feeds.findActiveSnapshotById(eq(FEED), nullable(UUID.class))).thenReturn(Optional.of(snapshot()));
         when(collaborators.profiles()).thenReturn(profiles);
         when(collaborators.categories()).thenReturn(categories);
         when(profiles.readAll(Set.of(AUTHOR))).thenReturn(Map.of(AUTHOR,
