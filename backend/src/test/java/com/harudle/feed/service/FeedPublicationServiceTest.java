@@ -4,12 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import com.harudle.category.service.exception.CategoryInactiveException;
 import com.harudle.category.service.port.CategoryReader;
+import com.harudle.common.persistence.PostgresTransactionLockTimeout;
 import com.harudle.diary.service.port.DiaryPublicationReader;
 import com.harudle.feed.repository.FeedRepository;
 import com.harudle.feed.service.exception.ContentRestrictedException;
@@ -48,6 +50,7 @@ class FeedPublicationServiceTest {
     @Mock private CategoryReader categories;
     @Mock private PublicProfileReader profiles;
     @Mock private FeedPushOutbox outbox;
+    @Mock private PostgresTransactionLockTimeout lockTimeout;
     private FeedPublicationService service;
 
     @BeforeEach
@@ -59,7 +62,8 @@ class FeedPublicationServiceTest {
         FeedCollaborators collaborators = new FeedCollaborators(beans.getBeanProvider(CategoryReader.class),
                 beans.getBeanProvider(PublicProfileReader.class), beans.getBeanProvider(FeedLikeReader.class),
                 beans.getBeanProvider(FeedPushOutbox.class));
-        service = new FeedPublicationService(diaries, feeds, collaborators, Clock.fixed(NOW, ZoneOffset.UTC));
+        service = new FeedPublicationService(diaries, feeds, collaborators, Clock.fixed(NOW, ZoneOffset.UTC),
+                lockTimeout);
         when(diaries.lockAndRead(ACTOR, DIARY))
                 .thenReturn(new DiaryPublicationReader.PublishableDiary(DIARY, ACTOR, "generated/comic.webp"));
     }
@@ -78,6 +82,9 @@ class FeedPublicationServiceTest {
         assertThat(result.likeCount()).isZero();
         assertThat(result.commentCount()).isZero();
         verify(feeds).saveAndFlush(any());
+        var order = inOrder(lockTimeout, diaries);
+        order.verify(lockTimeout).apply();
+        order.verify(diaries).lockAndRead(ACTOR, DIARY);
     }
 
     @Test

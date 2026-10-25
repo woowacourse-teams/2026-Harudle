@@ -168,8 +168,9 @@ class CommentServiceTest {
     @Test
     void emptyPageDoesNotRequireProfileIntegration() {
         visibleFeedAndCursor(Optional.empty());
-        when(repository.findAfter(FEED_ID, Optional.empty(), 21)).thenReturn(List.of());
+        when(repository.findAfter(eq(FEED_ID), eq(Optional.empty()), eq(21), nullable(UUID.class))).thenReturn(List.of());
         var page = service.list(FEED_ID, null, null, 20);
+        verify(repository).findAfter(FEED_ID, Optional.empty(), 21, null);
         assertThat(page.items()).isEmpty();
         assertThat(page.nextCursor()).isNull();
         assertThat(page.hasNext()).isFalse();
@@ -180,7 +181,7 @@ class CommentServiceTest {
     void withdrawnAuthorsRemainInThePageWithoutProfileIntegrationOrOwnership() {
         visibleFeedAndCursor(Optional.empty());
         UUID secondId = UUID.randomUUID();
-        when(repository.findAfter(FEED_ID, Optional.empty(), 21)).thenReturn(List.of(
+        when(repository.findAfter(eq(FEED_ID), eq(Optional.empty()), eq(21), nullable(UUID.class))).thenReturn(List.of(
                 withdrawnSnapshot(COMMENT_ID, ACTOR_ID), withdrawnSnapshot(secondId, AUTHOR_ID)));
 
         var page = service.list(FEED_ID, ACTOR_ID, null, 20);
@@ -203,7 +204,7 @@ class CommentServiceTest {
         UUID withdrawnId = UUID.randomUUID();
         UUID lookAheadId = UUID.randomUUID();
         UUID lookAheadAuthor = UUID.randomUUID();
-        when(repository.findAfter(FEED_ID, Optional.empty(), 3)).thenReturn(List.of(
+        when(repository.findAfter(eq(FEED_ID), eq(Optional.empty()), eq(3), nullable(UUID.class))).thenReturn(List.of(
                 snapshot(COMMENT_ID, ACTOR_ID), withdrawnSnapshot(withdrawnId, AUTHOR_ID),
                 snapshot(lookAheadId, lookAheadAuthor)));
         // 제공자가 불필요한 과거 프로필을 함께 반환해도 DB의 탈퇴 판정을 우선해 공개하지 않는다.
@@ -220,6 +221,7 @@ class CommentServiceTest {
         assertThat(page.items().getLast().isMine()).isFalse();
         assertThat(page.nextCursor()).isEqualTo("next-withdrawn");
         assertThat(page.hasNext()).isTrue();
+        verify(repository).findAfter(FEED_ID, Optional.empty(), 3, ACTOR_ID);
         verify(profiles).readAll(Set.of(ACTOR_ID));
         verify(codec).encode(new CommentCursor(FEED_ID, NOW, withdrawnId));
     }
@@ -227,7 +229,7 @@ class CommentServiceTest {
     @Test
     void mixedPageStillFailsWhenRequiredActiveProfileProviderIsMissing() {
         visibleFeedAndCursor(Optional.empty());
-        when(repository.findAfter(FEED_ID, Optional.empty(), 21)).thenReturn(List.of(
+        when(repository.findAfter(eq(FEED_ID), eq(Optional.empty()), eq(21), nullable(UUID.class))).thenReturn(List.of(
                 withdrawnSnapshot(UUID.randomUUID(), AUTHOR_ID), snapshot(COMMENT_ID, ACTOR_ID)));
 
         assertThatThrownBy(() -> service.list(FEED_ID, null, null, 20))
@@ -239,7 +241,7 @@ class CommentServiceTest {
     @Test
     void missingActiveProfileInMixedPageIsNotMistakenForAWithdrawnAuthor() {
         visibleFeedAndCursor(Optional.empty());
-        when(repository.findAfter(FEED_ID, Optional.empty(), 21)).thenReturn(List.of(
+        when(repository.findAfter(eq(FEED_ID), eq(Optional.empty()), eq(21), nullable(UUID.class))).thenReturn(List.of(
                 withdrawnSnapshot(UUID.randomUUID(), AUTHOR_ID), snapshot(COMMENT_ID, ACTOR_ID)));
         availableProfiles(Map.of(), Set.of(ACTOR_ID));
 
@@ -252,7 +254,7 @@ class CommentServiceTest {
     @MethodSource("invalidActiveProfiles")
     void invalidActiveProfileInMixedPageStillFailsClosed(Profile invalidProfile) {
         visibleFeedAndCursor(Optional.empty());
-        when(repository.findAfter(FEED_ID, Optional.empty(), 21)).thenReturn(List.of(
+        when(repository.findAfter(eq(FEED_ID), eq(Optional.empty()), eq(21), nullable(UUID.class))).thenReturn(List.of(
                 withdrawnSnapshot(UUID.randomUUID(), AUTHOR_ID), snapshot(COMMENT_ID, ACTOR_ID)));
         availableProfiles(Map.of(ACTOR_ID, invalidProfile), Set.of(ACTOR_ID));
 
@@ -279,7 +281,7 @@ class CommentServiceTest {
         UUID lookAheadAuthor = UUID.randomUUID();
         CommentSnapshot first = snapshot(COMMENT_ID, ACTOR_ID);
         CommentSnapshot second = snapshot(secondId, ACTOR_ID);
-        when(repository.findAfter(FEED_ID, Optional.empty(), 3))
+        when(repository.findAfter(eq(FEED_ID), eq(Optional.empty()), eq(3), nullable(UUID.class)))
                 .thenReturn(List.of(first, second, snapshot(lookAheadId, lookAheadAuthor)));
         availableProfiles(Map.of(ACTOR_ID, PROFILE), Set.of(ACTOR_ID));
         when(codec.encode(new CommentCursor(FEED_ID, NOW, secondId))).thenReturn("next");
@@ -296,7 +298,8 @@ class CommentServiceTest {
     @Test
     void anonymousAndOtherViewerAreNotTheAuthor() {
         visibleFeedAndCursor(Optional.empty());
-        when(repository.findAfter(FEED_ID, Optional.empty(), 21)).thenReturn(List.of(snapshot(COMMENT_ID, ACTOR_ID)));
+        when(repository.findAfter(eq(FEED_ID), eq(Optional.empty()), eq(21), nullable(UUID.class)))
+                .thenReturn(List.of(snapshot(COMMENT_ID, ACTOR_ID)));
         availableProfiles(Map.of(ACTOR_ID, PROFILE), Set.of(ACTOR_ID));
         assertThat(service.list(FEED_ID, null, null, 20).items().getFirst().isMine()).isFalse();
         assertThat(service.list(FEED_ID, AUTHOR_ID, null, 20).items().getFirst().isMine()).isFalse();
@@ -305,7 +308,8 @@ class CommentServiceTest {
     @Test
     void nonEmptyPageFailsWhenAProfileIsMissing() {
         visibleFeedAndCursor(Optional.empty());
-        when(repository.findAfter(FEED_ID, Optional.empty(), 21)).thenReturn(List.of(snapshot(COMMENT_ID, ACTOR_ID)));
+        when(repository.findAfter(eq(FEED_ID), eq(Optional.empty()), eq(21), nullable(UUID.class)))
+                .thenReturn(List.of(snapshot(COMMENT_ID, ACTOR_ID)));
         availableProfiles(Map.of(), Set.of(ACTOR_ID));
         assertThatThrownBy(() -> service.list(FEED_ID, null, null, 20))
                 .isInstanceOf(CommentIntegrationUnavailableException.class);

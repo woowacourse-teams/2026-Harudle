@@ -72,7 +72,8 @@ class FeedController {
             ErrorType.VALIDATION_ERROR, ErrorType.UNAUTHORIZED, ErrorType.FORBIDDEN,
             ErrorType.DIARY_NOT_FOUND, ErrorType.CATEGORY_NOT_FOUND,
             ErrorType.DIARY_NOT_PUBLISHABLE, ErrorType.DIARY_ALREADY_PUBLISHED, ErrorType.CATEGORY_INACTIVE,
-            ErrorType.FEED_UNAVAILABLE, ErrorType.IMAGE_STORAGE_ERROR, ErrorType.PROFILE_IMAGE_STORAGE_ERROR
+            ErrorType.FEED_UNAVAILABLE, ErrorType.IMAGE_STORAGE_ERROR, ErrorType.PROFILE_IMAGE_STORAGE_ERROR,
+            ErrorType.DATABASE_LOCK_TIMEOUT
     })
     @PostMapping
     ResponseEntity<FeedResponse> publish(Authentication authentication, @Valid @RequestBody PublishFeedRequest request) {
