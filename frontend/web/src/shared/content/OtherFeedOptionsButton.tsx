@@ -3,35 +3,49 @@ import { useRef, useState } from 'react';
 import moreIcon from '../../assets/icons/feed-more.svg';
 import reportIcon from '../../assets/icons/report.svg';
 import blockIcon from '../../assets/icons/block.svg';
+import type { Feed } from '../../domain/feeds/feedList';
 import type { ReportTarget } from '../../domain/reports/reportSubmission';
+import { setFeedListCache } from '../../domain/feeds/feedListCache';
 import { theme } from '../../styles/theme';
 import BottomSheet, { type BottomSheetHandle } from '../BottomSheet';
 import NeedLoginBottomSheet from '../NeedLoginBottomSheet';
-import ReportDialog, { type ReportDialogHandle } from '../report/ReportDialog';
+import ConfirmModal from '../ConfirmModal';
+import type { ModalHandle } from '../Modal';
+import ReportDialog from '../report/ReportDialog';
 import { REPORT_COPY, REPORT_TITLES } from '../report/copy';
-import BlockDialog, { type BlockDialogHandle } from '../block/BlockDialog';
+import { BLOCK_COPY, getBlockDescription } from '../block/copy';
+import useBlockUser from '../block/useBlockUser';
 
-interface ContentTarget extends ReportTarget {
-  readonly targetType: 'FEED' | 'COMMENT';
-}
-interface ContentOptionsButtonProps {
-  readonly target: ContentTarget;
+interface OtherFeedOptionsButtonProps {
+  readonly feedId: Feed['id'];
   readonly authorId: string | null;
   readonly authorNickname: string;
 }
 
-const ContentOptionsButton = ({
-  target,
+const OtherFeedOptionsButton = ({
+  feedId,
   authorId,
   authorNickname,
-}: ContentOptionsButtonProps) => {
+}: OtherFeedOptionsButtonProps) => {
   const menuRef = useRef<BottomSheetHandle>(null);
-  const reportRef = useRef<ReportDialogHandle>(null);
-  const blockRef = useRef<BlockDialogHandle>(null);
+  const reportRef = useRef<ModalHandle>(null);
+  const blockConfirmRef = useRef<ModalHandle>(null);
   const loginRef = useRef<BottomSheetHandle>(null);
+  const [selectedReportTarget, setSelectedReportTarget] =
+    useState<ReportTarget>({
+      targetType: 'FEED',
+      targetId: feedId,
+    });
+  const [blockTarget, setBlockTarget] = useState<
+    Pick<OtherFeedOptionsButtonProps, 'authorId' | 'authorNickname'>
+  >({ authorId, authorNickname });
   const [loginDescription, setLoginDescription] = useState<string>(
     REPORT_COPY.loginDescription,
   );
+  const { request, reset, execute } = useBlockUser({
+    userId: blockTarget.authorId,
+  });
+  const isBlocking = request.status === 'loading';
 
   const canAct = (description: string): boolean => {
     menuRef.current?.close();
@@ -41,39 +55,49 @@ const ContentOptionsButton = ({
     loginRef.current?.open();
     return false;
   };
-  const handleReportClick = (selectedTarget: ReportTarget): void => {
-    if (canAct(REPORT_COPY.loginDescription))
-      reportRef.current?.open(selectedTarget);
+  const handleReportClick = (target: ReportTarget): void => {
+    if (isBlocking || !canAct(REPORT_COPY.loginDescription)) return;
+    setSelectedReportTarget(target);
+    reportRef.current?.open();
   };
   const handleBlockClick = (): void => {
-    if (authorId !== null && canAct('작성자를 차단하려면 로그인이 필요해요.')) {
-      blockRef.current?.open({ userId: authorId, nickname: authorNickname });
-    }
+    if (
+      isBlocking ||
+      authorId === null ||
+      !canAct('작성자를 차단하려면 로그인이 필요해요.')
+    )
+      return;
+    setBlockTarget({ authorId, authorNickname });
+    reset();
+    blockConfirmRef.current?.open();
+  };
+  const handleBlockConfirm = (): void => {
+    void execute({
+      onSuccess: (): void => {
+        setFeedListCache(null);
+        window.location.replace('/');
+      },
+    });
   };
 
   return (
     <>
       <button
         type="button"
-        css={[
-          moreButtonStyle,
-          target.targetType === 'COMMENT' && commentMoreButtonStyle,
-        ]}
-        aria-label={
-          target.targetType === 'FEED' ? '피드 더보기' : '댓글 더보기'
-        }
+        css={moreButtonStyle}
+        aria-label="피드 더보기"
+        disabled={isBlocking}
         onClick={(): void => menuRef.current?.open()}
       >
         <img src={moreIcon} alt="옵션 더보기 아이콘" />
       </button>
-      <BottomSheet
-        title={target.targetType === 'FEED' ? '피드 메뉴' : '댓글 메뉴'}
-        ref={menuRef}
-      >
+      <BottomSheet title="피드 메뉴" ref={menuRef}>
         <button
           type="button"
           css={actionButtonStyle}
-          onClick={(): void => handleReportClick(target)}
+          onClick={(): void =>
+            handleReportClick({ targetType: 'FEED', targetId: feedId })
+          }
         >
           <img
             src={reportIcon}
@@ -82,7 +106,7 @@ const ContentOptionsButton = ({
             width={24}
             height={24}
           />
-          {REPORT_TITLES[target.targetType]}
+          {REPORT_TITLES.FEED}
         </button>
         {authorId !== null && (
           <>
@@ -119,13 +143,24 @@ const ContentOptionsButton = ({
           </>
         )}
       </BottomSheet>
-      <ReportDialog ref={reportRef} />
-      <BlockDialog ref={blockRef} />
+      <ReportDialog ref={reportRef} target={selectedReportTarget} />
+      <ConfirmModal
+        ref={blockConfirmRef}
+        title={BLOCK_COPY.title}
+        description={getBlockDescription(blockTarget.authorNickname)}
+        confirmLabel={isBlocking ? BLOCK_COPY.submitting : BLOCK_COPY.confirm}
+        isSubmitting={isBlocking}
+        errorMessage={
+          request.status === 'error' ? request.error.message : undefined
+        }
+        onConfirm={handleBlockConfirm}
+      />
       <NeedLoginBottomSheet ref={loginRef} description={loginDescription} />
     </>
   );
 };
-export default ContentOptionsButton;
+
+export default OtherFeedOptionsButton;
 
 const moreButtonStyle = css`
   display: flex;
@@ -137,9 +172,10 @@ const moreButtonStyle = css`
   border: none;
   background: none;
   cursor: pointer;
-`;
-const commentMoreButtonStyle = css`
-  height: 24px;
+  &:disabled {
+    cursor: wait;
+    opacity: 0.6;
+  }
 `;
 const actionButtonStyle = css`
   display: flex;

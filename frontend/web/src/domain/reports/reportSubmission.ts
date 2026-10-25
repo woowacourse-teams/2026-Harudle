@@ -11,12 +11,12 @@ export interface ReportTarget {
   readonly targetId: string;
 }
 
-export interface ReportSubmission extends ReportTarget {
+export interface ReportRequest extends ReportTarget {
   readonly reason: ReportReason;
   readonly description?: string;
 }
 
-export interface ReportReceipt {
+export interface ReportResponse {
   readonly id: string;
   readonly status: 'RECEIVED';
   readonly duplicate: boolean;
@@ -45,7 +45,7 @@ export const isReportReason = (value: unknown): value is ReportReason =>
 export const isValidReportDescription = (description: string): boolean =>
   Array.from(description.trim()).length <= 500;
 
-export const isReportSubmission = (value: unknown): value is ReportSubmission =>
+export const isReportRequest = (value: unknown): value is ReportRequest =>
   isRecord(value) &&
   isReportTargetType(value.targetType) &&
   isUuid(value.targetId) &&
@@ -54,41 +54,52 @@ export const isReportSubmission = (value: unknown): value is ReportSubmission =>
     (typeof value.description === 'string' &&
       isValidReportDescription(value.description)));
 
-export const isReportReceipt = (value: unknown): value is ReportReceipt =>
+export const isReportResponse = (value: unknown): value is ReportResponse =>
   isRecord(value) &&
   isUuid(value.id) &&
   value.status === 'RECEIVED' &&
   typeof value.duplicate === 'boolean';
 
-const requestReportReceipt = async (
-  body: string,
-  canRetryCsrf: boolean,
-): Promise<ReportReceipt> => {
-  const csrfToken = await requestCsrfToken();
-  const response = await authFetch(`${API_BASE_URL}/reports`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-XSRF-TOKEN': csrfToken },
-    body,
+export const submitReport = async (
+  request: ReportRequest,
+): Promise<ReportResponse> => {
+  if (!isReportRequest(request)) throw new Error(REPORT_ERRORS.invalid);
+  const description = request.description?.trim();
+  const body = JSON.stringify({
+    targetType: request.targetType,
+    targetId: request.targetId,
+    reason: request.reason,
+    ...(description ? { description } : {}),
   });
+  const send = async (): Promise<Response> => {
+    const csrfToken = await requestCsrfToken();
+    return authFetch(`${API_BASE_URL}/reports`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-XSRF-TOKEN': csrfToken,
+      },
+      body,
+    });
+  };
+  let response = await send();
+  let data: unknown = await response.json().catch((): null => null);
+  // 토큰 복원 중 CSRF 쿠키가 교체된 경우에만 저장 전 거절된 요청을 한 번 재시도한다.
+  if (
+    response.status === 403 &&
+    isProblemDetails(data) &&
+    data.status === 403 &&
+    data.code === 'INVALID_CSRF_TOKEN'
+  ) {
+    response = await send();
+    data = await response.json().catch((): null => null);
+  }
   if (!response.ok) {
-    const data: unknown = await response.json().catch((): null => null);
-    if (isProblemDetails(data)) {
-      // Access Token 복원 중 CSRF 쿠키가 교체될 수 있다. 저장 전 거절이 확인된 경우만 한 번 재시도한다.
-      if (
-        canRetryCsrf &&
-        response.status === 403 &&
-        data.status === 403 &&
-        data.code === 'INVALID_CSRF_TOKEN'
-      ) {
-        return requestReportReceipt(body, false);
-      }
-      throw new RequestError(data);
-    }
+    if (isProblemDetails(data)) throw new RequestError(data);
     throw new Error(REPORT_ERRORS.failed);
   }
-  const data: unknown = await response.json().catch((): null => null);
   if (
-    !isReportReceipt(data) ||
+    !isReportResponse(data) ||
     !(
       (response.status === 201 && !data.duplicate) ||
       (response.status === 200 && data.duplicate)
@@ -97,18 +108,4 @@ const requestReportReceipt = async (
     throw new Error(REPORT_ERRORS.response);
   }
   return data;
-};
-
-export const submitReport = async (
-  request: ReportSubmission,
-): Promise<ReportReceipt> => {
-  if (!isReportSubmission(request)) throw new Error(REPORT_ERRORS.invalid);
-  const description = request.description?.trim();
-  const body = JSON.stringify({
-    targetType: request.targetType,
-    targetId: request.targetId,
-    reason: request.reason,
-    ...(description ? { description } : {}),
-  });
-  return requestReportReceipt(body, true);
 };

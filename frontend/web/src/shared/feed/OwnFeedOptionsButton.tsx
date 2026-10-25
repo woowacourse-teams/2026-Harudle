@@ -1,27 +1,29 @@
+import { useToastContext } from '../ToastContext';
 import { css } from '@emotion/react';
 import { useRef } from 'react';
 import moreIcon from '../../assets/icons/feed-more.svg';
 import deleteIcon from '../../assets/icons/delete.svg';
-import type { FeedComment } from '../../domain/feeds/feedComments';
+import type { Feed } from '../../domain/feeds/feedList';
 import BottomSheet, { type BottomSheetHandle } from '../../shared/BottomSheet';
 import ConfirmModal from '../../shared/ConfirmModal';
 import type { ModalHandle } from '../../shared/Modal';
 import { theme } from '../../styles/theme';
-import { FEED_DETAIL_COPY } from './copy';
-import useFeedCommentDelete from './useFeedCommentDelete';
+import { FEED_ACTION_COPY } from './copy';
+import useFeedDelete from './useFeedDelete';
 
-interface FeedCommentOptionsButtonProps {
-  readonly commentId: FeedComment['id'];
-  readonly onDelete: (commentId: FeedComment['id']) => void;
+interface OwnFeedOptionsButtonProps {
+  readonly feedId: Feed['id'];
+  readonly onDelete: (feedId: Feed['id']) => void;
 }
 
-const FeedCommentOptionsButton = ({
-  commentId,
+const OwnFeedOptionsButton = ({
+  feedId,
   onDelete,
-}: FeedCommentOptionsButtonProps) => {
+}: OwnFeedOptionsButtonProps) => {
+  const { addToast } = useToastContext();
   const menuRef = useRef<BottomSheetHandle>(null);
   const confirmRef = useRef<ModalHandle>(null);
-  const { request, reset, execute } = useFeedCommentDelete({ commentId });
+  const { request, reset, execute } = useFeedDelete({ feedId });
 
   const handleDeleteClick = (): void => {
     menuRef.current?.close();
@@ -33,7 +35,11 @@ const FeedCommentOptionsButton = ({
     void execute({
       onSuccess: () => {
         confirmRef.current?.close();
-        onDelete(commentId);
+        addToast(
+          { type: 'success', message: FEED_ACTION_COPY.deleteSuccess },
+          2000,
+        );
+        onDelete(feedId);
       },
     });
   };
@@ -49,14 +55,14 @@ const FeedCommentOptionsButton = ({
         <img src={moreIcon} alt="옵션 더보기 아이콘" />
       </button>
 
-      <BottomSheet title={FEED_DETAIL_COPY.commentManageTitle} ref={menuRef}>
+      <BottomSheet title={FEED_ACTION_COPY.manageTitle} ref={menuRef}>
         <button
           type="button"
           css={deleteButtonStyle}
           onClick={handleDeleteClick}
         >
           <img src={deleteIcon} alt="휴지통 아이콘" width={24} height={24} />
-          {FEED_DETAIL_COPY.commentDeleteAction}
+          {FEED_ACTION_COPY.deleteAction}
         </button>
       </BottomSheet>
 
@@ -64,28 +70,29 @@ const FeedCommentOptionsButton = ({
         errorMessage={
           request.status === 'error' ? request.error.message : undefined
         }
-        title={FEED_DETAIL_COPY.commentDeleteConfirmTitle}
-        description={FEED_DETAIL_COPY.commentDeleteConfirmDescription}
+        title={FEED_ACTION_COPY.deleteConfirmTitle}
+        description={FEED_ACTION_COPY.deleteConfirmDescription}
         confirmLabel={
           request.status === 'loading'
-            ? FEED_DETAIL_COPY.commentDeletingAction
-            : FEED_DETAIL_COPY.commentDeleteAction
+            ? FEED_ACTION_COPY.deletingAction
+            : FEED_ACTION_COPY.deleteAction
         }
         ref={confirmRef}
+        isSubmitting={request.status === 'loading'}
         onConfirm={handleDeleteConfirm}
       />
     </>
   );
 };
 
-export default FeedCommentOptionsButton;
+export default OwnFeedOptionsButton;
 
 const moreButtonStyle = css`
   display: flex;
   align-items: center;
   justify-content: center;
   width: 28px;
-  height: 24px;
+  height: 32px;
   padding: 0;
   border: none;
   background: none;

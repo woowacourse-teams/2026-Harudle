@@ -1,8 +1,8 @@
 import { css } from '@emotion/react';
 import categoryChevronIcon from '../../assets/icons/feed-category-chevron.svg';
 import FeedActions from '../../shared/feed/FeedActions';
-import FeedOptionsButton from '../../shared/feed/FeedOptionsButton';
-import ContentOptionsButton from '../../shared/content/ContentOptionsButton';
+import OwnFeedOptionsButton from '../../shared/feed/OwnFeedOptionsButton';
+import OtherFeedOptionsButton from '../../shared/content/OtherFeedOptionsButton';
 import profileFallbackImage from '../../assets/images/profile-fallback.svg';
 import type { Feed } from '../../domain/feeds/feedList';
 import { useNavigate } from 'react-router';
@@ -93,15 +93,15 @@ const FeedDetailContent = ({ feedId }: FeedDetailContentProps) => {
               </span>
             </div>
             {feed.isMine ? (
-              <FeedOptionsButton
+              <OwnFeedOptionsButton
                 feedId={feed.id}
                 onDelete={() => {
                   void navigate('/');
                 }}
               />
             ) : (
-              <ContentOptionsButton
-                target={{ targetType: 'FEED', targetId: feed.id }}
+              <OtherFeedOptionsButton
+                feedId={feed.id}
                 authorId={feed.author.id}
                 authorNickname={feed.author.nickname}
               />

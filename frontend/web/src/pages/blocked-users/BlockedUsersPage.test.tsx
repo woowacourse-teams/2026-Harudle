@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { StrictMode } from 'react';
+import { StrictMode, type ComponentProps, type ReactNode } from 'react';
 import {
   act,
   fireEvent,
@@ -9,10 +9,18 @@ import {
   within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import BlockedUsers from './BlockedUsers';
+import BlockedUsersPage from './BlockedUsersPage';
 import { getBlockedUsers, setUserBlocked } from '../../domain/blocks/blocks';
 import { setFeedListCache } from '../../domain/feeds/feedListCache';
 import { ToastProvider } from '../../shared/ToastContext';
+
+interface MockLinkProps extends ComponentProps<'a'> {
+  readonly to: string;
+}
+
+jest.mock('react-router', () => ({
+  Link: ({ to, ...props }: MockLinkProps) => <a href={to} {...props} />,
+}));
 jest.mock('../../domain/blocks/blocks', () => ({
   getBlockedUsers: jest.fn(),
   setUserBlocked: jest.fn(),
@@ -23,9 +31,14 @@ jest.mock('../../domain/feeds/feedListCache', () => ({
 jest.mock('../../assets/images/profile-fallback.svg', () => 'fallback.svg');
 jest.mock('../../assets/images/loading-animation.webp', () => 'loading.webp');
 jest.mock('../../assets/icons/autorenew.svg', () => 'autorenew.svg');
+jest.mock('../../assets/icons/back.svg', () => 'back.svg');
 jest.mock('../../assets/icons/toast-success.svg', () => 'toast-success.svg');
 jest.mock('../../assets/icons/toast-error.svg', () => 'toast-error.svg');
 jest.mock('../../assets/icons/toast-loading.svg', () => 'toast-loading.svg');
+const TestProviders = ({ children }: { readonly children: ReactNode }) => (
+  <ToastProvider>{children}</ToastProvider>
+);
+
 const user = {
   userId: 'user-1',
   nickname: '탈퇴한 사용자',
@@ -36,7 +49,7 @@ beforeEach((): void => {
   jest.mocked(getBlockedUsers).mockReset();
   jest.mocked(setUserBlocked).mockReset();
 });
-describe('설정의 차단 목록', (): void => {
+describe('차단한 사용자 관리 화면', (): void => {
   it('해제 직후 목록에서 제거하고 갱신 실패는 DELETE 없이 GET만 재시도한다', async (): Promise<void> => {
     const remaining = { ...user, userId: 'user-2', nickname: '네오' };
     let failRefresh: (error: Error) => void = (): void => undefined;
@@ -60,10 +73,9 @@ describe('설정의 차단 목록', (): void => {
         hasNext: false,
       });
     jest.mocked(setUserBlocked).mockResolvedValue(undefined);
-    const { container } = render(<BlockedUsers />, { wrapper: ToastProvider });
-    await userEvent.click(
-      screen.getByRole('button', { name: '차단한 사용자' }),
-    );
+    const { container } = render(<BlockedUsersPage />, {
+      wrapper: TestProviders,
+    });
     await userEvent.click(
       await screen.findByRole('button', { name: '탈퇴한 사용자 차단 해제' }),
     );
@@ -116,7 +128,7 @@ describe('설정의 차단 목록', (): void => {
     });
   });
 
-  it('해제 중 접었다 펼쳐도 중복 조회하지 않고 숨겨진 동안 완료된 결과를 유지한다', async (): Promise<void> => {
+  it('해제 중 다시 렌더링해도 중복 조회하지 않고 완료 결과를 유지한다', async (): Promise<void> => {
     let blocked = true;
     let finishUnblock: () => void = (): void => undefined;
     jest
@@ -135,34 +147,26 @@ describe('설정의 차단 목록', (): void => {
           };
         }),
     );
-    render(<BlockedUsers />, { wrapper: ToastProvider });
-    const toggle = screen.getByRole('button', { name: '차단한 사용자' });
-    await userEvent.click(toggle);
+    const { rerender } = render(<BlockedUsersPage />, {
+      wrapper: TestProviders,
+    });
     await userEvent.click(
       await screen.findByRole('button', { name: '탈퇴한 사용자 차단 해제' }),
     );
-    await userEvent.click(toggle);
-    expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    expect(
-      screen.queryByRole('button', { name: '탈퇴한 사용자 차단 해제' }),
-    ).not.toBeInTheDocument();
-    await userEvent.click(toggle);
+    rerender(<BlockedUsersPage />);
     expect(
       screen.getByRole('button', { name: '탈퇴한 사용자 차단 해제' }),
     ).toBeDisabled();
     expect(getBlockedUsers).toHaveBeenCalledTimes(1);
-    await userEvent.click(toggle);
     await act(async (): Promise<void> => {
       finishUnblock();
     });
-    expect(screen.getByText('차단한 사용자가 없어요.')).not.toBeVisible();
-    await userEvent.click(toggle);
     expect(screen.getByText('차단한 사용자가 없어요.')).toBeVisible();
     expect(getBlockedUsers).toHaveBeenCalledTimes(2);
     expect(setUserBlocked).toHaveBeenCalledTimes(1);
   });
 
-  it('접힌 동안 해제에 실패하면 토스트로 알리고 다시 펼쳐 같은 대상을 재시도한다', async (): Promise<void> => {
+  it('해제에 실패하면 토스트로 알리고 같은 대상을 다시 시도한다', async (): Promise<void> => {
     let failUnblock: (error: Error) => void = (): void => undefined;
     jest
       .mocked(getBlockedUsers)
@@ -173,17 +177,13 @@ describe('설정의 차단 목록', (): void => {
           failUnblock = reject;
         }),
     );
-    render(<BlockedUsers />, { wrapper: ToastProvider });
-    const toggle = screen.getByRole('button', { name: '차단한 사용자' });
-    await userEvent.click(toggle);
+    render(<BlockedUsersPage />, { wrapper: TestProviders });
     await userEvent.click(
       await screen.findByRole('button', { name: '탈퇴한 사용자 차단 해제' }),
     );
-    await userEvent.click(toggle);
     await act(async (): Promise<void> => {
       failUnblock(new Error('해제 실패'));
     });
-    await userEvent.click(toggle);
     expect(
       screen.getByText('차단을 해제하지 못했어요. 다시 시도해 주세요.'),
     ).toBeVisible();
@@ -203,7 +203,7 @@ describe('설정의 차단 목록', (): void => {
     expect(setUserBlocked).toHaveBeenCalledTimes(2);
   });
 
-  it('펼칠 때 조회하고 다음 페이지를 불러온 뒤 해제 후 최신 목록을 재조회한다', async (): Promise<void> => {
+  it('화면 진입 시 조회하고 다음 페이지를 불러온 뒤 해제 후 최신 목록을 재조회한다', async (): Promise<void> => {
     jest
       .mocked(getBlockedUsers)
       .mockResolvedValueOnce({
@@ -222,11 +222,8 @@ describe('설정의 차단 목록', (): void => {
         hasNext: false,
       });
     jest.mocked(setUserBlocked).mockResolvedValue(undefined);
-    render(<BlockedUsers />, { wrapper: ToastProvider });
-    expect(getBlockedUsers).not.toHaveBeenCalled();
-    await userEvent.click(
-      screen.getByRole('button', { name: '차단한 사용자' }),
-    );
+    render(<BlockedUsersPage />, { wrapper: TestProviders });
+    expect(getBlockedUsers).toHaveBeenCalledTimes(1);
     expect(await screen.findByText('탈퇴한 사용자')).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: '더 불러오기' }));
     expect(await screen.findByText('네오')).toBeVisible();
@@ -250,10 +247,7 @@ describe('설정의 차단 목록', (): void => {
       .mockRejectedValueOnce(new Error('조회 실패'))
       .mockResolvedValue({ items: [user], nextCursor: null, hasNext: false });
     jest.mocked(setUserBlocked).mockRejectedValue(new Error('해제 실패'));
-    render(<BlockedUsers />, { wrapper: ToastProvider });
-    await userEvent.click(
-      screen.getByRole('button', { name: '차단한 사용자' }),
-    );
+    render(<BlockedUsersPage />, { wrapper: TestProviders });
     expect(await screen.findByRole('alert')).toHaveTextContent(
       '차단 목록을 불러오지 못했어요.',
     );
@@ -290,10 +284,9 @@ describe('설정의 차단 목록', (): void => {
             completeRetry = resolve;
           }),
       );
-    const { container } = render(<BlockedUsers />, { wrapper: ToastProvider });
-    await userEvent.click(
-      screen.getByRole('button', { name: '차단한 사용자' }),
-    );
+    const { container } = render(<BlockedUsersPage />, {
+      wrapper: TestProviders,
+    });
     expect(await screen.findByRole('alert')).toHaveTextContent(
       '차단 목록을 불러오지 못했어요.',
     );
@@ -337,10 +330,9 @@ describe('설정의 차단 목록', (): void => {
             completeRetry = resolve;
           }),
       );
-    const { container } = render(<BlockedUsers />, { wrapper: ToastProvider });
-    await userEvent.click(
-      screen.getByRole('button', { name: '차단한 사용자' }),
-    );
+    const { container } = render(<BlockedUsersPage />, {
+      wrapper: TestProviders,
+    });
     await userEvent.click(
       await screen.findByRole('button', { name: '더 불러오기' }),
     );
@@ -405,12 +397,10 @@ describe('설정의 차단 목록', (): void => {
       });
     render(
       <StrictMode>
-        <BlockedUsers />
+        <ToastProvider>
+          <BlockedUsersPage />
+        </ToastProvider>
       </StrictMode>,
-      { wrapper: ToastProvider },
-    );
-    await userEvent.click(
-      screen.getByRole('button', { name: '차단한 사용자' }),
     );
     expect(await screen.findByText('현재 사용자')).toBeVisible();
     expect(getBlockedUsers).toHaveBeenCalledTimes(2);
@@ -445,10 +435,9 @@ describe('설정의 차단 목록', (): void => {
           }),
       );
       jest.mocked(setUserBlocked).mockResolvedValue(undefined);
-      const { unmount } = render(<BlockedUsers />, { wrapper: ToastProvider });
-      await userEvent.click(
-        screen.getByRole('button', { name: '차단한 사용자' }),
-      );
+      const { unmount } = render(<BlockedUsersPage />, {
+        wrapper: TestProviders,
+      });
       if (phase === '첫 조회 재시도') {
         await userEvent.click(
           await screen.findByRole('button', {
@@ -498,10 +487,9 @@ describe('설정의 차단 목록', (): void => {
           finishUnblock = resolve;
         }),
     );
-    const { unmount } = render(<BlockedUsers />, { wrapper: ToastProvider });
-    await userEvent.click(
-      screen.getByRole('button', { name: '차단한 사용자' }),
-    );
+    const { unmount } = render(<BlockedUsersPage />, {
+      wrapper: TestProviders,
+    });
     await userEvent.click(
       await screen.findByRole('button', { name: '탈퇴한 사용자 차단 해제' }),
     );

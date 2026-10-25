@@ -9,6 +9,24 @@ test.use({ storageState: AUTHENTICATED_STORAGE_STATE });
 const otherFeed = '/feeds/00000000-0000-4000-8000-000000000002';
 const ownFeed = '/feeds/00000000-0000-4000-8000-000000000001';
 
+test('설정에서 차단 관리 화면으로 이동하고 뒤로가면 설정으로 돌아온다', async ({
+  page,
+}): Promise<void> => {
+  await page.goto('/setting');
+  await page.getByRole('link', { name: '차단한 사용자', exact: true }).click();
+  await expect(page).toHaveURL('/setting/blocked-users');
+  await expect(
+    page.getByRole('heading', { name: '차단한 사용자', exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole('link', { name: '설정으로 돌아가기', exact: true })
+    .click();
+  await expect(page).toHaveURL('/setting');
+  await expect(
+    page.getByRole('button', { name: '로그아웃', exact: true }),
+  ).toBeVisible();
+});
+
 const blockNeoAndOpenSettings = async (page: Page): Promise<void> => {
   await page.goto(otherFeed);
   await page.getByRole('button', { name: '피드 더보기', exact: true }).click();
@@ -22,9 +40,8 @@ const blockNeoAndOpenSettings = async (page: Page): Promise<void> => {
     .click();
   await expect(page).toHaveURL('/');
   await page.goto('/setting');
-  await page
-    .getByRole('button', { name: '차단한 사용자', exact: true })
-    .click();
+  await page.getByRole('link', { name: '차단한 사용자', exact: true }).click();
+  await expect(page).toHaveURL('/setting/blocked-users');
   await expect(
     page.getByRole('button', { name: '네오 차단 해제', exact: true }),
   ).toBeVisible();
@@ -59,7 +76,8 @@ test('목록에서 차단 실패 후 재시도하면 숨기고 설정에서 해�
     0,
   );
   await page.goto('/setting');
-  await page.getByRole('button', { name: '차단한 사용자' }).click();
+  await page.getByRole('link', { name: '차단한 사용자' }).click();
+  await expect(page).toHaveURL('/setting/blocked-users');
   await page.getByRole('button', { name: '네오 차단 해제' }).click();
   await expect(page.getByText('차단한 사용자가 없어요.')).toBeVisible();
   await page.goto('/');
@@ -167,9 +185,7 @@ test('차단 해제 실패는 토스트로 알리고 사용자 행을 유지한�
   page,
 }): Promise<void> => {
   await blockNeoAndOpenSettings(page);
-  const blockSection = page.locator('section').filter({
-    has: page.getByRole('button', { name: '차단한 사용자', exact: true }),
-  });
+  const blockSection = page.getByRole('main');
   let deletions = 0;
   let listReads = 0;
   page.on('request', (request): void => {
@@ -202,9 +218,7 @@ test('해제 성공 후 목록 갱신 실패는 목록 안에서 GET만 재시�
   page,
 }): Promise<void> => {
   await blockNeoAndOpenSettings(page);
-  const blockSection = page.locator('section').filter({
-    has: page.getByRole('button', { name: '차단한 사용자', exact: true }),
-  });
+  const blockSection = page.getByRole('main');
   let deletions = 0;
   let listReads = 0;
   page.on('request', (request): void => {
