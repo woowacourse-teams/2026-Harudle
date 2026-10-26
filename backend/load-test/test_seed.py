@@ -69,13 +69,13 @@ class EncryptedSeedTest(unittest.TestCase):
         command = invoked.call_args.args[0]
         self.assertEqual(command[:4], ['docker', 'exec', '-i', 'a' * 64])
         self.assertEqual(command[4:6], ['sh', '-c'])
-        self.assertEqual(command[6], 'exec java ${JAVA_OPTS:-} -Xmx128m -Dloader.main=' + ec2.FIXTURE_MAIN
+        self.assertEqual(command[6], 'exec java ${JAVA_OPTS:-} -Xmx128m -Xlog:disable -Dloader.main=' + ec2.FIXTURE_MAIN
                          + ' -cp /app/app.jar org.springframework.boot.loader.launch.PropertiesLauncher')
         self.assertNotIn('env', invoked.call_args.kwargs)
         self.assertNotIn('shell', invoked.call_args.kwargs)
         self.assertTrue(invoked.call_args.kwargs['capture_output'])
 
-    def test_container_shell_preserves_java_options_before_fixed_heap_and_fixture_main(self):
+    def test_container_shell_preserves_options_before_fixed_heap_logging_and_fixture_main(self):
         response = json.dumps(encrypted_test_rows(prepare.seed_requests(self.fixture)))
         with patch.object(ec2.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, response)) as run:
             ec2.encrypt_seed('a' * 64, prepare.seed_requests(self.fixture))
@@ -84,13 +84,14 @@ class EncryptedSeedTest(unittest.TestCase):
             java = Path(temporary) / 'java'
             java.write_text('#!/bin/sh\nprintf \'%s\\n\' "$@"\n')
             java.chmod(0o700)
-            options = '-Dfixture.parity=true -Dloader.main=unexpected.Main -Xmx256m'
+            options = ('-Dfixture.parity=true -Dloader.main=unexpected.Main -Xmx256m '
+                       '-Xlog:gc*,safepoint:stdout:time,uptime,level,tags')
             result = subprocess.run(command[4:], check=True, capture_output=True, text=True,
                                     env={**os.environ, 'PATH': temporary + os.pathsep + os.environ['PATH'],
                                          'JAVA_OPTS': options})
         arguments = result.stdout.splitlines()
-        self.assertEqual(arguments[:3], options.split())
-        self.assertEqual(arguments[3:5], ['-Xmx128m', '-Dloader.main=' + ec2.FIXTURE_MAIN])
+        self.assertEqual(arguments[:4], options.split())
+        self.assertEqual(arguments[4:7], ['-Xmx128m', '-Xlog:disable', '-Dloader.main=' + ec2.FIXTURE_MAIN])
 
     def test_invalid_encryption_output_stops_before_seed_or_s3_writes_and_preserves_retry_files(self):
         with tempfile.TemporaryDirectory() as temporary, contextlib.redirect_stdout(io.StringIO()):

@@ -146,6 +146,50 @@ class DiarySourceTextMigrationTest {
         assertConnectionRetained();
     }
 
+    @ParameterizedTest
+    @ValueSource(ints = {Connection.TRANSACTION_REPEATABLE_READ, Connection.TRANSACTION_SERIALIZABLE})
+    @DisplayName("지원하지 않는 격리 수준은 원문과 SHA를 보존하며 호출자가 READ_COMMITTED로 바꾸면 재실행할 수 있다")
+    void rejectsUnsupportedIsolationWithoutChangingDataAndAllowsReadCommittedRetry(int isolation) throws SQLException {
+        Fixture fixture = insertLegacy("격리 수준 확인 뒤 전환할 일기", "SUCCEEDED", false);
+        Stored before = stored(fixture.diaryId());
+        connection.setTransactionIsolation(isolation);
+
+        assertThatThrownBy(() -> migration.migrate(1, 1))
+                .isExactlyInstanceOf(DiarySourceTextMigrationException.class)
+                .hasMessage(FAILURE_MESSAGE).hasNoCause();
+
+        assertThat(connection.getTransactionIsolation()).isEqualTo(isolation);
+        assertConnectionRetained();
+        assertThat(stored(fixture.diaryId())).isEqualTo(before);
+
+        connection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
+        var retried = migration.migrate(1, 1);
+
+        assertThat(retried.migrated()).isEqualTo(1);
+        assertThat(retried.failed()).isZero();
+        assertEncrypted(fixture, cipher);
+        assertThat(connection.getTransactionIsolation()).isEqualTo(Connection.TRANSACTION_READ_COMMITTED);
+        assertConnectionRetained();
+    }
+
+    @Test
+    @DisplayName("조회와 전수 검증 및 완료 검사는 REPEATABLE_READ 연결에서도 기존 격리 수준을 유지한다")
+    void allowsReadOnlyCommandsOnRepeatableReadConnection() throws SQLException {
+        insertLegacy("조회 격리 수준을 제한하지 않는 일기", "SUCCEEDED", false);
+        migration.migrate(1, 1);
+        assertThat(migration.finalizeMigration(1).failed()).isZero();
+        connection.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
+
+        assertThat(migration.status().finalized()).isTrue();
+        var verified = migration.verify(1);
+        migration.requireReady();
+
+        assertThat(verified.checked()).isEqualTo(1);
+        assertThat(verified.failed()).isZero();
+        assertThat(connection.getTransactionIsolation()).isEqualTo(Connection.TRANSACTION_REPEATABLE_READ);
+        assertConnectionRetained();
+    }
+
     @Test
     @DisplayName("동일 배치를 재실행해도 이미 전환한 암호문과 논스 및 HMAC을 다시 만들지 않는다")
     void rerunWithoutReencryptingOrDoubleProtectingFingerprints() throws SQLException {

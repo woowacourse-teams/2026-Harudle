@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 jar_file="$(cd -- "$(dirname -- "$1")" && pwd)/$(basename -- "$1")"
 test_dir="$(mktemp -d)"
 container_id=
@@ -111,4 +112,57 @@ if docker exec "${container_id}" psql -X -v ON_ERROR_STOP=1 -U harudle -d harudl
   echo 'Finalized database accepted a legacy version.' >&2
   exit 1
 fi
+# Exercise the actual Python fixture command with a real JVM. Only Docker's transport is replaced;
+# dev stdout GC logs must not corrupt the array consumed by ec2.py.
+python3 - "${script_dir}/../.." "${jar_file}" "${test_dir}" <<'PY'
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import subprocess
+import sys
+from unittest.mock import patch
+
+root, jar, test_directory = map(Path, sys.argv[1:])
+sys.path.insert(0, str(root / 'backend/load-test'))
+import ec2
+
+container = 'a' * 64
+fixture = [{'diaryId': '00000000-0000-0000-0000-000000000001',
+            'userId': '00000000-0000-0000-0000-000000000002',
+            'diaryDate': '2026-10-26', 'idempotencyKey': '00000000-0000-0000-0000-000000000003'}]
+environment = {
+    'PATH': os.environ['PATH'], 'DEPLOY_ENV': 'dev', 'DB_NAME': 'harudle_dev',
+    'S3_BUCKET': 'techcourse-project-2026', 'S3_GENERATED_PREFIX': 'harudle/generated/diary-images/dev',
+    'DIARY_SOURCE_TEXT_KEY_BASE64': 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=',
+    'DIARY_SOURCE_TEXT_ACTIVE_KEY_ID': 'primary', 'DIARY_SOURCE_TEXT_RELEASE_MODE': 'writer',
+    'DIARY_SOURCE_TEXT_NEW_WRITES_ENABLED': 'true', 'SPRING_PROFILES_ACTIVE': 'prod',
+    'DIARY_SOURCE_TEXT_KEY_VERIFICATION_FILE': str(root / 'backend/src/test/resources/crypto/diary-key-checks-public-dev.json'),
+    'SPRING_CONFIG_IMPORT': f'optional:file:{test_directory}/absent.properties',
+    'DB_PASSWORD': 'public-unused-fixture-password',
+    'JAVA_OPTS': ('-XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError '
+                  '-Xlog:gc*,safepoint:stdout:time,uptime,level,tags '
+                  '-Dloader.main=unexpected.Main -Xmx256m'),
+}
+real_run = subprocess.run
+
+
+def local_jvm(command, **options):
+    assert command[:6] == ['docker', 'exec', '-i', container, 'sh', '-c']
+    shell_command = command[6].replace('/app/app.jar', shlex.quote(str(jar)))
+    return real_run(['sh', '-c', shell_command], env=environment, **options)
+
+
+with patch.object(ec2.subprocess, 'run', side_effect=local_jvm):
+    protected = ec2.encrypt_seed(container, fixture)
+assert len(protected) == 1
+row = protected[0]
+assert set(row) == {'diaryId', 'sourceText', 'requestFingerprint'}
+assert row['diaryId'] == fixture[0]['diaryId']
+assert re.fullmatch(r'primary:[A-Za-z0-9+/]+={0,2}', row['sourceText'])
+assert re.fullmatch(r'[0-9a-f]{64}', row['requestFingerprint'])
+assert '부하 테스트 준비 데이터' not in json.dumps(protected, ensure_ascii=False)
+print('PASS: packaged fixture encryption preserves dev JVM settings and emits a clean JSON array.')
+PY
 echo 'PASS: packaged migration resumes, verifies HMACs, finalizes, and gates readiness against PostgreSQL.'

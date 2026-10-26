@@ -85,7 +85,7 @@ def encrypt_seed(container, rows):
     for start in range(0, len(rows), 1000):
         result = subprocess.run([
             'docker', 'exec', '-i', container, 'sh', '-c',
-            'exec java ${JAVA_OPTS:-} -Xmx128m -Dloader.main=' + FIXTURE_MAIN
+            'exec java ${JAVA_OPTS:-} -Xmx128m -Xlog:disable -Dloader.main=' + FIXTURE_MAIN
             + ' -cp /app/app.jar org.springframework.boot.loader.launch.PropertiesLauncher',
         ], input=json.dumps(rows[start:start + 1000]), check=True, capture_output=True, text=True)
         if len(result.stdout) > 1_048_576:

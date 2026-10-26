@@ -9,6 +9,7 @@ import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.core.env.ConfigurableEnvironment;
 
 @Configuration(proxyBeanMethods = false)
@@ -16,6 +17,7 @@ public class DiarySourceTextReadinessConfiguration {
 
     /** Refuses deployed v1-only startup until the database cutover has been explicitly finalized. */
     @Bean
+    @Lazy(false)
     @DependsOnDatabaseInitialization
     InitializingBean diarySourceTextMigrationReadiness(
             DataSource dataSource,

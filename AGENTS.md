@@ -66,6 +66,10 @@ flowchart TB
 | S3 인증 | EC2 IAM Role `ec2-project` | 임시 자격 증명 사용 |
 | GCP WIF 설정 파일 | 호스트 `/etc/harudle/gcp/gcp-wif.json` → 컨테이너 `/var/run/harudle/gcp-wif.json` | 읽기 전용 마운트 |
 
+전환 도구의 `migrate`는 `READ_COMMITTED` 연결만 허용하며 다른 격리 수준은 쓰기 전에 거절한다.
+호출자의 연결 설정을 자동으로 바꾸지 않는다. v1 전용 앱의 DB 완료 검사는 전역 지연 초기화를
+켜도 앱 시작 시 실행한다.
+
 두 컨테이너의 재시작 정책은 `unless-stopped`다. 이미지 처리·동시 실행 수·
 임시 파일 사용량을 바꿀 때는 위 메모리 제한을 함께 고려한다.
 

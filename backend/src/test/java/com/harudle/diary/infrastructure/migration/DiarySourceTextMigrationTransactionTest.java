@@ -3,6 +3,7 @@ package com.harudle.diary.infrastructure.migration;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
@@ -29,6 +30,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class DiarySourceTextMigrationTransactionTest {
 
@@ -48,6 +50,7 @@ class DiarySourceTextMigrationTransactionTest {
     void setUp() throws Exception {
         when(connection.isClosed()).thenAnswer(invocation -> closed.get());
         when(connection.getAutoCommit()).thenAnswer(invocation -> autoCommit.get());
+        when(connection.getTransactionIsolation()).thenReturn(Connection.TRANSACTION_READ_COMMITTED);
         doAnswer(invocation -> {
             autoCommit.set(invocation.getArgument(0));
             return null;
@@ -186,19 +189,84 @@ class DiarySourceTextMigrationTransactionTest {
         assertUnusable();
     }
 
+    @ParameterizedTest
+    @ValueSource(ints = {Connection.TRANSACTION_NONE, Connection.TRANSACTION_READ_UNCOMMITTED,
+            Connection.TRANSACTION_REPEATABLE_READ, Connection.TRANSACTION_SERIALIZABLE, 42})
+    @DisplayName("READ_COMMITTED 이외의 격리 수준은 잠금과 트랜잭션 시작 전에 거절하고 연결 설정을 보존한다")
+    void rejectsUnsupportedIsolationBeforeAnyDatabaseWork(int isolation) throws Exception {
+        when(connection.getTransactionIsolation()).thenReturn(isolation);
+
+        assertThatThrownBy(() -> migration.migrate(1, 1))
+                .isExactlyInstanceOf(DiarySourceTextMigrationException.class)
+                .hasMessage(FAILURE_MESSAGE).hasNoCause();
+
+        assertRejectedBeforeDatabaseWork();
+        assertThat(connection.getTransactionIsolation()).isEqualTo(isolation);
+        assertThat(autoCommit).isTrue();
+    }
+
     @Test
+    @DisplayName("격리 수준 조회 실패는 원인을 노출하지 않고 잠금과 트랜잭션 시작 전에 거절한다")
+    void rejectsIsolationInspectionFailureBeforeAnyDatabaseWork() throws Exception {
+        when(connection.getTransactionIsolation()).thenThrow(new SQLException("private-isolation-diagnostic"));
+
+        assertThatThrownBy(() -> migration.migrate(1, 1))
+                .isExactlyInstanceOf(DiarySourceTextMigrationException.class)
+                .hasMessage(FAILURE_MESSAGE).hasNoCause();
+
+        assertRejectedBeforeDatabaseWork();
+        assertThat(autoCommit).isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"status", "verify", "ready"})
+    @DisplayName("조회 명령은 격리 수준을 제한하거나 변경하지 않고 기존 트랜잭션 경로로 진행한다")
+    void allowsReadOnlyOperationsWithoutInspectingIsolation(String command) throws Exception {
+        when(connection.getTransactionIsolation()).thenReturn(Connection.TRANSACTION_REPEATABLE_READ);
+        AssertionError failure = interruptTransaction();
+
+        assertThatThrownBy(() -> operation(command).run()).isSameAs(failure);
+
+        verify(connection, never()).getTransactionIsolation();
+        verify(connection, never()).setTransactionIsolation(anyInt());
+        verify(connection).rollback();
+        assertThat(autoCommit).isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"status", "migrate"})
     @DisplayName("호출자가 시작한 트랜잭션은 거절만 하고 커밋과 롤백 및 연결 폐기를 하지 않는다")
-    void leavesCallerOwnedTransactionUntouched() throws Exception {
+    void leavesCallerOwnedTransactionUntouched(String command) throws Exception {
         autoCommit.set(false);
+        when(connection.getTransactionIsolation()).thenReturn(Connection.TRANSACTION_REPEATABLE_READ);
 
-        assertThatThrownBy(migration::status).isExactlyInstanceOf(DiarySourceTextMigrationException.class);
+        assertThatThrownBy(() -> operation(command).run())
+                .isExactlyInstanceOf(DiarySourceTextMigrationException.class);
 
+        assertRejectedBeforeDatabaseWork();
+        verify(connection, never()).getTransactionIsolation();
+        assertThat(autoCommit).isFalse();
+    }
+
+    private void assertRejectedBeforeDatabaseWork() throws SQLException {
         verify(connection, never()).setAutoCommit(any(Boolean.class));
+        verify(connection, never()).setTransactionIsolation(anyInt());
         verify(connection, never()).commit();
         verify(connection, never()).rollback();
         verify(connection, never()).abort(any());
         verify(connection, never()).close();
         assertThat(preparedSql).isEmpty();
+        assertThat(closed).isFalse();
+    }
+
+    private Runnable operation(String command) {
+        return switch (command) {
+            case "status" -> migration::status;
+            case "migrate" -> () -> migration.migrate(1, 1);
+            case "verify" -> () -> migration.verify(1);
+            case "ready" -> migration::requireReady;
+            default -> throw new IllegalArgumentException("Unsupported test command.");
+        };
     }
 
     private AssertionError interruptTransaction() throws SQLException {

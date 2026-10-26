@@ -55,8 +55,12 @@ public final class DiarySourceTextMigration {
         return safely(() -> inspect(this::readStatus));
     }
 
+    /** Row conversion requires fresh READ_COMMITTED snapshots without changing the caller's connection settings. */
     public MigrationResult migrate(int batchSize, int maxBatches) {
-        return safely(() -> exclusively(() -> migrateLocked(batchSize, maxBatches)));
+        return safely(() -> {
+            require(connection.getTransactionIsolation() == Connection.TRANSACTION_READ_COMMITTED);
+            return exclusively(() -> migrateLocked(batchSize, maxBatches));
+        });
     }
 
     public VerificationResult verify(int batchSize) {
