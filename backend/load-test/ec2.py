@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 from assets import BUCKET, TEST_IMAGE, delete_images, load_fixture, run_lock, seed_records, upload
 from cleanup import (baseline_state_sql, cleanup, cleanup_locked, cleanup_sql, load_baseline_state,
@@ -18,6 +19,60 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 APP_DIR = SCRIPT_DIR.parent
 CLIENT_IMAGE = 'postgres:18-alpine'
 FIXTURE_MAIN = 'com.harudle.diary.infrastructure.crypto.DiarySourceTextLoadTestFixtureMain'
+PREPARATION_PREFIX = '.harudle-run-preparation-'
+
+
+class LoadTestCommandFailure(RuntimeError):
+    """Only fixed classification and validated control values may cross the CLI boundary."""
+
+    def __init__(self, error, action):
+        command = error.cmd
+        code = 'EXTERNAL_COMMAND'
+        if isinstance(command, (list, tuple)) and all(isinstance(part, str) for part in command):
+            if command[:2] == ['aws', 's3api']:
+                code = 'S3'
+            elif command[:2] == ['docker', 'run'] and CLIENT_IMAGE in command:
+                index = command.index(CLIENT_IMAGE)
+                if command[index + 1:index + 2] == ['psql']:
+                    code = 'DB_SQL'
+            elif (command[:3] == ['docker', 'exec', '-i'] and len(command) == 7
+                  and re.fullmatch(r'[0-9a-f]{12,64}', command[3])
+                  and command[4:6] == ['sh', '-c'] and FIXTURE_MAIN in command[6]):
+                code = 'FIXTURE_ENCRYPTION'
+            elif command[:1] == ['docker']:
+                code = 'CONTAINER_CONFIG'
+        phase = action if action in {'prepare', 'export', 'reset', 'cleanup', 'purge-baseline'} else 'unknown'
+        return_code = error.returncode if type(error.returncode) is int else 'unknown'
+        super().__init__(f'EC2 command failed: phase={phase}, errorCode={code}, returnCode={return_code}. '
+                         'Raw diagnostics were suppressed; keep the preparation files for retry.')
+
+
+def publish_run_fixture(directory, accounts, settings):
+    # Do not expose a selectable run until its DB identity and complete fixture are durable.
+    fixture, seed, _ = build_fixture(accounts['baseUrl'], accounts['diariesPerMonth'], accounts, directory.name)
+    with tempfile.TemporaryDirectory(prefix=PREPARATION_PREFIX, dir=directory.parent) as temporary:
+        staging = Path(temporary)
+        files = {'members.json': json.dumps(fixture, ensure_ascii=False, indent=2),
+                 'seed.sql': seed, 'database.json': json.dumps(database_target(settings))}
+        for name, value in files.items():
+            with (staging / name).open('w') as output:
+                output.write(value)
+                output.flush()
+                os.fsync(output.fileno())
+        descriptor = os.open(staging, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        if directory.exists():
+            raise ValueError('This run name already exists. Use a new name, such as peak2')
+        staging.rename(directory)
+        descriptor = os.open(directory.parent, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    return fixture
 
 
 def backend_settings(stopped=False, require_writer=False):
@@ -198,12 +253,11 @@ def reset_run(directory, group, settings, sql_runner, client_stopped, source_enc
             previous = group.parent / name
             check_database(previous, settings)
             with run_lock(previous):
-                cleanup_locked(previous, sql_runner, client_stopped)
+                cleanup_locked(previous, sql_runner, client_stopped, database_target(settings))
         created = prepare_baseline(group, accounts, settings, sql_runner, source_encryptor)
-        fixture, _, _ = write_fixture(directory, accounts=accounts)
+        fixture = publish_run_fixture(directory, accounts, settings)
         with run_lock(directory):
             load_baseline_state(directory, fixture)
-            (directory / 'database.json').write_text(json.dumps(database_target(settings)))
             set_active_run(group, directory.name)
             if not created:
                 sql_runner(login_sql(fixture))
@@ -213,7 +267,8 @@ def reset_run(directory, group, settings, sql_runner, client_stopped, source_enc
 
 def cleanup_run(directory, settings, sql_runner, client_stopped):
     check_database(directory, settings)
-    cleanup(directory, execute_sql=sql_runner, client_stopped=client_stopped)
+    cleanup(directory, execute_sql=sql_runner, client_stopped=client_stopped,
+            expected_database=database_target(settings))
 
 
 def require_cleaned_runs(group, accounts, settings):
@@ -228,6 +283,8 @@ def require_cleaned_runs(group, accounts, settings):
             raise ValueError('The active run belongs to another member set')
         check_database(group.parent / name, settings)
     for directory in group.parent.iterdir():
+        if directory.name.startswith(PREPARATION_PREFIX) and not re.fullmatch(NAME, directory.name):
+            continue
         if directory == group or not (directory / 'members.json').is_file():
             continue
         candidate = json.loads((directory / 'members.json').read_text())
@@ -311,10 +368,11 @@ def main():
             purge_baseline(directory, settings, sql_runner, args.client_stopped)
         else:
             cleanup_run(directory, settings, sql_runner, args.client_stopped)
-    except subprocess.CalledProcessError:
-        parser.error('EC2 command failed. Check Docker, dev DB access and S3 permissions; then retry cleanup if needed')
-    except (OSError, ValueError, KeyError, TypeError, RuntimeError) as error:
-        parser.error(str(error))
+    except subprocess.CalledProcessError as error:
+        parser.error(str(LoadTestCommandFailure(error, args.action)))
+    except (OSError, ValueError, KeyError, TypeError, RuntimeError):
+        parser.error(f'EC2 operation refused: phase={args.action}, errorCode=INVALID_STATE. '
+                     'Check the prepared files, member/DB identity and cleanup prerequisites.')
 
 
 if __name__ == '__main__':

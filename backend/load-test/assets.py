@@ -22,7 +22,7 @@ if not TEST_IMAGE.is_file():
 
 def aws(*args):
     result = subprocess.run(["aws", "s3api", *args, "--bucket", BUCKET, "--output", "json", "--no-cli-pager"],
-                            check=True, stdout=subprocess.PIPE, text=True)
+                            check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return json.loads(result.stdout or '{}')
 
 

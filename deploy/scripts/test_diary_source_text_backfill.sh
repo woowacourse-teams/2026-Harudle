@@ -180,7 +180,64 @@ run_expected 1 migrate
 grep '^{' "${TEST_DIR}/output" | jq -e '.failed == 1' >/dev/null
 record_pass 'a failed batch exposes only validated counts and exits unsuccessfully'
 
-for malformed in diagnostic extra-field multiple-objects wrong-command string-count negative-count fractional-count invalid-finalized; do
+for error_code in CONFIGURATION_INVALID KEY_VERIFICATION_FAILED DATABASE_CONNECTION_FAILED \
+  DATABASE_OPERATION_FAILED ISOLATION_LEVEL_UNSUPPORTED UNEXPECTED_FAILURE; do
+  prepare_case
+  export DIARY_BACKFILL_TEST_EXIT=1
+  export DIARY_BACKFILL_TEST_RESPONSE="$(jq -nc --arg code "${error_code}" \
+    '{command:"status",errorCode:$code}')"
+  run_expected 1 status
+  grep '^{' "${TEST_DIR}/output" | jq -se --arg code "${error_code}" \
+    'length == 1 and .[0] == {command:"status",errorCode:$code}' >/dev/null
+  record_pass "${error_code}: a fixed error code is preserved only on exit 1"
+done
+
+for command in migrate verify finalize ready; do
+  prepare_case
+  export DIARY_BACKFILL_TEST_EXIT=1
+  export DIARY_BACKFILL_TEST_RESPONSE="$(jq -nc --arg command "${command}" \
+    '{command:$command,errorCode:"UNEXPECTED_FAILURE"}')"
+  run_expected 1 "${command}"
+  grep '^{' "${TEST_DIR}/output" | jq -se --arg command "${command}" \
+    'length == 1 and .[0] == {command:$command,errorCode:"UNEXPECTED_FAILURE"}' >/dev/null
+  record_pass "${command}: a safe error retains the requested command"
+done
+
+for malformed in unknown-code extra-field wrong-command invalid-command non-string-code array-code empty-array-code numeric-code duplicate-command \
+  duplicate-code multiple-objects trailing-json trailing-diagnostic; do
+  prepare_case
+  export DIARY_BACKFILL_TEST_EXIT=1
+  export DIARY_BACKFILL_TEST_RESPONSE='{"command":"status","errorCode":"UNEXPECTED_FAILURE"}'
+  case "${malformed}" in
+    unknown-code) export DIARY_BACKFILL_TEST_RESPONSE='{"command":"status","errorCode":"diary-backfill-test-secret"}' ;;
+    extra-field) export DIARY_BACKFILL_TEST_RESPONSE='{"command":"status","errorCode":"UNEXPECTED_FAILURE","secret":"diary-backfill-test-secret"}' ;;
+    wrong-command) export DIARY_BACKFILL_TEST_RESPONSE='{"command":"migrate","errorCode":"UNEXPECTED_FAILURE"}' ;;
+    invalid-command) export DIARY_BACKFILL_TEST_RESPONSE='{"command":"invalid","errorCode":"UNEXPECTED_FAILURE"}' ;;
+    non-string-code) export DIARY_BACKFILL_TEST_RESPONSE='{"command":"status","errorCode":null}' ;;
+    array-code) export DIARY_BACKFILL_TEST_RESPONSE='{"command":"status","errorCode":["UNEXPECTED_FAILURE"]}' ;;
+    empty-array-code) export DIARY_BACKFILL_TEST_RESPONSE='{"command":"status","errorCode":[]}' ;;
+    numeric-code) export DIARY_BACKFILL_TEST_RESPONSE='{"command":"status","errorCode":0}' ;;
+    duplicate-command) export DIARY_BACKFILL_TEST_RESPONSE='{"command":"diary-backfill-test-secret","command":"status","errorCode":"UNEXPECTED_FAILURE"}' ;;
+    duplicate-code) export DIARY_BACKFILL_TEST_RESPONSE='{"command":"status","errorCode":"diary-backfill-test-secret","errorCode":"UNEXPECTED_FAILURE"}' ;;
+    multiple-objects) export DIARY_BACKFILL_TEST_RESPONSE="${DIARY_BACKFILL_TEST_RESPONSE}"$'\n'"${DIARY_BACKFILL_TEST_RESPONSE}" ;;
+    trailing-json) export DIARY_BACKFILL_TEST_RESPONSE="${DIARY_BACKFILL_TEST_RESPONSE}"$'\nfalse' ;;
+    trailing-diagnostic) export DIARY_BACKFILL_TEST_RESPONSE="${DIARY_BACKFILL_TEST_RESPONSE}"$'\ndiary-backfill-test-secret' ;;
+  esac
+  run_expected 1 status
+  [[ "$(grep -c '^{' "${TEST_DIR}/output" || true)" == 0 ]]
+  record_pass "${malformed}: an untrusted error response is suppressed"
+done
+
+for mismatched_status in 0 2 7; do
+  prepare_case
+  export DIARY_BACKFILL_TEST_EXIT="${mismatched_status}"
+  export DIARY_BACKFILL_TEST_RESPONSE='{"command":"status","errorCode":"UNEXPECTED_FAILURE"}'
+  run_expected 1 status
+  [[ "$(grep -c '^{' "${TEST_DIR}/output" || true)" == 0 ]]
+  record_pass "exit ${mismatched_status}: an error JSON cannot change the exit contract"
+done
+
+for malformed in diagnostic extra-field multiple-objects wrong-command string-count negative-count fractional-count invalid-finalized duplicate-command duplicate-count trailing-json; do
   prepare_case
   response status
   case "${malformed}" in
@@ -192,6 +249,9 @@ for malformed in diagnostic extra-field multiple-objects wrong-command string-co
     negative-count) export DIARY_BACKFILL_TEST_RESPONSE="$(jq -c '.legacyRows=-1' <<<"${DIARY_BACKFILL_TEST_RESPONSE}")" ;;
     fractional-count) export DIARY_BACKFILL_TEST_RESPONSE="$(jq -c '.legacyRows=0.5' <<<"${DIARY_BACKFILL_TEST_RESPONSE}")" ;;
     invalid-finalized) export DIARY_BACKFILL_TEST_RESPONSE="$(jq -c '.finalized="diary-backfill-test-secret"' <<<"${DIARY_BACKFILL_TEST_RESPONSE}")" ;;
+    duplicate-command) export DIARY_BACKFILL_TEST_RESPONSE="${DIARY_BACKFILL_TEST_RESPONSE/\{/{\"command\":\"diary-backfill-test-secret\",}" ;;
+    duplicate-count) export DIARY_BACKFILL_TEST_RESPONSE="${DIARY_BACKFILL_TEST_RESPONSE/\{/{\"legacyRows\":1,}" ;;
+    trailing-json) export DIARY_BACKFILL_TEST_RESPONSE="${DIARY_BACKFILL_TEST_RESPONSE}"$'\nfalse' ;;
   esac
   run_expected 1 status
   [[ "$(grep -c '^{' "${TEST_DIR}/output" || true)" == 0 ]]

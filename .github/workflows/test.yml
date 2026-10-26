@@ -136,8 +136,10 @@ jobs:
           bash ../deploy/scripts/test_diary_writer_approval.sh
           bash ../deploy/scripts/test_diary_source_text_backfill.sh
 
-      - name: Test encrypted load-test fixtures (offline)
+      - name: Test encrypted load-test fixtures and PostgreSQL recovery
         if: github.event_name != 'push'
+        env:
+          LOAD_TEST_POSTGRES_TEST: "1"
         run: python3 -m unittest discover -s load-test -p 'test_*.py'
 
       - name: Install WebP tools

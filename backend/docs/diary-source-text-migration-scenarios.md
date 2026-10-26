@@ -136,10 +136,10 @@ flowchart TD
 미완료 트랜잭션에서 자동 커밋을 켜면 변경이 확정될 수 있기 때문이다.
 [JDBC 명세](https://docs.oracle.com/en/java/javase/21/docs/api/java.sql/java/sql/Connection.html#setAutoCommit(boolean))를 따른다.
 결과가 불명확한 연결은 폐기하며, 정리 중 오류가 원래 실패를 덮지 않도록 한다. 직접 CLI를 실행한
-경우에도 원본 오류·SQL 진단 대신 기존 고정 실패 문구와 종료 코드만 제공한다.
+경우에도 원본 오류·SQL 진단 대신 허용된 고정 실패 코드와 종료 코드만 제공한다.
 
 `finalize`의 응답이 유실된 경우에도 스키마 변경의 반영 여부를 `status`·`ready`로 확인한다.
-운영 출력에는 집계만 남기며 원문·암호문·키·지문·SQL 진단을 복구 기록에 복사하지 않는다.
+운영 출력에는 집계와 고정된 실패 코드만 남기며 원문·암호문·키·지문·SQL 진단을 복구 기록에 복사하지 않는다.
 
 관련 코드: [트랜잭션과 불확실한 연결 처리](../src/main/java/com/harudle/diary/infrastructure/migration/DiarySourceTextMigration.java).
 
@@ -156,6 +156,10 @@ flowchart TD
 
 `verify`는 모든 v1 원문을 인증 복호화하고 연결된 지문을 HMAC으로 재계산해 대조한다. `finalize`는
 이를 확인하고 테이블 잠금 아래 v0·미지원 버전을 다시 점검한 뒤 v1 전용 제약을 검증·적용한다.
+
+최종화는 한 트랜잭션으로 유지한다. 배타 잠금 안의 집계와 제약 검증 시간까지 포함한 실제 차단 시간은
+[격리 복원 DB 측정 절차](diary-source-text-finalize-measurement.md)로 확인한다. SQL별 10초 제한을
+전체 잠금 시간의 상한으로 해석하지 않는다.
 
 `migrate`의 미완료 결과나 `status`의 정상 종료는 완료가 아니다. 배포 전에는 키 검증과 `ready`의
 종료 코드·허용된 완료 JSON을 함께 확인하고, 앱의 운영 시작 검사도 미완료 DB를 거절한다.

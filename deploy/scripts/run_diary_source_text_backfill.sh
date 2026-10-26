@@ -72,6 +72,29 @@ if result="$(run_private_diary_cli \
 else
   result_status=$?
 fi
+if (( result_status != 0 && result_status != 1 && result_status != 2 )); then
+  fail 'Diary source text maintenance failed. Candidate diagnostics were suppressed.'
+fi
+# jq's object parser keeps the last duplicate value. Inspect the complete token stream first,
+# then parse one object; neither diagnostics nor shadowed fields may become public output.
+if ! jq -n --stream -e '
+  [inputs | select(length == 2) | .[0]] as $paths |
+  ($paths | length) > 0 and ($paths | length) == ($paths | unique | length)
+' <<<"${result}" >/dev/null 2>&1; then
+  fail 'Diary source text maintenance failed. Candidate diagnostics were suppressed.'
+fi
+if (( result_status == 1 )) && safe_error="$(jq -cSse --arg command "${COMMAND}" '
+  select(length == 1) | .[0] |
+  select(type == "object" and (keys | sort) == ["command", "errorCode"] and .command == $command
+    and (.errorCode | type == "string")) |
+  select(.errorCode as $code | ["CONFIGURATION_INVALID", "KEY_VERIFICATION_FAILED",
+    "DATABASE_CONNECTION_FAILED", "DATABASE_OPERATION_FAILED", "ISOLATION_LEVEL_UNSUPPORTED",
+    "UNEXPECTED_FAILURE"] | index($code) != null)
+' <<<"${result}" 2>/dev/null)"; then
+  printf '%s\n' "${safe_error}"
+  echo 'Diary source text maintenance failed. Candidate diagnostics were suppressed.' >&2
+  exit 1
+fi
 fields='["command","legacyRows","encryptedRows","unsupportedRows","processingLegacyRows","orphanRows","finalized"]'
 case "${COMMAND}" in
   migrate)
@@ -88,9 +111,6 @@ if ! safe_result="$(jq -cSse --arg command "${COMMAND}" --argjson fields "${fiel
   select([to_entries[] | select(.key != "command" and .key != "finalized") | .value] |
     all(type == "number" and . >= 0 and floor == .))
 ' <<<"${result}" 2>/dev/null)"; then
-  fail 'Diary source text maintenance failed. Candidate diagnostics were suppressed.'
-fi
-if (( result_status != 0 && result_status != 1 && result_status != 2 )); then
   fail 'Diary source text maintenance failed. Candidate diagnostics were suppressed.'
 fi
 if (( result_status == 2 )); then

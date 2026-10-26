@@ -5,11 +5,12 @@ import hmac
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import uuid
 
 from assets import delete_images, load_fixture, member_directory, run_lock, seed_records, validate_active_run, validate_records
-from prepare import database_guard, diary_ids, member_identity, quote
+from prepare import NAME, database_guard, diary_ids, member_identity, quote
 
 
 def psql(sql):
@@ -187,19 +188,72 @@ def load_baseline_state(directory, fixture):
     return plan['state']
 
 
-def cleanup(directory, execute_sql=None, client_stopped=False):
+def preparation_recovery_sql(fixture):
+    ids, email = member_filter(fixture)
+    keys = ', '.join(quote(uuid.uuid5(uuid.UUID(fixture['runId']), f'create-{index}'))
+                     for index in range(len(fixture['members'])))
+    # Direct generation lookup intentionally includes every status and soft-deleted diary/owner.
+    return database_guard() + f"""
+SELECT jsonb_build_object(
+    'membersValid', (SELECT COUNT(*) = {len(fixture['members'])} FROM users
+                     WHERE id IN ({ids}) AND primary_email LIKE {email}
+                       AND deleted_at IS NULL AND role = 'USER'),
+    'workExists', EXISTS (SELECT 1 FROM diary_generations WHERE idempotency_key IN ({keys})));
+ROLLBACK;
+"""
+
+
+def mark_cleaned(directory):
+    with (directory / '.cleaned').open('w') as marker:
+        marker.flush()
+        os.fsync(marker.fileno())
+    descriptor = os.open(directory, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def recover_preparation(directory, fixture, execute_sql, client_stopped, expected_database):
+    group = member_directory(directory, fixture)
+    accounts = load_fixture(group)
+    active = (group / 'active-run').read_text() if (group / 'active-run').exists() else None
+    if (fixture['version'] != 3 or fixture.get('runName') == 'baseline' or 'baselineId' not in fixture
+            or (active is not None and not re.fullmatch(NAME, active))
+            or active == directory.name or not client_stopped or expected_database is None
+            or any((directory / name).exists() for name in ('.ready', '.exported', '.started', 'cleanup.json'))
+            or 'runName' in accounts or accounts['version'] != 3 or not (group / '.ready').is_file()
+            or accounts['memberSetName'] != group.name or accounts['memberSetId'] != fixture['memberSetId']
+            or accounts['cleanupKey'] != fixture['cleanupKey']):
+        raise ValueError('Only an inactive unfinished preparation can be recovered with ec2.py cleanup')
+    for path in (directory, group):
+        if json.loads((path / 'database.json').read_text()) != expected_database:
+            raise ValueError('Preparation recovery DB identity does not match')
+    proof = json.loads(execute_sql(preparation_recovery_sql(fixture)))
+    if (not isinstance(proof, dict) or set(proof) != {'membersValid', 'workExists'}
+            or proof['membersValid'] is not True or proof['workExists'] is not False):
+        raise ValueError('Preparation recovery requires unchanged members and no actual run work')
+    mark_cleaned(directory)
+    print('Unfinished preparation marked cleaned. Database, baseline and S3 data were kept.', flush=True)
+
+
+def cleanup(directory, execute_sql=None, client_stopped=False, expected_database=None):
     with ExitStack() as locks:
         fixture = load_fixture(directory)
         if fixture['version'] == 3:
             locks.enter_context(run_lock(member_directory(directory, fixture)))
         locks.enter_context(run_lock(directory))
-        cleanup_locked(directory, execute_sql or psql, client_stopped)
+        cleanup_locked(directory, execute_sql or psql, client_stopped, expected_database)
 
 
-def cleanup_locked(directory, execute_sql, client_stopped):
+def cleanup_locked(directory, execute_sql, client_stopped, expected_database=None):
     # Caller holds both the member-set lock (v3) and this run's lock.
     fixture = load_fixture(directory)
     if fixture['version'] == 3:
+        group = member_directory(directory, fixture)
+        if not (group / 'active-run').exists() or (group / 'active-run').read_text() != directory.name:
+            recover_preparation(directory, fixture, execute_sql, client_stopped, expected_database)
+            return
         validate_active_run(directory, fixture)
         if not client_stopped:
             raise ValueError('Stop local k6 first, then use --client-stopped')
@@ -235,9 +289,7 @@ def cleanup_locked(directory, execute_sql, client_stopped):
         if plan['generations']:
             delete_images(fixture, plan['generations'])
         # Only mark completion after all S3 deletions have succeeded.
-        with (directory / '.cleaned').open('w') as marker:
-            marker.flush()
-            os.fsync(marker.fileno())
+        mark_cleaned(directory)
 
 
 def main():

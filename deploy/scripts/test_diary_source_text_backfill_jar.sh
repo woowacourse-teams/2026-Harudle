@@ -4,14 +4,24 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 jar_file="$(cd -- "$(dirname -- "$1")" && pwd)/$(basename -- "$1")"
 test_dir="$(mktemp -d)"
+compose_project="harudle-diary-image-smoke-$$"
 container_id=
 cleanup() {
+  if [[ -f "${test_dir}/compose-image-id.yaml" ]]; then
+    docker compose --project-name "${compose_project}" --env-file /dev/null \
+      --file "${test_dir}/compose-image-id.yaml" down --remove-orphans >/dev/null 2>&1 || true
+  fi
   if [[ -n "${container_id}" ]]; then
     docker rm --force "${container_id}" >/dev/null 2>&1 || true
   fi
   rm -rf -- "${test_dir}"
 }
 trap cleanup EXIT
+
+docker compose version >/dev/null 2>&1 || {
+  echo 'Packaged migration tests require Docker Compose; the image-ID smoke cannot be skipped.' >&2
+  exit 1
+}
 
 # An isolated disposable database and public test keys; never use configured application credentials.
 container_id="$(docker run --detach --rm --publish 127.0.0.1::5432 \
@@ -31,6 +41,55 @@ for attempt in {1..30}; do
   sleep 1
 done
 [[ "${ready}" == true ]] || { echo 'Packaged migration test database was not ready.' >&2; exit 1; }
+
+# Reuse the database image already present locally. No app image, production Compose file,
+# application environment, or key mount participates in this actual Compose compatibility check.
+image_id="$(docker inspect --format '{{.Image}}' "${container_id}")"
+[[ "${image_id}" =~ ^sha256:[a-f0-9]{64}$ ]]
+cat > "${test_dir}/compose-image-id.yaml" <<YAML
+services:
+  backend:
+    image: "${image_id}"
+    pull_policy: never
+    depends_on: [dependency]
+    ports: ["127.0.0.1::5432"]
+    logging:
+      driver: json-file
+  dependency:
+    image: "${image_id}"
+    pull_policy: never
+    entrypoint: [sh, -c]
+    command: ["sleep 60"]
+YAML
+smoke_id="$(docker compose --project-name "${compose_project}" --env-file /dev/null \
+  --file "${test_dir}/compose-image-id.yaml" run --detach --rm --no-deps --pull never -T \
+  --entrypoint sh backend -c 'printf "HARUDLE_IMAGE_ID_SMOKE\n"; sleep 60')"
+docker inspect "${smoke_id}" | jq -e --arg image "${image_id}" '
+  length == 1 and (.[0] | .Image == $image and .Config.Image == $image and
+    .HostConfig.AutoRemove == true and ((.HostConfig.PortBindings // {}) | length) == 0)
+' >/dev/null
+[[ -z "$(docker ps --all --filter "label=com.docker.compose.project=${compose_project}" \
+  --filter label=com.docker.compose.service=dependency --format '{{.ID}}')" ]]
+smoke_ready=false
+for attempt in {1..10}; do
+  if [[ "$(docker logs "${smoke_id}" 2>/dev/null)" == HARUDLE_IMAGE_ID_SMOKE ]]; then
+    smoke_ready=true
+    break
+  fi
+  sleep 0.2
+done
+[[ "${smoke_ready}" == true ]] || { echo 'Compose image-ID sentinel did not execute.' >&2; exit 1; }
+docker stop --time 1 "${smoke_id}" >/dev/null
+smoke_removed=false
+for attempt in {1..10}; do
+  if ! docker container inspect "${smoke_id}" >/dev/null 2>&1; then
+    smoke_removed=true
+    break
+  fi
+  sleep 0.2
+done
+[[ "${smoke_removed}" == true ]] || { echo 'Compose did not remove its one-off container.' >&2; exit 1; }
+echo 'PASS: actual Compose runs the exact loaded sha256 image ID without dependencies or published ports and removes it.'
 
 docker exec -i "${container_id}" psql -X -v ON_ERROR_STOP=1 -U harudle -d harudle_migration \
   >/dev/null <<'SQL'
@@ -81,9 +140,10 @@ run_check() {
     echo 'Packaged migration command returned an unexpected result.' >&2
     exit 1
   fi
-  if [[ -s "${test_dir}/result" ]]; then
-    jq -e 'type == "object" and (.legacyRows | type == "number")' "${test_dir}/result" >/dev/null
-  fi
+  jq -se --arg command "$1" 'length == 1 and (.[0] | type == "object" and .command == $command and
+    ((.legacyRows | type == "number") or
+     ((keys | sort) == ["command", "errorCode"] and (.errorCode | type == "string"))))' \
+    "${test_dir}/result" >/dev/null
   if [[ -s "${test_dir}/error" ]]; then
     test "$(cat "${test_dir}/error")" = 'Diary source text migration failed.'
   fi
@@ -92,6 +152,7 @@ run_check() {
 run_check 0 status
 jq -e '.legacyRows == 3 and .finalized == false' "${test_dir}/result" >/dev/null
 run_check 1 ready
+jq -e '. == {command:"ready",errorCode:"DATABASE_OPERATION_FAILED"}' "${test_dir}/result" >/dev/null
 run_check 1 verify
 jq -e '.checked == 3 and .failed == 3' "${test_dir}/result" >/dev/null
 run_check 2 migrate --batch-size 1 --max-batches 1
@@ -107,6 +168,7 @@ run_check 0 migrate
 jq -e '.migrated == 0 and .finalized == true' "${test_dir}/result" >/dev/null
 run_check 0 finalize
 run_check 1 migrate --batch-size 1001
+jq -e '. == {command:"migrate",errorCode:"CONFIGURATION_INVALID"}' "${test_dir}/result" >/dev/null
 if docker exec "${container_id}" psql -X -v ON_ERROR_STOP=1 -U harudle -d harudle_migration \
   -c "UPDATE diaries SET source_text_version = 0;" >/dev/null 2>&1; then
   echo 'Finalized database accepted a legacy version.' >&2

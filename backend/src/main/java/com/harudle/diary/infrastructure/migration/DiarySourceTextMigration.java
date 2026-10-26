@@ -58,7 +58,11 @@ public final class DiarySourceTextMigration {
     /** Row conversion requires fresh READ_COMMITTED snapshots without changing the caller's connection settings. */
     public MigrationResult migrate(int batchSize, int maxBatches) {
         return safely(() -> {
-            require(connection.getTransactionIsolation() == Connection.TRANSACTION_READ_COMMITTED);
+            if (connection.getTransactionIsolation() != Connection.TRANSACTION_READ_COMMITTED) {
+                throw new DiarySourceTextMigrationException(
+                        DiarySourceTextMigrationException.Reason.ISOLATION_LEVEL_UNSUPPORTED
+                );
+            }
             return exclusively(() -> migrateLocked(batchSize, maxBatches));
         });
     }
@@ -671,6 +675,8 @@ public final class DiarySourceTextMigration {
         try {
             require(!unusable && !connection.isClosed() && connection.getAutoCommit());
             return operation.run();
+        } catch (DiarySourceTextMigrationException exception) {
+            throw exception;
         } catch (SQLException | RuntimeException exception) {
             throw new DiarySourceTextMigrationException();
         }

@@ -349,8 +349,8 @@ sudo bash /opt/harudle/maintenance/run_diary_source_text_backfill.sh dev \
 ```
 
 운영 EC2에서는 첫 인자를 `prod`로 지정합니다. 서버 설정의 `DEPLOY_ENV`·이미지 prefix와
-다르면 중단합니다. RDS 대상은 별도 설정이므로 작업 전 해당 서버의 DB_HOST/DB_NAME이
-의도한 환경의 RDS인지 운영자가 확인합니다. 이 절차에서 DB role이나 접속 허용 설정을 변경하지 않습니다.
+다르면 중단합니다. DB 대상은 별도 설정이므로 작업 전 해당 서버의 DB_HOST/DB_NAME이
+의도한 환경의 PostgreSQL인지 운영자가 확인합니다. 현재 dev/prod는 각각 별도 DB EC2를 사용합니다. 이 절차에서 DB role이나 접속 허용 설정을 변경하지 않습니다.
 키·DB 접속 정보를 셸 인자나 출력에 넣지 않습니다.
 
 | 명령 | 결과·종료 코드 |
@@ -377,6 +377,29 @@ sudo bash /opt/harudle/maintenance/run_diary_source_text_backfill.sh dev \
 
 runner는 stdout 전체를 비공개로 받은 뒤 명령별 고정 JSON 필드·숫자·boolean 타입만 확인해
 새 JSON 한 줄로 출력합니다. JVM/launcher 진단, stderr와 Compose 렌더 내용은 출력하지 않습니다.
+작업을 시작하지 못하거나 중단한 경우 종료 코드 1과 함께 `command`, `errorCode` 두 필드만 출력할 수 있습니다.
+원본 예외를 정제해 공개하는 방식이 아니며, runner는 아래 코드만 허용합니다.
+
+<details>
+<summary>전환 도구의 실패 코드와 다음 확인</summary>
+
+| 코드 | 확인할 대상 |
+| --- | --- |
+| `CONFIGURATION_INVALID` | 명령, 옵션, 환경 설정 형식과 필수 항목 |
+| `KEY_VERIFICATION_FAILED` | 신뢰한 키링과 검증 파일, 환경 일치 |
+| `DATABASE_CONNECTION_FAILED` | 의도한 DB 접속 경로와 접근 가능 여부 |
+| `DATABASE_OPERATION_FAILED` | 스키마, 권한, DB 상태와 커밋 결과 |
+| `ISOLATION_LEVEL_UNSUPPORTED` | `migrate` 연결이 `READ_COMMITTED`인지 |
+| `UNEXPECTED_FAILURE` | 프로세스 상태를 확인하고 새 연결에서 실제 반영 상태 조사 |
+
+키 값, DB 비밀번호, 원문이나 SQL 진단을 운영 기록에 복사하지 않습니다. 알 수 없는 코드나 중복 필드,
+다른 명령의 응답은 runner가 거절합니다. 행별 실패가 집계된 정상 결과 JSON은 기존 필드를 유지하고
+종료 코드 1로 실패를 알립니다. 실패 코드는 롤백 완료를 증명하는 값이 아닙니다.
+
+</details>
+
+최종화의 잠금 시간과 조회 대기는 [격리 복원 DB 측정 절차](../backend/docs/diary-source-text-finalize-measurement.md)를
+따릅니다. 운영 규모 실측과 허용 예산을 확인하기 전에는 현재 단일 트랜잭션을 짧은 잠금으로 보장하지 않습니다.
 기본 필드는 command, legacyRows, encryptedRows, unsupportedRows, processingLegacyRows,
 orphanRows, finalized입니다. migrate는 attempted/migrated/skippedProcessing/failed/orphanMigrated,
 verify/finalize는 checked/failed를 추가합니다. orphanRows는 모든 버전의 생성 기록 없는 일기 수이며

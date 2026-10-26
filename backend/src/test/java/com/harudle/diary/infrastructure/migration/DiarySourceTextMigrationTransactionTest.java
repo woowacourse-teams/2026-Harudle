@@ -15,6 +15,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.harudle.diary.domain.DiarySourceTextCipher;
+import com.harudle.diary.infrastructure.migration.DiarySourceTextMigrationException.Reason;
 import com.harudle.generation.diary.service.RequestFingerprintGenerator;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -198,7 +199,9 @@ class DiarySourceTextMigrationTransactionTest {
 
         assertThatThrownBy(() -> migration.migrate(1, 1))
                 .isExactlyInstanceOf(DiarySourceTextMigrationException.class)
-                .hasMessage(FAILURE_MESSAGE).hasNoCause();
+                .hasMessage(FAILURE_MESSAGE).hasNoCause()
+                .isInstanceOfSatisfying(DiarySourceTextMigrationException.class,
+                        failure -> assertThat(failure.reason()).isEqualTo(Reason.ISOLATION_LEVEL_UNSUPPORTED));
 
         assertRejectedBeforeDatabaseWork();
         assertThat(connection.getTransactionIsolation()).isEqualTo(isolation);
@@ -212,7 +215,9 @@ class DiarySourceTextMigrationTransactionTest {
 
         assertThatThrownBy(() -> migration.migrate(1, 1))
                 .isExactlyInstanceOf(DiarySourceTextMigrationException.class)
-                .hasMessage(FAILURE_MESSAGE).hasNoCause();
+                .hasMessage(FAILURE_MESSAGE).hasNoCause()
+                .isInstanceOfSatisfying(DiarySourceTextMigrationException.class,
+                        failure -> assertThat(failure.reason()).isEqualTo(Reason.DATABASE_OPERATION_FAILED));
 
         assertRejectedBeforeDatabaseWork();
         assertThat(autoCommit).isTrue();
