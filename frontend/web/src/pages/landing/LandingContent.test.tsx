@@ -47,7 +47,7 @@ afterEach(() => {
 });
 
 describe('브랜드 소개와 체험을 연결하는 랜딩', () => {
-  it('첫 화면에서는 체험을 주 행동으로 안내하고 로그인은 기존 OAuth로 연결한다', () => {
+  it('첫 화면에서는 공개 피드를 주 행동으로 안내하고 체험과 로그인을 제공한다', () => {
     render(
       <LandingContent trialSection={<textarea aria-label="체험 내용" />} />,
     );
@@ -55,9 +55,17 @@ describe('브랜드 소개와 체험을 연결하는 랜딩', () => {
       name: /우리끼리 통하는\s*네컷만화/,
     });
     expect(
-      within(hero).getByRole('button', { name: '네컷만화 만들어 보기' }),
+      within(hero).getByRole('button', { name: '직접 만들어 보기' }),
     ).toBeInTheDocument();
-    expect(within(hero).queryByRole('link')).not.toBeInTheDocument();
+    expect(
+      within(hero).getByRole('link', { name: '피드 보러 가기' }),
+    ).toHaveAttribute('href', '/');
+    expect(
+      within(hero).getByText('로그인 없이 바로 구경할 수 있어요.'),
+    ).toBeInTheDocument();
+    expect(
+      within(hero).getByText(/이 화면으로 돌아오려면 뒤로가기를/),
+    ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '로그인' })).toHaveAttribute(
       'href',
       '/oauth2/authorization/kakao',
@@ -71,9 +79,7 @@ describe('브랜드 소개와 체험을 연결하는 랜딩', () => {
     render(
       <LandingContent trialSection={<textarea aria-label="체험 내용" />} />,
     );
-    await user.click(
-      screen.getByRole('button', { name: '네컷만화 만들어 보기' }),
-    );
+    await user.click(screen.getByRole('button', { name: '직접 만들어 보기' }));
     expect(scrollTo).toHaveBeenCalledWith({
       top: expect.any(Number),
       behavior: 'smooth',

@@ -55,6 +55,12 @@ export const FEED_MOCK_CSRF_TOKEN = 'mock-csrf-token';
 const categories: readonly MockCategory[] = [
   { id: 1, name: '일상', sortOrder: 0, active: true },
   { id: 2, name: '우테코', sortOrder: 1, active: true },
+  { id: 3, name: '싸피', sortOrder: 2, active: true },
+  { id: 4, name: '소마', sortOrder: 3, active: true },
+  { id: 5, name: '현대', sortOrder: 4, active: true },
+  { id: 6, name: '개발', sortOrder: 5, active: true },
+  { id: 7, name: '여행', sortOrder: 6, active: true },
+  { id: 8, name: '취미', sortOrder: 7, active: true },
 ];
 
 const createInitialFeeds = (): MockFeed[] => {
