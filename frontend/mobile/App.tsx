@@ -7,6 +7,7 @@ export default function App() {
       <WebView
         style={{ flex: 1 }}
         source={{ uri: 'https://www.harudle.com/' }}
+        allowsBackForwardNavigationGestures
       />
     </SafeAreaView>
   );
