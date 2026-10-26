@@ -16,6 +16,7 @@ import java.util.UUID;
 @Table(name = "users")
 public class User {
     private static final int DEFAULT_DAILY_GENERATION_LIMIT = 3;
+    private static final int MAX_PROFILE_IMAGE_OBJECT_KEY_LENGTH = 1024;
 
     @Id
     private UUID id;
@@ -31,6 +32,9 @@ public class User {
 
     @Column(name = "profile_image_code")
     private Short profileImageCode;
+
+    @Column(name = "profile_image_object_key", length = MAX_PROFILE_IMAGE_OBJECT_KEY_LENGTH)
+    private String profileImageObjectKey;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -98,6 +102,37 @@ public class User {
         this.updatedAt = now;
     }
 
+    public void changeDefaultProfileImage(int imageCode, Instant now) {
+        Objects.requireNonNull(now, "now는 필수입니다.");
+
+        if (this.nickname == null || this.profileImageCode == null) {
+            throw new IllegalStateException("공개 프로필을 먼저 배정해야 합니다.");
+        }
+
+        this.profileImageCode = ProfileImageCodePolicy.validateAndConvert(imageCode);
+        this.profileImageObjectKey = null;
+        this.updatedAt = now;
+    }
+
+    public void changeUploadedProfileImage(String imageObjectKey, Instant now) {
+        Objects.requireNonNull(now, "now는 필수입니다.");
+
+        if (this.nickname == null || this.profileImageCode == null) {
+            throw new IllegalStateException("공개 프로필을 먼저 배정해야 합니다.");
+        }
+
+        if (imageObjectKey == null || imageObjectKey.isBlank()) {
+            throw new IllegalArgumentException("프로필 이미지 저장 경로는 필수입니다.");
+        }
+
+        if (imageObjectKey.length() > MAX_PROFILE_IMAGE_OBJECT_KEY_LENGTH) {
+            throw new IllegalArgumentException("프로필 이미지 저장 경로는 1024자 이하여야 합니다.");
+        }
+
+        this.profileImageObjectKey = imageObjectKey;
+        this.updatedAt = now;
+    }
+
     public boolean isDeleted() {
         return deletedAt != null;
     }
@@ -120,6 +155,10 @@ public class User {
 
     public Short getProfileImageCode() {
         return profileImageCode;
+    }
+
+    public String getProfileImageObjectKey() {
+        return profileImageObjectKey;
     }
 
     public UserRole getRole() {

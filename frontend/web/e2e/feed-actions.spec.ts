@@ -1,3 +1,9 @@
+import {
+  MOCK_SCENARIO_HEADER,
+  MOCK_SCENARIOS,
+} from '../src/mocks/mockScenarios';
+import { FEED_ACTION_COPY } from '../src/shared/feed/copy';
+import { ERROR_MESSAGES } from '../src/shared/errorMessage';
 import { expect, test } from '@playwright/test';
 import { AUTHENTICATED_STORAGE_STATE } from './auth';
 
@@ -27,7 +33,7 @@ test('공유 바텀시트에서 공개 링크를 복사한다', async ({ page, c
   await expect(sheet).toBeVisible();
   await page.screenshot({ path: 'test-results/feed-link-copied.png' });
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
-    `${new URL(page.url()).origin}/feeds/00000000-0000-4000-8000-000000000002`,
+    `${new URL(page.url()).origin}/feeds/00000000-0000-4000-8000-000000000002?utm_source=feed_share`,
   );
   await expect(sheet.getByRole('button', { name: '링크 복사' })).toBeVisible();
 });
@@ -39,9 +45,9 @@ test('본인 피드 삭제를 취소하거나 확인하고 성공한 항목만 �
   const articles = page.getByRole('article');
   await expect(articles).toHaveCount(20);
   const ownFeed = articles
-    .filter({ has: page.locator('header button') })
+    .filter({ has: page.getByRole('button', { name: '옵션 더보기 아이콘' }) })
     .first();
-  await ownFeed.locator('header').getByRole('button').click();
+  await ownFeed.getByRole('button', { name: '옵션 더보기 아이콘' }).click();
   await page
     .getByRole('dialog')
     .filter({
@@ -59,7 +65,7 @@ test('본인 피드 삭제를 취소하거나 확인하고 성공한 항목만 �
   await confirm.getByRole('button', { name: '취소' }).click();
   await expect(articles).toHaveCount(20);
 
-  await ownFeed.locator('header').getByRole('button').click();
+  await ownFeed.getByRole('button', { name: '옵션 더보기 아이콘' }).click();
   await page
     .getByRole('dialog')
     .filter({
@@ -173,4 +179,59 @@ test('더 보기 완료 후 늦게 도착한 좋아요 응답이 목록을 이�
     page.getByRole('button', { name: '더 보기', exact: true }),
   ).toHaveCount(0);
   expect(listRequests).toHaveLength(requestCount);
+});
+
+test('피드 목록에서 피드 삭제: 실패하면 열린 모달 안에 오류를 표시하고 재시도할 수 있다', async ({
+  page,
+}): Promise<void> => {
+  await page.setExtraHTTPHeaders({
+    [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.feedDeleteFailure,
+  });
+  await page.goto('/');
+  await page
+    .getByRole('button', { name: '옵션 더보기 아이콘' })
+    .first()
+    .click();
+  await page
+    .getByRole('dialog')
+    .filter({
+      has: page.getByRole('heading', {
+        name: FEED_ACTION_COPY.manageTitle,
+        exact: true,
+      }),
+    })
+    .getByRole('button', { name: /피드 삭제$/ })
+    .click();
+  const modal = page.getByRole('dialog').filter({
+    has: page.getByRole('heading', {
+      name: FEED_ACTION_COPY.deleteConfirmTitle,
+      exact: true,
+    }),
+  });
+  const submit = modal.getByRole('button', {
+    name: FEED_ACTION_COPY.deleteAction,
+    exact: true,
+  });
+  await submit.click();
+
+  await expect(modal).toBeVisible();
+  await expect(modal.getByRole('alert')).toHaveText(
+    ERROR_MESSAGES.FEED_DELETION_FAILED,
+  );
+  await expect(modal.getByRole('alert')).toBeVisible();
+  await expect(
+    page.getByText(ERROR_MESSAGES.FEED_DELETION_FAILED, { exact: true }),
+  ).toHaveCount(1);
+  await expect(page).toHaveURL('/');
+  await expect(
+    modal.getByRole('button', { name: '취소', exact: true }),
+  ).toBeEnabled();
+  await expect(submit).toBeEnabled();
+
+  await page.setExtraHTTPHeaders({});
+  await submit.click();
+  await expect(modal).toBeHidden();
+  await expect(
+    page.getByText(ERROR_MESSAGES.FEED_DELETION_FAILED, { exact: true }),
+  ).toHaveCount(0);
 });

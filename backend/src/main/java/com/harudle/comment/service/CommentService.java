@@ -66,7 +66,7 @@ public class CommentService {
         validateMember(actorId);
         Objects.requireNonNull(feedId, "피드 ID는 필수입니다.");
         String normalized = CommentContent.normalize(content);
-        Target target = feedInteractionPort.lockActive(feedId);
+        Target target = feedInteractionPort.lockActiveForInteraction(feedId, actorId);
         Profile profile = profilesFor(Set.of(actorId)).get(actorId);
         Instant now = clock.instant();
         CommentSnapshot comment = commentRepository.create(UUID.randomUUID(), feedId, actorId, normalized, now);
@@ -82,7 +82,7 @@ public class CommentService {
         if (size < 1 || size > 50) {
             throw new IllegalArgumentException("댓글 페이지 크기는 1~50이어야 합니다.");
         }
-        if (!commentRepository.existsVisibleFeed(feedId)) {
+        if (!commentRepository.existsVisibleFeed(feedId, viewerId)) {
             throw new FeedNotFoundException();
         }
         List<CommentSnapshot> found = commentRepository.findAfter(feedId, cursorCodec.decode(feedId, cursor), size + 1);

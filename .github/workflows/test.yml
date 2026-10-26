@@ -1,6 +1,16 @@
 name: Test
 
 on:
+  push:
+    branches:
+      - develop-backend
+    paths:
+      - "backend/src/**"
+      - "backend/*.gradle*"
+      - "backend/gradle.properties"
+      - "backend/gradle/**"
+      - "backend/gradlew*"
+      - ".github/workflows/test.yml"
   pull_request:
     branches:
       - dev
@@ -13,12 +23,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: test-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: test-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   monitoring-config:
     name: Monitoring deployment config
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -73,7 +84,7 @@ jobs:
           grep -Fq 'Image environment mismatch: DEPLOY_ENV.' /tmp/image-environment-error
 
   backend-test:
-    name: Backend Test
+    name: ${{ github.event_name == 'push' && 'Backend Compile Cache' || 'Backend Test' }}
     if: github.base_ref != 'develop-frontend'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -95,32 +106,77 @@ jobs:
         with:
           distribution: corretto
           java-version: "21"
-          cache: gradle
-          cache-dependency-path: |
-            backend/*.gradle*
-            backend/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: false
 
       - name: Verify Docker
+        if: github.event_name != 'push'
         run: docker info
 
+      - name: Test CodeBuild backend cache (offline)
+        if: github.event_name != 'push'
+        run: bash ../deploy/scripts/test_codebuild_backend.sh
+
       - name: Test deployment image environment
+        if: github.event_name != 'push'
         run: bash ../deploy/scripts/test_image_environment.sh
 
       - name: Install WebP tools
+        if: github.event_name != 'push'
         run: |
           sudo apt-get update
           sudo apt-get install -y webp
           cwebp -version
           dwebp -version
 
-      - name: Run backend tests
+      - name: Compile backend for shared cache
+        if: github.event_name == 'push'
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon test
+          ./gradlew --no-daemon --console=plain --build-cache classes testClasses
+
+      - name: Run backend tests
+        if: github.event_name != 'push'
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --console=plain --build-cache test --rerun
+
+  codex-image-worker-test:
+    name: Codex image worker (offline)
+    if: github.base_ref != 'develop-frontend'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: backend/codex-image-worker
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: backend/codex-image-worker/package-lock.json
+
+      - name: Install worker dependencies
+        run: npm ci
+
+      - name: Test worker without OAuth or external inference
+        run: npm test
+
+      - name: Test diagnostic secret masking
+        run: python3 -m unittest discover -s ../tools/codex-image-poc -p 'test_*.py'
 
   frontend-test:
     name: Frontend Test
-    if: github.base_ref != 'develop-backend'
+    if: github.event_name != 'push' && github.base_ref != 'develop-backend'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -147,7 +203,4 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run frontend checks
-        run: |
-          pnpm --dir web typecheck
-          pnpm --dir web lint
-          pnpm --dir web test --ci --runInBand
+        run: pnpm --dir web check

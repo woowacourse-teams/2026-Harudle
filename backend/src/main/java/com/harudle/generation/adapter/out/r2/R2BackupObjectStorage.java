@@ -186,7 +186,11 @@ public final class R2BackupObjectStorage implements BackupObjectStorage {
 
     @Override
     public ImageAccessUrl createAccessUrl(String objectKey) {
-        requireKey("presign_get_object", objectKey);
+        try {
+            keyPolicy.requireReadable(objectKey);
+        } catch (IllegalArgumentException exception) {
+            throw failure("presign_get_object", "invalid", FailureType.REQUEST_VALIDATION_ERROR, exception);
+        }
         try {
             PresignedGetObjectRequest signed = presigner.presignGetObject(GetObjectPresignRequest.builder()
                     .signatureDuration(properties.accessUrlTtl())

@@ -69,6 +69,9 @@ class CommentOpenApiTest {
                 .andExpect(jsonPath(author + ".nickname.type").value("string"))
                 .andExpect(jsonPath(author + ".profileImageUrl.type").value("string"))
                 .andExpect(jsonPath(author + ".profileImageUrl.nullable").value(true))
-                .andExpect(jsonPath(author + ".profileImageUrl.format").value("uri"));
+                .andExpect(jsonPath(author + ".profileImageUrl.format").value("uri"))
+                .andExpect(jsonPath(author + ".profileImageUrlExpiresAt.type").value("string"))
+                .andExpect(jsonPath(author + ".profileImageUrlExpiresAt.format").value("date-time"))
+                .andExpect(jsonPath(author + ".profileImageUrlExpiresAt.nullable").value(true));
     }
 }

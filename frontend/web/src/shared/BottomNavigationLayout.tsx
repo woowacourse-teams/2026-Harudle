@@ -6,9 +6,13 @@ import BottomNavigation from './BottomNavigation';
 
 interface BottomNavigationLayoutProps {
   readonly children: ReactNode;
+  readonly headerRight?: ReactNode;
 }
 
-const BottomNavigationLayout = ({ children }: BottomNavigationLayoutProps) => {
+const BottomNavigationLayout = ({
+  children,
+  headerRight,
+}: BottomNavigationLayoutProps) => {
   const navigate = useNavigate();
 
   return (
@@ -23,6 +27,7 @@ const BottomNavigationLayout = ({ children }: BottomNavigationLayoutProps) => {
         >
           <img css={logoStyle} src={harudleLogo} alt="하루들" />
         </button>
+        {headerRight && <div css={headerRightStyle}>{headerRight}</div>}
       </header>
 
       {children}
@@ -41,6 +46,7 @@ const layoutStyle = css`
 `;
 
 const pageHeaderStyle = css`
+  position: relative;
   width: 100%;
   height: 56px;
 `;
@@ -49,8 +55,9 @@ const logoButtonStyle = css`
   display: flex;
   justify-content: center;
   align-items: center;
-  width: 100%;
+  width: fit-content;
   height: 100%;
+  margin: 0 auto;
   border: none;
   background: none;
   cursor: pointer;
@@ -59,4 +66,13 @@ const logoButtonStyle = css`
 const logoStyle = css`
   width: 106px;
   height: 71px;
+`;
+
+const headerRightStyle = css`
+  position: absolute;
+  top: 0;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  height: 100%;
 `;

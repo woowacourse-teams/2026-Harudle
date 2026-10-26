@@ -24,6 +24,7 @@ class NotificationOpenApiTest {
     @Test
     void documentsAuthenticatedListWithGlobalUnreadCountAndIntegrationError() throws Exception {
         String operation = "$.paths['/api/v1/notifications'].get";
+        String expiry = "$.components.schemas.NotificationActorResponse.properties.profileImageUrlExpiresAt";
         mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk())
                 .andExpect(jsonPath(operation + ".description").value(containsString("좋아요 취소 시 숨기며")))
                 .andExpect(jsonPath(operation + ".description").value(containsString("피드 작성자가 탈퇴한 알림")))
@@ -40,7 +41,11 @@ class NotificationOpenApiTest {
                         .value("int64"))
                 .andExpect(jsonPath("$.components.schemas.NotificationResponse.properties.read.type").value("boolean"))
                 .andExpect(jsonPath("$.components.schemas.NotificationResponse.properties.type.enum[0]").value("LIKE"))
-                .andExpect(jsonPath("$.components.schemas.NotificationResponse.properties.type.enum[1]").value("COMMENT"));
+                .andExpect(jsonPath("$.components.schemas.NotificationResponse.properties.type.enum[1]").value("COMMENT"))
+                .andExpect(jsonPath(expiry + ".format")
+                        .value("date-time"))
+                .andExpect(jsonPath(expiry + ".nullable")
+                        .value(true));
     }
 
     @Test
