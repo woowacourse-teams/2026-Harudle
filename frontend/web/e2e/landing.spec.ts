@@ -27,6 +27,35 @@ const generateGuestDiary = async (page: Page): Promise<void> => {
 };
 
 test.describe('통합 랜딩의 1회 체험', () => {
+  test('첫 방문의 첫 화면에서 로그인 없이 공개 피드로 이동한다', async ({
+    page,
+  }): Promise<void> => {
+    await page.setExtraHTTPHeaders({
+      [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.authRefreshFailure,
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/');
+    await expect(page).toHaveURL('/landing');
+    const hero = page.getByRole('region', {
+      name: /우리끼리 통하는\s*네컷만화/,
+    });
+    const feedLink = hero.getByRole('link', { name: '피드 보러 가기' });
+    await expect(feedLink).toBeInViewport({ ratio: 1 });
+    await feedLink.click();
+    await expect(page).toHaveURL('/');
+    await expect(page.getByRole('article')).toHaveCount(20);
+    expect(
+      await page.evaluate((): string | null =>
+        localStorage.getItem('harudle.has-completed-oauth'),
+      ),
+    ).toBeNull();
+    await page.goBack();
+    await expect(page).toHaveURL('/landing');
+    await expect(
+      page.getByRole('link', { name: '피드 보러 가기' }),
+    ).toBeInViewport();
+  });
+
   test('소개에서 바로 생성하고 재방문 시 추가 생성을 막는다', async ({
     page,
   }) => {
@@ -47,7 +76,7 @@ test.describe('통합 랜딩의 1회 체험', () => {
         ),
       )
       .toBe(0);
-    await page.getByRole('button', { name: '네컷만화 만들어 보기' }).click();
+    await page.getByRole('button', { name: '직접 만들어 보기' }).click();
     await expect(textbox).toBeFocused();
     await expect
       .poll(() => page.locator('main').evaluate((element) => element.scrollTop))
@@ -322,12 +351,15 @@ test.describe('랜딩 스크롤과 채팅 연출', () => {
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/landing');
-    const sticky = page.getByRole('complementary', { name: '빠른 체험' });
+    const sticky = page.getByRole('complementary', { name: '빠른 피드 이동' });
     await expect(sticky).toHaveCount(0);
     await page.getByRole('button', { name: '아래 예시 보기' }).click();
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
     await expect(sticky).toBeVisible();
-    await sticky.getByRole('button').click();
+    await expect(
+      sticky.getByRole('link', { name: '피드 보러 가기' }),
+    ).toHaveAttribute('href', '/');
+    await page.getByRole('button', { name: '직접 만들어 보기' }).click();
     const input = page.getByRole('textbox', { name: '네컷만화로 만들 내용' });
     await expect(input).toBeFocused();
     await expect(input).toBeVisible();
