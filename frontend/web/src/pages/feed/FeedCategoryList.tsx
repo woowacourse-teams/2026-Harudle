@@ -49,7 +49,13 @@ const FeedCategoryList = ({
 
   return (
     <div css={feedCategoryListStyle}>
-      <div css={categoryOptionsStyle}>
+      <div
+        css={categoryOptionsStyle}
+        onWheel={(event): void => {
+          if (event.deltaX !== 0 || event.shiftKey || event.ctrlKey) return;
+          event.currentTarget.scrollLeft += event.deltaY;
+        }}
+      >
         <FeedCategoryItem
           label={FEED_COPY.allCategories}
           isSelected={selectedCategoryId === undefined}
@@ -82,7 +88,8 @@ const feedCategoryListStyle = css`
 const categoryOptionsStyle = css`
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 16px;
+  min-width: 0;
   height: 48px;
   overflow-x: auto;
   scrollbar-width: none;

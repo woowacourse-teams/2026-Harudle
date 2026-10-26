@@ -3,7 +3,7 @@ import { useEffect, useState, type RefObject } from 'react';
 // 내부 스크롤을 기준으로 첫 버튼을 지난 뒤부터 체험 섹션 전까지만 안내한다.
 const useLandingStickyCta = (
   pageRef: RefObject<HTMLElement | null>,
-  heroActionRef: RefObject<HTMLButtonElement | null>,
+  heroActionRef: RefObject<HTMLElement | null>,
   finalRef: RefObject<HTMLElement | null>,
 ): boolean => {
   const [visible, setVisible] = useState(false);
