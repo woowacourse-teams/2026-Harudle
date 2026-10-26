@@ -379,3 +379,7 @@ openssl rand -base64 32
 ```
 
 운영 환경에서는 `SESSION_COOKIE_SECURE=true`, `REFRESH_COOKIE_SECURE=true`를 유지합니다. 컨테이너 Nginx는 `/api/**`, `/oauth2/**`, `/login/oauth2/**` 요청을 백엔드로 전달합니다.
+
+## 요청 지연을 확인하는 로그
+
+백엔드는 요청 완료 로그에 S3와 R2 확인 횟수, URL 서명 시간, 피드 데이터 조회 시간을 남깁니다. 프론트엔드 Nginx는 같은 응답 추적 ID와 프록시 시간을 JSON으로 기록합니다. 호스트 Nginx의 실제 HTTPS 설정과 CloudWatch 필터는 별도로 적용합니다. [적용과 확인 순서](monitoring/request-latency.md)를 참고합니다.
