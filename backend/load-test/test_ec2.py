@@ -27,12 +27,12 @@ class Ec2PreparationTest(unittest.TestCase):
                          'PGUSER': 'dev-user', 'PGPASSWORD': self.values['DB_PASSWORD'],
                          'PGSSLMODE': 'require', 'PGCONNECT_TIMEOUT': '10'}
 
-    def read_backend(self, values, container='a' * 64):
+    def read_backend(self, values, container='a' * 64, require_writer=False):
         responses = [subprocess.CompletedProcess([], 0, container),
                      subprocess.CompletedProcess([], 0, json.dumps([f'{k}={v}' for k, v in values.items()]))]
         with patch.object(ec2.shutil, 'which', return_value='/bin/tool'):
             with patch.object(ec2.subprocess, 'run', side_effect=responses):
-                return ec2.backend_settings()
+                return ec2.backend_settings(require_writer=require_writer)
 
     def test_settings_come_from_the_running_backend_and_preserve_password(self):
         container, settings = self.read_backend(self.values)
@@ -50,6 +50,18 @@ class Ec2PreparationTest(unittest.TestCase):
         for container in ['', 'a' * 64 + '\n' + 'b' * 64]:
             with self.subTest(container=container), self.assertRaises(ValueError):
                 self.read_backend(self.values, container)
+
+    def test_preparation_requires_writer_even_when_reusing_an_existing_baseline(self):
+        for mode in [None, 'reader', 'unexpected']:
+            values = {**self.values}
+            if mode is not None:
+                values['DIARY_SOURCE_TEXT_RELEASE_MODE'] = mode
+            with self.subTest(mode=mode), self.assertRaises(ValueError):
+                self.read_backend(values, require_writer=True)
+        self.assertEqual(self.read_backend({**self.values, 'DIARY_SOURCE_TEXT_RELEASE_MODE': 'writer'},
+                                          require_writer=True)[1], self.settings)
+        self.assertEqual(self.read_backend({**self.values, 'DIARY_SOURCE_TEXT_RELEASE_MODE': 'reader'})[1],
+                         self.settings)
 
     def test_docker_runs_only_psql_and_keeps_password_out_of_arguments(self):
         with patch.object(ec2.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, 't\n')) as run:

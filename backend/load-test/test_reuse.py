@@ -20,6 +20,7 @@ import cleanup_stopped
 import ec2
 import prepare
 import transfer
+from fixture_test_support import encrypted_test_rows
 
 
 class ReusableMembersTest(unittest.TestCase):
@@ -49,7 +50,7 @@ class ReusableMembersTest(unittest.TestCase):
 
     def reset(self, name):
         directory = self.root / name
-        ec2.reset_run(directory, self.group, self.settings, self.sql, True)
+        ec2.reset_run(directory, self.group, self.settings, self.sql, True, encrypted_test_rows)
         return directory
 
     def test_same_members_data_and_images_are_reused_with_new_idempotency_keys(self):
@@ -115,7 +116,7 @@ class ReusableMembersTest(unittest.TestCase):
 
         self.delete.side_effect = lambda *args: steps.append('s3-cleanup')
         self.upload.side_effect = lambda *args: steps.append('upload')
-        ec2.reset_run(self.root / 'peak1', self.group, self.settings, sql, True)
+        ec2.reset_run(self.root / 'peak1', self.group, self.settings, sql, True, encrypted_test_rows)
         self.assertEqual(steps, ['db-cleanup', 'login'])
         self.upload.assert_called_once()
         self.delete.assert_not_called()
@@ -130,7 +131,7 @@ class ReusableMembersTest(unittest.TestCase):
             return self.sql(sql)
 
         with self.assertRaises(subprocess.CalledProcessError):
-            ec2.reset_run(self.root / 'peak1', self.group, self.settings, sql, True)
+            ec2.reset_run(self.root / 'peak1', self.group, self.settings, sql, True, encrypted_test_rows)
         self.delete.assert_not_called()
         self.upload.assert_not_called()
         self.assertTrue((directory / 'cleanup.json').exists())
@@ -183,7 +184,8 @@ class ReusableMembersTest(unittest.TestCase):
     def test_failed_seed_can_be_cleaned_and_retried_with_new_run_name(self):
         with self.assertRaises(subprocess.CalledProcessError):
             ec2.reset_run(self.root / 'smoke1', self.group, self.settings,
-                          Mock(side_effect=['t', '', subprocess.CalledProcessError(1, 'psql')]), True)
+                          Mock(side_effect=['t', '', subprocess.CalledProcessError(1, 'psql')]),
+                          True, encrypted_test_rows)
         self.assertFalse((self.group / 'baseline' / '.ready').exists())
         self.reset('smoke2')
         self.purge.assert_called_once()
@@ -237,7 +239,13 @@ class ReusableMembersPostgresTest(unittest.TestCase):
                 time.sleep(0.25)
         migrations = Path(__file__).resolve().parents[1] / 'src/main/resources/db/migration'
         for path in sorted(migrations.glob('V*__*.sql'), key=lambda path: int(path.name.split('__')[0][1:])):
-            self.sql(path.read_text())
+            configuration = path.with_name(path.name + '.conf')
+            nontransactional = (configuration.is_file()
+                                and 'executeInTransaction=false' in configuration.read_text().replace(' ', ''))
+            sql = path.read_text()
+            # Match Flyway: V25's ON COMMIT DROP temp table spans several statements;
+            # V29's explicitly nontransactional concurrent index must stay outside a transaction.
+            self.sql(sql if nontransactional else 'BEGIN;\n' + sql + '\nCOMMIT;')
         self.sql("INSERT INTO generation_prompts (storyboard_prompt_text, image_style_prompt_text, image_asset_object_key) "
                  "VALUES ('test', 'test', 'test');")
 
@@ -258,7 +266,7 @@ class ReusableMembersPostgresTest(unittest.TestCase):
         settings = {'PGHOST': 'isolated', 'PGPORT': '5432', 'PGDATABASE': 'harudle_dev'}
         ec2.prepare_run(group, settings, self.sql)
         with patch.object(ec2, 'upload'):
-            ec2.reset_run(root / 'peak1', group, settings, self.sql, True)
+            ec2.reset_run(root / 'peak1', group, settings, self.sql, True, encrypted_test_rows)
         return assets.load_fixture(root / 'peak1')
 
     def unfinished_generation(self, fixture, key, status='PENDING', usage_date='CURRENT_DATE'):
@@ -266,6 +274,75 @@ class ReusableMembersPostgresTest(unittest.TestCase):
         self.sql(f"UPDATE diary_generations SET status = '{status}', image_object_key = NULL, "
                  f"completed_at = NULL, usage_date = {usage_date} WHERE id = '{record['id']}';")
         return record
+
+    def test_failed_run_registration_recovers_after_a_later_run_and_allows_baseline_purge(self):
+        with tempfile.TemporaryDirectory() as temporary, contextlib.redirect_stdout(io.StringIO()):
+            root = Path(temporary)
+            group, failed, completed = root / 'members', root / 'failed', root / 'completed'
+            settings = {'PGHOST': 'isolated', 'PGPORT': '5432', 'PGDATABASE': 'harudle_dev'}
+            ec2.prepare_run(group, settings, self.sql)
+            with patch.object(ec2, 'upload'), patch.object(cleanup, 'delete_images') as delete, \
+                    patch.object(ec2, 'delete_images') as purge:
+                with patch.object(ec2, 'set_active_run', side_effect=OSError('public registration interruption')):
+                    with self.assertRaises(OSError):
+                        ec2.reset_run(failed, group, settings, self.sql, True, encrypted_test_rows)
+                ec2.reset_run(completed, group, settings, self.sql, True, encrypted_test_rows)
+                completed_fixture = assets.load_fixture(completed)
+                generated = self.add_generation(completed_fixture, completed_fixture['members'][0]['idempotencyKey'])
+                snapshot = """SELECT jsonb_build_object(
+                    'diaries', (SELECT jsonb_agg(d ORDER BY id) FROM diaries d),
+                    'generations', (SELECT jsonb_agg(g ORDER BY id) FROM diary_generations g),
+                    'feeds', (SELECT jsonb_agg(f ORDER BY id) FROM feeds f),
+                    'tokens', (SELECT count(*) FROM refresh_tokens));"""
+                before = self.sql(snapshot)
+                members = (group / 'members.json').read_bytes()
+                delete.reset_mock()
+                ec2.cleanup_run(failed, settings, self.sql, True)
+                self.assertEqual(self.sql(snapshot), before)
+                self.assertTrue((failed / '.cleaned').is_file())
+                self.assertEqual((group / 'active-run').read_text(), completed.name)
+                self.assertEqual((group / 'members.json').read_bytes(), members)
+                delete.assert_not_called()
+                purge.assert_not_called()
+                ec2.cleanup_run(completed, settings, self.sql, True)
+                self.assertEqual(self.sql(f"SELECT COUNT(*) FROM diary_generations WHERE id = '{generated['id']}';"), '0')
+                ec2.purge_baseline(group, settings, self.sql, True)
+                self.assertEqual(self.sql('SELECT COUNT(*) FROM diaries;'), '0')
+                self.assertEqual(self.sql('SELECT COUNT(*) FROM users;'), '200')
+                self.assertEqual((group / 'members.json').read_bytes(), members)
+
+    def test_recovery_detects_work_in_every_status_even_for_deleted_diary_or_changed_owner(self):
+        with tempfile.TemporaryDirectory() as temporary, contextlib.redirect_stdout(io.StringIO()):
+            root = Path(temporary)
+            group, failed = root / 'members', root / 'failed'
+            settings = {'PGHOST': 'isolated', 'PGPORT': '5432', 'PGDATABASE': 'harudle_dev'}
+            ec2.prepare_run(group, settings, self.sql)
+            with patch.object(ec2, 'upload'), patch.object(cleanup, 'delete_images') as delete:
+                with patch.object(ec2, 'set_active_run', side_effect=OSError('public registration interruption')):
+                    with self.assertRaises(OSError):
+                        ec2.reset_run(failed, group, settings, self.sql, True, encrypted_test_rows)
+                fixture = assets.load_fixture(failed)
+                record = self.add_generation(fixture, fixture['members'][0]['idempotencyKey'])
+                for status in ('PENDING', 'PROCESSING', 'FAILED', 'SUCCEEDED'):
+                    self.sql(f"UPDATE diary_generations SET status = '{status}' WHERE id = '{record['id']}';")
+                    with self.subTest(status=status), self.assertRaises(ValueError):
+                        ec2.cleanup_run(failed, settings, self.sql, True)
+                    proof = json.loads(self.sql(cleanup.preparation_recovery_sql(fixture)))
+                    self.assertTrue(proof['membersValid'])
+                    self.assertTrue(proof['workExists'])
+                outsider = str(uuid.uuid4())
+                self.sql(f"INSERT INTO users (id, name, nickname, profile_image_code, role) VALUES "
+                         f"('{outsider}', '다른회원', '복구검증다른회원', 1, 'USER'); "
+                         f"UPDATE diaries SET user_id = '{outsider}', deleted_at = CURRENT_TIMESTAMP "
+                         f"WHERE id = (SELECT diary_id FROM diary_generations WHERE id = '{record['id']}');")
+                with self.assertRaises(ValueError):
+                    ec2.cleanup_run(failed, settings, self.sql, True)
+                proof = json.loads(self.sql(cleanup.preparation_recovery_sql(fixture)))
+                self.assertTrue(proof['membersValid'])
+                self.assertTrue(proof['workExists'])
+                self.assertEqual(self.sql(f"SELECT COUNT(*) FROM diary_generations WHERE id = '{record['id']}';"), '1')
+                self.assertFalse((failed / '.cleaned').exists())
+                delete.assert_not_called()
 
     def test_stopped_cleanup_removes_only_run_unfinished_work_and_refunds_each_usage_date_once(self):
         with tempfile.TemporaryDirectory() as temporary, contextlib.redirect_stdout(io.StringIO()):
@@ -370,7 +447,7 @@ class ReusableMembersPostgresTest(unittest.TestCase):
                     record['id'] for record in assets.seed_records(fixture)))
 
             with patch.object(ec2, 'upload') as upload, patch.object(cleanup, 'delete_images', side_effect=s3_deleted) as delete:
-                ec2.reset_run(root / 'smoke1', group, settings, self.sql, True)
+                ec2.reset_run(root / 'smoke1', group, settings, self.sql, True, encrypted_test_rows)
                 first = assets.load_fixture(root / 'smoke1')
                 snapshot = """SELECT jsonb_build_object(
                     'diaries', (SELECT jsonb_agg(d ORDER BY id) FROM diaries d),
@@ -400,7 +477,7 @@ class ReusableMembersPostgresTest(unittest.TestCase):
                          f"('{account['id']}', '{'a' * 64}', CURRENT_TIMESTAMP + INTERVAL '1 day'); "
                          f"INSERT INTO daily_generation_usage (user_id, usage_date, used_count, limit_count) "
                          f"VALUES ('{account['id']}', CURRENT_DATE, 3, 3);")
-                ec2.reset_run(root / 'peak1', group, settings, self.sql, True)
+                ec2.reset_run(root / 'peak1', group, settings, self.sql, True, encrypted_test_rows)
                 self.assertEqual(delete.call_count, 1)
                 self.assertIn(generated, delete.call_args.args[1])
                 upload.assert_called_once()
@@ -429,7 +506,7 @@ class ReusableMembersPostgresTest(unittest.TestCase):
             ec2.prepare_run(group, settings, self.sql)
             with patch.object(ec2, 'upload'), patch.object(cleanup, 'delete_images') as delete:
                 directory = root / 'peak1'
-                ec2.reset_run(directory, group, settings, self.sql, True)
+                ec2.reset_run(directory, group, settings, self.sql, True, encrypted_test_rows)
                 fixture = assets.load_fixture(directory)
                 unknown = self.add_generation(fixture, str(uuid.uuid4()))
                 with self.assertRaises(subprocess.CalledProcessError):

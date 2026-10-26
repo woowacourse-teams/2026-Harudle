@@ -16,6 +16,7 @@ import static org.mockito.Mockito.when;
 import com.harudle.support.DiarySourceTextTestSupport;
 import com.harudle.diary.domain.Diary;
 import com.harudle.diary.domain.DiarySourceTextCipher;
+import com.harudle.diary.infrastructure.crypto.DiarySourceTextCryptoException;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
@@ -449,17 +450,12 @@ class DiaryCreationClaimServiceTest {
         verify(diaryGenerationRepository, never()).saveAndFlush(any(DiaryGeneration.class));
     }
 
-    @ParameterizedTest
-    @ValueSource(ints = {0, 1})
-    @DisplayName("신규 작성 차단 시에도 기존 평문과 암호문 일기의 성공한 멱등 요청을 복원한다")
-    void replayLegacyAndEncryptedClaimsWhenWritesAreDisabled(int sourceTextVersion) {
+    @Test
+    @DisplayName("신규 작성 차단 시에도 암호문 일기의 성공한 멱등 요청을 복원한다")
+    void replayEncryptedClaimsWhenWritesAreDisabled() {
         claimService = createClaimService(false);
         CreateDiaryCommand command = createCommand("오늘의 일기");
         Diary diary = Diary.create(USER_ID, DIARY_DATE, command.sourceText(), DiarySourceTextTestSupport.cipher());
-        if (sourceTextVersion == 0) {
-            ReflectionTestUtils.setField(diary, "sourceText", command.sourceText());
-            ReflectionTestUtils.setField(diary, "sourceTextVersion", 0);
-        }
         DiaryGeneration generation = createGeneration(command, diary);
         generation.succeed(TestStoryboardFactory.create(), "generated/comic.png", NOW);
         when(diaryGenerationRepository.findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY))
@@ -480,6 +476,37 @@ class DiaryCreationClaimServiceTest {
     }
 
     @ParameterizedTest
+    @EnumSource(value = GenerationStatus.class, names = {"PENDING", "SUCCEEDED"})
+    @DisplayName("신규 작성 차단 중에도 전환하지 않은 평문 일기의 대기와 성공 재요청은 거절한다")
+    void rejectLegacyClaimsWhenWritesAreDisabled(GenerationStatus generationStatus) {
+        claimService = createClaimService(false);
+        CreateDiaryCommand command = createCommand("전환 전 일기");
+        Diary diary = Diary.create(USER_ID, DIARY_DATE, command.sourceText(), DiarySourceTextTestSupport.cipher());
+        ReflectionTestUtils.setField(diary, "sourceText", command.sourceText());
+        ReflectionTestUtils.setField(diary, "sourceTextVersion", 0);
+        DiaryGeneration generation = DiaryGeneration.pending(diary.getId(), 1L, IDEMPOTENCY_KEY,
+                requestFingerprintGenerator.generate(new GenerateDiaryImageCommand(
+                        USER_ID, diary.getId(), DIARY_DATE, command.sourceText(), IDEMPOTENCY_KEY
+                )), DIARY_DATE);
+        if (generationStatus == GenerationStatus.SUCCEEDED) {
+            generation.startProcessing();
+            generation.succeed(TestStoryboardFactory.create(), "generated/comic.png", NOW);
+        }
+        when(diaryGenerationRepository.findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY))
+                .thenReturn(Optional.of(generation));
+        when(diaryRepository.findByIdIncludingDeletedForUpdate(diary.getId())).thenReturn(Optional.of(diary));
+
+        assertThatThrownBy(() -> claimService.enqueue(command, false))
+                .isInstanceOf(DiarySourceTextCryptoException.class);
+        assertThatThrownBy(() -> claimService.findExistingClaim(command))
+                .isInstanceOf(DiarySourceTextCryptoException.class);
+
+        verify(sourceTextCipher, never()).decrypt(any(), any(), anyString(), anyInt());
+        verify(diaryRepository, never()).save(any(Diary.class));
+        verify(diaryGenerationRepository, never()).saveAndFlush(any(DiaryGeneration.class));
+    }
+
+    @ParameterizedTest
     @ValueSource(booleans = {true, false})
     @DisplayName("신규 작성 중지 시 비동기 접수도 저장과 수용량 계산 전에 거절한다")
     void refuseNewEnqueueBeforePersistenceWhenWritesAreDisabled(boolean generationAvailable) {
@@ -495,17 +522,12 @@ class DiaryCreationClaimServiceTest {
         verifyNoInteractions(diaryRepository, generationPromptRepository, sourceTextCipher, completionService, queueMetrics);
     }
 
-    @ParameterizedTest
-    @ValueSource(ints = {0, 1})
-    @DisplayName("신규 작성 중지 중에도 평문과 암호문 기존 대기 요청을 복원한다")
-    void replayPendingClaimsWhenWritesAreDisabled(int sourceTextVersion) {
+    @Test
+    @DisplayName("신규 작성 중지 중에도 기존 암호문 대기 요청을 복원한다")
+    void replayPendingClaimsWhenWritesAreDisabled() {
         claimService = createClaimService(false);
         CreateDiaryCommand command = createCommand("오늘의 일기");
         Diary diary = Diary.create(USER_ID, DIARY_DATE, command.sourceText(), DiarySourceTextTestSupport.cipher());
-        if (sourceTextVersion == 0) {
-            ReflectionTestUtils.setField(diary, "sourceText", command.sourceText());
-            ReflectionTestUtils.setField(diary, "sourceTextVersion", 0);
-        }
         GenerateDiaryImageCommand generationCommand = new GenerateDiaryImageCommand(
                 USER_ID, diary.getId(), DIARY_DATE, command.sourceText(), IDEMPOTENCY_KEY
         );

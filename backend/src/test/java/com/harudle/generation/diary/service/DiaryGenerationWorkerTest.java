@@ -102,11 +102,10 @@ class DiaryGenerationWorkerTest {
         verifyNoInteractions(completionService);
     }
 
-    @ParameterizedTest
-    @ValueSource(ints = {0, 1})
-    @DisplayName("기존 평문과 암호문 작업은 원문으로 실행하며 저장된 보호 지문과 일치한다")
-    void decryptStoredSourceAndPreserveProtectedFingerprint(int sourceTextVersion) {
-        Fixture fixture = processingGeneration(sourceTextVersion);
+    @Test
+    @DisplayName("암호문 작업은 원문으로 실행하며 저장된 보호 지문과 일치한다")
+    void decryptStoredSourceAndPreserveProtectedFingerprint() {
+        Fixture fixture = processingGeneration();
         stubInput(fixture);
         when(claimService.claim(1)).thenReturn(List.of(fixture.generation().getId()));
 
@@ -121,6 +120,20 @@ class DiaryGenerationWorkerTest {
         assertThat(fixture.generation().hasSameRequestFingerprint(fingerprint)).isTrue();
         assertThat(captor.getValue().toString()).doesNotContain(SOURCE_TEXT);
         verifyNoInteractions(completionService);
+    }
+
+    @Test
+    @DisplayName("전환하지 않은 평문 작업은 AI를 호출하지 않고 실패 처리하며 원문을 로그에 남기지 않는다")
+    void rejectLegacySourceBeforeGeneration(CapturedOutput output) {
+        Fixture fixture = processingGeneration(0);
+        stubInput(fixture);
+        when(claimService.claim(1)).thenReturn(List.of(fixture.generation().getId()));
+
+        worker(Runnable::run, 1).poll();
+
+        verify(generationExecutor, never()).generate(any(), any());
+        verify(completionService).fail(fixture.generation().getId(), GenerationErrorCode.GENERATION_INTERNAL_ERROR);
+        assertThat(output).doesNotContain(SOURCE_TEXT);
     }
 
     @Test
@@ -699,9 +712,9 @@ class DiaryGenerationWorkerTest {
         GenerateDiaryImageCommand command = new GenerateDiaryImageCommand(
                 diary.getUserId(), diary.getId(), diary.getDiaryDate(), SOURCE_TEXT, requestKey
         );
-        String fingerprint = diary.protectRequestFingerprint(
-                sourceTextCipher, new RequestFingerprintGenerator().generate(command)
-        );
+        String rawFingerprint = new RequestFingerprintGenerator().generate(command);
+        String fingerprint = sourceTextVersion == 0 ? rawFingerprint
+                : diary.protectRequestFingerprint(sourceTextCipher, rawFingerprint);
         DiaryGeneration generation = DiaryGeneration.pending(diary.getId(), 1L, requestKey, fingerprint, null);
         generation.startProcessing();
         return new Fixture(generation, diary, requestKey);

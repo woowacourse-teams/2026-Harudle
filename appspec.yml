@@ -20,6 +20,12 @@ files:
     destination: /opt/harudle/maintenance
   - source: deploy/scripts/run_profile_backfill.sh
     destination: /opt/harudle/maintenance
+  - source: deploy/scripts/run_diary_source_text_backfill.sh
+    destination: /opt/harudle/maintenance
+  - source: deploy/scripts/compose_environment.sh
+    destination: /opt/harudle/maintenance
+  - source: deploy/scripts/diary_key_verification.sh
+    destination: /opt/harudle/maintenance
   - source: backend/load-test
     destination: /opt/harudle/load-test
   - source: backend/src/main/resources/load-test-diary.png
