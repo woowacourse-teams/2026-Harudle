@@ -36,6 +36,7 @@ export interface ProblemDetails {
   readonly title: string;
   readonly status: ErrorStatus;
   readonly detail: string;
+  readonly action?: unknown;
   readonly instance: string;
   readonly code: string; // TODO: 정확하게
   readonly traceId?: string;
@@ -78,9 +79,10 @@ export const isProblemDetails = (value: unknown): value is ProblemDetails => {
 
 export class RequestError extends Error {
   constructor(public readonly problem: ProblemDetails) {
-    const displayErrorMessage = problem.errors
-      ? problem.errors[0].reason
-      : problem.detail;
+    const displayErrorMessage =
+      typeof problem.action === 'string' && problem.action.trim()
+        ? problem.action
+        : (problem.errors?.[0]?.reason ?? problem.detail);
     super(displayErrorMessage);
   }
 }
