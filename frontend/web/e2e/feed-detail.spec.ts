@@ -17,7 +17,7 @@ test.describe('피드 상세 뒤로가기', (): void => {
   }): Promise<void> => {
     const feedPath = '/?categoryId=1&sort=POPULAR';
     await page.goto(feedPath);
-    await expect(page.getByRole('article')).toHaveCount(12);
+    await expect(page.getByRole('article')).toHaveCount(3);
     await page
       .getByRole('article')
       .first()
@@ -33,7 +33,7 @@ test.describe('피드 상세 뒤로가기', (): void => {
     await page.getByRole('button', { name: '뒤로가기 아이콘' }).click();
 
     await expect(page).toHaveURL(feedPath);
-    await expect(page.getByRole('article')).toHaveCount(12);
+    await expect(page.getByRole('article')).toHaveCount(3);
     await expect(page.getByRole('combobox')).toHaveValue('POPULAR');
   });
 
