@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
+import { GENERATION_FAILURE_CODES } from '../../domain/diary/diaryGeneration';
 import {
   createGuestDiary,
   createGuestDiaryIdempotencyKey,
@@ -33,6 +34,19 @@ const pendingGuestDiaryResponse = {
     imageUrlExpiresAt: null,
     completedAt: null,
   },
+} as const;
+
+const pendingStatusResponse = {
+  id: guestDiaryResponse.generation.id,
+  status: 'PENDING',
+  diaryId: null,
+  errorCode: null,
+} as const;
+
+const succeededStatusResponse = {
+  ...pendingStatusResponse,
+  status: 'SUCCEEDED',
+  diaryId: guestDiaryResponse.id,
 } as const;
 
 const createResponse = (data: unknown, status: number): Response => {
@@ -146,16 +160,8 @@ describe('게스트 체험 API', () => {
       const fetchSpy = mockFetch([
         createResponse({ token: 'csrf-token' }, 200),
         createResponse(pendingGuestDiaryResponse, status),
-        createResponse(
-          {
-            ...pendingGuestDiaryResponse,
-            generation: {
-              ...pendingGuestDiaryResponse.generation,
-              status: 'PROCESSING',
-            },
-          },
-          200,
-        ),
+        createResponse({ ...pendingStatusResponse, status: 'PROCESSING' }, 200),
+        createResponse(succeededStatusResponse, 200),
         createResponse(guestDiaryResponse, 200),
       ]);
       const result = createGuestDiary({
@@ -170,7 +176,12 @@ describe('게스트 체험 API', () => {
       await jest.runAllTimersAsync();
       await assertion;
 
-      expect(fetchSpy).toHaveBeenCalledTimes(4);
+      expect(fetchSpy).toHaveBeenCalledTimes(5);
+      expect(fetchSpy).toHaveBeenNthCalledWith(
+        3,
+        `/api/v1/guest/diary-generations/${guestDiaryResponse.generation.id}`,
+        { credentials: 'include' },
+      );
       expect(fetchSpy).toHaveBeenLastCalledWith(
         `/api/v1/guest/diaries/${guestDiaryResponse.id}`,
         { credentials: 'include' },
@@ -182,6 +193,7 @@ describe('게스트 체험 API', () => {
     jest.useFakeTimers();
     mockFetch([
       createResponse(pendingGuestDiaryResponse, 200),
+      createResponse(succeededStatusResponse, 200),
       createResponse(guestDiaryResponse, 200),
     ]);
     const assertion = expect(
@@ -228,11 +240,12 @@ describe('게스트 체험 API', () => {
 
   it('대기 상태가 계속되면 제한 횟수 이후 폴링을 중단한다', async () => {
     jest.useFakeTimers();
-    const fetchSpy = mockFetch(
-      Array.from({ length: 61 }, (): Response =>
-        createResponse(pendingGuestDiaryResponse, 200),
+    const fetchSpy = mockFetch([
+      createResponse(pendingGuestDiaryResponse, 200),
+      ...Array.from({ length: 60 }, (): Response =>
+        createResponse(pendingStatusResponse, 200),
       ),
-    );
+    ]);
     const assertion = expect(
       getGuestDiary(guestDiaryResponse.id),
     ).rejects.toThrow('게스트 일기 결과를 불러오지 못했습니다');
@@ -240,6 +253,93 @@ describe('게스트 체험 API', () => {
     await jest.runAllTimersAsync();
     await assertion;
     expect(fetchSpy).toHaveBeenCalledTimes(61);
+  });
+
+  it.each(GENERATION_FAILURE_CODES)(
+    '접수 후 %s 실패의 action을 전달하고 일기 조회를 중단한다',
+    async (errorCode): Promise<void> => {
+      jest.useFakeTimers();
+      const action = '체험 생성에 실패했어요. 로그인 후 다시 생성해 주세요.';
+      const fetchSpy = mockFetch([
+        createResponse(pendingGuestDiaryResponse, 200),
+        createResponse(
+          { ...pendingStatusResponse, status: 'FAILED', errorCode, action },
+          200,
+        ),
+      ]);
+      const result = getGuestDiary(guestDiaryResponse.id);
+      const assertion = expect(result).rejects.toThrow(action);
+      await jest.runAllTimersAsync();
+      await assertion;
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it.each([undefined, null, '', '   ', 123])(
+    '실패 action이 올바르지 않으면 기본 안내로 실패를 전달한다: %j',
+    async (action): Promise<void> => {
+      jest.useFakeTimers();
+      mockFetch([
+        createResponse(pendingGuestDiaryResponse, 200),
+        createResponse(
+          {
+            ...pendingStatusResponse,
+            status: 'FAILED',
+            errorCode: 'AI_CONTENT_BLOCKED',
+            action,
+          },
+          200,
+        ),
+      ]);
+      const assertion = expect(
+        getGuestDiary(guestDiaryResponse.id),
+      ).rejects.toThrow('게스트 일기 생성에 실패했습니다');
+      await jest.runAllTimersAsync();
+      await assertion;
+    },
+  );
+
+  it('잘못된 생성 상태 응답은 거부한다', async (): Promise<void> => {
+    jest.useFakeTimers();
+    mockFetch([
+      createResponse(pendingGuestDiaryResponse, 200),
+      createResponse(
+        { ...pendingStatusResponse, status: 'FAILED', errorCode: 'UNKNOWN' },
+        200,
+      ),
+    ]);
+    const assertion = expect(
+      getGuestDiary(guestDiaryResponse.id),
+    ).rejects.toThrow('DiaryGenerationStatus 응답 형식이 일치하지 않습니다.');
+    await jest.runAllTimersAsync();
+    await assertion;
+  });
+
+  it('같은 생성 요청을 다시 보냈을 때의 실패 action도 전달한다', async (): Promise<void> => {
+    const action = '체험 생성 시간이 초과됐어요. 로그인 후 다시 생성해 주세요.';
+    mockFetch([
+      createResponse({ token: 'csrf-token' }, 200),
+      createResponse(
+        {
+          type: 'about:blank',
+          title: 'Timeout',
+          status: 504,
+          detail: '시간 초과',
+          instance: '/api/v1/guest/diaries',
+          code: 'AI_PROVIDER_TIMEOUT',
+          action,
+        },
+        504,
+      ),
+    ]);
+    const result = createGuestDiary({
+      request: {
+        diaryDate: guestDiaryResponse.diaryDate,
+        sourceText: guestDiaryResponse.sourceText,
+      },
+      idempotencyKey: guestDiaryResponse.generation.id,
+    });
+    await expect(result).rejects.toThrow(action);
   });
 
   it('생성 요청에 사용할 UUID를 만든다', () => {

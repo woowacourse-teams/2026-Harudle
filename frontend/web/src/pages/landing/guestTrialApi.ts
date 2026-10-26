@@ -1,5 +1,6 @@
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { API_BASE_URL, isProblemDetails, RequestError } from '../../shared/api';
+import { isDiaryGenerationStatusResponse } from '../../domain/diary/diaryGenerate';
 import {
   isDiaryGeneration,
   type DiaryGeneration,
@@ -199,7 +200,31 @@ const waitForGuestDiary = async (
     await new Promise<void>((resolve): void => {
       setTimeout(resolve, GUEST_DIARY_POLL_INTERVAL_MS);
     });
-    diary = await fetchGuestDiary(diary.id);
+    const response = await fetch(
+      `${API_BASE_URL}/guest/diary-generations/${diary.generation.id}`,
+      { credentials: 'include' },
+    );
+    if (!response.ok) {
+      return throwRequestError(
+        response,
+        ERROR_MESSAGES.GUEST_DIARY_FETCH_FAILED,
+      );
+    }
+
+    const data: unknown = await response.json();
+    if (!isDiaryGenerationStatusResponse(data)) {
+      throw new Error(ERROR_MESSAGES.INVALID_DIARY_GENERATION_STATUS_RESPONSE);
+    }
+    if (data.status === 'FAILED') {
+      throw new Error(
+        typeof data.action === 'string' && data.action.trim()
+          ? data.action
+          : ERROR_MESSAGES.GUEST_DIARY_GENERATION_FAILED,
+      );
+    }
+    if (data.status === 'SUCCEEDED') {
+      diary = await fetchGuestDiary(data.diaryId);
+    }
   }
 
   throw new Error(ERROR_MESSAGES.GUEST_DIARY_RESULT_FETCH_FAILED);
