@@ -17,6 +17,48 @@ test.use({
   },
 });
 
+for (const path of [
+  '/',
+  '/feeds/00000000-0000-4000-8000-000000000002',
+  '/album',
+  '/setting/blocked-users',
+  '/admin',
+]) {
+  test(`세션을 복원한 회원도 ${path} 진입 전에 동의를 확인한다`, async ({
+    page,
+  }): Promise<void> => {
+    await page.addInitScript((): void => {
+      localStorage.removeItem('harudle.has-completed-oauth');
+    });
+    await page.setExtraHTTPHeaders({
+      [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.agreementRequired,
+    });
+    const checks: string[] = [];
+    const memberReads: string[] = [];
+    page.on('request', (request): void => {
+      const pathname = new URL(request.url()).pathname;
+      if (pathname === '/api/v1/auth/refresh') checks.push('session');
+      if (pathname === '/api/v1/me/agreements') checks.push('agreement');
+      if (
+        ['/api/v1/me', '/api/v1/diaries', '/api/v1/blocks'].includes(
+          pathname,
+        ) ||
+        pathname.startsWith('/api/v1/admin/')
+      )
+        memberReads.push(pathname);
+    });
+
+    await page.goto(path);
+
+    await expect(page).toHaveURL('/consent');
+    await expect(
+      page.getByRole('checkbox', { name: '[필수] 이용약관 동의', exact: true }),
+    ).toBeVisible();
+    expect(checks.slice(0, 2)).toEqual(['session', 'agreement']);
+    expect(memberReads).toEqual([]);
+  });
+}
+
 test('기존 회원은 전문 열람 후 두 항목을 직접 확인하고 원래 설정 화면으로 돌아간다', async ({
   page,
 }): Promise<void> => {
