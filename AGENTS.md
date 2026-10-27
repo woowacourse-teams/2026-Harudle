@@ -31,6 +31,7 @@ flowchart TB
     db[("환경별 PostgreSQL<br/>Dev와 Prod 각각 별도 DB EC2 / 사설 IP 연결")]
     s3[("S3 · techcourse-project-2026<br/>생성 이미지 / 참조 이미지")]
     kakao["Kakao OAuth"]
+    google["Google OpenID Connect"]
     gemini["Gemini · 스토리보드 / 이미지 생성"]
 
     browser -->|"HTTPS"| host
@@ -38,6 +39,7 @@ flowchart TB
     backend -->|"이미지 저장·조회 / Presigned URL 발급"| s3
     browser -->|"Presigned GET · 이미지 직접 조회"| s3
     backend -->|"HTTPS"| kakao
+    backend -->|"HTTPS"| google
     backend -->|"HTTPS"| gemini
 ```
 
@@ -46,6 +48,13 @@ flowchart TB
   API 문서의 활성화 여부는 백엔드 설정으로 결정한다.
 - TLS는 호스트에서 종료된다. 인증·리다이렉트 변경 시 두 Nginx와 백엔드의
   전달 헤더 설정을 함께 확인한다.
+- Google 로그인은 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`을 필수로 읽는다.
+  시작 경로는 `/oauth2/authorization/google`, 콜백은 `${BACKEND_BASE_URL}/login/oauth2/code/google`이다.
+  `openid`, `email`, `profile`을 요청하며, 인증 검증에는 Spring Security의 기본 Google 설정을 사용한다.
+  로컬 설정은 `backend/README.md`, 서버 키와 콜백 등록은 `deploy/README.md`를 따른다.
+- Apple 연결은 `APPLE_LOGIN_ENABLED=true`일 때만 등록한다. 필요한 식별값과 개인 키 경로는
+  `backend/README.md`를 따른다. 활성화 시 세션 쿠키는 `SameSite=None; Secure`가 필수이며,
+  `POST /login/oauth2/code/apple`만 일반 CSRF 검사에서 제외한다. 세션의 `state` 검증은 유지한다.
 - 백엔드는 DB에 저장한 S3 Object Key로 Presigned GET URL을 발급하고,
   브라우저가 S3에서 직접 이미지를 가져온다. 기본 URL 유효 시간은 `15m`이며
   `S3_ACCESS_URL_TTL`로 설정한다. 브라우저의 이미지 fetch에는 S3 CORS 설정이 필요하다.
@@ -244,6 +253,11 @@ CodeBuild는 프론트엔드 입력이 같으면 이전 이미지를 재사용�
   `vol-048d203fac554e776`의 지표로 교체했다. 기존 Prod 앱 그래프는 유지했다.
 - Frontend `/health`는 Nginx의 응답 여부를 확인한다. DB와 S3, Gemini의 실제 기능은
   각각의 기능 검증과 로그로 확인한다.
+
+- API 완료 로그에 요청별 S3와 R2 확인 횟수, URL 서명 시간, 피드 데이터 조회 시간을 기록한다.
+  프론트엔드 Nginx는 응답 추적 ID와 프록시 시간을 JSON으로 남긴다. 호스트 Nginx 예시에도
+  같은 형식이 있지만 실제 HTTPS 설정에는 별도로 적용해야 한다. 필드 뜻과 CloudWatch 필터
+  적용 순서는 [요청 지연 확인 절차](deploy/monitoring/request-latency.md)를 따른다.
 
 ## 작업별 확인 위치
 

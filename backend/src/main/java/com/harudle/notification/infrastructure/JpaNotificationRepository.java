@@ -34,6 +34,19 @@ class JpaNotificationRepository implements NotificationRepository {
             """;
     private static final String VISIBLE_PARENT_CONDITION = """
              f.deleted_at IS NULL AND d.deleted_at IS NULL AND feed_author.deleted_at IS NULL
+              AND NOT EXISTS (SELECT 1 FROM feeds hidden_feed
+                  JOIN moderation_states moderation ON moderation.target_type = 'FEED'
+                    AND moderation.target_id = hidden_feed.id AND moderation.restricted
+                  WHERE hidden_feed.diary_id = f.diary_id)
+            """;
+    private static final String VISIBLE_BLOCK_CONDITION = """
+              AND NOT EXISTS (
+                  SELECT 1 FROM user_blocks b
+                  WHERE (b.blocker_id = n.recipient_user_id
+                         AND (b.blocked_id = n.actor_user_id OR b.blocked_id = d.user_id))
+                     OR (b.blocked_id = n.recipient_user_id
+                         AND (b.blocker_id = n.actor_user_id OR b.blocker_id = d.user_id))
+              )
             """;
     // Keep historical rows, but show a LIKE only while its exact source like is active.
     // COMMENT history does not depend on whether the original comment still exists.
@@ -43,6 +56,11 @@ class JpaNotificationRepository implements NotificationRepository {
                   WHERE l.id = n.source_action_id
                     AND l.feed_id = n.feed_id AND l.user_id = n.actor_user_id
               ))
+              AND (n.type <> 'COMMENT' OR NOT EXISTS (
+                  SELECT 1 FROM moderation_states moderation
+                  WHERE moderation.target_type = 'COMMENT' AND moderation.target_id = n.source_action_id
+                    AND moderation.restricted
+              ))
             """;
     private static final String LIST_QUERY = """
             SELECT n.id, n.recipient_user_id, a.id, n.feed_id, n.type, n.created_at, n.read_at
@@ -50,7 +68,7 @@ class JpaNotificationRepository implements NotificationRepository {
             """ + VISIBLE_PARENT_JOIN + """
             LEFT JOIN users a ON a.id = n.actor_user_id AND a.deleted_at IS NULL
             WHERE n.recipient_user_id = :recipientId AND
-            """ + VISIBLE_PARENT_CONDITION + VISIBLE_ACTION_CONDITION;
+            """ + VISIBLE_PARENT_CONDITION + VISIBLE_BLOCK_CONDITION + VISIBLE_ACTION_CONDITION;
     private static final String AFTER_PREDICATE = """
               AND (n.created_at < :afterCreatedAt
                    OR (n.created_at = :afterCreatedAt AND n.id < :afterId))
@@ -61,13 +79,13 @@ class JpaNotificationRepository implements NotificationRepository {
             FROM notifications n
             """ + VISIBLE_PARENT_JOIN + """
             WHERE n.recipient_user_id = :recipientId AND n.read_at IS NULL AND
-            """ + VISIBLE_PARENT_CONDITION + VISIBLE_ACTION_CONDITION;
+            """ + VISIBLE_PARENT_CONDITION + VISIBLE_BLOCK_CONDITION + VISIBLE_ACTION_CONDITION;
     private static final String FIND_VISIBLE_QUERY = """
             SELECT n.id, n.recipient_user_id
             FROM notifications n
             """ + VISIBLE_PARENT_JOIN + """
             WHERE n.id = :notificationId AND
-            """ + VISIBLE_PARENT_CONDITION + VISIBLE_ACTION_CONDITION;
+            """ + VISIBLE_PARENT_CONDITION + VISIBLE_BLOCK_CONDITION + VISIBLE_ACTION_CONDITION;
     private static final String MARK_READ_QUERY = """
             UPDATE notifications n
             SET read_at = COALESCE(n.read_at, :readAt)
@@ -77,7 +95,7 @@ class JpaNotificationRepository implements NotificationRepository {
                   JOIN diaries d ON d.id = f.diary_id
                   JOIN users feed_author ON feed_author.id = d.user_id
                   WHERE f.id = n.feed_id AND
-            """ + VISIBLE_PARENT_CONDITION + """
+            """ + VISIBLE_PARENT_CONDITION + VISIBLE_BLOCK_CONDITION + """
               )
             """ + VISIBLE_ACTION_CONDITION;
 

@@ -105,6 +105,36 @@ class LoadTestDiaryControllerTest {
         verifyNoInteractions(creationService);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"999", "1000", "1199"})
+    void acceptsPreparedMemberNumbersUpTo1199(String number) throws Exception {
+        User user = mock(User.class);
+        when(user.getPrimaryEmail()).thenReturn(number + "@0123456789abcdef0123456789abcdef.loadtest.invalid");
+        when(user.getRole()).thenReturn(UserRole.USER);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+        when(creationService.create(any())).thenThrow(new GenerationCapacityExceededException());
+
+        mvc.perform(post(PATH).header("Authorization", "Bearer test-token")
+                        .header("Idempotency-Key", KEY.toString()).contentType(MediaType.APPLICATION_JSON).content(BODY))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("GENERATION_CAPACITY_EXCEEDED"));
+        verify(creationService).create(any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"1200", "9999"})
+    void rejectsMemberNumbersOutsidePreparedRange(String number) throws Exception {
+        User user = mock(User.class);
+        when(user.getPrimaryEmail()).thenReturn(number + "@0123456789abcdef0123456789abcdef.loadtest.invalid");
+        when(user.getRole()).thenReturn(UserRole.USER);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+
+        mvc.perform(post(PATH).header("Authorization", "Bearer test-token")
+                        .header("Idempotency-Key", KEY.toString()).contentType(MediaType.APPLICATION_JSON).content(BODY))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(creationService);
+    }
+
     @Test
     void requiresAuthentication() throws Exception {
         mvc.perform(get("/api/v1/load-test/ai-stub")).andExpect(status().isUnauthorized());

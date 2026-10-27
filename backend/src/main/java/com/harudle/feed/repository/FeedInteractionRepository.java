@@ -1,9 +1,10 @@
 package com.harudle.feed.repository;
 
-import com.harudle.feed.domain.Feed;
 import com.harudle.common.testdata.DevTestDataVisibility;
+import com.harudle.feed.domain.Feed;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;
@@ -24,7 +25,29 @@ public class FeedInteractionRepository {
     }
 
     public Optional<Feed> findByIdForUpdate(UUID feedId) {
+        // 관리자 숨김과 재게시도 일기 -> 피드 순서로 잠근다. 잠금 대기 전에 Feed를 관리 상태로 읽지 않는다.
+        List<?> diaryIds = entityManager.createNativeQuery(
+                "SELECT diary_id FROM feeds WHERE id = :feedId", UUID.class)
+                .setParameter("feedId", feedId).getResultList();
+        if (diaryIds.isEmpty()) {
+            return Optional.empty();
+        }
+        List<?> locked = entityManager.createNativeQuery(
+                "SELECT id FROM diaries WHERE id = :diaryId FOR UPDATE", UUID.class)
+                .setParameter("diaryId", diaryIds.getFirst()).getResultList();
+        if (locked.isEmpty()) {
+            return Optional.empty();
+        }
         return Optional.ofNullable(entityManager.find(Feed.class, feedId, LockModeType.PESSIMISTIC_WRITE));
+    }
+
+    public boolean isHiddenForPublicUse(UUID feedId) {
+        return entityManager.createQuery("""
+                SELECT count(moderation) FROM Feed feed, Feed hiddenFeed, ModerationRestriction moderation
+                WHERE feed.id = :feedId AND hiddenFeed.diaryId = feed.diaryId
+                  AND moderation.targetType = com.harudle.moderation.domain.ModerationTargetType.FEED
+                  AND moderation.targetId = hiddenFeed.id AND moderation.restricted = true
+                """, Long.class).setParameter("feedId", feedId).getSingleResult() > 0;
     }
 
     public Optional<UUID> findActiveAuthorId(UUID diaryId) {

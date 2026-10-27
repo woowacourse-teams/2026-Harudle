@@ -1,8 +1,10 @@
 package com.harudle.generation.config;
 
 import com.harudle.common.logging.ExternalApiLogger;
+import com.harudle.generation.adapter.out.r2.ObservedBackupObjectStorage;
 import com.harudle.generation.adapter.out.r2.R2BackupObjectStorage;
 import com.harudle.generation.diary.service.port.BackupObjectStorage;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -63,9 +65,11 @@ public class R2StorageConfiguration {
             @Qualifier("r2S3Client") S3Client client,
             @Qualifier("r2S3Presigner") S3Presigner presigner,
             R2StorageProperties properties,
-            ExternalApiLogger externalApiLogger
+            ExternalApiLogger externalApiLogger,
+            MeterRegistry meterRegistry
     ) {
-        return new R2BackupObjectStorage(client, presigner, properties, externalApiLogger);
+        return new ObservedBackupObjectStorage(
+                new R2BackupObjectStorage(client, presigner, properties, externalApiLogger), meterRegistry);
     }
 
     private StaticCredentialsProvider credentialsProvider(R2StorageProperties properties) {
