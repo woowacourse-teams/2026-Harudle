@@ -12,23 +12,23 @@ const LOGIN_ATTEMPT_KEY = 'harudle.login-attempt-provider';
 const isLoginProvider = (value: unknown): value is LoginProvider =>
   value === 'kakao' || value === 'google' || value === 'apple';
 
-const readProvider = (
-  storage: 'localStorage' | 'sessionStorage',
-  key: string,
-): LoginProvider | null => {
+export const getLastSuccessfulLoginProvider = (): LoginProvider | null => {
   try {
-    const value: unknown = window[storage].getItem(key);
+    const value: unknown = localStorage.getItem(LAST_LOGIN_KEY);
     return isLoginProvider(value) ? value : null;
   } catch {
     return null;
   }
 };
 
-export const getLastSuccessfulLoginProvider = (): LoginProvider | null =>
-  readProvider('localStorage', LAST_LOGIN_KEY);
-
-export const getLoginAttemptProvider = (): LoginProvider | null =>
-  readProvider('sessionStorage', LOGIN_ATTEMPT_KEY);
+export const getLoginAttemptProvider = (): LoginProvider | null => {
+  try {
+    const value: unknown = sessionStorage.getItem(LOGIN_ATTEMPT_KEY);
+    return isLoginProvider(value) ? value : null;
+  } catch {
+    return null;
+  }
+};
 
 export const setLoginAttemptProvider = (provider: LoginProvider): void => {
   try {
