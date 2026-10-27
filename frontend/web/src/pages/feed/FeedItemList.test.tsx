@@ -232,7 +232,7 @@ describe('피드 카드 액션', (): void => {
 
     await user.click(button);
     expect(sheet).toHaveAttribute('open');
-    await user.click(screen.getByRole('button', { name: '카카오로 로그인' }));
+    await user.click(screen.getByRole('button', { name: '로그인하기' }));
     expect(sheet).not.toHaveAttribute('open');
     expect(mockNavigate).toHaveBeenCalledWith('/login');
     expect(mockSetFeedLike).not.toHaveBeenCalled();

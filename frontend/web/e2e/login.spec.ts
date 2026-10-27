@@ -31,7 +31,7 @@ test.describe('로그인 화면', () => {
       .click();
     await page
       .getByRole('dialog')
-      .getByRole('button', { name: '카카오로 로그인' })
+      .getByRole('button', { name: '로그인하기' })
       .click();
     await expect(page).toHaveURL('/login');
     await expect(
