@@ -10,10 +10,11 @@ import { act, render, waitFor } from '@testing-library/react';
 import { StrictMode } from 'react';
 import AuthCallbackPage from './AuthCallbackPage';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
+import { LOGIN_COPY } from './copy';
 
 const mockCsrf = jest.fn<() => Promise<string>>();
 const mockSetToken = jest.fn();
-const mockIdentify = jest.fn<() => Promise<void>>();
+const mockIdentify = jest.fn<(accessToken: string) => Promise<void>>();
 const mockNavigate = jest.fn();
 const mockConsumeReturnPath = jest.fn<() => string>();
 const mockFetch = jest.fn<typeof fetch>();
@@ -64,6 +65,7 @@ beforeEach((): void => {
 });
 afterEach((): void => {
   globalThis.fetch = originalFetch;
+  document.cookie = 'refreshToken=; Max-Age=0; path=/';
   jest.restoreAllMocks();
 });
 
@@ -88,6 +90,20 @@ describe('OAuth 콜백의 단일 교환과 복귀', (): void => {
     expect(mockNavigate).toHaveBeenCalledTimes(1);
     expect(mockSetToken).toHaveBeenCalledTimes(1);
     expect(mockIdentify).toHaveBeenCalledTimes(1);
+    expect(mockSetToken).toHaveBeenCalledWith(token.accessToken);
+    expect(mockIdentify).toHaveBeenCalledWith(token.accessToken);
+    expect(localStorage.getItem('harudle.has-ever-logged-in')).toBe('true');
+    expect(window.alert).not.toHaveBeenCalled();
+  });
+  it('복귀 경로가 없으면 토큰을 복원하고 홈으로 이동한다', async (): Promise<void> => {
+    mockConsumeReturnPath.mockReset().mockReturnValue('/');
+    render(<AuthCallbackPage />);
+    await waitFor(() =>
+      expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true }),
+    );
+    expect(mockSetToken).toHaveBeenCalledWith(token.accessToken);
+    expect(mockIdentify).toHaveBeenCalledWith(token.accessToken);
+    expect(window.alert).not.toHaveBeenCalled();
   });
   it('교환이 끝나기 전에 화면을 벗어나면 늦은 응답을 반영하지 않는다', async (): Promise<void> => {
     let resolve: ((response: Response) => void) | undefined;
@@ -112,7 +128,7 @@ describe('OAuth 콜백의 단일 교환과 복귀', (): void => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
   it.each([
-    ['?error=account_suspended', '관리자에 의해 이용이 제한된 계정이에요.'],
+    ['?error=account_suspended', LOGIN_COPY.suspendedAccount],
     ['?error=%3Cscript%3Eunknown%3C%2Fscript%3E', ERROR_MESSAGES.LOGIN_FAILED],
     ['?error=', ERROR_MESSAGES.LOGIN_FAILED],
   ] as const)(
@@ -120,6 +136,7 @@ describe('OAuth 콜백의 단일 교환과 복귀', (): void => {
     async (search, message): Promise<void> => {
       mockSearch = search;
       localStorage.setItem('harudle.has-completed-oauth', 'true');
+      document.cookie = 'refreshToken=existing-valid-session; path=/';
       render(
         <StrictMode>
           <AuthCallbackPage />

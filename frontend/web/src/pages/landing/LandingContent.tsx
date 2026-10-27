@@ -30,7 +30,7 @@ const LandingContent = ({
   const trialRef = useRef<HTMLDivElement>(null);
   const exampleRef = useRef<HTMLElement>(null);
   const [showScrollHint, setShowScrollHint] = useState(true);
-  const heroActionRef = useRef<HTMLButtonElement>(null);
+  const heroActionRef = useRef<HTMLAnchorElement>(null);
   const finalRef = useRef<HTMLElement>(null);
   const showStickyCta = useLandingStickyCta(pageRef, heroActionRef, finalRef);
   const [activeExample, setActiveExample] = useState(0);
@@ -109,15 +109,30 @@ const LandingContent = ({
           {LANDING_COPY.hero.description}
         </p>
         <div css={heroActionStyle}>
-          <button
-            ref={heroActionRef}
-            type="button"
-            css={primaryButtonStyle}
-            onClick={handleTrialClick}
-          >
-            {trialActionLabel} <span aria-hidden="true">→</span>
-          </button>
-          <p css={noticeStyle}>{LANDING_COPY.hero.trialNotice}</p>
+          <div css={heroButtonsStyle}>
+            <Link
+              ref={heroActionRef}
+              to="/"
+              css={[primaryButtonStyle, compactActionStyle]}
+            >
+              {LANDING_COPY.hero.feedAction} <span aria-hidden="true">→</span>
+            </Link>
+            <button
+              type="button"
+              css={[
+                primaryButtonStyle,
+                compactActionStyle,
+                secondaryActionStyle,
+              ]}
+              onClick={handleTrialClick}
+            >
+              {trialActionLabel}
+            </button>
+          </div>
+          <div>
+            <p css={noticeStyle}>{LANDING_COPY.hero.feedNotice}</p>
+            <p css={noticeStyle}>{LANDING_COPY.hero.returnNotice}</p>
+          </div>
         </div>
         <figure data-reveal="comic" css={heroPreviewStyle}>
           <LandingComicPreview example={LANDING_EXAMPLES[1]} />
@@ -340,14 +355,10 @@ const LandingContent = ({
         </div>
       </section>
       {showStickyCta && (
-        <aside css={stickyCtaStyle} aria-label="빠른 체험">
-          <button
-            type="button"
-            css={primaryButtonStyle}
-            onClick={handleTrialClick}
-          >
-            {trialActionLabel} <span aria-hidden="true">→</span>
-          </button>
+        <aside css={stickyCtaStyle} aria-label="빠른 피드 이동">
+          <Link to="/" css={primaryButtonStyle}>
+            {LANDING_COPY.hero.feedAction} <span aria-hidden="true">→</span>
+          </Link>
         </aside>
       )}
       <footer css={footerStyle}>
@@ -599,6 +610,7 @@ const primaryButtonStyle = css`
   font-size: 16px;
   font-weight: 700;
   line-height: 24px;
+  text-decoration: none;
   cursor: pointer;
 
   &:focus-visible {
@@ -607,12 +619,35 @@ const primaryButtonStyle = css`
   }
 `;
 
+const heroButtonsStyle = css`
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+`;
+
+const compactActionStyle = css`
+  gap: 8px;
+  padding: 12px 8px;
+  font-size: 14px;
+`;
+
 const noticeStyle = css`
   margin: 0;
   color: ${theme.colors.foreground.neutralMuted};
   font-size: 12px;
   line-height: 20px;
   word-break: keep-all;
+`;
+
+const secondaryActionStyle = css`
+  border: 1px solid ${theme.colors.stroke.brandWeak};
+  background-color: ${theme.colors.background.surface};
+  color: ${theme.colors.foreground.brand};
+  font-weight: 600;
+
+  &:hover {
+    background-color: ${theme.colors.background.brandWeak};
+  }
 `;
 
 const heroPreviewStyle = css`

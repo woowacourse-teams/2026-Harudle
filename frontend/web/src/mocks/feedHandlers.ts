@@ -4,6 +4,7 @@ import profileImage from '../assets/icons/article_person.svg';
 import { isRecord } from '../shared/utils';
 import { isCanonicalUuid } from '../pages/landing/guestTrialUuid';
 import { MOCK_SCENARIO_HEADER, MOCK_SCENARIOS } from './mockScenarios';
+import { isMockAuthorBlocked } from './blockMockState';
 
 interface MockCategory {
   readonly id: number;
@@ -55,6 +56,12 @@ export const FEED_MOCK_CSRF_TOKEN = 'mock-csrf-token';
 const categories: readonly MockCategory[] = [
   { id: 1, name: '일상', sortOrder: 0, active: true },
   { id: 2, name: '우테코', sortOrder: 1, active: true },
+  { id: 3, name: '싸피', sortOrder: 2, active: true },
+  { id: 4, name: '소마', sortOrder: 3, active: true },
+  { id: 5, name: '현대', sortOrder: 4, active: true },
+  { id: 6, name: '개발', sortOrder: 5, active: true },
+  { id: 7, name: '여행', sortOrder: 6, active: true },
+  { id: 8, name: '취미', sortOrder: 7, active: true },
 ];
 
 const createInitialFeeds = (): MockFeed[] => {
@@ -122,6 +129,11 @@ const likedFeedIds = new Set<string>();
 
 export const getMockPublishedFeedId = (diaryId: string): string | null =>
   feeds.find((feed): boolean => feed.diaryId === diaryId)?.id ?? null;
+
+export const getMockFeedAuthor = (
+  userId: string,
+): MockFeed['author'] | undefined =>
+  feeds.find((feed): boolean => feed.author.id === userId)?.author;
 
 export const hasMockFeed = (feedId: string): boolean =>
   feeds.some((feed): boolean => feed.id === feedId);
@@ -259,7 +271,8 @@ const changeLike = (
     return problem(request, 400, 'VALIDATION_ERROR');
 
   const feed = feeds.find(({ id }): boolean => id === feedId);
-  if (!feed) return problem(request, 404, 'FEED_NOT_FOUND');
+  if (!feed || isMockAuthorBlocked(request, feed.author.id))
+    return problem(request, 404, 'FEED_NOT_FOUND');
 
   if (likedByMe && !likedFeedIds.has(feedId)) {
     likedFeedIds.add(feedId);
@@ -380,6 +393,7 @@ export const feedHandlers = [
       return problem(request, 400, 'INVALID_CURSOR');
 
     const sortedFeeds = feeds
+      .filter((feed): boolean => !isMockAuthorBlocked(request, feed.author.id))
       .filter(
         (feed): boolean =>
           categoryId === null || feed.category.id === Number(categoryId),
@@ -417,7 +431,12 @@ export const feedHandlers = [
       const feedId = String(params.feedId);
       if (!isCanonicalUuid(feedId))
         return problem(request, 400, 'VALIDATION_ERROR');
-      if (!feeds.some(({ id }): boolean => id === feedId))
+      if (
+        !feeds.some(
+          (feed): boolean =>
+            feed.id === feedId && !isMockAuthorBlocked(request, feed.author.id),
+        )
+      )
         return problem(request, 404, 'FEED_NOT_FOUND');
       const url = new URL(request.url);
       const sizeValue = url.searchParams.get('size');
@@ -454,6 +473,10 @@ export const feedHandlers = [
         }
       }
       const sorted = comments
+        .filter(
+          (comment): boolean =>
+            !isMockAuthorBlocked(request, comment.author.id),
+        )
         .filter((comment): boolean => comment.feedId === feedId)
         .sort(
           (a, b): number =>
@@ -496,7 +519,8 @@ export const feedHandlers = [
       if (!isCanonicalUuid(feedId))
         return problem(request, 400, 'VALIDATION_ERROR');
       const feed = feeds.find(({ id }): boolean => id === feedId);
-      if (!feed) return problem(request, 404, 'FEED_NOT_FOUND');
+      if (!feed || isMockAuthorBlocked(request, feed.author.id))
+        return problem(request, 404, 'FEED_NOT_FOUND');
       const data: unknown = await request.json().catch((): null => null);
       if (!isRecord(data) || typeof data.content !== 'string')
         return problem(request, 400, 'VALIDATION_ERROR');
@@ -539,7 +563,8 @@ export const feedHandlers = [
       if (!isCanonicalUuid(feedId))
         return problem(request, 400, 'VALIDATION_ERROR');
       const feed = feeds.find(({ id }): boolean => id === feedId);
-      if (!feed) return problem(request, 404, 'FEED_NOT_FOUND');
+      if (!feed || isMockAuthorBlocked(request, feed.author.id))
+        return problem(request, 404, 'FEED_NOT_FOUND');
       const authenticated = isAuthenticated(request);
       return HttpResponse.json({
         ...feed,
@@ -609,7 +634,8 @@ export const feedHandlers = [
       if (!isCanonicalUuid(feedId))
         return problem(request, 400, 'VALIDATION_ERROR');
       const feed = feeds.find(({ id }): boolean => id === feedId);
-      if (!feed) return problem(request, 404, 'FEED_NOT_FOUND');
+      if (!feed || isMockAuthorBlocked(request, feed.author.id))
+        return problem(request, 404, 'FEED_NOT_FOUND');
       if (feed.author.id !== MOCK_USER_ID)
         return problem(request, 403, 'FORBIDDEN');
 

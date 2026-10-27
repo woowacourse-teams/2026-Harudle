@@ -1,4 +1,5 @@
 import { css, type SerializedStyles } from '@emotion/react';
+import { useLayoutEffect, useRef } from 'react';
 import { theme } from '../../styles/theme';
 
 interface FeedCategoryItemProps {
@@ -12,8 +13,20 @@ const FeedCategoryItem = ({
   isSelected,
   onSelect,
 }: FeedCategoryItemProps) => {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  useLayoutEffect((): void => {
+    if (isSelected) {
+      buttonRef.current?.scrollIntoView({
+        block: 'nearest',
+        inline: 'nearest',
+      });
+    }
+  }, [isSelected]);
+
   return (
     <button
+      ref={buttonRef}
       type="button"
       css={feedCategoryItemStyle(isSelected, label.length)}
       onClick={onSelect}
@@ -34,7 +47,7 @@ const feedCategoryItemStyle = (
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  min-width: ${labelLength > 2 ? 49 : 34}px;
+  min-width: ${labelLength > 2 ? 42 : 28}px;
   height: 48px;
   padding: 0;
   border: none;
@@ -45,7 +58,7 @@ const feedCategoryItemStyle = (
       : theme.colors.foreground.neutralMuted
   };
   font-family: inherit;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: ${isSelected ? 500 : 400};
   white-space: nowrap;
   cursor: pointer;

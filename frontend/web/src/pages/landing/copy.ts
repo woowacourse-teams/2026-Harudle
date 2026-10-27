@@ -12,9 +12,11 @@ export const LANDING_COPY = {
   hero: {
     titleLines: ['우리끼리 통하는', '네컷만화'],
     description:
-      '함께 있었던 순간을 적으면\n하루들이 네컷만화로 만들어 드려요.',
-    action: '네컷만화 만들어 보기',
-    trialNotice: '로그인 없이 한 번 만들어 볼 수 있어요.',
+      '다른 사람들의 네컷만화를 구경하고,\n내 이야기도 만화로 만들어 보세요.',
+    action: '직접 만들어 보기',
+    feedAction: '피드 보러 가기',
+    feedNotice: '로그인 없이 바로 구경할 수 있어요.',
+    returnNotice: '이 화면으로 돌아오려면 뒤로가기를 눌러주세요.',
     previewCaption: '우리끼리 두고두고 꺼내 볼 순간',
     scrollHintLabel: '아래 예시 보기',
   },

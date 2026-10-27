@@ -4,9 +4,17 @@ import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { isRecord } from '../../shared/utils';
 import type { Feed } from './feedList';
 
+export interface FeedCommentAuthor extends Omit<
+  Feed['author'],
+  'id' | 'profileImageUrl'
+> {
+  readonly id: string | null;
+  readonly profileImageUrl: string | null;
+}
+
 export interface FeedComment {
   readonly id: string;
-  readonly author: Feed['author'];
+  readonly author: FeedCommentAuthor;
   readonly content: string;
   readonly createdAt: string;
   readonly isMine: boolean;
@@ -30,9 +38,10 @@ export const isFeedComment = (value: unknown): value is FeedComment => {
     isRecord(value) &&
     typeof value.id === 'string' &&
     isRecord(value.author) &&
-    typeof value.author.id === 'string' &&
+    (value.author.id === null || typeof value.author.id === 'string') &&
     typeof value.author.nickname === 'string' &&
-    typeof value.author.profileImageUrl === 'string' &&
+    (value.author.profileImageUrl === null ||
+      typeof value.author.profileImageUrl === 'string') &&
     typeof value.content === 'string' &&
     typeof value.createdAt === 'string' &&
     Number.isFinite(Date.parse(value.createdAt)) &&

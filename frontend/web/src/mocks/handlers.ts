@@ -1,4 +1,5 @@
 import { delay, http, HttpResponse } from 'msw';
+import { reportHandlers } from './reportHandlers';
 import { isLandingPath } from '../pages/landing/landingPaths';
 import { MOCK_SCENARIO_HEADER, MOCK_SCENARIOS } from './mockScenarios';
 import { legalHandlers } from './legalHandlers';
@@ -489,6 +490,7 @@ let mockProfileImageUrl = '/profile-images/v1/5.png';
 restoreResumableGeneration();
 
 export const handlers = [
+  ...reportHandlers,
   http.get('/oauth2/authorization/kakao', async ({ request }) => {
     resetMockSession();
     await delay(300);

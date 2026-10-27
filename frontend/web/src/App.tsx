@@ -8,6 +8,7 @@ import { Route, Routes } from 'react-router';
 import DiaryWritePage from './pages/diary-write/DiaryWritePage';
 
 import SettingPage from './pages/setting/SettingPage';
+import BlockedUsersPage from './pages/blocked-users/BlockedUsersPage';
 import LoginPage from './pages/login/LoginPage';
 import DiaryDetailPage from './pages/diary-detail/DiaryDetailPage';
 import AuthCallbackPage from './pages/login/AuthCallbackPage';
@@ -44,6 +45,7 @@ const App = () => {
           <Route path="/diary/:diaryId" element={<DiaryDetailPage />} />
           <Route path="/diary/:diaryId/feed-post" element={<FeedPostPage />} />
           <Route path="/setting" element={<SettingPage />} />
+          <Route path="/setting/blocked-users" element={<BlockedUsersPage />} />
           <Route path="/admin/*" element={<AdminGuard />} />
         </Route>
         <Route

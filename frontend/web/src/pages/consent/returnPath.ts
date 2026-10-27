@@ -2,7 +2,13 @@ import { isRecord } from '../../shared/utils';
 
 const LOGIN_RETURN_PATH_KEY = 'harudle:login-return-path:v1';
 const RETURN_PATH_BASE = 'https://harudle.invalid';
-const SIMPLE_PATHS = new Set(['/', '/album', '/setting', '/diary-write']);
+const SIMPLE_PATHS = new Set([
+  '/',
+  '/album',
+  '/setting',
+  '/setting/blocked-users',
+  '/diary-write',
+]);
 
 export const sanitizeReturnPath = (value: unknown): string => {
   if (

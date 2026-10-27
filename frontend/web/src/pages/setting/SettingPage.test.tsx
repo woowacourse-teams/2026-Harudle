@@ -62,7 +62,9 @@ jest.mock('../../assets/images/loading-animation.webp', () => 'loading.webp');
 jest.mock('../../assets/images/request-fail.png', () => 'request-fail.png');
 jest.mock('../../assets/icons/call_made.svg', () => 'call.svg');
 jest.mock('../../assets/icons/logout.svg', () => 'logout.svg');
+jest.mock('../../assets/icons/autorenew.svg', () => 'autorenew.svg');
 jest.mock('../../assets/icons/article_person.svg', () => 'article.svg');
+jest.mock('../../assets/icons/block.svg', () => 'block.svg');
 jest.mock('../../assets/images/profile-fallback.svg', () => 'fallback.svg');
 
 const profile = {
@@ -126,6 +128,14 @@ const problem = (
   });
 
 describe('통합 프로필 수정', (): void => {
+  it('차단한 사용자 항목은 별도 관리 화면으로 연결한다', async (): Promise<void> => {
+    render(<SettingPage />);
+
+    expect(
+      await screen.findByRole('link', { name: '차단한 사용자' }),
+    ).toHaveAttribute('href', '/setting/blocked-users');
+  });
+
   it('사진과 닉네임을 한 번 저장하고 조회한 프로필을 반영한 뒤 완료를 알린다', async (): Promise<void> => {
     const { user, dialog, input } = await openProfileModal();
     expect(screen.getByRole('button', { name: '저장' })).toBeDisabled();

@@ -14,6 +14,7 @@ import logoutIcon from '../../assets/icons/logout.svg';
 import articlePersonIcon from '../../assets/icons/article_person.svg';
 import PwaInstallButton from './PwaInstallButton';
 import LoadingSpinner from '../../shared/LoadingSpinner';
+import blockIcon from '../../assets/icons/block.svg';
 
 const GOOGLE_FROM_URL = 'https://forms.gle/8DMM4L835Esxk7BE6';
 
@@ -136,6 +137,16 @@ const SettingPageContent = () => {
         </Link>
       </div>
 
+      <div css={settingCardStyle}>
+        <Link
+          css={[settingRowStyle, settingLinkStyle]}
+          to="/setting/blocked-users"
+        >
+          <span css={settingLabelStyle}>차단한 사용자</span>
+          <span css={[iconStyle, blockedUsersIconStyle]} aria-hidden="true" />
+        </Link>
+      </div>
+
       <PwaInstallButton />
 
       <button
@@ -237,6 +248,12 @@ const settingRowStyle = css`
 
 const settingLabelStyle = css`
   color: ${theme.colors.foreground.neutral};
+`;
+
+const blockedUsersIconStyle = css`
+  background-color: #1c1b1f;
+  -webkit-mask: url(${blockIcon}) center / contain no-repeat;
+  mask: url(${blockIcon}) center / contain no-repeat;
 `;
 
 const settingValueStyle = css`

@@ -79,6 +79,8 @@ jest.mock('../../assets/icons/feed-comment.svg', () => 'feed-comment.svg');
 jest.mock('../../assets/icons/feed-send.svg', () => 'feed-send.svg');
 jest.mock('../../assets/icons/feed-more.svg', () => 'feed-more.svg');
 jest.mock('../../assets/icons/delete.svg', () => 'delete.svg');
+jest.mock('../../assets/icons/report.svg', () => 'report.svg');
+jest.mock('../../assets/icons/block.svg', () => 'block.svg');
 jest.mock('../../assets/icons/link.svg', () => 'link.svg');
 jest.mock('../../assets/icons/check.svg', () => 'check.svg');
 jest.mock(
@@ -847,11 +849,11 @@ describe('피드 목록 조회 상태', () => {
       screen.getByRole('button', { name: '공유 아이콘' }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: '옵션 더보기 아이콘' }),
-    ).not.toBeInTheDocument();
+      screen.getByRole('button', { name: '피드 더보기' }),
+    ).toBeInTheDocument();
   });
 
-  it('본인 피드에만 더보기 버튼을 표시한다', async (): Promise<void> => {
+  it('본인 피드에도 관리용 더보기 버튼을 표시한다', async (): Promise<void> => {
     mockGetFeedList.mockResolvedValue({
       ...response,
       items: [{ ...feed, isMine: true }],

@@ -14,6 +14,7 @@ afterEach((): void => {
 describe('동의 후 돌아갈 내부 경로', (): void => {
   it.each([
     '/setting',
+    '/setting/blocked-users',
     '/album?year=2026#month',
     '/feeds/00000000-0000-4000-8000-000000000001#comments',
     '/diary/00000000-0000-4000-8000-000000000001/feed-post',
