@@ -153,9 +153,7 @@ test('비회원도 공개 상세를 보고 피드·댓글 신고를 누르면 �
     }),
   });
   await expect(login).toContainText('신고를 접수하려면 로그인해 주세요.');
-  await expect(
-    login.getByRole('button', { name: '카카오로 로그인' }),
-  ).toBeVisible();
+  await expect(login.getByRole('button', { name: '로그인하기' })).toBeVisible();
   await login.getByRole('button', { name: '계속 둘러보기' }).click();
   await expect(login).not.toBeVisible();
   await expect(page).toHaveURL(detailPath);
