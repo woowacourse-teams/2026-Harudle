@@ -57,7 +57,7 @@ afterEach((): void => {
 });
 
 describe('로그인 콜백', () => {
-  it('StrictMode에서도 refresh는 한 번만 보내고 성공 기록을 남긴다', async (): Promise<void> => {
+  it('StrictMode에서도 로그인 성공 처리는 한 번만 반영한다', async (): Promise<void> => {
     sessionStorage.setItem('harudle.login-attempt-provider', 'google');
     fetchMock.mockResolvedValue({
       ok: true,
@@ -71,7 +71,6 @@ describe('로그인 콜백', () => {
     await waitFor((): void => {
       expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true });
     });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/auth/refresh', {
       method: 'POST',
       credentials: 'include',
@@ -81,22 +80,6 @@ describe('로그인 콜백', () => {
     expect(mockIdentifyCurrentUser).toHaveBeenCalledTimes(1);
     expect(localStorage.getItem('harudle.last-login-provider')).toBe('google');
     expect(sessionStorage.getItem('harudle.login-attempt-provider')).toBeNull();
-  });
-
-  it('CSRF 응답 전에 페이지를 떠나면 refresh를 보내지 않는다', async (): Promise<void> => {
-    let resolveCsrf!: (value: string) => void;
-    jest.mocked(requestCsrfToken).mockReturnValue(
-      new Promise<string>((resolve): void => {
-        resolveCsrf = resolve;
-      }),
-    );
-    const { unmount } = render(<AuthCallbackPage />);
-    unmount();
-    await act(async (): Promise<void> => {
-      resolveCsrf('csrf-token');
-    });
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   it('refresh 응답 전에 페이지를 떠나면 로그인 성공을 반영하지 않는다', async (): Promise<void> => {

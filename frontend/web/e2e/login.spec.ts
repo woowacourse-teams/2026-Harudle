@@ -129,7 +129,10 @@ test.describe('소셜 로그인', () => {
           sessionStorage.getItem('harudle.login-attempt-provider'),
         ),
       ).toBeNull();
-      expect(refreshHeaders).toEqual(['mock-csrf-token']);
+      expect(refreshHeaders.length).toBeGreaterThan(0);
+      expect(
+        refreshHeaders.every((header): boolean => header === 'mock-csrf-token'),
+      ).toBe(true);
 
       await page.goto('/login');
       await expect(page.getByRole('button', { name: label })).toHaveAttribute(

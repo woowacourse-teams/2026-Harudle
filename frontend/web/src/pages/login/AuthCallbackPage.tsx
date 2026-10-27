@@ -44,7 +44,6 @@ const AuthCallbackPage = () => {
     const getAccessTokenAtLogin = async (): Promise<void> => {
       try {
         const csrfToken = await requestCsrfToken();
-        if (!isActive) return;
         const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
           method: 'POST',
           credentials: 'include',
