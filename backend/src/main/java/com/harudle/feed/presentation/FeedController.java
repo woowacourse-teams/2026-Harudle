@@ -9,6 +9,7 @@ import com.harudle.feed.service.FeedListService;
 import com.harudle.feed.service.FeedPublicationService;
 import com.harudle.feed.service.FeedQueryService;
 import com.harudle.feed.service.dto.FeedResult;
+import com.harudle.observability.RequestOperationTimings;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -72,7 +73,8 @@ class FeedController {
             ErrorType.VALIDATION_ERROR, ErrorType.UNAUTHORIZED, ErrorType.FORBIDDEN,
             ErrorType.DIARY_NOT_FOUND, ErrorType.CATEGORY_NOT_FOUND,
             ErrorType.DIARY_NOT_PUBLISHABLE, ErrorType.DIARY_ALREADY_PUBLISHED, ErrorType.CATEGORY_INACTIVE,
-            ErrorType.FEED_UNAVAILABLE, ErrorType.IMAGE_STORAGE_ERROR
+            ErrorType.FEED_UNAVAILABLE, ErrorType.IMAGE_STORAGE_ERROR, ErrorType.PROFILE_IMAGE_STORAGE_ERROR,
+            ErrorType.DATABASE_LOCK_TIMEOUT
     })
     @PostMapping
     ResponseEntity<FeedResponse> publish(Authentication authentication, @Valid @RequestBody PublishFeedRequest request) {
@@ -85,7 +87,8 @@ class FeedController {
     @Operation(summary = "공개 피드 목록 조회", description = "최신순 또는 현재 좋아요 수 기준 인기순으로 조회합니다.")
     @ApiErrorResponses({
             ErrorType.VALIDATION_ERROR, ErrorType.INVALID_CURSOR, ErrorType.UNAUTHORIZED,
-            ErrorType.CATEGORY_NOT_FOUND, ErrorType.FEED_UNAVAILABLE, ErrorType.IMAGE_STORAGE_ERROR
+            ErrorType.CATEGORY_NOT_FOUND, ErrorType.FEED_UNAVAILABLE, ErrorType.IMAGE_STORAGE_ERROR,
+            ErrorType.PROFILE_IMAGE_STORAGE_ERROR
     })
     @GetMapping
     FeedPageResponse getList(
@@ -96,7 +99,9 @@ class FeedController {
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size
     ) {
         UUID viewerId = userIds.resolveOptional(authentication).orElse(null);
-        return responseAssembler.toResponse(listService.getList(viewerId, sort, categoryId, cursor, size));
+        return responseAssembler.toResponse(RequestOperationTimings.measure(
+                RequestOperationTimings.Operation.FEED_QUERY,
+                () -> listService.getList(viewerId, sort, categoryId, cursor, size)));
     }
 
     @Operation(
@@ -105,7 +110,7 @@ class FeedController {
     )
     @ApiErrorResponses({
             ErrorType.VALIDATION_ERROR, ErrorType.UNAUTHORIZED, ErrorType.FEED_NOT_FOUND,
-            ErrorType.FEED_UNAVAILABLE, ErrorType.IMAGE_STORAGE_ERROR
+            ErrorType.FEED_UNAVAILABLE, ErrorType.IMAGE_STORAGE_ERROR, ErrorType.PROFILE_IMAGE_STORAGE_ERROR
     })
     @GetMapping("/{feedId}")
     FeedResponse getDetail(
@@ -114,7 +119,9 @@ class FeedController {
             @PathVariable @Pattern(regexp = UUID_PATTERN) String feedId
     ) {
         UUID viewerId = userIds.resolveOptional(authentication).orElse(null);
-        return responseAssembler.toResponse(queryService.getDetail(viewerId, UUID.fromString(feedId)));
+        return responseAssembler.toResponse(RequestOperationTimings.measure(
+                RequestOperationTimings.Operation.FEED_QUERY,
+                () -> queryService.getDetail(viewerId, UUID.fromString(feedId))));
     }
 
     @Operation(summary = "피드 삭제", description = "본인 피드를 소프트 삭제하고 미발송 푸시를 취소합니다. 원본 일기는 유지합니다.")

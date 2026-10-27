@@ -100,6 +100,21 @@ class SecurityConfigTest {
     }
 
     @Test
+    @DisplayName("프로필 조회 응답의 만료 시각과 주소 발급 실패를 문서화한다")
+    void documentsProfileImageExpiryAndReadFailure() throws Exception {
+        String image = "$.components.schemas.CurrentUserResponse.properties.profileImageUrlExpiresAt";
+        mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk())
+                .andExpect(jsonPath(image + ".format")
+                        .value("date-time"))
+                .andExpect(jsonPath(image + ".nullable")
+                        .value(true))
+                .andExpect(jsonPath("$.components.schemas.Author.properties.profileImageUrlExpiresAt.format")
+                        .value("date-time"))
+                .andExpect(jsonPath("$.paths['/api/v1/me'].get.responses['503'].content['application/problem+json']"
+                        + ".examples.PROFILE_IMAGE_STORAGE_ERROR.value.code").value("PROFILE_IMAGE_STORAGE_ERROR"));
+    }
+
+    @Test
     @DisplayName("Access Token 없이 보호 API에 접근할 수 없다")
     void rejectsUnauthenticatedApiRequest() throws Exception {
         mockMvc.perform(get("/api/v1/test-auth"))
@@ -275,6 +290,71 @@ class SecurityConfigTest {
                 .andExpect(jsonPath("$.paths['/api/v1/public/shares/{shareId}']").doesNotExist())
                 .andExpect(jsonPath("$.paths['/api/v1/auth/logout'].post.responses['204']").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/guest/session'].post.responses['204']").exists());
+    }
+
+    @Test
+    @DisplayName("기본 프로필 이미지 변경 문서에 인증, 번호 범위와 응답을 명시한다")
+    void documentsDefaultProfileImageChange() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].patch.security[0].bearerAuth").isArray())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].patch.security[0].csrfToken").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].patch.responses['204']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].patch.responses['200']").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].patch.responses['400'].content"
+                        + "['application/problem+json'].examples.VALIDATION_ERROR.value.code")
+                        .value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].patch.responses['409'].content"
+                        + "['application/problem+json'].examples.PUBLIC_PROFILE_NOT_ASSIGNED.value.code")
+                        .value("PUBLIC_PROFILE_NOT_ASSIGNED"))
+                .andExpect(jsonPath("$.components.schemas.ChangeDefaultProfileImageRequest.required")
+                        .value(hasItem("imageCode")))
+                .andExpect(jsonPath("$.components.schemas.ChangeDefaultProfileImageRequest.properties.imageCode.minimum")
+                        .value(1))
+                .andExpect(jsonPath("$.components.schemas.ChangeDefaultProfileImageRequest.properties.imageCode.maximum")
+                        .value(10));
+    }
+
+    @Test
+    @DisplayName("개인 사진 업로드 문서에 multipart 요청과 인증 및 성공과 실패 응답을 명시한다")
+    void documentsProfileImageUpload() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].post.security[0].bearerAuth").isArray())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].post.security[0].csrfToken").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].post.requestBody.required").value(true))
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].post.requestBody.content"
+                        + "['multipart/form-data']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].post.responses['204']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].post.responses['200']").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].post.responses['413'].content"
+                        + "['application/problem+json'].schema['$ref']")
+                        .value("#/components/schemas/HarudleProblemDetail"))
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].post.responses['415']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].post.responses['503'].content"
+                        + "['application/problem+json'].examples.PROFILE_IMAGE_STORAGE_ERROR.value.code")
+                        .value("PROFILE_IMAGE_STORAGE_ERROR"));
+    }
+
+    @Test
+    @DisplayName("통합 프로필 문서에 선택 가능한 multipart 항목과 인증 및 응답을 명시한다")
+    void documentsCombinedProfileChange() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile'].patch.security[0].bearerAuth").isArray())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile'].patch.security[0].csrfToken").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile'].patch.responses['204']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile'].patch.responses['409'].content"
+                        + "['application/problem+json'].examples.NICKNAME_ALREADY_IN_USE.value.code")
+                        .value("NICKNAME_ALREADY_IN_USE"))
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile'].patch.requestBody.content"
+                        + "['multipart/form-data'].schema['$ref']").value("#/components/schemas/ChangeProfileRequest"))
+                .andExpect(jsonPath("$.components.schemas.ChangeProfileRequest.required").doesNotExist())
+                .andExpect(jsonPath("$.components.schemas.ChangeProfileRequest.properties.nickname").exists())
+                .andExpect(jsonPath("$.components.schemas.ChangeProfileRequest.properties.imageCode.minimum").value(1))
+                .andExpect(jsonPath("$.components.schemas.ChangeProfileRequest.properties.imageCode.maximum").value(10))
+                .andExpect(jsonPath("$.components.schemas.ChangeProfileRequest.properties.image.format")
+                        .value("binary"));
     }
 
     @Test

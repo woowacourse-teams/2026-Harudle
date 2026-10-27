@@ -79,6 +79,9 @@
 
 - Node.js 24와 pnpm 11.20.0을 사용한다. 의존성은 `frontend/`에서
   `pnpm install`로 설치하고 npm 또는 yarn lockfile을 만들지 않는다.
+- PR CI의 `cache: pnpm`은 내려받은 패키지를 재사용한다. `develop-frontend`의 의존성 또는
+  CI 설정이 바뀌면 `.github/workflows/frontend-cache.yml`이 패키지만 설치해 후속 PR용 캐시를 만든다.
+  캐시에는 `node_modules`와 빌드 결과를 넣지 않으며, PR 검증은 기존대로 실행한다.
 - Web 전용 의존성은 `web/package.json`에 선언한다. 향후 workspace 내부
   패키지를 참조할 때는 `workspace:` 프로토콜을 사용한다.
 - Web 변경을 완료하기 전에 `frontend/web`에서 `pnpm check`를 실행한다. 이
@@ -142,8 +145,9 @@
   입력을 거부하는지 테스트한다.
 - 타입 가드 통과 후 내부 전달에서는 동일한 구조 검증을 반복하지 않는다.
   구조 검사와 날짜·개수·길이 등 도메인 검증의 차이를 구분한다.
-- LLM 지침과 리뷰는 보조 수단이다. 병합 전 검사는 CI의 typecheck·lint·test로
-  확인하며, `pnpm build`만으로 타입 검사가 실행된다고 간주하지 않는다.
+- LLM 지침과 리뷰는 보조 수단이다. 병합 전에는 CI에서 `pnpm check`로
+  타입 검사, 린트, 형식 검사, 테스트, 배포용 빌드를 실행한다. `pnpm build`만으로
+  타입 검사가 실행된다고 간주하지 않는다.
 
 ## API and authentication boundaries
 

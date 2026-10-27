@@ -44,7 +44,7 @@ import org.springframework.context.annotation.Configuration;
         description = "먼저 GET /api/v1/auth/csrf 응답의 token 값을 입력합니다. "
                 + "함께 발급된 XSRF-TOKEN 쿠키도 요청에 포함되어야 합니다. "
                 + "쿠키를 사용하는 인증·게스트 변경 API, 피드 좋아요 PUT·DELETE, "
-                + "댓글 POST·DELETE와 알림 읽음 PATCH에 필요합니다. "
+                + "댓글 POST·DELETE, 신고 POST, 회원 차단 PUT·DELETE와 알림 읽음 PATCH에 필요합니다. "
                 + "그 밖의 Bearer API는 각 경로의 security 요구를 따릅니다."
 )
 public class OpenApiConfig {
@@ -77,6 +77,9 @@ public class OpenApiConfig {
                     method == PathItem.HttpMethod.PUT || method == PathItem.HttpMethod.DELETE;
             case "/api/v1/feeds/{feedId}/comments" -> method == PathItem.HttpMethod.POST;
             case "/api/v1/comments/{commentId}" -> method == PathItem.HttpMethod.DELETE;
+            case "/api/v1/reports" -> method == PathItem.HttpMethod.POST;
+            case "/api/v1/blocks/{userId}" ->
+                    method == PathItem.HttpMethod.PUT || method == PathItem.HttpMethod.DELETE;
             case "/api/v1/notifications/{notificationId}" -> method == PathItem.HttpMethod.PATCH;
             default -> false;
         };

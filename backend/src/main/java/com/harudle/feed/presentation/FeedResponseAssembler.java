@@ -5,6 +5,7 @@ import com.harudle.feed.service.dto.FeedPageResult;
 import com.harudle.feed.service.dto.FeedResult;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
+import com.harudle.observability.RequestOperationTimings;
 import java.time.ZoneId;
 import org.springframework.stereotype.Component;
 
@@ -22,11 +23,15 @@ class FeedResponseAssembler {
     }
 
     FeedResponse toPublishResponse(FeedResult result) {
-        return toResponse(result, imageUrlProvider.forPublication());
+        FeedResponse response = toResponse(result, imageUrlProvider.forPublication());
+        RequestOperationTimings.returnedImages(1);
+        return response;
     }
 
     FeedResponse toResponse(FeedResult result) {
-        return toResponse(result, imageUrlProvider.forRead());
+        FeedResponse response = toResponse(result, imageUrlProvider.forRead());
+        RequestOperationTimings.returnedImages(1);
+        return response;
     }
 
     private FeedResponse toResponse(FeedResult result, ImageUrlProvider responseUrls) {
@@ -35,7 +40,8 @@ class FeedResponseAssembler {
         return new FeedResponse(
                 result.id(),
                 new FeedResponse.Author(
-                        result.author().id(), result.author().nickname(), result.author().profileImageUrl()
+                        result.author().id(), result.author().nickname(), result.author().profileImageUrl(),
+                        result.author().profileImageUrlExpiresAt()
                 ),
                 new FeedResponse.Category(result.category().id(), result.category().name()),
                 accessUrl.url(),
@@ -48,7 +54,10 @@ class FeedResponseAssembler {
 
     FeedPageResponse toResponse(FeedPageResult page) {
         ImageUrlProvider responseUrls = imageUrlProvider.forRead();
-        return new FeedPageResponse(page.items().stream().map(item -> toResponse(item, responseUrls)).toList(),
+        FeedPageResponse response = new FeedPageResponse(
+                page.items().stream().map(item -> toResponse(item, responseUrls)).toList(),
                 page.nextCursor(), page.hasNext());
+        RequestOperationTimings.returnedImages(page.items().size());
+        return response;
     }
 }

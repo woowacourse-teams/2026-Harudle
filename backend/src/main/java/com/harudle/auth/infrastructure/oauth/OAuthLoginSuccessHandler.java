@@ -1,5 +1,6 @@
 package com.harudle.auth.infrastructure.oauth;
 
+import com.harudle.auth.application.AccountSuspendedException;
 import com.harudle.auth.application.InactiveUserException;
 import com.harudle.auth.application.IssuedRefreshToken;
 import com.harudle.auth.application.OAuthLoginCommand;
@@ -93,6 +94,9 @@ public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
             return;
         } catch (RequiredOAuthProfileException exception) {
             redirectExpectedFailure(response, provider, OAuthFailureReason.REQUIRED_PROFILE_MISSING);
+            return;
+        } catch (AccountSuspendedException exception) {
+            redirectExpectedFailure(response, provider, OAuthFailureReason.ACCOUNT_SUSPENDED);
             return;
         } catch (InactiveUserException exception) {
             redirectExpectedFailure(response, provider, OAuthFailureReason.INACTIVE_USER);

@@ -6,7 +6,9 @@ import com.google.genai.Models;
 import com.google.genai.types.ClientOptions;
 import com.google.genai.types.HttpOptions;
 import com.google.genai.types.HttpRetryOptions;
+import com.harudle.auth.infrastructure.S3ProfileImageStorage;
 import com.harudle.common.logging.ExternalApiLogger;
+import com.harudle.generation.adapter.out.codex.CodexDiaryImageGenerator;
 import com.harudle.generation.adapter.out.gemini.DiaryImagePromptRenderer;
 import com.harudle.generation.adapter.out.gemini.GeminiDiaryImageGenerator;
 import com.harudle.generation.adapter.out.gemini.GeminiExceptionTranslator;
@@ -17,6 +19,7 @@ import com.harudle.generation.adapter.out.gemini.client.ExpressGeminiClientFacto
 import com.harudle.generation.adapter.out.gemini.client.GeminiClientFactory;
 import com.harudle.generation.adapter.out.gemini.client.GeminiStoryboardCallScope;
 import com.harudle.generation.adapter.out.gemini.client.VertexGeminiClientFactory;
+import com.harudle.generation.adapter.out.http.SingleAttemptHttpTransport;
 import com.harudle.generation.adapter.out.s3.CwebpImageVariantEncoder;
 import com.harudle.generation.adapter.out.s3.ImageObjectKeyFactory;
 import com.harudle.generation.adapter.out.s3.ImageUploadPreparer;
@@ -28,9 +31,9 @@ import com.harudle.generation.adapter.out.s3.S3ExceptionTranslator;
 import com.harudle.generation.adapter.out.s3.S3FailureReporter;
 import com.harudle.generation.adapter.out.s3.S3ImageStorage;
 import com.harudle.generation.adapter.out.s3.S3ImageUrlProvider;
-import com.harudle.generation.adapter.out.storyboard.StoryboardHttpTransport;
 import com.harudle.generation.adapter.out.storyboard.StoryboardJsonCodec;
 import com.harudle.generation.adapter.out.storyboard.StoryboardResponseMapper;
+import com.harudle.generation.diary.service.image.FallbackDiaryImageGenerator;
 import com.harudle.generation.diary.service.port.BackupObjectStorage;
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
 import com.harudle.generation.diary.service.port.ImageStorage;
@@ -61,7 +64,7 @@ import tools.jackson.databind.ObjectMapper;
 )
 @Import({QwenStoryboardConfiguration.class, StoryboardGenerationConfiguration.class})
 @EnableConfigurationProperties({GeminiClientProperties.class, GeminiGenerationProperties.class,
-        S3StorageProperties.class, StoryboardProviderProperties.class})
+        S3StorageProperties.class, StoryboardProviderProperties.class, ImageProviderProperties.class})
 public class GenerationAdapterConfiguration {
 
     @Bean
@@ -82,16 +85,26 @@ public class GenerationAdapterConfiguration {
     }
 
     @Bean(destroyMethod = "close")
-    public Client geminiClient(GeminiGenerationProperties properties, GeminiClientFactory clientFactory) {
+    public Client geminiClient(
+            GeminiGenerationProperties properties,
+            GeminiClientFactory clientFactory,
+            ImageProviderProperties imageProperties
+    ) {
         int requestTimeoutMillis = Math.toIntExact(properties.requestTimeout().toMillis());
-        HttpRetryOptions retryOptions = HttpRetryOptions.builder()
-                .attempts(properties.retryAttempts())
-                .build();
+        HttpRetryOptions retryOptions = imageProperties.codexEnabled()
+                ? HttpRetryOptions.builder().attempts(1).httpStatusCodes(List.of()).build()
+                : HttpRetryOptions.builder().attempts(properties.retryAttempts()).build();
         HttpOptions httpOptions = HttpOptions.builder()
                 .timeout(requestTimeoutMillis)
                 .retryOptions(retryOptions)
                 .build();
 
+        if (imageProperties.codexEnabled()) {
+            ClientOptions clientOptions = ClientOptions.builder().customHttpClient(
+                    SingleAttemptHttpTransport.builder(properties.requestTimeout()).build()
+            ).build();
+            return clientFactory.create(httpOptions, clientOptions);
+        }
         return clientFactory.create(httpOptions);
     }
 
@@ -119,7 +132,7 @@ public class GenerationAdapterConfiguration {
                 .retryOptions(HttpRetryOptions.builder().attempts(1).httpStatusCodes(List.of()).build())
                 .build();
         ClientOptions clientOptions = ClientOptions.builder().customHttpClient(
-                StoryboardHttpTransport.builder(timeout).eventListenerFactory(callScope).build()
+                SingleAttemptHttpTransport.builder(timeout).eventListenerFactory(callScope).build()
         ).build();
         return clientFactory.create(httpOptions, clientOptions);
     }
@@ -142,6 +155,15 @@ public class GenerationAdapterConfiguration {
         return S3Presigner.builder()
                 .region(Region.of(properties.region()))
                 .build();
+    }
+
+    @Bean
+    public S3ProfileImageStorage profileImageStorage(
+            @Qualifier("s3Client") S3Client s3Client,
+            @Qualifier("s3Presigner") S3Presigner s3Presigner,
+            S3StorageProperties properties
+    ) {
+        return new S3ProfileImageStorage(s3Client, s3Presigner, properties);
     }
 
     @Bean
@@ -205,15 +227,21 @@ public class GenerationAdapterConfiguration {
             GeminiGenerationProperties properties,
             DiaryImagePromptRenderer promptRenderer,
             GeminiFailureReporter failureReporter,
-            GeminiStageMetrics stageMetrics
+            GeminiStageMetrics stageMetrics,
+            ImageProviderProperties imageProperties,
+            ObjectMapper objectMapper,
+            MeterRegistry meterRegistry
     ) {
-        return new GeminiDiaryImageGenerator(
-                geminiModels,
-                properties,
-                promptRenderer,
-                failureReporter,
-                stageMetrics
+        DiaryImageGenerator primary = new GeminiDiaryImageGenerator(
+                geminiModels, properties, promptRenderer, failureReporter, stageMetrics
         );
+        if (!imageProperties.codexEnabled()) {
+            return primary;
+        }
+        DiaryImageGenerator fallback = new CodexDiaryImageGenerator(
+                imageProperties, promptRenderer, objectMapper, meterRegistry
+        );
+        return new FallbackDiaryImageGenerator(primary, fallback, meterRegistry);
     }
 
     @Bean

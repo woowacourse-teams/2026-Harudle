@@ -15,6 +15,7 @@ import java.util.Objects;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -39,6 +40,7 @@ public class RefreshTokenService {
     private final RefreshTokenGenerator refreshTokenGenerator;
     private final RefreshTokenHasher refreshTokenHasher;
     private final Duration refreshTokenTtl;
+    private final AccountAccessPolicy accountAccess;
 
     public RefreshTokenService(
             RefreshTokenRepository refreshTokenRepository,
@@ -46,7 +48,8 @@ public class RefreshTokenService {
             EntityManager entityManager,
             RefreshTokenGenerator refreshTokenGenerator,
             RefreshTokenHasher refreshTokenHasher,
-            AuthProperties authProperties
+            AuthProperties authProperties,
+            AccountAccessPolicy accountAccess
     ) {
         this.refreshTokenRepository = refreshTokenRepository;
         this.jdbcTemplate = jdbcTemplate;
@@ -54,24 +57,33 @@ public class RefreshTokenService {
         this.refreshTokenGenerator = refreshTokenGenerator;
         this.refreshTokenHasher = refreshTokenHasher;
         this.refreshTokenTtl = extractRefreshTokenTtl(authProperties);
+        this.accountAccess = accountAccess;
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public IssuedRefreshToken issue(User user, Instant now) {
         Objects.requireNonNull(user, "user는 필수입니다.");
         Objects.requireNonNull(now, "now는 필수입니다.");
         validateActiveUser(user);
+        accountAccess.requireAllowed(user.getId());
 
         return issueNewToken(user, createSession(user, now), now);
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public RotatedRefreshToken rotate(String rawToken, Instant now) {
         Objects.requireNonNull(now, "now는 필수입니다.");
 
         String tokenHash = hashRawToken(rawToken);
+        UUID candidateUserId = refreshTokenRepository.findUserIdByTokenHash(tokenHash)
+                .orElseThrow(InvalidRefreshTokenException::new);
+        // 제재와 같은 회원 잠금을 세션/토큰보다 먼저 얻어 발급과 제재의 잠금 순서를 고정한다.
+        accountAccess.requireAllowed(candidateUserId);
         UUID activeSessionId = lockActiveSession(tokenHash);
         RefreshToken refreshToken = findRefreshToken(tokenHash);
+        if (!candidateUserId.equals(refreshToken.getUser().getId())) {
+            throw new InvalidRefreshTokenException();
+        }
         validateUsableToken(refreshToken, now);
         validateActiveUser(refreshToken.getUser());
         if (refreshToken.getSessionId() != null && activeSessionId == null) {

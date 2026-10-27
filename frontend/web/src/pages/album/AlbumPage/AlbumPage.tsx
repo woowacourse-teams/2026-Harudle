@@ -5,8 +5,6 @@ import useSelectedYearMonth from './useSelectedYearMonth';
 import { css } from '@emotion/react';
 import { theme } from '../../../styles/theme';
 import { getToday, type Month } from '../../../shared/utils';
-import { useDiaryGenerateContext } from '../../diary-generating/DiaryGenerateContext';
-import { useEffect } from 'react';
 import keyboardArrowDownIcon from '../../../assets/icons/keyboard_arrow_down.svg';
 import useGenerationUsage from './useGenrationUsage';
 
@@ -62,14 +60,6 @@ export default AlbumPage;
 
 const RemainingGenerationUsage = () => {
   const { request, execute } = useGenerationUsage();
-
-  const { request: diaryGenerateRequest } = useDiaryGenerateContext();
-
-  useEffect(() => {
-    if (diaryGenerateRequest.status === 'success') {
-      void execute();
-    }
-  }, [diaryGenerateRequest.status, execute]);
 
   const remainingCount = request.status === 'success' ? request.data : null;
   const hasGenerationUsageError = request.status === 'error';

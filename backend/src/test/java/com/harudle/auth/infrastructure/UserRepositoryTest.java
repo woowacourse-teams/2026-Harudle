@@ -44,7 +44,7 @@ class UserRepositoryTest {
     private JdbcTemplate jdbcTemplate;
 
     @ParameterizedTest
-    @ValueSource(ints = {1, 3, 5})
+    @ValueSource(ints = {1, 3, 5, 6, 10})
     @DisplayName("공개 프로필과 이미지 코드를 저장하고 중간의 일반 공백 한 칸을 유지해 조회한다")
     void persistsPublicProfile(int imageCode) {
         User user = new User("green@example.com", "김초록", CREATED_AT);
@@ -204,7 +204,7 @@ class UserRepositoryTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {0, 6})
+    @ValueSource(ints = {0, 11})
     @DisplayName("도메인 검증을 거치지 않은 잘못된 이미지 코드도 DB CHECK 제약이 거부한다")
     void rejectsInvalidImageCodesAtDatabaseBoundary(int imageCode) {
         User user = saveUser();

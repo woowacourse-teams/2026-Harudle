@@ -5,16 +5,26 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.OutputStreamAppender;
 import ch.qos.logback.core.read.ListAppender;
+import com.harudle.generation.adapter.out.s3.ObservedImageStorage;
+import com.harudle.generation.adapter.out.s3.ObservedImageUrlProvider;
+import com.harudle.generation.diary.service.port.ImageStorage;
+import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
+import com.harudle.observability.RequestOperationTimings;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
 import jakarta.servlet.ServletException;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.net.URI;
+import java.time.Instant;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterEach;
@@ -43,7 +53,7 @@ class ApiRequestObservationHandlerTest {
 
     private final Logger logger = (Logger) LoggerFactory.getLogger(ApiRequestObservationHandler.class);
     private final ListAppender<ILoggingEvent> appender = new ListAppender<>();
-    private final ApiRequestObservationHandler handler = new ApiRequestObservationHandler();
+    private final ApiRequestObservationHandler handler = new ApiRequestObservationHandler(false);
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -75,8 +85,11 @@ class ApiRequestObservationHandlerTest {
         assertThat(fields(0)).containsEntry("operation", "feed_list").containsEntry("httpStatus", 200)
                 .containsEntry("apiGroup", "general");
         assertThat(fields(1)).containsEntry("operation", "feed_detail");
-        assertThat(fields(0).keySet()).containsExactlyInAnyOrder(
+        assertThat(fields(0).keySet()).contains(
                 "event", "apiGroup", "operation", "httpStatus", "durationMs");
+        assertThat(fields(0)).containsEntry("r2Enabled", false)
+                .containsEntry("s3HeadCount", 0).containsEntry("r2HeadCount", 0)
+                .containsEntry("s3SignCount", 0).containsEntry("feedImageCount", 0);
         assertThat((double) fields(0).get("durationMs")).isGreaterThanOrEqualTo(0);
         assertThat(fields(0).toString() + fields(1) + appender.list.getFirst().getFormattedMessage())
                 .doesNotContain("private-cursor", "private-token", "private-feed-id");
@@ -148,6 +161,9 @@ class ApiRequestObservationHandlerTest {
             JsonNode event = new ObjectMapper().readTree(output.toString(StandardCharsets.UTF_8));
             assertThat(event.path("event").asString()).isEqualTo("api_request_completed");
             assertThat(event.path("durationMs").isNumber()).isTrue();
+            assertThat(event.path("s3HeadCount").isNumber()).isTrue();
+            assertThat(event.path("s3HeadDurationMs").isNumber()).isTrue();
+            assertThat(event.path("r2Enabled").isBoolean()).isTrue();
             assertThat(event.path("httpStatus").intValue()).isEqualTo(200);
             assertThat(event.path("operation").asString()).isEqualTo("feed_list");
         } finally {
@@ -169,6 +185,21 @@ class ApiRequestObservationHandlerTest {
         assertThat(appender.list).hasSize(1);
     }
 
+    @Test
+    @DisplayName("저장소 호출 횟수를 같은 요청 완료 로그에 기록하고 다음 요청에는 넘기지 않는다")
+    void includesStorageOperationsAndDoesNotLeakAcrossRequests() throws Exception {
+        mockMvc.perform(get("/api/v1/timed")).andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/feeds")).andExpect(status().isOk());
+
+        assertThat(fields(0)).containsEntry("s3HeadCount", 2).containsEntry("s3HeadMissingCount", 1)
+                .containsEntry("s3HeadFailureCount", 0).containsEntry("s3SignCount", 1)
+                .containsEntry("r2HeadCount", 0).containsEntry("feedImageCount", 1);
+        assertThat((double) fields(0).get("s3HeadDurationMs")).isGreaterThanOrEqualTo(0);
+        assertThat(fields(1)).containsEntry("s3HeadCount", 0).containsEntry("s3SignCount", 0)
+                .containsEntry("feedImageCount", 0);
+        assertThat(fields(0).toString()).doesNotContain("private-object", "private-signature");
+    }
+
     private Map<String, Object> fields(int index) {
         return appender.list.get(index).getKeyValuePairs().stream()
                 .collect(Collectors.toMap(pair -> pair.key, pair -> pair.value));
@@ -176,6 +207,26 @@ class ApiRequestObservationHandlerTest {
 
     @RestController
     static class TestController {
+
+        @GetMapping("/api/v1/timed")
+        String timed() {
+            ImageStorage delegate = mock(ImageStorage.class);
+            when(delegate.exists("private-object-present")).thenReturn(true);
+            when(delegate.exists("private-object-missing")).thenReturn(false);
+            SimpleMeterRegistry registry = new SimpleMeterRegistry();
+            try {
+                var storage = new ObservedImageStorage(delegate, registry);
+                storage.exists("private-object-present");
+                storage.exists("private-object-missing");
+                new ObservedImageUrlProvider(key -> new ImageAccessUrl(
+                        URI.create("https://example.invalid/private-signature"), Instant.now()), registry)
+                        .createAccessUrl("private-object-present");
+                RequestOperationTimings.returnedImages(1);
+            } finally {
+                registry.close();
+            }
+            return "ok";
+        }
 
         @GetMapping({"/api/v1/feeds", "/api/v1/feeds/{feedId}", "/api/v1/guest/diaries/{diaryId}"})
         String read() {

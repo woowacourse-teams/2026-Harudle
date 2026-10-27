@@ -5,6 +5,10 @@ const palette = {
     500: '#8B6FE8',
     600: '#7355DA',
   },
+  green: {
+    50: '#EDF7F0',
+    600: '#2F8A62',
+  },
   gray: {
     100: '#E8E6EB',
     600: '#6F6B79',
@@ -26,6 +30,7 @@ export const theme = {
       brandStrong: palette.purple[600],
       brandWeak: '#F8F6FF',
       criticalWeak: '#FFF7F7',
+      positiveWeak: palette.green[50],
       kakao: '#FFD66B',
     },
     // 글자와 아이콘의 색상. 마스크 아이콘도 CSS 속성과 관계없이 전경입니다.
@@ -35,6 +40,7 @@ export const theme = {
       brand: palette.purple[600],
       onBrand: palette.white,
       critical: palette.red,
+      positive: palette.green[600],
       placeholder: '#8B8793',
     },
     stroke: {

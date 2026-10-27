@@ -166,7 +166,7 @@ Environment: Amazon Linux 2023 / AArch64 Standard 3.0 or 4.0 / Small
 Privileged mode: enabled
 Service role: codebuild-project
 Buildspec: buildspec.yml
-CloudWatch log group: /aws/codebuild/project-2026
+CloudWatch log group: /aws/codebuild/harudle-dev-bulid
 ```
 
 `buildspec.yml`은 빌드 호스트 아키텍처와 관계없이 최종 이미지를 `linux/arm64`로 생성하고 이미지 아키텍처를 검증합니다. x86 빌드 환경에서는 QEMU/binfmt를 등록하므로 Docker 교차 빌드를 위해 Privileged mode가 반드시 필요합니다.
@@ -179,8 +179,10 @@ JAR를 만든 뒤 Dockerfile의 `codebuild` 타깃으로 실행 이미지만 포
 소스에서 빌드하므로 기존 `docker compose build`도 사용할 수 있습니다.
 
 프론트엔드의 PostHog 빌드 인자는 의존성 설치 이후에 선언하므로 분석 설정만
-바뀌었을 때 `pnpm install` 레이어까지 무효화하지 않습니다. `pnpm check`는 그대로
-실행합니다. 백엔드는 이전 클래스와 분석 상태를 복원하고 `clean` 없이 빌드합니다.
+바뀌었을 때 `pnpm install` 레이어까지 무효화하지 않습니다. PR에서 타입 검사,
+린트, 형식 검사, 테스트와 배포용 빌드를 실행합니다. CodeBuild는 새 프론트엔드
+이미지가 필요할 때 `pnpm build`만 실행합니다. 백엔드는 이전 클래스와 분석 상태를
+복원하고 `clean` 없이 빌드합니다.
 
 이미지는 `docker-container` 빌더에서 Docker 형식 tar로 직접 내보냅니다.
 CodeBuild Docker daemon에 이미지를 로드하고 다시 `docker save`하는 단계를 줄입니다.
@@ -198,7 +200,8 @@ CodeDeploy의 이미지 로드 절차를 그대로 사용합니다. 개선 효�
 ### CodeBuild 빌드 캐시
 
 백엔드는 CodeBuild의 Corretto 21로 빌드합니다. Docker는 빌드가 끝난 JAR를
-실행 이미지에 넣습니다. 프론트엔드는 기존처럼 `pnpm check`를 실행합니다.
+실행 이미지에 넣습니다. 프론트엔드는 빌드 입력이 이전과 같으면 검증된 이미지를
+재사용하고, 다르면 `pnpm build`로 새 이미지를 만듭니다.
 
 빌드는 다음 순서로 진행합니다.
 
@@ -221,14 +224,24 @@ CodeDeploy의 이미지 로드 절차를 그대로 사용합니다. 개선 효�
 | Gradle 준비 파일 | 스크립트 실행 결과, 변환 결과, Java 분석, 파일 해시, 접근 기록, `home/native` 실행 파일 |
 | 이전 컴파일 결과 | 프로젝트 `.gradle`, 운영 클래스, 리소스, 생성 소스, 헤더, 컴파일 분석 파일 |
 | 빈 폴더 목록 | `incremental/directories`. 복원할 때 같은 출력 폴더를 다시 만듭니다. |
+| 프론트엔드 이미지 | `/root/.cache/harudle-frontend`의 압축 이미지, 체크섬, 입력 지문 |
 
 위 경로의 기준은 `/root/.cache/harudle-gradle`입니다. 이전 컴파일 결과는 최근에 성공한
 한 세트만 보관합니다. Gradle 설정, Wrapper, Java 버전, OS, CPU 종류가 바뀌면 그 결과를
 사용하지 않고 다시 빌드합니다. Gradle도 입력 파일의 변경을 확인합니다.
 
-완성된 JAR, JDK, Docker 레이어, 프론트엔드, 테스트 결과, 보고서, Daemon 로그는 저장하지
+완성된 JAR, JDK, Docker 레이어, 프론트엔드 테스트 결과, 보고서, Daemon 로그는 저장하지
 않습니다. `build/libs`를 복원하지 않으므로 JAR는 매번 새로 만듭니다. 클래스 파일을 또
 저장하는 Gradle Build Cache와 Configuration Cache도 켜지 않습니다.
+
+프론트엔드 캐시는 최근 성공 이미지 한 개만 보관합니다. 프론트엔드 파일 내용,
+PostHog 빌드 인자, Docker 베이스 이미지가 같고 압축 파일 검증을 통과할 때만
+재사용합니다. 캐시가 없거나 맞지 않으면 새 이미지를 만듭니다. `.dockerignore`를
+바꾼 경우에는 입력 지문 계산 범위도 함께 점검해야 합니다.
+이미지를 재사용했다면 로컬 프론트엔드 캐시 교체를 건너뜁니다. 새로 빌드하고 빌드
+전후 입력이 같다면 기존 캐시의 지문과 체크섬이 같아도 새 이미지를 저장합니다.
+캐시 교체 직전에 기존 지문을 지우고 새 지문을 마지막에 저장해, 교체 중 실패한
+캐시를 재사용하지 않게 합니다.
 
 Gradle의 프로젝트 기록과 빈 출력 폴더를 함께 복원해야 컴파일을 생략할 수 있습니다.
 프로젝트의 잠금 메타데이터도 보존하고, 의존성 캐시의 `modules-2.lock`만 제거합니다.
@@ -248,6 +261,8 @@ CodeBuild 역할에는 해당 캐시 경로의 `s3:GetObject`, `s3:PutObject`와
 
 `cache.key`는 넣지 않아 매 빌드 후 같은 캐시를 갱신합니다. dev와 prod가 같은 CodeBuild
 프로젝트를 쓰면 이 캐시도 공유합니다. 소스가 다르면 Gradle이 변경된 부분을 확인합니다.
+프론트엔드 입력이 dev와 prod에서 번갈아 다르면 이미지 한 개만 저장하므로 캐시가
+계속 빗나갈 수 있습니다.
 새 저장 경로로 바꾸기 때문에 첫 빌드에서는 캐시가 없을 수 있습니다.
 
 #### 시간과 용량 확인
@@ -260,6 +275,12 @@ CodeBuild 역할에는 해당 캐시 경로의 `s3:GetObject`, `s3:PutObject`와
 | `backend_incremental_restore_seconds` | 가져온 결과를 작업 폴더에 복사한 시간 |
 | `backend_gradle_bootjar_seconds` | Gradle 시작부터 JAR 생성까지 걸린 시간 |
 | `backend_incremental_save_seconds` | 새 컴파일 결과를 저장한 시간 |
+| `backend_docker_export_seconds` | 백엔드 Docker 이미지 생성과 tar 내보내기 시간 |
+| `frontend_image_reused` | 저장된 프론트엔드 이미지를 사용했는지. `true`면 프론트엔드 Docker 빌드와 압축을 생략 |
+| `frontend_image_cache_prepared` | 새 프론트엔드 이미지를 로컬 캐시 경로에 준비했는지. S3 업로드 완료를 뜻하지 않음 |
+| `frontend_docker_export_seconds` | 새 프론트엔드 이미지 생성과 tar 내보내기 시간. `pnpm build` 포함. 이미지 재사용 시에는 출력하지 않음 |
+| `backend_image_gzip_seconds` | 백엔드 이미지 tar 압축 시간 |
+| `frontend_image_gzip_seconds` | 새 프론트엔드 이미지 tar 압축 시간. 이미지 재사용 시에는 출력하지 않음 |
 
 `compileJava UP-TO-DATE`는 컴파일을 생략했다는 뜻입니다. 파일을 바꾼 경우에는 실제로
 얼마나 다시 컴파일했는지도 확인합니다. 복원 성공 로그만으로 속도가 빨라졌다고 판단하지
@@ -401,3 +422,7 @@ https://www.harudle.com/login/oauth2/code/google
 요청 범위는 `openid`, `email`, `profile`이며, `GOOGLE_API_KEY`로 설정하는 Gemini 인증과는 별도입니다.
 로그인 시작 경로는 `/oauth2/authorization/google`입니다. 성공과 실패 시에는 기존 프론트엔드 리다이렉트
 설정을 사용합니다. 위의 HTTPS 쿠키와 프록시 설정도 그대로 적용합니다.
+
+## 요청 지연을 확인하는 로그
+
+백엔드는 요청 완료 로그에 S3와 R2 확인 횟수, URL 서명 시간, 피드 데이터 조회 시간을 남깁니다. 프론트엔드 Nginx는 같은 응답 추적 ID와 프록시 시간을 JSON으로 기록합니다. 호스트 Nginx의 실제 HTTPS 설정과 CloudWatch 필터는 별도로 적용합니다. [적용과 확인 순서](monitoring/request-latency.md)를 참고합니다.

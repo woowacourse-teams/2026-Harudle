@@ -8,9 +8,39 @@ import io.swagger.v3.oas.models.PathItem;
 import io.swagger.v3.oas.models.Paths;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import java.util.List;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 class OpenApiConfigTest {
+
+    @Test
+    @DisplayName("회원 차단과 해제에만 Bearer와 CSRF를 함께 문서화한다")
+    void documentsBlockMutationsWithoutAddingCsrfToList() {
+        PathItem mutations = new PathItem().put(new Operation()
+                .addSecurityItem(new SecurityRequirement().addList("bearerAuth")))
+                .delete(new Operation().addSecurityItem(new SecurityRequirement().addList("bearerAuth")));
+        PathItem list = new PathItem().get(new Operation()
+                .addSecurityItem(new SecurityRequirement().addList("bearerAuth")));
+        new OpenApiConfig().csrfSecurityCustomizer().customise(new OpenAPI().paths(new Paths()
+                .addPathItem("/api/v1/blocks/{userId}", mutations).addPathItem("/api/v1/blocks", list)));
+        assertThat(mutations.getPut().getSecurity()).singleElement()
+                .satisfies(value -> assertThat(value).containsOnlyKeys("bearerAuth", "csrfToken"));
+        assertThat(mutations.getDelete().getSecurity()).singleElement()
+                .satisfies(value -> assertThat(value).containsOnlyKeys("bearerAuth", "csrfToken"));
+        assertThat(list.getGet().getSecurity()).singleElement()
+                .satisfies(value -> assertThat(value).containsOnlyKeys("bearerAuth"));
+    }
+
+
+    @Test
+    void documentsReportPostWithBothBearerAndCsrfInTheSameRequirement() {
+        PathItem report = new PathItem().post(new Operation()
+                .addSecurityItem(new SecurityRequirement().addList("bearerAuth")));
+        new OpenApiConfig().csrfSecurityCustomizer().customise(new OpenAPI()
+                .paths(new Paths().addPathItem("/api/v1/reports", report)));
+        assertThat(report.getPost().getSecurity()).singleElement()
+                .satisfies(requirement -> assertThat(requirement).containsOnlyKeys("bearerAuth", "csrfToken"));
+    }
 
     @Test
     void documentsNotificationReadPatchWithBearerAndCsrfOnlyForTheExactMethodAndPath() {

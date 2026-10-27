@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.harudle.TestcontainersConfiguration;
+import com.harudle.auth.application.port.AccountRestrictionReader;
 import com.harudle.auth.domain.OAuthAccount;
 import com.harudle.auth.domain.OAuthProvider;
 import com.harudle.auth.domain.User;
@@ -41,7 +42,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @Testcontainers
 @DataJpaTest(showSql = false)
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({TestcontainersConfiguration.class, OAuthLoginService.class, NicknameCandidateRepository.class})
+@Import({TestcontainersConfiguration.class, OAuthLoginService.class, AccountAccessPolicy.class,
+        NicknameCandidateRepository.class})
 class OAuthLoginServiceTest {
 
     private static final Instant CREATED_AT = Instant.parse("2026-08-11T10:00:00Z");
@@ -50,6 +52,9 @@ class OAuthLoginServiceTest {
 
     @Autowired
     private OAuthLoginService oAuthLoginService;
+
+    @MockitoBean
+    private AccountRestrictionReader restrictions;
 
     @Autowired
     private UserRepository userRepository;
