@@ -21,7 +21,7 @@ import org.springframework.core.io.Resource;
 import tools.jackson.databind.ObjectMapper;
 
 class LegalDocumentCatalogTest {
-    private static final String TERMS_HASH = "ec0c325c8fe651c76e5134b9eeea055613c08de0350398cf09f899f64e479487";
+    private static final String TERMS_HASH = "0da46f78f586ac87bf4d51748ab2964d7f7e4fa4183bf87b0d0131a28fa6eb03";
     private static final String PRIVACY_HASH = "a294f42fa09c856c853439f74c2d71a8e2d32f0100fa4d8505291cfb9231bf4f";
 
     @Test
