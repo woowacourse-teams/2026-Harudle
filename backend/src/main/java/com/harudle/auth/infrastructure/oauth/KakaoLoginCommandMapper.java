@@ -8,7 +8,9 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
 @Component
-public class KakaoLoginCommandMapper {
+public class KakaoLoginCommandMapper implements OAuthLoginCommandMapper {
+
+    private static final String REGISTRATION_ID = "kakao";
 
     private final ObjectMapper objectMapper;
 
@@ -16,6 +18,12 @@ public class KakaoLoginCommandMapper {
         this.objectMapper = objectMapper;
     }
 
+    @Override
+    public boolean supports(String registrationId) {
+        return REGISTRATION_ID.equals(registrationId);
+    }
+
+    @Override
     public OAuthLoginCommand map(Map<String, Object> attributes) {
         if (attributes == null) {
             throw new InvalidOAuthProfileException();

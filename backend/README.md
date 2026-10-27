@@ -40,7 +40,7 @@ com.harudle
 
 | 패키지 | 역할 | 소유 데이터 |
 | --- | --- | --- |
-| `auth` | 사용자 조회, 카카오 OAuth 로그인, Access/Refresh Token 발급·갱신·폐기 | `users`, `oauth_accounts`, `refresh_tokens` |
+| `auth` | 사용자 조회, 카카오와 구글 로그인, Access/Refresh Token 발급·갱신·폐기 | `users`, `oauth_accounts`, `refresh_tokens` |
 | `diary` | 일기 저장, 월간 히스토리와 상세 조회, 소프트 삭제 | `diaries` |
 | `generation` | 일일 생성 횟수, 멱등성, AI 생성 상태, 실패 및 고아 작업 복구 | `daily_generation_usage`, `generation_prompts`, `comic_generations` |
 | `feed` | 완성된 만화의 공개 게시·상세 조회와 피드 주소 공유 | `feeds` |
@@ -109,6 +109,54 @@ docker compose up -d
 ```
 
 이 명령은 기존 로컬 데이터베이스 데이터를 삭제하므로 필요한 데이터가 있다면 먼저 백업합니다.
+
+## Google 로그인 설정
+
+앱 실행 전에 `.env`의 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`에 Google Cloud의 웹 애플리케이션
+OAuth 클라이언트 값을 넣습니다. 카카오 키와 JWT Secret도 기존처럼 필요합니다. 구글 키에는 기본값이 없으므로
+이 설정이 없으면 앱을 시작할 수 없습니다. 실제 키는 Git에 올리지 않습니다.
+
+로컬 클라이언트의 승인된 리디렉션 URI에는 다음 값을 등록합니다.
+
+```text
+http://localhost:8080/login/oauth2/code/google
+```
+
+`BACKEND_BASE_URL=http://localhost:8080`으로 실행한 뒤 브라우저에서
+`http://localhost:8080/oauth2/authorization/google`에 접속하면 구글 로그인이 시작됩니다.
+콜백은 구글이 인증 결과를 돌려주는 주소이므로 직접 접속해서 로그인을 시작하지 않습니다.
+성공 후 이동할 주소는 `FRONTEND_SUCCESS_REDIRECT`, 실패 시 주소는 `FRONTEND_FAILURE_REDIRECT`로 설정합니다.
+프론트엔드가 실행되지 않아도 백엔드 인증 처리는 가능하지만, 이동한 화면은 열리지 않을 수 있습니다.
+
+요청 범위는 `openid`, `email`, `profile`입니다. Spring Security가 인증 결과를 검증한 뒤 기존 로그인 성공
+처리기로 전달합니다. 구글 계정은 `GOOGLE`과 구글의 사용자 식별자 `sub`로 찾으며, 이메일이 같아도 카카오
+계정과 합치지 않습니다. 신규 회원의 `name`에는 구글 이름을 저장하고, 이름이 없으면 자동 닉네임을 사용합니다.
+공개 `nickname`은 항상 자동 생성합니다. 소셜 이름은 최초 가입 때만 저장하고, 재로그인 때는 기존 이름을 유지합니다.
+
+운영 서버의 키와 콜백 등록은 [배포 안내](../deploy/README.md#google-로그인-설정)를 따릅니다.
+
+## Apple 로그인 설정 연결
+
+기본값은 `APPLE_LOGIN_ENABLED=false`이며, 이때 Apple 키 없이 기존 Google과 Kakao 설정을 사용합니다.
+`true`로 켜려면 `APPLE_CLIENT_ID`(Services ID), `APPLE_TEAM_ID`, `APPLE_KEY_ID`,
+`APPLE_PRIVATE_KEY_PATH`(실행 중인 서버에서 읽을 수 있는 `.p8` 파일 경로)를 설정합니다.
+실제 개인 키는 Git에 올리지 않습니다. 생성기는 등록 시 키를 한 번 읽으므로 키 파일 교체 후에는 재시작합니다.
+
+시작 경로는 `/oauth2/authorization/apple`, 콜백은 `${BACKEND_BASE_URL}/login/oauth2/code/apple`입니다.
+실제 Apple 인증에는 Apple 계정에 등록한 HTTPS 도메인의 `BACKEND_BASE_URL`을 사용합니다.
+`openid`, `email`을 요청하고 Apple 요청에만 `response_mode=form_post`를 추가합니다.
+토큰 요청 시에는 5분짜리 `client_secret`을 새로 생성하며, 사용자 인증 토큰의 검증은 Spring이 처리합니다.
+
+Apple을 켠 HTTPS 환경에는 `SESSION_COOKIE_SAME_SITE=none`, `SESSION_COOKIE_SECURE=true`를 함께 설정합니다.
+두 조건이 맞지 않으면 앱 시작 시 거절합니다. Apple을 끄면 기존 기본값 `lax`를 사용할 수 있습니다.
+로그인 시작 주소와 콜백의 호스트를 맞춰야 원래 세션 쿠키를 사용할 수 있습니다.
+`POST /login/oauth2/code/apple`만 일반 CSRF 검사에서 제외하며, 세션의 `state` 확인은 유지합니다.
+기존 refresh와 logout 및 게스트 API의 CSRF 보호와 refresh_token 쿠키 설정은 유지합니다.
+Apple의 `user_cancelled_authorize`는 사용자 취소로 분류합니다.
+
+브라우저에서는 HTTPS 로그인 시작 응답의 `JSESSIONID`가 `SameSite=None; Secure`인지 확인하고,
+Apple POST 콜백에 같은 세션의 쿠키가 전송되는지 확인합니다. Google과 Kakao 로그인도 함께 확인합니다.
+서버 자동 테스트는 이 브라우저 쿠키 전송 동작과 실제 Apple 인증 성공까지 증명하지는 않습니다.
 
 ## Gemini Client 인증
 
