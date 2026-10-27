@@ -25,6 +25,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -77,7 +78,7 @@ class OAuthLoginServiceTest {
 
     @ParameterizedTest
     @ValueSource(ints = {1, 3, 5})
-    @DisplayName("처음 로그인한 사용자의 공개 프로필과 OAuth 계정을 함께 생성한다")
+    @DisplayName("소셜 이름과 자동 배정한 공개 닉네임으로 신규 회원과 OAuth 계정을 생성한다")
     void createsNewUserAndOAuthAccount(int imageCode) {
         when(profileImageCodeGenerator.generate()).thenReturn(imageCode);
         OAuthLoginCommand command = createCommand(
@@ -95,8 +96,9 @@ class OAuthLoginServiceTest {
         assertThat(userRepository.count()).isEqualTo(1);
         assertThat(oAuthAccountRepository.count()).isEqualTo(1);
         assertThat(savedUser.getPrimaryEmail()).isEqualTo("user@example.com");
-        assertThat(savedUser.getName()).isEqualTo("하루들");
         assertThat(savedUser.getNickname()).isNotBlank();
+        assertThat(savedUser.getName()).isEqualTo("하루들");
+        assertThat(savedUser.getNickname()).isNotEqualTo("하루들");
         assertThat(savedUser.getProfileImageCode()).isEqualTo((short) imageCode);
         assertThat(findCandidateOwner(savedUser.getNickname())).isEqualTo(savedUser.getId());
         assertThat(savedUser.getCreatedAt()).isEqualTo(LOGIN_AT);
@@ -109,7 +111,7 @@ class OAuthLoginServiceTest {
     }
 
     @Test
-    @DisplayName("기존 OAuth 계정 로그인은 사용자 재사용과 기록 갱신을 보장한다")
+    @DisplayName("재로그인하면 기존 이름과 공개 프로필을 유지하고 로그인 기록을 갱신한다")
     void logsInExistingUser() {
         User existingUser = saveUser(
                 "old@example.com",
@@ -161,6 +163,7 @@ class OAuthLoginServiceTest {
         User user = userRepository.findById(second.userId()).orElseThrow();
 
         assertThat(second.userId()).isEqualTo(first.userId());
+        assertThat(user.getName()).isEqualTo("하루들");
         assertThat(user.getNickname()).isEqualTo(nickname);
         assertThat(user.getProfileImageCode()).isEqualTo((short) 3);
         assertThat(findCandidateOwner(nickname)).isEqualTo(user.getId());
@@ -252,12 +255,101 @@ class OAuthLoginServiceTest {
     }
 
     @Test
-    @DisplayName("신규 회원의 이메일이 없어도 닉네임으로 회원을 생성한다")
+    @DisplayName("카카오와 구글의 고유값과 이메일이 같아도 별도 회원을 생성한다")
+    void createsSeparateGoogleUserWhenKakaoIdentityMatches() {
+        OAuthLoginResult kakaoResult = oAuthLoginService.login(
+                createCommand("12345", "same@example.com", "카카오 이름"), LOGIN_AT
+        );
+        OAuthLoginCommand googleCommand = new OAuthLoginCommand(
+                OAuthProvider.GOOGLE,
+                "12345",
+                "same@example.com",
+                "구글 이름"
+        );
+
+        OAuthLoginResult googleResult = oAuthLoginService.login(googleCommand, LOGIN_AT);
+        flushAndClear();
+
+        User kakaoUser = userRepository.findById(kakaoResult.userId()).orElseThrow();
+        User googleUser = userRepository.findById(googleResult.userId()).orElseThrow();
+
+        assertThat(googleResult.userId()).isNotEqualTo(kakaoResult.userId());
+        assertThat(userRepository.count()).isEqualTo(2);
+        assertThat(oAuthAccountRepository.count()).isEqualTo(2);
+        assertThat(googleUser.getName()).isEqualTo("구글 이름");
+        assertThat(kakaoUser.getName()).isEqualTo("카카오 이름");
+        assertThat(googleUser.getNickname()).isNotEqualTo(kakaoUser.getNickname());
+        assertThat(findAccount(OAuthProvider.GOOGLE, "12345").getUser().getId()).isEqualTo(googleUser.getId());
+        assertThat(findAccount("12345").getUser().getId()).isEqualTo(kakaoUser.getId());
+        assertThat(assignedCandidateCount()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("구글 재로그인에서 이름이 없어도 기존 회원과 이름, 공개 닉네임을 유지한다")
+    void logsInExistingGoogleUserWithoutName() {
+        OAuthLoginCommand firstCommand = new OAuthLoginCommand(
+                OAuthProvider.GOOGLE,
+                "12345",
+                "old@example.com",
+                "구글 이름"
+        );
+        OAuthLoginResult first = oAuthLoginService.login(firstCommand, LOGIN_AT);
+        flushAndClear();
+        String nickname = userRepository.findById(first.userId()).orElseThrow().getNickname();
+        OAuthLoginCommand secondCommand = new OAuthLoginCommand(
+                OAuthProvider.GOOGLE,
+                "12345",
+                "new@example.com",
+                null
+        );
+
+        OAuthLoginResult second = oAuthLoginService.login(secondCommand, LOGIN_AT.plusSeconds(60));
+        flushAndClear();
+
+        User savedUser = userRepository.findById(second.userId()).orElseThrow();
+        OAuthAccount savedAccount = findAccount(OAuthProvider.GOOGLE, "12345");
+
+        assertThat(second.userId()).isEqualTo(first.userId());
+        assertThat(userRepository.count()).isEqualTo(1);
+        assertThat(oAuthAccountRepository.count()).isEqualTo(1);
+        assertThat(savedUser.getName()).isEqualTo("구글 이름");
+        assertThat(savedUser.getNickname()).isEqualTo(nickname);
+        assertThat(savedAccount.getProviderEmail()).isEqualTo("new@example.com");
+        assertThat(savedAccount.getLastLoginAt()).isEqualTo(LOGIN_AT.plusSeconds(60));
+        assertThat(assignedCandidateCount()).isEqualTo(1);
+        verify(profileImageCodeGenerator, times(1)).generate();
+    }
+
+    @Test
+    @DisplayName("구글 이름과 이메일이 없어도 자동 닉네임으로 신규 회원을 생성한다")
+    void createsGoogleUserWithoutNameAndEmail() {
+        OAuthLoginCommand command = new OAuthLoginCommand(
+                OAuthProvider.GOOGLE,
+                "12345",
+                null,
+                null
+        );
+
+        OAuthLoginResult result = oAuthLoginService.login(command, LOGIN_AT);
+        flushAndClear();
+
+        User savedUser = userRepository.findById(result.userId()).orElseThrow();
+        OAuthAccount savedAccount = findAccount(OAuthProvider.GOOGLE, "12345");
+
+        assertThat(savedUser.getNickname()).isNotBlank();
+        assertThat(savedUser.getName()).isEqualTo(savedUser.getNickname());
+        assertThat(savedUser.getPrimaryEmail()).isNull();
+        assertThat(savedAccount.getProviderEmail()).isNull();
+        assertThat(savedAccount.getUser().getId()).isEqualTo(savedUser.getId());
+    }
+
+    @Test
+    @DisplayName("소셜 이름과 이메일이 없어도 자동 닉네임을 기본 이름으로 회원을 생성한다")
     void createsNewUserWithoutEmail() {
         OAuthLoginCommand command = createCommand(
                 "12345",
                 null,
-                "하루들"
+                null
         );
 
         OAuthLoginResult result = oAuthLoginService.login(command, LOGIN_AT);
@@ -269,35 +361,46 @@ class OAuthLoginServiceTest {
         assertThat(userRepository.count()).isEqualTo(1);
         assertThat(oAuthAccountRepository.count()).isEqualTo(1);
         assertThat(savedUser.getPrimaryEmail()).isNull();
-        assertThat(savedUser.getName()).isEqualTo("하루들");
+        assertThat(savedUser.getNickname()).isNotBlank();
+        assertThat(savedUser.getName()).isEqualTo(savedUser.getNickname());
         assertThat(savedAccount.getProviderEmail()).isNull();
     }
 
-    @Test
-    @DisplayName("신규 회원의 닉네임이 없으면 회원을 생성하지 않는다")
-    void rejectsNewUserWithoutDisplayName() {
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {" "})
+    @DisplayName("소셜 이름이 없어도 자동 배정한 닉네임으로 신규 회원을 생성한다")
+    void createsNewUserWithoutDisplayName(String displayName) {
         OAuthLoginCommand command = createCommand(
                 "12345",
                 "user@example.com",
-                null
+                displayName
         );
 
-        assertThatThrownBy(() -> oAuthLoginService.login(command, LOGIN_AT))
-                .isInstanceOf(RequiredOAuthProfileException.class)
-                .hasMessage("닉네임이 필요합니다.");
+        OAuthLoginResult result = oAuthLoginService.login(command, LOGIN_AT);
+        flushAndClear();
+        User savedUser = userRepository.findById(result.userId()).orElseThrow();
+        OAuthAccount savedAccount = findAccount("12345");
 
-        assertThat(userRepository.count()).isZero();
-        assertThat(oAuthAccountRepository.count()).isZero();
+        assertThat(userRepository.count()).isEqualTo(1);
+        assertThat(oAuthAccountRepository.count()).isEqualTo(1);
+        assertThat(savedUser.getNickname()).isNotBlank();
+        assertThat(savedUser.getName()).isEqualTo(savedUser.getNickname());
+        assertThat(findCandidateOwner(savedUser.getNickname())).isEqualTo(savedUser.getId());
+        assertThat(savedAccount.getUser().getId()).isEqualTo(savedUser.getId());
     }
 
-    @Test
-    @DisplayName("기존 OAuth 계정 로그인에서 이메일이 없으면 기존 이메일을 유지한다")
-    void keepsExistingProviderEmailWhenProviderEmailIsMissing() {
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {" "})
+    @DisplayName("재로그인에서 소셜 이름과 이메일이 없으면 기존 이름과 공개 프로필을 유지한다")
+    void keepsExistingProviderProfileWhenProfileIsMissing(String displayName) {
         User existingUser = saveUser(
                 "old@example.com",
                 "서비스 이름",
                 CREATED_AT
         );
+        existingUser.assignInitialPublicProfile("초록", 5, CREATED_AT);
         saveAccount(
                 existingUser,
                 "12345",
@@ -309,7 +412,7 @@ class OAuthLoginServiceTest {
         OAuthLoginCommand command = createCommand(
                 "12345",
                 null,
-                null
+                displayName
         );
         oAuthLoginService.login(command, LOGIN_AT);
         flushAndClear();
@@ -317,7 +420,11 @@ class OAuthLoginServiceTest {
         OAuthAccount savedAccount = findAccount("12345");
 
         assertThat(savedAccount.getProviderEmail()).isEqualTo("old@example.com");
+        assertThat(savedAccount.getUser().getName()).isEqualTo("서비스 이름");
+        assertThat(savedAccount.getUser().getNickname()).isEqualTo("초록");
+        assertThat(savedAccount.getUser().getProfileImageCode()).isEqualTo((short) 5);
         assertThat(savedAccount.getLastLoginAt()).isEqualTo(LOGIN_AT);
+        verifyNoInteractions(profileImageCodeGenerator);
     }
 
     @Test
@@ -417,9 +524,13 @@ class OAuthLoginServiceTest {
     }
 
     private OAuthAccount findAccount(String providerSubject) {
+        return findAccount(OAuthProvider.KAKAO, providerSubject);
+    }
+
+    private OAuthAccount findAccount(OAuthProvider provider, String providerSubject) {
         return oAuthAccountRepository
                 .findByProviderAndProviderSubject(
-                        OAuthProvider.KAKAO,
+                        provider,
                         providerSubject
                 )
                 .orElseThrow();
