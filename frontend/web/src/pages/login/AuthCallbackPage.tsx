@@ -45,7 +45,7 @@ const AuthCallbackPage = () => {
       });
 
       if (!response.ok) {
-        const errorData: unknown = await response.json();
+        const errorData: unknown = await response.json().catch(() => null);
         if (isProblemDetails(errorData)) throw new RequestError(errorData);
         throw new Error(ERROR_MESSAGES.LOGIN_FAILED);
       }
