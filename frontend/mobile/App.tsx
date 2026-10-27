@@ -1,15 +1,11 @@
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { WebView } from 'react-native-webview';
+import WebViewScreen from './WebviewScreen';
 
 export default function App() {
   return (
     <SafeAreaProvider>
       <SafeAreaView style={{ flex: 1 }}>
-        <WebView
-          style={{ flex: 1 }}
-          source={{ uri: 'https://www.harudle.com/' }}
-          allowsBackForwardNavigationGestures
-        />
+        <WebViewScreen />
       </SafeAreaView>
     </SafeAreaProvider>
   );
