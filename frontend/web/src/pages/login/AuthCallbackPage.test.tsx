@@ -1,0 +1,137 @@
+import { StrictMode } from 'react';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  jest,
+} from '@jest/globals';
+import { act, render, waitFor } from '@testing-library/react';
+import AuthCallbackPage from './AuthCallbackPage';
+import { requestCsrfToken, setAccessToken } from '../../shared/auth';
+import { ERROR_MESSAGES } from '../../shared/errorMessage';
+
+const mockNavigate = jest.fn();
+const mockIdentifyCurrentUser = jest.fn();
+const mockSearchParams = new URLSearchParams();
+
+jest.mock('react-router', () => ({
+  useNavigate: () => mockNavigate,
+  useSearchParams: () => [mockSearchParams],
+}));
+jest.mock('../../posthog/useAnalytics', () => ({
+  useAnalytics: () => ({ identifyCurrentUser: mockIdentifyCurrentUser }),
+}));
+jest.mock('../../shared/auth', () => ({
+  ...jest.requireActual<typeof import('../../shared/auth')>(
+    '../../shared/auth',
+  ),
+  requestCsrfToken: jest.fn<() => Promise<string>>(),
+  setAccessToken: jest.fn(),
+}));
+
+const fetchMock = jest.fn<typeof fetch>();
+const originalFetch = globalThis.fetch;
+const tokenResponse = {
+  accessToken: 'access-token',
+  tokenType: 'Bearer',
+  expiresIn: 3600,
+};
+
+beforeEach((): void => {
+  jest.clearAllMocks();
+  localStorage.clear();
+  sessionStorage.clear();
+  for (const key of [...mockSearchParams.keys()]) mockSearchParams.delete(key);
+  globalThis.fetch = fetchMock;
+  fetchMock.mockReset();
+  jest.mocked(requestCsrfToken).mockReset().mockResolvedValue('csrf-token');
+  jest.spyOn(window, 'alert').mockImplementation((): void => {});
+});
+
+afterEach((): void => {
+  globalThis.fetch = originalFetch;
+  jest.restoreAllMocks();
+});
+
+describe('로그인 콜백', () => {
+  it('StrictMode에서도 refresh는 한 번만 보내고 성공 기록을 남긴다', async (): Promise<void> => {
+    sessionStorage.setItem('harudle.login-attempt-provider', 'google');
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async (): Promise<unknown> => tokenResponse,
+    } as Response);
+    render(
+      <StrictMode>
+        <AuthCallbackPage />
+      </StrictMode>,
+    );
+    await waitFor((): void => {
+      expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true });
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/auth/refresh', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'X-XSRF-TOKEN': 'csrf-token' },
+    });
+    expect(setAccessToken).toHaveBeenCalledTimes(1);
+    expect(mockIdentifyCurrentUser).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem('harudle.last-login-provider')).toBe('google');
+    expect(sessionStorage.getItem('harudle.login-attempt-provider')).toBeNull();
+  });
+
+  it('CSRF 응답 전에 페이지를 떠나면 refresh를 보내지 않는다', async (): Promise<void> => {
+    let resolveCsrf!: (value: string) => void;
+    jest.mocked(requestCsrfToken).mockReturnValue(
+      new Promise<string>((resolve): void => {
+        resolveCsrf = resolve;
+      }),
+    );
+    const { unmount } = render(<AuthCallbackPage />);
+    unmount();
+    await act(async (): Promise<void> => {
+      resolveCsrf('csrf-token');
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('refresh 응답 전에 페이지를 떠나면 로그인 성공을 반영하지 않는다', async (): Promise<void> => {
+    let resolveRefresh!: (value: Response) => void;
+    sessionStorage.setItem('harudle.login-attempt-provider', 'apple');
+    fetchMock.mockReturnValue(
+      new Promise<Response>((resolve): void => {
+        resolveRefresh = resolve;
+      }),
+    );
+    const { unmount } = render(<AuthCallbackPage />);
+    await waitFor((): void => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    unmount();
+    await act(async (): Promise<void> => {
+      resolveRefresh({
+        ok: true,
+        json: async (): Promise<unknown> => tokenResponse,
+      } as Response);
+    });
+    expect(setAccessToken).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(localStorage.getItem('harudle.last-login-provider')).toBeNull();
+  });
+
+  it('토큰 발급 실패 시 이번 시도만 지우고 이전 성공 기록은 유지한다', async (): Promise<void> => {
+    localStorage.setItem('harudle.last-login-provider', 'kakao');
+    sessionStorage.setItem('harudle.login-attempt-provider', 'apple');
+    fetchMock.mockRejectedValue(new Error(ERROR_MESSAGES.LOGIN_FAILED));
+    render(<AuthCallbackPage />);
+    await waitFor((): void => {
+      expect(mockNavigate).toHaveBeenCalledWith('/login', { replace: true });
+    });
+    expect(localStorage.getItem('harudle.last-login-provider')).toBe('kakao');
+    expect(sessionStorage.getItem('harudle.login-attempt-provider')).toBeNull();
+    expect(setAccessToken).not.toHaveBeenCalled();
+  });
+});
