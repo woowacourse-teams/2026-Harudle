@@ -54,7 +54,7 @@ test.describe('하루들 접속', () => {
         .click();
       await expect(page).toHaveURL('/login');
       await expect(
-        page.getByRole('button', { name: '카카오로 시작하기' }),
+        page.getByRole('button', { name: '카카오로 계속하기' }),
       ).toBeVisible();
     });
   }
@@ -180,7 +180,7 @@ test.describe('하루들 접속', () => {
       localStorage.setItem('harudle.has-seen-landing', 'true');
     });
     await page.goto('/login');
-    await page.getByRole('button', { name: '카카오로 시작하기' }).click();
+    await page.getByRole('button', { name: '카카오로 계속하기' }).click();
     await expect(page.getByRole('combobox')).toBeVisible();
     await page.goto('/setting');
     await expect(page.getByText('kakao', { exact: true })).toBeVisible();
@@ -209,7 +209,7 @@ test.describe('하루들 접속', () => {
     await expect(page.getByRole('combobox')).toBeVisible();
     await page.setExtraHTTPHeaders({});
     await page.goto('/login');
-    await page.getByRole('button', { name: '카카오로 시작하기' }).click();
+    await page.getByRole('button', { name: '카카오로 계속하기' }).click();
     await expect(page.getByRole('combobox')).toBeVisible();
   });
 
@@ -257,7 +257,7 @@ test.describe('하루들 접속', () => {
     await page.goto('/login');
     await expect(page).toHaveURL('/login');
     await expect(
-      page.getByRole('button', { name: '카카오로 시작하기' }),
+      page.getByRole('button', { name: '카카오로 계속하기' }),
     ).toBeVisible();
   });
 });

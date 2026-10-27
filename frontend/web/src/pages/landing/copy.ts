@@ -62,7 +62,7 @@ export const LANDING_COPY = {
   final: {
     title: '최근에 같이 웃었던\n순간이 있나요?',
     loginPrompt: '이미 만들어 봤나요?',
-    loginAction: '카카오로 이어서 만들기 →',
+    loginAction: '로그인하고 이어서 만들기',
   },
   footer: {
     brand: '하루들',

@@ -20,7 +20,6 @@ jest.mock('react-router', () => ({
 
 jest.mock('./LandingFeedPreview', () => () => <p>공개 피드 미리보기</p>);
 
-jest.mock('../../assets/icons/kakao.svg', () => 'kakao.svg');
 jest.mock('./assets/chat-me.png', () => 'chat-me.png');
 jest.mock('./assets/chat-friend.png', () => 'chat-friend.png');
 jest.mock('./assets/slack-toothpaste.png', () => 'slack-toothpaste.png');
@@ -68,7 +67,7 @@ describe('브랜드 소개와 체험을 연결하는 랜딩', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '로그인' })).toHaveAttribute(
       'href',
-      '/oauth2/authorization/kakao',
+      '/login',
     );
   });
 
@@ -167,7 +166,7 @@ describe('브랜드 소개와 체험을 연결하는 랜딩', () => {
     render(
       <LandingContent
         trialActionLabel="로그인하고 계속 만들기"
-        trialSection={<a href="/oauth2/authorization/kakao">계속 만들기</a>}
+        trialSection={<a href="/login">계속 만들기</a>}
       />,
     );
     await user.click(

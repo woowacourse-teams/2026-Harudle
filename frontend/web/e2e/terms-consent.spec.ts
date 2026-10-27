@@ -242,9 +242,11 @@ test('신규 회원은 로그인 콜백 뒤 약관을 확인하고 피드로 간
       refreshRequests += 1;
   });
   await page
-    .getByRole('button', { name: '카카오로 시작하기', exact: true })
+    .getByRole('button', { name: '카카오로 계속하기', exact: true })
     .click();
   await expect(page).toHaveURL('/consent');
+  const refreshRequestsAtConsent = refreshRequests;
+  expect(refreshRequestsAtConsent).toBeGreaterThan(0);
   await page
     .getByRole('checkbox', { name: '[필수] 이용약관 동의', exact: true })
     .check();
@@ -256,5 +258,5 @@ test('신규 회원은 로그인 콜백 뒤 약관을 확인하고 피드로 간
     .click();
   await expect(page.getByRole('combobox')).toBeVisible();
   await expect(page).toHaveURL('/');
-  expect(refreshRequests).toBe(1);
+  expect(refreshRequests).toBe(refreshRequestsAtConsent);
 });

@@ -1,22 +1,38 @@
-import { css } from '@emotion/react';
+import { css, type SerializedStyles } from '@emotion/react';
 import harudleLogo from '../../assets/images/harudle-logo.webp';
 import loginHero from '../../assets/images/login-shared-comic.png';
-import kakaoIcon from '../../assets/icons/kakao.svg';
+import kakaoIcon from '../../assets/icons/kakao-login.svg';
+import googleIcon from '../../assets/icons/google.png';
+import appleIcon from '../../assets/icons/apple.svg';
+import { useState, type ReactElement } from 'react';
 import { theme } from '../../styles/theme';
 import { Link, useNavigate } from 'react-router';
 import { isMswEnabled } from '../../shared/environment';
 import { LOGIN_COPY } from './copy';
+import {
+  getLastSuccessfulLoginProvider,
+  setLoginAttemptProvider,
+  type LoginProvider,
+} from './loginHistory';
+
+const providers = [
+  { id: 'kakao', icon: kakaoIcon, label: '카카오로 계속하기' },
+  { id: 'google', icon: googleIcon, label: 'Google로 계속하기' },
+  { id: 'apple', icon: appleIcon, label: 'Apple로 계속하기' },
+] as const;
 
 const LoginPage = () => {
   const navigate = useNavigate();
+  const [lastProvider] = useState(getLastSuccessfulLoginProvider);
 
-  const handleKakaoLogin = (): void => {
+  const handleLogin = (provider: LoginProvider): void => {
+    setLoginAttemptProvider(provider);
     if (isMswEnabled) {
       navigate('/auth/callback');
       return;
     }
 
-    window.location.assign('/oauth2/authorization/kakao');
+    window.location.assign(`/oauth2/authorization/${provider}`);
   };
 
   return (
@@ -43,10 +59,50 @@ const LoginPage = () => {
 
       <div css={actionSpaceStyle} aria-hidden="true" />
       <div css={loginAreaStyle}>
-        <button type="button" css={kakaoButtonStyle} onClick={handleKakaoLogin}>
-          <img src={kakaoIcon} alt="" css={kakaoIconStyle} />
-          카카오로 시작하기
-        </button>
+        <div css={buttonsStyle}>
+          {providers.map(({ id, icon, label }): ReactElement => (
+            <div key={id} css={buttonWrapperStyle}>
+              <button
+                type="button"
+                css={loginButtonStyle(id, id === lastProvider)}
+                onClick={(): void => handleLogin(id)}
+                aria-describedby={
+                  id === lastProvider ? 'recent-login' : undefined
+                }
+              >
+                <img src={icon} alt="" css={providerIconStyle(id)} />
+                {label}
+              </button>
+              {id === lastProvider && (
+                <span id="recent-login" css={recentLoginStyle}>
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <circle
+                      cx="12"
+                      cy="12"
+                      r="9"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                    />
+                    <path
+                      d="M12 6v6l4 2"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  최근 로그인
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
 
         <p css={noticeStyle}>
           <Link to="/legal/terms">{LOGIN_COPY.terms}</Link>
@@ -61,6 +117,15 @@ const LoginPage = () => {
 export default LoginPage;
 
 const pageStyle = css`
+  @font-face {
+    font-family: 'Google Sans';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url(${new URL('../../assets/fonts/GoogleSans-Medium.ttf', import.meta.url).href})
+      format('truetype');
+  }
+
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -143,29 +208,101 @@ const loginAreaStyle = css`
   width: 100%;
 `;
 
-const kakaoButtonStyle = css`
+const buttonsStyle = css`
   display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 12px;
   width: 100%;
   max-width: 342px;
-  height: 56px;
-  padding: 0 24px;
-  border: none;
-  border-radius: 16px;
-  background-color: ${theme.colors.background.kakao};
-  box-shadow: 0 4px 16px rgb(26 20 41 / 6%);
-  color: ${theme.colors.foreground.neutral};
-  font-size: 17px;
-  font-weight: 700;
-  line-height: 24px;
-  cursor: pointer;
+  padding-top: 34px;
 `;
 
-const kakaoIconStyle = css`
-  width: 24px;
-  height: 24px;
+const buttonWrapperStyle = css`
+  position: relative;
+`;
+
+// 공급자 기본 색상은 유지하고 최근 로그인 방법만 보라색 테두리로 표시한다.
+const loginButtonStyle = (
+  provider: LoginProvider,
+  isRecentLogin: boolean,
+): SerializedStyles => css`
+  position: relative;
+  width: 100%;
+  height: 48px;
+  padding: 0 48px;
+  overflow: hidden;
+  border: 1px solid
+    ${isRecentLogin ? theme.colors.stroke.brandStrong : provider === 'google' ? '#747775' : 'transparent'};
+  border-radius: 12px;
+  box-shadow: ${isRecentLogin ? `0 0 0 1px ${theme.colors.stroke.brandStrong}` : 'none'};
+  background-color: ${provider === 'kakao' ? '#FEE500' : provider === 'apple' ? '#000000' : '#FFFFFF'};
+  color: ${provider === 'apple' ? '#FFFFFF' : provider === 'google' ? '#1F1F1F' : 'rgb(0 0 0 / 85%)'};
+  font-family:
+    ${provider === 'google' ? "'Google Sans', " : ''}-apple-system,
+    BlinkMacSystemFont, system-ui, sans-serif;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.4;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 3px solid ${theme.colors.stroke.focusRing};
+    outline-offset: 3px;
+  }
+`;
+
+const providerIconStyle = (provider: LoginProvider): SerializedStyles => css`
+  position: absolute;
+  top: 50%;
+  left: ${provider === 'apple' ? '9px' : '14px'};
+  width: ${provider === 'apple' ? 'auto' : '24px'};
+  height: ${provider === 'apple' ? '48px' : '24px'};
+  transform: translateY(-50%);
+`;
+
+const recentLoginStyle = css`
+  position: absolute;
+  z-index: 1;
+  right: -12px;
+  bottom: calc(100% + 10px);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background-color: ${theme.colors.background.brandStrong};
+  filter: drop-shadow(0 2px 4px rgb(57 33 106 / 14%));
+  color: ${theme.colors.foreground.onBrand};
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+  pointer-events: none;
+
+  &::after {
+    position: absolute;
+    right: 16px;
+    bottom: -5px;
+    width: 10px;
+    height: 6px;
+    background-color: inherit;
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
+    content: '';
+  }
+
+  @media (max-width: 360px) {
+    bottom: calc(100% + 7px);
+    gap: 4px;
+    padding: 0 8px;
+    font-size: 11px;
+    line-height: 16px;
+
+    &::after {
+      bottom: -3px;
+      width: 8px;
+      height: 4px;
+    }
+  }
 `;
 
 const noticeStyle = css`
