@@ -12,7 +12,7 @@ beforeEach((): void => {
 });
 
 describe('차단 해제 요청', (): void => {
-  it('중복 해제를 막고 성공 후 호출부의 목록 갱신이 끝날 때까지 잠금을 유지한다', async (): Promise<void> => {
+  it('성공 후 호출부의 목록 갱신이 끝날 때까지 진행 상태를 유지한다', async (): Promise<void> => {
     let finishUnblock: () => void = (): void => undefined;
     let finishRefresh: () => void = (): void => undefined;
     jest.mocked(setUserBlocked).mockImplementationOnce(
@@ -32,8 +32,6 @@ describe('차단 해제 요청', (): void => {
     let execution: Promise<void> = Promise.resolve();
     act((): void => {
       execution = result.current.execute('user-1', { onSuccess, onError });
-      void result.current.execute('user-1', { onSuccess, onError });
-      void result.current.execute('user-2', { onSuccess, onError });
     });
     expect(setUserBlocked).toHaveBeenCalledTimes(1);
     expect(setUserBlocked).toHaveBeenCalledWith('user-1', false);
@@ -42,10 +40,6 @@ describe('차단 해제 요청', (): void => {
     await act(async (): Promise<void> => finishUnblock());
     expect(onSuccess).toHaveBeenCalledTimes(1);
     expect(result.current.pendingUserId).toBe('user-1');
-    act((): void => {
-      void result.current.execute('user-2', { onSuccess, onError });
-    });
-    expect(setUserBlocked).toHaveBeenCalledTimes(1);
     await act(async (): Promise<void> => {
       finishRefresh();
       await execution;
@@ -54,7 +48,7 @@ describe('차단 해제 요청', (): void => {
     expect(onError).not.toHaveBeenCalled();
   });
 
-  it('해제 실패를 한 번 알린 뒤 잠금을 풀어 같은 대상을 다시 시도할 수 있다', async (): Promise<void> => {
+  it('해제 실패를 알리고 진행 상태를 정리해 같은 대상을 다시 요청할 수 있다', async (): Promise<void> => {
     jest
       .mocked(setUserBlocked)
       .mockRejectedValueOnce(new Error('해제 실패'))

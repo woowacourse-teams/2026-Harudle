@@ -27,17 +27,16 @@ const useBlockedUsers = (): BlockedUsersState => {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [listRetry, setListRetry] = useState<ListRetry | null>(null);
-  const mountedRef = useRef(false);
   const readControllerRef = useRef<AbortController | null>(null);
 
   const load = useCallback(async (cursor?: string): Promise<void> => {
-    if (!mountedRef.current || readControllerRef.current !== null) return;
+    if (readControllerRef.current !== null) return;
     const controller = new AbortController();
     readControllerRef.current = controller;
     setIsLoading(true);
     try {
       const data = await getBlockedUsers({ cursor, signal: controller.signal });
-      if (!mountedRef.current || controller.signal.aborted) return;
+      if (controller.signal.aborted) return;
       setListRetry(null);
       setRequest((previous): ApiRequest<BlockedUsersResponse> => ({
         status: 'success',
@@ -58,7 +57,7 @@ const useBlockedUsers = (): BlockedUsersState => {
         },
       }));
     } catch (caught: unknown) {
-      if (!mountedRef.current || controller.signal.aborted) return;
+      if (controller.signal.aborted) return;
       const error =
         caught instanceof Error
           ? caught
@@ -72,18 +71,16 @@ const useBlockedUsers = (): BlockedUsersState => {
     } finally {
       if (readControllerRef.current === controller) {
         readControllerRef.current = null;
-        if (mountedRef.current) setIsLoading(false);
+        setIsLoading(false);
       }
     }
   }, []);
 
   useEffect((): (() => void) => {
-    mountedRef.current = true;
     // 초기 로딩 상태에서 최초 조회도 재조회와 같은 요청 경로로 시작한다.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
     return (): void => {
-      mountedRef.current = false;
       readControllerRef.current?.abort();
       readControllerRef.current = null;
     };

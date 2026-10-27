@@ -18,7 +18,6 @@ const useUnblockUser = (): UnblockUserState => {
   const [pendingUserId, setPendingUserId] = useState<
     BlockedUser['userId'] | null
   >(null);
-  const pendingRef = useRef(false);
   const mountedRef = useRef(false);
 
   useEffect((): (() => void) => {
@@ -28,12 +27,12 @@ const useUnblockUser = (): UnblockUserState => {
     };
   }, []);
 
+  // 목록 조회와 해제의 중복 실행은 호출부에서 함께 제어한다.
   const execute = async (
     userId: BlockedUser['userId'],
     { onSuccess, onError }: UnblockUserOptions,
   ): Promise<void> => {
-    if (pendingRef.current || !mountedRef.current) return;
-    pendingRef.current = true;
+    if (!mountedRef.current) return;
     setPendingUserId(userId);
     try {
       try {
@@ -44,7 +43,6 @@ const useUnblockUser = (): UnblockUserState => {
       }
       await onSuccess();
     } finally {
-      pendingRef.current = false;
       if (mountedRef.current) setPendingUserId(null);
     }
   };

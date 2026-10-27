@@ -107,6 +107,8 @@ flowchart TD
 
 목록 조회·추가 조회·재시도·갱신은 `useBlockedUsers`가 같은 요청 경로로 처리합니다. 해제 요청은 `useUnblockUser`로 나누고, 관리 화면에서 성공 토스트·행 제거·피드 캐시 무효화·후속 조회를 연결합니다.
 
+조회 응답의 유효 여부는 취소된 `AbortSignal`로 확인합니다. 조회와 해제가 겹치지 않도록 사용자 동작의 잠금은 관리 화면이 한 번만 담당하고, 해제 훅은 요청과 진행 표시를 담당합니다.
+
 참고: [관리 화면](../src/pages/blocked-users/BlockedUsersPage.tsx), [목록 조회 훅](../src/pages/blocked-users/useBlockedUsers.ts), [해제 요청 훅](../src/pages/blocked-users/useUnblockUser.ts), [화면 회귀](../src/pages/blocked-users/BlockedUsersPage.test.tsx).
 
 ## FE06. 차단 해제와 후속 갱신 실패
