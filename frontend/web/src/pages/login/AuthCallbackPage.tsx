@@ -1,5 +1,5 @@
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 import { API_BASE_URL } from '../../shared/api';
 import {
@@ -7,17 +7,37 @@ import {
   requestCsrfToken,
   setAccessToken,
 } from '../../shared/auth';
-import { useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import { useAnalytics } from '../../posthog/useAnalytics';
+import { LOGIN_COPY } from './copy';
 
-// 여기 왔을 땐 이미 브라우저가 쿠키에 리프레시 토큰을 저장하고 있는 상태임
+// OAuth 성공 콜백에서는 브라우저의 Refresh Token 쿠키로 세션을 복원한다.
 const AuthCallbackPage = () => {
   const navigate = useNavigate();
+  const { search } = useLocation();
+  const failureHandledRef = useRef(false);
   const { identifyCurrentUser } = useAnalytics();
   useEffect(() => {
-    const getAccessTokenAtLogin = async () => {
+    const params = new URLSearchParams(search);
+    // OAuth 실패를 기존의 다른 계정 쿠키로 성공 처리하지 않는다.
+    if (params.has('error')) {
+      if (!failureHandledRef.current) {
+        failureHandledRef.current = true;
+        alert(
+          params.get('error') === 'account_suspended'
+            ? LOGIN_COPY.suspendedAccount
+            : ERROR_MESSAGES.LOGIN_FAILED,
+        );
+        navigate('/login', { replace: true });
+      }
+      return;
+    }
+    failureHandledRef.current = false;
+    let active = true;
+    const getAccessTokenAtLogin = async (): Promise<void> => {
       try {
         const csrfToken = await requestCsrfToken();
+        if (!active) return;
         const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
           method: 'POST',
           credentials: 'include',
@@ -31,6 +51,7 @@ const AuthCallbackPage = () => {
         }
 
         const data: unknown = await response.json();
+        if (!active) return;
         if (!isRefreshTokenResponse(data)) {
           throw new Error(ERROR_MESSAGES.INVALID_REFRESH_TOKEN_RESPONSE);
         }
@@ -42,6 +63,7 @@ const AuthCallbackPage = () => {
         void identifyCurrentUser(data.accessToken);
         navigate('/');
       } catch (error: unknown) {
+        if (!active) return;
         if (error instanceof Error) {
           alert(error.message);
           navigate('/login');
@@ -49,7 +71,10 @@ const AuthCallbackPage = () => {
       }
     };
     void getAccessTokenAtLogin();
-  }, [identifyCurrentUser, navigate]);
+    return (): void => {
+      active = false;
+    };
+  }, [identifyCurrentUser, navigate, search]);
 
   return <div>로그인 리다이렉트 페이지</div>;
 };
