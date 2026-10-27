@@ -78,6 +78,46 @@ public enum ErrorType {
             "Guest session expired",
             "게스트 세션이 만료되었습니다."
     ),
+    ACCOUNT_SUSPENDED(
+            HttpStatus.FORBIDDEN,
+            "Account suspended",
+            "관리자에 의해 이용이 제한된 계정입니다."
+    ),
+    ADMIN_REPORT_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "Report not found",
+            "신고를 찾을 수 없습니다."
+    ),
+    ADMIN_REPORT_REVIEW_CONFLICT(
+            HttpStatus.CONFLICT,
+            "Report review conflict",
+            "이미 종결된 신고입니다. 최신 처리 결과를 확인해 주세요."
+    ),
+    INVALID_ADMIN_REPORT_REVIEW(
+            HttpStatus.BAD_REQUEST,
+            "Invalid report review",
+            "심사 상태와 사유를 확인해 주세요."
+    ),
+    MODERATION_TARGET_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "Moderation target not found",
+            "조치할 수 있는 대상을 찾을 수 없습니다."
+    ),
+    MODERATION_CONFLICT(
+            HttpStatus.CONFLICT,
+            "Moderation conflict",
+            "다른 관리자가 조치 상태를 변경했습니다. 최신 상태를 확인해 주세요."
+    ),
+    INVALID_MODERATION_CHANGE(
+            HttpStatus.BAD_REQUEST,
+            "Invalid moderation change",
+            "조치 사유와 버전을 확인해 주세요."
+    ),
+    DATABASE_LOCK_TIMEOUT(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "Database lock timeout",
+            "다른 요청을 처리하고 있어요. 잠시 후 다시 시도해 주세요."
+    ),
     FORBIDDEN(
             HttpStatus.FORBIDDEN,
             "Forbidden",
@@ -98,6 +138,11 @@ public enum ErrorType {
             "Generation not found",
             "생성 작업을 찾을 수 없습니다."
     ),
+    CONTENT_RESTRICTED(
+            HttpStatus.FORBIDDEN,
+            "Content restricted",
+            "관리자에 의해 숨겨진 콘텐츠는 다시 게시할 수 없습니다."
+    ),
     FEED_NOT_FOUND(
             HttpStatus.NOT_FOUND,
             "Feed not found",
@@ -112,6 +157,21 @@ public enum ErrorType {
             HttpStatus.NOT_FOUND,
             "Report target not found",
             "신고할 대상을 찾을 수 없습니다."
+    ),
+    INVALID_BLOCK(
+            HttpStatus.BAD_REQUEST,
+            "Invalid block",
+            "차단 대상이 올바르지 않습니다."
+    ),
+    BLOCK_TARGET_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "Block target not found",
+            "차단할 회원을 찾을 수 없습니다."
+    ),
+    BLOCK_UNAVAILABLE(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "Block unavailable",
+            "차단한 회원 정보를 조회할 수 없습니다."
     ),
     COMMENT_NOT_FOUND(
             HttpStatus.NOT_FOUND,

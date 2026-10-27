@@ -13,6 +13,8 @@ import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -71,6 +73,21 @@ class OAuthLoginFailureHandlerTest {
 
         verify(redirector).redirect(response, OAuthFailureReason.PROVIDER_ACCESS_DENIED);
         verify(oAuthEventLogger).infoRejected("kakao", OAuthFailureReason.PROVIDER_ACCESS_DENIED);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"apple,PROVIDER_ACCESS_DENIED", "google,PROVIDER_AUTHENTICATION_FAILED"})
+    @DisplayName("Apple 취소 코드는 Apple 콜백에서만 사용자 취소로 분류한다")
+    void classifiesAppleCancellation(String provider, OAuthFailureReason expected) throws Exception {
+        var redirector = mock(OAuthFailureRedirector.class);
+        var logger = mock(OAuthEventLogger.class);
+        var handler = new OAuthLoginFailureHandler(redirector, logger);
+        var response = new MockHttpServletResponse();
+
+        handler.onAuthenticationFailure(new MockHttpServletRequest("POST", "/login/oauth2/code/" + provider),
+                response, new OAuth2AuthenticationException(new OAuth2Error("user_cancelled_authorize")));
+
+        verify(redirector).redirect(response, expected);
     }
 
     private AuthProperties createAuthProperties() {

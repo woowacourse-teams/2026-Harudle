@@ -62,7 +62,8 @@ class CommentController {
     @SecurityRequirement(name = "bearerAuth")
     @ApiResponse(responseCode = "201", description = "댓글 작성 완료")
     @ApiErrorResponses({ErrorType.VALIDATION_ERROR, ErrorType.UNAUTHORIZED, ErrorType.INVALID_CSRF_TOKEN,
-            ErrorType.FEED_NOT_FOUND, ErrorType.COMMENT_UNAVAILABLE, ErrorType.PROFILE_IMAGE_STORAGE_ERROR})
+            ErrorType.FEED_NOT_FOUND, ErrorType.COMMENT_UNAVAILABLE, ErrorType.PROFILE_IMAGE_STORAGE_ERROR,
+            ErrorType.DATABASE_LOCK_TIMEOUT})
     @PostMapping(value = "/feeds/{feedId}/comments", produces = MediaType.APPLICATION_JSON_VALUE)
     ResponseEntity<CommentResponse> create(Authentication authentication, @PathVariable UUID feedId,
             @Valid @RequestBody CreateCommentRequest request) {
@@ -75,7 +76,7 @@ class CommentController {
     @SecurityRequirement(name = "bearerAuth")
     @ApiResponse(responseCode = "204", description = "댓글 삭제 완료")
     @ApiErrorResponses({ErrorType.VALIDATION_ERROR, ErrorType.UNAUTHORIZED, ErrorType.INVALID_CSRF_TOKEN,
-            ErrorType.FORBIDDEN, ErrorType.COMMENT_NOT_FOUND})
+            ErrorType.FORBIDDEN, ErrorType.COMMENT_NOT_FOUND, ErrorType.DATABASE_LOCK_TIMEOUT})
     @DeleteMapping("/comments/{commentId}")
     ResponseEntity<Void> delete(Authentication authentication, @PathVariable UUID commentId) {
         commentService.delete(userIdResolver.resolve(authentication), commentId);

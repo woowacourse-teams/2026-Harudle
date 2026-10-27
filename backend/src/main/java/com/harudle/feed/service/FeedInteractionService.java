@@ -1,5 +1,7 @@
 package com.harudle.feed.service;
 
+import com.harudle.block.service.BlockInteractionPolicy;
+import com.harudle.common.persistence.PostgresTransactionLockTimeout;
 import com.harudle.feed.domain.Feed;
 import com.harudle.feed.repository.FeedInteractionRepository;
 import com.harudle.feed.service.exception.FeedNotFoundException;
@@ -14,9 +16,14 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(propagation = Propagation.MANDATORY)
 public class FeedInteractionService implements FeedInteractionPort {
     private final FeedInteractionRepository feeds;
+    private final BlockInteractionPolicy blocks;
+    private final PostgresTransactionLockTimeout lockTimeout;
 
-    public FeedInteractionService(FeedInteractionRepository feeds) {
+    public FeedInteractionService(FeedInteractionRepository feeds, BlockInteractionPolicy blocks,
+            PostgresTransactionLockTimeout lockTimeout) {
         this.feeds = feeds;
+        this.blocks = blocks;
+        this.lockTimeout = lockTimeout;
     }
 
     @Override
@@ -30,8 +37,15 @@ public class FeedInteractionService implements FeedInteractionPort {
     public Target lockActiveForInteraction(UUID feedId, UUID actorId) {
         Objects.requireNonNull(actorId);
         Feed feed = lockFeed(feedId);
+        if (feeds.isHiddenForPublicUse(feedId)) {
+            throw new FeedNotFoundException();
+        }
         UUID authorId = feeds.findActiveAuthorIdForInteraction(feed.getDiaryId(), actorId)
                 .orElseThrow(FeedNotFoundException::new);
+        // 피드 행 → 사용자 쌍 순서로 잠근다. 차단과 반응 저장 중 먼저 완료된 작업을 기준으로 판단한다.
+        if (blocks.lockAndIsBlocked(actorId, authorId)) {
+            throw new FeedNotFoundException();
+        }
         return new Target(feedId, authorId, counts(feed));
     }
 
@@ -62,6 +76,7 @@ public class FeedInteractionService implements FeedInteractionPort {
 
     private Feed lockFeed(UUID feedId) {
         Objects.requireNonNull(feedId);
+        lockTimeout.apply();
         Feed feed = feeds.findByIdForUpdate(feedId).orElseThrow(FeedNotFoundException::new);
         if (feed.isDeleted()) {
             throw new FeedNotFoundException();

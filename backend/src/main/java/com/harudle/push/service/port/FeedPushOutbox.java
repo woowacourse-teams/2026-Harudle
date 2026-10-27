@@ -21,5 +21,12 @@ public interface FeedPushOutbox {
      */
     int cancelUnsentByFeed(UUID feedId);
 
+    /**
+     * 차단 저장과 같은 트랜잭션에서 두 회원 사이의 미발송 작업을 취소하고, 취소한 작업 수를 반환한다.
+     * 각 회원이 작성한 피드에서 상대 회원에게 보내는 PENDING/PROCESSING만 취소하며,
+     * 이미 외부로 전송 중인 메시지는 회수하지 않는다.
+     */
+    int cancelUnsentBetweenUsers(UUID firstUserId, UUID secondUserId);
+
     record FeedPublished(UUID eventId, UUID feedId, Instant publishedAt) {}
 }
