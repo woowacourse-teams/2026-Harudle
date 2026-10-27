@@ -1,13 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   getBlockedUsers,
-  setUserBlocked,
   type BlockedUser,
   type BlockedUsersResponse,
 } from '../../domain/blocks/blocks';
-import { setFeedListCache } from '../../domain/feeds/feedListCache';
 import type { ApiRequest } from '../../shared/api';
-import { useToastContext } from '../../shared/ToastContext';
 import { BLOCKED_USERS_COPY } from './copy';
 
 type ListRetry =
@@ -16,61 +13,28 @@ type ListRetry =
 
 interface BlockedUsersState {
   readonly request: ApiRequest<BlockedUsersResponse>;
-  readonly busy: string | null;
+  readonly isLoading: boolean;
   readonly listRetry: ListRetry | null;
+  readonly refresh: () => Promise<void>;
   readonly retry: () => Promise<void>;
   readonly loadMore: () => Promise<void>;
-  readonly unblock: (user: BlockedUser) => Promise<void>;
+  readonly removeUser: (userId: BlockedUser['userId']) => void;
 }
 
 const useBlockedUsers = (): BlockedUsersState => {
-  const { addToast } = useToastContext();
   const [request, setRequest] = useState<ApiRequest<BlockedUsersResponse>>({
     status: 'loading',
   });
-  const [busy, setBusy] = useState<string | null>(null);
-  const busyRef = useRef(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [listRetry, setListRetry] = useState<ListRetry | null>(null);
-  const mountedRef = useRef(true);
+  const mountedRef = useRef(false);
   const readControllerRef = useRef<AbortController | null>(null);
 
-  useEffect((): (() => void) => {
-    mountedRef.current = true;
+  const load = useCallback(async (cursor?: string): Promise<void> => {
+    if (!mountedRef.current || readControllerRef.current !== null) return;
     const controller = new AbortController();
     readControllerRef.current = controller;
-    void getBlockedUsers({ signal: controller.signal })
-      .then((data): void => {
-        if (mountedRef.current && !controller.signal.aborted)
-          setRequest({ status: 'success', data });
-      })
-      .catch((caught: unknown): void => {
-        if (mountedRef.current && !controller.signal.aborted)
-          setRequest({
-            status: 'error',
-            error:
-              caught instanceof Error
-                ? caught
-                : new Error(BLOCKED_USERS_COPY.blockedUsersLoadError),
-          });
-      })
-      .finally((): void => {
-        if (readControllerRef.current === controller)
-          readControllerRef.current = null;
-      });
-    return (): void => {
-      mountedRef.current = false;
-      readControllerRef.current?.abort();
-      readControllerRef.current = null;
-    };
-  }, []);
-
-  const load = async (cursor?: string): Promise<void> => {
-    if (busyRef.current) return;
-    busyRef.current = true;
-    setBusy('more');
-    readControllerRef.current?.abort();
-    const controller = new AbortController();
-    readControllerRef.current = controller;
+    setIsLoading(true);
     try {
       const data = await getBlockedUsers({ cursor, signal: controller.signal });
       if (!mountedRef.current || controller.signal.aborted) return;
@@ -95,78 +59,38 @@ const useBlockedUsers = (): BlockedUsersState => {
       }));
     } catch (caught: unknown) {
       if (!mountedRef.current || controller.signal.aborted) return;
-      if (request.status !== 'success') {
-        setRequest({
-          status: 'error',
-          error:
-            caught instanceof Error
-              ? caught
-              : new Error(BLOCKED_USERS_COPY.blockedUsersLoadError),
-        });
-      } else {
-        setListRetry(
-          cursor === undefined ? { kind: 'refresh' } : { kind: 'more', cursor },
-        );
-      }
-    } finally {
-      if (readControllerRef.current === controller)
-        readControllerRef.current = null;
-      busyRef.current = false;
-      if (mountedRef.current) setBusy(null);
-    }
-  };
-
-  const unblock = async (user: BlockedUser): Promise<void> => {
-    if (busyRef.current) return;
-    busyRef.current = true;
-    setBusy(user.userId);
-    try {
-      await setUserBlocked(user.userId, false);
-      setFeedListCache(null);
-      if (!mountedRef.current) return;
-      addToast(
-        { type: 'success', message: BLOCKED_USERS_COPY.unblockSuccess },
-        2000,
-      );
+      const error =
+        caught instanceof Error
+          ? caught
+          : new Error(BLOCKED_USERS_COPY.blockedUsersLoadError);
       setRequest((previous): ApiRequest<BlockedUsersResponse> =>
-        previous.status === 'success'
-          ? {
-              status: 'success',
-              data: {
-                ...previous.data,
-                items: previous.data.items.filter(
-                  (item): boolean => item.userId !== user.userId,
-                ),
-              },
-            }
-          : previous,
+        previous.status === 'success' ? previous : { status: 'error', error },
       );
-      readControllerRef.current?.abort();
-      const controller = new AbortController();
-      readControllerRef.current = controller;
-      try {
-        const data = await getBlockedUsers({ signal: controller.signal });
-        if (mountedRef.current && !controller.signal.aborted) {
-          setRequest({ status: 'success', data });
-          setListRetry(null);
-        }
-      } catch {
-        if (mountedRef.current && !controller.signal.aborted)
-          setListRetry({ kind: 'refresh' });
-      } finally {
-        if (readControllerRef.current === controller)
-          readControllerRef.current = null;
-      }
-    } catch {
-      if (mountedRef.current)
-        addToast(
-          { type: 'error', message: BLOCKED_USERS_COPY.unblockError },
-          2000,
-        );
+      setListRetry(
+        cursor === undefined ? { kind: 'refresh' } : { kind: 'more', cursor },
+      );
     } finally {
-      busyRef.current = false;
-      if (mountedRef.current) setBusy(null);
+      if (readControllerRef.current === controller) {
+        readControllerRef.current = null;
+        if (mountedRef.current) setIsLoading(false);
+      }
     }
+  }, []);
+
+  useEffect((): (() => void) => {
+    mountedRef.current = true;
+    // 초기 로딩 상태에서 최초 조회도 재조회와 같은 요청 경로로 시작한다.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load();
+    return (): void => {
+      mountedRef.current = false;
+      readControllerRef.current?.abort();
+      readControllerRef.current = null;
+    };
+  }, [load]);
+
+  const refresh = async (): Promise<void> => {
+    await load();
   };
 
   const retry = async (): Promise<void> => {
@@ -179,7 +103,31 @@ const useBlockedUsers = (): BlockedUsersState => {
     }
   };
 
-  return { request, busy, listRetry, retry, loadMore, unblock };
+  const removeUser = (userId: BlockedUser['userId']): void => {
+    setRequest((previous): ApiRequest<BlockedUsersResponse> =>
+      previous.status === 'success'
+        ? {
+            status: 'success',
+            data: {
+              ...previous.data,
+              items: previous.data.items.filter(
+                (item): boolean => item.userId !== userId,
+              ),
+            },
+          }
+        : previous,
+    );
+  };
+
+  return {
+    request,
+    isLoading,
+    listRetry,
+    refresh,
+    retry,
+    loadMore,
+    removeUser,
+  };
 };
 
 export default useBlockedUsers;

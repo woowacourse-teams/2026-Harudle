@@ -1,7 +1,11 @@
 import { css } from '@emotion/react';
-import type { ReactElement } from 'react';
+import { useEffect, useRef, type ReactElement } from 'react';
 import { Link } from 'react-router';
-import type { BlockedUsersResponse } from '../../domain/blocks/blocks';
+import type {
+  BlockedUser,
+  BlockedUsersResponse,
+} from '../../domain/blocks/blocks';
+import { setFeedListCache } from '../../domain/feeds/feedListCache';
 import profileFallbackImage from '../../assets/images/profile-fallback.svg';
 import autorenewIcon from '../../assets/icons/autorenew.svg';
 import backIcon from '../../assets/icons/back.svg';
@@ -10,6 +14,8 @@ import ActionButton from '../../shared/ActionButton';
 import PageHeader from '../../shared/PageHeader';
 import { theme } from '../../styles/theme';
 import useBlockedUsers from './useBlockedUsers';
+import useUnblockUser from './useUnblockUser';
+import { useToastContext } from '../../shared/ToastContext';
 import { BLOCKED_USERS_COPY } from './copy';
 
 const BlockedUsersPage = () => (
@@ -39,7 +45,66 @@ const BlockedUsersPage = () => (
 export default BlockedUsersPage;
 
 const BlockedUsers = () => {
-  const { request, ...actions } = useBlockedUsers();
+  const {
+    request,
+    isLoading,
+    listRetry,
+    refresh,
+    retry,
+    loadMore,
+    removeUser,
+  } = useBlockedUsers();
+  const { pendingUserId, execute: unblockUser } = useUnblockUser();
+  const { addToast } = useToastContext();
+  const mountedRef = useRef(false);
+  const actionPendingRef = useRef(false);
+  const busy = pendingUserId ?? (isLoading ? 'more' : null);
+
+  useEffect((): (() => void) => {
+    mountedRef.current = true;
+    return (): void => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const handleListAction = async (
+    action: () => Promise<void>,
+  ): Promise<void> => {
+    if (actionPendingRef.current) return;
+    actionPendingRef.current = true;
+    try {
+      await action();
+    } finally {
+      actionPendingRef.current = false;
+    }
+  };
+
+  const handleUnblock = async (user: BlockedUser): Promise<void> => {
+    if (actionPendingRef.current || isLoading) return;
+    actionPendingRef.current = true;
+    try {
+      await unblockUser(user.userId, {
+        onSuccess: async (): Promise<void> => {
+          setFeedListCache(null);
+          if (!mountedRef.current) return;
+          removeUser(user.userId);
+          addToast(
+            { type: 'success', message: BLOCKED_USERS_COPY.unblockSuccess },
+            2000,
+          );
+          await refresh();
+        },
+        onError: (): void => {
+          addToast(
+            { type: 'error', message: BLOCKED_USERS_COPY.unblockError },
+            2000,
+          );
+        },
+      });
+    } finally {
+      actionPendingRef.current = false;
+    }
+  };
 
   if (request.status === 'idle' || request.status === 'loading') {
     return (
@@ -59,23 +124,36 @@ const BlockedUsers = () => {
         <BlockedUsersLoadError
           message={BLOCKED_USERS_COPY.blockedUsersLoadError}
           retryLabel={BLOCKED_USERS_COPY.blockedUsersRetry}
-          disabled={actions.busy !== null}
+          disabled={busy !== null}
           onRetry={(): void => {
-            void actions.retry();
+            void handleListAction(retry);
           }}
         />
       </div>
     );
   }
 
-  return <BlockedUsersContent data={request.data} {...actions} />;
+  return (
+    <BlockedUsersContent
+      data={request.data}
+      busy={busy}
+      listRetry={listRetry}
+      retry={(): Promise<void> => handleListAction(retry)}
+      loadMore={(): Promise<void> => handleListAction(loadMore)}
+      unblock={handleUnblock}
+    />
+  );
 };
 
-interface BlockedUsersContentProps extends Omit<
+interface BlockedUsersContentProps extends Pick<
   ReturnType<typeof useBlockedUsers>,
-  'request'
+  'listRetry'
 > {
   readonly data: BlockedUsersResponse;
+  readonly busy: string | null;
+  readonly retry: () => Promise<void>;
+  readonly loadMore: () => Promise<void>;
+  readonly unblock: (user: BlockedUser) => Promise<void>;
 }
 
 const BlockedUsersContent = ({

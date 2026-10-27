@@ -105,7 +105,9 @@ flowchart TD
 - 설정에서는 차단 아이콘과 진입 항목만 표시합니다. 관리 화면의 뒤로가기는 설정으로 이동합니다.
 - 화면을 떠나면 초기·재조회·다음 페이지·해제 후 갱신 GET을 취소하고, 취소된 응답은 목록이나 오류 안내에 반영하지 않습니다.
 
-참고: [관리 화면](../src/pages/blocked-users/BlockedUsersPage.tsx), [조회·해제 훅](../src/pages/blocked-users/useBlockedUsers.ts), [화면 회귀](../src/pages/blocked-users/BlockedUsersPage.test.tsx).
+목록 조회·추가 조회·재시도·갱신은 `useBlockedUsers`가 같은 요청 경로로 처리합니다. 해제 요청은 `useUnblockUser`로 나누고, 관리 화면에서 성공 토스트·행 제거·피드 캐시 무효화·후속 조회를 연결합니다.
+
+참고: [관리 화면](../src/pages/blocked-users/BlockedUsersPage.tsx), [목록 조회 훅](../src/pages/blocked-users/useBlockedUsers.ts), [해제 요청 훅](../src/pages/blocked-users/useUnblockUser.ts), [화면 회귀](../src/pages/blocked-users/BlockedUsersPage.test.tsx).
 
 ## FE06. 차단 해제와 후속 갱신 실패
 
@@ -130,7 +132,7 @@ flowchart TD
 
 이미 보낸 DELETE는 화면을 떠나도 취소하지 않으며, 성공하면 피드 캐시를 비웁니다. 해제는 관리 화면의 목록과 피드 캐시를 정리하며 문서 전체를 다시 불러오지 않습니다. 반대 방향의 차단이 남아 있으면 서버의 숨김은 계속될 수 있지만 상대의 차단 여부를 추가로 조회·표시하지 않습니다.
 
-참고: [조회·해제 훅](../src/pages/blocked-users/useBlockedUsers.ts), [기존 ToastProvider](../src/shared/ToastContext.tsx), [브라우저 회귀](../e2e/user-blocking.spec.ts).
+참고: [해제 요청 훅](../src/pages/blocked-users/useUnblockUser.ts), [목록 갱신 훅](../src/pages/blocked-users/useBlockedUsers.ts), [기존 ToastProvider](../src/shared/ToastContext.tsx), [브라우저 회귀](../e2e/user-blocking.spec.ts).
 
 ## FE07. 연결할 API와 배포 순서
 

@@ -504,4 +504,104 @@ describe('차단한 사용자 관리 화면', (): void => {
     expect(screen.queryByText('차단을 해제했어요.')).not.toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
+
+  it.each(['해제', '추가 조회'] as const)(
+    '같은 순간에 %s부터 시작하면 해제와 추가 조회가 겹치지 않는다',
+    async (firstAction): Promise<void> => {
+      let finishUnblock: () => void = (): void => undefined;
+      let finishRead: (
+        data: Awaited<ReturnType<typeof getBlockedUsers>>,
+      ) => void = (): void => undefined;
+      jest
+        .mocked(getBlockedUsers)
+        .mockResolvedValueOnce({
+          items: [user],
+          nextCursor: 'next-page',
+          hasNext: true,
+        })
+        .mockImplementationOnce(
+          (): ReturnType<typeof getBlockedUsers> =>
+            new Promise((resolve): void => {
+              finishRead = resolve;
+            }),
+        );
+      jest.mocked(setUserBlocked).mockImplementationOnce(
+        (): Promise<void> =>
+          new Promise((resolve): void => {
+            finishUnblock = resolve;
+          }),
+      );
+      render(<BlockedUsersPage />, { wrapper: TestProviders });
+      const unblock = await screen.findByRole('button', {
+        name: '탈퇴한 사용자 차단 해제',
+      });
+      const loadMore = screen.getByRole('button', { name: '더 불러오기' });
+      act((): void => {
+        if (firstAction === '해제') {
+          fireEvent.click(unblock);
+          fireEvent.click(unblock);
+          fireEvent.click(loadMore);
+        } else {
+          fireEvent.click(loadMore);
+          fireEvent.click(loadMore);
+          fireEvent.click(unblock);
+        }
+      });
+      expect(setUserBlocked).toHaveBeenCalledTimes(
+        firstAction === '해제' ? 1 : 0,
+      );
+      expect(getBlockedUsers).toHaveBeenCalledTimes(
+        firstAction === '해제' ? 1 : 2,
+      );
+      expect(unblock).toBeDisabled();
+      expect(loadMore).toBeDisabled();
+
+      if (firstAction === '해제') {
+        await act(async (): Promise<void> => finishUnblock());
+        await waitFor((): void =>
+          expect(getBlockedUsers).toHaveBeenCalledTimes(2),
+        );
+      }
+      await act(async (): Promise<void> => {
+        finishRead({ items: [], nextCursor: null, hasNext: false });
+      });
+      expect(setUserBlocked).toHaveBeenCalledTimes(
+        firstAction === '해제' ? 1 : 0,
+      );
+      expect(getBlockedUsers).toHaveBeenCalledTimes(2);
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    },
+  );
+
+  it('해제 도중 다른 화면으로 이동하면 늦은 실패를 토스트로 표시하지 않는다', async (): Promise<void> => {
+    let failUnblock: (error: Error) => void = (): void => undefined;
+    jest.mocked(getBlockedUsers).mockResolvedValueOnce({
+      items: [user],
+      nextCursor: null,
+      hasNext: false,
+    });
+    jest.mocked(setUserBlocked).mockImplementationOnce(
+      (): Promise<void> =>
+        new Promise((_resolve, reject): void => {
+          failUnblock = reject;
+        }),
+    );
+    const { rerender } = render(<BlockedUsersPage />, {
+      wrapper: TestProviders,
+    });
+    await userEvent.click(
+      await screen.findByRole('button', { name: '탈퇴한 사용자 차단 해제' }),
+    );
+    rerender(<div>다른 화면</div>);
+    await act(async (): Promise<void> => {
+      failUnblock(new Error('늦은 해제 실패'));
+    });
+    expect(screen.getByText('다른 화면')).toBeVisible();
+    expect(
+      screen.queryByText('차단을 해제하지 못했어요. 다시 시도해 주세요.'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(setFeedListCache).not.toHaveBeenCalled();
+    expect(getBlockedUsers).toHaveBeenCalledTimes(1);
+  });
 });

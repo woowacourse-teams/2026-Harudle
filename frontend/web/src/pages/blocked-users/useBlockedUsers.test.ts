@@ -1,22 +1,10 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { getBlockedUsers, setUserBlocked } from '../../domain/blocks/blocks';
-import { setFeedListCache } from '../../domain/feeds/feedListCache';
+import { getBlockedUsers } from '../../domain/blocks/blocks';
 import useBlockedUsers from './useBlockedUsers';
-
-const mockAddToast = jest.fn();
 
 jest.mock('../../domain/blocks/blocks', () => ({
   getBlockedUsers: jest.fn(),
-  setUserBlocked: jest.fn(),
-}));
-jest.mock('../../domain/feeds/feedListCache', () => ({
-  setFeedListCache: jest.fn(),
-}));
-jest.mock('../../shared/ToastContext', () => ({
-  useToastContext: (): { readonly addToast: typeof mockAddToast } => ({
-    addToast: mockAddToast,
-  }),
 }));
 
 const user = {
@@ -25,15 +13,13 @@ const user = {
   profileImageUrl: null,
   blockedAt: '2026-10-22T00:00:00Z',
 };
+const remaining = { ...user, userId: 'user-2', nickname: '하루' };
 
 beforeEach((): void => {
   jest.mocked(getBlockedUsers).mockReset();
-  jest.mocked(setUserBlocked).mockReset();
-  jest.mocked(setFeedListCache).mockClear();
-  mockAddToast.mockClear();
 });
 
-describe('차단 목록의 요청 수명', (): void => {
+describe('차단 목록 조회', (): void => {
   it('첫 조회 도중 화면을 떠나면 요청을 취소하고 늦은 응답을 반영하지 않는다', async (): Promise<void> => {
     let finishRead: (
       data: Awaited<ReturnType<typeof getBlockedUsers>>,
@@ -47,6 +33,7 @@ describe('차단 목록의 요청 수명', (): void => {
     const { result, unmount } = renderHook(useBlockedUsers);
     const signal = jest.mocked(getBlockedUsers).mock.calls[0][0]?.signal;
     expect(result.current.request.status).toBe('loading');
+    expect(result.current.isLoading).toBe(true);
     expect(signal?.aborted).toBe(false);
 
     unmount();
@@ -54,99 +41,132 @@ describe('차단 목록의 요청 수명', (): void => {
     await act(async (): Promise<void> => {
       finishRead({ items: [user], nextCursor: null, hasNext: false });
     });
-
     expect(result.current.request.status).toBe('loading');
-    expect(mockAddToast).not.toHaveBeenCalled();
-    expect(setFeedListCache).not.toHaveBeenCalled();
   });
 
-  it('같은 순간의 해제와 추가 조회는 한 번만 처리하고 실패 후에는 다시 해제할 수 있다', async (): Promise<void> => {
-    let failUnblock: (error: Error) => void = (): void => undefined;
-    jest.mocked(getBlockedUsers).mockResolvedValueOnce({
-      items: [user],
-      nextCursor: 'next-page',
-      hasNext: true,
-    });
-    jest.mocked(setUserBlocked).mockImplementationOnce(
-      (): Promise<void> =>
-        new Promise((_resolve, reject): void => {
-          failUnblock = reject;
-        }),
-    );
+  it('같은 순간의 추가 조회는 한 번만 실행하고 기존 사용자와 겹치는 행은 합치지 않는다', async (): Promise<void> => {
+    let finishRead: (
+      data: Awaited<ReturnType<typeof getBlockedUsers>>,
+    ) => void = (): void => undefined;
+    jest
+      .mocked(getBlockedUsers)
+      .mockResolvedValueOnce({
+        items: [user],
+        nextCursor: 'next-page',
+        hasNext: true,
+      })
+      .mockImplementationOnce(
+        (): ReturnType<typeof getBlockedUsers> =>
+          new Promise((resolve): void => {
+            finishRead = resolve;
+          }),
+      );
     const { result } = renderHook(useBlockedUsers);
     await waitFor((): void =>
       expect(result.current.request.status).toBe('success'),
     );
 
     act((): void => {
-      void result.current.unblock(user);
-      void result.current.unblock(user);
       void result.current.loadMore();
+      void result.current.loadMore();
+      void result.current.refresh();
     });
-    expect(setUserBlocked).toHaveBeenCalledTimes(1);
-    expect(getBlockedUsers).toHaveBeenCalledTimes(1);
-    await act(async (): Promise<void> => {
-      failUnblock(new Error('해제 실패'));
-    });
-    expect(result.current.busy).toBeNull();
-    expect(result.current.request).toEqual({
-      status: 'success',
-      data: { items: [user], nextCursor: 'next-page', hasNext: true },
-    });
-    expect(mockAddToast).toHaveBeenCalledWith(
-      {
-        type: 'error',
-        message: '차단을 해제하지 못했어요. 다시 시도해 주세요.',
-      },
-      2000,
-    );
-
-    jest.mocked(setUserBlocked).mockResolvedValueOnce(undefined);
-    jest.mocked(getBlockedUsers).mockResolvedValueOnce({
-      items: [],
-      nextCursor: null,
-      hasNext: false,
-    });
-    await act(async (): Promise<void> => {
-      await result.current.unblock(user);
-    });
-
-    expect(setUserBlocked).toHaveBeenCalledTimes(2);
     expect(getBlockedUsers).toHaveBeenCalledTimes(2);
-    expect(setFeedListCache).toHaveBeenCalledWith(null);
+    expect(result.current.isLoading).toBe(true);
+    expect(getBlockedUsers).toHaveBeenLastCalledWith({
+      cursor: 'next-page',
+      signal: expect.any(AbortSignal),
+    });
+    await act(async (): Promise<void> => {
+      finishRead({
+        items: [user, remaining],
+        nextCursor: null,
+        hasNext: false,
+      });
+    });
     expect(result.current.request).toEqual({
       status: 'success',
-      data: { items: [], nextCursor: null, hasNext: false },
+      data: { items: [user, remaining], nextCursor: null, hasNext: false },
     });
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.listRetry).toBeNull();
   });
 
-  it('화면을 떠난 뒤 도착한 해제 실패는 토스트나 후속 조회를 만들지 않는다', async (): Promise<void> => {
-    let failUnblock: (error: Error) => void = (): void => undefined;
-    jest.mocked(getBlockedUsers).mockResolvedValueOnce({
-      items: [user],
-      nextCursor: null,
-      hasNext: false,
-    });
-    jest.mocked(setUserBlocked).mockImplementationOnce(
-      (): Promise<void> =>
-        new Promise((_resolve, reject): void => {
-          failUnblock = reject;
-        }),
-    );
-    const { result, unmount } = renderHook(useBlockedUsers);
+  it('추가 조회 실패는 기존 목록과 실패한 커서를 보존하고 같은 커서로 재시도한다', async (): Promise<void> => {
+    jest
+      .mocked(getBlockedUsers)
+      .mockResolvedValueOnce({
+        items: [user],
+        nextCursor: 'next-page',
+        hasNext: true,
+      })
+      .mockRejectedValueOnce(new Error('추가 조회 실패'))
+      .mockResolvedValueOnce({
+        items: [remaining],
+        nextCursor: null,
+        hasNext: false,
+      });
+    const { result } = renderHook(useBlockedUsers);
     await waitFor((): void =>
       expect(result.current.request.status).toBe('success'),
     );
-    act((): void => {
-      void result.current.unblock(user);
+    await act(async (): Promise<void> => result.current.loadMore());
+    expect(result.current.listRetry).toEqual({
+      kind: 'more',
+      cursor: 'next-page',
     });
-    unmount();
-    await act(async (): Promise<void> => {
-      failUnblock(new Error('해제 실패'));
+    expect(result.current.request).toMatchObject({
+      status: 'success',
+      data: { items: [user], nextCursor: 'next-page', hasNext: true },
     });
+    await act(async (): Promise<void> => result.current.retry());
+    expect(getBlockedUsers).toHaveBeenNthCalledWith(3, {
+      cursor: 'next-page',
+      signal: expect.any(AbortSignal),
+    });
+    expect(result.current.request).toMatchObject({
+      status: 'success',
+      data: { items: [user, remaining] },
+    });
+    expect(result.current.listRetry).toBeNull();
+  });
 
-    expect(mockAddToast).not.toHaveBeenCalled();
-    expect(setFeedListCache).not.toHaveBeenCalled();
-    expect(getBlockedUsers).toHaveBeenCalledTimes(1);
+  it('호출부에서 제거한 행은 목록 갱신 실패에도 복구하지 않고 첫 페이지 조회만 재시도한다', async (): Promise<void> => {
+    jest
+      .mocked(getBlockedUsers)
+      .mockResolvedValueOnce({
+        items: [user, remaining],
+        nextCursor: 'old-page',
+        hasNext: true,
+      })
+      .mockRejectedValueOnce(new Error('갱신 실패'))
+      .mockResolvedValueOnce({
+        items: [remaining],
+        nextCursor: null,
+        hasNext: false,
+      });
+    const { result } = renderHook(useBlockedUsers);
+    await waitFor((): void =>
+      expect(result.current.request.status).toBe('success'),
+    );
+    act((): void => result.current.removeUser(user.userId));
+    await act(async (): Promise<void> => result.current.refresh());
+    expect(result.current.request).toMatchObject({
+      status: 'success',
+      data: { items: [remaining] },
+    });
+    expect(result.current.listRetry).toEqual({ kind: 'refresh' });
+    expect(result.current.isLoading).toBe(false);
+
+    await act(async (): Promise<void> => result.current.retry());
+    expect(getBlockedUsers).toHaveBeenNthCalledWith(3, {
+      cursor: undefined,
+      signal: expect.any(AbortSignal),
+    });
+    expect(result.current.request).toEqual({
+      status: 'success',
+      data: { items: [remaining], nextCursor: null, hasNext: false },
+    });
+    expect(result.current.listRetry).toBeNull();
   });
 });
