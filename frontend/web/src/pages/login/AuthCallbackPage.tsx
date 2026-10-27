@@ -10,8 +10,8 @@ import {
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { useAnalytics } from '../../posthog/useAnalytics';
 import {
-  clearPendingLoginProvider,
-  getPendingLoginProvider,
+  clearLoginAttemptProvider,
+  getLoginAttemptProvider,
   rememberSuccessfulLogin,
 } from './loginHistory';
 
@@ -20,7 +20,7 @@ const AuthCallbackPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { identifyCurrentUser } = useAnalytics();
-  const [provider] = useState(getPendingLoginProvider);
+  const [provider] = useState(getLoginAttemptProvider);
   const requestRef = useRef<Promise<RefreshTokenResponse> | null>(null);
   const hasHandledOAuthError = useRef(false);
   const hasOAuthError = searchParams.has('error');
@@ -29,7 +29,7 @@ const AuthCallbackPage = () => {
     if (hasOAuthError) {
       if (hasHandledOAuthError.current) return;
       hasHandledOAuthError.current = true;
-      clearPendingLoginProvider();
+      clearLoginAttemptProvider();
       alert(ERROR_MESSAGES.LOGIN_FAILED);
       navigate('/login', { replace: true });
       return;
@@ -69,7 +69,7 @@ const AuthCallbackPage = () => {
       })
       .catch((error: unknown): void => {
         if (!isActive) return;
-        clearPendingLoginProvider();
+        clearLoginAttemptProvider();
         alert(
           error instanceof Error ? error.message : ERROR_MESSAGES.LOGIN_FAILED,
         );

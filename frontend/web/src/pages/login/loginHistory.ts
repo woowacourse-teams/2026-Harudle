@@ -7,7 +7,7 @@ export const LOGIN_PROVIDER_LABELS = {
 } as const;
 
 const LAST_LOGIN_KEY = 'harudle.last-login-provider';
-const PENDING_LOGIN_KEY = 'harudle.pending-login-provider';
+const LOGIN_ATTEMPT_KEY = 'harudle.login-attempt-provider';
 
 const isLoginProvider = (value: unknown): value is LoginProvider =>
   value === 'kakao' || value === 'google' || value === 'apple';
@@ -24,23 +24,23 @@ const readProvider = (
   }
 };
 
-export const getLastLoginProvider = (): LoginProvider | null =>
+export const getLastSuccessfulLoginProvider = (): LoginProvider | null =>
   readProvider('localStorage', LAST_LOGIN_KEY);
 
-export const getPendingLoginProvider = (): LoginProvider | null =>
-  readProvider('sessionStorage', PENDING_LOGIN_KEY);
+export const getLoginAttemptProvider = (): LoginProvider | null =>
+  readProvider('sessionStorage', LOGIN_ATTEMPT_KEY);
 
-export const setPendingLoginProvider = (provider: LoginProvider): void => {
+export const setLoginAttemptProvider = (provider: LoginProvider): void => {
   try {
-    sessionStorage.setItem(PENDING_LOGIN_KEY, provider);
+    sessionStorage.setItem(LOGIN_ATTEMPT_KEY, provider);
   } catch {
     // 로그인 방법을 기억하지 못해도 인증은 진행한다.
   }
 };
 
-export const clearPendingLoginProvider = (): void => {
+export const clearLoginAttemptProvider = (): void => {
   try {
-    sessionStorage.removeItem(PENDING_LOGIN_KEY);
+    sessionStorage.removeItem(LOGIN_ATTEMPT_KEY);
   } catch {
     // 저장소 사용이 제한돼도 로그인 화면을 표시한다.
   }
@@ -56,5 +56,5 @@ export const rememberSuccessfulLogin = (
   } catch {
     // 로그인 이력 저장 실패가 인증 성공을 실패로 바꾸지 않게 한다.
   }
-  clearPendingLoginProvider();
+  clearLoginAttemptProvider();
 };

@@ -10,8 +10,8 @@ import { useNavigate } from 'react-router';
 import { isMswEnabled } from '../../shared/environment';
 import { LOGIN_COPY } from './copy';
 import {
-  getLastLoginProvider,
-  setPendingLoginProvider,
+  getLastSuccessfulLoginProvider,
+  setLoginAttemptProvider,
   type LoginProvider,
 } from './loginHistory';
 
@@ -23,10 +23,10 @@ const providers = [
 
 const LoginPage = () => {
   const navigate = useNavigate();
-  const [lastProvider] = useState(getLastLoginProvider);
+  const [lastProvider] = useState(getLastSuccessfulLoginProvider);
 
   const handleLogin = (provider: LoginProvider): void => {
-    setPendingLoginProvider(provider);
+    setLoginAttemptProvider(provider);
     if (isMswEnabled) {
       navigate('/auth/callback');
       return;

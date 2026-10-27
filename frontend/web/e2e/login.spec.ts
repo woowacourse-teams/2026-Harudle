@@ -126,7 +126,7 @@ test.describe('소셜 로그인', () => {
       ).toBe(provider);
       expect(
         await page.evaluate((): string | null =>
-          sessionStorage.getItem('harudle.pending-login-provider'),
+          sessionStorage.getItem('harudle.login-attempt-provider'),
         ),
       ).toBeNull();
       expect(refreshHeaders).toEqual(['mock-csrf-token']);
@@ -160,7 +160,7 @@ test.describe('소셜 로그인', () => {
 
     await page.addInitScript((): void => {
       localStorage.setItem('harudle.last-login-provider', 'kakao');
-      sessionStorage.setItem('harudle.pending-login-provider', 'apple');
+      sessionStorage.setItem('harudle.login-attempt-provider', 'apple');
     });
     const dialogPromise = page.waitForEvent('dialog');
     await page.goto('/auth/callback');
