@@ -6,9 +6,10 @@ import { Counter, Rate, Trend } from 'k6/metrics';
 const fixture = JSON.parse(open(__ENV.MEMBERS_FILE || './runs/peak/members.json'));
 const baseUrl = fixture.baseUrl;
 const smoke = __ENV.MODE === 'smoke';
+const mixed = __ENV.MODE === 'mixed';
 const smokeMembers = [0, 40, 160, 190];
 const expectedRequests = smoke ? 28 : 1420;
-const expectedVisits = smoke ? 4 : 200;
+const expectedVisits = smoke ? 4 : mixed ? 1200 : 200;
 const businessRequests = new Counter('business_requests');
 const businessFailures = new Rate('business_failures');
 const journeySuccess = new Rate('journey_success');
@@ -19,6 +20,14 @@ const generationDuration = new Trend('generation_duration', true);
 const generationPollRequests = new Counter('generation_status_requests');
 const generationPollFailures = new Rate('generation_status_failures');
 const apiDuration = new Trend('ordinary_api_duration', true);
+const generationAttempts = new Counter('generation_attempts');
+const generationAccepted = new Counter('generation_accepted');
+const generationRejected = new Counter('generation_capacity_rejected');
+const generationCompleted = new Counter('generation_completed');
+const generationFailed = new Counter('generation_failed');
+const feedReadRequests = new Counter('feed_read_requests');
+const feedReadFailures = new Rate('feed_read_failures');
+const feedReadDuration = new Trend('feed_read_duration', true);
 const expectedJourneys = smoke
   ? { create_publish: 1, browse: 2, react: 2, records: 2 }
   : { create_publish: 20, browse: 160, react: 60, records: 100 };
@@ -31,26 +40,54 @@ const apiNames = [
 if (!/^https:\/\/dev\.harudle\.com$|^http:\/\/(localhost|127\.0\.0\.1|host\.docker\.internal)(:\d+)?$/.test(baseUrl)) {
   throw new Error('Only the dev or local origin is allowed');
 }
+const memberCount = mixed ? 1200 : 200;
 if (![2, 3].includes(fixture.version) || (fixture.version === 3 && !fixture.runName)
-  || fixture.members.length !== 200 || new Set(fixture.members.map((member) => member.id)).size !== 200) {
-  throw new Error('A prepared test run with 200 distinct members is required');
+  || fixture.members.length !== memberCount || new Set(fixture.members.map((member) => member.id)).size !== memberCount) {
+  throw new Error(`A prepared test run with ${memberCount} distinct members is required`);
 }
-if (__ENV.MODE && !['smoke', 'peak'].includes(__ENV.MODE)) {
-  throw new Error('MODE must be smoke or peak');
+if (__ENV.MODE && !['smoke', 'peak', 'mixed'].includes(__ENV.MODE)) {
+  throw new Error('MODE must be smoke, peak or mixed');
 }
 
 export const options = {
   summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)', 'count'],
   scenarios: smoke ? {
     members: { executor: 'shared-iterations', vus: 4, iterations: 4, maxDuration: '2m', exec: 'memberVisit' },
+  } : mixed ? {
+    members: {
+      executor: 'constant-arrival-rate', rate: 80, timeUnit: '1m', duration: '15m',
+      preAllocatedVUs: 30, maxVUs: 120, gracefulStop: '90s', exec: 'memberVisit',
+    },
+    feed_read_10: {
+      executor: 'constant-arrival-rate', rate: 10, timeUnit: '1s', duration: '5m',
+      preAllocatedVUs: 30, maxVUs: 200, gracefulStop: '30s', exec: 'feedRead',
+    },
+    feed_read_20: {
+      executor: 'constant-arrival-rate', rate: 20, timeUnit: '1s', duration: '10m', startTime: '5m',
+      preAllocatedVUs: 50, maxVUs: 400, gracefulStop: '30s', exec: 'feedRead',
+    },
   } : {
     members: {
       executor: 'constant-arrival-rate', rate: 40, timeUnit: '1m', duration: '5m',
       preAllocatedVUs: 20, maxVUs: 60, gracefulStop: '90s', exec: 'memberVisit',
     },
   },
-  setupTimeout: '10m',
-  thresholds: {
+  setupTimeout: mixed ? '30m' : '10m',
+  thresholds: mixed ? {
+    member_visits: ['count==1200'],
+    business_failures: [{ threshold: 'rate<0.01', abortOnFail: true, delayAbortEval: '30s' }],
+    journey_success: ['rate==1'],
+    generation_attempts: ['count==120'],
+    generation_failed: ['count==0'],
+    generation_status_failures: ['rate<0.01'],
+    dropped_iterations: ['count==0'],
+    'feed_read_requests{stage:10}': ['count==3000'],
+    'feed_read_requests{stage:20}': ['count==12000'],
+    'feed_read_failures{stage:10}': [{ threshold: 'rate<0.01', abortOnFail: true, delayAbortEval: '30s' }],
+    'feed_read_failures{stage:20}': [{ threshold: 'rate<0.01', abortOnFail: true, delayAbortEval: '5m30s' }],
+    'feed_read_duration{stage:10}': [],
+    'feed_read_duration{stage:20}': [],
+  } : {
     business_requests: [`count==${expectedRequests}`],
     member_visits: [`count==${expectedVisits}`],
     business_failures: [{ threshold: 'rate<0.01', abortOnFail: true, delayAbortEval: '30s' }],
@@ -120,25 +157,13 @@ export function setup() {
     }
     sessions[index] = { accessToken: token.accessToken, csrfToken: csrf.token, expiresAt: Date.now() + token.expiresIn * 1000 };
   }
-  requireValue(Object.values(sessions).every((session) => session.expiresAt > Date.now() + 450000), 'tokens remain valid through the full run');
+  const remainingMs = mixed ? 1080000 : 450000;
+  requireValue(Object.values(sessions).every((session) => session.expiresAt > Date.now() + remainingMs), 'tokens remain valid through the full run');
   jar.clear(baseUrl);
   return { sessions, categoryId };
 }
 
-function request(session, method, path, payload, name, expectedStatus = 200, extraHeaders = {}) {
-  const response = http.request(method, `${baseUrl}${path}`, payload === null ? null : JSON.stringify(payload), {
-    headers: {
-      Authorization: `Bearer ${session.accessToken}`, 'X-XSRF-TOKEN': session.csrfToken,
-      'Content-Type': 'application/json', ...extraHeaders,
-    },
-    cookies: { 'XSRF-TOKEN': { value: session.csrfToken, replace: true } },
-    timeout: '15s', redirects: 0,
-    tags: { kind: 'business', name },
-  });
-  businessRequests.add(1, { api: name });
-  const success = response.status === expectedStatus;
-  businessFailures.add(!success, { api: name });
-  apiDuration.add(response.timings.duration);
+function warnSlowResponse(response, name) {
   const responseTraceId = response.headers?.['X-Trace-Id'] || '';
   const traceId = /^[0-9a-f]{32}$/i.test(responseTraceId) ? responseTraceId : 'unavailable';
   if (response.timings.duration >= 1000) {
@@ -150,12 +175,36 @@ function request(session, method, path, payload, name, expectedStatus = 200, ext
     }).join(', ');
     console.warn(`${name}: slow response HTTP ${response.status}, durationMs=${response.timings.duration}, ${timing}, traceId=${traceId}`);
   }
+  return traceId;
+}
+
+function request(session, method, path, payload, name, expectedStatus = 200, extraHeaders = {}, allowCapacity = false) {
+  const response = http.request(method, `${baseUrl}${path}`, payload === null ? null : JSON.stringify(payload), {
+    headers: {
+      Authorization: `Bearer ${session.accessToken}`, 'X-XSRF-TOKEN': session.csrfToken,
+      'Content-Type': 'application/json', ...extraHeaders,
+    },
+    cookies: { 'XSRF-TOKEN': { value: session.csrfToken, replace: true } },
+    timeout: '15s', redirects: 0,
+    tags: { kind: 'business', name },
+    ...(allowCapacity ? { responseCallback: http.expectedStatuses(202, 503) } : {}),
+  });
+  businessRequests.add(1, { api: name });
+  let capacityRejected = false;
+  if (allowCapacity && response.status === 503) {
+    try { capacityRejected = response.json().code === 'GENERATION_CAPACITY_EXCEEDED'; } catch (_) { /* Unexpected response. */ }
+  }
+  const success = response.status === expectedStatus || capacityRejected;
+  businessFailures.add(!success, { api: name });
+  apiDuration.add(response.timings.duration);
+  const traceId = warnSlowResponse(response, name);
   if (!success) {
     let errorCode = 'unknown';
     try { errorCode = response.json().code || 'unknown'; } catch (_) { /* No response body is logged. */ }
     console.error(`${name}: received HTTP ${response.status}, code=${errorCode}, traceId=${traceId}`);
   }
   requireValue(success, `${name}: HTTP ${expectedStatus}`);
+  if (capacityRejected) return null;
   return json(response, name);
 }
 
@@ -189,7 +238,8 @@ function waitForGeneration(session, diary, startedAt) {
 function journey(name, action) {
   const startedAt = Date.now();
   try {
-    action();
+    const outcome = action();
+    if (outcome === 'capacity_rejected') return;
     completedJourneys.add(1, { journey: name });
     journeyDuration.add(Date.now() - startedAt, { journey: name });
     journeySuccess.add(true, { journey: name });
@@ -207,7 +257,8 @@ export function memberVisit(data) {
   if (!smoke && iteration === expectedVisits) return;
   if (iteration >= expectedVisits) fail('Unexpected extra visit');
   // 73 and 200 are coprime: every member visits once, with roles spread over time.
-  const index = smoke ? smokeMembers[iteration] : (iteration * 73) % 200;
+  const index = smoke ? smokeMembers[iteration] : (iteration * 73) % memberCount;
+  const roleIndex = index % 200;
   const member = fixture.members[index];
   const session = data.sessions[index];
   const jar = http.cookieJar();
@@ -216,22 +267,35 @@ export function memberVisit(data) {
   requireValue(jar.cookiesForURL(`${baseUrl}/api/v1/feeds`)['XSRF-TOKEN']?.[0] === session.csrfToken, 'member CSRF cookie is installed');
   visits.add(1);
 
-  if (index < 20) journey('create_publish', () => {
+  if (roleIndex < 20) journey('create_publish', () => {
     const usage = request(session, 'GET', '/api/v1/me/generation-usage', null, 'GET generation-usage');
     requireValue(usage.remainingCount > 0, 'generation quota remains');
     const startedAt = Date.now();
-    const diary = request(session, 'POST', '/api/v1/load-test/diaries', {
-      diaryDate: fixture.date, sourceText: `부하 테스트 ${fixture.runId}. 오늘 팀원과 개발하고 산책했다.`,
-    }, 'POST load-test diaries', 202, { 'Idempotency-Key': member.idempotencyKey });
-    requireValue(!!diary.id && !!diary.generation.id && diary.generation.status === 'PENDING',
-      'new load-test diary is queued');
-    waitForGeneration(session, diary, startedAt);
+    if (mixed) generationAttempts.add(1);
+    let diary;
+    try {
+      diary = request(session, 'POST', '/api/v1/load-test/diaries', {
+        diaryDate: fixture.date, sourceText: `부하 테스트 ${fixture.runId}. 오늘 팀원과 개발하고 산책했다.`,
+      }, 'POST load-test diaries', 202, { 'Idempotency-Key': member.idempotencyKey }, mixed);
+      if (diary === null) {
+        generationRejected.add(1);
+        return 'capacity_rejected';
+      }
+      requireValue(!!diary.id && !!diary.generation.id && diary.generation.status === 'PENDING',
+        'new load-test diary is queued');
+      if (mixed) generationAccepted.add(1);
+      waitForGeneration(session, diary, startedAt);
+      if (mixed) generationCompleted.add(1);
+    } catch (error) {
+      if (mixed) generationFailed.add(1);
+      throw error;
+    }
     const feed = request(session, 'POST', '/api/v1/feeds', { diaryId: diary.id, categoryId: data.categoryId }, 'POST feeds', 201);
     const detail = request(session, 'GET', `/api/v1/feeds/${feed.id}`, null, 'GET feeds/:id');
     requireValue(detail.id === feed.id && detail.isMine === true, 'created feed is visible to its author');
   });
 
-  if (index >= 20 && index < 180) journey('browse', () => {
+  if (roleIndex >= 20 && roleIndex < 180) journey('browse', () => {
     const categories = request(session, 'GET', '/api/v1/categories', null, 'GET categories');
     requireValue(categories.some((category) => category.id === data.categoryId), 'test category is active');
     const query = `size=20&categoryId=${data.categoryId}`;
@@ -246,8 +310,8 @@ export function memberVisit(data) {
     requireValue(detail.id === chosen.id, 'selected feed detail matches');
   });
 
-  if (index >= 140) journey('react', () => {
-    const feedId = fixture.members[(index + 50) % 200].feedId;
+  if (roleIndex >= 140) journey('react', () => {
+    const feedId = fixture.members[(index + 50) % memberCount].feedId;
     request(session, 'GET', `/api/v1/feeds/${feedId}`, null, 'GET feeds/:id');
     const comments = request(session, 'GET', `/api/v1/feeds/${feedId}/comments`, null, 'GET comments');
     requireValue(Array.isArray(comments.items), 'comments list is readable');
@@ -257,7 +321,7 @@ export function memberVisit(data) {
     requireValue(like.likedByMe === true, 'like was applied');
   });
 
-  if (index < 100) journey('records', () => {
+  if (roleIndex < 100) journey('records', () => {
     for (const month of [fixture.currentMonth, fixture.previousMonth]) {
       const [year, monthNumber] = month.split('-').map(Number);
       const timeline = request(session, 'GET', `/api/v1/diaries?year=${year}&month=${monthNumber}`, null, 'GET diaries month');
@@ -266,4 +330,31 @@ export function memberVisit(data) {
     const diary = request(session, 'GET', `/api/v1/diaries/${member.diaryId}`, null, 'GET diaries/:id');
     requireValue(diary.id === member.diaryId && diary.generation.status === 'SUCCEEDED', 'own previous diary is readable');
   });
+}
+
+export function feedRead(data) {
+  const scenario = execution.scenario.name;
+  const stage = scenario === 'feed_read_10' ? '10' : scenario === 'feed_read_20' ? '20' : '';
+  requireValue(!!stage, 'feed read uses a configured stage');
+  const iteration = execution.scenario.iterationInTest;
+  const limit = stage === '10' ? 3000 : 12000;
+  if (iteration === limit) return;
+  requireValue(iteration < limit, 'unexpected extra feed read');
+  const session = data.sessions[iteration % memberCount];
+  const response = http.get(`${baseUrl}/api/v1/feeds?sort=LATEST&size=20&categoryId=${data.categoryId}`, {
+    headers: { Authorization: `Bearer ${session.accessToken}` },
+    timeout: '15s', redirects: 0, tags: { kind: 'feed_read', name: 'GET feeds latest extra', stage },
+  });
+  feedReadRequests.add(1, { stage });
+  let valid = response.status === 200;
+  if (valid) {
+    try {
+      const body = response.json();
+      valid = Array.isArray(body.items) && body.items.length === 20;
+    } catch (_) { valid = false; }
+  }
+  feedReadFailures.add(!valid, { stage });
+  feedReadDuration.add(response.timings.duration, { stage });
+  warnSlowResponse(response, `GET feeds latest extra stage=${stage}`);
+  check(valid, { 'extra feed read returns 20 items': (value) => value });
 }
