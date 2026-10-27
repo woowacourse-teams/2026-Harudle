@@ -8,7 +8,6 @@ import type {
 } from './domain/legal/agreements';
 import AgreementRoute from './AgreementRoute';
 import { RequestError } from './shared/api';
-import { TERMS_ACCEPTANCE_REQUIRED_EVENT } from './shared/auth';
 import terms from './mocks/legal/terms-2026-10-22.json';
 import privacy from './mocks/legal/privacy-2026-08-24.json';
 
@@ -108,12 +107,11 @@ describe('회원 약관 동의 가드', (): void => {
     expect(screen.queryByText('회원 화면')).not.toBeInTheDocument();
     expect(screen.queryByText('비공개 생성 상태 조회')).not.toBeInTheDocument();
   });
-  it('비로그인은 동의 상태 API 없이 공개 화면을 허용하고 비공개 조회는 마운트하지 않는다', async (): Promise<void> => {
+  it('비로그인은 동의 상태 API 없이 공개 화면을 허용한다', async (): Promise<void> => {
     localStorage.clear();
     render(<AgreementRoute />);
     expect(await screen.findByText('회원 화면')).toBeInTheDocument();
     expect(mockGetStatus).not.toHaveBeenCalled();
-    expect(screen.queryByText('비공개 생성 상태 조회')).not.toBeInTheDocument();
   });
   it('강제 적용이 꺼진 기존 회원은 미동의 상태여도 이용할 수 있다', async (): Promise<void> => {
     mockGetStatus.mockResolvedValueOnce({
@@ -206,79 +204,5 @@ describe('회원 약관 동의 가드', (): void => {
     ).toBeInTheDocument();
     expect(mockGetStatus).toHaveBeenCalledTimes(1);
     expect(mockGetStatus.mock.calls[0]?.[0]?.signal?.aborted).toBe(false);
-  });
-
-  it('약관 거절 이벤트는 화면을 닫고 한 번 재검사한 뒤 최신 전체 경로를 동의 화면에 전달한다', async (): Promise<void> => {
-    const { rerender } = render(<AgreementRoute />);
-    await screen.findByText('회원 화면');
-    mockLocation = {
-      pathname: '/setting',
-      search: '?tab=privacy',
-      hash: '#terms',
-    };
-    rerender(<AgreementRoute />);
-    let resolveStatus: ((value: AgreementStatus) => void) | undefined;
-    mockGetStatus.mockImplementationOnce(
-      (): Promise<AgreementStatus> =>
-        new Promise((resolve): void => {
-          resolveStatus = resolve;
-        }),
-    );
-    act((): void => {
-      window.dispatchEvent(new Event(TERMS_ACCEPTANCE_REQUIRED_EVENT));
-    });
-    expect(screen.queryByText('회원 화면')).not.toBeInTheDocument();
-    expect(screen.queryByText('비공개 생성 상태 조회')).not.toBeInTheDocument();
-    await waitFor(() => expect(mockGetStatus).toHaveBeenCalledTimes(2));
-    act((): void => {
-      window.dispatchEvent(new Event(TERMS_ACCEPTANCE_REQUIRED_EVENT));
-    });
-    act((): void => {
-      window.dispatchEvent(new Event(TERMS_ACCEPTANCE_REQUIRED_EVENT));
-    });
-    expect(mockGetStatus).toHaveBeenCalledTimes(2);
-    await act(async (): Promise<void> => {
-      resolveStatus?.({
-        ...allowed,
-        requiresAcceptance: true,
-        acceptedAt: null,
-      });
-    });
-    expect(mockRedirect).toHaveBeenLastCalledWith({
-      to: '/consent',
-      replace: true,
-      state: { returnTo: '/setting?tab=privacy#terms' },
-    });
-    act((): void => {
-      window.dispatchEvent(new Event(TERMS_ACCEPTANCE_REQUIRED_EVENT));
-    });
-    expect(mockGetStatus).toHaveBeenCalledTimes(2);
-  });
-
-  it('초기 검사·조회 오류 중의 이벤트는 재조회 반복을 만들지 않고 직접 재시도할 수 있다', async (): Promise<void> => {
-    let rejectStatus: ((error: Error) => void) | undefined;
-    mockGetStatus.mockImplementationOnce(
-      (): Promise<AgreementStatus> =>
-        new Promise((_resolve, reject): void => {
-          rejectStatus = reject;
-        }),
-    );
-    const user = userEvent.setup();
-    render(<AgreementRoute />);
-    act((): void => {
-      window.dispatchEvent(new Event(TERMS_ACCEPTANCE_REQUIRED_EVENT));
-    });
-    expect(mockGetStatus).toHaveBeenCalledTimes(1);
-    await act(async (): Promise<void> => {
-      rejectStatus?.(new Error('일시적인 조회 실패'));
-    });
-    await screen.findByRole('alert');
-    act((): void => {
-      window.dispatchEvent(new Event(TERMS_ACCEPTANCE_REQUIRED_EVENT));
-    });
-    expect(mockGetStatus).toHaveBeenCalledTimes(1);
-    await user.click(screen.getByRole('button', { name: '다시 불러오기' }));
-    expect(await screen.findByText('회원 화면')).toBeInTheDocument();
-    expect(mockGetStatus).toHaveBeenCalledTimes(2);
   });
 });

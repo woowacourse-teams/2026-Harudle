@@ -1,15 +1,5 @@
-import { afterEach, describe, expect, it, jest } from '@jest/globals';
-import {
-  consumeLoginReturnPath,
-  getReturnPath,
-  rememberLoginReturnPath,
-  sanitizeReturnPath,
-} from './returnPath';
-
-afterEach((): void => {
-  sessionStorage.clear();
-  jest.restoreAllMocks();
-});
+import { describe, expect, it } from '@jest/globals';
+import { getReturnPath, sanitizeReturnPath } from './returnPath';
 
 describe('동의 후 돌아갈 내부 경로', (): void => {
   it.each([
@@ -41,16 +31,8 @@ describe('동의 후 돌아갈 내부 경로', (): void => {
       expect(sanitizeReturnPath(path)).toBe('/');
     },
   );
-  it('라우터 state도 검증하고 OAuth 전후에 내부 목적지를 한 번만 전달한다', (): void => {
+  it('라우터 state의 복귀 경로도 검증한다', (): void => {
     expect(getReturnPath({ returnTo: '//example.com' })).toBe('/');
     expect(getReturnPath({ returnTo: '/setting' })).toBe('/setting');
-    rememberLoginReturnPath({ returnTo: '/setting' });
-    expect(consumeLoginReturnPath()).toBe('/setting');
-    expect(consumeLoginReturnPath()).toBe('/');
-  });
-  it('저장소에서 조작한 경로도 다시 검증한다', (): void => {
-    sessionStorage.setItem('harudle:login-return-path:v1', '//example.com');
-    expect(consumeLoginReturnPath()).toBe('/');
-    expect(sessionStorage.getItem('harudle:login-return-path:v1')).toBeNull();
   });
 });

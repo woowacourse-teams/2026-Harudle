@@ -6,7 +6,6 @@ import {
   type AgreementStatus,
 } from './domain/legal/agreements';
 import { RequestError, type ApiRequest } from './shared/api';
-import { TERMS_ACCEPTANCE_REQUIRED_EVENT } from './shared/auth';
 import ActionButton from './shared/ActionButton';
 import DiaryGenerationNotice from './shared/DiaryGenerationNotice';
 import LoadingSpinner from './shared/LoadingSpinner';
@@ -28,14 +27,6 @@ const AgreementCheck = ({ returnTo }: { readonly returnTo: string }) => {
 
   useEffect((): (() => void) => {
     const controller = new AbortController();
-    let canRecheck = false;
-    const recheck = (): void => {
-      if (!canRecheck) return;
-      canRecheck = false;
-      setRequest({ status: 'loading' });
-      setAttempt((current): number => current + 1);
-    };
-    window.addEventListener(TERMS_ACCEPTANCE_REQUIRED_EVENT, recheck);
     const execute = async (): Promise<void> => {
       setRequest({ status: 'loading' });
       let hasLoginHistory = false;
@@ -52,7 +43,6 @@ const AgreementCheck = ({ returnTo }: { readonly returnTo: string }) => {
       try {
         const status = await getAgreementStatus({ signal: controller.signal });
         if (!controller.signal.aborted) {
-          canRecheck = !status.requiresAcceptance;
           setRequest({ status: 'success', data: status });
         }
       } catch (error: unknown) {
@@ -68,9 +58,7 @@ const AgreementCheck = ({ returnTo }: { readonly returnTo: string }) => {
     };
     void execute();
     return (): void => {
-      canRecheck = false;
       controller.abort();
-      window.removeEventListener(TERMS_ACCEPTANCE_REQUIRED_EVENT, recheck);
     };
   }, [attempt]);
 
@@ -104,7 +92,7 @@ const AgreementCheck = ({ returnTo }: { readonly returnTo: string }) => {
     return <Navigate to="/consent" replace state={{ returnTo }} />;
   return (
     <>
-      {request.data !== null && <DiaryGenerationNotice />}
+      <DiaryGenerationNotice />
       <Outlet />
     </>
   );

@@ -3,7 +3,6 @@ import { type ApiRequest } from '../../shared/api';
 import { requestCsrfToken, setAccessToken } from '../../shared/auth';
 import { logout } from '../../domain/user/logout';
 import { useAnalytics } from '../../posthog/useAnalytics';
-import { clearGenerationForEndedSession } from '../../domain/diary/diaryGenerationStore';
 
 const useLogout = () => {
   const { resetUser } = useAnalytics();
@@ -20,12 +19,7 @@ const useLogout = () => {
       const csrfToken = await requestCsrfToken();
       await logout({ csrfToken });
 
-      clearGenerationForEndedSession();
-      try {
-        resetUser();
-      } catch {
-        // 선택 분석 SDK의 오류가 확인된 로그아웃을 실패로 바꾸지 않게 한다.
-      }
+      resetUser();
 
       setRequest({
         status: 'success',

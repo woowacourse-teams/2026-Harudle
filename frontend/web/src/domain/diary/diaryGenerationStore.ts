@@ -1,7 +1,4 @@
-import {
-  DIARY_GENERATION_ID_KEY,
-  DIARY_GENERATION_TOAST_ID_KEY,
-} from '../../shared/constants';
+import { DIARY_GENERATION_ID_KEY } from '../../shared/constants';
 
 const listeners = new Set<() => void>();
 
@@ -31,14 +28,4 @@ export const subscribeGenerationId = (listener: () => void): (() => void) => {
   return (): void => {
     listeners.delete(listener);
   };
-};
-
-export const clearGenerationForEndedSession = (): void => {
-  try {
-    localStorage.removeItem(DIARY_GENERATION_ID_KEY);
-    localStorage.removeItem(DIARY_GENERATION_TOAST_ID_KEY);
-    notifyListeners();
-  } catch {
-    // 저장소 또는 구독자의 오류가 확인된 세션 종료를 실패로 바꾸지 않게 한다.
-  }
 };

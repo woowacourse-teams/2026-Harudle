@@ -9,186 +9,143 @@ import {
 import { act, render, waitFor } from '@testing-library/react';
 import { StrictMode } from 'react';
 import AuthCallbackPage from './AuthCallbackPage';
+import { requestCsrfToken, setAccessToken } from '../../shared/auth';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { LOGIN_COPY } from './copy';
-
-const mockCsrf = jest.fn<() => Promise<string>>();
-const mockSetToken = jest.fn();
-const mockIdentify = jest.fn<(accessToken: string) => Promise<void>>();
 const mockNavigate = jest.fn();
-const mockConsumeReturnPath = jest.fn<() => string>();
-const mockFetch = jest.fn<typeof fetch>();
+const mockIdentifyCurrentUser = jest.fn();
 let mockSearch = '';
-const originalFetch = globalThis.fetch;
-const token = {
-  accessToken: 'access-token',
-  tokenType: 'Bearer',
-  expiresIn: 1800,
-};
-const jsonResponse = (): Response =>
-  ({ ok: true, json: async (): Promise<unknown> => token }) as Response;
-
 jest.mock('react-router', () => ({
   useNavigate: () => mockNavigate,
   useLocation: () => ({ search: mockSearch }),
+}));
+jest.mock('../../posthog/useAnalytics', () => ({
+  useAnalytics: () => ({ identifyCurrentUser: mockIdentifyCurrentUser }),
 }));
 jest.mock('../../shared/auth', () => ({
   ...jest.requireActual<typeof import('../../shared/auth')>(
     '../../shared/auth',
   ),
-  requestCsrfToken: (): Promise<string> => mockCsrf(),
-  setAccessToken: (value: string | null): void => {
-    mockSetToken(value);
-  },
+  requestCsrfToken: jest.fn(),
+  setAccessToken: jest.fn(),
 }));
-jest.mock('../../posthog/useAnalytics', () => ({
-  useAnalytics: () => ({ identifyCurrentUser: mockIdentify }),
-}));
-jest.mock('../consent/returnPath', () => ({
-  consumeLoginReturnPath: (): string => mockConsumeReturnPath(),
-}));
-
+const mockFetch = jest.fn<
+  (
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ) => Promise<{
+    readonly ok: boolean;
+    readonly json: () => Promise<unknown>;
+  }>
+>();
+const originalFetch = globalThis.fetch;
+const originalAlert = window.alert;
+const mockAlert = jest.fn();
 beforeEach((): void => {
-  localStorage.clear();
   mockSearch = '';
-  mockCsrf.mockReset().mockResolvedValue('csrf');
-  mockSetToken.mockReset();
-  mockIdentify.mockReset().mockResolvedValue();
   mockNavigate.mockReset();
-  mockConsumeReturnPath
-    .mockReset()
-    .mockReturnValueOnce('/setting')
-    .mockReturnValue('/');
-  mockFetch.mockReset().mockResolvedValue(jsonResponse());
-  globalThis.fetch = mockFetch;
-  jest.spyOn(window, 'alert').mockImplementation((): void => undefined);
+  mockIdentifyCurrentUser.mockReset();
+  mockAlert.mockReset();
+  mockFetch.mockReset().mockResolvedValue({
+    ok: true,
+    json: async (): Promise<unknown> => ({
+      accessToken: 'old-cookie-account-token',
+      tokenType: 'Bearer',
+      expiresIn: 1800,
+    }),
+  });
+  jest.mocked(requestCsrfToken).mockReset().mockResolvedValue('valid-csrf');
+  jest.mocked(setAccessToken).mockReset();
+  localStorage.clear();
+  localStorage.setItem('harudle.has-completed-oauth', 'true');
+  document.cookie = 'refreshToken=existing-valid-session; path=/';
+  Object.defineProperty(globalThis, 'fetch', {
+    configurable: true,
+    writable: true,
+    value: mockFetch,
+  });
+  window.alert = mockAlert;
 });
 afterEach((): void => {
-  globalThis.fetch = originalFetch;
+  Object.defineProperty(globalThis, 'fetch', {
+    configurable: true,
+    writable: true,
+    value: originalFetch,
+  });
+  window.alert = originalAlert;
   document.cookie = 'refreshToken=; Max-Age=0; path=/';
-  jest.restoreAllMocks();
 });
-
-describe('OAuth 콜백의 단일 교환과 복귀', (): void => {
-  it('StrictMode에서도 쿠키 교환과 목적지 소비를 한 번만 수행한다', async (): Promise<void> => {
-    render(
-      <StrictMode>
-        <AuthCallbackPage />
-      </StrictMode>,
-    );
-    await waitFor(() =>
-      expect(mockNavigate).toHaveBeenCalledWith('/setting', { replace: true }),
-    );
-    expect(mockCsrf).toHaveBeenCalledTimes(1);
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-    expect(mockFetch).toHaveBeenCalledWith('/api/v1/auth/refresh', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'X-XSRF-TOKEN': 'csrf' },
-    });
-    expect(mockConsumeReturnPath).toHaveBeenCalledTimes(1);
-    expect(mockNavigate).toHaveBeenCalledTimes(1);
-    expect(mockSetToken).toHaveBeenCalledTimes(1);
-    expect(mockIdentify).toHaveBeenCalledTimes(1);
-    expect(mockSetToken).toHaveBeenCalledWith(token.accessToken);
-    expect(mockIdentify).toHaveBeenCalledWith(token.accessToken);
-    expect(localStorage.getItem('harudle.has-ever-logged-in')).toBe('true');
-    expect(window.alert).not.toHaveBeenCalled();
-  });
-  it('복귀 경로가 없으면 토큰을 복원하고 홈으로 이동한다', async (): Promise<void> => {
-    mockConsumeReturnPath.mockReset().mockReturnValue('/');
-    render(<AuthCallbackPage />);
-    await waitFor(() =>
-      expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true }),
-    );
-    expect(mockSetToken).toHaveBeenCalledWith(token.accessToken);
-    expect(mockIdentify).toHaveBeenCalledWith(token.accessToken);
-    expect(window.alert).not.toHaveBeenCalled();
-  });
-  it('교환이 끝나기 전에 화면을 벗어나면 늦은 응답을 반영하지 않는다', async (): Promise<void> => {
-    let resolve: ((response: Response) => void) | undefined;
-    mockFetch.mockImplementationOnce(
-      (): Promise<Response> =>
-        new Promise((complete): void => {
-          resolve = complete;
-        }),
-    );
-    const { unmount } = render(
-      <StrictMode>
-        <AuthCallbackPage />
-      </StrictMode>,
-    );
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
-    unmount();
-    await act(async (): Promise<void> => {
-      resolve?.(jsonResponse());
-    });
-    expect(mockSetToken).not.toHaveBeenCalled();
-    expect(mockConsumeReturnPath).not.toHaveBeenCalled();
-    expect(mockNavigate).not.toHaveBeenCalled();
-  });
+describe('OAuth 콜백 결과', (): void => {
   it.each([
     ['?error=account_suspended', LOGIN_COPY.suspendedAccount],
-    ['?error=%3Cscript%3Eunknown%3C%2Fscript%3E', ERROR_MESSAGES.LOGIN_FAILED],
+    [
+      '?error=%3Cscript%3Eraw-error%3C%2Fscript%3E',
+      ERROR_MESSAGES.LOGIN_FAILED,
+    ],
     ['?error=', ERROR_MESSAGES.LOGIN_FAILED],
-  ] as const)(
-    'OAuth 실패 %s는 다른 계정 쿠키를 교환하지 않고 알려진 문구만 한 번 안내한다',
-    async (search, message): Promise<void> => {
-      mockSearch = search;
-      localStorage.setItem('harudle.has-completed-oauth', 'true');
-      document.cookie = 'refreshToken=existing-valid-session; path=/';
+  ])(
+    '명시된 실패 %s는 기존 정상 세션이 있어도 복원하지 않는다',
+    (query, message): void => {
+      mockSearch = query;
       render(
         <StrictMode>
           <AuthCallbackPage />
         </StrictMode>,
       );
-      await waitFor(() =>
-        expect(mockNavigate).toHaveBeenCalledWith('/login', { replace: true }),
-      );
-      expect(window.alert).toHaveBeenCalledWith(message);
-      expect(window.alert).toHaveBeenCalledTimes(1);
+      expect(mockAlert).toHaveBeenCalledTimes(1);
+      expect(mockAlert).toHaveBeenCalledWith(message);
       expect(mockNavigate).toHaveBeenCalledTimes(1);
-      expect(mockCsrf).not.toHaveBeenCalled();
+      expect(mockNavigate).toHaveBeenCalledWith('/login', { replace: true });
+      expect(requestCsrfToken).not.toHaveBeenCalled();
       expect(mockFetch).not.toHaveBeenCalled();
-      expect(mockSetToken).not.toHaveBeenCalled();
-      expect(mockIdentify).not.toHaveBeenCalled();
-      expect(mockConsumeReturnPath).not.toHaveBeenCalled();
+      expect(setAccessToken).not.toHaveBeenCalled();
+      expect(mockIdentifyCurrentUser).not.toHaveBeenCalled();
     },
   );
-  it('성공 교환 도중 실패 콜백으로 바뀌면 늦은 성공과 복귀 경로 소비를 무시한다', async (): Promise<void> => {
-    let resolve: ((response: Response) => void) | undefined;
+  it('실패 쿼리가 없는 성공 콜백은 기존 CSRF·토큰 복원과 홈 이동을 유지한다', async (): Promise<void> => {
+    render(<AuthCallbackPage />);
+    await waitFor((): void => expect(mockNavigate).toHaveBeenCalledWith('/'));
+    expect(requestCsrfToken).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledWith(
+      '/api/v1/auth/refresh',
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'X-XSRF-TOKEN': 'valid-csrf' },
+      }),
+    );
+    expect(setAccessToken).toHaveBeenCalledWith('old-cookie-account-token');
+    expect(mockIdentifyCurrentUser).toHaveBeenCalledWith(
+      'old-cookie-account-token',
+    );
+    expect(mockAlert).not.toHaveBeenCalled();
+    expect(localStorage.getItem('harudle.has-ever-logged-in')).toBe('true');
+  });
+  it('복원 도중 실패 콜백으로 바뀌면 늦은 정상 응답도 로그인 성공으로 처리하지 않는다', async (): Promise<void> => {
+    const lateReply = {
+      ok: true,
+      json: async (): Promise<unknown> => ({
+        accessToken: 'old-cookie-account-token',
+        tokenType: 'Bearer',
+        expiresIn: 1800,
+      }),
+    };
+    let finish: (value: typeof lateReply) => void = (): void => undefined;
     mockFetch.mockImplementationOnce(
-      (): Promise<Response> =>
-        new Promise((complete): void => {
-          resolve = complete;
+      (): Promise<typeof lateReply> =>
+        new Promise((resolve): void => {
+          finish = resolve;
         }),
     );
     const { rerender } = render(<AuthCallbackPage />);
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+    await waitFor((): void => expect(mockFetch).toHaveBeenCalledTimes(1));
     mockSearch = '?error=account_suspended';
     rerender(<AuthCallbackPage />);
     expect(mockNavigate).toHaveBeenCalledWith('/login', { replace: true });
-    await act(async (): Promise<void> => {
-      resolve?.(jsonResponse());
-    });
-    expect(mockSetToken).not.toHaveBeenCalled();
-    expect(mockIdentify).not.toHaveBeenCalled();
-    expect(mockConsumeReturnPath).not.toHaveBeenCalled();
-    expect(mockNavigate).toHaveBeenCalledTimes(1);
-    expect(window.alert).toHaveBeenCalledTimes(1);
-  });
-  it('StrictMode 교환 실패도 알림과 로그인 이동을 한 번만 처리한다', async (): Promise<void> => {
-    mockFetch.mockRejectedValueOnce(new Error('로그인 실패'));
-    render(
-      <StrictMode>
-        <AuthCallbackPage />
-      </StrictMode>,
-    );
-    await waitFor(() =>
-      expect(mockNavigate).toHaveBeenCalledWith('/login', { replace: true }),
-    );
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-    expect(window.alert).toHaveBeenCalledTimes(1);
-    expect(mockConsumeReturnPath).not.toHaveBeenCalled();
+    await act(async (): Promise<void> => finish(lateReply));
+    expect(mockNavigate).not.toHaveBeenCalledWith('/');
+    expect(setAccessToken).not.toHaveBeenCalled();
+    expect(mockIdentifyCurrentUser).not.toHaveBeenCalled();
+    expect(mockAlert).toHaveBeenCalledTimes(1);
   });
 });

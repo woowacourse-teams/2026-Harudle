@@ -3,17 +3,14 @@ import harudleLogo from '../../assets/images/harudle-logo.webp';
 import loginHero from '../../assets/images/login-shared-comic.png';
 import kakaoIcon from '../../assets/icons/kakao.svg';
 import { theme } from '../../styles/theme';
-import { Link, useLocation, useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { isMswEnabled } from '../../shared/environment';
 import { LOGIN_COPY } from './copy';
-import { rememberLoginReturnPath } from '../consent/returnPath';
 
 const LoginPage = () => {
   const navigate = useNavigate();
-  const location = useLocation();
 
   const handleKakaoLogin = (): void => {
-    rememberLoginReturnPath(location.state);
     if (isMswEnabled) {
       navigate('/auth/callback');
       return;

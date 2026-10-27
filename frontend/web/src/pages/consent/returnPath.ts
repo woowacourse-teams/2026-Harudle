@@ -1,6 +1,5 @@
 import { isRecord } from '../../shared/utils';
 
-const LOGIN_RETURN_PATH_KEY = 'harudle:login-return-path:v1';
 const RETURN_PATH_BASE = 'https://harudle.invalid';
 const SIMPLE_PATHS = new Set([
   '/',
@@ -34,21 +33,3 @@ export const sanitizeReturnPath = (value: unknown): string => {
 
 export const getReturnPath = (state: unknown): string =>
   sanitizeReturnPath(isRecord(state) ? state.returnTo : undefined);
-
-export const rememberLoginReturnPath = (state: unknown): void => {
-  try {
-    sessionStorage.setItem(LOGIN_RETURN_PATH_KEY, getReturnPath(state));
-  } catch {
-    // 저장소를 사용할 수 없으면 로그인 뒤 홈으로 돌아간다.
-  }
-};
-
-export const consumeLoginReturnPath = (): string => {
-  try {
-    const path = sessionStorage.getItem(LOGIN_RETURN_PATH_KEY);
-    sessionStorage.removeItem(LOGIN_RETURN_PATH_KEY);
-    return sanitizeReturnPath(path);
-  } catch {
-    return '/';
-  }
-};

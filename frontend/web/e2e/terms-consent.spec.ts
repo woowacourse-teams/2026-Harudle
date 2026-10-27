@@ -182,7 +182,7 @@ test('거절 시 로그아웃 실패는 유지하고 성공한 뒤 유효했던 
   ).toBeNull();
 });
 
-test('직접 로그인한 신규 회원도 콜백 뒤 약관을 확인하고 추가 로그인 복원 없이 피드로 간다', async ({
+test('신규 회원은 로그인 콜백 뒤 약관을 확인하고 피드로 간다', async ({
   page,
 }): Promise<void> => {
   await page.setExtraHTTPHeaders({
@@ -191,6 +191,7 @@ test('직접 로그인한 신규 회원도 콜백 뒤 약관을 확인하고 추
   await page.goto('/login');
   await page.evaluate((): void => {
     localStorage.clear();
+    localStorage.setItem('harudle.has-seen-landing', 'true');
     sessionStorage.clear();
   });
   await page.reload();

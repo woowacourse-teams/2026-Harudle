@@ -565,13 +565,11 @@ export const handlers = [
   }),
 
   http.post('/api/v1/auth/logout', async ({ request }) => {
-    if (request.headers.get('X-XSRF-TOKEN') !== MOCK_CSRF_TOKEN)
-      return createProblemDetails({
-        status: 403,
-        code: 'INVALID_CSRF_TOKEN',
-        detail: 'CSRF Token이 올바르지 않아요.',
-        instance: '/api/v1/auth/logout',
-      });
+    const unauthorizedResponse = validateAccessToken(request);
+
+    if (unauthorizedResponse) {
+      return unauthorizedResponse;
+    }
 
     await delay(300);
 

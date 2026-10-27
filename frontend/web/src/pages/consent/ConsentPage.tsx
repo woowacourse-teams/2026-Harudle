@@ -7,17 +7,14 @@ import {
   type MouseEvent,
 } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
-import {
-  acceptTerms,
-  getAgreementStatus,
-  type AgreementStatus,
-} from '../../domain/legal/agreements';
+import { acceptTerms, getAgreementStatus } from '../../domain/legal/agreements';
 import {
   getLegalDocuments,
   type LegalDocument,
 } from '../../domain/legal/legalDocuments';
 import { logout } from '../../domain/user/logout';
-import { clearGenerationForEndedSession } from '../../domain/diary/diaryGenerationStore';
+import { removeGenerationId } from '../../domain/diary/diaryGenerationStore';
+import { DIARY_GENERATION_TOAST_ID_KEY } from '../../shared/constants';
 import { useAnalytics } from '../../posthog/useAnalytics';
 import { RequestError, type ApiRequest } from '../../shared/api';
 import {
@@ -38,7 +35,6 @@ import { LOGIN_COPY } from '../login/copy';
 interface AgreementForm {
   readonly terms: LegalDocument;
   readonly privacy: LegalDocument;
-  readonly status: AgreementStatus;
 }
 
 const isLoginRequired = (error: unknown): boolean =>
@@ -104,11 +100,10 @@ const ConsentPage = () => {
           void navigate(returnTo, { replace: true });
           return;
         }
-        setRequest({ status: 'success', data: { terms, privacy, status } });
+        setRequest({ status: 'success', data: { terms, privacy } });
       } catch (error: unknown) {
         if (controller.signal.aborted) return;
         if (isLoginRequired(error)) {
-          clearGenerationForEndedSession();
           setRequest({ status: 'success', data: null });
           return;
         }
@@ -187,10 +182,11 @@ const ConsentPage = () => {
       if (controller.signal.aborted) return;
       await logout({ csrfToken });
       // 서버 로그아웃이 끝났다면 화면을 벗어났어도 회원 상태를 정리한다.
-      clearGenerationForEndedSession();
       setAccessToken(null);
       try {
         localStorage.removeItem('harudle.has-completed-oauth');
+        localStorage.removeItem(DIARY_GENERATION_TOAST_ID_KEY);
+        removeGenerationId();
       } catch {
         /* 쿠키의 로그아웃 결과를 우선한다. */
       }

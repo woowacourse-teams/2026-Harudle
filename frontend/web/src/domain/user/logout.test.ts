@@ -1,22 +1,13 @@
-/** @jest-environment node */
-
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  jest,
-} from '@jest/globals';
+import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { RequestError, type ProblemDetails } from '../../shared/api';
 import { logout } from './logout';
 
-const mockFetch = jest.fn<typeof fetch>();
-beforeEach((): void => {
-  mockFetch.mockReset();
-  jest.spyOn(globalThis, 'fetch').mockImplementation(mockFetch);
-});
+const mockAuthFetch = jest.fn<(...args: unknown[]) => Promise<Response>>();
+
+jest.mock('../../shared/auth', () => ({
+  authFetch: (...args: unknown[]) => mockAuthFetch(...args),
+}));
 
 const createJsonResponse = (data: unknown, status: number): Response =>
   ({
@@ -26,19 +17,17 @@ const createJsonResponse = (data: unknown, status: number): Response =>
   }) as Response;
 
 afterEach(() => {
-  jest.restoreAllMocks();
+  mockAuthFetch.mockReset();
 });
 
 describe('로그아웃 API', () => {
-  it('Access Token 복원 없이 쿠키와 CSRF Token만 전달해 로그아웃한다', async () => {
-    mockFetch.mockResolvedValueOnce(createJsonResponse(null, 204));
+  it('CSRF Token을 헤더에 담아 로그아웃을 요청한다', async () => {
+    mockAuthFetch.mockResolvedValueOnce(createJsonResponse(null, 204));
 
     await expect(logout({ csrfToken: 'csrf-token' })).resolves.toBeUndefined();
 
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-    expect(mockFetch).toHaveBeenCalledWith('/api/v1/auth/logout', {
+    expect(mockAuthFetch).toHaveBeenCalledWith('/api/v1/auth/logout', {
       method: 'POST',
-      credentials: 'include',
       headers: {
         'X-XSRF-TOKEN': 'csrf-token',
       },
@@ -46,7 +35,7 @@ describe('로그아웃 API', () => {
   });
 
   it('실패 응답을 JSON으로 파싱할 수 없으면 기본 오류를 던진다', async () => {
-    mockFetch.mockResolvedValueOnce({
+    mockAuthFetch.mockResolvedValueOnce({
       ...createJsonResponse(null, 500),
       json: async () => {
         throw new SyntaxError('Invalid JSON');
@@ -59,7 +48,7 @@ describe('로그아웃 API', () => {
   });
 
   it('실패 응답이 Problem Details 형식이 아니면 기본 오류를 던진다', async () => {
-    mockFetch.mockResolvedValueOnce(
+    mockAuthFetch.mockResolvedValueOnce(
       createJsonResponse({ message: 'Internal Server Error' }, 500),
     );
 
@@ -78,7 +67,7 @@ describe('로그아웃 API', () => {
       code: 'LOGOUT_FAILED',
       traceId: 'trace-id',
     };
-    mockFetch.mockResolvedValueOnce(
+    mockAuthFetch.mockResolvedValueOnce(
       createJsonResponse(problemDetails, problemDetails.status),
     );
 
