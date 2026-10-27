@@ -33,7 +33,7 @@ const GuestDiaryResultPage = () => {
         <p css={feedbackMessageStyle}>{resultRequest.error.message}</p>
         {isGuestTrialAlreadyUsedError(resultRequest.error) ? (
           <LandingLoginCta
-            label="카카오로 로그인하기"
+            label="로그인하기"
             analyticsEvent="landing_trial_login_clicked"
             location="already_used"
           />
@@ -116,7 +116,7 @@ const GuestDiaryResult = ({
       <section css={ctaSectionStyle}>
         <p css={ctaDescriptionStyle}>{GUEST_TRIAL_COPY.loginNotice}</p>
         <LandingLoginCta
-          label="카카오로 로그인하기"
+          label="로그인하기"
           analyticsEvent="landing_trial_login_clicked"
           location="result"
         />
