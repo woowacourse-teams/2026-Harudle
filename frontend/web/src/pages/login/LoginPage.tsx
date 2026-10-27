@@ -6,7 +6,7 @@ import googleIcon from '../../assets/icons/google.png';
 import appleIcon from '../../assets/icons/apple.svg';
 import { useState, type ReactElement } from 'react';
 import { theme } from '../../styles/theme';
-import { useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { isMswEnabled } from '../../shared/environment';
 import { LOGIN_COPY } from './copy';
 import {
@@ -105,9 +105,9 @@ const LoginPage = () => {
         </div>
 
         <p css={noticeStyle}>
-          로그인하면 이용약관 및{' '}
-          <a href="https://harudle.notion.site/">개인정보처리방침</a>에 동의한
-          것으로 간주됩니다.
+          <Link to="/legal/terms">{LOGIN_COPY.terms}</Link>
+          <span aria-hidden="true"> · </span>
+          <Link to="/legal/privacy">{LOGIN_COPY.privacy}</Link>
         </p>
       </div>
     </div>

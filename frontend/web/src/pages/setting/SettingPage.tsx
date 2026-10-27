@@ -16,8 +16,6 @@ import PwaInstallButton from './PwaInstallButton';
 import LoadingSpinner from '../../shared/LoadingSpinner';
 import blockIcon from '../../assets/icons/block.svg';
 
-const PRIVACY_POLICY_URL = 'https://harudle.notion.site/';
-
 const GOOGLE_FROM_URL = 'https://forms.gle/8DMM4L835Esxk7BE6';
 
 const SettingPage = () => {
@@ -118,15 +116,25 @@ const SettingPageContent = () => {
           <img css={iconStyle} src={callMadeIcon} alt="" aria-hidden="true" />
         </a>
 
-        <a css={[settingRowStyle, settingLinkStyle]} href={PRIVACY_POLICY_URL}>
-          <span css={settingLabelStyle}>개인정보 처리방침</span>
+        <Link css={[settingRowStyle, settingLinkStyle]} to="/legal/terms">
+          <span css={settingLabelStyle}>이용약관</span>
           <img
             css={iconStyle}
             src={articlePersonIcon}
             alt=""
             aria-hidden="true"
           />
-        </a>
+        </Link>
+
+        <Link css={[settingRowStyle, settingLinkStyle]} to="/legal/privacy">
+          <span css={settingLabelStyle}>개인정보처리방침</span>
+          <img
+            css={iconStyle}
+            src={articlePersonIcon}
+            alt=""
+            aria-hidden="true"
+          />
+        </Link>
       </div>
 
       <div css={settingCardStyle}>

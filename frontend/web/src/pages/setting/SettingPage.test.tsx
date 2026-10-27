@@ -21,8 +21,17 @@ const mockUpdateProfile = jest.fn<typeof updateUserProfile>();
 const mockAddToast = jest.fn();
 
 jest.mock('react-router', () => ({
-  Link: ({ to, children }: { to: string; children: React.ReactNode }) => (
-    <a href={to}>{children}</a>
+  Link: ({
+    to,
+    children,
+    ...props
+  }: {
+    to: string;
+    children: React.ReactNode;
+  }) => (
+    <a href={to} {...props}>
+      {children}
+    </a>
   ),
 }));
 
@@ -516,5 +525,19 @@ describe('프로필 요청 훅', (): void => {
       photo: '',
       form: '서버 오류',
     });
+  });
+});
+
+describe('설정의 문서 열람 진입', (): void => {
+  it('약관과 개인정보를 각각 공개 내부 경로로 연결한다', async (): Promise<void> => {
+    render(<SettingPage />);
+    await screen.findByText('연준');
+    expect(screen.getByRole('link', { name: '이용약관' })).toHaveAttribute(
+      'href',
+      '/legal/terms',
+    );
+    expect(
+      screen.getByRole('link', { name: '개인정보처리방침' }),
+    ).toHaveAttribute('href', '/legal/privacy');
   });
 });

@@ -367,16 +367,22 @@ const LandingContent = ({
           <span>{LANDING_COPY.footer.tagline}</span>
         </p>
         <nav css={footerLinksStyle} aria-label="서비스 안내">
-          {LANDING_COPY.footer.links.map((link): JSX.Element => (
-            <a
-              key={link.label}
-              href={link.href}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {link.label}
-            </a>
-          ))}
+          {LANDING_COPY.footer.links.map((link): JSX.Element =>
+            link.href.startsWith('/') ? (
+              <Link key={link.label} to={link.href}>
+                {link.label}
+              </Link>
+            ) : (
+              <a
+                key={link.label}
+                href={link.href}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {link.label}
+              </a>
+            ),
+          )}
         </nav>
         <p css={copyrightStyle}>{LANDING_COPY.footer.copyright}</p>
       </footer>
