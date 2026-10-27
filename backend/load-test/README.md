@@ -10,7 +10,29 @@ sudo python3 /opt/harudle/load-test/ec2.py prepare members1200 --member-count 12
 
 기본값은 여전히 200명입니다. 이미 만든 회원 폴더를 다른 크기로 바꿀 수 없으므로 새 폴더 이름을 사용합니다. 회원 정보는 기존과 같은 암호화 전달 절차로 옮깁니다. 초기화 시 각 회원의 기본 일기 두 개와 피드 한 개를 준비하므로 이미지 2,400개가 필요합니다. 생성 요청을 위한 실행별 중복 방지 키도 회원마다 준비합니다.
 
-이 기능은 회원 준비와 기존 정리 범위만 확장합니다. 기존 `smoke`와 `peak` 시나리오는 여전히 200명 전용입니다. 1,200명용 혼합 부하 시험 시나리오는 아직 추가되지 않았습니다.
+## 혼합 부하 시험
+
+`mixed`는 회원 행동과 최신 피드 목록 조회를 함께 실행합니다. 기존 `smoke`와 `peak`는 여전히 200명 전용입니다.
+
+| 구간 | 회원 방문 | 추가 피드 목록 조회 | 시간 |
+| --- | ---: | ---: | ---: |
+| 1단계 | 분당 80회 | 초당 10건 | 5분 |
+| 2단계 | 분당 80회 | 초당 20건 | 10분 |
+
+15분 동안 회원 약 1,200명이 각자 한 번 방문합니다. 이 중 120명이 생성 요청을 보냅니다. 회원 행동에서도 피드 목록을 조회하므로 전체 피드 조회 수는 추가 조회 15,000건보다 많습니다. 추가 조회는 로그인한 테스트 회원으로 한 페이지에 20개씩 요청합니다.
+
+생성 요청은 실제 AI 대신 30초 대기하는 테스트 API를 사용합니다. 생성 상한을 변경하지 않습니다. 시험 전에 실행 중인 dev 백엔드 컨테이너의 `GENERATION_WORKER_CONCURRENCY`가 5인지 확인합니다. 값이 없으면 코드 기본값은 1입니다. 설정 확인은 `deploy/README.md`의 안내를 따릅니다. `503 GENERATION_CAPACITY_EXCEEDED`는 생성 접수 거절로 따로 세고 다른 `503`은 오류로 셉니다. 이 시험은 실제 AI의 생성 속도를 측정하지 않습니다.
+
+1. dev 서버에 이 버전의 준비 스크립트가 있는지 확인하고, 위 명령으로 `members1200`을 준비합니다. 기존 암호화 전달 절차로 해당 회원 정보를 로컬에 받습니다.
+2. 클라이언트가 중지된 상태에서 EC2에서 `sudo python3 /opt/harudle/load-test/ec2.py reset mixed1 --members members1200 --client-stopped`를 실행합니다. 초기 준비에는 이미지 2,400개의 S3 업로드가 필요합니다.
+3. 로컬에서 `bash load-test/run.sh mixed mixed1 members1200`을 실행합니다. `mixed1`은 실행마다 바꾸고, EC2와 로컬에서 같은 이름을 씁니다. 준비 과정에서 모든 회원의 로그인과 토큰 유효 기간을 확인한 뒤 15분간 요청을 보냅니다.
+4. 로컬 k6를 종료한 뒤 진행 중인 테스트 생성이 없는지 확인하고, EC2에서 `sudo python3 /opt/harudle/load-test/ec2.py cleanup mixed1 --client-stopped`를 실행합니다. 진행 중인 작업이 있으면 정리는 중단됩니다. `.cleaned`가 만들어졌는지 확인합니다.
+
+결과의 `feed_read_requests`와 `feed_read_failures`는 `stage:10`과 `stage:20`으로 구분합니다. 각각 3,000건과 12,000건이 시작됐는지, `dropped_iterations`가 0인지 확인합니다. `feed_read_duration`은 로컬에서 측정한 응답 시간입니다. 서버 처리 시간 P95와 별도 지표이므로 k6 결과의 시간만으로 서버 P95 500ms 기준을 판정하지 않습니다.
+
+서버 P95는 실행 시간과 단계 경계를 기록한 뒤 백엔드 `api_request_completed` 로그의 `feed_list`와 `durationMs`를 단계별로 조회합니다. 이 로그에는 회원 행동의 목록 요청과 다른 사용자의 요청도 포함될 수 있습니다. 추가 조회 요청만의 서버 P95라고 단정하지 않습니다. 요청 지연 확인 방법은 `deploy/monitoring/request-latency.md`를 참고합니다.
+
+`generation_attempts`, `generation_accepted`, `generation_capacity_rejected`, `generation_completed`, `generation_failed`를 함께 확인합니다. k6의 기본 `http_req_failed`는 생성 요청의 모든 503을 예상 상태로 취급하므로, 다른 원인의 503은 `business_failures`와 `generation_failed`에서 확인합니다. 거절 허용 비율은 자동 통과 기준으로 정하지 않았습니다. 조회 오류율과 시작하지 못한 요청의 기준을 통과해도 생성 결과와 서버 P95를 별도로 확인해야 합니다.
 
 **dev 서버가 회원 200명의 방문을 처리할 수 있는지 확인합니다.**
 5분 동안 분당 40명이 방문합니다. 한 회원이 여러 행동을 할 수 있습니다.
