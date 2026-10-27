@@ -4,6 +4,7 @@ import com.harudle.auth.domain.OAuthAccount;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.OAuthAccountRepository;
 import com.harudle.auth.infrastructure.UserRepository;
+import com.harudle.auth.infrastructure.nickname.NicknameCandidateRepository;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
@@ -15,10 +16,19 @@ public class OAuthLoginService {
 
     private final UserRepository userRepository;
     private final OAuthAccountRepository oAuthAccountRepository;
+    private final NicknameCandidateRepository nicknameCandidateRepository;
+    private final ProfileImageCodeGenerator profileImageCodeGenerator;
 
-    public OAuthLoginService(UserRepository userRepository, OAuthAccountRepository oAuthAccountRepository) {
+    public OAuthLoginService(
+            UserRepository userRepository,
+            OAuthAccountRepository oAuthAccountRepository,
+            NicknameCandidateRepository nicknameCandidateRepository,
+            ProfileImageCodeGenerator profileImageCodeGenerator
+    ) {
         this.userRepository = userRepository;
         this.oAuthAccountRepository = oAuthAccountRepository;
+        this.nicknameCandidateRepository = nicknameCandidateRepository;
+        this.profileImageCodeGenerator = profileImageCodeGenerator;
     }
 
     @Transactional
@@ -55,17 +65,24 @@ public class OAuthLoginService {
                 command.providerEmail(),
                 command.displayName()
         );
+
         User user = createUser(profile, now);
-        
         createOAuthAccount(user, command, profile.email(), now);
 
         return new OAuthLoginResult(user.getId());
     }
 
     private User createUser(RequiredOAuthProfile profile, Instant now) {
-        User user = new User(profile.email(), profile.displayName(), now);
+        String nickname = nicknameCandidateRepository.lockNextAvailable();
+        int imageCode = profileImageCodeGenerator.generate();
 
-        return userRepository.save(user);
+        User user = new User(profile.email(), profile.displayName(), now);
+        user.assignInitialPublicProfile(nickname, imageCode, now);
+
+        User savedUser = userRepository.save(user);
+        nicknameCandidateRepository.assignToUser(nickname, savedUser.getId());
+
+        return savedUser;
     }
 
     private void createOAuthAccount(User user, OAuthLoginCommand command, String providerEmail, Instant now) {

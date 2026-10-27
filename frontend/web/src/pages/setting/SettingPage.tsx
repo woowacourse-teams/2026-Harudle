@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { Link } from 'react-router';
 import { type ModalHandle } from '../../shared/Modal';
 import ProfileEditModal from './ProfileEditModal';
 import profileFallbackImage from '../../assets/images/profile-fallback.svg';
@@ -13,6 +14,7 @@ import logoutIcon from '../../assets/icons/logout.svg';
 import articlePersonIcon from '../../assets/icons/article_person.svg';
 import PwaInstallButton from './PwaInstallButton';
 import LoadingSpinner from '../../shared/LoadingSpinner';
+import blockIcon from '../../assets/icons/block.svg';
 
 const PRIVACY_POLICY_URL = 'https://harudle.notion.site/';
 
@@ -127,6 +129,16 @@ const SettingPageContent = () => {
         </a>
       </div>
 
+      <div css={settingCardStyle}>
+        <Link
+          css={[settingRowStyle, settingLinkStyle]}
+          to="/setting/blocked-users"
+        >
+          <span css={settingLabelStyle}>차단한 사용자</span>
+          <span css={[iconStyle, blockedUsersIconStyle]} aria-hidden="true" />
+        </Link>
+      </div>
+
       <PwaInstallButton />
 
       <button
@@ -228,6 +240,12 @@ const settingRowStyle = css`
 
 const settingLabelStyle = css`
   color: ${theme.colors.foreground.neutral};
+`;
+
+const blockedUsersIconStyle = css`
+  background-color: #1c1b1f;
+  -webkit-mask: url(${blockIcon}) center / contain no-repeat;
+  mask: url(${blockIcon}) center / contain no-repeat;
 `;
 
 const settingValueStyle = css`

@@ -2,13 +2,14 @@ package com.harudle.admin.presentation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.harudle.support.MockMvcIntegrationTest;
 import com.harudle.auth.application.AccessTokenService;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.UserRepository;
-import com.harudle.generation.domain.GenerationErrorCode;
-import com.harudle.generation.domain.GenerationPrompt;
-import com.harudle.generation.domain.GenerationStatus;
-import com.harudle.generation.repository.GenerationPromptRepository;
+import com.harudle.generation.diary.domain.GenerationErrorCode;
+import com.harudle.generation.prompt.domain.GenerationPrompt;
+import com.harudle.generation.diary.domain.GenerationStatus;
+import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
 import io.restassured.module.mockmvc.response.MockMvcResponse;
 import java.sql.Timestamp;
@@ -21,29 +22,17 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest
-@AutoConfigureMockMvc
+@MockMvcIntegrationTest
 class AdminGenerationControllerTest {
 
-    private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:18-alpine");
     private static final ZoneId SERVICE_ZONE = ZoneId.of("Asia/Seoul");
     private static final Instant CREATED_AT = Instant.parse("2026-08-06T00:00:00Z");
-
-    @Container
-    @ServiceConnection
-    static final PostgreSQLContainer POSTGRESQL_CONTAINER = new PostgreSQLContainer(POSTGRES_IMAGE);
 
     @Autowired
     private MockMvc mockMvc;
@@ -106,6 +95,8 @@ class AdminGenerationControllerTest {
                 GenerationStatus.PROCESSING,
                 null
         );
+        jdbcTemplate.update("UPDATE diary_generations SET storyboard_provider = ?, storyboard_model = ? WHERE id = ?",
+                "qwen", "qwen3.8-max", middleGenerationId);
 
         MockMvcResponse response = adminRequest(admin)
                 .get("/api/v1/admin/generations");
@@ -125,6 +116,10 @@ class AdminGenerationControllerTest {
         assertThat(response.jsonPath().getString("content[1].id"))
                 .isEqualTo(middleGenerationId.toString());
         assertThat(response.jsonPath().getString("content[1].status")).isEqualTo("SUCCEEDED");
+        assertThat(response.jsonPath().getString("content[1].storyboardProvider")).isEqualTo("qwen");
+        assertThat(response.jsonPath().getString("content[1].storyboardModel")).isEqualTo("qwen3.8-max");
+        assertThat(response.jsonPath().getString("content[0].storyboardProvider")).isNull();
+        assertThat(response.jsonPath().getString("content[0].storyboardModel")).isNull();
         assertThat(response.jsonPath().getString("content[2].id"))
                 .isEqualTo(oldestGenerationId.toString());
         assertThat(response.jsonPath().getString("content[2].status")).isEqualTo("FAILED");

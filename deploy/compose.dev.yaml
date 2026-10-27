@@ -1,14 +1,21 @@
 services:
   backend:
+    environment:
+      # Keep the existing heap sizing and collector while recording GC causes.
+      JAVA_OPTS: >-
+        -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError
+        -Xlog:gc*,safepoint:stdout:time,uptime,level,tags
     logging: !override
-      driver: json-file
+      driver: awslogs
       options:
-        max-size: "10m"
-        max-file: "3"
+        awslogs-region: "${AWS_REGION:-ap-northeast-2}"
+        awslogs-group: "/harudle/dev/backend"
+        awslogs-create-group: "false"
 
   frontend:
     logging: !override
-      driver: json-file
+      driver: awslogs
       options:
-        max-size: "10m"
-        max-file: "3"
+        awslogs-region: "${AWS_REGION:-ap-northeast-2}"
+        awslogs-group: "/harudle/dev/frontend-nginx"
+        awslogs-create-group: "false"

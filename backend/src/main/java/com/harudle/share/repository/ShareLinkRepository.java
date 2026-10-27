@@ -25,7 +25,7 @@ public interface ShareLinkRepository extends
               AND generation.id = shareLink.generationId
               AND diary.id = generation.diaryId
               AND diary.deletedAt IS NULL
-              AND generation.status = com.harudle.generation.domain.GenerationStatus.SUCCEEDED
+              AND generation.status = com.harudle.generation.diary.domain.GenerationStatus.SUCCEEDED
             """)
     Optional<PublicShareSnapshot> findPublicSnapshotById(@Param("shareId") UUID shareId);
 }

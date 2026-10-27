@@ -24,5 +24,7 @@ export const MOCK_SCENARIOS = {
   feedDeleteFailure: 'feed-delete-failure',
   feedCommentDeleteFailure: 'feed-comment-delete-failure',
   profileFailure: 'profile-failure',
+  blockListFailure: 'block-list-failure',
+  blockMutationFailure: 'block-mutation-failure',
   logoutFailure: 'logout-failure',
 } as const;

@@ -45,9 +45,16 @@ test('본인 피드 삭제를 취소하거나 확인하고 성공한 항목만 �
   const articles = page.getByRole('article');
   await expect(articles).toHaveCount(20);
   const ownFeed = articles
-    .filter({ has: page.getByRole('button', { name: '옵션 더보기 아이콘' }) })
+    .filter({
+      has: page.getByRole('button', {
+        name: '옵션 더보기 아이콘',
+        exact: true,
+      }),
+    })
     .first();
-  await ownFeed.getByRole('button', { name: '옵션 더보기 아이콘' }).click();
+  await ownFeed
+    .getByRole('button', { name: '옵션 더보기 아이콘', exact: true })
+    .click();
   await page
     .getByRole('dialog')
     .filter({
@@ -65,7 +72,9 @@ test('본인 피드 삭제를 취소하거나 확인하고 성공한 항목만 �
   await confirm.getByRole('button', { name: '취소' }).click();
   await expect(articles).toHaveCount(20);
 
-  await ownFeed.getByRole('button', { name: '옵션 더보기 아이콘' }).click();
+  await ownFeed
+    .getByRole('button', { name: '옵션 더보기 아이콘', exact: true })
+    .click();
   await page
     .getByRole('dialog')
     .filter({

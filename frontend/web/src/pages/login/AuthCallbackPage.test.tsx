@@ -11,6 +11,7 @@ import { act, render, waitFor } from '@testing-library/react';
 import AuthCallbackPage from './AuthCallbackPage';
 import { requestCsrfToken, setAccessToken } from '../../shared/auth';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
+import { LOGIN_COPY } from './copy';
 
 const mockNavigate = jest.fn();
 const mockIdentifyCurrentUser = jest.fn();
@@ -133,5 +134,64 @@ describe('로그인 콜백', () => {
     expect(localStorage.getItem('harudle.last-login-provider')).toBe('kakao');
     expect(sessionStorage.getItem('harudle.login-attempt-provider')).toBeNull();
     expect(setAccessToken).not.toHaveBeenCalled();
+  });
+});
+
+describe('OAuth 실패 콜백', () => {
+  it.each([
+    ['account_suspended', LOGIN_COPY.suspendedAccount],
+    ['<script>raw-error</script>', ERROR_MESSAGES.LOGIN_FAILED],
+    ['', ERROR_MESSAGES.LOGIN_FAILED],
+  ])(
+    '기존 세션이 있어도 오류 %s에서는 토큰을 복원하지 않는다',
+    (error, message): void => {
+      mockSearchParams.set('error', error);
+      localStorage.setItem('harudle.has-completed-oauth', 'true');
+      localStorage.setItem('harudle.last-login-provider', 'kakao');
+      sessionStorage.setItem('harudle.login-attempt-provider', 'apple');
+      render(
+        <StrictMode>
+          <AuthCallbackPage />
+        </StrictMode>,
+      );
+      expect(window.alert).toHaveBeenCalledTimes(1);
+      expect(window.alert).toHaveBeenCalledWith(message);
+      expect(mockNavigate).toHaveBeenCalledTimes(1);
+      expect(mockNavigate).toHaveBeenCalledWith('/login', { replace: true });
+      expect(requestCsrfToken).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(setAccessToken).not.toHaveBeenCalled();
+      expect(mockIdentifyCurrentUser).not.toHaveBeenCalled();
+      expect(localStorage.getItem('harudle.last-login-provider')).toBe('kakao');
+      expect(
+        sessionStorage.getItem('harudle.login-attempt-provider'),
+      ).toBeNull();
+    },
+  );
+
+  it('요청 도중 실패 콜백으로 바뀌면 늦은 성공 응답을 반영하지 않는다', async (): Promise<void> => {
+    let resolveRefresh!: (value: Response) => void;
+    fetchMock.mockReturnValue(
+      new Promise<Response>((resolve): void => {
+        resolveRefresh = resolve;
+      }),
+    );
+    const { rerender } = render(<AuthCallbackPage />);
+    await waitFor((): void => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    mockSearchParams.set('error', 'account_suspended');
+    rerender(<AuthCallbackPage />);
+    await act(async (): Promise<void> => {
+      resolveRefresh({
+        ok: true,
+        json: async (): Promise<unknown> => tokenResponse,
+      } as Response);
+    });
+    expect(setAccessToken).not.toHaveBeenCalled();
+    expect(mockIdentifyCurrentUser).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalledWith('/', { replace: true });
+    expect(window.alert).toHaveBeenCalledTimes(1);
+    expect(window.alert).toHaveBeenCalledWith(LOGIN_COPY.suspendedAccount);
   });
 });

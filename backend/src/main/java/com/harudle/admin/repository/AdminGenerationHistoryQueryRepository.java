@@ -1,8 +1,8 @@
 package com.harudle.admin.repository;
 
 import com.harudle.admin.query.AdminGenerationHistorySnapshot;
-import com.harudle.generation.domain.DiaryGeneration;
-import com.harudle.generation.domain.GenerationStatus;
+import com.harudle.generation.diary.domain.DiaryGeneration;
+import com.harudle.generation.diary.domain.GenerationStatus;
 import java.time.Instant;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
@@ -24,7 +24,9 @@ public interface AdminGenerationHistoryQueryRepository extends Repository<DiaryG
                         generation.createdAt,
                         generation.status,
                         generation.completedAt,
-                        generation.errorCode
+                        generation.errorCode,
+                        generation.storyboardProvider,
+                        generation.storyboardModel
                     )
                     FROM DiaryGeneration generation
                     JOIN Diary diary ON diary.id = generation.diaryId

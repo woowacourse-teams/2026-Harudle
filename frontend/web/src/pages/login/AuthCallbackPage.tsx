@@ -7,6 +7,7 @@ import {
   setAccessToken,
 } from '../../shared/auth';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
+import { LOGIN_COPY } from './copy';
 import { useAnalytics } from '../../posthog/useAnalytics';
 import {
   clearLoginAttemptProvider,
@@ -22,17 +23,23 @@ const AuthCallbackPage = () => {
   const [provider] = useState(getLoginAttemptProvider);
   const hasHandledOAuthError = useRef(false);
   const hasOAuthError = searchParams.has('error');
+  const oauthError = searchParams.get('error');
 
   useEffect(() => {
     if (hasOAuthError) {
       if (hasHandledOAuthError.current) return;
       hasHandledOAuthError.current = true;
       clearLoginAttemptProvider();
-      alert(ERROR_MESSAGES.LOGIN_FAILED);
+      alert(
+        oauthError === 'account_suspended'
+          ? LOGIN_COPY.suspendedAccount
+          : ERROR_MESSAGES.LOGIN_FAILED,
+      );
       navigate('/login', { replace: true });
       return;
     }
 
+    hasHandledOAuthError.current = false;
     let isActive = true;
     const getAccessTokenAtLogin = async (): Promise<void> => {
       try {
@@ -74,7 +81,7 @@ const AuthCallbackPage = () => {
     return (): void => {
       isActive = false;
     };
-  }, [hasOAuthError, identifyCurrentUser, navigate, provider]);
+  }, [hasOAuthError, oauthError, identifyCurrentUser, navigate, provider]);
 
   return null;
 };

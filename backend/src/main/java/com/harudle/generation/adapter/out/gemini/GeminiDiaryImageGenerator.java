@@ -9,11 +9,12 @@ import com.google.genai.types.GenerateContentConfig;
 import com.google.genai.types.GenerateContentResponse;
 import com.google.genai.types.ImageConfig;
 import com.google.genai.types.Part;
-import com.harudle.generation.configuration.GeminiGenerationProperties;
-import com.harudle.generation.service.port.DiaryImageGenerationRequest;
-import com.harudle.generation.service.port.DiaryImageGenerator;
-import com.harudle.generation.service.port.GeneratedImage;
-import com.harudle.generation.service.port.ReferenceImage;
+import com.harudle.generation.config.GeminiGenerationProperties;
+import com.harudle.generation.diary.service.port.dto.DiaryImageGenerationRequest;
+import com.harudle.generation.diary.service.port.DiaryImageGenerator;
+import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
+import com.harudle.generation.diary.service.port.dto.GeneratedImage;
+import com.harudle.generation.diary.service.port.dto.ReferenceImage;
 import java.io.IOException;
 import java.util.Objects;
 import java.util.Optional;
@@ -26,17 +27,12 @@ public final class GeminiDiaryImageGenerator implements DiaryImageGenerator {
     private static final String OPERATION = "image_generation";
     private static final String TRANSLATION_OPERATION = "그림일기 이미지 생성";
     private static final String REQUEST_PREPARATION_ERROR = "REQUEST_PREPARATION_ERROR";
-    private static final String RESPONSE_PROCESSING_ERROR = "RESPONSE_PROCESSING_ERROR";
     private static final String FINAL_TASK_HEADER = "[Final Task]";
     private static final String REFERENCE_IMAGE_INSTRUCTION = """
             [The Only Style Reference]
-            STYLE FIDELITY IS THE HIGHEST PRIORITY. Treat the following single image as the binding canonical \
-            specification for the artist's marker stroke, organic wobble, black-interior outline construction, \
-            naive character anatomy, hair marks, face, proportions, negative space, and Korean handwriting. \
-            The result must look drawn by the same hand with the same white marker, not merely inspired by it. \
-            Do not clean up or convert it into generic vector, icon, infographic, or editorial line art. Do not \
-            copy its story, panel count, composition, props, or text. Do not use or assume any other reference \
-            image or asset.
+            The following image is the single binding style and canonical protagonist reference described by \
+            the system instruction. Apply only its visual style and protagonist construction. Do not copy its \
+            story, panel count, composition, props, poses, or text, and do not assume another reference asset.
             """.strip();
     private static final long INLINE_REQUEST_LIMIT_BYTES = 20L * 1024 * 1024;
     private static final long INLINE_REQUEST_OVERHEAD_BYTES = 8192L;
@@ -45,57 +41,97 @@ public final class GeminiDiaryImageGenerator implements DiaryImageGenerator {
     private final GeminiGenerationProperties properties;
     private final DiaryImagePromptRenderer promptRenderer;
     private final GeminiFailureReporter failureReporter;
+    private final GeminiStageMetrics stageMetrics;
 
     public GeminiDiaryImageGenerator(
             Models models,
             GeminiGenerationProperties properties,
             DiaryImagePromptRenderer promptRenderer,
-            GeminiFailureReporter failureReporter
+            GeminiFailureReporter failureReporter,
+            GeminiStageMetrics stageMetrics
     ) {
         this.models = models;
         this.properties = properties;
         this.promptRenderer = promptRenderer;
         this.failureReporter = failureReporter;
+        this.stageMetrics = Objects.requireNonNull(stageMetrics);
     }
 
     @Override
     public GeneratedImage generate(DiaryImageGenerationRequest request) {
-        Content content;
-        GenerateContentConfig config;
+        long startedAt = System.nanoTime();
+        String phase = "preparation";
+        GenerateContentResponse response = null;
+        try {
+            PreparedRequest preparedRequest = prepareRequest(request);
+            phase = "provider";
+            response = callProvider(preparedRequest);
+            phase = "response";
+            GeneratedImage image = processResponse(response);
+            stageMetrics.record(OPERATION, null, System.nanoTime() - startedAt, response);
+            return image;
+        } catch (com.harudle.generation.diary.service.exception.AiGenerationException exception) {
+            GeminiFailureType failureType = switch (phase) {
+                case "preparation" -> GeminiFailureType.preparation(exception.getCause());
+                case "provider" -> GeminiFailureType.provider(exception.getCause(), exception.errorType());
+                default -> GeminiFailureType.imageResponse(response);
+            };
+            stageMetrics.record(OPERATION, failureType, System.nanoTime() - startedAt, response);
+            throw exception;
+        }
+    }
+
+    private PreparedRequest prepareRequest(DiaryImageGenerationRequest request) {
         try {
             String finalTask = createFinalTask(request);
-            byte[] referenceImageBytes = readReferenceImage(request.referenceImage(), finalTask);
-            content = createContent(request.referenceImage(), referenceImageBytes, finalTask);
-            config = createGenerateContentConfig();
+            String systemInstruction = request.imageStylePromptText();
+            byte[] referenceImageBytes = readReferenceImage(
+                    request.referenceImage(),
+                    systemInstruction,
+                    finalTask
+            );
+            Content content = createContent(request.referenceImage(), referenceImageBytes, finalTask);
+            GenerateContentConfig config = createGenerateContentConfig(systemInstruction);
+            return new PreparedRequest(content, config);
         } catch (Exception exception) {
             throw failureReporter.reportInternalFailure(
                     OPERATION,
                     TRANSLATION_OPERATION,
                     REQUEST_PREPARATION_ERROR,
+                    AiGenerationErrorType.INTERNAL_ERROR,
                     exception
             );
         }
+    }
 
-        GenerateContentResponse response;
+    private GenerateContentResponse callProvider(PreparedRequest request) {
         try {
-            response = models.generateContent(
+            return models.generateContent(
                     properties.imageModel(),
-                    content,
-                    config
+                    request.content(),
+                    request.config()
             );
         } catch (Exception exception) {
             throw failureReporter.reportProviderFailure(OPERATION, TRANSLATION_OPERATION, exception);
         }
+    }
 
+    private GeneratedImage processResponse(GenerateContentResponse response) {
         try {
             return extractGeneratedImage(response);
         } catch (Exception exception) {
-            throw failureReporter.reportInternalFailure(
-                    OPERATION,
-                    TRANSLATION_OPERATION,
-                    RESPONSE_PROCESSING_ERROR,
-                    exception
+            throw failureReporter.reportImageResponseFailure(
+                    OPERATION, TRANSLATION_OPERATION, response, exception
             );
+        }
+    }
+
+    private record PreparedRequest(Content content, GenerateContentConfig config) {
+    }
+
+    static final class InlineRequestTooLargeException extends IllegalArgumentException {
+        InlineRequestTooLargeException() {
+            super("Gemini inline 요청은 20MiB 미만이어야 합니다.");
         }
     }
 
@@ -103,30 +139,34 @@ public final class GeminiDiaryImageGenerator implements DiaryImageGenerator {
         String storyPrompt = promptRenderer.render(request.storyboard());
         return FINAL_TASK_HEADER
                 + "\n"
-                + request.imageStylePromptText()
-                + "\n\n"
                 + storyPrompt;
     }
 
     private static byte[] readReferenceImage(
             ReferenceImage referenceImage,
+            String systemInstruction,
             String finalTask
     ) throws IOException {
         Resource resource = referenceImage.resource();
-        validateInlineRequestSize(finalTask, resource.contentLength());
+        validateInlineRequestSize(systemInstruction, finalTask, resource.contentLength());
 
         byte[] referenceImageBytes = resource.getContentAsByteArray();
-        validateInlineRequestSize(finalTask, referenceImageBytes.length);
+        validateInlineRequestSize(systemInstruction, finalTask, referenceImageBytes.length);
         return referenceImageBytes;
     }
 
-    private static void validateInlineRequestSize(String finalTask, long referenceImageSize) {
+    private static void validateInlineRequestSize(
+            String systemInstruction,
+            String finalTask,
+            long referenceImageSize
+    ) {
         long encodedReferenceImageSize = 4L * ((referenceImageSize + 2L) / 3L);
-        long estimatedRequestSize = finalTask.getBytes(UTF_8).length
+        long estimatedRequestSize = systemInstruction.getBytes(UTF_8).length
+                + finalTask.getBytes(UTF_8).length
                 + INLINE_REQUEST_OVERHEAD_BYTES
                 + encodedReferenceImageSize;
         if (estimatedRequestSize >= INLINE_REQUEST_LIMIT_BYTES) {
-            throw new IllegalArgumentException("Gemini inline 요청은 20MiB 미만이어야 합니다.");
+            throw new InlineRequestTooLargeException();
         }
     }
 
@@ -142,12 +182,13 @@ public final class GeminiDiaryImageGenerator implements DiaryImageGenerator {
         );
     }
 
-    private GenerateContentConfig createGenerateContentConfig() {
+    private GenerateContentConfig createGenerateContentConfig(String systemInstruction) {
         ImageConfig imageConfig = ImageConfig.builder()
                 .aspectRatio(properties.imageAspectRatio())
                 .build();
 
         return GenerateContentConfig.builder()
+                .systemInstruction(Content.fromParts(Part.fromText(systemInstruction)))
                 .responseModalities("TEXT", "IMAGE")
                 .imageConfig(imageConfig)
                 .build();

@@ -1,0 +1,719 @@
+package com.harudle.generation.diary.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.harudle.common.logging.ExternalApiLogger;
+import com.harudle.generation.adapter.out.qwen.QwenChatClient;
+import com.harudle.generation.adapter.out.qwen.QwenStageMetrics;
+import com.harudle.generation.adapter.out.qwen.QwenStoryboardGenerator;
+import com.harudle.generation.adapter.out.qwen.QwenStoryboardSettings;
+import com.harudle.generation.adapter.out.storyboard.StoryboardJsonCodec;
+import com.harudle.generation.adapter.out.storyboard.StoryboardResponseMapper;
+import com.harudle.generation.adapter.out.storyboard.StoryboardTestFixtures;
+import com.harudle.generation.config.StoryboardProviderProperties;
+import com.harudle.generation.diary.domain.DiaryGeneration;
+import com.harudle.generation.diary.domain.GenerationErrorCode;
+import com.harudle.generation.diary.domain.GenerationTokenUsage;
+import com.harudle.generation.diary.domain.StoryPanel;
+import com.harudle.generation.diary.domain.Storyboard;
+import com.harudle.generation.diary.domain.StoryboardProviderInfo;
+import com.harudle.generation.diary.repository.DiaryGenerationRepository;
+import com.harudle.generation.diary.service.dto.CompletedDiaryGeneration;
+import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
+import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
+import com.harudle.generation.diary.service.exception.AiGenerationException;
+import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
+import com.harudle.generation.diary.service.port.DiaryImageGenerator;
+import com.harudle.generation.diary.service.port.ImageStorage;
+import com.harudle.generation.diary.service.port.ImageStorageException;
+import com.harudle.generation.diary.service.port.StoryboardGenerator;
+import com.harudle.generation.diary.service.port.dto.DiaryImageGenerationRequest;
+import com.harudle.generation.diary.service.port.dto.GeneratedImage;
+import com.harudle.generation.diary.service.port.dto.GeneratedStoryboard;
+import com.harudle.generation.diary.service.port.dto.ReferenceImage;
+import com.harudle.generation.diary.service.port.dto.StoryboardGenerationRequest;
+import com.harudle.generation.diary.service.storyboard.StoryboardAttemptRunner;
+import com.harudle.generation.diary.service.storyboard.StoryboardGenerationService;
+import com.harudle.generation.prompt.domain.GenerationPrompt;
+import com.harudle.generation.prompt.repository.GenerationPromptRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Stream;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.MediaType;
+import tools.jackson.databind.json.JsonMapper;
+
+@ExtendWith(MockitoExtension.class)
+class ClaimedDiaryGenerationServiceTest {
+
+    private static final UUID USER_ID = UUID.fromString("08d69a34-6d70-4d42-a158-671bc67733c9");
+    private static final UUID DIARY_ID = UUID.fromString("6b66acba-0136-4822-8a59-f355dd7c977d");
+    private static final UUID IDEMPOTENCY_KEY = UUID.fromString("7e5cc251-fdde-4cc0-a54e-2c8142750609");
+
+    @Mock
+    private GenerationPromptRepository generationPromptRepository;
+
+    @Mock
+    private DiaryGenerationRepository diaryGenerationRepository;
+
+    @Mock
+    private StoryboardGenerationService storyboardGenerationService;
+
+    @Mock
+    private DiaryImageGenerator diaryImageGenerator;
+
+    @Mock
+    private ImageStorage imageStorage;
+
+    @Mock
+    private DiaryGenerationCompletionService completionService;
+
+    @Mock
+    private GenerationLifecycleMetrics lifecycleMetrics;
+
+    private RequestFingerprintGenerator requestFingerprintGenerator;
+    private ClaimedDiaryGenerationService generationService;
+    private ExecutorService attemptExecutor;
+
+    @BeforeEach
+    void setUp() {
+        requestFingerprintGenerator = new RequestFingerprintGenerator();
+        generationService = new ClaimedDiaryGenerationService(
+                requestFingerprintGenerator,
+                generationPromptRepository,
+                diaryGenerationRepository,
+                storyboardGenerationService,
+                diaryImageGenerator,
+                imageStorage,
+                completionService,
+                lifecycleMetrics
+        );
+    }
+
+    @AfterEach
+    void shutDownAttemptExecutor() {
+        if (attemptExecutor != null) {
+            attemptExecutor.shutdownNow();
+        }
+    }
+
+    @Test
+    @DisplayName("선점 트랜잭션이 끝난 생성 요청을 외부 시스템에서 처리하고 완료한다")
+    void generateClaimedDiaryImage() {
+        GenerateDiaryImageCommand command = createCommand();
+        DiaryGeneration generation = createGeneration(command);
+        GenerationPrompt prompt = createPrompt();
+        Storyboard storyboard = createStoryboard();
+        GenerationTokenUsage tokenUsage = new GenerationTokenUsage(120, 350, 80, 550);
+        ReferenceImage referenceImage = createReferenceImage();
+        GeneratedImage generatedImage = createGeneratedImage();
+        DiaryGeneration completedGeneration = createGeneration(command);
+        completedGeneration.succeed(storyboard, "generated/comic.png", tokenUsage,
+                Instant.parse("2026-08-06T12:00:00Z"));
+        when(diaryGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(storyboardGenerationService.generate(any(StoryboardGenerationRequest.class)))
+                .thenReturn(new GeneratedStoryboard(storyboard, tokenUsage));
+        when(imageStorage.load("references/style.png")).thenReturn(referenceImage);
+        when(diaryImageGenerator.generate(any(DiaryImageGenerationRequest.class))).thenReturn(generatedImage);
+        when(imageStorage.store(generation.getId(), generatedImage)).thenReturn("generated/comic.png");
+        when(completionService.succeed(generation.getId(), storyboard, "generated/comic.png", tokenUsage, null))
+                .thenReturn(completedGeneration);
+
+        CompletedDiaryGeneration result = generationService.generate(command, generation.getId());
+
+        assertThat(result.title()).isEqualTo("친구와 보낸 하루");
+        assertThat(result.tokenUsage()).isEqualTo(tokenUsage);
+        verify(imageStorage, never()).delete(any(String.class));
+    }
+
+    @Test
+    @DisplayName("Qwen 스토리보드를 기존 이미지 생성에 전달하고 정규화한 토큰으로 생성을 완료한다")
+    void generateImageFromQwenStoryboardAndPersistNormalizedUsage() {
+        QwenChatClient client = mock(QwenChatClient.class);
+        var codec = new StoryboardJsonCodec(JsonMapper.builder().build(), new StoryboardResponseMapper());
+        String json = StoryboardTestFixtures.storyboardJson();
+        when(client.generate(any(QwenChatClient.Request.class), any())).thenReturn(new QwenChatClient.Completion(
+                json, new QwenChatClient.Usage(100, 500, 110, 600, null), "stop", null));
+        var qwen = new QwenStoryboardGenerator(client, QwenStoryboardSettings.defaults(), codec,
+                mock(ExternalApiLogger.class), new QwenStageMetrics(new SimpleMeterRegistry(), "qwen3.8-max"));
+        var service = new ClaimedDiaryGenerationService(requestFingerprintGenerator, generationPromptRepository,
+                diaryGenerationRepository, orchestrate(qwen, Optional.empty(), "qwen", "none"),
+                diaryImageGenerator, imageStorage, completionService,
+                lifecycleMetrics);
+        var providerInfo = new StoryboardProviderInfo("qwen", "qwen3.8-max");
+        GenerateDiaryImageCommand command = createCommand();
+        DiaryGeneration generation = createGeneration(command);
+        Storyboard storyboard = codec.decode(json);
+        GenerationPrompt prompt = createPrompt();
+        GenerationTokenUsage usage = new GenerationTokenUsage(100, 390, 110, 600);
+        ReferenceImage reference = createReferenceImage();
+        GeneratedImage image = createGeneratedImage();
+        DiaryGeneration completed = createGeneration(command);
+        completed.succeed(storyboard, "generated/qwen.png", usage, providerInfo, Instant.parse("2026-08-06T12:00:00Z"));
+        when(diaryGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(imageStorage.load("references/style.png")).thenReturn(reference);
+        when(diaryImageGenerator.generate(any(DiaryImageGenerationRequest.class))).thenReturn(image);
+        when(imageStorage.store(generation.getId(), image)).thenReturn("generated/qwen.png");
+        when(completionService.succeed(generation.getId(), storyboard, "generated/qwen.png", usage, providerInfo))
+                .thenReturn(completed);
+
+        CompletedDiaryGeneration result = service.generate(command, generation.getId());
+
+        assertThat(result.tokenUsage()).isEqualTo(usage);
+        assertThat(completed.getStoryboardProvider()).isEqualTo("qwen");
+        assertThat(completed.getStoryboardModel()).isEqualTo("qwen3.8-max");
+        assertThat(result.imageObjectKey()).isEqualTo("generated/qwen.png");
+        verify(diaryImageGenerator).generate(new DiaryImageGenerationRequest(storyboard,
+                "이미지 스타일 프롬프트", reference));
+        verify(completionService).succeed(generation.getId(), storyboard, "generated/qwen.png", usage, providerInfo);
+    }
+
+    @Test
+    @DisplayName("다른 실행이 먼저 완료했으면 이번 실행이 저장한 이미지만 폐기한다")
+    void deleteImageDiscardedByConcurrentCompletion() {
+        GenerateDiaryImageCommand command = createCommand();
+        DiaryGeneration generation = createGeneration(command);
+        GenerationPrompt prompt = createPrompt();
+        Storyboard storyboard = createStoryboard();
+        ReferenceImage referenceImage = createReferenceImage();
+        GeneratedImage generatedImage = createGeneratedImage();
+        DiaryGeneration winningGeneration = createGeneration(command);
+        winningGeneration.succeed(
+                storyboard,
+                "generated/winner.png",
+                Instant.parse("2026-08-06T12:00:00Z")
+        );
+        when(diaryGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(storyboardGenerationService.generate(any(StoryboardGenerationRequest.class)))
+                .thenReturn(new GeneratedStoryboard(storyboard, null));
+        when(imageStorage.load("references/style.png")).thenReturn(referenceImage);
+        when(diaryImageGenerator.generate(any(DiaryImageGenerationRequest.class))).thenReturn(generatedImage);
+        when(imageStorage.store(generation.getId(), generatedImage)).thenReturn("generated/loser.png");
+        when(completionService.succeed(generation.getId(), storyboard, "generated/loser.png", null, null))
+                .thenReturn(winningGeneration);
+
+        CompletedDiaryGeneration result = generationService.generate(command, generation.getId());
+
+        assertThat(result.imageObjectKey()).isEqualTo("generated/winner.png");
+        verify(imageStorage).delete("generated/loser.png");
+    }
+
+    @Test
+    @DisplayName("AI 공급자 호출이 실패하면 생성 기록을 실패 처리한다")
+    void generateClaimedDiaryImageMarksAiFailure() {
+        GenerateDiaryImageCommand command = createCommand();
+        DiaryGeneration generation = createGeneration(command);
+        GenerationPrompt prompt = mock(GenerationPrompt.class);
+        AiGenerationException exception = new AiGenerationException(
+                AiGenerationErrorType.TIMEOUT,
+                "AI 공급자 응답 시간이 초과되었습니다."
+        );
+        when(prompt.getStoryboardPromptText()).thenReturn("스토리보드 프롬프트");
+        when(diaryGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(storyboardGenerationService.generate(any(StoryboardGenerationRequest.class))).thenThrow(exception);
+        when(completionService.fail(generation.getId(), GenerationErrorCode.AI_PROVIDER_TIMEOUT))
+                .thenReturn(GenerationErrorCode.AI_PROVIDER_TIMEOUT);
+
+        assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
+                .isSameAs(exception);
+        verify(completionService).fail(generation.getId(), GenerationErrorCode.AI_PROVIDER_TIMEOUT);
+    }
+
+    @ParameterizedTest
+    @MethodSource("classifiedAiFailures")
+    @DisplayName("세분화한 AI 오류 유형을 해당 내부 생성 오류 코드로 저장한다")
+    void generateClaimedDiaryImageMarksClassifiedAiFailure(
+            AiGenerationErrorType errorType,
+            GenerationErrorCode expectedErrorCode
+    ) {
+        GenerateDiaryImageCommand command = createCommand();
+        DiaryGeneration generation = createGeneration(command);
+        GenerationPrompt prompt = mock(GenerationPrompt.class);
+        AiGenerationException exception = new AiGenerationException(
+                errorType,
+                "Gemini 생성에 실패했습니다."
+        );
+        when(prompt.getStoryboardPromptText()).thenReturn("스토리보드 프롬프트");
+        when(diaryGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(storyboardGenerationService.generate(any(StoryboardGenerationRequest.class))).thenThrow(exception);
+        when(completionService.fail(generation.getId(), expectedErrorCode)).thenReturn(expectedErrorCode);
+
+        assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
+                .isSameAs(exception);
+        verify(completionService).fail(generation.getId(), expectedErrorCode);
+    }
+
+    @Test
+    @DisplayName("예상하지 못한 런타임 오류를 내부 생성 오류로 저장하고 원래 예외를 전달한다")
+    void generateClaimedDiaryImageMarksUnexpectedRuntimeFailure() {
+        GenerateDiaryImageCommand command = createCommand();
+        DiaryGeneration generation = createGeneration(command);
+        GenerationPrompt prompt = mock(GenerationPrompt.class);
+        IllegalStateException exception = new IllegalStateException("내부 처리 오류");
+        when(prompt.getStoryboardPromptText()).thenReturn("스토리보드 프롬프트");
+        when(diaryGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(storyboardGenerationService.generate(any(StoryboardGenerationRequest.class))).thenThrow(exception);
+        when(completionService.fail(generation.getId(), GenerationErrorCode.GENERATION_INTERNAL_ERROR))
+                .thenReturn(GenerationErrorCode.GENERATION_INTERNAL_ERROR);
+
+        assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
+                .isSameAs(exception);
+        verify(completionService).fail(generation.getId(), GenerationErrorCode.GENERATION_INTERNAL_ERROR);
+    }
+
+    @Test
+    @DisplayName("예상 밖 생성 오류의 원인과 발생 단계를 기록한다")
+    void recordUnexpectedStoryboardFailure() {
+        GenerateDiaryImageCommand command = createCommand();
+        DiaryGeneration generation = createGeneration(command);
+        GenerationPrompt prompt = mock(GenerationPrompt.class);
+        RuntimeException original = new IllegalStateException("민감한 사용자 원문");
+        when(prompt.getStoryboardPromptText()).thenReturn("스토리보드 프롬프트");
+        when(diaryGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(storyboardGenerationService.generate(any(StoryboardGenerationRequest.class))).thenThrow(original);
+        when(completionService.fail(generation.getId(), GenerationErrorCode.GENERATION_INTERNAL_ERROR))
+                .thenReturn(GenerationErrorCode.GENERATION_INTERNAL_ERROR);
+
+        assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
+                .isSameAs(original);
+
+        verify(lifecycleMetrics).unexpectedFailure(
+                generation.getId(), GenerationLifecycleMetrics.Phase.STORYBOARD, original);
+        verify(completionService).fail(generation.getId(), GenerationErrorCode.GENERATION_INTERNAL_ERROR);
+    }
+
+    @Test
+    @DisplayName("예상 밖 참조 이미지 조회 오류를 저장소 실패로 기록한다")
+    void recordUnexpectedReferenceLoadFailure() {
+        GenerateDiaryImageCommand command = createCommand();
+        DiaryGeneration generation = createGeneration(command);
+        GenerationPrompt prompt = mock(GenerationPrompt.class);
+        Storyboard storyboard = createStoryboard();
+        RuntimeException original = new IllegalStateException("secret object key");
+        when(prompt.getStoryboardPromptText()).thenReturn("스토리보드 프롬프트");
+        when(prompt.getImageAssetObjectKey()).thenReturn("references/style.png");
+        when(diaryGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(storyboardGenerationService.generate(any(StoryboardGenerationRequest.class)))
+                .thenReturn(new GeneratedStoryboard(storyboard, null));
+        when(imageStorage.load("references/style.png")).thenThrow(original);
+        when(completionService.fail(generation.getId(), GenerationErrorCode.IMAGE_STORAGE_ERROR))
+                .thenReturn(GenerationErrorCode.IMAGE_STORAGE_ERROR);
+
+        assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
+                .isInstanceOf(ImageStorageException.class)
+                .hasCause(original);
+
+        verify(lifecycleMetrics).unexpectedFailure(
+                generation.getId(), GenerationLifecycleMetrics.Phase.REFERENCE_LOAD, original);
+        verify(completionService).fail(generation.getId(), GenerationErrorCode.IMAGE_STORAGE_ERROR);
+    }
+
+    @Test
+    @DisplayName("오래된 생성 복구와 AI 실패가 경합하면 저장된 오류를 반환한다")
+    void generateClaimedDiaryImageKeepsInterruptedError() {
+        GenerateDiaryImageCommand command = createCommand();
+        DiaryGeneration generation = createGeneration(command);
+        GenerationPrompt prompt = mock(GenerationPrompt.class);
+        AiGenerationException exception = new AiGenerationException(
+                AiGenerationErrorType.TIMEOUT,
+                "AI 공급자 응답 시간이 초과되었습니다."
+        );
+        when(prompt.getStoryboardPromptText()).thenReturn("스토리보드 프롬프트");
+        when(diaryGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(storyboardGenerationService.generate(any(StoryboardGenerationRequest.class))).thenThrow(exception);
+        when(completionService.fail(generation.getId(), GenerationErrorCode.AI_PROVIDER_TIMEOUT))
+                .thenReturn(GenerationErrorCode.GENERATION_INTERRUPTED);
+
+        assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
+                .isInstanceOfSatisfying(
+                        DiaryGenerationFailedException.class,
+                        failure -> assertThat(failure.errorCode())
+                                .isEqualTo(GenerationErrorCode.GENERATION_INTERRUPTED)
+                );
+    }
+
+    @Test
+    @DisplayName("오래된 생성 복구와 완료가 경합하면 저장 이미지를 삭제한다")
+    void generateClaimedDiaryImageDeletesImageAfterInterruptedCompletion() {
+        GenerateDiaryImageCommand command = createCommand();
+        DiaryGeneration generation = createGeneration(command);
+        GenerationPrompt prompt = createPrompt();
+        Storyboard storyboard = createStoryboard();
+        ReferenceImage referenceImage = createReferenceImage();
+        GeneratedImage generatedImage = createGeneratedImage();
+        DiaryGenerationFailedException exception = new DiaryGenerationFailedException(
+                GenerationErrorCode.GENERATION_INTERRUPTED
+        );
+        when(diaryGenerationRepository.findById(generation.getId()))
+                .thenReturn(Optional.of(generation))
+                .thenAnswer(invocation -> {
+                    generation.fail(
+                            GenerationErrorCode.GENERATION_INTERRUPTED,
+                            Instant.parse("2026-08-06T12:00:00Z")
+                    );
+                    return Optional.of(generation);
+                });
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(storyboardGenerationService.generate(any(StoryboardGenerationRequest.class)))
+                .thenReturn(new GeneratedStoryboard(storyboard, null));
+        when(imageStorage.load("references/style.png")).thenReturn(referenceImage);
+        when(diaryImageGenerator.generate(any(DiaryImageGenerationRequest.class))).thenReturn(generatedImage);
+        when(imageStorage.store(generation.getId(), generatedImage)).thenReturn("generated/comic.png");
+        when(completionService.succeed(generation.getId(), storyboard, "generated/comic.png", null, null))
+                .thenThrow(exception);
+
+        assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
+                .isSameAs(exception);
+        verify(imageStorage).delete("generated/comic.png");
+    }
+
+    @Test
+    @DisplayName("다른 완료 트랜잭션이 처리 중이면 이미지 삭제를 보류한다")
+    void keepImageWhileConcurrentCompletionIsProcessing() {
+        GenerateDiaryImageCommand command = createCommand();
+        DiaryGeneration generation = createGeneration(command);
+        GenerationPrompt prompt = createPrompt();
+        Storyboard storyboard = createStoryboard();
+        ReferenceImage referenceImage = createReferenceImage();
+        GeneratedImage generatedImage = createGeneratedImage();
+        IllegalStateException completionException = new IllegalStateException("완료 결과 확인 실패");
+        when(diaryGenerationRepository.findById(generation.getId()))
+                .thenReturn(Optional.of(generation));
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(storyboardGenerationService.generate(any(StoryboardGenerationRequest.class)))
+                .thenReturn(new GeneratedStoryboard(storyboard, null));
+        when(imageStorage.load("references/style.png")).thenReturn(referenceImage);
+        when(diaryImageGenerator.generate(any(DiaryImageGenerationRequest.class))).thenReturn(generatedImage);
+        when(imageStorage.store(generation.getId(), generatedImage)).thenReturn("generated/comic.png");
+        when(completionService.succeed(generation.getId(), storyboard, "generated/comic.png", null, null))
+                .thenThrow(completionException);
+
+        assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
+                .isSameAs(completionException);
+        verify(imageStorage, never()).delete(any(String.class));
+        verify(lifecycleMetrics).unexpectedFailure(
+                generation.getId(), GenerationLifecycleMetrics.Phase.COMPLETION, completionException);
+    }
+
+    @Test
+    @DisplayName("완료 결과가 불명확해도 DB가 참조하는 성공 이미지는 삭제하지 않는다")
+    void keepImageReferencedByCommittedGeneration() {
+        GenerateDiaryImageCommand command = createCommand();
+        DiaryGeneration generation = createGeneration(command);
+        GenerationPrompt prompt = createPrompt();
+        Storyboard storyboard = createStoryboard();
+        ReferenceImage referenceImage = createReferenceImage();
+        GeneratedImage generatedImage = createGeneratedImage();
+        IllegalStateException completionException = new IllegalStateException("완료 결과 확인 실패");
+        when(diaryGenerationRepository.findById(generation.getId()))
+                .thenReturn(Optional.of(generation))
+                .thenAnswer(invocation -> {
+                    generation.succeed(
+                            storyboard,
+                            "generated/comic.png",
+                            Instant.parse("2026-08-06T12:00:00Z")
+                    );
+                    return Optional.of(generation);
+                });
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(storyboardGenerationService.generate(any(StoryboardGenerationRequest.class)))
+                .thenReturn(new GeneratedStoryboard(storyboard, null));
+        when(imageStorage.load("references/style.png")).thenReturn(referenceImage);
+        when(diaryImageGenerator.generate(any(DiaryImageGenerationRequest.class))).thenReturn(generatedImage);
+        when(imageStorage.store(generation.getId(), generatedImage)).thenReturn("generated/comic.png");
+        when(completionService.succeed(generation.getId(), storyboard, "generated/comic.png", null, null))
+                .thenThrow(completionException);
+
+        assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
+                .isSameAs(completionException);
+        verify(imageStorage, never()).delete(any(String.class));
+    }
+
+    @Test
+    @DisplayName("완료 상태를 재확인할 수 없으면 이미지 삭제를 보류한다")
+    void keepImageWhenCompletionStateCannotBeVerified() {
+        GenerateDiaryImageCommand command = createCommand();
+        DiaryGeneration generation = createGeneration(command);
+        GenerationPrompt prompt = createPrompt();
+        Storyboard storyboard = createStoryboard();
+        ReferenceImage referenceImage = createReferenceImage();
+        GeneratedImage generatedImage = createGeneratedImage();
+        IllegalStateException completionException = new IllegalStateException("완료 결과 확인 실패");
+        IllegalStateException verificationException = new IllegalStateException("저장 상태 조회 실패");
+        when(diaryGenerationRepository.findById(generation.getId()))
+                .thenReturn(Optional.of(generation))
+                .thenThrow(verificationException);
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(storyboardGenerationService.generate(any(StoryboardGenerationRequest.class)))
+                .thenReturn(new GeneratedStoryboard(storyboard, null));
+        when(imageStorage.load("references/style.png")).thenReturn(referenceImage);
+        when(diaryImageGenerator.generate(any(DiaryImageGenerationRequest.class))).thenReturn(generatedImage);
+        when(imageStorage.store(generation.getId(), generatedImage)).thenReturn("generated/comic.png");
+        when(completionService.succeed(generation.getId(), storyboard, "generated/comic.png", null, null))
+                .thenThrow(completionException);
+
+        assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
+                .isSameAs(completionException)
+                .satisfies(exception -> assertThat(exception.getSuppressed())
+                        .containsExactly(verificationException));
+        verify(imageStorage, never()).delete(any(String.class));
+    }
+
+    @Test
+    @DisplayName("저장소가 공백 이미지 키를 반환하면 생성 기록과 저장 이미지를 정리한다")
+    void generateClaimedDiaryImageDeletesImageWithInvalidObjectKey() {
+        GenerateDiaryImageCommand command = createCommand();
+        DiaryGeneration generation = createGeneration(command);
+        GenerationPrompt prompt = createPrompt();
+        Storyboard storyboard = createStoryboard();
+        ReferenceImage referenceImage = createReferenceImage();
+        GeneratedImage generatedImage = createGeneratedImage();
+        String invalidObjectKey = "   ";
+        when(diaryGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(storyboardGenerationService.generate(any(StoryboardGenerationRequest.class)))
+                .thenReturn(new GeneratedStoryboard(storyboard, null));
+        when(imageStorage.load("references/style.png")).thenReturn(referenceImage);
+        when(diaryImageGenerator.generate(any(DiaryImageGenerationRequest.class))).thenReturn(generatedImage);
+        when(imageStorage.store(generation.getId(), generatedImage)).thenReturn(invalidObjectKey);
+        when(completionService.fail(generation.getId(), GenerationErrorCode.IMAGE_STORAGE_ERROR))
+                .thenReturn(GenerationErrorCode.IMAGE_STORAGE_ERROR);
+
+        assertThatThrownBy(() -> generationService.generate(command, generation.getId()))
+                .isInstanceOf(ImageStorageException.class);
+        verify(imageStorage).delete(invalidObjectKey);
+    }
+
+    @Test
+    @DisplayName("메인 실패 후 보조가 성공하면 실패 기록 없이 보조 결과로 이미지를 생성하고 완료한다")
+    void completeGenerationWithFallbackStoryboard() {
+        var command = createCommand();
+        var generation = createGeneration(command);
+        var prompt = createPrompt();
+        var storyboard = createStoryboard();
+        var providerInfo = new StoryboardProviderInfo("qwen", "qwen3.8-max");
+        var usage = new GenerationTokenUsage(100, 390, 110, 600);
+        var reference = createReferenceImage();
+        var image = createGeneratedImage();
+        AtomicInteger primaryCalls = new AtomicInteger();
+        AtomicInteger fallbackCalls = new AtomicInteger();
+        var orchestrator = orchestrate(input -> {
+            primaryCalls.incrementAndGet();
+            throw new AiGenerationException(AiGenerationErrorType.TIMEOUT, "메인 제한 시간 초과");
+        }, Optional.of(input -> {
+            fallbackCalls.incrementAndGet();
+            verify(completionService, never()).fail(any(), any());
+            assertThat(input.diaryText()).isEqualTo(command.diaryText());
+            assertThat(input.storyboardPromptText()).isEqualTo("스토리보드 프롬프트");
+            return new GeneratedStoryboard(storyboard, usage, providerInfo);
+        }), "gemini", "qwen");
+        var service = claimedService(orchestrator);
+        var completed = createGeneration(command);
+        completed.succeed(storyboard, "generated/fallback.png", usage, providerInfo,
+                Instant.parse("2026-08-06T12:00:00Z"));
+        when(diaryGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(imageStorage.load("references/style.png")).thenReturn(reference);
+        when(diaryImageGenerator.generate(any(DiaryImageGenerationRequest.class))).thenReturn(image);
+        when(imageStorage.store(generation.getId(), image)).thenReturn("generated/fallback.png");
+        when(completionService.succeed(generation.getId(), storyboard, "generated/fallback.png", usage, providerInfo))
+                .thenReturn(completed);
+
+        var result = service.generate(command, generation.getId());
+
+        assertThat(result.tokenUsage()).isEqualTo(usage);
+        assertThat(completed.getStoryboardProvider()).isEqualTo("qwen");
+        assertThat(completed.getStoryboardModel()).isEqualTo("qwen3.8-max");
+        assertThat(result.imageObjectKey()).isEqualTo("generated/fallback.png");
+        assertThat(primaryCalls).hasValue(1);
+        assertThat(fallbackCalls).hasValue(1);
+        verify(completionService, never()).fail(any(), any());
+        verify(diaryImageGenerator).generate(new DiaryImageGenerationRequest(
+                storyboard, "이미지 스타일 프롬프트", reference));
+    }
+
+    @Test
+    @DisplayName("메인과 보조가 모두 실패하면 보조의 최종 오류만 저장하고 이미지 생성을 시작하지 않는다")
+    void persistOnlyFinalFallbackFailure() {
+        var command = createCommand();
+        var generation = createGeneration(command);
+        var prompt = mock(GenerationPrompt.class);
+        var failure = new AiGenerationException(AiGenerationErrorType.RESPONSE_PROCESSING_ERROR, "보조 응답 오류");
+        AtomicInteger primaryCalls = new AtomicInteger();
+        AtomicInteger fallbackCalls = new AtomicInteger();
+        var service = claimedService(orchestrate(input -> {
+            primaryCalls.incrementAndGet();
+            throw new AiGenerationException(AiGenerationErrorType.TIMEOUT, "메인 제한 시간 초과");
+        }, Optional.of(input -> {
+            fallbackCalls.incrementAndGet();
+            verify(completionService, never()).fail(any(), any());
+            throw failure;
+        }), "gemini", "qwen"));
+        when(prompt.getStoryboardPromptText()).thenReturn("스토리보드 프롬프트");
+        when(diaryGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(completionService.fail(generation.getId(), GenerationErrorCode.AI_RESPONSE_PROCESSING_ERROR))
+                .thenReturn(GenerationErrorCode.AI_RESPONSE_PROCESSING_ERROR);
+
+        assertThatThrownBy(() -> service.generate(command, generation.getId())).isSameAs(failure);
+
+        assertThat(primaryCalls).hasValue(1);
+        assertThat(fallbackCalls).hasValue(1);
+        verify(completionService).fail(generation.getId(), GenerationErrorCode.AI_RESPONSE_PROCESSING_ERROR);
+        verify(completionService, never()).fail(generation.getId(), GenerationErrorCode.AI_PROVIDER_TIMEOUT);
+        verify(diaryImageGenerator, never()).generate(any());
+        verify(imageStorage, never()).load(any());
+        verify(imageStorage, never()).store(any(), any());
+    }
+
+    @Test
+    @DisplayName("스토리보드 성공 후 이미지 생성 실패는 스토리보드 재호출이나 보조 호출을 유발하지 않는다")
+    void doNotRestartStoryboardOnImageFailure() {
+        var command = createCommand();
+        var generation = createGeneration(command);
+        var prompt = createPrompt();
+        var storyboard = createStoryboard();
+        var providerInfo = new StoryboardProviderInfo("gemini", "fixture-storyboard");
+        var failure = new AiGenerationException(AiGenerationErrorType.TIMEOUT, "이미지 제한 시간 초과");
+        AtomicInteger primaryCalls = new AtomicInteger();
+        AtomicInteger fallbackCalls = new AtomicInteger();
+        var service = claimedService(orchestrate(input -> {
+            primaryCalls.incrementAndGet();
+            return new GeneratedStoryboard(storyboard, null, providerInfo);
+        }, Optional.of(input -> {
+            fallbackCalls.incrementAndGet();
+            return new GeneratedStoryboard(storyboard, null, providerInfo);
+        }), "gemini", "qwen"));
+        when(diaryGenerationRepository.findById(generation.getId())).thenReturn(Optional.of(generation));
+        when(generationPromptRepository.findById(1L)).thenReturn(Optional.of(prompt));
+        when(imageStorage.load("references/style.png")).thenReturn(createReferenceImage());
+        when(diaryImageGenerator.generate(any(DiaryImageGenerationRequest.class))).thenThrow(failure);
+        when(completionService.fail(generation.getId(), GenerationErrorCode.AI_PROVIDER_TIMEOUT, providerInfo))
+                .thenReturn(GenerationErrorCode.AI_PROVIDER_TIMEOUT);
+
+        assertThatThrownBy(() -> service.generate(command, generation.getId())).isSameAs(failure);
+
+        assertThat(primaryCalls).hasValue(1);
+        assertThat(fallbackCalls).hasValue(0);
+        verify(completionService).fail(generation.getId(), GenerationErrorCode.AI_PROVIDER_TIMEOUT, providerInfo);
+        verify(imageStorage, never()).store(any(), any());
+    }
+
+    private StoryboardGenerationService orchestrate(StoryboardGenerator primary,
+            Optional<StoryboardGenerator> fallback, String primaryName, String fallbackName) {
+        attemptExecutor = Executors.newVirtualThreadPerTaskExecutor();
+        return new StoryboardGenerationService(primary, fallback, new StoryboardAttemptRunner(attemptExecutor),
+                new StoryboardProviderProperties(primaryName, fallbackName,
+                        Duration.ofSeconds(60), Duration.ofSeconds(60)));
+    }
+
+    private ClaimedDiaryGenerationService claimedService(StoryboardGenerationService storyboardService) {
+        return new ClaimedDiaryGenerationService(requestFingerprintGenerator, generationPromptRepository,
+                diaryGenerationRepository, storyboardService, diaryImageGenerator, imageStorage, completionService,
+                lifecycleMetrics);
+    }
+
+    private GenerateDiaryImageCommand createCommand() {
+        return new GenerateDiaryImageCommand(
+                USER_ID,
+                DIARY_ID,
+                LocalDate.of(2026, 8, 6),
+                "오늘 친구와 카페에 갔다.",
+                IDEMPOTENCY_KEY
+        );
+    }
+
+    private DiaryGeneration createGeneration(GenerateDiaryImageCommand command) {
+        return DiaryGeneration.start(
+                command.diaryId(),
+                1L,
+                command.idempotencyKey(),
+                requestFingerprintGenerator.generate(command)
+        );
+    }
+
+    private GenerationPrompt createPrompt() {
+        GenerationPrompt prompt = mock(GenerationPrompt.class);
+        when(prompt.getStoryboardPromptText()).thenReturn("스토리보드 프롬프트");
+        when(prompt.getImageStylePromptText()).thenReturn("이미지 스타일 프롬프트");
+        when(prompt.getImageAssetObjectKey()).thenReturn("references/style.png");
+        return prompt;
+    }
+
+    private Storyboard createStoryboard() {
+        return new Storyboard(
+                "친구와 보낸 하루",
+                "같은 주인공이 모든 패널에 등장한다.",
+                List.of(
+                        createPanel(1, "첫 번째 캡션"),
+                        createPanel(2, "두 번째 캡션"),
+                        createPanel(3, "세 번째 캡션"),
+                        createPanel(4, "네 번째 캡션")
+                )
+        );
+    }
+
+    private StoryPanel createPanel(int panelNumber, String caption) {
+        return new StoryPanel(panelNumber, caption, "장면", "등장인물", "감정", List.of());
+    }
+
+    private ReferenceImage createReferenceImage() {
+        return new ReferenceImage(
+                new ByteArrayResource("reference".getBytes(StandardCharsets.UTF_8)),
+                MediaType.IMAGE_PNG
+        );
+    }
+
+    private GeneratedImage createGeneratedImage() {
+        return new GeneratedImage(
+                new ByteArrayResource("generated".getBytes(StandardCharsets.UTF_8)),
+                MediaType.IMAGE_PNG
+        );
+    }
+
+    private static Stream<Arguments> classifiedAiFailures() {
+        return Stream.of(
+                Arguments.of(AiGenerationErrorType.RATE_LIMITED, GenerationErrorCode.AI_PROVIDER_RATE_LIMITED),
+                Arguments.of(AiGenerationErrorType.OUTPUT_TRUNCATED, GenerationErrorCode.AI_OUTPUT_TRUNCATED),
+                Arguments.of(
+                        AiGenerationErrorType.RESPONSE_PROCESSING_ERROR,
+                        GenerationErrorCode.AI_RESPONSE_PROCESSING_ERROR
+                ),
+                Arguments.of(AiGenerationErrorType.INTERNAL_ERROR, GenerationErrorCode.GENERATION_INTERNAL_ERROR)
+        );
+    }
+}

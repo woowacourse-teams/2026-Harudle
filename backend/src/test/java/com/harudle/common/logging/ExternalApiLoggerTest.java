@@ -75,6 +75,29 @@ class ExternalApiLoggerTest {
     }
 
     @Test
+    @DisplayName("응답 처리 실패에는 안전한 진단 값만 기존 로그 필드 뒤에 기록한다")
+    void logResponseDiagnosticsWithoutOriginalContent(CapturedOutput output) {
+        ExternalApiFailure failure = new ExternalApiFailure(
+                "gemini", "storyboard_generation", "OUTPUT_TRUNCATED", null, null, null
+        );
+        IllegalStateException exception = new IllegalStateException("diary=must-not-be-logged");
+
+        externalApiLogger.error(
+                failure,
+                exception,
+                new ExternalApiResponseDiagnostics("MAX_TOKENS", 3000, 900, 4096, 1200)
+        );
+
+        assertThat(output)
+                .contains("event=external_api_failure provider=gemini")
+                .contains("failureType=OUTPUT_TRUNCATED")
+                .contains("exceptionType=IllegalStateException finishReason=MAX_TOKENS")
+                .contains("candidateTokenCount=3000 thoughtTokenCount=900")
+                .contains("maxOutputTokens=4096 responseLength=1200")
+                .doesNotContain("must-not-be-logged");
+    }
+
+    @Test
     @DisplayName("외부 연동 보상 실패는 별도 이벤트로 기록한다")
     void logCompensationFailure(CapturedOutput output) {
         ExternalApiFailure failure = new ExternalApiFailure(

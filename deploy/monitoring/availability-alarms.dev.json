@@ -1,0 +1,108 @@
+[
+  {
+    "putMetricFilter": {
+      "logGroupName": "/harudle/dev/backend",
+      "filterName": "harudle-dev-gemini-request-failure",
+      "filterPattern": "{ $.event = \"external_api_failure\" && $.provider = \"gemini\" && ($.operation = \"storyboard_generation\" || $.operation = \"image_generation\") && ($.failureType = \"AUTH_CONFIGURATION_ERROR\" || $.failureType = \"REQUEST_REJECTED\" || $.failureType = \"REQUEST_PREPARATION_ERROR\" || $.failureType = \"INLINE_REQUEST_TOO_LARGE\") }",
+      "metricTransformations": [
+        {
+          "metricName": "GeminiRequestFailureLogs",
+          "metricNamespace": "Harudle/Dev",
+          "metricValue": "1",
+          "defaultValue": 0,
+          "unit": "Count"
+        }
+      ]
+    },
+    "putMetricAlarm": {
+      "AlarmName": "harudle-dev-gemini-request-failure",
+      "AlarmDescription": "Gemini 인증·요청 처리 실패. 두 생성 단계의 인증·설정 오류, 요청 거절, 요청 구성 실패 또는 inline 요청 크기 초과 로그 1건. SDK 내부 재시도 횟수 또는 모든 Gemini 실패 건수가 아니다. 전달기 반영·검증 전 알림 비활성 준비 상태.",
+      "ActionsEnabled": false,
+      "AlarmActions": [
+        "arn:aws:sns:ap-northeast-2:843255971531:harudle-dev-alerts"
+      ],
+      "OKActions": [
+        "arn:aws:sns:ap-northeast-2:843255971531:harudle-dev-alerts"
+      ],
+      "InsufficientDataActions": [],
+      "MetricName": "GeminiRequestFailureLogs",
+      "Namespace": "Harudle/Dev",
+      "Statistic": "Sum",
+      "Dimensions": [],
+      "Period": 300,
+      "EvaluationPeriods": 1,
+      "DatapointsToAlarm": 1,
+      "Threshold": 1,
+      "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+      "TreatMissingData": "notBreaching",
+      "Unit": "Count",
+      "Tags": [
+        {
+          "Key": "Service",
+          "Value": "techcourse"
+        },
+        {
+          "Key": "Role",
+          "Value": "techcourse-etc"
+        },
+        {
+          "Key": "ProjectTeam",
+          "Value": "harudle"
+        }
+      ]
+    }
+  },
+  {
+    "putMetricFilter": {
+      "logGroupName": "/harudle/dev/backend",
+      "filterName": "harudle-dev-image-fallback-unavailable",
+      "filterPattern": "{ $.event = \"image_url_selected\" && $.s3Result = \"MISSING\" && ($.result = \"S3_FALLBACK\" || $.result = \"FAILED\") }",
+      "metricTransformations": [
+        {
+          "metricName": "ImageFallbackUnavailableLogs",
+          "metricNamespace": "Harudle/Dev",
+          "metricValue": "1",
+          "defaultValue": 0,
+          "unit": "Count"
+        }
+      ]
+    },
+    "putMetricAlarm": {
+      "AlarmName": "harudle-dev-image-fallback-unavailable",
+      "AlarmDescription": "S3 부재 확인 후 R2 대체 이미지 URL 제공 실패. URL 선택 시점에 S3 부재를 확인했고 R2 URL도 제공하지 못한 로그 1건. R2 정상 대체 성공, S3 존재 확인 오류·시간 예산 소진은 제외하며 브라우저 표시 실패 신고 건수가 아니다. 전달기 반영·검증 전 알림 비활성 준비 상태.",
+      "ActionsEnabled": false,
+      "AlarmActions": [
+        "arn:aws:sns:ap-northeast-2:843255971531:harudle-dev-alerts"
+      ],
+      "OKActions": [
+        "arn:aws:sns:ap-northeast-2:843255971531:harudle-dev-alerts"
+      ],
+      "InsufficientDataActions": [],
+      "MetricName": "ImageFallbackUnavailableLogs",
+      "Namespace": "Harudle/Dev",
+      "Statistic": "Sum",
+      "Dimensions": [],
+      "Period": 300,
+      "EvaluationPeriods": 1,
+      "DatapointsToAlarm": 1,
+      "Threshold": 1,
+      "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+      "TreatMissingData": "notBreaching",
+      "Unit": "Count",
+      "Tags": [
+        {
+          "Key": "Service",
+          "Value": "techcourse"
+        },
+        {
+          "Key": "Role",
+          "Value": "techcourse-etc"
+        },
+        {
+          "Key": "ProjectTeam",
+          "Value": "harudle"
+        }
+      ]
+    }
+  }
+]
