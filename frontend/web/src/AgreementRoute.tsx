@@ -15,11 +15,10 @@ import { LOGIN_COPY } from './pages/login/copy';
 
 const AgreementRoute = () => {
   const location = useLocation();
-  const returnTo = `${location.pathname}${location.search}${location.hash}`;
-  return <AgreementCheck key={location.pathname} returnTo={returnTo} />;
+  return <AgreementCheck key={location.pathname} />;
 };
 
-const AgreementCheck = ({ returnTo }: { readonly returnTo: string }) => {
+const AgreementCheck = () => {
   const [request, setRequest] = useState<ApiRequest<AgreementStatus | null>>({
     status: 'loading',
   });
@@ -81,7 +80,7 @@ const AgreementCheck = ({ returnTo }: { readonly returnTo: string }) => {
               onClick={(): void => setAttempt((current): number => current + 1)}
             />
           )}
-          <Link to="/consent" state={{ returnTo }}>
+          <Link to="/consent">
             {suspended ? CONSENT_COPY.accountActions : CONSENT_COPY.title}
           </Link>
         </div>
@@ -89,7 +88,7 @@ const AgreementCheck = ({ returnTo }: { readonly returnTo: string }) => {
     );
   }
   if (request.data?.requiresAcceptance)
-    return <Navigate to="/consent" replace state={{ returnTo }} />;
+    return <Navigate to="/consent" replace />;
   return (
     <>
       <DiaryGenerationNotice />

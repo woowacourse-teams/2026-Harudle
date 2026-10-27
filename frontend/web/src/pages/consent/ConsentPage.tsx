@@ -6,7 +6,7 @@ import {
   type FormEvent,
   type MouseEvent,
 } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { acceptTerms, getAgreementStatus } from '../../domain/legal/agreements';
 import {
   getLegalDocuments,
@@ -31,7 +31,6 @@ import checkIcon from '../../assets/icons/check.svg';
 import chevronIcon from '../../assets/icons/chevron-right.svg';
 import harudleLogo from '../../assets/images/harudle-logo.webp';
 import { CONSENT_COPY } from './copy';
-import { getReturnPath } from './returnPath';
 import { LOGIN_COPY } from '../login/copy';
 
 interface AgreementForm {
@@ -46,10 +45,8 @@ const isLoginRequired = (error: unknown): boolean =>
       error.problem.code === 'INVALID_REFRESH_TOKEN'));
 
 const ConsentPage = () => {
-  const location = useLocation();
   const navigate = useNavigate();
   const { resetUser } = useAnalytics();
-  const returnTo = getReturnPath(location.state);
   const [request, setRequest] = useState<ApiRequest<AgreementForm | null>>({
     status: 'loading',
   });
@@ -99,7 +96,7 @@ const ConsentPage = () => {
         )
           throw new Error(CONSENT_COPY.changed);
         if (status.acceptedAt !== null && !status.requiresAcceptance) {
-          void navigate(returnTo, { replace: true });
+          void navigate('/', { replace: true });
           return;
         }
         setRequest({ status: 'success', data: { terms, privacy } });
@@ -118,7 +115,7 @@ const ConsentPage = () => {
     };
     void execute();
     return (): void => controller.abort();
-  }, [attempt, navigate, returnTo]);
+  }, [attempt, navigate]);
 
   const handleSubmit = async (
     event: FormEvent<HTMLFormElement>,
@@ -150,8 +147,7 @@ const ConsentPage = () => {
         },
         { signal: controller.signal },
       );
-      if (!controller.signal.aborted)
-        void navigate(returnTo, { replace: true });
+      if (!controller.signal.aborted) void navigate('/', { replace: true });
     } catch (error: unknown) {
       if (controller.signal.aborted) return;
       const changed =
@@ -263,9 +259,7 @@ const ConsentPage = () => {
         ) : form === null ? (
           <div css={feedbackStyle}>
             <p>{CONSENT_COPY.loginRequired}</p>
-            <Link to="/login" state={{ returnTo }}>
-              {CONSENT_COPY.login}
-            </Link>
+            <Link to="/login">{CONSENT_COPY.login}</Link>
           </div>
         ) : (
           <form

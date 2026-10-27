@@ -91,7 +91,7 @@ describe('회원 약관 동의 가드', (): void => {
     expect(screen.getByText('회원 화면')).toBeInTheDocument();
     expect(screen.getByText('비공개 생성 상태 조회')).toBeInTheDocument();
   });
-  it('미동의면 원래 내부 경로를 전달하고 회원 콘텐츠는 렌더링하지 않는다', async (): Promise<void> => {
+  it('미동의면 동의 화면으로 이동하고 회원 콘텐츠는 렌더링하지 않는다', async (): Promise<void> => {
     mockGetStatus.mockResolvedValueOnce({
       ...allowed,
       requiresAcceptance: true,
@@ -102,7 +102,6 @@ describe('회원 약관 동의 가드', (): void => {
     expect(mockRedirect).toHaveBeenCalledWith({
       to: '/consent',
       replace: true,
-      state: { returnTo: '/setting?tab=account#profile' },
     });
     expect(screen.queryByText('회원 화면')).not.toBeInTheDocument();
     expect(screen.queryByText('비공개 생성 상태 조회')).not.toBeInTheDocument();

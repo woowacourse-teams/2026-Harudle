@@ -36,11 +36,9 @@ const mockCsrf = jest.fn<() => Promise<string>>();
 const mockSetToken = jest.fn();
 const mockResetUser = jest.fn();
 const mockNavigate = jest.fn();
-let mockLocationState: unknown;
 
 jest.mock('react-router', () => ({
   useNavigate: () => mockNavigate,
-  useLocation: () => ({ state: mockLocationState }),
   Link: ({ to, children, ...props }: { to: string; children: ReactNode }) => (
     <a href={to} {...props}>
       {children}
@@ -104,7 +102,6 @@ const catalog: LegalDocumentsResponse = {
 };
 beforeEach((): void => {
   localStorage.clear();
-  mockLocationState = { returnTo: '/setting?tab=account#profile' };
   mockGetStatus.mockReset().mockResolvedValue(status);
   mockAcceptTerms.mockReset().mockResolvedValue(accepted);
   mockGetDocuments.mockReset().mockResolvedValue(catalog);
@@ -130,7 +127,7 @@ const selectRequiredItems = async (): Promise<
 };
 
 describe('명시적 이용약관 동의', (): void => {
-  it('약관·연령 자기확인을 각각 선택하고 한 번만 저장한 뒤 원래 화면으로 이동한다', async (): Promise<void> => {
+  it('약관과 연령 자기확인을 각각 선택하고 한 번만 저장한 뒤 홈으로 이동한다', async (): Promise<void> => {
     let resolveAcceptance: ((value: AgreementStatus) => void) | undefined;
     mockAcceptTerms.mockImplementationOnce(
       (): Promise<AgreementStatus> =>
@@ -181,7 +178,7 @@ describe('명시적 이용약관 동의', (): void => {
     await act(async (): Promise<void> => {
       resolveAcceptance?.(accepted);
     });
-    expect(mockNavigate).toHaveBeenCalledWith('/setting?tab=account#profile', {
+    expect(mockNavigate).toHaveBeenCalledWith('/', {
       replace: true,
     });
   });
@@ -445,8 +442,7 @@ describe('명시적 이용약관 동의', (): void => {
     expect(signal?.aborted).toBe(true);
     expect(mockNavigate).not.toHaveBeenCalled();
   });
-  it('라우터 state가 외부 주소여도 이미 동의한 회원은 홈으로만 돌아간다', async (): Promise<void> => {
-    mockLocationState = { returnTo: '//evil.example' };
+  it('이미 동의한 회원이 동의 화면을 열면 홈으로 이동한다', async (): Promise<void> => {
     mockGetStatus.mockResolvedValueOnce(accepted);
     render(<ConsentPage />);
     await waitFor(() =>

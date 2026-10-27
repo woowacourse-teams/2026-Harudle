@@ -59,7 +59,7 @@ for (const path of [
   });
 }
 
-test('기존 회원은 전문 열람 후 두 항목을 직접 확인하고 원래 설정 화면으로 돌아간다', async ({
+test('기존 회원은 전문 열람 후 두 항목을 직접 확인하고 홈으로 이동한다', async ({
   page,
 }): Promise<void> => {
   await page.setExtraHTTPHeaders({
@@ -116,10 +116,8 @@ test('기존 회원은 전문 열람 후 두 항목을 직접 확인하고 원�
   await page
     .getByRole('button', { name: '동의하고 시작하기', exact: true })
     .click();
-  await expect(page).toHaveURL('/setting?from=direct#profile');
-  await expect(
-    page.getByRole('button', { name: '프로필 수정', exact: true }),
-  ).toBeVisible();
+  await expect(page).toHaveURL('/');
+  await expect(page.getByRole('combobox')).toBeVisible();
   expect(submitted).toHaveLength(1);
   expect(submitted[0]).toMatchObject({
     termsVersion: '2026-10-22',
@@ -181,7 +179,7 @@ test('동의 저장 중 제출·이동을 잠그고 실패 뒤 선택을 유지�
   await page
     .getByRole('button', { name: '동의하고 시작하기', exact: true })
     .click();
-  await expect(page).toHaveURL('/setting');
+  await expect(page).toHaveURL('/');
   expect(submissions).toBe(2);
 });
 
