@@ -10,10 +10,10 @@ import {
 import { RequestError, type ApiRequest } from '../../shared/api';
 import ActionButton from '../../shared/ActionButton';
 import LoadingSpinner from '../../shared/LoadingSpinner';
-import PageHeader from '../../shared/PageHeader';
 import { isRecord } from '../../shared/utils';
 import { theme } from '../../styles/theme';
 import backIcon from '../../assets/icons/back.svg';
+import harudleLogo from '../../assets/images/harudle-logo.webp';
 import { LEGAL_COPY } from './copy';
 
 interface LegalDocumentPageProps {
@@ -23,7 +23,6 @@ interface LegalDocumentPageProps {
 const LegalDocumentPage = ({ type }: LegalDocumentPageProps) => {
   const { version } = useParams<{ version: string }>();
   const navigate = useNavigate();
-  const title = type === 'TERMS' ? LEGAL_COPY.terms : LEGAL_COPY.privacy;
   const handleBack = (): void => {
     const historyState: unknown = window.history.state;
     if (
@@ -39,20 +38,17 @@ const LegalDocumentPage = ({ type }: LegalDocumentPageProps) => {
 
   return (
     <div css={pageStyle}>
-      <PageHeader
-        title={title}
-        left={
-          <button
-            type="button"
-            aria-label={LEGAL_COPY.back}
-            css={backButtonStyle}
-            onClick={handleBack}
-          >
-            <img src={backIcon} alt="" />
-          </button>
-        }
-        right={null}
-      />
+      <header css={brandHeaderStyle}>
+        <button
+          type="button"
+          aria-label={LEGAL_COPY.back}
+          css={backButtonStyle}
+          onClick={handleBack}
+        >
+          <img src={backIcon} alt="" />
+        </button>
+        <img src={harudleLogo} alt="하루들" css={logoStyle} />
+      </header>
       <LegalDocumentContent
         key={`${type}/${version ?? 'current'}`}
         type={type}
@@ -139,7 +135,7 @@ const LegalDocumentContent = ({ type, version }: LegalDocumentContentProps) => {
   return (
     <main css={documentStyle}>
       <article>
-        <h2 css={documentTitleStyle}>{document.title}</h2>
+        <h1 css={documentTitleStyle}>{document.title}</h1>
         <dl css={metadataStyle}>
           <div>
             <dt>{LEGAL_COPY.effectiveDate}</dt>
@@ -152,7 +148,7 @@ const LegalDocumentContent = ({ type, version }: LegalDocumentContentProps) => {
         </dl>
         {document.sections.map((section, index): ReactElement => (
           <section key={`${index}-${section.title}`} css={sectionStyle}>
-            <h3>{section.title}</h3>
+            <h2>{section.title}</h2>
             {section.paragraphs.map(
               (paragraph, paragraphIndex): ReactElement => (
                 <p key={paragraphIndex}>{paragraph}</p>
@@ -167,6 +163,7 @@ const LegalDocumentContent = ({ type, version }: LegalDocumentContentProps) => {
           css={sourceLinkStyle}
         >
           {LEGAL_COPY.source}
+          <span aria-hidden="true">↗</span>
         </a>
       </article>
     </main>
@@ -180,14 +177,24 @@ const pageStyle = css`
   flex-direction: column;
   width: 100%;
   height: 100%;
-  padding: 0 20px;
-  background: ${theme.colors.background.surface};
+  padding: 0 24px;
+  background-color: ${theme.colors.background.surface};
   color: ${theme.colors.foreground.neutral};
-  > header {
-    flex-shrink: 0;
-  }
 `;
-
+const brandHeaderStyle = css`
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 40px;
+  flex-shrink: 0;
+  align-items: center;
+  height: 64px;
+  border-bottom: 1px solid ${theme.colors.stroke.divider};
+`;
+const logoStyle = css`
+  justify-self: center;
+  width: 106px;
+  height: 71px;
+  object-fit: contain;
+`;
 const backButtonStyle = css`
   display: flex;
   align-items: center;
@@ -204,54 +211,59 @@ const backButtonStyle = css`
     height: 24px;
   }
 `;
-
 const documentStyle = css`
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 16px 0 32px;
+  padding: 32px 0;
   overflow-wrap: anywhere;
 `;
-
 const documentTitleStyle = css`
-  font-size: 20px;
-  line-height: 30px;
+  font-size: 26px;
+  line-height: 38px;
   font-weight: 700;
+  letter-spacing: -0.8px;
+  word-break: keep-all;
 `;
-
 const metadataStyle = css`
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  padding: 10px 0 20px;
-  margin-bottom: 24px;
-  border-bottom: 1px solid ${theme.colors.stroke.divider};
-  color: ${theme.colors.foreground.neutralMuted};
-  font-size: 12px;
-  line-height: 20px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  padding: 20px 0 28px;
   div {
-    display: flex;
+    display: grid;
     gap: 6px;
   }
+  dt {
+    color: ${theme.colors.foreground.neutralMuted};
+    font-size: 12px;
+    line-height: 18px;
+  }
+  dd {
+    font-size: 14px;
+    line-height: 22px;
+  }
 `;
-
 const sectionStyle = css`
-  margin-bottom: 24px;
-  h3 {
-    margin-bottom: 10px;
+  padding: 24px 0;
+  border-top: 1px solid ${theme.colors.stroke.divider};
+  h2 {
+    margin-bottom: 14px;
     font-size: 16px;
-    line-height: 24px;
+    line-height: 26px;
     font-weight: 700;
+    word-break: keep-all;
   }
   p {
-    margin-bottom: 10px;
     white-space: pre-line;
     font-size: 14px;
-    line-height: 24px;
+    line-height: 26px;
     color: ${theme.colors.foreground.neutralMuted};
+    & + p {
+      margin-top: 12px;
+    }
   }
 `;
-
 const feedbackStyle = css`
   flex: 1;
   display: flex;
@@ -259,7 +271,6 @@ const feedbackStyle = css`
   justify-content: center;
   min-height: 0;
 `;
-
 const errorStyle = css`
   display: grid;
   gap: 16px;
@@ -269,10 +280,14 @@ const errorStyle = css`
   font-size: 14px;
   line-height: 22px;
 `;
-
 const sourceLinkStyle = css`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 56px;
+  border-top: 1px solid ${theme.colors.stroke.divider};
   color: ${theme.colors.foreground.brand};
   font-size: 13px;
   line-height: 22px;
-  text-underline-offset: 3px;
+  text-decoration: none;
 `;

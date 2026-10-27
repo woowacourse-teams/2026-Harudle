@@ -79,6 +79,9 @@ jest.mock('../../posthog/useAnalytics', () => ({
 }));
 jest.mock('../../assets/images/loading-animation.webp', () => 'loading.webp');
 jest.mock('../../assets/icons/logout.svg', () => 'logout.svg');
+jest.mock('../../assets/icons/check.svg', () => 'check.svg');
+jest.mock('../../assets/icons/chevron-right.svg', () => 'chevron-right.svg');
+jest.mock('../../assets/images/harudle-logo.webp', () => 'logo.webp');
 
 const status: AgreementStatus = {
   minimumAge: 14,
@@ -182,7 +185,7 @@ describe('명시적 이용약관 동의', (): void => {
       replace: true,
     });
   });
-  it('전체 확인은 두 필수 항목만 묶고 개별 변경과 부분 선택을 함께 표시한다', async (): Promise<void> => {
+  it('전체 확인은 두 필수 항목이 모두 선택됐을 때만 체크한다', async (): Promise<void> => {
     render(<ConsentPage />);
     const user = userEvent.setup();
     const selectAll = await screen.findByRole('checkbox', {
@@ -203,7 +206,8 @@ describe('명시적 이용약관 동의', (): void => {
     expect(screen.getAllByRole('checkbox')).toHaveLength(3);
 
     await user.click(terms);
-    expect(selectAll).toBePartiallyChecked();
+    expect(selectAll).not.toBeChecked();
+    expect(selectAll).not.toBePartiallyChecked();
     expect(submit).toBeDisabled();
     await user.click(selectAll);
     expect(terms).toBeChecked();
@@ -215,7 +219,7 @@ describe('명시적 이용약관 동의', (): void => {
     await user.click(age);
     expect(terms).toBeChecked();
     expect(selectAll).not.toBeChecked();
-    expect(selectAll).toBePartiallyChecked();
+    expect(selectAll).not.toBePartiallyChecked();
     expect(submit).toBeDisabled();
     await user.click(age);
     expect(selectAll).toBeChecked();

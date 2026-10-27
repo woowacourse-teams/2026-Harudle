@@ -25,9 +25,11 @@ import {
 } from '../../shared/auth';
 import ActionButton from '../../shared/ActionButton';
 import LoadingSpinner from '../../shared/LoadingSpinner';
-import PageHeader from '../../shared/PageHeader';
 import { theme } from '../../styles/theme';
 import logoutIcon from '../../assets/icons/logout.svg';
+import checkIcon from '../../assets/icons/check.svg';
+import chevronIcon from '../../assets/icons/chevron-right.svg';
+import harudleLogo from '../../assets/images/harudle-logo.webp';
 import { CONSENT_COPY } from './copy';
 import { getReturnPath } from './returnPath';
 import { LOGIN_COPY } from '../login/copy';
@@ -221,8 +223,14 @@ const ConsentPage = () => {
 
   return (
     <div css={pageStyle}>
-      <PageHeader title={CONSENT_COPY.title} left={null} right={null} />
+      <header css={brandHeaderStyle}>
+        <img src={harudleLogo} alt="하루들" css={logoStyle} />
+      </header>
       <main css={contentStyle}>
+        <div css={introStyle}>
+          <h1>{CONSENT_COPY.heading}</h1>
+          <p>{CONSENT_COPY.description}</p>
+        </div>
         {isLoading ? (
           <div
             css={loadingStyle}
@@ -266,17 +274,9 @@ const ConsentPage = () => {
             }}
             css={formStyle}
           >
-            <div>
-              <h2 css={headingStyle}>{CONSENT_COPY.heading}</h2>
-              <p css={descriptionStyle}>{CONSENT_COPY.description}</p>
-            </div>
             <div css={agreementGroupStyle}>
               <label css={[checkboxLabelStyle, selectAllStyle]}>
                 <input
-                  ref={(input): void => {
-                    if (input)
-                      input.indeterminate = termsChecked !== ageChecked;
-                  }}
                   type="checkbox"
                   checked={allChecked}
                   disabled={isMutating}
@@ -308,6 +308,7 @@ const ConsentPage = () => {
                     tabIndex={isMutating ? -1 : undefined}
                   >
                     {CONSENT_COPY.view}
+                    <span css={chevronStyle} aria-hidden="true" />
                   </Link>
                 </div>
                 <div css={agreementRowStyle}>
@@ -335,6 +336,7 @@ const ConsentPage = () => {
                 tabIndex={isMutating ? -1 : undefined}
               >
                 {CONSENT_COPY.view}
+                <span css={chevronStyle} aria-hidden="true" />
               </Link>
             </div>
             <div css={actionStyle}>
@@ -357,19 +359,21 @@ const ConsentPage = () => {
         )}
         {!isLoading &&
           !(request.status === 'success' && request.data === null) && (
-            <ActionButton
-              variant="secondary"
-              icon={<img src={logoutIcon} alt="" />}
-              disabled={isMutating}
-              onClick={(): void => {
-                void handleLogout();
-              }}
-              label={
-                isMutating && mutationType === 'logout'
-                  ? CONSENT_COPY.loggingOut
-                  : CONSENT_COPY.decline
-              }
-            />
+            <div css={declineStyle}>
+              <ActionButton
+                variant="secondary"
+                icon={<span css={logoutIconStyle} />}
+                disabled={isMutating}
+                onClick={(): void => {
+                  void handleLogout();
+                }}
+                label={
+                  isMutating && mutationType === 'logout'
+                    ? CONSENT_COPY.loggingOut
+                    : CONSENT_COPY.decline
+                }
+              />
+            </div>
           )}
       </main>
     </div>
@@ -382,105 +386,169 @@ const pageStyle = css`
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 0 20px;
-  background: ${theme.colors.background.surface};
+  padding: 0 24px;
+  background-color: ${theme.colors.background.surface};
   color: ${theme.colors.foreground.neutral};
-  > header {
-    flex-shrink: 0;
-  }
+`;
+const brandHeaderStyle = css`
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  height: 64px;
+  border-bottom: 1px solid ${theme.colors.stroke.divider};
+`;
+const logoStyle = css`
+  width: 106px;
+  height: 71px;
+  object-fit: contain;
 `;
 const contentStyle = css`
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 16px;
+  gap: 8px;
   min-height: 0;
   overflow-y: auto;
-  padding: 32px 0 24px;
+  padding: 20px 0 max(12px, env(safe-area-inset-bottom));
   a {
     color: ${theme.colors.foreground.brand};
-    text-underline-offset: 3px;
+    text-decoration: none;
   }
   a[aria-disabled='true'] {
     opacity: 0.5;
     cursor: default;
   }
 `;
+const introStyle = css`
+  padding-bottom: 12px;
+  h1 {
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 36px;
+    letter-spacing: -0.8px;
+    word-break: keep-all;
+  }
+  p {
+    margin-top: 12px;
+    color: ${theme.colors.foreground.neutralMuted};
+    font-size: 14px;
+    line-height: 24px;
+    word-break: keep-all;
+  }
+`;
 const formStyle = css`
   display: flex;
-  flex: 1;
+  flex: 1 0 auto;
   flex-direction: column;
-  gap: 24px;
-`;
-const headingStyle = css`
-  font-size: 24px;
-  font-weight: 700;
-  line-height: 34px;
-`;
-const descriptionStyle = css`
-  margin-top: 8px;
-  color: ${theme.colors.foreground.neutralMuted};
-  font-size: 14px;
-  line-height: 22px;
-`;
-const agreementCardStyle = css`
-  border: 1px solid ${theme.colors.stroke.outline};
-  border-radius: 16px;
-  overflow: hidden;
+  gap: 12px;
+  a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 13px;
+  }
 `;
 const agreementGroupStyle = css`
-  display: grid;
+  border-bottom: 1px solid ${theme.colors.stroke.divider};
+`;
+const agreementCardStyle = css`
+  padding: 8px 0;
+`;
+const checkboxLabelStyle = css`
+  display: flex;
+  align-items: center;
   gap: 12px;
+  min-height: 44px;
+  font-size: 14px;
+  line-height: 22px;
+  cursor: pointer;
+  input {
+    appearance: none;
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    border: 1.5px solid ${theme.colors.foreground.placeholder};
+    border-radius: 50%;
+    background-color: ${theme.colors.background.surface};
+    cursor: inherit;
+    &:checked {
+      border-color: ${theme.colors.stroke.brandStrong};
+      background: ${theme.colors.background.brandStrong} url(${checkIcon})
+        center / 20px no-repeat;
+    }
+    &:focus-visible {
+      outline: 3px solid ${theme.colors.stroke.focusRing};
+      outline-offset: 3px;
+    }
+    &:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+  }
 `;
 const selectAllStyle = css`
-  min-height: 44px;
-  font-size: 15px;
-  line-height: 22px;
+  min-height: 56px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid ${theme.colors.stroke.divider};
+  font-size: 16px;
   font-weight: 700;
 `;
 const agreementRowStyle = css`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  min-height: 64px;
-  padding: 16px;
-  font-size: 14px;
-  line-height: 22px;
-  & + & {
-    border-top: 1px solid ${theme.colors.stroke.divider};
-  }
+  gap: 8px;
+  min-height: 56px;
   a {
     flex-shrink: 0;
-    font-size: 13px;
   }
 `;
-const checkboxLabelStyle = css`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-weight: 500;
-  input {
-    width: 18px;
-    height: 18px;
-    margin: 0;
-    flex-shrink: 0;
-    accent-color: ${theme.colors.foreground.brand};
-  }
+const chevronStyle = css`
+  width: 14px;
+  height: 14px;
+  background-color: currentColor;
+  mask: url(${chevronIcon}) center / contain no-repeat;
 `;
 const privacyStyle = css`
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 0 16px;
+  min-height: 44px;
   color: ${theme.colors.foreground.neutralMuted};
   font-size: 13px;
   line-height: 22px;
 `;
 const actionStyle = css`
   margin-top: auto;
-  padding-top: 24px;
+  padding-top: 16px;
+  button {
+    border-radius: 14px;
+    font-weight: 600;
+  }
+`;
+const declineStyle = css`
+  flex-shrink: 0;
+  button {
+    height: 44px;
+    padding: 8px;
+    border: none;
+    background: none;
+    color: ${theme.colors.foreground.neutralMuted};
+    font-size: 13px;
+  }
+`;
+const logoutIconStyle = css`
+  display: block;
+  width: 18px;
+  height: 18px;
+  margin: auto;
+  background-color: currentColor;
+  mask: url(${logoutIcon}) center / contain no-repeat;
 `;
 const mutationErrorStyle = css`
   color: ${theme.colors.foreground.critical};

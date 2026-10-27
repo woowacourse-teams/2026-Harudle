@@ -30,6 +30,7 @@ jest.mock('../../domain/legal/legalDocuments', () => ({
   ): Promise<LegalDocument> => mockGetDocument(...args),
 }));
 jest.mock('../../assets/icons/back.svg', () => 'back.svg');
+jest.mock('../../assets/images/harudle-logo.webp', () => 'logo.webp');
 jest.mock('../../assets/images/loading-animation.webp', () => 'loading.webp');
 const catalog: LegalDocumentsResponse = {
   documents: [

@@ -99,7 +99,8 @@ test('기존 회원은 전문 열람 후 두 항목을 직접 확인하고 원�
   await expect(page).toHaveURL('/consent');
   await expect(termsCheckbox).not.toBeChecked();
   await termsCheckbox.check();
-  await expect(selectAll).toHaveJSProperty('indeterminate', true);
+  await expect(selectAll).not.toBeChecked();
+  await expect(selectAll).toHaveJSProperty('indeterminate', false);
   await expect(
     page.getByRole('button', { name: '동의하고 시작하기', exact: true }),
   ).toBeDisabled();
