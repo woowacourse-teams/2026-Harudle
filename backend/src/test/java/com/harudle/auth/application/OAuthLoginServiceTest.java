@@ -106,7 +106,7 @@ class OAuthLoginServiceTest {
     }
 
     @Test
-    @DisplayName("재로그인하면 소셜 이름을 갱신하고 기존 회원과 공개 프로필을 유지한다")
+    @DisplayName("재로그인하면 기존 이름과 공개 프로필을 유지하고 로그인 기록을 갱신한다")
     void logsInExistingUser() {
         User existingUser = saveUser(
                 "old@example.com",
@@ -136,7 +136,7 @@ class OAuthLoginServiceTest {
         assertThat(result.userId()).isEqualTo(existingUser.getId());
         assertThat(userRepository.count()).isEqualTo(1);
         assertThat(oAuthAccountRepository.count()).isEqualTo(1);
-        assertThat(savedUser.getName()).isEqualTo("새 카카오 닉네임");
+        assertThat(savedUser.getName()).isEqualTo("서비스 이름");
         assertThat(savedUser.getNickname()).isEqualTo("초록");
         assertThat(savedUser.getProfileImageCode()).isEqualTo((short) 5);
         verifyNoInteractions(profileImageCodeGenerator);

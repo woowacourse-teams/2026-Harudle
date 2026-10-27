@@ -55,7 +55,6 @@ public class OAuthLoginService {
         User user = account.getUser();
         validateActiveUser(user);
 
-        user.updateNameIfProvided(command.displayName(), now);
         account.recordLogin(command.providerEmail(), now);
 
         return new OAuthLoginResult(user.getId());
