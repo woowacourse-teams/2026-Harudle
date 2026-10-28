@@ -65,7 +65,7 @@ describe('하단 메뉴의 로그인 안내', () => {
     prepareDialogs();
     await user.click(screen.getByRole('button', { name: '설정' }));
     const dialog = screen.getByRole('dialog');
-    await user.click(screen.getByRole('button', { name: '카카오로 로그인' }));
+    await user.click(screen.getByRole('button', { name: '로그인하기' }));
     expect(dialog).not.toHaveAttribute('open');
     expect(mockNavigate).toHaveBeenCalledWith('/login');
   });

@@ -27,9 +27,11 @@ import {
   type AdminUserSummary,
   type GenerationHistory,
 } from './adminApi';
+import AdminReportsPanel from './AdminReportsPanel';
+import AdminModerationPanel from './AdminModerationPanel';
 import type { GenerationStatus } from '../../domain/diary/diaryGeneration';
 
-type View = 'dashboard' | 'users' | 'generations' | 'failed';
+type View = 'dashboard' | 'users' | 'generations' | 'failed' | 'reports';
 type UserStatusFilter = 'ALL' | 'ACTIVE' | 'DELETED';
 type UsageModalMode = 'restore' | 'reset' | 'limit';
 
@@ -40,7 +42,12 @@ const today = () => {
 };
 
 const viewFromParam = (value: string | null): View => {
-  if (value === 'users' || value === 'generations' || value === 'failed') {
+  if (
+    value === 'users' ||
+    value === 'generations' ||
+    value === 'failed' ||
+    value === 'reports'
+  ) {
     return value;
   }
   return 'dashboard';
@@ -173,6 +180,7 @@ const AdminPage = () => {
 
   useEffect(() => {
     // URL 상태 변화에 맞춰 관리자 API를 조회한다.
+    if (view === 'reports') return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (view === 'dashboard') void loadDashboard();
     else if (view !== 'users') {
@@ -374,7 +382,7 @@ const AdminPage = () => {
   };
 
   return (
-    <div css={pageStyle(isHistoryView)}>
+    <div css={pageStyle(isHistoryView || view === 'reports')}>
       <aside className="sidebar" css={sidebarStyle}>
         <img src={logo} alt="Harudle" css={logoStyle} />
         <nav className="menu" css={menuStyle} aria-label="관리자 메뉴">
@@ -402,6 +410,12 @@ const AdminPage = () => {
             label="실패 이력"
             onClick={() => navigate('failed')}
           />
+          <MenuButton
+            active={view === 'reports'}
+            icon={navFailuresIcon}
+            label="신고 관리"
+            onClick={() => navigate('reports')}
+          />
         </nav>
         <div css={adminProfileStyle}>
           <div css={adminAvatarStyle}>
@@ -425,15 +439,18 @@ const AdminPage = () => {
         ) : (
           <PageTitle
             title={
-              view === 'users'
-                ? '사용자 관리'
-                : view === 'failed'
-                  ? '실패 이력'
-                  : '생성 이력'
+              view === 'reports'
+                ? '신고 관리'
+                : view === 'users'
+                  ? '사용자 관리'
+                  : view === 'failed'
+                    ? '실패 이력'
+                    : '생성 이력'
             }
             onBack={() => navigate('dashboard')}
           />
         )}
+        {view === 'reports' && <AdminReportsPanel />}
         {view === 'dashboard' && (
           <OperationCard
             failedGenerationCount={failedGenerationCount}
@@ -475,7 +492,7 @@ const AdminPage = () => {
         )}
       </main>
 
-      {!isHistoryView && (
+      {!isHistoryView && view !== 'reports' && (
         <DetailPanel
           detail={detail}
           loading={loading}
@@ -871,6 +888,12 @@ const DetailPanel = ({
             생성 한도 변경
           </button>
         </div>
+        <AdminModerationPanel
+          key={`USER-${detail.id}`}
+          targetType="USER"
+          targetId={detail.id}
+          available={detail.status === 'ACTIVE'}
+        />
         {error && <ErrorMessage message={error} />}
       </section>
     ) : showEmptyDetail ? (

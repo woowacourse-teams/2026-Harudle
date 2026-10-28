@@ -1,24 +1,49 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  type RenderResult,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createRef } from 'react';
+import { createRef, type RefObject } from 'react';
 import * as reports from '../../domain/reports/reportSubmission';
-import ReportDialog, { type ReportDialogHandle } from './ReportDialog';
+import type { ModalHandle } from '../Modal';
+import { ToastProvider } from '../ToastContext';
+import ReportDialog from './ReportDialog';
 import { REPORT_COPY } from './copy';
+
+jest.mock('../../assets/icons/toast-success.svg', () => 'toast-success.svg');
+jest.mock('../../assets/icons/toast-error.svg', () => 'toast-error.svg');
+jest.mock('../../assets/icons/toast-loading.svg', () => 'toast-loading.svg');
 
 const target: reports.ReportTarget = {
   targetType: 'FEED',
   targetId: '00000000-0000-4000-8000-000000000002',
 };
-const receipt: reports.ReportReceipt = {
+const authorTarget: reports.ReportTarget = {
+  targetType: 'USER',
+  targetId: '20000000-0000-4000-8000-000000000001',
+};
+const response: reports.ReportResponse = {
   id: '10000000-0000-4000-8000-000000000001',
   status: 'RECEIVED',
   duplicate: false,
 };
 
-const openReport = (): ReportDialogHandle => {
-  const ref = createRef<ReportDialogHandle>();
-  render(<ReportDialog ref={ref} />);
+interface ReportRenderResult extends RenderResult {
+  readonly ref: RefObject<ModalHandle | null>;
+  readonly handle: ModalHandle;
+}
+
+const renderReport = (): ReportRenderResult => {
+  const ref = createRef<ModalHandle>();
+  const result = render(
+    <ToastProvider>
+      <ReportDialog ref={ref} target={target} />
+    </ToastProvider>,
+  );
   document.querySelectorAll('dialog').forEach((dialog): void => {
     Object.defineProperties(dialog, {
       showModal: {
@@ -28,9 +53,7 @@ const openReport = (): ReportDialogHandle => {
     });
   });
   if (!ref.current) throw new Error('신고창이 없습니다.');
-  const handle = ref.current;
-  act((): void => handle.open(target));
-  return handle;
+  return { ...result, ref, handle: ref.current };
 };
 
 beforeEach((): void => {
@@ -38,32 +61,33 @@ beforeEach((): void => {
 });
 
 describe('신고 입력과 접수 결과', (): void => {
-  it('처음 열기 전에는 신고 폼과 사유 및 제출 버튼을 만들지 않는다', (): void => {
-    render(<ReportDialog ref={createRef<ReportDialogHandle>()} />);
+  it('열기 전에는 신고 입력과 제출 버튼을 화면에 표시하지 않는다', (): void => {
+    renderReport();
 
-    expect(document.querySelector('form')).toBeNull();
-    expect(document.querySelector('input[type="radio"]')).toBeNull();
-    expect(document.querySelector('footer')).toBeNull();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: REPORT_COPY.submit }),
+    ).not.toBeInTheDocument();
   });
 
-  it('사유를 선택하고 접수하는 동안 중복 제출과 대상 교체를 막는다', async (): Promise<void> => {
+  it('접수 중 중복 제출과 닫기·재초기화를 막고 성공하면 닫고 토스트로 알린다', async (): Promise<void> => {
     const user = userEvent.setup();
-    let finish: ((value: reports.ReportReceipt) => void) | undefined;
+    let finish: ((value: reports.ReportResponse) => void) | undefined;
     const submit = jest.spyOn(reports, 'submitReport').mockImplementation(
-      (): Promise<reports.ReportReceipt> =>
+      (): Promise<reports.ReportResponse> =>
         new Promise((resolve): void => {
           finish = resolve;
         }),
     );
-    const handle = openReport();
+    const { handle } = renderReport();
+    act((): void => handle.open());
     expect(
       screen.getByRole('button', { name: REPORT_COPY.submit }),
     ).toBeDisabled();
     await user.click(screen.getByRole('radio', { name: '스팸·광고' }));
-    await user.type(
-      screen.getByRole('textbox', { name: REPORT_COPY.description }),
-      '반복 광고예요.',
-    );
+    await user.type(screen.getByRole('textbox'), '반복 광고예요.');
     await user.click(screen.getByRole('button', { name: REPORT_COPY.submit }));
     expect(
       screen.getByRole('button', { name: REPORT_COPY.submitting }),
@@ -80,64 +104,48 @@ describe('신고 입력과 접수 결과', (): void => {
     expect(cancel.defaultPrevented).toBe(true);
     fireEvent.click(dialog);
     await user.click(screen.getByRole('button', { name: REPORT_COPY.cancel }));
-    expect(dialog).toHaveAttribute('open');
     const form = screen.getByRole('textbox').closest('form');
     if (!form) throw new Error('신고 입력 폼이 없습니다.');
     fireEvent.submit(form);
-    act((): void =>
-      handle.open({
-        targetType: 'USER',
-        targetId: '20000000-0000-4000-8000-000000000001',
-      }),
-    );
-    expect(submit).toHaveBeenCalledTimes(1);
+    act((): void => {
+      handle.close();
+      handle.open();
+    });
+    expect(dialog).toHaveAttribute('open');
     expect(dialog.showModal).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('textbox')).toHaveValue('반복 광고예요.');
+    expect(submit).toHaveBeenCalledTimes(1);
     expect(submit).toHaveBeenCalledWith({
       ...target,
       reason: 'SPAM',
       description: '반복 광고예요.',
     });
-    expect(
-      screen.getByRole('heading', { name: '피드 신고' }),
-    ).toBeInTheDocument();
-    await act(async (): Promise<void> => {
-      finish?.(receipt);
-    });
-    expect(screen.getByRole('status')).toHaveTextContent(REPORT_COPY.received);
-    await user.click(screen.getByRole('button', { name: REPORT_COPY.close }));
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 
-    submit.mockResolvedValueOnce(receipt);
-    act((): void =>
-      handle.open({
-        targetType: 'USER',
-        targetId: '20000000-0000-4000-8000-000000000001',
-      }),
-    );
-    expect(
-      screen.getByRole('heading', { name: '작성자 신고' }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole('textbox')).toHaveValue('');
-    await user.click(screen.getByRole('radio', { name: '기타' }));
-    await user.click(screen.getByRole('button', { name: REPORT_COPY.submit }));
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      REPORT_COPY.received,
-    );
-    expect(submit).toHaveBeenLastCalledWith({
-      targetType: 'USER',
-      targetId: '20000000-0000-4000-8000-000000000001',
-      reason: 'OTHER',
-      description: '',
+    await act(async (): Promise<void> => {
+      finish?.(response);
     });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByText(REPORT_COPY.received)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '확인' }),
+    ).not.toBeInTheDocument();
+
+    act((): void => handle.open());
+    expect(screen.getByRole('textbox')).toHaveValue('');
+    expect(screen.getByRole('radio', { name: '스팸·광고' })).not.toBeChecked();
+    expect(
+      screen.getByRole('button', { name: REPORT_COPY.submit }),
+    ).toBeDisabled();
   });
 
-  it('실패해도 입력을 유지하고 재시도 후 이미 접수된 신고임을 알린다', async (): Promise<void> => {
+  it('실패해도 입력을 유지하고 재시도 후 닫으며 중복 접수 토스트로 알린다', async (): Promise<void> => {
     const user = userEvent.setup();
     const submit = jest
       .spyOn(reports, 'submitReport')
       .mockRejectedValueOnce(new Error('다시 시도해 주세요.'))
-      .mockResolvedValueOnce({ ...receipt, duplicate: true });
-    openReport();
+      .mockResolvedValueOnce({ ...response, duplicate: true });
+    const { handle } = renderReport();
+    act((): void => handle.open());
     await user.click(screen.getByRole('radio', { name: '괴롭힘·욕설' }));
     await user.type(screen.getByRole('textbox'), '댓글에서 욕설을 반복해요.');
     await user.click(screen.getByRole('button', { name: REPORT_COPY.submit }));
@@ -148,21 +156,27 @@ describe('신고 입력과 접수 결과', (): void => {
       '댓글에서 욕설을 반복해요.',
     );
     expect(screen.getByRole('radio', { name: '괴롭힘·욕설' })).toBeChecked();
+
     await user.click(screen.getByRole('button', { name: REPORT_COPY.submit }));
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      REPORT_COPY.duplicate,
-    );
+    expect(await screen.findByText(REPORT_COPY.duplicate)).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByText(REPORT_COPY.received)).not.toBeInTheDocument();
     expect(submit).toHaveBeenNthCalledWith(2, {
       ...target,
       reason: 'HARASSMENT',
       description: '댓글에서 욕설을 반복해요.',
     });
+
+    act((): void => handle.open());
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox')).toHaveValue('');
   });
 
   it('상세 내용은 emoji도 한 글자로 세고 500자를 넘으면 제출을 막는다', async (): Promise<void> => {
     const user = userEvent.setup();
     const submit = jest.spyOn(reports, 'submitReport');
-    openReport();
+    const { handle } = renderReport();
+    act((): void => handle.open());
     await user.click(screen.getByRole('radio', { name: '기타' }));
     fireEvent.change(screen.getByRole('textbox'), {
       target: { value: '😀'.repeat(500) },
@@ -181,5 +195,84 @@ describe('신고 입력과 접수 결과', (): void => {
       screen.getByRole('button', { name: REPORT_COPY.submit }),
     ).toBeDisabled();
     expect(submit).not.toHaveBeenCalled();
+  });
+
+  it.each(['success', 'error'] as const)(
+    '제출 중 대상이 변경되면 이전 %s 결과를 새 신고에 적용하지 않는다',
+    async (result): Promise<void> => {
+      const user = userEvent.setup();
+      let finish: ((value: reports.ReportResponse) => void) | undefined;
+      let fail: ((reason: Error) => void) | undefined;
+      const submit = jest.spyOn(reports, 'submitReport').mockImplementation(
+        (): Promise<reports.ReportResponse> =>
+          new Promise((resolve, reject): void => {
+            finish = resolve;
+            fail = reject;
+          }),
+      );
+      const { handle, ref, rerender } = renderReport();
+      act((): void => handle.open());
+      await user.click(screen.getByRole('radio', { name: '스팸·광고' }));
+      await user.type(screen.getByRole('textbox'), '이전 피드의 신고예요.');
+      await user.click(
+        screen.getByRole('button', { name: REPORT_COPY.submit }),
+      );
+      rerender(
+        <ToastProvider>
+          <ReportDialog ref={ref} target={authorTarget} />
+        </ToastProvider>,
+      );
+      act((): void => handle.open());
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(submit).toHaveBeenCalledTimes(1);
+
+      await act(async (): Promise<void> => {
+        if (result === 'success') finish?.(response);
+        else fail?.(new Error('이전 요청의 오류예요.'));
+      });
+      expect(screen.queryByText(REPORT_COPY.received)).not.toBeInTheDocument();
+      expect(
+        screen.queryByText('이전 요청의 오류예요.'),
+      ).not.toBeInTheDocument();
+
+      act((): void => handle.open());
+      expect(
+        screen.getByRole('heading', { name: '작성자 신고' }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('textbox')).toHaveValue('');
+      submit.mockResolvedValueOnce(response);
+      await user.click(screen.getByRole('radio', { name: '기타' }));
+      await user.click(
+        screen.getByRole('button', { name: REPORT_COPY.submit }),
+      );
+      expect(submit).toHaveBeenLastCalledWith({
+        ...authorTarget,
+        reason: 'OTHER',
+        description: '',
+      });
+      expect(await screen.findByText(REPORT_COPY.received)).toBeInTheDocument();
+    },
+  );
+
+  it('신고창이 언마운트된 뒤 도착한 접수 결과는 토스트로 표시하지 않는다', async (): Promise<void> => {
+    const user = userEvent.setup();
+    let finish: ((value: reports.ReportResponse) => void) | undefined;
+    jest.spyOn(reports, 'submitReport').mockImplementation(
+      (): Promise<reports.ReportResponse> =>
+        new Promise((resolve): void => {
+          finish = resolve;
+        }),
+    );
+    const { handle, rerender } = renderReport();
+    act((): void => handle.open());
+    await user.click(screen.getByRole('radio', { name: '기타' }));
+    await user.click(screen.getByRole('button', { name: REPORT_COPY.submit }));
+    rerender(<ToastProvider>{null}</ToastProvider>);
+
+    await act(async (): Promise<void> => {
+      finish?.(response);
+    });
+    expect(screen.queryByText(REPORT_COPY.received)).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });

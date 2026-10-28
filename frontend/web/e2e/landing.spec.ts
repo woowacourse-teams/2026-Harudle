@@ -95,8 +95,8 @@ test.describe('통합 랜딩의 1회 체험', () => {
     ).toBeVisible();
     await expect(page).toHaveURL('/landing');
     await expect(
-      page.getByRole('link', { name: '카카오로 시작하고 계속 만들기' }),
-    ).toHaveAttribute('href', '/oauth2/authorization/kakao');
+      page.getByRole('link', { name: '로그인하고 계속 만들기' }),
+    ).toHaveAttribute('href', '/login');
     await page.reload();
     await expect(
       page.getByRole('heading', { name: '게스트 체험을 이미 사용했어요' }),
@@ -123,6 +123,15 @@ test.describe('통합 랜딩의 1회 체험', () => {
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     await expect(page.getByRole('img', { name: /네컷만화$/ })).toBeVisible();
     await expect(page.getByRole('heading', { name: '내용' })).toBeVisible();
+    await page.getByRole('link', { name: '로그인하기' }).click();
+    await expect(page).toHaveURL('/login');
+    for (const label of [
+      '카카오로 계속하기',
+      'Google로 계속하기',
+      'Apple로 계속하기',
+    ]) {
+      await expect(page.getByRole('button', { name: label })).toBeVisible();
+    }
   });
 
   test('landing-try는 더 이상 별도 체험 페이지를 제공하지 않는다', async ({

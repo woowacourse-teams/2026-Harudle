@@ -79,6 +79,8 @@ jest.mock('../../assets/icons/feed-comment.svg', () => 'feed-comment.svg');
 jest.mock('../../assets/icons/feed-send.svg', () => 'feed-send.svg');
 jest.mock('../../assets/icons/feed-more.svg', () => 'feed-more.svg');
 jest.mock('../../assets/icons/delete.svg', () => 'delete.svg');
+jest.mock('../../assets/icons/report.svg', () => 'report.svg');
+jest.mock('../../assets/icons/block.svg', () => 'block.svg');
 jest.mock('../../assets/icons/link.svg', () => 'link.svg');
 jest.mock('../../assets/icons/check.svg', () => 'check.svg');
 jest.mock(
@@ -230,7 +232,7 @@ describe('피드 카드 액션', (): void => {
 
     await user.click(button);
     expect(sheet).toHaveAttribute('open');
-    await user.click(screen.getByRole('button', { name: '카카오로 로그인' }));
+    await user.click(screen.getByRole('button', { name: '로그인하기' }));
     expect(sheet).not.toHaveAttribute('open');
     expect(mockNavigate).toHaveBeenCalledWith('/login');
     expect(mockSetFeedLike).not.toHaveBeenCalled();
