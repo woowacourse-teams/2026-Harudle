@@ -185,7 +185,6 @@ const feedPageContentStyle = css`
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 12px;
   min-height: 0px;
   padding: 4px 20px 0 20px;
   font-size: 12px;
