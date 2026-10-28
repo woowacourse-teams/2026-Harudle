@@ -1,3 +1,4 @@
+import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useRef } from 'react';
 import { BackHandler, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
@@ -5,6 +6,10 @@ import { WebView } from 'react-native-webview';
 export default function WebViewScreen() {
   const webViewRef = useRef<WebView>(null);
   const canGoBackRef = useRef(false);
+
+  const handleLoad = (): void => {
+    SplashScreen.hide();
+  };
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -29,6 +34,7 @@ export default function WebViewScreen() {
       ref={webViewRef}
       style={{ flex: 1 }}
       source={{ uri: 'https://www.harudle.com/' }}
+      onLoad={handleLoad}
       onNavigationStateChange={(state) => {
         canGoBackRef.current = state.canGoBack;
       }}

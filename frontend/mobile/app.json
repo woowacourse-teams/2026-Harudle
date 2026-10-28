@@ -3,6 +3,22 @@
     "name": "mobile",
     "slug": "mobile",
     "version": "1.0.0",
-    "platforms": ["ios", "android"]
+    "platforms": ["ios", "android"],
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-logo.png",
+          "imageWidth": 180,
+          "backgroundColor": "#FFFFFF"
+        }
+      ]
+    ],
+    "ios": {
+      "bundleIdentifier": "com.harudle.app"
+    },
+    "android": {
+      "package": "com.harudle.app"
+    }
   }
 }
