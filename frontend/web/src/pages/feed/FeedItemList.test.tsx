@@ -336,7 +336,7 @@ describe('피드 카드 액션', (): void => {
     );
     await screen.findByRole('article');
     prepareDialogs();
-    await user.click(screen.getByRole('button', { name: '공유 아이콘' }));
+    await user.click(screen.getByRole('button', { name: '공유하기' }));
     const sheet = screen.getByRole('dialog');
     expect(sheet).toHaveAttribute('open');
     expect(mockTrack).not.toHaveBeenCalledWith(
@@ -402,7 +402,7 @@ describe('피드 카드 액션', (): void => {
     );
     await screen.findByRole('article');
     prepareDialogs();
-    await user.click(screen.getByRole('button', { name: '공유 아이콘' }));
+    await user.click(screen.getByRole('button', { name: '공유하기' }));
     const sheet = screen.getByRole('dialog');
     await user.click(screen.getByRole('button', { name: '링크 복사' }));
     expect(sheet).toHaveAttribute('open');
@@ -450,7 +450,7 @@ describe('피드 카드 액션', (): void => {
       <FeedItemList onCategoryClick={mockOnCategoryClick} sort="LATEST" />,
     );
     const shareButtons = await screen.findAllByRole('button', {
-      name: '공유 아이콘',
+      name: '공유하기',
     });
     prepareDialogs();
     await user.click(shareButtons[1]);
@@ -474,7 +474,7 @@ describe('피드 카드 액션', (): void => {
     );
     await screen.findByRole('article');
     prepareDialogs();
-    await user.click(screen.getByRole('button', { name: '공유 아이콘' }));
+    await user.click(screen.getByRole('button', { name: '공유하기' }));
     jest.useFakeTimers();
     const setTimeout = jest.spyOn(window, 'setTimeout');
     const clearTimeout = jest.spyOn(window, 'clearTimeout');
@@ -505,7 +505,7 @@ describe('피드 카드 액션', (): void => {
       );
       await screen.findByRole('article');
       prepareDialogs();
-      await user.click(screen.getByRole('button', { name: '공유 아이콘' }));
+      await user.click(screen.getByRole('button', { name: '공유하기' }));
       await user.click(screen.getByRole('button', { name: '링크 복사' }));
       expect(alert).toHaveBeenCalledWith(ERROR_MESSAGES.FEED_LINK_COPY_FAILED);
       expect(screen.getByRole('dialog')).toHaveAttribute('open');
@@ -862,7 +862,7 @@ describe('피드 목록 조회 상태', () => {
     ).toHaveTextContent('12');
     expect(screen.getByRole('button', { name: '3' })).toHaveTextContent('3');
     expect(
-      screen.getByRole('button', { name: '공유 아이콘' }),
+      screen.getByRole('button', { name: '공유하기' }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: '피드 더보기' }),
