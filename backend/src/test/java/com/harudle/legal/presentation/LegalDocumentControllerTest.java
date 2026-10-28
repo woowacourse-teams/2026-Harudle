@@ -49,7 +49,7 @@ class LegalDocumentControllerTest {
                 .andExpect(jsonPath("$.documents[0].version").value("2026-10-22"))
                 .andExpect(jsonPath("$.documents[0].effectiveDate").value("2026-10-22"))
                 .andExpect(jsonPath("$.documents[0].contentHash")
-                        .value("0da46f78f586ac87bf4d51748ab2964d7f7e4fa4183bf87b0d0131a28fa6eb03"))
+                        .value("402496b667db012f54f0d52d2ebd293dd74e24eaf008eaa681052174799ee919"))
                 .andExpect(jsonPath("$.documents[0].sections[0].paragraphs[0]").isString())
                 .andExpect(jsonPath("$.documents[1].type").value("PRIVACY"))
                 .andExpect(jsonPath("$.documents[1].version").value("2026-08-24"));

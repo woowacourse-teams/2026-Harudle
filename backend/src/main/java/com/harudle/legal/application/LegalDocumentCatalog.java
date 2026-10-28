@@ -24,7 +24,7 @@ import tools.jackson.databind.ObjectMapper;
 public class LegalDocumentCatalog {
     private static final List<DocumentSpec> MANIFEST = List.of(
             new DocumentSpec(LegalDocumentType.TERMS, "2026-10-22", "classpath:legal/terms-2026-10-22.json",
-                    "0da46f78f586ac87bf4d51748ab2964d7f7e4fa4183bf87b0d0131a28fa6eb03"),
+                    "402496b667db012f54f0d52d2ebd293dd74e24eaf008eaa681052174799ee919"),
             new DocumentSpec(LegalDocumentType.PRIVACY, "2026-08-24", "classpath:legal/privacy-2026-08-24.json",
                     "a294f42fa09c856c853439f74c2d71a8e2d32f0100fa4d8505291cfb9231bf4f")
     );
