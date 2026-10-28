@@ -1,7 +1,8 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
+    "name": "하루들",
+    "slug": "harudle",
+    "icon": "./assets/icon.png",
     "version": "1.0.0",
     "platforms": ["ios", "android"],
     "plugins": [
@@ -18,7 +19,11 @@
       "bundleIdentifier": "com.harudle.app"
     },
     "android": {
-      "package": "com.harudle.app"
+      "package": "com.harudle.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#CDB9F7"
+      }
     }
   }
 }
