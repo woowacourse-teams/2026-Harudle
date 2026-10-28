@@ -78,6 +78,7 @@ class HarudleApplicationTests extends ServiceIntegrationTestSupport {
                 "reports",
                 "share_links",
                 "user_blocks",
+                "user_terms_acceptances",
                 "users"
         );
     }
