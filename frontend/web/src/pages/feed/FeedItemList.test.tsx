@@ -214,7 +214,7 @@ describe('피드 카드 액션', (): void => {
     render(
       <FeedItemList onCategoryClick={mockOnCategoryClick} sort="LATEST" />,
     );
-    const button = await screen.findByRole('button', { name: '12' });
+    const button = await screen.findByRole('button', { name: '좋아요 12개' });
     prepareDialogs();
 
     await user.click(button);
@@ -238,7 +238,7 @@ describe('피드 카드 액션', (): void => {
     expect(mockSetFeedLike).not.toHaveBeenCalled();
   });
 
-  it('좋아요와 취소의 서버 응답을 반영하고 목록은 다시 조회하지 않는다', async (): Promise<void> => {
+  it('포커스를 유지한 채 Enter로 좋아요와 취소를 실행하고 목록은 다시 조회하지 않는다', async (): Promise<void> => {
     const user = userEvent.setup();
     mockSetFeedLike.mockResolvedValueOnce({ likedByMe: true, likeCount: 13 });
     mockSetFeedLike.mockResolvedValueOnce({ likedByMe: false, likeCount: 12 });
@@ -246,10 +246,16 @@ describe('피드 카드 액션', (): void => {
       <FeedItemList onCategoryClick={mockOnCategoryClick} sort="LATEST" />,
     );
 
-    await user.click(await screen.findByRole('button', { name: '12' }));
+    const button = await screen.findByRole('button', { name: '좋아요 12개' });
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+    button.focus();
+    await user.keyboard('{Enter}');
     const liked = await screen.findByRole('button', {
-      name: '13',
+      name: '좋아요 13개',
     });
+    expect(liked).toHaveFocus();
+    expect(liked).toHaveAttribute('aria-pressed', 'true');
+    expect(liked).toHaveTextContent('13');
     expect(liked.querySelector('img')).toHaveAttribute(
       'src',
       'feed-heart-filled.svg',
@@ -259,8 +265,11 @@ describe('피드 카드 액션', (): void => {
       likedByMe: true,
     });
 
-    await user.click(liked);
-    const unliked = await screen.findByRole('button', { name: '12' });
+    await user.keyboard('{Enter}');
+    const unliked = await screen.findByRole('button', { name: '좋아요 12개' });
+    expect(unliked).toHaveFocus();
+    expect(unliked).toHaveAttribute('aria-pressed', 'false');
+    expect(unliked).toHaveTextContent('12');
     expect(unliked.querySelector('img')).toHaveAttribute(
       'src',
       'feed-heart.svg',
@@ -293,24 +302,27 @@ describe('피드 카드 액션', (): void => {
     render(
       <FeedItemList onCategoryClick={mockOnCategoryClick} sort="LATEST" />,
     );
-    const button = await screen.findByRole('button', { name: '12' });
+    const button = await screen.findByRole('button', { name: '좋아요 12개' });
     await user.click(button);
-    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(button).toHaveFocus();
     await user.click(button);
+    await user.keyboard('{Enter}');
     expect(mockSetFeedLike).toHaveBeenCalledTimes(1);
 
     await act(async (): Promise<void> => {
       rejectLike?.(new Error('좋아요 변경 실패'));
     });
-    expect(button).toBeEnabled();
+    expect(button).toHaveAttribute('aria-disabled', 'false');
+    expect(button).toHaveFocus();
     expect(button).toHaveTextContent('12');
     expect(mockAddToast).toHaveBeenCalledWith(
       { type: 'error', message: '좋아요 변경 실패' },
       2000,
     );
-    await user.click(button);
+    await user.keyboard('{Enter}');
     expect(
-      await screen.findByRole('button', { name: '13' }),
+      await screen.findByRole('button', { name: '좋아요 13개' }),
     ).toBeInTheDocument();
   });
 
@@ -673,16 +685,18 @@ describe('피드 목록 더 보기', (): void => {
     fireEvent.click(pendingButton);
     expect(mockGetFeedList).toHaveBeenCalledTimes(2);
     expect(screen.getByRole('article')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: '12' }));
+    await user.click(screen.getByRole('button', { name: '좋아요 12개' }));
     expect(
-      await screen.findByRole('button', { name: '13' }),
+      await screen.findByRole('button', { name: '좋아요 13개' }),
     ).toBeInTheDocument();
 
     await act(async (): Promise<void> => {
       resolveNext?.({ ...response, items: [secondFeed] });
     });
     expect(screen.getAllByRole('article')).toHaveLength(2);
-    expect(screen.getByRole('button', { name: '13' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '좋아요 13개' }),
+    ).toBeInTheDocument();
   });
 
   it('추가 조회 실패를 토스트로 안내하고 같은 커서로 다시 더 보기 할 수 있다', async (): Promise<void> => {
@@ -843,7 +857,9 @@ describe('피드 목록 조회 상태', () => {
     await screen.findByRole('article');
 
     expect(screen.queryByText('FeedItemActions')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '12' })).toHaveTextContent('12');
+    expect(
+      screen.getByRole('button', { name: '좋아요 12개' }),
+    ).toHaveTextContent('12');
     expect(screen.getByRole('button', { name: '3' })).toHaveTextContent('3');
     expect(
       screen.getByRole('button', { name: '공유 아이콘' }),
