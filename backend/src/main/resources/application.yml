@@ -109,6 +109,8 @@ app:
 harudle:
   database:
     interaction-lock-timeout: ${INTERACTION_LOCK_TIMEOUT:1s}
+  legal:
+    require-terms-acceptance: ${LEGAL_REQUIRE_TERMS_ACCEPTANCE:false}
   admin:
     image-recovery:
       interval: ${ADMIN_IMAGE_RECOVERY_INTERVAL:10s}
