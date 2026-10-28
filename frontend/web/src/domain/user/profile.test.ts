@@ -37,20 +37,25 @@ afterEach(() => {
 });
 
 describe('프로필 조회 API', () => {
-  it('프로필 조회에 성공하면 프로필 정보를 반환한다', async () => {
-    mockAuthFetch.mockResolvedValueOnce(createJsonResponse(profile, 200));
+  it.each(['kakao', 'google', 'apple'])(
+    '%s 계정의 프로필 정보를 반환한다',
+    async (provider): Promise<void> => {
+      const userProfile = { ...profile, oauthProviders: [provider] };
+      mockAuthFetch.mockResolvedValueOnce(createJsonResponse(userProfile, 200));
 
-    await expect(getUserProfile()).resolves.toEqual(profile);
+      await expect(getUserProfile()).resolves.toEqual(userProfile);
 
-    expect(mockAuthFetch).toHaveBeenCalledTimes(1);
-    expect(mockAuthFetch).toHaveBeenCalledWith('/api/v1/me');
-  });
+      expect(mockAuthFetch).toHaveBeenCalledTimes(1);
+      expect(mockAuthFetch).toHaveBeenCalledWith('/api/v1/me');
+    },
+  );
 
   it.each([
     ['지원하지 않는 사용자 역할', { ...profile, role: 'GUEST' }],
+    ['지원하지 않는 OAuth Provider', { ...profile, oauthProviders: ['naver'] }],
     [
-      '지원하지 않는 OAuth Provider',
-      { ...profile, oauthProviders: ['google'] },
+      '지원하지 않는 OAuth Provider가 섞인 목록',
+      { ...profile, oauthProviders: ['kakao', 'naver'] },
     ],
     ['비어 있는 OAuth Provider 목록', { ...profile, oauthProviders: [] }],
     ['잘못된 닉네임 타입', { ...profile, nickname: null }],
