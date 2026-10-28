@@ -37,6 +37,7 @@ const FeedItem = ({
           <img
             src={author.profileImageUrl || profileFallbackImage}
             css={profileImageStyle}
+            alt=""
             onError={(event) => {
               const image = event.currentTarget;
               if (image.getAttribute('src') !== profileFallbackImage) {
