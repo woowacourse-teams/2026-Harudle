@@ -85,7 +85,6 @@ jest.mock(
 );
 jest.mock('./assets/school-presentation.png', () => 'school-presentation.png');
 jest.mock('../../assets/images/harudle-logo.webp', () => 'harudle-logo.webp');
-jest.mock('../../assets/icons/kakao.svg', () => 'kakao.svg');
 jest.mock('../../assets/icons/check.svg', () => 'check.svg');
 jest.mock(
   '../../assets/images/login-shared-comic.png',
@@ -279,7 +278,7 @@ describe('게스트 체험 랜딩 작성 화면', () => {
       screen.getByText(GUEST_TRIAL_COPY.generationStepLabels[4]),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('link', { name: '카카오로 시작하고 계속 만들기' }),
+      screen.queryByRole('link', { name: '로그인하고 계속 만들기' }),
     ).not.toBeInTheDocument();
   });
 
@@ -365,7 +364,7 @@ describe('게스트 체험 랜딩 작성 화면', () => {
       screen.getByRole('status', { name: '완성한 네컷을 불러오고 있어요' }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('link', { name: '카카오로 시작하고 계속 만들기' }),
+      screen.queryByRole('link', { name: '로그인하고 계속 만들기' }),
     ).not.toBeInTheDocument();
 
     const preloadedResultImage = screen.getByTestId(
@@ -390,7 +389,7 @@ describe('게스트 체험 랜딩 작성 화면', () => {
     ).toHaveAttribute('src', 'guest-result.png');
     expect(
       within(resultCard).getByText(
-        '카카오로 로그인하면 다른 순간도 네컷만화로 만들 수 있어요.',
+        '로그인하면 다른 순간도 네컷만화로 만들 수 있어요.',
       ),
     ).toBeInTheDocument();
     expect(
@@ -400,9 +399,9 @@ describe('게스트 체험 랜딩 작성 화면', () => {
     ).not.toBeInTheDocument();
     expect(
       within(resultCard).getByRole('link', {
-        name: '카카오로 시작하고 계속 만들기',
+        name: '로그인하고 계속 만들기',
       }),
-    ).toHaveAttribute('href', '/oauth2/authorization/kakao');
+    ).toHaveAttribute('href', '/login');
   });
 
   it('결과 이미지 로드가 실패하면 제목과 로그인 안내를 보여준다', () => {
@@ -438,7 +437,7 @@ describe('게스트 체험 랜딩 작성 화면', () => {
     ).not.toBeInTheDocument();
     expect(
       within(resultCard).getByRole('link', {
-        name: '카카오로 시작하고 계속 만들기',
+        name: '로그인하고 계속 만들기',
       }),
     ).toBeInTheDocument();
   });

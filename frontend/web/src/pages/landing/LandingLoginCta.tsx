@@ -1,10 +1,7 @@
 import { css } from '@emotion/react';
 import type { JSX } from 'react';
-import kakaoIcon from '../../assets/icons/kakao.svg';
 import { theme } from '../../styles/theme';
 import { useAnalytics } from '../../posthog/useAnalytics';
-
-const KAKAO_OAUTH_PATH = '/oauth2/authorization/kakao';
 
 type LandingLoginCtaProps = {
   label: string;
@@ -34,7 +31,7 @@ const LandingLoginCta = (props: LandingLoginCtaProps): JSX.Element => {
 
   return (
     <a
-      href={KAKAO_OAUTH_PATH}
+      href="/login"
       css={
         props.appearance === 'text'
           ? [textLinkStyle, props.location === 'final' && finalTextLinkStyle]
@@ -42,9 +39,6 @@ const LandingLoginCta = (props: LandingLoginCtaProps): JSX.Element => {
       }
       onClick={handleClick}
     >
-      {props.appearance !== 'text' && (
-        <img src={kakaoIcon} alt="" css={iconStyle} />
-      )}
       {props.label}
     </a>
   );
@@ -56,14 +50,13 @@ const linkStyle = css`
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
   width: 100%;
   max-width: 342px;
   min-height: 56px;
   padding: 14px 20px;
   border-radius: 16px;
-  background-color: ${theme.colors.background.kakao};
-  color: ${theme.colors.foreground.neutral};
+  background-color: ${theme.colors.background.brandSolid};
+  color: ${theme.colors.foreground.onBrand};
   font-size: 16px;
   font-weight: 700;
   line-height: 24px;
@@ -72,11 +65,6 @@ const linkStyle = css`
   &:active {
     transform: scale(0.98);
   }
-`;
-
-const iconStyle = css`
-  width: 24px;
-  height: 24px;
 `;
 
 const textLinkStyle = css`

@@ -1,12 +1,20 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as reports from '../../domain/reports/reportSubmission';
-import ReportOptionsButton from './ReportOptionsButton';
-import { REPORT_COPY } from './copy';
+import OtherFeedOptionsButton from './OtherFeedOptionsButton';
+import OtherFeedCommentOptionsButton from '../../pages/feed-detail/OtherFeedCommentOptionsButton';
+import { REPORT_COPY } from '../report/copy';
+
+const mockAddToast = jest.fn();
+jest.mock('../ToastContext', () => ({
+  useToastContext: () => ({ addToast: mockAddToast }),
+}));
 
 jest.mock('react-router', () => ({ useNavigate: () => jest.fn() }));
 jest.mock('../../assets/icons/feed-more.svg', () => 'more.svg');
+jest.mock('../../assets/icons/report.svg', () => 'report.svg');
+jest.mock('../../assets/icons/block.svg', () => 'block.svg');
 jest.mock('../../assets/icons/bottom-sheet-close.svg', () => 'close.svg');
 jest.mock('../../assets/icons/kakao.svg', () => 'kakao.svg');
 
@@ -24,7 +32,22 @@ const prepareDialogs = (): void => {
 
 beforeEach((): void => {
   jest.restoreAllMocks();
+  mockAddToast.mockReset();
   localStorage.setItem('harudle.has-completed-oauth', 'true');
+  Object.defineProperties(HTMLDialogElement.prototype, {
+    showModal: {
+      configurable: true,
+      value(this: HTMLDialogElement): void {
+        this.setAttribute('open', '');
+      },
+    },
+    close: {
+      configurable: true,
+      value(this: HTMLDialogElement): void {
+        this.removeAttribute('open');
+      },
+    },
+  });
 });
 
 describe('타인 콘텐츠의 신고 진입', (): void => {
@@ -73,10 +96,19 @@ describe('타인 콘텐츠의 신고 진입', (): void => {
         duplicate: false,
       });
       render(
-        <ReportOptionsButton
-          target={{ targetType: contentType, targetId: contentId }}
-          authorId={authorId}
-        />,
+        contentType === 'FEED' ? (
+          <OtherFeedOptionsButton
+            feedId={contentId}
+            authorId={authorId}
+            authorNickname="네오"
+          />
+        ) : (
+          <OtherFeedCommentOptionsButton
+            commentId={contentId}
+            authorId={authorId}
+            authorNickname="네오"
+          />
+        ),
       );
       prepareDialogs();
       await user.click(
@@ -90,7 +122,7 @@ describe('타인 콘텐츠의 신고 진입', (): void => {
       await user.click(screen.getByRole('button', { name: menu }));
       expect(
         screen.queryByRole('heading', {
-          name: REPORT_COPY.menuTitle,
+          name: contentType === 'FEED' ? '피드 메뉴' : '댓글 메뉴',
         }),
       ).not.toBeInTheDocument();
       expect(screen.getByRole('heading', { name: menu })).toBeInTheDocument();
@@ -98,9 +130,15 @@ describe('타인 콘텐츠의 신고 진입', (): void => {
       await user.click(
         screen.getByRole('button', { name: REPORT_COPY.submit }),
       );
-      expect(await screen.findByRole('status')).toHaveTextContent(
-        REPORT_COPY.received,
+      await waitFor((): void =>
+        expect(mockAddToast).toHaveBeenCalledWith(
+          { type: 'success', message: REPORT_COPY.received },
+          expect.any(Number),
+        ),
       );
+      expect(
+        screen.queryByRole('heading', { name: menu }),
+      ).not.toBeInTheDocument();
       expect(submit).toHaveBeenCalledWith({
         targetType,
         targetId,
@@ -117,13 +155,19 @@ describe('타인 콘텐츠의 신고 진입', (): void => {
       const submit = jest.spyOn(reports, 'submitReport');
       localStorage.clear();
       render(
-        <ReportOptionsButton
-          target={{
-            targetType,
-            targetId: targetType === 'FEED' ? feedId : commentId,
-          }}
-          authorId={authorId}
-        />,
+        targetType === 'FEED' ? (
+          <OtherFeedOptionsButton
+            feedId={feedId}
+            authorId={authorId}
+            authorNickname="네오"
+          />
+        ) : (
+          <OtherFeedCommentOptionsButton
+            commentId={commentId}
+            authorId={authorId}
+            authorNickname="네오"
+          />
+        ),
       );
       prepareDialogs();
       await user.click(
@@ -138,7 +182,7 @@ describe('타인 콘텐츠의 신고 진입', (): void => {
       );
       expect(
         screen.queryByRole('heading', {
-          name: REPORT_COPY.menuTitle,
+          name: targetType === 'FEED' ? '피드 메뉴' : '댓글 메뉴',
         }),
       ).not.toBeInTheDocument();
       expect(
@@ -152,9 +196,10 @@ describe('타인 콘텐츠의 신고 진입', (): void => {
   it('탈퇴한 작성자의 댓글은 댓글 신고만 제공한다', async (): Promise<void> => {
     const user = userEvent.setup();
     render(
-      <ReportOptionsButton
-        target={{ targetType: 'COMMENT', targetId: commentId }}
+      <OtherFeedCommentOptionsButton
+        commentId={commentId}
         authorId={null}
+        authorNickname="탈퇴한 회원"
       />,
     );
     prepareDialogs();
@@ -165,9 +210,58 @@ describe('타인 콘텐츠의 신고 진입', (): void => {
     expect(
       screen.queryByRole('button', { name: '작성자 신고' }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '작성자 차단' }),
+    ).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '댓글 신고' }));
     expect(
       screen.getByRole('heading', { name: '댓글 신고' }),
     ).toBeInTheDocument();
+  });
+  it('피드와 작성자 신고를 번갈아 선택하면 새 대상과 빈 사유로 다시 열린다', async (): Promise<void> => {
+    const submit = jest.spyOn(reports, 'submitReport').mockResolvedValue({
+      id: '30000000-0000-4000-8000-000000000001',
+      status: 'RECEIVED',
+      duplicate: false,
+    });
+    render(
+      <OtherFeedOptionsButton
+        feedId={feedId}
+        authorId={authorId}
+        authorNickname="네오"
+      />,
+    );
+    prepareDialogs();
+    for (const [menu, targetType, targetId] of [
+      ['피드 신고', 'FEED', feedId],
+      ['작성자 신고', 'USER', authorId],
+      ['피드 신고', 'FEED', feedId],
+    ] as const) {
+      await userEvent.click(
+        screen.getByRole('button', { name: '피드 더보기' }),
+      );
+      await userEvent.click(screen.getByRole('button', { name: menu }));
+      expect(screen.getByRole('heading', { name: menu })).toBeVisible();
+      expect(screen.getByRole('textbox')).toHaveValue('');
+      expect(
+        screen.getByRole('radio', { name: '스팸·광고' }),
+      ).not.toBeChecked();
+      await userEvent.click(screen.getByRole('radio', { name: '스팸·광고' }));
+      await userEvent.click(
+        screen.getByRole('button', { name: REPORT_COPY.submit }),
+      );
+      await waitFor((): void =>
+        expect(
+          screen.queryByRole('heading', { name: menu }),
+        ).not.toBeInTheDocument(),
+      );
+      expect(submit).toHaveBeenLastCalledWith({
+        targetType,
+        targetId,
+        reason: 'SPAM',
+        description: '',
+      });
+    }
+    expect(submit).toHaveBeenCalledTimes(3);
   });
 });

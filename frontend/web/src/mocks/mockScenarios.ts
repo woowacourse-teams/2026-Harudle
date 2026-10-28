@@ -2,6 +2,11 @@ export const MOCK_SCENARIO_HEADER = 'x-msw-scenario';
 
 export const MOCK_SCENARIOS = {
   oauthAuthorization: 'oauth-authorization',
+  legalDocumentsFailure: 'legal-documents-failure',
+  agreementRequired: 'agreement-required',
+  agreementMutationFailure: 'agreement-mutation-failure',
+  agreementDocumentChanged: 'agreement-document-changed',
+  agreementStatusFailure: 'agreement-status-failure',
   authRefreshFailure: 'auth-refresh-failure',
   authRefreshSuccess: 'auth-refresh-success',
   monthlyDiariesNonJsonError: 'monthly-diaries-non-json-error',
@@ -24,5 +29,7 @@ export const MOCK_SCENARIOS = {
   feedDeleteFailure: 'feed-delete-failure',
   feedCommentDeleteFailure: 'feed-comment-delete-failure',
   profileFailure: 'profile-failure',
+  blockListFailure: 'block-list-failure',
+  blockMutationFailure: 'block-mutation-failure',
   logoutFailure: 'logout-failure',
 } as const;

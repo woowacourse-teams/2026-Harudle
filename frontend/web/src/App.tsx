@@ -1,47 +1,69 @@
 import { css } from '@emotion/react';
+import { Route, Routes } from 'react-router';
+
+import AgreementRoute from './AgreementRoute';
 import EntryRoute from './EntryRoute';
 import PublicFeedRoute from './PublicFeedRoute';
-import AlbumPage from './pages/album/AlbumPage/AlbumPage';
-import FeedPage from './pages/feed/FeedPage';
-import FeedDetailPage from './pages/feed-detail/FeedDetailPage';
-import { Route, Routes } from 'react-router';
-import DiaryWritePage from './pages/diary-write/DiaryWritePage';
-
-import SettingPage from './pages/setting/SettingPage';
-import LoginPage from './pages/login/LoginPage';
-import DiaryDetailPage from './pages/diary-detail/DiaryDetailPage';
-import AuthCallbackPage from './pages/login/AuthCallbackPage';
-import LandingRoutes from './pages/landing/LandingRoutes';
 import AdminGuard from './pages/admin/AdminGuard';
+import AlbumPage from './pages/album/AlbumPage/AlbumPage';
+import BlockedUsersPage from './pages/blocked-users/BlockedUsersPage';
+import ConsentPage from './pages/consent/ConsentPage';
+import DiaryDetailPage from './pages/diary-detail/DiaryDetailPage';
+import DiaryWritePage from './pages/diary-write/DiaryWritePage';
+import FeedDetailPage from './pages/feed-detail/FeedDetailPage';
+import FeedPostPage from './pages/feed-post/FeedPostPage';
+import FeedPage from './pages/feed/FeedPage';
+import LandingRoutes from './pages/landing/LandingRoutes';
+import LegalDocumentPage from './pages/legal/LegalDocumentPage';
+import AuthCallbackPage from './pages/login/AuthCallbackPage';
+import LoginPage from './pages/login/LoginPage';
 import NotFoundPage from './pages/not-found/NotFoundPage';
 import PwaAnalyticsTracker from './pages/setting/PwaAnalyticsTracker';
-import FeedPostPage from './pages/feed-post/FeedPostPage';
-import DiaryGenerationNotice from './shared/DiaryGenerationNotice';
+import SettingPage from './pages/setting/SettingPage';
 
 const App = () => {
   return (
     <div css={appStyle}>
       <PwaAnalyticsTracker />
-      <DiaryGenerationNotice />
 
       <Routes>
-        <Route element={<EntryRoute />}>
-          <Route element={<PublicFeedRoute />}>
-            <Route path="/" element={<FeedPage />} />
-          </Route>
-        </Route>
-        <Route path="/album" element={<AlbumPage />} />
-        <Route element={<PublicFeedRoute />}>
-          <Route path="/feeds/:feedId" element={<FeedDetailPage />} />
-        </Route>
+        {/* 약관 검사 없이 접근하는 로그인·문서·동의 화면 */}
+        <Route path="/landing/*" element={<LandingRoutes />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
-        <Route path="/diary-write" element={<DiaryWritePage />} />
-        <Route path="/diary/:diaryId" element={<DiaryDetailPage />} />
-        <Route path="/diary/:diaryId/feed-post" element={<FeedPostPage />} />
-        <Route path="/setting" element={<SettingPage />} />
-        <Route path="/landing/*" element={<LandingRoutes />} />
-        <Route path="/admin/*" element={<AdminGuard />} />
+        <Route
+          path="/legal/terms/:version?"
+          element={<LegalDocumentPage type="TERMS" />}
+        />
+        <Route
+          path="/legal/privacy/:version?"
+          element={<LegalDocumentPage type="PRIVACY" />}
+        />
+        <Route path="/consent" element={<ConsentPage />} />
+
+        {/* 모든 서비스 화면은 세션 복원 후 약관 동의를 확인한다. */}
+        <Route element={<PublicFeedRoute />}>
+          <Route element={<AgreementRoute />}>
+            <Route element={<EntryRoute />}>
+              <Route path="/" element={<FeedPage />} />
+            </Route>
+            <Route path="/feeds/:feedId" element={<FeedDetailPage />} />
+            <Route path="/album" element={<AlbumPage />} />
+            <Route path="/diary-write" element={<DiaryWritePage />} />
+            <Route path="/diary/:diaryId" element={<DiaryDetailPage />} />
+            <Route
+              path="/diary/:diaryId/feed-post"
+              element={<FeedPostPage />}
+            />
+            <Route path="/setting" element={<SettingPage />} />
+            <Route
+              path="/setting/blocked-users"
+              element={<BlockedUsersPage />}
+            />
+            <Route path="/admin/*" element={<AdminGuard />} />
+          </Route>
+        </Route>
+
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </div>

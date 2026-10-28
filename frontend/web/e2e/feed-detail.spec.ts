@@ -133,14 +133,14 @@ test('비회원도 공개 상세를 보고 피드·댓글 신고를 누르면 �
   });
   await page.goto(detailPath);
   await expect(page.getByRole('article')).toBeVisible();
-  await expect(page.locator('input[type="radio"]')).toHaveCount(0);
+  await expect(page.getByRole('radio')).toHaveCount(0);
   await expect(page).toHaveURL(detailPath);
   await page
     .getByRole('article')
     .getByRole('button', { name: '피드 더보기' })
     .click();
   const reportMenu = page.getByRole('dialog').filter({
-    has: page.getByRole('heading', { name: '신고하기', exact: true }),
+    has: page.getByRole('heading', { name: /^(피드|댓글) 메뉴$/, exact: true }),
   });
   await expect(reportMenu.getByRole('button', { name: /삭제$/ })).toHaveCount(
     0,
@@ -153,9 +153,7 @@ test('비회원도 공개 상세를 보고 피드·댓글 신고를 누르면 �
     }),
   });
   await expect(login).toContainText('신고를 접수하려면 로그인해 주세요.');
-  await expect(
-    login.getByRole('button', { name: '카카오로 로그인' }),
-  ).toBeVisible();
+  await expect(login.getByRole('button', { name: '로그인하기' })).toBeVisible();
   await login.getByRole('button', { name: '계속 둘러보기' }).click();
   await expect(login).not.toBeVisible();
   await expect(page).toHaveURL(detailPath);
@@ -184,7 +182,7 @@ test.describe('로그인 회원의 상세 메뉴', (): void => {
       .filter({ hasText: '마지막 장면 너무 공감돼요!' })
       .first();
     await expect(comment).toBeVisible();
-    await expect(page.locator('input[type="radio"]')).toHaveCount(0);
+    await expect(page.getByRole('radio')).toHaveCount(0);
     // MSW가 처리하는 실제 fetch를 보존하고 첫 신고만 명시적으로 대기시킨다.
     await page.evaluate((): void => {
       const fetch = window.fetch.bind(window);
@@ -216,7 +214,10 @@ test.describe('로그인 회원의 상세 메뉴', (): void => {
 
     await comment.getByRole('button', { name: '댓글 더보기' }).click();
     const menu = page.getByRole('dialog').filter({
-      has: page.getByRole('heading', { name: '신고하기', exact: true }),
+      has: page.getByRole('heading', {
+        name: /^(피드|댓글) 메뉴$/,
+        exact: true,
+      }),
     });
     await menu.getByRole('button', { name: '댓글 신고' }).click();
     const form = page.getByRole('dialog').filter({
@@ -240,11 +241,12 @@ test.describe('로그인 회원의 상세 메뉴', (): void => {
     await page.evaluate((): void => {
       window.dispatchEvent(new Event('release-report'));
     });
-    await expect(form.getByRole('status')).toHaveText(
-      '신고가 접수되었어요. 운영자가 내용을 확인할게요.',
-    );
-    await form.getByRole('button', { name: '확인', exact: true }).click();
-    await expect(form).not.toBeVisible();
+    await expect(form).toBeHidden();
+    await expect(
+      page.getByText('신고가 접수되었어요. 운영자가 내용을 확인할게요.', {
+        exact: true,
+      }),
+    ).toBeVisible();
     await comment.getByRole('button', { name: '댓글 더보기' }).click();
     await menu.getByRole('button', { name: '작성자 신고' }).click();
     const authorForm = page.getByRole('dialog').filter({
@@ -267,9 +269,14 @@ test.describe('로그인 회원의 상세 메뉴', (): void => {
       targetId: '00000000-0000-4000-8000-000000000100',
       reason: 'OTHER',
     });
-    await expect(authorForm.getByRole('status')).toHaveText(
-      '신고가 접수되었어요. 운영자가 내용을 확인할게요.',
-    );
+    await expect(authorForm).toBeHidden();
+    await expect(
+      page
+        .getByText('신고가 접수되었어요. 운영자가 내용을 확인할게요.', {
+          exact: true,
+        })
+        .last(),
+    ).toBeVisible();
   });
 
   test('본인 피드 삭제를 취소하면 유지하고 확인하면 삭제한다', async ({
@@ -330,7 +337,10 @@ test.describe('로그인 회원의 상세 메뉴', (): void => {
         .first();
       await comment.getByRole('button', { name: '댓글 더보기' }).click();
       const menu = page.getByRole('dialog').filter({
-        has: page.getByRole('heading', { name: '신고하기', exact: true }),
+        has: page.getByRole('heading', {
+          name: /^(피드|댓글) 메뉴$/,
+          exact: true,
+        }),
       });
       await expect(
         menu.getByRole('button', { name: /댓글 삭제$/ }),
@@ -366,9 +376,12 @@ test.describe('로그인 회원의 상세 메뉴', (): void => {
       expect(response.request().headers()['x-xsrf-token']).toBe(
         'mock-csrf-token',
       );
-      await expect(form.getByRole('status')).toHaveText(
-        '신고가 접수되었어요. 운영자가 내용을 확인할게요.',
-      );
+      await expect(form).toBeHidden();
+      await expect(
+        page.getByText('신고가 접수되었어요. 운영자가 내용을 확인할게요.', {
+          exact: true,
+        }),
+      ).toBeVisible();
     });
   }
 });
