@@ -199,7 +199,7 @@ describe('피드 카드 액션', (): void => {
       <FeedItemList onCategoryClick={mockOnCategoryClick} sort="LATEST" />,
     );
 
-    await user.click(await screen.findByRole('button', { name: '3' }));
+    await user.click(await screen.findByRole('button', { name: '댓글 3개' }));
 
     expect(mockNavigate).toHaveBeenCalledWith(`/feeds/${feed.id}`, {
       state: { fromFeed: true },
@@ -860,7 +860,9 @@ describe('피드 목록 조회 상태', () => {
     expect(
       screen.getByRole('button', { name: '좋아요 12개' }),
     ).toHaveTextContent('12');
-    expect(screen.getByRole('button', { name: '3' })).toHaveTextContent('3');
+    expect(screen.getByRole('button', { name: '댓글 3개' })).toHaveTextContent(
+      '3',
+    );
     expect(
       screen.getByRole('button', { name: '공유하기' }),
     ).toBeInTheDocument();
