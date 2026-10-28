@@ -4,9 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.startsWith;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -15,11 +19,20 @@ import com.harudle.TestcontainersConfiguration;
 import com.harudle.auth.application.AccessTokenService;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.UserRepository;
+import com.harudle.auth.infrastructure.oauth.OAuthLoginFailureHandler;
+import com.nimbusds.jose.jwk.Curve;
+import com.nimbusds.jose.jwk.gen.ECKeyGenerator;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -28,9 +41,15 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpSession;
+import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.util.UriComponentsBuilder;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers(disabledWithoutDocker = true)
@@ -38,9 +57,30 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @AutoConfigureMockMvc
 @Import({TestcontainersConfiguration.class, SecurityTestController.class})
 @TestPropertySource(properties = {
+        "BACKEND_BASE_URL=http://localhost:8080",
+        "server.servlet.session.cookie.same-site=none",
+        "server.servlet.session.cookie.secure=true",
         "app.auth.failure-redirect=http://localhost:5173/auth/callback?error=oauth_failed"
 })
 class SecurityConfigTest {
+
+    @DynamicPropertySource
+    static void configureApple(DynamicPropertyRegistry registry) throws Exception {
+        var key = new ECKeyGenerator(Curve.P_256).generate();
+        var path = Files.createTempFile("harudle-apple-test-", ".p8");
+        path.toFile().deleteOnExit();
+        String encoded = Base64.getEncoder().encodeToString(key.toECPrivateKey().getEncoded());
+        Files.writeString(path, "-----BEGIN PRIVATE KEY-----\n" + encoded + "\n-----END PRIVATE KEY-----\n");
+        registry.add("app.auth.apple.enabled", () -> "true");
+        registry.add("app.auth.apple.client-id", () -> "com.harudle.web");
+        registry.add("app.auth.apple.team-id", () -> "test-team");
+        registry.add("app.auth.apple.key-id", () -> "test-key");
+        registry.add("app.auth.apple.private-key-path", path::toString);
+        registry.add("app.auth.apple.redirect-uri", () -> "https://www.harudle.com/login/oauth2/code/apple");
+    }
+
+    @MockitoSpyBean
+    private OAuthLoginFailureHandler oAuthLoginFailureHandler;
 
     @Autowired
     private MockMvc mockMvc;
@@ -57,6 +97,21 @@ class SecurityConfigTest {
     @AfterEach
     void tearDown() {
         userRepository.deleteAll();
+    }
+
+    @Test
+    @DisplayName("프로필 조회 응답의 만료 시각과 주소 발급 실패를 문서화한다")
+    void documentsProfileImageExpiryAndReadFailure() throws Exception {
+        String image = "$.components.schemas.CurrentUserResponse.properties.profileImageUrlExpiresAt";
+        mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk())
+                .andExpect(jsonPath(image + ".format")
+                        .value("date-time"))
+                .andExpect(jsonPath(image + ".nullable")
+                        .value(true))
+                .andExpect(jsonPath("$.components.schemas.Author.properties.profileImageUrlExpiresAt.format")
+                        .value("date-time"))
+                .andExpect(jsonPath("$.paths['/api/v1/me'].get.responses['503'].content['application/problem+json']"
+                        + ".examples.PROFILE_IMAGE_STORAGE_ERROR.value.code").value("PROFILE_IMAGE_STORAGE_ERROR"));
     }
 
     @Test
@@ -215,9 +270,11 @@ class SecurityConfigTest {
                 .andExpect(jsonPath("$.paths['/api/v1/telemetry/image-load-failures/timeline'].post"
                         + ".security[0].bearerAuth").isArray())
                 .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['200']").exists())
-                .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['201']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['202']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['201']").doesNotExist())
                 .andExpect(jsonPath("$.paths['/api/v1/guest/diaries'].post.responses['200']").exists())
-                .andExpect(jsonPath("$.paths['/api/v1/guest/diaries'].post.responses['201']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/guest/diaries'].post.responses['202']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/guest/diaries'].post.responses['201']").doesNotExist())
                 .andExpect(jsonPath("$.paths['/api/v1/diaries/{diaryId}'].delete.responses['204']").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/diaries/{diaryId}'].delete.responses['503']").doesNotExist())
                 .andExpect(jsonPath("$.paths['/api/v1/feeds'].post.responses['201']").exists())
@@ -236,6 +293,71 @@ class SecurityConfigTest {
     }
 
     @Test
+    @DisplayName("기본 프로필 이미지 변경 문서에 인증, 번호 범위와 응답을 명시한다")
+    void documentsDefaultProfileImageChange() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].patch.security[0].bearerAuth").isArray())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].patch.security[0].csrfToken").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].patch.responses['204']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].patch.responses['200']").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].patch.responses['400'].content"
+                        + "['application/problem+json'].examples.VALIDATION_ERROR.value.code")
+                        .value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].patch.responses['409'].content"
+                        + "['application/problem+json'].examples.PUBLIC_PROFILE_NOT_ASSIGNED.value.code")
+                        .value("PUBLIC_PROFILE_NOT_ASSIGNED"))
+                .andExpect(jsonPath("$.components.schemas.ChangeDefaultProfileImageRequest.required")
+                        .value(hasItem("imageCode")))
+                .andExpect(jsonPath("$.components.schemas.ChangeDefaultProfileImageRequest.properties.imageCode.minimum")
+                        .value(1))
+                .andExpect(jsonPath("$.components.schemas.ChangeDefaultProfileImageRequest.properties.imageCode.maximum")
+                        .value(10));
+    }
+
+    @Test
+    @DisplayName("개인 사진 업로드 문서에 multipart 요청과 인증 및 성공과 실패 응답을 명시한다")
+    void documentsProfileImageUpload() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].post.security[0].bearerAuth").isArray())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].post.security[0].csrfToken").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].post.requestBody.required").value(true))
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].post.requestBody.content"
+                        + "['multipart/form-data']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].post.responses['204']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].post.responses['200']").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].post.responses['413'].content"
+                        + "['application/problem+json'].schema['$ref']")
+                        .value("#/components/schemas/HarudleProblemDetail"))
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].post.responses['415']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile-image'].post.responses['503'].content"
+                        + "['application/problem+json'].examples.PROFILE_IMAGE_STORAGE_ERROR.value.code")
+                        .value("PROFILE_IMAGE_STORAGE_ERROR"));
+    }
+
+    @Test
+    @DisplayName("통합 프로필 문서에 선택 가능한 multipart 항목과 인증 및 응답을 명시한다")
+    void documentsCombinedProfileChange() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile'].patch.security[0].bearerAuth").isArray())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile'].patch.security[0].csrfToken").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile'].patch.responses['204']").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile'].patch.responses['409'].content"
+                        + "['application/problem+json'].examples.NICKNAME_ALREADY_IN_USE.value.code")
+                        .value("NICKNAME_ALREADY_IN_USE"))
+                .andExpect(jsonPath("$.paths['/api/v1/me/profile'].patch.requestBody.content"
+                        + "['multipart/form-data'].schema['$ref']").value("#/components/schemas/ChangeProfileRequest"))
+                .andExpect(jsonPath("$.components.schemas.ChangeProfileRequest.required").doesNotExist())
+                .andExpect(jsonPath("$.components.schemas.ChangeProfileRequest.properties.nickname").exists())
+                .andExpect(jsonPath("$.components.schemas.ChangeProfileRequest.properties.imageCode.minimum").value(1))
+                .andExpect(jsonPath("$.components.schemas.ChangeProfileRequest.properties.imageCode.maximum").value(10))
+                .andExpect(jsonPath("$.components.schemas.ChangeProfileRequest.properties.image.format")
+                        .value("binary"));
+    }
+
+    @Test
     @DisplayName("OpenAPI 문서에 API별 Problem Details 코드와 예시를 명시한다")
     void documentsApiErrorResponses() throws Exception {
         mockMvc.perform(get("/v3/api-docs"))
@@ -247,7 +369,9 @@ class SecurityConfigTest {
                 .andExpect(jsonPath("$.components.schemas.HarudleProblemDetail.properties.errors.items['$ref']")
                         .value("#/components/schemas/HarudleFieldValidationError"))
                 .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['200'].description")
-                        .value("멱등 재요청의 기존 일기 반환"))
+                        .value("멱등 재요청의 기존 일기와 생성 상태 반환"))
+                .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['202'].description")
+                        .value("새 일기와 대기 작업 접수 완료"))
                 .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['400'].description")
                         .value(startsWith("잘못된 요청\n\n| 오류 코드 | 예시 메시지 |")))
                 .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['400'].description")
@@ -259,7 +383,9 @@ class SecurityConfigTest {
                 .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['409'].description")
                         .value(startsWith("요청이 현재 상태와 충돌함")))
                 .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['409'].description")
-                        .value(containsString("| `GENERATION_IN_PROGRESS` | 동일한 만화 생성 요청이 처리 중입니다. |")))
+                        .value(containsString("| `IDEMPOTENCY_KEY_CONFLICT` | 동일한 멱등성 키가 다른 요청에 사용되었습니다. |")))
+                .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['409'].content"
+                        + "['application/problem+json'].examples.GENERATION_IN_PROGRESS").doesNotExist())
                 .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['500'].description")
                         .value(startsWith("서버 내부 오류")))
                 .andExpect(jsonPath("$.paths['/api/v1/admin/generations/restore-image/upload'].post"
@@ -344,15 +470,118 @@ class SecurityConfigTest {
     }
 
     @Test
+    @DisplayName("구글 로그인은 OIDC 범위와 콜백 주소를 전달하고 세션을 생성한다")
+    void redirectsToGoogleAuthorizationPage() throws Exception {
+        MvcResult result = mockMvc.perform(get("/oauth2/authorization/google"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(header().string(
+                        HttpHeaders.LOCATION,
+                        startsWith("https://accounts.google.com/o/oauth2/v2/auth?")
+                ))
+                .andReturn();
+
+        MultiValueMap<String, String> parameters = UriComponentsBuilder
+                .fromUriString(result.getResponse().getHeader(HttpHeaders.LOCATION))
+                .build()
+                .getQueryParams();
+
+        assertThat(parameters.getFirst("client_id")).isNotBlank();
+        assertThat(parameters.getFirst("response_type")).isEqualTo("code");
+        assertThat(URLDecoder.decode(parameters.getFirst("redirect_uri"), StandardCharsets.UTF_8))
+                .isEqualTo("http://localhost:8080/login/oauth2/code/google");
+        assertThat(URLDecoder.decode(parameters.getFirst("scope"), StandardCharsets.UTF_8).split(" "))
+                .containsExactlyInAnyOrder("openid", "email", "profile");
+        assertThat(parameters.getFirst("state")).isNotBlank();
+        assertThat(parameters.getFirst("nonce")).isNotBlank();
+        assertThat(result.getRequest().getSession(false)).isNotNull();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"kakao", "google"})
     @DisplayName("OAuth 콜백의 state가 없으면 실패 URL로 리다이렉트한다")
-    void redirectsOAuthCallbackFailure() throws Exception {
-        mockMvc.perform(get("/login/oauth2/code/kakao")
+    void redirectsOAuthCallbackFailure(String registrationId) throws Exception {
+        mockMvc.perform(get("/login/oauth2/code/{registrationId}", registrationId)
                         .param("code", "authorization-code"))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(header().string(
                         HttpHeaders.LOCATION,
                         "http://localhost:5173/auth/callback?error=oauth_failed"
-                ));
+                ))
+                .andExpect(cookie().doesNotExist("refresh_token"));
+    }
+
+    @Test
+    @DisplayName("구글 콜백의 state가 시작 요청과 다르면 로그인을 거절한다")
+    void rejectsGoogleCallbackWithMismatchedState() throws Exception {
+        MvcResult startResult = mockMvc.perform(get("/oauth2/authorization/google"))
+                .andExpect(status().is3xxRedirection())
+                .andReturn();
+        MockHttpSession session = (MockHttpSession) startResult.getRequest().getSession(false);
+        assertThat(session).isNotNull();
+
+        mockMvc.perform(get("/login/oauth2/code/google")
+                        .session(session)
+                        .param("code", "authorization-code")
+                        .param("state", "mismatched-state"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(header().string(
+                        HttpHeaders.LOCATION,
+                        "http://localhost:5173/auth/callback?error=oauth_failed"
+                ))
+                .andExpect(cookie().doesNotExist("refresh_token"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"missing-session", "mismatched-state"})
+    @DisplayName("Apple POST 콜백은 CSRF 토큰 없이 처리하되 세션 누락과 state 불일치를 거절한다")
+    void rejectsInvalidAppleCallback(String scenario) throws Exception {
+        MvcResult start = mockMvc.perform(get("/oauth2/authorization/apple"))
+                .andExpect(status().is3xxRedirection()).andReturn();
+        String state = UriComponentsBuilder.fromUriString(start.getResponse().getHeader(HttpHeaders.LOCATION))
+                .build().getQueryParams().getFirst("state");
+        state = URLDecoder.decode(state, StandardCharsets.UTF_8);
+        var callback = post("/login/oauth2/code/apple").param("code", "test-code");
+        if (scenario.equals("mismatched-state")) {
+            callback.session((MockHttpSession) start.getRequest().getSession(false))
+                    .param("state", "wrong-state");
+        } else {
+            callback.param("state", state);
+        }
+
+        mockMvc.perform(callback)
+                .andExpect(status().is3xxRedirection())
+                .andExpect(header().string(HttpHeaders.LOCATION,
+                        "http://localhost:5173/auth/callback?error=oauth_failed"))
+                .andExpect(cookie().doesNotExist("refresh_token"));
+    }
+
+    @Test
+    @DisplayName("올바른 세션과 state의 Apple POST 취소 요청은 CSRF 토큰 없이 사용자 취소로 처리한다")
+    void acceptsAppleCancellationWithMatchingState() throws Exception {
+        MvcResult start = mockMvc.perform(get("/oauth2/authorization/apple"))
+                .andExpect(status().is3xxRedirection()).andReturn();
+        String state = UriComponentsBuilder.fromUriString(start.getResponse().getHeader(HttpHeaders.LOCATION))
+                .build().getQueryParams().getFirst("state");
+        state = URLDecoder.decode(state, StandardCharsets.UTF_8);
+
+        mockMvc.perform(post("/login/oauth2/code/apple")
+                        .session((MockHttpSession) start.getRequest().getSession(false))
+                        .param("state", state).param("error", "user_cancelled_authorize"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(cookie().doesNotExist("refresh_token"));
+
+        verify(oAuthLoginFailureHandler).onAuthenticationFailure(any(), any(), argThat(exception ->
+                exception instanceof OAuth2AuthenticationException oauthException
+                        && "user_cancelled_authorize".equals(oauthException.getError().getErrorCode())));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/login/oauth2/code/google", "/login/oauth2/code/kakao",
+            "/login/oauth2/code/apple/extra", "/api/v1/auth/refresh", "/api/v1/auth/logout",
+            "/api/v1/guest/session"})
+    @DisplayName("Apple 콜백 이외의 POST에는 기존 CSRF 보호를 유지한다")
+    void keepsCsrfProtectionOutsideAppleCallback(String path) throws Exception {
+        mockMvc.perform(post(path)).andExpect(status().isForbidden());
     }
 
     private User saveUser(String email, String name) {
@@ -366,6 +595,7 @@ class SecurityConfigTest {
     private String issueAccessToken(UUID userId) {
         return accessTokenService.issue(
                 userId,
+                UUID.randomUUID(),
                 Instant.now()
         ).accessToken();
     }

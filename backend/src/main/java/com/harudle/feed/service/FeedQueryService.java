@@ -1,6 +1,7 @@
 package com.harudle.feed.service;
 
 import com.harudle.category.service.port.CategoryReader;
+import com.harudle.common.testdata.DevTestDataVisibility;
 import com.harudle.feed.repository.FeedQueryRepository;
 import com.harudle.feed.repository.FeedSnapshot;
 import com.harudle.feed.service.dto.FeedResult;
@@ -19,15 +20,18 @@ public class FeedQueryService {
 
     private final FeedQueryRepository feeds;
     private final FeedCollaborators collaborators;
+    private final DevTestDataVisibility visibility;
 
-    public FeedQueryService(FeedQueryRepository feeds, FeedCollaborators collaborators) {
+    public FeedQueryService(FeedQueryRepository feeds, FeedCollaborators collaborators, DevTestDataVisibility visibility) {
         this.feeds = feeds;
         this.collaborators = collaborators;
+        this.visibility = visibility;
     }
 
     public FeedResult getDetail(@Nullable UUID viewerId, UUID feedId) {
         Objects.requireNonNull(feedId, "피드 ID는 필수입니다.");
-        FeedSnapshot feed = feeds.findActiveSnapshotById(feedId).orElseThrow(FeedNotFoundException::new);
+        FeedSnapshot feed = (visibility.enabled() ? feeds.findVisibleSnapshotById(feedId, viewerId)
+                : feeds.findActiveSnapshotById(feedId, viewerId)).orElseThrow(FeedNotFoundException::new);
         PublicProfileReader.Profile author = collaborators.profiles()
                 .readAll(Set.of(feed.authorId())).get(feed.authorId());
         if (author == null) {

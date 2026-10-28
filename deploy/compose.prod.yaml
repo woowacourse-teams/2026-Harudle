@@ -8,6 +8,12 @@ services:
       - .env
     volumes:
       - type: bind
+        source: /etc/harudle/secrets/apple
+        target: /var/run/harudle/apple
+        read_only: true
+        bind:
+          create_host_path: true
+      - type: bind
         source: /etc/harudle/gcp/gcp-wif.json
         target: /var/run/harudle/gcp-wif.json
         read_only: true
@@ -32,7 +38,7 @@ services:
       start_period: 60s
       retries: 3
     mem_limit: 1200m
-    stop_grace_period: 30s
+    stop_grace_period: 7m
     security_opt:
       - no-new-privileges:true
     tmpfs:

@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 
 PREFIX = "harudle/generated/diary-images/dev"
 MEMBERS = 200
+MEMBER_COUNTS = (200, 1200)
 NAME = r'[a-zA-Z0-9_-]+'
 
 
@@ -43,6 +44,16 @@ def member_identity(fixture):
     return uuid.UUID(fixture.get('memberSetId', fixture['runId']))
 
 
+def data_identity(fixture):
+    return uuid.UUID(fixture.get('baselineId', fixture['runId']))
+
+
+def diary_ids(fixture):
+    return [str(uuid.uuid5(data_identity(fixture), f'diary-{i}-{month}-{j}'))
+            for i in range(len(fixture['members'])) for month in [fixture['currentMonth'], fixture['previousMonth']]
+            for j in range(fixture['diariesPerMonth'])]
+
+
 def account_statements(fixture):
     member_set = member_identity(fixture)
     statements = []
@@ -60,32 +71,55 @@ def account_statements(fixture):
 def reset_guard(accounts):
     ids = ', '.join(quote(member['id']) for member in accounts['members'])
     email = quote('%@' + member_identity(accounts).hex + '.loadtest.invalid')
+    allowed = ', '.join(quote(value) for value in diary_ids(accounts)) if 'baselineId' in accounts else ''
+    extra = f' AND id NOT IN ({allowed})' if allowed else ''
+    baseline = f"""
+    IF (SELECT COUNT(*) FROM diaries WHERE id IN ({allowed}) AND user_id IN ({ids})
+        AND deleted_at IS NULL) <> {len(diary_ids(accounts))} THEN
+        RAISE EXCEPTION 'The baseline diaries changed or are missing';
+    END IF;
+""" if allowed else ''
     return f"""
 DO $$
 BEGIN
     PERFORM 1 FROM users WHERE id IN ({ids}) FOR UPDATE;
     IF (SELECT COUNT(*) FROM users WHERE id IN ({ids}) AND primary_email LIKE {email}
-        AND deleted_at IS NULL AND role = 'USER') <> {MEMBERS} THEN
+        AND deleted_at IS NULL AND role = 'USER') <> {len(accounts['members'])} THEN
         RAISE EXCEPTION 'The reusable test members changed';
     END IF;
-    IF EXISTS (SELECT 1 FROM diaries WHERE user_id IN ({ids})) THEN
+    IF EXISTS (SELECT 1 FROM diaries WHERE user_id IN ({ids}){extra}) THEN
         RAISE EXCEPTION 'Clean the previous test before reset';
     END IF;
+{baseline}
 END $$;
 DELETE FROM refresh_tokens WHERE user_id IN ({ids});
 DELETE FROM daily_generation_usage WHERE user_id IN ({ids});
 """
 
 
-def build_fixture(base_url, per_month, accounts=None, run_name=None):
+def login_sql(fixture):
+    statements = [database_guard(), reset_guard(fixture)]
+    for member in fixture['members']:
+        token = hashlib.sha256(member['refreshToken'].encode()).hexdigest()
+        statements.append("INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES "
+                          f"({quote(member['id'])}, '{token}', CURRENT_TIMESTAMP + INTERVAL '1 day');")
+    return '\n'.join(statements) + '\nCOMMIT;'
+
+
+def build_fixture(base_url, per_month, accounts=None, run_name=None, member_count=MEMBERS):
     if accounts is not None and (not re.fullmatch(NAME, run_name or '') or 'runName' in accounts
                                  or accounts.get('version') != 3):
         raise ValueError('Use reusable members and a new run name')
+    if accounts is not None:
+        member_count = len(accounts['members'])
+    if type(member_count) is not int or member_count not in MEMBER_COUNTS:
+        raise ValueError('Member count must be 200 or 1200')
     run_id = uuid.uuid4() if accounts is None else uuid.uuid5(member_identity(accounts), 'run-' + run_name)
     today = datetime.now(ZoneInfo("Asia/Seoul")).date()
     current = today.replace(day=1)
     previous = (current - timedelta(days=1)).replace(day=1)
-    category = "부하" + run_id.hex[:12]
+    baseline_id = uuid.uuid5(member_identity(accounts), f'baseline-{current}') if accounts is not None else run_id
+    category = "부하" + baseline_id.hex[:12]
     members, image_keys, statements = [], [], [database_guard()]
     if accounts is not None:
         statements.append(reset_guard(accounts))
@@ -102,20 +136,20 @@ def build_fixture(base_url, per_month, accounts=None, run_name=None):
     }, ensure_ascii=False)
 
     def identifier(key):
-        return str(uuid.uuid5(run_id, key))
+        return str(uuid.uuid5(baseline_id, key))
 
-    for i in range(MEMBERS):
+    for i in range(member_count):
         user_id = identifier(f"member-{i}") if accounts is None else accounts['members'][i]['id']
         refresh = secrets.token_urlsafe(48) if accounts is None else accounts['members'][i]['refreshToken']
         statements.append(
             "INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES "
             f"({quote(user_id)}, '{hashlib.sha256(refresh.encode()).hexdigest()}', CURRENT_TIMESTAMP + INTERVAL '1 day');")
         member = {"id": user_id, "refreshToken": refresh,
-                  "idempotencyKey": identifier(f"create-{i}"), "diaryId": None, "feedId": None}
+                  "idempotencyKey": str(uuid.uuid5(run_id, f"create-{i}")), "diaryId": None, "feedId": None}
         for month in [current, previous]:
             for j in range(per_month):
                 diary_id = identifier(f"diary-{i}-{month}-{j}")
-                generation_id, key = seed_image(run_id, i, month, j)
+                generation_id, key = seed_image(baseline_id, i, month, j)
                 image_keys.append(key)
                 diary_date = month.replace(day=min(j + 1, today.day if month == current else 28))
                 statements.append(
@@ -143,12 +177,12 @@ def build_fixture(base_url, per_month, accounts=None, run_name=None):
         feed = member["feedId"]
         # Real rows and counters agree; reaction actors use a different target.
         for offset in range(1, 3):
-            author = members[(i + offset) % MEMBERS]["id"]
+            author = members[(i + offset) % member_count]["id"]
             statements.append(
                 "INSERT INTO comments (id, feed_id, author_id, content) VALUES "
                 f"({quote(identifier(f'comment-{i}-{offset}'))}, {quote(feed)}, {quote(author)}, '준비된 댓글 {offset}');")
         for offset in range(1, i % 6 + 1):
-            liker = members[(i + offset) % MEMBERS]["id"]
+            liker = members[(i + offset) % member_count]["id"]
             statements.append(
                 "INSERT INTO feed_likes (id, feed_id, user_id) VALUES "
                 f"({quote(identifier(f'like-{i}-{offset}'))}, {quote(feed)}, {quote(liker)});")
@@ -158,27 +192,29 @@ def build_fixture(base_url, per_month, accounts=None, run_name=None):
                "baseUrl": base_url, "date": str(today),
                "currentMonth": str(current), "previousMonth": str(previous), "categoryName": category,
                "diariesPerMonth": per_month, "members": members}
+    if member_count != MEMBERS:
+        fixture['memberCount'] = member_count
     if accounts is None:
         statements[1:1] = account_statements(fixture)
     else:
         fixture.update(version=3, memberSetId=accounts['memberSetId'], memberSetName=accounts['memberSetName'],
-                       cleanupKey=accounts['cleanupKey'], runName=run_name)
+                       cleanupKey=accounts['cleanupKey'], runName=run_name, baselineId=str(baseline_id))
     return fixture, "\n".join(statements), image_keys
 
 
-def write_fixture(directory, base_url='https://dev.harudle.com', per_month=1, accounts=None):
+def write_fixture(directory, base_url='https://dev.harudle.com', per_month=1, accounts=None, member_count=MEMBERS):
     os.umask(0o077)
     directory.mkdir(parents=True, exist_ok=False)
     if accounts is not None:
         base_url, per_month = accounts['baseUrl'], accounts['diariesPerMonth']
-    fixture, seed, keys = build_fixture(base_url, per_month, accounts, directory.name)
+    fixture, seed, keys = build_fixture(base_url, per_month, accounts, directory.name, member_count)
     (directory / "members.json").write_text(json.dumps(fixture, ensure_ascii=False, indent=2))
     (directory / "seed.sql").write_text(seed)
     return fixture, seed, keys
 
 
-def write_members(directory):
-    fixture, _, _ = write_fixture(directory)
+def write_members(directory, member_count=MEMBERS):
+    fixture, _, _ = write_fixture(directory, member_count=member_count)
     fixture.update(version=3, memberSetId=fixture['runId'], memberSetName=directory.name)
     (directory / 'members.json').write_text(json.dumps(fixture, ensure_ascii=False, indent=2))
     seed = members_sql(fixture)

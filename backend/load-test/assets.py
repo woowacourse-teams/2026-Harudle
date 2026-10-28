@@ -10,7 +10,7 @@ import re
 import subprocess
 import uuid
 
-from prepare import MEMBERS, NAME, PREFIX, member_identity, seed_image
+from prepare import MEMBERS, MEMBER_COUNTS, NAME, PREFIX, data_identity, member_identity, seed_image
 
 BUCKET = "techcourse-project-2026"
 UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
@@ -41,13 +41,16 @@ def load_fixture(directory):
     fixture = json.loads((directory / 'members.json').read_text())
     run_id = uuid.UUID(fixture['runId'])
     member_set = member_identity(fixture)
-    expected = [str(uuid.uuid5(member_set, f'member-{i}')) for i in range(MEMBERS)]
+    member_count = fixture.get('memberCount', MEMBERS)
+    if type(member_count) is not int or member_count not in MEMBER_COUNTS:
+        raise ValueError('Invalid member count')
+    expected = [str(uuid.uuid5(member_set, f'member-{i}')) for i in range(member_count)]
     current = date.fromisoformat(fixture['currentMonth'])
     previous = (current - timedelta(days=1)).replace(day=1)
     if (fixture.get('version') not in {2, 3} or str(run_id) != fixture['runId']
             or not re.fullmatch(r'[0-9a-f]{64}', fixture.get('cleanupKey', ''))
             or [member['id'] for member in fixture['members']] != expected
-            or fixture['categoryName'] != '부하' + run_id.hex[:12]
+            or fixture['categoryName'] != '부하' + data_identity(fixture).hex[:12]
             or current.day != 1 or fixture['previousMonth'] != str(previous)
             or type(fixture['diariesPerMonth']) is not int or not 1 <= fixture['diariesPerMonth'] <= 100):
         raise ValueError('Invalid run fixture; prepare a fresh run with the current prepare.py')
@@ -62,6 +65,9 @@ def load_fixture(directory):
             raise ValueError('Invalid reusable member identity')
     elif 'memberSetId' in fixture:
         raise ValueError('Legacy fixtures cannot reuse members')
+    if 'baselineId' in fixture and (fixture['version'] != 3 or 'runName' not in fixture
+            or data_identity(fixture) != uuid.uuid5(member_set, f'baseline-{current}')):
+        raise ValueError('Invalid baseline identity')
     return fixture
 
 
@@ -86,7 +92,7 @@ def seed_records(fixture):
     for i, member in enumerate(fixture['members']):
         for month in [fixture['currentMonth'], fixture['previousMonth']]:
             for index in range(fixture['diariesPerMonth']):
-                generation_id, key = seed_image(uuid.UUID(fixture['runId']), i, month, index)
+                generation_id, key = seed_image(data_identity(fixture), i, month, index)
                 records.append({'id': generation_id, 'userId': member['id'], 'imageKey': key})
     return records
 
@@ -113,7 +119,7 @@ def upload(fixture):
     def put(record):
         aws('put-object', '--key', record['imageKey'], '--body', str(TEST_IMAGE),
             '--content-type', 'image/png', '--if-none-match', '*',
-            '--metadata', json.dumps({'load-test-run': fixture['runId']}))
+            '--metadata', json.dumps({'load-test-run': str(data_identity(fixture))}))
     records = seed_records(fixture)
     with ThreadPoolExecutor(max_workers=4) as pool:
         list(pool.map(put, records))
@@ -137,7 +143,7 @@ def delete_images(fixture, records):
                 if key != seeds[record['id']]['imageKey']:
                     raise ValueError('Unexpected object in a seeded image folder')
                 metadata = aws('head-object', '--key', key).get('Metadata', {})
-                if metadata.get('load-test-run') != fixture['runId']:
+                if metadata.get('load-test-run') != str(data_identity(fixture)):
                     raise ValueError('S3 object was not uploaded by this test run')
         for start in range(0, len(keys), 1000):
             result = aws('delete-objects', '--delete', json.dumps({

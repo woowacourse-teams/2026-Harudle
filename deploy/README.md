@@ -53,6 +53,105 @@ Docker bridge 네트워크 안의 백엔드가 EC2 Instance Metadata Service(IMD
 
 EC2의 이미지 로드와 컨테이너 실행은 아래 CodePipeline 배포 절차를 사용합니다.
 
+## 이미지 생성 작업 처리기 설정
+
+작업 처리기는 기존 백엔드 앱 안에서 DB의 `PENDING` 작업을 찾아 실행합니다.
+회원과 게스트 생성 API는 일기와 대기 작업을 저장한 뒤 생성 상태를 반환합니다.
+처리기는 앱 시작 시 항상 등록됩니다. 별도로 켜는 설정은 없습니다.
+실제 이미지를 생성하려면 생성 어댑터를 구성합니다. 어댑터가 준비되지 않으면 신규 접수를 거절하며 작업도 선점하지 않습니다.
+
+| 환경 변수 | 기본값 | 역할 |
+| --- | --- | --- |
+| `GENERATION_WORKER_CONCURRENCY` | `1` | 백엔드 한 대의 동시 실행 수와 미완료 작업의 접수 상한입니다. 1 이상이어야 합니다. |
+| `GENERATION_WORKER_POLL_INTERVAL` | `5s` | 대기 작업을 확인하는 간격입니다. 1ms 이상이어야 합니다. |
+| `GENERATION_PENDING_TIMEOUT` | `120s` | 작업을 저장한 뒤 선점되기까지의 제한 시간입니다. 양수여야 합니다. |
+| `GENERATION_PENDING_CLEANUP_INTERVAL` | `5s` | 대기 만료를 확인하는 간격입니다. 1ms 이상이어야 합니다. |
+
+기본 설정에서는 저장한 지 120초 이상 지난 `PENDING` 작업을 5초 간격으로 확인합니다.
+기존 대기 작업 인덱스로 대상 ID를 최대 100개 조회합니다. ID 조회에는 행 잠금을 걸지 않습니다.
+각 작업은 별도 트랜잭션에서 행을 잠근 뒤 상태와 저장 시각을 다시 확인합니다.
+대기 중인 만료 작업은 `GENERATION_PENDING_TIMEOUT` 오류로 실패 처리하고 일기를 숨깁니다.
+원래 사용 날짜의 회원 생성 횟수도 한 번 돌려줍니다. 실패 기록과 일기 숨김, 사용량 복구는 함께 저장하거나 함께 취소합니다.
+이미 선점되거나 종료된 작업은 변경하지 않습니다. 실제 실패 저장은 확인 간격과 DB 처리 시간에 따라 늦어질 수 있습니다.
+
+확인 간격마다 실행할 수 있는 자리만큼 작업 확인을 시작합니다. 실행 스레드를 배정받은 뒤
+기한이 지나지 않은 대기 작업 하나를 조회합니다. 잠금을 잡은 뒤에도 기한을 확인하고 선점합니다.
+기한이 지난 작업은 실행하지 않고 만료 정리에 맡깁니다. 상태 저장과 잠금 해제가 끝나면 기존 이미지 생성 코드를 호출합니다.
+이 동시 실행 제한은 일반 작업과 부하 테스트 작업을 합한 수에 적용합니다.
+새 요청은 DB의 `PENDING`과 `PROCESSING`의 합이 동시 실행 수보다 적을 때만 접수합니다.
+상한에 도달하면 `503 GENERATION_CAPACITY_EXCEEDED`로 거절하고 사용량과 게스트 체험 횟수는 차감하지 않습니다.
+같은 요청의 재전송은 기존 작업을 반환합니다. 이미 실행 중인 작업에는 기존 처리 제한 시간을 적용합니다.
+현재는 백엔드 한 대를 기준으로 합니다. 여러 대로 늘릴 때는 전체 동시 실행 수와 접수 상한을 함께 다시 정합니다.
+부하 테스트도 같은 대기열과 `SKIP LOCKED` 선점을 사용합니다.
+일반 API는 실제 AI를 사용하며, 부하 테스트 API가 접수한 생성 ID는 메모리에서 가짜 AI 실행기에 연결합니다.
+대기 중 만료된 테스트 작업은 만료 저장이 커밋된 뒤 메모리 연결을 지웁니다. 저장이 취소되면 연결을 유지합니다.
+테스트 실행기는 dev에서만 등록됩니다. 부하 테스트 API도 실행기 준비 여부를 확인합니다.
+대기 상태를 지원하는 V28 마이그레이션을 적용한 뒤 실행합니다.
+테스트 연결은 요청을 받은 백엔드 프로세스에서만 유지됩니다. 재시작 후 남은 테스트 작업은 일반 작업과 구분할 수 없습니다.
+부하 테스트는 백엔드 한 인스턴스에서 실행합니다.
+
+서버 `.env` 값을 바꾼 뒤에는 환경 검증이 포함된 `application_start.sh` 훅으로 백엔드
+컨테이너를 재생성해 적용합니다. 기존 실행 중인 컨테이너에는 변경된 환경 변수가 반영되지 않습니다.
+동시 실행 수를 늘릴 때는 백엔드 메모리 제한 `1200m`, 이미지 처리 메모리, AI 호출 제한을 함께 확인합니다.
+기본값은 초기 실행을 위한 값이며, 적정 운영값은 dev 성능 검증 후 정합니다.
+
+선점 후 AI 호출에 필요한 생성 기록과 일기를 읽다가 일시적인 DB 오류가 나면 한 번 즉시 다시 조회합니다.
+Spring이 `TransientDataAccessException`으로 분류한 경우에만 적용하며, 입력 조회 전체에서 한 번으로 제한합니다.
+재조회 후에도 실패하면 기존 실패 저장 절차를 따릅니다. 일기가 없거나 삭제된 경우는 바로 실패 처리합니다.
+AI 호출과 결과 저장 중 발생한 오류에는 이 재조회 규칙을 적용하지 않습니다.
+
+대기 시간, `PENDING`과 `PROCESSING` 작업 수, 접수 상한으로 거절한 횟수를 지표로 제공합니다.
+선점 저장이 성공한 작업만 대기 시간에 집계합니다. 작업 수는 수집 시점에 DB에서 조회합니다.
+지표 이름과 수집 설정 적용, 대시보드 확인 방법은 [모니터링 운영 안내](monitoring/README.md#비동기-생성의-대기와-접수-거절)를 따릅니다.
+
+앱 종료가 시작되면 새 선점을 멈추고 이미 실행 중인 생성 작업을 최대 6분 기다립니다.
+Spring의 종료 단계에서 기다리므로, 작업이 DB와 AI 연결을 사용하는 동안 해당 자원을 유지합니다.
+생성 처리기는 HTTP 종료 단계 뒤에 두며, 다른 실행기가 종료되기 전에 먼저 완료를 기다립니다.
+작업이 먼저 끝나면 6분을 채우지 않고 다음 종료 절차로 넘어갑니다. 6분이 지나면 작업 중단과 앱 종료를 진행합니다.
+
+| 종료 설정 | 값 | 적용 위치 |
+| --- | --- | --- |
+| 생성 작업 완료 대기 | 6분 | `DiaryGenerationConfiguration`의 생성 처리기 종료 단계 |
+| 백엔드 컨테이너 종료 유예 | 7분 | `compose.yaml`, `deploy/compose.prod.yaml`. dev도 운영 Compose 값을 사용합니다. |
+| 배포 시작 훅 제한 | 600초 | `appspec.yml`의 `ApplicationStart` |
+
+생성 완료 대기는 스토리보드 120초와 이미지 호출 180초를 고려하고, 변환과 S3 저장, DB 저장에 60초의 여유를 둔 초기값입니다.
+스토리보드 120초는 보조 제공자까지 사용할 때의 설정이며, 실제 이미지 호출이 항상 180초 걸린다는 뜻은 아닙니다.
+모든 작업이 6분 안에 끝난다는 보장은 없습니다. 현재 컨테이너 교체 방식에서는 긴 완료 대기가 배포도 늦출 수 있습니다.
+서버 중단으로 남은 처리 중 작업에는 기존 시간 초과 정리 규칙을 적용하며 자동 재시도는 추가하지 않습니다.
+
+### dev 부하 테스트 후 재시작 확인
+
+**k6와 dev 백엔드를 멈추고, 별도 명령으로 미완료 테스트 작업을 지운 뒤 백엔드를 켭니다.**
+테스트 ID는 메모리에만 남습니다. DB의 테스트 대기 작업을 그대로 두고 다시 켜면 실제 AI가 호출될 수 있습니다.
+정리 명령은 앱이 꺼진 상태에서 사용할 수 있습니다. 선택한 이유는 [중단된 테스트 작업 정리 ADR](<../backend/docs/adr/async-diary-generation/2026-10-21_중단된 부하 테스트 작업을 어떻게 정리할 것인가_캐모.md>)에 기록했습니다.
+
+1. k6를 종료합니다. dev 사용 시간을 팀과 맞추고 정리 중 다른 배포나 백엔드 시작을 하지 않습니다.
+2. dev EC2에서 백엔드 컨테이너를 중단합니다. 컨테이너 설정을 읽어야 하므로 `down`으로 삭제하지 않습니다.
+
+```bash
+cd /opt/harudle
+sudo docker compose --project-name harudle --env-file .env \
+  --file compose.prod.yaml --file compose.dev.yaml stop backend
+```
+
+3. `peak1`을 정리할 테스트 실행 이름으로 바꾸고 아래 명령을 실행합니다.
+
+```bash
+sudo python3 /opt/harudle/load-test/cleanup_stopped.py peak1 --client-stopped
+```
+
+4. 명령이 성공하고 출력의 `remainingTestWork`가 0이면 기존 재시작이나 배포 절차를 진행합니다. 같은 컨테이너를 켤 때는 위 Compose 명령의 `stop backend`를 `start backend`로 바꿉니다. 이미지와 환경 변수 변경은 기존 배포 훅으로 적용합니다.
+
+명령은 지정한 실행의 미완료 테스트 작업과 연결된 일기를 지우고 차감한 생성 횟수를 돌려줍니다.
+일반 회원과 게스트의 작업, 완료된 테스트 데이터는 유지합니다. S3 파일은 삭제하지 않습니다.
+실행 중인 백엔드, prod 설정, 준비 때와 다른 DB 주소는 거절합니다. Docker, Python과 기존 `runs/` 파일이 필요합니다.
+다른 실행의 미완료 테스트 작업이 남으면 지정한 실행을 정리한 뒤 오류로 끝납니다. 백엔드는 중단한 채 해당 실행도 정리합니다.
+
+`application_start.sh`와 앱 시작 코드는 이 명령을 자동으로 실행하지 않습니다. 정리 명령도 백엔드를 직접 켜거나 끄지 않습니다.
+자동 재시작이 먼저 이뤄지면 실제 AI 호출 가능성은 남으므로, 갑자기 꺼진 경우에도 실행 상태부터 확인합니다.
+출력 항목과 오류 처리, 완료 데이터 정리는 [부하 테스트 안내](../backend/load-test/README.md#dev-백엔드를-재시작해야-할-때)를 따릅니다.
+
 ## CodePipeline 배포
 
 CodeBuild는 백엔드와 프론트엔드 ARM64 이미지를 빌드한 뒤 이미지 압축본, `appspec.yml`, 운영 Compose 파일과 배포 스크립트를 하나의 CodePipeline 아티팩트로 만듭니다. CodeDeploy는 EC2에서 이미지를 로드하고 `/opt/harudle/compose.prod.yaml`로 컨테이너를 재기동합니다. EC2에서는 Gradle이나 Node 빌드를 수행하지 않습니다.
@@ -63,29 +162,34 @@ CodeBuild 프로젝트는 다음 설정을 사용합니다.
 
 ```text
 Source: CodePipeline
-Environment: Amazon Linux / Standard / Small
+Environment: Amazon Linux 2023 / AArch64 Standard 3.0 or 4.0 / Small
 Privileged mode: enabled
 Service role: codebuild-project
 Buildspec: buildspec.yml
-CloudWatch log group: /aws/codebuild/project-2026
+CloudWatch log group: /aws/codebuild/harudle-dev-bulid
 ```
 
 `buildspec.yml`은 빌드 호스트 아키텍처와 관계없이 최종 이미지를 `linux/arm64`로 생성하고 이미지 아키텍처를 검증합니다. x86 빌드 환경에서는 QEMU/binfmt를 등록하므로 Docker 교차 빌드를 위해 Privileged mode가 반드시 필요합니다.
 
 ### Docker 빌드 최적화
 
-CodeBuild 호스트와 EC2는 모두 ARM64입니다. builder와 runtime 단계는
-기존처럼 `--platform linux/arm64`로 실행하므로 에뮬레이션을 사용하지 않습니다.
+CodeBuild 호스트와 EC2는 모두 ARM64입니다. 백엔드는 CodeBuild의 Corretto 21로
+JAR를 만든 뒤 Dockerfile의 `codebuild` 타깃으로 실행 이미지만 포장합니다.
+최종 이미지는 기존처럼 `--platform linux/arm64`로 생성합니다. 기본 Docker 타깃은
+소스에서 빌드하므로 기존 `docker compose build`도 사용할 수 있습니다.
 
 프론트엔드의 PostHog 빌드 인자는 의존성 설치 이후에 선언하므로 분석 설정만
-바뀌었을 때 `pnpm install` 레이어까지 무효화하지 않습니다. `pnpm check`는 그대로
-실행합니다. 백엔드는 깨끗한 Docker builder에서 불필요한 `clean`을 생략합니다.
+바뀌었을 때 `pnpm install` 레이어까지 무효화하지 않습니다. PR에서 타입 검사,
+린트, 형식 검사, 테스트와 배포용 빌드를 실행합니다. CodeBuild는 새 프론트엔드
+이미지가 필요할 때 `pnpm build`만 실행합니다. 백엔드는 이전 클래스와 분석 상태를
+복원하고 `clean` 없이 빌드합니다.
 
 이미지는 `docker-container` 빌더에서 Docker 형식 tar로 직접 내보냅니다.
 CodeBuild Docker daemon에 이미지를 로드하고 다시 `docker save`하는 단계를 줄입니다.
 압축하기 전에 tar의 manifest와 이미지 설정을 읽어 예상 태그 및 `linux/arm64`를
 검증하고, `gzip -1`로 압축한 뒤 gzip 무결성과 체크섬을 확인합니다.
-CodeBuild 이미지에는 Docker/buildx, `jq`, `tar`, `gzip`이 필요합니다.
+CodeBuild 이미지에는 Docker/buildx, Corretto 21, `jq`, `tar`, `gzip`과 GNU coreutils가 필요합니다.
+`install.runtime-versions.java: corretto21`을 지원하는 ARM64 표준 이미지를 사용합니다.
 
 아티팩트 이름은 기존과 같은 `backend-image.tar.gz`, `frontend-image.tar.gz`이므로
 CodeDeploy의 이미지 로드 절차를 그대로 사용합니다. 개선 효과는 CodeBuild 빌드와
@@ -95,83 +199,112 @@ CodeDeploy의 이미지 로드 절차를 그대로 사용합니다. 개선 효�
 
 ### CodeBuild 빌드 캐시
 
-`buildspec.yml`은 백엔드 Dockerfile의 `dependencies` 단계만
-`/root/.cache/harudle-buildkit/backend`에 저장합니다. `--target dependencies`와
-`--output type=cacheonly`로 환경·의존성 준비까지만 먼저 빌드하고, 그 단계의
-결과 레이어를 `mode=min`으로 내보냅니다. 같은 BuildKit 빌더에서 최종 이미지
-빌드를 이어가므로 준비된 의존성 레이어를 다시 사용할 수 있습니다. 최종 이미지
-빌드에는 외부 캐시 내보내기를 지정하지 않습니다.
+백엔드는 CodeBuild의 Corretto 21로 빌드합니다. Docker는 빌드가 끝난 JAR를
+실행 이미지에 넣습니다. 프론트엔드는 빌드 입력이 이전과 같으면 검증된 이미지를
+재사용하고, 다르면 `pnpm build`로 새 이미지를 만듭니다.
 
-저장 범위는 JDK 기반 이미지, Gradle 배포판·플러그인, 운영 코드의 컴파일·실행
-의존성과 annotation processor입니다. `resolveProductionDependencies` 작업은
-`compileClasspath`, `runtimeClasspath`, `annotationProcessor`의 실제 파일을
-해석해 필요한 JAR를 다운로드합니다. 기존 `dependencies` 보고서는 의존성 그래프만
-해석할 수 있어 이 작업으로 대체합니다. 테스트 의존성은 다운로드 대상에서 제외합니다.
+빌드는 다음 순서로 진행합니다.
 
-소스 복사 이후의 클래스 파일, 컴파일 분석 정보, `bootJar` 결과와 런타임 이미지
-레이어는 S3 캐시에 저장하지 않습니다. 런타임 패키지 설치 단계도 이번 캐시 범위에서
-제외합니다. 각 CodeBuild 실행에서 컴파일·패키징을 다시 수행하며, 증분 컴파일을
-위한 이전 빌드 결과는 복원하지 않습니다. JDK와 의존성 자체의 용량은 남아 있으므로
-실제 저장량과 전체 실행 시간을 비교해 효과를 확인합니다.
+1. 이번에 받은 백엔드 코드를 `/root/.cache/harudle-gradle/workspace`로 복사합니다.
+2. 이전 빌드의 클래스 파일과 Gradle 기록을 가져옵니다.
+3. `bootJar -x test`를 실행합니다. 바뀐 소스와 영향을 받는 클래스만 다시 컴파일합니다.
+4. 새 JAR를 `backend/build/codebuild/app.jar`에 놓고 Docker의 `codebuild` 타깃으로 포장합니다.
+5. 두 이미지의 태그, ARM64 여부, 압축 파일을 검사합니다. 성공하면 이전 빌드 기록을 새 기록으로 바꿉니다.
 
-프론트엔드는 `pnpm check`를 포함한 기존 이미지 빌드를 수행하며, 실행 간 외부
-캐시를 저장하거나 복원하지 않습니다. `cache.paths`도 백엔드 디렉터리로 제한합니다.
-이전 캐시에 프론트엔드 파일이 있어도 새로 저장하는 캐시에는 포함하지 않습니다.
-첫 의존성 캐시 내보내기가 성공하면 이전 백엔드 캐시는 의존성 전용 캐시로 교체됩니다.
-캐시 경로나 Dockerfile 단계 변경으로 첫 빌드에는 캐시가 없을 수 있습니다.
+작업 폴더는 매번 같은 경로를 사용합니다. 이번 소스는 새로 복사하고, 이전 소스를
+캐시에서 가져오지는 않습니다. 기본 Docker 타깃도 유지해서 `docker compose build`를
+사용할 수 있습니다.
 
-빌드 사이에 캐시를 유지하려면 CodeBuild 프로젝트에도 다음 설정을 적용합니다.
+#### 저장하는 파일
 
-1. 프로젝트의 **Edit > Artifacts > Additional configuration**에서 Cache type을
-   **Amazon S3**로 선택합니다.
-2. 프로젝트와 같은 리전의 캐시 버킷을 선택하고, 캐시 경로를
-   `harudle/build-cache`처럼 팀 폴더 아래에 지정합니다. 같은 CodeBuild 프로젝트를
-   사용하는 파이프라인은 이 캐시를 공유합니다.
-3. CodeBuild 서비스 역할에 해당 캐시 경로의 `s3:GetObject`, `s3:PutObject`와
-   버킷의 `s3:GetBucketLocation`, `s3:GetBucketAcl` 권한을 부여합니다. 버킷이 고객 관리 KMS 키로
-   암호화되어 있으면 해당 키의 복호화와 데이터 키 생성 권한도 필요합니다.
-4. 저장소의 변경된 `buildspec.yml`이 포함된 커밋으로 빌드합니다.
+| 대상 | 저장 위치와 내용 |
+| --- | --- |
+| Gradle 실행 파일 | `home/wrapper/dists` |
+| 다운로드한 라이브러리 | `home/caches/modules-2` |
+| Gradle 준비 파일 | 스크립트 실행 결과, 변환 결과, Java 분석, 파일 해시, 접근 기록, `home/native` 실행 파일 |
+| 이전 컴파일 결과 | 프로젝트 `.gradle`, 운영 클래스, 리소스, 생성 소스, 헤더, 컴파일 분석 파일 |
+| 빈 폴더 목록 | `incremental/directories`. 복원할 때 같은 출력 폴더를 다시 만듭니다. |
+| 프론트엔드 이미지 | `/root/.cache/harudle-frontend`의 압축 이미지, 체크섬, 입력 지문 |
 
-`cache.paths`만 추가해서는 S3 캐시가 활성화되지 않습니다. S3 위치는 CodeBuild
-프로젝트 설정에서 지정하며, Docker daemon의 Local Docker layer cache를 켜는
-것만으로는 `docker-container` 빌더의 캐시 복원을 대신할 수 없습니다.
-`cache.key`는 지정하지 않아 매 빌드 후 캐시가 갱신되도록 합니다.
+위 경로의 기준은 `/root/.cache/harudle-gradle`입니다. 이전 컴파일 결과는 최근에 성공한
+한 세트만 보관합니다. Gradle 설정, Wrapper, Java 버전, OS, CPU 종류가 바뀌면 그 결과를
+사용하지 않고 다시 빌드합니다. Gradle도 입력 파일의 변경을 확인합니다.
 
-캐시가 없는 첫 빌드는 전체 빌드를 수행합니다. 새 캐시는 별도 임시 디렉터리에
-내보낸 후 기존 캐시와 교체해 오래된 blob의 누적을 방지합니다. 캐시 내보내기만
-실패한 경우에는 이미지 빌드를 계속 진행하고 기존 캐시를 유지합니다.
-의존성 준비나 최종 이미지 빌드 자체가 실패하면 빌드를 중단합니다.
+완성된 JAR, JDK, Docker 레이어, 프론트엔드 테스트 결과, 보고서, Daemon 로그는 저장하지
+않습니다. `build/libs`를 복원하지 않으므로 JAR는 매번 새로 만듭니다. 클래스 파일을 또
+저장하는 Gradle Build Cache와 Configuration Cache도 켜지 않습니다.
 
-첫 번째 성공한 빌드의 캐시 업로드 로그와 두 번째 빌드의
-`Restoring backend build cache.`, BuildKit의 `CACHED` 표시를 확인합니다.
-프론트엔드에는 `Frontend external build cache is disabled.`가 출력됩니다.
-`Backend build cache directory size:` 다음의 `du -sh` 출력과 S3 캐시 파일 크기로
-저장량을 확인합니다. 디렉터리 크기와 S3 파일 크기는 압축으로 차이가 날 수 있습니다.
-캐시 효과는 복원·저장 시간을 포함한 전체 CodeBuild 실행 시간으로 비교합니다.
+프론트엔드 캐시는 최근 성공 이미지 한 개만 보관합니다. 프론트엔드 파일 내용,
+PostHog 빌드 인자, Docker 베이스 이미지가 같고 압축 파일 검증을 통과할 때만
+재사용합니다. 캐시가 없거나 맞지 않으면 새 이미지를 만듭니다. `.dockerignore`를
+바꾼 경우에는 입력 지문 계산 범위도 함께 점검해야 합니다.
+이미지를 재사용했다면 로컬 프론트엔드 캐시 교체를 건너뜁니다. 새로 빌드하고 빌드
+전후 입력이 같다면 기존 캐시의 지문과 체크섬이 같아도 새 이미지를 저장합니다.
+캐시 교체 직전에 기존 지문을 지우고 새 지문을 마지막에 저장해, 교체 중 실패한
+캐시를 재사용하지 않게 합니다.
 
-#### 캐시 용량·시간 비교
+Gradle의 프로젝트 기록과 빈 출력 폴더를 함께 복원해야 컴파일을 생략할 수 있습니다.
+프로젝트의 잠금 메타데이터도 보존하고, 의존성 캐시의 `modules-2.lock`만 제거합니다.
+컴파일이나 이미지 생성이 실패하면 이전 성공 기록을 유지합니다. 캐시 저장만 실패한
+경우에는 검사를 마친 이미지로 계속 진행합니다.
 
-Docker 빌드 로그에서 `[build-metrics] backend_gradle_bootjar_seconds=`를 검색하면
-Gradle 기동·컴파일·JAR 생성 시간을 초 단위로 확인할 수 있습니다. Docker 내부에서
-`date +%s`로 측정하며, 의존성 준비와 최종 이미지 내보내기·압축 시간은 포함하지
-않습니다. 캐시 디렉터리 크기는 `Backend build cache directory size:` 다음의
-`du -sh` 출력으로, 실제 S3 캐시 파일 크기는 S3에서 별도로 확인합니다.
+#### CodeBuild 설정
 
-의존성 준비·이미지 내보내기는 BuildKit의 단계별 로그, 압축을 포함한 전체 빌드
-시간은 CodeBuild의 단계별·전체 실행 시간으로 확인합니다. CodeBuild가 자동으로
-수행하는 S3 캐시 다운로드·업로드도 전체 실행 시간에 포함해 비교합니다.
-별도의 캐시 파일 복사나 추가 압축은 수행하지 않습니다.
+1. Corretto 21을 지원하는 Amazon Linux 2023 AArch64 Standard 3.0 또는 4.0 이미지를 사용합니다.
+2. **Edit > Artifacts > Additional configuration**에서 Cache type을 **Amazon S3**로 선택합니다.
+3. 기존 캐시 버킷과 팀 폴더 경로를 사용합니다. 예시는 `harudle/build-cache`입니다.
+4. 변경한 `buildspec.yml`이 들어 있는 커밋으로 빌드합니다.
 
-같은 파이프라인·빌드 이미지·컴퓨팅 크기에서 기존 방식과 비교합니다. 첫 성공
-빌드는 의존성 캐시를 생성하는 실행으로 구분하고, 이후 의존성 설정은 그대로
-두고 소스만 변경한 빌드를 2~3회 비교합니다. 전체 실행 시간, S3 캐시 파일 크기,
-Gradle 시간과 `CACHED` 여부를 기록해 캐시 전송 비용보다 작업 생략 효과가 큰지
-판단합니다. 내보내기가 실패한 실행은 새 의존성 캐시의 용량 비교에서 제외합니다.
+CodeBuild 역할에는 해당 캐시 경로의 `s3:GetObject`, `s3:PutObject`와 버킷의
+`s3:GetBucketLocation`, `s3:GetBucketAcl` 권한이 필요합니다. 고객 관리 KMS 키를 쓰면
+복호화와 데이터 키 생성 권한도 필요합니다.
 
-설정 근거는 [CodeBuild S3 캐시](https://docs.aws.amazon.com/codebuild/latest/userguide/caching-s3.html),
-[BuildKit 외부 캐시](https://docs.docker.com/build/cache/backends/),
-[Docker 단계별 빌드](https://docs.docker.com/build/building/multi-stage/)와
-[Gradle 의존성 해석](https://docs.gradle.org/current/userguide/dependency_resolution.html) 문서를 참고합니다.
+`cache.key`는 넣지 않아 매 빌드 후 같은 캐시를 갱신합니다. dev와 prod가 같은 CodeBuild
+프로젝트를 쓰면 이 캐시도 공유합니다. 소스가 다르면 Gradle이 변경된 부분을 확인합니다.
+프론트엔드 입력이 dev와 prod에서 번갈아 다르면 이미지 한 개만 저장하므로 캐시가
+계속 빗나갈 수 있습니다.
+새 저장 경로로 바꾸기 때문에 첫 빌드에서는 캐시가 없을 수 있습니다.
+
+#### 시간과 용량 확인
+
+로그에서 아래 값을 확인합니다.
+
+| 로그 이름 | 뜻 |
+| --- | --- |
+| `backend_incremental_state_restored` | 이전 컴파일 결과를 가져왔는지 |
+| `backend_incremental_restore_seconds` | 가져온 결과를 작업 폴더에 복사한 시간 |
+| `backend_gradle_bootjar_seconds` | Gradle 시작부터 JAR 생성까지 걸린 시간 |
+| `backend_incremental_save_seconds` | 새 컴파일 결과를 저장한 시간 |
+| `backend_docker_export_seconds` | 백엔드 Docker 이미지 생성과 tar 내보내기 시간 |
+| `frontend_image_reused` | 저장된 프론트엔드 이미지를 사용했는지. `true`면 프론트엔드 Docker 빌드와 압축을 생략 |
+| `frontend_image_cache_prepared` | 새 프론트엔드 이미지를 로컬 캐시 경로에 준비했는지. S3 업로드 완료를 뜻하지 않음 |
+| `frontend_docker_export_seconds` | 새 프론트엔드 이미지 생성과 tar 내보내기 시간. `pnpm build` 포함. 이미지 재사용 시에는 출력하지 않음 |
+| `backend_image_gzip_seconds` | 백엔드 이미지 tar 압축 시간 |
+| `frontend_image_gzip_seconds` | 새 프론트엔드 이미지 tar 압축 시간. 이미지 재사용 시에는 출력하지 않음 |
+
+`compileJava UP-TO-DATE`는 컴파일을 생략했다는 뜻입니다. 파일을 바꾼 경우에는 실제로
+얼마나 다시 컴파일했는지도 확인합니다. 복원 성공 로그만으로 속도가 빨라졌다고 판단하지
+않습니다.
+
+Gradle의 자세한 시간은 아티팩트의 `build-artifacts/backend-gradle-profile`에서 봅니다.
+시작, 설정, `compileJava`, `bootJar` 시간을 각각 확인할 수 있습니다. 저장 후 출력하는
+`du -sh`는 압축 전 사용량입니다. 실제 저장 용량은 S3 캐시 파일 크기로 확인합니다.
+
+같은 빌드 이미지와 컴퓨팅 크기에서 비교합니다. 첫 빌드, 소스 일부 변경, 리소스만 변경,
+백엔드 변경 없음의 경우를 나눠 봅니다. S3에서 캐시를 받는 시간과 올리는 시간을 포함한
+전체 CodeBuild 시간이 줄어야 효과가 있는 것입니다.
+
+캐시 복원과 실패 처리는 다음 명령으로 확인할 수 있습니다.
+
+```bash
+bash deploy/scripts/test_codebuild_backend.sh
+```
+
+참고 문서는 [CodeBuild S3 캐시](https://docs.aws.amazon.com/codebuild/latest/userguide/caching-s3.html),
+[지원 런타임](https://docs.aws.amazon.com/codebuild/latest/userguide/available-runtimes.html),
+[Gradle 증분 컴파일](https://docs.gradle.org/current/userguide/java_plugin.html#sec:incremental_compile),
+[Gradle 캐시 폴더](https://docs.gradle.org/current/userguide/directory_layout.html),
+[빌드 시간 보고서](https://docs.gradle.org/current/userguide/inspect.html#sec:profiling_build)입니다.
 
 CodeDeploy 애플리케이션은 EC2/온프레미스 플랫폼과 현재 위치 배포를 사용합니다. 배포 그룹 서비스 역할은 `codedeploy-project`이며, 에이전트를 직접 설치한 EC2에서는 Systems Manager 에이전트 구성 값을 `Never`로 설정합니다.
 
@@ -246,3 +379,56 @@ openssl rand -base64 32
 ```
 
 운영 환경에서는 `SESSION_COOKIE_SECURE=true`, `REFRESH_COOKIE_SECURE=true`를 유지합니다. 컨테이너 Nginx는 `/api/**`, `/oauth2/**`, `/login/oauth2/**` 요청을 백엔드로 전달합니다.
+
+## 약관 수락의 단계적 적용
+
+LEGAL_REQUIRE_TERMS_ACCEPTANCE의 기본값은 false다. 문서·수락 API와 프론트가 함께 준비되고, 정책·시행일·기존 회원 안내를 확정한 뒤 환경별로 true로 설정해 적용한다. 백엔드만 먼저 배포할 때는 false를 유지한다. 변경 후에는 기존 환경 변수와 마찬가지로 백엔드 컨테이너를 재생성해야 한다.
+
+동의 시각을 과거 가입일로 채우거나 운영 데이터를 자동 삭제하는 작업은 포함하지 않는다. 필수 적용을 끄더라도 수락 기록은 보존한다. 상세 순서는 [약관 열람과 수락](../backend/docs/terms-consent.md)을 따른다.
+
+## Apple 개인 키와 배포 설정
+
+키는 Git에 넣지 않고 서버에 별도로 설치합니다. `/secure/path/AuthKey.p8`은 전달받은 키 경로로 바꿉니다.
+아래 권한은 백엔드 실행 그룹(`10001`)이 키를 읽을 수 있게 합니다.
+
+```bash
+sudo install -d -o root -g 10001 -m 0750 /etc/harudle/secrets/apple
+sudo install -o root -g 10001 -m 0640 /secure/path/AuthKey.p8 /etc/harudle/secrets/apple/AuthKey.p8
+```
+
+dev와 prod Compose는 이 폴더를 `/var/run/harudle/apple/`에 읽기 전용으로 연결합니다.
+서버 `/opt/harudle/.env`에 `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`와 아래 값을 설정합니다.
+
+```dotenv
+APPLE_LOGIN_ENABLED=true
+APPLE_PRIVATE_KEY_PATH=/var/run/harudle/apple/AuthKey.p8
+SESSION_COOKIE_SAME_SITE=none
+SESSION_COOKIE_SECURE=true
+```
+
+Apple에 `${BACKEND_BASE_URL}/login/oauth2/code/apple` HTTPS 콜백을 등록하고 로그인 시작 호스트와 맞춥니다.
+설정 후 배포 훅으로 백엔드를 재생성합니다. 준비 전에는 `APPLE_LOGIN_ENABLED=false`를 유지합니다.
+
+## Google 로그인 설정
+
+배포 전에 해당 서버의 `/opt/harudle/.env`에 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`을 설정합니다.
+키에는 기본값이 없으므로 누락되면 백엔드가 시작되지 않습니다. 기존 Compose의 `env_file`로 주입되며,
+환경 변수를 바꾼 뒤에는 배포 훅으로 백엔드 컨테이너를 재생성해야 합니다.
+
+Google Cloud의 웹 애플리케이션 OAuth 클라이언트에는 해당 환경의
+`${BACKEND_BASE_URL}/login/oauth2/code/google`을 승인된 리디렉션 URI로 등록합니다.
+`BACKEND_BASE_URL=https://www.harudle.com`인 운영 환경의 주소는 다음과 같습니다.
+
+```text
+https://www.harudle.com/login/oauth2/code/google
+```
+
+로컬 클라이언트에 `http://localhost:8080/login/oauth2/code/google`만 등록되어 있다면 운영 콜백은 사용할 수
+없습니다. 환경별 클라이언트와 등록 주소를 확인하고, dev 서버에는 실제 dev 도메인에 맞는 값을 사용합니다.
+요청 범위는 `openid`, `email`, `profile`이며, `GOOGLE_API_KEY`로 설정하는 Gemini 인증과는 별도입니다.
+로그인 시작 경로는 `/oauth2/authorization/google`입니다. 성공과 실패 시에는 기존 프론트엔드 리다이렉트
+설정을 사용합니다. 위의 HTTPS 쿠키와 프록시 설정도 그대로 적용합니다.
+
+## 요청 지연을 확인하는 로그
+
+백엔드는 요청 완료 로그에 S3와 R2 확인 횟수, URL 서명 시간, 피드 데이터 조회 시간을 남깁니다. 프론트엔드 Nginx는 같은 응답 추적 ID와 프록시 시간을 JSON으로 기록합니다. 호스트 Nginx의 실제 HTTPS 설정과 CloudWatch 필터는 별도로 적용합니다. [적용과 확인 순서](monitoring/request-latency.md)를 참고합니다.

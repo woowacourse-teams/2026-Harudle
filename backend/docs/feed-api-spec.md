@@ -33,6 +33,11 @@
 삭제된 피드가 있는 일기는 새로운 피드 ID로 다시 게시할 수 있다.
 
 성공하면 `Location: /api/v1/feeds/{feedId}`와 Feed를 반환한다.
+이미지 생성 성공이 확인된 일기이므로 게시 응답에서는 저장된 이미지 키로 S3 접근 URL을 바로 발급한다.
+S3 URL 발급이 성공하면 바로 반환한다. S3 URL 발급이 실패한 경우에만 같은 키로 R2 URL을 한 번 발급한다.
+이미지 키 검증 오류는 R2로 전환하지 않고, 두 저장소의 URL 발급이 모두 실패하면 기존 `503 IMAGE_STORAGE_ERROR`를 반환한다.
+이때 S3와 R2에 이미지가 있는지 다시 조회하지 않는다. 응답 필드와 피드 및 월간 조회의 저장소 선택은 유지한다.
+
 일기 잠금, 카테고리 잠금, 피드 저장, 게시 이벤트 예약은 같은 트랜잭션에서 수행한다.
 푸시 예약 저장 실패 시 피드도 롤백한다. 실제 FCM 발송은 푸시 담당의 워커가 수행한다.
 
@@ -73,6 +78,16 @@ GET /api/v1/feeds?sort=LATEST&categoryId=1&size=20
 카테고리는 비활성이어도 기존 피드를 조회할 수 있다. 존재하지 않는 카테고리 필터는 빈 목록 대신 `404 CATEGORY_NOT_FOUND`다.
 익명 조회와 로그인 조회의 개인화 규칙은 상세 조회와 같다.
 
+피드 목록, 피드 상세와 일기 월간 조회의 이미지 저장소는 API 요청마다 응답의 첫 이미지에서 한 번 선택한다.
+첫 이미지의 S3 확인이 성공하면 S3를, 파일 부재나 조회 오류 및 시간 초과이면 R2를 선택한다.
+선택 결과는 같은 응답 안에서만 재사용하며, 나머지 이미지의 S3 존재 여부를 다시 확인하지 않는다.
+다음 요청은 저장소를 다시 선택하고, 동시 요청의 선택 결과는 서로 영향을 주지 않는다. 빈 목록은 저장소를 확인하지 않는다.
+S3를 선택하면 기존 상세 이미지 URL을 반환한다. R2를 선택하면 각 이미지와 같은 폴더에서 PNG, JPG, WebP 순서로
+원본을 찾아 `imageUrl`에 넣는다. R2에 별도 상세 이미지나 썸네일 파일은 필요하지 않다.
+R2 원본 탐색은 응답 전체가 공유하는 시간 예산 안에서 수행한다. 원본 부재, 조회 오류 또는 예산 소진 시 해당 항목의
+기존 S3 URL을 반환하고 피드 목록 데이터는 유지한다. S3 존재 확인은 추가하지 않는다.
+접근 URL은 매 응답마다 새로 발급한다. 게시 응답과 개인 일기 상세 및 연속 기록의 기존 처리 방식은 유지한다.
+
 ### 상세 조회와 Feed 응답
 
 ```json
@@ -81,7 +96,8 @@ GET /api/v1/feeds?sort=LATEST&categoryId=1&size=20
   "author": {
     "id": "550e8400-e29b-41d4-a716-446655440001",
     "nickname": "캐모",
-    "profileImageUrl": "https://example.com/profile.png"
+    "profileImageUrl": "https://example.com/profile.webp?signature=example",
+    "profileImageUrlExpiresAt": "2026-10-21T00:15:00Z"
   },
   "category": { "id": 1, "name": "일상" },
   "imageUrl": "https://example.com/generated/comic.webp?signature=example",
@@ -94,6 +110,12 @@ GET /api/v1/feeds?sort=LATEST&categoryId=1&size=20
   "shareUrl": "https://www.harudle.com/feeds/550e8400-e29b-41d4-a716-446655440000"
 }
 ```
+
+작성자 사진은 조회 시점의 현재 프로필을 사용하므로 이전 게시물도 다시 조회하면 새 사진을 표시한다.
+개인 사진은 S3 서명 URL과 `author.profileImageUrlExpiresAt`을 반환한다. 만료 시각은 UTC 문자열이며 기본 유효 시간은 15분이다.
+기본 이미지는 고정 URL을 반환하고 만료 시각은 `null`이다. 만료된 주소는 피드를 다시 조회해 갱신한다.
+댓글의 `author`와 알림의 `actor`도 같은 이미지 URL과 만료 시각 규칙을 사용한다.
+개인 사진 주소 발급에 실패하면 `503 PROFILE_IMAGE_STORAGE_ERROR`를 반환한다.
 
 원본 일기 내용·제목·일기 ID·작성자의 이메일·이미지 Object Key는 공개 응답에 포함하지 않는다.
 기존 `ImageUrlProvider`로 DB 트랜잭션 이후에 S3/R2 접근 URL을 발급한다.

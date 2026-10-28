@@ -4,7 +4,7 @@ server:
       timeout: 10m
       cookie:
         http-only: true
-        same-site: lax
+        same-site: ${SESSION_COOKIE_SAME_SITE:lax}
         secure: ${SESSION_COOKIE_SECURE:false}
 
 logging:
@@ -64,6 +64,14 @@ spring:
             scope:
               - profile_nickname
             client-name: Kakao
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            redirect-uri: "${BACKEND_BASE_URL:http://localhost:8080}/login/oauth2/code/{registrationId}"
+            scope:
+              - openid
+              - email
+              - profile
 
         provider:
           kakao:
@@ -74,6 +82,13 @@ spring:
 
 app:
   auth:
+    apple:
+      enabled: ${APPLE_LOGIN_ENABLED:false}
+      client-id: ${APPLE_CLIENT_ID:}
+      team-id: ${APPLE_TEAM_ID:}
+      key-id: ${APPLE_KEY_ID:}
+      private-key-path: ${APPLE_PRIVATE_KEY_PATH:}
+      redirect-uri: "${BACKEND_BASE_URL:http://localhost:8080}/login/oauth2/code/apple"
     frontend-origins: "${FRONTEND_ORIGINS:${FRONTEND_ORIGIN:http://localhost:5173}}"
     success-redirect: "${FRONTEND_SUCCESS_REDIRECT:http://localhost:5173/auth/callback}"
     failure-redirect: "${FRONTEND_FAILURE_REDIRECT:http://localhost:5173/auth/callback?error=oauth_failed}"
@@ -92,6 +107,10 @@ app:
       ttl: 14d
 
 harudle:
+  database:
+    interaction-lock-timeout: ${INTERACTION_LOCK_TIMEOUT:1s}
+  legal:
+    require-terms-acceptance: ${LEGAL_REQUIRE_TERMS_ACCEPTANCE:false}
   admin:
     image-recovery:
       interval: ${ADMIN_IMAGE_RECOVERY_INTERVAL:10s}
@@ -109,10 +128,19 @@ harudle:
     image-base-url: ${PROFILE_IMAGE_BASE_URL:http://localhost:5173/profile-images/v1}
   feed:
     public-base-url: ${FEED_PUBLIC_BASE_URL:http://localhost:5173/feeds}
+  push:
+    fcm:
+      enabled: ${HARUDLE_PUSH_FCM_ENABLED:false}
+      project-id: ${FIREBASE_PROJECT_ID:}
   generation:
+    worker:
+      concurrency: ${GENERATION_WORKER_CONCURRENCY:1}
+      poll-interval: ${GENERATION_WORKER_POLL_INTERVAL:5s}
     lifecycle:
       processing-timeout: ${GENERATION_PROCESSING_TIMEOUT:30m}
       cleanup-interval: ${GENERATION_CLEANUP_INTERVAL:1m}
+      pending-timeout: ${GENERATION_PENDING_TIMEOUT:120s}
+      pending-cleanup-interval: ${GENERATION_PENDING_CLEANUP_INTERVAL:5s}
     prompt-bootstrap:
       enabled: ${HARUDLE_GENERATION_PROMPT_BOOTSTRAP_ENABLED:false}
       storyboard-prompt-text: ${HARUDLE_GENERATION_PROMPT_BOOTSTRAP_STORYBOARD_PROMPT_TEXT:}
@@ -125,6 +153,11 @@ harudle:
       fallback-provider: ${STORYBOARD_FALLBACK_PROVIDER:none}
       primary-timeout: ${STORYBOARD_PRIMARY_TIMEOUT:60s}
       fallback-timeout: ${STORYBOARD_FALLBACK_TIMEOUT:60s}
+    image:
+      fallback-provider: ${IMAGE_FALLBACK_PROVIDER:none}
+      codex-url: ${CODEX_IMAGE_WORKER_URL:}
+      codex-token: ${CODEX_IMAGE_WORKER_TOKEN:}
+      codex-timeout: ${CODEX_IMAGE_TIMEOUT:310s}
     qwen:
       api-key: ${QWEN_TOKEN_PLAN_API_KEY:}
       storyboard-model: ${QWEN_STORYBOARD_MODEL:qwen3.8-max}

@@ -2,9 +2,13 @@ package com.harudle.feed.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.harudle.common.testdata.DevTestDataVisibility;
 import com.harudle.category.service.port.CategoryReader;
 import com.harudle.feed.repository.FeedQueryRepository;
 import com.harudle.feed.repository.FeedSnapshot;
@@ -33,11 +37,12 @@ class FeedQueryServiceTest {
     @Mock private PublicProfileReader profiles;
     @Mock private CategoryReader categories;
     @Mock private FeedLikeReader likes;
+    @Mock private DevTestDataVisibility visibility;
     private FeedQueryService service;
 
     @BeforeEach
     void setUp() {
-        service = new FeedQueryService(feeds, collaborators);
+        service = new FeedQueryService(feeds, collaborators, visibility);
     }
 
     @Test
@@ -56,20 +61,21 @@ class FeedQueryServiceTest {
         when(collaborators.likes()).thenReturn(likes);
         when(likes.findLikedFeedIds(AUTHOR, Set.of(FEED))).thenReturn(Set.of(FEED));
         var result = service.getDetail(AUTHOR, FEED);
+        verify(feeds).findActiveSnapshotById(FEED, AUTHOR);
         assertThat(result.isMine()).isTrue();
         assertThat(result.likedByMe()).isTrue();
     }
 
     @Test
     void rejectsMissingOrDeletedFeedWithoutReadingCollaborators() {
-        when(feeds.findActiveSnapshotById(FEED)).thenReturn(Optional.empty());
+        when(feeds.findActiveSnapshotById(eq(FEED), nullable(UUID.class))).thenReturn(Optional.empty());
         assertThatThrownBy(() -> service.getDetail(null, FEED)).isInstanceOf(FeedNotFoundException.class);
         verifyNoInteractions(collaborators);
     }
 
     @Test
     void hidesUnavailableAuthorsProfile() {
-        when(feeds.findActiveSnapshotById(FEED)).thenReturn(Optional.of(snapshot()));
+        when(feeds.findActiveSnapshotById(eq(FEED), nullable(UUID.class))).thenReturn(Optional.of(snapshot()));
         when(collaborators.profiles()).thenReturn(profiles);
         when(profiles.readAll(Set.of(AUTHOR))).thenReturn(Map.of());
         assertThatThrownBy(() -> service.getDetail(null, FEED)).isInstanceOf(FeedNotFoundException.class);
@@ -77,11 +83,11 @@ class FeedQueryServiceTest {
     }
 
     private void activeFeedAndProfiles() {
-        when(feeds.findActiveSnapshotById(FEED)).thenReturn(Optional.of(snapshot()));
+        when(feeds.findActiveSnapshotById(eq(FEED), nullable(UUID.class))).thenReturn(Optional.of(snapshot()));
         when(collaborators.profiles()).thenReturn(profiles);
         when(collaborators.categories()).thenReturn(categories);
         when(profiles.readAll(Set.of(AUTHOR))).thenReturn(Map.of(AUTHOR,
-                new PublicProfileReader.Profile(AUTHOR, "현재닉네임", URI.create("https://example.com/profile.png"))));
+                new PublicProfileReader.Profile(AUTHOR, "현재닉네임", URI.create("https://example.com/profile.png"), null)));
         when(categories.get(1)).thenReturn(new CategoryReader.Category(1, "변경된이름", 0, false));
     }
 

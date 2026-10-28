@@ -191,7 +191,7 @@ test('계정 정지 OAuth 콜백은 기존 로그인 기록이 있어도 세션�
   await page.goto('/auth/callback?error=account_suspended');
   await expect(page).toHaveURL('/login');
   await expect(
-    page.getByRole('button', { name: '카카오로 시작하기' }),
+    page.getByRole('button', { name: '카카오로 계속하기' }),
   ).toBeVisible();
   expect(sessionRequests).toEqual([]);
 });

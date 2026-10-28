@@ -10,6 +10,10 @@ import re
 REGION = "ap-northeast-2"
 NAMESPACES = {"dev": "Harudle/Dev", "prod": "Harudle/Prod"}
 PROCSTAT_PATTERN = "^([^ ]*/)?java +.*-jar +/app/app[.]jar( +.*)?$"
+REQUEST_STORAGE_OPERATIONS = (
+    ("S3Head", "s3Head", "S3 존재 확인"), ("R2Head", "r2Head", "R2 존재 확인"),
+    ("S3Sign", "s3Sign", "S3 URL 서명"), ("R2Sign", "r2Sign", "R2 URL 서명"),
+)
 
 
 def metric(namespace, name, dimensions=(), **options):
@@ -79,6 +83,35 @@ def service_widgets(environment, instance_id):
                   f'InstanceId="{instance_id}" pattern="{search_pattern}"\', \'Average\', 60)')
     widgets.append(widget("Java 힙 사용량", [expression(f"SUM({heap_search})/1048576", "힙 사용량 (MiB)")]))
     widgets.append(widget("Java 실제 메모리 (RSS)", [expression(f"SUM({rss_search})/1048576", "RSS (MiB)")]))
+    job = ("job", "harudle-backend")
+    widgets.append(widget("생성 시작 전 평균 대기 시간", [
+        metric(namespace, "harudle_generation_queue_wait_seconds_sum", job,
+               stat="Sum", id="waitseconds", visible=False),
+        metric(namespace, "harudle_generation_queue_wait_seconds_count", job,
+               stat="Sum", id="claims", visible=False),
+        expression("IF(claims>0,waitseconds/claims)", "평균 대기 시간 (초)"),
+    ]))
+    widgets.append(widget("생성 대기와 처리 중 작업 수", [
+        metric(namespace, "harudle_generation_queue_size", job + ("status", status),
+               stat="Maximum", label=label)
+        for status, label in (("PENDING", "대기 작업 수"), ("PROCESSING", "처리 중 작업 수"))
+    ]))
+    widgets.append(widget("생성 접수 거절 횟수", [
+        metric(namespace, "harudle_generation_capacity_rejections_total", job,
+               stat="Sum", label="접수 상한으로 거절한 횟수"),
+    ]))
+    widgets.append(widget("요청 안에서 실행한 저장소 작업 수", [
+        metric(namespace, f"Request{name}Count", stat="Sum", label=label)
+        for name, _, label in REQUEST_STORAGE_OPERATIONS
+    ]))
+    widgets.append(widget("요청별 저장소 누적 시간 P95", [
+        metric(namespace, f"Request{name}DurationMs", stat="p95", label=label + " (ms)")
+        for name, _, label in REQUEST_STORAGE_OPERATIONS
+    ]))
+    widgets.append(widget("피드 데이터 조회 시간", [
+        metric(namespace, "RequestFeedQueryDurationMs", stat=stat, label=label)
+        for stat, label in (("Average", "평균 (ms)"), ("p95", "P95 (ms)"), ("p99", "P99 (ms)"))
+    ]))
     if environment == "dev":
         def gc_search(suffix, statistic):
             return (f'SEARCH(\'{{"{namespace}",job,gc,action,cause}} '
@@ -118,7 +151,7 @@ def metric_filters(environment):
     duration = '{ ' + completed + ' && $.durationMs >= 0 }'
     grouped_duration = ('{ ' + completed + ' && $.durationMs >= 0 '
                         '&& ($.apiGroup = "general" || $.apiGroup = "generation") }')
-    return [
+    filters = [
         request("ApiResponseTimeMs", duration, "$.durationMs", "Milliseconds"),
         request("ApiResponseTimeMs", grouped_duration, "$.durationMs", "Milliseconds",
                 {"ApiGroup": "$.apiGroup"}),
@@ -127,6 +160,13 @@ def metric_filters(environment):
         request("FeedListSucceeded", '{ ' + completed + ' && $.operation = "feed_list" && $.httpStatus = 200 }'),
         request("FeedDetailSucceeded", '{ ' + completed + ' && $.operation = "feed_detail" && $.httpStatus = 200 }'),
     ]
+    for name, field, _ in REQUEST_STORAGE_OPERATIONS + (("FeedQuery", "feedQuery", "피드 데이터 조회"),):
+        filters.append(request(f"Request{name}Count",
+                               '{ ' + completed + f' && $.{field}Count >= 0 }}', f"$.{field}Count"))
+        filters.append(request(f"Request{name}DurationMs",
+                               '{ ' + completed + f' && $.{field}Count > 0 && $.{field}DurationMs >= 0 }}',
+                               f"$.{field}DurationMs", "Milliseconds"))
+    return filters
 
 
 def prepare_dashboard(original, environment, instance_id, rds_instance_id):

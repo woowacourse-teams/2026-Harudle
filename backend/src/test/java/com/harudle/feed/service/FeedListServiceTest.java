@@ -49,7 +49,7 @@ class FeedListServiceTest {
         var first = snapshot(AUTHOR, 10);
         var second = snapshot(AUTHOR, 5);
         var extra = snapshot(AUTHOR, 1);
-        when(feeds.findAfter(FeedSort.POPULAR, null, null, 3)).thenReturn(List.of(first, second, extra));
+        when(feeds.findAfter(FeedSort.POPULAR, null, null, 3, null)).thenReturn(List.of(first, second, extra));
         metadata();
         var result = service.getList(null, FeedSort.POPULAR, null, null, 2);
         assertThat(result.items()).extracting(item -> item.id()).containsExactly(first.id(), second.id());
@@ -65,7 +65,7 @@ class FeedListServiceTest {
     void personalizesLikesOnceForReturnedFeedIds() {
         var first = snapshot(AUTHOR, 10);
         var second = snapshot(AUTHOR, 5);
-        when(feeds.findAfter(FeedSort.LATEST, null, null, 3)).thenReturn(List.of(first, second));
+        when(feeds.findAfter(FeedSort.LATEST, null, null, 3, AUTHOR)).thenReturn(List.of(first, second));
         metadata();
         when(collaborators.likes()).thenReturn(likes);
         when(likes.findLikedFeedIds(AUTHOR, Set.of(first.id(), second.id()))).thenReturn(Set.of(second.id()));
@@ -80,7 +80,7 @@ class FeedListServiceTest {
 
     @Test
     void returnsEmptyLastPageWithoutRequiringUnusedAdapters() {
-        when(feeds.findAfter(FeedSort.LATEST, null, null, 21)).thenReturn(List.of());
+        when(feeds.findAfter(FeedSort.LATEST, null, null, 21, AUTHOR)).thenReturn(List.of());
         var result = service.getList(AUTHOR, FeedSort.LATEST, null, null, 20);
         assertThat(result.items()).isEmpty();
         assertThat(result.nextCursor()).isNull();
@@ -92,7 +92,7 @@ class FeedListServiceTest {
     void validatesCategoryEvenWhenThereAreNoFeedsAndAllowsArchivedCategory() {
         when(collaborators.categories()).thenReturn(categories);
         when(categories.get(1)).thenReturn(new CategoryReader.Category(1, "일상", 0, false));
-        when(feeds.findAfter(FeedSort.LATEST, 1L, null, 21)).thenReturn(List.of());
+        when(feeds.findAfter(FeedSort.LATEST, 1L, null, 21, null)).thenReturn(List.of());
         assertThat(service.getList(null, FeedSort.LATEST, 1L, null, 20).items()).isEmpty();
         verify(categories).get(1);
         when(categories.get(99)).thenThrow(new CategoryNotFoundException());
@@ -114,8 +114,8 @@ class FeedListServiceTest {
         var hidden = snapshot(unavailable, 20);
         var first = snapshot(AUTHOR, 10);
         var second = snapshot(AUTHOR, 5);
-        when(feeds.findAfter(FeedSort.POPULAR, null, null, 2)).thenReturn(List.of(hidden, first));
-        when(feeds.findAfter(FeedSort.POPULAR, null, FeedCursor.after(FeedSort.POPULAR, null, first), 2))
+        when(feeds.findAfter(FeedSort.POPULAR, null, null, 2, null)).thenReturn(List.of(hidden, first));
+        when(feeds.findAfter(FeedSort.POPULAR, null, FeedCursor.after(FeedSort.POPULAR, null, first), 2, null))
                 .thenReturn(List.of(second));
         metadata();
         var result = service.getList(null, FeedSort.POPULAR, null, null, 1);
@@ -129,15 +129,15 @@ class FeedListServiceTest {
     @Test
     void forwardsDecodedCursorAndAllowsChangingPageSize() {
         FeedCursor boundary = FeedCursor.after(FeedSort.LATEST, null, snapshot(AUTHOR, 0));
-        when(feeds.findAfter(FeedSort.LATEST, null, boundary, 51)).thenReturn(List.of());
+        when(feeds.findAfter(FeedSort.LATEST, null, boundary, 51, null)).thenReturn(List.of());
         service.getList(null, FeedSort.LATEST, null, cursors.encode(boundary), 50);
-        verify(feeds).findAfter(FeedSort.LATEST, null, boundary, 51);
+        verify(feeds).findAfter(FeedSort.LATEST, null, boundary, 51, null);
     }
 
     private void metadata() {
         when(collaborators.profiles()).thenReturn(profiles);
         when(profiles.readAll(anySet())).thenReturn(Map.of(AUTHOR,
-                new PublicProfileReader.Profile(AUTHOR, "캐모", URI.create("https://example.com/profile.png"))));
+                new PublicProfileReader.Profile(AUTHOR, "캐모", URI.create("https://example.com/profile.png"), null)));
         when(collaborators.categories()).thenReturn(categories);
         when(categories.get(1)).thenReturn(new CategoryReader.Category(1, "일상", 0, true));
     }

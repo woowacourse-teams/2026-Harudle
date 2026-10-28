@@ -1,5 +1,6 @@
 package com.harudle.generation.adapter.out.s3;
 
+import com.harudle.observability.RequestOperationTimings;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -22,6 +23,16 @@ public final class ObservedImageUrlProvider implements ImageUrlProvider {
     }
 
     @Override
+    public ImageUrlProvider forRead() {
+        return new ObservedImageUrlProvider(delegate.forRead(), meterRegistry);
+    }
+
+    @Override
+    public ImageUrlProvider forPublication() {
+        return new ObservedImageUrlProvider(delegate.forPublication(), meterRegistry);
+    }
+
+    @Override
     public ImageUrlProvider forResponse() {
         return new ObservedImageUrlProvider(delegate.forResponse(), meterRegistry);
     }
@@ -39,6 +50,8 @@ public final class ObservedImageUrlProvider implements ImageUrlProvider {
             failureType = S3MetricFailureType.from(exception, true);
             throw exception;
         } finally {
+            RequestOperationTimings.record(RequestOperationTimings.Operation.S3_SIGN,
+                    System.nanoTime() - startedAt, "failure".equals(result));
             try {
                 record(result, failureType, System.nanoTime() - startedAt);
             } catch (RuntimeException exception) {

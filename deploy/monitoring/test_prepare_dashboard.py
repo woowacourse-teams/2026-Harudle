@@ -13,6 +13,24 @@ INSTANCE_ID = "i-0123456789abcdef0"
 
 
 class DashboardTests(unittest.TestCase):
+
+    def test_request_storage_times_exclude_uncalled_operations_and_have_no_request_dimensions(self):
+        for environment in ("dev", "prod"):
+            filters = {item["metricTransformations"][0]["metricName"]: item
+                       for item in metric_filters(environment)}
+            for name, field in (("S3Head", "s3Head"), ("R2Head", "r2Head"),
+                                ("S3Sign", "s3Sign"), ("R2Sign", "r2Sign"), ("FeedQuery", "feedQuery")):
+                count = filters[f"Request{name}Count"]
+                duration = filters[f"Request{name}DurationMs"]
+                self.assertIn(f"$.{field}Count >= 0", count["filterPattern"])
+                self.assertIn(f"$.{field}Count > 0", duration["filterPattern"])
+                self.assertEqual(count["metricTransformations"][0]["metricValue"], f"$.{field}Count")
+                transformation = duration["metricTransformations"][0]
+                self.assertEqual(transformation["metricValue"], f"$.{field}DurationMs")
+                self.assertEqual(transformation["unit"], "Milliseconds")
+                self.assertNotIn("defaultValue", transformation)
+                self.assertNotIn("dimensions", transformation)
+
     def test_preserves_existing_widgets_and_only_repairs_known_placeholder_targets(self):
         original = {"start": "-PT6H", "periodOverride": "inherit", "widgets": [
             {"type": "text", "x": 0, "y": 0, "height": 2, "properties": {"markdown": "기존 안내"}},
@@ -41,7 +59,7 @@ class DashboardTests(unittest.TestCase):
     def test_latency_uses_raw_samples_with_no_zero_defaults_and_bounded_groups(self):
         for environment in ("dev", "prod"):
             filters = metric_filters(environment)
-            durations = [item for item in filters if item["metricTransformations"][0]["unit"] == "Milliseconds"]
+            durations = [item for item in filters if item["metricTransformations"][0]["metricName"] == "ApiResponseTimeMs"]
             self.assertEqual(len(durations), 2)
             for item in durations:
                 transformation = item["metricTransformations"][0]
@@ -67,7 +85,7 @@ class DashboardTests(unittest.TestCase):
     def test_existing_dev_and_prod_widgets_and_filters_keep_the_same_contract(self):
         normalized = []
         for environment in ("dev", "prod"):
-            value = {"filters": metric_filters(environment), "widgets": service_widgets(environment, INSTANCE_ID)[:9]}
+            value = {"filters": metric_filters(environment), "widgets": service_widgets(environment, INSTANCE_ID)[:12]}
             text = json.dumps(value)
             other = "Prod" if environment == "dev" else "Dev"
             self.assertNotIn(f"Harudle/{other}", text)
@@ -78,9 +96,9 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(*normalized)
 
     def test_gc_and_nonheap_widgets_are_dev_only_and_use_converted_counters(self):
-        self.assertEqual(len(service_widgets("prod", INSTANCE_ID)), 9)
+        self.assertEqual(len(service_widgets("prod", INSTANCE_ID)), 15)
         widgets = service_widgets("dev", INSTANCE_ID)
-        self.assertEqual(len(widgets), 11)
+        self.assertEqual(len(widgets), 17)
         gc, memory = widgets[-2:]
         self.assertIn("jvm_gc_pause_seconds_max", json.dumps(gc))
         self.assertIn("1000*MAX(", json.dumps(gc))
@@ -94,6 +112,25 @@ class DashboardTests(unittest.TestCase):
         self.assertIn("jvm_memory_committed_bytes", json.dumps(memory))
         prepared = prepare_dashboard({"widgets": []}, "dev", INSTANCE_ID, "harudle-dev-db")
         self.assertEqual(prepare_dashboard(prepared, "dev", INSTANCE_ID, "harudle-dev-db"), prepared)
+
+    def test_queue_widgets_use_matching_dimensions_and_converted_counter_sums(self):
+        for environment in ("dev", "prod"):
+            with self.subTest(environment=environment):
+                widgets = {item["properties"]["title"]: item["properties"]
+                           for item in service_widgets(environment, INSTANCE_ID)}
+                wait = widgets["생성 시작 전 평균 대기 시간"]["metrics"]
+                self.assertEqual(wait[0][1], "harudle_generation_queue_wait_seconds_sum")
+                self.assertEqual(wait[1][1], "harudle_generation_queue_wait_seconds_count")
+                self.assertTrue(all(row[-1]["stat"] == "Sum" for row in wait[:2]))
+                self.assertEqual(wait[2][0]["expression"], "IF(claims>0,waitseconds/claims)")
+                counts = widgets["생성 대기와 처리 중 작업 수"]["metrics"]
+                self.assertEqual([row[5] for row in counts], ["PENDING", "PROCESSING"])
+                self.assertTrue(all(row[-1]["stat"] == "Maximum" for row in counts))
+                rejection = widgets["생성 접수 거절 횟수"]["metrics"][0]
+                self.assertEqual(rejection[1], "harudle_generation_capacity_rejections_total")
+                self.assertEqual(rejection[2:4], ["job", "harudle-backend"])
+                self.assertEqual(rejection[-1]["stat"], "Sum")
+                self.assertNotIn("DIFF(", json.dumps([wait, rejection]))
 
     def test_dashboard_uses_sample_percentiles_period_based_rates_and_matching_resource_units(self):
         widgets = service_widgets("dev", INSTANCE_ID)
@@ -132,9 +169,9 @@ class DashboardTests(unittest.TestCase):
             previous["DashboardArn"] = previous["DashboardArn"].replace("prod", "dev")
             before.write_text(json.dumps(previous))
             result = subprocess.run(command, capture_output=True, text=True, check=True)
-            self.assertEqual(len(list(output.glob("*.json"))), 7)
+            self.assertEqual(len(list(output.glob("*.json"))), 17)
             self.assertEqual(json.loads(before.read_text()), previous)
-            self.assertEqual(len(json.loads((output / "dashboard.json").read_text())["widgets"]), 11)
+            self.assertEqual(len(json.loads((output / "dashboard.json").read_text())["widgets"]), 17)
 
     def test_cli_accepts_console_source_and_preserves_widgets_and_variables_for_both_environments(self):
         for environment in ("dev", "prod"):
@@ -161,8 +198,8 @@ class DashboardTests(unittest.TestCase):
                 self.assertEqual(result["variables"], original["variables"])
                 self.assertEqual(result["start"], original["start"])
                 self.assertEqual(result["widgets"][:1], original["widgets"])
-                self.assertEqual(len(result["widgets"]), 12 if environment == "dev" else 10)
-                self.assertEqual(len(list(output.glob("*.json"))), 7)
+                self.assertEqual(len(result["widgets"]), 18 if environment == "dev" else 16)
+                self.assertEqual(len(list(output.glob("*.json"))), 17)
                 for index, expected in enumerate(metric_filters(environment), start=1):
                     self.assertEqual(json.loads((output / f"metric-filter-{index}.json").read_text()), expected)
                 before.write_text(json.dumps(result), encoding="utf-8")

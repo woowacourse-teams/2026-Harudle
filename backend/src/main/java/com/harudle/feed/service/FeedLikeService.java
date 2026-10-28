@@ -17,6 +17,7 @@ import java.util.Objects;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -39,10 +40,10 @@ public class FeedLikeService {
         this.clock = Objects.requireNonNull(clock);
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public FeedLikeResult like(UUID userId, UUID feedId) {
         validateMember(userId, feedId);
-        Target target = feedInteractionPort.lockActive(feedId);
+        Target target = feedInteractionPort.lockActiveForInteraction(feedId, userId);
         UUID likeId = UUID.randomUUID();
         Instant now = clock.instant();
         if (!feedLikeRepository.add(likeId, feedId, userId, now)) {
@@ -53,10 +54,10 @@ public class FeedLikeService {
         return new FeedLikeResult(true, counts.likeCount());
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public FeedLikeResult unlike(UUID userId, UUID feedId) {
         validateMember(userId, feedId);
-        Target target = feedInteractionPort.lockActive(feedId);
+        Target target = feedInteractionPort.lockActiveForInteraction(feedId, userId);
         if (!feedLikeRepository.remove(feedId, userId)) {
             return new FeedLikeResult(false, target.counts().likeCount());
         }

@@ -71,7 +71,9 @@ class NotificationControllerTest {
     private static final String UPDATE = LIST + "/" + NOTIFICATION;
     private static final String CSRF = "same-cookie-and-header";
     private static final Instant NOW = Instant.parse("2026-10-12T03:00:00Z");
-    private static final Profile PROFILE = new Profile(USER, "네오", URI.create("https://example.com/profile.svg"));
+    private static final Profile PROFILE = new Profile(
+            USER, "네오", URI.create("https://example.com/profile.webp?signature=example"), NOW.plusSeconds(900)
+    );
 
     @Autowired private MockMvc mockMvc;
     @MockitoBean private NotificationService service;
@@ -99,6 +101,9 @@ class NotificationControllerTest {
                 .andExpect(jsonPath("$.items[0].type").value("COMMENT"))
                 .andExpect(jsonPath("$.items[0].feedId").value(FEED.toString()))
                 .andExpect(jsonPath("$.items[0].actor.nickname").value("네오"))
+                .andExpect(jsonPath("$.items[0].actor.profileImageUrl").value(PROFILE.profileImageUrl().toString()))
+                .andExpect(jsonPath("$.items[0].actor.profileImageUrlExpiresAt")
+                        .value(PROFILE.profileImageUrlExpiresAt().toString()))
                 .andExpect(jsonPath("$.items[0].message").value("네오님이 댓글을 남겼습니다."))
                 .andExpect(jsonPath("$.items[0].read").value(false))
                 .andExpect(jsonPath("$.items[0].readAt").doesNotExist())

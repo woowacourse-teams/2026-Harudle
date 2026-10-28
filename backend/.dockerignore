@@ -1,5 +1,8 @@
 .gradle
-build
+build/*
+!build/codebuild/
+build/codebuild/*
+!build/codebuild/app.jar
 .idea
 *.iml
 .env
