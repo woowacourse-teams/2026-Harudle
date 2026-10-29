@@ -51,6 +51,7 @@ class ApiCsrfPolicyTest {
 
     private static final UUID ACTOR = UUID.fromString("550e8400-e29b-41d4-a716-446655440001");
     private static final List<String> COOKIE_PATHS = List.of(
+            "/api/v1/auth/apple/native/nonce", "/api/v1/auth/apple/native/login",
             "/api/v1/auth/refresh", "/api/v1/auth/logout", "/api/v1/guest/session", "/api/v1/guest/diaries"
     );
     private static final List<HttpMethod> MUTATION_METHODS = List.of(
@@ -161,7 +162,8 @@ class ApiCsrfPolicyTest {
             return "bearer";
         }
 
-        @PostMapping({"/api/v1/auth/refresh", "/api/v1/auth/logout", "/api/v1/guest/session", "/api/v1/guest/diaries"})
+        @PostMapping({"/api/v1/auth/apple/native/nonce", "/api/v1/auth/apple/native/login",
+            "/api/v1/auth/refresh", "/api/v1/auth/logout", "/api/v1/guest/session", "/api/v1/guest/diaries"})
         String cookieMutation() {
             return "cookie";
         }
