@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -33,7 +34,7 @@ public class AppleNativeTokenVerifier {
     private final JwtDecoder decoder;
     private final RestClient client;
 
-    @org.springframework.beans.factory.annotation.Autowired
+    @Autowired
     public AppleNativeTokenVerifier(AppleClientSecretGenerator secretGenerator) {
         this(secretGenerator, IOS_CLIENT_ID, NimbusJwtDecoder.withJwkSetUri(ISSUER + "/auth/keys").build(),
                 createAppleClient());

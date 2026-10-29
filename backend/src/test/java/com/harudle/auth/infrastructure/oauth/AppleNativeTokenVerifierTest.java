@@ -2,9 +2,13 @@ package com.harudle.auth.infrastructure.oauth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 
 import com.harudle.auth.infrastructure.oauth.AppleNativeTokenVerifier.AppleProviderException;
 import com.harudle.auth.infrastructure.oauth.AppleNativeTokenVerifier.InvalidAuthorizationCodeException;
@@ -21,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -37,8 +42,7 @@ class AppleNativeTokenVerifierTest {
             Class<? extends RuntimeException> expected) {
         var builder = RestClient.builder().baseUrl("https://appleid.apple.com");
         var server = MockRestServiceServer.bindTo(builder).build();
-        server.expect(org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo(
-                        "https://appleid.apple.com/auth/token"))
+        server.expect(requestTo("https://appleid.apple.com/auth/token"))
                 .andRespond(MockRestResponseCreators.withStatus(status).contentType(MediaType.APPLICATION_JSON).body(body));
         var nativeToken = Jwt.withTokenValue("native").header("alg", "RS256")
                 .issuer("https://appleid.apple.com").subject("user").audience(List.of("our-app"))
@@ -65,8 +69,7 @@ class AppleNativeTokenVerifierTest {
     void distinguishesInvalidJwtFromUnavailableAppleKeys() throws Exception {
         var rest = new RestTemplate();
         var server = MockRestServiceServer.bindTo(rest).build();
-        server.expect(org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo(
-                        "https://appleid.apple.com/auth/keys"))
+        server.expect(requestTo("https://appleid.apple.com/auth/keys"))
                 .andRespond(MockRestResponseCreators.withServerError());
         var decoder = NimbusJwtDecoder.withJwkSetUri("https://appleid.apple.com/auth/keys")
                 .restOperations(rest).build();
@@ -109,13 +112,11 @@ class AppleNativeTokenVerifierTest {
     @Test
     void exchangesCodeAndUsesVerifiedAppleUser() {
         var builder = RestClient.builder().baseUrl("https://appleid.apple.com");
-        var server = org.springframework.test.web.client.MockRestServiceServer.bindTo(builder).build();
-        server.expect(org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo("https://appleid.apple.com/auth/token"))
-                .andExpect(org.springframework.test.web.client.match.MockRestRequestMatchers.method(org.springframework.http.HttpMethod.POST))
-                .andExpect(org.springframework.test.web.client.match.MockRestRequestMatchers.content()
-                        .string(org.hamcrest.Matchers.containsString("client_id=our-app")))
-                .andRespond(org.springframework.test.web.client.response.MockRestResponseCreators
-                        .withSuccess("{\"id_token\":\"exchanged\"}", org.springframework.http.MediaType.APPLICATION_JSON));
+        var server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("https://appleid.apple.com/auth/token"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(content().string(containsString("client_id=our-app")))
+                .andRespond(MockRestResponseCreators.withSuccess("{\"id_token\":\"exchanged\"}", MediaType.APPLICATION_JSON));
         var nativeToken = Jwt.withTokenValue("native").header("alg", "RS256")
                 .issuer("https://appleid.apple.com").subject("user")
                 .audience(List.of("our-app")).expiresAt(Instant.now().plusSeconds(60))
@@ -124,7 +125,7 @@ class AppleNativeTokenVerifierTest {
                 .issuer("https://appleid.apple.com").subject("user")
                 .audience(List.of("our-app")).expiresAt(Instant.now().plusSeconds(60)).build();
         var generator = mock(AppleClientSecretGenerator.class);
-        org.mockito.Mockito.when(generator.generate("our-app")).thenReturn("secret");
+        when(generator.generate("our-app")).thenReturn("secret");
         var verifier = new AppleNativeTokenVerifier(generator, "our-app",
                 token -> token.equals("native") ? nativeToken : exchanged, builder.build());
         Jwt verified = verifier.verify("code", "native", "nonce");
@@ -137,8 +138,7 @@ class AppleNativeTokenVerifierTest {
     void rejectsTokensForDifferentAppleUsers() {
         var builder = RestClient.builder().baseUrl("https://appleid.apple.com");
         var server = MockRestServiceServer.bindTo(builder).build();
-        server.expect(org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo(
-                        "https://appleid.apple.com/auth/token"))
+        server.expect(requestTo("https://appleid.apple.com/auth/token"))
                 .andRespond(MockRestResponseCreators.withSuccess("{\"id_token\":\"exchanged\"}", MediaType.APPLICATION_JSON));
         var nativeToken = Jwt.withTokenValue("native").header("alg", "RS256")
                 .issuer("https://appleid.apple.com").subject("user")
@@ -161,8 +161,7 @@ class AppleNativeTokenVerifierTest {
     void treatsMissingExchangedIdTokenAsAppleFailure() {
         var builder = RestClient.builder().baseUrl("https://appleid.apple.com");
         var server = MockRestServiceServer.bindTo(builder).build();
-        server.expect(org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo(
-                        "https://appleid.apple.com/auth/token"))
+        server.expect(requestTo("https://appleid.apple.com/auth/token"))
                 .andRespond(MockRestResponseCreators.withSuccess("{}", MediaType.APPLICATION_JSON));
         var nativeToken = Jwt.withTokenValue("native").header("alg", "RS256")
                 .issuer("https://appleid.apple.com").subject("user").audience(List.of("our-app"))

@@ -10,6 +10,7 @@ import com.harudle.auth.infrastructure.token.RefreshTokenCookieWriter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
+import java.io.Serializable;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
@@ -107,5 +108,5 @@ public class AppleNativeLoginController {
 
     record NonceResponse(String nonce) {}
     record LoginRequest(String authorizationCode, String identityToken) {}
-    record PendingNonce(String value, Instant expiresAt) implements java.io.Serializable {}
+    record PendingNonce(String value, Instant expiresAt) implements Serializable {}
 }
