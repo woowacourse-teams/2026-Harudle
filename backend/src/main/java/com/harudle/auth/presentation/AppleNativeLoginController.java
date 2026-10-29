@@ -5,6 +5,7 @@ import com.harudle.auth.application.RefreshTokenService;
 import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.auth.infrastructure.oauth.AppleLoginCommandMapper;
 import com.harudle.auth.infrastructure.oauth.AppleNativeTokenVerifier;
+import com.harudle.auth.infrastructure.oauth.AppleNativeTokenVerifier.AppleProviderException;
 import com.harudle.auth.infrastructure.token.RefreshTokenCookieWriter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -99,7 +100,7 @@ public class AppleNativeLoginController {
         return ResponseEntity.badRequest().cacheControl(CacheControl.noStore()).build();
     }
 
-    @ExceptionHandler(RestClientException.class)
+    @ExceptionHandler({RestClientException.class, AppleProviderException.class})
     public ResponseEntity<Void> appleUnavailable() {
         return ResponseEntity.status(502).cacheControl(CacheControl.noStore()).build();
     }

@@ -3,14 +3,87 @@ package com.harudle.auth.infrastructure.oauth;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
+import com.harudle.auth.infrastructure.oauth.AppleNativeTokenVerifier.AppleProviderException;
+import com.harudle.auth.infrastructure.oauth.AppleNativeTokenVerifier.InvalidAuthorizationCodeException;
+import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.JWSHeader;
+import com.nimbusds.jose.crypto.RSASSASigner;
+import com.nimbusds.jose.jwk.gen.RSAKeyGenerator;
+import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.SignedJWT;
 import java.time.Instant;
 import java.util.List;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.test.web.client.MockRestServiceServer;
+import org.springframework.test.web.client.response.MockRestResponseCreators;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestTemplate;
 
 class AppleNativeTokenVerifierTest {
+    @ParameterizedTest
+    @MethodSource("appleErrors")
+    void distinguishesRejectedCodeFromAppleErrors(HttpStatus status, String body,
+            Class<? extends RuntimeException> expected) {
+        var builder = RestClient.builder().baseUrl("https://appleid.apple.com");
+        var server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo(
+                        "https://appleid.apple.com/auth/token"))
+                .andRespond(MockRestResponseCreators.withStatus(status).contentType(MediaType.APPLICATION_JSON).body(body));
+        var nativeToken = Jwt.withTokenValue("native").header("alg", "RS256")
+                .issuer("https://appleid.apple.com").subject("user").audience(List.of("our-app"))
+                .expiresAt(Instant.now().plusSeconds(60)).claim("nonce", "nonce").build();
+        var generator = mock(AppleClientSecretGenerator.class);
+        when(generator.generate("our-app")).thenReturn("secret");
+        var verifier = new AppleNativeTokenVerifier(generator, "our-app", ignored -> nativeToken, builder.build());
+
+        assertThatThrownBy(() -> verifier.verify("code", "native", "nonce")).isInstanceOf(expected);
+        server.verify();
+    }
+
+    private static Stream<Arguments> appleErrors() {
+        return Stream.of(
+                Arguments.of(HttpStatus.BAD_REQUEST, "{\"error\":\"invalid_grant\"}", InvalidAuthorizationCodeException.class),
+                Arguments.of(HttpStatus.BAD_REQUEST, "{\"error\":\"invalid_client\"}", AppleProviderException.class),
+                Arguments.of(HttpStatus.BAD_REQUEST, "{\"error\":\"invalid_request\"}", AppleProviderException.class),
+                Arguments.of(HttpStatus.BAD_REQUEST, "not json", AppleProviderException.class),
+                Arguments.of(HttpStatus.INTERNAL_SERVER_ERROR, "{\"error\":\"invalid_grant\"}", AppleProviderException.class)
+        );
+    }
+
+    @Test
+    void distinguishesInvalidJwtFromUnavailableAppleKeys() throws Exception {
+        var rest = new RestTemplate();
+        var server = MockRestServiceServer.bindTo(rest).build();
+        server.expect(org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo(
+                        "https://appleid.apple.com/auth/keys"))
+                .andRespond(MockRestResponseCreators.withServerError());
+        var decoder = NimbusJwtDecoder.withJwkSetUri("https://appleid.apple.com/auth/keys")
+                .restOperations(rest).build();
+        var verifier = new AppleNativeTokenVerifier(mock(AppleClientSecretGenerator.class), "our-app",
+                decoder, mock(RestClient.class));
+
+        assertThatThrownBy(() -> verifier.verify("code", "malformed", "nonce"))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        var key = new RSAKeyGenerator(2048).keyID("key").generate();
+        var signed = new SignedJWT(new JWSHeader.Builder(JWSAlgorithm.RS256).keyID("key").build(),
+                new JWTClaimsSet.Builder().subject("user").build());
+        signed.sign(new RSASSASigner(key));
+        assertThatThrownBy(() -> verifier.verify("code", signed.serialize(), "nonce"))
+                .isInstanceOf(AppleProviderException.class);
+        server.verify();
+    }
+
     @Test
     void rejectsWrongAudienceAndNonceBeforeExchangingCode() {
         RestClient client = mock(RestClient.class);
