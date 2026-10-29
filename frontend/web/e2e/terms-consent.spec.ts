@@ -232,7 +232,6 @@ test('신규 회원은 로그인 콜백 뒤 약관을 확인하고 피드로 간
   await page.goto('/login');
   await page.evaluate((): void => {
     localStorage.clear();
-    localStorage.setItem('harudle.has-seen-landing', 'true');
     sessionStorage.clear();
   });
   await page.reload();

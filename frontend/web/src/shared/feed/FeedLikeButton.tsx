@@ -33,6 +33,8 @@ const FeedLikeButton = ({
   }, [request, addToast]);
 
   const handleLike = (): void => {
+    if (request.status === 'loading') return;
+
     if (localStorage.getItem('harudle.has-completed-oauth') === null) {
       loginSheetRef.current?.open();
       return;
@@ -48,9 +50,11 @@ const FeedLikeButton = ({
     <>
       <button
         type="button"
-        disabled={request.status === 'loading'}
+        aria-disabled={request.status === 'loading'}
+        aria-pressed={likedByMe}
         css={likeButtonStyle}
         onClick={handleLike}
+        aria-label={`좋아요 ${likeCount}개`}
       >
         <img
           src={likedByMe ? filledHeartIcon : heartIcon}
@@ -106,7 +110,7 @@ const likeButtonStyle = css`
   line-height: 20px;
   cursor: pointer;
 
-  &:disabled {
+  &[aria-disabled='true'] {
     opacity: 0.6;
   }
 `;

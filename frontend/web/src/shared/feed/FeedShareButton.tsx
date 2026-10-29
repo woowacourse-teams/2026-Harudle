@@ -61,7 +61,7 @@ const FeedShareButton = ({ feedId, shareUrl }: FeedShareButtonProps) => {
         css={shareButtonStyle}
         onClick={() => sheetRef.current?.open()}
       >
-        <img src={sendIcon} alt="공유 아이콘" width={24} height={24} />
+        <img src={sendIcon} alt="공유하기" width={24} height={24} />
       </button>
       <BottomSheet title={FEED_ACTION_COPY.shareSheetTitle} ref={sheetRef}>
         <CopyLinkButton isCopied={isCopied} onCopy={handleCopyLink} />

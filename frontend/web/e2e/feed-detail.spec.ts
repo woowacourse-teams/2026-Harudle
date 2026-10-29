@@ -68,9 +68,6 @@ test('상세 직접 진입과 새로고침에서 세션을 복원해 본인 피�
   });
   try {
     const page = await context.newPage();
-    await page.addInitScript((): void => {
-      localStorage.removeItem('harudle.has-seen-landing');
-    });
     const detailAuthorizations: (string | undefined)[] = [];
     page.on('request', (request): void => {
       if (new URL(request.url()).pathname === `/api/v1${detailPath}`) {
