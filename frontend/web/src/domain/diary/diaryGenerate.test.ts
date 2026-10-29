@@ -4,6 +4,7 @@ import { RequestError, type ProblemDetails } from '../../shared/api';
 import { GENERATION_FAILURE_CODES } from './diaryGeneration';
 import {
   generateDiary,
+  getDiaryGenerationStatus,
   isDiaryGenerateResponse,
   isDiaryGenerationStatusResponse,
   type DiaryGenerateRequest,
@@ -215,6 +216,24 @@ describe('일기 생성 상태 응답 타입 가드', (): void => {
     diaryId: null,
     errorCode: null,
   };
+
+  it('새 오류 코드의 실패 응답을 검증하고 action을 그대로 반환한다', async (): Promise<void> => {
+    const response = {
+      ...pendingResponse,
+      status: 'FAILED',
+      errorCode: 'AI_CONTENT_BLOCKED',
+      action:
+        '작성한 내용으로 생성할 수 없어요. 내용을 바꿔 다시 시도해 주세요.',
+    };
+    mockAuthFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => response,
+    } as Response);
+
+    await expect(
+      getDiaryGenerationStatus({ generationId: pendingResponse.id }),
+    ).resolves.toEqual(response);
+  });
 
   it.each([
     pendingResponse,

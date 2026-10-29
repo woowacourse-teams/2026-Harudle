@@ -150,6 +150,7 @@ interface DiaryGenerationStatusFailureResponse {
   status: Extract<GenerationStatus, 'FAILED'>;
   diaryId: null;
   errorCode: GenerationFailureCode;
+  readonly action?: unknown;
 }
 
 export type DiaryGenerationStatusResponse =
