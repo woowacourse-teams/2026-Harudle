@@ -49,12 +49,13 @@ const FeedCategoryList = ({
 
   return (
     <div css={feedCategoryListStyle}>
-      <div
+      <ul
         css={categoryOptionsStyle}
         onWheel={(event): void => {
           if (event.deltaX !== 0 || event.shiftKey || event.ctrlKey) return;
           event.currentTarget.scrollLeft += event.deltaY;
         }}
+        aria-label="카테고리"
       >
         <FeedCategoryItem
           label={FEED_COPY.allCategories}
@@ -69,7 +70,7 @@ const FeedCategoryList = ({
             onSelect={() => onCategoryChange(category.id, category.name)}
           />
         ))}
-      </div>
+      </ul>
     </div>
   );
 };
