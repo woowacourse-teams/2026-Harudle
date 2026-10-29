@@ -1,6 +1,10 @@
 export const MOCK_SCENARIO_HEADER = 'x-msw-scenario';
 
 export const MOCK_SCENARIOS = {
+  notificationsListFailure: 'notifications-list-failure',
+  notificationsReadFailure: 'notifications-read-failure',
+  notificationsMany: 'notifications-many',
+  notificationsEmpty: 'notifications-empty',
   oauthAuthorization: 'oauth-authorization',
   legalDocumentsFailure: 'legal-documents-failure',
   agreementRequired: 'agreement-required',

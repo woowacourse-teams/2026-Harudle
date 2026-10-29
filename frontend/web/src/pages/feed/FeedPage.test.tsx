@@ -41,6 +41,10 @@ jest.mock('./FeedItemList', () => ({
     <button onClick={() => onCategoryClick(2, '우테코')}>카드 카테고리</button>
   ),
 }));
+jest.mock('./FeedNotifications', () => ({
+  __esModule: true,
+  default: () => null,
+}));
 jest.mock('../../assets/icons/feed-sort-down.svg', () => 'sort.svg');
 jest.mock('../../assets/icons/autorenew.svg', () => 'retry.svg');
 jest.mock('../../assets/icons/feed-refresh.svg', () => 'feed-refresh.svg');

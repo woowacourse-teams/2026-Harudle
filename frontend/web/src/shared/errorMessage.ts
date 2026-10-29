@@ -178,6 +178,9 @@ const TOAST = {
 } as const;
 
 export const ERROR_MESSAGES = {
+  NOTIFICATIONS_FETCH_FAILED: '알림을 불러오지 못했어요.',
+  INVALID_NOTIFICATIONS_RESPONSE: '알림 응답 형식이 올바르지 않아요.',
+  NOTIFICATION_READ_FAILED: '알림을 읽음으로 표시하지 못했어요.',
   ...DIARY_GENERATE,
   ...DIARY_DELETE,
   ...DIARY_DETAIL,
