@@ -309,7 +309,9 @@ describe('피드 상세 댓글 더 보기', (): void => {
     expect(screen.getByText(secondComment.content)).toBeInTheDocument();
     expect(screen.queryByText(comment.content)).not.toBeInTheDocument();
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
-    expect(screen.getByRole('button', { name: '0' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '댓글 0개' }),
+    ).toBeInTheDocument();
   });
 
   it('피드 전환 시 추가 조회를 취소하고 새 댓글 커서로 시작한다', async (): Promise<void> => {
@@ -424,7 +426,9 @@ describe('피드 상세 댓글 삭제', (): void => {
     await user.click(screen.getByRole('button', { name: '취소' }));
     expect(mockDeleteComment).not.toHaveBeenCalled();
     expect(screen.getByText(comment.content)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '1' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '댓글 1개' }),
+    ).toBeInTheDocument();
 
     await openDelete(user);
     await user.click(screen.getByRole('button', { name: /댓글 삭제$/ }));
@@ -432,7 +436,9 @@ describe('피드 상세 댓글 삭제', (): void => {
       within(screen.getByRole('dialog')).getByRole('alert'),
     ).toHaveTextContent('삭제 실패');
     expect(screen.getByText(comment.content)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '1' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '댓글 1개' }),
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '취소' }));
     await openDelete(user);
@@ -442,7 +448,9 @@ describe('피드 상세 댓글 삭제', (): void => {
       await screen.findByText('첫 번째 댓글을 남겨보세요.'),
     ).toBeInTheDocument();
     expect(screen.queryByText(comment.content)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '0' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '댓글 0개' }),
+    ).toBeInTheDocument();
     expect(mockDeleteComment).toHaveBeenCalledTimes(2);
     expect(mockDeleteComment).toHaveBeenLastCalledWith({
       commentId: comment.id,
@@ -468,7 +476,9 @@ describe('피드 상세 댓글 삭제', (): void => {
     fireEvent.click(pendingButton);
     expect(mockDeleteComment).toHaveBeenCalledTimes(1);
     expect(screen.getByText(comment.content)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '1' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '댓글 1개' }),
+    ).toBeInTheDocument();
 
     await act(async (): Promise<void> => {
       resolveDelete?.();
@@ -476,6 +486,8 @@ describe('피드 상세 댓글 삭제', (): void => {
     expect(
       await screen.findByText('첫 번째 댓글을 남겨보세요.'),
     ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '0' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '댓글 0개' }),
+    ).toBeInTheDocument();
   });
 });

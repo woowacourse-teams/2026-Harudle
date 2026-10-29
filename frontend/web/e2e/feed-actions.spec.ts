@@ -18,7 +18,7 @@ test('공유 바텀시트에서 공개 링크를 복사한다', async ({ page, c
   await page
     .getByRole('article')
     .first()
-    .getByRole('button', { name: '공유 아이콘' })
+    .getByRole('button', { name: '공유하기' })
     .click();
   const sheet = page.getByRole('dialog').filter({
     has: page.getByRole('heading', { name: '피드 공유', exact: true }),
