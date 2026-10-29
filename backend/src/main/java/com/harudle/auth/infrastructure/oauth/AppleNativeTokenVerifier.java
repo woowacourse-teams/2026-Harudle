@@ -1,9 +1,11 @@
 package com.harudle.auth.infrastructure.oauth;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
@@ -25,7 +27,14 @@ public class AppleNativeTokenVerifier {
     @org.springframework.beans.factory.annotation.Autowired
     public AppleNativeTokenVerifier(AppleClientSecretGenerator secretGenerator) {
         this(secretGenerator, IOS_CLIENT_ID, NimbusJwtDecoder.withJwkSetUri(ISSUER + "/auth/keys").build(),
-                RestClient.create(ISSUER));
+                createAppleClient());
+    }
+
+    private static RestClient createAppleClient() {
+        var requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(Duration.ofSeconds(3));
+        requestFactory.setReadTimeout(Duration.ofSeconds(5));
+        return RestClient.builder().baseUrl(ISSUER).requestFactory(requestFactory).build();
     }
 
     AppleNativeTokenVerifier(AppleClientSecretGenerator secretGenerator, String clientId,
