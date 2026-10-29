@@ -65,6 +65,8 @@ class HarudleApplicationTests extends ServiceIntegrationTestSupport {
                 "feeds",
                 "generation_prompts",
                 "guest_sessions",
+                "moderation_events",
+                "moderation_states",
                 "nickname_candidates",
                 "notification_outbox",
                 "notifications",
@@ -75,6 +77,8 @@ class HarudleApplicationTests extends ServiceIntegrationTestSupport {
                 "refresh_tokens",
                 "reports",
                 "share_links",
+                "user_blocks",
+                "user_terms_acceptances",
                 "users"
         );
     }

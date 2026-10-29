@@ -27,14 +27,14 @@ const generateGuestDiary = async (page: Page): Promise<void> => {
 };
 
 test.describe('통합 랜딩의 1회 체험', () => {
-  test('첫 방문의 첫 화면에서 로그인 없이 공개 피드로 이동한다', async ({
+  test('랜딩에 직접 접속한 뒤 로그인 없이 공개 피드로 이동한다', async ({
     page,
   }): Promise<void> => {
     await page.setExtraHTTPHeaders({
       [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.authRefreshFailure,
     });
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/');
+    await page.goto('/landing');
     await expect(page).toHaveURL('/landing');
     const hero = page.getByRole('region', {
       name: /우리끼리 통하는\s*네컷만화/,
@@ -95,8 +95,8 @@ test.describe('통합 랜딩의 1회 체험', () => {
     ).toBeVisible();
     await expect(page).toHaveURL('/landing');
     await expect(
-      page.getByRole('link', { name: '카카오로 시작하고 계속 만들기' }),
-    ).toHaveAttribute('href', '/oauth2/authorization/kakao');
+      page.getByRole('link', { name: '로그인하고 계속 만들기' }),
+    ).toHaveAttribute('href', '/login');
     await page.reload();
     await expect(
       page.getByRole('heading', { name: '게스트 체험을 이미 사용했어요' }),
@@ -123,6 +123,15 @@ test.describe('통합 랜딩의 1회 체험', () => {
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     await expect(page.getByRole('img', { name: /네컷만화$/ })).toBeVisible();
     await expect(page.getByRole('heading', { name: '내용' })).toBeVisible();
+    await page.getByRole('link', { name: '로그인하기' }).click();
+    await expect(page).toHaveURL('/login');
+    for (const label of [
+      '카카오로 계속하기',
+      'Google로 계속하기',
+      'Apple로 계속하기',
+    ]) {
+      await expect(page.getByRole('button', { name: label })).toBeVisible();
+    }
   });
 
   test('landing-try는 더 이상 별도 체험 페이지를 제공하지 않는다', async ({

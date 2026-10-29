@@ -83,6 +83,28 @@ class Ec2PreparationTest(unittest.TestCase):
         self.assertEqual(target, ec2.database_target(self.settings))
         self.assertNotIn('PGPASSWORD', target)
 
+    def test_large_member_set_can_be_prepared_without_changing_the_default(self):
+        runner = Mock()
+        with contextlib.redirect_stdout(io.StringIO()):
+            ec2.prepare_run(self.directory, self.settings, runner, 1200)
+        fixture = assets.load_fixture(self.directory)
+        self.assertEqual(len(fixture['members']), 1200)
+        self.assertEqual(fixture['memberCount'], 1200)
+        self.assertEqual(len({member['id'] for member in fixture['members']}), 1200)
+        self.assertIn("<> 1200", runner.call_args.args[0])
+        with self.assertRaisesRegex(ValueError, 'different size'):
+            ec2.prepare_run(self.directory, self.settings, Mock())
+
+    def test_large_fixture_rejects_truncated_members(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            ec2.prepare_run(self.directory, self.settings, Mock(), 1200)
+        path = self.directory / 'members.json'
+        fixture = json.loads(path.read_text())
+        fixture['members'] = fixture['members'][:200]
+        path.write_text(json.dumps(fixture))
+        with self.assertRaisesRegex(ValueError, 'Invalid run fixture'):
+            assets.load_fixture(self.directory)
+
     def test_missing_prompt_stops_reset_before_new_files_or_upload(self):
         with contextlib.redirect_stdout(io.StringIO()):
             ec2.prepare_run(self.directory, self.settings, Mock())

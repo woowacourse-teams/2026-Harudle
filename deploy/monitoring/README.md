@@ -41,7 +41,7 @@ PostgreSQL 전체 연결 수는 별도 수집이 필요하다. 기존 HikariPool
 
 **dev와 prod에서 API 응답과 오류, EC2 서버 자원, RDS 자원, Java 메모리를 함께 확인합니다.** dev는 부하테스트 원인 분석을 위해 GC와 힙 외 메모리도 수집합니다.
 
-**처음에는 배포, Agent 설정 적용, 로그 필터 6개 등록, 대시보드 저장을 모두 해야 합니다.** 대시보드 JSON만 넣으면 새 지표가 수집되지 않습니다. 같은 설정을 쓰는 이후 배포에서는 이 작업을 반복하지 않습니다. 수집 설정이나 서버가 바뀌면 해당 부분을 다시 적용합니다.
+**처음에는 배포, Agent 설정 적용, 로그 필터 16개 등록, 대시보드 저장을 모두 해야 합니다.** 대시보드 JSON만 넣으면 새 지표가 수집되지 않습니다. 같은 설정을 쓰는 이후 배포에서는 이 작업을 반복하지 않습니다. 수집 설정이나 서버가 바뀌면 해당 부분을 다시 적용합니다.
 
 ## 무엇을 볼 수 있나요?
 
@@ -205,21 +205,21 @@ python3 deploy/monitoring/prepare_dashboard.py \
 Python 스크립트는 AWS에 접속하지 않고 **내 컴퓨터에 파일만 만듭니다.**
 
 - `before.json`: 직접 저장한 변경 전 대시보드입니다. 스크립트가 수정하지 않습니다. 적용 확인이 끝날 때까지 보관합니다.
-- `dashboard.json`: 기존 그래프 아래에 dev는 11개, prod는 9개 그래프를 추가한 내용입니다.
-- `metric-filter-1.json`부터 `metric-filter-6.json`: API 시간과 성공 횟수를 로그에서 읽는 설정입니다.
+- `dashboard.json`: 기존 그래프 아래에 dev는 17개, prod는 15개 그래프를 추가한 내용입니다.
+- `metric-filter-1.json`부터 `metric-filter-16.json`: API 시간, 성공 횟수와 요청별 작업을 로그에서 읽는 설정입니다.
 
 기존 그래프의 임시 EC2 ID `i-00000000000000000`과 RDS 이름 `harudle-dev`, `harudle-prod`는 입력한 실제 값으로 고칩니다. 다른 대상 값은 유지합니다. 같은 파일을 다시 만들 때 이번에 추가한 그래프가 중복되지 않습니다.
 
-공통 그래프 9개는 API, DB 연결, Java 메모리용입니다. dev에는 GC와 힙 외 메모리 그래프 2개도 추가합니다. EC2와 RDS 자원 그래프는 기존 것을 사용하며, 없는 항목은 위 표에 따라 추가합니다. 대상 ID를 고쳐도 지표 그룹이나 이름이 다르면 값이 나오지 않으므로 함께 확인합니다.
+공통 그래프 15개는 API, 생성 대기, DB 연결, Java 메모리와 요청별 저장소 작업용입니다. dev에는 GC와 힙 외 메모리 그래프 2개도 추가합니다. EC2와 RDS 자원 그래프는 기존 것을 사용하며, 없는 항목은 위 표에 따라 추가합니다. 대상 ID를 고쳐도 지표 그룹이나 이름이 다르면 값이 나오지 않으므로 함께 확인합니다.
 
-## 3. 콘솔에서 로그 필터 6개를 등록합니다
+## 3. 콘솔에서 로그 필터 16개를 등록합니다
 
 로그 필터는 백엔드 로그의 응답 시간과 성공 횟수를 CloudWatch 지표로 저장합니다. **콘솔에서 필터와 대시보드를 수정할 권한이 있는 계정**으로 진행합니다. 리전은 서울 `ap-northeast-2`입니다.
 
 1. `metric-filter-1.json`을 엽니다.
 2. CloudWatch의 **Logs > Log groups**에서 파일의 `logGroupName`과 같은 로그 그룹을 엽니다.
 3. **Actions > Create metric filter**를 선택하고 아래 표대로 입력해 저장합니다.
-4. `metric-filter-6.json`까지 같은 방법으로 등록합니다. 같은 `filterName`이 이미 있으면 해당 필터를 수정합니다.
+4. `metric-filter-16.json`까지 같은 방법으로 등록합니다. 같은 `filterName`이 이미 있으면 해당 필터를 수정합니다.
 
 | 콘솔 입력란 | JSON에서 복사할 값 |
 |---|---|
@@ -234,7 +234,7 @@ Python 스크립트는 AWS에 접속하지 않고 **내 컴퓨터에 파일만 �
 
 `metricNamespace`부터는 `metricTransformations` 안의 첫 번째 항목에서 찾습니다. 각 입력란에 JSON의 값만 옮깁니다. 예를 들어 `"{ $.event = \"feed_publication_succeeded\" }"`는 `{ $.event = "feed_publication_succeeded" }`로 입력합니다.
 
-**1번과 2번의 Default value는 비웁니다.** 2번만 Dimensions에 이름 `ApiGroup`, 값 `$.apiGroup`을 넣습니다. 3번부터 6번은 Metric value가 `1`, Default value가 `0`, Unit이 `Count`입니다.
+**1번과 2번의 Default value는 비웁니다.** 2번만 Dimensions에 이름 `ApiGroup`, 값 `$.apiGroup`을 넣습니다. 3번부터 6번은 Metric value가 `1`, Default value가 `0`, Unit이 `Count`입니다. 7번부터 16번은 JSON의 작업 횟수 또는 시간을 사용합니다. 시간 필터는 해당 작업 횟수가 1 이상인 요청만 집계하며 Default value를 비웁니다.
 
 필터는 등록 이후 들어오는 로그부터 집계합니다. 로그와 사용자 정의 지표에는 CloudWatch 비용이 발생합니다. 화면 설명은 [AWS 로그 필터 등록 안내](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/CreateMetricFilterProcedure.html)를 참고합니다.
 
@@ -242,7 +242,7 @@ Python 스크립트는 AWS에 접속하지 않고 **내 컴퓨터에 파일만 �
 
 1. 2단계에서 복사한 **같은 환경의 대시보드**를 엽니다.
 2. **Actions > View/edit source**에서 전체 내용을 생성된 `dashboard.json`의 내용으로 바꿉니다.
-3. 변경 내용을 적용하고 대시보드를 저장합니다. 기존 그래프 아래에 dev는 11개, prod는 9개의 생성 대상 그래프가 있는지 확인합니다. 이전에 적용한 그래프는 중복 추가되지 않습니다.
+3. 변경 내용을 적용하고 대시보드를 저장합니다. 기존 그래프 아래에 dev는 17개, prod는 15개의 생성 대상 그래프가 있는지 확인합니다. 이전에 적용한 그래프는 중복 추가되지 않습니다.
 
 `dashboard.json`에는 기존 그래프도 들어 있습니다. 복사한 뒤 다른 사람이 대시보드를 수정했다면 최신 JSON으로 2단계부터 다시 만듭니다. 대시보드도 배포 전에 저장할 수 있지만, 새 코드와 수집 설정이 적용되고 데이터가 들어와야 새 그래프에 값이 나옵니다.
 
@@ -265,7 +265,7 @@ DB 연결 평균은 `연결에 쓴 시간의 합 / 연결 횟수`입니다. 최�
 
 1. dev에 배포하고 위 1단계의 `MONITORING_ENV=dev` Agent 명령을 적용합니다. 이 명령은 자동 배포에 포함되지 않습니다. 기존 Agent 설정을 보관한 뒤 적용하고 Agent가 정상 실행되는지 확인합니다.
 2. `/actuator/prometheus`에서 `jvm_gc_pause_seconds_{count,sum,max}`와 `jvm_memory_{used,committed,max}_bytes`의 실제 이름과 타입을 확인합니다. GC 지표는 GC가 발생한 뒤 생길 수 있습니다. dev의 `prometheus-emf`에도 새 값이 들어와야 합니다.
-3. 기존 dev 대시보드의 최신 JSON으로 위 2단계를 다시 실행하고 `dashboard.json`을 적용합니다. 기존 로그 필터 6개는 변경하지 않습니다.
+3. 기존 dev 대시보드의 최신 JSON으로 위 2단계를 다시 실행하고 `dashboard.json`을 적용합니다. 요청별 작업 지표도 보려면 새 필터 10개를 추가합니다. 기존 필터 6개는 유지합니다.
 4. 새 실행 이름으로 데이터를 준비한 뒤 아래 OS 기록을 시작하고, 내 컴퓨터에서 같은 실행 이름으로 k6를 실행합니다. 예시는 `peak2` 데이터 준비가 끝나 해당 폴더가 존재하는 경우입니다.
 
 **EC2의 Session Manager 터미널에서 실행합니다.** `vmstat`은 CPU, 사용 가능한 메모리와 swap 입출력을 1초마다 약 10분 동안 기록합니다. 실행 중에는 이 EC2 터미널을 열어 두고, 별도로 내 컴퓨터에서 k6를 실행합니다. 이미 같은 기록 파일이 있으면 덮어쓰지 않고 멈춥니다.
@@ -306,3 +306,7 @@ GC의 count와 sum은 Agent가 누적값을 수집 간 증가분으로 변환하
 ```bash
 python3 -B -m unittest discover -s deploy/monitoring -p 'test_*.py'
 ```
+
+## 요청별 저장소 작업과 프록시 시간
+
+S3와 R2의 존재 확인, URL 서명, 피드 데이터 조회를 같은 요청 로그에서 확인합니다. 두 Nginx의 대기 시간도 응답의 추적 ID로 연결합니다. [필드 뜻과 적용 순서](request-latency.md)를 참고합니다. 이 추가 설정은 별도 배포와 적용이 필요합니다.

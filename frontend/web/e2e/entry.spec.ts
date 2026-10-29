@@ -12,7 +12,6 @@ test.describe('하루들 접속', () => {
       page,
     }): Promise<void> => {
       await page.addInitScript((hasHistory): void => {
-        localStorage.setItem('harudle.has-seen-landing', 'true');
         if (hasHistory) {
           localStorage.setItem('harudle.has-ever-logged-in', 'true');
         }
@@ -54,7 +53,7 @@ test.describe('하루들 접속', () => {
         .click();
       await expect(page).toHaveURL('/login');
       await expect(
-        page.getByRole('button', { name: '카카오로 시작하기' }),
+        page.getByRole('button', { name: '카카오로 계속하기' }),
       ).toBeVisible();
     });
   }
@@ -68,7 +67,7 @@ test.describe('하루들 접속', () => {
     ).toBeVisible();
   });
   for (const entryPath of ['/', '/landing']) {
-    test(`저장소가 비어 있어도 세션이 유효하면 ${entryPath}에서 피드에 도착하고 새로고침 후 유지한다`, async ({
+    test(`로그인 이력이 없는 ${entryPath} 진입과 저장소를 비운 뒤 새로고침에서 공개 피드를 유지한다`, async ({
       page,
     }) => {
       await page.setExtraHTTPHeaders({
@@ -91,10 +90,10 @@ test.describe('하루들 접속', () => {
           localStorage.getItem('harudle.has-ever-logged-in'),
           localStorage.getItem('harudle.has-completed-oauth'),
         ]),
-      ).toEqual(['true', 'true']);
+      ).toEqual(entryPath === '/landing' ? ['true', 'true'] : [null, null]);
       // 이전 문제는 화면 도착 직후 재이동했으므로 안정된 뒤 요청 횟수를 확인한다.
       await page.waitForTimeout(1000);
-      expect(refreshCount).toBe(1);
+      expect(refreshCount).toBe(entryPath === '/landing' ? 1 : 0);
       expect(guestSessionCount).toBe(0);
 
       await page.evaluate((): void => localStorage.clear());
@@ -103,8 +102,13 @@ test.describe('하루들 접속', () => {
       await expect(page.getByRole('combobox')).toBeVisible();
       await expect(page).toHaveURL('/');
       await page.waitForTimeout(1000);
-      expect(refreshCount).toBe(2);
+      expect(refreshCount).toBe(entryPath === '/landing' ? 1 : 0);
       expect(guestSessionCount).toBe(0);
+      expect(
+        await page.evaluate((): string | null =>
+          localStorage.getItem('harudle.has-completed-oauth'),
+        ),
+      ).toBeNull();
     });
   }
 
@@ -112,7 +116,6 @@ test.describe('하루들 접속', () => {
     page,
   }) => {
     await page.addInitScript((): void => {
-      localStorage.setItem('harudle.has-seen-landing', 'true');
       localStorage.setItem('harudle.has-ever-logged-in', 'true');
     });
     let refreshCount = 0;
@@ -132,31 +135,47 @@ test.describe('하루들 접속', () => {
     expect(refreshCount).toBe(1);
   });
 
-  test('첫 방문은 랜딩을 보여주고 재방문은 로그인 없이 공개 피드를 보여준다', async ({
-    page,
-  }) => {
-    await page.goto('/');
-    await expect(page).toHaveURL('/landing');
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText(
-      '우리끼리 통하는네컷만화',
-    );
+  for (const landingHistory of [null, 'false', 'true']) {
+    test(`기존 랜딩 방문 기록이 ${landingHistory ?? '없는 첫 방문'}이어도 홈에서 공개 피드를 보고 새로고침한다`, async ({
+      page,
+    }): Promise<void> => {
+      await page.addInitScript((history): void => {
+        if (history !== null) {
+          localStorage.setItem('harudle.has-seen-landing', history);
+        }
+      }, landingHistory);
+      await page.setExtraHTTPHeaders({
+        [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.authRefreshFailure,
+      });
+      const guestRequests: string[] = [];
+      page.on('request', (request): void => {
+        if (new URL(request.url()).pathname.startsWith('/api/v1/guest/')) {
+          guestRequests.push(request.url());
+        }
+      });
+      const feedUrl = '/?categoryId=1&sort=POPULAR';
+      await page.goto(feedUrl);
+      await expect(page).toHaveURL(feedUrl);
+      await expect(page.getByRole('combobox')).toHaveValue('POPULAR');
+      await expect(page.getByRole('article')).toHaveCount(3);
 
-    await page.goto('/');
-
-    await expect(page).toHaveURL('/');
-    await expect(page.getByRole('combobox')).toBeVisible();
-    expect(
-      await page.evaluate(() =>
-        localStorage.getItem('harudle.has-completed-oauth'),
-      ),
-    ).toBeNull();
-  });
+      await page.reload();
+      await expect(page).toHaveURL(feedUrl);
+      await expect(page.getByRole('combobox')).toHaveValue('POPULAR');
+      await expect(page.getByRole('article')).toHaveCount(3);
+      expect(
+        await page.evaluate((): string | null =>
+          localStorage.getItem('harudle.has-completed-oauth'),
+        ),
+      ).toBeNull();
+      expect(guestRequests).toEqual([]);
+    });
+  }
 
   test('localStorage에 로그인 이력이 있고 세션이 유효하면 피드 화면을 보여준다', async ({
     page,
   }) => {
     await page.addInitScript(() => {
-      localStorage.setItem('harudle.has-seen-landing', 'true');
       localStorage.setItem('harudle.has-ever-logged-in', 'true');
       localStorage.setItem('harudle.has-completed-oauth', 'true');
     });
@@ -176,11 +195,8 @@ test.describe('하루들 접속', () => {
   test('로그아웃 후 다시 접속하면 공개 피드를 보여주고, 다시 로그인할 수 있다', async ({
     page,
   }) => {
-    await page.addInitScript((): void => {
-      localStorage.setItem('harudle.has-seen-landing', 'true');
-    });
     await page.goto('/login');
-    await page.getByRole('button', { name: '카카오로 시작하기' }).click();
+    await page.getByRole('button', { name: '카카오로 계속하기' }).click();
     await expect(page.getByRole('combobox')).toBeVisible();
     await page.goto('/setting');
     await expect(page.getByText('kakao', { exact: true })).toBeVisible();
@@ -209,7 +225,7 @@ test.describe('하루들 접속', () => {
     await expect(page.getByRole('combobox')).toBeVisible();
     await page.setExtraHTTPHeaders({});
     await page.goto('/login');
-    await page.getByRole('button', { name: '카카오로 시작하기' }).click();
+    await page.getByRole('button', { name: '카카오로 계속하기' }).click();
     await expect(page.getByRole('combobox')).toBeVisible();
   });
 
@@ -217,7 +233,6 @@ test.describe('하루들 접속', () => {
     page,
   }) => {
     await page.addInitScript(() => {
-      localStorage.setItem('harudle.has-seen-landing', 'true');
       localStorage.setItem('harudle.has-ever-logged-in', 'true');
       localStorage.setItem('harudle.has-completed-oauth', 'true');
     });
@@ -243,12 +258,12 @@ test.describe('하루들 접속', () => {
     expect(dialogs).toEqual([]);
   });
 
-  test('로그인 이력 없이 설정 페이지를 열면 랜딩 페이지를 보여준다', async ({
+  test('로그인 이력 없이 설정 페이지를 열면 공개 피드를 보여준다', async ({
     page,
   }) => {
     await page.goto('/setting');
-    await expect(page).toHaveURL('/landing');
-    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await expect(page).toHaveURL('/');
+    await expect(page.getByRole('combobox')).toBeVisible();
   });
 
   test('로그인 이력이 없어도 URL을 통해 로그인 페이지에 직접 접속할 수 있다', async ({
@@ -257,7 +272,7 @@ test.describe('하루들 접속', () => {
     await page.goto('/login');
     await expect(page).toHaveURL('/login');
     await expect(
-      page.getByRole('button', { name: '카카오로 시작하기' }),
+      page.getByRole('button', { name: '카카오로 계속하기' }),
     ).toBeVisible();
   });
 });

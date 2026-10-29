@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { Link } from 'react-router';
 import { type ModalHandle } from '../../shared/Modal';
 import ProfileEditModal from './ProfileEditModal';
 import profileFallbackImage from '../../assets/images/profile-fallback.svg';
@@ -13,8 +14,7 @@ import logoutIcon from '../../assets/icons/logout.svg';
 import articlePersonIcon from '../../assets/icons/article_person.svg';
 import PwaInstallButton from './PwaInstallButton';
 import LoadingSpinner from '../../shared/LoadingSpinner';
-
-const PRIVACY_POLICY_URL = 'https://harudle.notion.site/';
+import blockIcon from '../../assets/icons/block.svg';
 
 const GOOGLE_FROM_URL = 'https://forms.gle/8DMM4L835Esxk7BE6';
 
@@ -116,15 +116,35 @@ const SettingPageContent = () => {
           <img css={iconStyle} src={callMadeIcon} alt="" aria-hidden="true" />
         </a>
 
-        <a css={[settingRowStyle, settingLinkStyle]} href={PRIVACY_POLICY_URL}>
-          <span css={settingLabelStyle}>개인정보 처리방침</span>
+        <Link css={[settingRowStyle, settingLinkStyle]} to="/legal/terms">
+          <span css={settingLabelStyle}>이용약관</span>
           <img
             css={iconStyle}
             src={articlePersonIcon}
             alt=""
             aria-hidden="true"
           />
-        </a>
+        </Link>
+
+        <Link css={[settingRowStyle, settingLinkStyle]} to="/legal/privacy">
+          <span css={settingLabelStyle}>개인정보처리방침</span>
+          <img
+            css={iconStyle}
+            src={articlePersonIcon}
+            alt=""
+            aria-hidden="true"
+          />
+        </Link>
+      </div>
+
+      <div css={settingCardStyle}>
+        <Link
+          css={[settingRowStyle, settingLinkStyle]}
+          to="/setting/blocked-users"
+        >
+          <span css={settingLabelStyle}>차단한 사용자</span>
+          <span css={[iconStyle, blockedUsersIconStyle]} aria-hidden="true" />
+        </Link>
       </div>
 
       <PwaInstallButton />
@@ -228,6 +248,12 @@ const settingRowStyle = css`
 
 const settingLabelStyle = css`
   color: ${theme.colors.foreground.neutral};
+`;
+
+const blockedUsersIconStyle = css`
+  background-color: #1c1b1f;
+  -webkit-mask: url(${blockIcon}) center / contain no-repeat;
+  mask: url(${blockIcon}) center / contain no-repeat;
 `;
 
 const settingValueStyle = css`

@@ -1,5 +1,17 @@
 package com.harudle.common.error;
 
+import com.harudle.auth.application.AccountSuspendedException;
+import com.harudle.legal.application.LegalDocumentNotFoundException;
+import com.harudle.legal.application.LegalDocumentChangedException;
+import com.harudle.legal.application.InvalidTermsAcceptanceException;
+import com.harudle.legal.application.TermsAcceptanceRequiredException;
+import com.harudle.admin.service.exception.AdminReportNotFoundException;
+import com.harudle.admin.service.exception.AdminReportReviewConflictException;
+import com.harudle.admin.service.exception.InvalidAdminReportReviewException;
+import com.harudle.moderation.service.ModerationTargetNotFoundException;
+import com.harudle.moderation.service.ModerationConflictException;
+import com.harudle.moderation.domain.InvalidModerationChangeException;
+import com.harudle.moderation.service.ModerationAccessDeniedException;
 import com.harudle.admin.service.exception.AdminUserNotFoundException;
 import com.harudle.admin.service.exception.AdminGenerationLimitBelowUsageException;
 import com.harudle.admin.service.exception.AdminGenerationUsageConflictException;
@@ -11,6 +23,10 @@ import com.harudle.auth.domain.exception.PublicProfileNotAssignedException;
 import com.harudle.auth.application.ProfileImageStorageException;
 import com.harudle.auth.application.ProfileImageCapacityExceededException;
 import com.harudle.auth.presentation.AuthenticationRequiredException;
+import com.harudle.block.domain.InvalidBlockException;
+import com.harudle.block.service.exception.BlockTargetNotFoundException;
+import com.harudle.block.service.exception.BlockUnavailableException;
+import com.harudle.block.service.exception.InvalidBlockCursorException;
 import com.harudle.comment.service.exception.CommentAccessDeniedException;
 import com.harudle.comment.service.exception.CommentIntegrationUnavailableException;
 import com.harudle.comment.service.exception.CommentNotFoundException;
@@ -26,6 +42,7 @@ import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
 import com.harudle.diary.service.exception.DiaryNotPublishableException;
 import com.harudle.feed.service.exception.DiaryAlreadyPublishedException;
+import com.harudle.feed.service.exception.ContentRestrictedException;
 import com.harudle.feed.service.exception.FeedAccessDeniedException;
 import com.harudle.feed.service.exception.FeedIntegrationUnavailableException;
 import com.harudle.feed.service.exception.FeedNotFoundException;
@@ -50,6 +67,7 @@ import com.harudle.notification.service.exception.NotificationIntegrationUnavail
 import com.harudle.notification.service.exception.NotificationNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.Objects;
 import org.jspecify.annotations.NullMarked;
@@ -143,6 +161,71 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             return super.handleHandlerMethodValidationException(exception, headers, status, request);
         }
         return createValidationResponse(headers, status, request);
+    }
+
+    @ExceptionHandler(LegalDocumentNotFoundException.class)
+    ResponseEntity<ProblemDetail> handleLegalDocumentNotFound(HttpServletRequest request) {
+        return createResponse(ErrorType.LEGAL_DOCUMENT_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(LegalDocumentChangedException.class)
+    ResponseEntity<ProblemDetail> handleLegalDocumentChanged(HttpServletRequest request) {
+        return createResponse(ErrorType.LEGAL_DOCUMENT_CHANGED, request);
+    }
+
+    @ExceptionHandler(InvalidTermsAcceptanceException.class)
+    ResponseEntity<ProblemDetail> handleInvalidTermsAcceptance(HttpServletRequest request) {
+        return createResponse(ErrorType.INVALID_TERMS_ACCEPTANCE, request);
+    }
+
+    @ExceptionHandler(TermsAcceptanceRequiredException.class)
+    ResponseEntity<ProblemDetail> handleTermsAcceptanceRequired(HttpServletRequest request) {
+        return createResponse(ErrorType.TERMS_ACCEPTANCE_REQUIRED, request);
+    }
+
+    @ExceptionHandler(AccountSuspendedException.class)
+    ResponseEntity<ProblemDetail> handleAccountSuspendedException(HttpServletRequest request) {
+        return createResponse(ErrorType.ACCOUNT_SUSPENDED, request);
+    }
+
+    @ExceptionHandler(AdminReportNotFoundException.class)
+    ResponseEntity<ProblemDetail> handleAdminReportNotFoundException(HttpServletRequest request) {
+        return createResponse(ErrorType.ADMIN_REPORT_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(AdminReportReviewConflictException.class)
+    ResponseEntity<ProblemDetail> handleAdminReportReviewConflictException(HttpServletRequest request) {
+        return createResponse(ErrorType.ADMIN_REPORT_REVIEW_CONFLICT, request);
+    }
+
+    @ExceptionHandler(InvalidAdminReportReviewException.class)
+    ResponseEntity<ProblemDetail> handleInvalidAdminReportReviewException(HttpServletRequest request) {
+        return createResponse(ErrorType.INVALID_ADMIN_REPORT_REVIEW, request);
+    }
+
+    @ExceptionHandler(ModerationTargetNotFoundException.class)
+    ResponseEntity<ProblemDetail> handleModerationTargetNotFoundException(HttpServletRequest request) {
+        return createResponse(ErrorType.MODERATION_TARGET_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(ModerationConflictException.class)
+    ResponseEntity<ProblemDetail> handleModerationConflictException(HttpServletRequest request) {
+        return createResponse(ErrorType.MODERATION_CONFLICT, request);
+    }
+
+    @ExceptionHandler(InvalidModerationChangeException.class)
+    ResponseEntity<ProblemDetail> handleInvalidModerationChangeException(HttpServletRequest request) {
+        return createResponse(ErrorType.INVALID_MODERATION_CHANGE, request);
+    }
+
+    @ExceptionHandler(ModerationAccessDeniedException.class)
+    ResponseEntity<ProblemDetail> handleModerationAccessDeniedException(HttpServletRequest request) {
+        return createResponse(ErrorType.FORBIDDEN, request);
+    }
+
+    @ExceptionHandler(ContentRestrictedException.class)
+    ResponseEntity<ProblemDetail> handleContentRestricted(HttpServletRequest request) {
+        return createResponse(ErrorType.CONTENT_RESTRICTED, request);
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
@@ -254,6 +337,26 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(ReportTargetNotFoundException.class)
     ResponseEntity<ProblemDetail> handleReportTargetNotFound(HttpServletRequest request) {
         return createResponse(ErrorType.REPORT_TARGET_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(InvalidBlockException.class)
+    ResponseEntity<ProblemDetail> handleInvalidBlock(HttpServletRequest request) {
+        return createResponse(ErrorType.INVALID_BLOCK, request);
+    }
+
+    @ExceptionHandler(BlockTargetNotFoundException.class)
+    ResponseEntity<ProblemDetail> handleBlockTargetNotFound(HttpServletRequest request) {
+        return createResponse(ErrorType.BLOCK_TARGET_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(BlockUnavailableException.class)
+    ResponseEntity<ProblemDetail> handleBlockUnavailable(HttpServletRequest request) {
+        return createResponse(ErrorType.BLOCK_UNAVAILABLE, request);
+    }
+
+    @ExceptionHandler(InvalidBlockCursorException.class)
+    ResponseEntity<ProblemDetail> handleInvalidBlockCursor(HttpServletRequest request) {
+        return createResponse(ErrorType.INVALID_CURSOR, request);
     }
 
     @ExceptionHandler(CommentNotFoundException.class)
@@ -446,8 +549,21 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             RuntimeException exception,
             HttpServletRequest request
     ) {
+        if (isLockTimeout(exception)) {
+            apiExceptionLogger.error(ErrorType.DATABASE_LOCK_TIMEOUT, exception, request);
+            return createResponse(ErrorType.DATABASE_LOCK_TIMEOUT, request);
+        }
         apiExceptionLogger.error(ErrorType.INTERNAL_SERVER_ERROR, exception, request);
         return createResponse(ErrorType.INTERNAL_SERVER_ERROR, request);
+    }
+
+    private static boolean isLockTimeout(Throwable exception) {
+        for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+            if (cause instanceof SQLException sql && "55P03".equals(sql.getSQLState())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override

@@ -51,6 +51,8 @@ jest.mock('../../assets/icons/kakao.svg', () => 'kakao.svg');
 jest.mock('../../assets/icons/link.svg', () => 'link.svg');
 jest.mock('../../assets/icons/check.svg', () => 'check.svg');
 jest.mock('../../assets/icons/delete.svg', () => 'delete.svg');
+jest.mock('../../assets/icons/report.svg', () => 'report.svg');
+jest.mock('../../assets/icons/block.svg', () => 'block.svg');
 jest.mock('../../assets/icons/bottom-sheet-close.svg', () => 'close.svg');
 const mockCaptureError = jest.fn();
 jest.mock('../../posthog/useErrorTracking', () => ({
@@ -307,7 +309,9 @@ describe('피드 상세 댓글 더 보기', (): void => {
     expect(screen.getByText(secondComment.content)).toBeInTheDocument();
     expect(screen.queryByText(comment.content)).not.toBeInTheDocument();
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
-    expect(screen.getByRole('button', { name: '0' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '댓글 0개' }),
+    ).toBeInTheDocument();
   });
 
   it('피드 전환 시 추가 조회를 취소하고 새 댓글 커서로 시작한다', async (): Promise<void> => {
@@ -355,6 +359,40 @@ describe('피드 상세 댓글 더 보기', (): void => {
 });
 
 describe('피드 상세 댓글 삭제', (): void => {
+  it('탈퇴 댓글은 fallback을 표시하고 작성자 차단 메뉴는 만들지 않는다', async (): Promise<void> => {
+    mockGetFeedComments.mockResolvedValue({
+      items: [
+        {
+          ...comment,
+          isMine: false,
+          author: { id: null, nickname: '탈퇴한 회원', profileImageUrl: null },
+        },
+      ],
+      nextCursor: null,
+      hasNext: false,
+    });
+    render(<FeedDetailPage />);
+    const row = (await screen.findByText('탈퇴한 회원')).closest('li');
+    if (!row) throw new Error('댓글이 없습니다.');
+    prepareDialogs();
+    await userEvent.click(
+      within(row).getByRole('button', { name: '댓글 더보기' }),
+    );
+    expect(
+      screen.getByRole('button', { name: '댓글 신고' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '작성자 신고' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '작성자 차단' }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(row).getByRole('img', { name: '프로필 이미지' }),
+    ).toHaveAttribute('src', 'fallback.svg');
+    expect(within(row).getByText(comment.content)).toBeVisible();
+  });
+
   it('다른 사용자의 댓글에는 삭제 메뉴를 표시하지 않는다', async (): Promise<void> => {
     mockGetFeedComments.mockResolvedValue({
       items: [{ ...comment, isMine: false }],
@@ -388,7 +426,9 @@ describe('피드 상세 댓글 삭제', (): void => {
     await user.click(screen.getByRole('button', { name: '취소' }));
     expect(mockDeleteComment).not.toHaveBeenCalled();
     expect(screen.getByText(comment.content)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '1' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '댓글 1개' }),
+    ).toBeInTheDocument();
 
     await openDelete(user);
     await user.click(screen.getByRole('button', { name: /댓글 삭제$/ }));
@@ -396,7 +436,9 @@ describe('피드 상세 댓글 삭제', (): void => {
       within(screen.getByRole('dialog')).getByRole('alert'),
     ).toHaveTextContent('삭제 실패');
     expect(screen.getByText(comment.content)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '1' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '댓글 1개' }),
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '취소' }));
     await openDelete(user);
@@ -406,7 +448,9 @@ describe('피드 상세 댓글 삭제', (): void => {
       await screen.findByText('첫 번째 댓글을 남겨보세요.'),
     ).toBeInTheDocument();
     expect(screen.queryByText(comment.content)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '0' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '댓글 0개' }),
+    ).toBeInTheDocument();
     expect(mockDeleteComment).toHaveBeenCalledTimes(2);
     expect(mockDeleteComment).toHaveBeenLastCalledWith({
       commentId: comment.id,
@@ -432,7 +476,9 @@ describe('피드 상세 댓글 삭제', (): void => {
     fireEvent.click(pendingButton);
     expect(mockDeleteComment).toHaveBeenCalledTimes(1);
     expect(screen.getByText(comment.content)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '1' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '댓글 1개' }),
+    ).toBeInTheDocument();
 
     await act(async (): Promise<void> => {
       resolveDelete?.();
@@ -440,6 +486,8 @@ describe('피드 상세 댓글 삭제', (): void => {
     expect(
       await screen.findByText('첫 번째 댓글을 남겨보세요.'),
     ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '0' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '댓글 0개' }),
+    ).toBeInTheDocument();
   });
 });

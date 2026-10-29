@@ -25,14 +25,16 @@ const FeedCategoryItem = ({
   }, [isSelected]);
 
   return (
-    <button
-      ref={buttonRef}
-      type="button"
-      css={feedCategoryItemStyle(isSelected, label.length)}
-      onClick={onSelect}
-    >
-      {label}
-    </button>
+    <li aria-live="polite">
+      <button
+        ref={buttonRef}
+        type="button"
+        css={feedCategoryItemStyle(isSelected, label.length)}
+        onClick={onSelect}
+      >
+        {label}
+      </button>
+    </li>
   );
 };
 
