@@ -1,5 +1,6 @@
 package com.harudle.auth.infrastructure.oauth;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -126,8 +127,52 @@ class AppleNativeTokenVerifierTest {
         org.mockito.Mockito.when(generator.generate("our-app")).thenReturn("secret");
         var verifier = new AppleNativeTokenVerifier(generator, "our-app",
                 token -> token.equals("native") ? nativeToken : exchanged, builder.build());
-        org.assertj.core.api.Assertions.assertThat(verifier.verify("code", "native", "nonce").getSubject())
-                .isEqualTo("user");
+        Jwt verified = verifier.verify("code", "native", "nonce");
+        assertThat(verified.getSubject()).isEqualTo("user");
+        assertThat(verified.getTokenValue()).isEqualTo("exchanged");
+        server.verify();
+    }
+
+    @Test
+    void rejectsTokensForDifferentAppleUsers() {
+        var builder = RestClient.builder().baseUrl("https://appleid.apple.com");
+        var server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo(
+                        "https://appleid.apple.com/auth/token"))
+                .andRespond(MockRestResponseCreators.withSuccess("{\"id_token\":\"exchanged\"}", MediaType.APPLICATION_JSON));
+        var nativeToken = Jwt.withTokenValue("native").header("alg", "RS256")
+                .issuer("https://appleid.apple.com").subject("user")
+                .audience(List.of("our-app")).expiresAt(Instant.now().plusSeconds(60))
+                .claim("nonce", "nonce").build();
+        var exchanged = Jwt.withTokenValue("exchanged").header("alg", "RS256")
+                .issuer("https://appleid.apple.com").subject("different-user")
+                .audience(List.of("our-app")).expiresAt(Instant.now().plusSeconds(60)).build();
+        var generator = mock(AppleClientSecretGenerator.class);
+        when(generator.generate("our-app")).thenReturn("secret");
+        var verifier = new AppleNativeTokenVerifier(generator, "our-app",
+                token -> token.equals("native") ? nativeToken : exchanged, builder.build());
+
+        assertThatThrownBy(() -> verifier.verify("code", "native", "nonce"))
+                .isInstanceOf(IllegalArgumentException.class);
+        server.verify();
+    }
+
+    @Test
+    void treatsMissingExchangedIdTokenAsAppleFailure() {
+        var builder = RestClient.builder().baseUrl("https://appleid.apple.com");
+        var server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo(
+                        "https://appleid.apple.com/auth/token"))
+                .andRespond(MockRestResponseCreators.withSuccess("{}", MediaType.APPLICATION_JSON));
+        var nativeToken = Jwt.withTokenValue("native").header("alg", "RS256")
+                .issuer("https://appleid.apple.com").subject("user").audience(List.of("our-app"))
+                .expiresAt(Instant.now().plusSeconds(60)).claim("nonce", "nonce").build();
+        var generator = mock(AppleClientSecretGenerator.class);
+        when(generator.generate("our-app")).thenReturn("secret");
+        var verifier = new AppleNativeTokenVerifier(generator, "our-app", ignored -> nativeToken, builder.build());
+
+        assertThatThrownBy(() -> verifier.verify("code", "native", "nonce"))
+                .isInstanceOf(AppleProviderException.class);
         server.verify();
     }
 }
