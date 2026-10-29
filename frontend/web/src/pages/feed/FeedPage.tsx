@@ -14,6 +14,7 @@ import { FEED_COPY } from './copy';
 import useDiaryGenerationId from '../../shared/useDiaryGenerationId';
 import type { BottomSheetHandle } from '../../shared/BottomSheet';
 import NeedLoginBottomSheet from '../../shared/NeedLoginBottomSheet';
+import FeedNotifications from './FeedNotifications';
 
 const FEED_QUERY_KEYS = {
   CATEGORY_ID: 'categoryId',
@@ -24,6 +25,8 @@ const FeedPage = () => {
   const navigate = useNavigate();
   const loginSheetRef = useRef<BottomSheetHandle>(null);
   const generationId = useDiaryGenerationId();
+  const hasCompletedOAuth =
+    localStorage.getItem('harudle.has-completed-oauth') !== null;
   const { track } = useAnalytics();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -77,7 +80,7 @@ const FeedPage = () => {
   };
 
   const handleCreate = (): void => {
-    if (localStorage.getItem('harudle.has-completed-oauth') === null) {
+    if (!hasCompletedOAuth) {
       loginSheetRef.current?.open();
       return;
     }
@@ -87,7 +90,7 @@ const FeedPage = () => {
 
   return (
     <BottomNavigationLayout
-      headerRight={
+      headerLeft={
         <button
           type="button"
           aria-label={FEED_COPY.createAction}
@@ -100,6 +103,7 @@ const FeedPage = () => {
           </span>
         </button>
       }
+      headerRight={hasCompletedOAuth && <FeedNotifications />}
     >
       <main css={feedPageContentStyle}>
         <FeedFilterBar

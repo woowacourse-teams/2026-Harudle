@@ -16,5 +16,12 @@ export const FEED_COPY = {
   reloadAction: '다시 불러오기',
   loadMoreAction: '더 보기',
   loadingMoreAction: '불러오는 중...',
+  notificationsTitle: '알림',
+  notificationsAction: '알림 열기',
+  unreadNotificationsAction: '새 알림 있음, 알림 열기',
+  notificationsEmpty: '아직 도착한 알림이 없어요.',
+  notificationsLoadError: '알림을 불러오지 못했어요. 다시 시도해 주세요.',
+  notificationsReadError:
+    '일부 알림을 읽음으로 표시하지 못했어요. 알림을 다시 열면 재시도해요.',
   loadMoreError: '피드를 더 불러오지 못했어요. 다시 시도해 주세요.',
 } as const;
