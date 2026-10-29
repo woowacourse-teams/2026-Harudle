@@ -136,6 +136,7 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
         String responseText = null;
         try {
             checkActive(context);
+            GeminiResponseValidator.validate(response);
             if (response != null) {
                 responseText = response.text();
             }
@@ -149,6 +150,7 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
             throw failureReporter.reportStoryboardResponseFailure(
                     OPERATION,
                     TRANSLATION_OPERATION,
+                    response,
                     responseDiagnostics(response, responseText),
                     exception
             );
@@ -183,7 +185,7 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
             case "preparation" -> GeminiFailureType.preparation(exception.getCause());
             case "provider" -> GeminiFailureType.provider(exception.getCause(), exception.errorType());
             default -> GeminiFailureType.storyboardResponse(
-                    GeminiFailureType.finishReason(response), exception.getCause());
+                    response, exception.getCause());
         };
     }
 

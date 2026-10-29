@@ -32,6 +32,10 @@ public class ProblemDetailFactory {
         );
         problemDetail.setTitle(errorType.title());
         setCommonProperties(problemDetail, errorType.code(), request);
+        String action = GenerationErrorAction.forError(errorType);
+        if (action != null) {
+            problemDetail.setProperty("action", action);
+        }
         if (!errors.isEmpty()) {
             problemDetail.setProperty("errors", errors);
         }

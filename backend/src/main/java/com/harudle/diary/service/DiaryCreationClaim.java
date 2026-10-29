@@ -41,8 +41,12 @@ record DiaryCreationClaim(
     }
 
     DiaryGenerationResult toGenerationResult() {
+        return toGenerationResult(false);
+    }
+
+    DiaryGenerationResult toGenerationResult(boolean guest) {
         if (generationStatus == GenerationStatus.FAILED) {
-            throw new DiaryGenerationFailedException(errorCode);
+            throw new DiaryGenerationFailedException(errorCode, guest);
         }
         return new DiaryGenerationResult(
                 generationId, generationStatus, title, imageObjectKey, completedAt, tokenUsage

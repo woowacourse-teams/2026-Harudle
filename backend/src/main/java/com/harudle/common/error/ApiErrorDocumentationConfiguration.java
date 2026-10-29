@@ -215,6 +215,7 @@ class ApiErrorDocumentationConfiguration {
         schema.addProperty("instance", new StringSchema().description("오류가 발생한 요청 경로"));
         schema.addProperty("code", new StringSchema().description("클라이언트 분기용 오류 코드"));
         schema.addProperty("traceId", new StringSchema().description("로그 추적 ID"));
+        schema.addProperty("action", new StringSchema().description("생성 오류 시 사용자에게 표시할 행동 안내 문구"));
         schema.addProperty("errors", new ArraySchema()
                 .items(new Schema<>().$ref(FIELD_ERROR_SCHEMA_REF))
                 .description("필드 검증 오류가 있을 때만 포함"));

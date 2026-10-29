@@ -22,6 +22,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -76,9 +78,10 @@ class DiaryGenerationFailurePersistenceTest extends ServiceIntegrationTestSuppor
         generationPromptRepository.deleteAll();
     }
 
-    @Test
-    @DisplayName("생성 실패 상태와 일기 폐기를 하나의 트랜잭션으로 저장한다")
-    void failGenerationAndDiscardDiaryAtomically() {
+    @ParameterizedTest
+    @EnumSource(GenerationErrorCode.class)
+    @DisplayName("모든 생성 실패 원인과 일기 폐기를 하나의 트랜잭션으로 저장한다")
+    void failGenerationAndDiscardDiaryAtomically(GenerationErrorCode errorCode) {
         Diary diary = diaryRepository.saveAndFlush(Diary.create(
                 USER_ID,
                 DIARY_DATE,
@@ -91,13 +94,13 @@ class DiaryGenerationFailurePersistenceTest extends ServiceIntegrationTestSuppor
                 "a".repeat(64)
         ));
 
-        completionService.fail(generation.getId(), GenerationErrorCode.AI_PROVIDER_TIMEOUT);
+        completionService.fail(generation.getId(), errorCode);
 
         assertThat(diaryGenerationRepository.findById(generation.getId()))
                 .hasValueSatisfying(savedGeneration -> {
                     assertThat(savedGeneration.getStatus()).isEqualTo(GenerationStatus.FAILED);
                     assertThat(savedGeneration.getErrorCode())
-                            .isEqualTo(GenerationErrorCode.AI_PROVIDER_TIMEOUT);
+                            .isEqualTo(errorCode);
                 });
         assertThat(diaryRepository.findById(diary.getId()))
                 .hasValueSatisfying(savedDiary -> assertThat(savedDiary.isDeleted()).isTrue());

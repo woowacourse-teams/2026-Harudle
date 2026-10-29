@@ -1,5 +1,6 @@
 package com.harudle.generation.diary.service.exception;
 
+import com.harudle.generation.diary.domain.GenerationErrorCode;
 import java.io.Serial;
 
 public final class AiGenerationException extends RuntimeException {
@@ -38,6 +39,25 @@ public final class AiGenerationException extends RuntimeException {
 
     public AiProviderFailureType providerFailureType() {
         return providerFailureType;
+    }
+
+    public GenerationErrorCode errorCode() {
+        return switch (errorType) {
+            case PROVIDER_ERROR -> switch (providerFailureType) {
+                case NETWORK_ERROR -> GenerationErrorCode.AI_PROVIDER_CONNECTION_ERROR;
+                case TRANSIENT_SERVER_ERROR -> GenerationErrorCode.AI_PROVIDER_SERVER_ERROR;
+                case AUTH_CONFIGURATION_ERROR -> GenerationErrorCode.AI_PROVIDER_CONFIGURATION_ERROR;
+                case REQUEST_REJECTED -> GenerationErrorCode.AI_PROVIDER_REQUEST_REJECTED;
+                case CANCELLED -> GenerationErrorCode.GENERATION_INTERRUPTED;
+                case UNKNOWN -> GenerationErrorCode.AI_PROVIDER_ERROR;
+            };
+            case RATE_LIMITED -> GenerationErrorCode.AI_PROVIDER_RATE_LIMITED;
+            case TIMEOUT -> GenerationErrorCode.AI_PROVIDER_TIMEOUT;
+            case CONTENT_BLOCKED -> GenerationErrorCode.AI_CONTENT_BLOCKED;
+            case OUTPUT_TRUNCATED -> GenerationErrorCode.AI_OUTPUT_TRUNCATED;
+            case RESPONSE_PROCESSING_ERROR -> GenerationErrorCode.AI_RESPONSE_PROCESSING_ERROR;
+            case INTERNAL_ERROR -> GenerationErrorCode.GENERATION_INTERNAL_ERROR;
+        };
     }
 
     private static void validateErrorType(AiGenerationErrorType errorType) {

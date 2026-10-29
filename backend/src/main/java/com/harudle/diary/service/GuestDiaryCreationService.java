@@ -36,7 +36,7 @@ public class GuestDiaryCreationService {
                 claim.diaryDate(),
                 claim.sourceText(),
                 claim.createdAt(),
-                claim.toGenerationResult(),
+                claim.toGenerationResult(true),
                 claim.newlyCreated()
         );
     }

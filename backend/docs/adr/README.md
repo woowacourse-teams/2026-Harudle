@@ -20,3 +20,4 @@
 - [CodeBuild 이미지 생성과 압축 시간을 build-metrics 로그로 기록](code-build-cache/2026-10-21_CodeBuild%20이미지%20생성과%20압축%20시간을%20build-metrics%20로그로%20기록_이산.md)
 - [프론트엔드 의존성 캐시를 로컬에서 먼저 실험](code-build-cache/2026-10-21_프론트엔드%20의존성%20캐시를%20로컬에서%20먼저%20실험_이산.md)
 - [프론트엔드 PR 검사와 이미지 재사용](code-build-cache/2026-10-21_프론트엔드%20PR%20검사와%20이미지%20재사용_이산.md)
+- [생성 실패 원인과 다음 행동을 사용자 응답에 제공](gemini-failure-handling/2026-10-26_%EC%83%9D%EC%84%B1%20%EC%8B%A4%ED%8C%A8%20%EC%9B%90%EC%9D%B8%EA%B3%BC%20%EB%8B%A4%EC%9D%8C%20%ED%96%89%EB%8F%99%EC%9D%84%20%EC%82%AC%EC%9A%A9%EC%9E%90%20%EC%9D%91%EB%8B%B5%EC%97%90%20%EC%A0%9C%EA%B3%B5.md)
