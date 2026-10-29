@@ -4,12 +4,6 @@ import {
   MOCK_SCENARIOS,
 } from '../src/mocks/mockScenarios';
 
-test.beforeEach(async ({ page }): Promise<void> => {
-  await page.addInitScript((): void => {
-    localStorage.setItem('harudle.has-seen-landing', 'true');
-  });
-});
-
 test.describe('로그인 화면', () => {
   test('세션이 만료되어도 공개 피드를 보고 설정 클릭 시 로그인 화면으로 이동할 수 있다', async ({
     page,
