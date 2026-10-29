@@ -2,7 +2,6 @@ import { css } from '@emotion/react';
 import { Route, Routes } from 'react-router';
 
 import AgreementRoute from './AgreementRoute';
-import EntryRoute from './EntryRoute';
 import PublicFeedRoute from './PublicFeedRoute';
 import AdminGuard from './pages/admin/AdminGuard';
 import AlbumPage from './pages/album/AlbumPage/AlbumPage';
@@ -44,9 +43,7 @@ const App = () => {
         {/* 모든 서비스 화면은 세션 복원 후 약관 동의를 확인한다. */}
         <Route element={<PublicFeedRoute />}>
           <Route element={<AgreementRoute />}>
-            <Route element={<EntryRoute />}>
-              <Route path="/" element={<FeedPage />} />
-            </Route>
+            <Route path="/" element={<FeedPage />} />
             <Route path="/feeds/:feedId" element={<FeedDetailPage />} />
             <Route path="/album" element={<AlbumPage />} />
             <Route path="/diary-write" element={<DiaryWritePage />} />

@@ -10,7 +10,6 @@ import {
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import LandingPage from './LandingPage';
-import { HAS_SEEN_LANDING_KEY } from '../../shared/constants';
 import { GuestTrialAlreadyUsedError } from './guestTrialErrors';
 import type { GuestDiaryRequest, GuestDiaryResponse } from './guestTrialApi';
 import { getKoreanToday } from './guestDiaryValidation';
@@ -119,7 +118,6 @@ jest.mock(
   () => 'generation-step-5-complete.png',
 );
 beforeEach(() => {
-  localStorage.removeItem(HAS_SEEN_LANDING_KEY);
   mockCreationState.current = { status: 'writing' };
   mockSubmitDiary.current = jest.fn<SubmitGuestDiary>();
   mockRetryDiary.current = jest.fn(async () => {});
@@ -127,17 +125,11 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  localStorage.removeItem(HAS_SEEN_LANDING_KEY);
   jest.clearAllTimers();
   jest.useRealTimers();
 });
 
 describe('게스트 체험 랜딩 작성 화면', () => {
-  it('랜딩을 표시하면 방문 기록을 저장한다', () => {
-    render(<LandingPage />);
-    expect(localStorage.getItem(HAS_SEEN_LANDING_KEY)).toBe('true');
-  });
-
   it('브랜드 소개와 1회 체험 입력을 같은 랜딩에 보여준다', () => {
     render(<LandingPage />);
     expect(

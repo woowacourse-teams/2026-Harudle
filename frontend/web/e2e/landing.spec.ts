@@ -27,14 +27,14 @@ const generateGuestDiary = async (page: Page): Promise<void> => {
 };
 
 test.describe('통합 랜딩의 1회 체험', () => {
-  test('첫 방문의 첫 화면에서 로그인 없이 공개 피드로 이동한다', async ({
+  test('랜딩에 직접 접속한 뒤 로그인 없이 공개 피드로 이동한다', async ({
     page,
   }): Promise<void> => {
     await page.setExtraHTTPHeaders({
       [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.authRefreshFailure,
     });
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/');
+    await page.goto('/landing');
     await expect(page).toHaveURL('/landing');
     const hero = page.getByRole('region', {
       name: /우리끼리 통하는\s*네컷만화/,

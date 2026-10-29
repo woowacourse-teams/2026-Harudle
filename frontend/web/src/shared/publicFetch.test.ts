@@ -42,7 +42,6 @@ const mockStorage = () => {
   const values = new Map([
     ['harudle.has-completed-oauth', 'true'],
     ['harudle.has-ever-logged-in', 'true'],
-    ['harudle.has-seen-landing', 'true'],
   ]);
   Object.defineProperty(globalThis, 'localStorage', {
     configurable: true,
@@ -291,7 +290,7 @@ const invalidRefreshProblem = {
 };
 
 describe('재발급 실패 후 로그인 완료 표시', () => {
-  it('서버가 세션 만료를 확인한 경우 완료 표시만 제거하고 방문·로그인 이력은 유지한다', async () => {
+  it('서버가 세션 만료를 확인한 경우 완료 표시만 제거하고 로그인 이력은 유지한다', async () => {
     jest
       .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(csrf())
@@ -302,7 +301,6 @@ describe('재발급 실패 후 로그인 완료 표시', () => {
     await expect(restoreAccessToken()).rejects.toBeInstanceOf(RequestError);
     expect(localStorage.getItem('harudle.has-completed-oauth')).toBeNull();
     expect(localStorage.getItem('harudle.has-ever-logged-in')).toBe('true');
-    expect(localStorage.getItem('harudle.has-seen-landing')).toBe('true');
   });
 
   it('네트워크 실패만으로는 완료 표시를 제거하지 않는다', async () => {
