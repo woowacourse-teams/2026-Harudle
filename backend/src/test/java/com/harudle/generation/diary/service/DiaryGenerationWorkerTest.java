@@ -2,16 +2,20 @@ package com.harudle.generation.diary.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.harudle.diary.domain.Diary;
+import com.harudle.diary.domain.DiarySourceTextCipher;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.generation.config.GenerationLifecycleProperties;
 import com.harudle.generation.config.GenerationWorkerProperties;
@@ -21,6 +25,7 @@ import com.harudle.generation.diary.domain.GenerationErrorCode;
 import com.harudle.generation.diary.domain.GenerationStatus;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
+import com.harudle.support.DiarySourceTextTestSupport;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
@@ -42,6 +47,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.core.task.TaskExecutor;
@@ -53,11 +59,14 @@ import org.springframework.test.util.ReflectionTestUtils;
 @ExtendWith(OutputCaptureExtension.class)
 class DiaryGenerationWorkerTest {
 
+    private static final String SOURCE_TEXT = "DB에 저장된 생성 입력";
+
     private PendingDiaryGenerationClaimService claimService;
     private DiaryGenerationRepository generationRepository;
     private DiaryRepository diaryRepository;
     private DiaryGenerationExecutor generationExecutor;
     private DiaryGenerationCompletionService completionService;
+    private DiarySourceTextCipher sourceTextCipher;
 
     @BeforeEach
     void setUp() {
@@ -66,6 +75,7 @@ class DiaryGenerationWorkerTest {
         diaryRepository = mock(DiaryRepository.class);
         generationExecutor = mock(DiaryGenerationExecutor.class);
         completionService = mock(DiaryGenerationCompletionService.class);
+        sourceTextCipher = DiarySourceTextTestSupport.cipher();
         when(generationExecutor.isConfigured()).thenReturn(true);
     }
 
@@ -87,9 +97,67 @@ class DiaryGenerationWorkerTest {
 
         Diary diary = fixture.diary();
         verify(generationExecutor).generate(new GenerateDiaryImageCommand(
-                diary.getUserId(), diary.getId(), diary.getDiaryDate(), diary.getSourceText(), fixture.requestKey()
+                diary.getUserId(), diary.getId(), diary.getDiaryDate(), SOURCE_TEXT, fixture.requestKey()
         ), fixture.generation().getId());
         verifyNoInteractions(completionService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, 1})
+    @DisplayName("기존 평문과 암호문 작업은 원문으로 실행하며 저장된 보호 지문과 일치한다")
+    void decryptStoredSourceAndPreserveProtectedFingerprint(int sourceTextVersion) {
+        Fixture fixture = processingGeneration(sourceTextVersion);
+        stubInput(fixture);
+        when(claimService.claim(1)).thenReturn(List.of(fixture.generation().getId()));
+
+        worker(Runnable::run, 1).poll();
+
+        ArgumentCaptor<GenerateDiaryImageCommand> captor = ArgumentCaptor.forClass(GenerateDiaryImageCommand.class);
+        verify(generationExecutor).generate(captor.capture(), eq(fixture.generation().getId()));
+        assertThat(captor.getValue().diaryText()).isEqualTo(SOURCE_TEXT);
+        String fingerprint = fixture.diary().protectRequestFingerprint(
+                sourceTextCipher, new RequestFingerprintGenerator().generate(captor.getValue())
+        );
+        assertThat(fixture.generation().hasSameRequestFingerprint(fingerprint)).isTrue();
+        assertThat(captor.getValue().toString()).doesNotContain(SOURCE_TEXT);
+        verifyNoInteractions(completionService);
+    }
+
+    @Test
+    @DisplayName("다른 일기가 반환되면 복호화 전에 거절하고 실행하지 않는다")
+    void rejectWrongDiaryBeforeDecryption() {
+        Fixture fixture = processingGeneration();
+        Diary otherDiary = Diary.create(UUID.randomUUID(), LocalDate.of(2026, 10, 20),
+                "다른 회원의 원문", sourceTextCipher);
+        when(generationRepository.findById(fixture.generation().getId()))
+                .thenReturn(Optional.of(fixture.generation()));
+        when(diaryRepository.findById(fixture.diary().getId())).thenReturn(Optional.of(otherDiary));
+        when(claimService.claim(1)).thenReturn(List.of(fixture.generation().getId()));
+        sourceTextCipher = spy(sourceTextCipher);
+
+        worker(Runnable::run, 1).poll();
+
+        verify(sourceTextCipher, never()).decrypt(any(), any(), anyString(), anyInt());
+        verify(generationExecutor, never()).generate(any(), any());
+        verify(completionService).fail(fixture.generation().getId(), GenerationErrorCode.GENERATION_INTERNAL_ERROR);
+    }
+
+    @Test
+    @DisplayName("다른 일기의 암호문으로 바뀐 입력은 외부 생성 전에 실패 처리하고 원문을 로그에 남기지 않는다")
+    void rejectTamperedCiphertextBeforeGeneration(CapturedOutput output) {
+        Fixture fixture = processingGeneration();
+        Diary otherDiary = Diary.create(fixture.diary().getUserId(), LocalDate.of(2026, 10, 20),
+                "노출되면 안 되는 다른 원문", sourceTextCipher);
+        Object ciphertext = ReflectionTestUtils.getField(otherDiary, "sourceText");
+        ReflectionTestUtils.setField(fixture.diary(), "sourceText", ciphertext);
+        stubInput(fixture);
+        when(claimService.claim(1)).thenReturn(List.of(fixture.generation().getId()));
+
+        worker(Runnable::run, 1).poll();
+
+        verify(generationExecutor, never()).generate(any(), any());
+        verify(completionService).fail(fixture.generation().getId(), GenerationErrorCode.GENERATION_INTERNAL_ERROR);
+        assertThat(output).doesNotContain("노출되면 안 되는 다른 원문", SOURCE_TEXT, String.valueOf(ciphertext));
     }
 
     @Test
@@ -209,7 +277,7 @@ class DiaryGenerationWorkerTest {
         verify(diaryRepository, times(failOnGenerationRead ? 1 : 2)).findById(fixture.diary().getId());
         Diary diary = fixture.diary();
         verify(generationExecutor).generate(new GenerateDiaryImageCommand(
-                diary.getUserId(), diary.getId(), diary.getDiaryDate(), diary.getSourceText(), fixture.requestKey()
+                diary.getUserId(), diary.getId(), diary.getDiaryDate(), SOURCE_TEXT, fixture.requestKey()
         ), fixture.generation().getId());
         verifyNoInteractions(completionService);
         assertThat(output).contains("event=generation_worker_input_read_retry")
@@ -473,7 +541,8 @@ class DiaryGenerationWorkerTest {
         });
         try (var executor = Executors.newFixedThreadPool(2)) {
             DiaryGenerationWorker worker = new DiaryGenerationWorker(
-                    claimService, generationRepository, diaryRepository, generationExecutor, Optional.of(registry),
+                    claimService, generationRepository, diaryRepository, sourceTextCipher,
+                    generationExecutor, Optional.of(registry),
                     completionService, executor::execute, new GenerationWorkerProperties(2, Duration.ofSeconds(5))
             );
             try {
@@ -604,23 +673,35 @@ class DiaryGenerationWorkerTest {
     }
 
     private DiaryGenerationWorker workerWithRegistry(LoadTestGenerationRegistry registry) {
-        return new DiaryGenerationWorker(claimService, generationRepository, diaryRepository, generationExecutor,
+        return new DiaryGenerationWorker(claimService, generationRepository, diaryRepository, sourceTextCipher,
+                generationExecutor,
                 Optional.of(registry), completionService, Runnable::run,
                 new GenerationWorkerProperties(1, Duration.ofSeconds(5)));
     }
 
     private DiaryGenerationWorker worker(TaskExecutor taskExecutor, int concurrency) {
-        return new DiaryGenerationWorker(claimService, generationRepository, diaryRepository, generationExecutor, Optional.empty(),
+        return new DiaryGenerationWorker(claimService, generationRepository, diaryRepository, sourceTextCipher,
+                generationExecutor, Optional.empty(),
                 completionService, taskExecutor, new GenerationWorkerProperties(concurrency, Duration.ofSeconds(5)));
     }
 
     private Fixture processingGeneration() {
-        Diary diary = Diary.create(UUID.randomUUID(), LocalDate.of(2026, 10, 20), "DB에 저장된 생성 입력");
+        return processingGeneration(1);
+    }
+
+    private Fixture processingGeneration(int sourceTextVersion) {
+        Diary diary = Diary.create(UUID.randomUUID(), LocalDate.of(2026, 10, 20), SOURCE_TEXT, sourceTextCipher);
+        if (sourceTextVersion == 0) {
+            ReflectionTestUtils.setField(diary, "sourceText", SOURCE_TEXT);
+            ReflectionTestUtils.setField(diary, "sourceTextVersion", 0);
+        }
         UUID requestKey = UUID.randomUUID();
         GenerateDiaryImageCommand command = new GenerateDiaryImageCommand(
-                diary.getUserId(), diary.getId(), diary.getDiaryDate(), diary.getSourceText(), requestKey
+                diary.getUserId(), diary.getId(), diary.getDiaryDate(), SOURCE_TEXT, requestKey
         );
-        String fingerprint = new RequestFingerprintGenerator().generate(command);
+        String fingerprint = diary.protectRequestFingerprint(
+                sourceTextCipher, new RequestFingerprintGenerator().generate(command)
+        );
         DiaryGeneration generation = DiaryGeneration.pending(diary.getId(), 1L, requestKey, fingerprint, null);
         generation.startProcessing();
         return new Fixture(generation, diary, requestKey);

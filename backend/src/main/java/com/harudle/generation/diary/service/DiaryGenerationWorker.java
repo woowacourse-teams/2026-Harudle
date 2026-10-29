@@ -1,6 +1,7 @@
 package com.harudle.generation.diary.service;
 
 import com.harudle.diary.domain.Diary;
+import com.harudle.diary.domain.DiarySourceTextCipher;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.generation.config.GenerationWorkerProperties;
 import com.harudle.generation.diary.domain.DiaryGeneration;
@@ -29,6 +30,7 @@ public final class DiaryGenerationWorker {
     private final PendingDiaryGenerationClaimService claimService;
     private final DiaryGenerationRepository generationRepository;
     private final DiaryRepository diaryRepository;
+    private final DiarySourceTextCipher sourceTextCipher;
     private final DiaryGenerationExecutor generationExecutor;
     private final Optional<LoadTestGenerationRegistry> loadTestGenerationRegistry;
     private final DiaryGenerationCompletionService completionService;
@@ -41,6 +43,7 @@ public final class DiaryGenerationWorker {
             PendingDiaryGenerationClaimService claimService,
             DiaryGenerationRepository generationRepository,
             DiaryRepository diaryRepository,
+            DiarySourceTextCipher sourceTextCipher,
             DiaryGenerationExecutor generationExecutor,
             Optional<LoadTestGenerationRegistry> loadTestGenerationRegistry,
             DiaryGenerationCompletionService completionService,
@@ -50,6 +53,7 @@ public final class DiaryGenerationWorker {
         this.claimService = claimService;
         this.generationRepository = generationRepository;
         this.diaryRepository = diaryRepository;
+        this.sourceTextCipher = sourceTextCipher;
         this.generationExecutor = generationExecutor;
         this.loadTestGenerationRegistry = loadTestGenerationRegistry;
         this.completionService = completionService;
@@ -147,11 +151,17 @@ public final class DiaryGenerationWorker {
     private Optional<GenerateDiaryImageCommand> loadInput(UUID generationId) {
         DiaryGeneration generation = generationRepository.findById(generationId)
                 .orElseThrow(() -> new IllegalStateException("선점한 생성 기록을 찾을 수 없습니다."));
+        if (!generationId.equals(generation.getId())) {
+            throw new IllegalStateException("선점한 생성 기록이 일치하지 않습니다.");
+        }
         if (generation.getStatus() != GenerationStatus.PROCESSING) {
             return Optional.empty();
         }
         Diary diary = diaryRepository.findById(generation.getDiaryId())
                 .orElseThrow(() -> new IllegalStateException("생성할 일기를 찾을 수 없습니다."));
+        if (!generation.getDiaryId().equals(diary.getId()) || diary.getUserId() == null) {
+            throw new IllegalStateException("생성할 일기 정보가 일치하지 않습니다.");
+        }
         if (diary.isDeleted()) {
             throw new IllegalStateException("삭제된 일기는 생성할 수 없습니다.");
         }
@@ -159,7 +169,7 @@ public final class DiaryGenerationWorker {
                 diary.getUserId(),
                 diary.getId(),
                 diary.getDiaryDate(),
-                diary.getSourceText(),
+                diary.decryptSourceText(sourceTextCipher),
                 generation.getIdempotencyKey()
         ));
     }

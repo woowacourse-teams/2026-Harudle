@@ -1,5 +1,6 @@
 package com.harudle.generation.config;
 
+import com.harudle.diary.domain.DiarySourceTextCipher;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.diary.service.ClaimedDiaryGenerationService;
@@ -15,6 +16,7 @@ import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
 import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
 import com.harudle.generation.diary.service.port.ImageStorage;
+import com.harudle.generation.diary.service.port.RequestFingerprintProtector;
 import com.harudle.generation.diary.service.storyboard.StoryboardGenerationService;
 import com.harudle.generation.prompt.infrastructure.GenerationPromptBootstrapService;
 import com.harudle.generation.prompt.infrastructure.GenerationPromptInitializer;
@@ -81,13 +83,15 @@ class DiaryGenerationConfiguration {
             PendingDiaryGenerationClaimService claimService,
             DiaryGenerationRepository generationRepository,
             DiaryRepository diaryRepository,
+            DiarySourceTextCipher sourceTextCipher,
             DiaryGenerationExecutor generationExecutor,
             ObjectProvider<LoadTestGenerationRegistry> loadTestRegistryProvider,
             DiaryGenerationCompletionService completionService,
             @Qualifier("generationWorkerTaskExecutor") ThreadPoolTaskExecutor taskExecutor,
             GenerationWorkerProperties properties
     ) {
-        return new DiaryGenerationWorker(claimService, generationRepository, diaryRepository, generationExecutor,
+        return new DiaryGenerationWorker(claimService, generationRepository, diaryRepository, sourceTextCipher,
+                generationExecutor,
                 Optional.ofNullable(loadTestRegistryProvider.getIfAvailable()),
                 completionService, taskExecutor, properties);
     }
@@ -114,6 +118,7 @@ class DiaryGenerationConfiguration {
     @Primary
     DiaryGenerationExecutor diaryGenerationExecutor(
             RequestFingerprintGenerator requestFingerprintGenerator,
+            RequestFingerprintProtector requestFingerprintProtector,
             GenerationPromptRepository generationPromptRepository,
             DiaryGenerationRepository diaryGenerationRepository,
             ObjectProvider<StoryboardGenerationService> storyboardServiceProvider,
@@ -139,6 +144,7 @@ class DiaryGenerationConfiguration {
 
         DiaryGenerationExecutor executor = new ClaimedDiaryGenerationService(
                 requestFingerprintGenerator,
+                requestFingerprintProtector,
                 generationPromptRepository,
                 diaryGenerationRepository,
                 storyboardService.orElseThrow(),

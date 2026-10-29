@@ -124,7 +124,16 @@ jobs:
 
       - name: Test deployment image environment
         if: github.event_name != 'push'
-        run: bash ../deploy/scripts/test_image_environment.sh
+        run: |
+          bash ../deploy/scripts/test_image_environment.sh
+          bash ../deploy/scripts/test_backend_entrypoint.sh
+
+      - name: Test diary key preflight and release selection (offline)
+        if: github.event_name != 'push'
+        run: |
+          bash ../deploy/scripts/test_diary_key_verification.sh
+          bash ../deploy/scripts/test_diary_release.sh
+          bash ../deploy/scripts/test_diary_writer_approval.sh
 
       - name: Install WebP tools
         if: github.event_name != 'push'
@@ -145,6 +154,13 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon --console=plain --build-cache test --rerun
+
+      - name: Verify packaged key checks and guarded initialization
+        if: github.event_name != 'push'
+        run: |
+          ./gradlew --no-daemon --console=plain --build-cache bootJar
+          bash ../deploy/scripts/test_diary_key_check_jar.sh build/libs/harudle-0.0.1-SNAPSHOT.jar
+          bash ../deploy/scripts/test_diary_key_initialization_jar.sh build/libs/harudle-0.0.1-SNAPSHOT.jar
 
   codex-image-worker-test:
     name: Codex image worker (offline)

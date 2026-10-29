@@ -1,6 +1,7 @@
 package com.harudle.diary.service;
 
 import com.harudle.diary.domain.Diary;
+import com.harudle.diary.domain.DiarySourceTextCipher;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
@@ -40,6 +41,8 @@ class DiaryCreationClaimService {
     private final DiaryGenerationRepository diaryGenerationRepository;
     private final DiaryGenerationCompletionService completionService;
     private final RequestFingerprintGenerator requestFingerprintGenerator;
+    private final DiarySourceTextCipher sourceTextCipher;
+    private final boolean newWritesEnabled;
     private final Clock clock;
     private final Duration processingTimeout;
     private final DiaryGenerationAdmissionLock admissionLock;
@@ -52,6 +55,8 @@ class DiaryCreationClaimService {
             DiaryGenerationRepository diaryGenerationRepository,
             DiaryGenerationCompletionService completionService,
             RequestFingerprintGenerator requestFingerprintGenerator,
+            DiarySourceTextCipher sourceTextCipher,
+            DiarySourceTextWriteProperties sourceTextWriteProperties,
             @Qualifier("serviceClock") Clock clock,
             GenerationLifecycleProperties generationLifecycleProperties,
             DiaryGenerationAdmissionLock admissionLock,
@@ -65,6 +70,8 @@ class DiaryCreationClaimService {
         this.diaryGenerationRepository = diaryGenerationRepository;
         this.completionService = completionService;
         this.requestFingerprintGenerator = requestFingerprintGenerator;
+        this.sourceTextCipher = sourceTextCipher;
+        this.newWritesEnabled = sourceTextWriteProperties.newWritesEnabled();
         this.clock = clock;
         this.processingTimeout = processingTimeout;
         this.admissionLock = admissionLock;
@@ -128,9 +135,14 @@ class DiaryCreationClaimService {
     ) {
         Diary diary = diaryRepository.findByIdIncludingDeletedForUpdate(generation.getDiaryId())
                 .orElseThrow(DiaryNotFoundException::new);
+        if (!diary.isOwnedBy(command.userId())) {
+            throw new IdempotencyKeyConflictException();
+        }
         validateDiaryVisibility(diary, generation);
         GenerateDiaryImageCommand generationCommand = createGenerationCommand(command, diary);
-        String requestFingerprint = requestFingerprintGenerator.generate(generationCommand);
+        String requestFingerprint = diary.protectRequestFingerprint(
+                sourceTextCipher, requestFingerprintGenerator.generate(generationCommand)
+        );
         if (!generation.hasSameRequestFingerprint(requestFingerprint)) {
             throw new IdempotencyKeyConflictException();
         }
@@ -144,6 +156,9 @@ class DiaryCreationClaimService {
             LocalDate usageDate,
             boolean queueForWorker
     ) {
+        if (!newWritesEnabled) {
+            throw GenerationUnavailableException.newDiaryWritesDisabled();
+        }
         if (!generationAvailable) {
             throw GenerationUnavailableException.adaptersNotConfigured();
         }
@@ -158,10 +173,13 @@ class DiaryCreationClaimService {
         Diary diary = diaryRepository.save(Diary.create(
                 command.userId(),
                 command.diaryDate(),
-                command.sourceText()
+                command.sourceText(),
+                sourceTextCipher
         ));
         GenerateDiaryImageCommand generationCommand = createGenerationCommand(command, diary);
-        String fingerprint = requestFingerprintGenerator.generate(generationCommand);
+        String fingerprint = diary.protectRequestFingerprint(
+                sourceTextCipher, requestFingerprintGenerator.generate(generationCommand)
+        );
         DiaryGeneration generation = DiaryGeneration.pending(
                 diary.getId(), promptId, command.idempotencyKey(), fingerprint, usageDate
         );
@@ -198,7 +216,7 @@ class DiaryCreationClaimService {
         return new DiaryCreationClaim(
                 diary.getId(),
                 diary.getDiaryDate(),
-                diary.getSourceText(),
+                diary.decryptSourceText(sourceTextCipher),
                 diary.getCreatedAt(),
                 generation.getId(),
                 generation.getStatus(),

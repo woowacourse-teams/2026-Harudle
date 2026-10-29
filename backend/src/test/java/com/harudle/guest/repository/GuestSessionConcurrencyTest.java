@@ -2,6 +2,7 @@ package com.harudle.guest.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.harudle.support.DiarySourceTextTestSupport;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.diary.domain.Diary;
@@ -104,8 +105,8 @@ class GuestSessionConcurrencyTest extends ServiceIntegrationTestSupport {
 
     private List<UUID> saveDiaries(UUID guestUserId) {
         List<Diary> diaries = List.of(
-                Diary.create(guestUserId, DIARY_DATE, "첫 번째 일기"),
-                Diary.create(guestUserId, DIARY_DATE, "두 번째 일기")
+                Diary.create(guestUserId, DIARY_DATE, "첫 번째 일기", DiarySourceTextTestSupport.cipher()),
+                Diary.create(guestUserId, DIARY_DATE, "두 번째 일기", DiarySourceTextTestSupport.cipher())
         );
         return diaryRepository.saveAllAndFlush(diaries).stream()
                 .map(Diary::getId)

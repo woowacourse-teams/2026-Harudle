@@ -24,6 +24,7 @@ phases:
   pre_build:
     commands:
       - set -euo pipefail
+      - bash deploy/scripts/prepare_diary_release.sh
       - echo "Build host architecture is $(uname -m); target architecture is linux/arm64."
   build:
     commands:
@@ -100,6 +101,9 @@ artifacts:
     - appspec.yml
     - deploy/compose.dev.yaml
     - deploy/compose.prod.yaml
+    - deploy/compose.diary-reader.yaml
+    - deploy/compose.diary-writer.yaml
+    - deploy/diary-source-text-release-mode
     - deploy/monitoring/**/*
     - deploy/scripts/**/*
     - backend/src/main/resources/db/maintenance/backfill_user_public_profiles.sql
