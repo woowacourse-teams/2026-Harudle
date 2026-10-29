@@ -265,6 +265,7 @@ CodeBuild는 프론트엔드 입력이 같으면 이전 이미지를 재사용�
 
 | 작업 | 확인 위치 |
 | --- | --- |
+| 백엔드 코드와 테스트 | [backend/AGENTS.md](backend/AGENTS.md), [테스트 실행 안내](backend/README.md#테스트) |
 | 프론트엔드 코드 | [frontend/AGENTS.md](frontend/AGENTS.md) |
 | 약관 열람·수락 적용 | [동의 API와 단계적 적용](backend/docs/terms-consent.md), [원문 정책 대조](backend/docs/terms-policy-review.md) |
 | 배포·환경 변수 | [deploy/README.md](deploy/README.md), [.env.docker.example](.env.docker.example), [배포 환경 검사](deploy/scripts/compose_environment.sh) |
