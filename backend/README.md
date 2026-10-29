@@ -53,6 +53,20 @@ AI와 S3 같은 외부 시스템 연동은 독립 도메인으로 만들지 않�
 현재 각 도메인의 `package-info.java`는 클래스가 없는 빈 디렉터리를 Git에 추적하고 역할을 표시하기 위한 임시 파일입니다.
 해당 패키지에 실제 구현 클래스가 추가되면 대응하는 `package-info.java`를 삭제합니다.
 
+## 만료된 Refresh Token 정리
+
+만료된 Refresh Token은 기본적으로 매일 한국 시간 새벽 4시에 DB에서 삭제합니다.
+`REFRESH_TOKEN_CLEANUP_CRON`의 기본값은 `0 0 4 * * *`이고,
+`REFRESH_TOKEN_CLEANUP_ZONE`의 기본값은 `Asia/Seoul`입니다.
+예약 실행을 끄려면 `REFRESH_TOKEN_CLEANUP_CRON=-`로 설정합니다.
+설정을 바꾸면 백엔드를 재시작해야 합니다.
+
+실행 시작 시각과 만료 시각이 같거나 이미 만료된 토큰만 삭제합니다.
+로그인 세션과 푸시 등록 정보는 삭제하지 않습니다.
+성공 로그의 `event=refresh_token_cleanup_run`에서 `deletedCount`와 `durationMs`를 확인합니다.
+실패하면 삭제 트랜잭션을 취소하고 `event=refresh_token_cleanup_failed`를 기록합니다.
+다음 예약 시각에 다시 실행합니다.
+
 ## 로컬 실행
 
 예시 환경 변수 파일을 복사하고 `DB_PASSWORD`에 추측하기 어려운 로컬 비밀번호를 설정합니다.

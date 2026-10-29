@@ -9,6 +9,17 @@ Internet -> host Nginx/Certbot -> 127.0.0.1:3000
                                     -> /api/* -> backend:8080 -> RDS/S3/Gemini
 ```
 
+## 만료된 Refresh Token 정리
+
+백엔드는 기본적으로 매일 한국 시간 새벽 4시에 만료된 Refresh Token을 삭제합니다.
+서버 `.env`의 `REFRESH_TOKEN_CLEANUP_CRON`과 `REFRESH_TOKEN_CLEANUP_ZONE`으로 실행 시각을 바꿉니다.
+기본값은 각각 `0 0 4 * * *`와 `Asia/Seoul`입니다.
+`REFRESH_TOKEN_CLEANUP_CRON=-`로 설정하면 예약 실행을 끕니다.
+변경 후에는 백엔드 컨테이너를 재생성해야 합니다.
+CloudWatch 앱 로그에서 `event=refresh_token_cleanup_run`의 `deletedCount`와 `durationMs`를 확인합니다.
+실패 로그는 `event=refresh_token_cleanup_failed`이며 다음 예약 시각에 다시 실행합니다.
+기존 만료 토큰이 많이 쌓였다면 첫 실행 전 대상 건수와 DB 부하를 확인합니다.
+
 ## EC2 최초 설정
 
 Docker, Docker Compose v2, `jq`를 설치합니다. `BeforeInstall`은 이 도구들이 없으면 기존 배포 파일을 정리하기 전에 중단합니다.
