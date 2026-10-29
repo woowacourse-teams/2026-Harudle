@@ -61,6 +61,11 @@ flowchart TB
 
 ## 실행 자원과 설정 위치
 
+만료된 Refresh Token은 전용 스케줄러가 매일 한국 시간 새벽 4시에 삭제한다.
+`REFRESH_TOKEN_CLEANUP_CRON`과 `REFRESH_TOKEN_CLEANUP_ZONE`으로 실행 시각을 바꾼다.
+`REFRESH_TOKEN_CLEANUP_CRON=-`로 예약 실행을 끌 수 있다.
+설정을 바꾸면 백엔드 컨테이너를 재생성한다. 자세한 내용은 `deploy/README.md`를 따른다.
+
 | 구성 | 연결·설정 | 자원·역할 |
 | --- | --- | --- |
 | Frontend | `127.0.0.1:${APP_PORT:-3000} → 80` | Nginx + React, 메모리 `192m` |
