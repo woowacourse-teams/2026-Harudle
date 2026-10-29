@@ -123,6 +123,8 @@ public class SecurityConfig {
                                 "/api/v1/guest/diary-generations/*"
                         ).permitAll()
                         .requestMatchers(
+                                "/api/v1/auth/apple/native/nonce",
+                                "/api/v1/auth/apple/native/login",
                                 "/api/v1/auth/refresh",
                                 "/api/v1/auth/csrf",
                                 "/api/v1/auth/logout",

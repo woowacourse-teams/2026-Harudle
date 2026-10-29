@@ -549,3 +549,22 @@ Codex worker는 `CODEX_IMAGE_CONCURRENCY`로 동시 생성 수를, `CODEX_IMAGE_
 
 OAuth 로그인, 내부 HTTP 토큰, 제한 시간과 선택적 컨테이너 구성은
 [codex-image-worker/README.md](codex-image-worker/README.md)를 참고하세요.
+
+### iOS Apple 네이티브 로그인 (개발 중)
+
+기존 웹 로그인 설정의 `APPLE_LOGIN_ENABLED=true`와 Apple 개인 키를 사용한다.
+iOS Bundle ID는 Apple Developer에 등록된 `com.harudle.app`을 사용한다.
+웹 Services ID는 기존 `APPLE_CLIENT_ID` 설정을 그대로 사용한다.
+
+웹뷰에서 먼저 `GET /api/v1/auth/csrf`를 호출하고 반환된 토큰을 두 POST의
+`X-XSRF-TOKEN` 헤더로 보낸다. 같은 웹뷰의 쿠키와 세션을 유지한다.
+`POST /api/v1/auth/apple/native/nonce`의 `nonce`를 RN에 전달하고 Apple 로그인
+요청의 nonce로 변형 없이 사용한다. RN에서 반환된 `authorizationCode`와
+`identityToken`을 웹뷰가 `POST /api/v1/auth/apple/native/login`에 JSON으로 보낸다.
+성공 시 204 응답과 기존 Refresh Token 쿠키를 받는다. 이후 기존 `/auth/refresh`를
+호출한다. nonce는 5분 동안 유효하고 실패를 포함해 로그인 시도 시 소모된다.
+실패 또는 취소 후 재시도할 때는 새 nonce를 발급받는다.
+
+RN에서 받은 ID 토큰은 nonce 검증에 사용한다. 인증 코드는 Apple에서 교환하고,
+두 토큰의 서명과 발급자, 대상 앱, 만료 시각 및 사용자 식별자를 확인한다.
+실제 Apple 서버와 iOS 개발 빌드의 통합 검증 전에는 배포하지 않는다.

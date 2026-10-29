@@ -39,10 +39,15 @@ public class AppleClientSecretGenerator {
     }
 
     public String generate() {
+        return generate(properties.clientId());
+    }
+
+    public String generate(String clientId) {
+        org.springframework.util.Assert.hasText(clientId, "Apple clientId는 필수입니다.");
         Instant issuedAt = clock.instant().truncatedTo(ChronoUnit.SECONDS);
         JWTClaimsSet claims = new JWTClaimsSet.Builder()
                 .issuer(properties.teamId())
-                .subject(properties.clientId())
+                .subject(clientId)
                 .audience(AUDIENCE)
                 .issueTime(Date.from(issuedAt))
                 .expirationTime(Date.from(issuedAt.plus(TTL)))
