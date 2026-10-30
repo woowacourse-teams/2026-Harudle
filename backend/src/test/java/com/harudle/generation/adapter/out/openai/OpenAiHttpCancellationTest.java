@@ -1,4 +1,4 @@
-package com.harudle.generation.adapter.out.codex;
+package com.harudle.generation.adapter.out.openai;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
@@ -25,7 +25,6 @@ import com.sun.net.httpserver.HttpServer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.net.URI;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
@@ -55,7 +54,7 @@ import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
 import tools.jackson.databind.ObjectMapper;
 
-class CodexHttpCancellationTest {
+class OpenAiHttpCancellationTest {
 
     private static final Duration HTTP_TIMEOUT = Duration.ofSeconds(30);
     private static final String TOKEN = "test-internal-worker-token-32-characters";
@@ -127,7 +126,7 @@ class CodexHttpCancellationTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
-    @DisplayName("헤더 또는 PNG 본문 대기 중 인터럽트되면 응답을 기다리지 않고 해당 HTTP 요청을 취소한다")
+    @DisplayName("헤더 또는 JSON 본문 대기 중 인터럽트되면 응답을 기다리지 않고 해당 HTTP 요청을 취소한다")
     void interruptCancelsRealHttpCallBeforeTheServerFinishes(boolean bodyStarted) throws Exception {
         behavior = exchange -> delayImage(exchange, bodyStarted, releaseSlow);
         var caller = new AtomicReference<Thread>();
@@ -149,7 +148,7 @@ class CodexHttpCancellationTest {
     }
 
     @Test
-    @DisplayName("PNG가 도착하는 순간 인터럽트되어도 성공 이미지로 반환하지 않는다")
+    @DisplayName("이미지가 도착하는 순간 인터럽트되어도 성공 이미지로 반환하지 않는다")
     void interruptRacingWithAValidResponseDoesNotReturnSuccess() throws Exception {
         Call.Factory factory = mock(Call.Factory.class);
         Call call = mock(Call.class);
@@ -159,7 +158,7 @@ class CodexHttpCancellationTest {
             caller.interrupt();
             return new Response.Builder().request(new Request.Builder().url("http://localhost").build())
                     .protocol(Protocol.HTTP_1_1).code(200).message("OK")
-                    .body(ResponseBody.create(PNG, okhttp3.MediaType.get("image/png"))).build();
+                    .body(ResponseBody.create(imageResponse(), okhttp3.MediaType.get("application/json"))).build();
         });
         Failure failure;
         try {
@@ -225,7 +224,7 @@ class CodexHttpCancellationTest {
     }
 
     private Future<Failure> generateExpectingFailure(
-            CodexDiaryImageGenerator adapter, AtomicReference<Thread> caller
+            OpenAiDiaryImageGenerator adapter, AtomicReference<Thread> caller
     ) {
         return callers.submit(() -> {
             caller.set(Thread.currentThread());
@@ -244,23 +243,23 @@ class CodexHttpCancellationTest {
 
     private Call.Factory recordingCalls() {
         return request -> {
-            Call call = client.newCall(request);
+            Call call = client.newCall(request.newBuilder()
+                    .url("http://127.0.0.1:" + server.getAddress().getPort()).build());
             calls.add(call);
             return call;
         };
     }
 
-    private CodexDiaryImageGenerator adapter(Call.Factory factory) {
-        return new CodexDiaryImageGenerator(new ImageProviderProperties("codex",
-                URI.create("http://127.0.0.1:" + server.getAddress().getPort()), TOKEN, HTTP_TIMEOUT),
+    private OpenAiDiaryImageGenerator adapter(Call.Factory factory) {
+        return new OpenAiDiaryImageGenerator(new ImageProviderProperties("openai", TOKEN, null, HTTP_TIMEOUT, null), "1:1",
                 new DiaryImagePromptRenderer(), new ObjectMapper(), metrics, factory);
     }
 
     private void delayImage(HttpExchange exchange, boolean bodyStarted, CountDownLatch release) throws IOException {
         if (bodyStarted) {
-            exchange.getResponseHeaders().set("Content-Type", "image/png");
-            exchange.sendResponseHeaders(200, PNG.length);
-            exchange.getResponseBody().write(PNG, 0, 1);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, imageResponse().length);
+            exchange.getResponseBody().write(imageResponse(), 0, 1);
             exchange.getResponseBody().flush();
         }
         try {
@@ -272,13 +271,17 @@ class CodexHttpCancellationTest {
             return;
         }
         if (!bodyStarted) {
-            exchange.getResponseHeaders().set("Content-Type", "image/png");
-            exchange.sendResponseHeaders(200, PNG.length);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, imageResponse().length);
         }
         int offset = bodyStarted ? 1 : 0;
-        exchange.getResponseBody().write(PNG, offset, PNG.length - offset);
+        exchange.getResponseBody().write(imageResponse(), offset, imageResponse().length - offset);
     }
 
     private record Failure(AiGenerationException failure, boolean interrupted) {
+    }
+    private static byte[] imageResponse() {
+        return ("{\"data\":[{\"b64_json\":\"" + Base64.getEncoder().encodeToString(PNG)
+                + "\"}]}").getBytes(java.nio.charset.StandardCharsets.UTF_8);
     }
 }

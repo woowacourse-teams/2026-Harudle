@@ -1,4 +1,4 @@
-package com.harudle.generation.adapter.out.codex;
+package com.harudle.generation.adapter.out.openai;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -17,9 +17,9 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 
-class CodexExceptionTranslatorTest {
+class OpenAiExceptionTranslatorTest {
 
-    private final CodexExceptionTranslator translator = new CodexExceptionTranslator();
+    private final OpenAiExceptionTranslator translator = new OpenAiExceptionTranslator();
 
     @ParameterizedTest
     @CsvSource({
@@ -68,6 +68,14 @@ class CodexExceptionTranslatorTest {
         assertThat(translator.preparationFailure(cause).errorType()).isEqualTo(AiGenerationErrorType.INTERNAL_ERROR);
         assertThat(translator.responseFailure(cause).errorType()).isEqualTo(AiGenerationErrorType.RESPONSE_PROCESSING_ERROR);
         assertThat(translator.providerFailure(cause).errorType()).isEqualTo(AiGenerationErrorType.PROVIDER_ERROR);
+    }
+
+    @Test
+    void responseParsingDiagnosticsNeverExposeResponseContent() {
+        var failure = translator.responseFailure(new IllegalArgumentException("private-base64-or-prompt"));
+        assertThat(failure).hasMessageNotContaining("private-base64-or-prompt");
+        assertThat(failure.getCause()).hasMessageNotContaining("private-base64-or-prompt");
+        assertThat(failure.getCause().getCause()).isNull();
     }
 
     @Test

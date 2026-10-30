@@ -1,3 +1,7 @@
+> 이 문서는 이전 Codex 방식의 실험 기록입니다. 현재 구현은 OpenAI Flare API를 직접 호출합니다.
+> 아래 실험에 쓰인 worker와 실행 도구는 제거했습니다. 실행 절차는 현재 코드에 적용되지 않습니다.
+> 실험 결과는 RESULTS.md에 보존합니다. 현재 설정은 backend/README.md를 확인합니다.
+
 # Codex SDK image provider PoC
 
 기존 하루들 Storyboard 생성 결과, 이미지 프롬프트 렌더러, 활성 GenerationPrompt의 스타일·참조 이미지를 사용해 OAuth 기반 Codex 이미지 생성을 검증합니다. 직접 작성한 4컷 이미지 프롬프트와 프론트엔드 샘플 이미지를 사용하는 방식은 제거했습니다.

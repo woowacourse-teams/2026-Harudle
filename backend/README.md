@@ -550,16 +550,59 @@ PR 검증과 캐시 생성은 이벤트별로 실행 그룹을 나눠 서로 취
 - Hibernate는 스키마를 자동 변경하지 않고 시작 시 스키마를 검증합니다.
 - 인증 구현 전까지 Spring Security의 기본 보안 설정이 적용되어 모든 API가 보호됩니다.
 
-## 이미지 생성의 Codex fallback
+## 이미지 생성의 OpenAI 대체 호출
 
-IMAGE_FALLBACK_PROVIDER=codex로 설정하면 Gemini 이미지 생성이 429 또는 timeout으로 실패할 때
-Codex SDK worker에 같은 Storyboard, 스타일 지시문과 참조 이미지를 전달합니다.
-Gemini와 Codex를 각각 한 번 호출하며, 일반 생성과 관리자 이미지 복구에 동일하게 적용합니다.
-기본값 none에서는 기존 Gemini 생성과 재시도 설정을 유지합니다.
+Gemini 이미지 생성이 429 또는 시간 초과로 실패하면 OpenAI Images API를 직접 호출할 수 있습니다.
+일반 생성과 관리자 이미지 복구에 같은 처리를 적용합니다. Codex SDK와 별도 worker는 사용하지 않습니다.
+기본값은 비활성화이며, 다음 환경 변수로 켭니다. 키는 프론트엔드나 저장소에 넣지 않습니다.
 
-Codex worker는 `CODEX_IMAGE_CONCURRENCY`로 동시 생성 수를, `CODEX_IMAGE_QUEUE_CAPACITY`로 대기 수를 정합니다.
-기본값은 각각 1이며, 입력 수신과 대기, 생성 시간을 합쳐 기존 worker 제한 시간 300초를 적용합니다.
-접수 한도가 차면 503으로 거절합니다. 백엔드의 `GENERATION_WORKER_CONCURRENCY`는 일기 전체의 동시 실행 수입니다.
+```dotenv
+IMAGE_FALLBACK_PROVIDER=openai
+OPENAI_API_KEY=서버에만-저장하는-API-키
+OPENAI_IMAGE_MODEL=gpt-image-2.5-flare
+OPENAI_IMAGE_TIMEOUT=180s
+OPENAI_IMAGE_QUALITY=medium
+```
 
-OAuth 로그인, 내부 HTTP 토큰, 제한 시간과 선택적 컨테이너 구성은
-[codex-image-worker/README.md](codex-image-worker/README.md)를 참고하세요.
+모델은 Flare와 고정 버전 `gpt-image-2.5-flare-2026-09-08`을 지원합니다.
+이미지 비율은 Gemini와 같은 `GEMINI_IMAGE_ASPECT_RATIO`를 사용합니다.
+OpenAI 전용 크기 환경 변수는 없습니다. `1:1`은 `1024x1024`, `9:16`은 `864x1536`,
+`16:9`는 `1536x864`로 변환하며 Gemini에서 허용하는 나머지 비율도 그대로 유지합니다.
+두 제공자의 실제 픽셀 수까지 같다는 뜻은 아닙니다.
+품질은 `low`, `medium`, `high`, `xhigh`, `max`, `auto`를 지원합니다.
+제한 시간은 1초 이상, 300초 이하입니다. 활성화 상태에서 키나 설정이 잘못되면 앱 시작이 실패합니다.
+
+```mermaid
+flowchart TD
+    input["스토리보드, 그림체 지시문, 참조 이미지"] --> gemini["Gemini 이미지 생성"]
+    gemini -->|성공| storage["기존 이미지 저장"]
+    gemini -->|429 또는 시간 초과| openai["OpenAI Flare 직접 호출"]
+    openai -->|성공| storage
+    openai -->|실패| failure["생성 실패 처리"]
+    gemini -->|그 밖의 오류| failure
+```
+
+두 제공자는 같은 스토리보드와 참조 이미지를 사용합니다. OpenAI 요청에는 그림체와 참조 사용 지시,
+스토리보드를 하나의 지시문으로 합칩니다. 참조 이미지는 Base64 data URL로 담아
+`POST https://api.openai.com/v1/images/edits`로 보내며, PNG 응답을 기존 저장 처리에 전달합니다.
+지시문은 최대 32000자, 입력 JSON은 최대 20MiB, 응답 JSON은 최대 28MiB,
+변환한 PNG는 최대 20MiB로 제한합니다. 참조 형식은 PNG, JPEG, WebP를 지원합니다.
+
+대체 호출을 켜면 Gemini와 OpenAI는 각각 한 번만 호출하며 자동 재시도와 리다이렉트를 사용하지 않습니다.
+기본 호출 제한 시간의 합은 Gemini 180초와 OpenAI 180초로 360초입니다.
+입력 준비와 응답 변환, 저장 시간은 별도이며 일기 전체 작업에는 기존 처리 제한 시간이 적용됩니다.
+시간 초과나 취소 시 백엔드 HTTP 요청을 취소하지만 OpenAI 측 작업과 과금 취소를 보장하지 않습니다.
+작업 취소와 그 밖의 Gemini 오류는 대체 호출을 시작하지 않습니다.
+`IMAGE_FALLBACK_PROVIDER=none`이면 기존 Gemini 재시도 설정을 유지합니다.
+
+호출 수는 `harudle.image.fallback.calls`, 소요 시간은 `harudle.image.provider.duration`에
+`provider=openai`로 기록합니다. 키, 참조 이미지, 응답 본문은 로그에 남기지 않습니다.
+서버 동시 실행 수는 기존 `GENERATION_WORKER_CONCURRENCY`를 따릅니다.
+관리자 복구는 별도 요청이므로 이 값이 모든 OpenAI 호출의 공통 동시 실행 상한은 아닙니다.
+
+기존 `IMAGE_FALLBACK_PROVIDER=codex` 설정은 지원하지 않습니다.
+전환 시 Codex worker 환경 변수 대신 위 설정을 넣고 백엔드를 재시작하거나 컨테이너를 재생성합니다.
+OpenAI 프로젝트의 Flare 사용 권한과 결제를 확인하고, 소수의 실제 요청으로 그림체와 생성 시간,
+비용을 확인한 뒤 활성화합니다. `none`으로 되돌린 뒤 재생성하면 대체 호출이 꺼집니다.
+
+API 형식은 [OpenAI 공식 문서](https://developers.openai.com/api/reference/resources/images/methods/edit)를 따릅니다.

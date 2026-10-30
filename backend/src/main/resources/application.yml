@@ -158,9 +158,10 @@ harudle:
       fallback-timeout: ${STORYBOARD_FALLBACK_TIMEOUT:60s}
     image:
       fallback-provider: ${IMAGE_FALLBACK_PROVIDER:none}
-      codex-url: ${CODEX_IMAGE_WORKER_URL:}
-      codex-token: ${CODEX_IMAGE_WORKER_TOKEN:}
-      codex-timeout: ${CODEX_IMAGE_TIMEOUT:310s}
+      openai-api-key: ${OPENAI_API_KEY:}
+      openai-model: ${OPENAI_IMAGE_MODEL:gpt-image-2.5-flare}
+      openai-timeout: ${OPENAI_IMAGE_TIMEOUT:180s}
+      openai-quality: ${OPENAI_IMAGE_QUALITY:medium}
     qwen:
       api-key: ${QWEN_TOKEN_PLAN_API_KEY:}
       storyboard-model: ${QWEN_STORYBOARD_MODEL:qwen3.8-max}

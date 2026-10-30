@@ -1,4 +1,4 @@
-package com.harudle.generation.adapter.out.codex;
+package com.harudle.generation.adapter.out.openai;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -21,7 +21,6 @@ import com.harudle.generation.diary.service.port.dto.*;
 import com.sun.net.httpserver.HttpServer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.net.InetSocketAddress;
-import java.net.URI;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
@@ -36,11 +35,11 @@ import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
 import tools.jackson.databind.ObjectMapper;
 
-class CodexDiaryImageGeneratorTest {
+class OpenAiDiaryImageGeneratorTest {
 
     private static final byte[] PNG = Base64.getDecoder().decode(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0f8AAAAASUVORK5CYII=");
-    private static final String TOKEN = "test-internal-worker-token-32-characters";
+    private static final String TOKEN = "test-openai-api-key";
     private final ObjectMapper mapper = new ObjectMapper();
     private final DiaryImagePromptRenderer renderer = new DiaryImagePromptRenderer();
     private final SimpleMeterRegistry metrics = new SimpleMeterRegistry();
@@ -64,13 +63,14 @@ class CodexDiaryImageGeneratorTest {
         AtomicReference<String> auth = new AtomicReference<>();
         AtomicInteger calls = new AtomicInteger();
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/v1/images/generations", exchange -> {
+        server.createContext("/v1/images/edits", exchange -> {
             calls.incrementAndGet();
             auth.set(exchange.getRequestHeaders().getFirst("Authorization"));
             received.set(exchange.getRequestBody().readAllBytes());
-            exchange.getResponseHeaders().set("Content-Type", "image/png");
-            exchange.sendResponseHeaders(200, PNG.length);
-            exchange.getResponseBody().write(PNG);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            byte[] response = imageResponse();
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
             exchange.close();
         });
         server.start();
@@ -85,7 +85,7 @@ class CodexDiaryImageGeneratorTest {
                 new GeminiGenerationProperties("story", "image", "high", "1:1", 8192, 1, Duration.ofSeconds(30)),
                 renderer, new GeminiFailureReporter(new GeminiExceptionTranslator(), new ExternalApiLogger()),
                 new GeminiStageMetrics(metrics));
-        var generator = new FallbackDiaryImageGenerator(gemini, codex(), metrics);
+        var generator = new FallbackDiaryImageGenerator(gemini, openai(), metrics);
 
         var result = generator.generate(input);
 
@@ -95,19 +95,22 @@ class CodexDiaryImageGeneratorTest {
         verify(models).generateContent(anyString(), any(Content.class), any(GenerateContentConfig.class));
         assertThat(auth.get()).isEqualTo("Bearer " + TOKEN);
         var json = mapper.readTree(received.get());
-        assertThat(json.get("systemInstruction").asText()).isEqualTo(input.imageStylePromptText());
-        var parts = geminiContent.get().parts().orElseThrow();
-        assertThat(json.get("referenceInstruction").asText()).isEqualTo(parts.get(0).text().orElseThrow());
-        assertThat(Base64.getDecoder().decode(json.get("reference").get("base64").asText()))
-                .isEqualTo(parts.get(1).inlineData().orElseThrow().data().orElseThrow());
-        assertThat(json.get("reference").get("mediaType").asText()).isEqualTo("image/png");
-        assertThat(json.get("finalTask").asText()).isEqualTo(parts.get(2).text().orElseThrow())
-                .isEqualTo(DiaryImagePrompt.finalTask(input, renderer));
+        assertThat(json.path("prompt").asText()).endsWith(geminiContent.get().parts().orElseThrow().get(2).text().orElseThrow());
+        assertThat(json.path("model").asText()).isEqualTo("gpt-image-2.5-flare");
+        assertThat(json.path("prompt").asText()).contains(input.imageStylePromptText(),
+                DiaryImagePrompt.finalTask(input, renderer), "style instructions above");
+        assertThat(json.path("images").get(0).path("image_url").asText())
+                .isEqualTo("data:image/png;base64," + Base64.getEncoder().encodeToString(
+                        input.referenceImage().resource().getContentAsByteArray()));
+        assertThat(json.path("size").asText()).isEqualTo("1024x1024");
+        assertThat(json.path("quality").asText()).isEqualTo("medium");
+        assertThat(json.path("n").asInt()).isEqualTo(1);
+        assertThat(json.path("output_format").asText()).isEqualTo("png");
     }
 
     @ParameterizedTest
     @CsvSource({"429,RATE_LIMITED", "401,PROVIDER_ERROR", "422,PROVIDER_ERROR", "503,PROVIDER_ERROR", "504,TIMEOUT"})
-    void workerFailuresAreMappedAndNeverRetried(int status, AiGenerationErrorType expected) throws Exception {
+    void providerFailuresAreMappedAndNeverRetried(int status, AiGenerationErrorType expected) throws Exception {
         AtomicInteger calls = new AtomicInteger();
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", exchange -> {
@@ -118,7 +121,7 @@ class CodexDiaryImageGeneratorTest {
             exchange.close();
         });
         server.start();
-        assertThatThrownBy(() -> codex().generate(input)).isInstanceOfSatisfying(AiGenerationException.class,
+        assertThatThrownBy(() -> openai().generate(input)).isInstanceOfSatisfying(AiGenerationException.class,
                 failure -> assertThat(failure.errorType()).isEqualTo(expected));
         assertThat(calls).hasValue(1);
     }
@@ -128,13 +131,13 @@ class CodexDiaryImageGeneratorTest {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", exchange -> {
             exchange.getRequestBody().readAllBytes();
-            exchange.getResponseHeaders().set("Content-Type", "image/png");
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, 3);
             exchange.getResponseBody().write(new byte[]{1, 2, 3});
             exchange.close();
         });
         server.start();
-        assertThatThrownBy(() -> codex().generate(input)).isInstanceOfSatisfying(AiGenerationException.class,
+        assertThatThrownBy(() -> openai().generate(input)).isInstanceOfSatisfying(AiGenerationException.class,
                 failure -> assertThat(failure.errorType()).isEqualTo(AiGenerationErrorType.RESPONSE_PROCESSING_ERROR));
     }
 
@@ -156,8 +159,7 @@ class CodexDiaryImageGeneratorTest {
         });
         server.start();
         var properties = new GeminiGenerationProperties("story", "image", "high", "1:1", 8192, 3, Duration.ofSeconds(3));
-        var fallbackProperties = new ImageProviderProperties("codex",
-                URI.create("http://127.0.0.1:8090"), TOKEN, Duration.ofSeconds(2));
+        var fallbackProperties = new ImageProviderProperties("openai", TOKEN, null, Duration.ofSeconds(2), null);
         var configuration = new com.harudle.generation.config.GenerationAdapterConfiguration();
         try (var client = configuration.geminiClient(properties, (httpOptions, clientOptions) ->
                 com.google.genai.Client.builder().vertexAI(false).apiKey("test-key")
@@ -179,7 +181,7 @@ class CodexDiaryImageGeneratorTest {
     }
 
     @Test
-    void geminiTransportTimeoutInvokesCodexOnce() throws Exception {
+    void geminiTransportTimeoutInvokesOpenAiOnce() throws Exception {
         AtomicInteger calls = new AtomicInteger();
         var release = new java.util.concurrent.CountDownLatch(1);
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -200,8 +202,7 @@ class CodexDiaryImageGeneratorTest {
         });
         server.start();
         var properties = new GeminiGenerationProperties("story", "image", "high", "1:1", 8192, 3, Duration.ofSeconds(1));
-        var fallbackProperties = new ImageProviderProperties("codex",
-                URI.create("http://127.0.0.1:8090"), TOKEN, Duration.ofSeconds(2));
+        var fallbackProperties = new ImageProviderProperties("openai", TOKEN, null, Duration.ofSeconds(2), null);
         var configuration = new com.harudle.generation.config.GenerationAdapterConfiguration();
         try (var client = configuration.geminiClient(properties, (httpOptions, clientOptions) ->
                 com.google.genai.Client.builder().vertexAI(false).apiKey("test-key")
@@ -231,7 +232,7 @@ class CodexDiaryImageGeneratorTest {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", exchange -> {
             exchange.getRequestBody().readAllBytes();
-            exchange.getResponseHeaders().set("Content-Type", "image/png");
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, PNG.length);
             exchange.getResponseBody().write(PNG, 0, 1);
             exchange.getResponseBody().flush();
@@ -246,7 +247,7 @@ class CodexDiaryImageGeneratorTest {
         server.start();
         long started = System.nanoTime();
         try {
-            assertThatThrownBy(() -> codex().generate(input)).isInstanceOfSatisfying(AiGenerationException.class,
+            assertThatThrownBy(() -> openai().generate(input)).isInstanceOfSatisfying(AiGenerationException.class,
                     failure -> assertThat(failure.errorType()).isEqualTo(AiGenerationErrorType.TIMEOUT));
             assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(6));
         } finally {
@@ -288,7 +289,7 @@ class CodexDiaryImageGeneratorTest {
     }
 
     @Test
-    void localReferenceReadFailureIsInternalAndDoesNotCallWorker() {
+    void localReferenceReadFailureIsInternalAndDoesNotCallProvider() {
         var calls = mock(okhttp3.Call.Factory.class);
         var reference = new ByteArrayResource(new byte[]{1}) {
             @Override public java.io.InputStream getInputStream() {
@@ -317,16 +318,93 @@ class CodexDiaryImageGeneratorTest {
         assertThatThrownBy(() -> adapter(calls, failingMetrics).generate(input)).isSameAs(original);
     }
 
-    private CodexDiaryImageGenerator adapter(okhttp3.Call.Factory calls,
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "{}", "{\"data\":[]}", "{\"data\":[{\"b64_json\":\"\"}]}",
+            "{\"data\":[{\"b64_json\":\"invalid-base64!\"}]}",
+            "{\"data\":[{\"b64_json\":\"AQID\"}]}", "not-json",
+            "{\"data\":[{\"b64_json\":\"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwC\"}]}",
+            "{\"data\":[{\"b64_json\":\"iVBORw0KGgoAAAANSUhEUgABhqAAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0f8AAAAASUVORK5CYII=\"}]}"
+    })
+    void rejectsMissingOrMalformedImageData(String json) throws Exception {
+        var factory = mock(okhttp3.Call.Factory.class);
+        var call = mock(okhttp3.Call.class);
+        when(factory.newCall(any())).thenReturn(call);
+        when(call.execute()).thenReturn(new okhttp3.Response.Builder()
+                .request(new okhttp3.Request.Builder().url("https://api.openai.com/v1/images/edits").build())
+                .protocol(okhttp3.Protocol.HTTP_1_1).code(200).message("OK")
+                .body(okhttp3.ResponseBody.create(json, okhttp3.MediaType.get("application/json"))).build());
+
+        assertThatThrownBy(() -> adapter(factory, metrics).generate(input))
+                .isInstanceOfSatisfying(AiGenerationException.class,
+                        failure -> assertThat(failure.errorType()).isEqualTo(AiGenerationErrorType.RESPONSE_PROCESSING_ERROR));
+    }
+
+    @Test
+    void sendsOnlyToOfficialEndpointAndRejectsOversizedPromptBeforeHttp() throws Exception {
+        var factory = mock(okhttp3.Call.Factory.class);
+        var call = mock(okhttp3.Call.class);
+        when(factory.newCall(any())).thenReturn(call);
+        when(call.execute()).thenThrow(new java.io.IOException("test stop"));
+        assertThatThrownBy(() -> adapter(factory, metrics).generate(input)).isInstanceOf(AiGenerationException.class);
+        var capture = org.mockito.ArgumentCaptor.forClass(okhttp3.Request.class);
+        verify(factory).newCall(capture.capture());
+        assertThat(capture.getValue().url().toString()).isEqualTo("https://api.openai.com/v1/images/edits");
+
+        var untouched = mock(okhttp3.Call.Factory.class);
+        var oversized = new DiaryImageGenerationRequest(input.storyboard(), "x".repeat(32001), input.referenceImage());
+        assertThatThrownBy(() -> adapter(untouched, metrics).generate(oversized))
+                .isInstanceOfSatisfying(AiGenerationException.class,
+                        failure -> assertThat(failure.errorType()).isEqualTo(AiGenerationErrorType.INTERNAL_ERROR));
+        verifyNoInteractions(untouched);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "1:1,1024x1024", "3:2,1536x1024", "2:3,1024x1536", "3:4,960x1280", "4:3,1280x960",
+            "4:5,1024x1280", "5:4,1280x1024", "9:16,864x1536", "16:9,1536x864", "21:9,1792x768"
+    })
+    void requestSizePreservesGeminiAspectRatio(String ratio, String expectedSize) throws Exception {
+        var factory = mock(okhttp3.Call.Factory.class);
+        var call = mock(okhttp3.Call.class);
+        when(factory.newCall(any())).thenReturn(call);
+        when(call.execute()).thenThrow(new java.io.IOException("test stop"));
+        var generator = new OpenAiDiaryImageGenerator(
+                new ImageProviderProperties("openai", TOKEN, null, Duration.ofSeconds(2), null),
+                ratio, renderer, mapper, metrics, factory);
+
+        assertThatThrownBy(() -> generator.generate(input)).isInstanceOf(AiGenerationException.class);
+        var capture = org.mockito.ArgumentCaptor.forClass(okhttp3.Request.class);
+        verify(factory).newCall(capture.capture());
+        var body = new okio.Buffer();
+        capture.getValue().body().writeTo(body);
+        assertThat(mapper.readTree(body.readByteArray()).path("size").asString()).isEqualTo(expectedSize);
+
+        String[] dimensions = expectedSize.split("x");
+        int width = Integer.parseInt(dimensions[0]);
+        int height = Integer.parseInt(dimensions[1]);
+        String[] parts = ratio.split(":");
+        assertThat(width * Integer.parseInt(parts[1])).isEqualTo(height * Integer.parseInt(parts[0]));
+        assertThat(width % 16).isZero();
+        assertThat(height % 16).isZero();
+        assertThat((long) width * height).isBetween(655360L, 3686400L);
+    }
+
+    private OpenAiDiaryImageGenerator adapter(okhttp3.Call.Factory calls,
             io.micrometer.core.instrument.MeterRegistry registry) {
-        return new CodexDiaryImageGenerator(new ImageProviderProperties("codex",
-                URI.create("http://127.0.0.1:8090"), TOKEN, Duration.ofSeconds(2)),
+        return new OpenAiDiaryImageGenerator(new ImageProviderProperties("openai", TOKEN, null, Duration.ofSeconds(2), null), "1:1",
                 renderer, mapper, registry, calls);
     }
 
-    private CodexDiaryImageGenerator codex() {
-        return new CodexDiaryImageGenerator(new ImageProviderProperties("codex",
-                URI.create("http://127.0.0.1:" + server.getAddress().getPort()), TOKEN, Duration.ofSeconds(2)),
-                renderer, mapper, metrics);
+    private OpenAiDiaryImageGenerator openai() {
+        return new OpenAiDiaryImageGenerator(new ImageProviderProperties("openai", TOKEN, null, Duration.ofSeconds(2), null), "1:1",
+                renderer, mapper, metrics, request ->
+                        com.harudle.generation.adapter.out.http.SingleAttemptHttpTransport.builder(Duration.ofSeconds(2))
+                                .build().newCall(request.newBuilder().url("http://127.0.0.1:"
+                                        + server.getAddress().getPort() + request.url().encodedPath()).build()));
+    }
+    private static byte[] imageResponse() {
+        return ("{\"data\":[{\"b64_json\":\"" + Base64.getEncoder().encodeToString(PNG)
+                + "\"}]}").getBytes(java.nio.charset.StandardCharsets.UTF_8);
     }
 }

@@ -45,7 +45,7 @@ class FallbackDiaryImageGeneratorTest {
 
         verify(primary).generate(same(request));
         verify(fallback).generate(same(request));
-        assertThat(metrics.get("harudle.image.fallback.calls").tag("reason", reason).counter().count()).isEqualTo(1);
+        assertThat(metrics.get("harudle.image.fallback.calls").tag("provider", "openai").tag("reason", reason).counter().count()).isEqualTo(1);
     }
 
     @ParameterizedTest
@@ -85,7 +85,7 @@ class FallbackDiaryImageGeneratorTest {
     @EnumSource(value = AiGenerationErrorType.class, names = {"RATE_LIMITED", "TIMEOUT"})
     void fallbackFailurePreservesBothFailuresWithoutRetrying(AiGenerationErrorType errorType) {
         var first = new AiGenerationException(errorType, "Gemini failure");
-        var second = new AiGenerationException(errorType, "Codex failure");
+        var second = new AiGenerationException(errorType, "OpenAI failure");
         when(primary.generate(request)).thenThrow(first);
         when(fallback.generate(request)).thenThrow(second);
         assertThatThrownBy(() -> generator.generate(request)).isSameAs(second).hasSuppressedException(first);
@@ -113,7 +113,7 @@ class FallbackDiaryImageGeneratorTest {
     @DisplayName("통계 조회나 증가가 실패해도 대체 생성 오류와 원래 Gemini 오류를 보존한다")
     void metricsFailureDoesNotReplaceFallbackFailure(AiGenerationErrorType errorType, boolean lookupFails) {
         var primaryFailure = new AiGenerationException(errorType, "Gemini failure");
-        var fallbackFailure = new AiGenerationException(errorType, "Codex failure");
+        var fallbackFailure = new AiGenerationException(errorType, "OpenAI failure");
         when(primary.generate(request)).thenThrow(primaryFailure);
         when(fallback.generate(request)).thenThrow(fallbackFailure);
         var generator = new FallbackDiaryImageGenerator(primary, fallback, failingMetrics(lookupFails));
