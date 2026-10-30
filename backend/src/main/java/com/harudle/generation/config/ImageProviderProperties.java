@@ -2,7 +2,6 @@ package com.harudle.generation.config;
 
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Pattern;
-import java.net.URI;
 import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
@@ -10,41 +9,42 @@ import org.springframework.validation.annotation.Validated;
 @Validated
 @ConfigurationProperties("harudle.generation.image")
 public record ImageProviderProperties(
-        @Pattern(regexp = "none|codex") String fallbackProvider,
-        URI codexUrl,
-        String codexToken,
-        Duration codexTimeout
+        @Pattern(regexp = "none|openai") String fallbackProvider,
+        String openaiApiKey,
+        @Pattern(regexp = "gpt-image-2[.]5-flare(-2026-09-08)?") String openaiModel,
+        Duration openaiTimeout,
+        @Pattern(regexp = "1024x1024|1536x1024|1024x1536") String openaiSize,
+        @Pattern(regexp = "low|medium|high|xhigh|max|auto") String openaiQuality
 ) {
-
     public ImageProviderProperties {
         fallbackProvider = fallbackProvider == null ? "none" : fallbackProvider;
-        codexTimeout = codexTimeout == null ? Duration.ofSeconds(310) : codexTimeout;
+        openaiModel = openaiModel == null ? "gpt-image-2.5-flare" : openaiModel;
+        openaiTimeout = openaiTimeout == null ? Duration.ofSeconds(180) : openaiTimeout;
+        openaiSize = openaiSize == null ? "1024x1024" : openaiSize;
+        openaiQuality = openaiQuality == null ? "medium" : openaiQuality;
     }
 
-    public boolean codexEnabled() {
-        return "codex".equals(fallbackProvider);
+    public boolean openaiEnabled() {
+        return "openai".equals(fallbackProvider);
     }
 
-    @AssertTrue(message = "Codex fallback에는 HTTP(S) worker URL과 32자 이상의 내부 인증 토큰이 필요합니다.")
-    public boolean isCodexConnectionValid() {
-        return !codexEnabled() || codexUrl != null
-                && ("http".equals(codexUrl.getScheme()) || "https".equals(codexUrl.getScheme()))
-                && codexUrl.getHost() != null && codexUrl.getUserInfo() == null
-                && codexUrl.getQuery() == null && codexUrl.getFragment() == null
-                && (codexUrl.getPath().isEmpty() || "/".equals(codexUrl.getPath()))
-                && codexToken != null && codexToken.length() >= 32
-                && codexToken.chars().allMatch(value -> value >= 33 && value <= 126);
+    @AssertTrue(message = "OpenAI 이미지 대체 생성에는 공백 없는 API 키가 필요합니다.")
+    public boolean isOpenaiConnectionValid() {
+        return !openaiEnabled() || openaiApiKey != null && !openaiApiKey.isBlank()
+                && openaiApiKey.chars().allMatch(value -> value >= 33 && value <= 126);
     }
 
-    @AssertTrue(message = "Codex 이미지 제한 시간은 1초 이상, 10분 이하여야 합니다.")
-    public boolean isCodexTimeoutValid() {
-        return !codexEnabled() || codexTimeout.compareTo(Duration.ofSeconds(1)) >= 0
-                && codexTimeout.compareTo(Duration.ofMinutes(10)) <= 0;
+    @AssertTrue(message = "OpenAI 이미지 제한 시간은 1초 이상, 5분 이하여야 합니다.")
+    public boolean isOpenaiTimeoutValid() {
+        return !openaiEnabled() || openaiTimeout.compareTo(Duration.ofSeconds(1)) >= 0
+                && openaiTimeout.compareTo(Duration.ofMinutes(5)) <= 0;
     }
 
     @Override
     public String toString() {
         return "ImageProviderProperties[fallbackProvider=" + fallbackProvider
-                + ", codexUrl=" + codexUrl + ", codexToken=[redacted], codexTimeout=" + codexTimeout + "]";
+                + ", openaiApiKey=[redacted], openaiModel=" + openaiModel
+                + ", openaiTimeout=" + openaiTimeout + ", openaiSize=" + openaiSize
+                + ", openaiQuality=" + openaiQuality + "]";
     }
 }

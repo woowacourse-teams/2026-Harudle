@@ -1,4 +1,4 @@
-package com.harudle.generation.adapter.out.codex;
+package com.harudle.generation.adapter.out.openai;
 
 import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
@@ -8,7 +8,7 @@ import java.io.InterruptedIOException;
 import java.net.http.HttpTimeoutException;
 import java.util.concurrent.CancellationException;
 
-public final class CodexExceptionTranslator {
+public final class OpenAiExceptionTranslator {
 
     private static final int MAX_CAUSE_DEPTH = 16;
 
@@ -34,11 +34,14 @@ public final class CodexExceptionTranslator {
     }
 
     public AiGenerationException responseFailure(Throwable cause) {
-        return explicit(cause, AiGenerationErrorType.RESPONSE_PROCESSING_ERROR);
+        AiGenerationException classified = findClassified(cause);
+        // JSON parsing exceptions may contain fragments of the base64 image or prompt.
+        return classified != null ? classified : create(AiGenerationErrorType.RESPONSE_PROCESSING_ERROR,
+                AiProviderFailureType.UNKNOWN, new IllegalStateException("OpenAI 이미지 응답 형식이 유효하지 않습니다."));
     }
 
     public AiGenerationException httpFailure(int status) {
-        Throwable cause = new IllegalStateException("Codex worker HTTP " + status);
+        Throwable cause = new IllegalStateException("OpenAI API HTTP " + status);
         return switch (status) {
             case 429 -> create(AiGenerationErrorType.RATE_LIMITED, AiProviderFailureType.UNKNOWN, cause);
             case 408, 504 -> create(AiGenerationErrorType.TIMEOUT, AiProviderFailureType.UNKNOWN, cause);
@@ -97,7 +100,7 @@ public final class CodexExceptionTranslator {
             AiGenerationErrorType type, AiProviderFailureType detail, Throwable cause
     ) {
         String message = type == AiGenerationErrorType.TIMEOUT
-                ? "Codex 이미지 생성 요청 시간이 초과되었습니다." : "Codex 이미지 생성 요청에 실패했습니다.";
+                ? "OpenAI 이미지 생성 요청 시간이 초과되었습니다." : "OpenAI 이미지 생성 요청에 실패했습니다.";
         return new AiGenerationException(type, message, cause, detail);
     }
 }

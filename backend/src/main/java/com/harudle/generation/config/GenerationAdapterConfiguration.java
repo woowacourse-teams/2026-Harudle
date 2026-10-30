@@ -8,7 +8,6 @@ import com.google.genai.types.HttpOptions;
 import com.google.genai.types.HttpRetryOptions;
 import com.harudle.auth.infrastructure.S3ProfileImageStorage;
 import com.harudle.common.logging.ExternalApiLogger;
-import com.harudle.generation.adapter.out.codex.CodexDiaryImageGenerator;
 import com.harudle.generation.adapter.out.gemini.DiaryImagePromptRenderer;
 import com.harudle.generation.adapter.out.gemini.GeminiDiaryImageGenerator;
 import com.harudle.generation.adapter.out.gemini.GeminiExceptionTranslator;
@@ -20,6 +19,7 @@ import com.harudle.generation.adapter.out.gemini.client.GeminiClientFactory;
 import com.harudle.generation.adapter.out.gemini.client.GeminiStoryboardCallScope;
 import com.harudle.generation.adapter.out.gemini.client.VertexGeminiClientFactory;
 import com.harudle.generation.adapter.out.http.SingleAttemptHttpTransport;
+import com.harudle.generation.adapter.out.openai.OpenAiDiaryImageGenerator;
 import com.harudle.generation.adapter.out.s3.CwebpImageVariantEncoder;
 import com.harudle.generation.adapter.out.s3.ImageObjectKeyFactory;
 import com.harudle.generation.adapter.out.s3.ImageUploadPreparer;
@@ -91,7 +91,7 @@ public class GenerationAdapterConfiguration {
             ImageProviderProperties imageProperties
     ) {
         int requestTimeoutMillis = Math.toIntExact(properties.requestTimeout().toMillis());
-        HttpRetryOptions retryOptions = imageProperties.codexEnabled()
+        HttpRetryOptions retryOptions = imageProperties.openaiEnabled()
                 ? HttpRetryOptions.builder().attempts(1).httpStatusCodes(List.of()).build()
                 : HttpRetryOptions.builder().attempts(properties.retryAttempts()).build();
         HttpOptions httpOptions = HttpOptions.builder()
@@ -99,7 +99,7 @@ public class GenerationAdapterConfiguration {
                 .retryOptions(retryOptions)
                 .build();
 
-        if (imageProperties.codexEnabled()) {
+        if (imageProperties.openaiEnabled()) {
             ClientOptions clientOptions = ClientOptions.builder().customHttpClient(
                     SingleAttemptHttpTransport.builder(properties.requestTimeout()).build()
             ).build();
@@ -235,10 +235,10 @@ public class GenerationAdapterConfiguration {
         DiaryImageGenerator primary = new GeminiDiaryImageGenerator(
                 geminiModels, properties, promptRenderer, failureReporter, stageMetrics
         );
-        if (!imageProperties.codexEnabled()) {
+        if (!imageProperties.openaiEnabled()) {
             return primary;
         }
-        DiaryImageGenerator fallback = new CodexDiaryImageGenerator(
+        DiaryImageGenerator fallback = new OpenAiDiaryImageGenerator(
                 imageProperties, promptRenderer, objectMapper, meterRegistry
         );
         return new FallbackDiaryImageGenerator(primary, fallback, meterRegistry);

@@ -40,7 +40,7 @@ public final class FallbackDiaryImageGenerator implements DiaryImageGenerator {
                     || Thread.currentThread().isInterrupted()) {
                 throw primaryFailure;
             }
-            log.info("Image provider fallback: primary=gemini fallback=codex reason={}", reason);
+            log.info("Image provider fallback: primary=gemini fallback=openai reason={}", reason);
             recordFallbackMetric(reason);
             try {
                 return fallback.generate(request);
@@ -55,7 +55,7 @@ public final class FallbackDiaryImageGenerator implements DiaryImageGenerator {
 
     private void recordFallbackMetric(String reason) {
         try {
-            metrics.counter("harudle.image.fallback.calls", "provider", "codex", "reason", reason).increment();
+            metrics.counter("harudle.image.fallback.calls", "provider", "openai", "reason", reason).increment();
         } catch (RuntimeException exception) {
             log.warn("event=metrics_recording_failed component=image_fallback reason={} exceptionType={}",
                     reason, exception.getClass().getSimpleName());

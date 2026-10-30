@@ -160,12 +160,11 @@ class GenerationAdapterConfigurationTest {
     }
 
     @Test
-    void configureCodexOnlyAsAnOptInImageFallbackAndDisableGeminiRetries() {
+    void configureOpenAiOnlyAsAnOptInImageFallbackAndDisableGeminiRetries() {
         GeminiClientFactory factory = spy(new ExpressGeminiClientFactory("test-api-key"));
         contextRunner.withPropertyValues(enabledAdapterProperties()).withPropertyValues(
-                        "harudle.generation.image.fallback-provider=codex",
-                        "harudle.generation.image.codex-url=http://127.0.0.1:8090",
-                        "harudle.generation.image.codex-token=test-internal-worker-token-32-characters")
+                        "harudle.generation.image.fallback-provider=openai",
+                        "harudle.generation.image.openai-api-key=test-api-key")
                 .withInitializer(context -> context.addBeanFactoryPostProcessor(beanFactory ->
                         beanFactory.registerSingleton("geminiClientFactory", factory)))
                 .run(context -> {
@@ -184,7 +183,7 @@ class GenerationAdapterConfigurationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"codex", "unknown"})
+    @ValueSource(strings = {"openai", "codex", "unknown"})
     void invalidImageFallbackConfigurationFailsAtStartup(String fallback) {
         contextRunner.withPropertyValues(enabledAdapterProperties())
                 .withPropertyValues("harudle.generation.image.fallback-provider=" + fallback)
