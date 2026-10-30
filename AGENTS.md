@@ -101,7 +101,8 @@ OpenAI 이미지 대체 생성은 `IMAGE_FALLBACK_PROVIDER=openai`로 켠다.
 Gemini가 429 또는 시간 초과로 실패하면 같은 스토리보드와 참조 이미지를 Flare에 한 번 보낸다.
 백엔드가 API 키로 Images API를 직접 호출하며 Codex SDK와 별도 worker는 사용하지 않는다.
 `OPENAI_API_KEY`는 서버 환경 변수에만 저장한다. 모델 기본값은 `gpt-image-2.5-flare`,
-제한 시간은 `180s`, 크기는 `1024x1024`, 품질은 `medium`이다.
+제한 시간은 `180s`, 품질은 `medium`이다. 이미지 비율은 기존 `GEMINI_IMAGE_ASPECT_RATIO`를 사용한다.
+OpenAI 전용 크기 환경 변수 없이 해당 비율에 맞는 픽셀 크기로 변환한다.
 Gemini와 OpenAI의 기본 호출 제한 시간 합은 360초이며 입력 준비와 저장 시간은 별도다.
 설정과 전환 절차는 `backend/README.md`와 `deploy/README.md`를 따른다.
 앱 종료가 시작되면 새 선점을 멈추고, 생성 처리기의 종료 단계에서 진행 중인 작업을 최대 6분 기다린다.

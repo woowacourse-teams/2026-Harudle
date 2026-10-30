@@ -251,7 +251,7 @@ class OpenAiHttpCancellationTest {
     }
 
     private OpenAiDiaryImageGenerator adapter(Call.Factory factory) {
-        return new OpenAiDiaryImageGenerator(new ImageProviderProperties("openai", TOKEN, null, HTTP_TIMEOUT, null, null),
+        return new OpenAiDiaryImageGenerator(new ImageProviderProperties("openai", TOKEN, null, HTTP_TIMEOUT, null), "1:1",
                 new DiaryImagePromptRenderer(), new ObjectMapper(), metrics, factory);
     }
 

@@ -239,7 +239,7 @@ public class GenerationAdapterConfiguration {
             return primary;
         }
         DiaryImageGenerator fallback = new OpenAiDiaryImageGenerator(
-                imageProperties, promptRenderer, objectMapper, meterRegistry
+                imageProperties, properties.imageAspectRatio(), promptRenderer, objectMapper, meterRegistry
         );
         return new FallbackDiaryImageGenerator(primary, fallback, meterRegistry);
     }

@@ -36,6 +36,7 @@ public final class OpenAiDiaryImageGenerator implements DiaryImageGenerator {
     private static final String ENDPOINT = "https://api.openai.com/v1/images/edits";
     private static final byte[] PNG_SIGNATURE = {(byte) 137, 80, 78, 71, 13, 10, 26, 10};
     private final ImageProviderProperties properties;
+    private final String imageSize;
     private final DiaryImagePromptRenderer renderer;
     private final ObjectMapper objectMapper;
     private final MeterRegistry metrics;
@@ -44,21 +45,22 @@ public final class OpenAiDiaryImageGenerator implements DiaryImageGenerator {
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(OpenAiDiaryImageGenerator.class);
 
     public OpenAiDiaryImageGenerator(
-            ImageProviderProperties properties, DiaryImagePromptRenderer renderer,
+            ImageProviderProperties properties, String imageAspectRatio, DiaryImagePromptRenderer renderer,
             ObjectMapper objectMapper, MeterRegistry metrics
     ) {
-        this(properties, renderer, objectMapper, metrics,
+        this(properties, imageAspectRatio, renderer, objectMapper, metrics,
                 SingleAttemptHttpTransport.builder(properties.openaiTimeout()).build());
     }
 
     OpenAiDiaryImageGenerator(
-            ImageProviderProperties properties, DiaryImagePromptRenderer renderer,
+            ImageProviderProperties properties, String imageAspectRatio, DiaryImagePromptRenderer renderer,
             ObjectMapper objectMapper, MeterRegistry metrics, Call.Factory calls
     ) {
         if (!properties.openaiEnabled() || !properties.isOpenaiConnectionValid() || !properties.isOpenaiTimeoutValid()) {
             throw new IllegalArgumentException("유효한 OpenAI 이미지 fallback 설정이 필요합니다.");
         }
         this.properties = properties;
+        this.imageSize = imageSizeFor(imageAspectRatio);
         this.renderer = renderer;
         this.objectMapper = objectMapper;
         this.metrics = metrics;
@@ -108,7 +110,7 @@ public final class OpenAiDiaryImageGenerator implements DiaryImageGenerator {
                     "images", List.of(Map.of("image_url", "data:" + mediaType + ";base64,"
                             + Base64.getEncoder().encodeToString(reference))),
                     "n", 1,
-                    "size", properties.openaiSize(),
+                    "size", imageSize,
                     "quality", properties.openaiQuality(),
                     "output_format", "png"
             ));
@@ -199,6 +201,23 @@ public final class OpenAiDiaryImageGenerator implements DiaryImageGenerator {
         } catch (RuntimeException exception) {
             throw exceptionTranslator.responseFailure(exception);
         }
+    }
+
+    private static String imageSizeFor(String aspectRatio) {
+        // Preserve Gemini's aspect ratio; both dimensions must be multiples of 16 for Flare.
+        return switch (aspectRatio) {
+            case "1:1" -> "1024x1024";
+            case "3:2" -> "1536x1024";
+            case "2:3" -> "1024x1536";
+            case "3:4" -> "960x1280";
+            case "4:3" -> "1280x960";
+            case "4:5" -> "1024x1280";
+            case "5:4" -> "1280x1024";
+            case "9:16" -> "864x1536";
+            case "16:9" -> "1536x864";
+            case "21:9" -> "1792x768";
+            default -> throw new IllegalArgumentException("지원하지 않는 이미지 비율입니다: " + aspectRatio);
+        };
     }
 
     private static boolean isPng(byte[] image) {

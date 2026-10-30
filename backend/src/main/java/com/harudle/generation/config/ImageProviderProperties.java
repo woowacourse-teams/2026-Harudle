@@ -13,14 +13,12 @@ public record ImageProviderProperties(
         String openaiApiKey,
         @Pattern(regexp = "gpt-image-2[.]5-flare(-2026-09-08)?") String openaiModel,
         Duration openaiTimeout,
-        @Pattern(regexp = "1024x1024|1536x1024|1024x1536") String openaiSize,
         @Pattern(regexp = "low|medium|high|xhigh|max|auto") String openaiQuality
 ) {
     public ImageProviderProperties {
         fallbackProvider = fallbackProvider == null ? "none" : fallbackProvider;
         openaiModel = openaiModel == null ? "gpt-image-2.5-flare" : openaiModel;
         openaiTimeout = openaiTimeout == null ? Duration.ofSeconds(180) : openaiTimeout;
-        openaiSize = openaiSize == null ? "1024x1024" : openaiSize;
         openaiQuality = openaiQuality == null ? "medium" : openaiQuality;
     }
 
@@ -44,7 +42,7 @@ public record ImageProviderProperties(
     public String toString() {
         return "ImageProviderProperties[fallbackProvider=" + fallbackProvider
                 + ", openaiApiKey=[redacted], openaiModel=" + openaiModel
-                + ", openaiTimeout=" + openaiTimeout + ", openaiSize=" + openaiSize
+                + ", openaiTimeout=" + openaiTimeout
                 + ", openaiQuality=" + openaiQuality + "]";
     }
 }

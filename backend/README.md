@@ -561,12 +561,14 @@ IMAGE_FALLBACK_PROVIDER=openai
 OPENAI_API_KEY=서버에만-저장하는-API-키
 OPENAI_IMAGE_MODEL=gpt-image-2.5-flare
 OPENAI_IMAGE_TIMEOUT=180s
-OPENAI_IMAGE_SIZE=1024x1024
 OPENAI_IMAGE_QUALITY=medium
 ```
 
 모델은 Flare와 고정 버전 `gpt-image-2.5-flare-2026-09-08`을 지원합니다.
-크기는 `1024x1024`, `1536x1024`, `1024x1536` 중에서 선택합니다.
+이미지 비율은 Gemini와 같은 `GEMINI_IMAGE_ASPECT_RATIO`를 사용합니다.
+OpenAI 전용 크기 환경 변수는 없습니다. `1:1`은 `1024x1024`, `9:16`은 `864x1536`,
+`16:9`는 `1536x864`로 변환하며 Gemini에서 허용하는 나머지 비율도 그대로 유지합니다.
+두 제공자의 실제 픽셀 수까지 같다는 뜻은 아닙니다.
 품질은 `low`, `medium`, `high`, `xhigh`, `max`, `auto`를 지원합니다.
 제한 시간은 1초 이상, 300초 이하입니다. 활성화 상태에서 키나 설정이 잘못되면 앱 시작이 실패합니다.
 

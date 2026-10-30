@@ -159,7 +159,7 @@ class OpenAiDiaryImageGeneratorTest {
         });
         server.start();
         var properties = new GeminiGenerationProperties("story", "image", "high", "1:1", 8192, 3, Duration.ofSeconds(3));
-        var fallbackProperties = new ImageProviderProperties("openai", TOKEN, null, Duration.ofSeconds(2), null, null);
+        var fallbackProperties = new ImageProviderProperties("openai", TOKEN, null, Duration.ofSeconds(2), null);
         var configuration = new com.harudle.generation.config.GenerationAdapterConfiguration();
         try (var client = configuration.geminiClient(properties, (httpOptions, clientOptions) ->
                 com.google.genai.Client.builder().vertexAI(false).apiKey("test-key")
@@ -202,7 +202,7 @@ class OpenAiDiaryImageGeneratorTest {
         });
         server.start();
         var properties = new GeminiGenerationProperties("story", "image", "high", "1:1", 8192, 3, Duration.ofSeconds(1));
-        var fallbackProperties = new ImageProviderProperties("openai", TOKEN, null, Duration.ofSeconds(2), null, null);
+        var fallbackProperties = new ImageProviderProperties("openai", TOKEN, null, Duration.ofSeconds(2), null);
         var configuration = new com.harudle.generation.config.GenerationAdapterConfiguration();
         try (var client = configuration.geminiClient(properties, (httpOptions, clientOptions) ->
                 com.google.genai.Client.builder().vertexAI(false).apiKey("test-key")
@@ -359,14 +359,45 @@ class OpenAiDiaryImageGeneratorTest {
         verifyNoInteractions(untouched);
     }
 
+    @ParameterizedTest
+    @CsvSource({
+            "1:1,1024x1024", "3:2,1536x1024", "2:3,1024x1536", "3:4,960x1280", "4:3,1280x960",
+            "4:5,1024x1280", "5:4,1280x1024", "9:16,864x1536", "16:9,1536x864", "21:9,1792x768"
+    })
+    void requestSizePreservesGeminiAspectRatio(String ratio, String expectedSize) throws Exception {
+        var factory = mock(okhttp3.Call.Factory.class);
+        var call = mock(okhttp3.Call.class);
+        when(factory.newCall(any())).thenReturn(call);
+        when(call.execute()).thenThrow(new java.io.IOException("test stop"));
+        var generator = new OpenAiDiaryImageGenerator(
+                new ImageProviderProperties("openai", TOKEN, null, Duration.ofSeconds(2), null),
+                ratio, renderer, mapper, metrics, factory);
+
+        assertThatThrownBy(() -> generator.generate(input)).isInstanceOf(AiGenerationException.class);
+        var capture = org.mockito.ArgumentCaptor.forClass(okhttp3.Request.class);
+        verify(factory).newCall(capture.capture());
+        var body = new okio.Buffer();
+        capture.getValue().body().writeTo(body);
+        assertThat(mapper.readTree(body.readByteArray()).path("size").asString()).isEqualTo(expectedSize);
+
+        String[] dimensions = expectedSize.split("x");
+        int width = Integer.parseInt(dimensions[0]);
+        int height = Integer.parseInt(dimensions[1]);
+        String[] parts = ratio.split(":");
+        assertThat(width * Integer.parseInt(parts[1])).isEqualTo(height * Integer.parseInt(parts[0]));
+        assertThat(width % 16).isZero();
+        assertThat(height % 16).isZero();
+        assertThat((long) width * height).isBetween(655360L, 3686400L);
+    }
+
     private OpenAiDiaryImageGenerator adapter(okhttp3.Call.Factory calls,
             io.micrometer.core.instrument.MeterRegistry registry) {
-        return new OpenAiDiaryImageGenerator(new ImageProviderProperties("openai", TOKEN, null, Duration.ofSeconds(2), null, null),
+        return new OpenAiDiaryImageGenerator(new ImageProviderProperties("openai", TOKEN, null, Duration.ofSeconds(2), null), "1:1",
                 renderer, mapper, registry, calls);
     }
 
     private OpenAiDiaryImageGenerator openai() {
-        return new OpenAiDiaryImageGenerator(new ImageProviderProperties("openai", TOKEN, null, Duration.ofSeconds(2), null, null),
+        return new OpenAiDiaryImageGenerator(new ImageProviderProperties("openai", TOKEN, null, Duration.ofSeconds(2), null), "1:1",
                 renderer, mapper, metrics, request ->
                         com.harudle.generation.adapter.out.http.SingleAttemptHttpTransport.builder(Duration.ofSeconds(2))
                                 .build().newCall(request.newBuilder().url("http://127.0.0.1:"

@@ -11,11 +11,10 @@ import org.junit.jupiter.params.provider.ValueSource;
 class ImageProviderPropertiesTest {
     @Test
     void disabledFallbackNeedsNoApiKeyAndUsesFlareDefaults() {
-        var properties = new ImageProviderProperties(null, null, null, null, null, null);
+        var properties = new ImageProviderProperties(null, null, null, null, null);
         assertThat(properties.openaiEnabled()).isFalse();
         assertThat(properties.openaiModel()).isEqualTo("gpt-image-2.5-flare");
         assertThat(properties.openaiTimeout()).isEqualTo(Duration.ofSeconds(180));
-        assertThat(properties.openaiSize()).isEqualTo("1024x1024");
         assertThat(properties.openaiQuality()).isEqualTo("medium");
         assertValid(properties);
     }
@@ -23,21 +22,20 @@ class ImageProviderPropertiesTest {
     @ParameterizedTest
     @ValueSource(strings = {"", " ", "key with spaces", "key\r\nHeader:injected"})
     void enabledFallbackRejectsInvalidApiKey(String key) {
-        assertInvalid(new ImageProviderProperties("openai", key, null, null, null, null));
+        assertInvalid(new ImageProviderProperties("openai", key, null, null, null));
     }
 
     @Test
-    void validatesModelSizeQualityAndTimeoutAndMasksKey() {
-        var valid = new ImageProviderProperties("openai", "test-secret", null, null, null, null);
+    void validatesModelQualityAndTimeoutAndMasksKey() {
+        var valid = new ImageProviderProperties("openai", "test-secret", null, null, null);
         assertValid(valid);
         assertThat(valid.toString()).doesNotContain("test-secret");
-        assertInvalid(new ImageProviderProperties("openai", null, null, null, null, null));
-        assertInvalid(new ImageProviderProperties("openai", "key", "unknown-model", null, null, null));
-        assertInvalid(new ImageProviderProperties("openai", "key", null, null, "999x999", null));
-        assertInvalid(new ImageProviderProperties("openai", "key", null, null, null, "unknown"));
-        assertInvalid(new ImageProviderProperties("openai", "key", null, Duration.ZERO, null, null));
-        assertInvalid(new ImageProviderProperties("openai", "key", null, Duration.ofSeconds(301), null, null));
-        assertInvalid(new ImageProviderProperties("codex", null, null, null, null, null));
+        assertInvalid(new ImageProviderProperties("openai", null, null, null, null));
+        assertInvalid(new ImageProviderProperties("openai", "key", "unknown-model", null, null));
+        assertInvalid(new ImageProviderProperties("openai", "key", null, null, "unknown"));
+        assertInvalid(new ImageProviderProperties("openai", "key", null, Duration.ZERO, null));
+        assertInvalid(new ImageProviderProperties("openai", "key", null, Duration.ofSeconds(301), null));
+        assertInvalid(new ImageProviderProperties("codex", null, null, null, null));
     }
 
     private void assertValid(ImageProviderProperties properties) {

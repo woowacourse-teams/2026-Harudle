@@ -448,8 +448,9 @@ https://www.harudle.com/login/oauth2/code/google
 
 서버 `/opt/harudle/.env`에 `IMAGE_FALLBACK_PROVIDER=openai`와 `OPENAI_API_KEY`를 설정합니다.
 모델 기본값은 `OPENAI_IMAGE_MODEL=gpt-image-2.5-flare`, 호출 제한 시간은
-`OPENAI_IMAGE_TIMEOUT=180s`, 크기는 `OPENAI_IMAGE_SIZE=1024x1024`, 품질은
-`OPENAI_IMAGE_QUALITY=medium`입니다. `env_file`로 읽으므로 Compose 서비스 추가는 필요 없습니다.
+`OPENAI_IMAGE_TIMEOUT=180s`, 품질은
+`OPENAI_IMAGE_QUALITY=medium`입니다. 이미지 비율은 기존 `GEMINI_IMAGE_ASPECT_RATIO`를 함께 사용합니다.
+OpenAI 전용 크기 설정은 없습니다. `env_file`로 읽으므로 Compose 서비스 추가는 필요 없습니다.
 
 기존 `IMAGE_FALLBACK_PROVIDER=codex`는 새 코드에서 지원하지 않습니다.
 전환 전에 환경 파일을 바꾸고 기존 배포 절차로 백엔드 컨테이너를 재생성합니다.
