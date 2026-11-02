@@ -29,7 +29,7 @@ import org.springframework.web.client.RestTemplate;
 public class AppleNativeTokenVerifier {
     private static final Logger log = LoggerFactory.getLogger(AppleNativeTokenVerifier.class);
     private static final String ISSUER = "https://appleid.apple.com";
-    private static final String IOS_CLIENT_ID = "com.harudle.app";
+    static final String IOS_CLIENT_ID = "com.harudle.app";
     private final AppleClientSecretGenerator secretGenerator;
     private final String clientId;
     private final JwtDecoder decoder;

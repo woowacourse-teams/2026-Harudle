@@ -142,7 +142,10 @@ public class AdminReportRepository {
 
     @Transactional(readOnly = true)
     @SuppressWarnings("unchecked")
-    public AdminReportTarget findTarget(ReportTargetType type, UUID targetId) {
+    public AdminReportTarget findTarget(ReportTargetType type, @Nullable UUID targetId) {
+        if (targetId == null) {
+            return AdminReportTarget.missing();
+        }
         String query = switch (type) {
             case USER -> USER_TARGET_QUERY;
             case FEED -> FEED_TARGET_QUERY;

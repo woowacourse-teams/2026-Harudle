@@ -114,6 +114,8 @@ Idempotency-Key: 7e5cc251-fdde-4cc0-a54e-2c8142750609
 | `POST` | `/api/v1/auth/logout` | 불필요 | Refresh Token Cookie를 이용한 현재 로그인 세션 종료 |
 | `POST` | `/api/v1/guest/session` | 불필요 | 로그인 전 체험용 게스트 세션 발급 또는 재사용 |
 | `GET` | `/api/v1/me` | 필요 | 내 프로필 조회 |
+| `POST` | `/api/v1/me/withdrawal` | 필요 | 회원 탈퇴 시작 |
+| `POST` | `/api/v1/public/apple/notifications` | 애플 서명 | 애플 계정 변경 알림 |
 | `PATCH` | `/api/v1/me/profile` | 필요 | 닉네임과 프로필 이미지 통합 변경 |
 | `PATCH` | `/api/v1/me/profile-image` | 필요 | 내 기본 프로필 이미지 변경 |
 | `POST` | `/api/v1/me/profile-image` | 필요 | 내 개인 프로필 이미지 업로드 |
@@ -227,6 +229,58 @@ Spring Security가 인증 결과와 `state`를 검증한 뒤 기존 로그인 �
 신규 회원의 `name`에는 구글 이름을 저장하고, 이름이 없으면 자동 닉네임을 사용합니다. 공개 `nickname`은
 자동 생성합니다. 소셜 이름은 최초 가입 때만 저장하고, 재로그인 때는 기존 이름을 유지합니다. Refresh Token Cookie 발급과 프론트엔드
 리다이렉트는 위의 카카오 로그인과 같은 처리를 사용합니다.
+
+### 4.2.2 회원 탈퇴
+
+```http
+POST /api/v1/me/withdrawal
+Authorization: Bearer {하루들 Access Token}
+```
+
+하루들은 로그인 방식을 확인해 연결을 해제하고 회원 정보를 삭제합니다. 일기 생성이 대기 중이거나
+진행 중이면 `409`를 반환합니다. 실패 시 프론트는 `실패했어요!`를 표시합니다.
+
+카카오 회원은 연결 해제와 삭제가 끝나면 다음 결과를 반환합니다. 애플 회원도 삭제가 끝나면 같은 결과를
+반환하되, 직접 연결 해제가 필요한 경우 `appleManualUnlinkRequired`가 `true`입니다.
+
+```json
+{"status": "COMPLETED", "authorizationUrl": null, "appleManualUnlinkRequired": false}
+```
+
+`appleManualUnlinkRequired`가 `true`이면 탈퇴는 완료된 상태입니다. 프론트는 사용자가 Apple 계정 설정의
+`Apple로 로그인`에서 하루들을 직접 제거하도록 안내합니다. 자세한 순서는
+[Apple 지원 안내](https://support.apple.com/ko-kr/guide/iphone/iph238921d37/ios)를 참고합니다.
+
+구글 회원은 탈퇴하기 전에 가입한 구글 계정으로 다시 인증해야 합니다.
+
+```json
+{"status": "AUTHENTICATION_REQUIRED", "authorizationUrl": "/oauth2/authorization/google?withdrawal={요청값}", "appleManualUnlinkRequired": false}
+```
+
+프론트는 탈퇴 시작 요청에서 세션 쿠키를 받아 응답의 경로로 브라우저를 이동합니다. 다른 출처에서 요청할 때는
+쿠키를 주고받도록 `credentials: "include"`가 필요합니다. 구글 인증 이후에도 같은 세션 쿠키가 필요합니다.
+서버는 구글 계정을 확인하고 연결을 해제한 뒤 회원 정보를 삭제합니다.
+인증 취소나 DB 삭제 실패 시 회원 정보는 유지됩니다. 구글 연결 해제 후 DB 삭제에 실패했다면 같은 구글
+계정으로 다시 인증하고 탈퇴를 재시도합니다.
+
+처리 결과는 기존 프론트 복귀 주소에 `withdrawal=success` 또는 `withdrawal=failed`로 전달합니다.
+프론트는 이 값을 일반 로그인 결과와 구분하고 실패 시 `실패했어요!`를 표시합니다.
+
+애플에서 연결 해제 또는 애플 계정 삭제가 발생하면 아래 경로로 알림을 받습니다.
+
+```http
+POST /api/v1/public/apple/notifications
+Content-Type: application/json
+```
+
+```json
+{"payload": "{애플이 서명한 알림 JWT}"}
+```
+
+서버는 애플 서명과 발급자, 대상 앱과 알림 시각을 확인합니다. `consent-revoked`와 `account-deleted`는
+일기 생성 중이어도 해당 애플 회원을 삭제합니다. 연결 해제가 발생한 시각보다 나중에 새로 가입한 회원은
+삭제하지 않습니다. 가입 시각과 알림 시각을 구분할 수 없으면 자동 삭제를 건너뜁니다.
+애플 Developer 설정에 이 공개 HTTPS 주소를 등록해야 알림을 받을 수 있습니다.
 
 ### 4.3 Access Token 발급·재발급
 

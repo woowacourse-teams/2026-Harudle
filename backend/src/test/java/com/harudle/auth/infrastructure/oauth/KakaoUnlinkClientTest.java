@@ -60,4 +60,18 @@ class KakaoUnlinkClientTest {
         assertThatThrownBy(() -> new KakaoUnlinkClient("admin-key", builder.build()).unlink(123))
                 .isInstanceOf(KakaoUnlinkException.class).hasNoCause();
     }
+
+    @Test
+    @DisplayName("카카오에서 이미 연결되지 않은 회원이라고 응답하면 다시 탈퇴할 수 있다")
+    void acceptAlreadyUnlinkedMember() {
+        var builder = RestClient.builder().baseUrl("https://kapi.kakao.com");
+        var server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("https://kapi.kakao.com/v1/user/unlink"))
+                .andRespond(withStatus(HttpStatus.BAD_REQUEST).contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"code\":-101,\"msg\":\"not linked\"}"));
+
+        new KakaoUnlinkClient("admin-key", builder.build()).unlink(123);
+
+        server.verify();
+    }
 }

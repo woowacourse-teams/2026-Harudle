@@ -10,7 +10,7 @@ public record AdminReportSnapshot(
         UUID id,
         @Nullable UUID reporterId,
         ReportTargetType targetType,
-        UUID targetId,
+        @Nullable UUID targetId,
         @Nullable UUID targetUserId,
         ReportReason reason,
         String description,

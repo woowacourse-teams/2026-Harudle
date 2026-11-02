@@ -1,9 +1,12 @@
 package com.harudle.common.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.harudle.auth.application.AccountAccessPolicy;
 import com.harudle.auth.application.port.AccountRestrictionReader;
+import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.common.error.ProblemDetailFactory;
 import com.harudle.common.error.ProblemDetailResponseWriter;
 import com.harudle.common.error.TraceIdConfiguration;
@@ -77,6 +80,17 @@ class TermsAcceptanceFilterIntegrationTest {
                     "spring.security.filter.order=-80", "harudle.legal.require-terms-acceptance=true"})
     @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
     class Enforced extends HttpContext {
+        @Test
+        @DisplayName("정지 또는 약관 미동의 상태여도 인증된 회원의 탈퇴 요청을 허용한다")
+        void permitsWithdrawalForSuspendedOrUnconsentedMember() throws Exception {
+            restrictions.suspended.set(true);
+            members.unavailable.set(true);
+
+            assertThat(request("POST", "/api/v1/me/withdrawal", "member").statusCode()).isEqualTo(200);
+            assertThat(members.reads.get()).isZero();
+            assertThat(controller.calls.get()).isEqualTo(1);
+        }
+
         @ParameterizedTest
         @ValueSource(strings = {"/api/v1/reports", "/api/v1/notifications", "/api/v1/future/member", "/api/v1/feeds"})
         @DisplayName("모든 Bearer 보안 체인에서 미수락 회원은 controller 실행 전에 동의 필요 403을 받는다")
@@ -270,6 +284,11 @@ class TermsAcceptanceFilterIntegrationTest {
             AccountSuspensionConfiguration.class, AccountAccessPolicy.class,
             ProblemDetailFactory.class, TraceIdConfiguration.class})
     static class TestApplication {
+        @Bean UserRepository users() {
+            var users = mock(UserRepository.class);
+            when(users.existsById(USER_ID)).thenReturn(true);
+            return users;
+        }
         @Bean Members members() { return new Members(); }
         @Bean Restrictions restrictions() { return new Restrictions(); }
         @Bean TestController controller() { return new TestController(); }
@@ -334,6 +353,7 @@ class TermsAcceptanceFilterIntegrationTest {
     static class TestController {
         private final AtomicInteger calls = new AtomicInteger();
         @RequestMapping({"/api/v1/me", "/api/v1/me/agreements", "/api/v1/reports", "/api/v1/notifications",
+                "/api/v1/me/withdrawal",
                 "/api/v1/feeds", "/api/v1/auth/csrf", "/api/v1/auth/logout", "/api/v1/auth/refresh",
                 "/api/v1/future/member", "/api/v1/legal/documents",
                 "/api/v1/legal/documents/terms/2026-10-22"})

@@ -19,6 +19,11 @@ class KakaoUnlinkStrategy implements SocialUnlinkStrategy {
     }
 
     @Override
+    public SocialUnlinkResult begin(OAuthAccount account) {
+        return unlink(account, new SocialUnlinkCredentials.Kakao());
+    }
+
+    @Override
     public SocialUnlinkResult unlink(OAuthAccount account, SocialUnlinkCredentials credentials) {
         if (!(credentials instanceof SocialUnlinkCredentials.Kakao)) {
             throw new IllegalArgumentException("카카오 연결 해제 정보가 필요합니다.");

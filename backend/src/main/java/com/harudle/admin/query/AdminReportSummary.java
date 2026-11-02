@@ -10,7 +10,7 @@ public record AdminReportSummary(
         UUID id,
         @Nullable UUID reporterId,
         ReportTargetType targetType,
-        UUID targetId,
+        @Nullable UUID targetId,
         @Nullable UUID targetUserId,
         ReportReason reason,
         AdminReportStatus status,

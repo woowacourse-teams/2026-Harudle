@@ -1,9 +1,12 @@
 package com.harudle.common.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.harudle.auth.application.AccountAccessPolicy;
 import com.harudle.auth.application.port.AccountRestrictionReader;
+import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.common.error.ProblemDetailFactory;
 import com.harudle.common.error.ProblemDetailResponseWriter;
 import com.harudle.common.error.TraceIdConfiguration;
@@ -58,6 +61,7 @@ class AccountSuspensionFilterIntegrationTest {
     @Value("${local.server.port}") private int port;
     @Autowired private Restrictions restrictions;
     @Autowired private TestController controller;
+    @Autowired private UserRepository users;
 
     @BeforeEach
     void reset() {
@@ -65,6 +69,7 @@ class AccountSuspensionFilterIntegrationTest {
         restrictions.unavailable.set(false);
         restrictions.requestReads.set(0);
         controller.calls.set(0);
+        when(users.existsById(USER_ID)).thenReturn(true);
     }
 
     @AfterAll
@@ -95,6 +100,15 @@ class AccountSuspensionFilterIntegrationTest {
         assertThat(get("/api/v1/me", "member").statusCode()).isEqualTo(200);
         assertThat(controller.calls.get()).isEqualTo(2);
         assertThat(restrictions.requestReads.get()).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("탈퇴한 회원의 기존 토큰은 다음 요청부터 거절한다")
+    void rejectsDeletedUserToken() throws Exception {
+        assertThat(get("/api/v1/me", "member").statusCode()).isEqualTo(200);
+        when(users.existsById(USER_ID)).thenReturn(false);
+        assertThat(get("/api/v1/me", "member").statusCode()).isEqualTo(401);
+        assertThat(controller.calls.get()).isEqualTo(1);
     }
 
     @Test
@@ -153,6 +167,10 @@ class AccountSuspensionFilterIntegrationTest {
     @Import({AccountSuspensionConfiguration.class, AccountAccessPolicy.class, ProblemDetailFactory.class,
             TraceIdConfiguration.class})
     static class TestApplication {
+        @Bean
+        UserRepository users() {
+            return mock(UserRepository.class);
+        }
         @Bean
         Restrictions restrictions() {
             return new Restrictions();

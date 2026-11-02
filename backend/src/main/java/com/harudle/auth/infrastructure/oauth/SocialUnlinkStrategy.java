@@ -7,5 +7,7 @@ interface SocialUnlinkStrategy {
 
     boolean supports(OAuthProvider provider);
 
+    SocialUnlinkResult begin(OAuthAccount account);
+
     SocialUnlinkResult unlink(OAuthAccount account, SocialUnlinkCredentials credentials);
 }

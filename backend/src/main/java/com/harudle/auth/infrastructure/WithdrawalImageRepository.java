@@ -34,6 +34,10 @@ public class WithdrawalImageRepository {
         return new ImageTargets(diaryImages, profileImages);
     }
 
+    public void deleteCleanupTasks(UUID userId) {
+        jdbcTemplate.update("DELETE FROM profile_image_cleanup_tasks WHERE user_id = ?", userId);
+    }
+
     public record ImageTargets(List<String> diaryImages, List<String> profileImages) {
         public ImageTargets {
             diaryImages = List.copyOf(diaryImages);

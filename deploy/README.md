@@ -420,6 +420,17 @@ SESSION_COOKIE_SECURE=true
 Apple에 `${BACKEND_BASE_URL}/login/oauth2/code/apple` HTTPS 콜백을 등록하고 로그인 시작 호스트와 맞춥니다.
 설정 후 배포 훅으로 백엔드를 재생성합니다. 준비 전에는 `APPLE_LOGIN_ENABLED=false`를 유지합니다.
 
+Apple 설정에서 연결 해제 또는 계정 삭제 알림을 받으려면 Primary App ID의 Sign in with Apple 설정에
+`https://{서비스 호스트}/api/v1/public/apple/notifications`를 등록합니다. Apple 앱 그룹마다 알림 주소는
+하나만 등록할 수 있으므로 dev와 prod가 같은 그룹을 사용한다면 각 환경으로 알림이 전달되는 구성을 먼저 정합니다.
+서버는 Apple 서명과 앱 식별자를 검증합니다. 설정 방법은 [Apple 안내](https://developer.apple.com/help/account/capabilities/enabling-server-to-server-notifications)를 따릅니다.
+
+## 카카오 회원 탈퇴 설정
+
+서버 `/opt/harudle/.env`의 `KAKAO_ADMIN_KEY`에 현재 `KAKAO_REST_API_KEY`와 같은 카카오 앱의 관리자 키를
+설정합니다. 카카오 앱 관리자 키 설정에서 연결 끊기 API를 허용합니다. 관리자 키는 서버에서만 사용하고 공개하지 않습니다.
+설정을 바꾼 뒤 백엔드 컨테이너를 재생성합니다.
+
 ## Google 로그인 설정
 
 배포 전에 해당 서버의 `/opt/harudle/.env`에 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`을 설정합니다.

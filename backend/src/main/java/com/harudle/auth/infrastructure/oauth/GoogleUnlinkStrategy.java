@@ -19,6 +19,11 @@ class GoogleUnlinkStrategy implements SocialUnlinkStrategy {
     }
 
     @Override
+    public SocialUnlinkResult begin(OAuthAccount account) {
+        return SocialUnlinkResult.GOOGLE_AUTHENTICATION_REQUIRED;
+    }
+
+    @Override
     public SocialUnlinkResult unlink(OAuthAccount account, SocialUnlinkCredentials credentials) {
         if (!(credentials instanceof SocialUnlinkCredentials.Google google)) {
             throw new IllegalArgumentException("구글 재인증 정보가 필요합니다.");

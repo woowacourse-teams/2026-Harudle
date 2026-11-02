@@ -10,6 +10,7 @@ import org.springframework.util.Assert;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 @Component
 public class KakaoUnlinkClient {
@@ -38,12 +39,27 @@ public class KakaoUnlinkClient {
             var response = client.post().uri("/v1/user/unlink")
                     .header("Authorization", "KakaoAK " + adminKey)
                     .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                    .body(form).retrieve().body(UnlinkResponse.class);
-            if (response == null || response.id() == null || response.id() != kakaoUserId) {
+                    .body(form).retrieve().toEntity(UnlinkResponse.class);
+            var body = response.getBody();
+            if (response.getStatusCode().value() != 200 || body == null || body.id() == null || body.id() != kakaoUserId) {
                 throw new KakaoUnlinkException();
             }
+        } catch (RestClientResponseException exception) {
+            if (alreadyUnlinked(exception)) {
+                return;
+            }
+            throw new KakaoUnlinkException();
         } catch (RestClientException exception) {
             throw new KakaoUnlinkException();
+        }
+    }
+
+    private boolean alreadyUnlinked(RestClientResponseException exception) {
+        try {
+            var error = exception.getResponseBodyAs(KakaoError.class);
+            return exception.getStatusCode().value() == 400 && error != null && Integer.valueOf(-101).equals(error.code());
+        } catch (RuntimeException ignored) {
+            return false;
         }
     }
 
@@ -55,6 +71,8 @@ public class KakaoUnlinkClient {
     }
 
     record UnlinkResponse(Long id) {}
+
+    record KakaoError(Integer code) {}
 
     public static final class KakaoUnlinkException extends RuntimeException {}
 }
