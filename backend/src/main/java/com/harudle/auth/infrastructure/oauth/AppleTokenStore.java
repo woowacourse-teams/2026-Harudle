@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -16,27 +17,50 @@ public class AppleTokenStore {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AppleTokenStore.class);
     private final AppleTokenRepository tokens;
-    private final String encryptionKey;
+    private final @Nullable AppleTokenCipher cipher;
 
     public AppleTokenStore(AppleTokenRepository tokens, @Value("${app.auth.apple.token-encryption-key:}") String encryptionKey) {
         this.tokens = tokens;
-        this.encryptionKey = encryptionKey;
+        this.cipher = createCipher(encryptionKey);
     }
 
     /** 토큰 저장이 실패해도 로그인은 계속한다. */
     public void save(UUID userId, String clientId, String identityToken, String accessToken,
             @Nullable String refreshToken, @Nullable Instant accessExpiresAt) {
+        if (cipher == null) {
+            logFailure("INVALID_KEY");
+            return;
+        }
+        if (!StringUtils.hasText(clientId)) {
+            logFailure("INVALID_CLIENT");
+            return;
+        }
+        if (!StringUtils.hasText(identityToken) || !StringUtils.hasText(accessToken)) {
+            logFailure("MISSING_TOKEN");
+            return;
+        }
         try {
-            if (!StringUtils.hasText(clientId)) {
-                throw new IllegalArgumentException("애플 클라이언트 ID가 필요합니다.");
-            }
-            var cipher = new AppleTokenCipher(encryptionKey);
             String encryptedIdentity = cipher.encrypt(identityToken);
             String encryptedAccess = cipher.encrypt(accessToken);
             String encryptedRefresh = StringUtils.hasText(refreshToken) ? cipher.encrypt(refreshToken) : null;
             tokens.save(userId, clientId, encryptedIdentity, encryptedAccess, encryptedRefresh, accessExpiresAt);
+        } catch (DataAccessException exception) {
+            logFailure("DATABASE_ERROR");
         } catch (RuntimeException exception) {
-            LOGGER.warn("event=apple_token_save_failed exceptionType={}", exception.getClass().getSimpleName());
+            logFailure("STORAGE_ERROR");
         }
+    }
+
+    private static @Nullable AppleTokenCipher createCipher(String encryptionKey) {
+        try {
+            return new AppleTokenCipher(encryptionKey);
+        } catch (IllegalArgumentException exception) {
+            LOGGER.warn("event=apple_token_key_invalid reason=INVALID_KEY");
+            return null;
+        }
+    }
+
+    private static void logFailure(String reason) {
+        LOGGER.warn("event=apple_token_save_failed reason={}", reason);
     }
 }

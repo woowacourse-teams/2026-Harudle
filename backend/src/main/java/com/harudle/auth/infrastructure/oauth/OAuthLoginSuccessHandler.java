@@ -157,7 +157,8 @@ public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
             store.save(userId, authorized.getClientRegistration().getClientId(), apple.getIdToken().getTokenValue(),
                     access.getTokenValue(), refresh == null ? null : refresh.getTokenValue(), access.getExpiresAt());
         } catch (RuntimeException exception) {
-            LOGGER.warn("event=apple_token_save_failed exceptionType={}", exception.getClass().getSimpleName());
+            LOGGER.warn("event=apple_token_save_failed reason=CLIENT_UNAVAILABLE exceptionType={}",
+                    exception.getClass().getSimpleName());
         }
     }
 

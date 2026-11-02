@@ -421,8 +421,9 @@ SESSION_COOKIE_SECURE=true
 Apple에 `${BACKEND_BASE_URL}/login/oauth2/code/apple` HTTPS 콜백을 등록하고 로그인 시작 호스트와 맞춥니다.
 설정 후 배포 훅으로 백엔드를 재생성합니다. 준비 전에는 `APPLE_LOGIN_ENABLED=false`를 유지합니다.
 
-애플 토큰 암호화 키는 JWT 키와 별도로 환경별로 생성해 안전하게 보관합니다. 키가 없거나 토큰 저장에
-실패하면 로그인은 허용하고 `apple_token_save_failed` 로그를 남깁니다. 키를 변경하거나 잃어버리면 기존
+애플 토큰 암호화 키는 JWT 키와 별도로 환경별로 생성해 안전하게 보관합니다. 키 형식이 올바르지 않으면
+서버 시작 시 `apple_token_key_invalid` 경고를 남깁니다. 토큰 저장에 실패해도 로그인은 허용하며,
+`apple_token_save_failed` 로그의 `reason`으로 키, 토큰 누락과 DB 오류를 구분합니다. 키를 변경하거나 잃어버리면 기존
 토큰을 복호화할 수 없으므로 기존 토큰의 처리 방법을 마련한 뒤 변경합니다.
 
 Apple 설정에서 연결 해제 또는 계정 삭제 알림을 받으려면 Primary App ID의 Sign in with Apple 설정에
