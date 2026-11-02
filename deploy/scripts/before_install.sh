@@ -44,7 +44,6 @@ rm -f \
   "${APP_DIR}/monitoring/cloudwatch-agent.dev.json" \
   "${APP_DIR}/monitoring/cloudwatch-agent.prod.json" \
   "${APP_DIR}/monitoring/cloudwatch-agent.host.json" \
-  "${APP_DIR}/monitoring/cloudwatch-agent.db.json" \
   "${IMAGE_DIR}/backend-image.tar.gz" \
   "${IMAGE_DIR}/frontend-image.tar.gz" \
   "${IMAGE_DIR}/image-checksums.sha256"
