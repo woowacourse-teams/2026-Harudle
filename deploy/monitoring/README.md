@@ -4,7 +4,7 @@
 
 현재 구성과 결정 이유는 [Prod 대시보드 정리 ADR](adr/2026-10-30_prod-dashboard-cleanup.md)과 [Dev 표시 및 로그 수정 ADR](adr/2026-10-30_dev-dashboard-corrections.md)에 정리합니다. 서버 전환과 Dev 경보 및 백업 감시 적용 이력은 [EC2 PostgreSQL 모니터링 결정](adr/2026-10-29_ec2-postgresql-monitoring.md)을 따릅니다. 과거 배치는 [dev 대시보드 ADR](adr/2026-10-22_cloudwatch-dashboard-layout.md)과 [prod 대시보드 ADR](adr/2026-10-22_cloudwatch-prod-dashboard-layout.md)에 기록합니다.
 
-**처음에는 배포, Agent 설정 적용, Dev 로그 필터 6개 또는 Prod 로그 필터 3개 등록, 대시보드 저장을 모두 해야 합니다.** 대시보드 JSON만 넣으면 새 지표가 수집되지 않습니다. 같은 설정을 쓰는 이후 배포에서는 이 작업을 반복하지 않습니다. 수집 설정이나 서버가 바뀌면 해당 부분을 다시 적용합니다.
+**처음에는 배포, Agent 설정 적용, Dev 로그 필터 7개 또는 Prod 로그 필터 3개 등록, 대시보드 저장을 모두 해야 합니다.** 대시보드 JSON만 넣으면 새 지표가 수집되지 않습니다. 같은 설정을 쓰는 이후 배포에서는 이 작업을 반복하지 않습니다. 수집 설정이나 서버가 바뀌면 해당 부분을 다시 적용합니다.
 
 ## 무엇을 볼 수 있나요?
 
@@ -13,10 +13,9 @@
 | Dev와 Prod 맨 위 백엔드 5xx 비율 카드 | 화면 위에서 고른 시간 전체의 백엔드 5xx 응답 수를 전체 백엔드 HTTP 완료 수로 나눈 값입니다. Nginx에서 발생한 502와 504는 포함하지 않습니다. 해당 시간에 요청이 없으면 값이 비어 있습니다. |
 | 맨 위 생성 실패 카드 | 화면 위에서 고른 시간 전체에 생성 작업이 실패로 확정된 건수를 보여줍니다. |
 | 백엔드 HTTP 응답 수 그래프 | 선택한 시간에 맞는 간격으로 전체 응답 수와 5xx 오류 응답 수를 보여줍니다. 오류가 늘어난 시점을 찾을 때 씁니다. |
-| Prod API 경로별 P95 | 일반 API는 선택 기간에서 P95가 가장 높았던 경로 5개를 봅니다. 일기 생성은 요청이 있는 모든 경로를 봅니다. 경로 안의 실제 ID는 표시하지 않습니다. |
-| Dev API 시간 그래프 | 기존처럼 전체 API, 일반 API, 일기 생성의 평균, P95, P99와 요청 수를 봅니다. |
+| Dev와 Prod API 경로별 P95 | 일반 API는 선택 기간에서 P95가 가장 높았던 경로 5개를 봅니다. 일기 생성은 요청이 있는 모든 경로를 봅니다. 경로 안의 실제 ID는 표시하지 않습니다. |
+| Dev API P95·P99 | 일반 API와 일기 생성의 P95와 P99를 한 그래프에서 봅니다. 세로축은 ms입니다. |
 | API RPS | 1초에 처리를 끝낸 API 요청 수입니다. 실패 응답도 포함합니다. CloudWatch가 선택한 기간에 맞춰 그래프 간격을 정하고, 세로축은 `요청/초`로 표시합니다. |
-| Dev 작업별 TPS | dev에서 일기 생성, 피드 게시, 피드 목록 조회, 피드 상세 조회의 성공 건수를 초당 값으로 봅니다. Prod에서는 사용하지 않습니다. |
 | EC2 서버 자원 | 서버 CPU, 전체 메모리, 디스크 사용량과 서버 상태를 확인합니다. |
 | Dev와 Prod EC2 네트워크 | 구간별 수신 및 송신 합계를 MB로 표시합니다. 1MB는 1,000,000바이트이며 초당 속도가 아닙니다. |
 | DB EC2 자원 | DB 서버의 CPU, 여유 메모리, 데이터 디스크 공간과 EBS 처리 지연을 확인합니다. 전체 DB 연결 수는 별도 수집이 필요합니다. |
@@ -29,13 +28,15 @@
 | dev GC 정지 시간과 횟수 | 메모리 정리로 멈춘 시간과 횟수입니다. 발생 사유는 GC 로그와 함께 확인합니다. |
 | dev Java 힙 외 메모리 | 힙 밖의 메모리 사용량과 확보량입니다. 힙 사용량은 이 그래프에 넣지 않습니다. |
 
-P95가 500ms라면 요청의 약 95%가 500ms 안에 끝났다는 뜻입니다. Prod는 일반 API에서 선택 기간의 P95가 가장 높았던 경로 5개를 보여줍니다. 일기 생성은 요청이 있는 모든 경로를 보여줍니다. 요청 수는 별도 RPS 그래프에서 확인합니다. Dev는 전체, 일반, 일기 생성 API의 평균과 P95 및 P99를 유지합니다. 두 환경의 맨 위 5xx 비율 카드와 생성 실패 카드는 선택한 시간 전체를 계산합니다. 시간 그래프의 간격은 CloudWatch가 선택한 시간 범위에 맞춰 조절합니다.
+P95가 500ms라면 요청의 약 95%가 500ms 안에 끝났다는 뜻입니다. Prod는 일반 API에서 선택 기간의 P95가 가장 높았던 경로 5개를 보여줍니다. 일기 생성은 요청이 있는 모든 경로를 보여줍니다. 요청 수는 별도 RPS 그래프에서 확인합니다. Dev는 일반 API와 일기 생성의 P95와 P99 그래프를 함께 둡니다. 두 환경의 맨 위 5xx 비율 카드와 생성 실패 카드는 선택한 시간 전체를 계산합니다. 시간 그래프의 간격은 CloudWatch가 선택한 시간 범위에 맞춰 조절합니다.
+
+Dev의 API 구역 첫 행에는 일반 API 상위 5개와 일기 생성 전체 경로의 P95 그래프를 둡니다. 다음 행에는 RPS와 일반 API 및 일기 생성의 P95·P99 그래프를 둡니다. 상단 일반 API P95는 Prod처럼 큰 숫자와 스파크라인으로 표시합니다. 원본 `ApiResponseTimeMs`와 P95 계산은 유지하며, 값에 따라 숫자 카드의 단위가 ms에서 μs 등으로 자동 표시될 수 있습니다. 경로별 그래프의 세로축은 ms로 고정합니다.
 
 API 시간은 서버의 처리 시간입니다. 사용자와 서버 사이의 통신 시간은 포함하지 않습니다. 자동 상태 확인과 지표 수집 요청도 새 API 그래프에서 제외합니다.
 
-Dev TPS에서는 일기 생성과 피드 게시를 **DB 저장이 확정된 뒤** 성공으로 셉니다. 중복 생성 결과의 재조회와 취소된 DB 저장은 성공 횟수를 늘리지 않습니다. 피드 조회는 200 응답을 성공으로 셉니다. 같은 목록을 두 번 조회하면 두 건입니다.
+Dev의 작업별 성공 지표는 대시보드에서 제거했지만 로그 필터로 계속 수집합니다. 일기 생성과 피드 게시는 **DB 저장이 확정된 뒤** 성공으로 셉니다. 중복 생성 결과의 재조회와 취소된 DB 저장은 성공 횟수를 늘리지 않습니다. 피드 조회는 200 응답을 성공으로 셉니다. 같은 목록을 두 번 조회하면 두 건입니다. 부하 테스트에서 필요하면 CloudWatch 지표 화면에서 직접 조회합니다.
 
-Prod 대시보드에는 작업별 TPS를 두지 않습니다. 일반 요청량은 API RPS에서 보고, 일기 생성 성공 여부는 생성 로그와 실패 지표에서 확인합니다. Dev의 부하 테스트용 TPS는 유지합니다.
+Dev와 Prod 대시보드에는 작업별 TPS를 두지 않습니다. 일반 요청량은 API RPS에서 보고, 일기 생성 성공 여부는 생성 로그와 실패 지표에서 확인합니다.
 
 ## dev/prod 배포 전에 확인
 
@@ -73,9 +74,9 @@ T 계열 서버는 `CPUCreditBalance`도 확인합니다. 값이 줄면 기본 �
 
 AWS에 저장한 대시보드와 경보는 같은 계정과 리전에서 조회하는 팀원에게 함께 보입니다. 저장소 변경만으로 AWS 설정이 바뀌지는 않습니다. 환경별 기본 ID는 `targets.json`에 기록하고, 서버 교체 때 실제 경보의 `Dimensions`도 별도로 수정합니다. 대시보드의 공통 `InstanceId` 변수는 앱과 DB를 같은 서버로 덮어쓸 수 있으므로 사용하지 않습니다.
 
-### Prod 대시보드 구성을 복구하려면
+### Dev와 Prod 대시보드 구성을 복구하려면
 
-정상 구성은 [dashboards/prod.json](dashboards/prod.json)에 보관합니다. 2026-11-02에 `DASHBOARD-harudle-prod`에서 읽은 위젯 55개의 설정이며, P95와 생성 실패 및 R2 카드도 포함합니다. 실제 측정 데이터나 로그 검색 결과를 보관하는 파일은 아닙니다. Dev 구성 파일은 아직 보관하지 않았습니다.
+정상 구성은 [dashboards/prod.json](dashboards/prod.json)에 보관합니다. 2026-11-02에 `DASHBOARD-harudle-prod`에서 읽은 위젯 55개의 설정이며, P95와 생성 실패 및 R2 카드도 포함합니다. 실제 측정 데이터나 로그 검색 결과를 보관하는 파일은 아닙니다. Dev 정상 구성은 [dashboards/dev.json](dashboards/dev.json)에 보관합니다. 2026-11-03에 `DASHBOARD-harudle-dev`에 저장한 위젯 55개의 설정입니다. Dev를 복구할 때는 아래 절차에서 대시보드와 JSON을 Dev 것으로 선택합니다. Dev 구성에는 DB 백업 카드가 없습니다.
 
 1. 서울 리전의 `DASHBOARD-harudle-prod`를 열고 **작업 > 소스 보기/편집**을 선택합니다. 되돌릴 필요가 있을 때를 위해 현재 JSON도 먼저 복사해 둡니다.
 2. `dashboards/prod.json` 전체를 붙여 넣고 **업데이트**한 뒤 대시보드를 **저장**합니다. 원래 구성으로 복구할 때 준비 스크립트는 필요하지 않습니다.
@@ -83,9 +84,9 @@ AWS에 저장한 대시보드와 경보는 같은 계정과 리전에서 조회�
 
 이 작업은 대시보드 구성만 복구합니다. 경보 자체, 지표 필터, Agent와 백업 감시 설정은 별도입니다. 콘솔에서 구성을 의도적으로 바꿨다면 검토 후 최신 JSON으로 이 파일도 갱신하고 Git 기록에 남깁니다. 현재 서버 ID나 저장소의 설정값만 바꿔도 이 복구 파일이 자동 갱신되지는 않습니다.
 
-대시보드는 서비스 실패, 속도, 생성 작업, DB 연결과 저장 공간, 서버 자원, 상세 로그 순서로 봅니다. Dev는 부하 테스트를 위해 Java 메모리와 GC를 서버 자원보다 앞에 둡니다. Prod는 DB 자원을 먼저 보고 Java 메모리는 뒤에서 원인을 확인할 때 봅니다. Prod는 최근 24시간 안에 성공한 백업이 있는지와 백업 정보 조회 성공 여부도 표시합니다. PostgreSQL 직접 접속, 전체 연결 수, 개별 백업 실행 실패 알림과 WAL 전송 상태는 아직 수집하지 않습니다. Dev 백업 감시도 미수집 상태입니다.
+대시보드는 서비스 실패, 속도, 생성 작업, DB 연결과 저장 공간, 서버 자원, 상세 로그 순서로 봅니다. Dev는 부하 테스트를 위해 Java 메모리와 GC를 서버 자원보다 앞에 둡니다. Prod는 DB 자원을 먼저 보고 Java 메모리는 뒤에서 원인을 확인할 때 봅니다. Prod는 최근 24시간 안에 성공한 백업이 있는지와 백업 정보 조회 성공 여부도 표시합니다. PostgreSQL 직접 접속, 전체 연결 수, 개별 백업 실행 실패 알림과 WAL 전송 상태는 아직 수집하지 않습니다. Dev 백업 감시도 미수집 상태이며, 대시보드에는 관련 안내를 두지 않습니다.
 
-두 환경 모두 앱 EC2의 CPU, 여유 메모리, Swap, 루트 디스크 카드를 한 행에 4개씩 배치합니다. DB EC2 첫 행에는 CPU 카드, 여유 메모리 카드, CPU 그래프를 배치합니다. Dev의 Java와 GC 및 부하 테스트 지표는 유지합니다.
+두 환경 모두 앱 EC2의 CPU, 여유 메모리, Swap, 루트 디스크 카드를 한 행에 4개씩 배치합니다. DB EC2 첫 행에는 CPU 카드, 여유 메모리 카드, CPU 그래프를 배치합니다. Dev의 Java와 GC 지표는 유지합니다. Dev 맨 위 카드는 Prod처럼 3개씩 2줄로 배치합니다.
 
 Dev와 Prod 상세 로그의 OAuth 검색은 메시지 안에 기록된 이벤트도 읽어 제공자와 실패 이유를 표시합니다. Nginx 검색은 502와 504 응답, 실제 upstream 오류만 표시합니다. 정상 요청의 `upstreamConnectSeconds` 같은 항목 이름은 오류로 처리하지 않습니다. `External Failure Trend`는 제거하고, `Gemini & S3 Failures` 표를 상세 로그의 첫 행 전체에 표시합니다. 발생 시간, 제공자, 작업, 실패 유형, 응답 코드와 추적 ID를 이 표에서 확인합니다. 조회 범위는 대시보드에서 선택한 시간을 따릅니다. 검색 결과가 비어 있으면 조회 조건과 실제 로그 형식을 확인한 뒤 오류 발생 여부를 판단합니다.
 
@@ -135,7 +136,7 @@ sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
 
 **준비 스크립트는 선택 사항입니다.** CloudWatch 콘솔에서 직접 수정하고 저장해도 됩니다. 스크립트는 설정을 파일로 검토하거나 다시 적용할 때 사용하며, AWS 설정을 자동으로 변경하지 않습니다. 콘솔을 편집한 뒤에는 최신 JSON을 다시 복사해 입력으로 사용합니다.
 
-기본 상태 항목 6개가 갖춰지고 모든 위젯의 위치와 크기가 있는 Prod 원본은 기존 배치를 유지합니다. 스크립트가 P95 카드를 다시 만들거나 생성 실패 카드를 추가하지 않으며, R2처럼 콘솔에서 추가한 카드도 원래 위치와 크기를 유지합니다. 기존 단위와 로그 검색 조건의 보정은 계속 적용하므로, 생성 결과와 원본을 비교한 뒤 필요한 경우에만 콘솔에 적용합니다.
+기본 상태 항목 6개가 갖춰지고 모든 위젯의 위치와 크기가 있는 Prod 원본과 Dev 원본은 기존 배치를 유지합니다. 스크립트가 P95 카드를 다시 만들거나 생성 실패 카드를 추가하지 않으며, R2처럼 콘솔에서 추가한 카드도 원래 위치와 크기를 유지합니다. 기존 단위와 로그 검색 조건의 보정은 계속 적용하므로, 생성 결과와 원본을 비교한 뒤 필요한 경우에만 콘솔에 적용합니다.
 
 **이 단계는 배포 전에도 할 수 있습니다.** 내 컴퓨터에 Python 3만 있으면 됩니다. AWS CLI는 필요하지 않습니다. 저장소 최상위 경로에서 아래 명령을 실행합니다. 기본 앱 ID는 `targets.json`에서 읽습니다. 서버가 바뀌면 이 파일과 실제 AWS 설정을 함께 갱신합니다. prod를 준비할 때는 환경도 `prod`로 바꿉니다.
 
@@ -175,7 +176,7 @@ Python 스크립트는 AWS에 접속하지 않고 **내 컴퓨터에 파일만 �
 
 - `before.json`: 직접 저장한 변경 전 대시보드입니다. 스크립트가 수정하지 않습니다. 적용 확인이 끝날 때까지 보관합니다.
 - `dashboard.json`: 알려진 단위 오류와 로그 검색 조건을 보정한 대시보드입니다. 완성된 Prod 구성은 배치를 유지하고, 그 외 원본은 환경별 배치 규칙을 적용합니다.
-- `metric-filter-*.json`: 로그를 지표로 바꾸는 설정입니다. Dev는 API 시간과 작업 성공 횟수용 6개, Prod는 API 시간과 경로별 시간용 3개를 만듭니다.
+- `metric-filter-*.json`: 로그를 지표로 바꾸는 설정입니다. Dev는 API 시간과 작업 성공 횟수 및 경로별 시간용 7개, Prod는 API 시간과 경로별 시간용 3개를 만듭니다.
 
 임시 앱 ID `i-00000000000000000`은 기본 앱 ID로 고칩니다. 다른 서버 ID는 자동 변경하지 않습니다. 이미 있는 그래프는 계산식을 보존합니다. 같은 원본으로 반복 실행해도 그래프가 중복되지 않습니다. 과거 DB 서비스의 지표가 남은 원본은 거절하므로, EC2 PostgreSQL로 전환한 최신 원본을 사용합니다.
 
@@ -188,7 +189,7 @@ Dev에는 GC와 힙 외 메모리 진단을 유지합니다. Prod에는 이 지�
 1. `metric-filter-1.json`을 엽니다.
 2. CloudWatch의 **Logs > Log groups**에서 파일의 `logGroupName`과 같은 로그 그룹을 엽니다.
 3. **Actions > Create metric filter**를 선택하고 아래 표대로 입력해 저장합니다.
-4. Dev는 `metric-filter-6.json`까지 등록합니다. Prod는 `metric-filter-3.json`까지 등록합니다. 같은 `filterName`이 이미 있으면 해당 필터를 수정합니다. 기존 Prod에 남은 작업별 성공 필터(`harudle-prod-DiaryGenerationSucceeded`, `harudle-prod-FeedPublicationSucceeded`, `harudle-prod-FeedListSucceeded`, `harudle-prod-FeedDetailSucceeded`)는 `/harudle/prod/backend` 로그 그룹에서 한 번 삭제합니다.
+4. Dev는 `metric-filter-7.json`까지 등록합니다. Prod는 `metric-filter-3.json`까지 등록합니다. 같은 `filterName`이 이미 있으면 해당 필터를 수정합니다. 기존 Prod에 남은 작업별 성공 필터(`harudle-prod-DiaryGenerationSucceeded`, `harudle-prod-FeedPublicationSucceeded`, `harudle-prod-FeedListSucceeded`, `harudle-prod-FeedDetailSucceeded`)는 `/harudle/prod/backend` 로그 그룹에서 한 번 삭제합니다.
 
 | 콘솔 입력란 | JSON에서 복사할 값 |
 |---|---|
@@ -203,7 +204,7 @@ Dev에는 GC와 힙 외 메모리 진단을 유지합니다. Prod에는 이 지�
 
 `metricNamespace`부터는 `metricTransformations` 안의 첫 번째 항목에서 찾습니다. 각 입력란에 JSON의 값만 옮깁니다. 예를 들어 `"{ $.event = \"feed_publication_succeeded\" }"`는 `{ $.event = "feed_publication_succeeded" }`로 입력합니다.
 
-**1번과 2번의 Default value는 비웁니다.** 2번은 Dimensions에 이름 `ApiGroup`, 값 `$.apiGroup`을 넣습니다. Prod 전용 3번도 Default value는 비우고 Metric value는 `$.durationMs`, Unit은 `Milliseconds`로 설정합니다. Dimensions에는 `ApiGroup`과 `ApiRoute`를 각각 `$.apiGroup`, `$.apiRoute`로 넣습니다. Dev의 3번부터 6번은 Metric value가 `1`, Default value가 `0`, Unit이 `Count`입니다.
+**1번과 2번의 Default value는 비웁니다.** 2번은 Dimensions에 이름 `ApiGroup`, 값 `$.apiGroup`을 넣습니다. Prod의 3번과 Dev의 7번도 Default value는 비우고 Metric value는 `$.durationMs`, Unit은 `Milliseconds`로 설정합니다. Dimensions에는 `ApiGroup`과 `ApiRoute`를 각각 `$.apiGroup`, `$.apiRoute`로 넣습니다. Dev의 3번부터 6번은 Metric value가 `1`, Default value가 `0`, Unit이 `Count`입니다.
 
 필터는 등록 이후 들어오는 로그부터 집계합니다. 로그와 사용자 정의 지표에는 CloudWatch 비용이 발생합니다. 화면 설명은 [AWS 로그 필터 등록 안내](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/CreateMetricFilterProcedure.html)를 참고합니다.
 
@@ -218,10 +219,10 @@ Dev에는 GC와 힙 외 메모리 진단을 유지합니다. Prod에는 이 지�
 ## 5. 적용 후 확인합니다
 
 1. 해당 환경에서 피드 목록과 상세 화면을 엽니다.
-2. CloudWatch Logs의 백엔드 로그에서 `event = api_request_completed`를 찾습니다. `durationMs`가 숫자이고 `httpStatus`가 실제 응답과 같은지 확인합니다. Prod의 `apiRoute`는 `GET:/api/v1/feeds/{feedId}`처럼 경로 패턴이며 실제 사용자 ID를 포함하지 않습니다.
-3. CloudWatch의 `DASHBOARD-harudle-dev` 또는 `DASHBOARD-harudle-prod`에서 최근 시간을 선택합니다. Prod는 일반 API의 P95 상위 5개 경로와 생성 API 전체 경로, RPS에 값이 나오는지 확인합니다. Dev는 기존 API 시간, RPS, 조회 TPS에 값이 나오는지 확인합니다. 대시보드 간격은 선택한 시간에 따라 달라집니다.
+2. CloudWatch Logs의 백엔드 로그에서 `event = api_request_completed`를 찾습니다. `durationMs`가 숫자이고 `httpStatus`가 실제 응답과 같은지 확인합니다. 두 환경의 `apiRoute`는 `GET:/api/v1/feeds/{feedId}`처럼 경로 패턴이며 실제 사용자 ID를 포함하지 않습니다.
+3. CloudWatch의 `DASHBOARD-harudle-dev` 또는 `DASHBOARD-harudle-prod`에서 최근 시간을 선택합니다. Prod는 일반 API의 P95 상위 5개 경로와 생성 API 전체 경로, RPS에 값이 나오는지 확인합니다. Dev도 두 경로별 P95 그래프와 P95·P99 그래프, RPS에 값이 나오는지 확인합니다. 대시보드 간격은 선택한 시간에 따라 달라집니다.
 4. DB와 Java 지표는 dev는 10초, prod는 1분마다 수집합니다. dev는 `prometheus.dev.yaml`, prod는 `prometheus.yaml`을 사용합니다. 해당 환경의 `prometheus-emf` 로그와 `Harudle/Dev` 또는 `Harudle/Prod` 지표에 새 값이 들어오는지 확인합니다. RSS도 dev는 10초, prod는 1분 간격이며 Dev는 `CWAgent`, 현재 Prod는 `Harudle/Prod`에서 해당 EC2와 Java 실행 조건으로 찾습니다. 대시보드 집계 간격은 1분입니다.
-5. 일기 생성과 피드 게시가 실제 성공한 시각에 해당 TPS가 기록되는지 확인합니다.
+5. 일기 생성과 피드 게시가 실제 성공한 시각에 `Harudle/Dev`의 해당 성공 지표가 기록되는지 CloudWatch 지표 화면에서 확인합니다.
 6. 앱과 DB EC2의 CPU, 여유 메모리와 데이터 디스크에 새 값이 들어오는지 확인합니다. 디스크는 실제 `path`와 `fstype`도 맞춰 선택합니다. 기존 오류 그래프도 계속 들어와야 합니다.
 
 DB 연결 평균은 `연결에 쓴 시간의 합 / 연결 횟수`입니다. 최근 최대는 Java가 보관하는 최근 최대값이며, 선택한 전체 기간의 모든 연결 시간을 직접 보관한 값은 아닙니다. 연결 시간 초과 횟수는 모든 DB 오류를 뜻하지 않습니다.
@@ -238,7 +239,7 @@ Prod의 Java 힙과 RSS는 원본 바이트 값을 1,048,576으로 나눠 MiB로
 
 1. dev에 배포하고 위 1단계의 `MONITORING_ENV=dev` Agent 명령을 적용합니다. 이 명령은 자동 배포에 포함되지 않습니다. 기존 Agent 설정을 보관한 뒤 적용하고 Agent가 정상 실행되는지 확인합니다.
 2. `/actuator/prometheus`에서 `jvm_gc_pause_seconds_{count,sum,max}`와 `jvm_memory_{used,committed,max}_bytes`의 실제 이름과 타입을 확인합니다. GC 지표는 GC가 발생한 뒤 생길 수 있습니다. dev의 `prometheus-emf`에도 새 값이 들어와야 합니다.
-3. 기존 dev 대시보드의 최신 JSON으로 위 2단계를 다시 실행하고 `dashboard.json`을 적용합니다. 기존 로그 필터 6개는 변경하지 않습니다.
+3. 기존 dev 대시보드의 최신 JSON으로 위 2단계를 다시 실행하고 `dashboard.json`을 적용합니다. 기존 기본 필터 6개는 유지합니다. 경로별 P95를 함께 볼 때는 위 절차의 7번 필터도 등록합니다.
 4. 새 실행 이름으로 데이터를 준비한 뒤 아래 OS 기록을 시작하고, 내 컴퓨터에서 같은 실행 이름으로 k6를 실행합니다. 예시는 `peak2` 데이터 준비가 끝나 해당 폴더가 존재하는 경우입니다.
 
 **EC2의 Session Manager 터미널에서 실행합니다.** `vmstat`은 CPU, 사용 가능한 메모리와 swap 입출력을 1초마다 약 10분 동안 기록합니다. 실행 중에는 이 EC2 터미널을 열어 두고, 별도로 내 컴퓨터에서 k6를 실행합니다. 이미 같은 기록 파일이 있으면 덮어쓰지 않고 멈춥니다.
@@ -311,3 +312,13 @@ sudo journalctl -u harudle-db-backup-monitor.service -n 10 --no-pager
 수집기 수정 시 먼저 `--dry-run`으로 확인합니다. 파일과 systemd 설정을 검토해 설치한 뒤 `systemctl daemon-reload`와 `systemctl enable --now harudle-db-backup-monitor.timer`로 감시 예약만 적용합니다. 이미 실행 중인 타이머의 주기를 바꿨다면 `sudo systemctl restart harudle-db-backup-monitor.timer`로 새 예약을 적용합니다. 기존 `harudle-db-backup.service`와 `.timer`는 수정하지 않습니다. 감시만 중지하려면 `sudo systemctl disable --now harudle-db-backup-monitor.timer`를 실행합니다. 기존 백업 일정은 계속 동작합니다.
 
 서버가 꺼져 오전 5시 확인을 놓치면 `Persistent=true` 설정으로 서버가 켜진 뒤 한 번 확인합니다. 오전 5시에도 백업 중이라면 0이 나올 수 있으므로 완료 후 수동으로 다시 확인합니다. 이번 적용에서는 확인용으로 한 번 실행했으며, 다음 자동 확인 시각이 오전 5시인지 검증했습니다.
+
+## 2026-11-02 Dev 경로별 P95 적용 확인
+
+Dev 경로별 지표 필터와 두 그래프를 저장했습니다. 기존 60개 위젯을 유지하고 두 개를 추가해 총 62개입니다. 저장 후 다시 읽은 AWS 소스와 `dashboards/dev.json`이 같은지 확인했습니다.
+
+최근 24시간의 `api_request_completed` 로그 126개에는 `apiRoute`가 없었습니다. 경로별 그래프가 비어 있는 것은 현재 로그에 해당 필드가 없기 때문입니다. `apiRoute`를 기록하는 백엔드 코드가 Dev에 배포된 뒤 새 요청과 지표 수신을 확인해야 합니다. 지표 필터는 과거 로그를 다시 집계하지 않습니다. 이번에는 백엔드 재배포와 서버 재시작, Prod 변경은 하지 않았습니다.
+
+## 2026-11-03 Dev 대시보드 정리
+
+Prod를 참고해 Dev 대시보드를 62개에서 55개 위젯으로 정리했습니다. 저장 후 다시 읽은 AWS 소스와 `dashboards/dev.json`이 같은지 확인했습니다. 결정 이유와 제거 목록은 [Dev 표시 및 로그 수정 ADR](adr/2026-10-30_dev-dashboard-corrections.md)에 기록합니다. Prod, 경보, 로그 필터와 Agent 설정은 변경하지 않았습니다. 경로별 P95 그래프는 저장 시점에도 최근 6시간 값이 없었습니다.

@@ -13,6 +13,68 @@ INSTANCE_ID = "i-0123456789abcdef0"
 
 
 class DashboardTests(unittest.TestCase):
+    def test_dev_removes_unneeded_graphs_but_keeps_p95_card_p99_graph_and_routes(self):
+        source = {"widgets": service_widgets("dev", INSTANCE_ID)}
+        result = prepare_dashboard(source, "dev", INSTANCE_ID)
+        titles = {w['properties'].get('title') for w in result['widgets']}
+        self.assertFalse(titles & {'API 응답 시간 (전체)', 'API 응답 시간 (일반)',
+                                   'API 응답 시간 (일기 생성)', '작업별 TPS (성공한 작업/초)',
+                                   '평균 시간의 실행 표본 수', 'Gemini 관측 토큰 total',
+                                   'CodeBuild Gradle cache logs'})
+        self.assertFalse(any(w['properties'].get('markdown', '').startswith('### 백업 감시')
+                             for w in result['widgets']))
+        self.assertTrue({'일반 API P95 (ms)', 'API RPS (완료한 요청/초)',
+                         'API 응답 시간 P95·P99 (일반·일기 생성)',
+                         'API 경로별 P95 응답 시간 (일반 상위 5개)',
+                         'API 경로별 P95 응답 시간 (일기 생성 전체)'}.issubset(titles))
+        self.assertEqual(prepare_dashboard(result, 'dev', INSTANCE_ID), result)
+
+    def test_saved_dev_configuration_can_be_prepared_without_changes(self):
+        root = Path(__file__).parent
+        source = json.loads((root / "dashboards/dev.json").read_text())
+        instance_id = json.loads((root / "targets.json").read_text())["dev"]["instance_id"]
+        self.assertEqual(prepare_dashboard(source, "dev", instance_id), source)
+        routes = [w for w in source["widgets"] if w["properties"].get("title", "").startswith("API 경로별 P95")]
+        self.assertEqual(len(routes), 2)
+        self.assertEqual([(w["x"], w["width"]) for w in routes], [(0, 12), (12, 12)])
+        self.assertEqual(routes[0]["y"], routes[1]["y"])
+        self.assertNotIn("Harudle/Prod", json.dumps(source))
+        self.assertEqual(len(source["widgets"]), 55)
+        cards = source["widgets"][:6]
+        self.assertEqual([(w["x"], w["y"], w["width"], w["height"]) for w in cards],
+                         [(x, y, 8, 5) for y in (0, 5) for x in (0, 8, 16)])
+        by_title = {w["properties"].get("title"): w for w in source["widgets"]}
+        title = "API 응답 시간 P95·P99 (일반·일기 생성)"
+        expected = next(w for w in service_widgets("dev", instance_id) if w["properties"]["title"] == title)
+        self.assertEqual(by_title[title]["properties"], expected["properties"])
+        self.assertEqual([row[-1]["stat"] for row in expected["properties"]["metrics"]],
+                         ["p95", "p99", "p95", "p99"])
+        self.assertEqual([row[3] for row in expected["properties"]["metrics"]],
+                         ["general", "general", "generation", "generation"])
+        self.assertEqual((by_title["API RPS (완료한 요청/초)"]["x"], by_title[title]["x"]), (0, 12))
+        self.assertEqual(by_title["API RPS (완료한 요청/초)"]["y"], by_title[title]["y"])
+
+    def test_dev_keeps_a_completed_console_layout_and_added_cards(self):
+        root = Path(__file__).parent
+        source = json.loads((root / "dashboards/dev.json").read_text())
+        source["widgets"].append({"type": "metric", "x": 12, "y": 500, "width": 6, "height": 5, "properties": {
+            "title": "콘솔에서 추가한 카드", "metrics": [["Custom", "Value"]]}})
+        instance_id = json.loads((root / "targets.json").read_text())["dev"]["instance_id"]
+        self.assertEqual(prepare_dashboard(source, "dev", instance_id), source)
+
+    def test_dev_p95_uses_the_prod_number_card_format_without_changing_values(self):
+        source = {"widgets": [w for w in service_widgets("dev", INSTANCE_ID)
+                              if w["properties"]["title"] == "API 응답 시간 (일반)"]}
+        result = prepare_dashboard(source, "dev", INSTANCE_ID)
+        card = next(w for w in result["widgets"] if w["properties"].get("title") == "일반 API P95 (ms)")
+        self.assertEqual(card["properties"]["view"], "singleValue")
+        self.assertTrue(card["properties"]["sparkline"])
+        self.assertFalse(card["properties"]["setPeriodToTimeRange"])
+        self.assertEqual(card["properties"]["metrics"], [
+            ["Harudle/Dev", "ApiResponseTimeMs", "ApiGroup", "general", {"stat": "p95", "label": "P95 (ms)"}]])
+        self.assertNotIn("yAxis", card["properties"])
+        self.assertEqual(prepare_dashboard(result, "dev", INSTANCE_ID), result)
+
     def test_completed_prod_console_layout_keeps_p95_failure_and_external_cards(self):
         source = {"start": "-PT6H", "periodOverride": "auto", "widgets": [
             {"type": "metric", "x": index * 8 if index < 3 else (index - 3) * 6,
@@ -72,13 +134,15 @@ class DashboardTests(unittest.TestCase):
             for title in titles]}
         result = prepare_dashboard(original, "dev", INSTANCE_ID)
         props = {w["properties"].get("title"): w["properties"] for w in result["widgets"]}
-        for title in ("생성 실행 평균 시간 (초)", "평균 시간의 실행 표본 수", "Gemini 관측 토큰 total"):
-            self.assertEqual(props[title]["period"], 60)
-            self.assertEqual(props[title]["metrics"], original["widgets"][0]["properties"]["metrics"])
+        title = "생성 실행 평균 시간 (초)"
+        self.assertEqual(props[title]["period"], 60)
+        self.assertEqual(props[title]["metrics"], original["widgets"][0]["properties"]["metrics"])
+        self.assertNotIn("평균 시간의 실행 표본 수", props)
+        self.assertNotIn("Gemini 관측 토큰 total", props)
         self.assertNotIn("DB 연결 풀: 대기 요청 최댓값", props)
         self.assertEqual(props["DB 연결 획득 시간"]["yAxis"]["left"]["label"], "밀리초 (ms)")
         self.assertEqual(props["Java 힙 사용량"]["yAxis"]["left"]["label"], "메모리 (MiB)")
-        self.assertEqual(props["작업별 TPS (성공한 작업/초)"]["yAxis"]["left"]["label"], "성공한 작업/초")
+        self.assertNotIn("작업별 TPS (성공한 작업/초)", props)
         self.assertIn("GC 정지 시간과 횟수", props)
         self.assertIn("Java 힙과 힙 외 메모리", props)
         self.assertFalse(any("BackupWithin24Hours" in str(w) for w in result["widgets"]))
@@ -151,7 +215,7 @@ class DashboardTests(unittest.TestCase):
     def test_latency_uses_raw_samples_with_no_zero_defaults_and_bounded_groups(self):
         dev_filters = metric_filters("dev")
         prod_filters = metric_filters("prod")
-        self.assertEqual(len([f for f in dev_filters if f["metricTransformations"][0]["unit"] == "Milliseconds"]), 2)
+        self.assertEqual(len([f for f in dev_filters if f["metricTransformations"][0]["unit"] == "Milliseconds"]), 3)
         for filters in (dev_filters, prod_filters):
             durations = [item for item in filters if item["metricTransformations"][0]["unit"] == "Milliseconds"]
             for item in durations:
@@ -169,7 +233,8 @@ class DashboardTests(unittest.TestCase):
         self.assertIn('$.apiRoute = "*"', route_filter["filterPattern"])
         self.assertEqual(route_filter["metricTransformations"][0]["dimensions"], {
             "ApiGroup": "$.apiGroup", "ApiRoute": "$.apiRoute"})
-        self.assertNotIn("ApiResponseTimeByRouteMs", json.dumps(dev_filters))
+        self.assertEqual(dev_filters[-1]["metricTransformations"][0],
+                         {**route_filter["metricTransformations"][0], "metricNamespace": "Harudle/Dev"})
 
     def test_dev_tps_requires_committed_writes_or_successful_read_responses(self):
         filters = {item["metricTransformations"][0]["metricName"]: item for item in metric_filters("dev")}
@@ -185,14 +250,21 @@ class DashboardTests(unittest.TestCase):
                           "FeedListSucceeded", "FeedDetailSucceeded"}
                          & {item["metricTransformations"][0]["metricName"] for item in metric_filters("prod")})
 
-    def test_prod_uses_route_p95_while_dev_dashboard_contract_stays_unchanged(self):
+    def test_route_p95_is_available_in_both_environments_and_dev_adds_p99_graph(self):
         dev_widgets = service_widgets("dev", INSTANCE_ID)
-        self.assertEqual([w["properties"]["title"] for w in dev_widgets[:5]], [
+        self.assertEqual([w["properties"]["title"] for w in dev_widgets[:6]], [
             "API 응답 시간 (전체)", "API 응답 시간 (일반)", "API 응답 시간 (일기 생성)",
-            "API RPS (완료한 요청/초)", "작업별 TPS (성공한 작업/초)",
+            "API RPS (완료한 요청/초)", "API 응답 시간 P95·P99 (일반·일기 생성)", "작업별 TPS (성공한 작업/초)",
         ])
-        self.assertEqual(len(metric_filters("dev")), 6)
-        self.assertNotIn("ApiRoute", json.dumps(dev_widgets + metric_filters("dev")))
+        self.assertEqual(len(metric_filters("dev")), 7)
+        dev_routes = dev_widgets[-2:]
+        self.assertEqual([w["properties"]["title"] for w in dev_routes], [
+            "API 경로별 P95 응답 시간 (일반 상위 5개)", "API 경로별 P95 응답 시간 (일기 생성 전체)"])
+        for item in dev_routes:
+            self.assertIn("Harudle/Dev,ApiGroup,ApiRoute", json.dumps(item))
+            self.assertNotIn("Harudle/Prod", json.dumps(item))
+            self.assertEqual(item["properties"]["yAxis"]["left"]["label"], "응답 시간 (ms)")
+        self.assertTrue(dev_routes[0]["properties"]["metrics"][0][0]["expression"].endswith(", MAX, DESC, 5)"))
 
         prod_widgets = service_widgets("prod", INSTANCE_ID)
         self.assertEqual([w["properties"]["title"] for w in prod_widgets[:5]], [
@@ -213,21 +285,21 @@ class DashboardTests(unittest.TestCase):
         self.assertTrue(prod_widgets[2]["properties"]["metrics"][0][0]["expression"].startswith("SEARCH("))
         self.assertEqual(len(metric_filters("prod")), 3)
 
-    def test_prod_removes_existing_tps_widget_and_dev_keeps_it(self):
+    def test_both_environments_remove_existing_tps_widgets(self):
         tps = {"type": "metric", "properties": {"title": "작업별 TPS (성공한 작업/초)", "metrics": []}}
         prod = prepare_dashboard({"widgets": [copy.deepcopy(tps)]}, "prod", INSTANCE_ID)
         dev = prepare_dashboard({"widgets": [copy.deepcopy(tps)]}, "dev", INSTANCE_ID)
 
         self.assertNotIn("작업별 TPS (성공한 작업/초)",
                          [w["properties"].get("title") for w in prod["widgets"]])
-        self.assertIn("작업별 TPS (성공한 작업/초)",
+        self.assertNotIn("작업별 TPS (성공한 작업/초)",
                       [w["properties"].get("title") for w in dev["widgets"]])
 
     def test_gc_and_nonheap_widgets_are_dev_only_and_use_converted_counters(self):
         self.assertEqual(len(service_widgets("prod", INSTANCE_ID)), 8)
         widgets = service_widgets("dev", INSTANCE_ID)
-        self.assertEqual(len(widgets), 11)
-        gc, memory = widgets[-2:]
+        self.assertEqual(len(widgets), 14)
+        gc, memory = widgets[10:12]
         self.assertIn("jvm_gc_pause_seconds_max", json.dumps(gc))
         self.assertIn("1000*MAX(", json.dumps(gc))
         for row, name in zip(gc["properties"]["metrics"][1:], ("sum", "count")):
@@ -249,11 +321,11 @@ class DashboardTests(unittest.TestCase):
         rps = widgets[3]["properties"]["metrics"]
         self.assertEqual(rps[0][-1]["stat"], "SampleCount")
         self.assertEqual(rps[1][0]["expression"], "requests/PERIOD(requests)")
-        for row in widgets[4]["properties"]["metrics"][1::2]:
+        for row in widgets[5]["properties"]["metrics"][1::2]:
             self.assertIn("/PERIOD(", row[0]["expression"])
-        self.assertIn("IF(acquires>0,1000*seconds/acquires)", json.dumps(widgets[5]))
-        self.assertIn('area="heap"', widgets[7]["properties"]["metrics"][0][0]["expression"])
-        rss = widgets[8]["properties"]["metrics"][0][0]["expression"]
+        self.assertIn("IF(acquires>0,1000*seconds/acquires)", json.dumps(widgets[6]))
+        self.assertIn('area="heap"', widgets[8]["properties"]["metrics"][0][0]["expression"])
+        rss = widgets[9]["properties"]["metrics"][0][0]["expression"]
         self.assertIn('Namespace="CWAgent"', rss)
         self.assertIn('Namespace="Harudle/Prod"', service_widgets("prod", INSTANCE_ID)[7]["properties"]["metrics"][0][0]["expression"])
         self.assertIn(f'InstanceId="{INSTANCE_ID}"', rss)
@@ -296,7 +368,7 @@ class DashboardTests(unittest.TestCase):
             previous["DashboardArn"] = previous["DashboardArn"].replace("prod", "dev")
             before.write_text(json.dumps(previous))
             result = subprocess.run(command, capture_output=True, text=True, check=True)
-            self.assertEqual(len(list(output.glob("*.json"))), 7)
+            self.assertEqual(len(list(output.glob("*.json"))), 8)
             self.assertEqual(json.loads(before.read_text()), previous)
             self.assertIn("GC 정지 시간과 횟수", (output / "dashboard.json").read_text())
 
@@ -350,6 +422,10 @@ class DashboardTests(unittest.TestCase):
             result=arrange_dashboard(original,env)
             if env == 'dev':
                 for before in original['widgets']:
+                    if before['properties'].get('title') in {
+                            'API 응답 시간 (전체)', 'API 응답 시간 (일반)', 'API 응답 시간 (일기 생성)',
+                            '작업별 TPS (성공한 작업/초)'}:
+                        continue
                     self.assertIn(before['properties'],[w['properties'] for w in result['widgets']])
             else:
                 self.assertIn('API 경로별 P95 응답 시간 (일반 상위 5개)',

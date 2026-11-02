@@ -49,16 +49,32 @@ def widget(title, metrics):
     }}
 
 
-def route_search(group, statistic, limit=None):
-    search = (f'SEARCH(\'{{Harudle/Prod,ApiGroup,ApiRoute}} MetricName="ApiResponseTimeByRouteMs" '
+DEV_REMOVED_TITLES = {
+    "API 응답 시간 (전체)", "API 응답 시간 (일반)", "API 응답 시간 (일기 생성)", "작업별 TPS (성공한 작업/초)",
+    "평균 시간의 실행 표본 수", "평균 시간의 실행 표본 수 (5분)", "Gemini 관측 토큰 total", "Gemini 관측 토큰 total (5분)",
+    "CodeBuild Gradle cache logs",
+}
+GENERATION_NOTICE = (
+    "### 생성 시간과 관련 실패\n"
+    "생성 시간은 구간별 평균이며, 실행이 없는 구간은 표시하지 않습니다. 그래프 간격은 선택한 시간 범위에 따라 달라집니다.\n"
+    "returned는 예외 없이 반환된 실행, threw는 예외가 발생한 실행입니다. DB 최종 성공 여부는 위의 '일기 생성' 지표에서 확인합니다.\n\n"
+    "정리 실패 3종과 Gemini 요청 실패는 경보가 설정되어 있습니다. 이미지 대체 실패 경보는 R2 활성화 여부와 로그 확인 후 설정합니다. "
+    "경보가 OK여도 이전 실패가 해결되었다는 뜻은 아닙니다.")
+
+
+def route_search(environment, group, statistic, limit=None):
+    search = (f'SEARCH(\'{{{NAMESPACES[environment]},ApiGroup,ApiRoute}} MetricName="ApiResponseTimeByRouteMs" '
               f'ApiGroup="{group}"\', \'{statistic}\', 60)')
     return search if limit is None else f"SORT({search}, MAX, DESC, {limit})"
 
 
-def route_widget(group, label, statistic="p95", limit=None):
-    return widget(f"API 경로별 P95 응답 시간 ({label})", [
-        expression(route_search(group, statistic, limit), "${PROP('Dim.ApiRoute')}")
+def route_widget(environment, group, label, statistic="p95", limit=None):
+    item = widget(f"API 경로별 P95 응답 시간 ({label})", [
+        expression(route_search(environment, group, statistic, limit), "${PROP('Dim.ApiRoute')}")
     ])
+    if environment == "dev":
+        item["properties"]["yAxis"] = {"left": {"label": "응답 시간 (ms)", "showUnits": False, "min": 0}}
+    return item
 
 
 def service_widgets(environment, instance_id):
@@ -69,8 +85,8 @@ def service_widgets(environment, instance_id):
             metric(namespace, "ApiResponseTimeMs", ("ApiGroup", "general"),
                    stat="p95", label="P95 (ms)"),
         ]))
-        widgets.extend((route_widget("general", "일반 상위 5개", limit=5),
-                        route_widget("generation", "일기 생성 전체")))
+        widgets.extend((route_widget(environment, "general", "일반 상위 5개", limit=5),
+                        route_widget(environment, "generation", "일기 생성 전체")))
     else:
         for group, label in ((None, "전체"), ("general", "일반"), ("generation", "일기 생성")):
             dimensions = () if group is None else ("ApiGroup", group)
@@ -86,6 +102,12 @@ def service_widgets(environment, instance_id):
     rps_widget["properties"]["yAxis"] = copy.deepcopy(RPS_Y_AXIS)
     widgets.append(rps_widget)
     if environment == "dev":
+        widgets.append(widget("API 응답 시간 P95·P99 (일반·일기 생성)", [
+            metric(namespace, "ApiResponseTimeMs", ("ApiGroup", group), stat=stat, label=f"{label} {name} (ms)")
+            for group, label in (("general", "일반"), ("generation", "일기 생성"))
+            for stat, name in (("p95", "P95"), ("p99", "P99"))
+        ]))
+        widgets[-1]["properties"]["yAxis"] = {"left": {"label": "응답 시간 (ms)", "showUnits": False, "min": 0}}
         operations = (
             ("DiaryGenerationSucceeded", "일기 생성"), ("FeedPublicationSucceeded", "피드 게시"),
             ("FeedListSucceeded", "피드 목록 조회"), ("FeedDetailSucceeded", "피드 상세 조회"),
@@ -153,6 +175,8 @@ def service_widgets(environment, instance_id):
                 memory.append(expression(f"SUM({search})/1048576", f"{label} {description} (MiB)"))
         widgets.append(widget("Java 힙과 힙 외 메모리", memory))
         widgets[-1]["properties"]["yAxis"] = copy.deepcopy(MEMORY_MIB_Y_AXIS)
+        widgets.extend((route_widget(environment, "general", "일반 상위 5개", limit=5),
+                        route_widget(environment, "generation", "일기 생성 전체")))
     return widgets
 
 
@@ -187,14 +211,13 @@ def metric_filters(environment):
             request("FeedListSucceeded", '{ ' + completed + ' && $.operation = "feed_list" && $.httpStatus = 200 }'),
             request("FeedDetailSucceeded", '{ ' + completed + ' && $.operation = "feed_detail" && $.httpStatus = 200 }'),
         ])
-    if environment == "prod":
-        filters.append(request(
-            "ApiResponseTimeByRouteMs",
-            '{ ' + completed + ' && $.durationMs >= 0 && $.apiRoute = "*" '
-            '&& ($.apiGroup = "general" || $.apiGroup = "generation") }',
-            "$.durationMs", "Milliseconds",
-            {"ApiGroup": "$.apiGroup", "ApiRoute": "$.apiRoute"},
-        ))
+    filters.append(request(
+        "ApiResponseTimeByRouteMs",
+        '{ ' + completed + ' && $.durationMs >= 0 && $.apiRoute = "*" '
+        '&& ($.apiGroup = "general" || $.apiGroup = "generation") }',
+        "$.durationMs", "Milliseconds",
+        {"ApiGroup": "$.apiGroup", "ApiRoute": "$.apiRoute"},
+    ))
     return filters
 
 
@@ -205,6 +228,20 @@ def has_prod_layout(dashboard):
              "DB 데이터 여유 공간 (GiB)", "DB 백업 상태 (1 정상, 0 주의)"}.issubset(titles)
             and not titles.isdisjoint({"생성 실패", "생성 실패 (선택 기간)"})
             and all(all(key in w for key in ("x", "y", "width", "height")) for w in dashboard["widgets"]))
+
+
+def has_dev_layout(dashboard):
+    """Keep the completed Dev console layout, including cards added outside this script."""
+    titles = {w.get("properties", {}).get("title") for w in dashboard["widgets"]}
+    return ({"백엔드 5xx 비율 (선택 기간)", "일반 API P95 (ms)", "생성 실패 (선택 기간)", "최근 DB 연결 대기 최댓값",
+             "DB 데이터 여유 공간 (GiB)", "GC 최근 최대 정지 (ms)",
+             "API 응답 시간 P95·P99 (일반·일기 생성)"}.issubset(titles)
+            and titles.isdisjoint(DEV_REMOVED_TITLES)
+            and all(all(key in w for key in ("x", "y", "width", "height")) for w in dashboard["widgets"]))
+
+
+def has_completed_layout(dashboard, environment):
+    return has_prod_layout(dashboard) if environment == "prod" else has_dev_layout(dashboard)
 
 
 def prepare_dashboard(original, environment, instance_id):
@@ -248,21 +285,11 @@ def prepare_dashboard(original, environment, instance_id):
                 properties["yAxis"] = {"left": {"label": "성공한 작업/초", "showUnits": False}}
             elif title in ("Java 힙 외 메모리", "Java 힙과 힙 외 메모리"):
                 properties["yAxis"] = copy.deepcopy(MEMORY_MIB_Y_AXIS)
-            elif title in ("생성 실행 평균 시간 (5분·초)", "평균 시간의 실행 표본 수 (5분)", "Gemini 관측 토큰 total (5분)"):
-                properties.update(title={
-                    "생성 실행 평균 시간 (5분·초)": "생성 실행 평균 시간 (초)",
-                    "평균 시간의 실행 표본 수 (5분)": "평균 시간의 실행 표본 수",
-                    "Gemini 관측 토큰 total (5분)": "Gemini 관측 토큰 total",
-                }[title], period=60)
+            elif title == "생성 실행 평균 시간 (5분·초)":
+                properties.update(title="생성 실행 평균 시간 (초)", period=60)
             elif properties.get("markdown", "").startswith("### 지표와 알림 안내"):
-                properties["markdown"] = (
-                    "### 지표와 알림 안내\n\n"
-                    "생성 시간은 표시 구간의 실행 시간 합을 실행 수로 나눈 평균입니다. 간격은 선택한 시간 범위에 따라 조정됩니다. "
-                    "표본이 없으면 비워 둡니다. returned는 예외 없이 반환된 실행, threw는 예외가 발생한 실행입니다. "
-                    "DB 최종 결과는 위의 일기 생성 지표에서 확인합니다. 토큰 total은 공급자 응답값이며 사용자 차감량이나 청구 비용이 아닙니다.\n\n"
-                    "정리 실패 3종과 Gemini 요청 실패 경보는 유지합니다. 이미지 대체 실패 경보는 R2 활성화와 실제 로그 확인 후 설정합니다. "
-                    "경보가 OK여도 이전 실패가 해결되었다는 뜻은 아닙니다.")
-    additions = [] if environment == "prod" and has_prod_layout(dashboard) else [
+                properties["markdown"] = GENERATION_NOTICE
+    additions = [] if has_completed_layout(dashboard, environment) else [
                  item for item in service_widgets(environment, instance_id)
                  if item["properties"]["title"] not in titles
                  and not (item["properties"]["title"] == "Java 힙과 힙 외 메모리" and "Java 힙 외 메모리" in titles)]
@@ -290,7 +317,7 @@ def backup_status_widget():
 def arrange_dashboard(original, environment):
     """Reorder existing observations; never infer DB health from EC2 health."""
     dashboard = copy.deepcopy(original)
-    if environment == "prod" and has_prod_layout(dashboard):
+    if has_completed_layout(dashboard, environment):
         return dashboard
     for item in dashboard['widgets']:
         props = item.get('properties', {})
@@ -322,6 +349,11 @@ def arrange_dashboard(original, environment):
             'API 응답 시간 (전체)', 'API 응답 시간 (일반)', 'API 응답 시간 (일기 생성)',
             '작업별 TPS (성공한 작업/초)'}]
     by_title = {w['properties'].get('title'): w for w in widgets if w['type'] == 'metric'}
+    if environment == 'dev' and 'API 응답 시간 (일반)' not in by_title:
+        p95_card = next((w for w in dashboard['widgets']
+                         if w.get('properties', {}).get('title') == '일반 API P95 (ms)'), None)
+        if p95_card:
+            by_title['API 응답 시간 (일반)'] = p95_card
     if '백엔드 HTTP: 5xx 비율' not in by_title:
         rate_card = next((w for w in dashboard['widgets']
                           if w.get('properties', {}).get('title') in (
@@ -345,6 +377,8 @@ def arrange_dashboard(original, environment):
                         label='선택 기간 전체 비율 (%)')
         elif select == 'p95':
             props['metrics'] = [r for r in props['metrics'] if r[-1].get('stat') == 'p95']
+            if environment == 'dev':
+                props.pop('yAxis', None)
         elif select == 'failed':
             props['metrics'][0][-1]['visible'] = False
             failed = next(row[0] for row in props['metrics']
@@ -361,7 +395,8 @@ def arrange_dashboard(original, environment):
         item.update(x=len(summary) * 4, y=0, width=4, height=4)
         summary.append(item)
     widgets = [w for w in widgets if w['properties'].get('title') != '백엔드 HTTP: 5xx 비율']
-    notice = '### 백업 감시: 미수집\n최근 백업 성공 시각, 백업 실패와 누락, WAL 전송 상태는 아직 자동 확인하지 않습니다. 서버 상태 검사와 앱 연결 풀은 PostgreSQL 직접 접속 확인이 아닙니다.'
+    if environment == 'dev':
+        widgets = [w for w in widgets if w['properties'].get('title') not in DEV_REMOVED_TITLES]
     if environment == 'prod':
         notice = ('### 백업 확인\n매일 한국 시간 오전 5시에 한 번 확인합니다. 확인 시점의 최근 24시간 안에 성공한 백업이 있으면 1(정상), '
                   '없거나 정보를 읽지 못하면 0(주의)입니다. 표본이 없으면 확인되지 않은 상태입니다. '
@@ -371,10 +406,10 @@ def arrange_dashboard(original, environment):
         item = copy.deepcopy(by_title['GC 정지 시간과 횟수'])
         item['properties'].update(title='GC 최근 최대 정지 (ms)', view='singleValue', sparkline=True)
         item['properties']['metrics'] = item['properties']['metrics'][:1]
-        item.update(x=20, y=0, width=4, height=4)
         summary.append(item)
-    else:
-        summary.append({'type': 'text', 'x': 20, 'y': 0, 'width': 4, 'height': 4, 'properties': {'markdown': notice}})
+    if environment == 'dev':
+        for index, item in enumerate(summary):
+            item.update(x=index % 3 * 8, y=index // 3 * 5, width=8, height=5)
     groups = {name: [] for name in ('errors', 'api', 'generation', 'db', 'java', 'app', 'dbhost', 'logs', 'other')}
     for item in widgets:
         props = item['properties']
@@ -415,16 +450,18 @@ def arrange_dashboard(original, environment):
         order += [('java', 'Prod 원인 확인: Java 메모리')]
     order += [('other', '추가 진단'), ('logs', '상세 로그')]
     result = summary
-    y = 4
+    y = 10 if environment == 'dev' else 4
     for name, label in order:
         items = groups[name]
+        if environment == 'dev' and name == 'api':
+            items.sort(key=lambda item: not item['properties'].get('title', '').startswith('API 경로별 P95'))
         if name == 'logs':
             items.sort(key=lambda item: item['properties'].get('title') != 'Gemini & S3 Failures')
         if not items:
             continue
         result.append({'type': 'text', 'x': 0, 'y': y, 'width': 24, 'height': 1, 'properties': {'markdown': f'## {label}'}})
         y += 1
-        if name == 'db':
+        if name == 'db' and environment == 'prod':
             result.append({'type': 'text', 'x': 0, 'y': y, 'width': 24, 'height': 3, 'properties': {'markdown': notice}})
             y += 3
         x = 0

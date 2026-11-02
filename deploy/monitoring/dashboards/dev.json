@@ -1,0 +1,2221 @@
+{
+  "start": "-PT6H",
+  "periodOverride": "auto",
+  "widgets": [
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 0,
+      "width": 8,
+      "height": 5,
+      "properties": {
+        "title": "백엔드 5xx 비율 (선택 기간)",
+        "metrics": [
+          [
+            "Harudle/Dev",
+            "http_server_requests_seconds_count",
+            "job",
+            "harudle-backend",
+            {
+              "id": "t",
+              "visible": false
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "http_server_requests_seconds_count",
+            "job",
+            "harudle-backend",
+            "outcome",
+            "SERVER_ERROR",
+            {
+              "id": "e",
+              "visible": false
+            }
+          ],
+          [
+            {
+              "expression": "TIME_SERIES(100*SUM(e)/SUM(t))",
+              "id": "r",
+              "label": "선택 기간 전체 비율 (%)"
+            }
+          ]
+        ],
+        "region": "ap-northeast-2",
+        "period": 300,
+        "stat": "Sum",
+        "view": "singleValue",
+        "stacked": false,
+        "yAxis": {
+          "left": {
+            "min": 0
+          }
+        },
+        "sparkline": true,
+        "setPeriodToTimeRange": false
+      }
+    },
+    {
+      "type": "metric",
+      "x": 8,
+      "y": 0,
+      "width": 8,
+      "height": 5,
+      "properties": {
+        "title": "일반 API P95 (ms)",
+        "view": "singleValue",
+        "region": "ap-northeast-2",
+        "period": 60,
+        "stat": "Average",
+        "metrics": [
+          [
+            "Harudle/Dev",
+            "ApiResponseTimeMs",
+            "ApiGroup",
+            "general",
+            {
+              "stat": "p95",
+              "label": "P95 (ms)"
+            }
+          ]
+        ],
+        "sparkline": true,
+        "setPeriodToTimeRange": false
+      }
+    },
+    {
+      "type": "metric",
+      "x": 16,
+      "y": 0,
+      "width": 8,
+      "height": 5,
+      "properties": {
+        "title": "생성 실패 (선택 기간)",
+        "metrics": [
+          [
+            "Harudle/Dev",
+            "harudle_generation_finalizations_total",
+            "job",
+            "harudle-backend",
+            "status",
+            "SUCCEEDED",
+            "errorCode",
+            "none",
+            {
+              "id": "s",
+              "label": "생성 성공 확정",
+              "visible": false
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "harudle_generation_finalizations_total",
+            "job",
+            "harudle-backend",
+            "status",
+            "FAILED",
+            "errorCode",
+            "AI_PROVIDER_ERROR",
+            {
+              "id": "f0",
+              "visible": false
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "harudle_generation_finalizations_total",
+            "job",
+            "harudle-backend",
+            "status",
+            "FAILED",
+            "errorCode",
+            "AI_PROVIDER_RATE_LIMITED",
+            {
+              "id": "f1",
+              "visible": false
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "harudle_generation_finalizations_total",
+            "job",
+            "harudle-backend",
+            "status",
+            "FAILED",
+            "errorCode",
+            "AI_PROVIDER_TIMEOUT",
+            {
+              "id": "f2",
+              "visible": false
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "harudle_generation_finalizations_total",
+            "job",
+            "harudle-backend",
+            "status",
+            "FAILED",
+            "errorCode",
+            "AI_OUTPUT_TRUNCATED",
+            {
+              "id": "f3",
+              "visible": false
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "harudle_generation_finalizations_total",
+            "job",
+            "harudle-backend",
+            "status",
+            "FAILED",
+            "errorCode",
+            "AI_RESPONSE_PROCESSING_ERROR",
+            {
+              "id": "f4",
+              "visible": false
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "harudle_generation_finalizations_total",
+            "job",
+            "harudle-backend",
+            "status",
+            "FAILED",
+            "errorCode",
+            "GENERATION_INTERNAL_ERROR",
+            {
+              "id": "f5",
+              "visible": false
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "harudle_generation_finalizations_total",
+            "job",
+            "harudle-backend",
+            "status",
+            "FAILED",
+            "errorCode",
+            "GENERATION_INTERRUPTED",
+            {
+              "id": "f6",
+              "visible": false
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "harudle_generation_finalizations_total",
+            "job",
+            "harudle-backend",
+            "status",
+            "FAILED",
+            "errorCode",
+            "IMAGE_STORAGE_ERROR",
+            {
+              "id": "f7",
+              "visible": false
+            }
+          ],
+          [
+            {
+              "expression": "TIME_SERIES(SUM(f0)+SUM(f1)+SUM(f2)+SUM(f3)+SUM(f4)+SUM(f5)+SUM(f6)+SUM(f7))",
+              "id": "failed",
+              "label": "선택 기간 생성 실패 건수"
+            }
+          ]
+        ],
+        "region": "ap-northeast-2",
+        "period": 300,
+        "stat": "Sum",
+        "view": "singleValue",
+        "stacked": false,
+        "yAxis": {
+          "left": {
+            "min": 0
+          }
+        },
+        "sparkline": true,
+        "setPeriodToTimeRange": false
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 5,
+      "width": 8,
+      "height": 5,
+      "properties": {
+        "title": "최근 DB 연결 대기 최댓값",
+        "view": "singleValue",
+        "region": "ap-northeast-2",
+        "period": 60,
+        "stat": "Average",
+        "metrics": [
+          [
+            "Harudle/Dev",
+            "hikaricp_connections_pending",
+            "job",
+            "harudle-backend",
+            "pool",
+            "HikariPool-1",
+            {
+              "stat": "Maximum",
+              "label": "기다리는 요청 수"
+            }
+          ]
+        ],
+        "sparkline": true,
+        "setPeriodToTimeRange": false
+      }
+    },
+    {
+      "type": "metric",
+      "x": 8,
+      "y": 5,
+      "width": 8,
+      "height": 5,
+      "properties": {
+        "metrics": [
+          [
+            {
+              "expression": "MAX(SEARCH('{CWAgent,InstanceId,path,fstype} MetricName=\"disk_free\" InstanceId=\"i-04fca55979b3240d6\" path=\"/srv/harudle/db-data\"', 'Minimum', 60))/1073741824",
+              "id": "free0",
+              "label": "DB data free (GiB)"
+            }
+          ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "period": 60,
+        "stat": "Average",
+        "region": "ap-northeast-2",
+        "title": "DB 데이터 여유 공간 (GiB)",
+        "yAxis": {
+          "left": {
+            "min": 0,
+            "label": "GiB",
+            "showUnits": false
+          }
+        },
+        "sparkline": true,
+        "setPeriodToTimeRange": false
+      }
+    },
+    {
+      "type": "metric",
+      "x": 16,
+      "y": 5,
+      "width": 8,
+      "height": 5,
+      "properties": {
+        "title": "GC 최근 최대 정지 (ms)",
+        "view": "singleValue",
+        "region": "ap-northeast-2",
+        "period": 60,
+        "stat": "Average",
+        "metrics": [
+          [
+            {
+              "expression": "1000*MAX(SEARCH('{\"Harudle/Dev\",job,gc,action,cause} MetricName=\"jvm_gc_pause_seconds_max\" job=\"harudle-backend\"', 'Maximum', 60))",
+              "label": "최근 최대 정지 (ms)",
+              "id": "e0"
+            }
+          ]
+        ],
+        "yAxis": {
+          "left": {
+            "label": "정지 시간 (ms)",
+            "showUnits": false
+          },
+          "right": {
+            "label": "GC 횟수",
+            "showUnits": false
+          }
+        },
+        "sparkline": true
+      }
+    },
+    {
+      "type": "text",
+      "x": 0,
+      "y": 10,
+      "width": 24,
+      "height": 1,
+      "properties": {
+        "markdown": "## 서비스 오류와 알림"
+      }
+    },
+    {
+      "type": "alarm",
+      "x": 0,
+      "y": 11,
+      "width": 24,
+      "height": 5,
+      "properties": {
+        "title": "dev 백엔드 경보 19개",
+        "alarms": [
+          "arn:aws:cloudwatch:ap-northeast-2:843255971531:alarm:harudle-dev-api-5xx",
+          "arn:aws:cloudwatch:ap-northeast-2:843255971531:alarm:harudle-dev-api-error-rate",
+          "arn:aws:cloudwatch:ap-northeast-2:843255971531:alarm:harudle-dev-ec2-cpu-high",
+          "arn:aws:cloudwatch:ap-northeast-2:843255971531:alarm:harudle-dev-ec2-disk-high",
+          "arn:aws:cloudwatch:ap-northeast-2:843255971531:alarm:harudle-dev-ec2-memory-high",
+          "arn:aws:cloudwatch:ap-northeast-2:843255971531:alarm:harudle-dev-ec2-status-check",
+          "arn:aws:cloudwatch:ap-northeast-2:843255971531:alarm:harudle-dev-gemini-image-response",
+          "arn:aws:cloudwatch:ap-northeast-2:843255971531:alarm:harudle-dev-gemini-image-transient",
+          "arn:aws:cloudwatch:ap-northeast-2:843255971531:alarm:harudle-dev-gemini-storyboard-response",
+          "arn:aws:cloudwatch:ap-northeast-2:843255971531:alarm:harudle-dev-gemini-storyboard-transient",
+          "arn:aws:cloudwatch:ap-northeast-2:843255971531:alarm:harudle-dev-generation-interrupted",
+          "arn:aws:cloudwatch:ap-northeast-2:843255971531:alarm:harudle-dev-generation-unexpected-failure",
+          "arn:aws:cloudwatch:ap-northeast-2:843255971531:alarm:harudle-dev-s3-authentication",
+          "arn:aws:cloudwatch:ap-northeast-2:843255971531:alarm:harudle-dev-s3-authorization",
+          "arn:aws:cloudwatch:ap-northeast-2:843255971531:alarm:harudle-dev-s3-configuration",
+          "arn:aws:cloudwatch:ap-northeast-2:843255971531:alarm:harudle-dev-s3-put-failure",
+          "arn:aws:cloudwatch:ap-northeast-2:843255971531:alarm:harudle-dev-s3-reference-get-failure",
+          "arn:aws:cloudwatch:ap-northeast-2:843255971531:alarm:harudle-dev-s3-url-sign-failure",
+          "arn:aws:cloudwatch:ap-northeast-2:843255971531:alarm:harudle-dev-telemetry-stale"
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 16,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "일기 생성: DB 최종 확정 수",
+        "metrics": [
+          [
+            "Harudle/Dev",
+            "harudle_generation_finalizations_total",
+            "job",
+            "harudle-backend",
+            "status",
+            "SUCCEEDED",
+            "errorCode",
+            "none",
+            {
+              "id": "s",
+              "label": "생성 성공 확정"
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "harudle_generation_finalizations_total",
+            "job",
+            "harudle-backend",
+            "status",
+            "FAILED",
+            "errorCode",
+            "AI_PROVIDER_ERROR",
+            {
+              "id": "f0",
+              "visible": false
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "harudle_generation_finalizations_total",
+            "job",
+            "harudle-backend",
+            "status",
+            "FAILED",
+            "errorCode",
+            "AI_PROVIDER_RATE_LIMITED",
+            {
+              "id": "f1",
+              "visible": false
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "harudle_generation_finalizations_total",
+            "job",
+            "harudle-backend",
+            "status",
+            "FAILED",
+            "errorCode",
+            "AI_PROVIDER_TIMEOUT",
+            {
+              "id": "f2",
+              "visible": false
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "harudle_generation_finalizations_total",
+            "job",
+            "harudle-backend",
+            "status",
+            "FAILED",
+            "errorCode",
+            "AI_OUTPUT_TRUNCATED",
+            {
+              "id": "f3",
+              "visible": false
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "harudle_generation_finalizations_total",
+            "job",
+            "harudle-backend",
+            "status",
+            "FAILED",
+            "errorCode",
+            "AI_RESPONSE_PROCESSING_ERROR",
+            {
+              "id": "f4",
+              "visible": false
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "harudle_generation_finalizations_total",
+            "job",
+            "harudle-backend",
+            "status",
+            "FAILED",
+            "errorCode",
+            "GENERATION_INTERNAL_ERROR",
+            {
+              "id": "f5",
+              "visible": false
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "harudle_generation_finalizations_total",
+            "job",
+            "harudle-backend",
+            "status",
+            "FAILED",
+            "errorCode",
+            "GENERATION_INTERRUPTED",
+            {
+              "id": "f6",
+              "visible": false
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "harudle_generation_finalizations_total",
+            "job",
+            "harudle-backend",
+            "status",
+            "FAILED",
+            "errorCode",
+            "IMAGE_STORAGE_ERROR",
+            {
+              "id": "f7",
+              "visible": false
+            }
+          ],
+          [
+            {
+              "expression": "SUM([f0,f1,f2,f3,f4,f5,f6,f7])",
+              "id": "failed",
+              "label": "생성 실패 확정"
+            }
+          ]
+        ],
+        "region": "ap-northeast-2",
+        "period": 300,
+        "stat": "Sum",
+        "view": "timeSeries",
+        "stacked": false,
+        "yAxis": {
+          "left": {
+            "min": 0
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 16,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [
+            "Harudle/Dev",
+            "http_server_requests_seconds_count",
+            "job",
+            "harudle-backend",
+            {
+              "label": "전체 응답 수",
+              "region": "ap-northeast-2"
+            }
+          ],
+          [
+            ".",
+            ".",
+            ".",
+            ".",
+            "outcome",
+            "SERVER_ERROR",
+            {
+              "label": "5xx 오류 응답 수",
+              "region": "ap-northeast-2"
+            }
+          ]
+        ],
+        "title": "백엔드 HTTP 응답 수",
+        "region": "ap-northeast-2",
+        "period": 300,
+        "stat": "Sum",
+        "view": "timeSeries",
+        "stacked": false,
+        "yAxis": {
+          "left": {
+            "min": 0
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 22,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "Gemini: 단계별 오류 수",
+        "metrics": [
+          [
+            "Harudle/Dev",
+            "GeminiStoryboardTransientFailureLogs",
+            {
+              "label": "스토리보드 일시 오류"
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "GeminiStoryboardResponseFailureLogs",
+            {
+              "label": "스토리보드 응답 처리 오류"
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "GeminiImageTransientFailureLogs",
+            {
+              "label": "이미지 일시 오류"
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "GeminiImageResponseFailureLogs",
+            {
+              "label": "이미지 응답 처리 오류"
+            }
+          ]
+        ],
+        "region": "ap-northeast-2",
+        "period": 300,
+        "stat": "Sum",
+        "view": "timeSeries",
+        "stacked": false,
+        "yAxis": {
+          "left": {
+            "min": 0
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 22,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "S3: 작업별 오류 수",
+        "metrics": [
+          [
+            "Harudle/Dev",
+            "S3PutFailureLogs",
+            {
+              "label": "이미지 저장 실패"
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "S3ReferenceGetFailureLogs",
+            {
+              "label": "참조 이미지 조회 실패"
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "S3UrlSignFailureLogs",
+            {
+              "label": "이미지 URL 발급 실패"
+            }
+          ]
+        ],
+        "region": "ap-northeast-2",
+        "period": 300,
+        "stat": "Sum",
+        "view": "timeSeries",
+        "stacked": false,
+        "yAxis": {
+          "left": {
+            "min": 0
+          }
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 0,
+      "y": 28,
+      "width": 24,
+      "height": 1,
+      "properties": {
+        "markdown": "## API 속도와 요청 수"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 29,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "API 경로별 P95 응답 시간 (일반 상위 5개)",
+        "view": "timeSeries",
+        "region": "ap-northeast-2",
+        "period": 60,
+        "stat": "Average",
+        "metrics": [
+          [
+            {
+              "expression": "SORT(SEARCH('{Harudle/Dev,ApiGroup,ApiRoute} MetricName=\"ApiResponseTimeByRouteMs\" ApiGroup=\"general\"', 'p95', 60), MAX, DESC, 5)",
+              "label": "${PROP('Dim.ApiRoute')}",
+              "id": "e0"
+            }
+          ]
+        ],
+        "yAxis": {
+          "left": {
+            "label": "응답 시간 (ms)",
+            "showUnits": false,
+            "min": 0
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 29,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "API 경로별 P95 응답 시간 (일기 생성 전체)",
+        "view": "timeSeries",
+        "region": "ap-northeast-2",
+        "period": 60,
+        "stat": "Average",
+        "metrics": [
+          [
+            {
+              "expression": "SEARCH('{Harudle/Dev,ApiGroup,ApiRoute} MetricName=\"ApiResponseTimeByRouteMs\" ApiGroup=\"generation\"', 'p95', 60)",
+              "label": "${PROP('Dim.ApiRoute')}",
+              "id": "e0"
+            }
+          ]
+        ],
+        "yAxis": {
+          "left": {
+            "label": "응답 시간 (ms)",
+            "showUnits": false,
+            "min": 0
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 35,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "API RPS (완료한 요청/초)",
+        "view": "timeSeries",
+        "region": "ap-northeast-2",
+        "period": 60,
+        "stat": "Average",
+        "metrics": [
+          [
+            "Harudle/Dev",
+            "ApiResponseTimeMs",
+            {
+              "stat": "SampleCount",
+              "id": "requests",
+              "visible": false
+            }
+          ],
+          [
+            {
+              "expression": "requests/PERIOD(requests)",
+              "label": "RPS",
+              "id": "e1"
+            }
+          ]
+        ],
+        "yAxis": {
+          "left": {
+            "label": "요청/초",
+            "showUnits": false
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 35,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "API 응답 시간 P95·P99 (일반·일기 생성)",
+        "view": "timeSeries",
+        "region": "ap-northeast-2",
+        "period": 60,
+        "stat": "Average",
+        "metrics": [
+          [
+            "Harudle/Dev",
+            "ApiResponseTimeMs",
+            "ApiGroup",
+            "general",
+            {
+              "stat": "p95",
+              "label": "일반 P95 (ms)"
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "ApiResponseTimeMs",
+            "ApiGroup",
+            "general",
+            {
+              "stat": "p99",
+              "label": "일반 P99 (ms)"
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "ApiResponseTimeMs",
+            "ApiGroup",
+            "generation",
+            {
+              "stat": "p95",
+              "label": "일기 생성 P95 (ms)"
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "ApiResponseTimeMs",
+            "ApiGroup",
+            "generation",
+            {
+              "stat": "p99",
+              "label": "일기 생성 P99 (ms)"
+            }
+          ]
+        ],
+        "yAxis": {
+          "left": {
+            "label": "응답 시간 (ms)",
+            "showUnits": false,
+            "min": 0
+          }
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 0,
+      "y": 41,
+      "width": 24,
+      "height": 1,
+      "properties": {
+        "markdown": "## 일기 생성과 외부 API"
+      }
+    },
+    {
+      "type": "text",
+      "x": 0,
+      "y": 42,
+      "width": 24,
+      "height": 3,
+      "properties": {
+        "markdown": "### 생성 시간과 관련 실패\n생성 시간은 구간별 평균이며, 실행이 없는 구간은 표시하지 않습니다. 그래프 간격은 선택한 시간 범위에 따라 달라집니다.\nreturned는 예외 없이 반환된 실행, threw는 예외가 발생한 실행입니다. DB 최종 성공 여부는 위의 '일기 생성' 지표에서 확인합니다.\n\n정리 실패 3종과 Gemini 요청 실패는 경보가 설정되어 있습니다. 이미지 대체 실패 경보는 R2 활성화 여부와 로그 확인 후 설정합니다. 경보가 OK여도 이전 실패가 해결되었다는 뜻은 아닙니다."
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 45,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "region": "ap-northeast-2",
+        "view": "timeSeries",
+        "title": "생성 실행 평균 시간 (초)",
+        "period": 60,
+        "stat": "Sum",
+        "metrics": [
+          [
+            "Harudle/Dev",
+            "harudle_generation_duration_seconds_sum",
+            "job",
+            "harudle-backend",
+            "result",
+            "returned",
+            {
+              "id": "s1",
+              "visible": false
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "harudle_generation_duration_seconds_count",
+            "job",
+            "harudle-backend",
+            "result",
+            "returned",
+            {
+              "id": "c1",
+              "visible": false
+            }
+          ],
+          [
+            {
+              "expression": "IF(c1>0,s1/c1)",
+              "id": "a1",
+              "label": "returned 평균"
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "harudle_generation_duration_seconds_sum",
+            "job",
+            "harudle-backend",
+            "result",
+            "threw",
+            {
+              "id": "s2",
+              "visible": false
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "harudle_generation_duration_seconds_count",
+            "job",
+            "harudle-backend",
+            "result",
+            "threw",
+            {
+              "id": "c2",
+              "visible": false
+            }
+          ],
+          [
+            {
+              "expression": "IF(c2>0,s2/c2)",
+              "id": "a2",
+              "label": "threw 평균"
+            }
+          ]
+        ],
+        "legend": {
+          "position": "bottom"
+        },
+        "yAxis": {
+          "left": {
+            "label": "초",
+            "showUnits": false
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 45,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "region": "ap-northeast-2",
+        "view": "timeSeries",
+        "title": "정리·Gemini 요청 실패 (알림 활성)",
+        "period": 300,
+        "stat": "Sum",
+        "metrics": [
+          [
+            "Harudle/Dev",
+            "S3DeleteFailureLogs",
+            {
+              "label": "S3 삭제 처리 실패"
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "ImageCleanupDeferredLogs",
+            {
+              "label": "안전 확인 실패·정리 보류"
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "GenerationCleanupFailureLogs",
+            {
+              "label": "만료 작업 정리 실패"
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "GeminiRequestFailureLogs",
+            {
+              "label": "Gemini 인증·요청 실패"
+            }
+          ]
+        ],
+        "legend": {
+          "position": "bottom"
+        },
+        "yAxis": {
+          "left": {
+            "label": "로그 건수",
+            "showUnits": false
+          }
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 0,
+      "y": 51,
+      "width": 24,
+      "height": 1,
+      "properties": {
+        "markdown": "## DB 연결과 데이터 저장 공간"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 52,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "DB 연결 획득 시간",
+        "view": "timeSeries",
+        "region": "ap-northeast-2",
+        "period": 60,
+        "stat": "Average",
+        "metrics": [
+          [
+            "Harudle/Dev",
+            "hikaricp_connections_acquire_seconds_sum",
+            "job",
+            "harudle-backend",
+            "pool",
+            "HikariPool-1",
+            {
+              "stat": "Sum",
+              "id": "seconds",
+              "visible": false
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "hikaricp_connections_acquire_seconds_count",
+            "job",
+            "harudle-backend",
+            "pool",
+            "HikariPool-1",
+            {
+              "stat": "Sum",
+              "id": "acquires",
+              "visible": false
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "hikaricp_connections_acquire_seconds_max",
+            "job",
+            "harudle-backend",
+            "pool",
+            "HikariPool-1",
+            {
+              "stat": "Maximum",
+              "id": "recentmax",
+              "visible": false
+            }
+          ],
+          [
+            {
+              "expression": "IF(acquires>0,1000*seconds/acquires)",
+              "label": "평균 (ms)",
+              "id": "e3"
+            }
+          ],
+          [
+            {
+              "expression": "1000*recentmax",
+              "label": "최근 최대 (ms)",
+              "id": "e4"
+            }
+          ]
+        ],
+        "yAxis": {
+          "left": {
+            "label": "밀리초 (ms)",
+            "showUnits": false
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 52,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "DB 연결 대기와 시간 초과",
+        "view": "timeSeries",
+        "region": "ap-northeast-2",
+        "period": 60,
+        "stat": "Average",
+        "metrics": [
+          [
+            "Harudle/Dev",
+            "hikaricp_connections_pending",
+            "job",
+            "harudle-backend",
+            "pool",
+            "HikariPool-1",
+            {
+              "stat": "Maximum",
+              "label": "기다리는 요청 수"
+            }
+          ],
+          [
+            "Harudle/Dev",
+            "hikaricp_connections_timeout_total",
+            "job",
+            "harudle-backend",
+            "pool",
+            "HikariPool-1",
+            {
+              "stat": "Sum",
+              "label": "연결 시간 초과 횟수",
+              "yAxis": "right"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 58,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [
+            {
+              "expression": "MAX(SEARCH('{CWAgent,InstanceId,path,fstype} MetricName=\"disk_free\" InstanceId=\"i-04fca55979b3240d6\" path=\"/srv/harudle/db-data\"', 'Minimum', 60))/1073741824",
+              "id": "free0",
+              "label": "DB data free (GiB)"
+            }
+          ],
+          [
+            {
+              "expression": "MAX(SEARCH('{CWAgent,InstanceId,path,fstype} MetricName=\"disk_free\" InstanceId=\"i-04fca55979b3240d6\" path=\"/\"', 'Minimum', 60))/1073741824",
+              "id": "free1",
+              "label": "Root free (GiB)"
+            }
+          ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "period": 60,
+        "stat": "Average",
+        "region": "ap-northeast-2",
+        "title": "DB EC2 Free Storage (GiB)",
+        "yAxis": {
+          "left": {
+            "min": 0,
+            "label": "GiB",
+            "showUnits": false
+          }
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 0,
+      "y": 64,
+      "width": 24,
+      "height": 1,
+      "properties": {
+        "markdown": "## Dev 부하 테스트 분석: Java 메모리와 GC"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 65,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "Java 힙 사용량",
+        "view": "timeSeries",
+        "region": "ap-northeast-2",
+        "period": 60,
+        "stat": "Average",
+        "metrics": [
+          [
+            {
+              "expression": "SUM(SEARCH('{\"Harudle/Dev\",job,area,id} MetricName=\"jvm_memory_used_bytes\" job=\"harudle-backend\" area=\"heap\"', 'Average', 60))/1048576",
+              "label": "힙 사용량 (MiB)",
+              "id": "e0"
+            }
+          ],
+          [
+            {
+              "expression": "SUM(SEARCH('{\"Harudle/Dev\",job,area,id} MetricName=\"jvm_memory_committed_bytes\" job=\"harudle-backend\" area=\"heap\"', 'Average', 60))/1048576",
+              "label": "힙 확보량 (MiB)",
+              "id": "e1"
+            }
+          ]
+        ],
+        "yAxis": {
+          "left": {
+            "label": "메모리 (MiB)",
+            "showUnits": false
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 65,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "Java 실제 메모리 (RSS)",
+        "view": "timeSeries",
+        "region": "ap-northeast-2",
+        "period": 60,
+        "stat": "Average",
+        "metrics": [
+          [
+            "CWAgent",
+            "procstat_memory_rss",
+            "InstanceId",
+            "i-08ff5dddb7ac94f5c",
+            "process_name",
+            "java",
+            "pattern",
+            "^([^ ]*/)?java +.*-jar +/app/app[.]jar( +.*)?$",
+            {
+              "stat": "Average",
+              "id": "rssbytes",
+              "visible": false
+            }
+          ],
+          [
+            {
+              "expression": "rssbytes/1048576",
+              "label": "RSS (MiB)",
+              "id": "rssmib"
+            }
+          ]
+        ],
+        "yAxis": {
+          "left": {
+            "label": "메모리 (MiB)",
+            "showUnits": false
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 71,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "GC 정지 시간과 횟수",
+        "view": "timeSeries",
+        "region": "ap-northeast-2",
+        "period": 60,
+        "stat": "Average",
+        "metrics": [
+          [
+            {
+              "expression": "1000*MAX(SEARCH('{\"Harudle/Dev\",job,gc,action,cause} MetricName=\"jvm_gc_pause_seconds_max\" job=\"harudle-backend\"', 'Maximum', 60))",
+              "label": "최근 최대 정지 (ms)",
+              "id": "e0"
+            }
+          ],
+          [
+            {
+              "expression": "1000*SUM(SEARCH('{\"Harudle/Dev\",job,gc,action,cause} MetricName=\"jvm_gc_pause_seconds_sum\" job=\"harudle-backend\"', 'Sum', 60))",
+              "label": "정지 시간 합 (ms)",
+              "id": "e1"
+            }
+          ],
+          [
+            {
+              "expression": "SUM(SEARCH('{\"Harudle/Dev\",job,gc,action,cause} MetricName=\"jvm_gc_pause_seconds_count\" job=\"harudle-backend\"', 'Sum', 60))",
+              "label": "GC 횟수",
+              "yAxis": "right",
+              "id": "e2"
+            }
+          ]
+        ],
+        "yAxis": {
+          "left": {
+            "label": "정지 시간 (ms)",
+            "showUnits": false
+          },
+          "right": {
+            "label": "GC 횟수",
+            "showUnits": false
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 71,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "Java 힙 외 메모리",
+        "view": "timeSeries",
+        "region": "ap-northeast-2",
+        "period": 60,
+        "stat": "Average",
+        "metrics": [
+          [
+            {
+              "expression": "SUM(SEARCH('{\"Harudle/Dev\",job,area,id} MetricName=\"jvm_memory_used_bytes\" job=\"harudle-backend\" area=\"nonheap\"', 'Average', 60))/1048576",
+              "label": "힙 외 사용량 (MiB)",
+              "id": "e2"
+            }
+          ],
+          [
+            {
+              "expression": "SUM(SEARCH('{\"Harudle/Dev\",job,area,id} MetricName=\"jvm_memory_committed_bytes\" job=\"harudle-backend\" area=\"nonheap\"', 'Average', 60))/1048576",
+              "label": "힙 외 확보량 (MiB)",
+              "id": "e3"
+            }
+          ]
+        ],
+        "yAxis": {
+          "left": {
+            "label": "메모리 (MiB)",
+            "showUnits": false
+          }
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 0,
+      "y": 77,
+      "width": 24,
+      "height": 1,
+      "properties": {
+        "markdown": "## DB EC2 자원과 EBS"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 78,
+      "width": 6,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [
+            "AWS/EC2",
+            "CPUUtilization",
+            "InstanceId",
+            "i-04fca55979b3240d6",
+            {}
+          ]
+        ],
+        "view": "singleValue",
+        "sparkline": true,
+        "period": 300,
+        "stat": "Average",
+        "region": "ap-northeast-2",
+        "title": "DB EC2 CPU",
+        "setPeriodToTimeRange": false
+      }
+    },
+    {
+      "type": "metric",
+      "x": 6,
+      "y": 78,
+      "width": 6,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [
+            "CWAgent",
+            "mem_available_percent",
+            "InstanceId",
+            "i-04fca55979b3240d6",
+            {}
+          ]
+        ],
+        "view": "singleValue",
+        "sparkline": true,
+        "period": 60,
+        "stat": "Average",
+        "region": "ap-northeast-2",
+        "title": "DB EC2 Available Memory",
+        "setPeriodToTimeRange": false
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 78,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [
+            "AWS/EC2",
+            "CPUUtilization",
+            "InstanceId",
+            "i-04fca55979b3240d6",
+            {
+              "label": "CPU Average"
+            }
+          ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "period": 300,
+        "stat": "Average",
+        "region": "ap-northeast-2",
+        "title": "DB EC2 CPU Utilization",
+        "annotations": {
+          "horizontal": [
+            {
+              "label": "Warning",
+              "value": 70,
+              "color": "#ff9900"
+            },
+            {
+              "label": "Critical",
+              "value": 90,
+              "color": "#d13212"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 84,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [
+            "CWAgent",
+            "mem_available_percent",
+            "InstanceId",
+            "i-04fca55979b3240d6",
+            {
+              "label": "Available memory (%)"
+            }
+          ],
+          [
+            "CWAgent",
+            "swap_used_percent",
+            "InstanceId",
+            "i-04fca55979b3240d6",
+            {
+              "label": "Swap used (%)"
+            }
+          ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "period": 60,
+        "stat": "Average",
+        "region": "ap-northeast-2",
+        "title": "DB EC2 Memory & Swap",
+        "legend": {
+          "position": "bottom"
+        },
+        "yAxis": {
+          "left": {
+            "min": 0,
+            "max": 100
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 84,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [
+            "AWS/EC2",
+            "StatusCheckFailed",
+            "InstanceId",
+            "i-04fca55979b3240d6",
+            {
+              "stat": "Maximum",
+              "label": "Any"
+            }
+          ],
+          [
+            ".",
+            "StatusCheckFailed_Instance",
+            ".",
+            ".",
+            {
+              "stat": "Maximum",
+              "label": "Instance"
+            }
+          ],
+          [
+            ".",
+            "StatusCheckFailed_System",
+            ".",
+            ".",
+            {
+              "stat": "Maximum",
+              "label": "System"
+            }
+          ],
+          [
+            ".",
+            "StatusCheckFailed_AttachedEBS",
+            ".",
+            ".",
+            {
+              "stat": "Maximum",
+              "label": "Attached EBS"
+            }
+          ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "period": 60,
+        "region": "ap-northeast-2",
+        "title": "DB EC2 Status Checks",
+        "legend": {
+          "position": "bottom"
+        },
+        "yAxis": {
+          "left": {
+            "min": 0,
+            "max": 1
+          }
+        },
+        "annotations": {
+          "horizontal": [
+            {
+              "label": "Failure",
+              "value": 1,
+              "color": "#d13212"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 90,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [
+            "AWS/EC2",
+            "CPUCreditBalance",
+            "InstanceId",
+            "i-04fca55979b3240d6",
+            {
+              "label": "Credit balance"
+            }
+          ],
+          [
+            "AWS/EC2",
+            "CPUSurplusCreditBalance",
+            "InstanceId",
+            "i-04fca55979b3240d6",
+            {
+              "label": "Surplus used"
+            }
+          ],
+          [
+            "AWS/EC2",
+            "CPUSurplusCreditsCharged",
+            "InstanceId",
+            "i-04fca55979b3240d6",
+            {
+              "stat": "Sum",
+              "label": "Surplus charged"
+            }
+          ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "period": 300,
+        "stat": "Average",
+        "region": "ap-northeast-2",
+        "title": "DB EC2 CPU Credits",
+        "legend": {
+          "position": "bottom"
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 90,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [
+            "AWS/EBS",
+            "VolumeAvgReadLatency",
+            "VolumeId",
+            "vol-00886d19a64c23e1f",
+            "InstanceId",
+            "i-04fca55979b3240d6",
+            {
+              "stat": "Maximum",
+              "label": "Read latency (ms)"
+            }
+          ],
+          [
+            "AWS/EBS",
+            "VolumeAvgWriteLatency",
+            "VolumeId",
+            "vol-00886d19a64c23e1f",
+            "InstanceId",
+            "i-04fca55979b3240d6",
+            {
+              "stat": "Maximum",
+              "label": "Write latency (ms)"
+            }
+          ],
+          [
+            "AWS/EBS",
+            "VolumeQueueLength",
+            "VolumeId",
+            "vol-00886d19a64c23e1f",
+            {
+              "stat": "Average",
+              "yAxis": "right",
+              "label": "Queue depth"
+            }
+          ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "period": 60,
+        "stat": "Average",
+        "region": "ap-northeast-2",
+        "title": "DB Data EBS Latency & Queue",
+        "legend": {
+          "position": "bottom"
+        },
+        "yAxis": {
+          "left": {
+            "min": 0,
+            "label": "ms",
+            "showUnits": false
+          },
+          "right": {
+            "min": 0
+          }
+        },
+        "annotations": {
+          "horizontal": [
+            {
+              "label": "Latency warning 20ms",
+              "value": 20,
+              "color": "#ff9900"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 0,
+      "y": 96,
+      "width": 24,
+      "height": 1,
+      "properties": {
+        "markdown": "## 앱 EC2 자원"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 97,
+      "width": 6,
+      "height": 4,
+      "properties": {
+        "metrics": [
+          [
+            "AWS/EC2",
+            "CPUUtilization",
+            "InstanceId",
+            "i-08ff5dddb7ac94f5c"
+          ]
+        ],
+        "view": "singleValue",
+        "sparkline": true,
+        "period": 300,
+        "stat": "Average",
+        "region": "ap-northeast-2",
+        "title": "EC2 CPU",
+        "setPeriodToTimeRange": false
+      }
+    },
+    {
+      "type": "metric",
+      "x": 6,
+      "y": 97,
+      "width": 6,
+      "height": 4,
+      "properties": {
+        "metrics": [
+          [
+            "CWAgent",
+            "mem_available_percent",
+            "InstanceId",
+            "i-08ff5dddb7ac94f5c",
+            {}
+          ]
+        ],
+        "view": "singleValue",
+        "sparkline": true,
+        "period": 60,
+        "stat": "Average",
+        "region": "ap-northeast-2",
+        "title": "EC2 Available Memory",
+        "setPeriodToTimeRange": false
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 97,
+      "width": 6,
+      "height": 4,
+      "properties": {
+        "metrics": [
+          [
+            "CWAgent",
+            "swap_used_percent",
+            "InstanceId",
+            "i-08ff5dddb7ac94f5c",
+            {}
+          ]
+        ],
+        "view": "singleValue",
+        "sparkline": true,
+        "period": 60,
+        "stat": "Average",
+        "region": "ap-northeast-2",
+        "title": "EC2 Swap Used",
+        "setPeriodToTimeRange": false
+      }
+    },
+    {
+      "type": "metric",
+      "x": 18,
+      "y": 97,
+      "width": 6,
+      "height": 4,
+      "properties": {
+        "metrics": [
+          [
+            {
+              "expression": "MAX(SEARCH('Namespace=\"CWAgent\" MetricName=\"disk_used_percent\" InstanceId=\"i-08ff5dddb7ac94f5c\" path=\"/\"', 'Average', 60))",
+              "id": "rootdisk",
+              "label": "Root disk used"
+            }
+          ]
+        ],
+        "view": "singleValue",
+        "sparkline": true,
+        "period": 60,
+        "stat": "Average",
+        "region": "ap-northeast-2",
+        "title": "EC2 Root Disk",
+        "setPeriodToTimeRange": false
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 101,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [
+            "AWS/EC2",
+            "StatusCheckFailed",
+            "InstanceId",
+            "i-08ff5dddb7ac94f5c",
+            {
+              "stat": "Maximum",
+              "label": "Any"
+            }
+          ],
+          [
+            ".",
+            "StatusCheckFailed_Instance",
+            ".",
+            ".",
+            {
+              "stat": "Maximum",
+              "label": "Instance"
+            }
+          ],
+          [
+            ".",
+            "StatusCheckFailed_System",
+            ".",
+            ".",
+            {
+              "stat": "Maximum",
+              "label": "System"
+            }
+          ],
+          [
+            ".",
+            "StatusCheckFailed_AttachedEBS",
+            ".",
+            ".",
+            {
+              "stat": "Maximum",
+              "label": "Attached EBS"
+            }
+          ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "period": 60,
+        "region": "ap-northeast-2",
+        "title": "EC2 Status Checks",
+        "legend": {
+          "position": "bottom"
+        },
+        "yAxis": {
+          "left": {
+            "min": 0,
+            "max": 1
+          }
+        },
+        "annotations": {
+          "horizontal": [
+            {
+              "label": "Failure",
+              "value": 1,
+              "color": "#d13212"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 101,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [
+            "AWS/EC2",
+            "CPUUtilization",
+            "InstanceId",
+            "i-08ff5dddb7ac94f5c",
+            {
+              "label": "CPU Average"
+            }
+          ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "period": 300,
+        "stat": "Average",
+        "region": "ap-northeast-2",
+        "title": "EC2 CPU Utilization",
+        "yAxis": {
+          "left": {
+            "min": 0,
+            "max": 100
+          }
+        },
+        "annotations": {
+          "horizontal": [
+            {
+              "label": "T4g baseline",
+              "value": 20,
+              "color": "#2ca02c"
+            },
+            {
+              "label": "Warning",
+              "value": 70,
+              "color": "#ff9900"
+            },
+            {
+              "label": "Critical",
+              "value": 90,
+              "color": "#d13212"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 107,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [
+            "AWS/EC2",
+            "CPUCreditBalance",
+            "InstanceId",
+            "i-08ff5dddb7ac94f5c",
+            {
+              "label": "Credit balance"
+            }
+          ],
+          [
+            ".",
+            "CPUSurplusCreditBalance",
+            ".",
+            ".",
+            {
+              "label": "Surplus used"
+            }
+          ],
+          [
+            ".",
+            "CPUSurplusCreditsCharged",
+            ".",
+            ".",
+            {
+              "stat": "Sum",
+              "label": "Surplus charged"
+            }
+          ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "period": 300,
+        "stat": "Average",
+        "region": "ap-northeast-2",
+        "title": "EC2 CPU Credits",
+        "legend": {
+          "position": "bottom"
+        },
+        "annotations": {
+          "horizontal": [
+            {
+              "label": "Low credit",
+              "value": 48,
+              "color": "#ff9900"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 107,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [
+            "CWAgent",
+            "mem_available_percent",
+            "InstanceId",
+            "i-08ff5dddb7ac94f5c",
+            {
+              "label": "Available memory"
+            }
+          ],
+          [
+            "CWAgent",
+            "swap_used_percent",
+            "InstanceId",
+            "i-08ff5dddb7ac94f5c",
+            {
+              "label": "Swap used"
+            }
+          ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "period": 60,
+        "stat": "Average",
+        "region": "ap-northeast-2",
+        "title": "EC2 Memory & Swap",
+        "legend": {
+          "position": "bottom"
+        },
+        "yAxis": {
+          "left": {
+            "min": 0,
+            "max": 100
+          }
+        },
+        "annotations": {
+          "horizontal": [
+            {
+              "label": "Available memory warning",
+              "value": 15,
+              "color": "#ff9900"
+            },
+            {
+              "label": "Available memory critical",
+              "value": 8,
+              "color": "#d13212"
+            },
+            {
+              "label": "Swap warning (12.5% of 2GiB)",
+              "value": 12.5,
+              "color": "#9467bd"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 113,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [
+            {
+              "label": "Root disk used",
+              "expression": "MAX(SEARCH('Namespace=\"CWAgent\" MetricName=\"disk_used_percent\" InstanceId=\"i-08ff5dddb7ac94f5c\" path=\"/\"', 'Average', 60))",
+              "id": "rootdisk"
+            }
+          ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "period": 60,
+        "stat": "Average",
+        "region": "ap-northeast-2",
+        "title": "EC2 Root Disk",
+        "yAxis": {
+          "left": {
+            "min": 0,
+            "max": 100
+          }
+        },
+        "annotations": {
+          "horizontal": [
+            {
+              "label": "Warning",
+              "value": 80,
+              "color": "#ff9900"
+            },
+            {
+              "label": "Critical",
+              "value": 90,
+              "color": "#d13212"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 113,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [
+            "AWS/EC2",
+            "NetworkIn",
+            "InstanceId",
+            "i-08ff5dddb7ac94f5c",
+            {
+              "stat": "Sum",
+              "id": "networkinbytes",
+              "visible": false
+            }
+          ],
+          [
+            "AWS/EC2",
+            "NetworkOut",
+            "InstanceId",
+            "i-08ff5dddb7ac94f5c",
+            {
+              "stat": "Sum",
+              "id": "networkoutbytes",
+              "visible": false
+            }
+          ],
+          [
+            {
+              "expression": "networkinbytes/1000000",
+              "label": "수신 (MB)",
+              "id": "networkinmb",
+              "color": "#1f77b4"
+            }
+          ],
+          [
+            {
+              "expression": "networkoutbytes/1000000",
+              "label": "송신 (MB)",
+              "id": "networkoutmb",
+              "color": "#ff7f0e"
+            }
+          ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "period": 300,
+        "region": "ap-northeast-2",
+        "title": "EC2 Network",
+        "legend": {
+          "position": "bottom"
+        },
+        "yAxis": {
+          "left": {
+            "label": "전송량 (MB, 구간 합계)",
+            "showUnits": false,
+            "min": 0
+          }
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 0,
+      "y": 119,
+      "width": 24,
+      "height": 1,
+      "properties": {
+        "markdown": "## 상세 로그"
+      }
+    },
+    {
+      "type": "log",
+      "x": 0,
+      "y": 120,
+      "width": 24,
+      "height": 8,
+      "properties": {
+        "query": "SOURCE '/harudle/dev/backend'\n| filter event in [\"external_api_failure\", \"compensation_failure\"]\n| fields @timestamp, traceId, event, provider, operation, failureType, providerStatus, providerCode, providerRequestId, exceptionType\n| sort @timestamp desc\n| limit 50",
+        "region": "ap-northeast-2",
+        "title": "Gemini & S3 Failures",
+        "view": "table"
+      }
+    },
+    {
+      "type": "log",
+      "x": 0,
+      "y": 128,
+      "width": 12,
+      "height": 8,
+      "properties": {
+        "query": "SOURCE '/harudle/dev/backend'\n| filter event = \"api_exception\"\n| fields @timestamp, traceId, errorCode, httpStatus, method, path, exceptionType\n| sort @timestamp desc\n| limit 50",
+        "region": "ap-northeast-2",
+        "title": "Backend Internal Errors",
+        "view": "table"
+      }
+    },
+    {
+      "type": "log",
+      "x": 12,
+      "y": 128,
+      "width": 12,
+      "height": 8,
+      "properties": {
+        "query": "SOURCE '/harudle/dev/backend'\n| filter event in [\"oauth_login_failure\", \"oauth_login_rejected\"] or message like /event=oauth_login_(failure|rejected) /\n| parse message /event=(?<messageEvent>oauth_login_failure|oauth_login_rejected) provider=(?<messageProvider>\\S+) reason=(?<messageReason>\\S+)/\n| fields @timestamp, traceId, coalesce(event, messageEvent) as oauthEvent, coalesce(provider, messageProvider) as oauthProvider, coalesce(reason, messageReason) as oauthReason\n| sort @timestamp desc\n| limit 50\n| display @timestamp, traceId, oauthEvent, oauthProvider, oauthReason",
+        "region": "ap-northeast-2",
+        "title": "OAuth Login Events",
+        "view": "table"
+      }
+    },
+    {
+      "type": "log",
+      "x": 0,
+      "y": 136,
+      "width": 24,
+      "height": 8,
+      "properties": {
+        "query": "SOURCE '/harudle/dev/frontend-nginx'\n| fields @timestamp, @message\n| filter status in [502, 504]\n    or @message like /\" (502|504) /\n    or (@message like /\\[(error|crit|alert|emerg)\\]/ and @message like /upstream|timed out/)\n| sort @timestamp desc\n| limit 30",
+        "region": "ap-northeast-2",
+        "title": "Nginx 502/504 & Upstream Errors",
+        "view": "table"
+      }
+    },
+    {
+      "type": "log",
+      "x": 0,
+      "y": 144,
+      "width": 24,
+      "height": 8,
+      "properties": {
+        "title": "최근 백엔드 오류 · 분류와 추적 ID",
+        "region": "ap-northeast-2",
+        "query": "SOURCE '/harudle/dev/backend' | fields @timestamp, event, provider, operation, failureType, errorCode, phase, httpStatus, traceId, generationId | filter event in [\"external_api_failure\", \"api_exception\", \"generation_unexpected_failure\", \"generation_cleanup_failed\", \"discarded_image_delete_failed\", \"compensation_failure\"] or (event = \"generation_finalized\" and status = \"FAILED\") | sort @timestamp desc | limit 20",
+        "view": "table"
+      }
+    }
+  ]
+}
