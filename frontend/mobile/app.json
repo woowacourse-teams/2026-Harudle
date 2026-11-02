@@ -6,6 +6,7 @@
     "version": "1.0.0",
     "platforms": ["ios", "android"],
     "plugins": [
+      "expo-apple-authentication",
       [
         "expo-splash-screen",
         {
@@ -16,7 +17,8 @@
       ]
     ],
     "ios": {
-      "bundleIdentifier": "com.harudle.app"
+      "bundleIdentifier": "com.harudle.app",
+      "usesAppleSignIn": true
     },
     "android": {
       "package": "com.harudle.app",
