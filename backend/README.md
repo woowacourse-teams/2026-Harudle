@@ -53,6 +53,20 @@ AI와 S3 같은 외부 시스템 연동은 독립 도메인으로 만들지 않�
 현재 각 도메인의 `package-info.java`는 클래스가 없는 빈 디렉터리를 Git에 추적하고 역할을 표시하기 위한 임시 파일입니다.
 해당 패키지에 실제 구현 클래스가 추가되면 대응하는 `package-info.java`를 삭제합니다.
 
+## 만료된 Refresh Token 정리
+
+만료된 Refresh Token은 기본적으로 매일 한국 시간 새벽 4시에 DB에서 삭제합니다.
+`REFRESH_TOKEN_CLEANUP_CRON`의 기본값은 `0 0 4 * * *`이고,
+`REFRESH_TOKEN_CLEANUP_ZONE`의 기본값은 `Asia/Seoul`입니다.
+예약 실행을 끄려면 `REFRESH_TOKEN_CLEANUP_CRON=-`로 설정합니다.
+설정을 바꾸면 백엔드를 재시작해야 합니다.
+
+실행 시작 시각과 만료 시각이 같거나 이미 만료된 토큰만 삭제합니다.
+로그인 세션과 푸시 등록 정보는 삭제하지 않습니다.
+성공 로그의 `event=refresh_token_cleanup_run`에서 `deletedCount`와 `durationMs`를 확인합니다.
+실패하면 삭제 트랜잭션을 취소하고 `event=refresh_token_cleanup_failed`를 기록합니다.
+다음 예약 시각에 다시 실행합니다.
+
 ## 로컬 실행
 
 예시 환경 변수 파일을 복사하고 `DB_PASSWORD`에 추측하기 어려운 로컬 비밀번호를 설정합니다.
@@ -549,3 +563,22 @@ Codex worker는 `CODEX_IMAGE_CONCURRENCY`로 동시 생성 수를, `CODEX_IMAGE_
 
 OAuth 로그인, 내부 HTTP 토큰, 제한 시간과 선택적 컨테이너 구성은
 [codex-image-worker/README.md](codex-image-worker/README.md)를 참고하세요.
+
+### iOS Apple 네이티브 로그인 (개발 중)
+
+기존 웹 로그인 설정의 `APPLE_LOGIN_ENABLED=true`와 Apple 개인 키를 사용한다.
+iOS Bundle ID는 Apple Developer에 등록된 `com.harudle.app`을 사용한다.
+웹 Services ID는 기존 `APPLE_CLIENT_ID` 설정을 그대로 사용한다.
+
+웹뷰에서 먼저 `GET /api/v1/auth/csrf`를 호출하고 반환된 토큰을 두 POST의
+`X-XSRF-TOKEN` 헤더로 보낸다. 같은 웹뷰의 쿠키와 세션을 유지한다.
+`POST /api/v1/auth/apple/native/nonce`의 `nonce`를 RN에 전달하고 Apple 로그인
+요청의 nonce로 변형 없이 사용한다. RN에서 반환된 `authorizationCode`와
+`identityToken`을 웹뷰가 `POST /api/v1/auth/apple/native/login`에 JSON으로 보낸다.
+성공 시 204 응답과 기존 Refresh Token 쿠키를 받는다. 이후 기존 `/auth/refresh`를
+호출한다. nonce는 5분 동안 유효하고 실패를 포함해 로그인 시도 시 소모된다.
+실패 또는 취소 후 재시도할 때는 새 nonce를 발급받는다.
+
+RN에서 받은 ID 토큰은 nonce 검증에 사용한다. 인증 코드는 Apple에서 교환하고,
+두 토큰의 서명과 발급자, 대상 앱, 만료 시각 및 사용자 식별자를 확인한다.
+실제 Apple 서버와 iOS 개발 빌드의 통합 검증 전에는 배포하지 않는다.
