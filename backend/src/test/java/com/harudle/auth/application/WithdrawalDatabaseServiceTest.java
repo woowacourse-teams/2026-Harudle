@@ -6,6 +6,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.harudle.support.ServiceIntegrationTestSupport;
 import com.harudle.admin.repository.AdminReportRepository;
 import com.harudle.auth.domain.OAuthProvider;
+import com.harudle.auth.infrastructure.oauth.AppleTokenCipher;
+import com.harudle.auth.infrastructure.oauth.AppleTokenStore;
+import java.util.Base64;
 import java.util.UUID;
 import java.time.Instant;
 import org.junit.jupiter.api.AfterEach;
@@ -206,6 +209,31 @@ class WithdrawalDatabaseServiceTest extends ServiceIntegrationTestSupport {
 
         withdrawal.completeAppleRevocation("apple-user", Instant.now().minusSeconds(60));
         assertThat(count("users", "id")).isEqualTo(1);
+    }
+
+    @Test
+    void storesEncryptedAppleTokensPerClientAndDeletesThemWithTheMember() {
+        insertUserAndTask();
+        jdbc.update("INSERT INTO oauth_accounts (user_id, provider, provider_subject) VALUES (?, 'APPLE', 'apple-user')",
+                userId);
+        Long accountId = jdbc.queryForObject("SELECT id FROM oauth_accounts WHERE user_id = ?", Long.class, userId);
+        String key = Base64.getEncoder().encodeToString(new byte[32]);
+        var store = new AppleTokenStore(jdbc, key);
+        var cipher = new AppleTokenCipher(key);
+        store.save(userId, "native", "identity", "access", "refresh", Instant.now().plusSeconds(60));
+        store.save(userId, "web", "web-identity", "web-access", "web-refresh", Instant.now().plusSeconds(60));
+        store.save(userId, "native", "identity-2", "access-2", null, Instant.now().plusSeconds(60));
+
+        var nativeToken = jdbc.queryForMap("SELECT * FROM apple_oauth_tokens WHERE oauth_account_id = ? AND client_id = 'native'", accountId);
+        assertThat(nativeToken.get("identity_token")).isNotEqualTo("identity-2");
+        assertThat(cipher.decrypt((String) nativeToken.get("identity_token"))).isEqualTo("identity-2");
+        assertThat(cipher.decrypt((String) nativeToken.get("access_token"))).isEqualTo("access-2");
+        assertThat(cipher.decrypt((String) nativeToken.get("refresh_token"))).isEqualTo("refresh");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM apple_oauth_tokens WHERE oauth_account_id = ?", Integer.class, accountId)).isEqualTo(2);
+
+        service.delete(userId);
+
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM apple_oauth_tokens WHERE oauth_account_id = ?", Integer.class, accountId)).isZero();
     }
 
     private void insertRestriction(String type, UUID targetId) {
