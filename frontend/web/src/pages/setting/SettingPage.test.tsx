@@ -58,6 +58,10 @@ jest.mock('./useLogout', () => ({
   __esModule: true,
   default: () => ({ request: { status: 'idle' }, handleLogout: jest.fn() }),
 }));
+jest.mock('./WithdrawalModal', () => ({
+  __esModule: true,
+  default: () => <div>정말 탈퇴하시겠어요?</div>,
+}));
 jest.mock('../../assets/images/loading-animation.webp', () => 'loading.webp');
 jest.mock('../../assets/images/request-fail.png', () => 'request-fail.png');
 jest.mock('../../assets/icons/call_made.svg', () => 'call.svg');
@@ -128,6 +132,21 @@ const problem = (
   });
 
 describe('통합 프로필 수정', (): void => {
+  it('설정에서 회원 탈퇴 확인창을 연다', async (): Promise<void> => {
+    render(<SettingPage />);
+    await userEvent.click(
+      await screen.findByRole('button', { name: '회원 탈퇴' }),
+    );
+    expect(screen.getByText('정말 탈퇴하시겠어요?')).toBeInTheDocument();
+  });
+
+  it('프로필 조회가 실패해도 탈퇴 버튼을 표시한다', async (): Promise<void> => {
+    mockGetProfile.mockRejectedValueOnce(new Error('프로필 조회 실패'));
+    render(<SettingPage />);
+    expect(
+      await screen.findByRole('button', { name: '회원 탈퇴' }),
+    ).toBeInTheDocument();
+  });
   it('차단한 사용자 항목은 별도 관리 화면으로 연결한다', async (): Promise<void> => {
     render(<SettingPage />);
 

@@ -1,5 +1,5 @@
 import { API_BASE_URL, isProblemDetails, RequestError } from '../../shared/api';
-import { authFetch } from '../../shared/auth';
+import { authFetch, setAccessToken } from '../../shared/auth';
 
 interface WithdrawalCompleted {
   readonly status: 'COMPLETED';
@@ -15,6 +15,15 @@ interface WithdrawalAuthenticationRequired {
 
 export type WithdrawalResponse =
   WithdrawalCompleted | WithdrawalAuthenticationRequired;
+
+export const clearWithdrawalSession = (): void => {
+  setAccessToken(null);
+  try {
+    localStorage.removeItem('harudle.has-completed-oauth');
+  } catch {
+    // 저장소를 사용할 수 없어도 탈퇴 완료 처리는 계속한다.
+  }
+};
 
 const GENERATION_IN_PROGRESS =
   '일기 생성이 끝난 뒤 회원 탈퇴를 다시 시도해 주세요.';
