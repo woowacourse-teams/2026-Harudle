@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.harudle.TestcontainersConfiguration;
+import com.harudle.auth.application.port.AccountRestrictionReader;
 import com.harudle.auth.domain.RefreshToken;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.RefreshTokenRepository;
@@ -27,6 +28,7 @@ import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabas
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -38,6 +40,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @Import({
         TestcontainersConfiguration.class,
         RefreshTokenService.class,
+        AccountAccessPolicy.class,
         RefreshTokenGenerator.class,
         RefreshTokenHasher.class
 })
@@ -55,6 +58,9 @@ class RefreshTokenServiceTest {
 
     @Autowired
     private RefreshTokenHasher refreshTokenHasher;
+
+    @MockitoBean
+    private AccountRestrictionReader restrictions;
 
     @Autowired
     private UserRepository userRepository;

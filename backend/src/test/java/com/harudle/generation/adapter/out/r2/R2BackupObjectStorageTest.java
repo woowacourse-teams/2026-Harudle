@@ -344,11 +344,10 @@ class R2BackupObjectStorageTest {
             "harudle/generated/diary-images/dev/%2e%2e/prod/image.png",
             "harudle/generated/diary-images/dev//image.png",
             "harudle/generated/diary-images/dev/diary-id\\image.png",
-            "harudle/generated/diary-images/dev/diary-id/image-960.webp",
-            "harudle/generated/diary-images/dev/diary-id/image-240.webp",
+
             "harudle/generated/diary-images/dev/diary-id\n/image.png"
     })
-    @DisplayName("다른 환경, 파생 이미지와 잘못된 경로는 모든 작업에서 거절한다")
+    @DisplayName("다른 환경과 잘못된 경로는 모든 작업에서 거절한다")
     void rejectInvalidKey(String key) {
         assertFailure(() -> storage.findMetadata(key), FailureType.REQUEST_VALIDATION_ERROR);
         assertFailure(() -> storage.download(key), FailureType.REQUEST_VALIDATION_ERROR);
@@ -357,10 +356,27 @@ class R2BackupObjectStorageTest {
         verifyNoInteractions(client);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"image-960.webp", "image-240.webp"})
+    @DisplayName("화면 표시용 이미지는 존재 확인 없이 서명하고 원본 백업 작업은 거절한다")
+    void signDisplayImagesWithoutEnablingBackupWrites(String filename) {
+        String key = KEY.replace("image.png", filename);
+        ImageAccessUrl accessUrl = storage.createAccessUrl(key);
+
+        assertThat(accessUrl.url().getPath()).isEqualTo("/test-backup/" + key);
+        assertFailure(() -> storage.findMetadata(key), FailureType.REQUEST_VALIDATION_ERROR);
+        assertFailure(() -> storage.download(key), FailureType.REQUEST_VALIDATION_ERROR);
+        assertFailure(() -> storage.uploadIfAbsent(key, image(BYTES, "image/webp")),
+                FailureType.REQUEST_VALIDATION_ERROR);
+        verifyNoInteractions(client);
+    }
+
     @Test
     @DisplayName("UTF-8 기준 1024바이트를 넘는 키를 거절한다")
     void rejectLongKey() {
         assertFailure(() -> storage.findMetadata(KEY.replace("diary-id", "가".repeat(350))),
+                FailureType.REQUEST_VALIDATION_ERROR);
+        assertFailure(() -> storage.createAccessUrl(KEY.replace("diary-id", "가".repeat(350))),
                 FailureType.REQUEST_VALIDATION_ERROR);
         verifyNoInteractions(client);
     }

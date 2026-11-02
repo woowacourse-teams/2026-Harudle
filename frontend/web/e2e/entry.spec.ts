@@ -1,10 +1,64 @@
 import { expect, test } from '@playwright/test';
+import { FEED_COPY } from '../src/pages/feed/copy';
+import { NEED_LOGIN_COPY } from '../src/shared/needLoginCopy';
 import {
   MOCK_SCENARIO_HEADER,
   MOCK_SCENARIOS,
 } from '../src/mocks/mockScenarios';
 
 test.describe('하루들 접속', () => {
+  for (const hasLoginHistory of [false, true]) {
+    test(`${hasLoginHistory ? '로그아웃 이력이 있는' : '비로그인'} 사용자가 홈의 만들기를 누르면 로그인 안내를 표시한다`, async ({
+      page,
+    }): Promise<void> => {
+      await page.addInitScript((hasHistory): void => {
+        localStorage.setItem('harudle.has-seen-landing', 'true');
+        if (hasHistory) {
+          localStorage.setItem('harudle.has-ever-logged-in', 'true');
+        }
+      }, hasLoginHistory);
+      await page.setExtraHTTPHeaders({
+        [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.authRefreshFailure,
+      });
+      const feedUrl = '/?categoryId=1&sort=POPULAR';
+      await page.goto(feedUrl);
+      await expect(page.getByRole('combobox')).toBeVisible();
+      expect(
+        await page.evaluate((): string | null =>
+          localStorage.getItem('harudle.has-completed-oauth'),
+        ),
+      ).toBeNull();
+
+      const createButton = page.getByRole('button', {
+        name: FEED_COPY.createAction,
+        exact: true,
+      });
+      await createButton.click();
+      const sheet = page.getByRole('dialog').filter({
+        has: page.getByRole('heading', { name: NEED_LOGIN_COPY.title }),
+      });
+      await expect(sheet).toBeVisible();
+      await expect(sheet).toContainText('네컷만화를 만들려면 로그인해 주세요.');
+      await expect(page).toHaveURL(feedUrl);
+
+      await sheet
+        .getByRole('button', { name: NEED_LOGIN_COPY.continueBrowsingAction })
+        .click();
+      await expect(sheet).not.toBeVisible();
+      await expect(page).toHaveURL(feedUrl);
+
+      await createButton.click();
+      await expect(sheet).toBeVisible();
+      await sheet
+        .getByRole('button', { name: NEED_LOGIN_COPY.loginAction })
+        .click();
+      await expect(page).toHaveURL('/login');
+      await expect(
+        page.getByRole('button', { name: '카카오로 시작하기' }),
+      ).toBeVisible();
+    });
+  }
+
   test('제거된 일기 공유 링크는 페이지 없음 안내를 표시한다', async ({
     page,
   }) => {

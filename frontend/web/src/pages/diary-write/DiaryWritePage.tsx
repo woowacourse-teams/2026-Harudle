@@ -1,32 +1,50 @@
 import { DIARY_WRITE_COPY } from './copy';
-import { Navigate, useNavigate } from 'react-router';
+import { useNavigate } from 'react-router';
 import PageHeader from '../../shared/PageHeader';
 import ActionButton from '../../shared/ActionButton';
 import DiaryInputField from './DiaryInputField';
-import { useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 import backIcon from '../../assets/icons/back.svg';
 import { css } from '@emotion/react';
 import { theme } from '../../styles/theme';
-import { useDiaryGenerateContext } from '../diary-generating/DiaryGenerateContext';
+import useDiaryGenerate from './useDiaryGenerate';
 import { getToday } from '../../shared/utils';
 import { DIARY_CONTENT_SESSION_KEY } from '../../shared/constants';
+import {
+  getGenerationId,
+  setGenerationId,
+} from '../../domain/diary/diaryGenerationStore';
+import { useToastContext } from '../../shared/ToastContext';
 
 const DiaryWritePage = () => {
   const navigate = useNavigate();
+  const { addToast } = useToastContext();
   const [diaryContent, setDiaryContent] = useState(
     sessionStorage.getItem(DIARY_CONTENT_SESSION_KEY) ?? '',
   );
   const [diaryContentError, setDiaryContentError] = useState<string | null>(
     null,
   );
-  const { request } = useDiaryGenerateContext();
+  const { request, execute } = useDiaryGenerate();
 
-  if (request.status === 'loading') {
-    alert(DIARY_WRITE_COPY.generationInProgress);
-    return <Navigate to="/album" replace />;
-  }
+  useLayoutEffect(() => {
+    if (getGenerationId()) {
+      addToast(
+        {
+          type: 'error',
+          message: DIARY_WRITE_COPY.generationInProgress,
+          description: DIARY_WRITE_COPY.canMakeAfterGenerate,
+        },
+        2000,
+      );
 
-  const handleDiarySubmit = (e: React.FormEvent<HTMLFormElement>) => {
+      void navigate(-1);
+    }
+  }, [navigate]);
+
+  const handleDiarySubmit = async (
+    e: React.FormEvent<HTMLFormElement>,
+  ): Promise<void> => {
     e.preventDefault();
     if (diaryContent.length < 10) {
       setDiaryContentError(DIARY_WRITE_COPY.minLengthError);
@@ -36,13 +54,17 @@ const DiaryWritePage = () => {
     sessionStorage.setItem(DIARY_CONTENT_SESSION_KEY, diaryContent);
 
     const { year, month, day } = getToday();
-    navigate('/diary-generating', {
-      state: {
-        diaryDate: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
-        sourceText: diaryContent,
-        idempotencyKey: crypto.randomUUID(),
+    await execute({
+      diaryDate: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+      sourceText: diaryContent,
+      idempotencyKey: crypto.randomUUID(),
+      onSuccess: (response): void => {
+        setGenerationId(response.generation.id);
+        void navigate(-1);
       },
-      replace: true,
+      onError: (error): void => {
+        addToast({ type: 'error', message: error.message }, 2000);
+      },
     });
   };
 
@@ -54,7 +76,7 @@ const DiaryWritePage = () => {
             type="button"
             aria-label="뒤로 가기"
             css={headerButtonStyle}
-            onClick={() => navigate('/album')}
+            onClick={() => navigate(-1)}
           >
             <img
               src={backIcon}
@@ -88,7 +110,11 @@ const DiaryWritePage = () => {
           />
 
           <div css={submitButtonContainerStyle}>
-            <ActionButton type="submit" label={DIARY_WRITE_COPY.createAction} />
+            <ActionButton
+              type="submit"
+              label={DIARY_WRITE_COPY.createAction}
+              disabled={request.status === 'loading'}
+            />
           </div>
         </form>
       </main>

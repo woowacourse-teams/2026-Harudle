@@ -27,7 +27,7 @@ import {
   type AdminUserSummary,
   type GenerationHistory,
 } from './adminApi';
-import type { GenerationStatus } from '../../domain/diary/diaryGenerate';
+import type { GenerationStatus } from '../../domain/diary/diaryGeneration';
 
 type View = 'dashboard' | 'users' | 'generations' | 'failed';
 type UserStatusFilter = 'ALL' | 'ACTIVE' | 'DELETED';

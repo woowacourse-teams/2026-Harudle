@@ -137,7 +137,7 @@ class FeedListServiceTest {
     private void metadata() {
         when(collaborators.profiles()).thenReturn(profiles);
         when(profiles.readAll(anySet())).thenReturn(Map.of(AUTHOR,
-                new PublicProfileReader.Profile(AUTHOR, "캐모", URI.create("https://example.com/profile.png"))));
+                new PublicProfileReader.Profile(AUTHOR, "캐모", URI.create("https://example.com/profile.png"), null)));
         when(collaborators.categories()).thenReturn(categories);
         when(categories.get(1)).thenReturn(new CategoryReader.Category(1, "일상", 0, true));
     }

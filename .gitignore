@@ -525,7 +525,10 @@ $RECYCLE.BIN/
 ### Gradle Patch ###
 # Java heap dump
 
-# End of https://www.toptal.com/developers/gitignore/api/gradle,windows,macos,intellij+all,intellij,java,react,reactnative
-
 # Python cache
 __pycache__/
+
+# Apple private signing keys
+*.p8
+
+# End of https://www.toptal.com/developers/gitignore/api/gradle,windows,macos,intellij+all,intellij,java,react,reactnative

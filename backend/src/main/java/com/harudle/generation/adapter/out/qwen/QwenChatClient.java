@@ -6,7 +6,7 @@ import static com.harudle.generation.adapter.out.qwen.QwenChatException.Kind.RES
 import static com.harudle.generation.adapter.out.qwen.QwenChatException.Kind.TIMEOUT;
 import static com.harudle.generation.adapter.out.qwen.QwenChatException.Kind.TRUNCATED;
 
-import com.harudle.generation.adapter.out.storyboard.StoryboardHttpTransport;
+import com.harudle.generation.adapter.out.http.SingleAttemptHttpTransport;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
 import com.harudle.generation.diary.service.port.StoryboardAttemptContext;
 import com.harudle.generation.diary.service.port.StoryboardAttemptContext.CancellationRegistration;
@@ -59,7 +59,7 @@ public final class QwenChatClient implements AutoCloseable {
     }
 
     public static OkHttpClient httpClient(Duration timeout) {
-        return StoryboardHttpTransport.builder(timeout).build();
+        return SingleAttemptHttpTransport.builder(timeout).build();
     }
 
     private static void requireTokenPlanKey(String key) {

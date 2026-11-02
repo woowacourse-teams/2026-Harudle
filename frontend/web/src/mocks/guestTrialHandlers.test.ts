@@ -2,6 +2,7 @@
 
 import {
   afterAll,
+  afterEach,
   beforeAll,
   beforeEach,
   describe,
@@ -14,11 +15,13 @@ import {
   guestTrialHandlers,
   resetGuestTrialMockState,
 } from './guestTrialHandlers';
-import {
-  isGuestDiaryResponse,
-  type GuestDiaryResponse,
-} from '../pages/landing/guestTrialApi';
+import { isGuestDiaryResponse } from '../pages/landing/guestTrialApi';
 import { isRecord } from '../shared/utils';
+import {
+  MOCK_GENERATION_PENDING_MS,
+  MOCK_GENERATION_COMPLETION_MS,
+} from './diaryGeneration';
+import { MOCK_SCENARIO_HEADER, MOCK_SCENARIOS } from './mockScenarios';
 
 jest.mock('msw', () => {
   class MockHttpResponse extends Response {
@@ -56,7 +59,7 @@ const DIARY_REQUEST = {
 };
 const FIRST_IDEMPOTENCY_KEY = '7e5cc251-fdde-4cc0-a54e-2c8142750609';
 const SECOND_IDEMPOTENCY_KEY = '68fa9efb-fb12-45a7-b5cd-66387d3f60a7';
-const GUEST_TRIAL_STATE_STORAGE_KEY = 'harudle:mock:guest-trial';
+const GUEST_TRIAL_STATE_STORAGE_KEY = 'harudle:mock:guest-trial:v2';
 
 class MemoryStorage implements Storage {
   private readonly values = new Map<string, string>();
@@ -110,20 +113,20 @@ const resolveGuestTrialRequest = async (request: Request) => {
       continue;
     }
 
-    const diaryPathMatch = requestPath.match(
-      /^\/api\/v1\/guest\/diaries\/([^/]+)$/,
+    const parameterNames = Array.from(
+      handler.path.matchAll(/:([^/]+)/g),
+      (match): string => match[1],
     );
-    const isExactMatch = handler.path === requestPath;
-    const isDiaryResultMatch =
-      handler.path === '/api/v1/guest/diaries/:diaryId' && diaryPathMatch;
-
-    if (!isExactMatch && !isDiaryResultMatch) {
-      continue;
-    }
-
+    const pattern = new RegExp(
+      `^${handler.path.replace(/:[^/]+/g, '([^/]+)')}$`,
+    );
+    const match = requestPath.match(pattern);
+    if (!match) continue;
     return handler.resolver({
       request,
-      params: diaryPathMatch ? { diaryId: diaryPathMatch[1] } : {},
+      params: Object.fromEntries(
+        parameterNames.map((name, index) => [name, match[index + 1]]),
+      ),
     });
   }
 
@@ -146,10 +149,12 @@ const createGuestDiary = ({
   idempotencyKey = FIRST_IDEMPOTENCY_KEY,
   csrfToken = GUEST_TRIAL_MOCK_CSRF_TOKEN,
   request = DIARY_REQUEST,
+  scenario,
 }: {
   idempotencyKey?: string;
   csrfToken?: string;
   request?: typeof DIARY_REQUEST;
+  scenario?: string;
 } = {}) => {
   return resolveGuestTrialRequest(
     new Request(`${API_ORIGIN}/api/v1/guest/diaries`, {
@@ -159,6 +164,7 @@ const createGuestDiary = ({
         'Content-Type': 'application/json',
         'Idempotency-Key': idempotencyKey,
         'X-XSRF-TOKEN': csrfToken,
+        ...(scenario ? { [MOCK_SCENARIO_HEADER]: scenario } : {}),
       },
       body: JSON.stringify(request),
     }),
@@ -167,15 +173,25 @@ const createGuestDiary = ({
 
 const readGuestDiaryResponse = async (
   response: Response,
-): Promise<GuestDiaryResponse> => {
+): Promise<{ id: string; generation: { id: string } }> => {
   const data: unknown = await response.json();
 
-  if (!isGuestDiaryResponse(data)) {
+  if (
+    !isRecord(data) ||
+    typeof data.id !== 'string' ||
+    !isRecord(data.generation) ||
+    typeof data.generation.id !== 'string'
+  ) {
     throw new Error('게스트 일기 응답 형식이 올바르지 않습니다.');
   }
 
-  return data;
+  return { id: data.id, generation: { id: data.generation.id } };
 };
+
+const getGeneration = (id: string): Promise<Response> =>
+  resolveGuestTrialRequest(
+    new Request(`${API_ORIGIN}/api/v1/guest/diary-generations/${id}`),
+  );
 
 beforeAll(() => {
   Object.defineProperty(globalThis, 'sessionStorage', {
@@ -185,8 +201,13 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  jest.spyOn(Date, 'now').mockReturnValue(1_790_000_000_000);
   memoryStorage.clear();
   resetGuestTrialMockState();
+});
+
+afterEach((): void => {
+  jest.restoreAllMocks();
 });
 
 afterAll(() => {
@@ -205,7 +226,7 @@ describe('게스트 체험 MSW 시나리오', () => {
     const createdDiary = await readGuestDiaryResponse(createResponse);
 
     expect(sessionResponse.status).toBe(204);
-    expect(createResponse.status).toBe(201);
+    expect(createResponse.status).toBe(202);
     expect(createResponse.headers.get('Location')).toBe(
       `/api/v1/guest/diaries/${createdDiary.id}`,
     );
@@ -217,7 +238,15 @@ describe('게스트 체험 MSW 시나리오', () => {
       }),
     );
 
-    await expect(resultResponse.json()).resolves.toEqual(createdDiary);
+    await expect(resultResponse.json()).resolves.toMatchObject({
+      ...createdDiary,
+      generation: {
+        ...createdDiary.generation,
+        status: 'PENDING',
+        title: null,
+        imageUrl: null,
+      },
+    });
     expect(resultResponse.status).toBe(200);
   });
 
@@ -239,6 +268,9 @@ describe('게스트 체험 MSW 시나리오', () => {
     }
 
     storedDiary.generation.title = '세션 저장소에서 복원한 결과';
+    jest
+      .spyOn(Date, 'now')
+      .mockReturnValue(Date.now() + MOCK_GENERATION_COMPLETION_MS);
     memoryStorage.setItem(
       GUEST_TRIAL_STATE_STORAGE_KEY,
       JSON.stringify(storedState),
@@ -262,7 +294,7 @@ describe('게스트 체험 MSW 시나리오', () => {
     const firstDiary: unknown = await firstResponse.json();
     const replayResponse = await createGuestDiary();
 
-    expect(firstResponse.status).toBe(201);
+    expect(firstResponse.status).toBe(202);
     expect(replayResponse.status).toBe(200);
     await expect(replayResponse.json()).resolves.toEqual(firstDiary);
   });
@@ -279,7 +311,7 @@ describe('게스트 체험 MSW 시나리오', () => {
     );
 
     expect(responses.map(({ status }) => status).sort((a, b) => a - b)).toEqual(
-      [200, 201],
+      [200, 202],
     );
     expect(responseBodies[0]).toEqual(responseBodies[1]);
   });
@@ -296,7 +328,7 @@ describe('게스트 체험 MSW 시나리오', () => {
     const rejectedResponse = responses.find(({ status }) => status === 409);
 
     expect(responses.map(({ status }) => status).sort((a, b) => a - b)).toEqual(
-      [201, 409],
+      [202, 409],
     );
     expect(rejectedResponse).toBeDefined();
     await expect(rejectedResponse?.json()).resolves.toMatchObject({
@@ -349,5 +381,93 @@ describe('게스트 체험 MSW 시나리오', () => {
     await expect(createResponse.json()).resolves.toMatchObject({
       code: 'INVALID_CSRF_TOKEN',
     });
+  });
+  it('반복 조회는 상태를 진행시키지 않고 시간이 지나면 처리 중과 성공 결과를 반환한다', async (): Promise<void> => {
+    await issueGuestSession();
+    const accepted = await readGuestDiaryResponse(await createGuestDiary());
+    const start = Date.now();
+    for (let i = 0; i < 2; i += 1) {
+      const response = await getGeneration(accepted.generation.id);
+      expect(response.status).toBe(200);
+      expect(response.headers.get('Cache-Control')).toBe('no-store');
+      await expect(response.json()).resolves.toEqual({
+        id: accepted.generation.id,
+        status: 'PENDING',
+        diaryId: null,
+        errorCode: null,
+      });
+    }
+    jest.spyOn(Date, 'now').mockReturnValue(start + MOCK_GENERATION_PENDING_MS);
+    await expect(
+      (await getGeneration(accepted.generation.id)).json(),
+    ).resolves.toMatchObject({
+      status: 'PROCESSING',
+      diaryId: null,
+      errorCode: null,
+    });
+    await expect((await createGuestDiary()).json()).resolves.toMatchObject({
+      generation: { id: accepted.generation.id, status: 'PROCESSING' },
+    });
+    jest
+      .spyOn(Date, 'now')
+      .mockReturnValue(start + MOCK_GENERATION_COMPLETION_MS);
+    await expect(
+      (await getGeneration(accepted.generation.id)).json(),
+    ).resolves.toEqual({
+      id: accepted.generation.id,
+      status: 'SUCCEEDED',
+      diaryId: accepted.id,
+      errorCode: null,
+    });
+    const detail = await resolveGuestTrialRequest(
+      new Request(`${API_ORIGIN}/api/v1/guest/diaries/${accepted.id}`),
+    );
+    expect(isGuestDiaryResponse(await detail.json())).toBe(true);
+    expect(
+      (await createGuestDiary({ idempotencyKey: SECOND_IDEMPOTENCY_KEY }))
+        .status,
+    ).toBe(409);
+  });
+
+  it('실패해도 상태 조회는 200이며 실패한 일기는 숨기고 체험권을 다시 주지 않는다', async (): Promise<void> => {
+    await issueGuestSession();
+    const accepted = await readGuestDiaryResponse(
+      await createGuestDiary({
+        scenario: MOCK_SCENARIOS.diaryGenerationFailure,
+      }),
+    );
+    jest
+      .spyOn(Date, 'now')
+      .mockReturnValue(Date.now() + MOCK_GENERATION_COMPLETION_MS);
+    const failed = await getGeneration(accepted.generation.id);
+    expect(failed.status).toBe(200);
+    await expect(failed.json()).resolves.toEqual({
+      id: accepted.generation.id,
+      status: 'FAILED',
+      diaryId: null,
+      errorCode: 'AI_PROVIDER_ERROR',
+    });
+    expect((await createGuestDiary()).status).toBe(502);
+    expect(
+      (await createGuestDiary({ idempotencyKey: SECOND_IDEMPOTENCY_KEY }))
+        .status,
+    ).toBe(409);
+    const detail = await resolveGuestTrialRequest(
+      new Request(`${API_ORIGIN}/api/v1/guest/diaries/${accepted.id}`),
+    );
+    expect(detail.status).toBe(404);
+  });
+
+  it('세션 없음, 잘못된 ID, 다른 세션 또는 존재하지 않는 작업을 구분한다', async (): Promise<void> => {
+    expect((await getGeneration(FIRST_IDEMPOTENCY_KEY)).status).toBe(401);
+    await issueGuestSession();
+    expect((await getGeneration('invalid')).status).toBe(400);
+    await expect(
+      (await getGeneration(FIRST_IDEMPOTENCY_KEY)).json(),
+    ).resolves.toMatchObject({ code: 'GENERATION_NOT_FOUND' });
+    const accepted = await readGuestDiaryResponse(await createGuestDiary());
+    resetGuestTrialMockState();
+    await issueGuestSession();
+    expect((await getGeneration(accepted.generation.id)).status).toBe(404);
   });
 });

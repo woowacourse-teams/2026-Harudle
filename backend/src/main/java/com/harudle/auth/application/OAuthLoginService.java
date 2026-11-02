@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -18,20 +19,23 @@ public class OAuthLoginService {
     private final OAuthAccountRepository oAuthAccountRepository;
     private final NicknameCandidateRepository nicknameCandidateRepository;
     private final ProfileImageCodeGenerator profileImageCodeGenerator;
+    private final AccountAccessPolicy accountAccess;
 
     public OAuthLoginService(
             UserRepository userRepository,
             OAuthAccountRepository oAuthAccountRepository,
             NicknameCandidateRepository nicknameCandidateRepository,
-            ProfileImageCodeGenerator profileImageCodeGenerator
+            ProfileImageCodeGenerator profileImageCodeGenerator,
+            AccountAccessPolicy accountAccess
     ) {
         this.userRepository = userRepository;
         this.oAuthAccountRepository = oAuthAccountRepository;
         this.nicknameCandidateRepository = nicknameCandidateRepository;
         this.profileImageCodeGenerator = profileImageCodeGenerator;
+        this.accountAccess = accountAccess;
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public OAuthLoginResult login(OAuthLoginCommand command, Instant now) {
         Objects.requireNonNull(command, "command는 필수입니다.");
         Objects.requireNonNull(now, "now는 필수입니다.");
@@ -54,6 +58,7 @@ public class OAuthLoginService {
     private OAuthLoginResult loginExistingAccount(OAuthAccount account, OAuthLoginCommand command, Instant now) {
         User user = account.getUser();
         validateActiveUser(user);
+        accountAccess.requireAllowed(user.getId());
 
         account.recordLogin(command.providerEmail(), now);
 
@@ -61,19 +66,20 @@ public class OAuthLoginService {
     }
 
     private OAuthLoginResult createNewAccount(OAuthLoginCommand command, Instant now) {
+        String nickname = nicknameCandidateRepository.lockNextAvailable();
+        String displayName = command.displayName() == null ? nickname : command.displayName();
         RequiredOAuthProfile profile = new RequiredOAuthProfile(
                 command.providerEmail(),
-                command.displayName()
+                displayName
         );
 
-        User user = createUser(profile, now);
+        User user = createUser(profile, nickname, now);
         createOAuthAccount(user, command, profile.email(), now);
 
         return new OAuthLoginResult(user.getId());
     }
 
-    private User createUser(RequiredOAuthProfile profile, Instant now) {
-        String nickname = nicknameCandidateRepository.lockNextAvailable();
+    private User createUser(RequiredOAuthProfile profile, String nickname, Instant now) {
         int imageCode = profileImageCodeGenerator.generate();
 
         User user = new User(profile.email(), profile.displayName(), now);

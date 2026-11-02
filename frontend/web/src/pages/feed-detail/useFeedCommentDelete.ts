@@ -15,6 +15,7 @@ interface FeedCommentDeleteOptions {
 
 interface FeedCommentDeleteState {
   readonly request: ApiRequest<void>;
+  readonly reset: () => void;
   readonly execute: (options: FeedCommentDeleteOptions) => Promise<void>;
 }
 
@@ -51,7 +52,9 @@ const useFeedCommentDelete = ({
     [commentId, request.status, captureError],
   );
 
-  return { request, execute };
+  const reset = (): void => setRequest({ status: 'idle' });
+
+  return { request, execute, reset };
 };
 
 export default useFeedCommentDelete;

@@ -17,6 +17,22 @@ import org.springframework.data.repository.query.Param;
 public interface DiaryGenerationQueryRepository extends Repository<DiaryGeneration, UUID> {
 
     @Query("""
+            SELECT new com.harudle.generation.diary.repository.DiaryGenerationStatusSnapshot(
+                generation.id, generation.diaryId, generation.status, generation.errorCode
+            )
+            FROM DiaryGeneration generation
+            JOIN Diary diary ON diary.id = generation.diaryId
+            WHERE generation.id = :generationId
+              AND diary.userId = :userId
+              AND (diary.deletedAt IS NULL
+                   OR generation.status = com.harudle.generation.diary.domain.GenerationStatus.FAILED)
+            """)
+    Optional<DiaryGenerationStatusSnapshot> findStatusSnapshotByIdAndUserId(
+            @Param("generationId") UUID generationId,
+            @Param("userId") UUID userId
+    );
+
+    @Query("""
             SELECT new com.harudle.generation.diary.repository.ImageBackupTarget(
                 generation.id, generation.completedAt, generation.imageObjectKey
             )

@@ -108,7 +108,7 @@ class DashboardTests(unittest.TestCase):
             item = next(f for f in metric_filters(environment)
                         if f["filterName"] == f"harudle-{environment}-nginx-gateway-error")
             self.assertEqual(item["logGroupName"], f"/harudle/{environment}/frontend-nginx")
-            self.assertIn("status = 502 || status = 504", item["filterPattern"])
+            self.assertEqual(item["filterPattern"], "{ $.status = 502 || $.status = 504 }")
             self.assertEqual(item["metricTransformations"], [{
                 "metricNamespace": namespace, "metricName": "NginxGatewayErrorLogs",
                 "metricValue": "1", "defaultValue": 0}])
@@ -252,6 +252,23 @@ class DashboardTests(unittest.TestCase):
             self.assertEqual(prepare_dashboard(result, environment, INSTANCE_ID), result)
         self.assertEqual(original, unchanged)
 
+    def test_request_storage_times_exclude_uncalled_operations_and_have_no_request_dimensions(self):
+        for environment in ("dev", "prod"):
+            filters = {item["metricTransformations"][0]["metricName"]: item
+                       for item in metric_filters(environment)}
+            for name, field in (("S3Head", "s3Head"), ("R2Head", "r2Head"),
+                                ("S3Sign", "s3Sign"), ("R2Sign", "r2Sign"), ("FeedQuery", "feedQuery")):
+                count = filters[f"Request{name}Count"]
+                duration = filters[f"Request{name}DurationMs"]
+                self.assertIn(f"$.{field}Count >= 0", count["filterPattern"])
+                self.assertIn(f"$.{field}Count > 0", duration["filterPattern"])
+                self.assertEqual(count["metricTransformations"][0]["metricValue"], f"$.{field}Count")
+                transformation = duration["metricTransformations"][0]
+                self.assertEqual(transformation["metricValue"], f"$.{field}DurationMs")
+                self.assertEqual(transformation["unit"], "Milliseconds")
+                self.assertNotIn("defaultValue", transformation)
+                self.assertNotIn("dimensions", transformation)
+
     def test_preserves_existing_widgets_and_only_repairs_known_placeholder_targets(self):
         original = {"start": "-PT6H", "periodOverride": "inherit", "widgets": [
             {"type": "text", "x": 0, "y": 0, "height": 2, "properties": {"markdown": "기존 안내"}},
@@ -272,11 +289,10 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(prepare_dashboard(result, "prod", INSTANCE_ID), result)
 
     def test_latency_uses_raw_samples_with_no_zero_defaults_and_bounded_groups(self):
-        dev_filters = metric_filters("dev")
-        prod_filters = metric_filters("prod")
-        self.assertEqual(len([f for f in dev_filters if f["metricTransformations"][0].get("unit") == "Milliseconds"]), 3)
-        for filters in (dev_filters, prod_filters):
-            durations = [item for item in filters if item["metricTransformations"][0].get("unit") == "Milliseconds"]
+        for environment in ("dev", "prod"):
+            filters = metric_filters(environment)
+            durations = [item for item in filters if item["metricTransformations"][0]["metricName"] == "ApiResponseTimeMs"]
+            self.assertEqual(len(durations), 2)
             for item in durations:
                 transformation = item["metricTransformations"][0]
                 self.assertEqual(transformation["metricValue"], "$.durationMs")
@@ -286,13 +302,16 @@ class DashboardTests(unittest.TestCase):
             self.assertEqual(durations[1]["metricTransformations"][0]["dimensions"], {"ApiGroup": "$.apiGroup"})
             self.assertIn('$.apiGroup = "general"', durations[1]["filterPattern"])
             self.assertIn('$.apiGroup = "generation"', durations[1]["filterPattern"])
-        route_filter = next(f for f in prod_filters
+        dev_filters = metric_filters("dev")
+        route_filter = next(f for f in metric_filters("prod")
                             if f["metricTransformations"][0]["metricName"] == "ApiResponseTimeByRouteMs")
         self.assertEqual(route_filter["filterName"], "harudle-prod-ApiResponseTimeByRouteMs-by-group-route")
         self.assertIn('$.apiRoute = "*"', route_filter["filterPattern"])
         self.assertEqual(route_filter["metricTransformations"][0]["dimensions"], {
             "ApiGroup": "$.apiGroup", "ApiRoute": "$.apiRoute"})
-        self.assertEqual(dev_filters[-2]["metricTransformations"][0],
+        self.assertEqual(next(f for f in dev_filters
+                              if f["metricTransformations"][0]["metricName"] == "ApiResponseTimeByRouteMs")
+                         ["metricTransformations"][0],
                          {**route_filter["metricTransformations"][0], "metricNamespace": "Harudle/Dev"})
 
     def test_dev_tps_requires_committed_writes_or_successful_read_responses(self):
@@ -315,7 +334,7 @@ class DashboardTests(unittest.TestCase):
             "API 응답 시간 (전체)", "API 응답 시간 (일반)", "API 응답 시간 (일기 생성)",
             "API RPS (완료한 요청/초)", "API 응답 시간 P95·P99 (일반·일기 생성)", "작업별 TPS (성공한 작업/초)",
         ])
-        self.assertEqual(len(metric_filters("dev")), 8)
+        self.assertEqual(len(metric_filters("dev")), 18)
         dev_routes = dev_widgets[-2:]
         self.assertEqual([w["properties"]["title"] for w in dev_routes], [
             "API 경로별 P95 응답 시간 (일반 상위 5개)", "API 경로별 P95 응답 시간 (일기 생성 전체)"])
@@ -342,7 +361,7 @@ class DashboardTests(unittest.TestCase):
         self.assertTrue(prod_widgets[1]["properties"]["metrics"][0][0]["expression"].endswith(", MAX, DESC, 5)"))
         self.assertEqual(prod_widgets[2]["properties"]["title"], "API 경로별 P95 응답 시간 (일기 생성 전체)")
         self.assertTrue(prod_widgets[2]["properties"]["metrics"][0][0]["expression"].startswith("SEARCH("))
-        self.assertEqual(len(metric_filters("prod")), 4)
+        self.assertEqual(len(metric_filters("prod")), 14)
 
     def test_both_environments_remove_existing_tps_widgets(self):
         tps = {"type": "metric", "properties": {"title": "작업별 TPS (성공한 작업/초)", "metrics": []}}
@@ -355,10 +374,10 @@ class DashboardTests(unittest.TestCase):
                       [w["properties"].get("title") for w in dev["widgets"]])
 
     def test_gc_and_nonheap_widgets_are_dev_only_and_use_converted_counters(self):
-        self.assertEqual(len(service_widgets("prod", INSTANCE_ID)), 9)
+        self.assertEqual(len(service_widgets("prod", INSTANCE_ID)), 15)
         widgets = service_widgets("dev", INSTANCE_ID)
-        self.assertEqual(len(widgets), 14)
-        gc, memory = widgets[10:12]
+        self.assertEqual(len(widgets), 20)
+        gc, memory = widgets[16:18]
         self.assertIn("jvm_gc_pause_seconds_max", json.dumps(gc))
         self.assertIn("1000*MAX(", json.dumps(gc))
         for row, name in zip(gc["properties"]["metrics"][1:], ("sum", "count")):
@@ -371,6 +390,25 @@ class DashboardTests(unittest.TestCase):
         self.assertIn("jvm_memory_committed_bytes", json.dumps(memory))
         prepared = prepare_dashboard({"widgets": []}, "dev", INSTANCE_ID)
         self.assertEqual(prepare_dashboard(prepared, "dev", INSTANCE_ID), prepared)
+
+    def test_queue_widgets_use_matching_dimensions_and_converted_counter_sums(self):
+        for environment in ("dev", "prod"):
+            with self.subTest(environment=environment):
+                widgets = {item["properties"]["title"]: item["properties"]
+                           for item in service_widgets(environment, INSTANCE_ID)}
+                wait = widgets["생성 시작 전 평균 대기 시간"]["metrics"]
+                self.assertEqual(wait[0][1], "harudle_generation_queue_wait_seconds_sum")
+                self.assertEqual(wait[1][1], "harudle_generation_queue_wait_seconds_count")
+                self.assertTrue(all(row[-1]["stat"] == "Sum" for row in wait[:2]))
+                self.assertEqual(wait[2][0]["expression"], "IF(claims>0,waitseconds/claims)")
+                counts = widgets["생성 대기와 처리 중 작업 수"]["metrics"]
+                self.assertEqual([row[5] for row in counts], ["PENDING", "PROCESSING"])
+                self.assertTrue(all(row[-1]["stat"] == "Maximum" for row in counts))
+                rejection = widgets["생성 접수 거절 횟수"]["metrics"][0]
+                self.assertEqual(rejection[1], "harudle_generation_capacity_rejections_total")
+                self.assertEqual(rejection[2:4], ["job", "harudle-backend"])
+                self.assertEqual(rejection[-1]["stat"], "Sum")
+                self.assertNotIn("DIFF(", json.dumps([wait, rejection]))
 
     def test_dashboard_uses_sample_percentiles_period_based_rates_and_matching_resource_units(self):
         widgets = service_widgets("dev", INSTANCE_ID)
@@ -427,7 +465,7 @@ class DashboardTests(unittest.TestCase):
             previous["DashboardArn"] = previous["DashboardArn"].replace("prod", "dev")
             before.write_text(json.dumps(previous))
             result = subprocess.run(command, capture_output=True, text=True, check=True)
-            self.assertEqual(len(list(output.glob("*.json"))), 9)
+            self.assertEqual(len(list(output.glob("*.json"))), 19)
             self.assertEqual(json.loads(before.read_text()), previous)
             self.assertIn("GC 정지 시간과 횟수", (output / "dashboard.json").read_text())
 

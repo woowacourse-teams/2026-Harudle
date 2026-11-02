@@ -41,7 +41,7 @@ const FeedShareButton = ({ feedId, shareUrl }: FeedShareButtonProps) => {
     });
 
     try {
-      await navigator.clipboard.writeText(shareUrl);
+      await navigator.clipboard.writeText(`${shareUrl}?utm_source=feed_share`);
       setIsCopied(true);
     } catch (error: unknown) {
       const requestError =

@@ -8,44 +8,24 @@ import DiaryEmptyState from './DiaryEmptyState';
 import { css } from '@emotion/react';
 import plusIcon from '../../assets/icons/plus.svg';
 import DiaryError from './DiaryError';
-import { useDiaryGenerateContext } from '../diary-generating/DiaryGenerateContext';
 import DiaryItemRowSkeleton from './DiaryItemRowSkeleton';
-import { useEffect, useRef } from 'react';
 import { theme } from '../../styles/theme';
 import useMonthlyDiaries from './useMonthlyDiaries';
 import type { MonthlyDiaryDay } from '../../domain/diary/monthlyDiaries';
 import type { Month } from '../../shared/utils';
 import LoadingSpinner from '../../shared/LoadingSpinner';
+import useDiaryGenerationId from '../../shared/useDiaryGenerationId';
+import { useEffect } from 'react';
 
 const DiaryItemList = ({ year, month }: { year: number; month: Month }) => {
   const navigate = useNavigate();
   const { request, refetch } = useMonthlyDiaries({ year, month });
-  const {
-    request: diaryGenerateRequest,
-    resetRequest: resetDiaryGenerateRequest,
-  } = useDiaryGenerateContext();
-
-  /**
-   * 일기 생성 중 앨범 화면으로 이동했을 떄
-   * 앨범 화면에서는 최초 1번만 일기 생성 성공 또는 실패 후처리를 하면 되므로
-   * 비동기 상태를 초기화한다.
-   */
-  const initialDiaryGenerateStatusRef = useRef(diaryGenerateRequest.status);
+  const generationId = useDiaryGenerationId();
+  const showSkeleton = generationId !== null;
 
   useEffect(() => {
-    if (diaryGenerateRequest.status === 'error') {
-      resetDiaryGenerateRequest();
-      alert(diaryGenerateRequest.error.message);
-    }
-
-    if (diaryGenerateRequest.status === 'success') {
-      resetDiaryGenerateRequest();
-
-      if (initialDiaryGenerateStatusRef.current !== 'success') {
-        void refetch();
-      }
-    }
-  }, [diaryGenerateRequest, resetDiaryGenerateRequest, refetch]);
+    refetch();
+  }, [generationId]);
 
   const isMonthlyDiaryExist = (monthlyDiaryDays: MonthlyDiaryDay[]) => {
     return monthlyDiaryDays.some((day) => day.exist);
@@ -60,7 +40,6 @@ const DiaryItemList = ({ year, month }: { year: number; month: Month }) => {
   }
 
   const { days } = request.data;
-  const showSkeleton = diaryGenerateRequest.status === 'loading';
 
   const monthlyDiaryCount =
     request.status === 'success'

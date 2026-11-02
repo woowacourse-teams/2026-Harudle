@@ -1,18 +1,27 @@
+import { useToastContext } from '../../shared/ToastContext';
 import { css } from '@emotion/react';
 import { useEffect } from 'react';
 import type { Feed, FeedListRequest } from '../../domain/feeds/feedList';
 import LoadingSpinner from '../../shared/LoadingSpinner';
 import FeedEmpty from './FeedEmpty';
 import FeedError from './FeedError';
-import useFeedList from './useFeedList';
+import type { FeedListState } from './useFeedList';
 import FeedItem from './FeedItem';
 import ActionButton from '../../shared/ActionButton';
 import { FEED_COPY } from './copy';
+import useFeedScrollRestore from './useFeedScrollRestore';
 
-interface FeedItemListProps extends Pick<
-  FeedListRequest,
-  'categoryId' | 'sort'
-> {
+interface FeedItemListProps
+  extends
+    Pick<FeedListRequest, 'categoryId' | 'sort'>,
+    Pick<
+      FeedListState,
+      | 'request'
+      | 'loadMoreRequest'
+      | 'loadMore'
+      | 'updateLike'
+      | 'removeFeedFromList'
+    > {
   readonly onCategoryClick: (
     categoryId: Feed['category']['id'],
     categoryName: string,
@@ -23,16 +32,25 @@ const FeedItemList = ({
   categoryId,
   sort,
   onCategoryClick,
+  request,
+  loadMoreRequest,
+  loadMore,
+  updateLike,
+  removeFeedFromList,
 }: FeedItemListProps) => {
-  const { request, loadMoreRequest, loadMore, updateLike, removeFeedFromList } =
-    useFeedList({ categoryId, sort });
+  const { addToast } = useToastContext();
+  const { targetScrollRef, setFeedScroll } = useFeedScrollRestore({
+    categoryId,
+    sort,
+    isListReady: request.status === 'success',
+  });
   const isLoadingMore = loadMoreRequest.status === 'loading';
 
-  useEffect((): void => {
+  useEffect(() => {
     if (loadMoreRequest.status === 'error') {
-      window.alert(FEED_COPY.loadMoreError);
+      addToast({ type: 'error', message: FEED_COPY.loadMoreError }, 2000);
     }
-  }, [loadMoreRequest]);
+  }, [loadMoreRequest, addToast]);
 
   if (request.status === 'idle' || request.status === 'loading') {
     return <LoadingSpinner />;
@@ -46,7 +64,13 @@ const FeedItemList = ({
   if (items.length === 0 && !hasNext) return <FeedEmpty />;
 
   return (
-    <div css={feedItemListStyle}>
+    <div
+      css={feedItemListStyle}
+      ref={targetScrollRef}
+      onScroll={(event) => {
+        setFeedScroll(event.currentTarget.scrollTop);
+      }}
+    >
       {items.map((item) => (
         <FeedItem
           key={item.id}

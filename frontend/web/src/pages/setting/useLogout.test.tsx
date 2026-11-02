@@ -2,15 +2,10 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { act, renderHook } from '@testing-library/react';
 import useLogout from './useLogout';
 
-const mockNavigate = jest.fn<(...args: unknown[]) => void>();
 const mockResetUser = jest.fn<() => void>();
 const mockRequestCsrfToken = jest.fn<() => Promise<string>>();
 const mockSetAccessToken = jest.fn<(token: string | null) => void>();
 const mockLogout = jest.fn<(...args: unknown[]) => Promise<void>>();
-
-jest.mock('react-router', () => ({
-  useNavigate: () => mockNavigate,
-}));
 
 jest.mock('../../posthog/useAnalytics', () => ({
   useAnalytics: () => ({ resetUser: mockResetUser }),
@@ -30,9 +25,10 @@ describe('useLogout', () => {
     localStorage.clear();
   });
 
-  it('로그아웃에 성공하면 로그인 경험은 유지하고 인증 완료 표시를 삭제한 뒤 / 주소로 이동시킨다', async () => {
+  it('로그아웃에 실패하면 인증 정보를 유지하고 오류를 표시한다', async () => {
+    const error = new Error('로그아웃에 실패했습니다.');
     mockRequestCsrfToken.mockResolvedValueOnce('csrf-token');
-    mockLogout.mockResolvedValueOnce();
+    mockLogout.mockRejectedValueOnce(error);
     localStorage.setItem('harudle.has-ever-logged-in', 'true');
     localStorage.setItem('harudle.has-completed-oauth', 'true');
     const { result } = renderHook(() => useLogout());
@@ -41,10 +37,10 @@ describe('useLogout', () => {
       await result.current.handleLogout();
     });
 
-    expect(mockResetUser).toHaveBeenCalledTimes(1);
-    expect(mockSetAccessToken).toHaveBeenCalledWith(null);
+    expect(result.current.request).toEqual({ status: 'error', error });
+    expect(mockResetUser).not.toHaveBeenCalled();
+    expect(mockSetAccessToken).not.toHaveBeenCalled();
     expect(localStorage.getItem('harudle.has-ever-logged-in')).toBe('true');
-    expect(localStorage.getItem('harudle.has-completed-oauth')).toBeNull();
-    expect(mockNavigate).toHaveBeenCalledWith('/');
+    expect(localStorage.getItem('harudle.has-completed-oauth')).toBe('true');
   });
 });

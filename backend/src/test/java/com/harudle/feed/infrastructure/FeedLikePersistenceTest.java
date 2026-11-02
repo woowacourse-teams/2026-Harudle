@@ -531,25 +531,49 @@ class FeedLikePersistenceTest {
     }
 
     @Test
-    @DisplayName("피드 반응은 원본 일기를 잠그지 않아 일기→피드 삭제 잠금과 역순 교착하지 않는다")
-    void doNotLockDiaryWhileLiking() throws Exception {
+    @DisplayName("피드 반응은 삭제와 같은 일기→피드 순서로 잠그고 대기 중 피드부터 선점하지 않는다")
+    void lockDiaryBeforeFeedWhileLiking() throws Exception {
         CountDownLatch diaryLocked = new CountDownLatch(1);
-        CountDownLatch releaseDiary = new CountDownLatch(1);
+        CountDownLatch acquireFeed = new CountDownLatch(1);
+        CountDownLatch feedLocked = new CountDownLatch(1);
+        CountDownLatch releaseLocks = new CountDownLatch(1);
+        AtomicInteger diaryLockerPid = new AtomicInteger();
+        AtomicInteger likePid = new AtomicInteger();
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
             Future<?> diaryLocker = executor.submit(() -> transactions.executeWithoutResult(status -> {
+                diaryLockerPid.set(intValue("SELECT pg_backend_pid()"));
                 uuidValue("SELECT id FROM diaries WHERE id = ? FOR UPDATE", diaryId);
                 diaryLocked.countDown();
-                await(releaseDiary);
+                await(acquireFeed);
+                // 반응 요청이 피드부터 선점했다면 이 잠금과 일기 잠금 사이에 역순 교착이 생긴다.
+                uuidValue("SELECT id FROM feeds WHERE id = ? FOR UPDATE", feedId);
+                feedLocked.countDown();
+                await(releaseLocks);
             }));
             try {
                 assertThat(diaryLocked.await(5, TimeUnit.SECONDS)).isTrue();
-                Future<Integer> like = executor.submit(() -> service.like(viewerId, feedId).likeCount());
+                Future<Integer> like = executor.submit(() -> transactions.execute(status -> {
+                    likePid.set(intValue("SELECT pg_backend_pid()"));
+                    return service.like(viewerId, feedId).likeCount();
+                }));
+                awaitBlockedBackend(likePid);
+                assertThat(jdbc.queryForObject("SELECT ? = ANY(pg_blocking_pids(?))", Boolean.class,
+                        diaryLockerPid.get(), likePid.get())).isTrue();
+                acquireFeed.countDown();
+                assertThat(feedLocked.await(5, TimeUnit.SECONDS)).isTrue();
+                assertThat(like.isDone()).isFalse();
+                assertCounts(0, 0);
+                assertThat(notificationCount()).isZero();
+
+                releaseLocks.countDown();
+                diaryLocker.get(10, TimeUnit.SECONDS);
                 assertThat(like.get(5, TimeUnit.SECONDS)).isEqualTo(1);
                 assertCounts(1, 0);
+                assertThat(notificationCount()).isEqualTo(1);
             } finally {
-                releaseDiary.countDown();
+                acquireFeed.countDown();
+                releaseLocks.countDown();
             }
-            diaryLocker.get(10, TimeUnit.SECONDS);
         }
     }
 

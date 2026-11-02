@@ -30,6 +30,10 @@ EXISTING_DIMENSIONS = {
     "hikaricp_connections_pending": [["job", "pool"]],
 }
 NEW_DIMENSIONS = {
+    "harudle_generation_queue_size": [["job", "status"]],
+    "harudle_generation_queue_wait_seconds_sum": [["job"]],
+    "harudle_generation_queue_wait_seconds_count": [["job"]],
+    "harudle_generation_capacity_rejections_total": [["job"]],
     "harudle_generation_duration_seconds_sum": [["job", "result"]],
     "harudle_generation_duration_seconds_count": [["job", "result"]],
     "harudle_gemini_tokens_total": [["job", "stage", "kind"]],
@@ -140,6 +144,10 @@ class MonitoringConfigTests(unittest.TestCase):
             "harudle_generation_duration_seconds_bucket",
             "harudle_generation_duration_seconds",  # Quantiles are not request samples.
             "harudle_generation_duration_seconds_max",
+            "harudle_generation_queue_wait_seconds_bucket",
+            "harudle_generation_queue_wait_seconds_max",
+            "harudle_generation_queue_size_extra",
+            "harudle_generation_capacity_rejections_total_created",
             "harudle_generation_duration_seconds_sum_unbounded_suffix",
             "harudle_gemini_tokens_total_created",
             "http_server_requests_seconds_bucket",

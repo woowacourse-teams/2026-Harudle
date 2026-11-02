@@ -1,10 +1,49 @@
+import type { GenerationFailureCode } from '../domain/diary/diaryGeneration';
+
+export const DIARY_GENERATION_FAILURE_MESSAGES = {
+  AI_PROVIDER_ERROR: [
+    '네컷만화 생성에 실패했어요.',
+    '잠시 후 다시 만들어 주세요.',
+  ],
+  AI_PROVIDER_RATE_LIMITED: [
+    '네컷만화 생성 요청이 많아요.',
+    '조금 기다린 뒤 다시 만들어 주세요.',
+  ],
+  AI_PROVIDER_TIMEOUT: [
+    '네컷만화 생성 시간이 초과됐어요.',
+    '잠시 후 다시 만들어 주세요.',
+  ],
+  AI_OUTPUT_TRUNCATED: [
+    '네컷만화가 완성되지 않았어요.',
+    '네컷만화를 다시 만들어 주세요.',
+  ],
+  AI_RESPONSE_PROCESSING_ERROR: [
+    '네컷만화 생성에 실패했어요.',
+    '네컷만화를 다시 만들어 주세요.',
+  ],
+  GENERATION_INTERNAL_ERROR: [
+    '네컷만화 생성에 실패했어요.',
+    '잠시 후 다시 만들어 주세요.',
+  ],
+  GENERATION_INTERRUPTED: [
+    '네컷만화 생성이 중단됐어요.',
+    '네컷만화를 다시 만들어 주세요.',
+  ],
+  IMAGE_STORAGE_ERROR: [
+    '네컷만화 저장에 실패했어요.',
+    '잠시 후 다시 만들어 주세요.',
+  ],
+} as const satisfies Record<GenerationFailureCode, readonly [string, string]>;
+
 const DIARY_GENERATE = {
   DIARY_GENERATION_FAILED:
     '네컷만화를 만드는 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요.',
   INVALID_DIARY_GENERATION_RESPONSE:
     'DiaryGenerate 응답 형식이 일치하지 않습니다.',
-  DIARY_GENERATE_PROVIDER_REQUIRED:
-    'useDiaryGenerateContext는 DiaryGenerateProvider 내부에서만 사용할 수 있습니다.',
+  DIARY_GENERATION_STATUS_FETCH_FAILED:
+    '네컷만화 생성 상태를 불러오지 못했어요. 다시 시도해 주세요.',
+  INVALID_DIARY_GENERATION_STATUS_RESPONSE:
+    'DiaryGenerationStatus 응답 형식이 일치하지 않습니다.',
 } as const;
 
 const DIARY_DELETE = {
@@ -92,7 +131,9 @@ const USER = {
   PROFILE_FETCH_FAILED:
     '프로필을 조회하는 중 문제가 발생했습니다. 다시 시도해주세요.',
   NICKNAME_UPDATE_FAILED: '닉네임을 수정하지 못했어요. 다시 시도해 주세요.',
-  INVALID_PROFILE_RESPONSE: 'Profile 응답 형식이 일치하지 않습니다.',
+  PROFILE_UPDATE_FAILED: '프로필을 저장하지 못했어요. 다시 시도해 주세요.',
+  INVALID_PROFILE_RESPONSE:
+    '프로필 정보를 확인할 수 없어요. 다시 불러와 주세요.',
 } as const;
 
 const GUEST = {
@@ -131,6 +172,11 @@ const PWA = {
     'usePwaInstall은 PwaInstallProvider 내부에서만 사용할 수 있습니다.',
 } as const;
 
+const TOAST = {
+  TOAST_PROVIDER_REQUIRED:
+    'useToastContext는 ToastProvider 내부에서만 사용할 수 있습니다.',
+} as const;
+
 export const ERROR_MESSAGES = {
   ...DIARY_GENERATE,
   ...DIARY_DELETE,
@@ -150,4 +196,5 @@ export const ERROR_MESSAGES = {
   ...ADMIN,
   ...VALIDATION,
   ...PWA,
+  ...TOAST,
 } as const;

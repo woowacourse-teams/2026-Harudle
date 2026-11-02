@@ -1,29 +1,34 @@
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { API_BASE_URL, isProblemDetails, RequestError } from '../../shared/api';
+import {
+  isDiaryGeneration,
+  type DiaryGeneration,
+  type DiaryGenerationSuccess,
+} from '../../domain/diary/diaryGeneration';
 
 export interface GuestDiaryRequest {
   diaryDate: string;
   sourceText: string;
 }
 
-export interface GuestDiaryResponse {
+interface GuestDiaryApiResponse {
   id: string;
   diaryDate: string;
   sourceText: string;
   createdAt: string;
-  generation: {
-    id: string;
-    status: 'SUCCEEDED';
-    title: string;
-    imageUrl: string;
-    imageUrlExpiresAt: string;
-    completedAt: string;
-  };
+  generation: DiaryGeneration;
+}
+
+export interface GuestDiaryResponse extends GuestDiaryApiResponse {
+  generation: DiaryGenerationSuccess;
 }
 
 interface GuestCsrfTokenResponse {
   token: string;
 }
+
+const GUEST_DIARY_POLL_INTERVAL_MS = 2_000;
+const GUEST_DIARY_MAX_POLL_ATTEMPTS = 60;
 
 const isRecord = (value: unknown): value is Record<string, unknown> => {
   return typeof value === 'object' && value !== null;
@@ -35,26 +40,24 @@ export const isGuestCsrfTokenResponse = (
   return isRecord(value) && typeof value.token === 'string';
 };
 
-export const isGuestDiaryResponse = (
+const isGuestDiaryApiResponse = (
   value: unknown,
-): value is GuestDiaryResponse => {
-  if (!isRecord(value) || !isRecord(value.generation)) {
-    return false;
-  }
-
-  const { generation } = value;
-
+): value is GuestDiaryApiResponse => {
   return (
+    isRecord(value) &&
     typeof value.id === 'string' &&
     typeof value.diaryDate === 'string' &&
     typeof value.sourceText === 'string' &&
     typeof value.createdAt === 'string' &&
-    typeof generation.id === 'string' &&
-    generation.status === 'SUCCEEDED' &&
-    typeof generation.title === 'string' &&
-    typeof generation.imageUrl === 'string' &&
-    typeof generation.imageUrlExpiresAt === 'string' &&
-    typeof generation.completedAt === 'string'
+    isDiaryGeneration(value.generation)
+  );
+};
+
+export const isGuestDiaryResponse = (
+  value: unknown,
+): value is GuestDiaryResponse => {
+  return (
+    isGuestDiaryApiResponse(value) && value.generation.status === 'SUCCEEDED'
   );
 };
 
@@ -142,16 +145,22 @@ export const createGuestDiary = async ({
 
   const data: unknown = await response.json();
 
-  if (!isGuestDiaryResponse(data)) {
+  if (!isGuestDiaryApiResponse(data)) {
     throw new Error(ERROR_MESSAGES.INVALID_GUEST_DIARY_RESPONSE);
   }
 
-  return data;
+  return waitForGuestDiary(data);
 };
 
 export const getGuestDiary = async (
   diaryId: string,
 ): Promise<GuestDiaryResponse> => {
+  return waitForGuestDiary(await fetchGuestDiary(diaryId));
+};
+
+const fetchGuestDiary = async (
+  diaryId: string,
+): Promise<GuestDiaryApiResponse> => {
   const response = await fetch(`${API_BASE_URL}/guest/diaries/${diaryId}`, {
     credentials: 'include',
   });
@@ -162,9 +171,36 @@ export const getGuestDiary = async (
 
   const data: unknown = await response.json();
 
-  if (!isGuestDiaryResponse(data)) {
+  if (!isGuestDiaryApiResponse(data)) {
     throw new Error(ERROR_MESSAGES.INVALID_GUEST_DIARY_RESPONSE);
   }
 
   return data;
+};
+
+const waitForGuestDiary = async (
+  initialDiary: GuestDiaryApiResponse,
+): Promise<GuestDiaryResponse> => {
+  let diary = initialDiary;
+
+  for (
+    let attempt = 0;
+    attempt <= GUEST_DIARY_MAX_POLL_ATTEMPTS;
+    attempt += 1
+  ) {
+    if (diary.generation.status === 'SUCCEEDED') {
+      return { ...diary, generation: diary.generation };
+    }
+
+    if (attempt === GUEST_DIARY_MAX_POLL_ATTEMPTS) {
+      break;
+    }
+
+    await new Promise<void>((resolve): void => {
+      setTimeout(resolve, GUEST_DIARY_POLL_INTERVAL_MS);
+    });
+    diary = await fetchGuestDiary(diary.id);
+  }
+
+  throw new Error(ERROR_MESSAGES.GUEST_DIARY_RESULT_FETCH_FAILED);
 };

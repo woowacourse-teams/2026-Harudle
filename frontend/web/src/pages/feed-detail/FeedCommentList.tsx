@@ -1,3 +1,4 @@
+import { useToastContext } from '../../shared/ToastContext';
 import { css } from '@emotion/react';
 import { useEffect } from 'react';
 import FeedCommentItem from './FeedCommentItem';
@@ -27,13 +28,17 @@ const FeedCommentList = ({
   onRetry,
   onDelete,
 }: FeedCommentListProps) => {
+  const { addToast } = useToastContext();
   const isLoadingMore = loadMoreRequest.status === 'loading';
 
   useEffect((): void => {
     if (loadMoreRequest.status === 'error') {
-      window.alert(FEED_DETAIL_COPY.commentsLoadMoreError);
+      addToast(
+        { type: 'error', message: FEED_DETAIL_COPY.commentsLoadMoreError },
+        2000,
+      );
     }
-  }, [loadMoreRequest]);
+  }, [loadMoreRequest, addToast]);
 
   if (request.status === 'idle' || request.status === 'loading') {
     return <LoadingSpinner />;

@@ -1,3 +1,4 @@
+import { useToastContext } from '../../shared/ToastContext';
 import { DIARY_DETAIL_COPY } from './copy';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import ActionButton from '../../shared/ActionButton';
@@ -20,6 +21,7 @@ const DiaryImageDownloadButton = ({
   diaryDate,
   diaryTitle,
 }: DiaryImageDownloadButtonProps): ReactElement => {
+  const { addToast } = useToastContext();
   const [downloadRequest, setDownloadRequest] = useState<ApiRequest<void>>({
     status: 'idle',
   });
@@ -69,7 +71,7 @@ const DiaryImageDownloadButton = ({
           ...(httpStatus !== undefined ? { http_status: httpStatus } : {}),
         });
 
-        alert(error.message);
+        addToast({ type: 'error', message: error.message }, 2000);
       }
     }
   };

@@ -20,6 +20,6 @@ public interface BackupObjectStorage {
     /** 기존 객체를 덮어쓰지 않는다. ALREADY_EXISTS는 내용 일치나 검증 성공을 의미하지 않는다. */
     BackupUploadResult uploadIfAbsent(String objectKey, GeneratedImage original);
 
-    /** URL 발급은 객체 존재 여부를 확인하지 않는다. 필요한 경우 먼저 findMetadata를 호출한다. */
+    /** 원본과 화면 표시용 이미지의 URL을 존재 확인 없이 발급한다. 백업 작업은 원본만 처리한다. */
     ImageAccessUrl createAccessUrl(String objectKey);
 }

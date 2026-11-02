@@ -84,7 +84,7 @@ interface AnalyticsEventMap {
     diary_id: string;
     diary_date: string;
   };
-  diary_created: {
+  diary_written: {
     diary_id: string;
     diary_date: string;
     remaining_generation_count: number;

@@ -1,6 +1,10 @@
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { API_BASE_URL, isProblemDetails, RequestError } from '../../shared/api';
 import { authFetch } from '../../shared/auth';
+import {
+  isDiaryGeneration,
+  type DiaryGenerationSuccess,
+} from './diaryGeneration';
 
 export const getDiaryDetail = async ({
   diaryId,
@@ -36,14 +40,7 @@ export interface DiaryDetailResponse {
   diaryDate: string;
   sourceText: string;
   createdAt: string;
-  generation: {
-    id: string;
-    status: 'SUCCEEDED';
-    title: string;
-    imageUrl: string;
-    imageUrlExpiresAt: string;
-    completedAt: string;
-  };
+  generation: DiaryGenerationSuccess;
 }
 
 const isDiaryDetailResponse = (
@@ -64,19 +61,7 @@ const isDiaryDetailResponse = (
     'createdAt' in value &&
     typeof value.createdAt === 'string' &&
     'generation' in value &&
-    typeof value.generation === 'object' &&
-    value.generation !== null &&
-    'id' in value.generation &&
-    typeof value.generation.id === 'string' &&
-    'status' in value.generation &&
-    value.generation.status === 'SUCCEEDED' &&
-    'title' in value.generation &&
-    typeof value.generation.title === 'string' &&
-    'imageUrl' in value.generation &&
-    typeof value.generation.imageUrl === 'string' &&
-    'imageUrlExpiresAt' in value.generation &&
-    typeof value.generation.imageUrlExpiresAt === 'string' &&
-    'completedAt' in value.generation &&
-    typeof value.generation.completedAt === 'string'
+    isDiaryGeneration(value.generation) &&
+    value.generation.status === 'SUCCEEDED'
   );
 };

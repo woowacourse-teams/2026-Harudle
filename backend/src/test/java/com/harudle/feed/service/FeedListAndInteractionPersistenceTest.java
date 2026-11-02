@@ -34,6 +34,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -83,7 +84,7 @@ class FeedListAndInteractionPersistenceTest {
         when(categories.get(dailyCategory)).thenReturn(new CategoryReader.Category(dailyCategory, "일상", 0, true));
         when(categories.get(otherCategory)).thenReturn(new CategoryReader.Category(otherCategory, "우테코", 1, true));
         when(profiles.readAll(anySet())).thenReturn(Map.of(AUTHOR,
-                new PublicProfileReader.Profile(AUTHOR, "캐모", URI.create("https://example.com/profile.png"))));
+                new PublicProfileReader.Profile(AUTHOR, "캐모", URI.create("https://example.com/profile.png"), null)));
         when(likes.findLikedFeedIds(org.mockito.ArgumentMatchers.any(), anySet())).thenReturn(Set.of(FIRST));
         createFeed(FIRST, dailyCategory, PUBLISHED, 9);
         createFeed(SECOND, dailyCategory, PUBLISHED, 9);
@@ -201,7 +202,8 @@ class FeedListAndInteractionPersistenceTest {
     }
 
     @Test
-    void holdsFeedLockWithoutLockingOriginalDiary() throws Exception {
+    @DisplayName("피드 접촉은 관리자 숨김과 같은 일기 우선 잠금 순서를 유지한다")
+    void interactionHoldsParentDiaryLockBeforeFeedLock() throws Exception {
         var executor = Executors.newSingleThreadExecutor();
         var held = new CountDownLatch(1);
         var release = new CountDownLatch(1);
@@ -219,10 +221,10 @@ class FeedListAndInteractionPersistenceTest {
         }));
         try {
             assertThat(held.await(5, TimeUnit.SECONDS)).isTrue();
-            transactions.executeWithoutResult(status -> {
+            assertThatThrownBy(() -> transactions.executeWithoutResult(status -> {
                 executeUpdate("SET LOCAL lock_timeout = '1s'");
-                assertThat(diaryLifecycle.findByIdIncludingDeletedForUpdate(diaryIds.get(THIRD))).isPresent();
-            });
+                diaryLifecycle.findByIdIncludingDeletedForUpdate(diaryIds.get(THIRD));
+            })).isInstanceOf(org.springframework.dao.PessimisticLockingFailureException.class);
         } finally {
             release.countDown();
             try {
@@ -269,7 +271,8 @@ class FeedListAndInteractionPersistenceTest {
     }
 
     @Test
-    void deletionHoldsFeedLockWithoutLockingOriginalDiary() throws Exception {
+    @DisplayName("피드 삭제도 일기를 먼저 잠가 관리자 숨김과 잠금 순서가 역전되지 않는다")
+    void feedDeletionUsesTheSameParentDiaryLockOrder() throws Exception {
         var executor = Executors.newSingleThreadExecutor();
         var held = new CountDownLatch(1);
         var release = new CountDownLatch(1);
@@ -281,10 +284,10 @@ class FeedListAndInteractionPersistenceTest {
         var removal = executor.submit(() -> deletion.delete(AUTHOR, THIRD));
         try {
             assertThat(held.await(5, TimeUnit.SECONDS)).isTrue();
-            transactions.executeWithoutResult(status -> {
+            assertThatThrownBy(() -> transactions.executeWithoutResult(status -> {
                 executeUpdate("SET LOCAL lock_timeout = '1s'");
-                assertThat(diaryLifecycle.findByIdIncludingDeletedForUpdate(diaryIds.get(THIRD))).isPresent();
-            });
+                diaryLifecycle.findByIdIncludingDeletedForUpdate(diaryIds.get(THIRD));
+            })).isInstanceOf(org.springframework.dao.PessimisticLockingFailureException.class);
         } finally {
             release.countDown();
             try {

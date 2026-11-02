@@ -1,3 +1,4 @@
+import { useToastContext } from '../ToastContext';
 import { css, keyframes } from '@emotion/react';
 import { useEffect, useRef } from 'react';
 import heartIcon from '../../assets/icons/feed-heart.svg';
@@ -21,14 +22,15 @@ const FeedLikeButton = ({
   likedByMe,
   onLikeChange,
 }: FeedLikeButtonProps) => {
+  const { addToast } = useToastContext();
   const { request, execute } = useFeedLike({ feedId });
   const loginSheetRef = useRef<BottomSheetHandle>(null);
 
   useEffect(() => {
     if (request.status === 'error') {
-      window.alert(request.error.message);
+      addToast({ type: 'error', message: request.error.message }, 2000);
     }
-  }, [request]);
+  }, [request, addToast]);
 
   const handleLike = (): void => {
     if (localStorage.getItem('harudle.has-completed-oauth') === null) {

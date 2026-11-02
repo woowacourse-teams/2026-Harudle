@@ -1,12 +1,10 @@
 import { useState } from 'react';
 import { type ApiRequest } from '../../shared/api';
-import { useNavigate } from 'react-router';
 import { requestCsrfToken, setAccessToken } from '../../shared/auth';
 import { logout } from '../../domain/user/logout';
 import { useAnalytics } from '../../posthog/useAnalytics';
 
 const useLogout = () => {
-  const navigate = useNavigate();
   const { resetUser } = useAnalytics();
   const [request, setRequest] = useState<ApiRequest<void>>({
     status: 'idle',
@@ -30,7 +28,7 @@ const useLogout = () => {
 
       setAccessToken(null);
       localStorage.removeItem('harudle.has-completed-oauth');
-      navigate('/');
+      window.location.replace('/');
     } catch (error: unknown) {
       if (error instanceof Error) {
         setRequest({

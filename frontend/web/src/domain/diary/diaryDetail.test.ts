@@ -76,6 +76,41 @@ describe('일기 상세 API', () => {
     );
   });
 
+  it.each(['PENDING', 'PROCESSING', 'FAILED'] as const)(
+    '%s 상태의 상세 응답은 검증 오류를 던진다',
+    async (status): Promise<void> => {
+      const inProgressDiary = {
+        ...diaryDetail,
+        generation: {
+          id: diaryDetail.generation.id,
+          status,
+          title: null,
+          imageUrl: null,
+          imageUrlExpiresAt: null,
+          completedAt: null,
+        },
+      };
+      mockAuthFetch.mockResolvedValueOnce(
+        createJsonResponse(inProgressDiary, 200),
+      );
+
+      await expect(getDiaryDetail({ diaryId: DIARY_ID })).rejects.toThrow(
+        ERROR_MESSAGES.INVALID_DIARY_DETAIL_RESPONSE,
+      );
+    },
+  );
+
+  it('완료된 일기는 게시된 피드 ID를 함께 반환할 수 있다', async (): Promise<void> => {
+    const publishedDiary = { ...diaryDetail, publishedFeedId: 'feed-id' };
+    mockAuthFetch.mockResolvedValueOnce(
+      createJsonResponse(publishedDiary, 200),
+    );
+
+    await expect(getDiaryDetail({ diaryId: DIARY_ID })).resolves.toEqual(
+      publishedDiary,
+    );
+  });
+
   it('상세 조회에 실패하면 RequestError를 던진다', async () => {
     mockAuthFetch.mockResolvedValueOnce(
       createJsonResponse(problemDetails, problemDetails.status),

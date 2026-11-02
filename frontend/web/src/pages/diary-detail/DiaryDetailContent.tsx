@@ -1,3 +1,4 @@
+import { useToastContext } from '../../shared/ToastContext';
 import { DIARY_DETAIL_COPY } from './copy';
 import useDiaryDetail from './useDiaryDetail';
 import LoadingSpinner from '../../shared/LoadingSpinner';
@@ -14,7 +15,7 @@ import DiaryImage from '../../shared/DiaryImage';
 import DiaryImageCopyButton from './DiaryImageCopyButton';
 import ActionButton from '../../shared/ActionButton';
 import DiaryDetailOptionsButton from './DiaryDetailOptionsButton';
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import ConfirmModal from '../../shared/ConfirmModal';
 import type { ModalHandle } from '../../shared/Modal';
 import { FEED_ACTION_COPY } from '../../shared/feed/copy';
@@ -110,22 +111,25 @@ const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
 export default DiaryDetailContent;
 
 const DiaryFeedDeleteAction = ({ feedId }: { feedId: Feed['id'] }) => {
+  const { addToast } = useToastContext();
   const navigate = useNavigate();
   const confirmRef = useRef<ModalHandle>(null);
-  const { request: feedDeleteRequest, execute: deleteFeed } = useFeedDelete({
+  const {
+    request: feedDeleteRequest,
+    reset,
+    execute: deleteFeed,
+  } = useFeedDelete({
     feedId,
   });
-
-  useEffect((): void => {
-    if (feedDeleteRequest.status === 'error') {
-      window.alert(feedDeleteRequest.error.message);
-    }
-  }, [feedDeleteRequest]);
 
   const handleFeedDeleteConfirm = (): void => {
     void deleteFeed({
       onSuccess: (): void => {
         confirmRef.current?.close();
+        addToast(
+          { type: 'success', message: FEED_ACTION_COPY.deleteSuccess },
+          2000,
+        );
         void navigate('/');
       },
     });
@@ -137,9 +141,17 @@ const DiaryFeedDeleteAction = ({ feedId }: { feedId: Feed['id'] }) => {
         icon={<span css={deleteIconStyle} />}
         label={DIARY_DETAIL_COPY.feedDeleteAction}
         disabled={feedDeleteRequest.status === 'loading'}
-        onClick={(): void => confirmRef.current?.open()}
+        onClick={(): void => {
+          reset();
+          confirmRef.current?.open();
+        }}
       />
       <ConfirmModal
+        errorMessage={
+          feedDeleteRequest.status === 'error'
+            ? feedDeleteRequest.error.message
+            : undefined
+        }
         ref={confirmRef}
         title={FEED_ACTION_COPY.deleteConfirmTitle}
         description={FEED_ACTION_COPY.deleteConfirmDescription}

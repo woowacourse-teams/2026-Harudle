@@ -19,4 +19,11 @@ enum NoOpFeedPushOutbox implements FeedPushOutbox {
         Objects.requireNonNull(feedId);
         return 0;
     }
+
+    @Override
+    public int cancelUnsentBetweenUsers(UUID firstUserId, UUID secondUserId) {
+        Objects.requireNonNull(firstUserId);
+        Objects.requireNonNull(secondUserId);
+        return 0;
+    }
 }

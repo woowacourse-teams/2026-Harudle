@@ -5,4 +5,5 @@ export const FEED_POST_COPY = {
   retryAction: '다시 불러오기',
   noCategories: '지금 게시할 수 있는 카테고리가 없어요.',
   invalidEntry: '유효하지 않은 접근입니다.',
+  publishSuccess: '피드에 공유했어요.',
 } as const;

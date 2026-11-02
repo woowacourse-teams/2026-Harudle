@@ -13,6 +13,13 @@ export const GUEST_TRIAL_COPY = {
   resultAction: '완성한 네컷만화 보기',
   usedAction: '로그인하고 계속 만들기',
   generatingTitle: '네컷만화를 만들고 있어요',
+  generationStepLabels: [
+    '내용 살펴보는 중',
+    '장면 구성 중',
+    '스케치 그리는 중',
+    '채색하고 마무리 중',
+    '완료',
+  ],
   generationMessages: [
     '남겨주신 순간을 차근차근 살펴보고 있어요',
     '기억에 남는 장면을 한 장면씩 적어보고 있어요',

@@ -48,7 +48,7 @@ class CommentController {
     @Operation(summary = "댓글 목록 조회", description = "로그인 없이 오래된 댓글순으로 조회합니다. 유효한 Bearer가 있으면 isMine을 반환합니다. "
             + "댓글 작성자가 탈퇴해도 댓글은 유지하며, 작성자는 탈퇴한 회원으로 표시하고 ID·이미지 URL은 null, isMine은 false입니다.")
     @ApiErrorResponses({ErrorType.VALIDATION_ERROR, ErrorType.UNAUTHORIZED, ErrorType.FEED_NOT_FOUND,
-            ErrorType.INVALID_CURSOR, ErrorType.COMMENT_UNAVAILABLE})
+            ErrorType.INVALID_CURSOR, ErrorType.COMMENT_UNAVAILABLE, ErrorType.PROFILE_IMAGE_STORAGE_ERROR})
     @GetMapping(value = "/feeds/{feedId}/comments", produces = MediaType.APPLICATION_JSON_VALUE)
     ResponseEntity<CommentPageResponse> list(Authentication authentication, @PathVariable UUID feedId,
             @RequestParam(required = false) @Nullable String cursor,
@@ -62,7 +62,8 @@ class CommentController {
     @SecurityRequirement(name = "bearerAuth")
     @ApiResponse(responseCode = "201", description = "댓글 작성 완료")
     @ApiErrorResponses({ErrorType.VALIDATION_ERROR, ErrorType.UNAUTHORIZED, ErrorType.INVALID_CSRF_TOKEN,
-            ErrorType.FEED_NOT_FOUND, ErrorType.COMMENT_UNAVAILABLE})
+            ErrorType.FEED_NOT_FOUND, ErrorType.COMMENT_UNAVAILABLE, ErrorType.PROFILE_IMAGE_STORAGE_ERROR,
+            ErrorType.DATABASE_LOCK_TIMEOUT})
     @PostMapping(value = "/feeds/{feedId}/comments", produces = MediaType.APPLICATION_JSON_VALUE)
     ResponseEntity<CommentResponse> create(Authentication authentication, @PathVariable UUID feedId,
             @Valid @RequestBody CreateCommentRequest request) {
@@ -75,7 +76,7 @@ class CommentController {
     @SecurityRequirement(name = "bearerAuth")
     @ApiResponse(responseCode = "204", description = "댓글 삭제 완료")
     @ApiErrorResponses({ErrorType.VALIDATION_ERROR, ErrorType.UNAUTHORIZED, ErrorType.INVALID_CSRF_TOKEN,
-            ErrorType.FORBIDDEN, ErrorType.COMMENT_NOT_FOUND})
+            ErrorType.FORBIDDEN, ErrorType.COMMENT_NOT_FOUND, ErrorType.DATABASE_LOCK_TIMEOUT})
     @DeleteMapping("/comments/{commentId}")
     ResponseEntity<Void> delete(Authentication authentication, @PathVariable UUID commentId) {
         commentService.delete(userIdResolver.resolve(authentication), commentId);

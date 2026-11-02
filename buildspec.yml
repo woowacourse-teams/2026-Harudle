@@ -31,16 +31,23 @@ phases:
       - |
         bash deploy/scripts/codebuild_backend.sh build
         mkdir -p build-artifacts
+        frontend_image_reused=false
+        if bash deploy/scripts/codebuild_frontend.sh restore; then
+          frontend_image_reused=true
+        fi
 
         for service in backend frontend; do
+          if [[ "$service" == frontend && "$frontend_image_reused" == true ]]; then
+            continue
+          fi
           build_args=()
           if [[ "$service" == backend ]]; then
             build_args=(--target codebuild)
           else
-            echo "Frontend external build cache is disabled."
             build_args=(--build-arg REACT_APP_POSTHOG_KEY --build-arg REACT_APP_POSTHOG_HOST)
           fi
 
+          image_build_started="$(date +%s)"
           docker buildx build \
             --platform linux/arm64 \
             --progress plain \
@@ -49,6 +56,7 @@ phases:
             "${build_args[@]}" \
             --tag "harudle-$service:local" \
             "./$service"
+          echo "[build-metrics] ${service}_docker_export_seconds=$(($(date +%s) - image_build_started))"
 
           image_archive="build-artifacts/$service-image.tar"
           image_config="$(tar -xOf "$image_archive" manifest.json | jq -er --arg tag "harudle-$service:local" '
@@ -63,8 +71,16 @@ phases:
       - set -euo pipefail
       - test "${CODEBUILD_BUILD_SUCCEEDING:-1}" = 1
       - mkdir -p build-artifacts
-      - gzip -1 build-artifacts/backend-image.tar
-      - gzip -1 build-artifacts/frontend-image.tar
+      - |
+        set -euo pipefail
+        for service in backend frontend; do
+          if [[ -s "build-artifacts/$service-image.tar.gz" ]]; then
+            continue
+          fi
+          image_gzip_started="$(date +%s)"
+          gzip -1 "build-artifacts/$service-image.tar"
+          echo "[build-metrics] ${service}_image_gzip_seconds=$(($(date +%s) - image_gzip_started))"
+        done
       - gzip -t build-artifacts/backend-image.tar.gz build-artifacts/frontend-image.tar.gz
       - (cd build-artifacts && sha256sum backend-image.tar.gz frontend-image.tar.gz > image-checksums.sha256)
       - chmod 0755 deploy/scripts/*.sh
@@ -73,6 +89,11 @@ phases:
       - >-
         bash deploy/scripts/codebuild_backend.sh save ||
         echo "Incremental cache save failed; continuing with the verified images."
+      - |
+        if [[ "${frontend_image_reused:-false}" != true ]]; then
+          bash deploy/scripts/codebuild_frontend.sh save ||
+            echo "Frontend image cache save failed; continuing with the verified images."
+        fi
 
 artifacts:
   files:
@@ -86,6 +107,7 @@ artifacts:
     - backend/load-test/prepare.py
     - backend/load-test/assets.py
     - backend/load-test/cleanup.py
+    - backend/load-test/cleanup_stopped.py
     - backend/load-test/ec2.py
     - backend/load-test/transfer.py
     - build-artifacts/*
@@ -101,6 +123,9 @@ cache:
     - "/root/.cache/harudle-gradle/home/caches/modules-2/**/*"
     - "/root/.cache/harudle-gradle/home/caches/*/generated-gradle-jars/**/*"
     - "/root/.cache/harudle-gradle/home/caches/*/groovy-dsl/**/*"
+    - "/root/.cache/harudle-frontend/frontend-image.tar.gz"
+    - "/root/.cache/harudle-frontend/frontend-image.sha256"
+    - "/root/.cache/harudle-frontend/fingerprint"
     - "/root/.cache/harudle-gradle/home/caches/*/transforms/**/*"
     - "/root/.cache/harudle-gradle/home/caches/*/javaCompile/**/*"
     - "/root/.cache/harudle-gradle/home/caches/*/fileHashes/**/*"

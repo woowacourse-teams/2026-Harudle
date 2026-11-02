@@ -61,7 +61,7 @@ public class CommentService {
         this.clock = Objects.requireNonNull(clock);
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public CommentResult create(UUID actorId, UUID feedId, String content) {
         validateMember(actorId);
         Objects.requireNonNull(feedId, "피드 ID는 필수입니다.");
@@ -85,7 +85,8 @@ public class CommentService {
         if (!commentRepository.existsVisibleFeed(feedId, viewerId)) {
             throw new FeedNotFoundException();
         }
-        List<CommentSnapshot> found = commentRepository.findAfter(feedId, cursorCodec.decode(feedId, cursor), size + 1);
+        List<CommentSnapshot> found = commentRepository.findAfter(
+                feedId, cursorCodec.decode(feedId, cursor), size + 1, viewerId);
         boolean hasNext = found.size() > size;
         List<CommentSnapshot> page = found.stream().limit(size).toList();
         if (page.isEmpty()) {
