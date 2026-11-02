@@ -1,0 +1,14 @@
+{
+  "dev": {
+    "instance_id": "i-08ff5dddb7ac94f5c",
+    "db_instance_id": "i-04fca55979b3240d6",
+    "db_volume_id": "vol-00886d19a64c23e1f",
+    "host_namespace": "CWAgent"
+  },
+  "prod": {
+    "instance_id": "i-00944495cd72e61e8",
+    "db_instance_id": "i-01baa5c11a6224cd7",
+    "db_volume_id": "vol-048d203fac554e776",
+    "host_namespace": "Harudle/Prod"
+  }
+}

@@ -6,6 +6,13 @@
     },
     "metrics_collected": {
       "mem": {
+        "measurement": [
+          {"name": "used_percent", "unit": "Percent"},
+          {"name": "available_percent", "unit": "Percent"}
+        ],
+        "metrics_collection_interval": 60
+      },
+      "swap": {
         "measurement": [{"name": "used_percent", "unit": "Percent"}],
         "metrics_collection_interval": 60
       },

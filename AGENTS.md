@@ -22,13 +22,13 @@ flowchart TB
         frontend -->|"API / OAuth · backend:8080"| backend
     end
 
-    rds[("해당 환경 전용 RDS PostgreSQL<br/>Private 접근")]
+    db[("해당 환경 전용 DB EC2 PostgreSQL<br/>사설 IP 접근")]
     s3[("S3 · techcourse-project-2026<br/>생성 이미지 / 참조 이미지")]
     kakao["Kakao OAuth"]
     gemini["Gemini · 스토리보드 / 이미지 생성"]
 
     browser -->|"HTTPS"| host
-    backend -->|"JDBC · 5432"| rds
+    backend -->|"JDBC · 5432"| db
     backend -->|"이미지 저장·조회 / Presigned URL 발급"| s3
     browser -->|"Presigned GET · 이미지 직접 조회"| s3
     backend -->|"HTTPS"| kakao
@@ -61,16 +61,16 @@ flowchart TB
 
 ## dev / prod 구성
 
-dev와 prod는 각각 별도 EC2와 별도 RDS 인스턴스를 사용한다.
-RDS 인스턴스 분리는 2026-10-15 팀 확인 기준이다.
+dev와 prod는 각각 앱 EC2와 DB EC2를 별도로 사용한다.
+2026-10-23 작업 기록에서 RDS를 EC2 PostgreSQL로 전환한 것을 확인했다.
 
 ```mermaid
 flowchart LR
     subgraph dev["dev 환경"]
-        devBackend["dev EC2 · Backend"] -->|"JDBC · 5432"| devRds[("dev 전용 RDS PostgreSQL")]
+        devBackend["dev EC2 · Backend"] -->|"JDBC · 5432"| devDb[("dev 전용 DB EC2 PostgreSQL")]
     end
     subgraph prod["prod 환경"]
-        prodBackend["prod EC2 · Backend"] -->|"JDBC · 5432"| prodRds[("prod 전용 RDS PostgreSQL")]
+        prodBackend["prod EC2 · Backend"] -->|"JDBC · 5432"| prodDb[("prod 전용 DB EC2 PostgreSQL")]
     end
 ```
 
@@ -80,8 +80,8 @@ flowchart LR
 | `DEPLOY_ENV` | `dev` | `prod` |
 | Spring 활성 프로필 | `prod` | `prod` |
 | Compose | `compose.prod.yaml` + `compose.dev.yaml` | `compose.prod.yaml` |
-| RDS | dev 전용 PostgreSQL 인스턴스 | prod 전용 PostgreSQL 인스턴스 |
-| DB 연결 대상 | dev 서버 `.env`의 dev RDS `DB_HOST` | prod 서버 `.env`의 prod RDS `DB_HOST` |
+| DB EC2 | `i-04fca55979b3240d6` | `i-01baa5c11a6224cd7` |
+| DB 연결 대상 | dev 서버 `.env`의 DB 사설 IP `DB_HOST` | prod 서버 `.env`의 DB 사설 IP `DB_HOST` |
 | S3 버킷 | `techcourse-project-2026` | `techcourse-project-2026` |
 | 생성 이미지 prefix | `harudle/generated/diary-images/dev` | `harudle/generated/diary-images/prod` |
 | 참조 이미지 prefix | `harudle/references/generation/dev` | `harudle/references/generation/prod` |
@@ -90,9 +90,9 @@ flowchart LR
 Compose 파일은 `deploy/`에 있고 서버에는 `/opt/harudle/`에 설치된다.
 환경은 Spring 프로필만으로 판단하지 않고 `DEPLOY_ENV`와 배포 그룹으로 구분한다.
 배포 훅은 서버 `.env`와 Compose가 해석한 최종 이미지 설정을 검사한다.
-RDS 연결 대상은 `DEPLOY_ENV`와 별도로 각 서버 `.env`의 `DB_HOST`, `DB_PORT`,
+DB 연결 대상은 `DEPLOY_ENV`와 별도로 각 서버 `.env`의 `DB_HOST`, `DB_PORT`,
 `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`로 설정한다. DB 마이그레이션·데이터 작업·
-부하 시험·모니터링에서는 해당 환경의 RDS 인스턴스를 대상으로 한다.
+부하 시험·모니터링에서는 해당 환경의 DB EC2를 대상으로 한다.
 S3 prefix 변경은 기존 DB의 이미지·참조 이미지 Object Key를 자동으로 바꾸지 않는다.
 
 ## 배포 구성
@@ -130,7 +130,7 @@ AWS 배포 파이프라인과 GitHub 워크플로의 역할을 구분해 확인�
   환경별 CloudWatch Logs 그룹에 전송한다. 루트 `compose.yaml`의 `json-file`과 구분한다.
 - 호스트 CloudWatch Agent는 `127.0.0.1:19091/actuator/prometheus`를 수집해
   환경별 EMF 로그로 보낸다. Agent 설정은 배포 아티팩트 전달 후 호스트에 별도 적용한다.
-- Frontend `/health`는 Nginx의 응답 여부를 확인한다. RDS·S3·Gemini의 실제 기능은
+- Frontend `/health`는 Nginx의 응답 여부를 확인한다. PostgreSQL, S3, Gemini의 실제 기능은
   각각의 기능 검증과 로그로 확인한다.
 
 ## 작업별 확인 위치
@@ -145,7 +145,7 @@ AWS 배포 파이프라인과 GitHub 워크플로의 역할을 구분해 확인�
 | 프록시·HTTPS·OAuth 경로 | [Host Nginx 예시](deploy/nginx/harudle.conf.example), [Frontend Nginx](frontend/nginx/default.conf) |
 | 이미지 빌드·배포 훅 | [buildspec.yml](buildspec.yml), [appspec.yml](appspec.yml), `deploy/scripts/` |
 | 이미지 저장·조회·삭제 | [이미지 저장소 분리 절차](docs/image-storage-isolation.md) |
-| RDS 연결·데이터 작업 | [DB 연결 설정](backend/src/main/resources/application.yml), [배포 환경 안내](deploy/README.md) |
+| PostgreSQL 연결과 데이터 작업 | [DB 연결 설정](backend/src/main/resources/application.yml), [배포 환경 안내](deploy/README.md) |
 | 로그·지표·알람 | [모니터링 운영 안내](deploy/monitoring/README.md) |
 
 운영 기록에 과거 구성이 남아 있으면 현재 설정과 비교한다. 특히 로그 수집 방식,

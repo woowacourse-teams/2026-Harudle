@@ -1,6 +1,6 @@
 # 서버 모니터링
 
-**dev와 prod에서 API 응답과 오류, EC2 서버 자원, RDS 자원, Java 메모리를 함께 확인합니다.** dev는 부하테스트 원인 분석을 위해 GC와 힙 외 메모리도 수집합니다.
+**dev와 prod에서 API 응답과 오류, 앱 EC2와 DB EC2 자원, Java 메모리를 함께 확인합니다.** dev는 부하테스트 원인 분석을 위해 GC와 힙 외 메모리도 수집합니다.
 
 대시보드에서 먼저 볼 그래프와 정리 기준은 [dev 대시보드 ADR](adr/2026-10-22_cloudwatch-dashboard-layout.md)과 [prod 대시보드 ADR](adr/2026-10-22_cloudwatch-prod-dashboard-layout.md)에 기록합니다.
 
@@ -14,7 +14,7 @@
 | RPS | 1초에 처리를 끝낸 API 요청 수입니다. 실패 응답도 포함합니다. |
 | 작업별 TPS | 일기 생성, 피드 게시, 피드 목록 조회, 피드 상세 조회가 1초에 몇 건 성공했는지 보여줍니다. |
 | EC2 서버 자원 | 서버 CPU, 전체 메모리, 디스크 사용량과 서버 상태를 확인합니다. |
-| RDS 자원 | DB 서버의 CPU, 남은 메모리와 저장 공간, 연결 수, 디스크 처리 시간을 확인합니다. |
+| DB EC2 자원 | DB 서버의 CPU, 여유 메모리와 저장 공간, EBS 처리 상태를 확인합니다. PostgreSQL 전체 연결 수는 별도 수집이 필요합니다. |
 | DB 연결 획득 시간 | DB 연결을 얻기까지 걸린 평균 시간과 최근 최대 시간입니다. |
 | DB 연결 대기와 시간 초과 | 현재 기다리는 요청 수와 제한 시간 안에 연결을 얻지 못한 횟수입니다. |
 | Java 힙 | Java가 객체를 저장하는 메모리의 사용량과 확보량입니다. |
@@ -38,32 +38,33 @@ API 시간은 서버의 처리 시간입니다. 사용자와 서버 사이의 �
 
 ## 서버 자원은 어디서 확인하나요?
 
-CloudWatch의 `지표` 화면에서 아래 지표 그룹을 선택합니다. EC2는 해당 환경의 실제 `InstanceId`, RDS는 실제 `DBInstanceIdentifier`로 찾습니다. 대시보드에 없는 그래프는 여기서 선택해 해당 환경의 대시보드에 추가합니다.
+CloudWatch의 `지표` 화면에서 아래 지표를 선택합니다. 앱과 DB는 서로 다른 `InstanceId`를 사용합니다. 기본 대상은 [targets.json](targets.json)에 기록합니다.
+
+| 환경 | 앱 EC2 | DB EC2 | 데이터 EBS |
+| --- | --- | --- | --- |
+| Dev | `i-08ff5dddb7ac94f5c` | `i-04fca55979b3240d6` | `vol-00886d19a64c23e1f` |
+| Prod | `i-00944495cd72e61e8` | `i-01baa5c11a6224cd7` | `vol-048d203fac554e776` |
 
 | 확인할 값 | 지표 그룹과 이름 | 살펴볼 내용 |
-|---|---|---|
-| EC2 CPU | `AWS/EC2`의 `CPUUtilization` | CPU 사용률이 높게 유지되는지 봅니다. |
-| EC2 상태 | `AWS/EC2`의 `StatusCheckFailed` | 0은 검사 통과, 1은 검사 실패입니다. |
-| EC2 전체 메모리 | `CWAgent`의 `mem_used_percent` | 서버 전체의 메모리 사용률입니다. Java 외의 프로그램도 포함합니다. |
-| EC2 디스크 | `CWAgent`의 `disk_used_percent` | 파일을 저장할 공간이 부족한지 봅니다. 현재 설정은 `path=/`을 수집합니다. |
-| RDS CPU | `AWS/RDS`의 `CPUUtilization` | DB 서버의 CPU 사용률이 높게 유지되는지 봅니다. |
-| RDS 남은 메모리와 저장 공간 | `AWS/RDS`의 `FreeableMemory`, `FreeStorageSpace` | 값이 계속 줄거나 부족해지는지 봅니다. 단위는 바이트입니다. |
-| RDS 연결 수 | `AWS/RDS`의 `DatabaseConnections` | DB 서버에 연결된 수입니다. 앱에서 연결을 기다리는 요청 수와는 다릅니다. |
-| RDS 디스크 처리 | `AWS/RDS`의 `ReadLatency`, `WriteLatency`, `DiskQueueDepth` | 읽기와 쓰기 시간, 디스크 작업 대기가 늘어나는지 봅니다. SQL 실행 시간 자체는 아닙니다. |
+| --- | --- | --- |
+| 앱과 DB CPU | `AWS/EC2`, `CPUUtilization` | 사용률이 높게 유지되는지 확인합니다. |
+| 앱과 DB 서버 상태 | `AWS/EC2`, `StatusCheckFailed` | 서버 상태 검사입니다. PostgreSQL 접속 성공을 뜻하지 않습니다. |
+| 여유 메모리와 Swap | `mem_available_percent`, `swap_used_percent` | Dev 앱과 두 DB는 `CWAgent`, 현재 Prod 앱은 `Harudle/Prod`입니다. 설정을 중복 적용하지 않습니다. |
+| 데이터 저장 공간 | `CWAgent`, `disk_free`, `disk_used_percent` | DB의 `path=/srv/harudle/db-data`와 루트 `/`를 따로 봅니다. |
+| 데이터 디스크 처리 | `AWS/EBS`, `VolumeAvgReadLatency`, `VolumeAvgWriteLatency`, `VolumeQueueLength` | 지연은 밀리초입니다. 지연 지표에는 `VolumeId`와 `InstanceId`, 대기 길이에는 `VolumeId`를 맞춥니다. |
+| 앱 연결 대기 | 환경별 `Harudle/Dev`, `Harudle/Prod`의 Hikari 지표 | 앱 연결 풀만 보여줍니다. PostgreSQL 전체 연결 수와 다릅니다. |
 
 처음에는 같은 시간 범위와 5분 간격으로 비교합니다. CPU는 평균과 최대, 남은 공간은 최소값도 확인합니다. EC2 CPU의 기본 수집 간격은 5분이며, 상세 모니터링을 켠 경우에는 1분입니다. 서버 메모리와 디스크는 아래 Agent 설정으로 1분마다 수집합니다.
 
 T 계열 서버는 `CPUCreditBalance`도 확인합니다. 값이 줄면 기본 성능보다 높은 CPU 성능을 사용할 수 있는 양이 줄었다는 뜻입니다. Unlimited 모드는 잔여량이 0이어도 계속 사용할 수 있지만 추가 비용이 생길 수 있으므로, 0만 보고 성능 제한으로 단정하지 않습니다.
 
-**같은 RDS를 공유하면 그 자원 지표도 함께 사용한 결과입니다.** `harudle_dev`와 `harudle_prod`처럼 DB 이름이 달라도 RDS CPU와 메모리가 따로 집계되지는 않습니다.
-
-지표의 자세한 뜻은 [EC2 공식 안내](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/viewing_metrics_with_cloudwatch.html), [Agent 공식 안내](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/metrics-collected-by-CloudWatch-agent.html), [RDS 공식 안내](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-metrics.html)를 참고합니다.
+지표의 뜻은 [EC2 공식 안내](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/viewing_metrics_with_cloudwatch.html), [Agent 공식 안내](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/metrics-collected-by-CloudWatch-agent.html), [EBS 공식 안내](https://docs.aws.amazon.com/ebs/latest/userguide/using_cloudwatch_ebs.html)를 참고합니다.
 
 ## 1. 백엔드를 배포하고 서버 수집을 적용합니다
 
 먼저 dev에 배포하고 확인한 뒤 prod에도 적용합니다. 배포는 설정 파일을 EC2의 `/opt/harudle/monitoring`에 복사합니다. **현재 배포 스크립트는 Agent에 새 설정을 적용하지 않으므로 아래 명령을 별도로 실행해야 합니다.**
 
-각 EC2에서 아래 명령을 실행합니다. prod에서는 첫 줄을 `MONITORING_ENV=prod`로 바꿉니다.
+앱 EC2에서 아래 명령을 실행합니다. prod에서는 첫 줄을 `MONITORING_ENV=prod`로 바꿉니다.
 
 ```bash
 MONITORING_ENV=dev
@@ -75,12 +76,28 @@ sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
 
 기존 Agent가 설치되어 있고 로그와 지표를 보낼 권한이 있어야 합니다. 새 Agent를 설치하지 않고 기존 Agent의 설정을 갱신합니다. 적용 전 활성 설정을 보관합니다. `append-config`는 기존 서버 자원 수집을 유지하면서 새 설정을 적용하고 Agent를 재시작합니다. 같은 서버에 dev와 prod 파일을 모두 적용하지 않습니다. 명령이 실패하면 오류를 확인한 뒤 다음 단계로 넘어갑니다.
 
-**EC2 전체 메모리와 디스크 지표가 아직 없을 때만** 같은 EC2에서 아래 설정도 추가합니다. `cloudwatch-agent.host.json`은 dev와 prod가 공통으로 사용하며, 이미 같은 지표를 수집하고 있다면 추가하지 않습니다. EC2 CPU와 위 표의 RDS 지표는 AWS가 제공하므로 이 파일로 수집하지 않습니다.
+**EC2 전체 메모리와 디스크 지표가 아직 없을 때만** 같은 EC2에서 아래 설정도 추가합니다. `cloudwatch-agent.host.json`은 dev와 prod가 공통으로 사용하며, 이미 같은 지표를 수집하고 있다면 추가하지 않습니다. EC2 CPU와 EBS 지표는 AWS가 제공하므로 이 파일로 수집하지 않습니다.
 
 ```bash
 sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
   -a append-config -m ec2 -s \
   -c file:/opt/harudle/monitoring/cloudwatch-agent.host.json
+```
+
+DB EC2에는 앱의 Prometheus 설정 대신 `cloudwatch-agent.db.json`을 사용합니다. 루트와 데이터 디스크 마운트 경로를 먼저 확인합니다. 기존 지표가 계속 도착한다면 Agent를 다시 적용하지 않습니다. 직접 확인할 때는 아래 읽기 전용 명령을 사용합니다.
+
+```bash
+systemctl is-active amazon-cloudwatch-agent
+systemctl is-enabled amazon-cloudwatch-agent
+sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a status
+```
+
+설정 추가가 필요한 경우에만 기존 설정을 보관한 뒤 DB 서버에서 실행합니다. 이 명령은 Agent를 재시작합니다.
+
+```bash
+sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+  -a append-config -m ec2 -s \
+  -c file:/opt/harudle/monitoring/cloudwatch-agent.db.json
 ```
 
 지표 포트 `19091`은 서버 안에서만 접근해야 합니다. JSON 백엔드 로그는 기존 Docker 설정이 `/harudle/dev/backend` 또는 `/harudle/prod/backend`로 보냅니다.

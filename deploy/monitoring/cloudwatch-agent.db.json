@@ -1,0 +1,30 @@
+{
+  "metrics": {
+    "namespace": "CWAgent",
+    "append_dimensions": {
+      "InstanceId": "${aws:InstanceId}"
+    },
+    "metrics_collected": {
+      "mem": {
+        "measurement": [
+          {"name": "used_percent", "unit": "Percent"},
+          {"name": "available_percent", "unit": "Percent"}
+        ],
+        "metrics_collection_interval": 60
+      },
+      "swap": {
+        "measurement": [{"name": "used_percent", "unit": "Percent"}],
+        "metrics_collection_interval": 60
+      },
+      "disk": {
+        "resources": ["/", "/srv/harudle/db-data"],
+        "measurement": [
+          {"name": "used_percent", "unit": "Percent"},
+          {"name": "free", "unit": "Bytes"}
+        ],
+        "drop_device": true,
+        "metrics_collection_interval": 60
+      }
+    }
+  }
+}
