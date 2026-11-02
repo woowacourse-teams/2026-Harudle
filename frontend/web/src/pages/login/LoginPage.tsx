@@ -4,7 +4,7 @@ import loginHero from '../../assets/images/login-shared-comic.png';
 import kakaoIcon from '../../assets/icons/kakao-login.svg';
 import googleIcon from '../../assets/icons/google.png';
 import appleIcon from '../../assets/icons/apple.svg';
-import { useState, type ReactElement } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 import { theme } from '../../styles/theme';
 import { Link, useNavigate } from 'react-router';
 import { isMswEnabled } from '../../shared/environment';
@@ -14,26 +14,195 @@ import {
   setLoginAttemptProvider,
   type LoginProvider,
 } from './loginHistory';
-
-const providers = [
-  { id: 'kakao', icon: kakaoIcon, label: '카카오로 계속하기' },
-  { id: 'google', icon: googleIcon, label: 'Google로 계속하기' },
-  { id: 'apple', icon: appleIcon, label: 'Apple로 계속하기' },
-] as const;
+import { isNativeApp } from '../../shared/bridge';
+import { API_BASE_URL, isProblemDetails, RequestError } from '../../shared/api';
+import { requestCsrfToken } from '../../shared/auth';
+import { ERROR_MESSAGES } from '../../shared/errorMessage';
+import { isRecord } from '../../shared/utils';
 
 const LoginPage = () => {
   const navigate = useNavigate();
   const [lastProvider] = useState(getLastSuccessfulLoginProvider);
 
-  const handleLogin = (provider: LoginProvider): void => {
-    setLoginAttemptProvider(provider);
+  useEffect(() => {
+    let isActive = true;
+    let isSubmitting = false;
+
+    const handleNativeMessage = async (event: Event): Promise<void> => {
+      if (!(event instanceof CustomEvent)) return;
+
+      const message: unknown = event.detail;
+      if (!isRecord(message)) return;
+
+      switch (message.type) {
+        case 'auth.apple.signInResult': {
+          const payload = message.payload;
+          if (
+            !isRecord(payload) ||
+            typeof payload.authorizationCode !== 'string' ||
+            !payload.authorizationCode.trim() ||
+            typeof payload.identityToken !== 'string' ||
+            !payload.identityToken.trim() ||
+            isSubmitting
+          ) {
+            return;
+          }
+
+          const { authorizationCode, identityToken } = payload;
+          isSubmitting = true;
+          try {
+            const csrfToken = await requestCsrfToken();
+            if (!isActive) return;
+
+            const response = await fetch(
+              `${API_BASE_URL}/auth/apple/native/login`,
+              {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-XSRF-TOKEN': csrfToken,
+                },
+                body: JSON.stringify({ authorizationCode, identityToken }),
+              },
+            );
+            if (!isActive) return;
+
+            if (response.status !== 204) {
+              const errorData: unknown = await response
+                .json()
+                .catch(() => null);
+              if (isProblemDetails(errorData))
+                throw new RequestError(errorData);
+              throw new Error(ERROR_MESSAGES.LOGIN_FAILED);
+            }
+
+            setLoginAttemptProvider('apple');
+            navigate('/auth/callback', { replace: true });
+          } catch (error: unknown) {
+            if (!isActive) return;
+            alert(
+              error instanceof Error
+                ? error.message
+                : ERROR_MESSAGES.LOGIN_FAILED,
+            );
+          } finally {
+            isSubmitting = false;
+          }
+          return;
+        }
+
+        default:
+          return;
+      }
+    };
+
+    window.addEventListener('harudle:message', handleNativeMessage);
+
+    return (): void => {
+      isActive = false;
+      window.removeEventListener('harudle:message', handleNativeMessage);
+    };
+  }, [navigate]);
+
+  const handleKakaoLogin = (): void => {
+    setLoginAttemptProvider('kakao');
     if (isMswEnabled) {
       navigate('/auth/callback');
       return;
     }
 
-    window.location.assign(`/oauth2/authorization/${provider}`);
+    window.location.assign('/oauth2/authorization/kakao');
   };
+
+  const handleGoogleLogin = (): void => {
+    setLoginAttemptProvider('google');
+    if (isMswEnabled) {
+      navigate('/auth/callback');
+      return;
+    }
+
+    window.location.assign('/oauth2/authorization/google');
+  };
+
+  const handleAppleLogin = async (
+    isApp: boolean,
+  ): Promise<string | undefined> => {
+    if (isApp) {
+      try {
+        const csrfToken = await requestCsrfToken();
+        const response = await fetch(
+          `${API_BASE_URL}/auth/apple/native/nonce`,
+          {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'X-XSRF-TOKEN': csrfToken },
+          },
+        );
+
+        if (!response.ok) {
+          const errorData: unknown = await response.json().catch(() => null);
+          if (isProblemDetails(errorData)) throw new RequestError(errorData);
+          throw new Error(ERROR_MESSAGES.LOGIN_FAILED);
+        }
+
+        const data: unknown = await response.json();
+        if (
+          !isRecord(data) ||
+          typeof data.nonce !== 'string' ||
+          !data.nonce.trim()
+        ) {
+          throw new Error(ERROR_MESSAGES.LOGIN_FAILED);
+        }
+
+        // 다음 단계에서 nonce를 RN에 전달한다.
+        window.ReactNativeWebView?.postMessage(
+          JSON.stringify({
+            type: 'auth.apple.signIn',
+            payload: {
+              nonce: data.nonce,
+            },
+          }),
+        );
+
+        return data.nonce;
+      } catch (error: unknown) {
+        alert(
+          error instanceof Error ? error.message : ERROR_MESSAGES.LOGIN_FAILED,
+        );
+        return;
+      }
+    }
+
+    setLoginAttemptProvider('apple');
+    if (isMswEnabled) {
+      navigate('/auth/callback');
+      return;
+    }
+
+    window.location.assign('/oauth2/authorization/apple');
+  };
+
+  const providers = [
+    {
+      id: 'kakao',
+      icon: kakaoIcon,
+      label: '카카오로 계속하기',
+      onLogin: handleKakaoLogin,
+    },
+    {
+      id: 'google',
+      icon: googleIcon,
+      label: 'Google로 계속하기',
+      onLogin: handleGoogleLogin,
+    },
+    {
+      id: 'apple',
+      icon: appleIcon,
+      label: 'Apple로 계속하기',
+      onLogin: handleAppleLogin,
+    },
+  ] as const;
 
   return (
     <div css={pageStyle}>
@@ -60,12 +229,14 @@ const LoginPage = () => {
       <div css={actionSpaceStyle} aria-hidden="true" />
       <div css={loginAreaStyle}>
         <div css={buttonsStyle}>
-          {providers.map(({ id, icon, label }): ReactElement => (
+          {providers.map(({ id, icon, label, onLogin }): ReactElement => (
             <div key={id} css={buttonWrapperStyle}>
               <button
                 type="button"
                 css={loginButtonStyle(id, id === lastProvider)}
-                onClick={(): void => handleLogin(id)}
+                onClick={(): void => {
+                  void onLogin(isNativeApp());
+                }}
                 aria-describedby={
                   id === lastProvider ? 'recent-login' : undefined
                 }

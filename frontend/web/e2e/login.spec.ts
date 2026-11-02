@@ -201,3 +201,90 @@ test.describe('소셜 로그인', () => {
     await expect(page).toHaveURL('/login');
   });
 });
+
+test.describe('Apple 네이티브 로그인', () => {
+  test.beforeEach(async ({ page }): Promise<void> => {
+    await page.addInitScript((): void => {
+      Object.defineProperty(window, 'isHarudleApp', { value: true });
+      Object.defineProperty(window, 'ReactNativeWebView', {
+        value: {
+          postMessage: (): void => {
+            const result = {
+              type: 'auth.apple.signInResult',
+              payload: {
+                authorizationCode: 'test-apple-code',
+                identityToken: 'test-apple-token',
+              },
+            };
+            // 같은 결과가 연속 도착해도 로그인 요청은 한 번만 보낸다.
+            window.dispatchEvent(
+              new CustomEvent('harudle:message', { detail: result }),
+            );
+            window.dispatchEvent(
+              new CustomEvent('harudle:message', { detail: result }),
+            );
+          },
+        },
+      });
+    });
+  });
+
+  test('인증 결과를 CSRF와 함께 전송하고 토큰 갱신 후 피드로 이동한다', async ({
+    page,
+  }): Promise<void> => {
+    const loginRequests: string[] = [];
+    page.on('request', (request): void => {
+      if (request.url().endsWith('/api/v1/auth/apple/native/login')) {
+        loginRequests.push(request.url());
+      }
+    });
+    await page.goto('/login');
+    const responsePromise = page.waitForResponse((response): boolean =>
+      response.url().endsWith('/api/v1/auth/apple/native/login'),
+    );
+    await page.getByRole('button', { name: 'Apple로 계속하기' }).click();
+    const response = await responsePromise;
+    expect(response.status()).toBe(204);
+    expect(response.request().headers()['x-xsrf-token']).toBe(
+      'mock-csrf-token',
+    );
+    const body: unknown = response.request().postDataJSON();
+    expect(body).toEqual({
+      authorizationCode: 'test-apple-code',
+      identityToken: 'test-apple-token',
+    });
+    await expect(page).toHaveURL('/');
+    expect(loginRequests).toHaveLength(1);
+    expect(
+      await page.evaluate((): string | null =>
+        localStorage.getItem('harudle.last-login-provider'),
+      ),
+    ).toBe('apple');
+  });
+
+  test('빈 본문의 로그인 실패는 안내하고 새 nonce로 재시도할 수 있다', async ({
+    page,
+  }): Promise<void> => {
+    await page.setExtraHTTPHeaders({
+      [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.appleNativeProviderFailure,
+    });
+    await page.goto('/login');
+    const dialogPromise = page.waitForEvent('dialog');
+    await page.getByRole('button', { name: 'Apple로 계속하기' }).click();
+    const dialog = await dialogPromise;
+    expect(dialog.message()).toBe(
+      '로그인에 실패했습니다. 다시 로그인해주세요.',
+    );
+    await dialog.accept();
+    await expect(page).toHaveURL('/login');
+    expect(
+      await page.evaluate((): string | null =>
+        localStorage.getItem('harudle.last-login-provider'),
+      ),
+    ).toBeNull();
+
+    await page.setExtraHTTPHeaders({});
+    await page.getByRole('button', { name: 'Apple로 계속하기' }).click();
+    await expect(page).toHaveURL('/');
+  });
+});
