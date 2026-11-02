@@ -3,7 +3,10 @@ import { reportHandlers } from './reportHandlers';
 import { isLandingPath } from '../pages/landing/landingPaths';
 import { MOCK_SCENARIO_HEADER, MOCK_SCENARIOS } from './mockScenarios';
 import { legalHandlers } from './legalHandlers';
+import { appleNativeAuthHandlers } from './appleNativeAuthHandlers';
 import {
+  MOCK_CSRF_TOKEN,
+  isMockSessionLoggedIn,
   isMockSessionLoggedOut,
   markMockSessionLoggedOut,
   resetMockSession,
@@ -62,7 +65,6 @@ const getMockDate = (day: number): string =>
 const MOCK_USAGE_DATE = getMockDate(mockToday.day);
 const DAILY_GENERATION_LIMIT = 3;
 const MOCK_ACCESS_TOKEN = 'mock-access-token';
-const MOCK_CSRF_TOKEN = 'mock-csrf-token';
 const RESUMABLE_GENERATION_STORAGE_KEY = 'harudle:mock:resumable-generation:v1';
 
 let usedGenerationCount = 0;
@@ -490,6 +492,7 @@ let mockProfileImageUrl = '/profile-images/v1/5.png';
 restoreResumableGeneration();
 
 export const handlers = [
+  ...appleNativeAuthHandlers,
   ...reportHandlers,
   http.get('/oauth2/authorization/kakao', async ({ request }) => {
     resetMockSession();
@@ -539,6 +542,7 @@ export const handlers = [
 
     if (
       isLandingPath(globalThis.location.pathname) &&
+      !isMockSessionLoggedIn() &&
       request.headers.get(MOCK_SCENARIO_HEADER) !==
         MOCK_SCENARIOS.authRefreshSuccess
     ) {
