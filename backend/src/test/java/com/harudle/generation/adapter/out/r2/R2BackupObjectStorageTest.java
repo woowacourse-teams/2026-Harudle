@@ -113,8 +113,18 @@ class R2BackupObjectStorageTest {
     @DisplayName("백업 삭제 실패는 호출자에게 전달한다")
     void propagateBackupDeletionFailure() {
         when(client.deleteObject(any(DeleteObjectRequest.class))).thenThrow(s3Error(403, "AccessDenied"));
-
-        assertFailure(() -> storage.delete(KEY), FailureType.AUTHORIZATION_ERROR);
+        Logger logger = (Logger) LoggerFactory.getLogger(R2BackupObjectStorage.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            assertFailure(() -> storage.delete(KEY), FailureType.AUTHORIZATION_ERROR);
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+        assertThat(appender.list).isNotEmpty().allSatisfy(event ->
+                assertThat(event.getFormattedMessage() + event.getKeyValuePairs()).doesNotContain(KEY));
     }
 
     @ParameterizedTest

@@ -324,13 +324,14 @@ public final class R2BackupObjectStorage implements BackupObjectStorage {
     private void logResult(
             String operation, String key, String result, @Nullable FailureType type, @Nullable Number size
     ) {
+        String loggedKey = "delete_object".equals(operation) ? "redacted" : key;
         LOGGER.atInfo().addKeyValue("event", "r2_object_operation")
                 .addKeyValue("provider", "r2").addKeyValue("operation", operation)
-                .addKeyValue("bucket", properties.bucket()).addKeyValue("objectKey", key)
+                .addKeyValue("bucket", properties.bucket()).addKeyValue("objectKey", loggedKey)
                 .addKeyValue("result", result).addKeyValue("size", size == null ? "none" : size)
                 .addKeyValue("failureType", type == null ? "none" : type.name())
                 .log("event=r2_object_operation operation={} bucket={} objectKey={} result={} size={} failureType={}",
-                        operation, properties.bucket(), key, result, size == null ? "none" : size,
+                        operation, properties.bucket(), loggedKey, result, size == null ? "none" : size,
                         type == null ? "none" : type.name());
     }
 }
