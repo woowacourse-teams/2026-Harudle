@@ -6,7 +6,8 @@ import sys
 import tempfile
 import unittest
 
-from prepare_dashboard import metric_filters, prepare_dashboard, read_dashboard, service_widgets, arrange_dashboard, LOG_QUERIES
+from prepare_dashboard import (metric_filters, nginx_gateway_widget, prepare_dashboard, read_dashboard,
+                               service_widgets, arrange_dashboard, LOG_QUERIES)
 
 
 INSTANCE_ID = "i-0123456789abcdef0"
@@ -39,7 +40,7 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual([(w["x"], w["width"]) for w in routes], [(0, 12), (12, 12)])
         self.assertEqual(routes[0]["y"], routes[1]["y"])
         self.assertNotIn("Harudle/Prod", json.dumps(source))
-        self.assertEqual(len(source["widgets"]), 55)
+        self.assertEqual(len(source["widgets"]), 56)
         cards = source["widgets"][:6]
         self.assertEqual([(w["x"], w["y"], w["width"], w["height"]) for w in cards],
                          [(x, y, 8, 5) for y in (0, 5) for x in (0, 8, 16)])
@@ -58,7 +59,7 @@ class DashboardTests(unittest.TestCase):
         root = Path(__file__).parent
         source = json.loads((root / "dashboards/prod.json").read_text())
         instance_id = json.loads((root / "targets.json").read_text())["prod"]["instance_id"]
-        self.assertEqual(len(source["widgets"]), 56)
+        self.assertEqual(len(source["widgets"]), 57)
         by_title = {w["properties"].get("title"): w for w in source["widgets"]}
         title = "API 응답 시간 P95·P99 (일반·일기 생성)"
         expected = next(w for w in service_widgets("prod", instance_id) if w["properties"]["title"] == title)
@@ -68,6 +69,49 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(by_title["API RPS (완료한 요청/초)"]["y"], by_title[title]["y"])
         titles = [w["properties"].get("title") for w in prepare_dashboard(source, "prod", instance_id)["widgets"]]
         self.assertEqual(titles, [w["properties"].get("title") for w in source["widgets"]])
+
+    def test_saved_dashboards_show_gateway_errors_and_unexpected_generation_failures(self):
+        root = Path(__file__).parent
+        for environment, namespace in (("dev", "Harudle/Dev"), ("prod", "Harudle/Prod")):
+            source = json.loads((root / f"dashboards/{environment}.json").read_text())
+            by_title = {w["properties"].get("title"): w for w in source["widgets"]}
+            gateway = by_title["Nginx 502/504 응답 수"]
+            self.assertEqual(gateway["properties"], nginx_gateway_widget(environment)["properties"])
+            self.assertEqual((gateway["x"], gateway["y"], gateway["width"]), (0, 28, 12))
+            rows = by_title["일기 생성: DB 최종 확정 수"]["properties"]["metrics"]
+            self.assertEqual(rows[-1], [namespace, "GenerationUnexpectedFailureLogs",
+                                        {"id": "unexpected", "label": "예상 밖 실패", "stat": "Sum"}])
+            prepared = prepare_dashboard(source, environment, INSTANCE_ID)
+            self.assertEqual(json.dumps(prepared).count("GenerationUnexpectedFailureLogs"), 1)
+            cells = set()
+            for item in source["widgets"]:
+                for x in range(item["x"], item["x"] + item["width"]):
+                    for y in range(item["y"], item["y"] + item["height"]):
+                        self.assertNotIn((x, y), cells)
+                        cells.add((x, y))
+
+    def test_generation_failure_card_excludes_the_unexpected_failure_line(self):
+        metrics = [["Harudle/Dev", "harudle_generation_finalizations_total", {"id": "s"}],
+                   ["Harudle/Dev", "harudle_generation_finalizations_total", {"id": "f0", "visible": False}],
+                   [{"expression": "f0", "id": "failed"}]]
+        source = {"widgets": [{"type": "metric", "height": 6, "properties": {
+            "title": "일기 생성: DB 최종 확정 수", "metrics": metrics}}]}
+        result = prepare_dashboard(source, "dev", INSTANCE_ID)
+        by_title = {w["properties"].get("title"): w for w in result["widgets"]}
+        self.assertIn("GenerationUnexpectedFailureLogs", json.dumps(by_title["일기 생성: DB 최종 확정 수"]))
+        self.assertNotIn("GenerationUnexpectedFailureLogs", json.dumps(by_title["생성 실패 (선택 기간)"]))
+        self.assertIn("Nginx 502/504 응답 수", by_title)
+        self.assertEqual(prepare_dashboard(result, "dev", INSTANCE_ID), result)
+
+    def test_gateway_filter_reads_the_frontend_nginx_log_group(self):
+        for environment, namespace in (("dev", "Harudle/Dev"), ("prod", "Harudle/Prod")):
+            item = next(f for f in metric_filters(environment)
+                        if f["filterName"] == f"harudle-{environment}-nginx-gateway-error")
+            self.assertEqual(item["logGroupName"], f"/harudle/{environment}/frontend-nginx")
+            self.assertIn("status = 502 || status = 504", item["filterPattern"])
+            self.assertEqual(item["metricTransformations"], [{
+                "metricNamespace": namespace, "metricName": "NginxGatewayErrorLogs",
+                "metricValue": "1", "defaultValue": 0}])
 
     def test_dev_keeps_a_completed_console_layout_and_added_cards(self):
         root = Path(__file__).parent
@@ -230,9 +274,9 @@ class DashboardTests(unittest.TestCase):
     def test_latency_uses_raw_samples_with_no_zero_defaults_and_bounded_groups(self):
         dev_filters = metric_filters("dev")
         prod_filters = metric_filters("prod")
-        self.assertEqual(len([f for f in dev_filters if f["metricTransformations"][0]["unit"] == "Milliseconds"]), 3)
+        self.assertEqual(len([f for f in dev_filters if f["metricTransformations"][0].get("unit") == "Milliseconds"]), 3)
         for filters in (dev_filters, prod_filters):
-            durations = [item for item in filters if item["metricTransformations"][0]["unit"] == "Milliseconds"]
+            durations = [item for item in filters if item["metricTransformations"][0].get("unit") == "Milliseconds"]
             for item in durations:
                 transformation = item["metricTransformations"][0]
                 self.assertEqual(transformation["metricValue"], "$.durationMs")
@@ -248,7 +292,7 @@ class DashboardTests(unittest.TestCase):
         self.assertIn('$.apiRoute = "*"', route_filter["filterPattern"])
         self.assertEqual(route_filter["metricTransformations"][0]["dimensions"], {
             "ApiGroup": "$.apiGroup", "ApiRoute": "$.apiRoute"})
-        self.assertEqual(dev_filters[-1]["metricTransformations"][0],
+        self.assertEqual(dev_filters[-2]["metricTransformations"][0],
                          {**route_filter["metricTransformations"][0], "metricNamespace": "Harudle/Dev"})
 
     def test_dev_tps_requires_committed_writes_or_successful_read_responses(self):
@@ -271,7 +315,7 @@ class DashboardTests(unittest.TestCase):
             "API 응답 시간 (전체)", "API 응답 시간 (일반)", "API 응답 시간 (일기 생성)",
             "API RPS (완료한 요청/초)", "API 응답 시간 P95·P99 (일반·일기 생성)", "작업별 TPS (성공한 작업/초)",
         ])
-        self.assertEqual(len(metric_filters("dev")), 7)
+        self.assertEqual(len(metric_filters("dev")), 8)
         dev_routes = dev_widgets[-2:]
         self.assertEqual([w["properties"]["title"] for w in dev_routes], [
             "API 경로별 P95 응답 시간 (일반 상위 5개)", "API 경로별 P95 응답 시간 (일기 생성 전체)"])
@@ -298,7 +342,7 @@ class DashboardTests(unittest.TestCase):
         self.assertTrue(prod_widgets[1]["properties"]["metrics"][0][0]["expression"].endswith(", MAX, DESC, 5)"))
         self.assertEqual(prod_widgets[2]["properties"]["title"], "API 경로별 P95 응답 시간 (일기 생성 전체)")
         self.assertTrue(prod_widgets[2]["properties"]["metrics"][0][0]["expression"].startswith("SEARCH("))
-        self.assertEqual(len(metric_filters("prod")), 3)
+        self.assertEqual(len(metric_filters("prod")), 4)
 
     def test_both_environments_remove_existing_tps_widgets(self):
         tps = {"type": "metric", "properties": {"title": "작업별 TPS (성공한 작업/초)", "metrics": []}}
@@ -383,7 +427,7 @@ class DashboardTests(unittest.TestCase):
             previous["DashboardArn"] = previous["DashboardArn"].replace("prod", "dev")
             before.write_text(json.dumps(previous))
             result = subprocess.run(command, capture_output=True, text=True, check=True)
-            self.assertEqual(len(list(output.glob("*.json"))), 8)
+            self.assertEqual(len(list(output.glob("*.json"))), 9)
             self.assertEqual(json.loads(before.read_text()), previous)
             self.assertIn("GC 정지 시간과 횟수", (output / "dashboard.json").read_text())
 

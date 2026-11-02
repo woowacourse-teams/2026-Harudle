@@ -77,6 +77,14 @@ def route_widget(environment, group, label, statistic="p95", limit=None):
     return item
 
 
+def nginx_gateway_widget(environment):
+    item = widget("Nginx 502/504 응답 수", [
+        metric(NAMESPACES[environment], "NginxGatewayErrorLogs", label="502/504 응답 수"),
+    ])
+    item["properties"].update(stat="Sum", yAxis={"left": {"label": "응답 수", "showUnits": False, "min": 0}})
+    return item
+
+
 def service_widgets(environment, instance_id):
     namespace = NAMESPACES[environment]
     widgets = []
@@ -218,6 +226,14 @@ def metric_filters(environment):
         "$.durationMs", "Milliseconds",
         {"ApiGroup": "$.apiGroup", "ApiRoute": "$.apiRoute"},
     ))
+    # Frontend Nginx writes the combined access format, so the status is the sixth field.
+    filters.append({
+        "logGroupName": f"/harudle/{environment}/frontend-nginx",
+        "filterName": f"harudle-{environment}-nginx-gateway-error",
+        "filterPattern": "[ip, identity, user, timestamp, request, status = 502 || status = 504, ...]",
+        "metricTransformations": [{"metricNamespace": namespace, "metricName": "NginxGatewayErrorLogs",
+                                   "metricValue": "1", "defaultValue": 0}],
+    })
     return filters
 
 
@@ -259,6 +275,10 @@ def prepare_dashboard(original, environment, instance_id):
         properties = item.get("properties", {})
         if item.get("type") == "log" and properties.get("title") in LOG_QUERIES:
             properties["query"] = LOG_QUERIES[properties["title"]].format(environment=environment)
+        if properties.get("title") == "일기 생성: DB 최종 확정 수" and properties.get("metrics"):
+            if not any(row[-1].get("id") == "unexpected" for row in properties["metrics"]):
+                properties["metrics"].append(metric(NAMESPACES[environment], "GenerationUnexpectedFailureLogs",
+                                                    id="unexpected", label="예상 밖 실패", stat="Sum"))
         if properties.get("title") == "API RPS (완료한 요청/초)":
             properties["yAxis"] = copy.deepcopy(RPS_Y_AXIS)
         elif properties.get("title") == "DB 연결 획득 시간":
@@ -293,6 +313,8 @@ def prepare_dashboard(original, environment, instance_id):
                  item for item in service_widgets(environment, instance_id)
                  if item["properties"]["title"] not in titles
                  and not (item["properties"]["title"] == "Java 힙과 힙 외 메모리" and "Java 힙 외 메모리" in titles)]
+    if not has_completed_layout(dashboard, environment) and "Nginx 502/504 응답 수" not in titles:
+        additions.append(nginx_gateway_widget(environment))
     for item in retained:
         for row in item.get("properties", {}).get("metrics", []):
             for index in range(len(row) - 1):
@@ -380,6 +402,7 @@ def arrange_dashboard(original, environment):
             if environment == 'dev':
                 props.pop('yAxis', None)
         elif select == 'failed':
+            props['metrics'] = [row for row in props['metrics'] if row[-1].get('id') != 'unexpected']
             props['metrics'][0][-1]['visible'] = False
             failed = next(row[0] for row in props['metrics']
                           if isinstance(row[0], dict) and row[0].get('id') == 'failed')
@@ -416,7 +439,7 @@ def arrange_dashboard(original, environment):
         title = props.get('title', '')
         if item['type'] == 'text' and props.get('markdown', '').startswith('## '):
             continue
-        if item['type'] == 'alarm' or title.startswith(('백엔드 HTTP', 'Gemini:', 'S3:', '일기 생성:')):
+        if item['type'] == 'alarm' or title.startswith(('백엔드 HTTP', 'Nginx ', 'Gemini:', 'S3:', '일기 생성:')):
             group = 'errors'
         elif item['type'] == 'log':
             group = 'logs'

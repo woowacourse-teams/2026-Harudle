@@ -520,6 +520,15 @@
               "id": "failed",
               "label": "생성 실패 확정"
             }
+          ],
+          [
+            "Harudle/Dev",
+            "GenerationUnexpectedFailureLogs",
+            {
+              "id": "unexpected",
+              "label": "예상 밖 실패",
+              "stat": "Sum"
+            }
           ]
         ],
         "region": "ap-northeast-2",
@@ -672,9 +681,39 @@
       }
     },
     {
-      "type": "text",
+      "type": "metric",
       "x": 0,
       "y": 28,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "Nginx 502/504 응답 수",
+        "view": "timeSeries",
+        "region": "ap-northeast-2",
+        "period": 60,
+        "stat": "Sum",
+        "metrics": [
+          [
+            "Harudle/Dev",
+            "NginxGatewayErrorLogs",
+            {
+              "label": "502/504 응답 수"
+            }
+          ]
+        ],
+        "yAxis": {
+          "left": {
+            "label": "응답 수",
+            "showUnits": false,
+            "min": 0
+          }
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 0,
+      "y": 34,
       "width": 24,
       "height": 1,
       "properties": {
@@ -684,7 +723,7 @@
     {
       "type": "metric",
       "x": 0,
-      "y": 29,
+      "y": 35,
       "width": 12,
       "height": 6,
       "properties": {
@@ -714,7 +753,7 @@
     {
       "type": "metric",
       "x": 12,
-      "y": 29,
+      "y": 35,
       "width": 12,
       "height": 6,
       "properties": {
@@ -744,7 +783,7 @@
     {
       "type": "metric",
       "x": 0,
-      "y": 35,
+      "y": 41,
       "width": 12,
       "height": 6,
       "properties": {
@@ -782,7 +821,7 @@
     {
       "type": "metric",
       "x": 12,
-      "y": 35,
+      "y": 41,
       "width": 12,
       "height": 6,
       "properties": {
@@ -845,7 +884,7 @@
     {
       "type": "text",
       "x": 0,
-      "y": 41,
+      "y": 47,
       "width": 24,
       "height": 1,
       "properties": {
@@ -855,7 +894,7 @@
     {
       "type": "text",
       "x": 0,
-      "y": 42,
+      "y": 48,
       "width": 24,
       "height": 3,
       "properties": {
@@ -865,7 +904,7 @@
     {
       "type": "metric",
       "x": 0,
-      "y": 45,
+      "y": 51,
       "width": 12,
       "height": 6,
       "properties": {
@@ -952,7 +991,7 @@
     {
       "type": "metric",
       "x": 12,
-      "y": 45,
+      "y": 51,
       "width": 12,
       "height": 6,
       "properties": {
@@ -1005,7 +1044,7 @@
     {
       "type": "text",
       "x": 0,
-      "y": 51,
+      "y": 57,
       "width": 24,
       "height": 1,
       "properties": {
@@ -1015,7 +1054,7 @@
     {
       "type": "metric",
       "x": 0,
-      "y": 52,
+      "y": 58,
       "width": 12,
       "height": 6,
       "properties": {
@@ -1090,7 +1129,7 @@
     {
       "type": "metric",
       "x": 12,
-      "y": 52,
+      "y": 58,
       "width": 12,
       "height": 6,
       "properties": {
@@ -1131,7 +1170,7 @@
     {
       "type": "metric",
       "x": 0,
-      "y": 58,
+      "y": 64,
       "width": 12,
       "height": 6,
       "properties": {
@@ -1169,7 +1208,7 @@
     {
       "type": "text",
       "x": 0,
-      "y": 64,
+      "y": 70,
       "width": 24,
       "height": 1,
       "properties": {
@@ -1179,7 +1218,7 @@
     {
       "type": "metric",
       "x": 0,
-      "y": 65,
+      "y": 71,
       "width": 12,
       "height": 6,
       "properties": {
@@ -1215,7 +1254,7 @@
     {
       "type": "metric",
       "x": 12,
-      "y": 65,
+      "y": 71,
       "width": 12,
       "height": 6,
       "properties": {
@@ -1259,7 +1298,7 @@
     {
       "type": "metric",
       "x": 0,
-      "y": 71,
+      "y": 77,
       "width": 12,
       "height": 6,
       "properties": {
@@ -1307,7 +1346,7 @@
     {
       "type": "metric",
       "x": 12,
-      "y": 71,
+      "y": 77,
       "width": 12,
       "height": 6,
       "properties": {
@@ -1343,7 +1382,7 @@
     {
       "type": "text",
       "x": 0,
-      "y": 77,
+      "y": 83,
       "width": 24,
       "height": 1,
       "properties": {
@@ -1353,7 +1392,7 @@
     {
       "type": "metric",
       "x": 0,
-      "y": 78,
+      "y": 84,
       "width": 6,
       "height": 6,
       "properties": {
@@ -1378,7 +1417,7 @@
     {
       "type": "metric",
       "x": 6,
-      "y": 78,
+      "y": 84,
       "width": 6,
       "height": 6,
       "properties": {
@@ -1403,7 +1442,7 @@
     {
       "type": "metric",
       "x": 12,
-      "y": 78,
+      "y": 84,
       "width": 12,
       "height": 6,
       "properties": {
@@ -1443,7 +1482,7 @@
     {
       "type": "metric",
       "x": 0,
-      "y": 84,
+      "y": 90,
       "width": 12,
       "height": 6,
       "properties": {
@@ -1487,7 +1526,7 @@
     {
       "type": "metric",
       "x": 12,
-      "y": 84,
+      "y": 90,
       "width": 12,
       "height": 6,
       "properties": {
@@ -1561,7 +1600,7 @@
     {
       "type": "metric",
       "x": 0,
-      "y": 90,
+      "y": 96,
       "width": 12,
       "height": 6,
       "properties": {
@@ -1609,7 +1648,7 @@
     {
       "type": "metric",
       "x": 12,
-      "y": 90,
+      "y": 96,
       "width": 12,
       "height": 6,
       "properties": {
@@ -1683,7 +1722,7 @@
     {
       "type": "text",
       "x": 0,
-      "y": 96,
+      "y": 102,
       "width": 24,
       "height": 1,
       "properties": {
@@ -1693,7 +1732,7 @@
     {
       "type": "metric",
       "x": 0,
-      "y": 97,
+      "y": 103,
       "width": 6,
       "height": 4,
       "properties": {
@@ -1717,7 +1756,7 @@
     {
       "type": "metric",
       "x": 6,
-      "y": 97,
+      "y": 103,
       "width": 6,
       "height": 4,
       "properties": {
@@ -1742,7 +1781,7 @@
     {
       "type": "metric",
       "x": 12,
-      "y": 97,
+      "y": 103,
       "width": 6,
       "height": 4,
       "properties": {
@@ -1767,7 +1806,7 @@
     {
       "type": "metric",
       "x": 18,
-      "y": 97,
+      "y": 103,
       "width": 6,
       "height": 4,
       "properties": {
@@ -1792,7 +1831,7 @@
     {
       "type": "metric",
       "x": 0,
-      "y": 101,
+      "y": 107,
       "width": 12,
       "height": 6,
       "properties": {
@@ -1866,7 +1905,7 @@
     {
       "type": "metric",
       "x": 12,
-      "y": 101,
+      "y": 107,
       "width": 12,
       "height": 6,
       "properties": {
@@ -1917,7 +1956,7 @@
     {
       "type": "metric",
       "x": 0,
-      "y": 107,
+      "y": 113,
       "width": 12,
       "height": 6,
       "properties": {
@@ -1974,7 +2013,7 @@
     {
       "type": "metric",
       "x": 12,
-      "y": 107,
+      "y": 113,
       "width": 12,
       "height": 6,
       "properties": {
@@ -2037,7 +2076,7 @@
     {
       "type": "metric",
       "x": 0,
-      "y": 113,
+      "y": 119,
       "width": 12,
       "height": 6,
       "properties": {
@@ -2081,7 +2120,7 @@
     {
       "type": "metric",
       "x": 12,
-      "y": 113,
+      "y": 119,
       "width": 12,
       "height": 6,
       "properties": {
@@ -2145,7 +2184,7 @@
     {
       "type": "text",
       "x": 0,
-      "y": 119,
+      "y": 125,
       "width": 24,
       "height": 1,
       "properties": {
@@ -2155,7 +2194,7 @@
     {
       "type": "log",
       "x": 0,
-      "y": 120,
+      "y": 126,
       "width": 24,
       "height": 8,
       "properties": {
@@ -2168,7 +2207,7 @@
     {
       "type": "log",
       "x": 0,
-      "y": 128,
+      "y": 134,
       "width": 12,
       "height": 8,
       "properties": {
@@ -2181,7 +2220,7 @@
     {
       "type": "log",
       "x": 12,
-      "y": 128,
+      "y": 134,
       "width": 12,
       "height": 8,
       "properties": {
@@ -2194,7 +2233,7 @@
     {
       "type": "log",
       "x": 0,
-      "y": 136,
+      "y": 142,
       "width": 24,
       "height": 8,
       "properties": {
@@ -2207,7 +2246,7 @@
     {
       "type": "log",
       "x": 0,
-      "y": 144,
+      "y": 150,
       "width": 24,
       "height": 8,
       "properties": {
