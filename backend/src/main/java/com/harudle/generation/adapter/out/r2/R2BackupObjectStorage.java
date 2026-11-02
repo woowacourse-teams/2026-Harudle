@@ -28,6 +28,7 @@ import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
@@ -181,6 +182,17 @@ public final class R2BackupObjectStorage implements BackupObjectStorage {
         } catch (Exception exception) {
             // 응답 유실을 포함한 실패에서도 원본이나 기존 백업을 삭제하지 않는다.
             throw providerFailure("put_object", objectKey, exception);
+        }
+    }
+
+    @Override
+    public void delete(String objectKey) {
+        requireKey("delete_object", objectKey);
+        try {
+            client.deleteObject(DeleteObjectRequest.builder().bucket(properties.bucket()).key(objectKey).build());
+            logResult("delete_object", objectKey, "DELETED", null, null);
+        } catch (Exception exception) {
+            throw providerFailure("delete_object", objectKey, exception);
         }
     }
 
