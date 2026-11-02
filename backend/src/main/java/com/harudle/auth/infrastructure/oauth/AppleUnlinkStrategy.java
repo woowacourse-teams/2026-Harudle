@@ -15,12 +15,17 @@ class AppleUnlinkStrategy implements SocialUnlinkStrategy {
 
     private final ObjectProvider<AppleTokenRevocationClient> clients;
     private final OAuth2AuthorizedClientService authorizedClients;
+    private final AppleTokenRepository tokens;
+    private final ObjectProvider<AppleTokenStore> tokenStores;
     private final Clock clock;
 
     AppleUnlinkStrategy(ObjectProvider<AppleTokenRevocationClient> clients,
-            OAuth2AuthorizedClientService authorizedClients, @Qualifier("authClock") Clock clock) {
+            OAuth2AuthorizedClientService authorizedClients, AppleTokenRepository tokens,
+            ObjectProvider<AppleTokenStore> tokenStores, @Qualifier("authClock") Clock clock) {
         this.clients = clients;
         this.authorizedClients = authorizedClients;
+        this.tokens = tokens;
+        this.tokenStores = tokenStores;
         this.clock = clock;
     }
 
@@ -31,6 +36,24 @@ class AppleUnlinkStrategy implements SocialUnlinkStrategy {
 
     @Override
     public SocialUnlinkResult begin(OAuthAccount account) {
+        var saved = tokens.findByAccountId(account.getId());
+        if (!saved.isEmpty()) {
+            var store = tokenStores.getIfAvailable();
+            if (store == null) {
+                throw new IllegalStateException("애플 토큰 저장소를 사용할 수 없습니다.");
+            }
+            boolean manualUnlinkRequired = false;
+            for (var credentials : store.decryptForUnlink(saved, clock.instant())) {
+                if (unlink(account, credentials) == SocialUnlinkResult.APPLE_TOKEN_UNAVAILABLE) {
+                    manualUnlinkRequired = true;
+                }
+            }
+            return manualUnlinkRequired ? SocialUnlinkResult.APPLE_TOKEN_UNAVAILABLE : SocialUnlinkResult.REVOKED;
+        }
+        return unlinkFromMemory(account);
+    }
+
+    private SocialUnlinkResult unlinkFromMemory(OAuthAccount account) {
         var authorized = authorizedClients.loadAuthorizedClient("apple", account.getProviderSubject());
         if (authorized == null) {
             return SocialUnlinkResult.APPLE_TOKEN_UNAVAILABLE;

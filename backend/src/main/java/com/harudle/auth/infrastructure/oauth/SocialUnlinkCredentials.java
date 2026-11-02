@@ -12,5 +12,10 @@ public sealed interface SocialUnlinkCredentials {
             implements SocialUnlinkCredentials {}
 
     /** 애플 토큰과 clientId는 해당 회원에게 발급된 값이어야 한다. */
-    record Apple(String clientId, @Nullable String token) implements SocialUnlinkCredentials {}
+    record Apple(String clientId, @Nullable String token) implements SocialUnlinkCredentials {
+        @Override
+        public String toString() {
+            return "Apple[credentials=redacted]";
+        }
+    }
 }

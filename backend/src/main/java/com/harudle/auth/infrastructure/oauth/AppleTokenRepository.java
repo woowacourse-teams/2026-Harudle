@@ -3,6 +3,7 @@ package com.harudle.auth.infrastructure.oauth;
 import com.harudle.common.persistence.PostgresTransactionLockTimeout;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -21,6 +22,17 @@ public class AppleTokenRepository {
         this.lockTimeout = lockTimeout;
     }
 
+    public List<EncryptedToken> findByAccountId(long accountId) {
+        return jdbc.query("""
+                SELECT client_id, refresh_token, access_token, access_expires_at
+                FROM apple_oauth_tokens WHERE oauth_account_id = ? ORDER BY client_id
+                """, (row, index) -> {
+                    Timestamp expiresAt = row.getTimestamp("access_expires_at");
+                    return new EncryptedToken(row.getString("client_id"), row.getString("refresh_token"),
+                            row.getString("access_token"), expiresAt == null ? null : expiresAt.toInstant());
+                }, accountId);
+    }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void save(UUID userId, String clientId, String identityToken, String accessToken,
             @Nullable String refreshToken, @Nullable Instant accessExpiresAt) {
@@ -37,6 +49,14 @@ public class AppleTokenRepository {
                 accessExpiresAt == null ? null : Timestamp.from(accessExpiresAt), userId);
         if (updated != 1) {
             throw new IllegalStateException("애플 로그인 계정을 찾을 수 없습니다.");
+        }
+    }
+
+    public record EncryptedToken(String clientId, @Nullable String refreshToken, String accessToken,
+                                 @Nullable Instant accessExpiresAt) {
+        @Override
+        public String toString() {
+            return "EncryptedToken[credentials=redacted]";
         }
     }
 }

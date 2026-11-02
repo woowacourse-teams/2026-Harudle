@@ -1,6 +1,7 @@
 package com.harudle.auth.infrastructure.oauth;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -49,6 +50,23 @@ public class AppleTokenStore {
         } catch (RuntimeException exception) {
             logFailure("STORAGE_ERROR");
         }
+    }
+
+    public List<SocialUnlinkCredentials.Apple> decryptForUnlink(
+            List<AppleTokenRepository.EncryptedToken> savedTokens, Instant now) {
+        return savedTokens.stream().map(saved -> {
+            String encrypted = saved.refreshToken();
+            if (encrypted == null && (saved.accessExpiresAt() == null || saved.accessExpiresAt().isAfter(now))) {
+                encrypted = saved.accessToken();
+            }
+            if (encrypted == null) {
+                return new SocialUnlinkCredentials.Apple(saved.clientId(), null);
+            }
+            if (cipher == null) {
+                throw new IllegalStateException("애플 토큰 암호화 키가 올바르지 않습니다.");
+            }
+            return new SocialUnlinkCredentials.Apple(saved.clientId(), cipher.decrypt(encrypted));
+        }).toList();
     }
 
     private static @Nullable AppleTokenCipher createCipher(String encryptionKey) {

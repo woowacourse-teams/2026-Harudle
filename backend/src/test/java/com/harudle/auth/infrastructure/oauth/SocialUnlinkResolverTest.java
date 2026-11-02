@@ -57,7 +57,7 @@ class SocialUnlinkResolverTest {
         beans.addBean("appleClient", client);
         var resolver = new SocialUnlinkResolver(List.of(new AppleUnlinkStrategy(
                 beans.getBeanProvider(AppleTokenRevocationClient.class), mock(OAuth2AuthorizedClientService.class),
-                Clock.systemUTC())));
+                mock(AppleTokenRepository.class), beans.getBeanProvider(AppleTokenStore.class), Clock.systemUTC())));
 
         assertThat(resolver.unlink(account, new SocialUnlinkCredentials.Apple("apple-client", null)))
                 .isEqualTo(SocialUnlinkResult.APPLE_TOKEN_UNAVAILABLE);
@@ -73,6 +73,7 @@ class SocialUnlinkResolverTest {
         var account = mock(OAuthAccount.class);
         when(account.getProvider()).thenReturn(OAuthProvider.APPLE);
         when(account.getProviderSubject()).thenReturn("apple-user");
+        when(account.getId()).thenReturn(1L);
         when(clients.loadAuthorizedClient("apple", "apple-user")).thenReturn(authorized);
         when(authorized.getPrincipalName()).thenReturn("apple-user");
         when(authorized.getClientRegistration()).thenReturn(registration);
@@ -84,7 +85,8 @@ class SocialUnlinkResolverTest {
         var beans = new StaticListableBeanFactory();
         beans.addBean("appleClient", client);
         var resolver = new SocialUnlinkResolver(List.of(new AppleUnlinkStrategy(
-                beans.getBeanProvider(AppleTokenRevocationClient.class), clients, Clock.systemUTC())));
+                beans.getBeanProvider(AppleTokenRevocationClient.class), clients,
+                mock(AppleTokenRepository.class), beans.getBeanProvider(AppleTokenStore.class), Clock.systemUTC())));
 
         assertThat(resolver.begin(account)).isEqualTo(SocialUnlinkResult.REVOKED);
         verify(client).revoke("apple-client", "apple-token");
@@ -96,9 +98,11 @@ class SocialUnlinkResolverTest {
         var account = mock(OAuthAccount.class);
         when(account.getProvider()).thenReturn(OAuthProvider.APPLE);
         when(account.getProviderSubject()).thenReturn("apple-user");
+        when(account.getId()).thenReturn(1L);
         var beans = new StaticListableBeanFactory();
         var resolver = new SocialUnlinkResolver(List.of(new AppleUnlinkStrategy(
-                beans.getBeanProvider(AppleTokenRevocationClient.class), clients, Clock.systemUTC())));
+                beans.getBeanProvider(AppleTokenRevocationClient.class), clients,
+                mock(AppleTokenRepository.class), beans.getBeanProvider(AppleTokenStore.class), Clock.systemUTC())));
 
         assertThat(resolver.begin(account)).isEqualTo(SocialUnlinkResult.APPLE_TOKEN_UNAVAILABLE);
     }
@@ -111,12 +115,14 @@ class SocialUnlinkResolverTest {
         var account = mock(OAuthAccount.class);
         when(account.getProvider()).thenReturn(OAuthProvider.APPLE);
         when(account.getProviderSubject()).thenReturn("apple-user");
+        when(account.getId()).thenReturn(1L);
         when(clients.loadAuthorizedClient("apple", "apple-user")).thenReturn(authorized);
         when(authorized.getPrincipalName()).thenReturn("different-user");
         var beans = new StaticListableBeanFactory();
         beans.addBean("appleClient", client);
         var resolver = new SocialUnlinkResolver(List.of(new AppleUnlinkStrategy(
-                beans.getBeanProvider(AppleTokenRevocationClient.class), clients, Clock.systemUTC())));
+                beans.getBeanProvider(AppleTokenRevocationClient.class), clients,
+                mock(AppleTokenRepository.class), beans.getBeanProvider(AppleTokenStore.class), Clock.systemUTC())));
 
         assertThatThrownBy(() -> resolver.begin(account)).isInstanceOf(IllegalStateException.class);
         verifyNoInteractions(client);
@@ -133,6 +139,7 @@ class SocialUnlinkResolverTest {
         Instant now = Instant.parse("2026-11-02T00:00:00Z");
         when(account.getProvider()).thenReturn(OAuthProvider.APPLE);
         when(account.getProviderSubject()).thenReturn("apple-user");
+        when(account.getId()).thenReturn(1L);
         when(clients.loadAuthorizedClient("apple", "apple-user")).thenReturn(authorized);
         when(authorized.getPrincipalName()).thenReturn("apple-user");
         when(authorized.getClientRegistration()).thenReturn(registration);
@@ -143,7 +150,8 @@ class SocialUnlinkResolverTest {
         var beans = new StaticListableBeanFactory();
         beans.addBean("appleClient", client);
         var resolver = new SocialUnlinkResolver(List.of(new AppleUnlinkStrategy(
-                beans.getBeanProvider(AppleTokenRevocationClient.class), clients, Clock.fixed(now, ZoneOffset.UTC))));
+                beans.getBeanProvider(AppleTokenRevocationClient.class), clients,
+                mock(AppleTokenRepository.class), beans.getBeanProvider(AppleTokenStore.class), Clock.fixed(now, ZoneOffset.UTC))));
 
         assertThat(resolver.begin(account)).isEqualTo(SocialUnlinkResult.APPLE_TOKEN_UNAVAILABLE);
         verifyNoInteractions(client);

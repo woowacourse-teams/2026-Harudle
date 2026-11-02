@@ -228,6 +228,10 @@ class WithdrawalDatabaseServiceTest extends ServiceIntegrationTestSupport {
         store.save(userId, "native", "identity", "access", "refresh", Instant.now().plusSeconds(60));
         store.save(userId, "web", "web-identity", "web-access", "web-refresh", Instant.now().plusSeconds(60));
         store.save(userId, "native", "identity-2", "access-2", null, Instant.now().plusSeconds(60));
+        jdbc.update("INSERT INTO users (id, name) VALUES (?, ?)", reporterId, "다른 회원");
+        jdbc.update("INSERT INTO oauth_accounts (user_id, provider, provider_subject) VALUES (?, 'APPLE', 'other-apple')",
+                reporterId);
+        store.save(reporterId, "native", "other-identity", "other-access", "other-refresh", null);
 
         var nativeToken = jdbc.queryForMap("SELECT * FROM apple_oauth_tokens WHERE oauth_account_id = ? AND client_id = 'native'", accountId);
         assertThat(nativeToken.get("identity_token")).isNotEqualTo("identity-2");
@@ -235,6 +239,9 @@ class WithdrawalDatabaseServiceTest extends ServiceIntegrationTestSupport {
         assertThat(cipher.decrypt((String) nativeToken.get("access_token"))).isEqualTo("access-2");
         assertThat(cipher.decrypt((String) nativeToken.get("refresh_token"))).isEqualTo("refresh");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM apple_oauth_tokens WHERE oauth_account_id = ?", Integer.class, accountId)).isEqualTo(2);
+        assertThat(store.decryptForUnlink(appleTokens.findByAccountId(accountId), Instant.now()))
+                .extracting(token -> token.clientId() + ":" + token.token())
+                .containsExactly("native:refresh", "web:web-refresh");
 
         service.delete(userId);
 
