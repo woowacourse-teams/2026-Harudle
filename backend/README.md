@@ -24,7 +24,8 @@ Gradle은 별도로 설치할 필요가 없습니다. 저장소에 포함된 Gra
 
 ## 문서
 
-- [API 명세](docs/api-spec.md)
+- [백엔드 문서와 ADR 목록](docs/README.md)
+- [API 명세](<docs/명세/하루들 API 명세.md>)
 
 ## 도메인 패키지
 
