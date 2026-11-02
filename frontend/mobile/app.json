@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "하루들",
+    "slug": "harudle",
+    "icon": "./assets/icon.png",
+    "version": "1.0.0",
+    "platforms": ["ios", "android"],
+    "plugins": [
+      "expo-apple-authentication",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-logo.png",
+          "imageWidth": 180,
+          "backgroundColor": "#FFFFFF"
+        }
+      ]
+    ],
+    "ios": {
+      "bundleIdentifier": "com.harudle.app",
+      "usesAppleSignIn": true
+    },
+    "android": {
+      "package": "com.harudle.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#CDB9F7"
+      }
+    }
+  }
+}

@@ -34,3 +34,10 @@ declare const process: {
     readonly USE_MSW: string | undefined;
   };
 };
+
+interface Window {
+  readonly isHarudleApp?: boolean;
+  readonly ReactNativeWebView?: {
+    postMessage: (data: string) => void;
+  };
+}
