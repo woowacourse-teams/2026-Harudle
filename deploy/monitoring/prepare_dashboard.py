@@ -98,6 +98,12 @@ def service_widgets(environment, instance_id):
                 expression(f"{identifier}/PERIOD({identifier})", label),
             ])
         widgets.append(widget("작업별 TPS (성공한 작업/초)", metrics))
+        widgets[-1]["properties"]["yAxis"] = {"left": {"label": "성공한 작업/초", "showUnits": False}}
+        for item in widgets[:3]:
+            item["properties"]["yAxis"] = {
+                "left": {"label": "응답 시간 (ms)", "showUnits": False},
+                "right": {"label": "요청 수", "showUnits": False},
+            }
     pool = ("job", "harudle-backend", "pool", "HikariPool-1")
     widgets.append(widget("DB 연결 획득 시간", [
         metric(namespace, "hikaricp_connections_acquire_seconds_sum", pool,
@@ -135,6 +141,10 @@ def service_widgets(environment, instance_id):
             expression(f"1000*SUM({gc_search('sum', 'Sum')})", "정지 시간 합 (ms)"),
             expression(f"SUM({gc_search('count', 'Sum')})", "GC 횟수", yAxis="right"),
         ]))
+        widgets[-1]["properties"]["yAxis"] = {
+            "left": {"label": "정지 시간 (ms)", "showUnits": False},
+            "right": {"label": "GC 횟수", "showUnits": False},
+        }
         memory = []
         for area, label in (("heap", "힙"), ("nonheap", "힙 외")):
             for name, description in (("used", "사용량"), ("committed", "확보량")):
@@ -142,6 +152,7 @@ def service_widgets(environment, instance_id):
                           f'job="harudle-backend" area="{area}"\', \'Average\', 60)')
                 memory.append(expression(f"SUM({search})/1048576", f"{label} {description} (MiB)"))
         widgets.append(widget("Java 힙과 힙 외 메모리", memory))
+        widgets[-1]["properties"]["yAxis"] = copy.deepcopy(MEMORY_MIB_Y_AXIS)
     return widgets
 
 
@@ -226,6 +237,31 @@ def prepare_dashboard(original, environment, instance_id):
                 expression("networkinbytes/1000000", "수신 (MB)", id="networkinmb", color="#1f77b4"),
                 expression("networkoutbytes/1000000", "송신 (MB)", id="networkoutmb", color="#ff7f0e"),
             ], yAxis={"left": {"label": "전송량 (MB, 구간 합계)", "showUnits": False, "min": 0}})
+        if environment == "dev":
+            title = properties.get("title", "")
+            if title in ("API 응답 시간 (전체)", "API 응답 시간 (일반)", "API 응답 시간 (일기 생성)"):
+                properties["yAxis"] = {
+                    "left": {"label": "응답 시간 (ms)", "showUnits": False},
+                    "right": {"label": "요청 수", "showUnits": False},
+                }
+            elif title == "작업별 TPS (성공한 작업/초)":
+                properties["yAxis"] = {"left": {"label": "성공한 작업/초", "showUnits": False}}
+            elif title in ("Java 힙 외 메모리", "Java 힙과 힙 외 메모리"):
+                properties["yAxis"] = copy.deepcopy(MEMORY_MIB_Y_AXIS)
+            elif title in ("생성 실행 평균 시간 (5분·초)", "평균 시간의 실행 표본 수 (5분)", "Gemini 관측 토큰 total (5분)"):
+                properties.update(title={
+                    "생성 실행 평균 시간 (5분·초)": "생성 실행 평균 시간 (초)",
+                    "평균 시간의 실행 표본 수 (5분)": "평균 시간의 실행 표본 수",
+                    "Gemini 관측 토큰 total (5분)": "Gemini 관측 토큰 total",
+                }[title], period=60)
+            elif properties.get("markdown", "").startswith("### 지표와 알림 안내"):
+                properties["markdown"] = (
+                    "### 지표와 알림 안내\n\n"
+                    "생성 시간은 표시 구간의 실행 시간 합을 실행 수로 나눈 평균입니다. 간격은 선택한 시간 범위에 따라 조정됩니다. "
+                    "표본이 없으면 비워 둡니다. returned는 예외 없이 반환된 실행, threw는 예외가 발생한 실행입니다. "
+                    "DB 최종 결과는 위의 일기 생성 지표에서 확인합니다. 토큰 total은 공급자 응답값이며 사용자 차감량이나 청구 비용이 아닙니다.\n\n"
+                    "정리 실패 3종과 Gemini 요청 실패 경보는 유지합니다. 이미지 대체 실패 경보는 R2 활성화와 실제 로그 확인 후 설정합니다. "
+                    "경보가 OK여도 이전 실패가 해결되었다는 뜻은 아닙니다.")
     additions = [] if environment == "prod" and has_prod_layout(dashboard) else [
                  item for item in service_widgets(environment, instance_id)
                  if item["properties"]["title"] not in titles
@@ -398,10 +434,10 @@ def arrange_dashboard(original, environment):
             if name == 'logs' and item['properties'].get('title') == 'Gemini & S3 Failures':
                 width = 24
             height = item.get('height', 6)
-            if environment == 'prod' and name == 'dbhost' and item['properties'].get('title') in (
+            if name == 'dbhost' and item['properties'].get('title') in (
                     'DB EC2 CPU', 'DB EC2 Available Memory'):
                 width, height = 6, 6
-            if environment == 'prod' and name == 'app' and item['properties'].get('view') == 'singleValue' and item['properties'].get('title') in (
+            if name == 'app' and item['properties'].get('view') == 'singleValue' and item['properties'].get('title') in (
                     'EC2 CPU', 'EC2 Available Memory', 'EC2 Swap Used', 'EC2 Root Disk'):
                 width, height = 6, 4
             if x + width > 24:

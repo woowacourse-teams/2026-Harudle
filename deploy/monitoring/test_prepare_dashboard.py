@@ -48,7 +48,7 @@ class DashboardTests(unittest.TestCase):
                           "EC2 Available Memory", "EC2 Swap Used", "EC2 Root Disk")
         ] + [{"type": "metric", "width": 12, "height": 6, "properties": {
             "title": "DB EC2 CPU Utilization", "view": "timeSeries", "metrics": [["original", "CPU"]]}}]}
-        for environment in ("prod",):
+        for environment in ("dev", "prod"):
             result = arrange_dashboard(source, environment)
             by_title = {w["properties"].get("title"): w for w in result["widgets"]}
             app_cards = [by_title[t] for t in ("EC2 CPU", "EC2 Available Memory", "EC2 Swap Used", "EC2 Root Disk")]
@@ -63,6 +63,26 @@ class DashboardTests(unittest.TestCase):
                 self.assertEqual(by_title[original["properties"]["title"]]["properties"], original["properties"])
             self.assertEqual(arrange_dashboard(result, environment), result)
 
+    def test_dev_repairs_units_and_labels_without_losing_load_test_observations(self):
+        titles = ("생성 실행 평균 시간 (5분·초)", "평균 시간의 실행 표본 수 (5분)",
+                  "Gemini 관측 토큰 total (5분)", "DB 연결 획득 시간", "Java 힙 사용량",
+                  "작업별 TPS (성공한 작업/초)", "DB 연결 풀: 대기 요청 최댓값")
+        original = {"widgets": [{"type": "metric", "height": 6, "properties": {
+            "title": title, "period": 300, "metrics": [[{"expression": "original", "id": "e0"}]]}}
+            for title in titles]}
+        result = prepare_dashboard(original, "dev", INSTANCE_ID)
+        props = {w["properties"].get("title"): w["properties"] for w in result["widgets"]}
+        for title in ("생성 실행 평균 시간 (초)", "평균 시간의 실행 표본 수", "Gemini 관측 토큰 total"):
+            self.assertEqual(props[title]["period"], 60)
+            self.assertEqual(props[title]["metrics"], original["widgets"][0]["properties"]["metrics"])
+        self.assertNotIn("DB 연결 풀: 대기 요청 최댓값", props)
+        self.assertEqual(props["DB 연결 획득 시간"]["yAxis"]["left"]["label"], "밀리초 (ms)")
+        self.assertEqual(props["Java 힙 사용량"]["yAxis"]["left"]["label"], "메모리 (MiB)")
+        self.assertEqual(props["작업별 TPS (성공한 작업/초)"]["yAxis"]["left"]["label"], "성공한 작업/초")
+        self.assertIn("GC 정지 시간과 횟수", props)
+        self.assertIn("Java 힙과 힙 외 메모리", props)
+        self.assertFalse(any("BackupWithin24Hours" in str(w) for w in result["widgets"]))
+        self.assertEqual(prepare_dashboard(result, "dev", INSTANCE_ID), result)
 
     def test_external_failures_use_one_full_width_detail_table_in_both_environments(self):
         original = {"widgets": [
