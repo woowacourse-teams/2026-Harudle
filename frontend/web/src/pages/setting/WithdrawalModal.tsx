@@ -108,7 +108,10 @@ const WithdrawalModal = ({ onClose }: WithdrawalModalProps) => {
         </>
       }
     >
-      <p>탈퇴하면 계정, 일기와 작성한 피드가 삭제되며 복구할 수 없어요.</p>
+      <p>
+        탈퇴하면 계정, 일기와 작성한 피드가
+        <br /> 삭제되며 복구할 수 없어요.
+      </p>
       {error && (
         <p css={errorStyle} role="alert">
           {error}
