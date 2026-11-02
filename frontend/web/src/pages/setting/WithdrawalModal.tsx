@@ -56,6 +56,7 @@ const WithdrawalModal = ({ onClose }: WithdrawalModalProps) => {
     return (
       <Modal
         ref={modalRef}
+        css={centeredStyle}
         title="회원 탈퇴가 완료됐어요"
         dismissible={false}
         footer={
@@ -83,6 +84,7 @@ const WithdrawalModal = ({ onClose }: WithdrawalModalProps) => {
   return (
     <Modal
       ref={modalRef}
+      css={centeredStyle}
       title="정말 탈퇴하시겠어요?"
       dismissible={false}
       footer={
@@ -122,6 +124,10 @@ const WithdrawalModal = ({ onClose }: WithdrawalModalProps) => {
 };
 
 export default WithdrawalModal;
+
+const centeredStyle = css`
+  text-align: center;
+`;
 
 const buttonStyle = css`
   flex: 1;
