@@ -6,37 +6,127 @@ import sys
 import tempfile
 import unittest
 
-from prepare_dashboard import metric_filters, prepare_dashboard, read_dashboard, service_widgets
+from prepare_dashboard import metric_filters, prepare_dashboard, read_dashboard, service_widgets, arrange_dashboard, LOG_QUERIES
 
 
 INSTANCE_ID = "i-0123456789abcdef0"
 
 
 class DashboardTests(unittest.TestCase):
+    def test_completed_prod_console_layout_keeps_p95_failure_and_external_cards(self):
+        source = {"start": "-PT6H", "periodOverride": "auto", "widgets": [
+            {"type": "metric", "x": index * 8 if index < 3 else (index - 3) * 6,
+             "y": 0 if index < 3 else 5, "width": 8 if index < 3 else 6, "height": 5,
+             "properties": {"title": title, "view": "singleValue", "metrics": [
+                 ["Harudle/Prod", "existing", {"stat": "Maximum"}]]}}
+            for index, title in enumerate(("백엔드 5xx 비율 (선택 기간)", "일반 API P95 (ms)",
+                                           "생성 실패", "최근 DB 연결 대기 최댓값",
+                                           "DB 데이터 여유 공간 (GiB)", "DB 백업 상태 (1 정상, 0 주의)"))
+        ] + [
+            {"type": "alarm", "x": 0, "y": 11, "width": 24, "height": 5,
+             "properties": {"title": "prod 경보", "alarms": ["unchanged-alarm"]}},
+            {"type": "metric", "x": 18, "y": 5, "width": 6, "height": 5,
+             "properties": {"title": "R2 백업 상태 (최근 24h)", "view": "gauge", "start": "-PT24H",
+                            "metrics": [["Harudle/Prod", "R2BackupStatus"]],
+                            "yAxis": {"left": {"min": -1, "max": 2}}}},
+            {"type": "text", "x": 0, "y": 16, "width": 24, "height": 2,
+             "properties": {"markdown": "콘솔에서 추가한 안내"}},
+        ]}
+        unchanged = copy.deepcopy(source)
+        result = prepare_dashboard(source, "prod", INSTANCE_ID)
+        self.assertEqual(result, unchanged)
+        self.assertEqual(arrange_dashboard(source, "prod"), unchanged)
+        self.assertEqual(prepare_dashboard(result, "prod", INSTANCE_ID), result)
+        self.assertEqual(source, unchanged)
+        self.assertNotIn("생성 실패 (선택 기간)", [w["properties"].get("title") for w in result["widgets"]])
+
+    def test_resource_cards_fit_one_row_without_changing_observations(self):
+        source = {"widgets": [
+            {"type": "metric", "width": 12, "height": 4, "properties": {
+                "title": title, "view": "singleValue", "metrics": [["original", title]]}}
+            for title in ("DB EC2 CPU", "DB EC2 Available Memory", "EC2 CPU",
+                          "EC2 Available Memory", "EC2 Swap Used", "EC2 Root Disk")
+        ] + [{"type": "metric", "width": 12, "height": 6, "properties": {
+            "title": "DB EC2 CPU Utilization", "view": "timeSeries", "metrics": [["original", "CPU"]]}}]}
+        for environment in ("prod",):
+            result = arrange_dashboard(source, environment)
+            by_title = {w["properties"].get("title"): w for w in result["widgets"]}
+            app_cards = [by_title[t] for t in ("EC2 CPU", "EC2 Available Memory", "EC2 Swap Used", "EC2 Root Disk")]
+            self.assertEqual([(w["x"], w["width"], w["height"]) for w in app_cards],
+                             [(0, 6, 4), (6, 6, 4), (12, 6, 4), (18, 6, 4)])
+            self.assertEqual(len({w["y"] for w in app_cards}), 1)
+            db_row = [by_title[t] for t in ("DB EC2 CPU", "DB EC2 Available Memory", "DB EC2 CPU Utilization")]
+            self.assertEqual([(w["x"], w["width"], w["height"]) for w in db_row],
+                             [(0, 6, 6), (6, 6, 6), (12, 12, 6)])
+            self.assertEqual(len({w["y"] for w in db_row}), 1)
+            for original in source["widgets"]:
+                self.assertEqual(by_title[original["properties"]["title"]]["properties"], original["properties"])
+            self.assertEqual(arrange_dashboard(result, environment), result)
+
+
+    def test_external_failures_use_one_full_width_detail_table_in_both_environments(self):
+        original = {"widgets": [
+            {"type": "log", "width": 12, "height": 6,
+             "properties": {"title": title, "query": "original query", "view": "table"}}
+            for title in ("Backend Internal Errors", "Gemini & S3 Failures",
+                          "External Failure Trend", "OAuth Login Events")
+        ]}
+        prod = prepare_dashboard(original, "prod", INSTANCE_ID)
+        logs = [w for w in prod["widgets"] if w["type"] == "log"]
+        self.assertEqual([w["properties"]["title"] for w in logs], [
+            "Gemini & S3 Failures", "Backend Internal Errors", "OAuth Login Events"])
+        table = logs[0]
+        self.assertEqual((table["x"], table["width"]), (0, 24))
+        self.assertEqual(table["properties"]["query"], "original query")
+        self.assertTrue(all(w["y"] >= table["y"] + table["height"] for w in logs[1:]))
+        self.assertEqual(prepare_dashboard(prod, "prod", INSTANCE_ID), prod)
+        dev_logs = [w for w in prepare_dashboard(original, "dev", INSTANCE_ID)["widgets"]
+                    if w["type"] == "log"]
+        self.assertEqual([w["properties"]["title"] for w in dev_logs],
+                         [w["properties"]["title"] for w in logs])
+        self.assertEqual((dev_logs[0]["x"], dev_logs[0]["width"]), (0, 24))
+        self.assertTrue(all(w["width"] == 12 for w in dev_logs[1:]))
+
+    def test_repairs_known_log_queries_for_each_environment_without_fixing_the_time_range(self):
+        original = {"widgets": [
+            {"type": "log", "properties": {"title": title, "region": "ap-northeast-2",
+             "view": "timeSeries" if title == "External Failure Trend" else "table", "query": "old query"}}
+            for title in [*LOG_QUERIES, "Backend Internal Errors"]
+        ]}
+        unchanged = copy.deepcopy(original)
+        for environment in ("prod", "dev"):
+            result = prepare_dashboard(original, environment, INSTANCE_ID)
+            logs = {w["properties"]["title"]: w["properties"]
+                    for w in result["widgets"] if w["type"] == "log"}
+            for source in original["widgets"]:
+                expected = copy.deepcopy(source["properties"])
+                title = expected["title"]
+                if title in LOG_QUERIES:
+                    expected["query"] = LOG_QUERIES[title].format(environment=environment)
+                    self.assertNotIn("START=", expected["query"])
+                    self.assertNotIn("END=", expected["query"])
+                self.assertEqual(logs[title], expected)
+            self.assertEqual(prepare_dashboard(result, environment, INSTANCE_ID), result)
+        self.assertEqual(original, unchanged)
+
     def test_preserves_existing_widgets_and_only_repairs_known_placeholder_targets(self):
         original = {"start": "-PT6H", "periodOverride": "inherit", "widgets": [
             {"type": "text", "x": 0, "y": 0, "height": 2, "properties": {"markdown": "기존 안내"}},
             {"type": "metric", "x": 0, "y": 2, "height": 6, "properties": {"title": "기존 CPU", "metrics": [
                 ["AWS/EC2", "CPUUtilization", "InstanceId", "i-00000000000000000"],
                 ["AWS/EC2", "CPUUtilization", "InstanceId", "i-11111111111111111"],
-                ["AWS/RDS", "DatabaseConnections", "DBInstanceIdentifier", "harudle-prod"],
-                ["AWS/RDS", "DatabaseConnections", "DBInstanceIdentifier", "another-team-db"],
             ]}},
         ]}
         unchanged = copy.deepcopy(original)
-        result = prepare_dashboard(original, "prod", INSTANCE_ID, "harudle-db")
+        result = prepare_dashboard(original, "prod", INSTANCE_ID)
 
         self.assertEqual(original, unchanged)
         self.assertEqual(result["start"], original["start"])
-        self.assertEqual(result["periodOverride"], original["periodOverride"])
-        self.assertEqual(result["widgets"][0], original["widgets"][0])
-        rows = result["widgets"][1]["properties"]["metrics"]
+        self.assertEqual(result["periodOverride"], "auto")
+        rows = next(w for w in result["widgets"] if w["properties"].get("title") == "기존 CPU")["properties"]["metrics"]
         self.assertEqual(rows[0][3], INSTANCE_ID)
         self.assertEqual(rows[1][3], "i-11111111111111111")
-        self.assertEqual(rows[2][3], "harudle-db")
-        self.assertEqual(rows[3][3], "another-team-db")
-        self.assertEqual(result["widgets"][2]["y"], 8)
-        self.assertEqual(prepare_dashboard(result, "prod", INSTANCE_ID, "harudle-db"), result)
+        self.assertEqual(prepare_dashboard(result, "prod", INSTANCE_ID), result)
 
     def test_latency_uses_raw_samples_with_no_zero_defaults_and_bounded_groups(self):
         dev_filters = metric_filters("dev")
@@ -61,7 +151,7 @@ class DashboardTests(unittest.TestCase):
             "ApiGroup": "$.apiGroup", "ApiRoute": "$.apiRoute"})
         self.assertNotIn("ApiResponseTimeByRouteMs", json.dumps(dev_filters))
 
-    def test_tps_requires_committed_writes_or_successful_read_responses(self):
+    def test_dev_tps_requires_committed_writes_or_successful_read_responses(self):
         filters = {item["metricTransformations"][0]["metricName"]: item for item in metric_filters("dev")}
         self.assertIn('$.event = "generation_finalized" && $.status = "SUCCEEDED"',
                       filters["DiaryGenerationSucceeded"]["filterPattern"])
@@ -71,22 +161,50 @@ class DashboardTests(unittest.TestCase):
             self.assertIn(f'$.operation = "{operation}"', filters[name]["filterPattern"])
             self.assertIn("$.httpStatus = 200", filters[name]["filterPattern"])
             self.assertEqual(filters[name]["metricTransformations"][0]["metricValue"], "1")
+        self.assertFalse({"DiaryGenerationSucceeded", "FeedPublicationSucceeded",
+                          "FeedListSucceeded", "FeedDetailSucceeded"}
+                         & {item["metricTransformations"][0]["metricName"] for item in metric_filters("prod")})
 
-    def test_existing_dev_and_prod_widgets_and_filters_keep_the_same_contract(self):
-        normalized = []
-        for environment in ("dev", "prod"):
-            value = {"filters": metric_filters(environment)[:6], "widgets": service_widgets(environment, INSTANCE_ID)[:9]}
-            text = json.dumps(value)
-            other = "Prod" if environment == "dev" else "Dev"
-            self.assertNotIn(f"Harudle/{other}", text)
-            text = text.replace(f"Harudle/{environment.title()}", "NAMESPACE")
-            text = text.replace(f"/harudle/{environment}/", "/harudle/ENV/")
-            text = text.replace(f"harudle-{environment}-", "harudle-ENV-")
-            normalized.append(text)
-        self.assertEqual(*normalized)
+    def test_prod_uses_route_p95_while_dev_dashboard_contract_stays_unchanged(self):
+        dev_widgets = service_widgets("dev", INSTANCE_ID)
+        self.assertEqual([w["properties"]["title"] for w in dev_widgets[:5]], [
+            "API 응답 시간 (전체)", "API 응답 시간 (일반)", "API 응답 시간 (일기 생성)",
+            "API RPS (완료한 요청/초)", "작업별 TPS (성공한 작업/초)",
+        ])
+        self.assertEqual(len(metric_filters("dev")), 6)
+        self.assertNotIn("ApiRoute", json.dumps(dev_widgets + metric_filters("dev")))
+
+        prod_widgets = service_widgets("prod", INSTANCE_ID)
+        self.assertEqual([w["properties"]["title"] for w in prod_widgets[:5]], [
+            "API 응답 시간 (일반)", "API 경로별 P95 응답 시간 (일반 상위 5개)",
+            "API 경로별 P95 응답 시간 (일기 생성 전체)", "API RPS (완료한 요청/초)",
+            "DB 연결 획득 시간",
+        ])
+        self.assertNotIn("작업별 TPS (성공한 작업/초)",
+                         [w["properties"]["title"] for w in prod_widgets])
+        for item, group in zip(prod_widgets[1:3], ("general", "generation")):
+            row = item["properties"]["metrics"][0]
+            self.assertIn(f'ApiGroup="{group}"', row[0]["expression"])
+            self.assertEqual(row[0]["label"], "${PROP('Dim.ApiRoute')}")
+        self.assertEqual(prod_widgets[1]["properties"]["title"], "API 경로별 P95 응답 시간 (일반 상위 5개)")
+        self.assertIn("SORT(SEARCH(", prod_widgets[1]["properties"]["metrics"][0][0]["expression"])
+        self.assertTrue(prod_widgets[1]["properties"]["metrics"][0][0]["expression"].endswith(", MAX, DESC, 5)"))
+        self.assertEqual(prod_widgets[2]["properties"]["title"], "API 경로별 P95 응답 시간 (일기 생성 전체)")
+        self.assertTrue(prod_widgets[2]["properties"]["metrics"][0][0]["expression"].startswith("SEARCH("))
+        self.assertEqual(len(metric_filters("prod")), 3)
+
+    def test_prod_removes_existing_tps_widget_and_dev_keeps_it(self):
+        tps = {"type": "metric", "properties": {"title": "작업별 TPS (성공한 작업/초)", "metrics": []}}
+        prod = prepare_dashboard({"widgets": [copy.deepcopy(tps)]}, "prod", INSTANCE_ID)
+        dev = prepare_dashboard({"widgets": [copy.deepcopy(tps)]}, "dev", INSTANCE_ID)
+
+        self.assertNotIn("작업별 TPS (성공한 작업/초)",
+                         [w["properties"].get("title") for w in prod["widgets"]])
+        self.assertIn("작업별 TPS (성공한 작업/초)",
+                      [w["properties"].get("title") for w in dev["widgets"]])
 
     def test_gc_and_nonheap_widgets_are_dev_only_and_use_converted_counters(self):
-        self.assertEqual(len(service_widgets("prod", INSTANCE_ID)), 9)
+        self.assertEqual(len(service_widgets("prod", INSTANCE_ID)), 8)
         widgets = service_widgets("dev", INSTANCE_ID)
         self.assertEqual(len(widgets), 11)
         gc, memory = widgets[-2:]
@@ -100,8 +218,8 @@ class DashboardTests(unittest.TestCase):
             self.assertNotIn("RATE(", formula)
         self.assertIn('area=\\"nonheap\\"', json.dumps(memory))
         self.assertIn("jvm_memory_committed_bytes", json.dumps(memory))
-        prepared = prepare_dashboard({"widgets": []}, "dev", INSTANCE_ID, "harudle-dev-db")
-        self.assertEqual(prepare_dashboard(prepared, "dev", INSTANCE_ID, "harudle-dev-db"), prepared)
+        prepared = prepare_dashboard({"widgets": []}, "dev", INSTANCE_ID)
+        self.assertEqual(prepare_dashboard(prepared, "dev", INSTANCE_ID), prepared)
 
     def test_dashboard_uses_sample_percentiles_period_based_rates_and_matching_resource_units(self):
         widgets = service_widgets("dev", INSTANCE_ID)
@@ -116,12 +234,30 @@ class DashboardTests(unittest.TestCase):
         self.assertIn("IF(acquires>0,1000*seconds/acquires)", json.dumps(widgets[5]))
         self.assertIn('area="heap"', widgets[7]["properties"]["metrics"][0][0]["expression"])
         rss = widgets[8]["properties"]["metrics"][0][0]["expression"]
+        self.assertIn('Namespace="CWAgent"', rss)
+        self.assertIn('Namespace="Harudle/Prod"', service_widgets("prod", INSTANCE_ID)[7]["properties"]["metrics"][0][0]["expression"])
         self.assertIn(f'InstanceId="{INSTANCE_ID}"', rss)
         self.assertIn(r"\(", rss)
         self.assertIn("/1048576", rss)
         for item in widgets:
             ids = [row[-1]["id"] for row in item["properties"]["metrics"] if "id" in row[-1]]
             self.assertEqual(len(ids), len(set(ids)))
+
+    def test_rps_axis_shows_rate_units_in_both_environments(self):
+        prod_rps = service_widgets("prod", INSTANCE_ID)[3]
+        self.assertEqual(prod_rps["properties"]["yAxis"], {
+            "left": {"label": "요청/초", "showUnits": False},
+        })
+        self.assertEqual(service_widgets("dev", INSTANCE_ID)[3]["properties"]["yAxis"],
+                         prod_rps["properties"]["yAxis"])
+
+        existing = {"widgets": [{"type": "metric", "properties": {
+            "title": "API RPS (완료한 요청/초)", "metrics": [],
+        }}]}
+        prepared = prepare_dashboard(existing, "prod", INSTANCE_ID)
+        rps = next(item for item in prepared["widgets"]
+                   if item["properties"].get("title") == "API RPS (완료한 요청/초)")
+        self.assertEqual(rps["properties"]["yAxis"], prod_rps["properties"]["yAxis"])
 
     def test_cli_rejects_other_environment_and_generates_reviewable_files_without_aws(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -132,7 +268,7 @@ class DashboardTests(unittest.TestCase):
                         "DashboardBody": json.dumps({"widgets": []})}
             before.write_text(json.dumps(previous))
             command = [sys.executable, str(Path(__file__).with_name("prepare_dashboard.py")),
-                       "--environment", "dev", "--instance-id", INSTANCE_ID, "--rds-instance-id", "harudle-db",
+                       "--environment", "dev", "--instance-id", INSTANCE_ID,
                        "--dashboard", str(before), "--output", str(output)]
             result = subprocess.run(command, capture_output=True, text=True)
             self.assertNotEqual(result.returncode, 0)
@@ -142,7 +278,7 @@ class DashboardTests(unittest.TestCase):
             result = subprocess.run(command, capture_output=True, text=True, check=True)
             self.assertEqual(len(list(output.glob("*.json"))), 7)
             self.assertEqual(json.loads(before.read_text()), previous)
-            self.assertEqual(len(json.loads((output / "dashboard.json").read_text())["widgets"]), 11)
+            self.assertIn("GC 정지 시간과 횟수", (output / "dashboard.json").read_text())
 
     def test_cli_accepts_console_source_and_preserves_widgets_and_variables_for_both_environments(self):
         for environment in ("dev", "prod"):
@@ -160,22 +296,141 @@ class DashboardTests(unittest.TestCase):
                 saved_source = before.read_bytes()
                 command = [sys.executable, str(Path(__file__).with_name("prepare_dashboard.py")),
                            "--environment", environment, "--instance-id", INSTANCE_ID,
-                           "--rds-instance-id", "harudle-db", "--dashboard", str(before), "--output", str(output)]
+                           "--dashboard", str(before), "--output", str(output)]
 
                 subprocess.run(command, capture_output=True, text=True, check=True)
 
                 result = json.loads((output / "dashboard.json").read_text())
                 self.assertEqual(before.read_bytes(), saved_source)
-                self.assertEqual(result["variables"], original["variables"])
                 self.assertEqual(result["start"], original["start"])
-                self.assertEqual(result["widgets"][:1], original["widgets"])
-                self.assertEqual(len(result["widgets"]), 12 if environment == "dev" else 10)
+                self.assertTrue(any(w["properties"].get("markdown") == "기존 안내" for w in result["widgets"]))
+                self.assertNotIn("variables", result)
                 self.assertEqual(len(list(output.glob("*.json"))), 1 + len(metric_filters(environment)))
                 for index, expected in enumerate(metric_filters(environment), start=1):
                     self.assertEqual(json.loads((output / f"metric-filter-{index}.json").read_text()), expected)
                 before.write_text(json.dumps(result), encoding="utf-8")
                 subprocess.run(command, capture_output=True, text=True, check=True)
                 self.assertEqual(json.loads((output / "dashboard.json").read_text()), result)
+
+    def test_rejects_old_db_metrics_and_keeps_existing_formulas(self):
+        with self.assertRaisesRegex(ValueError, "EC2 PostgreSQL"):
+            prepare_dashboard({"widgets":[{"type":"metric","properties":{"metrics":[["AWS/RDS","CPUUtilization"]]}}]}, "dev", INSTANCE_ID)
+        original={"widgets":[{"type":"metric","height":6,"properties":{"title":"Java 힙 사용량","metrics":[[{"expression":"existing_formula"}]]}}]}
+        result=prepare_dashboard(original,"dev",INSTANCE_ID)
+        existing=next(w for w in result['widgets'] if w['properties'].get('title')=='Java 힙 사용량')
+        self.assertEqual(existing['properties']['metrics'],original['widgets'][0]['properties']['metrics'])
+        self.assertEqual(existing['properties']['yAxis']['left']['label'], '메모리 (MiB)')
+        self.assertEqual(prepare_dashboard(result,'dev',INSTANCE_ID),result)
+
+    def test_layout_preserves_metrics_queries_and_alarm_actions_without_overlap(self):
+        for env in ('dev','prod'):
+            original={'widgets':service_widgets(env,INSTANCE_ID)+[
+                {'type':'alarm','width':24,'height':5,'properties':{'title':'기존 경보','alarms':['unchanged-arn']}},
+                {'type':'log','width':24,'height':8,'properties':{'title':'기존 검색','query':'unchanged query'}}]}
+            result=arrange_dashboard(original,env)
+            if env == 'dev':
+                for before in original['widgets']:
+                    self.assertIn(before['properties'],[w['properties'] for w in result['widgets']])
+            else:
+                self.assertIn('API 경로별 P95 응답 시간 (일반 상위 5개)',
+                              [w['properties'].get('title') for w in result['widgets']])
+                self.assertIn('API 경로별 P95 응답 시간 (일기 생성 전체)',
+                              [w['properties'].get('title') for w in result['widgets']])
+            self.assertEqual(arrange_dashboard(result,env),result)
+            for i,a in enumerate(result['widgets']):
+                for b in result['widgets'][i+1:]:
+                    self.assertTrue(a['x']+a['width']<=b['x'] or b['x']+b['width']<=a['x'] or
+                                    a['y']+a['height']<=b['y'] or b['y']+b['height']<=a['y'])
+
+    def test_http_response_widget_uses_clear_response_labels(self):
+        source = {'widgets': [{'type': 'metric', 'properties': {
+            'title': '백엔드 HTTP: 완료 수와 5xx 수',
+            'metrics': [
+                ['Harudle/Prod', 'http_server_requests_seconds_count',
+                 {'stat': 'Sum', 'label': '전체 HTTP 완료'}],
+                ['Harudle/Prod', 'http_server_requests_seconds_count', 'outcome', 'SERVER_ERROR',
+                 {'stat': 'Sum', 'label': '5xx 완료'}],
+            ],
+        }}]}
+        result = arrange_dashboard(source, 'prod')
+        item = next(w for w in result['widgets']
+                    if w.get('properties', {}).get('title') == '백엔드 HTTP 응답 수')
+
+        self.assertEqual(item['properties']['title'], '백엔드 HTTP 응답 수')
+        self.assertEqual([row[-1]['label'] for row in item['properties']['metrics']],
+                         ['전체 응답 수', '5xx 오류 응답 수'])
+        self.assertEqual(source['widgets'][0]['properties']['title'], '백엔드 HTTP: 완료 수와 5xx 수')
+
+    def test_keeps_selected_period_5xx_card_in_both_environments(self):
+        for environment in ('dev', 'prod'):
+            namespace = f'Harudle/{environment.title()}'
+            source = {'widgets': [
+                {'type': 'metric', 'width': 12, 'height': 6, 'properties': {
+                    'title': '백엔드 HTTP: 5xx 비율',
+                    'metrics': [
+                        [namespace, 'http_server_requests_seconds_count', 'outcome', 'SERVER_ERROR',
+                         {'id': 'e', 'stat': 'Sum'}],
+                        [namespace, 'http_server_requests_seconds_count', {'id': 't', 'stat': 'Sum'}],
+                        [{'id': 'r', 'expression': 'IF(t>=20,100*e/t,0)', 'label': '5xx 비율 (%)'}],
+                    ],
+                }},
+                {'type': 'metric', 'width': 12, 'height': 6, 'properties': {
+                    'title': '백엔드 HTTP 응답 수',
+                    'metrics': [[namespace, 'http_server_requests_seconds_count', {'stat': 'Sum'}]],
+                }},
+            ]}
+
+            result = arrange_dashboard(source, environment)
+            titles = {w['properties'].get('title') for w in result['widgets']}
+
+            self.assertNotIn('백엔드 HTTP: 5xx 비율', titles)
+            self.assertIn('백엔드 HTTP 응답 수', titles)
+            rate_card = next(w for w in result['widgets']
+                             if w['properties'].get('title') == (
+                                 '백엔드 5xx 비율 (선택 기간)'))
+            self.assertEqual(rate_card['properties']['metrics'][-1][0]['expression'],
+                             'TIME_SERIES(100*SUM(e)/SUM(t))')
+            self.assertEqual(rate_card['properties']['metrics'][0][0], namespace)
+            self.assertEqual(arrange_dashboard(result, environment), result)
+
+    def test_summary_hides_generation_success_and_keeps_pending_separate_from_timeouts(self):
+        source={"widgets":[
+            {"type":"metric","height":6,"properties":{"title":"일기 생성: DB 최종 확정 수","metrics":[
+                ["Harudle/Prod","success",{"id":"s"}],
+                ["Harudle/Prod","failure",{"id":"f0","visible":False}],
+                ["Harudle/Prod","failure",{"id":"f1","visible":False}],
+                [{"expression":"SUM([f0,f1])","id":"failed"}]]}},
+            {"type":"metric","height":6,"properties":{"title":"DB 연결 대기와 시간 초과","metrics":[
+                ["Harudle/Prod","pending",{}], ["Harudle/Prod","timeouts",{}]]}}]}
+        result=arrange_dashboard(source,'prod')
+        cards={w['properties'].get('title'):w['properties'] for w in result['widgets']}
+        failures = cards['생성 실패 (선택 기간)']
+        self.assertFalse(failures['metrics'][0][-1]['visible'])
+        self.assertEqual(failures['metrics'][-1][0]['expression'],
+                         'TIME_SERIES(SUM(f0)+SUM(f1))')
+        self.assertEqual(failures['metrics'][-1][0]['label'], '선택 기간 생성 실패 건수')
+        self.assertEqual(len(cards['최근 DB 연결 대기 최댓값']['metrics']),1)
+        dev_cards = {w['properties'].get('title') for w in arrange_dashboard(source, 'dev')['widgets']}
+        self.assertIn('최근 DB 연결 대기 최댓값', dev_cards)
+        self.assertEqual(arrange_dashboard(result, 'prod'), result)
+        self.assertNotIn('visible',source['widgets'][0]['properties']['metrics'][0][-1])
+
+    def test_daily_backup_status_is_prod_only_and_never_fills_missing_results(self):
+        prod = arrange_dashboard({"widgets": []}, "prod")
+        self.assertEqual(arrange_dashboard(prod, "prod"), prod)
+        cards = {w["properties"].get("title"): w["properties"] for w in prod["widgets"]}
+        status = cards["DB 백업 상태 (1 정상, 0 주의)"]
+        self.assertEqual(status["view"], "singleValue")
+        self.assertEqual(status["start"], "-PT24H")
+        self.assertEqual(status["period"], 300)
+        self.assertTrue(status["setPeriodToTimeRange"])
+        self.assertEqual(status["metrics"][0][-1]["stat"], "Minimum")
+        self.assertFalse(status["sparkline"])
+        target = json.loads(Path(__file__).with_name("targets.json").read_text())["prod"]["db_instance_id"]
+        self.assertEqual(status["metrics"][0][:4], ["Harudle/Prod", "BackupWithin24Hours", "InstanceId", target])
+        self.assertNotIn("FILL", json.dumps(status))
+        self.assertNotIn("BackupAgeSeconds", json.dumps(prod))
+        self.assertNotIn("BackupWithin24Hours", json.dumps(arrange_dashboard({"widgets": []}, "dev")))
 
     def test_rejects_incomplete_console_source(self):
         for source in ("{", "null", "[]", "{}", '{"widgets": {}}', '{"widgets": [null]}',
@@ -193,7 +448,7 @@ class DashboardTests(unittest.TestCase):
             before.write_text('{"widgets": []}')
             saved_source = before.read_bytes()
             command = [sys.executable, str(Path(__file__).with_name("prepare_dashboard.py")),
-                       "--environment", "dev", "--instance-id", INSTANCE_ID, "--rds-instance-id", "harudle-db",
+                       "--environment", "dev", "--instance-id", INSTANCE_ID,
                        "--dashboard", str(before), "--output", str(root)]
 
             result = subprocess.run(command, capture_output=True, text=True)
