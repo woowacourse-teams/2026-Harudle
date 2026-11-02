@@ -246,3 +246,11 @@ GC의 count와 sum은 Agent가 누적값을 수집 간 증가분으로 변환하
 ```bash
 python3 -B -m unittest discover -s deploy/monitoring -p 'test_*.py'
 ```
+
+## Prod API 경로별 응답 시간 수집
+
+백엔드는 완료 로그의 `apiRoute`에 `GET:/api/v1/feeds/{feedId}`처럼 HTTP 방식과 경로 패턴을 기록합니다. 실제 사용자 ID와 쿼리 값은 넣지 않습니다. 경로를 찾지 못하면 `<unmatched>`로 묶습니다.
+
+백엔드를 배포한 뒤 Prod용 준비 스크립트가 만든 `metric-filter-7.json`을 기존 필터와 같은 방식으로 등록합니다. 값은 `$.durationMs`, 단위는 `Milliseconds`이며, `ApiGroup`과 `ApiRoute` 차원을 사용합니다. 기본값은 비웁니다. 필터 등록 이후의 로그부터 집계되며, 경로별 사용자 정의 지표 비용이 발생할 수 있습니다.
+
+코드와 필터 파일이 준비된 것만으로 수집이 완료된 것은 아닙니다. 실제 요청 후 로그의 경로 패턴과 CloudWatch 지표 수신을 확인해야 합니다. Dev 필터는 유지합니다.

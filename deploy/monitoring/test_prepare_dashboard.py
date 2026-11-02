@@ -39,10 +39,11 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(prepare_dashboard(result, "prod", INSTANCE_ID, "harudle-db"), result)
 
     def test_latency_uses_raw_samples_with_no_zero_defaults_and_bounded_groups(self):
-        for environment in ("dev", "prod"):
-            filters = metric_filters(environment)
+        dev_filters = metric_filters("dev")
+        prod_filters = metric_filters("prod")
+        self.assertEqual(len([f for f in dev_filters if f["metricTransformations"][0]["unit"] == "Milliseconds"]), 2)
+        for filters in (dev_filters, prod_filters):
             durations = [item for item in filters if item["metricTransformations"][0]["unit"] == "Milliseconds"]
-            self.assertEqual(len(durations), 2)
             for item in durations:
                 transformation = item["metricTransformations"][0]
                 self.assertEqual(transformation["metricValue"], "$.durationMs")
@@ -52,6 +53,13 @@ class DashboardTests(unittest.TestCase):
             self.assertEqual(durations[1]["metricTransformations"][0]["dimensions"], {"ApiGroup": "$.apiGroup"})
             self.assertIn('$.apiGroup = "general"', durations[1]["filterPattern"])
             self.assertIn('$.apiGroup = "generation"', durations[1]["filterPattern"])
+        route_filter = next(f for f in prod_filters
+                            if f["metricTransformations"][0]["metricName"] == "ApiResponseTimeByRouteMs")
+        self.assertEqual(route_filter["filterName"], "harudle-prod-ApiResponseTimeByRouteMs-by-group-route")
+        self.assertIn('$.apiRoute = "*"', route_filter["filterPattern"])
+        self.assertEqual(route_filter["metricTransformations"][0]["dimensions"], {
+            "ApiGroup": "$.apiGroup", "ApiRoute": "$.apiRoute"})
+        self.assertNotIn("ApiResponseTimeByRouteMs", json.dumps(dev_filters))
 
     def test_tps_requires_committed_writes_or_successful_read_responses(self):
         filters = {item["metricTransformations"][0]["metricName"]: item for item in metric_filters("dev")}
@@ -67,7 +75,7 @@ class DashboardTests(unittest.TestCase):
     def test_existing_dev_and_prod_widgets_and_filters_keep_the_same_contract(self):
         normalized = []
         for environment in ("dev", "prod"):
-            value = {"filters": metric_filters(environment), "widgets": service_widgets(environment, INSTANCE_ID)[:9]}
+            value = {"filters": metric_filters(environment)[:6], "widgets": service_widgets(environment, INSTANCE_ID)[:9]}
             text = json.dumps(value)
             other = "Prod" if environment == "dev" else "Dev"
             self.assertNotIn(f"Harudle/{other}", text)
@@ -162,7 +170,7 @@ class DashboardTests(unittest.TestCase):
                 self.assertEqual(result["start"], original["start"])
                 self.assertEqual(result["widgets"][:1], original["widgets"])
                 self.assertEqual(len(result["widgets"]), 12 if environment == "dev" else 10)
-                self.assertEqual(len(list(output.glob("*.json"))), 7)
+                self.assertEqual(len(list(output.glob("*.json"))), 1 + len(metric_filters(environment)))
                 for index, expected in enumerate(metric_filters(environment), start=1):
                     self.assertEqual(json.loads((output / f"metric-filter-{index}.json").read_text()), expected)
                 before.write_text(json.dumps(result), encoding="utf-8")

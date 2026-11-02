@@ -39,6 +39,7 @@ class ApiRequestObservationHandler implements ObservationHandler<ServerRequestOb
             LOGGER.atInfo()
                     .addKeyValue("event", "api_request_completed")
                     .addKeyValue("apiGroup", apiGroup(context.getCarrier()))
+                    .addKeyValue("apiRoute", apiRoute(context))
                     .addKeyValue("operation", operation(context))
                     .addKeyValue("httpStatus", context.getResponse().getStatus())
                     .addKeyValue("durationMs", durationMs)
@@ -74,5 +75,10 @@ class ApiRequestObservationHandler implements ObservationHandler<ServerRequestOb
             return "feed_detail";
         }
         return "other";
+    }
+
+    private String apiRoute(ServerRequestObservationContext context) {
+        String pathPattern = context.getPathPattern();
+        return context.getCarrier().getMethod() + ":" + (pathPattern == null ? "<unmatched>" : pathPattern);
     }
 }

@@ -109,7 +109,7 @@ def metric_filters(environment):
             transformation["dimensions"] = dimensions
         if unit == "Count":
             transformation["defaultValue"] = 0
-        suffix = "-by-group" if dimensions else ""
+        suffix = f"-by-{'-'.join(key.removeprefix('Api').lower() for key in dimensions)}" if dimensions else ""
         return {"logGroupName": f"/harudle/{environment}/backend",
                 "filterName": f"harudle-{environment}-{name}{suffix}",
                 "filterPattern": pattern, "metricTransformations": [transformation]}
@@ -118,7 +118,7 @@ def metric_filters(environment):
     duration = '{ ' + completed + ' && $.durationMs >= 0 }'
     grouped_duration = ('{ ' + completed + ' && $.durationMs >= 0 '
                         '&& ($.apiGroup = "general" || $.apiGroup = "generation") }')
-    return [
+    filters = [
         request("ApiResponseTimeMs", duration, "$.durationMs", "Milliseconds"),
         request("ApiResponseTimeMs", grouped_duration, "$.durationMs", "Milliseconds",
                 {"ApiGroup": "$.apiGroup"}),
@@ -127,6 +127,16 @@ def metric_filters(environment):
         request("FeedListSucceeded", '{ ' + completed + ' && $.operation = "feed_list" && $.httpStatus = 200 }'),
         request("FeedDetailSucceeded", '{ ' + completed + ' && $.operation = "feed_detail" && $.httpStatus = 200 }'),
     ]
+
+    if environment == "prod":
+        filters.append(request(
+            "ApiResponseTimeByRouteMs",
+            '{ ' + completed + ' && $.durationMs >= 0 && $.apiRoute = "*" '
+            '&& ($.apiGroup = "general" || $.apiGroup = "generation") }',
+            "$.durationMs", "Milliseconds",
+            {"ApiGroup": "$.apiGroup", "ApiRoute": "$.apiRoute"},
+        ))
+    return filters
 
 
 def prepare_dashboard(original, environment, instance_id, rds_instance_id):
