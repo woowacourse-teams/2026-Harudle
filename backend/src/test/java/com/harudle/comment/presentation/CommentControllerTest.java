@@ -135,7 +135,7 @@ class CommentControllerTest {
                 .andExpect(jsonPath("$.items[1].createdAt").value(CREATED_AT.plusSeconds(1).toString()))
                 .andExpect(jsonPath("$.items[1].author").isMap())
                 .andExpect(jsonPath("$.items[1].author.id").value(nullValue()))
-                .andExpect(jsonPath("$.items[1].author.nickname").value("탈퇴한 회원"))
+                .andExpect(jsonPath("$.items[1].author.nickname").value("탈퇴한 사용자"))
                 .andExpect(jsonPath("$.items[1].author.profileImageUrl").value(nullValue()))
                 .andExpect(jsonPath("$.items[1].author.profileImageUrlExpiresAt").value(nullValue()))
                 .andExpect(jsonPath("$.items[1].isMine").value(false));
@@ -150,7 +150,7 @@ class CommentControllerTest {
                 .andExpect(jsonPath("$.items[0].id").value(COMMENT_ID.toString()))
                 .andExpect(jsonPath("$.items[0].author").isMap())
                 .andExpect(jsonPath("$.items[0].author.id").value(nullValue()))
-                .andExpect(jsonPath("$.items[0].author.nickname").value("탈퇴한 회원"))
+                .andExpect(jsonPath("$.items[0].author.nickname").value("탈퇴한 사용자"))
                 .andExpect(jsonPath("$.items[0].author.profileImageUrl").value(nullValue()))
                 .andExpect(jsonPath("$.items[0].isMine").value(false))
                 .andExpect(jsonPath("$.nextCursor").value(nullValue()))
