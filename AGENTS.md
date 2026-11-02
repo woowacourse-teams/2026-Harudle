@@ -28,14 +28,14 @@ flowchart TB
         frontend -->|"API / OAuth · backend:8080"| backend
     end
 
-    db[("해당 환경 전용 DB EC2 PostgreSQL<br/>사설 IP 접근")]
+    db[("환경별 PostgreSQL<br/>Dev와 Prod 각각 별도 DB EC2 / 사설 IP 연결")]
     s3[("S3 · techcourse-project-2026<br/>생성 이미지 / 참조 이미지")]
     kakao["Kakao OAuth"]
     google["Google OpenID Connect"]
     gemini["Gemini · 스토리보드 / 이미지 생성"]
 
     browser -->|"HTTPS"| host
-    backend -->|"JDBC · 5432"| db
+    backend -->|"JDBC / 5432"| db
     backend -->|"이미지 저장·조회 / Presigned URL 발급"| s3
     browser -->|"Presigned GET · 이미지 직접 조회"| s3
     backend -->|"HTTPS"| kakao
@@ -120,16 +120,20 @@ dev 부하 테스트 중 백엔드가 중단되면 k6와 백엔드를 멈추고,
 
 ## dev / prod 구성
 
-dev와 prod는 각각 앱 EC2와 DB EC2를 별도로 사용한다.
-2026-10-23 작업 기록에서 RDS를 EC2 PostgreSQL로 전환한 것을 확인했다.
+Dev는 앱 EC2와 DB EC2를 따로 사용한다. 2026-10-23에 새 앱 서버에서
+DB 사설 IP로 접속하고, 백엔드와 프론트엔드가 모두 `healthy`인 것을 확인했다.
+Prod도 앱 EC2와 DB EC2를 따로 사용하며, 앱 `.env`에는 DB 사설 IP를 설정했다.
+Prod 전환은 같은 날 팀이 알려준 내용이며, 두 환경의 DB 주소와 서버 사양은 AWS EC2 API로 확인했다.
+Prod 앱과 DB 컨테이너의 `healthy` 상태는 확인했다.
+Prod 앱에서 DB 계정으로 직접 접속하는 별도 시험은 수행하지 않았다.
 
 ```mermaid
 flowchart LR
     subgraph dev["dev 환경"]
-        devBackend["dev EC2 · Backend"] -->|"JDBC · 5432"| devDb[("dev 전용 DB EC2 PostgreSQL")]
+        devBackend["harudle-dev<br/>앱 EC2"] -->|"사설 IP / 5432"| devDb[("harudle-dev-db<br/>10.0.100.99")]
     end
     subgraph prod["prod 환경"]
-        prodBackend["prod EC2 · Backend"] -->|"JDBC · 5432"| prodDb[("prod 전용 DB EC2 PostgreSQL")]
+        prodBackend["harudle-prod<br/>앱 EC2"] -->|"DB 사설 IP"| prodDb[("harudle-prod-db<br/>10.0.100.153")]
     end
 ```
 
@@ -139,8 +143,11 @@ flowchart LR
 | `DEPLOY_ENV` | `dev` | `prod` |
 | Spring 활성 프로필 | `prod` | `prod` |
 | Compose | `compose.prod.yaml` + `compose.dev.yaml` | `compose.prod.yaml` |
-| DB EC2 | `i-04fca55979b3240d6` | `i-01baa5c11a6224cd7` |
-| DB 연결 대상 | dev 서버 `.env`의 DB 사설 IP `DB_HOST` | prod 서버 `.env`의 DB 사설 IP `DB_HOST` |
+| 앱 EC2 | `harudle-dev` / `t4g.small` / 사설 IP `10.0.0.234` | `harudle-prod` / `t4g.small` / 사설 IP `10.0.0.183` |
+| DB EC2 | `harudle-dev-db` / `t4g.small` / PostgreSQL | `harudle-prod-db` / `t4g.small` / PostgreSQL |
+| DB 공인 IP | `54.116.226.98` | `43.202.26.248` |
+| DB 사설 IP | `10.0.100.99` | `10.0.100.153` |
+| DB 연결 대상 | `.env`의 `DB_HOST=10.0.100.99`, 포트 `5432` | `.env`의 `DB_HOST=10.0.100.153`로 변경했다는 팀 확인 |
 | S3 버킷 | `techcourse-project-2026` | `techcourse-project-2026` |
 | 생성 이미지 prefix | `harudle/generated/diary-images/dev` | `harudle/generated/diary-images/prod` |
 | 참조 이미지 prefix | `harudle/references/generation/dev` | `harudle/references/generation/prod` |
@@ -151,7 +158,7 @@ Compose 파일은 `deploy/`에 있고 서버에는 `/opt/harudle/`에 설치된�
 배포 훅은 서버 `.env`와 Compose가 해석한 최종 이미지 설정을 검사한다.
 DB 연결 대상은 `DEPLOY_ENV`와 별도로 각 서버 `.env`의 `DB_HOST`, `DB_PORT`,
 `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`로 설정한다. DB 마이그레이션·데이터 작업·
-부하 시험·모니터링에서는 해당 환경의 DB EC2를 대상으로 한다.
+부하 시험·모니터링에서는 해당 환경의 실제 DB를 대상으로 한다.
 S3 prefix 변경은 기존 DB의 이미지·참조 이미지 Object Key를 자동으로 바꾸지 않는다.
 개인 프로필 이미지는 같은 S3 연결을 사용하며 `harudle/profile-images/{DEPLOY_ENV}/{회원ID}/{UUID}.webp`에 저장한다.
 프로필 경로는 `DEPLOY_ENV`에서 자동 구성하고 조회 주소는 기존 `S3_ACCESS_URL_TTL`을 따른다.
@@ -229,11 +236,27 @@ CodeBuild는 프론트엔드 입력이 같으면 이전 이미지를 재사용�
 
 - 배포 Compose의 Backend·Frontend 로그는 Docker `awslogs` 드라이버로
   환경별 CloudWatch Logs 그룹에 전송한다. 루트 `compose.yaml`의 `json-file`과 구분한다.
-- 호스트 CloudWatch Agent는 `127.0.0.1:19091/actuator/prometheus`를 수집해
-  환경별 EMF 로그로 보낸다. Agent 설정은 배포 아티팩트 전달 후 호스트에 별도 적용한다.
-- Prod DB의 별도 `harudle-db-backup-monitor.timer`는 매일 한국 시간 오전 5시에 백업 정보를 읽고
-  최근 24시간 내 백업 성공 여부와 정보 조회 성공 여부를 CloudWatch에 보낸다. 기존 백업 일정은 바꾸지 않는다.
-- Frontend `/health`는 Nginx의 응답 여부를 확인한다. PostgreSQL, S3, Gemini의 실제 기능은
+- 앱용 설정을 적용한 호스트 CloudWatch Agent는 `127.0.0.1:19091/actuator/prometheus`를
+  수집해 환경별 EMF 로그로 보낸다. Agent 설정은 배포 아티팩트 전달 후 호스트에 별도 적용한다.
+- 새 Dev 앱 서버에는 Agent를 설치하고 `cloudwatch-agent.host.json`을 적용했다.
+  메모리 사용률과 여유 비율, Swap 사용률, 루트 디스크 사용률을 1분마다 수집한다.
+  Dev Java와 API 지표 수집 설정은 적용 완료다. `cloudwatch-agent.dev.json`으로
+  새 서버의 Java RSS와 Prometheus 앱 지표를 수집하며, CloudWatch 지표 도착도 확인했다.
+  이전 Dev 서버에서는 앱용 Agent 설정만 제거하고 호스트 자원 수집은 유지했다.
+- Dev DB EC2에도 Agent를 설치하고 `cloudwatch-agent.db.json`을 적용했다.
+  메모리와 Swap, 루트 및 `/srv/harudle/db-data`의 사용률과 남은 용량을 1분마다 수집한다.
+  새 앱 서버와 DB 서버의 메모리, Swap 및 DB 디스크 여유 공간이 CloudWatch에 도착한 것을 확인했다.
+- `DASHBOARD-harudle-dev`의 앱 대상은 `i-08ff5dddb7ac94f5c`, DB 대상은
+  `i-04fca55979b3240d6`이다. RDS 그래프는 EC2와 데이터 EBS 지표로 교체했다.
+  데이터 EBS는 `vol-00886d19a64c23e1f`다. 앱과 DB를 함께 덮어쓰던 공통 InstanceId 선택기는 제거했다.
+  DB 전체 연결 수는 별도 수집이 필요하며 앱의 HikariPool 지표와 구분한다.
+  대시보드 변경이 개별 경보의 대상도 바꾸는 것은 아니다.
+- Prod DB EC2 `i-01baa5c11a6224cd7`에도 `cloudwatch-agent.db.json`을 적용하고
+  Agent 자동 시작과 `running`을 확인했다. 데이터 디스크는 Dev와 같은 `/srv/harudle/db-data`다.
+  CloudWatch에서 메모리 여유 비율, Swap 사용률, 두 디스크 여유 공간의 실제 데이터 도착을 확인했다.
+  `DASHBOARD-harudle-prod`의 RDS 그래프를 이 DB EC2와 데이터 EBS
+  `vol-048d203fac554e776`의 지표로 교체했다. 기존 Prod 앱 그래프는 유지했다.
+- Frontend `/health`는 Nginx의 응답 여부를 확인한다. DB와 S3, Gemini의 실제 기능은
   각각의 기능 검증과 로그로 확인한다.
 
 - API 완료 로그에 요청별 S3와 R2 확인 횟수, URL 서명 시간, 피드 데이터 조회 시간을 기록한다.
@@ -255,7 +278,7 @@ CodeBuild는 프론트엔드 입력이 같으면 이전 이미지를 재사용�
 | 프록시·HTTPS·OAuth 경로 | [Host Nginx 예시](deploy/nginx/harudle.conf.example), [Frontend Nginx](frontend/nginx/default.conf) |
 | 이미지 빌드·배포 훅 | [buildspec.yml](buildspec.yml), [appspec.yml](appspec.yml), `deploy/scripts/` |
 | 이미지 저장·조회·삭제 | [이미지 저장소 분리 절차](docs/image-storage-isolation.md) |
-| PostgreSQL 연결과 데이터 작업 | [DB 연결 설정](backend/src/main/resources/application.yml), [배포 환경 안내](deploy/README.md) |
+| DB 연결·데이터 작업 | [DB 연결 설정](backend/src/main/resources/application.yml), [배포 환경 안내](deploy/README.md) |
 | 로그·지표·알람 | [모니터링 운영 안내](deploy/monitoring/README.md) |
 
 운영 기록에 과거 구성이 남아 있으면 현재 설정과 비교한다. 특히 로그 수집 방식,
