@@ -96,6 +96,25 @@ class DashboardTests(unittest.TestCase):
                         self.assertNotIn((x, y), cells)
                         cells.add((x, y))
 
+    def test_generation_rows_without_options_are_accepted(self):
+        row = ["Harudle/Dev", "harudle_generation_finalizations_total", "job", "harudle-backend"]
+        source = {"widgets": [{"type": "metric", "height": 6, "properties": {
+            "title": "기존 확정 수", "metrics": [row]}}, {"type": "metric", "height": 6, "properties": {
+            "title": "일기 생성: DB 최종 확정 수", "metrics": [row]}}]}
+        rows = next(w["properties"]["metrics"] for w in prepare_dashboard(source, "prod", INSTANCE_ID)["widgets"]
+                    if w["properties"].get("title") == "일기 생성: DB 최종 확정 수")
+        self.assertEqual(rows[0], row)
+        self.assertEqual([r[1] for r in rows].count("GenerationUnexpectedFailureLogs"), 1)
+
+        for environment in ("dev", "prod"):
+            source = {"widgets": [{"type": "metric", "height": 6, "properties": {
+                "title": "일기 생성: DB 최종 확정 수", "metrics": [
+                    row, row + [{"id": "f0", "visible": False}], [{"expression": "f0", "id": "failed"}]]}}]}
+            result = prepare_dashboard(source, environment, INSTANCE_ID)
+            card = next(w for w in result["widgets"] if w["properties"].get("title") == "생성 실패 (선택 기간)")
+            self.assertIn("SUM(f0)", json.dumps(card))
+            self.assertEqual(prepare_dashboard(result, environment, INSTANCE_ID), result)
+
     def test_generation_failure_card_excludes_the_unexpected_failure_line(self):
         metrics = [["Harudle/Dev", "harudle_generation_finalizations_total", {"id": "s"}],
                    ["Harudle/Dev", "harudle_generation_finalizations_total", {"id": "f0", "visible": False}],

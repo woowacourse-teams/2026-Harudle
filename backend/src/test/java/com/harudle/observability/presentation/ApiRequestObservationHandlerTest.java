@@ -194,6 +194,21 @@ class ApiRequestObservationHandlerTest {
     }
 
     @Test
+    @DisplayName("표준이 아닌 HTTP 메서드는 지표 값이 늘어나지 않게 하나로 묶어 기록한다")
+    void groupsNonStandardHttpMethods() {
+        for (String method : new String[] {"PROPFIND", "AAA"}) {
+            ServerRequestObservationContext context = new ServerRequestObservationContext(
+                    new MockHttpServletRequest(method, "/api/v1/feeds"), new MockHttpServletResponse());
+            handler.onStart(context);
+            handler.onStop(context);
+        }
+
+        assertThat(appender.list).hasSize(2);
+        assertThat(fields(0)).containsEntry("apiRoute", "OTHER:<unmatched>");
+        assertThat(fields(1)).containsEntry("apiRoute", "OTHER:<unmatched>");
+    }
+
+    @Test
     @DisplayName("저장소 호출 횟수를 같은 요청 완료 로그에 기록하고 다음 요청에는 넘기지 않는다")
     void includesStorageOperationsAndDoesNotLeakAcrossRequests() throws Exception {
         mockMvc.perform(get("/api/v1/timed")).andExpect(status().isOk());

@@ -286,6 +286,10 @@ def has_prod_layout(dashboard):
             and all(all(key in w for key in ("x", "y", "width", "height")) for w in dashboard["widgets"]))
 
 
+def row_id(row):
+    return row[-1].get("id") if row and isinstance(row[-1], dict) else None
+
+
 def has_dev_layout(dashboard):
     """Keep the completed Dev console layout, including cards added outside this script."""
     titles = {w.get("properties", {}).get("title") for w in dashboard["widgets"]}
@@ -316,7 +320,7 @@ def prepare_dashboard(original, environment, instance_id):
         if item.get("type") == "log" and properties.get("title") in LOG_QUERIES:
             properties["query"] = LOG_QUERIES[properties["title"]].format(environment=environment)
         if properties.get("title") == "일기 생성: DB 최종 확정 수" and properties.get("metrics"):
-            if not any(row[-1].get("id") == "unexpected" for row in properties["metrics"]):
+            if not any(row_id(row) == "unexpected" for row in properties["metrics"]):
                 properties["metrics"].append(metric(NAMESPACES[environment], "GenerationUnexpectedFailureLogs",
                                                     id="unexpected", label="예상 밖 실패", stat="Sum"))
         if properties.get("title") == "API RPS (완료한 요청/초)":
@@ -426,6 +430,8 @@ def arrange_dashboard(original, environment):
     for title, label, select in (('백엔드 HTTP: 5xx 비율', '5xx 비율 (선택 기간)', None), ('API 응답 시간 (일반)', '일반 API P95 (ms)', 'p95'), ('일기 생성: DB 최종 확정 수', '생성 실패 (선택 기간)', 'failed'), ('DB 연결 대기와 시간 초과', '앱 DB 연결 대기 최댓값', 'pending'), ('DB EC2 Free Storage (GiB)', 'DB 데이터 여유 공간 (GiB)', 'data')):
         if title not in by_title:
             continue
+        if select == 'failed' and not any(row_id(row) == 'failed' for row in by_title[title]['properties']['metrics']):
+            continue
         item = copy.deepcopy(by_title[title])
         props = item['properties']
         label = {'5xx 비율 (선택 기간)': '백엔드 5xx 비율 (선택 기간)',
@@ -442,12 +448,13 @@ def arrange_dashboard(original, environment):
             if environment == 'dev':
                 props.pop('yAxis', None)
         elif select == 'failed':
-            props['metrics'] = [row for row in props['metrics'] if row[-1].get('id') != 'unexpected']
-            props['metrics'][0][-1]['visible'] = False
+            props['metrics'] = [row for row in props['metrics'] if row_id(row) != 'unexpected']
+            if isinstance(props['metrics'][0][-1], dict):
+                props['metrics'][0][-1]['visible'] = False
             failed = next(row[0] for row in props['metrics']
                           if isinstance(row[0], dict) and row[0].get('id') == 'failed')
-            ids = [row[-1]['id'] for row in props['metrics']
-                   if isinstance(row[0], str) and row[-1].get('id', '').startswith('f')]
+            ids = [row_id(row) for row in props['metrics']
+                   if isinstance(row[0], str) and (row_id(row) or '').startswith('f')]
             failed.update(expression='TIME_SERIES(' + '+'.join(f'SUM({id})' for id in ids) + ')',
                           label='선택 기간 생성 실패 건수')
         elif select == 'pending':

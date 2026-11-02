@@ -4,6 +4,7 @@ import com.harudle.observability.RequestOperationTimings;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationHandler;
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,6 +16,7 @@ class ApiRequestObservationHandler implements ObservationHandler<ServerRequestOb
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ApiRequestObservationHandler.class);
     private static final String HEALTH_CHECK_PATH = "/api/v1/feeds/00000000-0000-0000-0000-000000000000";
+    private static final Set<String> ROUTE_METHODS = Set.of("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS");
     private final boolean r2Enabled;
 
     ApiRequestObservationHandler(@Value("${harudle.generation.storage.r2.enabled:false}") boolean r2Enabled) {
@@ -88,7 +90,9 @@ class ApiRequestObservationHandler implements ObservationHandler<ServerRequestOb
     }
 
     private String apiRoute(ServerRequestObservationContext context) {
+        String method = context.getCarrier().getMethod();
+        String routeMethod = ROUTE_METHODS.contains(method) ? method : "OTHER";
         String pathPattern = context.getPathPattern();
-        return context.getCarrier().getMethod() + ":" + (pathPattern == null ? "<unmatched>" : pathPattern);
+        return routeMethod + ":" + (pathPattern == null ? "<unmatched>" : pathPattern);
     }
 }
