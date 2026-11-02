@@ -2,31 +2,29 @@ package com.harudle.auth.infrastructure.oauth;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 import java.util.Base64;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataAccessResourceFailureException;
-import org.springframework.jdbc.core.JdbcTemplate;
 
 class AppleTokenStoreTest {
 
     @Test
     void keepsLoginAvailableWhenEncryptionOrStorageFails() {
-        var jdbc = mock(JdbcTemplate.class);
-        var missingKey = new AppleTokenStore(jdbc, "");
+        var repository = mock(AppleTokenRepository.class);
+        var missingKey = new AppleTokenStore(repository, "");
         assertThatCode(() -> missingKey.save(UUID.randomUUID(), "app", "id", "access", "refresh", null))
                 .doesNotThrowAnyException();
 
-        var store = new AppleTokenStore(jdbc, Base64.getEncoder().encodeToString(new byte[32]));
-        when(jdbc.update(anyString(), any(Object[].class)))
-                .thenThrow(new DataAccessResourceFailureException("unavailable"));
+        var store = new AppleTokenStore(repository, Base64.getEncoder().encodeToString(new byte[32]));
+        doThrow(new DataAccessResourceFailureException("unavailable"))
+                .when(repository).save(any(), any(), any(), any(), any(), any());
         assertThatCode(() -> store.save(UUID.randomUUID(), "app", "id", "access", "refresh", null))
                 .doesNotThrowAnyException();
-        verify(jdbc).update(anyString(), any(Object[].class));
+        verify(repository).save(any(), any(), any(), any(), any(), any());
     }
 }

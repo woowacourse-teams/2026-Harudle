@@ -8,9 +8,13 @@ import com.harudle.admin.repository.AdminReportRepository;
 import com.harudle.auth.domain.OAuthProvider;
 import com.harudle.auth.infrastructure.oauth.AppleTokenCipher;
 import com.harudle.auth.infrastructure.oauth.AppleTokenStore;
+import com.harudle.auth.infrastructure.oauth.AppleTokenRepository;
 import java.util.Base64;
 import java.util.UUID;
 import java.time.Instant;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,6 +31,7 @@ class WithdrawalDatabaseServiceTest extends ServiceIntegrationTestSupport {
     @Autowired private JdbcTemplate jdbc;
     @Autowired private TransactionTemplate transactions;
     @Autowired private AdminReportRepository reports;
+    @Autowired private AppleTokenRepository appleTokens;
     private final UUID userId = UUID.randomUUID();
     private final UUID reporterId = UUID.randomUUID();
     private final UUID reportId = UUID.randomUUID();
@@ -218,7 +223,7 @@ class WithdrawalDatabaseServiceTest extends ServiceIntegrationTestSupport {
                 userId);
         Long accountId = jdbc.queryForObject("SELECT id FROM oauth_accounts WHERE user_id = ?", Long.class, userId);
         String key = Base64.getEncoder().encodeToString(new byte[32]);
-        var store = new AppleTokenStore(jdbc, key);
+        var store = new AppleTokenStore(appleTokens, key);
         var cipher = new AppleTokenCipher(key);
         store.save(userId, "native", "identity", "access", "refresh", Instant.now().plusSeconds(60));
         store.save(userId, "web", "web-identity", "web-access", "web-refresh", Instant.now().plusSeconds(60));
@@ -234,6 +239,48 @@ class WithdrawalDatabaseServiceTest extends ServiceIntegrationTestSupport {
         service.delete(userId);
 
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM apple_oauth_tokens WHERE oauth_account_id = ?", Integer.class, accountId)).isZero();
+    }
+
+    @Test
+    void skipsTokenSaveWhenAnotherTransactionHoldsTheRow() throws Exception {
+        insertUserAndTask();
+        jdbc.update("INSERT INTO oauth_accounts (user_id, provider, provider_subject) VALUES (?, 'APPLE', 'apple-user')",
+                userId);
+        Long accountId = jdbc.queryForObject("SELECT id FROM oauth_accounts WHERE user_id = ?", Long.class, userId);
+        var store = new AppleTokenStore(appleTokens, Base64.getEncoder().encodeToString(new byte[32]));
+        store.save(userId, "native", "identity", "original", "refresh", null);
+        String original = jdbc.queryForObject("SELECT access_token FROM apple_oauth_tokens WHERE oauth_account_id = ?",
+                String.class, accountId);
+        var locked = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            var holder = executor.submit(() -> transactions.executeWithoutResult(status -> {
+                jdbc.queryForObject("SELECT oauth_account_id FROM apple_oauth_tokens WHERE oauth_account_id = ? FOR UPDATE",
+                        Long.class, accountId);
+                locked.countDown();
+                try {
+                    if (!release.await(10, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("잠금 해제를 기다리는 시간이 초과됐습니다.");
+                    }
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(exception);
+                }
+            }));
+            assertThat(locked.await(5, TimeUnit.SECONDS)).isTrue();
+            var saving = executor.submit(() -> store.save(userId, "native", "identity", "new-access", "refresh", null));
+            saving.get(5, TimeUnit.SECONDS);
+            assertThat(holder.isDone()).isFalse();
+            assertThat(jdbc.queryForObject("SELECT access_token FROM apple_oauth_tokens WHERE oauth_account_id = ?",
+                    String.class, accountId)).isEqualTo(original);
+            release.countDown();
+            holder.get(5, TimeUnit.SECONDS);
+        } finally {
+            release.countDown();
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+        }
     }
 
     private void insertRestriction(String type, UUID targetId) {

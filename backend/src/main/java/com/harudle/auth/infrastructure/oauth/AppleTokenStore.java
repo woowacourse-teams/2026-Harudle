@@ -1,6 +1,5 @@
 package com.harudle.auth.infrastructure.oauth;
 
-import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
@@ -8,7 +7,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -17,11 +15,11 @@ import org.springframework.util.StringUtils;
 public class AppleTokenStore {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AppleTokenStore.class);
-    private final JdbcTemplate jdbc;
+    private final AppleTokenRepository tokens;
     private final String encryptionKey;
 
-    public AppleTokenStore(JdbcTemplate jdbc, @Value("${app.auth.apple.token-encryption-key:}") String encryptionKey) {
-        this.jdbc = jdbc;
+    public AppleTokenStore(AppleTokenRepository tokens, @Value("${app.auth.apple.token-encryption-key:}") String encryptionKey) {
+        this.tokens = tokens;
         this.encryptionKey = encryptionKey;
     }
 
@@ -36,19 +34,7 @@ public class AppleTokenStore {
             String encryptedIdentity = cipher.encrypt(identityToken);
             String encryptedAccess = cipher.encrypt(accessToken);
             String encryptedRefresh = StringUtils.hasText(refreshToken) ? cipher.encrypt(refreshToken) : null;
-            int updated = jdbc.update("""
-                    INSERT INTO apple_oauth_tokens (oauth_account_id, client_id, identity_token, access_token,
-                        refresh_token, access_expires_at)
-                    SELECT id, ?, ?, ?, ?, ? FROM oauth_accounts WHERE user_id = ? AND provider = 'APPLE'
-                    ON CONFLICT (oauth_account_id, client_id) DO UPDATE SET
-                        identity_token = EXCLUDED.identity_token, access_token = EXCLUDED.access_token,
-                        refresh_token = COALESCE(EXCLUDED.refresh_token, apple_oauth_tokens.refresh_token),
-                        access_expires_at = EXCLUDED.access_expires_at, updated_at = CURRENT_TIMESTAMP
-                    """, clientId, encryptedIdentity, encryptedAccess, encryptedRefresh,
-                    accessExpiresAt == null ? null : Timestamp.from(accessExpiresAt), userId);
-            if (updated != 1) {
-                throw new IllegalStateException("애플 로그인 계정을 찾을 수 없습니다.");
-            }
+            tokens.save(userId, clientId, encryptedIdentity, encryptedAccess, encryptedRefresh, accessExpiresAt);
         } catch (RuntimeException exception) {
             LOGGER.warn("event=apple_token_save_failed exceptionType={}", exception.getClass().getSimpleName());
         }
