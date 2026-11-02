@@ -80,6 +80,11 @@ describe('회원 탈퇴 확인', (): void => {
       await screen.findByText('회원 탈퇴가 완료됐어요'),
     ).toBeInTheDocument();
     expect(
+      screen.getByText(
+        '애플 계정에 하루들 연결이 남아 있을 수 있어요. 애플 계정 설정에서 연결을 해제해 주세요.',
+      ),
+    ).toBeInTheDocument();
+    expect(
       screen.getByRole('link', { name: '애플 연결 해제 방법 보기' }),
     ).toHaveAttribute(
       'href',

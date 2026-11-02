@@ -69,7 +69,10 @@ const WithdrawalModal = ({ onClose }: WithdrawalModalProps) => {
           </button>
         }
       >
-        <p>애플 계정 설정에서 하루들 연결을 직접 해제해 주세요.</p>
+        <p>
+          애플 계정에 하루들 연결이 남아 있을 수 있어요.
+          <br /> 애플 계정 설정에서 연결을 해제해 주세요.
+        </p>
         <a
           href="https://support.apple.com/ko-kr/guide/iphone/iph238921d37/ios"
           target="_blank"
