@@ -82,6 +82,8 @@ spring:
 
 app:
   auth:
+    kakao:
+      admin-key: ${KAKAO_ADMIN_KEY:}
     apple:
       enabled: ${APPLE_LOGIN_ENABLED:false}
       client-id: ${APPLE_CLIENT_ID:}
