@@ -9,6 +9,7 @@ import {
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { LOGIN_COPY } from './copy';
 import { useAnalytics } from '../../posthog/useAnalytics';
+import { clearWithdrawalSession } from '../../domain/user/withdrawal';
 import {
   clearLoginAttemptProvider,
   getLoginAttemptProvider,
@@ -19,13 +20,30 @@ import {
 const AuthCallbackPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { identifyCurrentUser } = useAnalytics();
+  const { identifyCurrentUser, resetUser } = useAnalytics();
   const [provider] = useState(getLoginAttemptProvider);
   const hasHandledOAuthError = useRef(false);
+  const hasHandledWithdrawal = useRef(false);
+  const withdrawal = searchParams.get('withdrawal');
+  const hasWithdrawal = searchParams.has('withdrawal');
   const hasOAuthError = searchParams.has('error');
   const oauthError = searchParams.get('error');
 
   useEffect(() => {
+    if (hasWithdrawal) {
+      if (hasHandledWithdrawal.current) return;
+      hasHandledWithdrawal.current = true;
+      if (withdrawal === 'success') {
+        clearWithdrawalSession();
+        resetUser();
+        navigate('/', { replace: true });
+      } else {
+        alert('회원 탈퇴 요청을 처리하지 못했어요. 다시 시도해 주세요.');
+        navigate('/setting', { replace: true });
+      }
+      return;
+    }
+
     if (hasOAuthError) {
       if (hasHandledOAuthError.current) return;
       hasHandledOAuthError.current = true;
@@ -80,7 +98,16 @@ const AuthCallbackPage = () => {
     return (): void => {
       isActive = false;
     };
-  }, [hasOAuthError, oauthError, identifyCurrentUser, navigate, provider]);
+  }, [
+    hasOAuthError,
+    oauthError,
+    hasWithdrawal,
+    withdrawal,
+    identifyCurrentUser,
+    resetUser,
+    navigate,
+    provider,
+  ]);
 
   return null;
 };
