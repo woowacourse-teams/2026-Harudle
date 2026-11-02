@@ -1,0 +1,16 @@
+[Unit]
+Description=Read Prod backup metadata and publish CloudWatch metrics
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/python3 /srv/harudle/db/monitoring/backup_monitor.py
+TimeoutStartSec=90
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+UMask=0077

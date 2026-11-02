@@ -130,6 +130,8 @@ AWS 배포 파이프라인과 GitHub 워크플로의 역할을 구분해 확인�
   환경별 CloudWatch Logs 그룹에 전송한다. 루트 `compose.yaml`의 `json-file`과 구분한다.
 - 호스트 CloudWatch Agent는 `127.0.0.1:19091/actuator/prometheus`를 수집해
   환경별 EMF 로그로 보낸다. Agent 설정은 배포 아티팩트 전달 후 호스트에 별도 적용한다.
+- Prod DB의 별도 `harudle-db-backup-monitor.timer`는 매일 한국 시간 오전 5시에 백업 정보를 읽고
+  최근 24시간 내 백업 성공 여부와 정보 조회 성공 여부를 CloudWatch에 보낸다. 기존 백업 일정은 바꾸지 않는다.
 - Frontend `/health`는 Nginx의 응답 여부를 확인한다. PostgreSQL, S3, Gemini의 실제 기능은
   각각의 기능 검증과 로그로 확인한다.
 

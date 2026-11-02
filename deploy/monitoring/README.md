@@ -254,3 +254,35 @@ python3 -B -m unittest discover -s deploy/monitoring -p 'test_*.py'
 백엔드를 배포한 뒤 Prod용 준비 스크립트가 만든 `metric-filter-7.json`을 기존 필터와 같은 방식으로 등록합니다. 값은 `$.durationMs`, 단위는 `Milliseconds`이며, `ApiGroup`과 `ApiRoute` 차원을 사용합니다. 기본값은 비웁니다. 필터 등록 이후의 로그부터 집계되며, 경로별 사용자 정의 지표 비용이 발생할 수 있습니다.
 
 코드와 필터 파일이 준비된 것만으로 수집이 완료된 것은 아닙니다. 실제 요청 후 로그의 경로 패턴과 CloudWatch 지표 수신을 확인해야 합니다. Dev 필터는 유지합니다.
+
+## Prod 백업 감시
+
+Prod DB 서버에서 `backup_monitor.py`가 매일 한국 시간 오전 5시에 `pgbackrest info`를 한 번 읽습니다. 백업을 실행하지 않습니다. 기존 백업은 매일 한국 시간 04시에 실행하며, 일요일 전체 백업과 나머지 날 증분 백업 일정은 그대로입니다.
+
+| 지표 | 뜻 |
+| --- | --- |
+| `Harudle/Prod`, `BackupWithin24Hours` | 확인 시점의 최근 24시간 안에 성공한 백업이 있으면 1(정상), 없거나 정보를 읽지 못하면 0(주의)입니다. |
+| `Harudle/Prod`, `BackupInfoCheckSuccess` | 백업 정보를 읽고 유효한 성공 백업을 찾으면 1, 명령 실패나 잘못된 정보이면 0입니다. |
+
+두 지표는 `InstanceId=i-01baa5c11a6224cd7`을 사용합니다. 대시보드는 최근 24시간 안에 수집된 확인 결과를 표시합니다. 확인 결과가 없으면 빈 값입니다. 같은 24시간 안에 수동 확인을 추가했다면 0인 결과가 하나라도 있을 때 주의를 유지합니다. 전송 자체가 실패하거나 예약 작업이 멈추면 새 표본이 없으므로, 이전 값만 보고 정상으로 판단하지 않습니다. 조회 성공 1은 실제 복원 성공을 보장하지 않습니다. 개별 백업 실행 실패 알림, WAL 전송 확인과 복원 시험은 별도 작업입니다. 새 경보는 추가하지 않았습니다.
+
+2026-10-29에 아래 파일을 Prod DB 서버에 별도로 설치했습니다. 앱 배포에서는 자동 적용하지 않습니다. 서버에 이미 설치된 Python boto3와 기존 인스턴스 역할을 사용하며, IAM과 CloudWatch Agent 설정은 바꾸지 않았습니다. 사용자 지정 지표 두 개를 수집합니다. 기존 `BackupAgeSeconds` 전송은 중단하고 `BackupWithin24Hours`로 대체했습니다.
+
+| 저장소 파일 | 서버 위치 |
+| --- | --- |
+| `backup_monitor.py` | `/srv/harudle/db/monitoring/backup_monitor.py` |
+| `systemd/harudle-db-backup-monitor.service` | `/etc/systemd/system/harudle-db-backup-monitor.service` |
+| `systemd/harudle-db-backup-monitor.timer` | `/etc/systemd/system/harudle-db-backup-monitor.timer` |
+
+현재 상태는 Prod DB 서버에서 다음 명령으로 확인합니다.
+
+```bash
+sudo python3 /srv/harudle/db/monitoring/backup_monitor.py --dry-run
+systemctl list-timers --all 'harudle-db-backup*'
+systemctl show harudle-db-backup-monitor.service --property=Result,ExecMainStatus
+sudo journalctl -u harudle-db-backup-monitor.service -n 10 --no-pager
+```
+
+수집기 수정 시 먼저 `--dry-run`으로 확인합니다. 파일과 systemd 설정을 검토해 설치한 뒤 `systemctl daemon-reload`와 `systemctl enable --now harudle-db-backup-monitor.timer`로 감시 예약만 적용합니다. 이미 실행 중인 타이머의 주기를 바꿨다면 `sudo systemctl restart harudle-db-backup-monitor.timer`로 새 예약을 적용합니다. 기존 `harudle-db-backup.service`와 `.timer`는 수정하지 않습니다. 감시만 중지하려면 `sudo systemctl disable --now harudle-db-backup-monitor.timer`를 실행합니다. 기존 백업 일정은 계속 동작합니다.
+
+서버가 꺼져 오전 5시 확인을 놓치면 `Persistent=true` 설정으로 서버가 켜진 뒤 한 번 확인합니다. 오전 5시에도 백업 중이라면 0이 나올 수 있으므로 완료 후 수동으로 다시 확인합니다. 이번 적용에서는 확인용으로 한 번 실행했으며, 다음 자동 확인 시각이 오전 5시인지 검증했습니다.
