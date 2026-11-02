@@ -105,6 +105,9 @@ app:
       secure: ${REFRESH_COOKIE_SECURE:false}
       same-site: Lax
       ttl: 14d
+      cleanup:
+        cron: "${REFRESH_TOKEN_CLEANUP_CRON:0 0 4 * * *}"
+        zone: "${REFRESH_TOKEN_CLEANUP_ZONE:Asia/Seoul}"
 
 harudle:
   database:

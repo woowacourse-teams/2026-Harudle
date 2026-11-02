@@ -61,6 +61,11 @@ flowchart TB
 
 ## 실행 자원과 설정 위치
 
+만료된 Refresh Token은 전용 스케줄러가 매일 한국 시간 새벽 4시에 삭제한다.
+`REFRESH_TOKEN_CLEANUP_CRON`과 `REFRESH_TOKEN_CLEANUP_ZONE`으로 실행 시각을 바꾼다.
+`REFRESH_TOKEN_CLEANUP_CRON=-`로 예약 실행을 끌 수 있다.
+설정을 바꾸면 백엔드 컨테이너를 재생성한다. 자세한 내용은 `deploy/README.md`를 따른다.
+
 | 구성 | 연결·설정 | 자원·역할 |
 | --- | --- | --- |
 | Frontend | `127.0.0.1:${APP_PORT:-3000} → 80` | Nginx + React, 메모리 `192m` |
@@ -265,6 +270,7 @@ CodeBuild는 프론트엔드 입력이 같으면 이전 이미지를 재사용�
 
 | 작업 | 확인 위치 |
 | --- | --- |
+| 백엔드 코드와 테스트 | [backend/AGENTS.md](backend/AGENTS.md), [테스트 실행 안내](backend/README.md#테스트) |
 | 프론트엔드 코드 | [frontend/AGENTS.md](frontend/AGENTS.md) |
 | 약관 열람·수락 적용 | [동의 API와 단계적 적용](backend/docs/terms-consent.md), [원문 정책 대조](backend/docs/terms-policy-review.md) |
 | 배포·환경 변수 | [deploy/README.md](deploy/README.md), [.env.docker.example](.env.docker.example), [배포 환경 검사](deploy/scripts/compose_environment.sh) |
