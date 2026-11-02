@@ -5,13 +5,14 @@ import com.harudle.report.domain.ReportTargetType;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 
 public record ReportSnapshot(
         UUID id,
         UUID reporterId,
         ReportTargetType targetType,
         UUID targetId,
-        UUID targetUserId,
+        @Nullable UUID targetUserId,
         ReportReason reason,
         String description,
         Instant createdAt
@@ -21,7 +22,9 @@ public record ReportSnapshot(
         Objects.requireNonNull(reporterId);
         Objects.requireNonNull(targetType);
         Objects.requireNonNull(targetId);
-        Objects.requireNonNull(targetUserId);
+        if (targetUserId == null && targetType != ReportTargetType.COMMENT) {
+            throw new IllegalArgumentException("댓글 외 신고 대상에는 작성자가 필요합니다.");
+        }
         Objects.requireNonNull(reason);
         Objects.requireNonNull(description);
         Objects.requireNonNull(createdAt);

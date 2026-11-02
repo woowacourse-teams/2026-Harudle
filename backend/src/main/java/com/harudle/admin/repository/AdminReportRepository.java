@@ -63,7 +63,7 @@ public class AdminReportRepository {
             WHERE f.id = :targetId
             """;
     private static final String COMMENT_TARGET_QUERY = """
-            SELECT u.id, u.nickname, u.deleted_at IS NOT NULL,
+            SELECT u.id, u.nickname, (c.author_id IS NULL OR u.deleted_at IS NOT NULL),
                    c.deleted_at IS NOT NULL, f.deleted_at IS NOT NULL OR d.deleted_at IS NOT NULL,
                    COALESCE(comment_state.restricted, false), feed_state.restricted,
                    c.deleted_at IS NULL AND f.deleted_at IS NULL AND d.deleted_at IS NULL
@@ -72,7 +72,7 @@ public class AdminReportRepository {
                        AND NOT feed_state.restricted,
                    f.id, generation.title, generation.image_object_key, c.content
             FROM comments c
-            JOIN users u ON u.id = c.author_id
+            LEFT JOIN users u ON u.id = c.author_id
             JOIN feeds f ON f.id = c.feed_id
             JOIN diaries d ON d.id = f.diary_id
             JOIN users feed_author ON feed_author.id = d.user_id
