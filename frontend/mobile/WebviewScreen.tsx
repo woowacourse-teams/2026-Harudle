@@ -4,7 +4,8 @@ import { BackHandler, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
 
 export default function WebViewScreen() {
-  const webViewRef = useRef<WebView>(null);
+  // WebView 14.0.1의 기본 제네릭(undefined)이 props를 never로 만드는 타입 오류를 피한다.
+  const webViewRef = useRef<WebView<object>>(null);
   const canGoBackRef = useRef(false);
 
   const handleLoad = (): void => {
@@ -30,7 +31,7 @@ export default function WebViewScreen() {
   }, []);
 
   return (
-    <WebView
+    <WebView<object>
       ref={webViewRef}
       style={{ flex: 1 }}
       source={{ uri: 'https://www.harudle.com/' }}
