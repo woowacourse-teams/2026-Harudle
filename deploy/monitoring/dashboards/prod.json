@@ -829,6 +829,69 @@
       }
     },
     {
+      "type": "metric",
+      "x": 12,
+      "y": 35,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "API 응답 시간 P95·P99 (일반·일기 생성)",
+        "view": "timeSeries",
+        "region": "ap-northeast-2",
+        "period": 60,
+        "stat": "Average",
+        "metrics": [
+          [
+            "Harudle/Prod",
+            "ApiResponseTimeMs",
+            "ApiGroup",
+            "general",
+            {
+              "stat": "p95",
+              "label": "일반 P95 (ms)"
+            }
+          ],
+          [
+            "Harudle/Prod",
+            "ApiResponseTimeMs",
+            "ApiGroup",
+            "general",
+            {
+              "stat": "p99",
+              "label": "일반 P99 (ms)"
+            }
+          ],
+          [
+            "Harudle/Prod",
+            "ApiResponseTimeMs",
+            "ApiGroup",
+            "generation",
+            {
+              "stat": "p95",
+              "label": "일기 생성 P95 (ms)"
+            }
+          ],
+          [
+            "Harudle/Prod",
+            "ApiResponseTimeMs",
+            "ApiGroup",
+            "generation",
+            {
+              "stat": "p99",
+              "label": "일기 생성 P99 (ms)"
+            }
+          ]
+        ],
+        "yAxis": {
+          "left": {
+            "label": "응답 시간 (ms)",
+            "showUnits": false,
+            "min": 0
+          }
+        }
+      }
+    },
+    {
       "type": "text",
       "x": 0,
       "y": 41,

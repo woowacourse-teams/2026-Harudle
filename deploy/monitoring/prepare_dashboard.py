@@ -101,13 +101,13 @@ def service_widgets(environment, instance_id):
     ])
     rps_widget["properties"]["yAxis"] = copy.deepcopy(RPS_Y_AXIS)
     widgets.append(rps_widget)
+    widgets.append(widget("API 응답 시간 P95·P99 (일반·일기 생성)", [
+        metric(namespace, "ApiResponseTimeMs", ("ApiGroup", group), stat=stat, label=f"{label} {name} (ms)")
+        for group, label in (("general", "일반"), ("generation", "일기 생성"))
+        for stat, name in (("p95", "P95"), ("p99", "P99"))
+    ]))
+    widgets[-1]["properties"]["yAxis"] = {"left": {"label": "응답 시간 (ms)", "showUnits": False, "min": 0}}
     if environment == "dev":
-        widgets.append(widget("API 응답 시간 P95·P99 (일반·일기 생성)", [
-            metric(namespace, "ApiResponseTimeMs", ("ApiGroup", group), stat=stat, label=f"{label} {name} (ms)")
-            for group, label in (("general", "일반"), ("generation", "일기 생성"))
-            for stat, name in (("p95", "P95"), ("p99", "P99"))
-        ]))
-        widgets[-1]["properties"]["yAxis"] = {"left": {"label": "응답 시간 (ms)", "showUnits": False, "min": 0}}
         operations = (
             ("DiaryGenerationSucceeded", "일기 생성"), ("FeedPublicationSucceeded", "피드 게시"),
             ("FeedListSucceeded", "피드 목록 조회"), ("FeedDetailSucceeded", "피드 상세 조회"),
