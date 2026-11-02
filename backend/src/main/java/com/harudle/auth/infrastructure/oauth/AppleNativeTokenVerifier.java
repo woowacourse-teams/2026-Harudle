@@ -22,6 +22,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
+import org.springframework.web.client.RestTemplate;
 
 @Component
 @ConditionalOnProperty(name = "app.auth.apple.enabled", havingValue = "true")
@@ -36,15 +37,24 @@ public class AppleNativeTokenVerifier {
 
     @Autowired
     public AppleNativeTokenVerifier(AppleClientSecretGenerator secretGenerator) {
-        this(secretGenerator, IOS_CLIENT_ID, NimbusJwtDecoder.withJwkSetUri(ISSUER + "/auth/keys").build(),
+        this(secretGenerator, IOS_CLIENT_ID, createAppleDecoder(ISSUER + "/auth/keys"),
                 createAppleClient());
     }
 
+    static JwtDecoder createAppleDecoder(String jwkSetUri) {
+        var rest = new RestTemplate(createAppleRequestFactory());
+        return NimbusJwtDecoder.withJwkSetUri(jwkSetUri).restOperations(rest).build();
+    }
+
     private static RestClient createAppleClient() {
+        return RestClient.builder().baseUrl(ISSUER).requestFactory(createAppleRequestFactory()).build();
+    }
+
+    private static SimpleClientHttpRequestFactory createAppleRequestFactory() {
         var requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(Duration.ofSeconds(3));
         requestFactory.setReadTimeout(Duration.ofSeconds(5));
-        return RestClient.builder().baseUrl(ISSUER).requestFactory(requestFactory).build();
+        return requestFactory;
     }
 
     AppleNativeTokenVerifier(AppleClientSecretGenerator secretGenerator, String clientId,

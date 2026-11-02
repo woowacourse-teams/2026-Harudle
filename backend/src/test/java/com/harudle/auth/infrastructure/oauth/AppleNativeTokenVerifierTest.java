@@ -12,15 +12,25 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 
 import com.harudle.auth.infrastructure.oauth.AppleNativeTokenVerifier.AppleProviderException;
 import com.harudle.auth.infrastructure.oauth.AppleNativeTokenVerifier.InvalidAuthorizationCodeException;
+import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.crypto.RSASSASigner;
+import com.nimbusds.jose.jwk.JWKSet;
+import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.gen.RSAKeyGenerator;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
+import com.sun.net.httpserver.HttpServer;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -86,6 +96,73 @@ class AppleNativeTokenVerifierTest {
         assertThatThrownBy(() -> verifier.verify("code", signed.serialize(), "nonce"))
                 .isInstanceOf(AppleProviderException.class);
         server.verify();
+    }
+
+    @Test
+    @DisplayName("공개키 응답이 기본 제한 시간보다 늦어도 설정한 시간 안에 도착하면 토큰을 검증한다")
+    void verifiesTokenWhenAppleKeysRespondWithinConfiguredTimeout() throws Exception {
+        var key = new RSAKeyGenerator(2048).keyID("key").generate();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/keys", exchange -> {
+            try {
+                Thread.sleep(1_500);
+                byte[] response = new JWKSet(key.toPublicJWK()).toString().getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, response.length);
+                exchange.getResponseBody().write(response);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+            } finally {
+                exchange.close();
+            }
+        });
+        server.start();
+        try {
+            String jwkSetUri = "http://127.0.0.1:" + server.getAddress().getPort() + "/keys";
+            var decoder = AppleNativeTokenVerifier.createAppleDecoder(jwkSetUri);
+
+            assertThat(decoder.decode(signedToken(key)).getSubject()).isEqualTo("user");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    @DisplayName("공개키 응답이 제한 시간 안에 도착하지 않으면 Apple 연동 오류로 처리한다")
+    void treatsAppleKeyReadTimeoutAsProviderFailure() throws Exception {
+        var requestStarted = new CountDownLatch(1);
+        var releaseResponse = new CountDownLatch(1);
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/keys", exchange -> {
+            requestStarted.countDown();
+            try {
+                releaseResponse.await(15, TimeUnit.SECONDS);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+            } finally {
+                exchange.close();
+            }
+        });
+        server.start();
+        try {
+            var key = new RSAKeyGenerator(2048).keyID("key").generate();
+            String jwkSetUri = "http://127.0.0.1:" + server.getAddress().getPort() + "/keys";
+            var generator = mock(AppleClientSecretGenerator.class);
+            var client = mock(RestClient.class);
+            var verifier = new AppleNativeTokenVerifier(generator, "our-app",
+                    AppleNativeTokenVerifier.createAppleDecoder(jwkSetUri), client);
+            String token = signedToken(key);
+            long startedAt = System.nanoTime();
+
+            assertThatThrownBy(() -> verifier.verify("code", token, "nonce"))
+                    .isInstanceOf(AppleProviderException.class);
+            assertThat(requestStarted.getCount()).isZero();
+            assertThat(Duration.ofNanos(System.nanoTime() - startedAt)).isLessThan(Duration.ofSeconds(12));
+            verifyNoInteractions(generator, client);
+        } finally {
+            releaseResponse.countDown();
+            server.stop(0);
+        }
     }
 
     @Test
@@ -173,5 +250,12 @@ class AppleNativeTokenVerifierTest {
         assertThatThrownBy(() -> verifier.verify("code", "native", "nonce"))
                 .isInstanceOf(AppleProviderException.class);
         server.verify();
+    }
+
+    private static String signedToken(RSAKey key) throws JOSEException {
+        var signed = new SignedJWT(new JWSHeader.Builder(JWSAlgorithm.RS256).keyID("key").build(),
+                new JWTClaimsSet.Builder().subject("user").build());
+        signed.sign(new RSASSASigner(key));
+        return signed.serialize();
     }
 }
