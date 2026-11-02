@@ -907,7 +907,8 @@
             "generation",
             {
               "stat": "p95",
-              "label": "일기 생성 P95 (ms)"
+              "label": "일기 생성 P95 (ms)",
+              "yAxis": "right"
             }
           ],
           [
@@ -917,13 +918,19 @@
             "generation",
             {
               "stat": "p99",
-              "label": "일기 생성 P99 (ms)"
+              "label": "일기 생성 P99 (ms)",
+              "yAxis": "right"
             }
           ]
         ],
         "yAxis": {
           "left": {
-            "label": "응답 시간 (ms)",
+            "label": "일반 (ms)",
+            "showUnits": false,
+            "min": 0
+          },
+          "right": {
+            "label": "일기 생성 (ms)",
             "showUnits": false,
             "min": 0
           }

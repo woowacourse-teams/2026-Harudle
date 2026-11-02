@@ -114,25 +114,26 @@ def service_widgets(environment, instance_id):
     rps_widget["properties"]["yAxis"] = copy.deepcopy(RPS_Y_AXIS)
     widgets.append(rps_widget)
     widgets.append(widget("API 응답 시간 P95·P99 (일반·일기 생성)", [
-        metric(namespace, "ApiResponseTimeMs", ("ApiGroup", group), stat=stat, label=f"{label} {name} (ms)")
-        for group, label in (("general", "일반"), ("generation", "일기 생성"))
+        metric(namespace, "ApiResponseTimeMs", ("ApiGroup", group), stat=stat, label=f"{label} {name} (ms)", **axis)
+        for group, label, axis in (("general", "일반", {}), ("generation", "일기 생성", {"yAxis": "right"}))
         for stat, name in (("p95", "P95"), ("p99", "P99"))
     ]))
-    widgets[-1]["properties"]["yAxis"] = {"left": {"label": "응답 시간 (ms)", "showUnits": False, "min": 0}}
+    # Generation requests can be hundreds of times slower, so they keep a separate axis.
+    widgets[-1]["properties"]["yAxis"] = {"left": {"label": "일반 (ms)", "showUnits": False, "min": 0},
+                                          "right": {"label": "일기 생성 (ms)", "showUnits": False, "min": 0}}
     if environment == "dev":
-        operations = (
-            ("DiaryGenerationSucceeded", "일기 생성"), ("FeedPublicationSucceeded", "피드 게시"),
-            ("FeedListSucceeded", "피드 목록 조회"), ("FeedDetailSucceeded", "피드 상세 조회"),
-        )
-        metrics = []
-        for index, (name, label) in enumerate(operations):
-            identifier = f"success{index}"
-            metrics.extend([
-                metric(namespace, name, stat="Sum", id=identifier, visible=False),
-                expression(f"{identifier}/PERIOD({identifier})", label),
-            ])
-        widgets.append(widget("작업별 TPS (성공한 작업/초)", metrics))
-        widgets[-1]["properties"]["yAxis"] = {"left": {"label": "성공한 작업/초", "showUnits": False}}
+        # Reads and writes differ by orders of magnitude, so each group keeps its own axis.
+        for title, operations in (
+                ("조회 TPS (성공 건수/초)", (("FeedListSucceeded", "피드 목록"), ("FeedDetailSucceeded", "피드 상세"))),
+                ("쓰기 TPS (성공 건수/초)", (("DiaryGenerationSucceeded", "일기 생성"), ("FeedPublicationSucceeded", "피드 게시")))):
+            metrics = []
+            for index, (name, label) in enumerate(operations):
+                metrics.extend([
+                    metric(namespace, name, stat="Sum", id=f"s{index}", visible=False),
+                    expression(f"s{index}/PERIOD(s{index})", label, id=f"e{index}"),
+                ])
+            widgets.append(widget(title, metrics))
+            widgets[-1]["properties"]["yAxis"] = {"left": {"label": "성공 건수/초", "showUnits": False, "min": 0}}
         for item in widgets[:3]:
             item["properties"]["yAxis"] = {
                 "left": {"label": "응답 시간 (ms)", "showUnits": False},
@@ -482,7 +483,7 @@ def arrange_dashboard(original, environment):
             group = 'errors'
         elif item['type'] == 'log':
             group = 'logs'
-        elif title.startswith(('API ', '작업별 TPS')):
+        elif title.startswith(('API ', '작업별 TPS', '조회 TPS', '쓰기 TPS')):
             group = 'api'
         elif title.startswith(('DB 연결', 'DB EC2 Free Storage', '백업 정보 조회')):
             group = 'db'

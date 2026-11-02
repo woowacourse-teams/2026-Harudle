@@ -40,7 +40,11 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual([(w["x"], w["width"]) for w in routes], [(0, 12), (12, 12)])
         self.assertEqual(routes[0]["y"], routes[1]["y"])
         self.assertNotIn("Harudle/Prod", json.dumps(source))
-        self.assertEqual(len(source["widgets"]), 56)
+        self.assertEqual(len(source["widgets"]), 58)
+        for title in ("조회 TPS (성공 건수/초)", "쓰기 TPS (성공 건수/초)"):
+            saved = next(w for w in source["widgets"] if w["properties"].get("title") == title)
+            built = next(w for w in service_widgets("dev", instance_id) if w["properties"]["title"] == title)
+            self.assertEqual(saved["properties"], built["properties"])
         cards = source["widgets"][:6]
         self.assertEqual([(w["x"], w["y"], w["width"], w["height"]) for w in cards],
                          [(x, y, 8, 5) for y in (0, 5) for x in (0, 8, 16)])
@@ -52,6 +56,8 @@ class DashboardTests(unittest.TestCase):
                          ["p95", "p99", "p95", "p99"])
         self.assertEqual([row[3] for row in expected["properties"]["metrics"]],
                          ["general", "general", "generation", "generation"])
+        self.assertEqual([row[-1].get("yAxis") for row in expected["properties"]["metrics"]],
+                         [None, None, "right", "right"])
         self.assertEqual((by_title["API RPS (완료한 요청/초)"]["x"], by_title[title]["x"]), (0, 12))
         self.assertEqual(by_title["API RPS (완료한 요청/초)"]["y"], by_title[title]["y"])
 
@@ -332,7 +338,7 @@ class DashboardTests(unittest.TestCase):
         dev_widgets = service_widgets("dev", INSTANCE_ID)
         self.assertEqual([w["properties"]["title"] for w in dev_widgets[:6]], [
             "API 응답 시간 (전체)", "API 응답 시간 (일반)", "API 응답 시간 (일기 생성)",
-            "API RPS (완료한 요청/초)", "API 응답 시간 P95·P99 (일반·일기 생성)", "작업별 TPS (성공한 작업/초)",
+            "API RPS (완료한 요청/초)", "API 응답 시간 P95·P99 (일반·일기 생성)", "조회 TPS (성공 건수/초)",
         ])
         self.assertEqual(len(metric_filters("dev")), 18)
         dev_routes = dev_widgets[-2:]
@@ -376,8 +382,8 @@ class DashboardTests(unittest.TestCase):
     def test_gc_and_nonheap_widgets_are_dev_only_and_use_converted_counters(self):
         self.assertEqual(len(service_widgets("prod", INSTANCE_ID)), 15)
         widgets = service_widgets("dev", INSTANCE_ID)
-        self.assertEqual(len(widgets), 20)
-        gc, memory = widgets[16:18]
+        self.assertEqual(len(widgets), 21)
+        gc, memory = widgets[17:19]
         self.assertIn("jvm_gc_pause_seconds_max", json.dumps(gc))
         self.assertIn("1000*MAX(", json.dumps(gc))
         for row, name in zip(gc["properties"]["metrics"][1:], ("sum", "count")):
@@ -420,9 +426,9 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(rps[1][0]["expression"], "requests/PERIOD(requests)")
         for row in widgets[5]["properties"]["metrics"][1::2]:
             self.assertIn("/PERIOD(", row[0]["expression"])
-        self.assertIn("IF(acquires>0,1000*seconds/acquires)", json.dumps(widgets[6]))
-        self.assertIn('area="heap"', widgets[8]["properties"]["metrics"][0][0]["expression"])
-        rss = widgets[9]["properties"]["metrics"][0][0]["expression"]
+        self.assertIn("IF(acquires>0,1000*seconds/acquires)", json.dumps(widgets[7]))
+        self.assertIn('area="heap"', widgets[9]["properties"]["metrics"][0][0]["expression"])
+        rss = widgets[10]["properties"]["metrics"][0][0]["expression"]
         self.assertIn('Namespace="CWAgent"', rss)
         self.assertIn('Namespace="Harudle/Prod"', service_widgets("prod", INSTANCE_ID)[8]["properties"]["metrics"][0][0]["expression"])
         self.assertIn(f'InstanceId="{INSTANCE_ID}"', rss)
