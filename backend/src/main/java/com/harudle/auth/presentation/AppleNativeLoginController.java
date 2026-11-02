@@ -1,5 +1,6 @@
 package com.harudle.auth.presentation;
 
+import com.harudle.auth.application.InactiveUserException;
 import com.harudle.auth.application.OAuthLoginService;
 import com.harudle.auth.application.RefreshTokenService;
 import com.harudle.auth.infrastructure.UserRepository;
@@ -19,6 +20,7 @@ import java.util.Base64;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.CacheControl;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtException;
@@ -99,6 +101,11 @@ public class AppleNativeLoginController {
     @ExceptionHandler({IllegalArgumentException.class, JwtException.class})
     public ResponseEntity<Void> invalidLogin() {
         return ResponseEntity.badRequest().cacheControl(CacheControl.noStore()).build();
+    }
+
+    @ExceptionHandler(InactiveUserException.class)
+    public ResponseEntity<Void> inactiveUser() {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).cacheControl(CacheControl.noStore()).build();
     }
 
     @ExceptionHandler({RestClientException.class, AppleProviderException.class})

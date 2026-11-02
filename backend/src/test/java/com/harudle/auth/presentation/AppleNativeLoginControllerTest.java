@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.harudle.auth.application.InactiveUserException;
 import com.harudle.auth.application.IssuedRefreshToken;
 import com.harudle.auth.application.OAuthLoginCommand;
 import com.harudle.auth.application.OAuthLoginResult;
@@ -32,6 +33,7 @@ import java.util.Optional;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -110,6 +112,25 @@ class AppleNativeLoginControllerTest {
         verify(loginService).login(command, NOW);
         verify(users).findById(user.getId());
         verify(tokens).issue(user, NOW);
+    }
+
+    @Test
+    @DisplayName("탈퇴한 사용자는 로그인할 수 없고 리프레시 쿠키를 발급받지 않는다")
+    void inactiveUserCannotLoginOrReceiveRefreshCookie() {
+        var session = new MockHttpSession();
+        String nonce = nonce(session).jsonPath().getString("nonce");
+        var apple = Jwt.withTokenValue("verified").header("alg", "RS256")
+                .subject("apple-user").claim("email", "apple@example.com").build();
+        var command = new OAuthLoginCommand(OAuthProvider.APPLE, "apple-user", "apple@example.com", null);
+        when(verifier.verify("code", "token", nonce)).thenReturn(apple);
+        when(loginService.login(command, NOW)).thenThrow(new InactiveUserException());
+
+        var response = login(session);
+
+        assertThat(response.statusCode()).isEqualTo(401);
+        assertThat(response.header(HttpHeaders.CACHE_CONTROL)).isEqualTo("no-store");
+        assertThat(response.header(HttpHeaders.SET_COOKIE)).isNull();
+        verifyNoInteractions(users, tokens);
     }
 
     @Test
