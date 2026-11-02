@@ -3,6 +3,7 @@ package com.harudle.generation.diary.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.harudle.generation.diary.domain.GenerationStatus;
+import com.harudle.generation.diary.service.DiaryGenerationStatusQueryService;
 import com.harudle.support.ServiceIntegrationTestSupport;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -19,6 +20,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 class DiaryGenerationStatusQueryPersistenceTest extends ServiceIntegrationTestSupport {
 
     @Autowired private DiaryGenerationQueryRepository repository;
+    @Autowired private DiaryGenerationStatusQueryService queryService;
     @Autowired private JdbcTemplate jdbc;
     private UUID userId;
     private Long promptId;
@@ -55,6 +57,18 @@ class DiaryGenerationStatusQueryPersistenceTest extends ServiceIntegrationTestSu
                 ? com.harudle.generation.diary.domain.GenerationErrorCode.AI_PROVIDER_TIMEOUT : null);
         assertThat(jdbc.queryForObject("SELECT status FROM diary_generations WHERE id = ?", String.class, generationId))
                 .isEqualTo(status.name());
+    }
+
+    @ParameterizedTest
+    @EnumSource(GenerationStatus.class)
+    @DisplayName("회원의 삭제 표시된 일기라도 대기 또는 처리 중인 생성 작업을 확인한다")
+    void checkUnfinishedGenerationForMember(GenerationStatus status) {
+        assertThat(queryService.hasUnfinishedGeneration(userId)).isFalse();
+        insertGeneration(status, true);
+
+        assertThat(queryService.hasUnfinishedGeneration(userId))
+                .isEqualTo(status == GenerationStatus.PENDING || status == GenerationStatus.PROCESSING);
+        assertThat(queryService.hasUnfinishedGeneration(UUID.randomUUID())).isFalse();
     }
 
     @Test
