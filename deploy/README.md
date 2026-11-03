@@ -446,6 +446,11 @@ https://www.harudle.com/login/oauth2/code/google
 
 ## OpenAI 이미지 대체 생성 전환
 
+활성화 전에 [원문 정책 대조](../backend/docs/terms-policy-review.md)의 외부 처리 업체 항목을 확인합니다.
+환경별 활성 업체와 OpenAI에 전송하는 스토리보드, 그림체 지시문, 참조 이미지, 처리 국가와 보유기간을
+확인하고 필요한 위탁과 국외 이전 고지, 동의 등 처리 근거를 실제 정책과 맞춥니다.
+확인 결과를 운영 기록에 남긴 뒤 키와 활성화 설정을 적용합니다.
+
 서버 `/opt/harudle/.env`에 `IMAGE_FALLBACK_PROVIDER=openai`와 `OPENAI_API_KEY`를 설정합니다.
 모델 기본값은 `OPENAI_IMAGE_MODEL=gpt-image-2.5-flare`, 호출 제한 시간은
 `OPENAI_IMAGE_TIMEOUT=180s`, 품질은
@@ -459,5 +464,6 @@ OpenAI 전용 크기 설정은 없습니다. `env_file`로 읽으므로 Compose 
 
 Gemini 429 또는 시간 초과 상황에서 Flare가 한 번 호출되는지 확인합니다.
 일반 생성과 관리자 복구의 결과를 확인하고 `provider=openai` 지표와 오류 로그를 확인합니다.
+수집 설정과 대시보드는 [OpenAI 지표 안내](monitoring/README.md#openai-이미지-대체-생성-지표)에 따라 별도로 적용합니다.
 키와 요청 본문을 출력하지 않습니다. 문제가 있으면 `IMAGE_FALLBACK_PROVIDER=none`으로 바꾸고
 백엔드를 재생성합니다. 자세한 입력 제한과 설정은 [백엔드 안내](../backend/README.md#이미지-생성의-openai-대체-호출)를 따릅니다.

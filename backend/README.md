@@ -596,12 +596,18 @@ flowchart TD
 `IMAGE_FALLBACK_PROVIDER=none`이면 기존 Gemini 재시도 설정을 유지합니다.
 
 호출 수는 `harudle.image.fallback.calls`, 소요 시간은 `harudle.image.provider.duration`에
-`provider=openai`로 기록합니다. 키, 참조 이미지, 응답 본문은 로그에 남기지 않습니다.
+`provider=openai`로 기록합니다. 응답 검증 실패는 `harudle.image.response.failures`에 고정된 `reason`으로
+기록하며 `event=openai_image_response_rejected` 로그에도 같은 값을 남깁니다. 키, 참조 이미지, 응답 본문과
+파서 예외 원문은 기록하지 않습니다. 초기 수집 때 0을 읽을 수 있도록 OpenAI 지표는 생성기 등록 때 준비합니다.
+수집 설정과 대시보드 적용 순서는 [OpenAI 지표 안내](../deploy/monitoring/README.md#openai-이미지-대체-생성-지표)를 따릅니다.
 서버 동시 실행 수는 기존 `GENERATION_WORKER_CONCURRENCY`를 따릅니다.
 관리자 복구는 별도 요청이므로 이 값이 모든 OpenAI 호출의 공통 동시 실행 상한은 아닙니다.
 
 기존 `IMAGE_FALLBACK_PROVIDER=codex` 설정은 지원하지 않습니다.
 전환 시 Codex worker 환경 변수 대신 위 설정을 넣고 백엔드를 재시작하거나 컨테이너를 재생성합니다.
+활성화 전에 [원문 정책 대조](docs/terms-policy-review.md)의 외부 처리 업체 확인 항목을 검토합니다.
+환경별 OpenAI 사용 여부, 전송하는 스토리보드와 그림체 지시문, 참조 이미지, 처리 국가와 보유기간을
+확인하고 필요한 위탁과 국외 이전 고지, 동의 등 처리 근거가 실제 정책에 반영됐는지 기록합니다.
 OpenAI 프로젝트의 Flare 사용 권한과 결제를 확인하고, 소수의 실제 요청으로 그림체와 생성 시간,
 비용을 확인한 뒤 활성화합니다. `none`으로 되돌린 뒤 재생성하면 대체 호출이 꺼집니다.
 
