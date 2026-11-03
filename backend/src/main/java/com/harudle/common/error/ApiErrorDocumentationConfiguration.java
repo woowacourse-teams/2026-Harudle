@@ -18,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 import org.springdoc.core.customizers.OpenApiCustomizer;
 import org.springdoc.core.customizers.OperationCustomizer;
 import org.springframework.context.annotation.Bean;
@@ -41,9 +42,11 @@ class ApiErrorDocumentationConfiguration {
             ApiErrorResponses declared = handlerMethod.getMethodAnnotation(ApiErrorResponses.class);
             Map<Integer, List<ErrorExample>> byStatus = new LinkedHashMap<>();
             LinkedHashSet<ErrorType> serviceErrors = new LinkedHashSet<>();
+            List<ErrorType> guestFailures = declared == null ? List.of() : List.of(declared.guestGenerationFailures());
             if (declared != null) {
                 serviceErrors.addAll(List.of(declared.value()));
             }
+            serviceErrors.addAll(guestFailures);
             serviceErrors.add(ErrorType.INTERNAL_SERVER_ERROR);
             for (ErrorType errorType : serviceErrors) {
                 addExample(byStatus, new ErrorExample(
@@ -51,7 +54,10 @@ class ApiErrorDocumentationConfiguration {
                         errorType.code(),
                         errorType.code(),
                         errorType.title(),
-                        errorType.detail()
+                        errorType.detail(),
+                        guestFailures.contains(errorType)
+                                ? GenerationErrorAction.forFailure(errorType, true)
+                                : GenerationErrorAction.forError(errorType)
                 ));
             }
             if (declared != null) {
@@ -69,7 +75,8 @@ class ApiErrorDocumentationConfiguration {
                             code,
                             name,
                             title,
-                            frameworkError.detail()
+                            frameworkError.detail(),
+                            null
                     ));
                 }
             }
@@ -168,6 +175,9 @@ class ApiErrorDocumentationConfiguration {
         value.put("instance", "/");
         value.put("code", error.code());
         value.put("traceId", EXAMPLE_TRACE_ID);
+        if (error.action() != null) {
+            value.put("action", error.action());
+        }
         return value;
     }
 
@@ -223,6 +233,7 @@ class ApiErrorDocumentationConfiguration {
         return schema;
     }
 
-    private record ErrorExample(int status, String code, String name, String title, String detail) {
+    private record ErrorExample(int status, String code, String name, String title, String detail,
+                                @Nullable String action) {
     }
 }

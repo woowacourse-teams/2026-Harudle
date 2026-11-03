@@ -61,7 +61,7 @@ class GuestDiaryController {
             @ApiResponse(responseCode = "202", description = "새 게스트 일기와 대기 작업 접수 완료"),
             @ApiResponse(responseCode = "200", description = "멱등 재요청의 기존 게스트 일기와 생성 상태 반환")
     })
-    @ApiErrorResponses({
+    @ApiErrorResponses(value = {
             ErrorType.VALIDATION_ERROR,
             ErrorType.INVALID_IDEMPOTENCY_KEY,
             ErrorType.GUEST_SESSION_REQUIRED,
@@ -70,6 +70,9 @@ class GuestDiaryController {
             ErrorType.DIARY_NOT_FOUND,
             ErrorType.GUEST_TRIAL_ALREADY_USED,
             ErrorType.IDEMPOTENCY_KEY_CONFLICT,
+            ErrorType.GENERATION_UNAVAILABLE,
+            ErrorType.GENERATION_CAPACITY_EXCEEDED
+    }, guestGenerationFailures = {
             ErrorType.AI_PROVIDER_ERROR,
             ErrorType.AI_PROVIDER_CONNECTION_ERROR,
             ErrorType.AI_PROVIDER_SERVER_ERROR,
@@ -79,9 +82,8 @@ class GuestDiaryController {
             ErrorType.AI_CONTENT_BLOCKED,
             ErrorType.AI_OUTPUT_TRUNCATED,
             ErrorType.AI_RESPONSE_PROCESSING_ERROR,
-            ErrorType.GENERATION_UNAVAILABLE,
-            ErrorType.GENERATION_CAPACITY_EXCEEDED,
             ErrorType.GENERATION_INTERRUPTED,
+            ErrorType.GENERATION_PENDING_TIMEOUT,
             ErrorType.IMAGE_STORAGE_ERROR,
             ErrorType.AI_PROVIDER_TIMEOUT
     })

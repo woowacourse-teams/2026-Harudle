@@ -425,6 +425,39 @@ class SecurityConfigTest {
     }
 
     @Test
+    @DisplayName("생성 오류 예시에 실제 회원과 게스트 행동 안내를 구분하고 일반 오류에는 추가하지 않는다")
+    void documentsGenerationErrorActions() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['400'].content"
+                        + "['application/problem+json'].examples.AI_CONTENT_BLOCKED.value.action")
+                        .value("작성한 내용으로 생성할 수 없어요. 내용을 바꿔 다시 시도해 주세요."))
+                .andExpect(jsonPath("$.paths['/api/v1/guest/diaries'].post.responses['400'].content"
+                        + "['application/problem+json'].examples.AI_CONTENT_BLOCKED.value.action")
+                        .value("작성한 내용으로 생성할 수 없어요. 내용을 바꾼 뒤 로그인해서 다시 생성해 주세요."))
+                .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['504'].content"
+                        + "['application/problem+json'].examples.AI_PROVIDER_TIMEOUT.value.action")
+                        .value("생성 시간이 초과됐어요. 잠시 후 다시 생성해 주세요."))
+                .andExpect(jsonPath("$.paths['/api/v1/guest/diaries'].post.responses['504'].content"
+                        + "['application/problem+json'].examples.AI_PROVIDER_TIMEOUT.value.action")
+                        .value("체험 생성 시간이 초과됐어요. 로그인 후 다시 생성해 주세요."))
+                .andExpect(jsonPath("$.paths['/api/v1/guest/diaries'].post.responses['503'].content"
+                        + "['application/problem+json'].examples.GENERATION_CAPACITY_EXCEEDED.value.action")
+                        .value("현재 요청이 많아요. 잠시 후 다시 시도해 주세요."))
+                .andExpect(jsonPath("$.paths['/api/v1/guest/diaries'].post.responses['503'].content"
+                        + "['application/problem+json'].examples.IMAGE_STORAGE_ERROR.value.action")
+                        .value("체험 생성에 실패했어요. 로그인 후 다시 생성해 주세요."))
+                .andExpect(jsonPath("$.paths['/api/v1/guest/diaries/{diaryId}'].get.responses['503'].content"
+                        + "['application/problem+json'].examples.IMAGE_STORAGE_ERROR.value.action")
+                        .value("이미지를 저장하거나 불러오지 못했어요. 잠시 후 다시 시도해 주세요."))
+                .andExpect(jsonPath("$.paths['/api/v1/diaries'].post.responses['400'].content"
+                        + "['application/problem+json'].examples.VALIDATION_ERROR.value.action").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/v1/admin/generations/restore-image/upload'].post"
+                        + ".responses['503'].content['application/problem+json']"
+                        + ".examples['복구 작업 대기 중단'].value.action").doesNotExist());
+    }
+
+    @Test
     @DisplayName("OpenAPI 날짜·정수 형식과 조회 필터를 한글로 설명한다")
     void documentsFormatsAndQueryParametersInKorean() throws Exception {
         mockMvc.perform(get("/v3/api-docs"))
