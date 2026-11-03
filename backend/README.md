@@ -552,11 +552,37 @@ PR 검증과 캐시 생성은 이벤트별로 실행 그룹을 나눠 서로 취
 
 ## 이미지 생성의 OpenAI 대체 호출
 
+### 메인 이미지 제공자 선택
+
+`IMAGE_PROVIDER`로 이미지 생성을 담당할 제공자를 선택합니다. 기본값은 `gemini`입니다.
+OpenAI를 바로 호출해 결과를 확인하려면 다음 값을 설정하고 백엔드를 재시작하거나 컨테이너를 재생성합니다.
+
+```dotenv
+IMAGE_PROVIDER=openai
+IMAGE_FALLBACK_PROVIDER=none
+OPENAI_API_KEY=서버에만-저장하는-API-키
+```
+
+`OPENAI_IMAGE_MODEL`, `OPENAI_IMAGE_TIMEOUT`, `OPENAI_IMAGE_QUALITY`는 아래 기본 설정을 함께 사용합니다.
+이미지 비율도 기존 `GEMINI_IMAGE_ASPECT_RATIO`를 사용합니다. 이미지 단계만 바뀌며 스토리보드는 기존
+`STORYBOARD_PROVIDER` 설정을 따릅니다. 메인과 대체 제공자가 모두 OpenAI이면 시작 시 설정 오류로 거절합니다.
+
+| IMAGE_PROVIDER | IMAGE_FALLBACK_PROVIDER | 이미지 생성 방식 |
+| --- | --- | --- |
+| `gemini` | `none` | Gemini만 사용합니다. |
+| `gemini` | `openai` | Gemini가 429 또는 시간 초과로 실패하면 OpenAI를 한 번 호출합니다. |
+| `openai` | `none` | Gemini 이미지 호출 없이 OpenAI를 바로 사용합니다. |
+
+Gemini만 사용하도록 되돌리려면 `IMAGE_PROVIDER=gemini`와 `IMAGE_FALLBACK_PROVIDER=none`을 설정합니다.
+
+### Gemini 실패 시 OpenAI 대체 호출
+
 Gemini 이미지 생성이 429 또는 시간 초과로 실패하면 OpenAI Images API를 직접 호출할 수 있습니다.
 일반 생성과 관리자 이미지 복구에 같은 처리를 적용합니다. Codex SDK와 별도 worker는 사용하지 않습니다.
 기본값은 비활성화이며, 다음 환경 변수로 켭니다. 키는 프론트엔드나 저장소에 넣지 않습니다.
 
 ```dotenv
+IMAGE_PROVIDER=gemini
 IMAGE_FALLBACK_PROVIDER=openai
 OPENAI_API_KEY=서버에만-저장하는-API-키
 OPENAI_IMAGE_MODEL=gpt-image-2.5-flare
@@ -574,11 +600,15 @@ OpenAI 전용 크기 환경 변수는 없습니다. `1:1`은 `1024x1024`, `9:16`
 
 ```mermaid
 flowchart TD
-    input["스토리보드, 그림체 지시문, 참조 이미지"] --> gemini["Gemini 이미지 생성"]
+    input["스토리보드, 그림체 지시문, 참조 이미지"] --> provider{"IMAGE_PROVIDER"}
+    provider -->|gemini| gemini["Gemini 이미지 생성"]
+    provider -->|openai| openai["OpenAI Flare 직접 호출"]
     gemini -->|성공| storage["기존 이미지 저장"]
-    gemini -->|429 또는 시간 초과| openai["OpenAI Flare 직접 호출"]
+    gemini -->|429 또는 시간 초과| fallback{"OpenAI 대체 호출 설정"}
+    fallback -->|활성화| openai
+    fallback -->|비활성화| failure["생성 실패 처리"]
     openai -->|성공| storage
-    openai -->|실패| failure["생성 실패 처리"]
+    openai -->|실패| failure
     gemini -->|그 밖의 오류| failure
 ```
 
@@ -588,7 +618,7 @@ flowchart TD
 지시문은 최대 32000자, 입력 JSON은 최대 20MiB, 응답 JSON은 최대 28MiB,
 변환한 PNG는 최대 20MiB로 제한합니다. 참조 형식은 PNG, JPEG, WebP를 지원합니다.
 
-대체 호출을 켜면 Gemini와 OpenAI는 각각 한 번만 호출하며 자동 재시도와 리다이렉트를 사용하지 않습니다.
+메인이 Gemini이고 대체 호출을 켜면 Gemini와 OpenAI는 각각 한 번만 호출하며 자동 재시도와 리다이렉트를 사용하지 않습니다.
 기본 호출 제한 시간의 합은 Gemini 180초와 OpenAI 180초로 360초입니다.
 입력 준비와 응답 변환, 저장 시간은 별도이며 일기 전체 작업에는 기존 처리 제한 시간이 적용됩니다.
 시간 초과나 취소 시 백엔드 HTTP 요청을 취소하지만 OpenAI 측 작업과 과금 취소를 보장하지 않습니다.
