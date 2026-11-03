@@ -159,7 +159,7 @@ class OpenAiDiaryImageGeneratorTest {
         });
         server.start();
         var properties = new GeminiGenerationProperties("story", "image", "high", "1:1", 8192, 3, Duration.ofSeconds(3));
-        var fallbackProperties = new ImageProviderProperties("openai", TOKEN, null, Duration.ofSeconds(2), null);
+        var fallbackProperties = new ImageProviderProperties("gemini", "openai", TOKEN, null, Duration.ofSeconds(2), null);
         var configuration = new com.harudle.generation.config.GenerationAdapterConfiguration();
         try (var client = configuration.geminiClient(properties, (httpOptions, clientOptions) ->
                 com.google.genai.Client.builder().vertexAI(false).apiKey("test-key")
@@ -202,7 +202,7 @@ class OpenAiDiaryImageGeneratorTest {
         });
         server.start();
         var properties = new GeminiGenerationProperties("story", "image", "high", "1:1", 8192, 3, Duration.ofSeconds(1));
-        var fallbackProperties = new ImageProviderProperties("openai", TOKEN, null, Duration.ofSeconds(2), null);
+        var fallbackProperties = new ImageProviderProperties("gemini", "openai", TOKEN, null, Duration.ofSeconds(2), null);
         var configuration = new com.harudle.generation.config.GenerationAdapterConfiguration();
         try (var client = configuration.geminiClient(properties, (httpOptions, clientOptions) ->
                 com.google.genai.Client.builder().vertexAI(false).apiKey("test-key")
@@ -403,7 +403,7 @@ class OpenAiDiaryImageGeneratorTest {
         when(factory.newCall(any())).thenReturn(call);
         when(call.execute()).thenThrow(new java.io.IOException("test stop"));
         var generator = new OpenAiDiaryImageGenerator(
-                new ImageProviderProperties("openai", TOKEN, null, Duration.ofSeconds(2), null),
+                new ImageProviderProperties("openai", "none", TOKEN, null, Duration.ofSeconds(2), null),
                 ratio, renderer, mapper, metrics, factory);
 
         assertThatThrownBy(() -> generator.generate(input)).isInstanceOf(AiGenerationException.class);
@@ -496,12 +496,12 @@ class OpenAiDiaryImageGeneratorTest {
 
     private OpenAiDiaryImageGenerator adapter(okhttp3.Call.Factory calls,
             io.micrometer.core.instrument.MeterRegistry registry) {
-        return new OpenAiDiaryImageGenerator(new ImageProviderProperties("openai", TOKEN, null, Duration.ofSeconds(2), null), "1:1",
+        return new OpenAiDiaryImageGenerator(new ImageProviderProperties("gemini", "openai", TOKEN, null, Duration.ofSeconds(2), null), "1:1",
                 renderer, mapper, registry, calls);
     }
 
     private OpenAiDiaryImageGenerator openai() {
-        return new OpenAiDiaryImageGenerator(new ImageProviderProperties("openai", TOKEN, null, Duration.ofSeconds(2), null), "1:1",
+        return new OpenAiDiaryImageGenerator(new ImageProviderProperties("gemini", "openai", TOKEN, null, Duration.ofSeconds(2), null), "1:1",
                 renderer, mapper, metrics, request ->
                         com.harudle.generation.adapter.out.http.SingleAttemptHttpTransport.builder(Duration.ofSeconds(2))
                                 .build().newCall(request.newBuilder().url("http://127.0.0.1:"

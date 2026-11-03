@@ -59,7 +59,7 @@ public final class OpenAiDiaryImageGenerator implements DiaryImageGenerator {
             ObjectMapper objectMapper, MeterRegistry metrics, Call.Factory calls
     ) {
         if (!properties.openaiEnabled() || !properties.isOpenaiConnectionValid() || !properties.isOpenaiTimeoutValid()) {
-            throw new IllegalArgumentException("유효한 OpenAI 이미지 fallback 설정이 필요합니다.");
+            throw new IllegalArgumentException("유효한 OpenAI 이미지 생성 설정이 필요합니다.");
         }
         this.properties = properties;
         this.imageSize = imageSizeFor(imageAspectRatio);

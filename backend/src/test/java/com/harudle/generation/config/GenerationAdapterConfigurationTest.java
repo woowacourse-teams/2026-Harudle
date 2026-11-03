@@ -185,6 +185,37 @@ class GenerationAdapterConfigurationTest {
                 });
     }
 
+    @Test
+    void selectOpenAiDirectlyAsPrimaryWithoutFallbackWrapper() {
+        contextRunner.withPropertyValues(enabledAdapterProperties()).withPropertyValues(
+                        "harudle.generation.image.provider=openai",
+                        "harudle.generation.image.fallback-provider=none",
+                        "harudle.generation.image.openai-api-key=test-api-key",
+                        "harudle.generation.gemini.image-aspect-ratio=16:9")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).hasSingleBean(DiaryImageGenerator.class);
+                    var generator = context.getBean(DiaryImageGenerator.class);
+                    assertThat(generator).isInstanceOf(
+                            com.harudle.generation.adapter.out.openai.OpenAiDiaryImageGenerator.class);
+                    assertThat(ReflectionTestUtils.getField(generator, "imageSize")).isEqualTo("1536x864");
+                });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"missing-key", "duplicate-provider", "unknown-provider"})
+    void rejectInvalidPrimaryImageConfiguration(String scenario) {
+        var runner = contextRunner.withPropertyValues(enabledAdapterProperties()).withPropertyValues(
+                "harudle.generation.image.provider=openai");
+        if ("duplicate-provider".equals(scenario)) {
+            runner = runner.withPropertyValues("harudle.generation.image.fallback-provider=openai",
+                    "harudle.generation.image.openai-api-key=test-api-key");
+        } else if ("unknown-provider".equals(scenario)) {
+            runner = runner.withPropertyValues("harudle.generation.image.provider=unknown");
+        }
+        runner.run(context -> assertThat(context).hasFailed());
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"openai", "codex", "unknown"})
     void invalidImageFallbackConfigurationFailsAtStartup(String fallback) {

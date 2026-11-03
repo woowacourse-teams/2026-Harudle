@@ -97,7 +97,10 @@ flowchart TB
 기본 동시 실행 수는 `1`, `GENERATION_WORKER_POLL_INTERVAL`의
 기본 확인 간격은 `5s`다. 환경 변수를 바꾸면 로컬 백엔드는 재시작하고, 배포 컨테이너는
 재생성해야 한다.
-OpenAI 이미지 대체 생성은 `IMAGE_FALLBACK_PROVIDER=openai`로 켠다.
+이미지 메인은 `IMAGE_PROVIDER`로 선택하며 기본값은 `gemini`다.
+`IMAGE_PROVIDER=openai`와 `IMAGE_FALLBACK_PROVIDER=none`이면 OpenAI를 바로 호출한다.
+스토리보드는 기존 제공자 설정을 따르며 이미지 비율은 기존 Gemini 비율 설정을 함께 사용한다.
+OpenAI 이미지 대체 생성은 Gemini 메인에서 `IMAGE_FALLBACK_PROVIDER=openai`로 켠다.
 Gemini가 429 또는 시간 초과로 실패하면 같은 스토리보드와 참조 이미지를 Flare에 한 번 보낸다.
 백엔드가 API 키로 Images API를 직접 호출하며 Codex SDK와 별도 worker는 사용하지 않는다.
 `OPENAI_API_KEY`는 서버 환경 변수에만 저장한다. 모델 기본값은 `gpt-image-2.5-flare`,
@@ -108,6 +111,10 @@ OpenAI 지표는 시작 시 0으로 등록하고, 응답 검증 실패는 원문
 dev와 prod의 수집 설정과 대시보드 생성 도구에 OpenAI 지표를 추가했다. 서버와 AWS에는 별도 적용해야 한다.
 활성화 전 외부 전송 정보와 필요한 고지는 `backend/docs/terms-policy-review.md`를 기준으로 확인한다.
 설정과 전환 절차는 `backend/README.md`와 `deploy/README.md`를 따른다.
+2026-11-03에 dev와 prod의 `/opt/harudle/.env`에 OpenAI 설정을 저장했다.
+모델은 `gpt-image-2.5-flare`, 제한 시간은 `180s`, 품질은 `medium`이다.
+`OPENAI_API_KEY`는 비어 있고 `IMAGE_FALLBACK_PROVIDER=none`으로 비활성화 상태다.
+두 환경 모두 원본을 권한 `600`으로 백업했으며 컨테이너는 재시작하거나 재생성하지 않았다.
 앱 종료가 시작되면 새 선점을 멈추고, 생성 처리기의 종료 단계에서 진행 중인 작업을 최대 6분 기다린다.
 이 단계는 HTTP 종료 단계 뒤에 두고 다른 실행기와 DB 연결을 닫기 전에 진행한다. 작업이 먼저 끝나면 다음 종료 절차로 넘어간다.
 로컬과 배포 Compose의 백엔드 종료 유예는 7분, CodeDeploy의 `ApplicationStart` 훅 제한은 600초다.
