@@ -90,6 +90,7 @@ export default function WebViewScreen() {
           sendMessage,
           (result): void =>
             sendMessage({ type: 'push.registrationResult', payload: result }),
+          WEB_ORIGIN,
         );
       }}
       onLoad={handleLoad}

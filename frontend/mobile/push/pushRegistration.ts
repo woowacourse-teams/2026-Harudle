@@ -2,10 +2,12 @@ import {
   getMessaging,
   onRegistered,
   register,
+  setAPNSToken,
   unregister,
 } from '@react-native-firebase/messaging';
 import {
   AndroidImportance,
+  getDevicePushTokenAsync,
   getPermissionsAsync,
   requestPermissionsAsync,
   setNotificationChannelAsync,
@@ -110,11 +112,18 @@ export const handlePushMessage = async (
       }
 
       const messaging = getMessaging();
+      if (Platform.OS === 'ios') {
+        const token = await getDevicePushTokenAsync();
+        if (version !== requestVersion) return;
+        if (token.type === 'ios') await setAPNSToken(messaging, token.data);
+      }
+      await register(messaging);
+      if (version !== requestVersion) return;
+      // onRegistered는 등록 중 받은 FID도 재전달하므로 등록 성공 후 연결한다.
       unsubscribe = onRegistered(messaging, (fid): void => {
         if (version === requestVersion)
           onResult({ userId, status: 'registered', fid });
       });
-      await register(messaging);
     } catch (error: unknown) {
       if (version !== requestVersion) return;
       stopPushListener();

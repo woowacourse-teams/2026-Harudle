@@ -27,6 +27,7 @@ export const handleWebViewMessage = async (
   onAppleSignInResult: (result: AppleSignInResult) => void,
   onImageResult: (result: ImageActionResult) => void,
   onPushResult: (result: PushRegistrationResult) => void,
+  webOrigin: string,
 ): Promise<void> => {
   let message: unknown;
   try {
@@ -43,7 +44,7 @@ export const handleWebViewMessage = async (
     case 'push.sync':
     case 'push.unregister': {
       try {
-        if (new URL(event.nativeEvent.url).origin !== 'https://www.harudle.com')
+        if (new URL(event.nativeEvent.url).origin !== webOrigin)
           return;
       } catch {
         return;
@@ -55,7 +56,7 @@ export const handleWebViewMessage = async (
     case 'image.copy': {
       // 외부 페이지에서는 앱의 이미지 기능을 실행하지 않는다.
       try {
-        if (new URL(event.nativeEvent.url).origin !== 'https://www.harudle.com')
+        if (new URL(event.nativeEvent.url).origin !== webOrigin)
           return;
       } catch {
         return;
