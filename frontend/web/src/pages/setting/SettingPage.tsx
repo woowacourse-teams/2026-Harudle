@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { type ModalHandle } from '../../shared/Modal';
 import ProfileEditModal from './ProfileEditModal';
@@ -15,15 +15,22 @@ import articlePersonIcon from '../../assets/icons/article_person.svg';
 import PwaInstallButton from './PwaInstallButton';
 import LoadingSpinner from '../../shared/LoadingSpinner';
 import blockIcon from '../../assets/icons/block.svg';
+import NotificationToggle from './NotificationToggle';
+import WithdrawalModal from './WithdrawalModal';
+import type { NativePushControls } from '../../domain/push/NativePushRegistration';
+
+interface Props {
+  readonly push?: NativePushControls | null;
+}
 
 const GOOGLE_FROM_URL = 'https://forms.gle/8DMM4L835Esxk7BE6';
 
-const SettingPage = () => {
+const SettingPage = ({ push }: Props) => {
   return (
     <BottomNavigationLayout>
       <main css={contentStyle}>
         <div css={pageTitleStyle}>설정</div>
-        <SettingPageContent />
+        <SettingPageContent push={push} />
         <p css={versionStyle}>버전 {__APP_VERSION__}</p>
       </main>
     </BottomNavigationLayout>
@@ -32,18 +39,38 @@ const SettingPage = () => {
 
 export default SettingPage;
 
-const SettingPageContent = () => {
+const SettingPageContent = ({ push }: Props) => {
   const { profileRequest, updateProfile, refreshProfile } = useProfile();
   const profileModalRef = useRef<ModalHandle>(null);
   const hasRetriedImage = useRef(false);
   const { request, handleLogout } = useLogout();
+  const [showWithdrawal, setShowWithdrawal] = useState(false);
+  const withdrawalControl = (
+    <>
+      <button
+        type="button"
+        css={logoutButtonStyle}
+        onClick={(): void => setShowWithdrawal(true)}
+      >
+        회원 탈퇴
+      </button>
+      {showWithdrawal && (
+        <WithdrawalModal onClose={(): void => setShowWithdrawal(false)} />
+      )}
+    </>
+  );
 
   if (profileRequest.status === 'idle' || profileRequest.status === 'loading') {
     return <LoadingSpinner />;
   }
 
   if (profileRequest.status === 'error') {
-    return <SettingError errorMessage={profileRequest.error.message} />;
+    return (
+      <>
+        <SettingError errorMessage={profileRequest.error.message} />
+        {withdrawalControl}
+      </>
+    );
   }
 
   const {
@@ -147,6 +174,7 @@ const SettingPageContent = () => {
         </Link>
       </div>
 
+      <NotificationToggle push={push} />
       <PwaInstallButton />
 
       <button
@@ -158,6 +186,7 @@ const SettingPageContent = () => {
         <span>로그아웃</span>
         <img css={logoutIconStyle} src={logoutIcon} alt="" aria-hidden="true" />
       </button>
+      {withdrawalControl}
       <ProfileEditModal
         ref={profileModalRef}
         profile={profileRequest.data}
