@@ -255,7 +255,7 @@ describe('게스트 체험 API', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(61);
   });
 
-  it.each(GENERATION_FAILURE_CODES)(
+  it.each([...GENERATION_FAILURE_CODES, 'UNKNOWN_ERROR'])(
     '접수 후 %s 실패의 action을 전달하고 일기 조회를 중단한다',
     async (errorCode): Promise<void> => {
       jest.useFakeTimers();
@@ -285,7 +285,7 @@ describe('게스트 체험 API', () => {
           {
             ...pendingStatusResponse,
             status: 'FAILED',
-            errorCode: 'AI_CONTENT_BLOCKED',
+            errorCode: 'UNKNOWN_ERROR',
             action,
           },
           200,
@@ -304,7 +304,7 @@ describe('게스트 체험 API', () => {
     mockFetch([
       createResponse(pendingGuestDiaryResponse, 200),
       createResponse(
-        { ...pendingStatusResponse, status: 'FAILED', errorCode: 'UNKNOWN' },
+        { ...pendingStatusResponse, status: 'FAILED', errorCode: '' },
         200,
       ),
     ]);

@@ -114,13 +114,13 @@ describe('생성 실패 안내', (): void => {
     { action: '   ', message: '네컷만화 생성에 실패했어요.' },
     { action: 123, message: '네컷만화 생성에 실패했어요.' },
   ])(
-    'action=$action일 때 안내와 기존 버튼을 표시한다',
+    '모르는 오류 코드에서 action=$action에 맞게 안내하고 조회를 종료한다',
     async ({ action, message }): Promise<void> => {
       mockGetStatus.mockResolvedValue({
         id: generationId,
         status: 'FAILED',
         diaryId: null,
-        errorCode: 'AI_CONTENT_BLOCKED',
+        errorCode: 'UNKNOWN_ERROR',
         action,
       });
       render(
@@ -138,6 +138,10 @@ describe('생성 실패 안내', (): void => {
         screen.getByRole('button', { name: '다시 작성하기' }),
       ).toBeInTheDocument();
       expect(getGenerationId()).toBeNull();
+      await act(async (): Promise<void> => {
+        await jest.advanceTimersByTimeAsync(10000);
+      });
+      expect(mockGetStatus).toHaveBeenCalledTimes(1);
       if (typeof action === 'string' && action.trim()) {
         expect(
           screen.queryByText('잠시 후 다시 만들어 주세요.'),

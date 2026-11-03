@@ -217,11 +217,11 @@ describe('일기 생성 상태 응답 타입 가드', (): void => {
     errorCode: null,
   };
 
-  it('새 오류 코드의 실패 응답을 검증하고 action을 그대로 반환한다', async (): Promise<void> => {
+  it('모르는 오류 코드의 실패 응답도 검증하고 action을 그대로 반환한다', async (): Promise<void> => {
     const response = {
       ...pendingResponse,
       status: 'FAILED',
-      errorCode: 'AI_CONTENT_BLOCKED',
+      errorCode: 'UNKNOWN_ERROR',
       action:
         '작성한 내용으로 생성할 수 없어요. 내용을 바꿔 다시 시도해 주세요.',
     };
@@ -240,6 +240,7 @@ describe('일기 생성 상태 응답 타입 가드', (): void => {
     { ...pendingResponse, status: 'PROCESSING' },
     { ...pendingResponse, status: 'SUCCEEDED', diaryId: 'diary-id' },
     { ...pendingResponse, status: 'FAILED', errorCode: 'AI_PROVIDER_ERROR' },
+    { ...pendingResponse, status: 'FAILED', errorCode: 'UNKNOWN_ERROR' },
   ])('정상 상태 응답을 허용한다: $status', (response): void => {
     expect(isDiaryGenerationStatusResponse(response)).toBe(true);
   });
@@ -276,7 +277,8 @@ describe('일기 생성 상태 응답 타입 가드', (): void => {
       errorCode: 'AI_PROVIDER_ERROR',
     },
     { ...pendingResponse, status: 'FAILED', errorCode: '' },
-    { ...pendingResponse, status: 'FAILED', errorCode: 'UNKNOWN_ERROR' },
+    { ...pendingResponse, status: 'FAILED', errorCode: '   ' },
+    { ...pendingResponse, status: 'FAILED', errorCode: 123 },
   ])('필수 필드나 타입이 잘못된 응답을 거부한다: %j', (response): void => {
     expect(isDiaryGenerationStatusResponse(response)).toBe(false);
   });
