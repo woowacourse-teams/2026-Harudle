@@ -1,5 +1,7 @@
 import { useToastContext } from '../../shared/ToastContext';
-import { DIARY_DETAIL_COPY } from './copy';
+import { DIARY_DETAIL_COPY, NATIVE_IMAGE_COPY } from './copy';
+import { isNativeApp } from '../../shared/bridge';
+import { requestNativeImage } from './nativeImage';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import ActionButton from '../../shared/ActionButton';
 import downloadIcon from '../../assets/icons/download.svg';
@@ -28,34 +30,43 @@ const DiaryImageDownloadButton = ({
   const { track } = useAnalytics();
   const { captureError } = useErrorTracking();
   const handleImageDownload = async (): Promise<void> => {
+    if (downloadRequest.status === 'loading') return;
     let httpStatus: number | undefined;
     setDownloadRequest({
       status: 'loading',
     });
 
     try {
-      const response = await fetch(imageUrl, { cache: 'no-store' });
-      httpStatus = response.status;
+      if (isNativeApp()) {
+        await requestNativeImage('image.save', imageUrl);
+        addToast(
+          { type: 'success', message: NATIVE_IMAGE_COPY.saveSuccess },
+          2000,
+        );
+      } else {
+        const response = await fetch(imageUrl, { cache: 'no-store' });
+        httpStatus = response.status;
 
-      if (!response.ok) {
-        throw new Error(ERROR_MESSAGES.DIARY_IMAGE_SAVE_FAILED);
+        if (!response.ok) {
+          throw new Error(ERROR_MESSAGES.DIARY_IMAGE_SAVE_FAILED);
+        }
+
+        const blob = await response.blob();
+        const downloadUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        const safeTitle = diaryTitle
+          .replace(/[<>:"/\\|?*]/g, '_')
+          .trim()
+          .replace(/\.+$/, '');
+        // 제목 최대 80 bytes + 접두사·확장자 26 bytes로 Android 파일명 제한을 피한다.
+        const shortTitle = Array.from(safeTitle).slice(0, 20).join('');
+
+        anchor.href = downloadUrl;
+        anchor.download = `하루들_${diaryDate}_${shortTitle}.webp`;
+        anchor.click();
+
+        URL.revokeObjectURL(downloadUrl);
       }
-
-      const blob = await response.blob();
-      const downloadUrl = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      const safeTitle = diaryTitle
-        .replace(/[<>:"/\\|?*]/g, '_')
-        .trim()
-        .replace(/\.+$/, '');
-      // 제목 최대 80 bytes + 접두사·확장자 26 bytes로 Android 파일명 제한을 피한다.
-      const shortTitle = Array.from(safeTitle).slice(0, 20).join('');
-
-      anchor.href = downloadUrl;
-      anchor.download = `하루들_${diaryDate}_${shortTitle}.webp`;
-      anchor.click();
-
-      URL.revokeObjectURL(downloadUrl);
 
       track('diary_image_downloaded');
       setDownloadRequest({ status: 'success', data: undefined });

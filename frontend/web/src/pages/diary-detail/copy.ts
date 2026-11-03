@@ -15,3 +15,8 @@ export const DIARY_DETAIL_COPY = {
   reloadAction: '다시 불러오기',
   deleteSuccess: '네컷만화를 삭제했어요.',
 } as const;
+
+export const NATIVE_IMAGE_COPY = {
+  saveSuccess: '이미지를 사진첩에 저장했어요.',
+  timeout: '앱의 응답을 받지 못했어요. 잠시 후 다시 시도해 주세요.',
+} as const;

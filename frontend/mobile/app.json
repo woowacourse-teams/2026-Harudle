@@ -8,6 +8,14 @@
     "plugins": [
       "expo-apple-authentication",
       [
+        "expo-media-library",
+        {
+          "photosPermission": false,
+          "savePhotosPermission": "하루들 이미지를 사진첩에 저장하기 위해 권한이 필요해요.",
+          "granularPermissions": []
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/splash-logo.png",

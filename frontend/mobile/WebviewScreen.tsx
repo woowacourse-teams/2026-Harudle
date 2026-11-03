@@ -3,7 +3,6 @@ import { useEffect, useRef } from 'react';
 import { BackHandler, Platform } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { handleWebViewMessage } from './bridge/handleWebViewMessage';
-import type { AppleSignInResult } from './auth/appleSignIn';
 
 const WEB_URL = 'https://www.harudle.com/';
 const WEB_ORIGIN = new URL(WEB_URL).origin;
@@ -17,12 +16,11 @@ export default function WebViewScreen() {
     SplashScreen.hide();
   };
 
-  const sendAppleSignInResult = (result: AppleSignInResult): void => {
-    const message = {
-      type: 'auth.apple.signInResult',
-      payload: result,
-    };
-
+  const sendMessage = (message: {
+    readonly type: string;
+    readonly payload: unknown;
+    readonly id?: string;
+  }): void => {
     webViewRef.current?.injectJavaScript(`
       if (window.location.origin === ${JSON.stringify(WEB_ORIGIN)}) {
         window.dispatchEvent(
@@ -64,13 +62,19 @@ export default function WebViewScreen() {
       style={{ flex: 1 }}
       source={{ uri: WEB_URL }}
       onMessage={(event: WebViewMessageEvent): void => {
-        void handleWebViewMessage(event, sendAppleSignInResult);
+        void handleWebViewMessage(
+          event,
+          (result): void =>
+            sendMessage({ type: 'auth.apple.signInResult', payload: result }),
+          sendMessage,
+        );
       }}
       onLoad={handleLoad}
       onNavigationStateChange={(state) => {
         canGoBackRef.current = state.canGoBack;
       }}
       injectedJavaScriptBeforeContentLoaded={APP_CONTEXT_SCRIPT}
+      injectedJavaScript={APP_CONTEXT_SCRIPT}
       allowsBackForwardNavigationGestures
     />
   );
