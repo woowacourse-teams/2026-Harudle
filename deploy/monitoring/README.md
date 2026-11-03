@@ -308,3 +308,61 @@ python3 -B -m unittest discover -s deploy/monitoring -p 'test_*.py'
 ## 요청별 저장소 작업과 프록시 시간
 
 S3와 R2의 존재 확인, URL 서명, 피드 데이터 조회를 같은 요청 로그에서 확인합니다. 두 Nginx의 대기 시간도 응답의 추적 ID로 연결합니다. [필드 뜻과 적용 순서](request-latency.md)를 참고합니다. 이 추가 설정은 별도 배포와 적용이 필요합니다.
+
+## OpenAI 이미지 대체 생성 지표
+
+저장소에 dev와 prod의 수집 설정, 대시보드 생성 코드와 검증 절차를 추가했습니다.
+이 변경에서 서버의 Agent나 AWS 대시보드는 수정하지 않았습니다.
+기존 대시보드를 입력해 `prepare_dashboard.py`를 실행하면 아래 그래프 4개가 추가됩니다.
+기존 그래프는 보존하며, 같은 도구를 다시 실행해도 같은 제목의 그래프를 중복 추가하지 않습니다.
+
+- OpenAI 대체 호출 횟수: Gemini 호출량 제한과 시간 초과를 구분합니다.
+- 이미지 생성 결과: Gemini와 OpenAI의 성공 수와 실패 수를 함께 표시합니다.
+- 이미지 생성 평균 처리 시간: 두 제공자의 성공과 실패를 각각 초 단위로 표시합니다.
+- OpenAI 이미지 응답 검증 실패: 원문 없이 실패 원인별 횟수를 표시합니다.
+
+```mermaid
+flowchart LR
+    app["백엔드 지표"] --> scrape["Prometheus 수집 설정"]
+    scrape --> agent["CloudWatch Agent"]
+    agent --> metrics["환경별 CloudWatch 지표"]
+    metrics --> dashboard["기존 대시보드와 추가 그래프"]
+```
+
+백엔드가 기록한 지표를 Agent가 읽고, 대시보드는 환경별 지표를 조회합니다.
+수집 허용 목록, Agent의 지표 선언, 대시보드 조회식이 모두 있어야 그래프에 값이 나타납니다.
+
+| 지표 | 수집 구분 | 의미 |
+| --- | --- | --- |
+| `harudle_image_fallback_calls_total` | `job`, `provider`, `reason` | 대체 생성 선택 횟수입니다. 실제 HTTP 전송 횟수와는 다를 수 있습니다. |
+| `harudle_image_provider_duration_seconds_count` | `job`, `provider`, `outcome` | 끝난 OpenAI 생성 시도 수입니다. 입력 준비 실패와 취소도 실패에 포함합니다. |
+| `harudle_image_provider_duration_seconds_sum` | `job`, `provider`, `outcome` | 해당 시도에 걸린 시간의 합입니다. |
+| `harudle_image_response_failures_total` | `job`, `provider`, `reason` | HTTP 성공 응답의 검증 또는 해석 실패 수입니다. |
+| `harudle_gemini_stage_duration_seconds_sum`, `harudle_gemini_stage_duration_seconds_count` | `job`, `stage`, `outcome` | Gemini 단계의 시간 합과 시도 수입니다. 그래프는 `stage=image_generation`만 조회합니다. |
+
+Agent는 누적 카운터와 시간 지표의 합, 횟수를 이전 수집과의 증가분으로 변환합니다.
+대시보드는 구간의 `Sum`을 사용하고 평균은 시간 합을 횟수로 나눕니다.
+이미 변환한 값에 `DIFF`나 `RATE`를 다시 적용하지 않습니다.
+[Agent 지표 변환 안내](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/ContainerInsights-Prometheus-metrics-conversion.md)
+
+응답 검증 로그의 `event`는 `openai_image_response_rejected`이며 `provider`, `model`, `reason`을 남깁니다.
+`reason`은 다음 7개만 사용합니다. API 키, 프롬프트, 이미지 Base64와 예외 원문은 기록하지 않습니다.
+
+- `INVALID_CONTENT_TYPE`: JSON 응답 형식이 아닙니다.
+- `RESPONSE_TOO_LARGE`: 응답 본문이 28MiB를 넘었습니다.
+- `INVALID_JSON`: JSON을 해석하지 못했습니다.
+- `IMAGE_MISSING`: 응답에 사용할 이미지 값이 없습니다.
+- `INVALID_BASE64`: 이미지 값을 Base64로 해석하지 못했습니다.
+- `INVALID_PNG`: 이미지 크기나 실제 PNG 해석 검사를 통과하지 못했습니다.
+- `UNEXPECTED_RESPONSE_ERROR`: 그 밖의 응답 처리 오류입니다.
+
+적용과 완료 확인은 다음 순서로 진행합니다.
+
+1. 해당 환경에 코드와 수집 파일을 배포합니다. 기존 Prometheus 파일과 Agent 설정을 보관합니다.
+2. dev는 `prometheus.dev.yaml`과 `cloudwatch-agent.dev.json`, prod는 `prometheus.yaml`과 `cloudwatch-agent.prod.json`을 적용합니다. 위의 Agent 갱신 절차를 사용하며 다른 환경의 설정을 섞지 않습니다.
+3. CloudWatch에서 현재 대시보드 JSON을 내려받고 위의 대시보드 준비 절차로 새 파일을 만듭니다. 기존 원본과 변경 내용을 비교한 뒤 해당 환경의 대시보드에 적용합니다.
+4. dev에서 대체 생성을 켜고, 테스트 요청 전에 Agent 수집을 두 번 이상 기다립니다. OpenAI 생성기는 성공과 실패 시간 지표, 응답 실패 원인을 0으로 등록합니다. 대체 호출 횟수도 같은 방식으로 준비합니다. 첫 수집 이전의 요청은 증가분 집계에서 빠질 수 있습니다.
+5. 허용된 dev 시험에서 대체 생성 한 건을 실행합니다. 요청 전후 관리 포트의 지표 값, EMF 로그 증가분과 CloudWatch의 같은 구간 `Sum`을 비교합니다. 대체 호출 횟수 1과 성공 또는 실패 횟수 1이 같은 시도로 집계되는지 확인합니다. 여러 요청이 섞이면 전체 합으로 비교합니다.
+6. 같은 구간에서 시간 합을 횟수로 나눈 값이 평균 처리 시간 그래프와 같은지 확인합니다. 이후 수집 때 같은 요청을 다시 더하지 않는지도 봅니다. 응답 검증 실패를 시험했다면 `reason` 로그 한 건과 해당 원인 지표 증가분도 함께 비교합니다.
+
+서버 적용과 실제 지표 유입 확인이 끝나기 전에는 운영 적용 완료로 기록하지 않습니다.
