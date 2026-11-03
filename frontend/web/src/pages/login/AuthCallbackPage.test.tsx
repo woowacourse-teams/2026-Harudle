@@ -22,7 +22,9 @@ jest.mock('react-router', () => ({
   useSearchParams: () => [mockSearchParams],
 }));
 jest.mock('../../posthog/useAnalytics', () => ({
-  useAnalytics: () => ({ identifyCurrentUser: mockIdentifyCurrentUser }),
+  useAnalytics: () => ({
+    identifyCurrentUser: mockIdentifyCurrentUser,
+  }),
 }));
 jest.mock('../../shared/auth', () => ({
   ...jest.requireActual<typeof import('../../shared/auth')>(

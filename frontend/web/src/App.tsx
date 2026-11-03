@@ -21,6 +21,7 @@ import NotFoundPage from './pages/not-found/NotFoundPage';
 import PwaAnalyticsTracker from './pages/setting/PwaAnalyticsTracker';
 import SettingPage from './pages/setting/SettingPage';
 import type { NativePushControls } from './domain/push/NativePushRegistration';
+import WithdrawalCallbackPage from './pages/withdrawal/WithdrawalCallbackPage';
 
 const App = () => {
   const [push, setPush] = useState<NativePushControls | null>(null);
@@ -33,6 +34,10 @@ const App = () => {
         <Route path="/landing/*" element={<LandingRoutes />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
+        <Route
+          path="/withdrawal/callback"
+          element={<WithdrawalCallbackPage />}
+        />
         <Route
           path="/legal/terms/:version?"
           element={<LegalDocumentPage type="TERMS" />}
