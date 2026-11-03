@@ -15,16 +15,22 @@ import articlePersonIcon from '../../assets/icons/article_person.svg';
 import PwaInstallButton from './PwaInstallButton';
 import LoadingSpinner from '../../shared/LoadingSpinner';
 import blockIcon from '../../assets/icons/block.svg';
+import NotificationToggle from './NotificationToggle';
 import WithdrawalModal from './WithdrawalModal';
+import type { NativePushControls } from '../../domain/push/NativePushRegistration';
+
+interface Props {
+  readonly push?: NativePushControls | null;
+}
 
 const GOOGLE_FROM_URL = 'https://forms.gle/8DMM4L835Esxk7BE6';
 
-const SettingPage = () => {
+const SettingPage = ({ push }: Props) => {
   return (
     <BottomNavigationLayout>
       <main css={contentStyle}>
         <div css={pageTitleStyle}>설정</div>
-        <SettingPageContent />
+        <SettingPageContent push={push} />
         <p css={versionStyle}>버전 {__APP_VERSION__}</p>
       </main>
     </BottomNavigationLayout>
@@ -33,7 +39,7 @@ const SettingPage = () => {
 
 export default SettingPage;
 
-const SettingPageContent = () => {
+const SettingPageContent = ({ push }: Props) => {
   const { profileRequest, updateProfile, refreshProfile } = useProfile();
   const profileModalRef = useRef<ModalHandle>(null);
   const hasRetriedImage = useRef(false);
@@ -168,6 +174,7 @@ const SettingPageContent = () => {
         </Link>
       </div>
 
+      <NotificationToggle push={push} />
       <PwaInstallButton />
 
       <button

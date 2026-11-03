@@ -8,6 +8,8 @@ import { useErrorTracking } from '../../posthog/useErrorTracking';
 import copyIcon from '../../assets/icons/content-copy.svg';
 import checkIcon from '../../assets/icons/check.svg';
 import { DIARY_DETAIL_COPY } from './copy';
+import { isNativeApp } from '../../shared/bridge';
+import { requestNativeImage } from './nativeImage';
 
 interface DiaryImageCopyButtonProps {
   readonly diaryId: string;
@@ -38,9 +40,10 @@ const DiaryImageCopyButton = ({
     }
 
     if (
-      typeof navigator.clipboard?.write !== 'function' ||
-      typeof ClipboardItem === 'undefined' ||
-      ClipboardItem.supports?.('image/png') === false
+      !isNativeApp() &&
+      (typeof navigator.clipboard?.write !== 'function' ||
+        typeof ClipboardItem === 'undefined' ||
+        ClipboardItem.supports?.('image/png') === false)
     ) {
       alert(ERROR_MESSAGES.DIARY_IMAGE_COPY_UNSUPPORTED);
       return;
@@ -49,15 +52,19 @@ const DiaryImageCopyButton = ({
     setCopyRequest({ status: 'loading' });
 
     try {
-      const pngPromise = createPngBlob(imageUrl);
+      if (isNativeApp()) {
+        await requestNativeImage('image.copy', imageUrl);
+      } else {
+        const pngPromise = createPngBlob(imageUrl);
 
-      // 권한이 먼저 거부돼도 진행 중인 이미지 변환의 실패를 처리한다.
-      void pngPromise.catch(() => undefined);
+        // 권한이 먼저 거부돼도 진행 중인 이미지 변환의 실패를 처리한다.
+        void pngPromise.catch(() => undefined);
 
-      // Safari의 클릭 권한이 유지되도록 변환 완료 전에 write를 호출한다.
-      await navigator.clipboard.write([
-        new ClipboardItem({ 'image/png': pngPromise }),
-      ]);
+        // Safari의 클릭 권한이 유지되도록 변환 완료 전에 write를 호출한다.
+        await navigator.clipboard.write([
+          new ClipboardItem({ 'image/png': pngPromise }),
+        ]);
+      }
     } catch (error: unknown) {
       const copyError =
         error instanceof Error
@@ -73,7 +80,11 @@ const DiaryImageCopyButton = ({
       });
       if (isMounted.current) {
         // 복사가 성공하기 전 다른 화면으로 이동했을 때 실패 메시지가 뜨지 않도록 한다.
-        alert(ERROR_MESSAGES.DIARY_IMAGE_COPY_FAILED);
+        alert(
+          isNativeApp()
+            ? copyError.message
+            : ERROR_MESSAGES.DIARY_IMAGE_COPY_FAILED,
+        );
       }
       return;
     }
