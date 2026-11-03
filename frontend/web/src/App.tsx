@@ -19,6 +19,7 @@ import LoginPage from './pages/login/LoginPage';
 import NotFoundPage from './pages/not-found/NotFoundPage';
 import PwaAnalyticsTracker from './pages/setting/PwaAnalyticsTracker';
 import SettingPage from './pages/setting/SettingPage';
+import WithdrawalCallbackPage from './pages/withdrawal/WithdrawalCallbackPage';
 
 const App = () => {
   return (
@@ -30,6 +31,10 @@ const App = () => {
         <Route path="/landing/*" element={<LandingRoutes />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
+        <Route
+          path="/withdrawal/callback"
+          element={<WithdrawalCallbackPage />}
+        />
         <Route
           path="/legal/terms/:version?"
           element={<LegalDocumentPage type="TERMS" />}

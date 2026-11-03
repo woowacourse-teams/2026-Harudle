@@ -15,7 +15,6 @@ import { LOGIN_COPY } from './copy';
 
 const mockNavigate = jest.fn();
 const mockIdentifyCurrentUser = jest.fn();
-const mockResetUser = jest.fn();
 const mockSearchParams = new URLSearchParams();
 
 jest.mock('react-router', () => ({
@@ -25,7 +24,6 @@ jest.mock('react-router', () => ({
 jest.mock('../../posthog/useAnalytics', () => ({
   useAnalytics: () => ({
     identifyCurrentUser: mockIdentifyCurrentUser,
-    resetUser: mockResetUser,
   }),
 }));
 jest.mock('../../shared/auth', () => ({
@@ -53,36 +51,6 @@ beforeEach((): void => {
   fetchMock.mockReset();
   jest.mocked(requestCsrfToken).mockReset().mockResolvedValue('csrf-token');
   jest.spyOn(window, 'alert').mockImplementation((): void => {});
-});
-
-describe('구글 회원 탈퇴 콜백', (): void => {
-  it('탈퇴 성공 시 로그인 정보를 정리하고 로그인 토큰을 다시 요청하지 않는다', (): void => {
-    mockSearchParams.set('withdrawal', 'success');
-    localStorage.setItem('harudle.has-completed-oauth', 'true');
-    render(
-      <StrictMode>
-        <AuthCallbackPage />
-      </StrictMode>,
-    );
-    expect(setAccessToken).toHaveBeenCalledWith(null);
-    expect(localStorage.getItem('harudle.has-completed-oauth')).toBeNull();
-    expect(mockResetUser).toHaveBeenCalledTimes(1);
-    expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true });
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it('탈퇴 실패 시 로그인 정보는 유지하고 설정 화면으로 돌아간다', (): void => {
-    mockSearchParams.set('withdrawal', 'failed');
-    localStorage.setItem('harudle.has-completed-oauth', 'true');
-    render(<AuthCallbackPage />);
-    expect(localStorage.getItem('harudle.has-completed-oauth')).toBe('true');
-    expect(window.alert).toHaveBeenCalledWith(
-      '회원 탈퇴 요청을 처리하지 못했어요. 다시 시도해 주세요.',
-    );
-    expect(mockNavigate).toHaveBeenCalledWith('/setting', { replace: true });
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(setAccessToken).not.toHaveBeenCalled();
-  });
 });
 
 afterEach((): void => {
