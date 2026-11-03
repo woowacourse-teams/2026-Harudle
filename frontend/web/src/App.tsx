@@ -1,4 +1,5 @@
 import { css } from '@emotion/react';
+import { useState } from 'react';
 import { Route, Routes } from 'react-router';
 
 import AgreementRoute from './AgreementRoute';
@@ -19,8 +20,10 @@ import LoginPage from './pages/login/LoginPage';
 import NotFoundPage from './pages/not-found/NotFoundPage';
 import PwaAnalyticsTracker from './pages/setting/PwaAnalyticsTracker';
 import SettingPage from './pages/setting/SettingPage';
+import type { NativePushControls } from './domain/push/NativePushRegistration';
 
 const App = () => {
+  const [push, setPush] = useState<NativePushControls | null>(null);
   return (
     <div css={appStyle}>
       <PwaAnalyticsTracker />
@@ -41,7 +44,7 @@ const App = () => {
         <Route path="/consent" element={<ConsentPage />} />
 
         {/* 모든 서비스 화면은 세션 복원 후 약관 동의를 확인한다. */}
-        <Route element={<PublicFeedRoute />}>
+        <Route element={<PublicFeedRoute onPushChange={setPush} />}>
           <Route element={<AgreementRoute />}>
             <Route path="/" element={<FeedPage />} />
             <Route path="/feeds/:feedId" element={<FeedDetailPage />} />
@@ -52,7 +55,7 @@ const App = () => {
               path="/diary/:diaryId/feed-post"
               element={<FeedPostPage />}
             />
-            <Route path="/setting" element={<SettingPage />} />
+            <Route path="/setting" element={<SettingPage push={push} />} />
             <Route
               path="/setting/blocked-users"
               element={<BlockedUsersPage />}
