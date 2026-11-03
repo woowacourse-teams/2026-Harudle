@@ -1,6 +1,10 @@
 import type { WebViewMessageEvent } from 'react-native-webview';
 import { handleImageAction, type ImageActionResult } from './imageActions';
 import {
+  handlePushMessage,
+  type PushRegistrationResult,
+} from '../push/pushRegistration';
+import {
   handleAppleSignInMessage,
   type AppleSignInResult,
 } from '../auth/appleSignIn';
@@ -22,6 +26,7 @@ export const handleWebViewMessage = async (
   event: WebViewMessageEvent,
   onAppleSignInResult: (result: AppleSignInResult) => void,
   onImageResult: (result: ImageActionResult) => void,
+  onPushResult: (result: PushRegistrationResult) => void,
 ): Promise<void> => {
   let message: unknown;
   try {
@@ -34,6 +39,18 @@ export const handleWebViewMessage = async (
   if (!isBridgeMessage(message)) return;
 
   switch (message.type) {
+    case 'push.register':
+    case 'push.sync':
+    case 'push.unregister': {
+      try {
+        if (new URL(event.nativeEvent.url).origin !== 'https://www.harudle.com')
+          return;
+      } catch {
+        return;
+      }
+      await handlePushMessage(message, onPushResult);
+      return;
+    }
     case 'image.save':
     case 'image.copy': {
       // 외부 페이지에서는 앱의 이미지 기능을 실행하지 않는다.

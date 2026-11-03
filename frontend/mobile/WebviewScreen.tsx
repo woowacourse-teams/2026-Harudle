@@ -1,8 +1,12 @@
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useRef } from 'react';
-import { BackHandler, Platform } from 'react-native';
+import { useCallback, useEffect, useRef } from 'react';
+import { AppState, BackHandler, Platform } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { handleWebViewMessage } from './bridge/handleWebViewMessage';
+import {
+  refreshPushRegistration,
+  stopPushListener,
+} from './push/pushRegistration';
 
 const WEB_URL = 'https://www.harudle.com/';
 const WEB_ORIGIN = new URL(WEB_URL).origin;
@@ -16,12 +20,13 @@ export default function WebViewScreen() {
     SplashScreen.hide();
   };
 
-  const sendMessage = (message: {
-    readonly type: string;
-    readonly payload: unknown;
-    readonly id?: string;
-  }): void => {
-    webViewRef.current?.injectJavaScript(`
+  const sendMessage = useCallback(
+    (message: {
+      readonly type: string;
+      readonly payload: unknown;
+      readonly id?: string;
+    }): void => {
+      webViewRef.current?.injectJavaScript(`
       if (window.location.origin === ${JSON.stringify(WEB_ORIGIN)}) {
         window.dispatchEvent(
           new CustomEvent('harudle:message', {
@@ -31,7 +36,23 @@ export default function WebViewScreen() {
       }
       true;
     `);
-  };
+    },
+    [],
+  );
+
+  useEffect((): (() => void) => {
+    const subscription = AppState.addEventListener('change', (state): void => {
+      if (state === 'active') {
+        refreshPushRegistration((result): void =>
+          sendMessage({ type: 'push.registrationResult', payload: result }),
+        );
+      }
+    });
+    return (): void => {
+      subscription.remove();
+      stopPushListener();
+    };
+  }, [sendMessage]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -67,6 +88,8 @@ export default function WebViewScreen() {
           (result): void =>
             sendMessage({ type: 'auth.apple.signInResult', payload: result }),
           sendMessage,
+          (result): void =>
+            sendMessage({ type: 'push.registrationResult', payload: result }),
         );
       }}
       onLoad={handleLoad}
