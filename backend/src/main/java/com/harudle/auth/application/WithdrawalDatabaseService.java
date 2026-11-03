@@ -64,6 +64,7 @@ public class WithdrawalDatabaseService {
 
     private ImageTargets deleteMember(UUID userId, User user) {
         ImageTargets targets = images.findTargets(userId);
+        images.saveCleanupTasks(targets.deletions());
         comments.preserveBlockedVisibility(userId);
         reports.anonymizeTarget(userId);
         moderation.deleteRestrictions(userId);

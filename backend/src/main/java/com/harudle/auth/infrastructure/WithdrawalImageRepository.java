@@ -1,10 +1,15 @@
 package com.harudle.auth.infrastructure;
 
+import com.harudle.auth.domain.WithdrawalImageDeletion;
+import com.harudle.auth.domain.WithdrawalImageDeletion.Storage;
+import com.harudle.generation.diary.domain.ImageVariantKeys;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
@@ -34,6 +39,19 @@ public class WithdrawalImageRepository {
         return new ImageTargets(diaryImages, profileImages);
     }
 
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void saveCleanupTasks(List<WithdrawalImageDeletion> tasks) {
+        jdbcTemplate.batchUpdate("""
+                INSERT INTO withdrawal_image_cleanup_tasks (storage, object_key)
+                VALUES (?, ?) ON CONFLICT (storage, object_key) DO NOTHING
+                """, tasks.stream().map(task -> new Object[] { task.storage().name(), task.objectKey() }).toList());
+    }
+
+    public void removeCleanupTask(WithdrawalImageDeletion task) {
+        jdbcTemplate.update("DELETE FROM withdrawal_image_cleanup_tasks WHERE storage = ? AND object_key = ?",
+                task.storage().name(), task.objectKey());
+    }
+
     public void deleteCleanupTasks(UUID userId) {
         jdbcTemplate.update("DELETE FROM profile_image_cleanup_tasks WHERE user_id = ?", userId);
     }
@@ -42,6 +60,17 @@ public class WithdrawalImageRepository {
         public ImageTargets {
             diaryImages = List.copyOf(diaryImages);
             profileImages = List.copyOf(profileImages);
+        }
+
+        public List<WithdrawalImageDeletion> deletions() {
+            List<WithdrawalImageDeletion> tasks = new ArrayList<>();
+            for (String key : diaryImages) {
+                tasks.add(new WithdrawalImageDeletion(Storage.S3_DIARY, key));
+                ImageVariantKeys.originalImageKeyCandidatesForBackup(key).forEach(original ->
+                        tasks.add(new WithdrawalImageDeletion(Storage.R2, original)));
+            }
+            profileImages.forEach(key -> tasks.add(new WithdrawalImageDeletion(Storage.S3_PROFILE, key)));
+            return tasks.stream().distinct().toList();
         }
 
         @Override

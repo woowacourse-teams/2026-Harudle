@@ -1,12 +1,11 @@
 package com.harudle.auth.application;
 
+import com.harudle.auth.domain.WithdrawalImageDeletion;
 import com.harudle.auth.infrastructure.S3ProfileImageStorage;
+import com.harudle.auth.infrastructure.WithdrawalImageRepository;
 import com.harudle.auth.infrastructure.WithdrawalImageRepository.ImageTargets;
-import com.harudle.generation.diary.domain.ImageVariantKeys;
 import com.harudle.generation.diary.service.port.BackupObjectStorage;
 import com.harudle.generation.diary.service.port.ImageStorage;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,55 +20,41 @@ public class WithdrawalImageCleanupService {
     private final ObjectProvider<ImageStorage> diaryStorage;
     private final ObjectProvider<S3ProfileImageStorage> profileStorage;
     private final ObjectProvider<BackupObjectStorage> backupStorage;
+    private final WithdrawalImageRepository images;
 
     public WithdrawalImageCleanupService(
             ObjectProvider<ImageStorage> diaryStorage,
             ObjectProvider<S3ProfileImageStorage> profileStorage,
-            ObjectProvider<BackupObjectStorage> backupStorage
+            ObjectProvider<BackupObjectStorage> backupStorage,
+            WithdrawalImageRepository images
     ) {
         this.diaryStorage = diaryStorage;
         this.profileStorage = profileStorage;
         this.backupStorage = backupStorage;
+        this.images = images;
     }
 
-    public List<DeletionFailure> delete(ImageTargets targets) {
+    public void delete(ImageTargets targets) {
         Objects.requireNonNull(targets, "삭제할 이미지 목록은 필수입니다.");
-        List<DeletionFailure> failures = new ArrayList<>();
-        for (String key : targets.diaryImages()) {
-            delete("S3_DIARY", () -> requireDiaryStorage().delete(key), failures);
-            deleteBackups(key, failures);
-        }
-        for (String key : targets.profileImages()) {
-            delete("S3_PROFILE", () -> requireProfileStorage().delete(key), failures);
-        }
-        return List.copyOf(failures);
+        targets.deletions().forEach(this::delete);
     }
 
-    private void deleteBackups(String imageKey, List<DeletionFailure> failures) {
-        List<String> originalKeys;
+    private void delete(WithdrawalImageDeletion task) {
         try {
-            originalKeys = ImageVariantKeys.originalImageKeyCandidatesForBackup(imageKey);
-        } catch (IllegalArgumentException exception) {
-            recordFailure("R2", exception, failures);
-            return;
-        }
-        for (String key : originalKeys) {
-            delete("R2", () -> requireBackupStorage().delete(key), failures);
-        }
-    }
-
-    private void delete(String storage, Runnable action, List<DeletionFailure> failures) {
-        try {
-            action.run();
+            deleteFromStorage(task);
+            images.removeCleanupTask(task);
         } catch (RuntimeException exception) {
-            recordFailure(storage, exception, failures);
+            LOGGER.warn("event=withdrawal_image_delete_failed storage={} exceptionType={}",
+                    task.storage(), exception.getClass().getSimpleName());
         }
     }
 
-    private void recordFailure(String storage, RuntimeException exception, List<DeletionFailure> failures) {
-        String exceptionType = exception.getClass().getSimpleName();
-        failures.add(new DeletionFailure(storage, exceptionType));
-        LOGGER.warn("event=withdrawal_image_delete_failed storage={} exceptionType={}", storage, exceptionType);
+    private void deleteFromStorage(WithdrawalImageDeletion task) {
+        switch (task.storage()) {
+            case S3_DIARY -> requireDiaryStorage().delete(task.objectKey());
+            case S3_PROFILE -> requireProfileStorage().delete(task.objectKey());
+            case R2 -> requireBackupStorage().delete(task.objectKey());
+        }
     }
 
     private ImageStorage requireDiaryStorage() {
@@ -95,6 +80,4 @@ public class WithdrawalImageCleanupService {
         }
         return storage;
     }
-
-    public record DeletionFailure(String storage, String exceptionType) {}
 }

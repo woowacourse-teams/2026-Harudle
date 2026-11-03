@@ -2,21 +2,31 @@ package com.harudle.auth.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
-import com.harudle.support.ServiceIntegrationTestSupport;
 import com.harudle.admin.repository.AdminReportRepository;
 import com.harudle.auth.domain.OAuthProvider;
+import com.harudle.auth.infrastructure.S3ProfileImageStorage;
+import com.harudle.auth.infrastructure.WithdrawalImageRepository;
 import com.harudle.auth.infrastructure.oauth.AppleTokenCipher;
-import com.harudle.auth.infrastructure.oauth.AppleTokenStore;
 import com.harudle.auth.infrastructure.oauth.AppleTokenRepository;
-import java.util.Base64;
-import java.util.UUID;
+import com.harudle.auth.infrastructure.oauth.AppleTokenStore;
+import com.harudle.generation.diary.service.port.BackupObjectStorage;
+import com.harudle.generation.diary.service.port.ImageStorage;
+import com.harudle.support.ServiceIntegrationTestSupport;
 import java.time.Instant;
+import java.util.Base64;
+import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -32,7 +42,10 @@ class WithdrawalDatabaseServiceTest extends ServiceIntegrationTestSupport {
     @Autowired private TransactionTemplate transactions;
     @Autowired private AdminReportRepository reports;
     @Autowired private AppleTokenRepository appleTokens;
+    @Autowired private WithdrawalImageRepository images;
     private final UUID userId = UUID.randomUUID();
+    private final String currentProfileKey = "profile/" + userId + "/current.webp";
+    private final String oldProfileKey = "profile/" + userId + "/old.webp";
     private final UUID reporterId = UUID.randomUUID();
     private final UUID reportId = UUID.randomUUID();
     private final UUID commentId = UUID.randomUUID();
@@ -43,6 +56,8 @@ class WithdrawalDatabaseServiceTest extends ServiceIntegrationTestSupport {
 
     @AfterEach
     void cleanUp() {
+        jdbc.update("DELETE FROM withdrawal_image_cleanup_tasks WHERE object_key IN (?, ?)",
+                currentProfileKey, oldProfileKey);
         jdbc.update("DELETE FROM profile_image_cleanup_tasks WHERE user_id = ?", userId);
         jdbc.update("DELETE FROM reports WHERE id = ?", reportId);
         jdbc.update("DELETE FROM moderation_events WHERE target_id IN (?, ?, ?, ?)",
@@ -65,9 +80,10 @@ class WithdrawalDatabaseServiceTest extends ServiceIntegrationTestSupport {
 
         var targets = service.delete(userId);
 
-        assertThat(targets.profileImages()).containsExactlyInAnyOrder("profile/current.webp", "profile/old.webp");
+        assertThat(targets.profileImages()).containsExactlyInAnyOrder(currentProfileKey, oldProfileKey);
         assertThat(count("users", "id")).isZero();
         assertThat(count("profile_image_cleanup_tasks", "user_id")).isZero();
+        assertThat(pendingImageKeys()).containsExactlyInAnyOrder(currentProfileKey, oldProfileKey);
     }
 
     @Test
@@ -84,6 +100,29 @@ class WithdrawalDatabaseServiceTest extends ServiceIntegrationTestSupport {
         assertThat(count("profile_image_cleanup_tasks", "user_id")).isEqualTo(1);
         assertThat(count("moderation_states", "target_id")).isEqualTo(1);
         assertThat(count("moderation_events", "target_id")).isEqualTo(1);
+        assertThat(pendingImageCount()).isZero();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void retainsFailedImageForManualCleanup() {
+        insertUserAndTask();
+        var targets = service.delete(userId);
+        ObjectProvider<ImageStorage> diaryProvider = mock(ObjectProvider.class);
+        ObjectProvider<S3ProfileImageStorage> profileProvider = mock(ObjectProvider.class);
+        ObjectProvider<BackupObjectStorage> backupProvider = mock(ObjectProvider.class);
+        S3ProfileImageStorage storage = mock(S3ProfileImageStorage.class);
+        when(profileProvider.getIfAvailable()).thenReturn(storage);
+        doThrow(new IllegalStateException()).when(storage).delete(oldProfileKey);
+        var cleanup = new WithdrawalImageCleanupService(diaryProvider, profileProvider, backupProvider,
+                images);
+
+        cleanup.delete(targets);
+
+        assertThat(count("users", "id")).isZero();
+        assertThat(pendingImageKeys()).containsExactly(oldProfileKey);
+        verify(storage).delete(currentProfileKey);
+        verify(storage).delete(oldProfileKey);
     }
 
     @Test
@@ -299,9 +338,19 @@ class WithdrawalDatabaseServiceTest extends ServiceIntegrationTestSupport {
 
     private void insertUserAndTask() {
         jdbc.update("INSERT INTO users (id, name, profile_image_object_key) VALUES (?, ?, ?)",
-                userId, "회원", "profile/current.webp");
+                userId, "회원", currentProfileKey);
         jdbc.update("INSERT INTO profile_image_cleanup_tasks (user_id, object_key, created_at, delete_after) "
-                + "VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)", userId, "profile/old.webp");
+                + "VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)", userId, oldProfileKey);
+    }
+
+    private List<String> pendingImageKeys() {
+        return jdbc.queryForList("SELECT object_key FROM withdrawal_image_cleanup_tasks WHERE object_key IN (?, ?)",
+                String.class, currentProfileKey, oldProfileKey);
+    }
+
+    private int pendingImageCount() {
+        return jdbc.queryForObject("SELECT count(*) FROM withdrawal_image_cleanup_tasks WHERE object_key IN (?, ?)",
+                Integer.class, currentProfileKey, oldProfileKey);
     }
 
     private int count(String table, String column) {
