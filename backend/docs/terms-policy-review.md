@@ -28,7 +28,7 @@
 | --- | --- | --- |
 | 일기·생성물 삭제 | 처리방침은 일기 삭제·탈퇴까지 보유한다고 안내한다. 현재 일기 삭제는 `deleted_at`을 기록하며 원문·생성물의 물리 파기와 S3·백업 정리까지 수행하지 않는다. | 사용자에게 보이지 않게 하는 삭제와 실제 파기를 구분하고, 탈퇴 작업 #421 및 운영 파기 절차와 문구를 맞춘다. |
 | 생성 횟수·토큰·분석 이력 | 처리방침은 일일 생성 횟수를 당일까지 보유한다고 안내한다. 현재 사용량 테이블은 날짜별로 저장하며 익일 삭제 절차를 확인하지 못했다. Refresh Token의 14일은 사용 가능 기간이며 행의 파기 시점과 같지 않다. 접속·분석 보유기간도 구체적이지 않다. | 실제 정리 작업과 보유 근거·기간을 확인한다. 세션 만료나 URL 만료를 데이터 파기로 간주하지 않는다. |
-| 외부 처리 업체·국외 이전 | 문서에는 AWS·Google Vertex AI·PostHog가 있다. 코드에는 Qwen의 싱가포르 리전 엔드포인트, Codex 대체 생성 worker, 선택적 R2 백업도 있다. 코드에 존재한다는 사실만으로 운영에서 모두 활성화됐다고 단정할 수 없다. | 운영 환경별 활성 업체, 이전 항목·국가·시점·보유기간·연락처와 계약을 확인한다. 필요한 위탁·국외이전 고지와 동의 근거를 정리한다. |
+| 외부 처리 업체·국외 이전 | 문서에는 AWS·Google Vertex AI·PostHog가 있다. 코드에는 Qwen의 싱가포르 리전 엔드포인트, OpenAI Images API 대체 생성, 선택적 R2 백업도 있다. 코드에 존재한다는 사실만으로 운영에서 모두 활성화됐다고 단정할 수 없다. | 운영 환경별 활성 업체, 이전 항목·국가·시점·보유기간·연락처와 계약을 확인한다. 필요한 위탁·국외이전 고지와 동의 근거를 정리한다. |
 | PostHog 수집·차단 | 문서는 입력 마스킹과 원문 상세 화면의 세션 리플레이 제외, 이메일 처리정지 후 핵심 기능 이용을 안내한다. 코드에서 회원 UUID·닉네임 식별과 일기 날짜·ID 등을 담은 이벤트는 확인되지만, 해당 화면 제외와 개별 수집 차단을 보장하는 설정은 확인하지 못했다. | 운영 콘솔과 실제 수집 화면, 마스킹·상세 제외·거부 요청 처리 절차를 확인한다. 확인 전 “원문이 수집되지 않는다”고 구현 보장으로 표시하지 않는다. |
 | 피드·댓글·프로필·신고·제재 | 약관에는 공개 피드·댓글이 반영돼 있지만, 처리방침의 수집 항목·목적·보존 범위에는 업로드 프로필, 댓글·좋아요·신고 상세와 관리자 조치 이력을 충분히 구분하지 않았다. PostHog에는 닉네임도 전송한다. | 실제 수집 항목과 목적, 공개 범위, 보존·파기 및 위탁 범위를 추가 검토한다. 신고자 식별자 연결 해제만으로 신고 상세의 개인정보가 모두 파기된다고 보지 않는다. |
 | 이용 연령 | 현재 원문은 약관 제11조·처리방침 제9항 모두 만 14세 미만 이용을 금지한다. 사용자는 이번 작업에서 기존 만 14세 이상 정책을 유지하고 아동 이용은 후속 검토하기로 확정했다. 기존 OAuth 정보만으로 연령을 인증하는 것은 아니므로 직접 확인 항목과 실제 연령 인증을 구분한다. | 이번에는 기존 기준을 유지한다. 아동 이용을 허용하는 후속 작업에서는 약관·처리방침·보호자 동의와 비회원 체험을 함께 맞춘다. 아래 설명을 참고한다. |
@@ -71,7 +71,7 @@
 
 - 회원·OAuth: [User](../src/main/java/com/harudle/auth/domain/User.java), [카카오 설정](../src/main/resources/application.yml), [카카오 응답 매핑](../src/main/java/com/harudle/auth/infrastructure/oauth/KakaoLoginCommandMapper.java)
 - 삭제·사용량: [일기 삭제](../src/main/java/com/harudle/diary/service/DiaryDeletionService.java), [일기 삭제 상태](../src/main/java/com/harudle/diary/domain/Diary.java), [날짜별 생성 사용량](../src/main/java/com/harudle/generation/usage/infrastructure/JpaGenerationUsageRepository.java)
-- 외부 처리: [provider·저장소 설정](../src/main/resources/application.yml), [Qwen 엔드포인트](../src/main/java/com/harudle/generation/adapter/out/qwen/QwenChatClient.java), [Codex worker](../codex-image-worker/README.md)
+- 외부 처리: [provider·저장소 설정](../src/main/resources/application.yml), [Qwen 엔드포인트](../src/main/java/com/harudle/generation/adapter/out/qwen/QwenChatClient.java), [OpenAI 이미지 생성](../README.md#이미지-생성의-openai-대체-호출)
 - 분석: [PostHog 초기화·식별](../../frontend/web/src/posthog/posthog.ts), [기능 이용 이벤트](../../frontend/web/src/posthog/useAnalytics.ts), [오류 수집](../../frontend/web/src/posthog/useErrorTracking.ts)
 - 보존 범위를 별도로 정해야 하는 운영 기록: [신고 접수](report-submission.md), [관리자 심사·제재](admin-moderation.md)
 

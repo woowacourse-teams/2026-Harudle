@@ -160,12 +160,12 @@ class GenerationAdapterConfigurationTest {
     }
 
     @Test
-    void configureCodexOnlyAsAnOptInImageFallbackAndDisableGeminiRetries() {
+    void configureOpenAiOnlyAsAnOptInImageFallbackAndDisableGeminiRetries() {
         GeminiClientFactory factory = spy(new ExpressGeminiClientFactory("test-api-key"));
         contextRunner.withPropertyValues(enabledAdapterProperties()).withPropertyValues(
-                        "harudle.generation.image.fallback-provider=codex",
-                        "harudle.generation.image.codex-url=http://127.0.0.1:8090",
-                        "harudle.generation.image.codex-token=test-internal-worker-token-32-characters")
+                        "harudle.generation.image.fallback-provider=openai",
+                        "harudle.generation.image.openai-api-key=test-api-key",
+                        "harudle.generation.gemini.image-aspect-ratio=9:16")
                 .withInitializer(context -> context.addBeanFactoryPostProcessor(beanFactory ->
                         beanFactory.registerSingleton("geminiClientFactory", factory)))
                 .run(context -> {
@@ -176,6 +176,8 @@ class GenerationAdapterConfigurationTest {
                     var options = ArgumentCaptor.forClass(HttpOptions.class);
                     var clients = ArgumentCaptor.forClass(ClientOptions.class);
                     verify(factory, times(2)).create(options.capture(), clients.capture());
+                    var fallback = ReflectionTestUtils.getField(context.getBean(DiaryImageGenerator.class), "fallback");
+                    assertThat(ReflectionTestUtils.getField(fallback, "imageSize")).isEqualTo("864x1536");
                     var imageOptions = options.getAllValues().stream()
                             .filter(value -> value.timeout().orElseThrow() == 180_000).findFirst().orElseThrow();
                     assertThat(imageOptions.retryOptions().orElseThrow().attempts()).contains(1);
@@ -184,7 +186,7 @@ class GenerationAdapterConfigurationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"codex", "unknown"})
+    @ValueSource(strings = {"openai", "codex", "unknown"})
     void invalidImageFallbackConfigurationFailsAtStartup(String fallback) {
         contextRunner.withPropertyValues(enabledAdapterProperties())
                 .withPropertyValues("harudle.generation.image.fallback-provider=" + fallback)

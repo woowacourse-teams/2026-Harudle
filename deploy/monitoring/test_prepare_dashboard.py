@@ -10,6 +10,7 @@ from prepare_dashboard import metric_filters, prepare_dashboard, read_dashboard,
 
 
 INSTANCE_ID = "i-0123456789abcdef0"
+NAMESPACES_FOR_TEST = {"dev": "Harudle/Dev", "prod": "Harudle/Prod"}
 
 
 class DashboardTests(unittest.TestCase):
@@ -95,10 +96,42 @@ class DashboardTests(unittest.TestCase):
             normalized.append(text)
         self.assertEqual(*normalized)
 
+    def test_image_widgets_use_agent_dimensions_and_counter_deltas(self):
+        from test_monitoring_config import read_processor, matching_declarations
+
+        for environment in ("dev", "prod"):
+            widgets = {item["properties"]["title"]: item["properties"]
+                       for item in service_widgets(environment, INSTANCE_ID)}
+            names = ("OpenAI 대체 호출 횟수", "이미지 생성 결과 (Gemini와 OpenAI)",
+                     "이미지 생성 평균 처리 시간 (Gemini와 OpenAI)", "OpenAI 이미지 응답 검증 실패")
+            _, _, processor = read_processor(environment)
+            for name in names:
+                for row in widgets[name]["metrics"]:
+                    if isinstance(row[0], dict):
+                        self.assertNotIn("DIFF(", row[0]["expression"])
+                        self.assertNotIn("RATE(", row[0]["expression"])
+                        continue
+                    declaration = matching_declarations(processor, row[1])
+                    self.assertEqual(len(declaration), 1)
+                    self.assertIn(row[2:-1:2], declaration[0]["dimensions"])
+                    self.assertEqual(row[-1]["stat"], "Sum")
+                    self.assertEqual(row[0], NAMESPACES_FOR_TEST[environment])
+            result = widgets[names[1]]["metrics"]
+            self.assertIn('stage="image_generation"', result[0][0]["expression"])
+            self.assertIn('failureType}', result[0][0]["expression"])
+            self.assertEqual(result[1][-1]["label"], "OpenAI 성공")
+            self.assertEqual(result[3][-1]["label"], "OpenAI 실패")
+            average = widgets[names[2]]["metrics"]
+            self.assertEqual(average[5][0]["expression"],
+                             "IF(openaisuccesscount>0,openaisuccesssum/openaisuccesscount)")
+            self.assertEqual(average[11][0]["expression"],
+                             "IF(openaifailurecount>0,openaifailuresum/openaifailurecount)")
+            self.assertEqual(len(widgets[names[3]]["metrics"]), 7)
+
     def test_gc_and_nonheap_widgets_are_dev_only_and_use_converted_counters(self):
-        self.assertEqual(len(service_widgets("prod", INSTANCE_ID)), 15)
+        self.assertEqual(len(service_widgets("prod", INSTANCE_ID)), 19)
         widgets = service_widgets("dev", INSTANCE_ID)
-        self.assertEqual(len(widgets), 17)
+        self.assertEqual(len(widgets), 21)
         gc, memory = widgets[-2:]
         self.assertIn("jvm_gc_pause_seconds_max", json.dumps(gc))
         self.assertIn("1000*MAX(", json.dumps(gc))
@@ -171,7 +204,7 @@ class DashboardTests(unittest.TestCase):
             result = subprocess.run(command, capture_output=True, text=True, check=True)
             self.assertEqual(len(list(output.glob("*.json"))), 17)
             self.assertEqual(json.loads(before.read_text()), previous)
-            self.assertEqual(len(json.loads((output / "dashboard.json").read_text())["widgets"]), 17)
+            self.assertEqual(len(json.loads((output / "dashboard.json").read_text())["widgets"]), 21)
 
     def test_cli_accepts_console_source_and_preserves_widgets_and_variables_for_both_environments(self):
         for environment in ("dev", "prod"):
@@ -198,7 +231,7 @@ class DashboardTests(unittest.TestCase):
                 self.assertEqual(result["variables"], original["variables"])
                 self.assertEqual(result["start"], original["start"])
                 self.assertEqual(result["widgets"][:1], original["widgets"])
-                self.assertEqual(len(result["widgets"]), 18 if environment == "dev" else 16)
+                self.assertEqual(len(result["widgets"]), 22 if environment == "dev" else 20)
                 self.assertEqual(len(list(output.glob("*.json"))), 17)
                 for index, expected in enumerate(metric_filters(environment), start=1):
                     self.assertEqual(json.loads((output / f"metric-filter-{index}.json").read_text()), expected)
