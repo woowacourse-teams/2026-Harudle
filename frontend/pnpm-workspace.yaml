@@ -3,6 +3,8 @@ packages:
   - "mobile"
   - "packages/*"
 allowBuilds:
+  '@firebase/util': false
   core-js: true
   msw: false
+  protobufjs: false
   unrs-resolver: false
