@@ -21,6 +21,7 @@ interface ModalProps {
   children: ReactNode;
   footer?: ReactNode;
   dismissible?: boolean;
+  className?: string;
   ref: Ref<ModalHandle>;
 }
 
@@ -29,6 +30,7 @@ const Modal = ({
   children,
   footer,
   ref,
+  className,
   dismissible = true,
 }: ModalProps): ReactPortal => {
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -70,6 +72,7 @@ const Modal = ({
     <dialog
       ref={dialogRef}
       css={dialogStyle}
+      className={className}
       onClick={handleBackdropClick}
       onCancel={handleCancel}
       onClose={handleClose}
