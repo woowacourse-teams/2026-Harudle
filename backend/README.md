@@ -294,6 +294,12 @@ Qwen HTTP 호출과 SSE 파싱은 별도 구현체인 `QwenChatClient`가 담당
 `ChatCompletionClient` 인터페이스를 추가하지 않습니다. 다른 Provider는 `StoryboardGenerator` 구현을
 추가하고, 같은 호출 규격을 공유할 실제 구현체가 생기면 클라이언트 인터페이스를 추출할 수 있습니다.
 
+HTTP 400 응답과 JSON 및 SSE 오류의 `error.code`가 `DataInspectionFailed` 또는
+`data_inspection_failed`이면 `AI_CONTENT_BLOCKED`로 분류합니다. 기존 콘텐츠 차단 안내를 사용하고
+보조 AI를 호출하지 않습니다. HTTP 400 본문은 최대 2MiB까지만 해석하며, 크기를 넘거나 읽기와
+JSON 해석에 실패하면 기존 HTTP 오류 분류를 유지합니다. 오류 응답 원문은 예외와 로그에 남기지 않습니다.
+차단 코드의 기준은 [Qwen 공식 오류 문서](https://www.alibabacloud.com/help/en/model-studio/error-code)를 따릅니다.
+
 기본 설정은 `qwen3.8-max`, 추론 활성화, `thinking_budget=1024`, `max_tokens=8192`, `json_object`,
 메인·보조 역할별 요청 제한 시간은 기본 60초입니다. `QwenStoryboardSettings`로 모델명, 추론 예산과 출력
 한도를 변경합니다. `json_object`에서는 기존 시스템 프롬프트 뒤에 공통 출력 스키마를 붙입니다.

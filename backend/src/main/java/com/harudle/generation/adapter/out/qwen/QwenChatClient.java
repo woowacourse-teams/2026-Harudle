@@ -1,5 +1,6 @@
 package com.harudle.generation.adapter.out.qwen;
 
+import static com.harudle.generation.adapter.out.qwen.QwenChatException.Kind.CONTENT_BLOCKED;
 import static com.harudle.generation.adapter.out.qwen.QwenChatException.Kind.HTTP;
 import static com.harudle.generation.adapter.out.qwen.QwenChatException.Kind.NETWORK;
 import static com.harudle.generation.adapter.out.qwen.QwenChatException.Kind.RESPONSE;
@@ -101,7 +102,7 @@ public final class QwenChatClient implements AutoCloseable {
         context.ifPresent(StoryboardAttemptContext::checkActive);
         try (okhttp3.Response response = call.execute()) {
             if (response.code() != 200) {
-                throw new QwenChatException(HTTP, response.code());
+                throw httpFailure(response);
             }
             if (response.body() == null) {
                 throw new QwenChatException(RESPONSE, null);
@@ -126,6 +127,26 @@ public final class QwenChatClient implements AutoCloseable {
             context.ifPresent(StoryboardAttemptContext::checkActive);
             throw new QwenChatException(RESPONSE, null);
         }
+    }
+
+    private QwenChatException httpFailure(okhttp3.Response response) {
+        if (response.code() != 400 || response.body() == null) {
+            return new QwenChatException(HTTP, response.code());
+        }
+        try (var body = response.peekBody(MAX_RESPONSE_BYTES + 1)) {
+            if (body.contentLength() <= MAX_RESPONSE_BYTES) {
+                return responseFailure(mapper.readTree(body.string()), response.code());
+            }
+        } catch (IOException | RuntimeException ignored) {
+            // 오류 본문을 읽거나 해석하지 못해도 기존 HTTP 실패 분류는 유지한다.
+        }
+        return new QwenChatException(HTTP, response.code());
+    }
+
+    private static QwenChatException responseFailure(JsonNode response, Integer statusCode) {
+        String code = response == null ? "" : response.path("error").path("code").asString("");
+        boolean blocked = "DataInspectionFailed".equals(code) || "data_inspection_failed".equals(code);
+        return new QwenChatException(blocked ? CONTENT_BLOCKED : HTTP, statusCode);
     }
 
     @Override
@@ -183,7 +204,7 @@ public final class QwenChatClient implements AutoCloseable {
         }
         JsonNode event = mapper.readTree(data);
         if (event.has("error")) {
-            throw new QwenChatException(HTTP, null);
+            throw responseFailure(event, null);
         }
         if (event.hasNonNull("usage")) {
             state.usage = usage(event.get("usage"));
@@ -215,7 +236,7 @@ public final class QwenChatClient implements AutoCloseable {
             throw new QwenChatException(RESPONSE, null);
         }
         if (json.has("error")) {
-            throw new QwenChatException(HTTP, null);
+            throw responseFailure(json, null);
         }
         JsonNode choice = json.path("choices").path(0);
         String reason = choice.path("finish_reason").asString("");
