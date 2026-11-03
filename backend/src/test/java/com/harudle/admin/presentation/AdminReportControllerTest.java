@@ -21,8 +21,6 @@ import com.harudle.admin.service.exception.AdminReportNotFoundException;
 import com.harudle.admin.service.exception.AdminReportReviewConflictException;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.UserRepository;
-import com.harudle.auth.infrastructure.oauth.OAuthLoginFailureHandler;
-import com.harudle.auth.infrastructure.oauth.OAuthLoginSuccessHandler;
 import com.harudle.auth.presentation.AuthenticatedUserIdResolver;
 import com.harudle.common.error.ApiExceptionLoggerTestConfiguration;
 import com.harudle.common.error.ProblemDetailFactory;
@@ -54,7 +52,6 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -79,9 +76,6 @@ class AdminReportControllerTest {
     @MockitoBean private ImageUrlProvider imageUrls;
     @MockitoBean private JwtDecoder jwtDecoder;
     @MockitoBean private UserRepository users;
-    @MockitoBean private OAuthLoginSuccessHandler successHandler;
-    @MockitoBean private OAuthLoginFailureHandler failureHandler;
-    @MockitoBean private ClientRegistrationRepository registrations;
 
     private User admin;
 

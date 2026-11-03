@@ -107,7 +107,9 @@ class AccountSuspensionFilterIntegrationTest {
     void rejectsDeletedUserToken() throws Exception {
         assertThat(get("/api/v1/me", "member").statusCode()).isEqualTo(200);
         when(users.existsById(USER_ID)).thenReturn(false);
-        assertThat(get("/api/v1/me", "member").statusCode()).isEqualTo(401);
+        HttpResponse<String> response = get("/api/v1/me", "member");
+        assertThat(response.statusCode()).isEqualTo(401);
+        assertThat(response.body()).contains("\"code\":\"INVALID_CURRENT_USER\"");
         assertThat(controller.calls.get()).isEqualTo(1);
     }
 

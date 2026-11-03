@@ -59,7 +59,7 @@ final class AccountSuspensionFilter extends OncePerRequestFilter {
         }
         try {
             if (!users.existsById(userId.get())) {
-                reject(request, response, ErrorType.UNAUTHORIZED);
+                reject(request, response, ErrorType.INVALID_CURRENT_USER);
                 return;
             }
             accountAccess.requireAllowedForRequest(userId.get());
