@@ -35,7 +35,9 @@ final class AccountSuspensionFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI().substring(request.getContextPath().length());
-        return UNRESTRICTED_PATHS.contains(path);
+        return UNRESTRICTED_PATHS.contains(path)
+                || ("GET".equals(request.getMethod()) && (path.equals("/api/v1/legal/documents")
+                || path.startsWith("/api/v1/legal/documents/")));
     }
 
     @Override

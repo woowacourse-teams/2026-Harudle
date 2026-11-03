@@ -107,6 +107,8 @@ Idempotency-Key: 7e5cc251-fdde-4cc0-a54e-2c8142750609
 | --- | --- | ---: | --- |
 | `GET` | `/oauth2/authorization/kakao` | 불필요 | Kakao OAuth 로그인 시작 |
 | `GET` | `/login/oauth2/code/kakao` | 불필요 | Kakao OAuth 콜백 |
+| `GET` | `/oauth2/authorization/google` | 불필요 | Google 로그인 시작 |
+| `GET` | `/login/oauth2/code/google` | 불필요 | Google 로그인 콜백 |
 | `GET` | `/api/v1/auth/csrf` | 불필요 | Cookie 기반 요청에 사용할 CSRF Token 발급 |
 | `POST` | `/api/v1/auth/refresh` | Refresh Token | Access Token 발급·재발급 |
 | `POST` | `/api/v1/auth/logout` | 불필요 | Refresh Token Cookie를 이용한 현재 로그인 세션 종료 |
@@ -207,6 +209,24 @@ Spring Security가 콜백을 처리합니다.
 5. FE는 Access Token 발급 API를 호출합니다.
 
 이메일만 같다는 이유로 서로 다른 OAuth 계정을 자동으로 병합하지 않습니다.
+
+### 4.2.1 Google 로그인
+
+```http
+GET /oauth2/authorization/google
+```
+
+`openid`, `email`, `profile` 범위로 구글 인증 화면에 리다이렉트합니다. 구글은 다음 콜백으로 인증 결과를 전달합니다.
+
+```http
+GET /login/oauth2/code/google?code={authorizationCode}&state={state}
+```
+
+Spring Security가 인증 결과와 `state`를 검증한 뒤 기존 로그인 성공 처리기를 호출합니다.
+회원은 `GOOGLE`과 구글 사용자 식별자 `sub`로 찾습니다. 카카오와 이메일이 같아도 계정은 합치지 않습니다.
+신규 회원의 `name`에는 구글 이름을 저장하고, 이름이 없으면 자동 닉네임을 사용합니다. 공개 `nickname`은
+자동 생성합니다. 소셜 이름은 최초 가입 때만 저장하고, 재로그인 때는 기존 이름을 유지합니다. Refresh Token Cookie 발급과 프론트엔드
+리다이렉트는 위의 카카오 로그인과 같은 처리를 사용합니다.
 
 ### 4.3 Access Token 발급·재발급
 
