@@ -157,6 +157,7 @@ harudle:
       primary-timeout: ${STORYBOARD_PRIMARY_TIMEOUT:60s}
       fallback-timeout: ${STORYBOARD_FALLBACK_TIMEOUT:60s}
     image:
+      provider: ${IMAGE_PROVIDER:gemini}
       fallback-provider: ${IMAGE_FALLBACK_PROVIDER:none}
       openai-api-key: ${OPENAI_API_KEY:}
       openai-model: ${OPENAI_IMAGE_MODEL:gpt-image-2.5-flare}

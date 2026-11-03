@@ -9,6 +9,7 @@ import org.springframework.validation.annotation.Validated;
 @Validated
 @ConfigurationProperties("harudle.generation.image")
 public record ImageProviderProperties(
+        @Pattern(regexp = "gemini|openai") String provider,
         @Pattern(regexp = "none|openai") String fallbackProvider,
         String openaiApiKey,
         @Pattern(regexp = "gpt-image-2[.]5-flare(-2026-09-08)?") String openaiModel,
@@ -16,6 +17,7 @@ public record ImageProviderProperties(
         @Pattern(regexp = "low|medium|high|xhigh|max|auto") String openaiQuality
 ) {
     public ImageProviderProperties {
+        provider = provider == null ? "gemini" : provider;
         fallbackProvider = fallbackProvider == null ? "none" : fallbackProvider;
         openaiModel = openaiModel == null ? "gpt-image-2.5-flare" : openaiModel;
         openaiTimeout = openaiTimeout == null ? Duration.ofSeconds(180) : openaiTimeout;
@@ -23,10 +25,19 @@ public record ImageProviderProperties(
     }
 
     public boolean openaiEnabled() {
+        return "openai".equals(provider) || openaiFallbackEnabled();
+    }
+
+    public boolean openaiFallbackEnabled() {
         return "openai".equals(fallbackProvider);
     }
 
-    @AssertTrue(message = "OpenAI 이미지 대체 생성에는 공백 없는 API 키가 필요합니다.")
+    @AssertTrue(message = "메인 이미지 제공자와 대체 제공자는 서로 달라야 합니다.")
+    public boolean isProviderCombinationValid() {
+        return !"openai".equals(provider) || !openaiFallbackEnabled();
+    }
+
+    @AssertTrue(message = "OpenAI 이미지 생성에는 공백 없는 API 키가 필요합니다.")
     public boolean isOpenaiConnectionValid() {
         return !openaiEnabled() || openaiApiKey != null && !openaiApiKey.isBlank()
                 && openaiApiKey.chars().allMatch(value -> value >= 33 && value <= 126);
@@ -40,7 +51,7 @@ public record ImageProviderProperties(
 
     @Override
     public String toString() {
-        return "ImageProviderProperties[fallbackProvider=" + fallbackProvider
+        return "ImageProviderProperties[provider=" + provider + ", fallbackProvider=" + fallbackProvider
                 + ", openaiApiKey=[redacted], openaiModel=" + openaiModel
                 + ", openaiTimeout=" + openaiTimeout
                 + ", openaiQuality=" + openaiQuality + "]";

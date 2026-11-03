@@ -91,7 +91,7 @@ public class GenerationAdapterConfiguration {
             ImageProviderProperties imageProperties
     ) {
         int requestTimeoutMillis = Math.toIntExact(properties.requestTimeout().toMillis());
-        HttpRetryOptions retryOptions = imageProperties.openaiEnabled()
+        HttpRetryOptions retryOptions = imageProperties.openaiFallbackEnabled()
                 ? HttpRetryOptions.builder().attempts(1).httpStatusCodes(List.of()).build()
                 : HttpRetryOptions.builder().attempts(properties.retryAttempts()).build();
         HttpOptions httpOptions = HttpOptions.builder()
@@ -99,7 +99,7 @@ public class GenerationAdapterConfiguration {
                 .retryOptions(retryOptions)
                 .build();
 
-        if (imageProperties.openaiEnabled()) {
+        if (imageProperties.openaiFallbackEnabled()) {
             ClientOptions clientOptions = ClientOptions.builder().customHttpClient(
                     SingleAttemptHttpTransport.builder(properties.requestTimeout()).build()
             ).build();
@@ -232,10 +232,15 @@ public class GenerationAdapterConfiguration {
             ObjectMapper objectMapper,
             MeterRegistry meterRegistry
     ) {
+        if ("openai".equals(imageProperties.provider())) {
+            return new OpenAiDiaryImageGenerator(
+                    imageProperties, properties.imageAspectRatio(), promptRenderer, objectMapper, meterRegistry
+            );
+        }
         DiaryImageGenerator primary = new GeminiDiaryImageGenerator(
                 geminiModels, properties, promptRenderer, failureReporter, stageMetrics
         );
-        if (!imageProperties.openaiEnabled()) {
+        if (!imageProperties.openaiFallbackEnabled()) {
             return primary;
         }
         DiaryImageGenerator fallback = new OpenAiDiaryImageGenerator(
