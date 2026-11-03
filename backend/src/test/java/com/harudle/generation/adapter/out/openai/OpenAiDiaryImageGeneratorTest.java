@@ -318,26 +318,59 @@ class OpenAiDiaryImageGeneratorTest {
         assertThatThrownBy(() -> adapter(calls, failingMetrics).generate(input)).isSameAs(original);
     }
 
+    static java.util.stream.Stream<org.junit.jupiter.params.provider.Arguments> invalidImageResponses() {
+        return java.util.stream.Stream.of(
+                org.junit.jupiter.params.provider.Arguments.of("{}", "application/json", OpenAiResponseFailureReason.IMAGE_MISSING),
+                org.junit.jupiter.params.provider.Arguments.of("{\"data\":[]}", "application/json", OpenAiResponseFailureReason.IMAGE_MISSING),
+                org.junit.jupiter.params.provider.Arguments.of("{\"data\":[{\"b64_json\":\"\"}]}", "application/json", OpenAiResponseFailureReason.IMAGE_MISSING),
+                org.junit.jupiter.params.provider.Arguments.of("{\"data\":[{\"b64_json\":\"invalid-base64!\"}]}", "application/json", OpenAiResponseFailureReason.INVALID_BASE64),
+                org.junit.jupiter.params.provider.Arguments.of("{\"data\":[{\"b64_json\":\"AQID\"}]}", "application/json", OpenAiResponseFailureReason.INVALID_PNG),
+                org.junit.jupiter.params.provider.Arguments.of("private-base64-or-prompt", "application/json", OpenAiResponseFailureReason.INVALID_JSON),
+                org.junit.jupiter.params.provider.Arguments.of("{\"data\":[{\"b64_json\":\"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwC\"}]}", "application/json", OpenAiResponseFailureReason.INVALID_PNG),
+                org.junit.jupiter.params.provider.Arguments.of("{\"data\":[{\"b64_json\":\"iVBORw0KGgoAAAANSUhEUgABhqAAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0f8AAAAASUVORK5CYII=\"}]}", "application/json", OpenAiResponseFailureReason.INVALID_PNG),
+                org.junit.jupiter.params.provider.Arguments.of("private-base64-or-prompt", "text/plain", OpenAiResponseFailureReason.INVALID_CONTENT_TYPE)
+        );
+    }
+
     @ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings = {
-            "{}", "{\"data\":[]}", "{\"data\":[{\"b64_json\":\"\"}]}",
-            "{\"data\":[{\"b64_json\":\"invalid-base64!\"}]}",
-            "{\"data\":[{\"b64_json\":\"AQID\"}]}", "not-json",
-            "{\"data\":[{\"b64_json\":\"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwC\"}]}",
-            "{\"data\":[{\"b64_json\":\"iVBORw0KGgoAAAANSUhEUgABhqAAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0f8AAAAASUVORK5CYII=\"}]}"
-    })
-    void rejectsMissingOrMalformedImageData(String json) throws Exception {
+    @org.junit.jupiter.params.provider.MethodSource("invalidImageResponses")
+    void rejectsMissingOrMalformedImageData(String json, String contentType,
+            OpenAiResponseFailureReason reason) throws Exception {
         var factory = mock(okhttp3.Call.Factory.class);
         var call = mock(okhttp3.Call.class);
         when(factory.newCall(any())).thenReturn(call);
         when(call.execute()).thenReturn(new okhttp3.Response.Builder()
                 .request(new okhttp3.Request.Builder().url("https://api.openai.com/v1/images/edits").build())
                 .protocol(okhttp3.Protocol.HTTP_1_1).code(200).message("OK")
-                .body(okhttp3.ResponseBody.create(json, okhttp3.MediaType.get("application/json"))).build());
+                .body(okhttp3.ResponseBody.create(json, okhttp3.MediaType.get(contentType))).build());
 
-        assertThatThrownBy(() -> adapter(factory, metrics).generate(input))
-                .isInstanceOfSatisfying(AiGenerationException.class,
-                        failure -> assertThat(failure.errorType()).isEqualTo(AiGenerationErrorType.RESPONSE_PROCESSING_ERROR));
+        var logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(OpenAiDiaryImageGenerator.class);
+        var events = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        events.start();
+        logger.addAppender(events);
+        try {
+            assertThatThrownBy(() -> adapter(factory, metrics).generate(input))
+                    .isInstanceOfSatisfying(AiGenerationException.class, failure -> {
+                        assertThat(failure.errorType()).isEqualTo(AiGenerationErrorType.RESPONSE_PROCESSING_ERROR);
+                        assertThat(failure.getCause()).hasMessage(reason.name()).hasNoCause();
+                    });
+        } finally {
+            logger.detachAppender(events);
+            events.stop();
+        }
+        assertThat(events.list).singleElement().satisfies(event -> {
+            assertThat(event.getFormattedMessage()).contains("openai_image_response_rejected", reason.name())
+                    .doesNotContain("private-base64-or-prompt");
+            assertThat(event.getThrowableProxy()).isNull();
+            assertThat(event.getKeyValuePairs()).anySatisfy(pair -> {
+                assertThat(pair.key).isEqualTo("reason");
+                assertThat(pair.value).isEqualTo(reason.name());
+            });
+        });
+        assertThat(metrics.get("harudle.image.response.failures").tag("reason", reason.name()).counter().count())
+                .isEqualTo(1);
+        assertThat(metrics.get("harudle.image.provider.duration").tag("outcome", "failure").timer().count())
+                .isEqualTo(1);
     }
 
     @Test
@@ -388,6 +421,77 @@ class OpenAiDiaryImageGeneratorTest {
         assertThat(width % 16).isZero();
         assertThat(height % 16).isZero();
         assertThat((long) width * height).isBetween(655360L, 3686400L);
+    }
+
+    @Test
+    void registersZeroMetricsBeforeAnyOpenAiCall() {
+        var factory = mock(okhttp3.Call.Factory.class);
+        adapter(factory, metrics);
+        assertThat(metrics.get("harudle.image.provider.duration").tag("outcome", "success").timer().count()).isZero();
+        assertThat(metrics.get("harudle.image.provider.duration").tag("outcome", "failure").timer().count()).isZero();
+        for (OpenAiResponseFailureReason reason : OpenAiResponseFailureReason.values()) {
+            assertThat(metrics.get("harudle.image.response.failures").tag("reason", reason.name()).counter().count())
+                    .isZero();
+        }
+        verifyNoInteractions(factory);
+    }
+
+    @Test
+    void rejectsOversizedResponseWithBoundedDiagnostic() throws Exception {
+        var factory = mock(okhttp3.Call.Factory.class);
+        var call = mock(okhttp3.Call.class);
+        when(factory.newCall(any())).thenReturn(call);
+        when(call.execute()).thenReturn(new okhttp3.Response.Builder()
+                .request(new okhttp3.Request.Builder().url("https://api.openai.com/v1/images/edits").build())
+                .protocol(okhttp3.Protocol.HTTP_1_1).code(200).message("OK")
+                .body(okhttp3.ResponseBody.create(new byte[28 * 1024 * 1024 + 1],
+                        okhttp3.MediaType.get("application/json"))).build());
+        assertThatThrownBy(() -> adapter(factory, metrics).generate(input))
+                .isInstanceOfSatisfying(AiGenerationException.class, failure ->
+                        assertThat(failure.getCause()).hasMessage("RESPONSE_TOO_LARGE").hasNoCause());
+        assertThat(metrics.get("harudle.image.response.failures").tag("reason", "RESPONSE_TOO_LARGE").counter().count())
+                .isEqualTo(1);
+    }
+
+    @Test
+    void prometheusExportsZeroBaselinesAndOneFallbackFailureWithoutResponseContent() throws Exception {
+        var factory = mock(okhttp3.Call.Factory.class);
+        var call = mock(okhttp3.Call.class);
+        when(factory.newCall(any())).thenReturn(call);
+        when(call.execute()).thenReturn(new okhttp3.Response.Builder()
+                .request(new okhttp3.Request.Builder().url("https://api.openai.com/v1/images/edits").build())
+                .protocol(okhttp3.Protocol.HTTP_1_1).code(200).message("OK")
+                .body(okhttp3.ResponseBody.create("private-base64-or-prompt",
+                        okhttp3.MediaType.get("application/json"))).build());
+        var registry = new io.micrometer.prometheusmetrics.PrometheusMeterRegistry(
+                io.micrometer.prometheusmetrics.PrometheusConfig.DEFAULT);
+        try {
+            var openai = adapter(factory, registry);
+            var generator = new FallbackDiaryImageGenerator(request -> {
+                throw new AiGenerationException(AiGenerationErrorType.TIMEOUT, "primary timed out");
+            }, openai, registry);
+            String before = registry.scrape();
+            assertThat(before).contains("# TYPE harudle_image_provider_duration_seconds summary");
+            assertThat(scrapedValue(before, "harudle_image_fallback_calls_total", "timeout")).isZero();
+            assertThat(scrapedValue(before, "harudle_image_provider_duration_seconds_count", "failure")).isZero();
+            assertThat(scrapedValue(before, "harudle_image_response_failures_total", "INVALID_JSON")).isZero();
+
+            assertThatThrownBy(() -> generator.generate(input)).isInstanceOf(AiGenerationException.class);
+
+            String after = registry.scrape();
+            assertThat(scrapedValue(after, "harudle_image_fallback_calls_total", "timeout")).isEqualTo(1);
+            assertThat(scrapedValue(after, "harudle_image_provider_duration_seconds_count", "failure")).isEqualTo(1);
+            assertThat(scrapedValue(after, "harudle_image_response_failures_total", "INVALID_JSON")).isEqualTo(1);
+            assertThat(after).doesNotContain("private-base64-or-prompt");
+        } finally {
+            registry.close();
+        }
+    }
+
+    private static double scrapedValue(String scrape, String name, String label) {
+        String line = scrape.lines().filter(value -> value.startsWith(name + "{") && value.contains(label))
+                .findFirst().orElseThrow();
+        return Double.parseDouble(line.substring(line.lastIndexOf(' ') + 1));
     }
 
     private OpenAiDiaryImageGenerator adapter(okhttp3.Call.Factory calls,

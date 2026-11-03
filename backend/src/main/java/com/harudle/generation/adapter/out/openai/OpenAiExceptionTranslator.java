@@ -35,9 +35,13 @@ public final class OpenAiExceptionTranslator {
 
     public AiGenerationException responseFailure(Throwable cause) {
         AiGenerationException classified = findClassified(cause);
-        // JSON parsing exceptions may contain fragments of the base64 image or prompt.
-        return classified != null ? classified : create(AiGenerationErrorType.RESPONSE_PROCESSING_ERROR,
-                AiProviderFailureType.UNKNOWN, new IllegalStateException("OpenAI 이미지 응답 형식이 유효하지 않습니다."));
+        return classified != null ? classified : responseFailure(OpenAiResponseFailureReason.UNEXPECTED_RESPONSE_ERROR);
+    }
+
+    AiGenerationException responseFailure(OpenAiResponseFailureReason reason) {
+        // Preserve only fixed diagnostics; parsing exceptions can contain response fragments.
+        return create(AiGenerationErrorType.RESPONSE_PROCESSING_ERROR,
+                AiProviderFailureType.UNKNOWN, new IllegalStateException(reason.name()));
     }
 
     public AiGenerationException httpFailure(int status) {

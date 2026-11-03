@@ -4,6 +4,7 @@ import com.harudle.generation.adapter.out.gemini.DiaryImagePromptRenderer;
 import com.harudle.generation.adapter.out.http.SingleAttemptHttpTransport;
 import com.harudle.generation.adapter.out.image.DiaryImagePrompt;
 import com.harudle.generation.config.ImageProviderProperties;
+import com.harudle.generation.diary.service.exception.AiGenerationException;
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
 import com.harudle.generation.diary.service.port.dto.DiaryImageGenerationRequest;
 import com.harudle.generation.diary.service.port.dto.GeneratedImage;
@@ -27,6 +28,7 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 public final class OpenAiDiaryImageGenerator implements DiaryImageGenerator {
@@ -65,6 +67,7 @@ public final class OpenAiDiaryImageGenerator implements DiaryImageGenerator {
         this.objectMapper = objectMapper;
         this.metrics = metrics;
         this.calls = calls;
+        initializeMetrics();
     }
 
     @Override
@@ -79,7 +82,8 @@ public final class OpenAiDiaryImageGenerator implements DiaryImageGenerator {
             return result;
         } finally {
             try {
-                metrics.timer("harudle.image.provider.duration", "provider", "openai", "model", properties.openaiModel(), "outcome", outcome)
+                metrics.timer("harudle.image.provider.duration", "provider", "openai",
+                                "model", properties.openaiModel(), "outcome", outcome)
                         .record(Duration.ofNanos(System.nanoTime() - started));
             } catch (RuntimeException exception) {
                 log.warn("event=metrics_recording_failed component=openai exceptionType={}",
@@ -181,26 +185,70 @@ public final class OpenAiDiaryImageGenerator implements DiaryImageGenerator {
             if (response.body() == null || response.body().contentType() == null
                     || !"application/json".equals(response.body().contentType().type() + "/"
                             + response.body().contentType().subtype())) {
-                throw new IllegalStateException("OpenAI API의 이미지 응답이 유효하지 않습니다.");
+                throw rejectResponse(OpenAiResponseFailureReason.INVALID_CONTENT_TYPE);
             }
             byte[] json = response.body().byteStream().readNBytes(MAX_RESPONSE_BYTES + 1);
             if (json.length > MAX_RESPONSE_BYTES) {
-                throw new IllegalStateException("OpenAI 이미지 응답이 크기 제한을 초과했습니다.");
+                throw rejectResponse(OpenAiResponseFailureReason.RESPONSE_TOO_LARGE);
             }
-            var encoded = objectMapper.readTree(json).path("data").path(0).path("b64_json");
+            JsonNode data;
+            try {
+                data = objectMapper.readTree(json);
+            } catch (RuntimeException exception) {
+                throw rejectResponse(OpenAiResponseFailureReason.INVALID_JSON);
+            }
+            var encoded = data.path("data").path(0).path("b64_json");
             if (!encoded.isString() || encoded.asString().isBlank()) {
-                throw new IllegalStateException("OpenAI 응답에 이미지가 없습니다.");
+                throw rejectResponse(OpenAiResponseFailureReason.IMAGE_MISSING);
             }
-            byte[] image = Base64.getDecoder().decode(encoded.asString());
+            byte[] image;
+            try {
+                image = Base64.getDecoder().decode(encoded.asString());
+            } catch (IllegalArgumentException exception) {
+                throw rejectResponse(OpenAiResponseFailureReason.INVALID_BASE64);
+            }
             if (!isPng(image)) {
-                throw new IllegalStateException("OpenAI API의 이미지 응답이 유효하지 않습니다.");
+                throw rejectResponse(OpenAiResponseFailureReason.INVALID_PNG);
             }
             return new GeneratedImage(new ByteArrayResource(image), MediaType.IMAGE_PNG);
         } catch (IOException exception) {
             throw exceptionTranslator.providerFailure(exception);
+        } catch (AiGenerationException exception) {
+            throw exception;
         } catch (RuntimeException exception) {
-            throw exceptionTranslator.responseFailure(exception);
+            throw rejectResponse(OpenAiResponseFailureReason.UNEXPECTED_RESPONSE_ERROR);
         }
+    }
+
+    private void initializeMetrics() {
+        try {
+            for (String outcome : List.of("success", "failure")) {
+                metrics.timer("harudle.image.provider.duration", "provider", "openai",
+                        "model", properties.openaiModel(), "outcome", outcome);
+            }
+            for (OpenAiResponseFailureReason reason : OpenAiResponseFailureReason.values()) {
+                metrics.counter("harudle.image.response.failures", "provider", "openai", "reason", reason.name());
+            }
+        } catch (RuntimeException exception) {
+            log.warn("event=metrics_recording_failed component=openai exceptionType={}",
+                    exception.getClass().getSimpleName());
+        }
+    }
+
+    private AiGenerationException rejectResponse(OpenAiResponseFailureReason reason) {
+        log.atWarn().addKeyValue("event", "openai_image_response_rejected")
+                .addKeyValue("provider", "openai").addKeyValue("model", properties.openaiModel())
+                .addKeyValue("reason", reason.name())
+                .log("event=openai_image_response_rejected provider=openai model={} reason={}",
+                        properties.openaiModel(), reason.name());
+        try {
+            metrics.counter("harudle.image.response.failures", "provider", "openai", "reason", reason.name())
+                    .increment();
+        } catch (RuntimeException exception) {
+            log.warn("event=metrics_recording_failed component=openai exceptionType={}",
+                    exception.getClass().getSimpleName());
+        }
+        return exceptionTranslator.responseFailure(reason);
     }
 
     private static String imageSizeFor(String aspectRatio) {

@@ -23,6 +23,7 @@ public final class FallbackDiaryImageGenerator implements DiaryImageGenerator {
         this.primary = Objects.requireNonNull(primary);
         this.fallback = Objects.requireNonNull(fallback);
         this.metrics = Objects.requireNonNull(metrics);
+        initializeMetrics();
     }
 
     @Override
@@ -50,6 +51,17 @@ public final class FallbackDiaryImageGenerator implements DiaryImageGenerator {
                 }
                 throw fallbackFailure;
             }
+        }
+    }
+
+    private void initializeMetrics() {
+        try {
+            for (String reason : java.util.List.of("rate_limited", "timeout")) {
+                metrics.counter("harudle.image.fallback.calls", "provider", "openai", "reason", reason);
+            }
+        } catch (RuntimeException exception) {
+            log.warn("event=metrics_recording_failed component=image_fallback exceptionType={}",
+                    exception.getClass().getSimpleName());
         }
     }
 

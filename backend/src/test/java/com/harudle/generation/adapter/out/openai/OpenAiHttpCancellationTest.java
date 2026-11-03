@@ -144,7 +144,7 @@ class OpenAiHttpCancellationTest {
         assertThat(calls.getFirst().isCanceled()).isTrue();
         assertThat(transportStopped.await(3, TimeUnit.SECONDS)).isTrue();
         assertThat(releaseSlow.getCount()).isEqualTo(1);
-        assertThat(metrics.find("harudle.image.provider.duration").tag("outcome", "success").timer()).isNull();
+        assertThat(metrics.find("harudle.image.provider.duration").tag("outcome", "success").timer().count()).isZero();
     }
 
     @Test
@@ -171,7 +171,7 @@ class OpenAiHttpCancellationTest {
 
         assertCancelled(failure);
         verify(call).cancel();
-        assertThat(metrics.find("harudle.image.provider.duration").tag("outcome", "success").timer()).isNull();
+        assertThat(metrics.find("harudle.image.provider.duration").tag("outcome", "success").timer().count()).isZero();
     }
 
     @Test

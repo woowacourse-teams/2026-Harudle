@@ -29,6 +29,14 @@ class FallbackDiaryImageGeneratorTest {
     private final DiaryImageGenerator generator = new FallbackDiaryImageGenerator(primary, fallback, metrics);
 
     @Test
+    void fallbackCountersAreRegisteredBeforeTheFirstAttempt() {
+        for (String reason : java.util.List.of("rate_limited", "timeout")) {
+            assertThat(metrics.get("harudle.image.fallback.calls").tag("reason", reason).counter().count()).isZero();
+        }
+        verifyNoInteractions(primary, fallback);
+    }
+
+    @Test
     void primarySuccessDoesNotInvokeFallback() {
         when(primary.generate(request)).thenReturn(image);
         assertThat(generator.generate(request)).isSameAs(image);
