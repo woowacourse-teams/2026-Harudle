@@ -143,6 +143,13 @@ http://localhost:8080/login/oauth2/code/google
 성공 후 이동할 주소는 `FRONTEND_SUCCESS_REDIRECT`, 실패 시 주소는 `FRONTEND_FAILURE_REDIRECT`로 설정합니다.
 프론트엔드가 실행되지 않아도 백엔드 인증 처리는 가능하지만, 이동한 화면은 열리지 않을 수 있습니다.
 
+구글 재인증을 거친 회원 탈퇴 결과는 로그인과 별도로 `/withdrawal/callback`에 전달합니다.
+`FRONTEND_SUCCESS_REDIRECT`와 같은 프로토콜, 호스트, 포트를 사용하고 경로는
+`/withdrawal/callback`으로 바꿉니다. 로그인 주소의 쿼리와 fragment는 이어받지 않습니다.
+성공 시 `withdrawal=success`, 실패나 인증 취소 시 `withdrawal=failed`를 붙입니다.
+추가 환경 변수나 Google에 등록한 백엔드 콜백 주소 변경은 필요하지 않습니다.
+프론트엔드의 탈퇴 전용 콜백 페이지와 함께 반영해야 합니다.
+
 요청 범위는 `openid`, `email`, `profile`입니다. Spring Security가 인증 결과를 검증한 뒤 기존 로그인 성공
 처리기로 전달합니다. 구글 계정은 `GOOGLE`과 구글의 사용자 식별자 `sub`로 찾으며, 이메일이 같아도 카카오
 계정과 합치지 않습니다. 신규 회원의 `name`에는 구글 이름을 저장하고, 이름이 없으면 자동 닉네임을 사용합니다.

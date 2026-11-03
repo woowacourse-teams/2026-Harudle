@@ -35,7 +35,7 @@ public class GoogleWithdrawalCallbackHandler {
         this.clients = clients;
         this.withdrawal = withdrawal;
         this.cookies = cookies;
-        this.callback = properties.successRedirect();
+        this.callback = properties.successRedirect().resolve("/withdrawal/callback");
     }
 
     public boolean success(HttpServletRequest request, HttpServletResponse response, Authentication authentication)

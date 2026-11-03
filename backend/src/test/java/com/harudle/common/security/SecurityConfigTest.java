@@ -244,7 +244,7 @@ class SecurityConfigTest {
                         .param("error", "access_denied").param("state", state))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(header().string(HttpHeaders.LOCATION,
-                        "http://localhost:5173/auth/callback?withdrawal=failed"));
+                        "http://localhost:5173/withdrawal/callback?withdrawal=failed"));
         assertThat(userRepository.existsById(user.getId())).isTrue();
     }
 
@@ -282,7 +282,7 @@ class SecurityConfigTest {
 
         assertThat(withdrawalCallback.success(callback, response, authentication)).isTrue();
 
-        assertThat(response.getRedirectedUrl()).isEqualTo("http://localhost:5173/auth/callback?withdrawal=success");
+        assertThat(response.getRedirectedUrl()).isEqualTo("http://localhost:5173/withdrawal/callback?withdrawal=success");
         assertThat(userRepository.existsById(user.getId())).isFalse();
         OAuth2AuthorizedClient removedClient = authorizedClients.loadAuthorizedClient("google", googleSubject);
         assertThat(removedClient).isNull();
