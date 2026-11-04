@@ -105,7 +105,7 @@ class StoryboardGenerationServiceTest {
     @CsvSource({"PROVIDER_ERROR,UNKNOWN", "PROVIDER_ERROR,AUTH_CONFIGURATION_ERROR",
             "PROVIDER_ERROR,REQUEST_REJECTED", "PROVIDER_ERROR,CANCELLED", "TIMEOUT,CANCELLED",
             "RATE_LIMITED,AUTH_CONFIGURATION_ERROR", "RESPONSE_PROCESSING_ERROR,REQUEST_REJECTED",
-            "INTERNAL_ERROR,UNKNOWN", "INTERNAL_ERROR,NETWORK_ERROR"})
+            "INTERNAL_ERROR,UNKNOWN", "INTERNAL_ERROR,NETWORK_ERROR", "CONTENT_BLOCKED,UNKNOWN"})
     @DisplayName("인증 및 입력 오류와 취소 및 미분류 오류는 메인 오류를 유지하고 대체하지 않는다")
     void preserveIneligiblePrimaryFailure(AiGenerationErrorType type, AiProviderFailureType detail) {
         AtomicInteger primaryCalls = new AtomicInteger();

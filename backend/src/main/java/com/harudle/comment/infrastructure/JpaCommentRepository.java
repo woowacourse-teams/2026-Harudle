@@ -42,9 +42,9 @@ class JpaCommentRepository implements CommentRepository {
             """;
     private static final String FIND_ACTIVE_QUERY = """
             SELECT c.id, c.feed_id, c.author_id, c.content, c.created_at,
-                   comment_author.deleted_at IS NOT NULL AS author_deleted
+                   (c.author_id IS NULL OR comment_author.deleted_at IS NOT NULL) AS author_deleted
             FROM comments c
-            JOIN users comment_author ON comment_author.id = c.author_id
+            LEFT JOIN users comment_author ON comment_author.id = c.author_id
             WHERE c.id = :commentId AND c.deleted_at IS NULL
             """;
     private static final String CREATE_QUERY = """
@@ -59,9 +59,9 @@ class JpaCommentRepository implements CommentRepository {
             """;
     private static final String LIST_QUERY = """
             SELECT c.id, c.feed_id, c.author_id, c.content, c.created_at,
-                   comment_author.deleted_at IS NOT NULL AS author_deleted
+                   (c.author_id IS NULL OR comment_author.deleted_at IS NOT NULL) AS author_deleted
             FROM comments c
-            JOIN users comment_author ON comment_author.id = c.author_id
+            LEFT JOIN users comment_author ON comment_author.id = c.author_id
             JOIN feeds f ON f.id = c.feed_id
             JOIN diaries d ON d.id = f.diary_id
             JOIN users feed_author ON feed_author.id = d.user_id
@@ -87,6 +87,12 @@ class JpaCommentRepository implements CommentRepository {
                   SELECT 1 FROM user_blocks b
                   WHERE (b.blocker_id = CAST(:viewerId AS uuid) AND b.blocked_id = c.author_id)
                      OR (b.blocker_id = c.author_id AND b.blocked_id = CAST(:viewerId AS uuid))
+              )
+            """;
+    private static final String WITHDRAWN_COMMENT_BLOCK_CONDITION = """
+              AND NOT EXISTS (
+                  SELECT 1 FROM withdrawn_comment_hidden_viewers hidden
+                  WHERE hidden.comment_id = c.id AND hidden.viewer_id = CAST(:viewerId AS uuid)
               )
             """;
     private static final String AFTER_PREDICATE = """
@@ -177,12 +183,27 @@ class JpaCommentRepository implements CommentRepository {
         }
         Query query = entityManager.createNativeQuery(
                 LIST_QUERY + VISIBLE_FEED_BLOCK_CONDITION + VISIBLE_COMMENT_BLOCK_CONDITION
+                        + WITHDRAWN_COMMENT_BLOCK_CONDITION
                         + (cursor.isPresent() ? AFTER_PREDICATE : "") + ORDER_QUERY
         ).setParameter("feedId", feedId).setParameter("viewerId", viewerId).setMaxResults(limit);
         cursor.ifPresent(value -> query.setParameter("afterCreatedAt", value.createdAt())
                 .setParameter("afterId", value.id()));
         List<Object[]> rows = query.getResultList();
         return rows.stream().map(JpaCommentRepository::snapshot).toList();
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void preserveBlockedVisibility(UUID authorId) {
+        Objects.requireNonNull(authorId, "작성자 ID는 필수입니다.");
+        entityManager.createNativeQuery("""
+                INSERT INTO withdrawn_comment_hidden_viewers (comment_id, viewer_id)
+                SELECT c.id, CASE WHEN b.blocker_id = :authorId THEN b.blocked_id ELSE b.blocker_id END
+                FROM comments c
+                JOIN user_blocks b ON b.blocker_id = :authorId OR b.blocked_id = :authorId
+                WHERE c.author_id = :authorId AND c.deleted_at IS NULL
+                ON CONFLICT DO NOTHING
+                """).setParameter("authorId", authorId).executeUpdate();
     }
 
     private long count(String query, String parameter, UUID id) {

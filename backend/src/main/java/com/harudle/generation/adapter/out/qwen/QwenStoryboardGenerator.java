@@ -118,6 +118,7 @@ public final class QwenStoryboardGenerator implements StoryboardGenerator {
 
     private static AiGenerationErrorType resolveErrorType(QwenChatException exception) {
         return switch (exception.kind()) {
+            case CONTENT_BLOCKED -> AiGenerationErrorType.CONTENT_BLOCKED;
             case TIMEOUT -> AiGenerationErrorType.TIMEOUT;
             case NETWORK -> AiGenerationErrorType.PROVIDER_ERROR;
             case RESPONSE -> AiGenerationErrorType.RESPONSE_PROCESSING_ERROR;

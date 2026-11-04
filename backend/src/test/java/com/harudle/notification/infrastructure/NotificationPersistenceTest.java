@@ -629,8 +629,8 @@ class NotificationPersistenceTest {
     }
 
     @Test
-    @DisplayName("행위자 물리 삭제로 좋아요 원인 행이 함께 사라지면 LIKE 알림은 이력만 남기고 숨긴다")
-    void hideLikeNotificationWhenActorAndLikeWereHardDeleted() {
+    @DisplayName("행위자가 물리 삭제되면 좋아요는 유지하고 LIKE 알림은 숨긴다")
+    void hideLikeNotificationWhenActorWasHardDeleted() {
         UUID notice = insertNotification(recipientId, actorId, feedId, "LIKE", FIXTURE_TIME);
         UUID sourceAction = uuidValue("SELECT source_action_id FROM notifications WHERE id = ?", notice);
         jdbc.update("DELETE FROM users WHERE id = ?", actorId);
@@ -641,7 +641,7 @@ class NotificationPersistenceTest {
         assertThat(page.items()).isEmpty();
         assertThat(page.unreadCount()).isZero();
         assertThat(profiles.callCount()).isZero();
-        assertThat(intValue("SELECT count(*) FROM feed_likes WHERE id = ?", sourceAction)).isZero();
+        assertThat(intValue("SELECT count(*) FROM feed_likes WHERE id = ? AND user_id IS NULL", sourceAction)).isEqualTo(1);
         assertThat(intValue("SELECT count(*) FROM notifications WHERE id = ?", notice)).isEqualTo(1);
         assertThat(uuidValue("SELECT actor_user_id FROM notifications WHERE id = ?", notice)).isNull();
         assertThatThrownBy(() -> service.markRead(recipientId, notice)).isInstanceOf(NotificationNotFoundException.class);

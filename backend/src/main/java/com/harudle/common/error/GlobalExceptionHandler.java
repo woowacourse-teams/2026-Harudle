@@ -1,6 +1,10 @@
 package com.harudle.common.error;
 
 import com.harudle.auth.application.AccountSuspendedException;
+import com.harudle.legal.application.LegalDocumentNotFoundException;
+import com.harudle.legal.application.LegalDocumentChangedException;
+import com.harudle.legal.application.InvalidTermsAcceptanceException;
+import com.harudle.legal.application.TermsAcceptanceRequiredException;
 import com.harudle.admin.service.exception.AdminReportNotFoundException;
 import com.harudle.admin.service.exception.AdminReportReviewConflictException;
 import com.harudle.admin.service.exception.InvalidAdminReportReviewException;
@@ -157,6 +161,26 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             return super.handleHandlerMethodValidationException(exception, headers, status, request);
         }
         return createValidationResponse(headers, status, request);
+    }
+
+    @ExceptionHandler(LegalDocumentNotFoundException.class)
+    ResponseEntity<ProblemDetail> handleLegalDocumentNotFound(HttpServletRequest request) {
+        return createResponse(ErrorType.LEGAL_DOCUMENT_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(LegalDocumentChangedException.class)
+    ResponseEntity<ProblemDetail> handleLegalDocumentChanged(HttpServletRequest request) {
+        return createResponse(ErrorType.LEGAL_DOCUMENT_CHANGED, request);
+    }
+
+    @ExceptionHandler(InvalidTermsAcceptanceException.class)
+    ResponseEntity<ProblemDetail> handleInvalidTermsAcceptance(HttpServletRequest request) {
+        return createResponse(ErrorType.INVALID_TERMS_ACCEPTANCE, request);
+    }
+
+    @ExceptionHandler(TermsAcceptanceRequiredException.class)
+    ResponseEntity<ProblemDetail> handleTermsAcceptanceRequired(HttpServletRequest request) {
+        return createResponse(ErrorType.TERMS_ACCEPTANCE_REQUIRED, request);
     }
 
     @ExceptionHandler(AccountSuspendedException.class)
@@ -476,7 +500,7 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             DiaryGenerationFailedException exception,
             HttpServletRequest request
     ) {
-        return createResponse(ErrorType.from(exception.errorCode()), request);
+        return createGenerationFailureResponse(ErrorType.from(exception.errorCode()), exception.guest(), request);
     }
 
     @ExceptionHandler(AiGenerationException.class)
@@ -484,7 +508,7 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             AiGenerationException exception,
             HttpServletRequest request
     ) {
-        return createResponse(ErrorType.from(exception.errorType()), request);
+        return createGenerationFailureResponse(ErrorType.from(exception), false, request);
     }
 
     @ExceptionHandler(ImageStorageException.class)
@@ -531,6 +555,16 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         }
         apiExceptionLogger.error(ErrorType.INTERNAL_SERVER_ERROR, exception, request);
         return createResponse(ErrorType.INTERNAL_SERVER_ERROR, request);
+    }
+
+    private ResponseEntity<ProblemDetail> createGenerationFailureResponse(
+            ErrorType errorType,
+            boolean guest,
+            HttpServletRequest request
+    ) {
+        ProblemDetail problemDetail = problemDetailFactory.create(errorType, request);
+        problemDetail.setProperty("action", GenerationErrorAction.forFailure(errorType, guest));
+        return ResponseEntity.status(errorType.status()).body(problemDetail);
     }
 
     private static boolean isLockTimeout(Throwable exception) {

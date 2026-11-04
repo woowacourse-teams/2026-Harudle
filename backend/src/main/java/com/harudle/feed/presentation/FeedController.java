@@ -9,6 +9,7 @@ import com.harudle.feed.service.FeedListService;
 import com.harudle.feed.service.FeedPublicationService;
 import com.harudle.feed.service.FeedQueryService;
 import com.harudle.feed.service.dto.FeedResult;
+import com.harudle.observability.RequestOperationTimings;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -98,7 +99,9 @@ class FeedController {
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size
     ) {
         UUID viewerId = userIds.resolveOptional(authentication).orElse(null);
-        return responseAssembler.toResponse(listService.getList(viewerId, sort, categoryId, cursor, size));
+        return responseAssembler.toResponse(RequestOperationTimings.measure(
+                RequestOperationTimings.Operation.FEED_QUERY,
+                () -> listService.getList(viewerId, sort, categoryId, cursor, size)));
     }
 
     @Operation(
@@ -116,7 +119,9 @@ class FeedController {
             @PathVariable @Pattern(regexp = UUID_PATTERN) String feedId
     ) {
         UUID viewerId = userIds.resolveOptional(authentication).orElse(null);
-        return responseAssembler.toResponse(queryService.getDetail(viewerId, UUID.fromString(feedId)));
+        return responseAssembler.toResponse(RequestOperationTimings.measure(
+                RequestOperationTimings.Operation.FEED_QUERY,
+                () -> queryService.getDetail(viewerId, UUID.fromString(feedId))));
     }
 
     @Operation(summary = "피드 삭제", description = "본인 피드를 소프트 삭제하고 미발송 푸시를 취소합니다. 원본 일기는 유지합니다.")

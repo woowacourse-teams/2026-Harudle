@@ -45,7 +45,7 @@ class DiarySourceTextSchemaMigrationTest {
 
     @BeforeEach
     void prepareActualPreEncryptionSchema() throws SQLException, IOException {
-        Flyway previous = flyway("35");
+        Flyway previous = flyway("43");
         previous.clean();
         previous.migrate();
         execute("INSERT INTO public.users (id, name) VALUES (?, ?)", USER_ID, "스키마 검증 사용자");
@@ -54,9 +54,9 @@ class DiarySourceTextSchemaMigrationTest {
     }
 
     @Test
-    @DisplayName("V38의 잠금 대기는 정책 제한으로 실패하고 스키마와 평문을 보존한 뒤 재실행할 수 있다")
+    @DisplayName("V44의 잠금 대기는 정책 제한으로 실패하고 스키마와 평문을 보존한 뒤 재실행할 수 있다")
     void lockTimeoutRollsBackSchemaAndAllowsRetry() throws SQLException, IOException {
-        Flyway next = flyway("38");
+        Flyway next = flyway("44");
         try (Connection blocker = openConnection()) {
             blocker.setAutoCommit(false);
             try (PreparedStatement lock = blocker.prepareStatement(
@@ -76,14 +76,14 @@ class DiarySourceTextSchemaMigrationTest {
 
         assertThat(scalar("SELECT source_text_version FROM public.diaries WHERE id = ?", DIARY_ID)).isEqualTo(0);
         assertThat(scalar("SELECT source_text FROM public.diaries WHERE id = ?", DIARY_ID)).isEqualTo(LEGACY_TEXT);
-        assertThat(scalar("SELECT success FROM public.flyway_schema_history WHERE version = '38'")).isEqualTo(true);
+        assertThat(scalar("SELECT success FROM public.flyway_schema_history WHERE version = '44'")).isEqualTo(true);
         next.validate();
     }
 
     @Test
-    @DisplayName("V38은 기존 평문을 유지하며 새 저장 버전의 범위를 데이터베이스 제약으로 제한한다")
+    @DisplayName("V44은 기존 평문을 유지하며 새 저장 버전의 범위를 데이터베이스 제약으로 제한한다")
     void upgradePreservesLegacyTextAndRejectsUnsupportedVersions() throws SQLException, IOException {
-        flyway("38").migrate();
+        flyway("44").migrate();
 
         assertThat(scalar("SELECT source_text FROM public.diaries WHERE id = ?", DIARY_ID)).isEqualTo(LEGACY_TEXT);
         assertThat(scalar("SELECT source_text_version FROM public.diaries WHERE id = ?", DIARY_ID)).isEqualTo(0);
@@ -114,7 +114,7 @@ class DiarySourceTextSchemaMigrationTest {
                 SELECT COUNT(*) FROM pg_catalog.pg_constraint
                 WHERE conrelid = 'public.diaries'::regclass AND conname = 'ck_diaries_source_text_version'
                 """)).isEqualTo(0L);
-        assertThat(scalar("SELECT COUNT(*) FROM public.flyway_schema_history WHERE version = '38'")).isEqualTo(0L);
+        assertThat(scalar("SELECT COUNT(*) FROM public.flyway_schema_history WHERE version = '44'")).isEqualTo(0L);
         assertThat(scalar("SELECT source_text FROM public.diaries WHERE id = ?", DIARY_ID)).isEqualTo(LEGACY_TEXT);
         assertThat(scalar("SELECT COUNT(*) FROM public.diaries")).isEqualTo(1L);
     }

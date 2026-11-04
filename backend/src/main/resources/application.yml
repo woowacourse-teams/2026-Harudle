@@ -4,7 +4,7 @@ server:
       timeout: 10m
       cookie:
         http-only: true
-        same-site: lax
+        same-site: ${SESSION_COOKIE_SAME_SITE:lax}
         secure: ${SESSION_COOKIE_SECURE:false}
 
 logging:
@@ -68,6 +68,14 @@ spring:
             scope:
               - profile_nickname
             client-name: Kakao
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            redirect-uri: "${BACKEND_BASE_URL:http://localhost:8080}/login/oauth2/code/{registrationId}"
+            scope:
+              - openid
+              - email
+              - profile
 
         provider:
           kakao:
@@ -78,6 +86,16 @@ spring:
 
 app:
   auth:
+    kakao:
+      admin-key: ${KAKAO_ADMIN_KEY:}
+    apple:
+      enabled: ${APPLE_LOGIN_ENABLED:false}
+      token-encryption-key: ${APPLE_TOKEN_ENCRYPTION_KEY:}
+      client-id: ${APPLE_CLIENT_ID:}
+      team-id: ${APPLE_TEAM_ID:}
+      key-id: ${APPLE_KEY_ID:}
+      private-key-path: ${APPLE_PRIVATE_KEY_PATH:}
+      redirect-uri: "${BACKEND_BASE_URL:http://localhost:8080}/login/oauth2/code/apple"
     frontend-origins: "${FRONTEND_ORIGINS:${FRONTEND_ORIGIN:http://localhost:5173}}"
     success-redirect: "${FRONTEND_SUCCESS_REDIRECT:http://localhost:5173/auth/callback}"
     failure-redirect: "${FRONTEND_FAILURE_REDIRECT:http://localhost:5173/auth/callback?error=oauth_failed}"
@@ -94,10 +112,15 @@ app:
       secure: ${REFRESH_COOKIE_SECURE:false}
       same-site: Lax
       ttl: 14d
+      cleanup:
+        cron: "${REFRESH_TOKEN_CLEANUP_CRON:0 0 4 * * *}"
+        zone: "${REFRESH_TOKEN_CLEANUP_ZONE:Asia/Seoul}"
 
 harudle:
   database:
     interaction-lock-timeout: ${INTERACTION_LOCK_TIMEOUT:1s}
+  legal:
+    require-terms-acceptance: ${LEGAL_REQUIRE_TERMS_ACCEPTANCE:false}
   admin:
     image-recovery:
       interval: ${ADMIN_IMAGE_RECOVERY_INTERVAL:10s}
@@ -148,10 +171,12 @@ harudle:
       primary-timeout: ${STORYBOARD_PRIMARY_TIMEOUT:60s}
       fallback-timeout: ${STORYBOARD_FALLBACK_TIMEOUT:60s}
     image:
+      provider: ${IMAGE_PROVIDER:gemini}
       fallback-provider: ${IMAGE_FALLBACK_PROVIDER:none}
-      codex-url: ${CODEX_IMAGE_WORKER_URL:}
-      codex-token: ${CODEX_IMAGE_WORKER_TOKEN:}
-      codex-timeout: ${CODEX_IMAGE_TIMEOUT:310s}
+      openai-api-key: ${OPENAI_API_KEY:}
+      openai-model: ${OPENAI_IMAGE_MODEL:gpt-image-2.5-flare}
+      openai-timeout: ${OPENAI_IMAGE_TIMEOUT:180s}
+      openai-quality: ${OPENAI_IMAGE_QUALITY:medium}
     qwen:
       api-key: ${QWEN_TOKEN_PLAN_API_KEY:}
       storyboard-model: ${QWEN_STORYBOARD_MODEL:qwen3.8-max}

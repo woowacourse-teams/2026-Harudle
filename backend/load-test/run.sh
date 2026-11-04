@@ -5,8 +5,8 @@ mode="${1:-peak}"
 run="${2:-$mode}"
 members="${3:-members}"
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-if [[ "$mode" != smoke && "$mode" != peak ]] || [[ ! "$run" =~ ^[a-zA-Z0-9_-]+$ ]] || [[ ! "$members" =~ ^[a-zA-Z0-9_-]+$ ]]; then
-  echo 'Usage: bash load-test/run.sh [smoke|peak] [new-run-name] [members-folder=members]' >&2
+if [[ "$mode" != smoke && "$mode" != peak && "$mode" != mixed ]] || [[ ! "$run" =~ ^[a-zA-Z0-9_-]+$ ]] || [[ ! "$members" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+  echo 'Usage: bash load-test/run.sh [smoke|peak|mixed] [new-run-name] [members-folder=members]' >&2
   exit 1
 fi
 if [[ ! -f "$script_dir/runs/$members/members.json" ]]; then
@@ -26,6 +26,9 @@ directory, mode, run, members = sys.argv[1:]
 group = Path(directory) / 'runs' / members
 with run_lock(group):
     accounts = load_fixture(group)
+    expected = 1200 if mode == 'mixed' else 200
+    if len(accounts['members']) != expected:
+        raise ValueError(f'{mode} requires {expected} members; choose the matching member folder')
     write_fixture(Path(directory) / 'runs' / run, accounts=accounts)
     result = subprocess.run(['bash', directory + '/run.sh', mode, run, members],
                             env={**os.environ, 'HARUDLE_LOAD_TEST_LOCKED': run})

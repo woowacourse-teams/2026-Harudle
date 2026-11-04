@@ -19,16 +19,17 @@
 | --- | --- | --- |
 | 1 | [사용자 차단 #462](https://github.com/woowacourse-teams/2026-Harudle/pull/462) | `V36__create_user_blocks.sql` |
 | 2 | [약관 동의 #476](https://github.com/woowacourse-teams/2026-Harudle/pull/476) | `V37__create_user_terms_acceptances.sql` |
-| 3 | [원문 암호화 #442](https://github.com/woowacourse-teams/2026-Harudle/pull/442) | `V38__encrypt_diary_source_text.sql` |
-| 4 | [기존 원문 전환 #450](https://github.com/woowacourse-teams/2026-Harudle/pull/450) | 별도 수동 전환·검증·최종화 |
+| 3 | 회원탈퇴와 Apple 로그인 등 최신 백엔드 | `V38`부터 `V43`까지 |
+| 4 | [원문 암호화 #442](https://github.com/woowacourse-teams/2026-Harudle/pull/442) | `V44__encrypt_diary_source_text.sql` |
+| 5 | [기존 원문 전환 #450](https://github.com/woowacourse-teams/2026-Harudle/pull/450) | 별도 수동 전환·검증·최종화 |
 
-기존 V1~35와 SQL 본문은 바꾸지 않고 미적용 파일의 번호만 재배정했다. 저장 형식의 v0/v1은 그대로다.
+기존 V1~43과 SQL 본문은 바꾸지 않고 암호화 파일의 번호만 V44로 재배정했다. 최신 브랜치의 V38은 회원탈퇴가 사용한다. 저장 형식의 v0/v1은 그대로다.
 실제 배포본에 위 SQL을 함께 포함해 순서대로 적용한다. V37을 먼저 단독 배포한 뒤 나중에 V36을
 추가하는 식으로 순서를 뒤집지 않는다. 이미 적용된 번호·체크섬을 수정하거나 `repair`로 우회하지 않는다.
 
 초기화는 배포본의 실제 SQL 버전 집합과 DB 이력을 대조한다. 예를 들어 차단·약관 이력이 있는
 환경에는 그 SQL도 포함한 배포본을 사용한다. 후속 번호를 암호화 적용으로 오인하지 않으며,
-암호화 V38 이력과 원문 열·저장 버전이 맞지 않으면 초기화를 거절한다.
+암호화 V44 이력과 원문 열·저장 버전이 맞지 않으면 초기화를 거절한다.
 
 ## 함께 병합할 설정
 
@@ -40,6 +41,6 @@
 
 ## 운영 배포 전 남은 확인
 
-운영 키·검증 자료 백업의 실제 격리 복원 연습과 운영 규모의 V38 잠금 시간 측정은 이번 코드
+운영 키·검증 자료 백업의 실제 격리 복원 연습과 운영 규모의 V44 잠금 시간 측정은 이번 코드
 검증으로 완료한 것이 아니다. [암호화 운영 안내](diary-source-text-encryption.md)의 reader 보존,
 writer 승인과 복구 조건을 충족한 뒤 배포한다. 실제 서비스에서 전환·최종화 명령을 자동 실행하지 않는다.

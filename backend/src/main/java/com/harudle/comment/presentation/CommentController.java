@@ -46,7 +46,7 @@ class CommentController {
     }
 
     @Operation(summary = "댓글 목록 조회", description = "로그인 없이 오래된 댓글순으로 조회합니다. 유효한 Bearer가 있으면 isMine을 반환합니다. "
-            + "댓글 작성자가 탈퇴해도 댓글은 유지하며, 작성자는 탈퇴한 회원으로 표시하고 ID·이미지 URL은 null, isMine은 false입니다.")
+            + "댓글 작성자가 탈퇴해도 댓글은 유지하며, 작성자는 탈퇴한 사용자로 표시하고 ID·이미지 URL은 null, isMine은 false입니다.")
     @ApiErrorResponses({ErrorType.VALIDATION_ERROR, ErrorType.UNAUTHORIZED, ErrorType.FEED_NOT_FOUND,
             ErrorType.INVALID_CURSOR, ErrorType.COMMENT_UNAVAILABLE, ErrorType.PROFILE_IMAGE_STORAGE_ERROR})
     @GetMapping(value = "/feeds/{feedId}/comments", produces = MediaType.APPLICATION_JSON_VALUE)

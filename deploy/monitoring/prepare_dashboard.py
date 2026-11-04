@@ -10,6 +10,10 @@ import re
 REGION = "ap-northeast-2"
 NAMESPACES = {"dev": "Harudle/Dev", "prod": "Harudle/Prod"}
 PROCSTAT_PATTERN = "^([^ ]*/)?java +.*-jar +/app/app[.]jar( +.*)?$"
+REQUEST_STORAGE_OPERATIONS = (
+    ("S3Head", "s3Head", "S3 존재 확인"), ("R2Head", "r2Head", "R2 존재 확인"),
+    ("S3Sign", "s3Sign", "S3 URL 서명"), ("R2Sign", "r2Sign", "R2 URL 서명"),
+)
 
 
 def metric(namespace, name, dimensions=(), **options):
@@ -96,6 +100,19 @@ def service_widgets(environment, instance_id):
         metric(namespace, "harudle_generation_capacity_rejections_total", job,
                stat="Sum", label="접수 상한으로 거절한 횟수"),
     ]))
+    widgets.append(widget("요청 안에서 실행한 저장소 작업 수", [
+        metric(namespace, f"Request{name}Count", stat="Sum", label=label)
+        for name, _, label in REQUEST_STORAGE_OPERATIONS
+    ]))
+    widgets.append(widget("요청별 저장소 누적 시간 P95", [
+        metric(namespace, f"Request{name}DurationMs", stat="p95", label=label + " (ms)")
+        for name, _, label in REQUEST_STORAGE_OPERATIONS
+    ]))
+    widgets.append(widget("피드 데이터 조회 시간", [
+        metric(namespace, "RequestFeedQueryDurationMs", stat=stat, label=label)
+        for stat, label in (("Average", "평균 (ms)"), ("p95", "P95 (ms)"), ("p99", "P99 (ms)"))
+    ]))
+    widgets.extend(image_widgets(environment))
     if environment == "dev":
         def gc_search(suffix, statistic):
             return (f'SEARCH(\'{{"{namespace}",job,gc,action,cause}} '
@@ -114,6 +131,50 @@ def service_widgets(environment, instance_id):
                 memory.append(expression(f"SUM({search})/1048576", f"{label} {description} (MiB)"))
         widgets.append(widget("Java 힙과 힙 외 메모리", memory))
     return widgets
+
+
+def image_widgets(environment):
+    namespace = NAMESPACES[environment]
+    job = ("job", "harudle-backend")
+    provider = job + ("provider", "openai")
+    fallback = widget("OpenAI 대체 호출 횟수", [
+        metric(namespace, "harudle_image_fallback_calls_total", provider + ("reason", reason),
+               stat="Sum", label=label)
+        for reason, label in (("rate_limited", "Gemini 호출량 제한"), ("timeout", "Gemini 시간 초과"))
+    ])
+    outcomes = []
+    durations = []
+    for outcome, label in (("success", "성공"), ("failure", "실패")):
+        search = ('SEARCH(\'{"' + namespace + '\",job,stage,outcome,failureType} '
+                  'MetricName="harudle_gemini_stage_calls_total" job="harudle-backend" '
+                  f'stage="image_generation" outcome="{outcome}"\', \'Sum\', 60)')
+        outcomes.append(expression(f"SUM({search})", f"Gemini {label}"))
+        outcomes.append(metric(namespace, "harudle_image_provider_duration_seconds_count",
+                               provider + ("outcome", outcome), stat="Sum", label=f"OpenAI {label}"))
+        for source, title, prefix, dimensions in (
+                ("gemini", "Gemini", "harudle_gemini_stage_duration", job + ("stage", "image_generation")),
+                ("openai", "OpenAI", "harudle_image_provider_duration", provider)):
+            identifier = source + outcome
+            durations.extend([
+                metric(namespace, prefix + "_seconds_sum", dimensions + ("outcome", outcome),
+                       stat="Sum", id=identifier + "sum", visible=False),
+                metric(namespace, prefix + "_seconds_count", dimensions + ("outcome", outcome),
+                       stat="Sum", id=identifier + "count", visible=False),
+                expression(f"IF({identifier}count>0,{identifier}sum/{identifier}count)",
+                           f"{title} {label} (초)"),
+            ])
+    failures = widget("OpenAI 이미지 응답 검증 실패", [
+        metric(namespace, "harudle_image_response_failures_total", provider + ("reason", reason),
+               stat="Sum", label=label)
+        for reason, label in (
+            ("INVALID_CONTENT_TYPE", "응답 형식 오류"), ("RESPONSE_TOO_LARGE", "응답 크기 초과"),
+            ("INVALID_JSON", "JSON 해석 실패"), ("IMAGE_MISSING", "이미지 누락"),
+            ("INVALID_BASE64", "Base64 해석 실패"), ("INVALID_PNG", "PNG 검증 실패"),
+            ("UNEXPECTED_RESPONSE_ERROR", "그 밖의 응답 처리 오류"),
+        )
+    ])
+    return [fallback, widget("이미지 생성 결과 (Gemini와 OpenAI)", outcomes),
+            widget("이미지 생성 평균 처리 시간 (Gemini와 OpenAI)", durations), failures]
 
 
 def metric_filters(environment):
@@ -135,7 +196,7 @@ def metric_filters(environment):
     duration = '{ ' + completed + ' && $.durationMs >= 0 }'
     grouped_duration = ('{ ' + completed + ' && $.durationMs >= 0 '
                         '&& ($.apiGroup = "general" || $.apiGroup = "generation") }')
-    return [
+    filters = [
         request("ApiResponseTimeMs", duration, "$.durationMs", "Milliseconds"),
         request("ApiResponseTimeMs", grouped_duration, "$.durationMs", "Milliseconds",
                 {"ApiGroup": "$.apiGroup"}),
@@ -144,6 +205,13 @@ def metric_filters(environment):
         request("FeedListSucceeded", '{ ' + completed + ' && $.operation = "feed_list" && $.httpStatus = 200 }'),
         request("FeedDetailSucceeded", '{ ' + completed + ' && $.operation = "feed_detail" && $.httpStatus = 200 }'),
     ]
+    for name, field, _ in REQUEST_STORAGE_OPERATIONS + (("FeedQuery", "feedQuery", "피드 데이터 조회"),):
+        filters.append(request(f"Request{name}Count",
+                               '{ ' + completed + f' && $.{field}Count >= 0 }}', f"$.{field}Count"))
+        filters.append(request(f"Request{name}DurationMs",
+                               '{ ' + completed + f' && $.{field}Count > 0 && $.{field}DurationMs >= 0 }}',
+                               f"$.{field}DurationMs", "Milliseconds"))
+    return filters
 
 
 def prepare_dashboard(original, environment, instance_id, rds_instance_id):

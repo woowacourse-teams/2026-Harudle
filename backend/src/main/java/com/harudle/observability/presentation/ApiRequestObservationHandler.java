@@ -1,10 +1,12 @@
 package com.harudle.observability.presentation;
 
+import com.harudle.observability.RequestOperationTimings;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationHandler;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.server.observation.ServerRequestObservationContext;
 import org.springframework.stereotype.Component;
 
@@ -13,6 +15,11 @@ class ApiRequestObservationHandler implements ObservationHandler<ServerRequestOb
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ApiRequestObservationHandler.class);
     private static final String HEALTH_CHECK_PATH = "/api/v1/feeds/00000000-0000-0000-0000-000000000000";
+    private final boolean r2Enabled;
+
+    ApiRequestObservationHandler(@Value("${harudle.generation.storage.r2.enabled:false}") boolean r2Enabled) {
+        this.r2Enabled = r2Enabled;
+    }
 
     @Override
     public boolean supportsContext(Observation.Context context) {
@@ -25,6 +32,7 @@ class ApiRequestObservationHandler implements ObservationHandler<ServerRequestOb
         if (request.getRequestURI().startsWith("/api/")
                 && !("GET".equals(request.getMethod()) && HEALTH_CHECK_PATH.equals(request.getRequestURI()))) {
             context.put(ApiRequestObservationHandler.class, System.nanoTime());
+            RequestOperationTimings.start(request);
         }
     }
 
@@ -36,13 +44,15 @@ class ApiRequestObservationHandler implements ObservationHandler<ServerRequestOb
         }
         double durationMs = Math.max(0, System.nanoTime() - startedAt) / 1_000_000.0;
         try {
-            LOGGER.atInfo()
+            var event = LOGGER.atInfo()
                     .addKeyValue("event", "api_request_completed")
                     .addKeyValue("apiGroup", apiGroup(context.getCarrier()))
                     .addKeyValue("operation", operation(context))
                     .addKeyValue("httpStatus", context.getResponse().getStatus())
                     .addKeyValue("durationMs", durationMs)
-                    .log("event=api_request_completed");
+                    .addKeyValue("r2Enabled", r2Enabled);
+            RequestOperationTimings.finish(context.getCarrier()).forEach(event::addKeyValue);
+            event.log("event=api_request_completed");
         } catch (RuntimeException exception) {
             try {
                 LOGGER.warn("event=metrics_recording_failed component=api_request exceptionType={}",

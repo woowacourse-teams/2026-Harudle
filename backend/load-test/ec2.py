@@ -9,7 +9,7 @@ import sys
 
 from assets import BUCKET, TEST_IMAGE, delete_images, load_fixture, run_lock, seed_records, upload
 from cleanup import baseline_state_sql, cleanup, cleanup_locked, cleanup_sql, load_baseline_state, save_plan
-from prepare import NAME, PREFIX, build_fixture, database_guard, login_sql, members_sql, reset_guard, write_fixture, write_members
+from prepare import MEMBERS, MEMBER_COUNTS, NAME, PREFIX, build_fixture, database_guard, login_sql, members_sql, reset_guard, write_fixture, write_members
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 APP_DIR = SCRIPT_DIR.parent
@@ -71,11 +71,13 @@ def execute_sql(container, settings, sql, network=None):
     return result.stdout.strip()
 
 
-def prepare_run(directory, settings, sql_runner):
+def prepare_run(directory, settings, sql_runner, member_count=MEMBERS):
     if not directory.exists():
-        write_members(directory)
+        write_members(directory, member_count)
     with run_lock(directory):
         fixture = load_fixture(directory)
+        if len(fixture['members']) != member_count:
+            raise ValueError('The existing member set has a different size; use a new folder')
         if (fixture['version'] != 3 or 'runName' in fixture or fixture['memberSetName'] != directory.name):
             raise ValueError('Use a reusable members folder')
         if (directory / 'database.json').exists():
@@ -86,7 +88,7 @@ def prepare_run(directory, settings, sql_runner):
         (directory / 'database.json').write_text(json.dumps(database_target(settings)))
         sql_runner(members_sql(fixture))
         (directory / '.ready').touch()
-    print(f'Prepared 200 reusable members in the dev DB: {directory.name}. Export members once.')
+    print(f'Prepared {member_count} reusable members in the dev DB: {directory.name}. Export members once.')
 
 
 def check_database(directory, settings):
@@ -185,6 +187,8 @@ def main():
     parser.add_argument('run', help='members for prepare/export; a new name such as peak1 for reset')
     parser.add_argument('--members', default='members', help='Reusable members folder used by reset')
     parser.add_argument('--client-stopped', action='store_true', help='Confirm local k6 has stopped')
+    parser.add_argument('--member-count', type=int, choices=MEMBER_COUNTS, default=MEMBERS,
+                        help='Number of reusable members for prepare (200 or 1200)')
     args = parser.parse_args()
     if not all(re.fullmatch(NAME, name) for name in [args.run, args.members]):
         parser.error('Use only letters, digits, hyphens and underscores for the run name')
@@ -198,7 +202,7 @@ def main():
         container, settings = backend_settings()
         sql_runner = lambda sql: execute_sql(container, settings, sql)
         if args.action == 'prepare':
-            prepare_run(directory, settings, sql_runner)
+            prepare_run(directory, settings, sql_runner, args.member_count)
         elif args.action == 'reset':
             reset_run(directory, SCRIPT_DIR / 'runs' / args.members, settings, sql_runner, args.client_stopped)
         else:

@@ -62,7 +62,7 @@ class LoadTestDiaryController {
         var userId = authenticatedUserIdResolver.resolve(authentication);
         boolean testMember = users.findById(userId).filter(user -> !user.isDeleted()
                 && user.getRole() == UserRole.USER && user.getPrimaryEmail() != null
-                && user.getPrimaryEmail().matches("[0-9]{1,3}@[0-9a-f]{32}\\.loadtest\\.invalid")).isPresent();
+                && user.getPrimaryEmail().matches("(?:[0-9]{1,3}|1[01][0-9]{2})@[0-9a-f]{32}\\.loadtest\\.invalid")).isPresent();
         if (!testMember) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }

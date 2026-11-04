@@ -43,7 +43,13 @@
             "jvm_memory_used_bytes": "Bytes",
             "harudle_generation_duration_seconds_sum": "Seconds",
             "harudle_generation_duration_seconds_count": "Count",
-            "harudle_gemini_tokens_total": "Count"
+            "harudle_gemini_tokens_total": "Count",
+            "harudle_image_fallback_calls_total": "Count",
+            "harudle_image_provider_duration_seconds_sum": "Seconds",
+            "harudle_image_provider_duration_seconds_count": "Count",
+            "harudle_image_response_failures_total": "Count",
+            "harudle_gemini_stage_duration_seconds_sum": "Seconds",
+            "harudle_gemini_stage_duration_seconds_count": "Count"
           },
           "metric_declaration": [
             {
@@ -147,6 +153,30 @@
               "label_matcher": "^harudle-backend$",
               "dimensions": [["job", "stage", "kind"]],
               "metric_selectors": ["^harudle_gemini_tokens_total$"]
+            },
+            {
+              "source_labels": ["job"],
+              "label_matcher": "^harudle-backend$",
+              "dimensions": [["job", "provider", "reason"]],
+              "metric_selectors": ["^harudle_image_fallback_calls_total$"]
+            },
+            {
+              "source_labels": ["job"],
+              "label_matcher": "^harudle-backend$",
+              "dimensions": [["job", "provider", "outcome"]],
+              "metric_selectors": ["^harudle_image_provider_duration_seconds_(sum|count)$"]
+            },
+            {
+              "source_labels": ["job"],
+              "label_matcher": "^harudle-backend$",
+              "dimensions": [["job", "provider", "reason"]],
+              "metric_selectors": ["^harudle_image_response_failures_total$"]
+            },
+            {
+              "source_labels": ["job"],
+              "label_matcher": "^harudle-backend$",
+              "dimensions": [["job", "stage", "outcome"]],
+              "metric_selectors": ["^harudle_gemini_stage_duration_seconds_(sum|count)$"]
             }
           ]
         }

@@ -64,7 +64,7 @@ class DiarySourceTextKeyInitializationResourcesTest {
     void rejectEncryptionVersionWhoseScriptNameDoesNotMatch() throws Throwable {
         Path migrations = Files.createDirectories(directory.resolve("db/migration"));
         Files.writeString(migrations.resolve("V1__public_initialization_fixture.sql"), "-- Public initial fixture");
-        Files.writeString(migrations.resolve("V38__unrelated_initialization_fixture.sql"), "-- Public unrelated fixture");
+        Files.writeString(migrations.resolve("V44__unrelated_initialization_fixture.sql"), "-- Public unrelated fixture");
         try (URLClassLoader unrelated = new URLClassLoader(new URL[]{directory.toUri().toURL()}, null)) {
             withClassLoader(unrelated, this::assertResourceFailure);
         }
