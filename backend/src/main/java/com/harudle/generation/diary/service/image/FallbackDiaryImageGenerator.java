@@ -23,6 +23,7 @@ public final class FallbackDiaryImageGenerator implements DiaryImageGenerator {
         this.primary = Objects.requireNonNull(primary);
         this.fallback = Objects.requireNonNull(fallback);
         this.metrics = Objects.requireNonNull(metrics);
+        initializeMetrics();
     }
 
     @Override
@@ -40,7 +41,7 @@ public final class FallbackDiaryImageGenerator implements DiaryImageGenerator {
                     || Thread.currentThread().isInterrupted()) {
                 throw primaryFailure;
             }
-            log.info("Image provider fallback: primary=gemini fallback=codex reason={}", reason);
+            log.info("Image provider fallback: primary=gemini fallback=openai reason={}", reason);
             recordFallbackMetric(reason);
             try {
                 return fallback.generate(request);
@@ -53,9 +54,20 @@ public final class FallbackDiaryImageGenerator implements DiaryImageGenerator {
         }
     }
 
+    private void initializeMetrics() {
+        try {
+            for (String reason : java.util.List.of("rate_limited", "timeout")) {
+                metrics.counter("harudle.image.fallback.calls", "provider", "openai", "reason", reason);
+            }
+        } catch (RuntimeException exception) {
+            log.warn("event=metrics_recording_failed component=image_fallback exceptionType={}",
+                    exception.getClass().getSimpleName());
+        }
+    }
+
     private void recordFallbackMetric(String reason) {
         try {
-            metrics.counter("harudle.image.fallback.calls", "provider", "codex", "reason", reason).increment();
+            metrics.counter("harudle.image.fallback.calls", "provider", "openai", "reason", reason).increment();
         } catch (RuntimeException exception) {
             log.warn("event=metrics_recording_failed component=image_fallback reason={} exceptionType={}",
                     reason, exception.getClass().getSimpleName());

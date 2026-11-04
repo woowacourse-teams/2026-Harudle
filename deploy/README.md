@@ -460,3 +460,43 @@ https://www.harudle.com/login/oauth2/code/google
 ## 요청 지연을 확인하는 로그
 
 백엔드는 요청 완료 로그에 S3와 R2 확인 횟수, URL 서명 시간, 피드 데이터 조회 시간을 남깁니다. 프론트엔드 Nginx는 같은 응답 추적 ID와 프록시 시간을 JSON으로 기록합니다. 호스트 Nginx의 실제 HTTPS 설정과 CloudWatch 필터는 별도로 적용합니다. [적용과 확인 순서](monitoring/request-latency.md)를 참고합니다.
+
+## OpenAI 이미지 대체 생성 전환
+
+### 2026-11-03 환경 파일 준비 상태
+
+2026-11-03에 dev와 prod의 `/opt/harudle/.env`에 OpenAI 설정을 저장했다.
+모델은 `gpt-image-2.5-flare`, 제한 시간은 `180s`, 품질은 `medium`이다.
+`OPENAI_API_KEY`는 비어 있고 `IMAGE_FALLBACK_PROVIDER=none`으로 비활성화 상태다.
+두 환경 모두 원본을 권한 `600`으로 백업했으며 컨테이너는 재시작하거나 재생성하지 않았다.
+
+### 활성화 절차
+
+메인 이미지 제공자는 `IMAGE_PROVIDER`로 선택합니다. 기본값은 `gemini`입니다.
+OpenAI를 메인으로 시험하려면 `IMAGE_PROVIDER=openai`, `IMAGE_FALLBACK_PROVIDER=none`과 유효한
+`OPENAI_API_KEY`를 설정합니다. 이 모드에서는 Gemini 이미지 오류를 기다리지 않고 OpenAI를 바로 호출합니다.
+Gemini를 메인으로 유지하면서 대체 호출만 켜려면 `IMAGE_PROVIDER=gemini`,
+`IMAGE_FALLBACK_PROVIDER=openai`를 사용합니다. 스토리보드 제공자 설정은 별도입니다.
+
+활성화 전에 [원문 정책 대조](<../backend/docs/adr/약관과 동의/2026-10-25-약관과 개인정보처리방침 대조 기록-작성자 미기재.md>)의 외부 처리 업체 항목을 확인합니다.
+환경별 활성 업체와 OpenAI에 전송하는 스토리보드, 그림체 지시문, 참조 이미지, 처리 국가와 보유기간을
+확인하고 필요한 위탁과 국외 이전 고지, 동의 등 처리 근거를 실제 정책과 맞춥니다.
+확인 결과를 운영 기록에 남긴 뒤 키와 활성화 설정을 적용합니다.
+
+서버 `/opt/harudle/.env`에 `IMAGE_FALLBACK_PROVIDER=openai`와 `OPENAI_API_KEY`를 설정합니다.
+모델 기본값은 `OPENAI_IMAGE_MODEL=gpt-image-2.5-flare`, 호출 제한 시간은
+`OPENAI_IMAGE_TIMEOUT=180s`, 품질은
+`OPENAI_IMAGE_QUALITY=medium`입니다. 이미지 비율은 기존 `GEMINI_IMAGE_ASPECT_RATIO`를 함께 사용합니다.
+OpenAI 전용 크기 설정은 없습니다. `env_file`로 읽으므로 Compose 서비스 추가는 필요 없습니다.
+
+기존 `IMAGE_FALLBACK_PROVIDER=codex`는 새 코드에서 지원하지 않습니다.
+전환 전에 환경 파일을 바꾸고 기존 배포 절차로 백엔드 컨테이너를 재생성합니다.
+이 변경 자체가 실행 중인 서버 환경 파일이나 컨테이너를 바꾸지는 않습니다.
+기존 Codex worker를 운영하고 있다면 진행 중인 요청이 끝난 뒤 별도 운영 절차로 중지합니다.
+
+대체 호출 모드에서는 Gemini 429 또는 시간 초과 상황에서 Flare가 한 번 호출되는지 확인합니다.
+OpenAI 메인 모드에서는 Gemini 이미지 호출 없이 생성되는지 확인합니다.
+일반 생성과 관리자 복구의 결과를 확인하고 `provider=openai` 지표와 오류 로그를 확인합니다.
+수집 설정과 대시보드는 [OpenAI 지표 안내](monitoring/README.md#openai-이미지-대체-생성-지표)에 따라 별도로 적용합니다.
+키와 요청 본문을 출력하지 않습니다. Gemini만 사용하도록 되돌리려면 `IMAGE_PROVIDER=gemini`와
+`IMAGE_FALLBACK_PROVIDER=none`으로 바꾸고 백엔드를 재생성합니다. 자세한 입력 제한과 설정은 [백엔드 안내](../backend/README.md#이미지-생성의-openai-대체-호출)를 따릅니다.

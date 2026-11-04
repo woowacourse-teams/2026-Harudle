@@ -54,7 +54,9 @@ public final class GeminiStageMetrics {
             return;
         }
         String boundedReason = switch (reason) {
-            case "STOP", "MAX_TOKENS", "SAFETY", "RECITATION", "PROHIBITED_CONTENT" -> reason;
+            case "STOP", "MAX_TOKENS", "SAFETY", "RECITATION", "PROHIBITED_CONTENT", "BLOCKLIST",
+                    "SPII", "LANGUAGE", "IMAGE_SAFETY", "IMAGE_PROHIBITED_CONTENT", "IMAGE_RECITATION",
+                    "MODEL_ARMOR" -> reason;
             default -> "OTHER";
         };
         meterRegistry.counter("harudle.gemini.finish.reason",

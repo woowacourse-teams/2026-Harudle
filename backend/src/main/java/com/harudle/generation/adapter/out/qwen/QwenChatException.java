@@ -25,6 +25,7 @@ public final class QwenChatException extends RuntimeException {
     }
 
     public enum Kind {
+        CONTENT_BLOCKED,
         HTTP,
         TIMEOUT,
         NETWORK,
