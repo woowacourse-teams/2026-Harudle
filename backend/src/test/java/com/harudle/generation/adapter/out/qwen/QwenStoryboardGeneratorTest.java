@@ -16,6 +16,7 @@ import com.harudle.generation.adapter.out.gemini.DiaryImagePromptRenderer;
 import com.harudle.generation.adapter.out.storyboard.StoryboardJsonCodec;
 import com.harudle.generation.adapter.out.storyboard.StoryboardResponseMapper;
 import com.harudle.generation.adapter.out.storyboard.StoryboardTestFixtures;
+import com.harudle.generation.diary.domain.GenerationErrorCode;
 import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
 import com.harudle.generation.diary.service.exception.AiProviderFailureType;
@@ -241,6 +242,59 @@ class QwenStoryboardGeneratorTest {
                     assertThat(exception.getCause()).isNull();
                 });
         verify(call, times(1)).execute();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"400,DataInspectionFailed", "400,data_inspection_failed",
+            "200,DataInspectionFailed", "200,data_inspection_failed"})
+    @DisplayName("Qwen의 명시적 콘텐츠 차단은 사용자 차단 코드와 WARN 로그로 전달한다")
+    void classifyContentBlockedWithoutExposingProviderBody(int status, String code) throws Exception {
+        respond(status, mapper.writeValueAsString(Map.of("error", Map.of(
+                "code", code, "message", "private diary and " + KEY))));
+
+        assertThatThrownBy(() -> generator.generate(input))
+                .isInstanceOfSatisfying(AiGenerationException.class, failure -> {
+                    assertThat(failure.errorType()).isEqualTo(AiGenerationErrorType.CONTENT_BLOCKED);
+                    assertThat(failure.errorCode()).isEqualTo(GenerationErrorCode.AI_CONTENT_BLOCKED);
+                    assertThat(failure.getMessage()).doesNotContain("private diary", KEY);
+                    assertThat(failure.getCause()).isNull();
+                });
+        verify(call, times(1)).execute();
+        var metadata = ArgumentCaptor.forClass(ExternalApiFailure.class);
+        verify(logger).warn(metadata.capture(), any(AiGenerationException.class));
+        assertThat(metadata.getValue().failureType()).isEqualTo("CONTENT_BLOCKED");
+        assertThat(meterRegistry.get("harudle.qwen.stage.calls")
+                .tag("failureType", "CONTENT_BLOCKED").counter().count()).isEqualTo(1);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"InvalidParameter", "InvalidParameter.DataInspection", "unknown", "''"})
+    @DisplayName("콘텐츠 차단 코드가 아닌 400 오류는 기존 요청 거부 분류를 유지한다")
+    void preserveOtherRequestRejections(String code) throws Exception {
+        respond(400, mapper.writeValueAsString(Map.of("error", Map.of(
+                "code", code, "message", "data_inspection_failed"))));
+
+        assertFailure(AiGenerationErrorType.PROVIDER_ERROR, AiProviderFailureType.REQUEST_REJECTED);
+    }
+
+    @Test
+    @DisplayName("스트리밍 중 콘텐츠 차단도 사용자 차단 코드로 전달한다")
+    void classifyStreamingContentBlock() throws Exception {
+        respond(200, "data: " + mapper.writeValueAsString(Map.of("error", Map.of(
+                "code", "data_inspection_failed", "message", "private diary and " + KEY))) + "\n\n");
+
+        assertThatThrownBy(() -> generator.generate(input))
+                .isInstanceOfSatisfying(AiGenerationException.class, failure ->
+                        assertThat(failure.errorCode()).isEqualTo(GenerationErrorCode.AI_CONTENT_BLOCKED));
+    }
+
+    @Test
+    @DisplayName("너무 큰 차단 응답은 해석하지 않고 기존 요청 거부 분류를 유지한다")
+    void preserveHttpFailureForOversizedErrorBody() throws Exception {
+        respond(400, mapper.writeValueAsString(Map.of("error", Map.of(
+                "code", "data_inspection_failed", "message", "x".repeat(2 * 1024 * 1024)))));
+
+        assertFailure(AiGenerationErrorType.PROVIDER_ERROR, AiProviderFailureType.REQUEST_REJECTED);
     }
 
     @Test

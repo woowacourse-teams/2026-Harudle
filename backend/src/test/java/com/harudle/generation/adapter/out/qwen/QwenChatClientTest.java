@@ -3,6 +3,7 @@ package com.harudle.generation.adapter.out.qwen;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -12,6 +13,7 @@ import com.harudle.generation.adapter.out.storyboard.StoryboardJsonCodec;
 import com.harudle.generation.adapter.out.storyboard.StoryboardResponseMapper;
 import com.harudle.generation.adapter.out.storyboard.StoryboardTestFixtures;
 import com.harudle.generation.diary.service.port.dto.StoryboardGenerationRequest;
+import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.time.Duration;
 import java.util.List;
@@ -145,6 +147,27 @@ class QwenChatClientTest {
     }
 
     @Test
+    @DisplayName("오류 본문 읽기에 실패해도 이미 받은 HTTP 상태를 유지한다")
+    void preserveHttpStatusWhenErrorBodyCannotBeRead() throws Exception {
+        ResponseBody body = mock(ResponseBody.class);
+        BufferedSource source = mock(BufferedSource.class);
+        when(body.source()).thenReturn(source);
+        when(source.peek()).thenReturn(source);
+        when(source.request(anyLong())).thenThrow(new IOException("private provider cause"));
+        respond(400, body);
+
+        assertThatThrownBy(() -> client.generate(request))
+                .isInstanceOfSatisfying(QwenChatException.class, failure -> {
+                    assertThat(failure.kind()).isEqualTo(QwenChatException.Kind.HTTP);
+                    assertThat(failure.statusCode()).isEqualTo(400);
+                    assertThat(failure.getMessage()).doesNotContain("private provider cause");
+                    assertThat(failure.getCause()).isNull();
+                });
+        verify(source).request(2 * 1024 * 1024 + 1L);
+        verify(body).close();
+    }
+
+    @Test
     @DisplayName("전체 호출 제한 시간을 설정하고 연결 재시도와 인증 헤더 리디렉션을 끈다")
     void applyEntireCallTimeoutAndSingleAttemptTransport() {
         var http = QwenChatClient.httpClient(Duration.ofMillis(500));
@@ -178,9 +201,13 @@ class QwenChatClientTest {
     }
 
     private void respond(ResponseBody body) throws Exception {
+        respond(200, body);
+    }
+
+    private void respond(int status, ResponseBody body) throws Exception {
         when(calls.newCall(any(Request.class))).thenReturn(call);
         when(call.execute()).thenReturn(new Response.Builder()
                 .request(new Request.Builder().url(QwenChatClient.TOKEN_PLAN_ENDPOINT.toString()).build())
-                .protocol(Protocol.HTTP_1_1).code(200).message("fixture").body(body).build());
+                .protocol(Protocol.HTTP_1_1).code(status).message("fixture").body(body).build());
     }
 }
