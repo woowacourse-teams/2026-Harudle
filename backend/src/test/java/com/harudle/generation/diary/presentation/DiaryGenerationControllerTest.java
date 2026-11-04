@@ -11,8 +11,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.harudle.auth.infrastructure.UserRepository;
-import com.harudle.auth.infrastructure.oauth.OAuthLoginFailureHandler;
-import com.harudle.auth.infrastructure.oauth.OAuthLoginSuccessHandler;
 import com.harudle.auth.presentation.AuthenticatedUserIdResolver;
 import com.harudle.common.error.ApiExceptionLoggerTestConfiguration;
 import com.harudle.common.error.ProblemDetailFactory;
@@ -39,7 +37,6 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
-import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -64,9 +61,6 @@ class DiaryGenerationControllerTest {
     @MockitoBean private DiaryGenerationStatusQueryService queryService;
     @MockitoBean private JwtDecoder jwtDecoder;
     @MockitoBean private UserRepository userRepository;
-    @MockitoBean private OAuthLoginSuccessHandler successHandler;
-    @MockitoBean private OAuthLoginFailureHandler failureHandler;
-    @MockitoBean private ClientRegistrationRepository clientRegistrationRepository;
 
     @ParameterizedTest
     @CsvSource({"false,PENDING", "false,PROCESSING", "false,SUCCEEDED", "false,FAILED",

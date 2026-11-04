@@ -7,6 +7,7 @@ import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.auth.infrastructure.oauth.AppleLoginCommandMapper;
 import com.harudle.auth.infrastructure.oauth.AppleNativeTokenVerifier;
 import com.harudle.auth.infrastructure.oauth.AppleNativeTokenVerifier.AppleProviderException;
+import com.harudle.auth.infrastructure.oauth.AppleTokenStore;
 import com.harudle.auth.infrastructure.token.RefreshTokenCookieWriter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -22,7 +23,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -46,10 +46,11 @@ public class AppleNativeLoginController {
     private final UserRepository users;
     private final RefreshTokenService tokens;
     private final RefreshTokenCookieWriter cookies;
+    private final AppleTokenStore appleTokens;
 
     public AppleNativeLoginController(@Qualifier("authClock") Clock clock, AppleNativeTokenVerifier verifier,
             AppleLoginCommandMapper mapper, OAuthLoginService loginService, UserRepository users,
-            RefreshTokenService tokens, RefreshTokenCookieWriter cookies) {
+            RefreshTokenService tokens, RefreshTokenCookieWriter cookies, AppleTokenStore appleTokens) {
         this.clock = clock;
         this.verifier = verifier;
         this.mapper = mapper;
@@ -57,6 +58,7 @@ public class AppleNativeLoginController {
         this.users = users;
         this.tokens = tokens;
         this.cookies = cookies;
+        this.appleTokens = appleTokens;
     }
 
     @PostMapping("/nonce")
@@ -90,9 +92,13 @@ public class AppleNativeLoginController {
         if (pending == null || !clock.instant().isBefore(pending.expiresAt())) {
             throw new IllegalArgumentException("Apple 로그인 요청이 만료되었습니다.");
         }
-        Jwt apple = verifier.verify(body.authorizationCode(), body.identityToken(), pending.value());
+        var apple = verifier.verify(body.authorizationCode(), body.identityToken(), pending.value());
         Instant now = clock.instant();
-        var result = loginService.login(mapper.map(apple.getClaims()), now);
+        var result = loginService.login(mapper.map(apple.identity().getClaims()), now);
+        Instant accessExpiresAt = apple.expiresIn() == null || apple.expiresIn() <= 0
+                ? null : now.plusSeconds(apple.expiresIn());
+        appleTokens.save(result.userId(), apple.clientId(), apple.identity().getTokenValue(), apple.accessToken(),
+                apple.refreshToken(), accessExpiresAt);
         var user = users.findById(result.userId()).orElseThrow();
         cookies.write(response, tokens.issue(user, now));
         return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build();

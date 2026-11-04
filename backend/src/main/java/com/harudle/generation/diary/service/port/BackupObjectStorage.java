@@ -20,6 +20,9 @@ public interface BackupObjectStorage {
     /** 기존 객체를 덮어쓰지 않는다. ALREADY_EXISTS는 내용 일치나 검증 성공을 의미하지 않는다. */
     BackupUploadResult uploadIfAbsent(String objectKey, GeneratedImage original);
 
+    /** 현재 환경의 백업 원본을 삭제한다. */
+    void delete(String objectKey);
+
     /** 원본과 화면 표시용 이미지의 URL을 존재 확인 없이 발급한다. 백업 작업은 원본만 처리한다. */
     ImageAccessUrl createAccessUrl(String objectKey);
 }

@@ -20,10 +20,16 @@ import java.net.URI;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClientService;
+import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
@@ -32,6 +38,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(OAuthLoginSuccessHandler.class);
     private static final String UNKNOWN_PROVIDER = "unknown";
     private static final String NO_STORE = "no-store";
 
@@ -46,6 +53,8 @@ public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
     private final LegacyCsrfCookieCleaner legacyCsrfCookieCleaner;
     private final URI successRedirect;
     private final Clock clock;
+    private final OAuth2AuthorizedClientService authorizedClients;
+    private final ObjectProvider<AppleTokenStore> appleTokens;
 
     public OAuthLoginSuccessHandler(
             OAuthLoginService oAuthLoginService,
@@ -59,7 +68,9 @@ public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
             OAuthEventLogger oAuthEventLogger,
             AuthProperties authProperties,
             @Qualifier("authClock")
-            Clock authClock
+            Clock authClock,
+            OAuth2AuthorizedClientService authorizedClients,
+            ObjectProvider<AppleTokenStore> appleTokens
     ) {
         this.oAuthLoginService = oAuthLoginService;
         this.oAuthLoginCommandResolver = oAuthLoginCommandResolver;
@@ -72,6 +83,8 @@ public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
         this.oAuthEventLogger = Objects.requireNonNull(oAuthEventLogger, "oAuthEventLogger는 필수입니다.");
         this.successRedirect = extractSuccessRedirect(authProperties);
         this.clock = Objects.requireNonNull(authClock, "authClock는 필수입니다.");
+        this.authorizedClients = authorizedClients;
+        this.appleTokens = appleTokens;
     }
 
     @Override
@@ -124,8 +137,29 @@ public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
                 oauthAuthentication.getPrincipal().getAttributes()
         );
         OAuthLoginResult loginResult = oAuthLoginService.login(command, now);
+        if ("apple".equals(oauthAuthentication.getAuthorizedClientRegistrationId())) {
+            saveAppleTokens(loginResult.userId(), oauthAuthentication);
+        }
         User user = findUser(loginResult);
         return refreshTokenService.issue(user, now);
+    }
+
+    private void saveAppleTokens(UUID userId, OAuth2AuthenticationToken authentication) {
+        try {
+            var store = appleTokens.getIfAvailable();
+            var authorized = authorizedClients.loadAuthorizedClient("apple", authentication.getName());
+            if (store == null || authorized == null || !(authentication.getPrincipal() instanceof OidcUser apple)
+                    || !apple.getSubject().equals(authorized.getPrincipalName())) {
+                throw new IllegalStateException("애플 토큰을 찾을 수 없습니다.");
+            }
+            var refresh = authorized.getRefreshToken();
+            var access = authorized.getAccessToken();
+            store.save(userId, authorized.getClientRegistration().getClientId(), apple.getIdToken().getTokenValue(),
+                    access.getTokenValue(), refresh == null ? null : refresh.getTokenValue(), access.getExpiresAt());
+        } catch (RuntimeException exception) {
+            LOGGER.warn("event=apple_token_save_failed reason=CLIENT_UNAVAILABLE exceptionType={}",
+                    exception.getClass().getSimpleName());
+        }
     }
 
     private OAuth2AuthenticationToken extractOAuthAuthentication(Authentication authentication) {

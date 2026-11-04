@@ -17,6 +17,7 @@ import com.harudle.report.domain.ReportTargetType;
 import com.harudle.report.repository.ReportRepository;
 import com.harudle.report.repository.ReportSnapshot;
 import com.harudle.report.repository.ReportTargetReader;
+import com.harudle.report.repository.ReportTargetReader.ReportTarget;
 import com.harudle.report.service.exception.ReportTargetNotFoundException;
 import java.time.Clock;
 import java.time.Instant;
@@ -55,7 +56,7 @@ class ReportServiceTest {
     @DisplayName("서버가 조회한 작성자와 인증된 신고자로 세 종류의 대상을 접수한다")
     void acceptsEachTargetAndUsesResolvedAuthor(ReportTargetType type) {
         when(reports.isActiveMember(REPORTER)).thenReturn(true);
-        when(targets.findVisibleTargetAuthorId(REPORTER, type, TARGET)).thenReturn(Optional.of(AUTHOR));
+        when(targets.findVisibleTarget(REPORTER, type, TARGET)).thenReturn(Optional.of(new ReportTarget(AUTHOR)));
         when(reports.insert(any())).thenReturn(true);
 
         ReportReceipt receipt = service.submit(REPORTER, submission(type));
@@ -100,8 +101,8 @@ class ReportServiceTest {
     @DisplayName("본인과 본인 콘텐츠는 신고할 수 없다")
     void rejectsSelfReport() {
         when(reports.isActiveMember(REPORTER)).thenReturn(true);
-        when(targets.findVisibleTargetAuthorId(REPORTER, ReportTargetType.COMMENT, TARGET))
-                .thenReturn(Optional.of(REPORTER));
+        when(targets.findVisibleTarget(REPORTER, ReportTargetType.COMMENT, TARGET))
+                .thenReturn(Optional.of(new ReportTarget(REPORTER)));
         assertThatThrownBy(() -> service.submit(REPORTER, submission(ReportTargetType.COMMENT)))
                 .isInstanceOf(InvalidReportException.class);
         verify(reports, never()).insert(any());
@@ -115,7 +116,7 @@ class ReportServiceTest {
         when(reports.isActiveMember(REPORTER)).thenReturn(true);
         when(reports.findReceiptIdByReporterAndTarget(REPORTER, type, TARGET))
                 .thenReturn(Optional.empty(), Optional.of(winningId));
-        when(targets.findVisibleTargetAuthorId(REPORTER, type, TARGET)).thenReturn(Optional.empty());
+        when(targets.findVisibleTarget(REPORTER, type, TARGET)).thenReturn(Optional.empty());
 
         assertThat(service.submit(REPORTER, submission(type)))
                 .isEqualTo(new ReportReceipt(winningId, true));
@@ -123,7 +124,7 @@ class ReportServiceTest {
         var order = inOrder(reports, targets);
         order.verify(reports).isActiveMember(REPORTER);
         order.verify(reports).findReceiptIdByReporterAndTarget(REPORTER, type, TARGET);
-        order.verify(targets).findVisibleTargetAuthorId(REPORTER, type, TARGET);
+        order.verify(targets).findVisibleTarget(REPORTER, type, TARGET);
         order.verify(reports).findReceiptIdByReporterAndTarget(REPORTER, type, TARGET);
         verify(reports, never()).insert(any());
     }
@@ -140,7 +141,7 @@ class ReportServiceTest {
         var order = inOrder(reports, targets);
         order.verify(reports).isActiveMember(REPORTER);
         order.verify(reports).findReceiptIdByReporterAndTarget(REPORTER, type, TARGET);
-        order.verify(targets).findVisibleTargetAuthorId(REPORTER, type, TARGET);
+        order.verify(targets).findVisibleTarget(REPORTER, type, TARGET);
         order.verify(reports).findReceiptIdByReporterAndTarget(REPORTER, type, TARGET);
         verify(reports, never()).insert(any());
     }
@@ -152,8 +153,8 @@ class ReportServiceTest {
         when(reports.isActiveMember(REPORTER)).thenReturn(true);
         when(reports.findReceiptIdByReporterAndTarget(REPORTER, ReportTargetType.FEED, TARGET))
                 .thenReturn(Optional.empty(), Optional.of(previousId));
-        when(targets.findVisibleTargetAuthorId(REPORTER, ReportTargetType.FEED, TARGET))
-                .thenReturn(Optional.of(AUTHOR));
+        when(targets.findVisibleTarget(REPORTER, ReportTargetType.FEED, TARGET))
+                .thenReturn(Optional.of(new ReportTarget(AUTHOR)));
 
         assertThat(service.submit(REPORTER, submission(ReportTargetType.FEED)))
                 .isEqualTo(new ReportReceipt(previousId, true));

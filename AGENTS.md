@@ -109,7 +109,7 @@ OpenAI 전용 크기 환경 변수 없이 해당 비율에 맞는 픽셀 크기�
 Gemini와 OpenAI의 기본 호출 제한 시간 합은 360초이며 입력 준비와 저장 시간은 별도다.
 OpenAI 지표는 시작 시 0으로 등록하고, 응답 검증 실패는 원문 없이 고정된 reason으로 로그와 지표에 남긴다.
 dev와 prod의 수집 설정과 대시보드 생성 도구에 OpenAI 지표를 추가했다. 서버와 AWS에는 별도 적용해야 한다.
-활성화 전 외부 전송 정보와 필요한 고지는 `backend/docs/terms-policy-review.md`를 기준으로 확인한다.
+활성화 전 외부 전송 정보와 필요한 고지는 `backend/docs/adr/약관과 동의/2026-10-25-약관과 개인정보처리방침 대조 기록-작성자 미기재.md`를 기준으로 확인한다.
 설정과 전환 절차는 `backend/README.md`와 `deploy/README.md`를 따른다.
 2026-11-03에 dev와 prod의 `/opt/harudle/.env`에 OpenAI 설정을 저장했다.
 모델은 `gpt-image-2.5-flare`, 제한 시간은 `180s`, 품질은 `medium`이다.
@@ -286,7 +286,7 @@ CodeBuild는 프론트엔드 입력이 같으면 이전 이미지를 재사용�
 | --- | --- |
 | 백엔드 코드와 테스트 | [backend/AGENTS.md](backend/AGENTS.md), [테스트 실행 안내](backend/README.md#테스트) |
 | 프론트엔드 코드 | [frontend/AGENTS.md](frontend/AGENTS.md) |
-| 약관 열람·수락 적용 | [동의 API와 단계적 적용](backend/docs/terms-consent.md), [원문 정책 대조](backend/docs/terms-policy-review.md) |
+| 약관 열람·수락 적용 | [동의 API와 단계적 적용](<backend/docs/adr/약관과 동의/2026-10-25-약관 열람과 명시적 동의 정책-작성자 미기재.md>), [원문 정책 대조](<backend/docs/adr/약관과 동의/2026-10-25-약관과 개인정보처리방침 대조 기록-작성자 미기재.md>) |
 | 배포·환경 변수 | [deploy/README.md](deploy/README.md), [.env.docker.example](.env.docker.example), [배포 환경 검사](deploy/scripts/compose_environment.sh) |
 | 컨테이너·자원·포트 | [운영 Compose](deploy/compose.prod.yaml), [dev override](deploy/compose.dev.yaml) |
 | 프록시·HTTPS·OAuth 경로 | [Host Nginx 예시](deploy/nginx/harudle.conf.example), [Frontend Nginx](frontend/nginx/default.conf) |

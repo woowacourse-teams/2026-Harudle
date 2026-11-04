@@ -16,12 +16,12 @@ import org.springframework.transaction.annotation.Transactional;
 class JpaReportTargetReader implements ReportTargetReader {
 
     private static final String USER_QUERY = """
-            SELECT target_user.id FROM users target_user
+            SELECT target_user.id, target_user.id FROM users target_user
             WHERE target_user.id = :targetId AND target_user.deleted_at IS NULL
               AND EXISTS (SELECT 1 FROM oauth_accounts a WHERE a.user_id = target_user.id)
             """;
     private static final String FEED_QUERY = """
-            SELECT feed_author.id FROM feeds f
+            SELECT f.id, feed_author.id FROM feeds f
             JOIN diaries d ON d.id = f.diary_id
             JOIN users feed_author ON feed_author.id = d.user_id
             WHERE f.id = :targetId AND f.deleted_at IS NULL AND d.deleted_at IS NULL
@@ -32,8 +32,8 @@ class JpaReportTargetReader implements ReportTargetReader {
                   WHERE hidden_feed.diary_id = f.diary_id)
             """;
     private static final String COMMENT_QUERY = """
-            SELECT comment_author.id FROM comments c
-            JOIN users comment_author ON comment_author.id = c.author_id
+            SELECT c.id, comment_author.id FROM comments c
+            LEFT JOIN users comment_author ON comment_author.id = c.author_id
             JOIN feeds f ON f.id = c.feed_id
             JOIN diaries d ON d.id = f.diary_id
             JOIN users feed_author ON feed_author.id = d.user_id
@@ -58,7 +58,7 @@ class JpaReportTargetReader implements ReportTargetReader {
     @Override
     @Transactional(readOnly = true)
     @SuppressWarnings("unchecked")
-    public Optional<UUID> findVisibleTargetAuthorId(UUID actorId, ReportTargetType targetType, UUID targetId) {
+    public Optional<ReportTarget> findVisibleTarget(UUID actorId, ReportTargetType targetType, UUID targetId) {
         Objects.requireNonNull(actorId, "actorId는 필수입니다.");
         Objects.requireNonNull(targetType, "targetType은 필수입니다.");
         Objects.requireNonNull(targetId, "targetId는 필수입니다.");
@@ -66,8 +66,8 @@ class JpaReportTargetReader implements ReportTargetReader {
         if (visibility.enabled()) {
             query.setParameter("viewerId", actorId);
         }
-        List<UUID> ids = query.getResultList();
-        return ids.stream().findFirst();
+        List<Object[]> rows = query.getResultList();
+        return rows.stream().map(row -> new ReportTarget((UUID) row[1])).findFirst();
     }
 
     private String queryFor(ReportTargetType targetType) {
@@ -82,12 +82,18 @@ class JpaReportTargetReader implements ReportTargetReader {
         return query + switch (targetType) {
             case USER -> sameVisibilityPartition("target_user");
             case FEED -> sameVisibilityPartition("feed_author");
-            case COMMENT -> sameVisibilityPartition("feed_author") + sameVisibilityPartition("comment_author");
+            case COMMENT -> sameVisibilityPartition("feed_author")
+                    + " AND (comment_author.id IS NULL OR "
+                    + sameVisibilityPartitionCondition("comment_author") + ")";
         };
     }
 
     private static String sameVisibilityPartition(String author) {
-        return " AND CASE WHEN " + author + ".primary_email LIKE '%.loadtest.invalid' THEN TRUE ELSE FALSE END"
+        return " AND " + sameVisibilityPartitionCondition(author);
+    }
+
+    private static String sameVisibilityPartitionCondition(String author) {
+        return "CASE WHEN " + author + ".primary_email LIKE '%.loadtest.invalid' THEN TRUE ELSE FALSE END"
                 + " = CASE WHEN " + DevTestDataVisibility.TEST_VIEWER_SQL + " THEN TRUE ELSE FALSE END";
     }
 }
