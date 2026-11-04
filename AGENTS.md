@@ -10,13 +10,18 @@
 새 Dev 앱 서버는 구축 중 `harudle-dev2`라고 불렀으며, 현재 AWS Name 태그는 `harudle-dev`다.
 ADR의 목표 구성과 실제 적용 상태를 구분한다.
 
+2026-11-04 Dev 앱은 Amazon Linux 2023 ARM64와 SSH 계정 `ec2-user`로 전환한 것을 확인했다.
+원문 암호화 키와 검증 파일은 준비했으며, DB는 V43 상태다. V44 적용과 실제 원문 전환은 미수행이다.
+아래 2026-10-23의 Ubuntu 설정은 과거 기록이며, 최신 확인은
+`backend/docs/diary-source-text-integration.md`를 따른다. Prod OS의 이번 전환 여부는 별도 확인한다.
+
 ## 런타임 구성
 
 ```mermaid
 flowchart TB
     browser["사용자 브라우저<br/>harudle.com / www.harudle.com / dev.harudle.com"]
 
-    subgraph ec2["EC2 · Ubuntu ARM64 · ap-northeast-2"]
+    subgraph ec2["EC2 · ARM64 · ap-northeast-2<br/>Dev Amazon Linux 2023 / Prod OS 별도 확인"]
         host["Host Nginx + Certbot<br/>80 / 443 · HTTPS 종료"]
 
         subgraph docker["Docker Compose · harudle · app bridge network"]
@@ -31,6 +36,7 @@ flowchart TB
     db[("환경별 PostgreSQL<br/>Dev와 Prod 각각 별도 DB EC2 / 사설 IP 연결")]
     s3[("S3 · techcourse-project-2026<br/>생성 이미지 / 참조 이미지")]
     kakao["Kakao OAuth"]
+    google["Google OpenID Connect"]
     gemini["Gemini · 스토리보드 / 이미지 생성"]
 
     browser -->|"HTTPS"| host
@@ -38,6 +44,7 @@ flowchart TB
     backend -->|"이미지 저장·조회 / Presigned URL 발급"| s3
     browser -->|"Presigned GET · 이미지 직접 조회"| s3
     backend -->|"HTTPS"| kakao
+    backend -->|"HTTPS"| google
     backend -->|"HTTPS"| gemini
 ```
 
@@ -46,11 +53,23 @@ flowchart TB
   API 문서의 활성화 여부는 백엔드 설정으로 결정한다.
 - TLS는 호스트에서 종료된다. 인증·리다이렉트 변경 시 두 Nginx와 백엔드의
   전달 헤더 설정을 함께 확인한다.
+- Google 로그인은 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`을 필수로 읽는다.
+  시작 경로는 `/oauth2/authorization/google`, 콜백은 `${BACKEND_BASE_URL}/login/oauth2/code/google`이다.
+  `openid`, `email`, `profile`을 요청하며, 인증 검증에는 Spring Security의 기본 Google 설정을 사용한다.
+  로컬 설정은 `backend/README.md`, 서버 키와 콜백 등록은 `deploy/README.md`를 따른다.
+- Apple 연결은 `APPLE_LOGIN_ENABLED=true`일 때만 등록한다. 필요한 식별값과 개인 키 경로는
+  `backend/README.md`를 따른다. 활성화 시 세션 쿠키는 `SameSite=None; Secure`가 필수이며,
+  `POST /login/oauth2/code/apple`만 일반 CSRF 검사에서 제외한다. 세션의 `state` 검증은 유지한다.
 - 백엔드는 DB에 저장한 S3 Object Key로 Presigned GET URL을 발급하고,
   브라우저가 S3에서 직접 이미지를 가져온다. 기본 URL 유효 시간은 `15m`이며
   `S3_ACCESS_URL_TTL`로 설정한다. 브라우저의 이미지 fetch에는 S3 CORS 설정이 필요하다.
 
 ## 실행 자원과 설정 위치
+
+만료된 Refresh Token은 전용 스케줄러가 매일 한국 시간 새벽 4시에 삭제한다.
+`REFRESH_TOKEN_CLEANUP_CRON`과 `REFRESH_TOKEN_CLEANUP_ZONE`으로 실행 시각을 바꾼다.
+`REFRESH_TOKEN_CLEANUP_CRON=-`로 예약 실행을 끌 수 있다.
+설정을 바꾸면 백엔드 컨테이너를 재생성한다. 자세한 내용은 `deploy/README.md`를 따른다.
 
 | 구성 | 연결·설정 | 자원·역할 |
 | --- | --- | --- |
@@ -93,10 +112,24 @@ flowchart TB
 기본 동시 실행 수는 `1`, `GENERATION_WORKER_POLL_INTERVAL`의
 기본 확인 간격은 `5s`다. 환경 변수를 바꾸면 로컬 백엔드는 재시작하고, 배포 컨테이너는
 재생성해야 한다.
-Codex 이미지 대체 생성을 켜면 별도의 HTTP worker가 일반 생성과 관리자 복구의 Codex 요청을 함께 처리한다.
-Worker 한 대의 동시 생성 수는 `CODEX_IMAGE_CONCURRENCY`, 대기 수는 `CODEX_IMAGE_QUEUE_CAPACITY`로 정하며 기본값은 각각 1이다.
-입력 수신 중인 요청도 접수 한도에 포함하고, 한도가 차면 503을 반환한다. 기존 300초 제한은 입력 수신과 대기, 생성을 합쳐 적용한다.
-백엔드의 일기 작업 동시 실행 수와 별도로 설정한다. 실행과 취소, 로그 확인 방법은 `backend/codex-image-worker/README.md`를 따른다.
+이미지 메인은 `IMAGE_PROVIDER`로 선택하며 기본값은 `gemini`다.
+`IMAGE_PROVIDER=openai`와 `IMAGE_FALLBACK_PROVIDER=none`이면 OpenAI를 바로 호출한다.
+스토리보드는 기존 제공자 설정을 따르며 이미지 비율은 기존 Gemini 비율 설정을 함께 사용한다.
+OpenAI 이미지 대체 생성은 Gemini 메인에서 `IMAGE_FALLBACK_PROVIDER=openai`로 켠다.
+Gemini가 429 또는 시간 초과로 실패하면 같은 스토리보드와 참조 이미지를 Flare에 한 번 보낸다.
+백엔드가 API 키로 Images API를 직접 호출하며 Codex SDK와 별도 worker는 사용하지 않는다.
+`OPENAI_API_KEY`는 서버 환경 변수에만 저장한다. 모델 기본값은 `gpt-image-2.5-flare`,
+제한 시간은 `180s`, 품질은 `medium`이다. 이미지 비율은 기존 `GEMINI_IMAGE_ASPECT_RATIO`를 사용한다.
+OpenAI 전용 크기 환경 변수 없이 해당 비율에 맞는 픽셀 크기로 변환한다.
+Gemini와 OpenAI의 기본 호출 제한 시간 합은 360초이며 입력 준비와 저장 시간은 별도다.
+OpenAI 지표는 시작 시 0으로 등록하고, 응답 검증 실패는 원문 없이 고정된 reason으로 로그와 지표에 남긴다.
+dev와 prod의 수집 설정과 대시보드 생성 도구에 OpenAI 지표를 추가했다. 서버와 AWS에는 별도 적용해야 한다.
+활성화 전 외부 전송 정보와 필요한 고지는 `backend/docs/adr/약관과 동의/2026-10-25-약관과 개인정보처리방침 대조 기록-작성자 미기재.md`를 기준으로 확인한다.
+설정과 전환 절차는 `backend/README.md`와 `deploy/README.md`를 따른다.
+2026-11-03에 dev와 prod의 `/opt/harudle/.env`에 OpenAI 설정을 저장했다.
+모델은 `gpt-image-2.5-flare`, 제한 시간은 `180s`, 품질은 `medium`이다.
+`OPENAI_API_KEY`는 비어 있고 `IMAGE_FALLBACK_PROVIDER=none`으로 비활성화 상태다.
+두 환경 모두 원본을 권한 `600`으로 백업했으며 컨테이너는 재시작하거나 재생성하지 않았다.
 앱 종료가 시작되면 새 선점을 멈추고, 생성 처리기의 종료 단계에서 진행 중인 작업을 최대 6분 기다린다.
 이 단계는 HTTP 종료 단계 뒤에 두고 다른 실행기와 DB 연결을 닫기 전에 진행한다. 작업이 먼저 끝나면 다음 종료 절차로 넘어간다.
 로컬과 배포 Compose의 백엔드 종료 유예는 7분, CodeDeploy의 `ApplicationStart` 훅 제한은 600초다.
@@ -166,7 +199,7 @@ S3 prefix 변경은 기존 DB의 이미지·참조 이미지 Object Key를 자�
 공인 IP 기록은 DB의 외부 직접 접속을 허용한다는 뜻이 아니다. 관리자 접속은 SSH 터널을 사용한다.
 인스턴스를 중지하거나 다시 만들면 주소가 달라질 수 있으므로 접속 전 현재 주소를 확인한다.
 
-### 새 Dev 서버에서 확인한 설정
+### 2026-10-23 새 Dev 서버에서 확인한 설정 (과거 기록)
 
 - `dev.harudle.com`은 새 앱 서버의 공인 IP `15.164.84.71`로 변경했다.
   공인 IP는 바뀔 수 있으므로 서버 작업 전 현재 연결 대상을 확인한다.
@@ -265,13 +298,20 @@ CodeBuild는 프론트엔드 입력이 같으면 이전 이미지를 재사용�
 - Frontend `/health`는 Nginx의 응답 여부를 확인한다. DB와 S3, Gemini의 실제 기능은
   각각의 기능 검증과 로그로 확인한다.
 
+- API 완료 로그에 요청별 S3와 R2 확인 횟수, URL 서명 시간, 피드 데이터 조회 시간을 기록한다.
+  프론트엔드 Nginx는 응답 추적 ID와 프록시 시간을 JSON으로 남긴다. 호스트 Nginx 예시에도
+  같은 형식이 있지만 실제 HTTPS 설정에는 별도로 적용해야 한다. 필드 뜻과 CloudWatch 필터
+  적용 순서는 [요청 지연 확인 절차](deploy/monitoring/request-latency.md)를 따른다.
+
 ## 작업별 확인 위치
 
 변경하는 구성에 해당하는 문서와 실제 설정을 함께 읽는다.
 
 | 작업 | 확인 위치 |
 | --- | --- |
+| 백엔드 코드와 테스트 | [backend/AGENTS.md](backend/AGENTS.md), [테스트 실행 안내](backend/README.md#테스트) |
 | 프론트엔드 코드 | [frontend/AGENTS.md](frontend/AGENTS.md) |
+| 약관 열람·수락 적용 | [동의 API와 단계적 적용](<backend/docs/adr/약관과 동의/2026-10-25-약관 열람과 명시적 동의 정책-작성자 미기재.md>), [원문 정책 대조](<backend/docs/adr/약관과 동의/2026-10-25-약관과 개인정보처리방침 대조 기록-작성자 미기재.md>) |
 | 배포·환경 변수 | [deploy/README.md](deploy/README.md), [.env.docker.example](.env.docker.example), [배포 환경 검사](deploy/scripts/compose_environment.sh) |
 | 컨테이너·자원·포트 | [운영 Compose](deploy/compose.prod.yaml), [dev override](deploy/compose.dev.yaml) |
 | 프록시·HTTPS·OAuth 경로 | [Host Nginx 예시](deploy/nginx/harudle.conf.example), [Frontend Nginx](frontend/nginx/default.conf) |

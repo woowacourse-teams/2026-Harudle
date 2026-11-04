@@ -10,6 +10,8 @@ import com.harudle.guest.domain.GuestSession;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -18,6 +20,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional(readOnly = true)
 public class DiaryGenerationStatusQueryService {
+
+    private static final List<GenerationStatus> UNFINISHED_STATUSES =
+            List.of(GenerationStatus.PENDING, GenerationStatus.PROCESSING);
 
     private final DiaryGenerationQueryRepository generationRepository;
     private final GuestSessionResolver guestSessionResolver;
@@ -31,6 +36,11 @@ public class DiaryGenerationStatusQueryService {
         this.generationRepository = generationRepository;
         this.guestSessionResolver = guestSessionResolver;
         this.clock = clock;
+    }
+
+    public boolean hasUnfinishedGeneration(UUID userId) {
+        Objects.requireNonNull(userId, "회원 ID는 필수입니다.");
+        return generationRepository.existsByUserIdAndStatusIn(userId, UNFINISHED_STATUSES);
     }
 
     public DiaryGenerationStatusResult getStatus(UUID userId, UUID generationId) {

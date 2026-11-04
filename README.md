@@ -180,7 +180,7 @@ pnpm --dir web dev
 | `http://localhost:8080/scalar`      | Scalar API 테스트 UI |
 | `http://localhost:8080/v3/api-docs` | OpenAPI JSON         |
 
-Scalar와 OpenAPI 문서는 `HARUDLE_API_DOCUMENTATION_ENABLED=true`일 때만 열립니다. 예시 환경 변수 파일은 로컬 문서를 활성화한 상태입니다. JWT & CSRF 흐름과 요청 예시는 [API 명세](./backend/docs/api-spec.md)를 참고해 주세요.
+Scalar와 OpenAPI 문서는 `HARUDLE_API_DOCUMENTATION_ENABLED=true`일 때만 열립니다. 예시 환경 변수 파일은 로컬 문서를 활성화한 상태입니다. JWT & CSRF 흐름과 요청 예시는 [API 명세](<./backend/docs/명세/하루들 API 명세.md>)를 참고해 주세요.
 
 <br>
 

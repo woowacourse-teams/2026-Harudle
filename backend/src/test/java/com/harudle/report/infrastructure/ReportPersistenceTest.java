@@ -19,6 +19,7 @@ import com.harudle.report.domain.ReportTargetType;
 import com.harudle.report.repository.ReportRepository;
 import com.harudle.report.repository.ReportSnapshot;
 import com.harudle.report.repository.ReportTargetReader;
+import com.harudle.report.repository.ReportTargetReader.ReportTarget;
 import com.harudle.report.service.ReportReceipt;
 import com.harudle.report.service.ReportService;
 import com.harudle.report.service.exception.ReportTargetNotFoundException;
@@ -201,7 +202,7 @@ class ReportPersistenceTest {
     void persistEachTargetWithItsServerResolvedAuthor(ReportTargetType type) {
         UUID targetId = targetId(type);
         UUID targetAuthor = type == ReportTargetType.COMMENT ? commenter : author;
-        assertThat(targets.findVisibleTargetAuthorId(reporter, type, targetId)).contains(targetAuthor);
+        assertThat(targets.findVisibleTarget(reporter, type, targetId)).contains(new ReportTarget(targetAuthor));
         ReportSnapshot report = report(reporter, type, targetId, targetAuthor, ReportReason.OTHER, "");
 
         assertThat(insert(report)).isTrue();
@@ -287,7 +288,7 @@ class ReportPersistenceTest {
                 }
             }
             return invocation.callRealMethod();
-        }).when(targets).findVisibleTargetAuthorId(reporter, ReportTargetType.FEED, feed);
+        }).when(targets).findVisibleTarget(reporter, ReportTargetType.FEED, feed);
         ReportSubmission retry = new ReportSubmission(ReportTargetType.FEED, feed, ReportReason.HARASSMENT,
                 "덮어쓰면 안 되는 재요청");
         ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -451,11 +452,11 @@ class ReportPersistenceTest {
     @DisplayName("공개 대상 검증 직후 콘텐츠가 삭제되어도 검증한 작성자 식별자를 신고에 보존한다")
     void retainSubmissionSnapshotWhenContentDisappearsAfterValidation(ReportTargetType type) {
         UUID targetId = targetId(type);
-        UUID targetAuthor = targets.findVisibleTargetAuthorId(reporter, type, targetId).orElseThrow();
+        UUID targetAuthor = targets.findVisibleTarget(reporter, type, targetId).orElseThrow().authorId();
         ReportSnapshot report = report(reporter, type, targetId, targetAuthor, ReportReason.SPAM, "");
         jdbc.update("DELETE FROM feeds WHERE id = ?", feed);
 
-        assertThat(targets.findVisibleTargetAuthorId(reporter, type, targetId)).isEmpty();
+        assertThat(targets.findVisibleTarget(reporter, type, targetId)).isEmpty();
         assertThat(insert(report)).isTrue();
         assertThat(reports.findReceiptIdByReporterAndTarget(reporter, type, targetId)).contains(report.id());
         assertStoredSubmission(report);
@@ -471,7 +472,7 @@ class ReportPersistenceTest {
         assertThat(reports.isActiveMember(reporter)).isTrue();
         for (UUID inactive : List.of(guest, deletedMember, UUID.randomUUID())) {
             assertThat(reports.isActiveMember(inactive)).isFalse();
-            assertThat(targets.findVisibleTargetAuthorId(reporter, ReportTargetType.USER, inactive)).isEmpty();
+            assertThat(targets.findVisibleTarget(reporter, ReportTargetType.USER, inactive)).isEmpty();
         }
     }
 
@@ -491,9 +492,9 @@ class ReportPersistenceTest {
             default -> throw new AssertionError("정의되지 않은 삭제 대상");
         }
 
-        assertThat(targets.findVisibleTargetAuthorId(reporter, ReportTargetType.COMMENT, comment)).isEmpty();
+        assertThat(targets.findVisibleTarget(reporter, ReportTargetType.COMMENT, comment)).isEmpty();
         if (!"comment".equals(deleted)) {
-            assertThat(targets.findVisibleTargetAuthorId(reporter, ReportTargetType.FEED, feed)).isEmpty();
+            assertThat(targets.findVisibleTarget(reporter, ReportTargetType.FEED, feed)).isEmpty();
         }
     }
 
@@ -502,8 +503,8 @@ class ReportPersistenceTest {
     void allowReportingContentWhoseCommentAuthorHasWithdrawn() {
         jdbc.update("UPDATE users SET deleted_at = ? WHERE id = ?", Timestamp.from(CREATED_AT), commenter);
 
-        assertThat(targets.findVisibleTargetAuthorId(reporter, ReportTargetType.COMMENT, comment)).contains(commenter);
-        assertThat(targets.findVisibleTargetAuthorId(reporter, ReportTargetType.USER, commenter)).isEmpty();
+        assertThat(targets.findVisibleTarget(reporter, ReportTargetType.COMMENT, comment)).contains(new ReportTarget(commenter));
+        assertThat(targets.findVisibleTarget(reporter, ReportTargetType.USER, commenter)).isEmpty();
         assertThat(insert(report(reporter, ReportTargetType.COMMENT, comment, commenter, ReportReason.SPAM, "")))
                 .isTrue();
     }
@@ -523,18 +524,18 @@ class ReportPersistenceTest {
                 case FEED -> testFeed;
                 case COMMENT -> testComment;
             };
-            assertThat(reader.findVisibleTargetAuthorId(testActor, type, testTarget)).contains(testAuthor);
-            assertThat(reader.findVisibleTargetAuthorId(reporter, type, targetId(type))).isPresent();
-            assertThat(reader.findVisibleTargetAuthorId(reporter, type, testTarget).isPresent())
+            assertThat(reader.findVisibleTarget(testActor, type, testTarget)).contains(new ReportTarget(testAuthor));
+            assertThat(reader.findVisibleTarget(reporter, type, targetId(type))).isPresent();
+            assertThat(reader.findVisibleTarget(reporter, type, testTarget).isPresent())
                     .isEqualTo(!"dev".equals(environment));
-            assertThat(reader.findVisibleTargetAuthorId(testActor, type, targetId(type)).isPresent())
+            assertThat(reader.findVisibleTarget(testActor, type, targetId(type)).isPresent())
                     .isEqualTo(!"dev".equals(environment));
         }
         UUID mixedOnNormalFeed = comment(feed, testAuthor);
         UUID mixedOnTestFeed = comment(testFeed, commenter);
-        assertThat(reader.findVisibleTargetAuthorId(reporter, ReportTargetType.COMMENT, mixedOnNormalFeed).isPresent())
+        assertThat(reader.findVisibleTarget(reporter, ReportTargetType.COMMENT, mixedOnNormalFeed).isPresent())
                 .isEqualTo(!"dev".equals(environment));
-        assertThat(reader.findVisibleTargetAuthorId(testActor, ReportTargetType.COMMENT, mixedOnTestFeed).isPresent())
+        assertThat(reader.findVisibleTarget(testActor, ReportTargetType.COMMENT, mixedOnTestFeed).isPresent())
                 .isEqualTo(!"dev".equals(environment));
     }
 

@@ -29,7 +29,7 @@ import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 public final class DiarySourceTextKeyInitialization {
 
     private static final int QUERY_TIMEOUT_SECONDS = 10;
-    private static final int ENCRYPTION_SCHEMA_MIGRATION = 38;
+    private static final int ENCRYPTION_SCHEMA_MIGRATION = 44;
 
     private final DiarySourceTextKeyVerification verification;
     private final Set<Integer> knownMigrationVersions;

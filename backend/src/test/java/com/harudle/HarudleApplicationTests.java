@@ -88,6 +88,7 @@ class HarudleApplicationTests extends ServiceIntegrationTestSupport {
 
         assertThat(tableNames).containsExactly(
                 "admin_generation_usage_restores",
+                "apple_oauth_tokens",
                 "auth_sessions",
                 "categories",
                 "comments",
@@ -111,7 +112,10 @@ class HarudleApplicationTests extends ServiceIntegrationTestSupport {
                 "reports",
                 "share_links",
                 "user_blocks",
-                "users"
+                "user_terms_acceptances",
+                "users",
+                "withdrawal_image_cleanup_tasks",
+                "withdrawn_comment_hidden_viewers"
         );
     }
 }

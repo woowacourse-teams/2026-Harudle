@@ -10,7 +10,7 @@ import re
 import subprocess
 import uuid
 
-from prepare import MEMBERS, NAME, PREFIX, data_identity, member_identity, seed_image
+from prepare import MEMBERS, MEMBER_COUNTS, NAME, PREFIX, data_identity, member_identity, seed_image
 
 BUCKET = "techcourse-project-2026"
 UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
@@ -41,7 +41,10 @@ def load_fixture(directory):
     fixture = json.loads((directory / 'members.json').read_text())
     run_id = uuid.UUID(fixture['runId'])
     member_set = member_identity(fixture)
-    expected = [str(uuid.uuid5(member_set, f'member-{i}')) for i in range(MEMBERS)]
+    member_count = fixture.get('memberCount', MEMBERS)
+    if type(member_count) is not int or member_count not in MEMBER_COUNTS:
+        raise ValueError('Invalid member count')
+    expected = [str(uuid.uuid5(member_set, f'member-{i}')) for i in range(member_count)]
     current = date.fromisoformat(fixture['currentMonth'])
     previous = (current - timedelta(days=1)).replace(day=1)
     if (fixture.get('version') not in {2, 3} or str(run_id) != fixture['runId']

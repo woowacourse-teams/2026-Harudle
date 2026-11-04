@@ -67,6 +67,40 @@ class ReusableMembersTest(unittest.TestCase):
         self.upload.assert_called_once()
         self.delete.assert_not_called()
 
+    def test_large_set_reset_and_cleanup_scopes_all_members_and_run_keys(self):
+        group = self.root / 'large-members'
+        ec2.prepare_run(group, self.settings, Mock(), 1200)
+        run = self.root / 'large-run'
+        ec2.reset_run(run, group, self.settings, self.sql, True, encrypted_test_rows)
+        fixture = assets.load_fixture(run)
+        self.assertEqual(len(fixture['members']), 1200)
+        self.assertEqual(len(prepare.diary_ids(fixture)), 2400)
+        self.assertEqual(len(assets.seed_records(fixture)), 2400)
+        keys = [member['idempotencyKey'] for member in fixture['members']]
+        self.assertEqual(len(set(keys)), 1200)
+        snapshot = cleanup.snapshot_sql(fixture)
+        self.assertIn(keys[0], snapshot)
+        self.assertIn(keys[-1], snapshot)
+        state = cleanup.load_baseline_state(run, fixture)
+        sql = cleanup.cleanup_sql(fixture, [], state)
+        self.assertIn(fixture['members'][0]['id'], sql)
+        self.assertIn(fixture['members'][-1]['id'], sql)
+        self.assertIn('Generation is still processing or pending', sql)
+        cleanup.cleanup(run, execute_sql=self.sql, client_stopped=True)
+        self.assertTrue((run / '.cleaned').exists())
+
+    def test_large_set_encrypted_transfer_preserves_run_identities(self):
+        group = self.root / 'large-members'
+        ec2.prepare_run(group, self.settings, Mock(), 1200)
+        local = self.root / 'local' / 'large-members'
+        transfer.create_key(local)
+        encrypted = transfer.export_members(group, (local / 'recipient.pem').read_text())
+        transfer.receive_members(local, encrypted.encode())
+        remote_run = self.root / 'mixed-run'
+        ec2.reset_run(remote_run, group, self.settings, self.sql, True, encrypted_test_rows)
+        client, _, _ = prepare.write_fixture(local.parent / 'mixed-run', accounts=assets.load_fixture(local))
+        self.assertEqual(client, assets.load_fixture(remote_run))
+
     def test_retrying_initial_registration_preserves_the_same_member_file(self):
         (self.group / '.ready').unlink()
         with self.assertRaises(subprocess.CalledProcessError):
@@ -218,20 +252,24 @@ class ReusableMembersTest(unittest.TestCase):
 @unittest.skipUnless(os.environ.get('LOAD_TEST_POSTGRES_TEST') == '1',
                      'Set LOAD_TEST_POSTGRES_TEST=1 to verify SQL in an isolated local PostgreSQL')
 class ReusableMembersPostgresTest(unittest.TestCase):
-    def sql(self, sql):
-        return subprocess.run(['docker', 'exec', '-i', self.container, 'psql', '-U', 'postgres',
-                               '-d', 'harudle_dev', '-X', '-qAt', '-v', 'ON_ERROR_STOP=1', '-f', '-'],
+    @classmethod
+    def sql(cls, sql, database='harudle_dev'):
+        return subprocess.run(['docker', 'exec', '-i', cls.container, 'psql', '-U', 'postgres',
+                               '-d', database, '-X', '-qAt', '-v', 'ON_ERROR_STOP=1', '-f', '-'],
                               input=sql, capture_output=True, text=True, check=True).stdout.strip()
 
-    def setUp(self):
-        self.container = 'harudle-reuse-test-' + uuid.uuid4().hex[:12]
-        subprocess.run(['docker', 'run', '-d', '--rm', '--name', self.container, '--network', 'none',
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.container = 'harudle-reuse-test-' + uuid.uuid4().hex[:12]
+        subprocess.run(['docker', 'run', '-d', '--rm', '--name', cls.container, '--network', 'none',
                         '-e', 'POSTGRES_HOST_AUTH_METHOD=trust', '-e', 'POSTGRES_DB=harudle_dev',
                         'postgres:18-alpine'], check=True, capture_output=True)
-        self.addCleanup(lambda: subprocess.run(['docker', 'rm', '-f', self.container], capture_output=True, check=True))
+        cls.addClassCleanup(lambda: subprocess.run(['docker', 'rm', '-f', cls.container],
+                                                   capture_output=True, check=True))
         for attempt in range(60):
             try:
-                self.sql('SELECT 1;')
+                cls.sql('SELECT 1;')
                 break
             except subprocess.CalledProcessError:
                 if attempt == 59:
@@ -245,9 +283,18 @@ class ReusableMembersPostgresTest(unittest.TestCase):
             sql = path.read_text()
             # Match Flyway: V25's ON COMMIT DROP temp table spans several statements;
             # V29's explicitly nontransactional concurrent index must stay outside a transaction.
-            self.sql(sql if nontransactional else 'BEGIN;\n' + sql + '\nCOMMIT;')
-        self.sql("INSERT INTO generation_prompts (storyboard_prompt_text, image_style_prompt_text, image_asset_object_key) "
+            cls.sql(sql if nontransactional else 'BEGIN;\n' + sql + '\nCOMMIT;')
+        cls.sql("INSERT INTO generation_prompts (storyboard_prompt_text, image_style_prompt_text, image_asset_object_key) "
                  "VALUES ('test', 'test', 'test');")
+
+        cls.sql('CREATE DATABASE harudle_reuse_template TEMPLATE harudle_dev;', database='postgres')
+        cls.sql('ALTER DATABASE harudle_reuse_template ALLOW_CONNECTIONS false;', database='postgres')
+
+    def setUp(self):
+        # unittest runs this class sequentially. Each method gets the original schema and data,
+        # including sequences and functions, while the PostgreSQL process is shared for the class.
+        self.sql('DROP DATABASE harudle_dev;', database='postgres')
+        self.sql('CREATE DATABASE harudle_dev TEMPLATE harudle_reuse_template;', database='postgres')
 
     def add_generation(self, fixture, idempotency_key):
         diary, generation = str(uuid.uuid4()), str(uuid.uuid4())

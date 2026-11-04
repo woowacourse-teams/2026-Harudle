@@ -31,10 +31,12 @@ class IntegrationTestContextConfigurationTest {
     void servicesWithCommonJwtMockShareContextCacheKey() throws ClassNotFoundException {
         assertSameContext(
                 "com.harudle.HarudleApplicationTests",
+                "com.harudle.auth.application.RefreshTokenCleanupPersistenceTest",
                 "com.harudle.admin.infrastructure.JpaAdminGenerationHistoryQueryRepositoryTest",
                 "com.harudle.admin.service.AdminGenerationUsageServiceTest",
                 "com.harudle.diary.service.DiaryDeletionPersistenceTest",
                 "com.harudle.diary.service.DiaryQueryPersistenceTest",
+                "com.harudle.diary.service.DiarySourceTextEncryptionPersistenceTest",
                 "com.harudle.feed.service.FeedWithoutPushRegistrationPersistenceTest",
                 "com.harudle.generation.diary.service.DiaryGenerationFailurePersistenceTest",
                 "com.harudle.generation.prompt.infrastructure.GenerationPromptBootstrapPersistenceTest",

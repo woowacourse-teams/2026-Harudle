@@ -9,8 +9,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.harudle.admin.service.AdminR2ImageRecoveryService;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.UserRepository;
-import com.harudle.auth.infrastructure.oauth.OAuthLoginFailureHandler;
-import com.harudle.auth.infrastructure.oauth.OAuthLoginSuccessHandler;
 import com.harudle.common.security.*;
 import java.util.List;
 import java.util.Optional;
@@ -140,7 +138,7 @@ class AdminR2ImageRecoveryControllerTest {
                 return null;
             }).when(deniedHandler).handle(any(), any(), any());
             // 운영 SecurityConfig의 경로 매칭, 관리자 권한 검사와 CSRF 필터를 그대로 사용한다.
-            return new SecurityConfig(mock(OAuthLoginSuccessHandler.class), mock(OAuthLoginFailureHandler.class))
+            return new SecurityConfig()
                     .apiSecurityFilterChain(http, CookieCsrfTokenRepository.withHttpOnlyFalse(), entryPoint,
                             deniedHandler, new AdminAuthorizationManager(users));
         }
