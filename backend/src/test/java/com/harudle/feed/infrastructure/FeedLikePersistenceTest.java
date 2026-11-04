@@ -141,6 +141,24 @@ class FeedLikePersistenceTest {
     }
 
     @Test
+    @DisplayName("회원 삭제 후 좋아요는 남고 재가입한 회원의 좋아요와 구분된다")
+    void preserveLikeWithoutConnectingRejoinedMember() {
+        service.like(viewerId, feedId);
+        UUID originalLike = onlyLikeId();
+        jdbc.update("DELETE FROM users WHERE id = ?", viewerId);
+
+        assertCounts(1, 0);
+        assertThat(jdbc.queryForObject("SELECT user_id FROM feed_likes WHERE id = ?", UUID.class, originalLike))
+                .isNull();
+        UUID rejoined = createMember();
+        assertThat(reader.findLikedFeedIds(rejoined, Set.of(feedId))).isEmpty();
+        assertThat(service.unlike(rejoined, feedId).likeCount()).isEqualTo(1);
+        assertThat(service.like(rejoined, feedId).likeCount()).isEqualTo(2);
+        assertThat(service.unlike(rejoined, feedId).likeCount()).isEqualTo(1);
+        assertCounts(1, 0);
+    }
+
+    @Test
     @DisplayName("실제 보안 체인과 서비스 및 DB를 거친 HTTP 반복 좋아요·취소가 한 번만 반영된다")
     void persistLikeAndUnlikeThroughFullHttpStack() throws Exception {
         for (int repeat = 0; repeat < 2; repeat++) {

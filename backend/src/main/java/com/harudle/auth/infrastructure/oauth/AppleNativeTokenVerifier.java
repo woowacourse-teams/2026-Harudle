@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,7 +30,7 @@ import org.springframework.web.client.RestTemplate;
 public class AppleNativeTokenVerifier {
     private static final Logger log = LoggerFactory.getLogger(AppleNativeTokenVerifier.class);
     private static final String ISSUER = "https://appleid.apple.com";
-    private static final String IOS_CLIENT_ID = "com.harudle.app";
+    static final String IOS_CLIENT_ID = "com.harudle.app";
     private final AppleClientSecretGenerator secretGenerator;
     private final String clientId;
     private final JwtDecoder decoder;
@@ -66,7 +67,7 @@ public class AppleNativeTokenVerifier {
         this.client = client;
     }
 
-    public Jwt verify(String code, String identityToken, String nonce) {
+    public VerifiedAppleLogin verify(String code, String identityToken, String nonce) {
         Jwt nativeToken = decode(identityToken);
         validate(nativeToken);
         if (!Objects.equals(nonce, nativeToken.getClaimAsString("nonce"))) {
@@ -102,7 +103,8 @@ public class AppleNativeTokenVerifier {
         if (!nativeToken.getSubject().equals(exchanged.getSubject())) {
             throw new IllegalArgumentException("Apple 사용자 정보가 일치하지 않습니다.");
         }
-        return exchanged;
+        return new VerifiedAppleLogin(exchanged, clientId, response.access_token(), response.refresh_token(),
+                response.expires_in());
     }
 
     private boolean isInvalidGrant(RestClientResponseException exception) {
@@ -134,7 +136,16 @@ public class AppleNativeTokenVerifier {
         }
     }
 
-    record TokenResponse(String id_token) {}
+    record TokenResponse(String id_token, @Nullable String access_token, @Nullable String refresh_token,
+                         @Nullable Long expires_in) {}
+
+    public record VerifiedAppleLogin(Jwt identity, String clientId, @Nullable String accessToken,
+                                     @Nullable String refreshToken, @Nullable Long expiresIn) {
+        @Override
+        public String toString() {
+            return "VerifiedAppleLogin[credentials=redacted]";
+        }
+    }
 
     public static final class InvalidAuthorizationCodeException extends IllegalArgumentException {}
 

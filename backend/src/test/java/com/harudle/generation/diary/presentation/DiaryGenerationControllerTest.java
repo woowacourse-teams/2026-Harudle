@@ -11,8 +11,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.harudle.auth.infrastructure.UserRepository;
-import com.harudle.auth.infrastructure.oauth.OAuthLoginFailureHandler;
-import com.harudle.auth.infrastructure.oauth.OAuthLoginSuccessHandler;
 import com.harudle.auth.presentation.AuthenticatedUserIdResolver;
 import com.harudle.common.error.ApiExceptionLoggerTestConfiguration;
 import com.harudle.common.error.ProblemDetailFactory;
@@ -39,7 +37,6 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
-import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -64,9 +61,6 @@ class DiaryGenerationControllerTest {
     @MockitoBean private DiaryGenerationStatusQueryService queryService;
     @MockitoBean private JwtDecoder jwtDecoder;
     @MockitoBean private UserRepository userRepository;
-    @MockitoBean private OAuthLoginSuccessHandler successHandler;
-    @MockitoBean private OAuthLoginFailureHandler failureHandler;
-    @MockitoBean private ClientRegistrationRepository clientRegistrationRepository;
 
     @ParameterizedTest
     @CsvSource({"false,PENDING", "false,PROCESSING", "false,SUCCEEDED", "false,FAILED",
@@ -90,6 +84,10 @@ class DiaryGenerationControllerTest {
                 .andExpect(jsonPath("$.status").value(generationStatus.name()))
                 .andExpect(jsonPath("$.diaryId").value(diaryId == null ? nullValue() : org.hamcrest.Matchers.is(diaryId.toString())))
                 .andExpect(jsonPath("$.errorCode").value(errorCode == null ? nullValue() : org.hamcrest.Matchers.is(errorCode.name())))
+                .andExpect(jsonPath("$.action").value(generationStatus == GenerationStatus.FAILED
+                        ? org.hamcrest.Matchers.is(guest ? "체험 생성 시간이 초과됐어요. 로그인 후 다시 생성해 주세요."
+                                : "생성 시간이 초과됐어요. 잠시 후 다시 생성해 주세요.")
+                        : nullValue()))
                 .andExpect(jsonPath("$.imageUrl").doesNotExist())
                 .andExpect(jsonPath("$.sourceText").doesNotExist());
         if (guest) {
@@ -118,7 +116,10 @@ class DiaryGenerationControllerTest {
                 .andExpect(jsonPath("$.id").value(GENERATION_ID.toString()))
                 .andExpect(jsonPath("$.status").value("FAILED"))
                 .andExpect(jsonPath("$.diaryId").value(nullValue()))
-                .andExpect(jsonPath("$.errorCode").value("GENERATION_PENDING_TIMEOUT"));
+                .andExpect(jsonPath("$.errorCode").value("GENERATION_PENDING_TIMEOUT"))
+                .andExpect(jsonPath("$.action").value(guest
+                        ? "대기 시간이 지나 체험 생성을 시작하지 못했어요. 로그인 후 다시 생성해 주세요."
+                        : "대기 시간이 지나 생성을 시작하지 못했어요. 잠시 후 다시 생성해 주세요."));
     }
 
     @Test

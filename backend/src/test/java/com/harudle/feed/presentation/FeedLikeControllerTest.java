@@ -11,8 +11,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.harudle.auth.infrastructure.UserRepository;
-import com.harudle.auth.infrastructure.oauth.OAuthLoginFailureHandler;
-import com.harudle.auth.infrastructure.oauth.OAuthLoginSuccessHandler;
 import com.harudle.auth.presentation.AuthenticatedUserIdResolver;
 import com.harudle.auth.presentation.AuthenticationRequiredException;
 import com.harudle.common.error.ApiExceptionLoggerTestConfiguration;
@@ -36,7 +34,6 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -65,12 +62,6 @@ class FeedLikeControllerTest {
     private JwtDecoder jwtDecoder;
     @MockitoBean
     private UserRepository userRepository;
-    @MockitoBean
-    private OAuthLoginSuccessHandler successHandler;
-    @MockitoBean
-    private OAuthLoginFailureHandler failureHandler;
-    @MockitoBean
-    private ClientRegistrationRepository clientRegistrationRepository;
 
     @BeforeEach
     void setUp() {

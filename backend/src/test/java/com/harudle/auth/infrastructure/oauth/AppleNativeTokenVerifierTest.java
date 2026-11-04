@@ -193,7 +193,9 @@ class AppleNativeTokenVerifierTest {
         server.expect(requestTo("https://appleid.apple.com/auth/token"))
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(content().string(containsString("client_id=our-app")))
-                .andRespond(MockRestResponseCreators.withSuccess("{\"id_token\":\"exchanged\"}", MediaType.APPLICATION_JSON));
+                .andRespond(MockRestResponseCreators.withSuccess(
+                        "{\"id_token\":\"exchanged\",\"access_token\":\"access\",\"refresh_token\":\"refresh\",\"expires_in\":3600}",
+                        MediaType.APPLICATION_JSON));
         var nativeToken = Jwt.withTokenValue("native").header("alg", "RS256")
                 .issuer("https://appleid.apple.com").subject("user")
                 .audience(List.of("our-app")).expiresAt(Instant.now().plusSeconds(60))
@@ -205,9 +207,13 @@ class AppleNativeTokenVerifierTest {
         when(generator.generate("our-app")).thenReturn("secret");
         var verifier = new AppleNativeTokenVerifier(generator, "our-app",
                 token -> token.equals("native") ? nativeToken : exchanged, builder.build());
-        Jwt verified = verifier.verify("code", "native", "nonce");
-        assertThat(verified.getSubject()).isEqualTo("user");
-        assertThat(verified.getTokenValue()).isEqualTo("exchanged");
+        var verified = verifier.verify("code", "native", "nonce");
+        assertThat(verified.identity().getSubject()).isEqualTo("user");
+        assertThat(verified.identity().getTokenValue()).isEqualTo("exchanged");
+        assertThat(verified.clientId()).isEqualTo("our-app");
+        assertThat(verified.accessToken()).isEqualTo("access");
+        assertThat(verified.refreshToken()).isEqualTo("refresh");
+        assertThat(verified.expiresIn()).isEqualTo(3600);
         server.verify();
     }
 

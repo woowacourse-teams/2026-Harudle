@@ -24,7 +24,8 @@ Gradle은 별도로 설치할 필요가 없습니다. 저장소에 포함된 Gra
 
 ## 문서
 
-- [API 명세](docs/api-spec.md)
+- [백엔드 문서와 ADR 목록](docs/README.md)
+- [API 명세](<docs/명세/하루들 API 명세.md>)
 
 ## 도메인 패키지
 
@@ -141,6 +142,13 @@ http://localhost:8080/login/oauth2/code/google
 콜백은 구글이 인증 결과를 돌려주는 주소이므로 직접 접속해서 로그인을 시작하지 않습니다.
 성공 후 이동할 주소는 `FRONTEND_SUCCESS_REDIRECT`, 실패 시 주소는 `FRONTEND_FAILURE_REDIRECT`로 설정합니다.
 프론트엔드가 실행되지 않아도 백엔드 인증 처리는 가능하지만, 이동한 화면은 열리지 않을 수 있습니다.
+
+구글 재인증을 거친 회원 탈퇴 결과는 로그인과 별도로 `/withdrawal/callback`에 전달합니다.
+`FRONTEND_SUCCESS_REDIRECT`와 같은 프로토콜, 호스트, 포트를 사용하고 경로는
+`/withdrawal/callback`으로 바꿉니다. 로그인 주소의 쿼리와 fragment는 이어받지 않습니다.
+성공 시 `withdrawal=success`, 실패나 인증 취소 시 `withdrawal=failed`를 붙입니다.
+추가 환경 변수나 Google에 등록한 백엔드 콜백 주소 변경은 필요하지 않습니다.
+프론트엔드의 탈퇴 전용 콜백 페이지와 함께 반영해야 합니다.
 
 요청 범위는 `openid`, `email`, `profile`입니다. Spring Security가 인증 결과를 검증한 뒤 기존 로그인 성공
 처리기로 전달합니다. 구글 계정은 `GOOGLE`과 구글의 사용자 식별자 `sub`로 찾으며, 이메일이 같아도 카카오
@@ -293,6 +301,12 @@ GOOGLE_APPLICATION_CREDENTIALS=/var/run/harudle/gcp-wif.json
 Qwen HTTP 호출과 SSE 파싱은 별도 구현체인 `QwenChatClient`가 담당합니다. 현재는 공통
 `ChatCompletionClient` 인터페이스를 추가하지 않습니다. 다른 Provider는 `StoryboardGenerator` 구현을
 추가하고, 같은 호출 규격을 공유할 실제 구현체가 생기면 클라이언트 인터페이스를 추출할 수 있습니다.
+
+HTTP 400 응답과 JSON 및 SSE 오류의 `error.code`가 `DataInspectionFailed` 또는
+`data_inspection_failed`이면 `AI_CONTENT_BLOCKED`로 분류합니다. 기존 콘텐츠 차단 안내를 사용하고
+보조 AI를 호출하지 않습니다. HTTP 400 본문은 최대 2MiB까지만 해석하며, 크기를 넘거나 읽기와
+JSON 해석에 실패하면 기존 HTTP 오류 분류를 유지합니다. 오류 응답 원문은 예외와 로그에 남기지 않습니다.
+차단 코드의 기준은 [Qwen 공식 오류 문서](https://www.alibabacloud.com/help/en/model-studio/error-code)를 따릅니다.
 
 기본 설정은 `qwen3.8-max`, 추론 활성화, `thinking_budget=1024`, `max_tokens=8192`, `json_object`,
 메인·보조 역할별 요청 제한 시간은 기본 60초입니다. `QwenStoryboardSettings`로 모델명, 추론 예산과 출력
@@ -449,6 +463,23 @@ OkHttp의 `503 + Retry-After: 0` 자동 후속 호출도 방지합니다. 이 �
 테스트는 로컬 HTTP 서버에서 지연된 헤더·본문 취소, 동시 요청 격리, 오류 응답·연결 실패의 실제 전송 횟수를 확인합니다.
 
 외부 생성 어댑터를 비활성화하면 조합 서비스와 실행기를 초기화하지 않습니다. 이미지 생성에는 이 실행기를 적용하지 않습니다.
+
+### 탈퇴 후 남은 이미지 확인
+
+탈퇴할 때 삭제할 이미지 목록과 회원 DB 삭제를 함께 저장한 뒤 S3와 R2 삭제를 시도합니다.
+파일 삭제와 목록 제거가 성공한 작업만 목록에서 사라집니다. 실패하거나 아직 처리되지 않은 작업은
+`withdrawal_image_cleanup_tasks`에 남습니다. 자동 재시도나 정기 실행은 하지 않습니다.
+
+운영자가 필요할 때 아래 조회로 남은 작업을 확인하고 수동 정리합니다. 목록에는 이미 삭제됐지만
+목록 제거에 실패한 파일도 있을 수 있습니다. 실제 파일 삭제 여부를 확인한 뒤 해당 목록을 제거합니다.
+S3 일기 이미지 작업은 기존 삭제 코드와 같이 원본과 썸네일까지 함께 확인해야 합니다.
+이미지 경로는 일반 로그나 조회 결과 공유에 포함하지 않고, 필요한 경우에만 삭제 작업 테이블에서 확인합니다.
+
+```sql
+SELECT storage, count(*) AS pending_count, min(created_at) AS oldest_created_at
+FROM withdrawal_image_cleanup_tasks
+GROUP BY storage;
+```
 
 ## 테스트
 
@@ -635,7 +666,7 @@ flowchart TD
 
 기존 `IMAGE_FALLBACK_PROVIDER=codex` 설정은 지원하지 않습니다.
 전환 시 Codex worker 환경 변수 대신 위 설정을 넣고 백엔드를 재시작하거나 컨테이너를 재생성합니다.
-활성화 전에 [원문 정책 대조](docs/terms-policy-review.md)의 외부 처리 업체 확인 항목을 검토합니다.
+활성화 전에 [원문 정책 대조](<docs/adr/약관과 동의/2026-10-25-약관과 개인정보처리방침 대조 기록-작성자 미기재.md>)의 외부 처리 업체 확인 항목을 검토합니다.
 환경별 OpenAI 사용 여부, 전송하는 스토리보드와 그림체 지시문, 참조 이미지, 처리 국가와 보유기간을
 확인하고 필요한 위탁과 국외 이전 고지, 동의 등 처리 근거가 실제 정책에 반영됐는지 기록합니다.
 OpenAI 프로젝트의 Flare 사용 권한과 결제를 확인하고, 소수의 실제 요청으로 그림체와 생성 시간,
