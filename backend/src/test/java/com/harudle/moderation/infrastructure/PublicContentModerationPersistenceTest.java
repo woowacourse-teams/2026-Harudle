@@ -17,6 +17,7 @@ import com.harudle.feed.service.exception.FeedNotFoundException;
 import com.harudle.notification.repository.NotificationRepository;
 import com.harudle.report.domain.ReportTargetType;
 import com.harudle.report.repository.ReportTargetReader;
+import com.harudle.report.repository.ReportTargetReader.ReportTarget;
 import com.harudle.share.repository.ShareLinkRepository;
 import com.harudle.support.AdminModerationDatabaseTestSupport;
 import java.sql.Timestamp;
@@ -186,8 +187,8 @@ class PublicContentModerationPersistenceTest extends AdminModerationDatabaseTest
                 .noneMatch(item -> item.id().equals(replacement));
         assertThat(comments.existsVisibleFeed(replacement, null)).isFalse();
         assertThat(comments.findAfter(replacement, Optional.empty(), 50, null)).isEmpty();
-        assertThat(reportTargets.findVisibleTargetAuthorId(actor, ReportTargetType.FEED, replacement)).isEmpty();
-        assertThat(reportTargets.findVisibleTargetAuthorId(actor, ReportTargetType.COMMENT, replacementComment))
+        assertThat(reportTargets.findVisibleTarget(actor, ReportTargetType.FEED, replacement)).isEmpty();
+        assertThat(reportTargets.findVisibleTarget(actor, ReportTargetType.COMMENT, replacementComment))
                 .isEmpty();
         assertThatThrownBy(() -> likes.like(actor, replacement)).isInstanceOf(FeedNotFoundException.class);
         assertThat(diaries.findActiveSnapshotById(diary)).isPresent();
@@ -197,14 +198,14 @@ class PublicContentModerationPersistenceTest extends AdminModerationDatabaseTest
     @DisplayName("관리자 숨김은 새 콘텐츠 신고 대상에서 제외하며 사용자 신고 대상과 원본은 보존한다")
     void omitHiddenContentFromNewReportTargetsAndRestoreItWithoutMutatingTheSource() {
         restrict("COMMENT", comment, true);
-        assertThat(reportTargets.findVisibleTargetAuthorId(actor, ReportTargetType.COMMENT, comment)).isEmpty();
-        assertThat(reportTargets.findVisibleTargetAuthorId(actor, ReportTargetType.FEED, feed)).contains(author);
+        assertThat(reportTargets.findVisibleTarget(actor, ReportTargetType.COMMENT, comment)).isEmpty();
+        assertThat(reportTargets.findVisibleTarget(actor, ReportTargetType.FEED, feed)).contains(new ReportTarget(author));
         restrict("COMMENT", comment, false);
-        assertThat(reportTargets.findVisibleTargetAuthorId(actor, ReportTargetType.COMMENT, comment)).contains(actor);
+        assertThat(reportTargets.findVisibleTarget(actor, ReportTargetType.COMMENT, comment)).contains(new ReportTarget(actor));
         restrict("FEED", feed, true);
-        assertThat(reportTargets.findVisibleTargetAuthorId(actor, ReportTargetType.FEED, feed)).isEmpty();
-        assertThat(reportTargets.findVisibleTargetAuthorId(actor, ReportTargetType.COMMENT, comment)).isEmpty();
-        assertThat(reportTargets.findVisibleTargetAuthorId(actor, ReportTargetType.USER, author)).contains(author);
+        assertThat(reportTargets.findVisibleTarget(actor, ReportTargetType.FEED, feed)).isEmpty();
+        assertThat(reportTargets.findVisibleTarget(actor, ReportTargetType.COMMENT, comment)).isEmpty();
+        assertThat(reportTargets.findVisibleTarget(actor, ReportTargetType.USER, author)).contains(new ReportTarget(author));
         assertThat(comments.findActiveById(comment)).isPresent();
     }
 

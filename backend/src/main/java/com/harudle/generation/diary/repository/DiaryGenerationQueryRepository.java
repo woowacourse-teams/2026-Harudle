@@ -17,6 +17,17 @@ import org.springframework.data.repository.query.Param;
 public interface DiaryGenerationQueryRepository extends Repository<DiaryGeneration, UUID> {
 
     @Query("""
+            SELECT COUNT(generation) > 0
+            FROM DiaryGeneration generation
+            JOIN Diary diary ON diary.id = generation.diaryId
+            WHERE diary.userId = :userId AND generation.status IN :statuses
+            """)
+    boolean existsByUserIdAndStatusIn(
+            @Param("userId") UUID userId,
+            @Param("statuses") Collection<GenerationStatus> statuses
+    );
+
+    @Query("""
             SELECT new com.harudle.generation.diary.repository.DiaryGenerationStatusSnapshot(
                 generation.id, generation.diaryId, generation.status, generation.errorCode
             )

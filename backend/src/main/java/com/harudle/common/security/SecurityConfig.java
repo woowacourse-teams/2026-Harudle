@@ -1,8 +1,6 @@
 package com.harudle.common.security;
 
 import com.harudle.auth.infrastructure.UserRepository;
-import com.harudle.auth.infrastructure.oauth.OAuthLoginFailureHandler;
-import com.harudle.auth.infrastructure.oauth.OAuthLoginSuccessHandler;
 import com.harudle.common.error.ProblemDetailFactory;
 import com.harudle.common.error.ProblemDetailResponseWriter;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -17,7 +15,6 @@ import org.springframework.security.config.ObjectPostProcessor;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
@@ -26,17 +23,6 @@ import tools.jackson.databind.ObjectMapper;
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(AuthProperties.class)
 public class SecurityConfig {
-
-    private final OAuthLoginSuccessHandler oAuthLoginSuccessHandler;
-    private final OAuthLoginFailureHandler oAuthLoginFailureHandler;
-
-    public SecurityConfig(
-            OAuthLoginSuccessHandler oAuthLoginSuccessHandler,
-            OAuthLoginFailureHandler oAuthLoginFailureHandler
-    ) {
-        this.oAuthLoginSuccessHandler = oAuthLoginSuccessHandler;
-        this.oAuthLoginFailureHandler = oAuthLoginFailureHandler;
-    }
 
     @Bean
     public AuthenticationTrustResolver authenticationTrustResolver() {
@@ -68,27 +54,6 @@ public class SecurityConfig {
     @Bean
     public AdminAuthorizationManager adminAuthorizationManager(UserRepository userRepository) {
         return new AdminAuthorizationManager(userRepository);
-    }
-
-    @Bean
-    @Order(1)
-    public SecurityFilterChain oauthSecurityFilterChain(HttpSecurity http) throws Exception {
-        http
-                .securityMatcher("/oauth2/**", "/login/oauth2/**")
-                .authorizeHttpRequests(auth -> auth
-                        .anyRequest().permitAll()
-                )
-                .sessionManagement(session -> session
-                        .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
-                )
-                .csrf(csrf -> csrf.ignoringRequestMatchers(PathPatternRequestMatcher.withDefaults()
-                        .matcher(HttpMethod.POST, "/login/oauth2/code/apple")))
-                .oauth2Login(oauth2 -> oauth2
-                        .successHandler(oAuthLoginSuccessHandler)
-                        .failureHandler(oAuthLoginFailureHandler)
-                );
-
-        return http.build();
     }
 
     @Bean

@@ -12,5 +12,8 @@ public @interface ApiErrorResponses {
 
     ErrorType[] value() default {};
 
+    /** 접수 후 생성 실패에만 게스트용 행동 안내를 예시에 사용한다. */
+    ErrorType[] guestGenerationFailures() default {};
+
     ApiFrameworkError[] framework() default {};
 }

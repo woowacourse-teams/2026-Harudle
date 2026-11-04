@@ -135,7 +135,7 @@ Spring의 종료 단계에서 기다리므로, 작업이 DB와 AI 연결을 사�
 
 **k6와 dev 백엔드를 멈추고, 별도 명령으로 미완료 테스트 작업을 지운 뒤 백엔드를 켭니다.**
 테스트 ID는 메모리에만 남습니다. DB의 테스트 대기 작업을 그대로 두고 다시 켜면 실제 AI가 호출될 수 있습니다.
-정리 명령은 앱이 꺼진 상태에서 사용할 수 있습니다. 선택한 이유는 [중단된 테스트 작업 정리 ADR](<../backend/docs/adr/async-diary-generation/2026-10-21_중단된 부하 테스트 작업을 어떻게 정리할 것인가_캐모.md>)에 기록했습니다.
+정리 명령은 앱이 꺼진 상태에서 사용할 수 있습니다. 선택한 이유는 [중단된 테스트 작업 정리 ADR](<../backend/docs/adr/비동기 일기 생성/2026-10-21-중단된 부하 테스트 작업을 어떻게 정리할 것인가-캐모.md>)에 기록했습니다.
 
 1. k6를 종료합니다. dev 사용 시간을 팀과 맞추고 정리 중 다른 배포나 백엔드 시작을 하지 않습니다.
 2. dev EC2에서 백엔드 컨테이너를 중단합니다. 컨테이너 설정을 읽어야 하므로 `down`으로 삭제하지 않습니다.
@@ -395,7 +395,7 @@ openssl rand -base64 32
 
 LEGAL_REQUIRE_TERMS_ACCEPTANCE의 기본값은 false다. 문서·수락 API와 프론트가 함께 준비되고, 정책·시행일·기존 회원 안내를 확정한 뒤 환경별로 true로 설정해 적용한다. 백엔드만 먼저 배포할 때는 false를 유지한다. 변경 후에는 기존 환경 변수와 마찬가지로 백엔드 컨테이너를 재생성해야 한다.
 
-동의 시각을 과거 가입일로 채우거나 운영 데이터를 자동 삭제하는 작업은 포함하지 않는다. 필수 적용을 끄더라도 수락 기록은 보존한다. 상세 순서는 [약관 열람과 수락](../backend/docs/terms-consent.md)을 따른다.
+동의 시각을 과거 가입일로 채우거나 운영 데이터를 자동 삭제하는 작업은 포함하지 않는다. 필수 적용을 끄더라도 수락 기록은 보존한다. 상세 순서는 [약관 열람과 수락](<../backend/docs/adr/약관과 동의/2026-10-25-약관 열람과 명시적 동의 정책-작성자 미기재.md>)을 따른다.
 
 ## Apple 개인 키와 배포 설정
 
@@ -412,6 +412,7 @@ dev와 prod Compose는 이 폴더를 `/var/run/harudle/apple/`에 읽기 전용�
 
 ```dotenv
 APPLE_LOGIN_ENABLED=true
+APPLE_TOKEN_ENCRYPTION_KEY=<32바이트 암호화 키의 Base64 값>
 APPLE_PRIVATE_KEY_PATH=/var/run/harudle/apple/AuthKey.p8
 SESSION_COOKIE_SAME_SITE=none
 SESSION_COOKIE_SECURE=true
@@ -419,6 +420,22 @@ SESSION_COOKIE_SECURE=true
 
 Apple에 `${BACKEND_BASE_URL}/login/oauth2/code/apple` HTTPS 콜백을 등록하고 로그인 시작 호스트와 맞춥니다.
 설정 후 배포 훅으로 백엔드를 재생성합니다. 준비 전에는 `APPLE_LOGIN_ENABLED=false`를 유지합니다.
+
+애플 토큰 암호화 키는 JWT 키와 별도로 환경별로 생성해 안전하게 보관합니다. 키 형식이 올바르지 않으면
+서버 시작 시 `apple_token_key_invalid` 경고를 남깁니다. 토큰 저장에 실패해도 로그인은 허용하며,
+`apple_token_save_failed` 로그의 `reason`으로 키, 토큰 누락과 DB 오류를 구분합니다. 키를 변경하거나 잃어버리면 기존
+토큰을 복호화할 수 없으므로 기존 토큰의 처리 방법을 마련한 뒤 변경합니다.
+
+Apple 설정에서 연결 해제 또는 계정 삭제 알림을 받으려면 Primary App ID의 Sign in with Apple 설정에
+`https://{서비스 호스트}/api/v1/public/apple/notifications`를 등록합니다. Apple 앱 그룹마다 알림 주소는
+하나만 등록할 수 있으므로 dev와 prod가 같은 그룹을 사용한다면 각 환경으로 알림이 전달되는 구성을 먼저 정합니다.
+서버는 Apple 서명과 앱 식별자를 검증합니다. 설정 방법은 [Apple 안내](https://developer.apple.com/help/account/capabilities/enabling-server-to-server-notifications)를 따릅니다.
+
+## 카카오 회원 탈퇴 설정
+
+서버 `/opt/harudle/.env`의 `KAKAO_ADMIN_KEY`에 현재 `KAKAO_REST_API_KEY`와 같은 카카오 앱의 관리자 키를
+설정합니다. 카카오 앱 관리자 키 설정에서 연결 끊기 API를 허용합니다. 관리자 키는 서버에서만 사용하고 공개하지 않습니다.
+설정을 바꾼 뒤 백엔드 컨테이너를 재생성합니다.
 
 ## Google 로그인 설정
 
@@ -461,7 +478,7 @@ OpenAI를 메인으로 시험하려면 `IMAGE_PROVIDER=openai`, `IMAGE_FALLBACK_
 Gemini를 메인으로 유지하면서 대체 호출만 켜려면 `IMAGE_PROVIDER=gemini`,
 `IMAGE_FALLBACK_PROVIDER=openai`를 사용합니다. 스토리보드 제공자 설정은 별도입니다.
 
-활성화 전에 [원문 정책 대조](../backend/docs/terms-policy-review.md)의 외부 처리 업체 항목을 확인합니다.
+활성화 전에 [원문 정책 대조](<../backend/docs/adr/약관과 동의/2026-10-25-약관과 개인정보처리방침 대조 기록-작성자 미기재.md>)의 외부 처리 업체 항목을 확인합니다.
 환경별 활성 업체와 OpenAI에 전송하는 스토리보드, 그림체 지시문, 참조 이미지, 처리 국가와 보유기간을
 확인하고 필요한 위탁과 국외 이전 고지, 동의 등 처리 근거를 실제 정책과 맞춥니다.
 확인 결과를 운영 기록에 남긴 뒤 키와 활성화 설정을 적용합니다.

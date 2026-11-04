@@ -59,6 +59,11 @@ public final class ObservedBackupObjectStorage implements BackupObjectStorage {
         return delegate.uploadIfAbsent(key, image);
     }
 
+    @Override
+    public void delete(String key) {
+        delegate.delete(key);
+    }
+
     private <T> T observe(String operation, RequestOperationTimings.Operation stage,
             Supplier<T> action, Predicate<T> isMissing) {
         long startedAt = System.nanoTime();
