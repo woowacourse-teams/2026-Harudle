@@ -320,7 +320,7 @@ class DiarySourceTextEncryptionPersistenceTest extends ServiceIntegrationTestSup
         assertThat(findStoredSource(legacyDiaryId))
                 .isEqualTo(new StoredSource(legacyCommand.sourceText(), 0));
         assertThat(findStoredSource(encrypted.diaryId()).version()).isEqualTo(1);
-        assertThat(queryService.getTimeline(USER_ID, 2026, 8).days().stream()
+        assertThat(queryService.getTimeline(USER_ID, today.getYear(), today.getMonthValue()).days().stream()
                 .flatMap(day -> day.items().stream()))
                 .extracting(item -> item.id())
                 .containsExactlyInAnyOrder(legacyDiaryId, encrypted.diaryId());
@@ -365,14 +365,16 @@ class DiarySourceTextEncryptionPersistenceTest extends ServiceIntegrationTestSup
     @Test
     @DisplayName("월간 목록과 스트릭 및 공개 공유 조회는 손상된 원문을 복호화하지 않는다")
     void readSummariesAndPublicShareWithoutDecryptingSource() {
-        DiaryCreationClaim created = transactionService.claim(createCommand(SOURCE_TEXT), true).claim();
+        LocalDate today = LocalDate.now(serviceClock);
+        CreateDiaryCommand command = new CreateDiaryCommand(USER_ID, today, SOURCE_TEXT, UUID.randomUUID());
+        DiaryCreationClaim created = transactionService.claim(command, true).claim();
         markGenerationSucceeded(created);
         replaceWithCiphertextFromAnotherDiary(created.diaryId());
         UUID shareId = UUID.randomUUID();
         executeUpdate("INSERT INTO share_links (id, generation_id) VALUES (?, ?)",
                 shareId, created.generationId());
 
-        assertThat(queryService.getTimeline(USER_ID, 2026, 8).days().stream()
+        assertThat(queryService.getTimeline(USER_ID, today.getYear(), today.getMonthValue()).days().stream()
                 .flatMap(day -> day.items().stream()))
                 .extracting(item -> item.id())
                 .containsExactly(created.diaryId());
