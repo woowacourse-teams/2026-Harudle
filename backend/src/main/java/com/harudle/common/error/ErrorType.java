@@ -1,7 +1,7 @@
 package com.harudle.common.error;
 
 import com.harudle.generation.diary.domain.GenerationErrorCode;
-import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
+import com.harudle.generation.diary.service.exception.AiGenerationException;
 import java.net.URI;
 import java.util.Locale;
 import org.springframework.http.HttpStatus;
@@ -296,7 +296,47 @@ public enum ErrorType {
     AI_PROVIDER_ERROR(
             HttpStatus.BAD_GATEWAY,
             "AI provider error",
-            "AI 공급자 호출에 실패했습니다."
+            "AI 생성 중 원인을 확인하지 못한 문제가 발생했어요."
+    ),
+    AI_PROVIDER_CONNECTION_ERROR(
+            HttpStatus.BAD_GATEWAY,
+            "AI provider connection error",
+            "우리 서버가 AI 서비스에 연결하지 못했어요."
+    ),
+    AI_PROVIDER_SERVER_ERROR(
+            HttpStatus.BAD_GATEWAY,
+            "AI provider server error",
+            "AI 서비스 내부에 문제가 생겨 생성하지 못했어요."
+    ),
+    AI_PROVIDER_CONFIGURATION_ERROR(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "AI provider configuration error",
+            "서비스의 AI 연결 설정에 문제가 있어 생성하지 못했어요."
+    ),
+    AI_PROVIDER_REQUEST_REJECTED(
+            HttpStatus.BAD_GATEWAY,
+            "AI provider request rejected",
+            "AI 서비스가 생성 요청을 받아들이지 못했어요."
+    ),
+    AI_PROVIDER_RATE_LIMITED(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "AI provider rate limited",
+            "AI 서비스의 이용 제한으로 생성하지 못했어요."
+    ),
+    AI_CONTENT_BLOCKED(
+            HttpStatus.BAD_REQUEST,
+            "AI content blocked",
+            "AI 서비스의 콘텐츠 기준에 따라 생성이 중단됐어요."
+    ),
+    AI_OUTPUT_TRUNCATED(
+            HttpStatus.BAD_GATEWAY,
+            "AI output truncated",
+            "AI가 생성 결과를 끝까지 완성하지 못했어요."
+    ),
+    AI_RESPONSE_PROCESSING_ERROR(
+            HttpStatus.BAD_GATEWAY,
+            "AI response processing error",
+            "AI가 보내온 결과를 처리하지 못했어요."
     ),
     GENERATION_CAPACITY_EXCEEDED(
             HttpStatus.SERVICE_UNAVAILABLE,
@@ -316,7 +356,7 @@ public enum ErrorType {
     GENERATION_PENDING_TIMEOUT(
             HttpStatus.SERVICE_UNAVAILABLE,
             "Generation pending timeout",
-            "생성 대기 시간이 초과되었습니다. 다시 요청해 주세요."
+            "생성 대기 시간이 초과되었습니다."
     ),
     IMAGE_STORAGE_ERROR(
             HttpStatus.SERVICE_UNAVAILABLE,
@@ -336,7 +376,7 @@ public enum ErrorType {
     AI_PROVIDER_TIMEOUT(
             HttpStatus.GATEWAY_TIMEOUT,
             "AI provider timeout",
-            "AI 공급자 응답 시간이 초과되었습니다."
+            "AI 서비스가 제한 시간 안에 응답하지 못했어요."
     ),
     INTERNAL_SERVER_ERROR(
             HttpStatus.INTERNAL_SERVER_ERROR,
@@ -381,10 +421,17 @@ public enum ErrorType {
         return URI.create(PROBLEM_TYPE_URN_PREFIX + slug);
     }
 
-    static ErrorType from(GenerationErrorCode errorCode) {
+    public static ErrorType from(GenerationErrorCode errorCode) {
         return switch (errorCode) {
-            case AI_PROVIDER_ERROR, AI_PROVIDER_RATE_LIMITED, AI_OUTPUT_TRUNCATED,
-                    AI_RESPONSE_PROCESSING_ERROR -> AI_PROVIDER_ERROR;
+            case AI_PROVIDER_ERROR -> AI_PROVIDER_ERROR;
+            case AI_PROVIDER_CONNECTION_ERROR -> AI_PROVIDER_CONNECTION_ERROR;
+            case AI_PROVIDER_SERVER_ERROR -> AI_PROVIDER_SERVER_ERROR;
+            case AI_PROVIDER_CONFIGURATION_ERROR -> AI_PROVIDER_CONFIGURATION_ERROR;
+            case AI_PROVIDER_REQUEST_REJECTED -> AI_PROVIDER_REQUEST_REJECTED;
+            case AI_PROVIDER_RATE_LIMITED -> AI_PROVIDER_RATE_LIMITED;
+            case AI_CONTENT_BLOCKED -> AI_CONTENT_BLOCKED;
+            case AI_OUTPUT_TRUNCATED -> AI_OUTPUT_TRUNCATED;
+            case AI_RESPONSE_PROCESSING_ERROR -> AI_RESPONSE_PROCESSING_ERROR;
             case GENERATION_INTERNAL_ERROR -> INTERNAL_SERVER_ERROR;
             case AI_PROVIDER_TIMEOUT -> AI_PROVIDER_TIMEOUT;
             case GENERATION_INTERRUPTED -> GENERATION_INTERRUPTED;
@@ -393,11 +440,7 @@ public enum ErrorType {
         };
     }
 
-    static ErrorType from(AiGenerationErrorType errorType) {
-        return switch (errorType) {
-            case PROVIDER_ERROR, RATE_LIMITED, OUTPUT_TRUNCATED, RESPONSE_PROCESSING_ERROR -> AI_PROVIDER_ERROR;
-            case TIMEOUT -> AI_PROVIDER_TIMEOUT;
-            case INTERNAL_ERROR -> INTERNAL_SERVER_ERROR;
-        };
+    static ErrorType from(AiGenerationException exception) {
+        return from(exception.errorCode());
     }
 }

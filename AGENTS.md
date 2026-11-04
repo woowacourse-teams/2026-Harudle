@@ -61,6 +61,11 @@ flowchart TB
 
 ## 실행 자원과 설정 위치
 
+만료된 Refresh Token은 전용 스케줄러가 매일 한국 시간 새벽 4시에 삭제한다.
+`REFRESH_TOKEN_CLEANUP_CRON`과 `REFRESH_TOKEN_CLEANUP_ZONE`으로 실행 시각을 바꾼다.
+`REFRESH_TOKEN_CLEANUP_CRON=-`로 예약 실행을 끌 수 있다.
+설정을 바꾸면 백엔드 컨테이너를 재생성한다. 자세한 내용은 `deploy/README.md`를 따른다.
+
 | 구성 | 연결·설정 | 자원·역할 |
 | --- | --- | --- |
 | Frontend | `127.0.0.1:${APP_PORT:-3000} → 80` | Nginx + React, 메모리 `192m` |
@@ -92,10 +97,24 @@ flowchart TB
 기본 동시 실행 수는 `1`, `GENERATION_WORKER_POLL_INTERVAL`의
 기본 확인 간격은 `5s`다. 환경 변수를 바꾸면 로컬 백엔드는 재시작하고, 배포 컨테이너는
 재생성해야 한다.
-Codex 이미지 대체 생성을 켜면 별도의 HTTP worker가 일반 생성과 관리자 복구의 Codex 요청을 함께 처리한다.
-Worker 한 대의 동시 생성 수는 `CODEX_IMAGE_CONCURRENCY`, 대기 수는 `CODEX_IMAGE_QUEUE_CAPACITY`로 정하며 기본값은 각각 1이다.
-입력 수신 중인 요청도 접수 한도에 포함하고, 한도가 차면 503을 반환한다. 기존 300초 제한은 입력 수신과 대기, 생성을 합쳐 적용한다.
-백엔드의 일기 작업 동시 실행 수와 별도로 설정한다. 실행과 취소, 로그 확인 방법은 `backend/codex-image-worker/README.md`를 따른다.
+이미지 메인은 `IMAGE_PROVIDER`로 선택하며 기본값은 `gemini`다.
+`IMAGE_PROVIDER=openai`와 `IMAGE_FALLBACK_PROVIDER=none`이면 OpenAI를 바로 호출한다.
+스토리보드는 기존 제공자 설정을 따르며 이미지 비율은 기존 Gemini 비율 설정을 함께 사용한다.
+OpenAI 이미지 대체 생성은 Gemini 메인에서 `IMAGE_FALLBACK_PROVIDER=openai`로 켠다.
+Gemini가 429 또는 시간 초과로 실패하면 같은 스토리보드와 참조 이미지를 Flare에 한 번 보낸다.
+백엔드가 API 키로 Images API를 직접 호출하며 Codex SDK와 별도 worker는 사용하지 않는다.
+`OPENAI_API_KEY`는 서버 환경 변수에만 저장한다. 모델 기본값은 `gpt-image-2.5-flare`,
+제한 시간은 `180s`, 품질은 `medium`이다. 이미지 비율은 기존 `GEMINI_IMAGE_ASPECT_RATIO`를 사용한다.
+OpenAI 전용 크기 환경 변수 없이 해당 비율에 맞는 픽셀 크기로 변환한다.
+Gemini와 OpenAI의 기본 호출 제한 시간 합은 360초이며 입력 준비와 저장 시간은 별도다.
+OpenAI 지표는 시작 시 0으로 등록하고, 응답 검증 실패는 원문 없이 고정된 reason으로 로그와 지표에 남긴다.
+dev와 prod의 수집 설정과 대시보드 생성 도구에 OpenAI 지표를 추가했다. 서버와 AWS에는 별도 적용해야 한다.
+활성화 전 외부 전송 정보와 필요한 고지는 `backend/docs/adr/약관과 동의/2026-10-25-약관과 개인정보처리방침 대조 기록-작성자 미기재.md`를 기준으로 확인한다.
+설정과 전환 절차는 `backend/README.md`와 `deploy/README.md`를 따른다.
+2026-11-03에 dev와 prod의 `/opt/harudle/.env`에 OpenAI 설정을 저장했다.
+모델은 `gpt-image-2.5-flare`, 제한 시간은 `180s`, 품질은 `medium`이다.
+`OPENAI_API_KEY`는 비어 있고 `IMAGE_FALLBACK_PROVIDER=none`으로 비활성화 상태다.
+두 환경 모두 원본을 권한 `600`으로 백업했으며 컨테이너는 재시작하거나 재생성하지 않았다.
 앱 종료가 시작되면 새 선점을 멈추고, 생성 처리기의 종료 단계에서 진행 중인 작업을 최대 6분 기다린다.
 이 단계는 HTTP 종료 단계 뒤에 두고 다른 실행기와 DB 연결을 닫기 전에 진행한다. 작업이 먼저 끝나면 다음 종료 절차로 넘어간다.
 로컬과 배포 Compose의 백엔드 종료 유예는 7분, CodeDeploy의 `ApplicationStart` 훅 제한은 600초다.
@@ -265,8 +284,9 @@ CodeBuild는 프론트엔드 입력이 같으면 이전 이미지를 재사용�
 
 | 작업 | 확인 위치 |
 | --- | --- |
+| 백엔드 코드와 테스트 | [backend/AGENTS.md](backend/AGENTS.md), [테스트 실행 안내](backend/README.md#테스트) |
 | 프론트엔드 코드 | [frontend/AGENTS.md](frontend/AGENTS.md) |
-| 약관 열람·수락 적용 | [동의 API와 단계적 적용](backend/docs/terms-consent.md), [원문 정책 대조](backend/docs/terms-policy-review.md) |
+| 약관 열람·수락 적용 | [동의 API와 단계적 적용](<backend/docs/adr/약관과 동의/2026-10-25-약관 열람과 명시적 동의 정책-작성자 미기재.md>), [원문 정책 대조](<backend/docs/adr/약관과 동의/2026-10-25-약관과 개인정보처리방침 대조 기록-작성자 미기재.md>) |
 | 배포·환경 변수 | [deploy/README.md](deploy/README.md), [.env.docker.example](.env.docker.example), [배포 환경 검사](deploy/scripts/compose_environment.sh) |
 | 컨테이너·자원·포트 | [운영 Compose](deploy/compose.prod.yaml), [dev override](deploy/compose.dev.yaml) |
 | 프록시·HTTPS·OAuth 경로 | [Host Nginx 예시](deploy/nginx/harudle.conf.example), [Frontend Nginx](frontend/nginx/default.conf) |

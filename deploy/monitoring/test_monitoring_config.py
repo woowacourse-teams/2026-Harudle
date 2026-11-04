@@ -37,6 +37,12 @@ NEW_DIMENSIONS = {
     "harudle_generation_duration_seconds_sum": [["job", "result"]],
     "harudle_generation_duration_seconds_count": [["job", "result"]],
     "harudle_gemini_tokens_total": [["job", "stage", "kind"]],
+    "harudle_image_fallback_calls_total": [["job", "provider", "reason"]],
+    "harudle_image_provider_duration_seconds_sum": [["job", "provider", "outcome"]],
+    "harudle_image_provider_duration_seconds_count": [["job", "provider", "outcome"]],
+    "harudle_image_response_failures_total": [["job", "provider", "reason"]],
+    "harudle_gemini_stage_duration_seconds_sum": [["job", "stage", "outcome"]],
+    "harudle_gemini_stage_duration_seconds_count": [["job", "stage", "outcome"]],
 }
 RESOURCE_METRICS = {
     "hikaricp_connections_acquire_seconds_sum": "Seconds",
@@ -150,6 +156,10 @@ class MonitoringConfigTests(unittest.TestCase):
             "harudle_generation_capacity_rejections_total_created",
             "harudle_generation_duration_seconds_sum_unbounded_suffix",
             "harudle_gemini_tokens_total_created",
+            "harudle_image_provider_duration_seconds_bucket",
+            "harudle_image_provider_duration_seconds_max",
+            "harudle_image_response_failures_total_extra",
+            "harudle_gemini_stage_duration_seconds_bucket",
             "http_server_requests_seconds_bucket",
             "jvm_gc_pause_seconds_count",
             "jvm_memory_committed_bytes",

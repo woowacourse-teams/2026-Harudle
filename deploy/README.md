@@ -9,6 +9,17 @@ Internet -> host Nginx/Certbot -> 127.0.0.1:3000
                                     -> /api/* -> backend:8080 -> RDS/S3/Gemini
 ```
 
+## 만료된 Refresh Token 정리
+
+백엔드는 기본적으로 매일 한국 시간 새벽 4시에 만료된 Refresh Token을 삭제합니다.
+서버 `.env`의 `REFRESH_TOKEN_CLEANUP_CRON`과 `REFRESH_TOKEN_CLEANUP_ZONE`으로 실행 시각을 바꿉니다.
+기본값은 각각 `0 0 4 * * *`와 `Asia/Seoul`입니다.
+`REFRESH_TOKEN_CLEANUP_CRON=-`로 설정하면 예약 실행을 끕니다.
+변경 후에는 백엔드 컨테이너를 재생성해야 합니다.
+CloudWatch 앱 로그에서 `event=refresh_token_cleanup_run`의 `deletedCount`와 `durationMs`를 확인합니다.
+실패 로그는 `event=refresh_token_cleanup_failed`이며 다음 예약 시각에 다시 실행합니다.
+기존 만료 토큰이 많이 쌓였다면 첫 실행 전 대상 건수와 DB 부하를 확인합니다.
+
 ## EC2 최초 설정
 
 Docker, Docker Compose v2, `jq`를 설치합니다. `BeforeInstall`은 이 도구들이 없으면 기존 배포 파일을 정리하기 전에 중단합니다.
@@ -124,7 +135,7 @@ Spring의 종료 단계에서 기다리므로, 작업이 DB와 AI 연결을 사�
 
 **k6와 dev 백엔드를 멈추고, 별도 명령으로 미완료 테스트 작업을 지운 뒤 백엔드를 켭니다.**
 테스트 ID는 메모리에만 남습니다. DB의 테스트 대기 작업을 그대로 두고 다시 켜면 실제 AI가 호출될 수 있습니다.
-정리 명령은 앱이 꺼진 상태에서 사용할 수 있습니다. 선택한 이유는 [중단된 테스트 작업 정리 ADR](<../backend/docs/adr/async-diary-generation/2026-10-21_중단된 부하 테스트 작업을 어떻게 정리할 것인가_캐모.md>)에 기록했습니다.
+정리 명령은 앱이 꺼진 상태에서 사용할 수 있습니다. 선택한 이유는 [중단된 테스트 작업 정리 ADR](<../backend/docs/adr/비동기 일기 생성/2026-10-21-중단된 부하 테스트 작업을 어떻게 정리할 것인가-캐모.md>)에 기록했습니다.
 
 1. k6를 종료합니다. dev 사용 시간을 팀과 맞추고 정리 중 다른 배포나 백엔드 시작을 하지 않습니다.
 2. dev EC2에서 백엔드 컨테이너를 중단합니다. 컨테이너 설정을 읽어야 하므로 `down`으로 삭제하지 않습니다.
@@ -384,7 +395,7 @@ openssl rand -base64 32
 
 LEGAL_REQUIRE_TERMS_ACCEPTANCE의 기본값은 false다. 문서·수락 API와 프론트가 함께 준비되고, 정책·시행일·기존 회원 안내를 확정한 뒤 환경별로 true로 설정해 적용한다. 백엔드만 먼저 배포할 때는 false를 유지한다. 변경 후에는 기존 환경 변수와 마찬가지로 백엔드 컨테이너를 재생성해야 한다.
 
-동의 시각을 과거 가입일로 채우거나 운영 데이터를 자동 삭제하는 작업은 포함하지 않는다. 필수 적용을 끄더라도 수락 기록은 보존한다. 상세 순서는 [약관 열람과 수락](../backend/docs/terms-consent.md)을 따른다.
+동의 시각을 과거 가입일로 채우거나 운영 데이터를 자동 삭제하는 작업은 포함하지 않는다. 필수 적용을 끄더라도 수락 기록은 보존한다. 상세 순서는 [약관 열람과 수락](<../backend/docs/adr/약관과 동의/2026-10-25-약관 열람과 명시적 동의 정책-작성자 미기재.md>)을 따른다.
 
 ## Apple 개인 키와 배포 설정
 
@@ -401,6 +412,7 @@ dev와 prod Compose는 이 폴더를 `/var/run/harudle/apple/`에 읽기 전용�
 
 ```dotenv
 APPLE_LOGIN_ENABLED=true
+APPLE_TOKEN_ENCRYPTION_KEY=<32바이트 암호화 키의 Base64 값>
 APPLE_PRIVATE_KEY_PATH=/var/run/harudle/apple/AuthKey.p8
 SESSION_COOKIE_SAME_SITE=none
 SESSION_COOKIE_SECURE=true
@@ -408,6 +420,22 @@ SESSION_COOKIE_SECURE=true
 
 Apple에 `${BACKEND_BASE_URL}/login/oauth2/code/apple` HTTPS 콜백을 등록하고 로그인 시작 호스트와 맞춥니다.
 설정 후 배포 훅으로 백엔드를 재생성합니다. 준비 전에는 `APPLE_LOGIN_ENABLED=false`를 유지합니다.
+
+애플 토큰 암호화 키는 JWT 키와 별도로 환경별로 생성해 안전하게 보관합니다. 키 형식이 올바르지 않으면
+서버 시작 시 `apple_token_key_invalid` 경고를 남깁니다. 토큰 저장에 실패해도 로그인은 허용하며,
+`apple_token_save_failed` 로그의 `reason`으로 키, 토큰 누락과 DB 오류를 구분합니다. 키를 변경하거나 잃어버리면 기존
+토큰을 복호화할 수 없으므로 기존 토큰의 처리 방법을 마련한 뒤 변경합니다.
+
+Apple 설정에서 연결 해제 또는 계정 삭제 알림을 받으려면 Primary App ID의 Sign in with Apple 설정에
+`https://{서비스 호스트}/api/v1/public/apple/notifications`를 등록합니다. Apple 앱 그룹마다 알림 주소는
+하나만 등록할 수 있으므로 dev와 prod가 같은 그룹을 사용한다면 각 환경으로 알림이 전달되는 구성을 먼저 정합니다.
+서버는 Apple 서명과 앱 식별자를 검증합니다. 설정 방법은 [Apple 안내](https://developer.apple.com/help/account/capabilities/enabling-server-to-server-notifications)를 따릅니다.
+
+## 카카오 회원 탈퇴 설정
+
+서버 `/opt/harudle/.env`의 `KAKAO_ADMIN_KEY`에 현재 `KAKAO_REST_API_KEY`와 같은 카카오 앱의 관리자 키를
+설정합니다. 카카오 앱 관리자 키 설정에서 연결 끊기 API를 허용합니다. 관리자 키는 서버에서만 사용하고 공개하지 않습니다.
+설정을 바꾼 뒤 백엔드 컨테이너를 재생성합니다.
 
 ## Google 로그인 설정
 
@@ -432,3 +460,43 @@ https://www.harudle.com/login/oauth2/code/google
 ## 요청 지연을 확인하는 로그
 
 백엔드는 요청 완료 로그에 S3와 R2 확인 횟수, URL 서명 시간, 피드 데이터 조회 시간을 남깁니다. 프론트엔드 Nginx는 같은 응답 추적 ID와 프록시 시간을 JSON으로 기록합니다. 호스트 Nginx의 실제 HTTPS 설정과 CloudWatch 필터는 별도로 적용합니다. [적용과 확인 순서](monitoring/request-latency.md)를 참고합니다.
+
+## OpenAI 이미지 대체 생성 전환
+
+### 2026-11-03 환경 파일 준비 상태
+
+2026-11-03에 dev와 prod의 `/opt/harudle/.env`에 OpenAI 설정을 저장했다.
+모델은 `gpt-image-2.5-flare`, 제한 시간은 `180s`, 품질은 `medium`이다.
+`OPENAI_API_KEY`는 비어 있고 `IMAGE_FALLBACK_PROVIDER=none`으로 비활성화 상태다.
+두 환경 모두 원본을 권한 `600`으로 백업했으며 컨테이너는 재시작하거나 재생성하지 않았다.
+
+### 활성화 절차
+
+메인 이미지 제공자는 `IMAGE_PROVIDER`로 선택합니다. 기본값은 `gemini`입니다.
+OpenAI를 메인으로 시험하려면 `IMAGE_PROVIDER=openai`, `IMAGE_FALLBACK_PROVIDER=none`과 유효한
+`OPENAI_API_KEY`를 설정합니다. 이 모드에서는 Gemini 이미지 오류를 기다리지 않고 OpenAI를 바로 호출합니다.
+Gemini를 메인으로 유지하면서 대체 호출만 켜려면 `IMAGE_PROVIDER=gemini`,
+`IMAGE_FALLBACK_PROVIDER=openai`를 사용합니다. 스토리보드 제공자 설정은 별도입니다.
+
+활성화 전에 [원문 정책 대조](<../backend/docs/adr/약관과 동의/2026-10-25-약관과 개인정보처리방침 대조 기록-작성자 미기재.md>)의 외부 처리 업체 항목을 확인합니다.
+환경별 활성 업체와 OpenAI에 전송하는 스토리보드, 그림체 지시문, 참조 이미지, 처리 국가와 보유기간을
+확인하고 필요한 위탁과 국외 이전 고지, 동의 등 처리 근거를 실제 정책과 맞춥니다.
+확인 결과를 운영 기록에 남긴 뒤 키와 활성화 설정을 적용합니다.
+
+서버 `/opt/harudle/.env`에 `IMAGE_FALLBACK_PROVIDER=openai`와 `OPENAI_API_KEY`를 설정합니다.
+모델 기본값은 `OPENAI_IMAGE_MODEL=gpt-image-2.5-flare`, 호출 제한 시간은
+`OPENAI_IMAGE_TIMEOUT=180s`, 품질은
+`OPENAI_IMAGE_QUALITY=medium`입니다. 이미지 비율은 기존 `GEMINI_IMAGE_ASPECT_RATIO`를 함께 사용합니다.
+OpenAI 전용 크기 설정은 없습니다. `env_file`로 읽으므로 Compose 서비스 추가는 필요 없습니다.
+
+기존 `IMAGE_FALLBACK_PROVIDER=codex`는 새 코드에서 지원하지 않습니다.
+전환 전에 환경 파일을 바꾸고 기존 배포 절차로 백엔드 컨테이너를 재생성합니다.
+이 변경 자체가 실행 중인 서버 환경 파일이나 컨테이너를 바꾸지는 않습니다.
+기존 Codex worker를 운영하고 있다면 진행 중인 요청이 끝난 뒤 별도 운영 절차로 중지합니다.
+
+대체 호출 모드에서는 Gemini 429 또는 시간 초과 상황에서 Flare가 한 번 호출되는지 확인합니다.
+OpenAI 메인 모드에서는 Gemini 이미지 호출 없이 생성되는지 확인합니다.
+일반 생성과 관리자 복구의 결과를 확인하고 `provider=openai` 지표와 오류 로그를 확인합니다.
+수집 설정과 대시보드는 [OpenAI 지표 안내](monitoring/README.md#openai-이미지-대체-생성-지표)에 따라 별도로 적용합니다.
+키와 요청 본문을 출력하지 않습니다. Gemini만 사용하도록 되돌리려면 `IMAGE_PROVIDER=gemini`와
+`IMAGE_FALLBACK_PROVIDER=none`으로 바꾸고 백엔드를 재생성합니다. 자세한 입력 제한과 설정은 [백엔드 안내](../backend/README.md#이미지-생성의-openai-대체-호출)를 따릅니다.

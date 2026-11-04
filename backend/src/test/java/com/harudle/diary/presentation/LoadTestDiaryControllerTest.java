@@ -16,8 +16,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.harudle.auth.domain.User;
 import com.harudle.auth.domain.UserRole;
 import com.harudle.auth.infrastructure.UserRepository;
-import com.harudle.auth.infrastructure.oauth.OAuthLoginFailureHandler;
-import com.harudle.auth.infrastructure.oauth.OAuthLoginSuccessHandler;
 import com.harudle.auth.presentation.AuthenticatedUserIdResolver;
 import com.harudle.common.config.TimeConfiguration;
 import com.harudle.common.error.ApiExceptionLoggerTestConfiguration;
@@ -49,7 +47,6 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
-import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -76,9 +73,6 @@ class LoadTestDiaryControllerTest {
     @MockitoBean private ImageUrlProvider imageUrlProvider;
     @MockitoBean private JwtDecoder jwtDecoder;
     @MockitoBean private UserRepository userRepository;
-    @MockitoBean private OAuthLoginSuccessHandler successHandler;
-    @MockitoBean private OAuthLoginFailureHandler failureHandler;
-    @MockitoBean private ClientRegistrationRepository clientRegistrationRepository;
 
     @BeforeEach
     void configureBearerToken() {

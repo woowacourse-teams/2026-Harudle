@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "하루들",
+    "slug": "harudle",
+    "icon": "./assets/icon.png",
+    "version": "1.0.0",
+    "platforms": ["ios", "android"],
+    "plugins": [
+      "expo-apple-authentication",
+      "@react-native-firebase/app",
+      ["@react-native-firebase/messaging", { "installationIdEnabled": true }],
+      ["expo-notifications", { "defaultChannel": "feed" }],
+      ["expo-build-properties", { "ios": { "useFrameworks": "dynamic" } }],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": false,
+          "savePhotosPermission": "하루들 이미지를 사진첩에 저장하기 위해 권한이 필요해요.",
+          "granularPermissions": []
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-logo.png",
+          "imageWidth": 180,
+          "backgroundColor": "#FFFFFF"
+        }
+      ]
+    ],
+    "ios": {
+      "bundleIdentifier": "com.harudle.app",
+      "appleTeamId": "BUTSZDAYNT",
+      "googleServicesFile": "./GoogleService-Info.plist",
+      "usesAppleSignIn": true
+    },
+    "android": {
+      "package": "com.harudle.app",
+      "googleServicesFile": "./google-services.json",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#CDB9F7"
+      }
+    }
+  }
+}

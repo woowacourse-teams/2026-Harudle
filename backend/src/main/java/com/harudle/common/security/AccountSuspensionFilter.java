@@ -2,6 +2,7 @@ package com.harudle.common.security;
 
 import com.harudle.auth.application.AccountAccessPolicy;
 import com.harudle.auth.application.AccountSuspendedException;
+import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.common.error.ErrorType;
 import com.harudle.common.error.ProblemDetailResponseWriter;
 import com.harudle.common.validation.CanonicalUuidParser;
@@ -25,10 +26,12 @@ final class AccountSuspensionFilter extends OncePerRequestFilter {
     private static final Logger LOGGER = LoggerFactory.getLogger(AccountSuspensionFilter.class);
     private static final Set<String> UNRESTRICTED_PATHS = Set.of("/api/v1/auth/logout", "/api/v1/auth/csrf");
     private final AccountAccessPolicy accountAccess;
+    private final UserRepository users;
     private final ProblemDetailResponseWriter problems;
 
-    AccountSuspensionFilter(AccountAccessPolicy accountAccess, ProblemDetailResponseWriter problems) {
+    AccountSuspensionFilter(AccountAccessPolicy accountAccess, UserRepository users, ProblemDetailResponseWriter problems) {
         this.accountAccess = accountAccess;
+        this.users = users;
         this.problems = problems;
     }
 
@@ -36,6 +39,7 @@ final class AccountSuspensionFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI().substring(request.getContextPath().length());
         return UNRESTRICTED_PATHS.contains(path)
+                || ("POST".equals(request.getMethod()) && path.equals("/api/v1/me/withdrawal"))
                 || ("GET".equals(request.getMethod()) && (path.equals("/api/v1/legal/documents")
                 || path.startsWith("/api/v1/legal/documents/")));
     }
@@ -54,6 +58,10 @@ final class AccountSuspensionFilter extends OncePerRequestFilter {
             return;
         }
         try {
+            if (!users.existsById(userId.get())) {
+                reject(request, response, ErrorType.INVALID_CURRENT_USER);
+                return;
+            }
             accountAccess.requireAllowedForRequest(userId.get());
         } catch (AccountSuspendedException exception) {
             reject(request, response, ErrorType.ACCOUNT_SUSPENDED);

@@ -112,6 +112,7 @@ public final class GeminiDiaryImageGenerator implements DiaryImageGenerator {
 
     private GeneratedImage processResponse(GenerateContentResponse response) {
         try {
+            GeminiResponseValidator.validate(response);
             return extractGeneratedImage(response);
         } catch (Exception exception) {
             throw failureReporter.reportImageResponseFailure(
