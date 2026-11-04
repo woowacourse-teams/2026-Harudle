@@ -412,6 +412,7 @@ dev와 prod Compose는 이 폴더를 `/var/run/harudle/apple/`에 읽기 전용�
 
 ```dotenv
 APPLE_LOGIN_ENABLED=true
+APPLE_TOKEN_ENCRYPTION_KEY=<32바이트 암호화 키의 Base64 값>
 APPLE_PRIVATE_KEY_PATH=/var/run/harudle/apple/AuthKey.p8
 SESSION_COOKIE_SAME_SITE=none
 SESSION_COOKIE_SECURE=true
@@ -419,6 +420,22 @@ SESSION_COOKIE_SECURE=true
 
 Apple에 `${BACKEND_BASE_URL}/login/oauth2/code/apple` HTTPS 콜백을 등록하고 로그인 시작 호스트와 맞춥니다.
 설정 후 배포 훅으로 백엔드를 재생성합니다. 준비 전에는 `APPLE_LOGIN_ENABLED=false`를 유지합니다.
+
+애플 토큰 암호화 키는 JWT 키와 별도로 환경별로 생성해 안전하게 보관합니다. 키 형식이 올바르지 않으면
+서버 시작 시 `apple_token_key_invalid` 경고를 남깁니다. 토큰 저장에 실패해도 로그인은 허용하며,
+`apple_token_save_failed` 로그의 `reason`으로 키, 토큰 누락과 DB 오류를 구분합니다. 키를 변경하거나 잃어버리면 기존
+토큰을 복호화할 수 없으므로 기존 토큰의 처리 방법을 마련한 뒤 변경합니다.
+
+Apple 설정에서 연결 해제 또는 계정 삭제 알림을 받으려면 Primary App ID의 Sign in with Apple 설정에
+`https://{서비스 호스트}/api/v1/public/apple/notifications`를 등록합니다. Apple 앱 그룹마다 알림 주소는
+하나만 등록할 수 있으므로 dev와 prod가 같은 그룹을 사용한다면 각 환경으로 알림이 전달되는 구성을 먼저 정합니다.
+서버는 Apple 서명과 앱 식별자를 검증합니다. 설정 방법은 [Apple 안내](https://developer.apple.com/help/account/capabilities/enabling-server-to-server-notifications)를 따릅니다.
+
+## 카카오 회원 탈퇴 설정
+
+서버 `/opt/harudle/.env`의 `KAKAO_ADMIN_KEY`에 현재 `KAKAO_REST_API_KEY`와 같은 카카오 앱의 관리자 키를
+설정합니다. 카카오 앱 관리자 키 설정에서 연결 끊기 API를 허용합니다. 관리자 키는 서버에서만 사용하고 공개하지 않습니다.
+설정을 바꾼 뒤 백엔드 컨테이너를 재생성합니다.
 
 ## Google 로그인 설정
 

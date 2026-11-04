@@ -143,6 +143,13 @@ http://localhost:8080/login/oauth2/code/google
 성공 후 이동할 주소는 `FRONTEND_SUCCESS_REDIRECT`, 실패 시 주소는 `FRONTEND_FAILURE_REDIRECT`로 설정합니다.
 프론트엔드가 실행되지 않아도 백엔드 인증 처리는 가능하지만, 이동한 화면은 열리지 않을 수 있습니다.
 
+구글 재인증을 거친 회원 탈퇴 결과는 로그인과 별도로 `/withdrawal/callback`에 전달합니다.
+`FRONTEND_SUCCESS_REDIRECT`와 같은 프로토콜, 호스트, 포트를 사용하고 경로는
+`/withdrawal/callback`으로 바꿉니다. 로그인 주소의 쿼리와 fragment는 이어받지 않습니다.
+성공 시 `withdrawal=success`, 실패나 인증 취소 시 `withdrawal=failed`를 붙입니다.
+추가 환경 변수나 Google에 등록한 백엔드 콜백 주소 변경은 필요하지 않습니다.
+프론트엔드의 탈퇴 전용 콜백 페이지와 함께 반영해야 합니다.
+
 요청 범위는 `openid`, `email`, `profile`입니다. Spring Security가 인증 결과를 검증한 뒤 기존 로그인 성공
 처리기로 전달합니다. 구글 계정은 `GOOGLE`과 구글의 사용자 식별자 `sub`로 찾으며, 이메일이 같아도 카카오
 계정과 합치지 않습니다. 신규 회원의 `name`에는 구글 이름을 저장하고, 이름이 없으면 자동 닉네임을 사용합니다.
@@ -450,6 +457,23 @@ OkHttp의 `503 + Retry-After: 0` 자동 후속 호출도 방지합니다. 이 �
 테스트는 로컬 HTTP 서버에서 지연된 헤더·본문 취소, 동시 요청 격리, 오류 응답·연결 실패의 실제 전송 횟수를 확인합니다.
 
 외부 생성 어댑터를 비활성화하면 조합 서비스와 실행기를 초기화하지 않습니다. 이미지 생성에는 이 실행기를 적용하지 않습니다.
+
+### 탈퇴 후 남은 이미지 확인
+
+탈퇴할 때 삭제할 이미지 목록과 회원 DB 삭제를 함께 저장한 뒤 S3와 R2 삭제를 시도합니다.
+파일 삭제와 목록 제거가 성공한 작업만 목록에서 사라집니다. 실패하거나 아직 처리되지 않은 작업은
+`withdrawal_image_cleanup_tasks`에 남습니다. 자동 재시도나 정기 실행은 하지 않습니다.
+
+운영자가 필요할 때 아래 조회로 남은 작업을 확인하고 수동 정리합니다. 목록에는 이미 삭제됐지만
+목록 제거에 실패한 파일도 있을 수 있습니다. 실제 파일 삭제 여부를 확인한 뒤 해당 목록을 제거합니다.
+S3 일기 이미지 작업은 기존 삭제 코드와 같이 원본과 썸네일까지 함께 확인해야 합니다.
+이미지 경로는 일반 로그나 조회 결과 공유에 포함하지 않고, 필요한 경우에만 삭제 작업 테이블에서 확인합니다.
+
+```sql
+SELECT storage, count(*) AS pending_count, min(created_at) AS oldest_created_at
+FROM withdrawal_image_cleanup_tasks
+GROUP BY storage;
+```
 
 ## 테스트
 

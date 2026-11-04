@@ -9,6 +9,9 @@ import org.jspecify.annotations.Nullable;
 
 public interface CommentRepository {
 
+    /** 회원 삭제 전 같은 트랜잭션에서 차단 상대의 댓글 숨김을 보존한다. */
+    void preserveBlockedVisibility(UUID authorId);
+
     boolean isActiveMember(UUID userId);
 
     boolean existsVisibleFeed(UUID feedId, @Nullable UUID viewerId);
