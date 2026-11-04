@@ -320,7 +320,7 @@ class DiarySourceTextEncryptionPersistenceTest extends ServiceIntegrationTestSup
         assertThat(findStoredSource(legacyDiaryId))
                 .isEqualTo(new StoredSource(legacyCommand.sourceText(), 0));
         assertThat(findStoredSource(encrypted.diaryId()).version()).isEqualTo(1);
-        assertThat(queryService.getTimeline(USER_ID, today.getYear(), today.getMonthValue()).days().stream()
+        assertThat(queryService.getTimeline(USER_ID, DIARY_DATE.getYear(), DIARY_DATE.getMonthValue()).days().stream()
                 .flatMap(day -> day.items().stream()))
                 .extracting(item -> item.id())
                 .containsExactlyInAnyOrder(legacyDiaryId, encrypted.diaryId());
