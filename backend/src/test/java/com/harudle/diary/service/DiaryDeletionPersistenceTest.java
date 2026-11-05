@@ -127,6 +127,7 @@ class DiaryDeletionPersistenceTest extends ServiceIntegrationTestSupport {
         Diary diary = diaryRepository.saveAndFlush(Diary.create(USER_ID, diaryDate, "오늘의 일기"));
         DiaryGeneration generation = diaryGenerationRepository.saveAndFlush(DiaryGeneration.start(
                 diary.getId(),
+                diary.getUserId(),
                 generationPrompt.getId(),
                 UUID.randomUUID(),
                 "a".repeat(64)
@@ -139,6 +140,7 @@ class DiaryDeletionPersistenceTest extends ServiceIntegrationTestSupport {
         Diary diary = diaryRepository.saveAndFlush(Diary.create(USER_ID, diaryDate, "오늘의 일기"));
         DiaryGeneration generation = DiaryGeneration.start(
                 diary.getId(),
+                diary.getUserId(),
                 generationPrompt.getId(),
                 UUID.randomUUID(),
                 "a".repeat(64)

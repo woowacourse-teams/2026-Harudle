@@ -50,7 +50,7 @@ class LoadTestGenerationPendingExpiryTest {
     private final LoadTestGenerationRegistry registry = new LoadTestGenerationRegistry(executor);
     private final Diary diary = Diary.create(UUID.randomUUID(), USAGE_DATE, "대기 만료 테스트");
     private final DiaryGeneration generation = DiaryGeneration.pending(
-            diary.getId(), 1L, UUID.randomUUID(), "a".repeat(64), USAGE_DATE
+            diary.getId(), diary.getUserId(), 1L, UUID.randomUUID(), "a".repeat(64), USAGE_DATE
     );
 
     private Connection connection;

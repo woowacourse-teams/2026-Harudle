@@ -106,7 +106,7 @@ class DiaryGenerationCompletionServiceTest {
     @DisplayName("대기 작업을 성공으로 완료하거나 완료 지표를 기록하지 않는다")
     void rejectSucceedingPendingGeneration() {
         DiaryGeneration generation = DiaryGeneration.pending(
-                UUID.randomUUID(), 1L, UUID.randomUUID(), "a".repeat(64), USAGE_DATE
+                UUID.randomUUID(), UUID.randomUUID(), 1L, UUID.randomUUID(), "a".repeat(64), USAGE_DATE
         );
         when(diaryGenerationRepository.findByIdForUpdate(generation.getId()))
                 .thenReturn(Optional.of(generation));
@@ -124,7 +124,7 @@ class DiaryGenerationCompletionServiceTest {
     @DisplayName("대기 작업의 실패 처리를 거부하고 일기와 사용량을 유지한다")
     void rejectFailingPendingGeneration() {
         DiaryGeneration generation = DiaryGeneration.pending(
-                UUID.randomUUID(), 1L, UUID.randomUUID(), "a".repeat(64), USAGE_DATE
+                UUID.randomUUID(), UUID.randomUUID(), 1L, UUID.randomUUID(), "a".repeat(64), USAGE_DATE
         );
         Diary diary = mock(Diary.class);
         when(diaryGenerationRepository.findByIdForUpdate(generation.getId()))
@@ -503,7 +503,7 @@ class DiaryGenerationCompletionServiceTest {
 
     private DiaryGeneration createPendingGeneration(LocalDate usageDate, Instant createdAt) {
         DiaryGeneration generation = DiaryGeneration.pending(
-                UUID.randomUUID(), 1L, UUID.randomUUID(), "a".repeat(64), usageDate
+                UUID.randomUUID(), UUID.randomUUID(), 1L, UUID.randomUUID(), "a".repeat(64), usageDate
         );
         ReflectionTestUtils.setField(generation, "createdAt", createdAt);
         return generation;
@@ -515,6 +515,7 @@ class DiaryGenerationCompletionServiceTest {
 
     private DiaryGeneration createGeneration(LocalDate usageDate) {
         return DiaryGeneration.start(
+                UUID.randomUUID(),
                 UUID.randomUUID(),
                 1L,
                 UUID.randomUUID(),

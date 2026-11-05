@@ -31,6 +31,9 @@ public class DiaryGeneration {
     @Column(name = "diary_id", nullable = false)
     private UUID diaryId;
 
+    @Column(name = "requested_by_user_id", nullable = false, updatable = false)
+    private UUID requestedByUserId;
+
     @Column(name = "prompt_id", nullable = false)
     private Long generationPromptId;
 
@@ -89,6 +92,7 @@ public class DiaryGeneration {
     private DiaryGeneration(
             UUID id,
             UUID diaryId,
+            UUID requestedByUserId,
             Long generationPromptId,
             UUID idempotencyKey,
             String requestFingerprint,
@@ -97,11 +101,13 @@ public class DiaryGeneration {
     ) {
         validateId(id);
         validateDiaryId(diaryId);
+        validateRequestedByUserId(requestedByUserId);
         validateGenerationPromptId(generationPromptId);
         validateIdempotencyKey(idempotencyKey);
 
         this.id = id;
         this.diaryId = diaryId;
+        this.requestedByUserId = requestedByUserId;
         this.generationPromptId = generationPromptId;
         this.idempotencyKey = idempotencyKey;
         this.requestFingerprint = normalizeRequestFingerprint(requestFingerprint);
@@ -111,15 +117,17 @@ public class DiaryGeneration {
 
     public static DiaryGeneration start(
             UUID diaryId,
+            UUID requestedByUserId,
             Long generationPromptId,
             UUID idempotencyKey,
             String requestFingerprint
     ) {
-        return start(diaryId, generationPromptId, idempotencyKey, requestFingerprint, null);
+        return start(diaryId, requestedByUserId, generationPromptId, idempotencyKey, requestFingerprint, null);
     }
 
     public static DiaryGeneration start(
             UUID diaryId,
+            UUID requestedByUserId,
             Long generationPromptId,
             UUID idempotencyKey,
             String requestFingerprint,
@@ -128,6 +136,7 @@ public class DiaryGeneration {
         return new DiaryGeneration(
                 UUID.randomUUID(),
                 diaryId,
+                requestedByUserId,
                 generationPromptId,
                 idempotencyKey,
                 requestFingerprint,
@@ -138,6 +147,7 @@ public class DiaryGeneration {
 
     public static DiaryGeneration pending(
             UUID diaryId,
+            UUID requestedByUserId,
             Long generationPromptId,
             UUID idempotencyKey,
             String requestFingerprint,
@@ -146,6 +156,7 @@ public class DiaryGeneration {
         return new DiaryGeneration(
                 UUID.randomUUID(),
                 diaryId,
+                requestedByUserId,
                 generationPromptId,
                 idempotencyKey,
                 requestFingerprint,
@@ -160,6 +171,10 @@ public class DiaryGeneration {
 
     public UUID getDiaryId() {
         return diaryId;
+    }
+
+    public UUID getRequestedByUserId() {
+        return requestedByUserId;
     }
 
     public Long getGenerationPromptId() {
@@ -351,6 +366,12 @@ public class DiaryGeneration {
     private static void validateDiaryId(UUID diaryId) {
         if (diaryId == null) {
             throw new IllegalArgumentException("일기 ID는 필수입니다.");
+        }
+    }
+
+    private static void validateRequestedByUserId(UUID requestedByUserId) {
+        if (requestedByUserId == null) {
+            throw new IllegalArgumentException("생성 요청자 ID는 필수입니다.");
         }
     }
 

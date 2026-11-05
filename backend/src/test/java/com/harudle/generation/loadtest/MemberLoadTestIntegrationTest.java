@@ -126,11 +126,12 @@ class MemberLoadTestIntegrationTest {
         var seed = POSTGRES.execInContainer("psql", "-U", POSTGRES.getUsername(), "-d", POSTGRES.getDatabaseName(),
                 "-f", "/tmp/seed.sql");
         assertThat(seed.getExitCode()).as(seed.getStderr()).isZero();
-        jdbc.update("INSERT INTO diary_generations (id, diary_id, prompt_id, idempotency_key, request_fingerprint, "
-                + "status, storyboard, title, image_object_key, completed_at, usage_date, storyboard_provider, storyboard_model) "
-                + "SELECT ?, ?, prompt_id, ?, request_fingerprint, status, storyboard, '기존 일기', ?, completed_at, "
+        jdbc.update("INSERT INTO diary_generations (id, diary_id, requested_by_user_id, prompt_id, idempotency_key, "
+                + "request_fingerprint, status, storyboard, title, image_object_key, completed_at, usage_date, "
+                + "storyboard_provider, storyboard_model) "
+                + "SELECT ?, ?, ?, prompt_id, ?, request_fingerprint, status, storyboard, '기존 일기', ?, completed_at, "
                 + "usage_date, storyboard_provider, 'existing' FROM diary_generations LIMIT 1",
-                existingGeneration, existingDiary, UUID.randomUUID(), existingImage);
+                existingGeneration, existingDiary, existingUser, UUID.randomUUID(), existingImage);
         String user = commandOutput("id", "-u") + ":" + commandOutput("id", "-g");
         run(List.of("docker", "run", "--rm", "--user", user, "-v", scripts + ":/scripts", "-e", "MODE=" + mode,
                 "-e", "MEMBERS_FILE=/scripts/runs/" + run.getFileName() + "/members.json", "grafana/k6:2.3.0",
@@ -161,9 +162,11 @@ class MemberLoadTestIntegrationTest {
         UUID busyDiary = UUID.randomUUID();
         jdbc.update("INSERT INTO diaries (id, user_id, diary_date, source_text) VALUES (?, ?, CURRENT_DATE, '생성 중')",
                 busyDiary, lockedUser);
-        jdbc.update("INSERT INTO diary_generations (id, diary_id, prompt_id, idempotency_key, request_fingerprint, status, usage_date) "
-                + "SELECT ?, ?, prompt_id, ?, request_fingerprint, 'PROCESSING', usage_date FROM diary_generations LIMIT 1",
-                UUID.randomUUID(), busyDiary, UUID.randomUUID());
+        jdbc.update("INSERT INTO diary_generations (id, diary_id, requested_by_user_id, prompt_id, idempotency_key, "
+                + "request_fingerprint, status, usage_date) "
+                + "SELECT ?, ?, ?, prompt_id, ?, request_fingerprint, 'PROCESSING', usage_date "
+                + "FROM diary_generations LIMIT 1",
+                UUID.randomUUID(), busyDiary, lockedUser, UUID.randomUUID());
         runCleanup(scripts, run, "harudle_dev", false);
         assertThat(Files.readString(run.resolve("cleanup-verification.log"))).contains("Generation is still processing");
         assertThat(Files.exists(run.resolve("aws-calls.jsonl"))).isFalse();

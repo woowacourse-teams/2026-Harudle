@@ -98,9 +98,10 @@ class DiaryGenerationStatusQueryPersistenceTest extends ServiceIntegrationTestSu
                 """, diaryId, userId, deleted);
         jdbc.update("""
                 INSERT INTO diary_generations (
-                    id, diary_id, prompt_id, idempotency_key, request_fingerprint, status, image_object_key, error_code
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, generationId, diaryId, promptId, UUID.randomUUID(), "a".repeat(64), status.name(),
+                    id, diary_id, requested_by_user_id, prompt_id, idempotency_key, request_fingerprint, status,
+                    image_object_key, error_code
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, generationId, diaryId, userId, promptId, UUID.randomUUID(), "a".repeat(64), status.name(),
                 status == GenerationStatus.SUCCEEDED ? "generated/status.png" : null,
                 status == GenerationStatus.FAILED ? "AI_PROVIDER_TIMEOUT" : null);
         return generationId;

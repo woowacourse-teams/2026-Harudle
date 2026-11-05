@@ -93,6 +93,29 @@ class DiaryGenerationWorkerTest {
     }
 
     @Test
+    @DisplayName("선점 뒤 일기 소유자가 바뀌어도 생성을 요청한 사용자 ID로 입력을 만든다")
+    void useRequesterIdWhenDiaryOwnerChangedAfterRequest() {
+        Fixture fixture = processingGeneration();
+        UUID requesterId = fixture.diary().getUserId();
+        ReflectionTestUtils.setField(fixture.diary(), "userId", UUID.randomUUID());
+        stubInput(fixture);
+        when(claimService.claim(1)).thenReturn(List.of(fixture.generation().getId()));
+
+        worker(Runnable::run, 1).poll();
+
+        Diary diary = fixture.diary();
+        GenerateDiaryImageCommand expectedCommand = new GenerateDiaryImageCommand(
+                requesterId, diary.getId(), diary.getDiaryDate(), diary.getSourceText(), fixture.requestKey()
+        );
+        verify(generationExecutor).generate(expectedCommand, fixture.generation().getId());
+        assertThat(fixture.generation().matchesExecutableClaim(
+                diary.getId(),
+                fixture.requestKey(),
+                new RequestFingerprintGenerator().generate(expectedCommand)
+        )).isTrue();
+    }
+
+    @Test
     @DisplayName("생성 어댑터가 준비되지 않으면 실행 요청과 선점을 하지 않는다")
     void doNotClaimWithoutConfiguredAdapters() {
         when(generationExecutor.isConfigured()).thenReturn(false);
@@ -121,7 +144,9 @@ class DiaryGenerationWorkerTest {
     @DisplayName("재시작 후 기한이 지난 대기 작업은 선점하거나 AI를 호출하지 않는다")
     void doNotExecuteExpiredPendingGeneration() {
         Instant now = Instant.parse("2026-10-21T00:00:00Z");
-        DiaryGeneration generation = DiaryGeneration.pending(UUID.randomUUID(), 1L, UUID.randomUUID(), "a".repeat(64), null);
+        DiaryGeneration generation = DiaryGeneration.pending(
+                UUID.randomUUID(), UUID.randomUUID(), 1L, UUID.randomUUID(), "a".repeat(64), null
+        );
         ReflectionTestUtils.setField(generation, "createdAt", now.minusSeconds(120));
         when(generationRepository.findPendingForUpdateSkipLocked(now.minusSeconds(120), 1))
                 .thenReturn(List.of(generation));
@@ -621,7 +646,9 @@ class DiaryGenerationWorkerTest {
                 diary.getUserId(), diary.getId(), diary.getDiaryDate(), diary.getSourceText(), requestKey
         );
         String fingerprint = new RequestFingerprintGenerator().generate(command);
-        DiaryGeneration generation = DiaryGeneration.pending(diary.getId(), 1L, requestKey, fingerprint, null);
+        DiaryGeneration generation = DiaryGeneration.pending(
+                diary.getId(), diary.getUserId(), 1L, requestKey, fingerprint, null
+        );
         generation.startProcessing();
         return new Fixture(generation, diary, requestKey);
     }

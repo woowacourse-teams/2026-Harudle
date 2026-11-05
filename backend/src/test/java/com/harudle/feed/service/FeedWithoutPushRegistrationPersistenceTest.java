@@ -48,10 +48,11 @@ class FeedWithoutPushRegistrationPersistenceTest extends ServiceIntegrationTestS
                 DIARY, AUTHOR, LocalDate.of(2026, 10, 11), "개인 일기 원문");
         update("""
                 INSERT INTO diary_generations
-                    (id, diary_id, prompt_id, idempotency_key, request_fingerprint, status, image_object_key)
-                VALUES (?, ?, (SELECT id FROM generation_prompts WHERE image_asset_object_key = ?),
+                    (id, diary_id, requested_by_user_id, prompt_id, idempotency_key, request_fingerprint, status,
+                     image_object_key)
+                VALUES (?, ?, ?, (SELECT id FROM generation_prompts WHERE image_asset_object_key = ?),
                     ?, ?, 'SUCCEEDED', 'generated/feed-without-push-test.webp')
-                """, GENERATION, DIARY, REFERENCE, UUID.randomUUID(), "a".repeat(64));
+                """, GENERATION, DIARY, AUTHOR, REFERENCE, UUID.randomUUID(), "a".repeat(64));
         categoryId = number("SELECT id FROM categories WHERE name = ?", "일상");
     }
 

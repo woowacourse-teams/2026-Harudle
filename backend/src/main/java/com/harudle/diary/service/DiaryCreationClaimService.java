@@ -163,7 +163,7 @@ class DiaryCreationClaimService {
         GenerateDiaryImageCommand generationCommand = createGenerationCommand(command, diary);
         String fingerprint = requestFingerprintGenerator.generate(generationCommand);
         DiaryGeneration generation = DiaryGeneration.pending(
-                diary.getId(), promptId, command.idempotencyKey(), fingerprint, usageDate
+                diary.getId(), command.userId(), promptId, command.idempotencyKey(), fingerprint, usageDate
         );
         if (!queueForWorker) {
             generation.startProcessing();

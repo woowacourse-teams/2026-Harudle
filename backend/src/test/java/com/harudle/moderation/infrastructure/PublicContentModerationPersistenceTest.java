@@ -254,9 +254,10 @@ class PublicContentModerationPersistenceTest extends AdminModerationDatabaseTest
                 diaryId, author);
         jdbc.update("""
                 INSERT INTO diary_generations
-                    (id, diary_id, prompt_id, idempotency_key, request_fingerprint, status, image_object_key)
-                VALUES (?, ?, ?, ?, ?, 'SUCCEEDED', ?)
-                """, generationId, diaryId, prompt, UUID.randomUUID(), "a".repeat(64),
+                    (id, diary_id, requested_by_user_id, prompt_id, idempotency_key, request_fingerprint, status,
+                     image_object_key)
+                VALUES (?, ?, ?, ?, ?, ?, 'SUCCEEDED', ?)
+                """, generationId, diaryId, author, prompt, UUID.randomUUID(), "a".repeat(64),
                 "generated/moderation-" + generationId + ".webp");
         jdbc.update("INSERT INTO feeds (id, diary_id, category_id, published_at) VALUES (?, ?, ?, ?)",
                 id, diaryId, category, Timestamp.from(at));

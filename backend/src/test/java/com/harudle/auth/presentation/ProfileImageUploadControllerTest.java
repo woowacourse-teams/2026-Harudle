@@ -515,9 +515,10 @@ class ProfileImageUploadControllerTest {
                 """, diaryId, user.getId());
         jdbc.update("""
                 INSERT INTO diary_generations
-                    (id, diary_id, prompt_id, idempotency_key, request_fingerprint, status, image_object_key)
-                VALUES (?, ?, ?, ?, ?, 'SUCCEEDED', 'generated/profile-read-test.webp')
-                """, UUID.randomUUID(), diaryId, promptId, UUID.randomUUID(), "a".repeat(64));
+                    (id, diary_id, requested_by_user_id, prompt_id, idempotency_key, request_fingerprint, status,
+                     image_object_key)
+                VALUES (?, ?, ?, ?, ?, ?, 'SUCCEEDED', 'generated/profile-read-test.webp')
+                """, UUID.randomUUID(), diaryId, user.getId(), promptId, UUID.randomUUID(), "a".repeat(64));
         jdbc.update("""
                 INSERT INTO feeds (id, diary_id, category_id)
                 VALUES (?, ?, (SELECT id FROM categories WHERE name = '일상'))

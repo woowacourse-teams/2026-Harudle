@@ -801,6 +801,7 @@ class AdminUserControllerTest {
                 INSERT INTO diary_generations (
                     id,
                     diary_id,
+                    requested_by_user_id,
                     prompt_id,
                     idempotency_key,
                     request_fingerprint,
@@ -811,8 +812,9 @@ class AdminUserControllerTest {
                     created_at,
                     updated_at,
                     completed_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, generationId, diaryId, prompt.getId(), UUID.randomUUID(), "a".repeat(64), status,
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, generationId, diaryId, user.getId(), prompt.getId(), UUID.randomUUID(), "a".repeat(64),
+                status,
                 "SUCCEEDED".equals(status) ? "상세 조회 테스트 생성" : null,
                 "SUCCEEDED".equals(status) ? "generated/admin-detail/" + generationId + ".png" : null,
                 errorCode, Timestamp.from(createdAt), Timestamp.from(createdAt),

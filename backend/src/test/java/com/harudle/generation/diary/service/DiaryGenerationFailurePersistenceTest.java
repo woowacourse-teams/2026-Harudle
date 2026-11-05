@@ -89,6 +89,7 @@ class DiaryGenerationFailurePersistenceTest extends ServiceIntegrationTestSuppor
         ));
         DiaryGeneration generation = diaryGenerationRepository.saveAndFlush(DiaryGeneration.start(
                 diary.getId(),
+                diary.getUserId(),
                 generationPrompt.getId(),
                 UUID.randomUUID(),
                 "a".repeat(64)
@@ -123,6 +124,7 @@ class DiaryGenerationFailurePersistenceTest extends ServiceIntegrationTestSuppor
         ));
         DiaryGeneration generation = diaryGenerationRepository.saveAndFlush(DiaryGeneration.start(
                 diary.getId(),
+                diary.getUserId(),
                 generationPrompt.getId(),
                 UUID.randomUUID(),
                 "b".repeat(64),

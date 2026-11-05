@@ -225,11 +225,11 @@ class DiaryGenerationPendingExpiryPersistenceTest extends ServiceIntegrationTest
                 """, diaryId, userId, USAGE_DATE);
         jdbcTemplate.update("""
                 INSERT INTO diary_generations (
-                    id, diary_id, prompt_id, idempotency_key, request_fingerprint, status,
+                    id, diary_id, requested_by_user_id, prompt_id, idempotency_key, request_fingerprint, status,
                     created_at, updated_at, usage_date
                 )
-                VALUES (?, ?, ?, ?, ?, 'PENDING', ?, ?, ?)
-                """, generationId, diaryId, promptId, UUID.randomUUID(), "a".repeat(64),
+                VALUES (?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?)
+                """, generationId, diaryId, userId, promptId, UUID.randomUUID(), "a".repeat(64),
                 Timestamp.from(NOW.minus(PENDING_TIMEOUT)), Timestamp.from(NOW), USAGE_DATE);
         return new PendingWork(generationId, diaryId);
     }

@@ -82,10 +82,12 @@ class FeedPublicationPersistenceTest {
                 DIARY, ACTOR, LocalDate.of(2026, 10, 11), "공개하면 안 되는 개인 일기 원문");
         update("""
                 INSERT INTO diary_generations
-                    (id, diary_id, prompt_id, idempotency_key, request_fingerprint, status, image_object_key)
-                VALUES (?, ?, (SELECT id FROM generation_prompts WHERE image_asset_object_key = ?),
+                    (id, diary_id, requested_by_user_id, prompt_id, idempotency_key, request_fingerprint, status,
+                     image_object_key)
+                VALUES (?, ?, ?, (SELECT id FROM generation_prompts WHERE image_asset_object_key = ?),
                     ?, ?, 'SUCCEEDED', 'generated/feed-publication-test.webp')
-                """, GENERATION, DIARY, "references/feed-publication-test.png", UUID.randomUUID(), "a".repeat(64));
+                """, GENERATION, DIARY, ACTOR, "references/feed-publication-test.png", UUID.randomUUID(),
+                "a".repeat(64));
         categoryId = transactions.execute(status ->
                 ((Number) entityManager.createNativeQuery("SELECT id FROM categories WHERE name = '일상'")
                         .getSingleResult()).longValue());

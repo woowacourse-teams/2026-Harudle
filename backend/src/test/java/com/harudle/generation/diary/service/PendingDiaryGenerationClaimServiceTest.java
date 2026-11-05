@@ -207,7 +207,9 @@ class PendingDiaryGenerationClaimServiceTest {
     }
 
     private DiaryGeneration pendingAt(Instant createdAt) {
-        DiaryGeneration generation = DiaryGeneration.pending(UUID.randomUUID(), 1L, UUID.randomUUID(), "a".repeat(64), null);
+        DiaryGeneration generation = DiaryGeneration.pending(
+                UUID.randomUUID(), UUID.randomUUID(), 1L, UUID.randomUUID(), "a".repeat(64), null
+        );
         ReflectionTestUtils.setField(generation, "createdAt", createdAt);
         return generation;
     }

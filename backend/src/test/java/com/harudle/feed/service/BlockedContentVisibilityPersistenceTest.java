@@ -326,9 +326,10 @@ class BlockedContentVisibilityPersistenceTest extends BlockDatabaseTestSupport {
                 diary, authorId);
         jdbc.update("""
                 INSERT INTO diary_generations
-                    (id, diary_id, prompt_id, idempotency_key, request_fingerprint, status, title, image_object_key)
-                VALUES (?, ?, ?, ?, ?, 'SUCCEEDED', '공유 제목', ?)
-                """, UUID.randomUUID(), diary, promptId, UUID.randomUUID(), "b".repeat(64),
+                    (id, diary_id, requested_by_user_id, prompt_id, idempotency_key, request_fingerprint, status,
+                     title, image_object_key)
+                VALUES (?, ?, ?, ?, ?, ?, 'SUCCEEDED', '공유 제목', ?)
+                """, UUID.randomUUID(), diary, authorId, promptId, UUID.randomUUID(), "b".repeat(64),
                 "generated/block-visibility/" + diary + ".webp");
         jdbc.update("INSERT INTO feeds (id, diary_id, category_id, published_at, like_count) VALUES (?, ?, ?, ?, ?)",
                 feed, diary, categoryId, Timestamp.from(TIME.plusSeconds(position)), position);

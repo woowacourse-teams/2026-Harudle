@@ -63,6 +63,7 @@ class ShareLinkQueryServiceTest extends ServiceIntegrationTestSupport {
                 INSERT INTO diary_generations (
                     id,
                     diary_id,
+                    requested_by_user_id,
                     prompt_id,
                     idempotency_key,
                     request_fingerprint,
@@ -71,6 +72,7 @@ class ShareLinkQueryServiceTest extends ServiceIntegrationTestSupport {
                     image_object_key,
                     completed_at
                 ) VALUES (
+                    ?,
                     ?,
                     ?,
                     (SELECT id FROM generation_prompts WHERE image_asset_object_key = ?),
@@ -84,6 +86,7 @@ class ShareLinkQueryServiceTest extends ServiceIntegrationTestSupport {
                 """,
                 GENERATION_ID,
                 DIARY_ID,
+                USER_ID,
                 "references/public-share.png",
                 UUID.randomUUID(),
                 "b".repeat(64),

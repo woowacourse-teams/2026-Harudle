@@ -211,6 +211,7 @@ class DiaryQueryPersistenceTest extends ServiceIntegrationTestSupport {
                 INSERT INTO diary_generations (
                     id,
                     diary_id,
+                    requested_by_user_id,
                     prompt_id,
                     idempotency_key,
                     request_fingerprint,
@@ -221,9 +222,10 @@ class DiaryQueryPersistenceTest extends ServiceIntegrationTestSupport {
                     updated_at,
                     completed_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, (SELECT user_id FROM diaries WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 UUID.randomUUID(),
+                diaryId,
                 diaryId,
                 generationPrompt.getId(),
                 UUID.randomUUID(),
@@ -242,6 +244,7 @@ class DiaryQueryPersistenceTest extends ServiceIntegrationTestSupport {
                 INSERT INTO diary_generations (
                     id,
                     diary_id,
+                    requested_by_user_id,
                     prompt_id,
                     idempotency_key,
                     request_fingerprint,
@@ -251,9 +254,10 @@ class DiaryQueryPersistenceTest extends ServiceIntegrationTestSupport {
                     updated_at,
                     completed_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, (SELECT user_id FROM diaries WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 UUID.randomUUID(),
+                diaryId,
                 diaryId,
                 generationPrompt.getId(),
                 UUID.randomUUID(),

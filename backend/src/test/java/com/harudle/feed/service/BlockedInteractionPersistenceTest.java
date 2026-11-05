@@ -153,9 +153,11 @@ class BlockedInteractionPersistenceTest extends BlockDatabaseTestSupport {
                 diary, author);
         jdbc.update("""
                 INSERT INTO diary_generations
-                    (id, diary_id, prompt_id, idempotency_key, request_fingerprint, status, title, image_object_key)
-                VALUES (?, ?, ?, ?, ?, 'SUCCEEDED', '게시 검증', ?)
-                """, UUID.randomUUID(), diary, prompt, UUID.randomUUID(), "c".repeat(64), "generated/" + diary);
+                    (id, diary_id, requested_by_user_id, prompt_id, idempotency_key, request_fingerprint, status,
+                     title, image_object_key)
+                VALUES (?, ?, ?, ?, ?, ?, 'SUCCEEDED', '게시 검증', ?)
+                """, UUID.randomUUID(), diary, author, prompt, UUID.randomUUID(), "c".repeat(64),
+                "generated/" + diary);
         var isolation = new AtomicReference<String>();
         FeedPushPublicationGuard target = AopTestUtils.getUltimateTargetObject(publicationGuard);
         doAnswer(invocation -> {

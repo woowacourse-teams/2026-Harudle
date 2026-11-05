@@ -188,6 +188,7 @@ class DiaryCreationClaimServiceTest {
         Diary diary = Diary.create(USER_ID, DIARY_DATE, command.sourceText());
         DiaryGeneration generation = DiaryGeneration.pending(
                 diary.getId(),
+                diary.getUserId(),
                 1L,
                 IDEMPOTENCY_KEY,
                 requestFingerprintGenerator.generate(new GenerateDiaryImageCommand(
@@ -394,6 +395,7 @@ class DiaryCreationClaimServiceTest {
         );
         return DiaryGeneration.start(
                 diary.getId(),
+                diary.getUserId(),
                 1L,
                 command.idempotencyKey(),
                 requestFingerprintGenerator.generate(generationCommand)

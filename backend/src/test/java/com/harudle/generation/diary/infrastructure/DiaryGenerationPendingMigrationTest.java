@@ -27,6 +27,9 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers(disabledWithoutDocker = true)
 class DiaryGenerationPendingMigrationTest {
 
+    // 이 테스트는 V28·V29를 검증한다. V44부터 생성 요청자 컬럼이 필수라 그 전 버전까지만 적용한다.
+    private static final MigrationVersion LAST_VERSION_WITHOUT_REQUESTER = MigrationVersion.fromVersion("43");
+
     @Container
     private static final PostgreSQLContainer POSTGRESQL_CONTAINER =
             new PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"));
@@ -249,6 +252,7 @@ class DiaryGenerationPendingMigrationTest {
                         POSTGRESQL_CONTAINER.getPassword()
                 )
                 .cleanDisabled(false)
+                .target(LAST_VERSION_WITHOUT_REQUESTER)
                 .load();
     }
 }

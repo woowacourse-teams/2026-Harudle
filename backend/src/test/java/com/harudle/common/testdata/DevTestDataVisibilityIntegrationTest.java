@@ -242,10 +242,11 @@ class DevTestDataVisibilityIntegrationTest {
         jdbc.update("INSERT INTO diaries (id, user_id, diary_date, source_text) VALUES (?, ?, CURRENT_DATE, '테스트 일기')",
                 diary, author);
         jdbc.update("""
-                INSERT INTO diary_generations (id, diary_id, prompt_id, idempotency_key, request_fingerprint,
-                    status, title, image_object_key)
-                VALUES (?, ?, ?, ?, ?, 'SUCCEEDED', '공유 제목', ?)
-                """, UUID.randomUUID(), diary, prompt, UUID.randomUUID(), "a".repeat(64), "generated/" + id + ".png");
+                INSERT INTO diary_generations (id, diary_id, requested_by_user_id, prompt_id, idempotency_key,
+                    request_fingerprint, status, title, image_object_key)
+                VALUES (?, ?, ?, ?, ?, ?, 'SUCCEEDED', '공유 제목', ?)
+                """, UUID.randomUUID(), diary, author, prompt, UUID.randomUUID(), "a".repeat(64),
+                "generated/" + id + ".png");
         jdbc.update("INSERT INTO feeds (id, diary_id, category_id, published_at, like_count) VALUES (?, ?, ?, ?, ?)",
                 id, diary, categoryId, Timestamp.from(Instant.parse(at)), likes);
     }
