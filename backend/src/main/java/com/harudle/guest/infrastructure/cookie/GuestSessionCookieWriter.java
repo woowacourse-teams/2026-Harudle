@@ -29,16 +29,22 @@ public class GuestSessionCookieWriter {
         Objects.requireNonNull(now, "now는 필수입니다.");
 
         Duration remainingTtl = calculateRemainingTtl(issuedSession, now);
+        addCookie(response, issuedSession.rawToken(), remainingTtl);
+    }
 
-        ResponseCookie cookie = ResponseCookie.from(
-                        properties.name(),
-                        issuedSession.rawToken()
-                )
+    public void expire(HttpServletResponse response) {
+        Objects.requireNonNull(response, "response는 필수입니다.");
+
+        addCookie(response, "", Duration.ZERO);
+    }
+
+    private void addCookie(HttpServletResponse response, String value, Duration maxAge) {
+        ResponseCookie cookie = ResponseCookie.from(properties.name(), value)
                 .httpOnly(true)
                 .secure(properties.secure())
                 .path(properties.path())
                 .sameSite(properties.sameSite())
-                .maxAge(remainingTtl)
+                .maxAge(maxAge)
                 .build();
 
         response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
