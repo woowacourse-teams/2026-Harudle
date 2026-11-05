@@ -8,6 +8,8 @@
 `harudle-dev-db`의 PostgreSQL로 전환했다. 같은 날 팀 확인에 따라 Prod도 RDS에서
 별도 EC2의 PostgreSQL로 전환했고, 앱 `.env`의 DB 주소를 해당 DB 사설 IP로 변경했다.
 새 Dev 앱 서버는 구축 중 `harudle-dev2`라고 불렀으며, 현재 AWS Name 태그는 `harudle-dev`다.
+2026-11-05에 Dev와 Prod의 앱 EC2와 DB EC2 4대를 Amazon Linux 2023 ARM64로 다시 만들어 교체했다.
+EIP 4개의 주소는 그대로이며 연결 대상만 새 인스턴스로 바뀌었다. 사설 IP는 모두 바뀌었다.
 ADR의 목표 구성과 실제 적용 상태를 구분한다.
 
 ## 런타임 구성
@@ -16,7 +18,7 @@ ADR의 목표 구성과 실제 적용 상태를 구분한다.
 flowchart TB
     browser["사용자 브라우저<br/>harudle.com / www.harudle.com / dev.harudle.com"]
 
-    subgraph ec2["EC2 · Ubuntu ARM64 · ap-northeast-2"]
+    subgraph ec2["EC2 · Amazon Linux 2023 ARM64 · ap-northeast-2"]
         host["Host Nginx + Certbot<br/>80 / 443 · HTTPS 종료"]
 
         subgraph docker["Docker Compose · harudle · app bridge network"]
@@ -140,14 +142,15 @@ Prod도 앱 EC2와 DB EC2를 따로 사용하며, 앱 `.env`에는 DB 사설 IP�
 Prod 전환은 같은 날 팀이 알려준 내용이며, 두 환경의 DB 주소와 서버 사양은 AWS EC2 API로 확인했다.
 Prod 앱과 DB 컨테이너의 `healthy` 상태는 확인했다.
 Prod 앱에서 DB 계정으로 직접 접속하는 별도 시험은 수행하지 않았다.
+2026-11-05에 4대를 새 인스턴스로 교체하고 두 앱 `.env`의 `DB_HOST`를 새 DB 사설 IP로 바꿨다.
 
 ```mermaid
 flowchart LR
     subgraph dev["dev 환경"]
-        devBackend["harudle-dev<br/>앱 EC2"] -->|"사설 IP / 5432"| devDb[("harudle-dev-db<br/>10.0.100.99")]
+        devBackend["harudle-dev<br/>앱 EC2"] -->|"사설 IP / 5432"| devDb[("harudle-dev-db<br/>10.0.100.70")]
     end
     subgraph prod["prod 환경"]
-        prodBackend["harudle-prod<br/>앱 EC2"] -->|"DB 사설 IP"| prodDb[("harudle-prod-db<br/>10.0.100.153")]
+        prodBackend["harudle-prod<br/>앱 EC2"] -->|"DB 사설 IP"| prodDb[("harudle-prod-db<br/>10.0.100.146")]
     end
 ```
 
@@ -157,11 +160,13 @@ flowchart LR
 | `DEPLOY_ENV` | `dev` | `prod` |
 | Spring 활성 프로필 | `prod` | `prod` |
 | Compose | `compose.prod.yaml` + `compose.dev.yaml` | `compose.prod.yaml` |
-| 앱 EC2 | `harudle-dev` / `t4g.small` / 사설 IP `10.0.0.234` | `harudle-prod` / `t4g.small` / 사설 IP `10.0.0.183` |
+| 앱 EC2 | `harudle-dev` / `t4g.small` / 사설 IP `10.0.0.233` | `harudle-prod` / `t4g.small` / 사설 IP `10.0.0.39` |
 | DB EC2 | `harudle-dev-db` / `t4g.small` / PostgreSQL | `harudle-prod-db` / `t4g.small` / PostgreSQL |
 | DB 공인 IP | `54.116.226.98` | `43.202.26.248` |
-| DB 사설 IP | `10.0.100.99` | `10.0.100.153` |
-| DB 연결 대상 | `.env`의 `DB_HOST=10.0.100.99`, 포트 `5432` | `.env`의 `DB_HOST=10.0.100.153`로 변경했다는 팀 확인 |
+| DB 사설 IP | `10.0.100.70` | `10.0.100.146` |
+| DB 연결 대상 | `.env`의 `DB_HOST=10.0.100.70`, 포트 `5432` | `.env`의 `DB_HOST=10.0.100.146`, 포트 `5432` |
+| DB 데이터 디스크 | `vol-079e2259ecef5ae0c` / `/srv/harudle/db-data` | `vol-054247052e6a3f58e` / `/srv/harudle/db-data` |
+| DB 백업 stanza | `harudle-dev-al2023` | `harudle-prod-al2023` |
 | S3 버킷 | `techcourse-project-2026` | `techcourse-project-2026` |
 | 생성 이미지 prefix | `harudle/generated/diary-images/dev` | `harudle/generated/diary-images/prod` |
 | 참조 이미지 prefix | `harudle/references/generation/dev` | `harudle/references/generation/prod` |
@@ -180,17 +185,30 @@ S3 prefix 변경은 기존 DB의 이미지·참조 이미지 Object Key를 자�
 정기 실행 없이 이미지 변경 시 해당 회원의 삭제 대기 작업만 처리하며, 현재 사용 중인 파일은 삭제하지 않는다.
 실패한 작업은 해당 회원의 다음 이미지 변경에서 재시도한다.
 
-위 IP는 2026-10-23 AWS EC2 조회 기준이다. 앱의 DB 연결에는 사설 IP를 사용한다.
+위 IP는 2026-11-05 AWS EC2 조회 기준이다. 앱의 DB 연결에는 사설 IP를 사용한다.
 공인 IP 기록은 DB의 외부 직접 접속을 허용한다는 뜻이 아니다. 관리자 접속은 SSH 터널을 사용한다.
 인스턴스를 중지하거나 다시 만들면 주소가 달라질 수 있으므로 접속 전 현재 주소를 확인한다.
 
-### 새 Dev 서버에서 확인한 설정
+### DB 서버 저장소와 백업
+
+- 4대 모두 AMI `ami-0e576970884d94ada`(Amazon Linux 2023 ARM64)로 만들었다.
+  커널은 `6.1.189-236.400.amzn2023.aarch64`다.
+- DB 데이터 볼륨은 20GiB 암호화 gp3이며 인스턴스를 종료해도 남도록 설정했다.
+  각 DB 서버의 `/srv/harudle/db-data`에 마운트한다.
+- 백업은 pgBackRest를 사용한다. 저장 경로는 Dev `/harudle/db-backup/dev-al2023-20261105`,
+  Prod `/harudle/db-backup/prod-al2023-20261105`다. 두 서버 모두 매일 04:00(KST)에 백업 타이머가 실행된다.
+- DB TLS 인증서에는 아직 이전 DB 사설 IP만 들어 있다. 앱의 `sslmode`를 인증서 호스트 검증 방식으로
+  바꾸면 접속이 실패할 수 있으므로, 인증서를 새 IP로 다시 발급한 뒤 바꾼다.
+- Prod 앱 Host Nginx 설정은 `/etc/nginx/conf.d/harudle-prod.conf`이며 점검 페이지가 있다. `/usr/share/nginx/harudle-maintenance/ON` 파일이
+  있으면 켜지고, 파일을 지우면 꺼진다. 기본 상태는 꺼짐이다.
+
+### Dev 앱 서버에서 확인한 설정
 
 - `dev.harudle.com`은 새 앱 서버의 공인 IP `15.164.84.71`로 변경했다.
   공인 IP는 바뀔 수 있으므로 서버 작업 전 현재 연결 대상을 확인한다.
   기존 Dev 앱 서버 `54.117.6.110`은 AWS Name 태그가 `harudle-delete-me`로 변경돼 남아 있다.
   기존 RDS의 삭제 여부는 확인하지 않았다.
-- 앱 서버는 Ubuntu 26.04 ARM64이고, `/swapfile`에 Swap 2GiB를 적용했다.
+- 앱 서버는 Amazon Linux 2023 ARM64이고, `/swapfile`에 Swap 2GiB를 적용했다.
   파일 권한은 `600`이며 `/etc/fstab`에 등록했다. 재부팅 시험은 하지 않았다.
 - Docker와 Compose, Host Nginx와 Certbot을 설치했다. 호스트 Java는 Corretto 21,
   Node.js는 24, pnpm은 11.20.0이다. 실제 앱은 배포 이미지 안의 런타임을 사용한다.
@@ -202,17 +220,14 @@ S3 prefix 변경은 기존 DB의 이미지·참조 이미지 Object Key를 자�
   소유자는 `root:10001`, 권한은 `640`이다. 백엔드 사용자 `10001:10001`이 읽을 수 있고,
   컨테이너의 `/var/run/harudle/gcp-wif.json`에 읽기 전용으로 마운트된다.
   파일이 없으면 컨테이너 생성이 실패한다. 파일 내용과 비밀번호, 개인키는 저장소나 로그에 남기지 않는다.
-- Host Nginx의 `/etc/nginx/sites-available/harudle-dev`를 활성화했다.
+- Host Nginx 설정은 `/etc/nginx/conf.d/harudle-dev.conf`다. `nginx.conf`의 `conf.d/*.conf` 포함으로 적용된다.
   HTTP는 HTTPS로 전환하고, HTTPS 요청은 `127.0.0.1:3000`으로 전달한다.
   업로드 제한은 `25m`, 연결 제한은 10초, 송수신 제한은 기존 Dev와 같은 300초다.
   Host와 사용자 IP, 원래 HTTPS 여부를 전달한다. 저장소 예시의 240초와 실제 호스트 설정을 구분한다.
 - Certbot 인증서 발급과 갱신 시험에 성공했고 자동 갱신 타이머를 활성화했다.
   화면 HTTPS `200`, 관리 포트의 Prometheus 응답 `200`, 두 컨테이너의 `healthy`를 확인했다.
   로그인과 일기 생성은 별도로 시험하지 않았다.
-- 앱은 DB 사설 IP `10.0.100.99:5432`에 직접 연결한다. 이 주소에서 기존 DB 계정의
-  `SELECT 1`이 성공했다. 공인 IP `54.116.226.98:5432` 접속은 시간 초과됐다.
-  관리자 SSH 터널 성공과 앱의 직접 접속 성공은 별도로 확인한다.
-  이 접속 시험으로 DB TLS 검증이나 백업, 복원, EBS 암호화 적용까지 확인한 것은 아니다.
+- 앱은 DB 사설 IP `10.0.100.70:5432`에 직접 연결한다.
 
 ## 배포 구성
 
@@ -260,16 +275,16 @@ CodeBuild는 프론트엔드 입력이 같으면 이전 이미지를 재사용�
 - Dev DB EC2에도 Agent를 설치하고 `cloudwatch-agent.db.json`을 적용했다.
   메모리와 Swap, 루트 및 `/srv/harudle/db-data`의 사용률과 남은 용량을 1분마다 수집한다.
   새 앱 서버와 DB 서버의 메모리, Swap 및 DB 디스크 여유 공간이 CloudWatch에 도착한 것을 확인했다.
-- `DASHBOARD-harudle-dev`의 앱 대상은 `i-08ff5dddb7ac94f5c`, DB 대상은
-  `i-04fca55979b3240d6`이다. RDS 그래프는 EC2와 데이터 EBS 지표로 교체했다.
-  데이터 EBS는 `vol-00886d19a64c23e1f`다. 앱과 DB를 함께 덮어쓰던 공통 InstanceId 선택기는 제거했다.
+- `DASHBOARD-harudle-dev`의 앱 대상은 `i-0bf4f4130d31eb443`, DB 대상은
+  `i-073fa344c2badcf20`이다. RDS 그래프는 EC2와 데이터 EBS 지표로 교체했다.
+  데이터 EBS는 `vol-079e2259ecef5ae0c`다. 앱과 DB를 함께 덮어쓰던 공통 InstanceId 선택기는 제거했다.
   DB 전체 연결 수는 별도 수집이 필요하며 앱의 HikariPool 지표와 구분한다.
   대시보드 변경이 개별 경보의 대상도 바꾸는 것은 아니다.
-- Prod DB EC2 `i-01baa5c11a6224cd7`에도 `cloudwatch-agent.db.json`을 적용하고
+- Prod DB EC2 `i-01412b89da45b5f42`에도 `cloudwatch-agent.db.json`을 적용하고
   Agent 자동 시작과 `running`을 확인했다. 데이터 디스크는 Dev와 같은 `/srv/harudle/db-data`다.
   CloudWatch에서 메모리 여유 비율, Swap 사용률, 두 디스크 여유 공간의 실제 데이터 도착을 확인했다.
   `DASHBOARD-harudle-prod`의 RDS 그래프를 이 DB EC2와 데이터 EBS
-  `vol-048d203fac554e776`의 지표로 교체했다. 기존 Prod 앱 그래프는 유지했다.
+  `vol-054247052e6a3f58e`의 지표로 교체했다. 기존 Prod 앱 그래프는 유지했다.
 - Frontend `/health`는 Nginx의 응답 여부를 확인한다. DB와 S3, Gemini의 실제 기능은
   각각의 기능 검증과 로그로 확인한다.
 

@@ -6,7 +6,7 @@
 Internet -> host Nginx/Certbot -> 127.0.0.1:3000
                                  -> frontend Nginx
                                     -> React static files
-                                    -> /api/* -> backend:8080 -> RDS/S3/Gemini
+                                    -> /api/* -> backend:8080 -> DB/S3/Gemini
 ```
 
 ## 만료된 Refresh Token 정리
@@ -22,13 +22,15 @@ CloudWatch 앱 로그에서 `event=refresh_token_cleanup_run`의 `deletedCount`�
 
 ## EC2 최초 설정
 
+앱 서버는 Amazon Linux 2023 ARM64입니다. 패키지는 `dnf`로 설치하며 Ubuntu의 `apt`, `sites-available` 방식은 사용하지 않습니다.
+
 Docker, Docker Compose v2, `jq`를 설치합니다. `BeforeInstall`은 이 도구들이 없으면 기존 배포 파일을 정리하기 전에 중단합니다.
 
 CodeDeploy가 사용하는 고정 경로에 운영 환경 파일을 만들고 실제 값으로 교체합니다. 이 파일은 Git에 커밋하거나 CodeBuild 아티팩트에 포함하지 않습니다.
 
 ```bash
 sudo mkdir -p /opt/harudle
-sudo nano /opt/harudle/.env
+sudo vi /opt/harudle/.env
 sudo chmod 600 /opt/harudle/.env
 ```
 
@@ -345,11 +347,12 @@ DEPLOYMENT_GROUP_NAME=harudle-dev bash -c '
 bash deploy/scripts/test_image_environment.sh
 ```
 
-호스트 Nginx 설정 예시를 적용합니다.
+호스트 Nginx 설정 예시를 적용합니다. 서버는 Amazon Linux 2023이며 `/etc/nginx/conf.d/*.conf`만 읽습니다.
+`sites-available`, `sites-enabled` 디렉터리는 없으므로 심볼릭 링크를 만들지 않습니다.
+파일 이름은 prod `harudle-prod.conf`, dev `harudle-dev.conf`입니다.
 
 ```bash
-sudo cp deploy/nginx/harudle.conf.example /etc/nginx/sites-available/harudle
-sudo ln -s /etc/nginx/sites-available/harudle /etc/nginx/sites-enabled/harudle
+sudo cp deploy/nginx/harudle.conf.example /etc/nginx/conf.d/harudle-prod.conf
 sudo nginx -t
 sudo systemctl reload nginx
 ```
