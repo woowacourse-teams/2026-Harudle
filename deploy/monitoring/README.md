@@ -380,6 +380,8 @@ python3 -B -m unittest discover -s deploy/monitoring -p 'test_*.py'
 S3와 R2의 존재 확인, URL 서명, 피드 데이터 조회를 같은 요청 로그에서 확인합니다. 두 Nginx의 대기 시간도 응답의 추적 ID로 연결합니다. [필드 뜻과 적용 순서](request-latency.md)를 참고합니다. 이 추가 설정은 별도 배포와 적용이 필요합니다.
 ## Prod 백업 감시
 
+Prod 감시 코드는 현재 stanza인 `harudle-prod-al2023`을 조회하고, 응답의 stanza 이름도 같은 값인지 확인합니다. Dev의 stanza는 `harudle-dev-al2023`이며 이 Prod 전용 감시 코드로 조회하지 않습니다. 2026-11-05 서버 교체 기록에 맞춰 저장소 코드를 수정한 상태입니다. 서버에 별도로 설치한 감시 코드도 갱신한 뒤 아래의 `--dry-run`으로 확인해야 합니다.
+
 Prod DB 서버에서 `backup_monitor.py`가 매일 한국 시간 오전 5시에 `pgbackrest info`를 한 번 읽습니다. 백업을 실행하지 않습니다. 기존 백업은 매일 한국 시간 04시에 실행하며, 일요일 전체 백업과 나머지 날 증분 백업 일정은 그대로입니다.
 
 | 지표 | 뜻 |

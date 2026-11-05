@@ -8,10 +8,11 @@ import time
 
 INSTANCE_ID = "i-01412b89da45b5f42"
 NAMESPACE = "Harudle/Prod"
+STANZA = "harudle-prod-al2023"
 INFO_COMMAND = [
     "/usr/bin/docker", "compose", "--env-file", "/srv/harudle/db/.env",
     "-f", "/srv/harudle/db/compose.yaml", "exec", "-T", "--user", "postgres",
-    "db", "pgbackrest", "--stanza=harudle", "--output=json", "info",
+    "db", "pgbackrest", f"--stanza={STANZA}", "--output=json", "info",
 ]
 
 
@@ -19,7 +20,7 @@ def backup_age(info, now):
     if not isinstance(info, list) or len(info) != 1:
         raise ValueError("Expected one backup stanza")
     stanza = info[0]
-    if not isinstance(stanza, dict) or stanza.get("name") != "harudle" or stanza.get("status", {}).get("code") != 0:
+    if not isinstance(stanza, dict) or stanza.get("name") != STANZA or stanza.get("status", {}).get("code") != 0:
         raise ValueError("Backup repository information is not healthy")
     backups = stanza.get("backup", [])
     if not isinstance(backups, list) or any(not isinstance(b, dict) for b in backups):

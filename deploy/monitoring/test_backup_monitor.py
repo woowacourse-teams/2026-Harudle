@@ -10,7 +10,7 @@ import backup_monitor as monitor
 
 class BackupMonitorTests(unittest.TestCase):
     def info(self):
-        return [{"name": "harudle", "status": {"code": 0}, "backup": [
+        return [{"name": "harudle-prod-al2023", "status": {"code": 0}, "backup": [
             {"error": False, "timestamp": {"stop": 100}},
             {"error": False, "timestamp": {"stop": 200}},
             {"error": True, "timestamp": {"stop": 290}},
@@ -27,11 +27,18 @@ class BackupMonitorTests(unittest.TestCase):
 
     def test_unknown_failed_missing_or_future_backups_are_not_reported_as_zero_age(self):
         for info in ([], [{}], [{"name": "other"}],
-                     [{"name": "harudle", "status": {"code": 1}}],
-                     [{"name": "harudle", "status": {"code": 0}, "backup": []}],
-                     [{"name": "harudle", "status": {"code": 0}, "backup": [
+                     [{"name": "harudle-prod-al2023", "status": {"code": 1}}],
+                     [{"name": "harudle-prod-al2023", "status": {"code": 0}, "backup": []}],
+                     [{"name": "harudle-prod-al2023", "status": {"code": 0}, "backup": [
                          {"error": False, "timestamp": {"stop": 301}}]}]):
             with self.subTest(info=info), self.assertRaises(ValueError):
+                monitor.backup_age(info, 300)
+
+    def test_old_and_dev_stanzas_are_rejected_even_with_successful_backups(self):
+        for name in ("harudle", "harudle-dev-al2023"):
+            info = self.info()
+            info[0]["name"] = name
+            with self.subTest(stanza=name), self.assertRaises(ValueError):
                 monitor.backup_age(info, 300)
 
     def test_success_publishes_two_bounded_metrics_and_only_runs_info(self):
@@ -41,6 +48,7 @@ class BackupMonitorTests(unittest.TestCase):
         self.assertEqual([(m["MetricName"], m["Value"]) for m in metrics],
                          [("BackupInfoCheckSuccess", 1), ("BackupWithin24Hours", 1)])
         self.assertEqual(run.call_args.args[0][-1], "info")
+        self.assertIn("--stanza=harudle-prod-al2023", run.call_args.args[0])
         self.assertEqual(run.call_args.kwargs["timeout"], 45)
         for metric in metrics:
             self.assertEqual(metric["Dimensions"], [{"Name": "InstanceId", "Value": monitor.INSTANCE_ID}])
