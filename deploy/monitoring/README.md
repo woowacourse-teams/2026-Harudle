@@ -8,6 +8,7 @@
 | --- | --- | --- |
 | Dev 앱 `harudle-dev` | `i-0bf4f4130d31eb443` | `cloudwatch-agent.host.json`과 `cloudwatch-agent.dev.json` |
 | Dev DB `harudle-dev-db` | `i-073fa344c2badcf20` | `cloudwatch-agent.db.json` |
+| Prod 앱 `harudle-prod` | `i-0709aaaa1b3a1e65c` | `cloudwatch-agent.host.json`과 `cloudwatch-agent.prod.json` |
 | Prod DB `harudle-prod-db` | `i-01412b89da45b5f42` | `cloudwatch-agent.db.json` |
 
 **Dev Java와 API 지표 수집 설정은 적용 완료다.** 새 앱 서버에 `cloudwatch-agent.dev.json`을
@@ -127,12 +128,12 @@ CloudWatch에서 시간 합계와 횟수는 Agent가 변환한 증가분의 `Sum
 
 ## 서버 자원은 어디서 확인하나요?
 
-CloudWatch의 `지표` 화면에서 아래 지표를 선택합니다. 앱과 DB는 서로 다른 `InstanceId`를 사용합니다. 복구 파일을 저장한 시점의 대상은 [targets.json](targets.json)에 기록합니다. 아래 표와 `targets.json`, 대시보드 복구 파일의 ID는 2026-11-05 서버 교체 전 값입니다. 적용 전 현재 인스턴스와 EBS의 ID로 바꿉니다. 현재 확인된 새 ID는 이 문서 처음의 서버 교체 기록을 참고합니다.
+CloudWatch의 `지표` 화면에서 아래 지표를 선택합니다. 앱과 DB는 서로 다른 `InstanceId`를 사용합니다. 기본 대상은 [targets.json](targets.json)에 기록합니다. 2026-11-05에 확인한 네 인스턴스의 ID를 기본 대상과 대시보드 복구 파일, Dev EC2 경보 파일, Prod 백업 감시 코드에 반영했습니다. 아래 표와 JSON의 EBS ID는 교체 전 값이므로 적용 전에 현재 볼륨 ID로 바꿉니다. 저장소 수정만으로 AWS 대시보드와 경보, 서버의 백업 감시 코드가 갱신되지는 않습니다.
 
 | 환경 | 앱 EC2 | DB EC2 | 데이터 EBS |
 | --- | --- | --- | --- |
-| Dev | `i-08ff5dddb7ac94f5c` | `i-04fca55979b3240d6` | `vol-00886d19a64c23e1f` |
-| Prod | `i-00944495cd72e61e8` | `i-01baa5c11a6224cd7` | `vol-048d203fac554e776` |
+| Dev | `i-0bf4f4130d31eb443` | `i-073fa344c2badcf20` | `vol-00886d19a64c23e1f` |
+| Prod | `i-0709aaaa1b3a1e65c` | `i-01412b89da45b5f42` | `vol-048d203fac554e776` |
 
 | 확인할 값 | 지표 그룹과 이름 | 살펴볼 내용 |
 | --- | --- | --- |
@@ -155,7 +156,7 @@ AWS에 저장한 대시보드와 경보는 같은 계정과 리전에서 조회�
 
 ### Dev와 Prod 대시보드 구성을 복구하려면
 
-정상 구성은 [dashboards/prod.json](dashboards/prod.json)에 보관합니다. 2026-11-03에 `DASHBOARD-harudle-prod`에 저장한 위젯 57개의 설정이며, P95와 생성 실패 및 R2 카드와 P95·P99 그래프도 포함합니다. 실제 측정 데이터나 로그 검색 결과를 보관하는 파일은 아닙니다. Dev 정상 구성은 [dashboards/dev.json](dashboards/dev.json)에 보관합니다. 2026-11-03에 `DASHBOARD-harudle-dev`에 저장한 위젯 58개의 설정입니다. Dev를 복구할 때는 아래 절차에서 대시보드와 JSON을 Dev 것으로 선택합니다. Dev 구성에는 DB 백업 카드가 없습니다.
+정상 구성은 [dashboards/prod.json](dashboards/prod.json)에 보관합니다. 2026-11-03에 `DASHBOARD-harudle-prod`에 저장한 위젯 57개의 설정이며, P95와 생성 실패 및 R2 카드와 P95·P99 그래프도 포함합니다. 실제 측정 데이터나 로그 검색 결과를 보관하는 파일은 아닙니다. Dev 정상 구성은 [dashboards/dev.json](dashboards/dev.json)에 보관합니다. 2026-11-03에 `DASHBOARD-harudle-dev`에 저장한 위젯 58개의 설정입니다. Dev를 복구할 때는 아래 절차에서 대시보드와 JSON을 Dev 것으로 선택합니다. Dev 구성에는 DB 백업 카드가 없습니다. 두 복구 파일의 인스턴스 ID는 2026-11-05에 확인한 값으로 갱신했습니다. 위젯 배치는 2026-11-03 구성을 유지합니다.
 
 1. 서울 리전의 `DASHBOARD-harudle-prod`를 열고 **작업 > 소스 보기/편집**을 선택합니다. 되돌릴 필요가 있을 때를 위해 현재 JSON도 먼저 복사해 둡니다.
 2. `dashboards/prod.json` 전체를 붙여 넣고 **업데이트**한 뒤 대시보드를 **저장**합니다. 원래 구성으로 복구할 때 준비 스크립트는 필요하지 않습니다.
@@ -372,7 +373,7 @@ Prod DB 서버에서 `backup_monitor.py`가 매일 한국 시간 오전 5시에 
 | `Harudle/Prod`, `BackupWithin24Hours` | 확인 시점의 최근 24시간 안에 성공한 백업이 있으면 1(정상), 없거나 정보를 읽지 못하면 0(주의)입니다. |
 | `Harudle/Prod`, `BackupInfoCheckSuccess` | 백업 정보를 읽고 유효한 성공 백업을 찾으면 1, 명령 실패나 잘못된 정보이면 0입니다. |
 
-두 지표는 `InstanceId=i-01baa5c11a6224cd7`을 사용합니다. 대시보드는 최근 24시간 안에 수집된 확인 결과를 표시합니다. 확인 결과가 없으면 빈 값입니다. 같은 24시간 안에 수동 확인을 추가했다면 0인 결과가 하나라도 있을 때 주의를 유지합니다. 전송 자체가 실패하거나 예약 작업이 멈추면 새 표본이 없으므로, 이전 값만 보고 정상으로 판단하지 않습니다. 조회 성공 1은 실제 복원 성공을 보장하지 않습니다. 개별 백업 실행 실패 알림, WAL 전송 확인과 복원 시험은 별도 작업입니다. 새 경보는 추가하지 않았습니다.
+두 지표는 `InstanceId=i-01412b89da45b5f42`을 사용합니다. 대시보드는 최근 24시간 안에 수집된 확인 결과를 표시합니다. 확인 결과가 없으면 빈 값입니다. 같은 24시간 안에 수동 확인을 추가했다면 0인 결과가 하나라도 있을 때 주의를 유지합니다. 전송 자체가 실패하거나 예약 작업이 멈추면 새 표본이 없으므로, 이전 값만 보고 정상으로 판단하지 않습니다. 조회 성공 1은 실제 복원 성공을 보장하지 않습니다. 개별 백업 실행 실패 알림, WAL 전송 확인과 복원 시험은 별도 작업입니다. 새 경보는 추가하지 않았습니다.
 
 2026-10-29에 아래 파일을 Prod DB 서버에 별도로 설치했습니다. 앱 배포에서는 자동 적용하지 않습니다. 서버에 이미 설치된 Python boto3와 기존 인스턴스 역할을 사용하며, IAM과 CloudWatch Agent 설정은 바꾸지 않았습니다. 사용자 지정 지표 두 개를 수집합니다. 기존 `BackupAgeSeconds` 전송은 중단하고 `BackupWithin24Hours`로 대체했습니다.
 

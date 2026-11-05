@@ -6,7 +6,7 @@ import subprocess
 import time
 
 
-INSTANCE_ID = "i-01baa5c11a6224cd7"
+INSTANCE_ID = "i-01412b89da45b5f42"
 NAMESPACE = "Harudle/Prod"
 INFO_COMMAND = [
     "/usr/bin/docker", "compose", "--env-file", "/srv/harudle/db/.env",

@@ -281,7 +281,7 @@
         "metrics": [
           [
             {
-              "expression": "MAX(SEARCH('{CWAgent,InstanceId,path,fstype} MetricName=\"disk_free\" InstanceId=\"i-04fca55979b3240d6\" path=\"/srv/harudle/db-data\"', 'Minimum', 60))/1073741824",
+              "expression": "MAX(SEARCH('{CWAgent,InstanceId,path,fstype} MetricName=\"disk_free\" InstanceId=\"i-073fa344c2badcf20\" path=\"/srv/harudle/db-data\"', 'Minimum', 60))/1073741824",
               "id": "free0",
               "label": "DB data free (GiB)"
             }
@@ -1294,14 +1294,14 @@
         "metrics": [
           [
             {
-              "expression": "MAX(SEARCH('{CWAgent,InstanceId,path,fstype} MetricName=\"disk_free\" InstanceId=\"i-04fca55979b3240d6\" path=\"/srv/harudle/db-data\"', 'Minimum', 60))/1073741824",
+              "expression": "MAX(SEARCH('{CWAgent,InstanceId,path,fstype} MetricName=\"disk_free\" InstanceId=\"i-073fa344c2badcf20\" path=\"/srv/harudle/db-data\"', 'Minimum', 60))/1073741824",
               "id": "free0",
               "label": "DB data free (GiB)"
             }
           ],
           [
             {
-              "expression": "MAX(SEARCH('{CWAgent,InstanceId,path,fstype} MetricName=\"disk_free\" InstanceId=\"i-04fca55979b3240d6\" path=\"/\"', 'Minimum', 60))/1073741824",
+              "expression": "MAX(SEARCH('{CWAgent,InstanceId,path,fstype} MetricName=\"disk_free\" InstanceId=\"i-073fa344c2badcf20\" path=\"/\"', 'Minimum', 60))/1073741824",
               "id": "free1",
               "label": "Root free (GiB)"
             }
@@ -1385,7 +1385,7 @@
             "CWAgent",
             "procstat_memory_rss",
             "InstanceId",
-            "i-08ff5dddb7ac94f5c",
+            "i-0bf4f4130d31eb443",
             "process_name",
             "java",
             "pattern",
@@ -1518,7 +1518,7 @@
             "AWS/EC2",
             "CPUUtilization",
             "InstanceId",
-            "i-04fca55979b3240d6",
+            "i-073fa344c2badcf20",
             {}
           ]
         ],
@@ -1543,7 +1543,7 @@
             "CWAgent",
             "mem_available_percent",
             "InstanceId",
-            "i-04fca55979b3240d6",
+            "i-073fa344c2badcf20",
             {}
           ]
         ],
@@ -1568,7 +1568,7 @@
             "AWS/EC2",
             "CPUUtilization",
             "InstanceId",
-            "i-04fca55979b3240d6",
+            "i-073fa344c2badcf20",
             {
               "label": "CPU Average"
             }
@@ -1608,7 +1608,7 @@
             "CWAgent",
             "mem_available_percent",
             "InstanceId",
-            "i-04fca55979b3240d6",
+            "i-073fa344c2badcf20",
             {
               "label": "Available memory (%)"
             }
@@ -1617,7 +1617,7 @@
             "CWAgent",
             "swap_used_percent",
             "InstanceId",
-            "i-04fca55979b3240d6",
+            "i-073fa344c2badcf20",
             {
               "label": "Swap used (%)"
             }
@@ -1652,7 +1652,7 @@
             "AWS/EC2",
             "StatusCheckFailed",
             "InstanceId",
-            "i-04fca55979b3240d6",
+            "i-073fa344c2badcf20",
             {
               "stat": "Maximum",
               "label": "Any"
@@ -1726,7 +1726,7 @@
             "AWS/EC2",
             "CPUCreditBalance",
             "InstanceId",
-            "i-04fca55979b3240d6",
+            "i-073fa344c2badcf20",
             {
               "label": "Credit balance"
             }
@@ -1735,7 +1735,7 @@
             "AWS/EC2",
             "CPUSurplusCreditBalance",
             "InstanceId",
-            "i-04fca55979b3240d6",
+            "i-073fa344c2badcf20",
             {
               "label": "Surplus used"
             }
@@ -1744,7 +1744,7 @@
             "AWS/EC2",
             "CPUSurplusCreditsCharged",
             "InstanceId",
-            "i-04fca55979b3240d6",
+            "i-073fa344c2badcf20",
             {
               "stat": "Sum",
               "label": "Surplus charged"
@@ -1776,7 +1776,7 @@
             "VolumeId",
             "vol-00886d19a64c23e1f",
             "InstanceId",
-            "i-04fca55979b3240d6",
+            "i-073fa344c2badcf20",
             {
               "stat": "Maximum",
               "label": "Read latency (ms)"
@@ -1788,7 +1788,7 @@
             "VolumeId",
             "vol-00886d19a64c23e1f",
             "InstanceId",
-            "i-04fca55979b3240d6",
+            "i-073fa344c2badcf20",
             {
               "stat": "Maximum",
               "label": "Write latency (ms)"
@@ -1858,7 +1858,7 @@
             "AWS/EC2",
             "CPUUtilization",
             "InstanceId",
-            "i-08ff5dddb7ac94f5c"
+            "i-0bf4f4130d31eb443"
           ]
         ],
         "view": "singleValue",
@@ -1882,7 +1882,7 @@
             "CWAgent",
             "mem_available_percent",
             "InstanceId",
-            "i-08ff5dddb7ac94f5c",
+            "i-0bf4f4130d31eb443",
             {}
           ]
         ],
@@ -1907,7 +1907,7 @@
             "CWAgent",
             "swap_used_percent",
             "InstanceId",
-            "i-08ff5dddb7ac94f5c",
+            "i-0bf4f4130d31eb443",
             {}
           ]
         ],
@@ -1930,7 +1930,7 @@
         "metrics": [
           [
             {
-              "expression": "MAX(SEARCH('Namespace=\"CWAgent\" MetricName=\"disk_used_percent\" InstanceId=\"i-08ff5dddb7ac94f5c\" path=\"/\"', 'Average', 60))",
+              "expression": "MAX(SEARCH('Namespace=\"CWAgent\" MetricName=\"disk_used_percent\" InstanceId=\"i-0bf4f4130d31eb443\" path=\"/\"', 'Average', 60))",
               "id": "rootdisk",
               "label": "Root disk used"
             }
@@ -1957,7 +1957,7 @@
             "AWS/EC2",
             "StatusCheckFailed",
             "InstanceId",
-            "i-08ff5dddb7ac94f5c",
+            "i-0bf4f4130d31eb443",
             {
               "stat": "Maximum",
               "label": "Any"
@@ -2031,7 +2031,7 @@
             "AWS/EC2",
             "CPUUtilization",
             "InstanceId",
-            "i-08ff5dddb7ac94f5c",
+            "i-0bf4f4130d31eb443",
             {
               "label": "CPU Average"
             }
@@ -2082,7 +2082,7 @@
             "AWS/EC2",
             "CPUCreditBalance",
             "InstanceId",
-            "i-08ff5dddb7ac94f5c",
+            "i-0bf4f4130d31eb443",
             {
               "label": "Credit balance"
             }
@@ -2139,7 +2139,7 @@
             "CWAgent",
             "mem_available_percent",
             "InstanceId",
-            "i-08ff5dddb7ac94f5c",
+            "i-0bf4f4130d31eb443",
             {
               "label": "Available memory"
             }
@@ -2148,7 +2148,7 @@
             "CWAgent",
             "swap_used_percent",
             "InstanceId",
-            "i-08ff5dddb7ac94f5c",
+            "i-0bf4f4130d31eb443",
             {
               "label": "Swap used"
             }
@@ -2201,7 +2201,7 @@
           [
             {
               "label": "Root disk used",
-              "expression": "MAX(SEARCH('Namespace=\"CWAgent\" MetricName=\"disk_used_percent\" InstanceId=\"i-08ff5dddb7ac94f5c\" path=\"/\"', 'Average', 60))",
+              "expression": "MAX(SEARCH('Namespace=\"CWAgent\" MetricName=\"disk_used_percent\" InstanceId=\"i-0bf4f4130d31eb443\" path=\"/\"', 'Average', 60))",
               "id": "rootdisk"
             }
           ]
@@ -2246,7 +2246,7 @@
             "AWS/EC2",
             "NetworkIn",
             "InstanceId",
-            "i-08ff5dddb7ac94f5c",
+            "i-0bf4f4130d31eb443",
             {
               "stat": "Sum",
               "id": "networkinbytes",
@@ -2257,7 +2257,7 @@
             "AWS/EC2",
             "NetworkOut",
             "InstanceId",
-            "i-08ff5dddb7ac94f5c",
+            "i-0bf4f4130d31eb443",
             {
               "stat": "Sum",
               "id": "networkoutbytes",
