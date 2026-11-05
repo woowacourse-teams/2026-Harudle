@@ -58,6 +58,10 @@ import com.harudle.generation.diary.service.exception.IdempotencyKeyConflictExce
 import com.harudle.generation.diary.service.port.ImageStorageException;
 import com.harudle.guest.application.exception.GuestSessionExpiredException;
 import com.harudle.guest.application.exception.GuestSessionRequiredException;
+import com.harudle.guest.application.exception.GuestDiaryAlreadyClaimedException;
+import com.harudle.guest.application.exception.GuestDiaryClaimForbiddenException;
+import com.harudle.guest.application.exception.GuestDiaryClaimLimitExceededException;
+import com.harudle.guest.application.exception.GuestDiaryClaimNotFoundException;
 import com.harudle.guest.application.exception.GuestTrialAlreadyUsedException;
 import com.harudle.share.service.exception.ShareGenerationFailedException;
 import com.harudle.share.service.exception.ShareNotFoundException;
@@ -479,6 +483,26 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(GuestTrialAlreadyUsedException.class)
     ResponseEntity<ProblemDetail> handleGuestTrialAlreadyUsed(HttpServletRequest request) {
         return createResponse(ErrorType.GUEST_TRIAL_ALREADY_USED, request);
+    }
+
+    @ExceptionHandler(GuestDiaryClaimNotFoundException.class)
+    ResponseEntity<ProblemDetail> handleGuestDiaryClaimNotFound(HttpServletRequest request) {
+        return createResponse(ErrorType.GUEST_DIARY_CLAIM_NOT_FOUND, request);
+    }
+
+    @ExceptionHandler(GuestDiaryAlreadyClaimedException.class)
+    ResponseEntity<ProblemDetail> handleGuestDiaryAlreadyClaimed(HttpServletRequest request) {
+        return createResponse(ErrorType.GUEST_DIARY_ALREADY_CLAIMED, request);
+    }
+
+    @ExceptionHandler(GuestDiaryClaimLimitExceededException.class)
+    ResponseEntity<ProblemDetail> handleGuestDiaryClaimLimitExceeded(HttpServletRequest request) {
+        return createResponse(ErrorType.GUEST_DIARY_CLAIM_LIMIT_EXCEEDED, request);
+    }
+
+    @ExceptionHandler(GuestDiaryClaimForbiddenException.class)
+    ResponseEntity<ProblemDetail> handleGuestDiaryClaimForbidden(HttpServletRequest request) {
+        return createResponse(ErrorType.FORBIDDEN, request);
     }
 
     @ExceptionHandler(DailyGenerationLimitExceededException.class)
