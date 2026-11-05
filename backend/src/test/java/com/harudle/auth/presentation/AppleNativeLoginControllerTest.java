@@ -21,6 +21,8 @@ import com.harudle.auth.infrastructure.oauth.AppleLoginCommandMapper;
 import com.harudle.auth.infrastructure.oauth.AppleNativeTokenVerifier;
 import com.harudle.auth.infrastructure.oauth.AppleNativeTokenVerifier.AppleProviderException;
 import com.harudle.auth.infrastructure.oauth.AppleNativeTokenVerifier.InvalidAuthorizationCodeException;
+import com.harudle.auth.infrastructure.oauth.AppleNativeTokenVerifier.VerifiedAppleLogin;
+import com.harudle.auth.infrastructure.oauth.AppleTokenStore;
 import com.harudle.auth.infrastructure.token.RefreshTokenCookieWriter;
 import com.harudle.common.security.AuthProperties;
 import com.harudle.common.security.RefreshTokenProperties;
@@ -55,6 +57,7 @@ class AppleNativeLoginControllerTest {
     private final OAuthLoginService loginService = mock(OAuthLoginService.class);
     private final UserRepository users = mock(UserRepository.class);
     private final RefreshTokenService tokens = mock(RefreshTokenService.class);
+    private final AppleTokenStore appleTokens = mock(AppleTokenStore.class);
 
     @BeforeEach
     void setUp() {
@@ -63,7 +66,7 @@ class AppleNativeLoginControllerTest {
                 new RefreshTokenProperties("refresh_token", "/api/v1/auth", true, "None", Duration.ofDays(30)));
         var controller = new AppleNativeLoginController(clock, verifier,
                 new AppleLoginCommandMapper(new ObjectMapper()), loginService, users, tokens,
-                new RefreshTokenCookieWriter(properties));
+                new RefreshTokenCookieWriter(properties), appleTokens);
         RestAssuredMockMvc.mockMvc(MockMvcBuilders.standaloneSetup(controller).build());
     }
 
@@ -98,7 +101,8 @@ class AppleNativeLoginControllerTest {
         var command = new OAuthLoginCommand(OAuthProvider.APPLE, "apple-user", "apple@example.com", null);
         var user = new User("apple@example.com", "user", NOW);
         var issued = new IssuedRefreshToken("refresh-value", NOW.plus(Duration.ofDays(30)));
-        when(verifier.verify("code", "token", nonce)).thenReturn(apple);
+        when(verifier.verify("code", "token", nonce)).thenReturn(
+                new VerifiedAppleLogin(apple, "com.harudle.app", "apple-access", "apple-refresh", 3600L));
         when(loginService.login(command, NOW)).thenReturn(new OAuthLoginResult(user.getId()));
         when(users.findById(user.getId())).thenReturn(Optional.of(user));
         when(tokens.issue(user, NOW)).thenReturn(issued);
@@ -110,6 +114,8 @@ class AppleNativeLoginControllerTest {
         assertThat(response.header(HttpHeaders.SET_COOKIE))
                 .contains("refresh_token=refresh-value", "HttpOnly", "Secure", "SameSite=None");
         verify(loginService).login(command, NOW);
+        verify(appleTokens).save(user.getId(), "com.harudle.app", "verified", "apple-access", "apple-refresh",
+                NOW.plusSeconds(3600));
         verify(users).findById(user.getId());
         verify(tokens).issue(user, NOW);
     }
@@ -122,7 +128,8 @@ class AppleNativeLoginControllerTest {
         var apple = Jwt.withTokenValue("verified").header("alg", "RS256")
                 .subject("apple-user").claim("email", "apple@example.com").build();
         var command = new OAuthLoginCommand(OAuthProvider.APPLE, "apple-user", "apple@example.com", null);
-        when(verifier.verify("code", "token", nonce)).thenReturn(apple);
+        when(verifier.verify("code", "token", nonce)).thenReturn(
+                new VerifiedAppleLogin(apple, "com.harudle.app", "apple-access", "apple-refresh", 3600L));
         when(loginService.login(command, NOW)).thenThrow(new InactiveUserException());
 
         var response = login(session);

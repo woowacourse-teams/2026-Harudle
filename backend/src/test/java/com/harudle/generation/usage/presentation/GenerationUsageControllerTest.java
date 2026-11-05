@@ -7,8 +7,6 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 
 import com.harudle.auth.infrastructure.UserRepository;
-import com.harudle.auth.infrastructure.oauth.OAuthLoginFailureHandler;
-import com.harudle.auth.infrastructure.oauth.OAuthLoginSuccessHandler;
 import com.harudle.auth.presentation.AuthenticatedUserIdResolver;
 import com.harudle.common.error.ApiExceptionLoggerTestConfiguration;
 import com.harudle.common.error.ProblemDetailFactory;
@@ -28,7 +26,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
-import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -60,15 +57,6 @@ class GenerationUsageControllerTest {
 
     @MockitoBean
     private UserRepository userRepository;
-
-    @MockitoBean
-    private OAuthLoginSuccessHandler oAuthLoginSuccessHandler;
-
-    @MockitoBean
-    private OAuthLoginFailureHandler oAuthLoginFailureHandler;
-
-    @MockitoBean
-    private ClientRegistrationRepository clientRegistrationRepository;
 
     @BeforeEach
     void setUp() {

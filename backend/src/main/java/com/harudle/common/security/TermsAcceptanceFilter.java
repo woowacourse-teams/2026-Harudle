@@ -47,6 +47,7 @@ final class TermsAcceptanceFilter extends OncePerRequestFilter {
                     || path.startsWith("/api/v1/legal/documents/");
         }
         return ("PUT".equals(method) && path.equals("/api/v1/me/agreements"))
+                || ("POST".equals(method) && path.equals("/api/v1/me/withdrawal"))
                 || ("POST".equals(method) && (path.equals("/api/v1/auth/refresh")
                 || path.equals("/api/v1/auth/logout")));
     }

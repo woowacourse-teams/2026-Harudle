@@ -1,5 +1,43 @@
 # 서버 모니터링
 
+2026-10-23에 Dev 대시보드의 앱과 DB 대상, Prod 대시보드의 DB 대상을 EC2로 변경했다.
+2026-11-05에 4대를 새 인스턴스로 교체하면서 아래 InstanceId와 EBS 대상도 새 값으로 바꿨다.
+아래 RDS 지표 설명은 이전 구성의 참고 자료다. 현재 Dev와 Prod DB는 별도 EC2의 PostgreSQL을 사용한다.
+
+| 대상 | InstanceId | Agent 설정 |
+| --- | --- | --- |
+| Dev 앱 `harudle-dev` | `i-0bf4f4130d31eb443` | `cloudwatch-agent.host.json`과 `cloudwatch-agent.dev.json` |
+| Dev DB `harudle-dev-db` | `i-073fa344c2badcf20` | `cloudwatch-agent.db.json` |
+| Prod DB `harudle-prod-db` | `i-01412b89da45b5f42` | `cloudwatch-agent.db.json` |
+
+**Dev Java와 API 지표 수집 설정은 적용 완료다.** 새 앱 서버에 `cloudwatch-agent.dev.json`을
+적용했고 CloudWatch에서 Java RSS와 앱 연결 풀 지표 도착을 확인했다.
+
+Prod DB에도 Agent를 설치하고 자동 시작을 설정했다. 메모리와 Swap, 루트 및 데이터 디스크의
+여유 공간이 CloudWatch에 도착하고 Prod 대시보드 조회식이 값을 반환하는 것을 확인했다.
+
+앱용 호스트 설정은 메모리 사용률과 여유 비율, Swap 사용률, 루트 디스크 사용률을 수집한다.
+DB 설정은 루트와 데이터 디스크 `/srv/harudle/db-data`의 사용률과 남은 바이트도 수집한다.
+DB 설정을 다른 서버에 적용할 때는 실제 데이터 디스크 마운트 경로를 확인한다.
+설정 파일은 `/opt/harudle/monitoring/`에 배치하고 기존 설정을 보관한 뒤 Agent에 적용한다.
+
+```bash
+sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+  -a append-config -m ec2 -s \
+  -c file:/opt/harudle/monitoring/cloudwatch-agent.db.json
+```
+
+현재 `DASHBOARD-harudle-dev`와 `DASHBOARD-harudle-prod`는 앱과 DB의 InstanceId를 각각 사용한다.
+공통 `InstanceId` 속성 변수는 두 대상을 같은 값으로 덮어쓸 수 있어 제거했다.
+DB CPU와 크레딧, 상태 검사는 `AWS/EC2`, 메모리와 디스크는 `CWAgent`에서 조회한다.
+Dev 데이터 디스크의 `AWS/EBS` 대상은 `vol-079e2259ecef5ae0c`,
+Prod 데이터 디스크는 `vol-054247052e6a3f58e`이다.
+EBS의 `VolumeAvgReadLatency`와 `VolumeAvgWriteLatency`는 밀리초이며
+기존 RDS 지연 지표의 초 단위와 다르다. [EBS 공식 지표 안내](https://docs.aws.amazon.com/ebs/latest/userguide/using_cloudwatch_ebs.html)
+
+RDS의 `DatabaseConnections`는 EC2 기본 지표로 바꿀 수 없어 해당 칸은 DB EC2 상태 검사로 교체했다.
+PostgreSQL 전체 연결 수는 별도 수집이 필요하다. 기존 HikariPool 그래프는 앱 연결 풀만 보여준다.
+
 **dev와 prod에서 API 응답과 오류, 앱과 DB EC2 자원, Java 메모리를 함께 확인합니다.** dev는 부하테스트 원인 분석을 위해 GC와 힙 외 메모리도 수집합니다.
 
 현재 구성과 결정 이유는 [Prod 대시보드 정리 ADR](adr/2026-10-30_prod-dashboard-cleanup.md)과 [Dev 표시 및 로그 수정 ADR](adr/2026-10-30_dev-dashboard-corrections.md)에 정리합니다. 서버 전환과 Dev 경보 및 백업 감시 적용 이력은 [EC2 PostgreSQL 모니터링 결정](adr/2026-10-29_ec2-postgresql-monitoring.md)을 따릅니다. 과거 배치는 [dev 대시보드 ADR](adr/2026-10-22_cloudwatch-dashboard-layout.md)과 [prod 대시보드 ADR](adr/2026-10-22_cloudwatch-prod-dashboard-layout.md)에 기록합니다.
@@ -89,7 +127,7 @@ CloudWatch에서 시간 합계와 횟수는 Agent가 변환한 증가분의 `Sum
 
 ## 서버 자원은 어디서 확인하나요?
 
-CloudWatch의 `지표` 화면에서 아래 지표를 선택합니다. 앱과 DB는 서로 다른 `InstanceId`를 사용합니다. 기본 대상은 [targets.json](targets.json)에 기록합니다.
+CloudWatch의 `지표` 화면에서 아래 지표를 선택합니다. 앱과 DB는 서로 다른 `InstanceId`를 사용합니다. 복구 파일을 저장한 시점의 대상은 [targets.json](targets.json)에 기록합니다. 아래 표와 `targets.json`, 대시보드 복구 파일의 ID는 2026-11-05 서버 교체 전 값입니다. 적용 전 현재 인스턴스와 EBS의 ID로 바꿉니다. 현재 확인된 새 ID는 이 문서 처음의 서버 교체 기록을 참고합니다.
 
 | 환경 | 앱 EC2 | DB EC2 | 데이터 EBS |
 | --- | --- | --- | --- |
@@ -113,7 +151,7 @@ T 계열 서버는 `CPUCreditBalance`도 확인합니다. 값이 줄면 기본 �
 
 ## 팀원에게 같은 설정을 보이게 하려면
 
-AWS에 저장한 대시보드와 경보는 같은 계정과 리전에서 조회하는 팀원에게 함께 보입니다. 저장소 변경만으로 AWS 설정이 바뀌지는 않습니다. 환경별 기본 ID는 `targets.json`에 기록하고, 서버 교체 때 실제 경보의 `Dimensions`도 별도로 수정합니다. 대시보드의 공통 `InstanceId` 변수는 앱과 DB를 같은 서버로 덮어쓸 수 있으므로 사용하지 않습니다.
+AWS에 저장한 대시보드와 경보는 같은 계정과 리전에서 조회하는 팀원에게 함께 보입니다. 저장소 변경만으로 AWS 설정이 바뀌지는 않습니다. 환경별 기본 ID는 `targets.json`에 기록합니다. 서버 교체 뒤에는 이 파일과 복구용 대시보드, 실제 경보의 `Dimensions`를 현재 ID로 수정한 뒤 적용합니다. 대시보드의 공통 `InstanceId` 변수는 앱과 DB를 같은 서버로 덮어쓸 수 있으므로 사용하지 않습니다.
 
 ### Dev와 Prod 대시보드 구성을 복구하려면
 
@@ -374,3 +412,66 @@ Prod를 참고해 Dev 대시보드를 62개에서 55개 위젯으로 정리했�
 ## 2026-11-03 Nginx 오류와 예상 밖 생성 실패 표시
 
 두 환경의 `frontend-nginx` 로그 그룹에 `harudle-<환경>-nginx-gateway-error` 필터를 추가했습니다. 지표는 `Harudle/<환경>`의 `NginxGatewayErrorLogs`이며, 패턴은 현재 JSON 접근 로그의 숫자 `status` 필드를 읽습니다. 처음 등록한 패턴은 이전 형식 기준이어서 같은 날 두 환경의 AWS 필터를 교체했습니다. 필터는 과거 로그를 집계하지 않으므로 이후 발생한 응답부터 표시됩니다. 대시보드에는 `Nginx 502/504 응답 수`를 추가하고 `일기 생성: DB 최종 확정 수`에 기존 `GenerationUnexpectedFailureLogs` 선을 추가해 Dev는 56개, Prod는 57개 위젯이 됐습니다. 경보는 추가하지 않았습니다. 로그가 들어오면 기본값 0이 게시되므로, 그래프의 값만으로 필터가 502를 잡는지 판단하지 않습니다. 교체 후 실제 502 응답으로 값이 오르는지는 아직 확인하지 못했습니다.
+
+
+## OpenAI 이미지 대체 생성 지표
+
+`IMAGE_PROVIDER=openai`인 메인 모드에서도 OpenAI 결과와 처리 시간, 응답 검증 실패 지표를 사용합니다.
+이 모드는 대체 호출을 선택하지 않으므로 대체 호출 횟수는 증가하지 않으며 해당 시계열이 없을 수 있습니다.
+메인 모드 시험에서는 결과 횟수와 처리 시간, 응답 검증 실패를 대조합니다.
+
+저장소에 dev와 prod의 수집 설정, 대시보드 생성 코드와 검증 절차를 추가했습니다.
+이 변경에서 서버의 Agent나 AWS 대시보드는 수정하지 않았습니다.
+기존 대시보드를 입력해 `prepare_dashboard.py`를 실행하면 아래 그래프 4개가 추가됩니다.
+기존 그래프는 보존하며, 같은 도구를 다시 실행해도 같은 제목의 그래프를 중복 추가하지 않습니다.
+
+- OpenAI 대체 호출 횟수: Gemini 호출량 제한과 시간 초과를 구분합니다.
+- 이미지 생성 결과: Gemini와 OpenAI의 성공 수와 실패 수를 함께 표시합니다.
+- 이미지 생성 평균 처리 시간: 두 제공자의 성공과 실패를 각각 초 단위로 표시합니다.
+- OpenAI 이미지 응답 검증 실패: 원문 없이 실패 원인별 횟수를 표시합니다.
+
+```mermaid
+flowchart LR
+    app["백엔드 지표"] --> scrape["Prometheus 수집 설정"]
+    scrape --> agent["CloudWatch Agent"]
+    agent --> metrics["환경별 CloudWatch 지표"]
+    metrics --> dashboard["기존 대시보드와 추가 그래프"]
+```
+
+백엔드가 기록한 지표를 Agent가 읽고, 대시보드는 환경별 지표를 조회합니다.
+수집 허용 목록, Agent의 지표 선언, 대시보드 조회식이 모두 있어야 그래프에 값이 나타납니다.
+
+| 지표 | 수집 구분 | 의미 |
+| --- | --- | --- |
+| `harudle_image_fallback_calls_total` | `job`, `provider`, `reason` | 대체 생성 선택 횟수입니다. 실제 HTTP 전송 횟수와는 다를 수 있습니다. |
+| `harudle_image_provider_duration_seconds_count` | `job`, `provider`, `outcome` | 끝난 OpenAI 생성 시도 수입니다. 입력 준비 실패와 취소도 실패에 포함합니다. |
+| `harudle_image_provider_duration_seconds_sum` | `job`, `provider`, `outcome` | 해당 시도에 걸린 시간의 합입니다. |
+| `harudle_image_response_failures_total` | `job`, `provider`, `reason` | HTTP 성공 응답의 검증 또는 해석 실패 수입니다. |
+| `harudle_gemini_stage_duration_seconds_sum`, `harudle_gemini_stage_duration_seconds_count` | `job`, `stage`, `outcome` | Gemini 단계의 시간 합과 시도 수입니다. 그래프는 `stage=image_generation`만 조회합니다. |
+
+Agent는 누적 카운터와 시간 지표의 합, 횟수를 이전 수집과의 증가분으로 변환합니다.
+대시보드는 구간의 `Sum`을 사용하고 평균은 시간 합을 횟수로 나눕니다.
+이미 변환한 값에 `DIFF`나 `RATE`를 다시 적용하지 않습니다.
+[Agent 지표 변환 안내](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/ContainerInsights-Prometheus-metrics-conversion.md)
+
+응답 검증 로그의 `event`는 `openai_image_response_rejected`이며 `provider`, `model`, `reason`을 남깁니다.
+`reason`은 다음 7개만 사용합니다. API 키, 프롬프트, 이미지 Base64와 예외 원문은 기록하지 않습니다.
+
+- `INVALID_CONTENT_TYPE`: JSON 응답 형식이 아닙니다.
+- `RESPONSE_TOO_LARGE`: 응답 본문이 28MiB를 넘었습니다.
+- `INVALID_JSON`: JSON을 해석하지 못했습니다.
+- `IMAGE_MISSING`: 응답에 사용할 이미지 값이 없습니다.
+- `INVALID_BASE64`: 이미지 값을 Base64로 해석하지 못했습니다.
+- `INVALID_PNG`: 이미지 크기나 실제 PNG 해석 검사를 통과하지 못했습니다.
+- `UNEXPECTED_RESPONSE_ERROR`: 그 밖의 응답 처리 오류입니다.
+
+적용과 완료 확인은 다음 순서로 진행합니다.
+
+1. 해당 환경에 코드와 수집 파일을 배포합니다. 기존 Prometheus 파일과 Agent 설정을 보관합니다.
+2. dev는 `prometheus.dev.yaml`과 `cloudwatch-agent.dev.json`, prod는 `prometheus.yaml`과 `cloudwatch-agent.prod.json`을 적용합니다. 위의 Agent 갱신 절차를 사용하며 다른 환경의 설정을 섞지 않습니다.
+3. CloudWatch에서 현재 대시보드 JSON을 내려받고 위의 대시보드 준비 절차로 새 파일을 만듭니다. 기존 원본과 변경 내용을 비교한 뒤 해당 환경의 대시보드에 적용합니다.
+4. dev에서 대체 생성을 켜고, 테스트 요청 전에 Agent 수집을 두 번 이상 기다립니다. OpenAI 생성기는 성공과 실패 시간 지표, 응답 실패 원인을 0으로 등록합니다. 대체 호출 횟수도 같은 방식으로 준비합니다. 첫 수집 이전의 요청은 증가분 집계에서 빠질 수 있습니다.
+5. 허용된 dev 시험에서 대체 생성 한 건을 실행합니다. 요청 전후 관리 포트의 지표 값, EMF 로그 증가분과 CloudWatch의 같은 구간 `Sum`을 비교합니다. 대체 호출 횟수 1과 성공 또는 실패 횟수 1이 같은 시도로 집계되는지 확인합니다. 여러 요청이 섞이면 전체 합으로 비교합니다.
+6. 같은 구간에서 시간 합을 횟수로 나눈 값이 평균 처리 시간 그래프와 같은지 확인합니다. 이후 수집 때 같은 요청을 다시 더하지 않는지도 봅니다. 응답 검증 실패를 시험했다면 `reason` 로그 한 건과 해당 원인 지표 증가분도 함께 비교합니다.
+
+서버 적용과 실제 지표 유입 확인이 끝나기 전에는 운영 적용 완료로 기록하지 않습니다.

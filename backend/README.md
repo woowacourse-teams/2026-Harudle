@@ -24,7 +24,8 @@ Gradle은 별도로 설치할 필요가 없습니다. 저장소에 포함된 Gra
 
 ## 문서
 
-- [API 명세](docs/api-spec.md)
+- [백엔드 문서와 ADR 목록](docs/README.md)
+- [API 명세](<docs/명세/하루들 API 명세.md>)
 
 ## 도메인 패키지
 
@@ -141,6 +142,13 @@ http://localhost:8080/login/oauth2/code/google
 콜백은 구글이 인증 결과를 돌려주는 주소이므로 직접 접속해서 로그인을 시작하지 않습니다.
 성공 후 이동할 주소는 `FRONTEND_SUCCESS_REDIRECT`, 실패 시 주소는 `FRONTEND_FAILURE_REDIRECT`로 설정합니다.
 프론트엔드가 실행되지 않아도 백엔드 인증 처리는 가능하지만, 이동한 화면은 열리지 않을 수 있습니다.
+
+구글 재인증을 거친 회원 탈퇴 결과는 로그인과 별도로 `/withdrawal/callback`에 전달합니다.
+`FRONTEND_SUCCESS_REDIRECT`와 같은 프로토콜, 호스트, 포트를 사용하고 경로는
+`/withdrawal/callback`으로 바꿉니다. 로그인 주소의 쿼리와 fragment는 이어받지 않습니다.
+성공 시 `withdrawal=success`, 실패나 인증 취소 시 `withdrawal=failed`를 붙입니다.
+추가 환경 변수나 Google에 등록한 백엔드 콜백 주소 변경은 필요하지 않습니다.
+프론트엔드의 탈퇴 전용 콜백 페이지와 함께 반영해야 합니다.
 
 요청 범위는 `openid`, `email`, `profile`입니다. Spring Security가 인증 결과를 검증한 뒤 기존 로그인 성공
 처리기로 전달합니다. 구글 계정은 `GOOGLE`과 구글의 사용자 식별자 `sub`로 찾으며, 이메일이 같아도 카카오
@@ -293,6 +301,12 @@ GOOGLE_APPLICATION_CREDENTIALS=/var/run/harudle/gcp-wif.json
 Qwen HTTP 호출과 SSE 파싱은 별도 구현체인 `QwenChatClient`가 담당합니다. 현재는 공통
 `ChatCompletionClient` 인터페이스를 추가하지 않습니다. 다른 Provider는 `StoryboardGenerator` 구현을
 추가하고, 같은 호출 규격을 공유할 실제 구현체가 생기면 클라이언트 인터페이스를 추출할 수 있습니다.
+
+HTTP 400 응답과 JSON 및 SSE 오류의 `error.code`가 `DataInspectionFailed` 또는
+`data_inspection_failed`이면 `AI_CONTENT_BLOCKED`로 분류합니다. 기존 콘텐츠 차단 안내를 사용하고
+보조 AI를 호출하지 않습니다. HTTP 400 본문은 최대 2MiB까지만 해석하며, 크기를 넘거나 읽기와
+JSON 해석에 실패하면 기존 HTTP 오류 분류를 유지합니다. 오류 응답 원문은 예외와 로그에 남기지 않습니다.
+차단 코드의 기준은 [Qwen 공식 오류 문서](https://www.alibabacloud.com/help/en/model-studio/error-code)를 따릅니다.
 
 기본 설정은 `qwen3.8-max`, 추론 활성화, `thinking_budget=1024`, `max_tokens=8192`, `json_object`,
 메인·보조 역할별 요청 제한 시간은 기본 60초입니다. `QwenStoryboardSettings`로 모델명, 추론 예산과 출력
@@ -450,6 +464,23 @@ OkHttp의 `503 + Retry-After: 0` 자동 후속 호출도 방지합니다. 이 �
 
 외부 생성 어댑터를 비활성화하면 조합 서비스와 실행기를 초기화하지 않습니다. 이미지 생성에는 이 실행기를 적용하지 않습니다.
 
+### 탈퇴 후 남은 이미지 확인
+
+탈퇴할 때 삭제할 이미지 목록과 회원 DB 삭제를 함께 저장한 뒤 S3와 R2 삭제를 시도합니다.
+파일 삭제와 목록 제거가 성공한 작업만 목록에서 사라집니다. 실패하거나 아직 처리되지 않은 작업은
+`withdrawal_image_cleanup_tasks`에 남습니다. 자동 재시도나 정기 실행은 하지 않습니다.
+
+운영자가 필요할 때 아래 조회로 남은 작업을 확인하고 수동 정리합니다. 목록에는 이미 삭제됐지만
+목록 제거에 실패한 파일도 있을 수 있습니다. 실제 파일 삭제 여부를 확인한 뒤 해당 목록을 제거합니다.
+S3 일기 이미지 작업은 기존 삭제 코드와 같이 원본과 썸네일까지 함께 확인해야 합니다.
+이미지 경로는 일반 로그나 조회 결과 공유에 포함하지 않고, 필요한 경우에만 삭제 작업 테이블에서 확인합니다.
+
+```sql
+SELECT storage, count(*) AS pending_count, min(created_at) AS oldest_created_at
+FROM withdrawal_image_cleanup_tasks
+GROUP BY storage;
+```
+
 ## 테스트
 
 ```shell
@@ -550,21 +581,100 @@ PR 검증과 캐시 생성은 이벤트별로 실행 그룹을 나눠 서로 취
 - Hibernate는 스키마를 자동 변경하지 않고 시작 시 스키마를 검증합니다.
 - 인증 구현 전까지 Spring Security의 기본 보안 설정이 적용되어 모든 API가 보호됩니다.
 
-## 이미지 생성의 Codex fallback
+## 이미지 생성의 OpenAI 대체 호출
 
-IMAGE_FALLBACK_PROVIDER=codex로 설정하면 Gemini 이미지 생성이 429 또는 timeout으로 실패할 때
-Codex SDK worker에 같은 Storyboard, 스타일 지시문과 참조 이미지를 전달합니다.
-Gemini와 Codex를 각각 한 번 호출하며, 일반 생성과 관리자 이미지 복구에 동일하게 적용합니다.
-기본값 none에서는 기존 Gemini 생성과 재시도 설정을 유지합니다.
+### 메인 이미지 제공자 선택
 
-Codex worker는 `CODEX_IMAGE_CONCURRENCY`로 동시 생성 수를, `CODEX_IMAGE_QUEUE_CAPACITY`로 대기 수를 정합니다.
-기본값은 각각 1이며, 입력 수신과 대기, 생성 시간을 합쳐 기존 worker 제한 시간 300초를 적용합니다.
-접수 한도가 차면 503으로 거절합니다. 백엔드의 `GENERATION_WORKER_CONCURRENCY`는 일기 전체의 동시 실행 수입니다.
+`IMAGE_PROVIDER`로 이미지 생성을 담당할 제공자를 선택합니다. 기본값은 `gemini`입니다.
+OpenAI를 바로 호출해 결과를 확인하려면 다음 값을 설정하고 백엔드를 재시작하거나 컨테이너를 재생성합니다.
 
-OAuth 로그인, 내부 HTTP 토큰, 제한 시간과 선택적 컨테이너 구성은
-[codex-image-worker/README.md](codex-image-worker/README.md)를 참고하세요.
+```dotenv
+IMAGE_PROVIDER=openai
+IMAGE_FALLBACK_PROVIDER=none
+OPENAI_API_KEY=서버에만-저장하는-API-키
+```
 
-### iOS Apple 네이티브 로그인 (개발 중)
+`OPENAI_IMAGE_MODEL`, `OPENAI_IMAGE_TIMEOUT`, `OPENAI_IMAGE_QUALITY`는 아래 기본 설정을 함께 사용합니다.
+이미지 비율도 기존 `GEMINI_IMAGE_ASPECT_RATIO`를 사용합니다. 이미지 단계만 바뀌며 스토리보드는 기존
+`STORYBOARD_PROVIDER` 설정을 따릅니다. 메인과 대체 제공자가 모두 OpenAI이면 시작 시 설정 오류로 거절합니다.
+
+| IMAGE_PROVIDER | IMAGE_FALLBACK_PROVIDER | 이미지 생성 방식 |
+| --- | --- | --- |
+| `gemini` | `none` | Gemini만 사용합니다. |
+| `gemini` | `openai` | Gemini가 429 또는 시간 초과로 실패하면 OpenAI를 한 번 호출합니다. |
+| `openai` | `none` | Gemini 이미지 호출 없이 OpenAI를 바로 사용합니다. |
+
+Gemini만 사용하도록 되돌리려면 `IMAGE_PROVIDER=gemini`와 `IMAGE_FALLBACK_PROVIDER=none`을 설정합니다.
+
+### Gemini 실패 시 OpenAI 대체 호출
+
+Gemini 이미지 생성이 429 또는 시간 초과로 실패하면 OpenAI Images API를 직접 호출할 수 있습니다.
+일반 생성과 관리자 이미지 복구에 같은 처리를 적용합니다. Codex SDK와 별도 worker는 사용하지 않습니다.
+기본값은 비활성화이며, 다음 환경 변수로 켭니다. 키는 프론트엔드나 저장소에 넣지 않습니다.
+
+```dotenv
+IMAGE_PROVIDER=gemini
+IMAGE_FALLBACK_PROVIDER=openai
+OPENAI_API_KEY=서버에만-저장하는-API-키
+OPENAI_IMAGE_MODEL=gpt-image-2.5-flare
+OPENAI_IMAGE_TIMEOUT=180s
+OPENAI_IMAGE_QUALITY=medium
+```
+
+모델은 Flare와 고정 버전 `gpt-image-2.5-flare-2026-09-08`을 지원합니다.
+이미지 비율은 Gemini와 같은 `GEMINI_IMAGE_ASPECT_RATIO`를 사용합니다.
+OpenAI 전용 크기 환경 변수는 없습니다. `1:1`은 `1024x1024`, `9:16`은 `864x1536`,
+`16:9`는 `1536x864`로 변환하며 Gemini에서 허용하는 나머지 비율도 그대로 유지합니다.
+두 제공자의 실제 픽셀 수까지 같다는 뜻은 아닙니다.
+품질은 `low`, `medium`, `high`, `xhigh`, `max`, `auto`를 지원합니다.
+제한 시간은 1초 이상, 300초 이하입니다. 활성화 상태에서 키나 설정이 잘못되면 앱 시작이 실패합니다.
+
+```mermaid
+flowchart TD
+    input["스토리보드, 그림체 지시문, 참조 이미지"] --> provider{"IMAGE_PROVIDER"}
+    provider -->|gemini| gemini["Gemini 이미지 생성"]
+    provider -->|openai| openai["OpenAI Flare 직접 호출"]
+    gemini -->|성공| storage["기존 이미지 저장"]
+    gemini -->|429 또는 시간 초과| fallback{"OpenAI 대체 호출 설정"}
+    fallback -->|활성화| openai
+    fallback -->|비활성화| failure["생성 실패 처리"]
+    openai -->|성공| storage
+    openai -->|실패| failure
+    gemini -->|그 밖의 오류| failure
+```
+
+두 제공자는 같은 스토리보드와 참조 이미지를 사용합니다. OpenAI 요청에는 그림체와 참조 사용 지시,
+스토리보드를 하나의 지시문으로 합칩니다. 참조 이미지는 Base64 data URL로 담아
+`POST https://api.openai.com/v1/images/edits`로 보내며, PNG 응답을 기존 저장 처리에 전달합니다.
+지시문은 최대 32000자, 입력 JSON은 최대 20MiB, 응답 JSON은 최대 28MiB,
+변환한 PNG는 최대 20MiB로 제한합니다. 참조 형식은 PNG, JPEG, WebP를 지원합니다.
+
+메인이 Gemini이고 대체 호출을 켜면 Gemini와 OpenAI는 각각 한 번만 호출하며 자동 재시도와 리다이렉트를 사용하지 않습니다.
+기본 호출 제한 시간의 합은 Gemini 180초와 OpenAI 180초로 360초입니다.
+입력 준비와 응답 변환, 저장 시간은 별도이며 일기 전체 작업에는 기존 처리 제한 시간이 적용됩니다.
+시간 초과나 취소 시 백엔드 HTTP 요청을 취소하지만 OpenAI 측 작업과 과금 취소를 보장하지 않습니다.
+작업 취소와 그 밖의 Gemini 오류는 대체 호출을 시작하지 않습니다.
+`IMAGE_FALLBACK_PROVIDER=none`이면 기존 Gemini 재시도 설정을 유지합니다.
+
+호출 수는 `harudle.image.fallback.calls`, 소요 시간은 `harudle.image.provider.duration`에
+`provider=openai`로 기록합니다. 응답 검증 실패는 `harudle.image.response.failures`에 고정된 `reason`으로
+기록하며 `event=openai_image_response_rejected` 로그에도 같은 값을 남깁니다. 키, 참조 이미지, 응답 본문과
+파서 예외 원문은 기록하지 않습니다. 초기 수집 때 0을 읽을 수 있도록 OpenAI 지표는 생성기 등록 때 준비합니다.
+수집 설정과 대시보드 적용 순서는 [OpenAI 지표 안내](../deploy/monitoring/README.md#openai-이미지-대체-생성-지표)를 따릅니다.
+서버 동시 실행 수는 기존 `GENERATION_WORKER_CONCURRENCY`를 따릅니다.
+관리자 복구는 별도 요청이므로 이 값이 모든 OpenAI 호출의 공통 동시 실행 상한은 아닙니다.
+
+기존 `IMAGE_FALLBACK_PROVIDER=codex` 설정은 지원하지 않습니다.
+전환 시 Codex worker 환경 변수 대신 위 설정을 넣고 백엔드를 재시작하거나 컨테이너를 재생성합니다.
+활성화 전에 [원문 정책 대조](<docs/adr/약관과 동의/2026-10-25-약관과 개인정보처리방침 대조 기록-작성자 미기재.md>)의 외부 처리 업체 확인 항목을 검토합니다.
+환경별 OpenAI 사용 여부, 전송하는 스토리보드와 그림체 지시문, 참조 이미지, 처리 국가와 보유기간을
+확인하고 필요한 위탁과 국외 이전 고지, 동의 등 처리 근거가 실제 정책에 반영됐는지 기록합니다.
+OpenAI 프로젝트의 Flare 사용 권한과 결제를 확인하고, 소수의 실제 요청으로 그림체와 생성 시간,
+비용을 확인한 뒤 활성화합니다. `none`으로 되돌린 뒤 재생성하면 대체 호출이 꺼집니다.
+
+API 형식은 [OpenAI 공식 문서](https://developers.openai.com/api/reference/resources/images/methods/edit)를 따릅니다.
+
+## iOS Apple 네이티브 로그인 (개발 중)
 
 기존 웹 로그인 설정의 `APPLE_LOGIN_ENABLED=true`와 Apple 개인 키를 사용한다.
 iOS Bundle ID는 Apple Developer에 등록된 `com.harudle.app`을 사용한다.

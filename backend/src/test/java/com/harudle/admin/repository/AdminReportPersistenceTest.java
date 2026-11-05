@@ -115,6 +115,29 @@ class AdminReportPersistenceTest extends AdminModerationDatabaseTestSupport {
     }
 
     @Test
+    @DisplayName("탈퇴한 작성자의 댓글도 신고하고 관리자가 내용을 확인해 숨길 수 있다")
+    void reportAndHideCommentAfterAuthorIsDeleted() {
+        jdbc.update("DELETE FROM users WHERE id = ?", commenter);
+        var submission = new ReportSubmission(ReportTargetType.COMMENT, comment, ReportReason.SPAM, "신고 사유");
+
+        var receipt = submissions.submit(reporter, submission);
+        fixtureReports.add(receipt.id());
+        var detail = queries.findDetail(receipt.id());
+        assertThat(detail.report().targetId()).isEqualTo(comment);
+        assertThat(detail.report().targetUserId()).isNull();
+        assertThat(detail.target().exists()).isTrue();
+        assertThat(detail.target().authorId()).isNull();
+        assertThat(detail.target().authorDeleted()).isTrue();
+        assertThat(detail.target().commentContent()).isEqualTo("신고된 댓글 본문");
+        assertThat(submissions.submit(reporter, submission).duplicate()).isTrue();
+
+        var hidden = moderation.change(admin, ModerationTargetType.COMMENT, comment,
+                new ModerationChange(true, 0, "댓글 숨김"));
+        assertThat(hidden.restricted()).isTrue();
+        assertThat(queries.findDetail(receipt.id()).target().hidden()).isTrue();
+    }
+
+    @Test
     @DisplayName("실제 상태별 목록은 같은 생성 시각에도 UUID 내림차순과 정확한 전체 수를 반환한다")
     void paginatesReportsByStatusAndStableOrder() {
         long prefix = UUID.randomUUID().getMostSignificantBits();

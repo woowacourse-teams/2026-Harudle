@@ -6,8 +6,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.harudle.auth.infrastructure.UserRepository;
-import com.harudle.auth.infrastructure.oauth.OAuthLoginFailureHandler;
-import com.harudle.auth.infrastructure.oauth.OAuthLoginSuccessHandler;
 import com.harudle.common.error.ApiExceptionLoggerTestConfiguration;
 import com.harudle.common.error.ProblemDetailFactory;
 import com.harudle.common.error.TraceIdConfiguration;
@@ -22,7 +20,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
-import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -34,9 +31,6 @@ class LegalDocumentControllerTest {
     @Autowired private MockMvc mockMvc;
     @MockitoBean private JwtDecoder decoder;
     @MockitoBean private UserRepository users;
-    @MockitoBean private OAuthLoginSuccessHandler successHandler;
-    @MockitoBean private OAuthLoginFailureHandler failureHandler;
-    @MockitoBean private ClientRegistrationRepository registrations;
 
     @Test
     @DisplayName("비로그인 사용자도 두 문서 전문·시행일·버전·고정 해시를 열람한다")

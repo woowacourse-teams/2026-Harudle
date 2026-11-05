@@ -80,31 +80,28 @@ public final class GeminiFailureReporter {
     AiGenerationException reportStoryboardResponseFailure(
             String operation,
             String translationOperation,
+            GenerateContentResponse response,
             ExternalApiResponseDiagnostics diagnostics,
             Exception exception
     ) {
-        boolean outputTruncated = "MAX_TOKENS".equals(diagnostics.finishReason());
-        AiGenerationErrorType errorType = outputTruncated
-                ? AiGenerationErrorType.OUTPUT_TRUNCATED
-                : AiGenerationErrorType.RESPONSE_PROCESSING_ERROR;
+        GeminiFailureType failureType = GeminiFailureType.storyboardResponse(response, exception);
         AiGenerationException translated = exceptionTranslator.translate(
                 translationOperation,
                 exception,
-                errorType
+                failureType.responseErrorType()
         );
-        String failureType = GeminiFailureType.storyboardResponse(
-                diagnostics.finishReason(), exception).name();
-        externalApiLogger.error(
+        reportResponseFailure(
                 new ExternalApiFailure(
                         PROVIDER,
                         operation,
-                        failureType,
+                        failureType.name(),
                         null,
                         null,
                         null
                 ),
                 exception,
-                diagnostics
+                diagnostics,
+                failureType
         );
         return translated;
     }
@@ -115,12 +112,12 @@ public final class GeminiFailureReporter {
             GenerateContentResponse response,
             Exception exception
     ) {
+        GeminiFailureType failureType = GeminiFailureType.imageResponse(response);
         AiGenerationException translated = exceptionTranslator.translate(
                 translationOperation,
                 exception,
-                AiGenerationErrorType.RESPONSE_PROCESSING_ERROR
+                failureType.responseErrorType()
         );
-        String failureType = GeminiFailureType.imageResponse(response).name();
         Integer candidateTokenCount = null;
         Integer thoughtTokenCount = null;
         try {
@@ -140,11 +137,21 @@ public final class GeminiFailureReporter {
                 null,
                 null
         );
-        externalApiLogger.error(
-                new ExternalApiFailure(PROVIDER, operation, failureType, null, null, null),
+        reportResponseFailure(
+                new ExternalApiFailure(PROVIDER, operation, failureType.name(), null, null, null),
                 exception,
-                diagnostics
+                diagnostics,
+                failureType
         );
         return translated;
+    }
+
+    private void reportResponseFailure(ExternalApiFailure failure, Exception exception,
+            ExternalApiResponseDiagnostics diagnostics, GeminiFailureType failureType) {
+        if (failureType == GeminiFailureType.CONTENT_BLOCKED) {
+            externalApiLogger.warn(failure, exception, diagnostics);
+        } else {
+            externalApiLogger.error(failure, exception, diagnostics);
+        }
     }
 }
