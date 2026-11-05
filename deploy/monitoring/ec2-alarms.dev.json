@@ -1,0 +1,81 @@
+[
+  {
+    "AlarmName": "harudle-dev-ec2-cpu-high",
+    "AlarmDescription": "dev EC2 CPUUtilization Average > 85% for 3 consecutive 5-minute periods. Check deployment, application load, and instance health.",
+    "Tags": [
+      {
+        "Key": "ProjectTeam",
+        "Value": "harudle"
+      },
+      {
+        "Key": "Role",
+        "Value": "techcourse-etc"
+      },
+      {
+        "Key": "Service",
+        "Value": "techcourse"
+      }
+    ],
+    "ActionsEnabled": true,
+    "OKActions": [
+      "arn:aws:sns:ap-northeast-2:843255971531:harudle-dev-alerts"
+    ],
+    "AlarmActions": [
+      "arn:aws:sns:ap-northeast-2:843255971531:harudle-dev-alerts"
+    ],
+    "InsufficientDataActions": [],
+    "MetricName": "CPUUtilization",
+    "Namespace": "AWS/EC2",
+    "Statistic": "Average",
+    "Dimensions": [
+      {
+        "Name": "InstanceId",
+        "Value": "i-0bf4f4130d31eb443"
+      }
+    ],
+    "Period": 300,
+    "EvaluationPeriods": 3,
+    "DatapointsToAlarm": 3,
+    "Threshold": 85,
+    "ComparisonOperator": "GreaterThanThreshold",
+    "TreatMissingData": "missing"
+  },
+  {
+    "AlarmName": "harudle-dev-ec2-status-check",
+    "AlarmDescription": "harudle-dev EC2의 시스템 또는 인스턴스 상태 검사가 1분 간격으로 2회 연속 실패",
+    "Tags": [
+      {
+        "Key": "ProjectTeam",
+        "Value": "harudle"
+      },
+      {
+        "Key": "Role",
+        "Value": "techcourse-etc"
+      },
+      {
+        "Key": "Service",
+        "Value": "techcourse"
+      }
+    ],
+    "ActionsEnabled": true,
+    "OKActions": [],
+    "AlarmActions": [
+      "arn:aws:sns:ap-northeast-2:843255971531:harudle-dev-alerts"
+    ],
+    "InsufficientDataActions": [],
+    "MetricName": "StatusCheckFailed",
+    "Namespace": "AWS/EC2",
+    "Statistic": "Average",
+    "Dimensions": [
+      {
+        "Name": "InstanceId",
+        "Value": "i-0bf4f4130d31eb443"
+      }
+    ],
+    "Period": 60,
+    "EvaluationPeriods": 2,
+    "DatapointsToAlarm": 2,
+    "Threshold": 0.99,
+    "ComparisonOperator": "GreaterThanOrEqualToThreshold"
+  }
+]

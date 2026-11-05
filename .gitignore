@@ -525,6 +525,9 @@ $RECYCLE.BIN/
 ### Gradle Patch ###
 # Java heap dump
 
+# Python cache
+__pycache__/
+
 # Apple private signing keys
 *.p8
 
