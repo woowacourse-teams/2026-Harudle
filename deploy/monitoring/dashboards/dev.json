@@ -1774,7 +1774,7 @@
             "AWS/EBS",
             "VolumeAvgReadLatency",
             "VolumeId",
-            "vol-00886d19a64c23e1f",
+            "vol-079e2259ecef5ae0c",
             "InstanceId",
             "i-073fa344c2badcf20",
             {
@@ -1786,7 +1786,7 @@
             "AWS/EBS",
             "VolumeAvgWriteLatency",
             "VolumeId",
-            "vol-00886d19a64c23e1f",
+            "vol-079e2259ecef5ae0c",
             "InstanceId",
             "i-073fa344c2badcf20",
             {
@@ -1798,7 +1798,7 @@
             "AWS/EBS",
             "VolumeQueueLength",
             "VolumeId",
-            "vol-00886d19a64c23e1f",
+            "vol-079e2259ecef5ae0c",
             {
               "stat": "Average",
               "yAxis": "right",

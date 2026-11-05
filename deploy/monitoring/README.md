@@ -128,12 +128,26 @@ CloudWatch에서 시간 합계와 횟수는 Agent가 변환한 증가분의 `Sum
 
 ## 서버 자원은 어디서 확인하나요?
 
-CloudWatch의 `지표` 화면에서 아래 지표를 선택합니다. 앱과 DB는 서로 다른 `InstanceId`를 사용합니다. 기본 대상은 [targets.json](targets.json)에 기록합니다. 2026-11-05에 확인한 네 인스턴스의 ID를 기본 대상과 대시보드 복구 파일, Dev EC2 경보 파일, Prod 백업 감시 코드에 반영했습니다. 아래 표와 JSON의 EBS ID는 교체 전 값이므로 적용 전에 현재 볼륨 ID로 바꿉니다. 저장소 수정만으로 AWS 대시보드와 경보, 서버의 백업 감시 코드가 갱신되지는 않습니다.
+CloudWatch의 `지표` 화면에서 아래 지표를 선택합니다. 앱과 DB는 서로 다른 `InstanceId`를 사용합니다. 기본 대상은 [targets.json](targets.json)에 기록합니다. 2026-11-05에 확인한 네 인스턴스의 ID를 기본 대상과 대시보드 복구 파일, Dev EC2 경보 파일, Prod 백업 감시 코드에 반영했습니다. 같은 날 서버 안에서 확인한 DB 데이터 볼륨 ID도 기본 대상과 대시보드 복구 파일에 반영했습니다. 저장소 수정만으로 AWS 대시보드와 경보, 서버의 백업 감시 코드가 갱신되지는 않습니다.
 
 | 환경 | 앱 EC2 | DB EC2 | 데이터 EBS |
 | --- | --- | --- | --- |
-| Dev | `i-0bf4f4130d31eb443` | `i-073fa344c2badcf20` | `vol-00886d19a64c23e1f` |
-| Prod | `i-0709aaaa1b3a1e65c` | `i-01412b89da45b5f42` | `vol-048d203fac554e776` |
+| Dev | `i-0bf4f4130d31eb443` | `i-073fa344c2badcf20` | `vol-079e2259ecef5ae0c` |
+| Prod | `i-0709aaaa1b3a1e65c` | `i-01412b89da45b5f42` | `vol-054247052e6a3f58e` |
+
+2026-11-05에 각 서버 안에서 확인한 연결 볼륨은 다음과 같습니다. 모든 볼륨의 크기는 20GiB입니다.
+
+| 서버 | 루트 볼륨 `/` | 데이터 볼륨 `/srv/harudle/db-data` |
+| --- | --- | --- |
+| `harudle-dev` | `vol-04168830fc9e54269` | 없음 |
+| `harudle-prod` | `vol-0d822e69c6847b8db` | 없음 |
+| `harudle-dev-db` | `vol-09c6bfa4624f33903` | `vol-079e2259ecef5ae0c` |
+| `harudle-prod-db` | `vol-0429a6ceab7faadac` | `vol-054247052e6a3f58e` |
+
+앱 서버는 루트 볼륨 하나를 사용합니다. DB 서버는 루트 볼륨과 데이터 볼륨을 사용합니다.
+DB 데이터 볼륨은 암호화 gp3이며, 인스턴스를 종료해도 삭제되지 않도록 설정했습니다.
+대시보드의 `AWS/EBS` 지표와 `targets.json`의 `db_volume_id`는 DB 데이터 볼륨을 조회합니다.
+루트 디스크의 공간 지표는 볼륨 ID 대신 해당 인스턴스의 `path=/`로 조회합니다.
 
 | 확인할 값 | 지표 그룹과 이름 | 살펴볼 내용 |
 | --- | --- | --- |
@@ -156,7 +170,7 @@ AWS에 저장한 대시보드와 경보는 같은 계정과 리전에서 조회�
 
 ### Dev와 Prod 대시보드 구성을 복구하려면
 
-정상 구성은 [dashboards/prod.json](dashboards/prod.json)에 보관합니다. 2026-11-03에 `DASHBOARD-harudle-prod`에 저장한 위젯 57개의 설정이며, P95와 생성 실패 및 R2 카드와 P95·P99 그래프도 포함합니다. 실제 측정 데이터나 로그 검색 결과를 보관하는 파일은 아닙니다. Dev 정상 구성은 [dashboards/dev.json](dashboards/dev.json)에 보관합니다. 2026-11-03에 `DASHBOARD-harudle-dev`에 저장한 위젯 58개의 설정입니다. Dev를 복구할 때는 아래 절차에서 대시보드와 JSON을 Dev 것으로 선택합니다. Dev 구성에는 DB 백업 카드가 없습니다. 두 복구 파일의 인스턴스 ID는 2026-11-05에 확인한 값으로 갱신했습니다. 위젯 배치는 2026-11-03 구성을 유지합니다.
+정상 구성은 [dashboards/prod.json](dashboards/prod.json)에 보관합니다. 2026-11-03에 `DASHBOARD-harudle-prod`에 저장한 위젯 57개의 설정이며, P95와 생성 실패 및 R2 카드와 P95·P99 그래프도 포함합니다. 실제 측정 데이터나 로그 검색 결과를 보관하는 파일은 아닙니다. Dev 정상 구성은 [dashboards/dev.json](dashboards/dev.json)에 보관합니다. 2026-11-03에 `DASHBOARD-harudle-dev`에 저장한 위젯 58개의 설정입니다. Dev를 복구할 때는 아래 절차에서 대시보드와 JSON을 Dev 것으로 선택합니다. Dev 구성에는 DB 백업 카드가 없습니다. 두 복구 파일의 인스턴스 ID와 DB 데이터 볼륨 ID는 2026-11-05에 확인한 값으로 갱신했습니다. 위젯 배치는 2026-11-03 구성을 유지합니다.
 
 1. 서울 리전의 `DASHBOARD-harudle-prod`를 열고 **작업 > 소스 보기/편집**을 선택합니다. 되돌릴 필요가 있을 때를 위해 현재 JSON도 먼저 복사해 둡니다.
 2. `dashboards/prod.json` 전체를 붙여 넣고 **업데이트**한 뒤 대시보드를 **저장**합니다. 원래 구성으로 복구할 때 준비 스크립트는 필요하지 않습니다.
