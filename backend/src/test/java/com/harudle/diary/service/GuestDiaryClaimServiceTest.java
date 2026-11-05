@@ -3,6 +3,7 @@ package com.harudle.diary.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.harudle.auth.application.InvalidCurrentUserException;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.diary.domain.Diary;
@@ -223,6 +224,18 @@ class GuestDiaryClaimServiceTest extends ServiceIntegrationTestSupport {
 
         assertThatThrownBy(() -> claimService.claim(guest.guestUserId(), "guest-token"))
                 .isInstanceOf(GuestDiaryClaimForbiddenException.class);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 회원에게는 체험 일기를 옮기지 않는다")
+    void rejectMissingMember() {
+        GuestFixture guest = saveGuestWithDiary("guest-token", GenerationStatus.SUCCEEDED);
+
+        assertThatThrownBy(() -> claimService.claim(UUID.randomUUID(), "guest-token"))
+                .isInstanceOf(InvalidCurrentUserException.class);
+        assertThat(findSession("guest-token").isClaimed()).isFalse();
+        assertThat(diaryRepository.findById(guest.diaryId()).orElseThrow().getUserId())
+                .isEqualTo(guest.guestUserId());
     }
 
     private GuestFixture saveGuestWithDiary(String rawToken, GenerationStatus status) {

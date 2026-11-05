@@ -1,5 +1,7 @@
 package com.harudle.diary.service;
 
+import com.harudle.auth.application.InvalidCurrentUserException;
+import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.diary.domain.Diary;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.diary.service.dto.GuestDiaryClaimResult;
@@ -32,6 +34,7 @@ public class GuestDiaryClaimService {
     private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
     private static final String CLAIMED_BY_USER_CONSTRAINT = "uq_guest_sessions_claimed_by_user";
 
+    private final UserRepository userRepository;
     private final GuestSessionResolver guestSessionResolver;
     private final GuestSessionRepository guestSessionRepository;
     private final DiaryRepository diaryRepository;
@@ -39,12 +42,14 @@ public class GuestDiaryClaimService {
     private final Clock clock;
 
     GuestDiaryClaimService(
+            UserRepository userRepository,
             GuestSessionResolver guestSessionResolver,
             GuestSessionRepository guestSessionRepository,
             DiaryRepository diaryRepository,
             DiaryGenerationRepository diaryGenerationRepository,
             @Qualifier("authClock") Clock authClock
     ) {
+        this.userRepository = userRepository;
         this.guestSessionResolver = guestSessionResolver;
         this.guestSessionRepository = guestSessionRepository;
         this.diaryRepository = diaryRepository;
@@ -55,6 +60,8 @@ public class GuestDiaryClaimService {
     @Transactional
     public GuestDiaryClaimResult claim(UUID memberId, String rawSessionToken) {
         Objects.requireNonNull(memberId, "회원 ID는 필수입니다.");
+        // 탈퇴 처리와 같은 회원 행을 먼저 잠가, 탈퇴 중인 회원에게 일기를 옮기지 않는다.
+        userRepository.findByIdForUpdate(memberId).orElseThrow(InvalidCurrentUserException::new);
         Instant now = Instant.now(clock).truncatedTo(ChronoUnit.SECONDS);
         GuestSession session = resolveSession(rawSessionToken, now);
 

@@ -129,6 +129,7 @@ Idempotency-Key: 7e5cc251-fdde-4cc0-a54e-2c8142750609
 | `GET` | `/api/v1/guest/diaries/{diaryId}` | 게스트 세션 | 게스트 세션에 연결된 일기 생성 결과 조회 |
 | `GET` | `/api/v1/diary-generations/{generationId}` | 필요 | 본인의 생성 작업 상태 조회 |
 | `GET` | `/api/v1/guest/diary-generations/{generationId}` | 게스트 세션 | 현재 게스트 세션의 생성 작업 상태 조회 |
+| `POST` | `/api/v1/guest/diary-claim` | 필요 + 게스트 세션 | 게스트 체험 일기를 가입한 회원에게 옮기기 |
 | `GET` | `/api/v1/me/generation-usage` | 필요 | 오늘 생성 사용량 조회 |
 | `GET` | `/api/v1/diaries` | 필요 | 연·월 기준 내 일기 조회 |
 | `GET` | `/api/v1/diaries/{diaryId}` | 필요 | 일기·생성 결과 및 연결된 활성 피드 ID 상세 조회 |
@@ -698,6 +699,54 @@ Cache-Control: no-store
 
 응답 본문은 게스트 생성 응답과 동일합니다.
 
+### 5.3.1 게스트 체험 일기 가져오기
+
+로그인 전에 작성한 게스트 체험 일기를 가입한 회원에게 옮깁니다. 요청 본문은 없습니다.
+
+```http
+POST /api/v1/guest/diary-claim
+Authorization: Bearer {accessToken}
+Cookie: guest_session={guestToken}; XSRF-TOKEN={csrfToken}
+X-XSRF-TOKEN: {csrfToken}
+```
+
+- 회원 Access Token과 CSRF Header가 필요합니다. 대상 게스트 세션은 `guest_session` Cookie로 식별합니다.
+- 약관 동의 검사 대상입니다. 현재 약관에 동의하지 않은 회원은 `403 TERMS_ACCEPTANCE_REQUIRED`를 받습니다.
+- 게스트 세션 Cookie가 없거나, 저장된 세션과 일치하지 않거나, 만료되었으면 `401`이 아닌
+  `404 GUEST_DIARY_CLAIM_NOT_FOUND`를 반환합니다. 클라이언트가 Access Token 만료로 오인하지 않게 하기 위함입니다.
+
+동작:
+
+1. 회원 행을 잠그고, 게스트 세션을 쓰기 잠금으로 조회합니다.
+2. 회원 ID가 게스트 사용자 ID와 같으면 `403 FORBIDDEN`을 반환합니다.
+3. 같은 회원이 이미 가져간 세션이면 처음 결과를 그대로 `200 OK`로 반환합니다.
+4. 다른 회원이 가져간 세션이면 `409 GUEST_DIARY_ALREADY_CLAIMED`를 반환합니다.
+5. 회원이 다른 게스트 세션을 이미 가져갔으면 `409 GUEST_DIARY_CLAIM_LIMIT_EXCEEDED`를 반환합니다. 회원당 한 번만 가져올 수 있습니다.
+6. 일기가 없거나 삭제되었으면 `404 GUEST_DIARY_CLAIM_NOT_FOUND`를 반환합니다. 생성에 실패한 일기는 이미 숨겨져 있으므로 이에 해당합니다.
+7. 일기 작성자를 회원으로 바꾸고 세션에 가져간 회원과 시각을 기록합니다. 동시 요청으로 회원당 1회 제한에 걸리면 `409 GUEST_DIARY_CLAIM_LIMIT_EXCEEDED`를 반환합니다.
+8. 성공하면 게스트 세션 Cookie를 만료합니다.
+
+생성이 끝나지 않은 `PENDING` 또는 `PROCESSING` 일기도 가져올 수 있습니다. 생성 작업은 처음 요청한 게스트 기준으로 계속 실행되며,
+가져온 뒤의 상태는 회원 API인 `GET /api/v1/diary-generations/{generationId}`로 조회합니다.
+게스트 세션 Cookie가 만료되므로 게스트 생성 상태 조회 API는 더 이상 사용할 수 없습니다.
+
+```http
+HTTP/1.1 200 OK
+Cache-Control: no-store
+Set-Cookie: guest_session=; Path=/api/v1/guest; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure; HttpOnly; SameSite=Lax
+```
+
+```json
+{
+  "diaryId": "593363cb-1dc3-46bc-a858-5926f7601ca9",
+  "diaryDate": "2026-08-20",
+  "generationStatus": "PROCESSING",
+  "claimedAt": "2026-08-20T09:05:00+09:00"
+}
+```
+
+`generationStatus`는 `PENDING`, `PROCESSING`, `SUCCEEDED` 중 하나입니다.
+
 ### 5.4 오늘 생성 사용량 조회
 
 ```http
@@ -1084,6 +1133,7 @@ Retry-After: 13800
 | `404` | `API_NOT_FOUND` | 존재하지 않는 API 경로 요청 |
 | `404` | `DIARY_NOT_FOUND` | 상세 조회·피드 게시 대상 일기가 없거나 삭제됨 |
 | `404` | `GENERATION_NOT_FOUND` | 생성 작업이 없거나 본인 소유 또는 게스트 세션 연결 조건에 맞지 않음 |
+| `404` | `GUEST_DIARY_CLAIM_NOT_FOUND` | 가져올 게스트 세션이나 체험 일기가 없음. 세션 Cookie 누락·만료 포함 |
 | `404` | `FEED_NOT_FOUND` | 공개 피드가 없거나 피드/원본 일기가 삭제됨 |
 | `404` | `CATEGORY_NOT_FOUND` | 게시하거나 목록을 조회할 카테고리가 없음 |
 | `405` | `METHOD_NOT_ALLOWED` | 지원하지 않는 HTTP 메서드 요청 |
@@ -1095,6 +1145,8 @@ Retry-After: 13800
 | `503` | `FEED_UNAVAILABLE` | 필요한 카테고리·프로필·좋아요 포트가 아직 연결되지 않음 |
 | `409` | `IDEMPOTENCY_KEY_CONFLICT` | 동일 키를 다른 요청 본문에 사용 |
 | `409` | `GUEST_TRIAL_ALREADY_USED` | 게스트 세션의 로그인 전 1회 사용권을 이미 사용함 |
+| `409` | `GUEST_DIARY_ALREADY_CLAIMED` | 다른 회원이 이미 가져간 게스트 체험 일기 |
+| `409` | `GUEST_DIARY_CLAIM_LIMIT_EXCEEDED` | 회원이 게스트 체험 일기를 이미 한 번 가져감 |
 | `413` | `PAYLOAD_TOO_LARGE` | 허용 크기를 초과한 요청 본문 |
 | `415` | `UNSUPPORTED_MEDIA_TYPE` | 지원하지 않는 요청 미디어 타입 |
 | `429` | `DAILY_GENERATION_LIMIT_EXCEEDED` | KST 기준 일일 생성 3회 초과 |
