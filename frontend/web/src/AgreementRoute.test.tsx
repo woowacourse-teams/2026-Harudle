@@ -48,6 +48,7 @@ jest.mock('./domain/legal/agreements', () => ({
     ...args: Parameters<typeof getAgreementStatus>
   ): Promise<AgreementStatus> => mockGetStatus(...args),
 }));
+jest.mock('./pages/feed/guest-trial/GuestTrialNotice', () => () => null);
 jest.mock('./shared/DiaryGenerationNotice', () => () => (
   <p>비공개 생성 상태 조회</p>
 ));
