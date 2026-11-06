@@ -41,6 +41,14 @@ jest.mock('./FeedItemList', () => ({
     <button onClick={() => onCategoryClick(2, '우테코')}>카드 카테고리</button>
   ),
 }));
+jest.mock('./guest-trial/useGuestTrialExperiment', () => ({
+  __esModule: true,
+  default: () => ({
+    isActive: false,
+    onCreate: (): void => {},
+    element: null,
+  }),
+}));
 jest.mock('./FeedNotifications', () => ({
   __esModule: true,
   default: () => null,
