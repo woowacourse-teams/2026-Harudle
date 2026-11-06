@@ -15,6 +15,7 @@ import com.harudle.generation.diary.service.exception.GenerationUnavailableExcep
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
 import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageStorageException;
+import com.harudle.generation.diary.service.port.RequestFingerprintProtector;
 import com.harudle.generation.diary.service.port.dto.DiaryImageGenerationRequest;
 import com.harudle.generation.diary.service.port.dto.GeneratedImage;
 import com.harudle.generation.diary.service.port.dto.GeneratedStoryboard;
@@ -28,6 +29,7 @@ import java.util.UUID;
 public final class ClaimedDiaryGenerationService implements DiaryGenerationExecutor {
 
     private final RequestFingerprintGenerator requestFingerprintGenerator;
+    private final RequestFingerprintProtector requestFingerprintProtector;
     private final GenerationPromptRepository generationPromptRepository;
     private final DiaryGenerationRepository diaryGenerationRepository;
     private final StoryboardGenerationService storyboardGenerationService;
@@ -39,6 +41,7 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
 
     public ClaimedDiaryGenerationService(
             RequestFingerprintGenerator requestFingerprintGenerator,
+            RequestFingerprintProtector requestFingerprintProtector,
             GenerationPromptRepository generationPromptRepository,
             DiaryGenerationRepository diaryGenerationRepository,
             StoryboardGenerationService storyboardGenerationService,
@@ -48,6 +51,7 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
             GenerationLifecycleMetrics lifecycleMetrics
     ) {
         this.requestFingerprintGenerator = requestFingerprintGenerator;
+        this.requestFingerprintProtector = requestFingerprintProtector;
         this.generationPromptRepository = generationPromptRepository;
         this.diaryGenerationRepository = diaryGenerationRepository;
         this.storyboardGenerationService = storyboardGenerationService;
@@ -113,7 +117,9 @@ public final class ClaimedDiaryGenerationService implements DiaryGenerationExecu
     }
 
     private void validateClaim(DiaryGeneration generation, GenerateDiaryImageCommand command) {
-        String requestFingerprint = requestFingerprintGenerator.generate(command);
+        String requestFingerprint = requestFingerprintProtector.protect(
+                command.diaryId(), command.userId(), requestFingerprintGenerator.generate(command)
+        );
         boolean matchesClaim = generation.matchesExecutableClaim(
                 command.diaryId(),
                 command.idempotencyKey(),

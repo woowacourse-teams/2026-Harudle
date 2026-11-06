@@ -1,12 +1,15 @@
 package com.harudle.diary.service;
 
+import com.harudle.support.DiarySourceTextTestSupport;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.groups.Tuple.tuple;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 import com.harudle.diary.repository.DiaryRepository;
+import com.harudle.diary.domain.DiarySourceTextCipher;
 import com.harudle.diary.repository.DiarySnapshot;
 import com.harudle.diary.service.dto.DiaryDayResult;
 import com.harudle.diary.service.dto.DiaryDetailResult;
@@ -64,14 +67,17 @@ class DiaryQueryServiceTest {
     private PublishedFeedReader publishedFeedReader;
 
     private DiaryQueryService diaryQueryService;
+    private DiarySourceTextCipher sourceTextCipher;
 
     @BeforeEach
     void setUp() {
+        sourceTextCipher = spy(DiarySourceTextTestSupport.cipher());
         Clock clock = Clock.fixed(CURRENT_TIME, SERVICE_ZONE_ID);
         diaryQueryService = new DiaryQueryService(
                 diaryRepository,
                 diaryGenerationRepository,
                 publishedFeedReader,
+                sourceTextCipher,
                 clock
         );
     }
@@ -277,7 +283,7 @@ class DiaryQueryServiceTest {
 
         assertThatThrownBy(() -> diaryQueryService.getDetail(USER_ID, DIARY_ID))
                 .isInstanceOf(DiaryAccessDeniedException.class);
-        verifyNoInteractions(diaryGenerationRepository, publishedFeedReader);
+        verifyNoInteractions(diaryGenerationRepository, publishedFeedReader, sourceTextCipher);
     }
 
     private DiarySnapshot createDiarySnapshot(UUID diaryId, UUID userId) {
@@ -294,6 +300,7 @@ class DiaryQueryServiceTest {
                 userId,
                 diaryDate,
                 "오늘의 일기",
+                0,
                 CREATED_AT
         );
     }

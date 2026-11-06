@@ -1,6 +1,10 @@
 package com.harudle.generation.diary.service;
 
 import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -36,8 +40,15 @@ public final class RequestFingerprintGenerator {
     private static String hash(String canonicalRequest) {
         try {
             MessageDigest messageDigest = MessageDigest.getInstance(HASH_ALGORITHM);
-            byte[] digest = messageDigest.digest(canonicalRequest.getBytes(StandardCharsets.UTF_8));
+            ByteBuffer encodedRequest = StandardCharsets.UTF_8.newEncoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .encode(CharBuffer.wrap(canonicalRequest));
+            messageDigest.update(encodedRequest);
+            byte[] digest = messageDigest.digest();
             return HexFormat.of().formatHex(digest);
+        } catch (CharacterCodingException exception) {
+            throw new IllegalArgumentException("요청 지문에 유효하지 않은 문자가 포함되어 있습니다.");
         } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException(
                     "SHA-256 요청 지문 생성기를 초기화할 수 없습니다.",

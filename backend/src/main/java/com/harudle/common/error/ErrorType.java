@@ -13,6 +13,16 @@ public enum ErrorType {
             "Validation failed",
             "요청 값이 올바르지 않습니다."
     ),
+    DIARY_SOURCE_TEXT_WRITE_UNAVAILABLE(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "Diary source text write unavailable",
+            "일기 내용을 안전하게 저장할 수 없습니다."
+    ),
+    DIARY_SOURCE_TEXT_READ_UNAVAILABLE(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "Diary source text read unavailable",
+            "일기 내용을 불러올 수 없습니다."
+    ),
     INVALID_CURSOR(
             HttpStatus.BAD_REQUEST,
             "Invalid cursor",

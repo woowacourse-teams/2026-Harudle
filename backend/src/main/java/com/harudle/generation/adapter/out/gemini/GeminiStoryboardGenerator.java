@@ -230,6 +230,11 @@ public final class GeminiStoryboardGenerator implements StoryboardGenerator {
     }
 
     private record PreparedRequest(String text, GenerateContentConfig config) {
+
+        @Override
+        public String toString() {
+            return "PreparedRequest[content=<redacted>]";
+        }
     }
 
     private static String createRequestText(StoryboardGenerationRequest request) {

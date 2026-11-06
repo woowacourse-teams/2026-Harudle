@@ -1,6 +1,7 @@
 package com.harudle.diary.presentation;
 
 import com.harudle.common.validation.CodePointLength;
+import com.harudle.common.validation.WellFormedUnicode;
 import com.harudle.diary.domain.Diary;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
@@ -13,10 +14,16 @@ public record CreateDiaryRequest(
         LocalDate diaryDate,
 
         @NotBlank(message = "일기 내용은 필수입니다.")
+        @WellFormedUnicode
         @CodePointLength(
                 max = Diary.MAX_SOURCE_TEXT_CODE_POINTS,
                 message = "일기 내용은 {max}자 이하여야 합니다."
         )
         String sourceText
 ) {
+
+    @Override
+    public String toString() {
+        return "CreateDiaryRequest[sourceText=<redacted>]";
+    }
 }

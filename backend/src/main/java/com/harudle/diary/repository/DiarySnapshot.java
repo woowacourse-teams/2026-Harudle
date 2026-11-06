@@ -1,5 +1,6 @@
 package com.harudle.diary.repository;
 
+import com.harudle.diary.domain.DiarySourceTextCipher;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -10,6 +11,7 @@ public final class DiarySnapshot {
     private final UUID userId;
     private final LocalDate diaryDate;
     private final String sourceText;
+    private final int sourceTextVersion;
     private final Instant createdAt;
 
     public DiarySnapshot(
@@ -17,12 +19,14 @@ public final class DiarySnapshot {
             UUID userId,
             LocalDate diaryDate,
             String sourceText,
+            int sourceTextVersion,
             Instant createdAt
     ) {
         this.id = id;
         this.userId = userId;
         this.diaryDate = diaryDate;
         this.sourceText = sourceText;
+        this.sourceTextVersion = sourceTextVersion;
         this.createdAt = createdAt;
     }
 
@@ -34,8 +38,8 @@ public final class DiarySnapshot {
         return diaryDate;
     }
 
-    public String sourceText() {
-        return sourceText;
+    public String decryptSourceText(DiarySourceTextCipher cipher) {
+        return cipher.decrypt(id, userId, sourceText, sourceTextVersion);
     }
 
     public Instant createdAt() {

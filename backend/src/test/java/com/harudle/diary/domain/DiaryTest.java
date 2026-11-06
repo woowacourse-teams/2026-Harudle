@@ -3,11 +3,16 @@ package com.harudle.diary.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.harudle.support.DiarySourceTextTestSupport;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.mockito.Mockito;
 
 class DiaryTest {
 
@@ -18,18 +23,18 @@ class DiaryTest {
     @Test
     @DisplayName("일기 내용의 앞뒤 공백을 제거해 생성한다")
     void createNormalizesSourceText() {
-        Diary diary = Diary.create(USER_ID, DIARY_DATE, "  오늘 친구와 카페에 갔다.  ");
+        Diary diary = Diary.create(USER_ID, DIARY_DATE, "  오늘 친구와 카페에 갔다.  ", DiarySourceTextTestSupport.cipher());
 
         assertThat(diary.isOwnedBy(USER_ID)).isTrue();
         assertThat(diary.getDiaryDate()).isEqualTo(DIARY_DATE);
-        assertThat(diary.getSourceText()).isEqualTo("오늘 친구와 카페에 갔다.");
+        assertThat(diary.decryptSourceText(DiarySourceTextTestSupport.cipher())).isEqualTo("오늘 친구와 카페에 갔다.");
         assertThat(diary.isDeleted()).isFalse();
     }
 
     @Test
     @DisplayName("일기 내용은 공백을 제외하고 1자 이상이어야 한다")
     void createRejectsBlankSourceText() {
-        assertThatThrownBy(() -> Diary.create(USER_ID, DIARY_DATE, "   "))
+        assertThatThrownBy(() -> Diary.create(USER_ID, DIARY_DATE, "   ", DiarySourceTextTestSupport.cipher()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("일기 내용은 필수입니다.");
     }
@@ -39,15 +44,33 @@ class DiaryTest {
     void createRejectsSourceTextOverThreeHundredCodePoints() {
         String sourceText = "🙂".repeat(301);
 
-        assertThatThrownBy(() -> Diary.create(USER_ID, DIARY_DATE, sourceText))
+        assertThatThrownBy(() -> Diary.create(USER_ID, DIARY_DATE, sourceText, DiarySourceTextTestSupport.cipher()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("일기 내용은 300자 이하여야 합니다.");
+    }
+
+    static Stream<String> malformedSourceTexts() {
+        String high = String.valueOf((char) 0xD800);
+        String low = String.valueOf((char) 0xDC00);
+        return Stream.of(high, low, high + "a", "a" + low, high + high, low + high);
+    }
+
+    @ParameterizedTest
+    @MethodSource("malformedSourceTexts")
+    @DisplayName("짝이 없는 UTF-16 문자는 암호화 전에 거절한다")
+    void rejectMalformedUnicodeBeforeEncryption(String sourceText) {
+        DiarySourceTextCipher cipher = Mockito.mock(DiarySourceTextCipher.class);
+
+        assertThatThrownBy(() -> Diary.create(USER_ID, DIARY_DATE, sourceText, cipher))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("일기 내용에 올바르지 않은 문자가 포함되어 있습니다.");
+        Mockito.verifyNoInteractions(cipher);
     }
 
     @Test
     @DisplayName("일기를 소프트 삭제한다")
     void deleteMarksDiaryAsDeleted() {
-        Diary diary = Diary.create(USER_ID, DIARY_DATE, "오늘의 일기");
+        Diary diary = Diary.create(USER_ID, DIARY_DATE, "오늘의 일기", DiarySourceTextTestSupport.cipher());
         Instant deletedAt = Instant.parse("2026-08-06T12:00:00Z");
 
         diary.delete(deletedAt);
@@ -116,7 +139,7 @@ class DiaryTest {
     @Test
     @DisplayName("이미 삭제한 일기를 다시 삭제해도 삭제 상태를 유지한다")
     void deleteIsIdempotent() {
-        Diary diary = Diary.create(USER_ID, DIARY_DATE, "오늘의 일기");
+        Diary diary = Diary.create(USER_ID, DIARY_DATE, "오늘의 일기", DiarySourceTextTestSupport.cipher());
         Instant firstDeletedAt = Instant.parse("2026-08-06T12:00:00Z");
 
         diary.delete(firstDeletedAt);

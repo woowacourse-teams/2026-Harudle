@@ -27,13 +27,15 @@ RUN apk add --no-cache curl tini libwebp-tools \
 
 WORKDIR /app
 
+COPY --chmod=555 docker-entrypoint.sh /app/docker-entrypoint.sh
+
 USER harudle
 
 EXPOSE 8080
 
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError"
 
-ENTRYPOINT ["/sbin/tini", "--"]
+ENTRYPOINT ["/sbin/tini", "--", "/app/docker-entrypoint.sh"]
 CMD ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]
 
 # CodeBuild compiles on the host and only packages the resulting JAR here.

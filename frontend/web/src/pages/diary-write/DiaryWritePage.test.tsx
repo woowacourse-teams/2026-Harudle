@@ -149,6 +149,33 @@ describe('일기 생성 접수 후 성공·실패 처리', (): void => {
     expect(mockAddToast).toHaveBeenCalledTimes(1);
   });
 
+  it('원문 저장 장애는 나중 이용 안내를 표시하고 작성 내용과 미접수 상태를 유지한다', async (): Promise<void> => {
+    const action = '작성한 내용을 보관한 뒤 나중에 다시 이용해 주세요.';
+    const error = new RequestError({
+      type: 'about:blank',
+      title: 'Diary source text write unavailable',
+      status: 503,
+      detail: '일기를 저장할 수 없어요.',
+      instance: '/api/v1/diaries',
+      code: 'DIARY_SOURCE_TEXT_WRITE_UNAVAILABLE',
+      action,
+    });
+    mockGenerateDiary.mockRejectedValueOnce(error);
+    await renderAndSubmitDiary();
+    await waitFor((): void => {
+      expect(mockAddToast).toHaveBeenCalledWith(
+        { type: 'error', message: error.message, description: action },
+        2000,
+      );
+    });
+    expect(sessionStorage.getItem(DIARY_CONTENT_SESSION_KEY)).toBe(
+      acceptedResponse.sourceText,
+    );
+    expect(localStorage.getItem(DIARY_GENERATION_ID_KEY)).toBeNull();
+    expect(mockGenerateDiary).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
   it('생성 횟수 초과도 토스트로 안내하되 예상된 오류는 추적하지 않는다', async (): Promise<void> => {
     const error = new RequestError({
       type: 'about:blank',

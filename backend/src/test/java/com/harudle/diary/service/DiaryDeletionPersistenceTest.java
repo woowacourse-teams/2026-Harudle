@@ -2,6 +2,7 @@ package com.harudle.diary.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.harudle.support.DiarySourceTextTestSupport;
 import com.harudle.diary.domain.Diary;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.generation.diary.domain.DiaryGeneration;
@@ -124,7 +125,10 @@ class DiaryDeletionPersistenceTest extends ServiceIntegrationTestSupport {
     }
 
     private Diary createDiaryWithShareLink(LocalDate diaryDate) {
-        Diary diary = diaryRepository.saveAndFlush(Diary.create(USER_ID, diaryDate, "오늘의 일기"));
+        Diary diary = diaryRepository.saveAndFlush(Diary.create(
+                USER_ID, diaryDate, "오늘의 일기",
+                DiarySourceTextTestSupport.cipher()
+        ));
         DiaryGeneration generation = diaryGenerationRepository.saveAndFlush(DiaryGeneration.start(
                 diary.getId(),
                 generationPrompt.getId(),
@@ -136,7 +140,10 @@ class DiaryDeletionPersistenceTest extends ServiceIntegrationTestSupport {
     }
 
     private Diary createSuccessfulDiary(LocalDate diaryDate) {
-        Diary diary = diaryRepository.saveAndFlush(Diary.create(USER_ID, diaryDate, "오늘의 일기"));
+        Diary diary = diaryRepository.saveAndFlush(Diary.create(
+                USER_ID, diaryDate, "오늘의 일기",
+                DiarySourceTextTestSupport.cipher()
+        ));
         DiaryGeneration generation = DiaryGeneration.start(
                 diary.getId(),
                 generationPrompt.getId(),

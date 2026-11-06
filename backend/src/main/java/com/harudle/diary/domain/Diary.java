@@ -1,5 +1,6 @@
 package com.harudle.diary.domain;
 
+import com.harudle.common.validation.UnicodeText;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -25,8 +26,11 @@ public class Diary {
     @Column(name = "diary_date", nullable = false)
     private LocalDate diaryDate;
 
-    @Column(name = "source_text", nullable = false, length = MAX_SOURCE_TEXT_CODE_POINTS)
+    @Column(name = "source_text", nullable = false, columnDefinition = "text")
     private String sourceText;
+
+    @Column(name = "source_text_version", nullable = false)
+    private int sourceTextVersion;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -42,7 +46,7 @@ public class Diary {
     protected Diary() {
     }
 
-    private Diary(UUID id, UUID userId, LocalDate diaryDate, String sourceText) {
+    private Diary(UUID id, UUID userId, LocalDate diaryDate, String sourceText, DiarySourceTextCipher cipher) {
         validateId(id);
         validateUserId(userId);
         validateDiaryDate(diaryDate);
@@ -50,11 +54,12 @@ public class Diary {
         this.id = id;
         this.userId = userId;
         this.diaryDate = diaryDate;
-        this.sourceText = normalizeSourceText(sourceText);
+        this.sourceText = cipher.encrypt(id, userId, normalizeSourceText(sourceText));
+        this.sourceTextVersion = DiarySourceTextCipher.CURRENT_VERSION;
     }
 
-    public static Diary create(UUID userId, LocalDate diaryDate, String sourceText) {
-        return new Diary(UUID.randomUUID(), userId, diaryDate, sourceText);
+    public static Diary create(UUID userId, LocalDate diaryDate, String sourceText, DiarySourceTextCipher cipher) {
+        return new Diary(UUID.randomUUID(), userId, diaryDate, sourceText, cipher);
     }
 
     public UUID getId() {
@@ -69,8 +74,12 @@ public class Diary {
         return diaryDate;
     }
 
-    public String getSourceText() {
-        return sourceText;
+    public String decryptSourceText(DiarySourceTextCipher cipher) {
+        return cipher.decrypt(id, userId, sourceText, sourceTextVersion);
+    }
+
+    public String protectRequestFingerprint(DiarySourceTextCipher cipher, String fingerprint) {
+        return cipher.protectRequestFingerprint(id, userId, sourceText, sourceTextVersion, fingerprint);
     }
 
     public Instant getCreatedAt() {
@@ -134,6 +143,9 @@ public class Diary {
     private static void validateSourceText(String sourceText) {
         if (sourceText == null || sourceText.isBlank()) {
             throw new IllegalArgumentException("일기 내용은 필수입니다.");
+        }
+        if (!UnicodeText.isWellFormed(sourceText)) {
+            throw new IllegalArgumentException("일기 내용에 올바르지 않은 문자가 포함되어 있습니다.");
         }
         String normalizedSourceText = sourceText.strip();
         int sourceTextLength = normalizedSourceText.codePointCount(0, normalizedSourceText.length());

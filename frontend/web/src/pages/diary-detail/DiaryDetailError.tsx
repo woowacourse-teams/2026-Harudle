@@ -6,7 +6,17 @@ import PageHeader from '../../shared/PageHeader';
 import backIcon from '../../assets/icons/back.svg';
 import { useNavigate } from 'react-router';
 
-const DiaryDetailError = ({ errorMessage }: { errorMessage: string }) => {
+interface DiaryDetailErrorProps {
+  errorMessage: string;
+  actionMessage?: string;
+  canReload?: boolean;
+}
+
+const DiaryDetailError = ({
+  errorMessage,
+  actionMessage,
+  canReload = true,
+}: DiaryDetailErrorProps) => {
   const navigate = useNavigate();
   return (
     <div css={diaryDetailErrorStyle} role="alert">
@@ -37,16 +47,23 @@ const DiaryDetailError = ({ errorMessage }: { errorMessage: string }) => {
       <div css={messageBoxStyle}>
         <h2 css={titleStyle}>{DIARY_DETAIL_COPY.loadErrorTitle}</h2>
         <p css={descriptionStyle}>{errorMessage}</p>
+        {actionMessage && <p css={descriptionStyle}>{actionMessage}</p>}
       </div>
 
       <button
         type="button"
         css={retryButtonStyle}
         onClick={() => {
-          window.location.reload();
+          if (canReload) {
+            window.location.reload();
+          } else {
+            void navigate('/album');
+          }
         }}
       >
-        {DIARY_DETAIL_COPY.reloadAction}
+        {canReload
+          ? DIARY_DETAIL_COPY.reloadAction
+          : DIARY_DETAIL_COPY.backToAlbumAction}
       </button>
     </div>
   );

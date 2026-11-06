@@ -6,6 +6,8 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -215,7 +217,10 @@ public class DiaryGeneration {
     }
 
     public boolean hasSameRequestFingerprint(String requestFingerprint) {
-        return this.requestFingerprint.equals(normalizeRequestFingerprint(requestFingerprint));
+        return MessageDigest.isEqual(
+                this.requestFingerprint.getBytes(StandardCharsets.US_ASCII),
+                normalizeRequestFingerprint(requestFingerprint).getBytes(StandardCharsets.US_ASCII)
+        );
     }
 
     public boolean notUsesImageObjectKey(String candidate) {

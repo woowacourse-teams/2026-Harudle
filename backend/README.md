@@ -26,6 +26,7 @@ Gradle은 별도로 설치할 필요가 없습니다. 저장소에 포함된 Gra
 
 - [백엔드 문서와 ADR 목록](docs/README.md)
 - [API 명세](<docs/명세/하루들 API 명세.md>)
+- [일기 원문 암호화와 키 관리](docs/diary-source-text-encryption.md)
 
 ## 도메인 패키지
 
@@ -495,6 +496,9 @@ Spring 통합 테스트는 `TestcontainersConfiguration`을 `@Import`하여 Post
 사용합니다. 컨텍스트 설정이 같은 테스트 클래스는 캐시된 Spring 컨텍스트와 컨테이너를 함께 재사용합니다.
 컨테이너는 컨텍스트가 종료될 때 다른 Bean이 정리된 뒤 종료됩니다. 테스트별 mock, 프로필 또는 추가 설정이
 다르면 별도 컨텍스트와 컨테이너가 생성됩니다.
+암호화 저장 테스트도 `ServiceIntegrationTestSupport`의 기본 실행 환경을 공유합니다. 외부 AI와 이미지 저장소의
+대역은 실제 생성 검증 메서드 안에서만 만들고, 전용 실행기는 검증이 끝나면 종료합니다. reader의 작성 차단
+설정 검증은 별도 컨텍스트를 사용하고, DB 전체를 초기화하는 키 최초 준비와 스키마 변경 검증은 격리를 유지합니다.
 
 일반 서비스 통합 테스트는 `ServiceIntegrationTestSupport`의 공통 JWT mock을 사용합니다. 실제 Bean을 사용한
 MockMvc 통합 테스트는 `@MockMvcIntegrationTest`로 프로필 이미지 URL과 MVC 설정을 공유합니다. 카테고리 JPA
