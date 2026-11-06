@@ -6,7 +6,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.harudle.TestcontainersConfiguration;
 import com.harudle.category.service.port.CategoryReader;
 import com.harudle.diary.service.DiaryDeletionService;
 import com.harudle.diary.service.DiaryQueryService;
@@ -19,7 +18,7 @@ import com.harudle.feed.service.exception.DiaryAlreadyPublishedException;
 import com.harudle.feed.service.exception.FeedNotFoundException;
 import com.harudle.feed.service.port.PublishedFeedReader;
 import com.harudle.profile.service.port.PublicProfileReader;
-import com.harudle.push.service.port.FeedPushOutbox;
+import com.harudle.support.FeedPersistenceTestSupport;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
@@ -38,20 +37,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
-import org.springframework.context.annotation.Import;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers(disabledWithoutDocker = true)
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest
 @ExtendWith(OutputCaptureExtension.class)
-class FeedPublicationPersistenceTest {
+class FeedPublicationPersistenceTest extends FeedPersistenceTestSupport {
 
     private static final UUID ACTOR = UUID.fromString("08d69a34-6d70-4d42-a158-671bc67733c9");
     private static final UUID DIARY = UUID.fromString("550e8400-e29b-41d4-a716-446655440002");
@@ -65,10 +58,6 @@ class FeedPublicationPersistenceTest {
     @Autowired private DiaryDeletionService diaryDeletion;
     @Autowired private DiaryQueryService diaryQueries;
     @Autowired private PublishedFeedReader publishedFeeds;
-    @MockitoBean private CategoryReader categories;
-    @MockitoBean private PublicProfileReader profiles;
-    @MockitoBean private FeedPushOutbox outbox;
-    @MockitoBean private JwtDecoder jwtDecoder;
     private long categoryId;
 
     @BeforeEach

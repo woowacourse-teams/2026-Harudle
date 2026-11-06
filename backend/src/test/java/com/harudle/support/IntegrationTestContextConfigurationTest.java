@@ -21,6 +21,7 @@ class IntegrationTestContextConfigurationTest {
         assertSameContext(
                 "com.harudle.admin.presentation.AdminGenerationControllerTest",
                 "com.harudle.admin.presentation.AdminUserControllerTest",
+                "com.harudle.auth.presentation.AuthControllerTest",
                 "com.harudle.auth.presentation.CurrentUserControllerTest",
                 "com.harudle.category.presentation.CategoryControllerTest",
                 "com.harudle.guest.presentation.GuestSessionControllerTest",
@@ -48,6 +49,24 @@ class IntegrationTestContextConfigurationTest {
                 "com.harudle.push.service.PushRegistrationServiceTest",
                 "com.harudle.share.service.ShareLinkQueryServiceTest",
                 "com.harudle.share.service.ShareLinkServiceTest"
+        );
+    }
+
+    @Test
+    void feedInteractionPersistenceTestsShareContextCacheKey() throws ClassNotFoundException {
+        assertSameContext(
+                "com.harudle.comment.infrastructure.CommentPersistenceTest",
+                "com.harudle.feed.infrastructure.FeedLikePersistenceTest",
+                "com.harudle.notification.infrastructure.NotificationPersistenceTest"
+        );
+    }
+
+    @Test
+    void feedPersistenceTestsShareContextCacheKey() throws ClassNotFoundException {
+        assertSameContext(
+                "com.harudle.feed.service.FeedDeletionPersistenceTest",
+                "com.harudle.feed.service.FeedListAndInteractionPersistenceTest",
+                "com.harudle.feed.service.FeedPublicationPersistenceTest"
         );
     }
 
