@@ -93,6 +93,21 @@ public class Diary {
         this.deletedAt = deletedAt;
     }
 
+    public void transferOwnership(UUID currentOwnerId, UUID newOwnerId) {
+        validateUserId(currentOwnerId);
+        validateUserId(newOwnerId);
+        if (currentOwnerId.equals(newOwnerId)) {
+            throw new IllegalArgumentException("같은 사용자에게 일기를 옮길 수 없습니다.");
+        }
+        if (isDeleted()) {
+            throw new IllegalStateException("삭제된 일기는 옮길 수 없습니다.");
+        }
+        if (!isOwnedBy(currentOwnerId)) {
+            throw new IllegalStateException("현재 작성자의 일기만 옮길 수 있습니다.");
+        }
+        this.userId = newOwnerId;
+    }
+
     public static String normalizeSourceText(String sourceText) {
         validateSourceText(sourceText);
         return sourceText.strip();
