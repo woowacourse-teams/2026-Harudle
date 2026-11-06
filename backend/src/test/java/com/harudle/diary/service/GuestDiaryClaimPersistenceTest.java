@@ -7,10 +7,12 @@ import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.diary.domain.Diary;
 import com.harudle.diary.repository.DiaryRepository;
+import com.harudle.diary.service.dto.CreateGuestDiaryCommand;
 import com.harudle.generation.diary.domain.DiaryGeneration;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.guest.application.exception.GuestDiaryAlreadyClaimedException;
 import com.harudle.guest.application.exception.GuestDiaryClaimLimitExceededException;
+import com.harudle.guest.application.exception.GuestTrialAlreadyUsedException;
 import com.harudle.guest.domain.GuestSession;
 import com.harudle.guest.infrastructure.token.GuestSessionTokenHasher;
 import com.harudle.guest.repository.GuestSessionRepository;
@@ -34,6 +36,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers(disabledWithoutDocker = true)
@@ -61,7 +64,13 @@ class GuestDiaryClaimPersistenceTest extends ServiceIntegrationTestSupport {
     private DiaryGenerationRepository diaryGenerationRepository;
 
     @Autowired
+    private GuestDiaryCreationTransactionService guestCreationService;
+
+    @Autowired
     private WithdrawalDatabaseService withdrawalDatabaseService;
+
+    @Autowired
+    private TransactionTemplate transactionTemplate;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -129,6 +138,31 @@ class GuestDiaryClaimPersistenceTest extends ServiceIntegrationTestSupport {
         );
         GuestSession session = findSession("guest-token");
         assertThat(findDiaryOwner(guest.diaryId())).isEqualTo(session.getClaimedByUserId());
+    }
+
+    @Test
+    @DisplayName("회원이 가져간 뒤에는 같은 게스트 생성 요청을 다시 보내도 기존 일기를 반환하지 않는다")
+    void rejectGuestCreationReplayAfterClaim() {
+        User member = saveUser("회원");
+        User guestUser = saveUser("게스트");
+        guestSessionRepository.saveAndFlush(GuestSession.create(
+                guestUser.getId(),
+                tokenHasher.hash("guest-token"),
+                now.plus(Duration.ofDays(30)),
+                now.minus(Duration.ofHours(1))
+        ));
+        CreateGuestDiaryCommand command = new CreateGuestDiaryCommand(
+                DIARY_DATE, "가져가기 전에 작성한 체험 일기", UUID.randomUUID()
+        );
+        UUID diaryId = guestCreationService.enqueue("guest-token", command, true).claim().diaryId();
+        completeGeneration(diaryId);
+        claimService.claim(member.getId(), "guest-token");
+
+        assertThat(runCatching(() -> guestCreationService.enqueue("guest-token", command, true)))
+                .isEqualTo(GuestTrialAlreadyUsedException.class.getSimpleName());
+        assertThat(runCatching(() -> guestCreationService.findExistingClaim("guest-token", command)))
+                .isEqualTo(GuestTrialAlreadyUsedException.class.getSimpleName());
+        assertThat(findDiaryOwner(diaryId)).isEqualTo(member.getId());
     }
 
     @Test
@@ -205,6 +239,15 @@ class GuestDiaryClaimPersistenceTest extends ServiceIntegrationTestSupport {
         session.useForDiary(diary.getId(), now.minus(Duration.ofMinutes(30)));
         guestSessionRepository.saveAndFlush(session);
         return new GuestFixture(guestUser.getId(), diary.getId(), generation.getId());
+    }
+
+    private void completeGeneration(UUID diaryId) {
+        transactionTemplate.executeWithoutResult(status -> {
+            DiaryGeneration generation = diaryGenerationRepository.findByDiaryIdForUpdate(diaryId).orElseThrow();
+            generation.startProcessing();
+            String imageKey = "generated/claim-" + generation.getId() + "/image.png";
+            generation.succeed(TestStoryboardFactory.create(), imageKey, now);
+        });
     }
 
     private User saveUser(String name) {
