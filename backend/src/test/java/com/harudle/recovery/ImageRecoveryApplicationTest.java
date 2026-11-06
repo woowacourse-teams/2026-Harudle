@@ -177,7 +177,13 @@ class ImageRecoveryApplicationTest {
     static class DatabaseConfiguration {
         @Bean InitializingBean recoveryTestSchema(DataSource dataSource) {
             // Test fixture only: production recovery never registers a migration initializer.
-            return () -> Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load().migrate();
+            // CONCURRENTLY indexes must not wait on Flyway's own transaction-scoped advisory lock.
+            // Match the application's migration policy and bound fixture setup as well.
+            return () -> Flyway.configure().dataSource(dataSource).locations("classpath:db/migration")
+                    .configuration(Map.of("flyway.postgresql.transactional.lock", "false"))
+                    .group(false)
+                    .initSql("SET lock_timeout = '5s'; SET statement_timeout = '60s';")
+                    .load().migrate();
         }
         @Bean static BeanFactoryPostProcessor initializeTestSchemaBeforeValidation() {
             return beans -> beans.getBeanDefinition("entityManagerFactory").setDependsOn("recoveryTestSchema");
