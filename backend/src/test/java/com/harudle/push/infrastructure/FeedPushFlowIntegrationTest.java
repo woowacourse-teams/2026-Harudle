@@ -12,6 +12,7 @@ import com.harudle.category.service.port.CategoryReader;
 import com.harudle.feed.service.FeedPublicationService;
 import com.harudle.feed.service.dto.FeedResult;
 import com.harudle.profile.service.port.PublicProfileReader;
+import com.harudle.support.ServiceIntegrationTestSupport;
 import java.net.URI;
 import java.time.Clock;
 import java.time.Instant;
@@ -25,23 +26,13 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest
-class FeedPushFlowIntegrationTest {
-
-    @Container @ServiceConnection
-    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"));
+class FeedPushFlowIntegrationTest extends ServiceIntegrationTestSupport {
 
     @Autowired private JdbcTemplate jdbc;
     @Autowired private FeedPublicationService publication;
@@ -50,7 +41,6 @@ class FeedPushFlowIntegrationTest {
     @MockitoBean private CategoryReader categories;
     @MockitoBean private PublicProfileReader profiles;
     @MockitoBean private FcmFeedPushSender sender;
-    @MockitoBean private JwtDecoder jwtDecoder;
 
     private final UUID author = UUID.randomUUID();
     private final UUID recipient = UUID.randomUUID();

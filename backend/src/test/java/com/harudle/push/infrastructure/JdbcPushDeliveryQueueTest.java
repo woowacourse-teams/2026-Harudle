@@ -2,6 +2,7 @@ package com.harudle.push.infrastructure;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.harudle.support.ServiceIntegrationTestSupport;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
@@ -14,28 +15,16 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest
-class JdbcPushDeliveryQueueTest {
-
-    @Container @ServiceConnection
-    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"));
+class JdbcPushDeliveryQueueTest extends ServiceIntegrationTestSupport {
 
     @Autowired private JdbcPushDeliveryQueue queue;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private TransactionTemplate transactions;
-    @MockitoBean private JwtDecoder jwtDecoder;
 
     private final UUID author = UUID.randomUUID();
     private final UUID recipient = UUID.randomUUID();

@@ -23,7 +23,8 @@ class IntegrationTestContextConfigurationTest {
                 "com.harudle.admin.presentation.AdminUserControllerTest",
                 "com.harudle.auth.presentation.CurrentUserControllerTest",
                 "com.harudle.category.presentation.CategoryControllerTest",
-                "com.harudle.guest.presentation.GuestSessionControllerTest"
+                "com.harudle.guest.presentation.GuestSessionControllerTest",
+                "com.harudle.push.presentation.PushRegistrationControllerTest"
         );
     }
 
@@ -43,6 +44,8 @@ class IntegrationTestContextConfigurationTest {
                 "com.harudle.generation.usage.infrastructure.JpaGenerationUsageRepositoryTest",
                 "com.harudle.guest.repository.GuestSessionConcurrencyTest",
                 "com.harudle.guest.repository.GuestSessionRepositoryTest",
+                "com.harudle.push.infrastructure.JdbcPushDeliveryQueueTest",
+                "com.harudle.push.service.PushRegistrationServiceTest",
                 "com.harudle.share.service.ShareLinkQueryServiceTest",
                 "com.harudle.share.service.ShareLinkServiceTest"
         );
