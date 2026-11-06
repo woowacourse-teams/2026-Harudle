@@ -8,6 +8,7 @@ import {
 import { RequestError, type ApiRequest } from './shared/api';
 import ActionButton from './shared/ActionButton';
 import DiaryGenerationNotice from './shared/DiaryGenerationNotice';
+import GuestTrialNotice from './pages/feed/guest-trial/GuestTrialNotice';
 import LoadingSpinner from './shared/LoadingSpinner';
 import { theme } from './styles/theme';
 import { CONSENT_COPY } from './pages/consent/copy';
@@ -92,6 +93,7 @@ const AgreementCheck = () => {
   return (
     <>
       <DiaryGenerationNotice />
+      <GuestTrialNotice />
       <Outlet />
     </>
   );
