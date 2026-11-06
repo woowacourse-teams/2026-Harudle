@@ -7,7 +7,8 @@ trap 'rm -rf -- "${TEST_DIR}"' EXIT
 export HARUDLE_APP_DIR="${TEST_DIR}/app" DIARY_BACKFILL_TEST_DIR="${TEST_DIR}"
 readonly IMAGE_ID="sha256:$(printf 'a%.0s' {1..64})"
 export DIARY_BACKFILL_TEST_IMAGE="${IMAGE_ID}"
-mkdir -p "${HARUDLE_APP_DIR}" "${TEST_DIR}/bin"
+export TMPDIR="${TEST_DIR}/tmp"
+mkdir -p "${HARUDLE_APP_DIR}" "${TEST_DIR}/bin" "${TMPDIR}"
 test_count=0
 
 cat > "${TEST_DIR}/bin/docker" <<'SH'
@@ -59,7 +60,14 @@ set -Eeuo pipefail
 printf '%s\n' "$@" > "${DIARY_BACKFILL_TEST_DIR}/java.args"
 printf '%s\n' "${LOADER_MAIN:-}" > "${DIARY_BACKFILL_TEST_DIR}/java.loader-main"
 echo 'diary-backfill-test-secret' >&2
-printf '%s\n' "${DIARY_BACKFILL_TEST_RESPONSE}"
+case "${DIARY_BACKFILL_TEST_FRAMING:-line}" in
+  line) printf '%s\n' "${DIARY_BACKFILL_TEST_RESPONSE}" ;;
+  no-newline) printf '%s' "${DIARY_BACKFILL_TEST_RESPONSE}" ;;
+  extra-newline) printf '%s\n\n' "${DIARY_BACKFILL_TEST_RESPONSE}" ;;
+  multiline) jq . <<<"${DIARY_BACKFILL_TEST_RESPONSE}" ;;
+  trailing-space) printf '%s\n ' "${DIARY_BACKFILL_TEST_RESPONSE}" ;;
+  *) exit 1 ;;
+esac
 exit "${DIARY_BACKFILL_TEST_EXIT:-0}"
 SH
 chmod +x "${TEST_DIR}/bin/docker" "${TEST_DIR}/bin/java"
@@ -68,7 +76,7 @@ export PATH="${TEST_DIR}/bin:${PATH}"
 prepare_case() {
   : > "${TEST_DIR}/calls"
   rm -f "${TEST_DIR}/run.args" "${TEST_DIR}/override.path"
-  export DIARY_BACKFILL_TEST_EXIT=0 DIARY_BACKFILL_TEST_IMAGE_FAILURE=0
+  export DIARY_BACKFILL_TEST_EXIT=0 DIARY_BACKFILL_TEST_IMAGE_FAILURE=0 DIARY_BACKFILL_TEST_FRAMING=line
   export JAVA_OPTS='-Dbackfill.parity=true -Dbackfill.secret=diary-backfill-test-secret'
   export LOADER_MAIN=untrusted.test.Main
   cat > "${HARUDLE_APP_DIR}/.env" <<'ENV'
@@ -119,6 +127,10 @@ run_expected() {
     return 1
   fi
   assert_private_output
+  if compgen -G "${TMPDIR}/harudle-diary-*" >/dev/null; then
+    echo 'FAIL: Private maintenance output or Compose overrides were not removed.' >&2
+    return 1
+  fi
   if [[ -f "${TEST_DIR}/override.path" ]]; then
     [[ ! -f "$(cat "${TEST_DIR}/override.path")" ]]
   fi
@@ -237,11 +249,13 @@ for mismatched_status in 0 2 7; do
   record_pass "exit ${mismatched_status}: an error JSON cannot change the exit contract"
 done
 
-for malformed in diagnostic extra-field multiple-objects wrong-command string-count negative-count fractional-count invalid-finalized duplicate-command duplicate-count trailing-json; do
+for malformed in diagnostic extra-field multiple-objects same-line-objects wrong-command string-count numeric-string-count negative-count fractional-count invalid-finalized duplicate-command duplicate-count trailing-json; do
   prepare_case
   response status
   case "${malformed}" in
     diagnostic) export DIARY_BACKFILL_TEST_RESPONSE='diary-backfill-test-secret' ;;
+    same-line-objects) export DIARY_BACKFILL_TEST_RESPONSE="${DIARY_BACKFILL_TEST_RESPONSE} ${DIARY_BACKFILL_TEST_RESPONSE}" ;;
+    numeric-string-count) export DIARY_BACKFILL_TEST_RESPONSE="$(jq -c '.legacyRows="0"' <<<"${DIARY_BACKFILL_TEST_RESPONSE}")" ;;
     extra-field) export DIARY_BACKFILL_TEST_RESPONSE="$(jq -c '. + {secret:"diary-backfill-test-secret"}' <<<"${DIARY_BACKFILL_TEST_RESPONSE}")" ;;
     multiple-objects) export DIARY_BACKFILL_TEST_RESPONSE="${DIARY_BACKFILL_TEST_RESPONSE}"$'\n'"${DIARY_BACKFILL_TEST_RESPONSE}" ;;
     wrong-command) export DIARY_BACKFILL_TEST_RESPONSE="$(jq -c '.command="ready"' <<<"${DIARY_BACKFILL_TEST_RESPONSE}")" ;;
@@ -256,6 +270,15 @@ for malformed in diagnostic extra-field multiple-objects wrong-command string-co
   run_expected 1 status
   [[ "$(grep -c '^{' "${TEST_DIR}/output" || true)" == 0 ]]
   record_pass "${malformed}: untrusted output is rejected without exposing it"
+done
+
+for framing in no-newline extra-newline multiline trailing-space; do
+  prepare_case
+  response status
+  export DIARY_BACKFILL_TEST_FRAMING="${framing}"
+  run_expected 1 status
+  [[ "$(grep -c '^{' "${TEST_DIR}/output" || true)" == 0 ]]
+  record_pass "${framing}: only one complete JSON line can become public output"
 done
 
 prepare_case

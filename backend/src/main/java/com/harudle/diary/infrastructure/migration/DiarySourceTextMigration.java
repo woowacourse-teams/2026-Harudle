@@ -2,6 +2,7 @@ package com.harudle.diary.infrastructure.migration;
 
 import com.harudle.diary.domain.Diary;
 import com.harudle.diary.domain.DiarySourceTextCipher;
+import com.harudle.diary.infrastructure.migration.DiarySourceTextMigrationSession.SqlOperation;
 import com.harudle.generation.diary.service.RequestFingerprintGenerator;
 import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
 import java.nio.charset.StandardCharsets;
@@ -25,20 +26,18 @@ public final class DiarySourceTextMigration {
 
     public static final long EXECUTION_LOCK_KEY = 0x48415255444c4533L;
 
-    private static final int QUERY_TIMEOUT_SECONDS = 10;
     private static final int MAX_BATCH_SIZE = 1_000;
     private static final int MAX_BATCHES = 10_000;
-    private static final String ENCRYPTED_ONLY_CONSTRAINT = "ck_diaries_source_text_encrypted_only";
     private static final String JOINED_ROWS = """
             SELECT d.id, d.user_id, d.diary_date, d.source_text, d.source_text_version,
                    g.id AS generation_id, g.idempotency_key, g.request_fingerprint
             FROM public.diaries d LEFT JOIN public.diary_generations g ON g.diary_id = d.id
             """;
 
-    private final Connection connection;
+    private final DiarySourceTextMigrationSession jdbc;
+    private final DiarySourceTextMigrationSchema schema;
     private final DiarySourceTextCipher cipher;
     private final RequestFingerprintGenerator fingerprints;
-    private boolean unusable;
 
     public DiarySourceTextMigration(
             Connection connection,
@@ -46,38 +45,39 @@ public final class DiarySourceTextMigration {
             RequestFingerprintGenerator fingerprints
     ) {
         require(connection != null && cipher != null && fingerprints != null);
-        this.connection = connection;
+        this.jdbc = new DiarySourceTextMigrationSession(connection);
+        this.schema = new DiarySourceTextMigrationSchema(jdbc);
         this.cipher = cipher;
         this.fingerprints = fingerprints;
     }
 
     public Status status() {
-        return safely(() -> inspect(this::readStatus));
+        return jdbc.safely(() -> inspect(this::readStatus));
     }
 
     /** Row conversion requires fresh READ_COMMITTED snapshots without changing the caller's connection settings. */
     public MigrationResult migrate(int batchSize, int maxBatches) {
-        return safely(() -> {
-            if (connection.getTransactionIsolation() != Connection.TRANSACTION_READ_COMMITTED) {
+        return jdbc.safely(() -> {
+            if (jdbc.transactionIsolation() != Connection.TRANSACTION_READ_COMMITTED) {
                 throw new DiarySourceTextMigrationException(
                         DiarySourceTextMigrationException.Reason.ISOLATION_LEVEL_UNSUPPORTED
                 );
             }
-            return exclusively(() -> migrateLocked(batchSize, maxBatches));
+            return jdbc.exclusively(() -> migrateLocked(batchSize, maxBatches));
         });
     }
 
     public VerificationResult verify(int batchSize) {
-        return safely(() -> exclusively(() -> inspect(() -> verifyLocked(batchSize))));
+        return jdbc.safely(() -> jdbc.exclusively(() -> inspect(() -> verifyLocked(batchSize))));
     }
 
     public VerificationResult finalizeMigration(int batchSize) {
-        return safely(() -> exclusively(() -> finalizeLocked(batchSize)));
+        return jdbc.safely(() -> jdbc.exclusively(() -> finalizeLocked(batchSize)));
     }
 
     /** Requires a validated v1-only CHECK, a non-null version with no default, and no legacy or unknown rows. */
     public void requireReady() {
-        safely(() -> {
+        jdbc.safely(() -> {
             inspect(() -> {
                 requireReadyInternal();
                 return null;
@@ -112,12 +112,12 @@ public final class DiarySourceTextMigration {
 
     private Outcome migrateCandidate(UUID diaryId) {
         try {
-            return transaction(() -> {
-                lockAndRequireSchema(false);
+            return jdbc.transaction(() -> {
+                schema.lockAndRequire(false);
                 return migrateRow(diaryId);
             });
         } catch (SQLException | RuntimeException exception) {
-            if (unusable || exception instanceof SchemaViolationException) {
+            if (jdbc.isUnusable() || exception instanceof DiarySourceTextMigrationSchema.SchemaViolationException) {
                 throw new DiarySourceTextMigrationException();
             }
             return Outcome.FAILED;
@@ -173,7 +173,7 @@ public final class DiarySourceTextMigration {
     private List<UUID> legacyCandidates(UUID cursor, int batchSize) throws SQLException {
         String sql = "SELECT id FROM public.diaries WHERE source_text_version = 0"
                 + (cursor == null ? "" : " AND id > ?") + " ORDER BY id LIMIT ?";
-        try (PreparedStatement statement = prepare(sql)) {
+        try (PreparedStatement statement = jdbc.prepare(sql)) {
             int limitIndex = bindCursor(statement, cursor);
             statement.setInt(limitIndex, batchSize);
             return readIds(statement);
@@ -191,7 +191,7 @@ public final class DiarySourceTextMigration {
     }
 
     private Generation lockGeneration(UUID diaryId) throws SQLException {
-        try (PreparedStatement statement = prepare("""
+        try (PreparedStatement statement = jdbc.prepare("""
                 SELECT id, idempotency_key, request_fingerprint, status
                 FROM public.diary_generations WHERE diary_id = ? FOR UPDATE
                 """)) {
@@ -205,7 +205,7 @@ public final class DiarySourceTextMigration {
     }
 
     private StoredDiary lockDiary(UUID diaryId) throws SQLException {
-        try (PreparedStatement statement = prepare("""
+        try (PreparedStatement statement = jdbc.prepare("""
                 SELECT id, user_id, diary_date, source_text, source_text_version
                 FROM public.diaries WHERE id = ? FOR UPDATE
                 """)) {
@@ -217,15 +217,15 @@ public final class DiarySourceTextMigration {
     }
 
     private boolean hasGeneration(UUID diaryId) throws SQLException {
-        try (PreparedStatement statement = prepare(
+        try (PreparedStatement statement = jdbc.prepare(
                 "SELECT EXISTS (SELECT 1 FROM public.diary_generations WHERE diary_id = ?)")) {
             statement.setObject(1, diaryId);
-            return readBoolean(statement);
+            return jdbc.readBoolean(statement);
         }
     }
 
     private void updateDiary(UUID diaryId, String encrypted) throws SQLException {
-        try (PreparedStatement statement = prepare("""
+        try (PreparedStatement statement = jdbc.prepare("""
                 UPDATE public.diaries SET source_text = ?, source_text_version = 1
                 WHERE id = ? AND source_text_version = 0
                 """)) {
@@ -236,7 +236,7 @@ public final class DiarySourceTextMigration {
     }
 
     private void updateFingerprint(Generation generation, String fingerprint) throws SQLException {
-        try (PreparedStatement statement = prepare("""
+        try (PreparedStatement statement = jdbc.prepare("""
                 UPDATE public.diary_generations SET request_fingerprint = ? WHERE id = ? AND request_fingerprint = ?
                 """)) {
             statement.setString(1, fingerprint);
@@ -265,7 +265,7 @@ public final class DiarySourceTextMigration {
 
     private List<VerificationRow> verificationRows(UUID cursor, int batchSize) throws SQLException {
         String sql = JOINED_ROWS + (cursor == null ? "" : " WHERE d.id > ?") + " ORDER BY d.id LIMIT ?";
-        try (PreparedStatement statement = prepare(sql)) {
+        try (PreparedStatement statement = jdbc.prepare(sql)) {
             statement.setInt(bindCursor(statement, cursor), batchSize);
             return readVerificationRows(statement);
         }
@@ -310,8 +310,8 @@ public final class DiarySourceTextMigration {
                 || verified.remaining().unsupportedRows() > 0) {
             return verified;
         }
-        long blocked = transaction(() -> {
-            lockAndRequireSchema(true);
+        long blocked = jdbc.transaction(() -> {
+            schema.lockAndRequire(true);
             return finalizeSchema();
         });
         return new VerificationResult(verified.checked(), blocked, inspect(this::readStatus));
@@ -323,15 +323,7 @@ public final class DiarySourceTextMigration {
         if (invalid > 0) {
             return invalid;
         }
-        Constraint constraint = readConstraint();
-        if (!constraint.exists()) {
-            execute("ALTER TABLE public.diaries ADD CONSTRAINT " + ENCRYPTED_ONLY_CONSTRAINT
-                    + " CHECK (source_text_version = 1) NOT VALID");
-        } else {
-            require(constraint.exact());
-        }
-        execute("ALTER TABLE public.diaries VALIDATE CONSTRAINT " + ENCRYPTED_ONLY_CONSTRAINT);
-        execute("ALTER TABLE public.diaries ALTER COLUMN source_text_version DROP DEFAULT");
+        schema.finalizeConstraints();
         requireReadyInternal();
         return 0;
     }
@@ -342,7 +334,7 @@ public final class DiarySourceTextMigration {
     }
 
     private Status readStatus() throws SQLException {
-        try (PreparedStatement statement = prepare("""
+        try (PreparedStatement statement = jdbc.prepare("""
                 SELECT count(*) FILTER (WHERE d.source_text_version = 0) AS legacy,
                        count(*) FILTER (WHERE d.source_text_version = 1) AS encrypted,
                        count(*) FILTER (WHERE d.source_text_version IS NULL
@@ -354,48 +346,9 @@ public final class DiarySourceTextMigration {
             try (ResultSet row = statement.executeQuery()) {
                 require(row.next());
                 return new Status(row.getLong("legacy"), row.getLong("encrypted"), row.getLong("unsupported"),
-                        row.getLong("processing"), row.getLong("orphans"), isSchemaFinalized());
+                        row.getLong("processing"), row.getLong("orphans"), schema.isFinalized());
             }
         }
-    }
-
-    private boolean isSchemaFinalized() throws SQLException {
-        Constraint constraint = readConstraint();
-        try (PreparedStatement statement = prepare("""
-                SELECT a.attnotnull, a.atthasdef FROM pg_attribute a
-                WHERE a.attrelid = 'public.diaries'::regclass AND a.attname = 'source_text_version' AND NOT a.attisdropped
-                """)) {
-            try (ResultSet row = statement.executeQuery()) {
-                require(row.next());
-                return constraint.exists() && constraint.exact() && constraint.validated()
-                        && row.getBoolean("attnotnull") && !row.getBoolean("atthasdef");
-            }
-        }
-    }
-
-    private Constraint readConstraint() throws SQLException {
-        try (PreparedStatement statement = prepare("""
-                SELECT c.contype, c.convalidated, c.connoinherit,
-                       pg_get_expr(c.conbin, c.conrelid) AS expression,
-                       array_length(c.conkey, 1) AS columns,
-                       a.attnum = ANY(c.conkey) AS correct_column
-                FROM pg_constraint c JOIN pg_attribute a
-                  ON a.attrelid = c.conrelid AND a.attname = 'source_text_version' AND NOT a.attisdropped
-                WHERE c.conrelid = 'public.diaries'::regclass AND c.conname = ?
-                """)) {
-            statement.setString(1, ENCRYPTED_ONLY_CONSTRAINT);
-            try (ResultSet row = statement.executeQuery()) {
-                return row.next() ? readConstraint(row) : new Constraint(false, false, false);
-            }
-        }
-    }
-
-    private Constraint readConstraint(ResultSet row) throws SQLException {
-        String expression = row.getString("expression");
-        boolean exact = "c".equals(row.getString("contype")) && !row.getBoolean("connoinherit")
-                && row.getInt("columns") == 1 && row.getBoolean("correct_column")
-                && expression != null && "source_text_version=1".equals(expression.replaceAll("[\\s()]", ""));
-        return new Constraint(true, exact, row.getBoolean("convalidated"));
     }
 
     private StoredDiary readDiary(ResultSet row) throws SQLException {
@@ -424,262 +377,11 @@ public final class DiarySourceTextMigration {
         return 2;
     }
 
-    private PreparedStatement prepare(String sql) throws SQLException {
-        require(!unusable);
-        PreparedStatement statement = connection.prepareStatement(sql);
-        statement.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
-        return statement;
-    }
-
-    private void execute(String sql) throws SQLException {
-        try (PreparedStatement statement = prepare(sql)) {
-            statement.execute();
-        }
-    }
-
-    private boolean readBoolean(PreparedStatement statement) throws SQLException {
-        try (ResultSet row = statement.executeQuery()) {
-            require(row.next());
-            return row.getBoolean(1);
-        }
-    }
-
     private <T> T inspect(SqlOperation<T> operation) throws SQLException {
-        return transaction(() -> {
-            lockAndRequireSchema(false);
+        return jdbc.transaction(() -> {
+            schema.lockAndRequire(false);
             return operation.run();
         });
-    }
-
-    /** Keeps schema identity and row visibility stable until this transaction has completed. */
-    private void lockAndRequireSchema(boolean exclusiveDiaries) {
-        try {
-            execute("SET LOCAL row_security = off");
-            execute("LOCK TABLE public.diary_generations IN ACCESS SHARE MODE");
-            execute("LOCK TABLE public.diaries IN " + (exclusiveDiaries ? "ACCESS EXCLUSIVE" : "ACCESS SHARE")
-                    + " MODE");
-            requireOrdinaryTable("diaries");
-            requireOrdinaryTable("diary_generations");
-            requireColumn("diaries", "id", "uuid");
-            requireColumn("diaries", "user_id", "uuid");
-            requireColumn("diaries", "diary_date", "date");
-            requireColumn("diaries", "source_text", "text");
-            requireColumn("diaries", "source_text_version", "integer");
-            requireColumn("diary_generations", "id", "uuid");
-            requireColumn("diary_generations", "diary_id", "uuid");
-            requireSingleColumnKey("diaries", "id", "p");
-            requireSingleColumnKey("diary_generations", "id", "p");
-            requireSingleColumnKey("diary_generations", "diary_id", "u");
-        } catch (SQLException | RuntimeException exception) {
-            throw new SchemaViolationException();
-        }
-    }
-
-    private void requireOrdinaryTable(String table) throws SQLException {
-        try (PreparedStatement statement = prepare("""
-                SELECT c.relkind, c.relrowsecurity, c.relforcerowsecurity,
-                       EXISTS (SELECT 1 FROM pg_catalog.pg_inherits i
-                               WHERE i.inhrelid = c.oid OR i.inhparent = c.oid) AS inherited
-                FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-                WHERE n.nspname = 'public' AND c.relname = ?
-                """)) {
-            statement.setString(1, table);
-            try (ResultSet row = statement.executeQuery()) {
-                require(row.next() && "r".equals(row.getString("relkind"))
-                        && !row.getBoolean("relrowsecurity") && !row.getBoolean("relforcerowsecurity")
-                        && !row.getBoolean("inherited"));
-            }
-        }
-    }
-
-    private void requireColumn(String table, String column, String type) throws SQLException {
-        try (PreparedStatement statement = prepare("""
-                SELECT a.attnotnull, a.attgenerated = '' AND a.attidentity = '' AS plain_column,
-                       n.nspname = 'pg_catalog' AS built_in,
-                       pg_catalog.format_type(a.atttypid, a.atttypmod) AS formatted_type
-                FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_type t ON t.oid = a.atttypid
-                JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
-                WHERE a.attrelid = pg_catalog.to_regclass(?) AND a.attname = ?
-                  AND a.attnum > 0 AND NOT a.attisdropped
-                """)) {
-            statement.setString(1, "public." + table);
-            statement.setString(2, column);
-            try (ResultSet row = statement.executeQuery()) {
-                require(row.next() && row.getBoolean("attnotnull") && row.getBoolean("plain_column")
-                        && row.getBoolean("built_in") && type.equals(row.getString("formatted_type")));
-            }
-        }
-    }
-
-    private void requireSingleColumnKey(String table, String column, String kind) throws SQLException {
-        try (PreparedStatement statement = prepare("""
-                SELECT EXISTS (
-                    SELECT 1 FROM pg_catalog.pg_constraint c JOIN pg_catalog.pg_attribute a
-                      ON a.attrelid = c.conrelid AND a.attname = ? AND NOT a.attisdropped
-                    WHERE c.conrelid = pg_catalog.to_regclass(?) AND c.contype::text = ?
-                      AND c.convalidated AND NOT c.condeferrable AND c.conkey = ARRAY[a.attnum]
-                      AND a.attnotnull AND a.atttypid = 'pg_catalog.uuid'::regtype
-                )
-                """)) {
-            statement.setString(1, column);
-            statement.setString(2, "public." + table);
-            statement.setString(3, kind);
-            require(readBoolean(statement));
-        }
-    }
-
-    private static final class SchemaViolationException extends RuntimeException {
-    }
-
-    private <T> T transaction(SqlOperation<T> operation) throws SQLException {
-        require(!unusable);
-        try {
-            connection.setAutoCommit(false);
-        } catch (SQLException | RuntimeException | Error exception) {
-            abort(exception);
-            throw exception;
-        }
-        boolean commitAttempted = false;
-        boolean transactionEnded = false;
-        Throwable failure = null;
-        try {
-            execute("SET LOCAL lock_timeout = '2s'");
-            execute("SET LOCAL statement_timeout = '10s'");
-            T result = operation.run();
-            commitAttempted = true;
-            connection.commit();
-            transactionEnded = true;
-            return result;
-        } catch (SQLException | RuntimeException | Error exception) {
-            failure = exception;
-            if (commitAttempted) {
-                abort(exception);
-            } else {
-                transactionEnded = rollbackSafely(exception);
-            }
-            throw exception;
-        } finally {
-            // Enabling auto-commit may commit an open transaction; only restore after a confirmed end.
-            if (transactionEnded) {
-                restoreAutoCommit(failure);
-            }
-        }
-    }
-
-    private boolean rollbackSafely(Throwable failure) {
-        try {
-            connection.rollback();
-            return true;
-        } catch (SQLException | RuntimeException | Error exception) {
-            suppressCleanupFailure(failure);
-            abort(failure);
-            return false;
-        }
-    }
-
-    private void restoreAutoCommit(Throwable failure) {
-        if (unusable) {
-            return;
-        }
-        try {
-            require(!connection.isClosed());
-            connection.setAutoCommit(true);
-        } catch (SQLException | RuntimeException | Error exception) {
-            handleCleanupFailure(exception, failure);
-        }
-    }
-
-    private <T> T exclusively(SqlOperation<T> operation) throws SQLException {
-        acquireExecutionLock();
-        Throwable failure = null;
-        try {
-            return operation.run();
-        } catch (SQLException | RuntimeException | Error exception) {
-            failure = exception;
-            throw exception;
-        } finally {
-            releaseExecutionLock(failure);
-        }
-    }
-
-    private void acquireExecutionLock() throws SQLException {
-        boolean acquired;
-        try {
-            acquired = advisory("SELECT pg_try_advisory_lock(?)");
-        } catch (SQLException | RuntimeException | Error exception) {
-            abort(exception);
-            throw exception;
-        }
-        require(acquired);
-    }
-
-    private void releaseExecutionLock(Throwable failure) {
-        if (unusable) {
-            return;
-        }
-        try {
-            require(!connection.isClosed());
-            require(advisory("SELECT pg_advisory_unlock(?)"));
-        } catch (SQLException | RuntimeException | Error exception) {
-            handleCleanupFailure(exception, failure);
-        }
-    }
-
-    private void handleCleanupFailure(Throwable cleanupFailure, Throwable failure) {
-        abort(failure == null ? cleanupFailure : failure);
-        if (failure != null) {
-            suppressCleanupFailure(failure);
-            return;
-        }
-        if (cleanupFailure instanceof Error error) {
-            throw error;
-        }
-        throw new DiarySourceTextMigrationException();
-    }
-
-    private boolean advisory(String sql) throws SQLException {
-        try (PreparedStatement statement = prepare(sql)) {
-            statement.setLong(1, EXECUTION_LOCK_KEY);
-            return readBoolean(statement);
-        }
-    }
-
-    private void abort(Throwable failure) {
-        unusable = true;
-        try {
-            connection.abort(Runnable::run);
-        } catch (SQLException | RuntimeException | Error exception) {
-            suppressCleanupFailure(failure);
-            closeAfterAbortFailure(failure);
-        }
-    }
-
-    private void closeAfterAbortFailure(Throwable failure) {
-        try {
-            connection.close();
-        } catch (SQLException | RuntimeException | Error exception) {
-            // The instance stays unusable even when the driver cannot confirm physical connection disposal.
-            suppressCleanupFailure(failure);
-        }
-    }
-
-    private static void suppressCleanupFailure(Throwable failure) {
-        try {
-            failure.addSuppressed(new DiarySourceTextMigrationException());
-        } catch (RuntimeException | Error ignored) {
-            // Cleanup diagnostics must not replace the original failure, including under memory pressure.
-        }
-    }
-
-    private <T> T safely(SqlOperation<T> operation) {
-        try {
-            require(!unusable && !connection.isClosed() && connection.getAutoCommit());
-            return operation.run();
-        } catch (DiarySourceTextMigrationException exception) {
-            throw exception;
-        } catch (SQLException | RuntimeException exception) {
-            throw new DiarySourceTextMigrationException();
-        }
     }
 
     private void validateBatchSize(int batchSize) {
@@ -701,12 +403,6 @@ public final class DiarySourceTextMigration {
     }
 
     public record VerificationResult(long checked, long failed, Status remaining) {
-    }
-
-    @FunctionalInterface
-    private interface SqlOperation<T> {
-
-        T run() throws SQLException;
     }
 
     private enum Outcome {
@@ -758,8 +454,5 @@ public final class DiarySourceTextMigration {
         public String toString() {
             return "VerificationRow[redacted]";
         }
-    }
-
-    private record Constraint(boolean exists, boolean exact, boolean validated) {
     }
 }

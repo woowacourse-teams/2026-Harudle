@@ -64,58 +64,15 @@ cd "${APP_DIR}"
 
 # Raw stdout and stderr may contain environment values from early JVM or launcher failures.
 # Publish only the CLI's fixed, typed result fields after checking the complete output.
+result_file="$(mktemp "${TMPDIR:-/tmp}/harudle-diary-backfill-result.XXXXXX" 2>/dev/null)" ||
+  fail 'Diary source text maintenance could not prepare private output.'
+trap 'rm -f -- "${result_file}"' EXIT
 result_status=0
-if result="$(run_private_diary_cli \
+run_private_diary_cli \
   com.harudle.diary.infrastructure.crypto.DiarySourceTextBackfillMain "${CANDIDATE_IMAGE}" \
-  "${COMMAND}" ${options[@]+"${options[@]}"} 2>/dev/null)"; then
-  result_status=0
-else
-  result_status=$?
-fi
-if (( result_status != 0 && result_status != 1 && result_status != 2 )); then
+  "${COMMAND}" ${options[@]+"${options[@]}"} >"${result_file}" 2>/dev/null || result_status=$?
+if ! safe_result="$(validate_diary_source_text_cli_result "${COMMAND}" "${result_status}" "${result_file}")"; then
   fail 'Diary source text maintenance failed. Candidate diagnostics were suppressed.'
-fi
-# jq's object parser keeps the last duplicate value. Inspect the complete token stream first,
-# then parse one object; neither diagnostics nor shadowed fields may become public output.
-if ! jq -n --stream -e '
-  [inputs | select(length == 2) | .[0]] as $paths |
-  ($paths | length) > 0 and ($paths | length) == ($paths | unique | length)
-' <<<"${result}" >/dev/null 2>&1; then
-  fail 'Diary source text maintenance failed. Candidate diagnostics were suppressed.'
-fi
-if (( result_status == 1 )) && safe_error="$(jq -cSse --arg command "${COMMAND}" '
-  select(length == 1) | .[0] |
-  select(type == "object" and (keys | sort) == ["command", "errorCode"] and .command == $command
-    and (.errorCode | type == "string")) |
-  select(.errorCode as $code | ["CONFIGURATION_INVALID", "KEY_VERIFICATION_FAILED",
-    "DATABASE_CONNECTION_FAILED", "DATABASE_OPERATION_FAILED", "ISOLATION_LEVEL_UNSUPPORTED",
-    "UNEXPECTED_FAILURE"] | index($code) != null)
-' <<<"${result}" 2>/dev/null)"; then
-  printf '%s\n' "${safe_error}"
-  echo 'Diary source text maintenance failed. Candidate diagnostics were suppressed.' >&2
-  exit 1
-fi
-fields='["command","legacyRows","encryptedRows","unsupportedRows","processingLegacyRows","orphanRows","finalized"]'
-case "${COMMAND}" in
-  migrate)
-    fields="$(jq -c '. + ["attempted","migrated","skippedProcessing","failed","orphanMigrated"]' <<<"${fields}")"
-    ;;
-  verify|finalize)
-    fields="$(jq -c '. + ["checked","failed"]' <<<"${fields}")"
-    ;;
-esac
-if ! safe_result="$(jq -cSse --arg command "${COMMAND}" --argjson fields "${fields}" '
-  select(length == 1) | .[0] |
-  select(type == "object" and .command == $command and (.finalized | type == "boolean")) |
-  select((keys | sort) == ($fields | sort)) |
-  select([to_entries[] | select(.key != "command" and .key != "finalized") | .value] |
-    all(type == "number" and . >= 0 and floor == .))
-' <<<"${result}" 2>/dev/null)"; then
-  fail 'Diary source text maintenance failed. Candidate diagnostics were suppressed.'
-fi
-if (( result_status == 2 )); then
-  [[ "${COMMAND}" == migrate ]] && jq -e '.failed == 0 and .legacyRows > 0' \
-    <<<"${safe_result}" >/dev/null 2>&1 || fail 'Diary source text maintenance failed.'
 fi
 printf '%s\n' "${safe_result}"
 if (( result_status == 2 )); then

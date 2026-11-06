@@ -5,6 +5,22 @@
 명령·키·배포 조건은 [운영 안내](diary-source-text-encryption.md),
 선택 근거는 [전환 ADR](adr/2026-10-20_기존%20일기%20원문과%20지문을%20어떻게%20온라인%20전환하고%20평문%20경로를%20닫을%20것인가_아이큐.md)를 참고한다.
 
+## 코드가 나뉜 기준
+
+전환 흐름은 `DiarySourceTextMigration`이 정합니다. DB 구조 검사는
+`DiarySourceTextMigrationSchema`가 담당합니다. 저장, 롤백과 연결 폐기는
+`DiarySourceTextMigrationSession`이 담당합니다.
+
+```mermaid
+flowchart TB
+    migration["Migration<br/>행 전환과 전체 검증 순서"] --> schema["MigrationSchema<br/>테이블 잠금과 구조 검사<br/>완료 제약 적용"]
+    migration --> session["MigrationSession<br/>DB 명령 실행과 실행 잠금<br/>커밋, 롤백, 연결 폐기"]
+    schema --> session
+```
+
+일기 하나의 변경을 함께 저장하는 범위와 잠금 순서는 유지합니다. 스키마 검사는 각 행을
+바꿀 때마다 수행하고, 연결 상태를 확신할 수 없으면 전체 전환을 멈춥니다.
+
 | 상황 | 바로가기 |
 | --- | --- |
 | 서비스 중 전환을 준비한다 | [M01](#m01-서비스를-유지하며-전환을-준비할-때) |
@@ -45,7 +61,7 @@ v0는 기존 평문, v1은 암호문 저장 버전이다. 후보 CLI는 새 앱�
 
 관련 코드: [후보 CLI](../src/main/java/com/harudle/diary/infrastructure/crypto/DiarySourceTextBackfillMain.java),
 [수동 실행 도구](../../deploy/scripts/run_diary_source_text_backfill.sh),
-[스키마 확인](../src/main/java/com/harudle/diary/infrastructure/migration/DiarySourceTextMigration.java).
+[스키마 확인](../src/main/java/com/harudle/diary/infrastructure/migration/DiarySourceTextMigrationSchema.java).
 
 ## M02. 배치와 worker가 같은 작업을 처리하려 할 때
 
@@ -141,7 +157,7 @@ flowchart TD
 `finalize`의 응답이 유실된 경우에도 스키마 변경의 반영 여부를 `status`·`ready`로 확인한다.
 운영 출력에는 집계와 고정된 실패 코드만 남기며 원문·암호문·키·지문·SQL 진단을 복구 기록에 복사하지 않는다.
 
-관련 코드: [트랜잭션과 불확실한 연결 처리](../src/main/java/com/harudle/diary/infrastructure/migration/DiarySourceTextMigration.java).
+관련 코드: [트랜잭션과 불확실한 연결 처리](../src/main/java/com/harudle/diary/infrastructure/migration/DiarySourceTextMigrationSession.java).
 
 ## M05. 전체 전환을 확정하고 앱을 교체할 때
 
