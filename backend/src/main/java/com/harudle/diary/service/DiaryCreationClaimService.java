@@ -2,23 +2,25 @@ package com.harudle.diary.service;
 
 import com.harudle.diary.domain.Diary;
 import com.harudle.diary.domain.DiarySourceTextCipher;
+import com.harudle.diary.infrastructure.crypto.DiarySourceTextCryptoException;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
+import com.harudle.diary.service.exception.DiarySourceTextWriteException;
 import com.harudle.generation.config.GenerationLifecycleProperties;
 import com.harudle.generation.config.GenerationWorkerProperties;
 import com.harudle.generation.diary.domain.DiaryGeneration;
 import com.harudle.generation.diary.domain.GenerationStatus;
-import com.harudle.generation.diary.service.DiaryGenerationCompletionService;
-import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.diary.repository.DiaryGenerationAdmissionLock;
-import com.harudle.generation.prompt.repository.GenerationPromptRepository;
-import com.harudle.generation.diary.service.RequestFingerprintGenerator;
+import com.harudle.generation.diary.repository.DiaryGenerationRepository;
+import com.harudle.generation.diary.service.DiaryGenerationCompletionService;
 import com.harudle.generation.diary.service.GenerationQueueMetrics;
+import com.harudle.generation.diary.service.RequestFingerprintGenerator;
 import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
-import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
 import com.harudle.generation.diary.service.exception.GenerationCapacityExceededException;
+import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
 import com.harudle.generation.diary.service.exception.IdempotencyKeyConflictException;
+import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -151,6 +153,19 @@ class DiaryCreationClaimService {
     }
 
     private DiaryCreationClaim createNewClaim(
+            CreateDiaryCommand command,
+            boolean generationAvailable,
+            LocalDate usageDate,
+            boolean queueForWorker
+    ) {
+        try {
+            return persistNewClaim(command, generationAvailable, usageDate, queueForWorker);
+        } catch (DiarySourceTextCryptoException exception) {
+            throw new DiarySourceTextWriteException();
+        }
+    }
+
+    private DiaryCreationClaim persistNewClaim(
             CreateDiaryCommand command,
             boolean generationAvailable,
             LocalDate usageDate,

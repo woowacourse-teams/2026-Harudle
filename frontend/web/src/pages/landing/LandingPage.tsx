@@ -7,6 +7,7 @@ import {
   type RefObject,
 } from 'react';
 import { css, type SerializedStyles } from '@emotion/react';
+import { RequestError } from '../../shared/api';
 import generationStep1Image from '../../assets/images/generation-step-1-reading.png';
 import generationStep2Image from '../../assets/images/generation-step-2-writing.png';
 import generationStep3Image from '../../assets/images/generation-step-3-selecting-panels.png';
@@ -384,6 +385,10 @@ const LandingTrialErrorCard = ({
   onRetry: () => void;
 }): JSX.Element => {
   const trialAlreadyUsed = isGuestTrialAlreadyUsedError(error);
+  const problem = error instanceof RequestError ? error.problem : undefined;
+  const sourceTextUnavailable =
+    problem?.code === 'DIARY_SOURCE_TEXT_WRITE_UNAVAILABLE' ||
+    problem?.code === 'DIARY_SOURCE_TEXT_READ_UNAVAILABLE';
 
   return (
     <div css={trialCardStyle} role="alert">
@@ -396,6 +401,7 @@ const LandingTrialErrorCard = ({
       </header>
 
       {!trialAlreadyUsed && <p css={errorMessageStyle}>{error.message}</p>}
+      {problem?.action && <p css={errorMessageStyle}>{problem.action}</p>}
 
       {trialAlreadyUsed ? (
         <>
@@ -406,7 +412,7 @@ const LandingTrialErrorCard = ({
             location="already_used"
           />
         </>
-      ) : (
+      ) : sourceTextUnavailable ? null : (
         <button type="button" css={primaryButtonStyle} onClick={onRetry}>
           같은 내용으로 다시 시도하기
         </button>

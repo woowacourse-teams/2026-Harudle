@@ -7,8 +7,12 @@ import com.harudle.support.DiarySourceTextTestSupport;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.mockito.Mockito;
 
 class DiaryTest {
 
@@ -42,6 +46,24 @@ class DiaryTest {
         assertThatThrownBy(() -> Diary.create(USER_ID, DIARY_DATE, sourceText, DiarySourceTextTestSupport.cipher()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("일기 내용은 300자 이하여야 합니다.");
+    }
+
+    static Stream<String> malformedSourceTexts() {
+        String high = String.valueOf((char) 0xD800);
+        String low = String.valueOf((char) 0xDC00);
+        return Stream.of(high, low, high + "a", "a" + low, high + high, low + high);
+    }
+
+    @ParameterizedTest
+    @MethodSource("malformedSourceTexts")
+    @DisplayName("짝이 없는 UTF-16 문자는 암호화 전에 거절한다")
+    void rejectMalformedUnicodeBeforeEncryption(String sourceText) {
+        DiarySourceTextCipher cipher = Mockito.mock(DiarySourceTextCipher.class);
+
+        assertThatThrownBy(() -> Diary.create(USER_ID, DIARY_DATE, sourceText, cipher))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("일기 내용에 올바르지 않은 문자가 포함되어 있습니다.");
+        Mockito.verifyNoInteractions(cipher);
     }
 
     @Test

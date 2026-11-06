@@ -1,48 +1,40 @@
 package com.harudle.common.error;
 
-import com.harudle.auth.application.AccountSuspendedException;
-import com.harudle.legal.application.LegalDocumentNotFoundException;
-import com.harudle.legal.application.LegalDocumentChangedException;
-import com.harudle.legal.application.InvalidTermsAcceptanceException;
-import com.harudle.legal.application.TermsAcceptanceRequiredException;
-import com.harudle.admin.service.exception.AdminReportNotFoundException;
-import com.harudle.admin.service.exception.AdminReportReviewConflictException;
-import com.harudle.admin.service.exception.InvalidAdminReportReviewException;
-import com.harudle.moderation.service.ModerationTargetNotFoundException;
-import com.harudle.moderation.service.ModerationConflictException;
-import com.harudle.moderation.domain.InvalidModerationChangeException;
-import com.harudle.moderation.service.ModerationAccessDeniedException;
-import com.harudle.admin.service.exception.AdminUserNotFoundException;
+import com.harudle.admin.service.exception.AdminGenerationHistoryDateRangeException;
 import com.harudle.admin.service.exception.AdminGenerationLimitBelowUsageException;
 import com.harudle.admin.service.exception.AdminGenerationUsageConflictException;
-import com.harudle.admin.service.exception.AdminGenerationHistoryDateRangeException;
 import com.harudle.admin.service.exception.AdminInactiveUserException;
+import com.harudle.admin.service.exception.AdminReportNotFoundException;
+import com.harudle.admin.service.exception.AdminReportReviewConflictException;
+import com.harudle.admin.service.exception.AdminUserNotFoundException;
+import com.harudle.admin.service.exception.InvalidAdminReportReviewException;
+import com.harudle.auth.application.AccountSuspendedException;
+import com.harudle.auth.application.ProfileImageCapacityExceededException;
+import com.harudle.auth.application.ProfileImageStorageException;
 import com.harudle.auth.domain.exception.InvalidNicknameException;
 import com.harudle.auth.domain.exception.NicknameAlreadyInUseException;
 import com.harudle.auth.domain.exception.PublicProfileNotAssignedException;
-import com.harudle.auth.application.ProfileImageStorageException;
-import com.harudle.auth.application.ProfileImageCapacityExceededException;
 import com.harudle.auth.presentation.AuthenticationRequiredException;
 import com.harudle.block.domain.InvalidBlockException;
 import com.harudle.block.service.exception.BlockTargetNotFoundException;
 import com.harudle.block.service.exception.BlockUnavailableException;
 import com.harudle.block.service.exception.InvalidBlockCursorException;
+import com.harudle.category.domain.exception.InvalidCategoryException;
+import com.harudle.category.service.exception.CategoryInactiveException;
+import com.harudle.category.service.exception.CategoryNameAlreadyUsedException;
+import com.harudle.category.service.exception.CategoryNotFoundException;
 import com.harudle.comment.service.exception.CommentAccessDeniedException;
 import com.harudle.comment.service.exception.CommentIntegrationUnavailableException;
 import com.harudle.comment.service.exception.CommentNotFoundException;
 import com.harudle.comment.service.exception.InvalidCommentCursorException;
-import com.harudle.report.domain.InvalidReportException;
-import com.harudle.report.service.exception.ReportTargetNotFoundException;
-import com.harudle.category.service.exception.CategoryInactiveException;
-import com.harudle.category.service.exception.CategoryNotFoundException;
-import com.harudle.category.domain.exception.InvalidCategoryException;
-import com.harudle.category.service.exception.CategoryNameAlreadyUsedException;
 import com.harudle.common.validation.InvalidIdempotencyKeyException;
+import com.harudle.diary.infrastructure.crypto.DiarySourceTextCryptoException;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
 import com.harudle.diary.service.exception.DiaryNotPublishableException;
-import com.harudle.feed.service.exception.DiaryAlreadyPublishedException;
+import com.harudle.diary.service.exception.DiarySourceTextWriteException;
 import com.harudle.feed.service.exception.ContentRestrictedException;
+import com.harudle.feed.service.exception.DiaryAlreadyPublishedException;
 import com.harudle.feed.service.exception.FeedAccessDeniedException;
 import com.harudle.feed.service.exception.FeedIntegrationUnavailableException;
 import com.harudle.feed.service.exception.FeedNotFoundException;
@@ -50,21 +42,31 @@ import com.harudle.feed.service.exception.InvalidFeedCursorException;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
 import com.harudle.generation.diary.service.exception.DiaryGenerationFailedException;
 import com.harudle.generation.diary.service.exception.DiaryGenerationNotFoundException;
-import com.harudle.generation.usage.service.exception.DailyGenerationLimitExceededException;
+import com.harudle.generation.diary.service.exception.GenerationCapacityExceededException;
 import com.harudle.generation.diary.service.exception.GenerationInProgressException;
 import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
-import com.harudle.generation.diary.service.exception.GenerationCapacityExceededException;
 import com.harudle.generation.diary.service.exception.IdempotencyKeyConflictException;
 import com.harudle.generation.diary.service.port.ImageStorageException;
+import com.harudle.generation.usage.service.exception.DailyGenerationLimitExceededException;
 import com.harudle.guest.application.exception.GuestSessionExpiredException;
 import com.harudle.guest.application.exception.GuestSessionRequiredException;
 import com.harudle.guest.application.exception.GuestTrialAlreadyUsedException;
-import com.harudle.share.service.exception.ShareGenerationFailedException;
-import com.harudle.share.service.exception.ShareNotFoundException;
+import com.harudle.legal.application.InvalidTermsAcceptanceException;
+import com.harudle.legal.application.LegalDocumentChangedException;
+import com.harudle.legal.application.LegalDocumentNotFoundException;
+import com.harudle.legal.application.TermsAcceptanceRequiredException;
+import com.harudle.moderation.domain.InvalidModerationChangeException;
+import com.harudle.moderation.service.ModerationAccessDeniedException;
+import com.harudle.moderation.service.ModerationConflictException;
+import com.harudle.moderation.service.ModerationTargetNotFoundException;
 import com.harudle.notification.service.exception.InvalidNotificationCursorException;
 import com.harudle.notification.service.exception.NotificationAccessDeniedException;
 import com.harudle.notification.service.exception.NotificationIntegrationUnavailableException;
 import com.harudle.notification.service.exception.NotificationNotFoundException;
+import com.harudle.report.domain.InvalidReportException;
+import com.harudle.report.service.exception.ReportTargetNotFoundException;
+import com.harudle.share.service.exception.ShareGenerationFailedException;
+import com.harudle.share.service.exception.ShareNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.sql.SQLException;
@@ -542,6 +544,22 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     ) {
         apiExceptionLogger.error(ErrorType.GENERATION_UNAVAILABLE, exception, request);
         return createResponse(ErrorType.GENERATION_UNAVAILABLE, request);
+    }
+
+    @ExceptionHandler(DiarySourceTextWriteException.class)
+    ResponseEntity<ProblemDetail> handleDiarySourceTextWrite(
+            DiarySourceTextWriteException exception, HttpServletRequest request
+    ) {
+        apiExceptionLogger.error(ErrorType.DIARY_SOURCE_TEXT_WRITE_UNAVAILABLE, exception, request);
+        return createResponse(ErrorType.DIARY_SOURCE_TEXT_WRITE_UNAVAILABLE, request);
+    }
+
+    @ExceptionHandler(DiarySourceTextCryptoException.class)
+    ResponseEntity<ProblemDetail> handleDiarySourceTextRead(
+            DiarySourceTextCryptoException exception, HttpServletRequest request
+    ) {
+        apiExceptionLogger.error(ErrorType.DIARY_SOURCE_TEXT_READ_UNAVAILABLE, exception, request);
+        return createResponse(ErrorType.DIARY_SOURCE_TEXT_READ_UNAVAILABLE, request);
     }
 
     @ExceptionHandler(RuntimeException.class)

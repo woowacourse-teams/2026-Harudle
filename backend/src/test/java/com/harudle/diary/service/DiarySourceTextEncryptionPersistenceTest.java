@@ -5,8 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.same;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -17,17 +17,21 @@ import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.dto.CreateDiaryResult;
 import com.harudle.diary.service.dto.DiaryDetailResult;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
-import com.harudle.generation.config.StoryboardProviderProperties;
+import com.harudle.diary.service.exception.DiarySourceTextWriteException;
+import com.harudle.generation.config.GenerationLifecycleProperties;
 import com.harudle.generation.config.GenerationWorkerProperties;
+import com.harudle.generation.config.StoryboardProviderProperties;
 import com.harudle.generation.diary.domain.GenerationStatus;
 import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import com.harudle.generation.diary.domain.StoryPanel;
 import com.harudle.generation.diary.domain.Storyboard;
+import com.harudle.generation.diary.repository.DiaryGenerationAdmissionLock;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
-import com.harudle.generation.diary.service.DiaryGenerationCompletionService;
 import com.harudle.generation.diary.service.ClaimedDiaryGenerationService;
-import com.harudle.generation.diary.service.GenerationLifecycleMetrics;
+import com.harudle.generation.diary.service.DiaryGenerationCompletionService;
 import com.harudle.generation.diary.service.DiaryGenerationWorker;
+import com.harudle.generation.diary.service.GenerationLifecycleMetrics;
+import com.harudle.generation.diary.service.GenerationQueueMetrics;
 import com.harudle.generation.diary.service.PendingDiaryGenerationClaimService;
 import com.harudle.generation.diary.service.RequestFingerprintGenerator;
 import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
@@ -44,6 +48,7 @@ import com.harudle.generation.diary.service.storyboard.StoryboardAttemptRunner;
 import com.harudle.generation.diary.service.storyboard.StoryboardGenerationService;
 import com.harudle.generation.prompt.domain.GenerationPrompt;
 import com.harudle.generation.prompt.repository.GenerationPromptRepository;
+import com.harudle.generation.usage.service.GenerationUsageService;
 import com.harudle.share.service.ShareLinkQueryService;
 import com.harudle.support.ServiceIntegrationTestSupport;
 import jakarta.persistence.EntityManager;
@@ -62,6 +67,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -127,6 +134,21 @@ class DiarySourceTextEncryptionPersistenceTest extends ServiceIntegrationTestSup
     @Autowired
     private GenerationPromptRepository promptRepository;
 
+    @Autowired
+    private GenerationLifecycleProperties lifecycleProperties;
+
+    @Autowired
+    private GenerationWorkerProperties workerProperties;
+
+    @Autowired
+    private DiaryGenerationAdmissionLock admissionLock;
+
+    @Autowired
+    private GenerationQueueMetrics queueMetrics;
+
+    @Autowired
+    private GenerationUsageService usageService;
+
     private GenerationPrompt prompt;
 
     @BeforeEach
@@ -146,6 +168,48 @@ class DiarySourceTextEncryptionPersistenceTest extends ServiceIntegrationTestSup
         if (prompt != null) {
             promptRepository.deleteById(prompt.getId());
         }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"ENCRYPT", "FINGERPRINT"})
+    @DisplayName("신규 원문 보호 실패는 일기와 생성 기록 및 사용량을 남기지 않는다")
+    void rollBackNewClaimWhenSourceProtectionFails(String failurePoint) {
+        DiarySourceTextCipher failingCipher = mock(DiarySourceTextCipher.class);
+        when(failingCipher.encrypt(any(UUID.class), any(UUID.class), any(String.class)))
+                .thenAnswer(invocation -> {
+                    if ("ENCRYPT".equals(failurePoint)) {
+                        throw new DiarySourceTextCryptoException();
+                    }
+                    return sourceTextCipher.encrypt(invocation.getArgument(0), invocation.getArgument(1),
+                            invocation.getArgument(2));
+                });
+        if ("FINGERPRINT".equals(failurePoint)) {
+            when(failingCipher.protectRequestFingerprint(any(UUID.class), any(UUID.class), any(String.class),
+                    eq(1), any(String.class)))
+                    .thenAnswer(invocation -> {
+                        entityManager.flush();
+                        assertThat(countUserDiaries()).isEqualTo(1);
+                        throw new DiarySourceTextCryptoException();
+                    });
+        }
+        DiaryCreationClaimService failingClaims = new DiaryCreationClaimService(
+                diaryRepository, promptRepository, generationRepository, completionService, fingerprintGenerator,
+                failingCipher, new DiarySourceTextWriteProperties(true), serviceClock, lifecycleProperties,
+                admissionLock, workerProperties, queueMetrics
+        );
+        MemberDiaryCreationTransactionService failingTransactions =
+                new MemberDiaryCreationTransactionService(failingClaims, usageService);
+
+        assertThatThrownBy(() -> transactionTemplate.execute(status ->
+                failingTransactions.enqueue(createCommand(SOURCE_TEXT), true)))
+                .isInstanceOf(DiarySourceTextWriteException.class)
+                .hasNoCause();
+
+        assertThat(countUserDiaries()).isZero();
+        assertThat(readValue("SELECT COUNT(*) FROM diary_generations g JOIN diaries d ON d.id = g.diary_id "
+                + "WHERE d.user_id = ?", USER_ID)).isEqualTo(0L);
+        assertThat(readValue("SELECT COUNT(*) FROM daily_generation_usage WHERE user_id = ?", USER_ID))
+                .isEqualTo(0L);
     }
 
     @Test

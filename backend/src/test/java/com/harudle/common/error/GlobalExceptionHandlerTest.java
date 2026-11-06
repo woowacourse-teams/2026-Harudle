@@ -14,6 +14,8 @@ import com.harudle.auth.domain.policy.NicknamePolicy;
 import com.harudle.category.service.exception.CategoryInactiveException;
 import com.harudle.category.service.exception.CategoryNotFoundException;
 import com.harudle.comment.service.exception.CommentIntegrationUnavailableException;
+import com.harudle.diary.infrastructure.crypto.DiarySourceTextCryptoException;
+import com.harudle.diary.service.exception.DiarySourceTextWriteException;
 import com.harudle.generation.diary.domain.GenerationErrorCode;
 import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
 import com.harudle.generation.diary.service.exception.AiGenerationException;
@@ -639,4 +641,34 @@ class GlobalExceptionHandlerTest {
             return NicknamePolicy.normalizeAndValidate(nickname);
         }
     }
+    @ParameterizedTest
+    @CsvSource({"write,DIARY_SOURCE_TEXT_WRITE_UNAVAILABLE", "read,DIARY_SOURCE_TEXT_READ_UNAVAILABLE"})
+    @DisplayName("원문 저장과 조회 오류는 서로 다른 503 코드와 안전한 행동 안내를 반환한다")
+    void distinguishSourceTextFailures(String operation, String code) throws Exception {
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new SourceTextErrorController())
+                .setControllerAdvice(exceptionHandler)
+                .build();
+
+        String body = mockMvc.perform(get("/api/v1/test/source-text").param("operation", operation))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value(code))
+                .andExpect(jsonPath("$.action").value(GenerationErrorAction.forError(ErrorType.valueOf(code))))
+                .andExpect(jsonPath("$.traceId").value(TRACE_ID))
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(body).doesNotContain("secret-key", "secret-source", "AES", "primary");
+    }
+
+    @RestController
+    static class SourceTextErrorController {
+
+        @GetMapping("/api/v1/test/source-text")
+        String sourceText(@RequestParam String operation) {
+            RuntimeException exception = "write".equals(operation)
+                    ? new DiarySourceTextWriteException() : new DiarySourceTextCryptoException();
+            exception.initCause(new IllegalStateException("secret-key secret-source AES primary"));
+            throw exception;
+        }
+    }
+
 }

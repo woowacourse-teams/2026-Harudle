@@ -1,5 +1,6 @@
 package com.harudle.diary.domain;
 
+import com.harudle.common.validation.UnicodeText;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -127,6 +128,9 @@ public class Diary {
     private static void validateSourceText(String sourceText) {
         if (sourceText == null || sourceText.isBlank()) {
             throw new IllegalArgumentException("일기 내용은 필수입니다.");
+        }
+        if (!UnicodeText.isWellFormed(sourceText)) {
+            throw new IllegalArgumentException("일기 내용에 올바르지 않은 문자가 포함되어 있습니다.");
         }
         String normalizedSourceText = sourceText.strip();
         int sourceTextLength = normalizedSourceText.codePointCount(0, normalizedSourceText.length());
