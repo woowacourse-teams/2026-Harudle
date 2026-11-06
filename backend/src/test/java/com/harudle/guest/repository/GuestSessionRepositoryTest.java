@@ -8,6 +8,7 @@ import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.diary.domain.Diary;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.guest.domain.GuestSession;
+import com.harudle.support.DiarySourceTextTestSupport;
 import com.harudle.support.ServiceIntegrationTestSupport;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -230,7 +231,8 @@ class GuestSessionRepositoryTest extends ServiceIntegrationTestSupport {
     private GuestSession saveUsedSession(String guestName, String tokenHash) {
         User guestUser = saveGuestUser(guestName);
         Diary diary = diaryRepository.saveAndFlush(
-                Diary.create(guestUser.getId(), LocalDate.of(2026, 8, 19), "게스트 체험 일기")
+                Diary.create(guestUser.getId(), LocalDate.of(2026, 8, 19), "게스트 체험 일기",
+                        DiarySourceTextTestSupport.cipher())
         );
         GuestSession session = GuestSession.create(guestUser.getId(), tokenHash, EXPIRES_AT, CREATED_AT);
         session.useForDiary(diary.getId(), USED_AT);

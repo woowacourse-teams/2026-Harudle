@@ -20,6 +20,7 @@ import com.harudle.guest.application.exception.GuestDiaryClaimNotFoundException;
 import com.harudle.guest.domain.GuestSession;
 import com.harudle.guest.infrastructure.token.GuestSessionTokenHasher;
 import com.harudle.guest.repository.GuestSessionRepository;
+import com.harudle.support.DiarySourceTextTestSupport;
 import com.harudle.support.ServiceIntegrationTestSupport;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -172,7 +173,7 @@ class GuestDiaryClaimServiceTest extends ServiceIntegrationTestSupport {
     void rejectExpiredSession() {
         User member = saveUser("회원");
         User guestUser = saveUser("게스트");
-        Diary diary = diaryRepository.saveAndFlush(Diary.create(guestUser.getId(), DIARY_DATE, "만료된 체험 일기"));
+        Diary diary = diaryRepository.saveAndFlush(Diary.create(guestUser.getId(), DIARY_DATE, "만료된 체험 일기", DiarySourceTextTestSupport.cipher()));
         saveGeneration(diary, GenerationStatus.SUCCEEDED);
         GuestSession session = GuestSession.create(
                 guestUser.getId(),
@@ -239,7 +240,7 @@ class GuestDiaryClaimServiceTest extends ServiceIntegrationTestSupport {
 
     private GuestFixture saveGuestWithDiary(String rawToken, GenerationStatus status) {
         User guestUser = saveUser("게스트");
-        Diary diary = diaryRepository.saveAndFlush(Diary.create(guestUser.getId(), DIARY_DATE, "게스트 체험 일기"));
+        Diary diary = diaryRepository.saveAndFlush(Diary.create(guestUser.getId(), DIARY_DATE, "게스트 체험 일기", DiarySourceTextTestSupport.cipher()));
         DiaryGeneration generation = saveGeneration(diary, status);
         GuestSession session = GuestSession.create(
                 guestUser.getId(),
