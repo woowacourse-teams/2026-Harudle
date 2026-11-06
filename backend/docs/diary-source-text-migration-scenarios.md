@@ -154,7 +154,8 @@ flowchart TD
 결과가 불명확한 연결은 폐기하며, 정리 중 오류가 원래 실패를 덮지 않도록 한다. 직접 CLI를 실행한
 경우에도 원본 오류·SQL 진단 대신 허용된 고정 실패 코드와 종료 코드만 제공한다.
 
-`finalize`의 응답이 유실된 경우에도 스키마 변경의 반영 여부를 `status`·`ready`로 확인한다.
+`finalize`의 응답이 유실되면 `status`와 `ready`로 완료 여부를 확인한다. 일부 단계만 커밋된 상태일 수
+있으므로 전체 롤백으로 단정하지 않고 `finalize`를 재실행한다.
 운영 출력에는 집계와 고정된 실패 코드만 남기며 원문·암호문·키·지문·SQL 진단을 복구 기록에 복사하지 않는다.
 
 관련 코드: [트랜잭션과 불확실한 연결 처리](../src/main/java/com/harudle/diary/infrastructure/migration/DiarySourceTextMigrationSession.java).
@@ -165,17 +166,26 @@ flowchart TD
 flowchart TD
     verify["전체 암호문 복원·연결 HMAC 검증"] --> complete{"v0·미지원 버전·검증 실패가 0인가?"}
     complete -->|아니요| remain["호환 앱 유지<br/>원인 확인·재실행"]
-    complete -->|예| finalize["명시적 finalize<br/>v1 제약 검증·v0 기본값 제거"]
-    finalize --> ready["ready로 스키마·잔존 데이터 확인"]
+    complete -->|예| install["finalize 1단계<br/>NOT VALID 설치 후 커밋"]
+    install --> validate["2단계<br/>일반 조회와 쓰기 허용하며 검증 후 커밋"]
+    validate --> remove["3단계<br/>기본값 제거 후 커밋"]
+    remove --> ready["강한 잠금 해제 후 집계와 ready 확인"]
     ready --> app["키·완료 검사 통과 후 v1 전용 앱 교체"]
 ```
 
-`verify`는 모든 v1 원문을 인증 복호화하고 연결된 지문을 HMAC으로 재계산해 대조한다. `finalize`는
-이를 확인하고 테이블 잠금 아래 v0·미지원 버전을 다시 점검한 뒤 v1 전용 제약을 검증·적용한다.
+`verify`는 모든 v1 원문을 인증 복호화하고 연결된 지문을 HMAC으로 재계산해 대조한다. `finalize`도
+이 전수 검증을 먼저 수행한다. 이후 제약 설치, 잔존 버전 확인과 제약 검증, 기본값 제거를 각각 커밋한다.
+제약 설치와 기본값 제거에만 `ACCESS EXCLUSIVE NOWAIT`를 사용한다. 강한 잠금을 얻기 전에
+스키마와 필요한 제약 정보를 확인하며, 강한 잠금 아래에서는 전체 행을 집계하거나 검증하지 않는다.
+전체 스캔은 일반 조회와 쓰기를 허용하는 `SHARE UPDATE EXCLUSIVE` 잠금에서 수행한다.
 
-최종화는 한 트랜잭션으로 유지한다. 배타 잠금 안의 집계와 제약 검증 시간까지 포함한 실제 차단 시간은
-[격리 복원 DB 측정 절차](diary-source-text-finalize-measurement.md)로 확인한다. SQL별 10초 제한을
-전체 잠금 시간의 상한으로 해석하지 않는다.
+명령 전체에는 세션 advisory lock을 유지한다. `NOT VALID`가 설치된 뒤부터 저장하거나 변경한 결과가
+v0이면 거절한다. 제약 검증이나 기본값 제거가 남은 상태는 `ready`에서 거절하며, 중단 후에는 이미 커밋된
+상태를 확인하고 재실행한다. 이미 완료한 단계는 생략할 수 있다.
+
+강한 잠금을 즉시 얻지 못하면 기다리지 않고 실패한다. SQL 실행과 트랜잭션 유휴 대기를 각각 1초로
+제한하지만 전체 잠금 시간이 1초 이하라는 뜻은 아니다. 실제 조회 차단 시간은
+[격리 복원 DB 측정 절차](diary-source-text-finalize-measurement.md)로 확인하며, 전체 명령 시간과 구분한다.
 
 `migrate`의 미완료 결과나 `status`의 정상 종료는 완료가 아니다. 배포 전에는 키 검증과 `ready`의
 종료 코드·허용된 완료 JSON을 함께 확인하고, 앱의 운영 시작 검사도 미완료 DB를 거절한다.

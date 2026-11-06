@@ -411,8 +411,16 @@ runner는 stdout 전체를 비공개로 받은 뒤 명령별 고정 JSON 필드�
 
 </details>
 
-최종화의 잠금 시간과 조회 대기는 [격리 복원 DB 측정 절차](../backend/docs/diary-source-text-finalize-measurement.md)를
-따릅니다. 운영 규모 실측과 허용 예산을 확인하기 전에는 현재 단일 트랜잭션을 짧은 잠금으로 보장하지 않습니다.
+최종화는 전수 검증 후 `NOT VALID` 설치, 일반 조회와 쓰기를 허용하는 잠금에서의 제약 검증,
+기본값 제거를 각각 커밋합니다. 스키마와 제약 정보를 먼저 확인하고, `ACCESS EXCLUSIVE NOWAIT`는
+제약 설치와 기본값 제거에만 사용합니다. 전체 행 집계와 검증은 이 강한 잠금에서 제외합니다.
+명령 전체에는 세션 advisory lock을 유지합니다. `NOT VALID` 설치 뒤부터 새로 저장하거나 변경하는
+v0를 거절하며, 중간 상태에서는 `ready`가 실패합니다. 이미 커밋한 단계는 보존하고 `finalize`를 재실행합니다.
+
+강한 잠금을 즉시 얻을 수 없으면 실패합니다. SQL 실행과 트랜잭션 유휴 대기를 각각 1초로 제한하지만
+전체 잠금 1초를 보장하지는 않습니다. 실제 조회 대기와 허용 예산은
+[격리 복원 DB 측정 절차](../backend/docs/diary-source-text-finalize-measurement.md)로 확인합니다.
+전체 명령 시간과 일반 조회를 막는 잠금 시간은 구분하며, 운영 규모의 실측은 아직 수행하지 않았습니다.
 기본 필드는 command, legacyRows, encryptedRows, unsupportedRows, processingLegacyRows,
 orphanRows, finalized입니다. migrate는 attempted/migrated/skippedProcessing/failed/orphanMigrated,
 verify/finalize는 checked/failed를 추가합니다. orphanRows는 모든 버전의 생성 기록 없는 일기 수이며

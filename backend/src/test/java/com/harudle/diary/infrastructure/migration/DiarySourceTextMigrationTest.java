@@ -33,12 +33,15 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Stream;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -805,9 +808,9 @@ class DiarySourceTextMigrationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    @DisplayName("실제 커밋 뒤 응답이 유실되면 전환과 완료 모두 성공 결과 없이 중단하고 연결을 폐기한다")
-    void abortTheWholeOperationWhenCommitAcknowledgementIsLost(boolean finalizing) throws Exception {
+    @MethodSource("commitAcknowledgementFailures")
+    @DisplayName("행 전환과 완료 각 단계의 커밋 응답을 잃으면 연결을 폐기하고 새 연결에서 재개한다")
+    void abortTheWholeOperationWhenCommitAcknowledgementIsLost(boolean finalizing, int lostCommit) throws Exception {
         Fixture first = insertLegacy("커밋 응답 유실 첫 행", "SUCCEEDED", false);
         Fixture second = insertLegacy("계속 처리하면 안 되는 다음 행", "SUCCEEDED", false);
         if (finalizing) {
@@ -817,7 +820,7 @@ class DiarySourceTextMigrationTest {
         Connection original = connection;
         Connection uncertain = (Connection) Proxy.newProxyInstance(
                 Connection.class.getClassLoader(), new Class<?>[]{Connection.class}, (proxy, method, arguments) -> {
-                    if ("commit".equals(method.getName()) && commits.incrementAndGet() == 2) {
+                    if ("commit".equals(method.getName()) && commits.incrementAndGet() == lostCommit) {
                         original.commit();
                         throw new SQLException("private-commit-response-lost");
                     }
@@ -839,11 +842,19 @@ class DiarySourceTextMigrationTest {
         }).isExactlyInstanceOf(DiarySourceTextMigrationException.class).hasMessage(FAILURE_MESSAGE).hasNoCause();
 
         assertThat(original.isClosed()).isTrue();
-        assertThat(commits).hasValue(2);
+        assertThat(commits).hasValue(lostCommit);
         connection = openConnection();
         assertEncrypted(first, cipher);
         if (finalizing) {
-            new DiarySourceTextMigration(connection, cipher, fingerprints).requireReady();
+            var resumed = new DiarySourceTextMigration(connection, cipher, fingerprints);
+            if (lostCommit < 4) {
+                assertThatThrownBy(resumed::requireReady).isInstanceOf(DiarySourceTextMigrationException.class);
+                assertThat(versionDefault()).isNotNull();
+            } else {
+                resumed.requireReady();
+            }
+            assertThat(resumed.finalizeMigration(10).remaining().finalized()).isTrue();
+            resumed.requireReady();
         } else {
             assertThat(stored(second.diaryId()).version()).isZero();
             assertThat(stored(second.diaryId()).fingerprint()).isEqualTo(rawFingerprint(second));
@@ -980,6 +991,132 @@ class DiarySourceTextMigrationTest {
             worker.shutdownNow();
             worker.awaitTermination(10, TimeUnit.SECONDS);
         }
+    }
+
+    @Test
+    @DisplayName("완료 제약 검증은 강한 잠금 없이 조회와 v1 쓰기를 허용하고 v0 쓰기와 DDL은 막는다")
+    void validateWithoutBlockingReadsOrEncryptedWrites() throws Exception {
+        Fixture fixture = insertLegacy("검증 중에도 읽을 일기", "SUCCEEDED", false);
+        migration.migrate(1, 1);
+        CountDownLatch validating = new CountDownLatch(1);
+        CountDownLatch finish = new CountDownLatch(1);
+        ExecutorService worker = Executors.newSingleThreadExecutor();
+        try (Connection finalizer = openConnection(); Connection observer = openConnection();
+                Connection ddl = openConnection()) {
+            int pid = ((Number) scalar(finalizer, "SELECT pg_backend_pid()")).intValue();
+            Connection observed = observeStatements(finalizer, sql -> {
+                if (sql.contains("count(*) FILTER") || sql.contains("VALIDATE CONSTRAINT")) {
+                    assertThat(scalar(observer, """
+                            SELECT count(*) FROM pg_locks WHERE pid = ? AND granted
+                            AND relation = 'public.diaries'::regclass AND mode = 'AccessExclusiveLock'
+                            """, pid)).isEqualTo(0L);
+                }
+                if (sql.contains("VALIDATE CONSTRAINT ck_diaries_source_text_encrypted_only")) {
+                    validating.countDown();
+                    assertThat(finish.await(10, TimeUnit.SECONDS)).isTrue();
+                }
+            });
+            Future<DiarySourceTextMigration.VerificationResult> pending = worker.submit(() ->
+                    new DiarySourceTextMigration(observed, cipher, fingerprints).finalizeMigration(1));
+            try {
+                assertThat(validating.await(5, TimeUnit.SECONDS)).isTrue();
+                assertThat(scalar(observer, """
+                        SELECT count(*) FROM pg_locks WHERE pid = ? AND granted
+                        AND relation = 'public.diaries'::regclass AND mode = 'ShareUpdateExclusiveLock'
+                        """, pid)).isEqualTo(1L);
+                execute("SET statement_timeout = '1s'");
+                assertThat(scalar("SELECT source_text_version FROM diaries WHERE id = ?", fixture.diaryId()))
+                        .isEqualTo(1);
+                execute("UPDATE diaries SET updated_at = updated_at WHERE id = ?", fixture.diaryId());
+                insertEncryptedOrphan("제약 검증 중 새 암호문");
+                assertThatThrownBy(() -> insertLegacy("다시 들어오면 안 되는 평문", null, false))
+                        .isInstanceOfSatisfying(SQLException.class,
+                                failure -> assertThat(failure.getSQLState()).isEqualTo("23514"));
+                assertThatThrownBy(migration::requireReady).isInstanceOf(DiarySourceTextMigrationException.class);
+                executeOn(ddl, "SET lock_timeout = '100ms'");
+                assertThatThrownBy(() -> executeOn(ddl,
+                        "ALTER TABLE diaries DROP CONSTRAINT ck_diaries_source_text_encrypted_only"))
+                        .isInstanceOf(SQLException.class);
+                assertThatThrownBy(() -> executeOn(ddl,
+                        "ALTER TABLE diary_generations DROP CONSTRAINT uq_diary_generations_diary"))
+                        .isInstanceOf(SQLException.class);
+            } finally {
+                finish.countDown();
+                worker.shutdown();
+                assertThat(worker.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+            }
+            assertThat(pending.get(10, TimeUnit.SECONDS).remaining().finalized()).isTrue();
+            migration.requireReady();
+            assertEncrypted(fixture, cipher);
+        } finally {
+            finish.countDown();
+            worker.shutdownNow();
+            assertThat(worker.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
+    @Test
+    @DisplayName("기존 조회가 강한 잠금 획득을 막으면 대기열 없이 거절하고 조회 종료 후 재실행한다")
+    void refuseExclusiveFinalizationLockWithoutWaitingForExistingReader() throws Exception {
+        insertLegacy("기존 조회가 진행 중인 일기", "SUCCEEDED", false);
+        migration.migrate(1, 1);
+        AtomicBoolean exclusiveAttempted = new AtomicBoolean();
+        try (Connection reader = openConnection(); Connection finalizer = openConnection()) {
+            reader.setAutoCommit(false);
+            scalar(reader, "SELECT count(*) FROM diaries");
+            Connection observed = observeStatements(finalizer, sql -> {
+                if (sql.startsWith("LOCK TABLE public.diaries IN ACCESS EXCLUSIVE MODE")) {
+                    exclusiveAttempted.set(true);
+                    assertThat(sql).endsWith("NOWAIT");
+                }
+            });
+            assertThatThrownBy(() -> new DiarySourceTextMigration(observed, cipher, fingerprints).finalizeMigration(1))
+                    .isExactlyInstanceOf(DiarySourceTextMigrationException.class);
+            assertThat(exclusiveAttempted).isTrue();
+            assertThat(finalizer.isClosed()).isFalse();
+            assertThat(finalizer.getAutoCommit()).isTrue();
+            assertThat(scalar(reader, "SELECT count(*) FROM diaries")).isEqualTo(1L);
+            assertThat(versionDefault()).isNotNull();
+            assertThatThrownBy(migration::requireReady).isInstanceOf(DiarySourceTextMigrationException.class);
+            reader.rollback();
+        }
+        assertThat(migration.finalizeMigration(1).remaining().finalized()).isTrue();
+    }
+
+    private static Stream<Arguments> commitAcknowledgementFailures() {
+        return Stream.of(Arguments.of(false, 2), Arguments.of(true, 2),
+                Arguments.of(true, 3), Arguments.of(true, 4));
+    }
+
+    private Connection observeStatements(Connection original, StatementObserver observer) {
+        return (Connection) Proxy.newProxyInstance(
+                Connection.class.getClassLoader(), new Class<?>[]{Connection.class}, (proxy, method, arguments) -> {
+                    try {
+                        Object result = method.invoke(original, arguments);
+                        if (!"prepareStatement".equals(method.getName())) {
+                            return result;
+                        }
+                        String sql = (String) arguments[0];
+                        return Proxy.newProxyInstance(PreparedStatement.class.getClassLoader(),
+                                new Class<?>[]{PreparedStatement.class}, (statementProxy, operation, values) -> {
+                                    if (operation.getName().startsWith("execute")) {
+                                        observer.before(sql);
+                                    }
+                                    try {
+                                        return operation.invoke(result, values);
+                                    } catch (InvocationTargetException exception) {
+                                        throw exception.getCause();
+                                    }
+                                });
+                    } catch (InvocationTargetException exception) {
+                        throw exception.getCause();
+                    }
+                });
+    }
+
+    @FunctionalInterface
+    private interface StatementObserver {
+        void before(String sql) throws Exception;
     }
 
     private void executeOn(Connection selected, String sql) throws SQLException {

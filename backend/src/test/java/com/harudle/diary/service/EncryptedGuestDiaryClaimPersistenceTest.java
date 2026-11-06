@@ -8,6 +8,7 @@ import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.diary.domain.Diary;
 import com.harudle.diary.domain.DiarySourceTextCipher;
 import com.harudle.diary.infrastructure.crypto.DiarySourceTextCryptoException;
+import com.harudle.diary.infrastructure.migration.DiarySourceTextMigration;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
@@ -19,6 +20,8 @@ import com.harudle.guest.domain.GuestSession;
 import com.harudle.guest.infrastructure.token.GuestSessionTokenHasher;
 import com.harudle.guest.repository.GuestSessionRepository;
 import com.harudle.support.ServiceIntegrationTestSupport;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -27,6 +30,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -65,6 +69,8 @@ class EncryptedGuestDiaryClaimPersistenceTest extends ServiceIntegrationTestSupp
     @Autowired
     private JdbcTemplate jdbc;
     @Autowired
+    private DataSource dataSource;
+    @Autowired
     private TransactionTemplate transactions;
 
     private final List<UUID> createdUsers = new ArrayList<>();
@@ -87,8 +93,8 @@ class EncryptedGuestDiaryClaimPersistenceTest extends ServiceIntegrationTestSupp
     }
 
     @Test
-    @DisplayName("회원이 가져간 암호화 일기를 읽고 같은 요청으로 기존 생성 결과를 조회한다")
-    void decryptAndReplayAfterEncryptedClaim() {
+    @DisplayName("회원이 가져간 암호화 일기는 상세와 재요청과 전환기 검증에 성공한다")
+    void decryptReplayAndVerifyAfterEncryptedClaim() throws SQLException {
         Fixture guest = fixture(1);
         User member = user("회원");
         String original = storedText(guest.diaryId());
@@ -104,6 +110,17 @@ class EncryptedGuestDiaryClaimPersistenceTest extends ServiceIntegrationTestSupp
         assertThatThrownBy(() -> cipher.decrypt(guest.diaryId(), guest.userId(), storedText(guest.diaryId()), 1))
                 .isExactlyInstanceOf(DiarySourceTextCryptoException.class);
         assertReplay(member.getId(), guest);
+
+        Map<String, Object> afterClaim = persistedState(guest.diaryId());
+        try (Connection connection = dataSource.getConnection()) {
+            connection.setReadOnly(true);
+            DiarySourceTextMigration.VerificationResult verified =
+                    new DiarySourceTextMigration(connection, cipher, fingerprints).verify(100);
+
+            assertThat(verified.checked()).isPositive();
+            assertThat(verified.failed()).isZero();
+        }
+        assertThat(persistedState(guest.diaryId())).isEqualTo(afterClaim);
     }
 
     @Test

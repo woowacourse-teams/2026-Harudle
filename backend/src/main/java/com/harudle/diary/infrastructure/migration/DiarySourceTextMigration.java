@@ -113,7 +113,7 @@ public final class DiarySourceTextMigration {
     private Outcome migrateCandidate(UUID diaryId) {
         try {
             return jdbc.transaction(() -> {
-                schema.lockAndRequire(false);
+                schema.lockAndRequire();
                 return migrateRow(diaryId);
             });
         } catch (SQLException | RuntimeException exception) {
@@ -310,22 +310,32 @@ public final class DiarySourceTextMigration {
                 || verified.remaining().unsupportedRows() > 0) {
             return verified;
         }
-        long blocked = jdbc.transaction(() -> {
-            schema.lockAndRequire(true);
-            return finalizeSchema();
+        jdbc.transaction(() -> {
+            schema.lockAndRequire();
+            schema.prepareEncryptedOnlyConstraint();
+            return null;
         });
-        return new VerificationResult(verified.checked(), blocked, inspect(this::readStatus));
-    }
-
-    private long finalizeSchema() throws SQLException {
-        Status current = readStatus();
-        long invalid = current.legacyRows() + current.unsupportedRows();
-        if (invalid > 0) {
+        long blocked = jdbc.transaction(() -> {
+            schema.lockForValidation();
+            Status current = readStatus();
+            long invalid = current.legacyRows() + current.unsupportedRows();
+            if (invalid == 0) {
+                schema.validateEncryptedOnlyConstraint();
+            }
             return invalid;
+        });
+        if (blocked == 0) {
+            jdbc.transaction(() -> {
+                schema.lockAndRequire();
+                schema.removeVersionDefault();
+                return null;
+            });
         }
-        schema.finalizeConstraints();
-        requireReadyInternal();
-        return 0;
+        Status remaining = inspect(this::readStatus);
+        if (blocked == 0) {
+            require(remaining.finalized() && remaining.legacyRows() == 0 && remaining.unsupportedRows() == 0);
+        }
+        return new VerificationResult(verified.checked(), blocked, remaining);
     }
 
     private void requireReadyInternal() throws SQLException {
@@ -379,7 +389,7 @@ public final class DiarySourceTextMigration {
 
     private <T> T inspect(SqlOperation<T> operation) throws SQLException {
         return jdbc.transaction(() -> {
-            schema.lockAndRequire(false);
+            schema.lockAndRequire();
             return operation.run();
         });
     }

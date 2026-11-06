@@ -54,25 +54,52 @@ final class DiarySourceTextMigrationSchema {
         return new Constraint(true, exact, row.getBoolean("convalidated"));
     }
 
-    void finalizeConstraints() throws SQLException {
+    /** Install the new-write guard without scanning existing rows under the exclusive lock. */
+    void prepareEncryptedOnlyConstraint() throws SQLException {
         Constraint constraint = readConstraint();
-        if (!constraint.exists()) {
-            jdbc.execute("ALTER TABLE public.diaries ADD CONSTRAINT " + ENCRYPTED_ONLY_CONSTRAINT
-                    + " CHECK (source_text_version = 1) NOT VALID");
-        } else {
+        if (constraint.exists()) {
             require(constraint.exact());
+            return;
         }
-        jdbc.execute("ALTER TABLE public.diaries VALIDATE CONSTRAINT " + ENCRYPTED_ONLY_CONSTRAINT);
+        jdbc.acquireSchemaChangeLock();
+        jdbc.execute("ALTER TABLE public.diaries ADD CONSTRAINT " + ENCRYPTED_ONLY_CONSTRAINT
+                + " CHECK (source_text_version = 1) NOT VALID");
+    }
+
+    /** Validation scans existing rows while normal reads and writes remain possible. */
+    void validateEncryptedOnlyConstraint() throws SQLException {
+        Constraint constraint = readConstraint();
+        require(constraint.exists() && constraint.exact());
+        if (!constraint.validated()) {
+            jdbc.execute("ALTER TABLE public.diaries VALIDATE CONSTRAINT " + ENCRYPTED_ONLY_CONSTRAINT);
+        }
+    }
+
+    /** A validated exact CHECK and the checked NOT NULL column prove v1 without another row scan. */
+    void removeVersionDefault() throws SQLException {
+        Constraint constraint = readConstraint();
+        require(constraint.exists() && constraint.exact() && constraint.validated());
+        if (isFinalized()) {
+            return;
+        }
+        jdbc.acquireSchemaChangeLock();
         jdbc.execute("ALTER TABLE public.diaries ALTER COLUMN source_text_version DROP DEFAULT");
     }
 
+    void lockAndRequire() {
+        lockAndRequire("ACCESS SHARE");
+    }
+
+    void lockForValidation() {
+        lockAndRequire("SHARE UPDATE EXCLUSIVE");
+    }
+
     /** Keeps schema identity and row visibility stable until this transaction has completed. */
-    void lockAndRequire(boolean exclusiveDiaries) {
+    private void lockAndRequire(String diaryLockMode) {
         try {
             jdbc.execute("SET LOCAL row_security = off");
             jdbc.execute("LOCK TABLE public.diary_generations IN ACCESS SHARE MODE");
-            jdbc.execute("LOCK TABLE public.diaries IN " + (exclusiveDiaries ? "ACCESS EXCLUSIVE" : "ACCESS SHARE")
-                    + " MODE");
+            jdbc.execute("LOCK TABLE public.diaries IN " + diaryLockMode + " MODE");
             requireOrdinaryTable("diaries");
             requireOrdinaryTable("diary_generations");
             requireColumn("diaries", "id", "uuid");

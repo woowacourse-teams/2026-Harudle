@@ -45,6 +45,13 @@ final class DiarySourceTextMigrationSession {
         }
     }
 
+    /** Never queue an exclusive schema lock behind serving requests; bound SQL and idle gaps once acquired. */
+    void acquireSchemaChangeLock() throws SQLException {
+        execute("SET LOCAL statement_timeout = '1s'");
+        execute("SET LOCAL idle_in_transaction_session_timeout = '1s'");
+        execute("LOCK TABLE public.diaries IN ACCESS EXCLUSIVE MODE NOWAIT");
+    }
+
     <T> T transaction(SqlOperation<T> operation) throws SQLException {
         require(!unusable);
         try {
