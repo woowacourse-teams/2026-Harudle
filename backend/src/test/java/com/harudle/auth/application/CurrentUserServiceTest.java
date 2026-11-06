@@ -3,14 +3,12 @@ package com.harudle.auth.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.harudle.TestcontainersConfiguration;
 import com.harudle.auth.domain.OAuthAccount;
 import com.harudle.auth.domain.OAuthProvider;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.OAuthAccountRepository;
 import com.harudle.auth.infrastructure.UserRepository;
-import com.harudle.profile.configuration.ProfileConfiguration;
-import com.harudle.profile.service.ProfileImageUrlResolver;
+import com.harudle.support.AuthJpaTestSupport;
 import java.net.URI;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -18,20 +16,12 @@ import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
-import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers(disabledWithoutDocker = true)
-@DataJpaTest(showSql = false, properties = {
-        "harudle.profile.image-base-url=https://www.harudle.com/profile-images/v1"
-})
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({TestcontainersConfiguration.class, CurrentUserService.class, ProfileConfiguration.class, ProfileImageUrlResolver.class})
-class CurrentUserServiceTest {
+class CurrentUserServiceTest extends AuthJpaTestSupport {
 
     private static final Instant CREATED_AT = Instant.parse("2026-08-11T10:00:00Z");
     private static final Instant DELETED_AT = Instant.parse("2026-08-12T09:00:00Z");

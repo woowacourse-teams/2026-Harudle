@@ -62,6 +62,19 @@ class IntegrationTestContextConfigurationTest {
     }
 
     @Test
+    void authJpaTestsShareContextCacheKey() throws ClassNotFoundException {
+        assertSameContext(
+                "com.harudle.auth.application.CurrentUserServiceTest",
+                "com.harudle.auth.application.NicknameChangeServiceTest",
+                "com.harudle.auth.application.OAuthLoginServiceTest",
+                "com.harudle.auth.application.ProfileImageUploadServiceTest",
+                "com.harudle.auth.application.RefreshTokenServiceTest",
+                "com.harudle.auth.infrastructure.UserRepositoryTest",
+                "com.harudle.profile.service.DefaultPublicProfileReaderTest"
+        );
+    }
+
+    @Test
     void feedPersistenceTestsShareContextCacheKey() throws ClassNotFoundException {
         assertSameContext(
                 "com.harudle.feed.service.FeedDeletionPersistenceTest",
