@@ -13,17 +13,14 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import com.harudle.TestcontainersConfiguration;
 import com.harudle.auth.domain.OAuthAccount;
 import com.harudle.auth.domain.OAuthProvider;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.domain.exception.NicknameAlreadyInUseException;
 import com.harudle.auth.infrastructure.OAuthAccountRepository;
-import com.harudle.auth.infrastructure.ProfileImageCleanupRepository;
 import com.harudle.auth.infrastructure.S3ProfileImageStorage;
 import com.harudle.auth.infrastructure.UserRepository;
-import com.harudle.auth.infrastructure.nickname.NicknameCandidateRepository;
-import com.harudle.common.security.AuthTimeConfiguration;
+import com.harudle.support.AuthJpaTestSupport;
 import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -38,13 +35,9 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.support.StaticListableBeanFactory;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,13 +46,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers(disabledWithoutDocker = true)
-@DataJpaTest(showSql = false)
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({TestcontainersConfiguration.class, AuthTimeConfiguration.class, ProfileImageChangeService.class,
-        ProfileImageUploadService.class, ProfileImageCleanupService.class, ProfileImageCleanupRepository.class,
-        ProfileChangeService.class, NicknameChangeService.class, NicknameCandidateRepository.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
-class ProfileImageUploadServiceTest {
+class ProfileImageUploadServiceTest extends AuthJpaTestSupport {
 
     private static final Instant NOW = Instant.parse("2026-10-20T00:00:00Z");
     private static final byte[] WEBP = {1, 2, 3};
@@ -80,11 +68,6 @@ class ProfileImageUploadServiceTest {
     private JdbcTemplate jdbc;
     @Autowired
     private PlatformTransactionManager transactionManager;
-    @MockitoBean
-    private ProfileImageProcessor processor;
-    @MockitoBean
-    private S3ProfileImageStorage storage;
-
     private User user;
     private String oldKey;
     private String newKey;

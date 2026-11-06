@@ -4,15 +4,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
-import com.harudle.TestcontainersConfiguration;
 import com.harudle.auth.domain.OAuthAccount;
 import com.harudle.auth.domain.OAuthProvider;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.domain.exception.NicknameAlreadyInUseException;
 import com.harudle.auth.infrastructure.OAuthAccountRepository;
 import com.harudle.auth.infrastructure.UserRepository;
-import com.harudle.auth.infrastructure.nickname.NicknameCandidateRepository;
+import com.harudle.support.AuthJpaTestSupport;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -20,15 +21,12 @@ import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -38,11 +36,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers
-@DataJpaTest(showSql = false)
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({TestcontainersConfiguration.class, NicknameChangeService.class, NicknameCandidateRepository.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
-class NicknameChangeServiceTest {
+class NicknameChangeServiceTest extends AuthJpaTestSupport {
 
     private static final Instant NOW = Instant.parse("2026-10-12T00:00:00Z");
     private static final String FIRST = "신나는 수달";
@@ -64,9 +59,12 @@ class NicknameChangeServiceTest {
     @Autowired
     private PlatformTransactionManager transactionManager;
 
-    @BeforeEach
-    void setUp() {
-        jdbc.update("DELETE FROM users");
+    private final List<UUID> createdUsers = new ArrayList<>();
+
+    @AfterEach
+    void tearDown() {
+        // 이 테스트에서 만든 회원만 지운다. 후보 점유는 외래 키(ON DELETE SET NULL)로 함께 해제된다.
+        createdUsers.forEach(id -> jdbc.update("DELETE FROM users WHERE id = ?", id));
     }
 
     @Test
@@ -194,6 +192,7 @@ class NicknameChangeServiceTest {
         User user = new User(null, "OAuth이름", NOW);
         user.assignInitialPublicProfile(nickname, 3, NOW);
         user = users.save(user);
+        createdUsers.add(user.getId());
         accounts.save(new OAuthAccount(user, OAuthProvider.KAKAO, user.getId().toString(), null, NOW));
         jdbc.update("UPDATE nickname_candidates SET assigned_user_id = ? WHERE nickname = ?", user.getId(), nickname);
         return user;

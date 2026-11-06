@@ -16,6 +16,7 @@ import com.harudle.guest.application.exception.GuestTrialAlreadyUsedException;
 import com.harudle.guest.domain.GuestSession;
 import com.harudle.guest.infrastructure.token.GuestSessionTokenHasher;
 import com.harudle.guest.repository.GuestSessionRepository;
+import com.harudle.support.DiarySourceTextTestSupport;
 import com.harudle.support.ServiceIntegrationTestSupport;
 import java.time.Duration;
 import java.time.Instant;
@@ -222,7 +223,7 @@ class GuestDiaryClaimPersistenceTest extends ServiceIntegrationTestSupport {
 
     private GuestFixture saveGuestWithSucceededDiary(String rawToken) {
         User guestUser = saveUser("게스트");
-        Diary diary = diaryRepository.saveAndFlush(Diary.create(guestUser.getId(), DIARY_DATE, "게스트 체험 일기"));
+        Diary diary = diaryRepository.saveAndFlush(Diary.create(guestUser.getId(), DIARY_DATE, "게스트 체험 일기", DiarySourceTextTestSupport.cipher()));
         DiaryGeneration generation = DiaryGeneration.pending(
                 diary.getId(), promptId, UUID.randomUUID(), "b".repeat(64), null
         );

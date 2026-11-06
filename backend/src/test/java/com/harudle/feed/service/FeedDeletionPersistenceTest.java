@@ -8,7 +8,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.harudle.TestcontainersConfiguration;
 import com.harudle.category.service.port.CategoryReader;
 import com.harudle.diary.repository.DiaryLifecycleRepository;
 import com.harudle.diary.service.DiaryDeletionService;
@@ -25,7 +24,7 @@ import com.harudle.feed.service.port.FeedInteractionPort.CounterKind;
 import com.harudle.feed.service.port.FeedLifecycle;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.profile.service.port.PublicProfileReader;
-import com.harudle.push.service.port.FeedPushOutbox;
+import com.harudle.support.FeedPersistenceTestSupport;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
@@ -44,19 +43,13 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.IllegalTransactionStateException;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers(disabledWithoutDocker = true)
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest
-class FeedDeletionPersistenceTest {
+class FeedDeletionPersistenceTest extends FeedPersistenceTestSupport {
     private static final UUID AUTHOR = UUID.fromString("08d69a34-6d70-4d42-a158-671bc67733c9");
     private static final UUID REACTOR = UUID.fromString("fcd3ba43-78ef-4c82-9224-f65c4620b18c");
     private static final UUID DIARY = UUID.fromString("550e8400-e29b-41d4-a716-446655440002");
@@ -79,10 +72,6 @@ class FeedDeletionPersistenceTest {
     @Autowired private DiaryGenerationRepository generations;
     @Autowired private DiaryLifecycleRepository diaryLifecycle;
     @Autowired private FeedInteractionPort interactions;
-    @MockitoBean private CategoryReader categories;
-    @MockitoBean private PublicProfileReader profiles;
-    @MockitoBean private FeedPushOutbox outbox;
-    @MockitoBean private JwtDecoder jwtDecoder;
     private long categoryId;
 
     @BeforeEach
