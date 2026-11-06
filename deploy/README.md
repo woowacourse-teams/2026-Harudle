@@ -6,7 +6,7 @@
 Internet -> host Nginx/Certbot -> 127.0.0.1:3000
                                  -> frontend Nginx
                                     -> React static files
-                                    -> /api/* -> backend:8080 -> RDS/S3/Gemini
+                                    -> /api/* -> backend:8080 -> DB/S3/Gemini
 ```
 
 ## 만료된 Refresh Token 정리
@@ -22,6 +22,8 @@ CloudWatch 앱 로그에서 `event=refresh_token_cleanup_run`의 `deletedCount`�
 
 ## EC2 최초 설정
 
+앱 서버는 Amazon Linux 2023 ARM64입니다. 패키지는 `dnf`로 설치하며 Ubuntu의 `apt`, `sites-available` 방식은 사용하지 않습니다.
+
 Docker, Docker Compose 2.24.4 이상, `jq`를 설치합니다. 검증 컨테이너의 로그 설정을 완전히
 교체하는 [`!override`는 Compose 2.24.4 이상](https://docs.docker.com/reference/compose-file/merge/#replace-value)이 필요합니다.
 `BeforeInstall`은 도구가 없으면 기존 배포 파일을 정리하기 전에 중단합니다.
@@ -30,7 +32,7 @@ CodeDeploy가 사용하는 고정 경로에 운영 환경 파일을 만들고 �
 
 ```bash
 sudo mkdir -p /opt/harudle
-sudo nano /opt/harudle/.env
+sudo vi /opt/harudle/.env
 sudo chmod 600 /opt/harudle/.env
 ```
 
@@ -292,7 +294,7 @@ canary 해시를 검증하며 미승인/누락이면 교체 전에 거절합니�
 
 </details>
 
-**현재 실제 dev/prod 백업 복원·전환 실측·prod 승인은 미수행입니다.** 이 상태를 승인 완료로
+**현재 실제 사용자 v1 데이터의 dev/prod DB 백업 복원·전환 실측·prod 승인은 미수행입니다.** 이 상태를 승인 완료로
 간주하지 않습니다. CodeBuild의 writer 선택만으로 운영 전환을 완료했다고 기록하지 않습니다.
 
 ### 원문 암호화 V44 잠금과 점검 배포
@@ -597,9 +599,14 @@ SH
 
 구키는 현재 DB뿐 아니라 보존 중인 과거 DB 백업의 복원에 필요한 기간까지 보관합니다.
 실행자·확인 시각·checked/failed·키 ID·키링/canary 백업 세대·DB 백업 식별자는 기록하되
-원문·키 값·암호문·지문·SQL 진단은 기록하지 않습니다. **실제 dev/prod 복구·백업 복원은 이 저장소
+원문·키 값·암호문·지문·SQL 진단은 기록하지 않습니다. **실제 사용자 v1 데이터를 포함한 dev/prod DB 복구와 백업 복원은 이 저장소
 작업에서 수행하지 않았습니다.** 기존 v0 전환은 위 [온라인 전환 절차](#기존-원문지문의-온라인-전환-423),
 과거 평문/SHA의 보존·폐기는 [백업 정책](../backend/docs/diary-source-text-backup-policy.md)을 따릅니다.
+
+실제 준비와 복원 확인의 범위는 [dev 키 백업 기록](../backend/docs/diary-source-text-integration.md#2026-11-04-dev-키-준비와-백업-검증-기록)을 따른다.
+개인 백업의 키 복원과 canary 검증은 팀원 두 명의 독립 접근이나 실제 v1 데이터 복원 완료를
+대신하지 않는다. 팀 공동 보관소 식별자, 갱신 담당자와 대체 담당자, 백업 세대 및 개별 접근과
+복원 결과는 비밀값 없이 팀 Notion에 관리한다. 미확인 항목을 완료로 표시하지 않는다.
 
 ### Docker 빌드 최적화
 
@@ -766,11 +773,12 @@ DEPLOYMENT_GROUP_NAME=harudle-dev bash -c '
 bash deploy/scripts/test_image_environment.sh
 ```
 
-호스트 Nginx 설정 예시를 적용합니다.
+호스트 Nginx 설정 예시를 적용합니다. 서버는 Amazon Linux 2023이며 `/etc/nginx/conf.d/*.conf`만 읽습니다.
+`sites-available`, `sites-enabled` 디렉터리는 없으므로 심볼릭 링크를 만들지 않습니다.
+파일 이름은 prod `harudle-prod.conf`, dev `harudle-dev.conf`입니다.
 
 ```bash
-sudo cp deploy/nginx/harudle.conf.example /etc/nginx/sites-available/harudle
-sudo ln -s /etc/nginx/sites-available/harudle /etc/nginx/sites-enabled/harudle
+sudo cp deploy/nginx/harudle.conf.example /etc/nginx/conf.d/harudle-prod.conf
 sudo nginx -t
 sudo systemctl reload nginx
 ```

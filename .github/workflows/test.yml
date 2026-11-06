@@ -17,8 +17,6 @@ on:
       - main
       - develop-backend
       - develop-frontend
-      # #450 is reviewed against #442 until the compatible reader is merged.
-      - codex/422-diary-source-encryption
   workflow_dispatch:
 
 permissions:
@@ -174,7 +172,7 @@ jobs:
 
   frontend-test:
     name: Frontend Test
-    if: github.event_name != 'push' && github.base_ref != 'develop-backend' && github.base_ref != 'codex/422-diary-source-encryption'
+    if: github.event_name != 'push' && github.base_ref != 'develop-backend'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:

@@ -223,6 +223,13 @@ public class DiaryGeneration {
         );
     }
 
+    public void rebindSucceededRequestFingerprint(String requestFingerprint) {
+        if (status != GenerationStatus.SUCCEEDED) {
+            throw new IllegalStateException("생성이 완료된 일기의 요청 지문만 이전할 수 있습니다.");
+        }
+        this.requestFingerprint = normalizeRequestFingerprint(requestFingerprint);
+    }
+
     public boolean notUsesImageObjectKey(String candidate) {
         return imageObjectKey == null || !imageObjectKey.equals(candidate);
     }

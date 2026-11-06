@@ -15,7 +15,8 @@ public final class CookieApiCsrfProtectionMatcher implements RequestMatcher {
             "/api/v1/auth/refresh",
             "/api/v1/auth/logout",
             "/api/v1/guest/session",
-            "/api/v1/guest/diaries"
+            "/api/v1/guest/diaries",
+            "/api/v1/guest/diary-claim"
     );
 
     private final RequestMatcher cookieApiMatcher = new OrRequestMatcher(COOKIE_API_PATHS.stream()

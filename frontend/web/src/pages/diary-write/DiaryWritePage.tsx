@@ -1,4 +1,5 @@
 import { DIARY_WRITE_COPY } from './copy';
+import { RequestError } from '../../shared/api';
 import { useNavigate } from 'react-router';
 import PageHeader from '../../shared/PageHeader';
 import ActionButton from '../../shared/ActionButton';
@@ -63,7 +64,16 @@ const DiaryWritePage = () => {
         void navigate(-1);
       },
       onError: (error): void => {
-        addToast({ type: 'error', message: error.message }, 2000);
+        const action =
+          error instanceof RequestError ? error.problem.action : undefined;
+        addToast(
+          {
+            type: 'error',
+            message: error.message,
+            ...(action ? { description: action } : {}),
+          },
+          2000,
+        );
       },
     });
   };

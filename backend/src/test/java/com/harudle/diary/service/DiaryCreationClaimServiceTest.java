@@ -5,44 +5,46 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import com.harudle.support.DiarySourceTextTestSupport;
 import com.harudle.diary.domain.Diary;
 import com.harudle.diary.domain.DiarySourceTextCipher;
 import com.harudle.diary.infrastructure.crypto.DiarySourceTextCryptoException;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
+import com.harudle.diary.service.exception.DiarySourceTextWriteException;
 import com.harudle.generation.config.GenerationLifecycleProperties;
 import com.harudle.generation.config.GenerationWorkerProperties;
 import com.harudle.generation.diary.domain.DiaryGeneration;
 import com.harudle.generation.diary.domain.GenerationErrorCode;
 import com.harudle.generation.diary.domain.GenerationStatus;
-import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.diary.repository.DiaryGenerationAdmissionLock;
+import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.diary.service.DiaryGenerationCompletionService;
-import com.harudle.generation.diary.service.RequestFingerprintGenerator;
 import com.harudle.generation.diary.service.GenerationQueueMetrics;
+import com.harudle.generation.diary.service.RequestFingerprintGenerator;
 import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
-import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
 import com.harudle.generation.diary.service.exception.GenerationCapacityExceededException;
+import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
 import com.harudle.generation.diary.service.exception.IdempotencyKeyConflictException;
 import com.harudle.generation.prompt.domain.GenerationPrompt;
 import com.harudle.generation.prompt.repository.GenerationPromptRepository;
+import com.harudle.support.DiarySourceTextTestSupport;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
-import java.util.Optional;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -95,6 +97,32 @@ class DiaryCreationClaimServiceTest {
         lenient().when(requestFingerprintGenerator.generate(any(GenerateDiaryImageCommand.class)))
                 .thenAnswer(invocation -> fingerprintFor(invocation.getArgument(0)));
         claimService = createClaimService(true);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"ENCRYPT", "FINGERPRINT"})
+    @DisplayName("신규 접수의 암호화 실패만 저장 전용 오류로 변환한다")
+    void classifyNewClaimProtectionFailure(String failurePoint) {
+        when(diaryGenerationRepository.findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY))
+                .thenReturn(Optional.empty());
+        GenerationPrompt prompt = createPrompt();
+        when(generationPromptRepository.findFirstByOrderByIdDesc()).thenReturn(Optional.of(prompt));
+        if ("ENCRYPT".equals(failurePoint)) {
+            doThrow(new DiarySourceTextCryptoException()).when(sourceTextCipher)
+                    .encrypt(any(UUID.class), any(UUID.class), anyString());
+        } else {
+            when(diaryRepository.save(any(Diary.class))).thenAnswer(invocation -> invocation.getArgument(0));
+            doThrow(new DiarySourceTextCryptoException()).when(sourceTextCipher)
+                    .protectRequestFingerprint(any(UUID.class), any(UUID.class), anyString(), anyInt(), anyString());
+        }
+
+        assertThatThrownBy(() -> claimService.enqueue(createCommand("오늘의 일기"), true))
+                .isInstanceOf(DiarySourceTextWriteException.class)
+                .hasNoCause();
+        verify(diaryGenerationRepository, never()).saveAndFlush(any(DiaryGeneration.class));
+        if ("ENCRYPT".equals(failurePoint)) {
+            verify(diaryRepository, never()).save(any(Diary.class));
+        }
     }
 
     @ParameterizedTest
@@ -273,32 +301,14 @@ class DiaryCreationClaimServiceTest {
 
     @ParameterizedTest
     @ValueSource(ints = {0xD800, 0xDC00})
-    @DisplayName("고립된 서로게이트 재요청은 정상 물음표 요청과 같게 처리하지 않고 복호화와 상태 변경 전에 거절한다")
-    void rejectMalformedReplayBeforeDecryptionOrStateChanges(int surrogate) {
-        when(requestFingerprintGenerator.generate(any(GenerateDiaryImageCommand.class))).thenCallRealMethod();
-        CreateDiaryCommand original = createCommand("?");
-        Diary diary = Diary.create(USER_ID, DIARY_DATE, original.sourceText(), DiarySourceTextTestSupport.cipher());
-        DiaryGeneration generation = createGeneration(original, diary);
-        ReflectionTestUtils.setField(generation, "updatedAt", NOW.minus(Duration.ofMinutes(31)));
-        when(diaryGenerationRepository.findByIdempotencyKeyForUpdate(IDEMPOTENCY_KEY))
-                .thenReturn(Optional.of(generation));
-        when(diaryRepository.findByIdIncludingDeletedForUpdate(diary.getId())).thenReturn(Optional.of(diary));
-        CreateDiaryCommand malformed = createCommand(String.valueOf((char) surrogate));
-
-        assertThatThrownBy(() -> claimService.claim(malformed, true))
+    @DisplayName("고립된 서로게이트 재요청은 요청 명령 생성 단계에서 거절한다")
+    void rejectMalformedReplayBeforeClaim(int surrogate) {
+        assertThatThrownBy(() -> createCommand(String.valueOf((char) surrogate)))
                 .isExactlyInstanceOf(IllegalArgumentException.class)
-                .hasMessage("요청 지문에 유효하지 않은 문자가 포함되어 있습니다.")
+                .hasMessage("일기 내용에 올바르지 않은 문자가 포함되어 있습니다.")
                 .hasNoCause();
-        assertThatThrownBy(() -> claimService.findExistingClaim(malformed))
-                .isExactlyInstanceOf(IllegalArgumentException.class)
-                .hasMessage("요청 지문에 유효하지 않은 문자가 포함되어 있습니다.")
-                .hasNoCause();
-        verifyNoInteractions(sourceTextCipher, completionService, generationPromptRepository);
-        verify(diaryRepository, never()).save(any(Diary.class));
-        verify(diaryGenerationRepository, never()).saveAndFlush(any(DiaryGeneration.class));
-        assertThat(generation.getStatus()).isEqualTo(GenerationStatus.PROCESSING);
-        assertThat(generation.getCompletedAt()).isNull();
-        assertThat(diary.isDeleted()).isFalse();
+        verifyNoInteractions(sourceTextCipher, completionService, generationPromptRepository,
+                diaryRepository, diaryGenerationRepository);
     }
 
     @Test

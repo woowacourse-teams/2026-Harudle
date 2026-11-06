@@ -39,6 +39,7 @@ export interface ProblemDetails {
   readonly instance: string;
   readonly code: string; // TODO: 정확하게
   readonly traceId?: string;
+  readonly action?: string;
   readonly errors?: ErrorDetail[];
 }
 
@@ -71,6 +72,7 @@ export const isProblemDetails = (value: unknown): value is ProblemDetails => {
     typeof value.instance === 'string' &&
     typeof value.code === 'string' &&
     (value.traceId === undefined || typeof value.traceId === 'string') &&
+    (value.action === undefined || typeof value.action === 'string') &&
     (value.errors === undefined ||
       (Array.isArray(value.errors) && value.errors.every(isErrorDetail)))
   );
