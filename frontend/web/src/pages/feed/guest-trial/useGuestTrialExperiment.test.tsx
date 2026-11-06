@@ -20,9 +20,16 @@ import { ToastProvider } from '../../../shared/ToastContext';
 import type { DiaryDetailResponse } from '../../../domain/diary/diaryDetail';
 import type { DiaryGenerationStatusResponse } from '../../../domain/diary/diaryGenerate';
 import { RequestError } from '../../../shared/api';
+import * as guestDiaryValidation from '../../landing/guestDiaryValidation';
 import type * as GuestTrialApi from './guestTrialApi';
 import useGuestTrialExperiment from './useGuestTrialExperiment';
 import GuestTrialNotice from './GuestTrialNotice';
+import {
+  readGuestTrialDiaryId,
+  readGuestTrialGenerationId,
+  removeGuestTrialDiaryId,
+  removeGuestTrialGenerationId,
+} from './guestTrialStorage';
 import { GUEST_TRIAL_COPY } from './copy';
 
 const DIARY_ID = '0b9c1c5e-6f0a-4f0e-9a51-6c1c3b2f7d10';
@@ -99,7 +106,7 @@ const succeeded: DiaryGenerationStatusResponse = {
   errorCode: null,
 };
 
-const problem = (status: 404 | 409 | 503, code: string): RequestError => {
+const problem = (status: 401 | 404 | 409 | 503, code: string): RequestError => {
   return new RequestError({
     type: 'about:blank',
     title: code,
@@ -131,8 +138,8 @@ const TestFeed = () => {
   );
 };
 
-const renderExperiment = (): void => {
-  render(
+const renderExperiment = (): ReturnType<typeof render> => {
+  return render(
     <ToastProvider>
       <GuestTrialNotice />
       <TestFeed />
@@ -224,6 +231,9 @@ beforeEach((): void => {
 });
 
 afterEach((): void => {
+  jest.restoreAllMocks();
+  removeGuestTrialDiaryId();
+  removeGuestTrialGenerationId();
   localStorage.clear();
   sessionStorage.clear();
 });
@@ -400,6 +410,81 @@ describe('비로그인 체험 흐름', (): void => {
     ).toHaveLength(1);
   });
 
+  it('접수 응답을 잃고 다음 날 피드에 돌아와도 최초 키와 날짜로 재시도한다', async (): Promise<void> => {
+    const user = userEvent.setup();
+    const today = jest
+      .spyOn(guestDiaryValidation, 'getKoreanToday')
+      .mockReturnValue('2026-11-06');
+    mockSubmit.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    const firstVisit = renderExperiment();
+    await openInputFromEntry(user);
+    await user.type(
+      screen.getByRole('textbox', { name: '오늘의 이야기' }),
+      STORY,
+    );
+    await user.click(
+      screen.getByRole('button', { name: '이 이야기로 만화 만들기' }),
+    );
+    await screen.findByText(GUEST_TRIAL_COPY.submitFailed);
+    firstVisit.unmount();
+
+    today.mockReturnValue('2026-11-07');
+    renderExperiment();
+    await openInputFromEntry(user);
+    await user.type(
+      screen.getByRole('textbox', { name: '오늘의 이야기' }),
+      STORY,
+    );
+    await user.click(
+      screen.getByRole('button', { name: '이 이야기로 만화 만들기' }),
+    );
+    await screen.findByText(GUEST_TRIAL_COPY.readyTitle);
+
+    const [first, second] = mockSubmit.mock.calls;
+    expect(second?.[0]).toEqual(first?.[0]);
+    expect(second?.[0].request.diaryDate).toBe('2026-11-06');
+    expect(
+      mockTrack.mock.calls.filter(
+        ([event]) => event === 'guest_trial_submitted',
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('sessionStorage에 쓸 수 없어도 완료 조회와 결과 확인을 이어간다', async (): Promise<void> => {
+    const user = userEvent.setup();
+    const setItem = Storage.prototype.setItem;
+    jest.spyOn(Storage.prototype, 'setItem').mockImplementation(function (
+      this: Storage,
+      key: string,
+      value: string,
+    ): void {
+      if (key === GENERATION_ID_KEY || key === DIARY_ID_KEY) {
+        throw new DOMException('저장 공간이 부족합니다.', 'QuotaExceededError');
+      }
+      setItem.call(this, key, value);
+    });
+    renderExperiment();
+    await openInputFromEntry(user);
+    await user.type(
+      screen.getByRole('textbox', { name: '오늘의 이야기' }),
+      STORY,
+    );
+    await user.click(
+      screen.getByRole('button', { name: '이 이야기로 만화 만들기' }),
+    );
+
+    await user.click(await screen.findByRole('button', { name: '보러가기' }));
+    expect(
+      await screen.findByRole('img', {
+        name: GUEST_TRIAL_COPY.maskedImageLabel,
+      }),
+    ).toBeInTheDocument();
+    expect(mockStatus).toHaveBeenCalledWith(GENERATION_ID);
+    expect(readGuestTrialGenerationId()).toBeNull();
+    expect(readGuestTrialDiaryId()).toBe(DIARY_ID);
+    expect(sessionStorage.getItem(DIARY_ID_KEY)).toBeNull();
+  });
+
   it('완료된 ID가 남아 있으면 비로그인 상태에서 claim 없이 가려진 결과를 다시 연다', async (): Promise<void> => {
     const user = userEvent.setup();
     localStorage.setItem('harudle.has-ever-logged-in', 'true');
@@ -489,6 +574,49 @@ describe('로그인 후 claim', (): void => {
     ).toBeInTheDocument();
     expect(mockResolveClaim).toHaveBeenCalledTimes(2);
   });
+
+  it.each(['claimed', 'retryable'] as const)(
+    'claim 중 피드를 나갔다 돌아오면 기존 요청의 %s 결과를 받는다',
+    async (type): Promise<void> => {
+      let complete:
+        ((outcome: GuestTrialApi.GuestTrialClaimOutcome) => void) | undefined;
+      mockResolveClaim.mockReturnValueOnce(
+        new Promise((resolve): void => {
+          complete = resolve;
+        }),
+      );
+      const firstVisit = renderExperiment();
+      expect(mockResolveClaim).toHaveBeenCalledTimes(1);
+      firstVisit.unmount();
+      renderExperiment();
+      expect(mockResolveClaim).toHaveBeenCalledTimes(1);
+
+      await act(async (): Promise<void> => {
+        complete?.(
+          type === 'claimed'
+            ? { type: 'claimed', diary: memberDiary }
+            : { type: 'retryable', errorCode: 'NETWORK_ERROR' },
+        );
+      });
+
+      if (type === 'claimed') {
+        expect(
+          await screen.findByText(GUEST_TRIAL_COPY.claimedBadge),
+        ).toBeInTheDocument();
+        expect(sessionStorage.getItem(DIARY_ID_KEY)).toBeNull();
+      } else {
+        expect(
+          await screen.findByRole('button', { name: '다시 시도' }),
+        ).toBeInTheDocument();
+        expect(sessionStorage.getItem(DIARY_ID_KEY)).toBe(DIARY_ID);
+      }
+      expect(
+        mockTrack.mock.calls.filter(
+          ([event]) => event === 'guest_trial_claim_result',
+        ),
+      ).toHaveLength(1);
+    },
+  );
 
   it.each([
     [
@@ -600,6 +728,70 @@ describe('피드 밖에서의 완료 알림', (): void => {
 
 // 결과 없이 끝난 상태는 같은 방문 동안 유지되므로 파일의 마지막에 확인한다.
 describe('결과 없이 끝난 체험', (): void => {
+  it('대기 시간 초과는 최종 실패로 안내하고 작업 조회를 끝낸다', async (): Promise<void> => {
+    mockStatus.mockResolvedValueOnce({
+      id: GENERATION_ID,
+      status: 'FAILED',
+      diaryId: null,
+      errorCode: 'GENERATION_PENDING_TIMEOUT',
+    });
+    sessionStorage.setItem(GENERATION_ID_KEY, GENERATION_ID);
+    renderExperiment();
+
+    expect(
+      await screen.findByText('네컷만화 생성 대기 시간이 초과됐어요.'),
+    ).toBeInTheDocument();
+    expect(readGuestTrialGenerationId()).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: GUEST_TRIAL_COPY.statusCheckRetry }),
+    ).toBeNull();
+  });
+
+  it('결과 조회 통신 오류는 ID를 유지하고 다시 불러올 수 있다', async (): Promise<void> => {
+    const user = userEvent.setup();
+    mockGetDiary.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    sessionStorage.setItem(DIARY_ID_KEY, DIARY_ID);
+    renderExperiment();
+    await openInputFromEntry(user);
+
+    await user.click(
+      await screen.findByRole('button', {
+        name: GUEST_TRIAL_COPY.resultReload,
+      }),
+    );
+    expect(
+      await screen.findByRole('img', {
+        name: GUEST_TRIAL_COPY.maskedImageLabel,
+      }),
+    ).toBeInTheDocument();
+    expect(readGuestTrialDiaryId()).toBe(DIARY_ID);
+    expect(mockGetDiary).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([401, 404] as const)(
+    '결과 조회 %s는 ID를 정리하고 재시도 대신 로그인 동선을 제공한다',
+    async (status): Promise<void> => {
+      const user = userEvent.setup();
+      mockGetDiary.mockRejectedValueOnce(
+        problem(status, 'GUEST_DIARY_NOT_FOUND'),
+      );
+      sessionStorage.setItem(DIARY_ID_KEY, DIARY_ID);
+      renderExperiment();
+      await openInputFromEntry(user);
+
+      expect(
+        await screen.findByText(GUEST_TRIAL_COPY.resultUnavailable),
+      ).toBeInTheDocument();
+      expect(readGuestTrialDiaryId()).toBeNull();
+      expect(
+        screen.queryByRole('button', { name: GUEST_TRIAL_COPY.resultReload }),
+      ).toBeNull();
+      await user.click(screen.getByRole('button', { name: '로그인' }));
+      expect(mockNavigate).toHaveBeenCalledWith('/login');
+      expect(mockGetDiary).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it('남은 작업을 서버에서 찾을 수 없으면 ID를 지우고 기존 + 동작으로 돌아간다', async (): Promise<void> => {
     const user = userEvent.setup();
     mockStatus.mockRejectedValueOnce(problem(404, 'GENERATION_NOT_FOUND'));

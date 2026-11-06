@@ -484,6 +484,8 @@ const arrowHeadStyle = css`
 
 const guideTextStyle = css`
   position: fixed;
+  bottom: 16px;
+  overflow-y: auto;
   left: max(29px, calc((100vw - 430px) / 2 + 29px));
   right: max(25px, calc((100vw - 430px) / 2 + 25px));
   color: ${theme.colors.foreground.onBrand};

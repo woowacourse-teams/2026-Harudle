@@ -7,6 +7,10 @@ const DIARY_ID_KEY = 'harudle.guest-trial.diary-id';
 const GENERATION_ID_KEY = 'harudle.guest-trial.generation-id';
 const GUIDE_SEEN_KEY = 'harudle.guest-trial.guide-seen';
 
+// 저장 실패 때만 메모리 값을 쓰고, 저장할 수 있게 되면 다시 sessionStorage를 읽는다.
+let diaryIdFallback: string | null | undefined;
+let generationIdFallback: string | null | undefined;
+
 // 피드의 체험 화면과 모든 화면의 체험 알림이 같은 값을 보도록 변경을 알린다.
 const listeners = new Set<() => void>();
 
@@ -22,6 +26,7 @@ const subscribe = (listener: () => void): (() => void) => {
 };
 
 export const readGuestTrialDiaryId = (): string | null => {
+  if (diaryIdFallback !== undefined) return diaryIdFallback;
   try {
     const value: unknown = sessionStorage.getItem(DIARY_ID_KEY);
     return isCanonicalUuid(value) ? value : null;
@@ -33,8 +38,9 @@ export const readGuestTrialDiaryId = (): string | null => {
 export const saveGuestTrialDiaryId = (diaryId: string): void => {
   try {
     sessionStorage.setItem(DIARY_ID_KEY, diaryId);
+    diaryIdFallback = undefined;
   } catch {
-    // 저장하지 못해도 현재 화면의 결과 확인은 계속한다.
+    diaryIdFallback = diaryId;
   }
   notifyListeners();
 };
@@ -42,13 +48,15 @@ export const saveGuestTrialDiaryId = (diaryId: string): void => {
 export const removeGuestTrialDiaryId = (): void => {
   try {
     sessionStorage.removeItem(DIARY_ID_KEY);
+    diaryIdFallback = undefined;
   } catch {
-    // 저장소를 쓸 수 없으면 다음 진입에서 서버 응답으로 다시 판단한다.
+    diaryIdFallback = null;
   }
   notifyListeners();
 };
 
 export const readGuestTrialGenerationId = (): string | null => {
+  if (generationIdFallback !== undefined) return generationIdFallback;
   try {
     const value: unknown = sessionStorage.getItem(GENERATION_ID_KEY);
     return isCanonicalUuid(value) ? value : null;
@@ -60,8 +68,9 @@ export const readGuestTrialGenerationId = (): string | null => {
 export const saveGuestTrialGenerationId = (generationId: string): void => {
   try {
     sessionStorage.setItem(GENERATION_ID_KEY, generationId);
+    generationIdFallback = undefined;
   } catch {
-    // 저장하지 못하면 현재 화면에서만 완료를 확인한다.
+    generationIdFallback = generationId;
   }
   notifyListeners();
 };
@@ -69,8 +78,9 @@ export const saveGuestTrialGenerationId = (generationId: string): void => {
 export const removeGuestTrialGenerationId = (): void => {
   try {
     sessionStorage.removeItem(GENERATION_ID_KEY);
+    generationIdFallback = undefined;
   } catch {
-    // 남은 ID는 다음 조회에서 서버 응답으로 정리된다.
+    generationIdFallback = null;
   }
   notifyListeners();
 };
