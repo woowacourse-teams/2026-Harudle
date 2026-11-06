@@ -15,8 +15,29 @@ import { GUEST_TRIAL_COPY } from './copy';
 
 const CLAIM_TOAST_ID = 'guest-trial-claim';
 
-// 피드가 다시 마운트돼도 같은 claim을 동시에 보내지 않는다.
-let claimingDiaryId: string | null = null;
+// 다시 들어온 피드도 진행 중인 요청의 결과를 함께 받는다.
+let pendingClaim: {
+  readonly diaryId: string;
+  readonly promise: Promise<GuestTrialClaimOutcome>;
+} | null = null;
+
+const getClaimPromise = (
+  diaryId: string,
+  onResult: (outcome: GuestTrialClaimOutcome) => void,
+): Promise<GuestTrialClaimOutcome> => {
+  if (pendingClaim?.diaryId === diaryId) return pendingClaim.promise;
+
+  const promise = resolveGuestTrialClaim(diaryId)
+    .then((outcome): GuestTrialClaimOutcome => {
+      onResult(outcome);
+      return outcome;
+    })
+    .finally((): void => {
+      if (pendingClaim?.promise === promise) pendingClaim = null;
+    });
+  pendingClaim = { diaryId, promise };
+  return promise;
+};
 
 interface GuestTrialClaimProps {
   readonly diaryId: string;
@@ -31,7 +52,6 @@ const GuestTrialClaim = ({ diaryId }: GuestTrialClaimProps) => {
   const [claimedDiary, setClaimedDiary] = useState<DiaryDetailResponse | null>(
     null,
   );
-  const isMountedRef = useRef(false);
 
   const closeClaimToast = (): void => deleteToast(CLAIM_TOAST_ID);
 
@@ -118,37 +138,30 @@ const GuestTrialClaim = ({ diaryId }: GuestTrialClaimProps) => {
   };
 
   // 토스트의 재시도 액션에서도 호출하므로 렌더 상태 대신 고정된 값만 사용한다.
-  const attemptClaim = async (): Promise<void> => {
-    if (claimingDiaryId === diaryId) return;
-    claimingDiaryId = diaryId;
-
-    try {
-      const outcome = await resolveGuestTrialClaim(diaryId);
+  const attemptClaim = async (isActive: () => boolean): Promise<void> => {
+    const outcome = await getClaimPromise(diaryId, (result): void => {
       track('guest_trial_claim_result', {
         diary_id: diaryId,
-        success: outcome.type === 'claimed',
-        error_code: outcome.type === 'claimed' ? null : outcome.errorCode,
+        success: result.type === 'claimed',
+        error_code: result.type === 'claimed' ? null : result.errorCode,
       });
-      if (!isMountedRef.current) return;
-
-      handleOutcome(outcome, (): void => void attemptClaim());
-    } finally {
-      claimingDiaryId = null;
-    }
+    });
+    if (!isActive()) return;
+    handleOutcome(outcome, (): void => void attemptClaim(isActive));
   };
 
-  const claimOnMount = useEffectEvent((): void => {
-    void attemptClaim();
+  const claimOnMount = useEffectEvent((isActive: () => boolean): void => {
+    void attemptClaim(isActive);
   });
   const removeClaimToast = useEffectEvent((): void => closeClaimToast());
 
   // 재렌더마다 다시 요청하지 않도록 마운트 때 한 번만 시도한다.
   useEffect((): (() => void) => {
-    isMountedRef.current = true;
-    claimOnMount();
+    let isActive = true;
+    claimOnMount((): boolean => isActive);
 
     return (): void => {
-      isMountedRef.current = false;
+      isActive = false;
       removeClaimToast();
     };
   }, []);

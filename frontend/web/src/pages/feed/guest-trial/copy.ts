@@ -49,6 +49,7 @@ export const GUEST_TRIAL_COPY = {
   keepBrowsingAction: '피드 더 구경하기',
   resultLoading: '만화를 불러오는 중이에요',
   resultLoadFailed: '만화를 불러오지 못했어요',
+  resultUnavailable: '체험 만화를 더 이상 불러올 수 없어요',
   resultReload: '다시 불러오기',
 
   claimedSheetTitle: '내 앨범에 저장된 만화',

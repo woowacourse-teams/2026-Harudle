@@ -12,7 +12,11 @@ export type SubmitGuestTrial = (sourceText: string) => Promise<string | null>;
 interface SubmissionAttempt {
   readonly sourceText: string;
   readonly idempotencyKey: string;
+  readonly diaryDate: string;
 }
+
+// 접수 응답을 확인하기 전에는 피드를 다시 열어도 같은 요청을 재사용한다.
+let pendingAttempt: SubmissionAttempt | null = null;
 
 const getSubmitErrorMessage = (error: unknown): string => {
   if (!(error instanceof RequestError)) return GUEST_TRIAL_COPY.submitFailed;
@@ -37,7 +41,6 @@ const useGuestTrialSubmit = (): SubmitGuestTrial => {
   const { track } = useAnalytics();
   const isSubmittingRef = useRef(false);
   const hasGuestSessionRef = useRef(false);
-  const attemptRef = useRef<SubmissionAttempt | null>(null);
 
   return useCallback<SubmitGuestTrial>(
     async (sourceText) => {
@@ -45,12 +48,16 @@ const useGuestTrialSubmit = (): SubmitGuestTrial => {
       isSubmittingRef.current = true;
 
       // 응답을 잃은 같은 제출을 다시 보낼 때는 보관한 키로 중복 생성을 막는다.
-      const previousAttempt = attemptRef.current;
+      const previousAttempt = pendingAttempt;
       const attempt =
         previousAttempt?.sourceText === sourceText
           ? previousAttempt
-          : { sourceText, idempotencyKey: crypto.randomUUID() };
-      attemptRef.current = attempt;
+          : {
+              sourceText,
+              idempotencyKey: crypto.randomUUID(),
+              diaryDate: getKoreanToday(),
+            };
+      pendingAttempt = attempt;
       if (attempt !== previousAttempt) track('guest_trial_submitted');
 
       try {
@@ -59,9 +66,13 @@ const useGuestTrialSubmit = (): SubmitGuestTrial => {
           hasGuestSessionRef.current = true;
         }
         const { generationId } = await submitGuestTrialDiary({
-          request: { diaryDate: getKoreanToday(), sourceText },
+          request: {
+            diaryDate: attempt.diaryDate,
+            sourceText: attempt.sourceText,
+          },
           idempotencyKey: attempt.idempotencyKey,
         });
+        if (pendingAttempt === attempt) pendingAttempt = null;
         saveGuestTrialGenerationId(generationId);
         return null;
       } catch (error: unknown) {

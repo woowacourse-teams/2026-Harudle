@@ -29,6 +29,10 @@ export const DIARY_GENERATION_FAILURE_MESSAGES = {
     '네컷만화 생성이 중단됐어요.',
     '네컷만화를 다시 만들어 주세요.',
   ],
+  GENERATION_PENDING_TIMEOUT: [
+    '네컷만화 생성 대기 시간이 초과됐어요.',
+    '잠시 후 다시 만들어 주세요.',
+  ],
   IMAGE_STORAGE_ERROR: [
     '네컷만화 저장에 실패했어요.',
     '잠시 후 다시 만들어 주세요.',

@@ -1,18 +1,25 @@
 import { css } from '@emotion/react';
-import { useEffect, useState, type Ref } from 'react';
+import { useEffect, useEffectEvent, useState, type Ref } from 'react';
 import ActionButton from '../../../shared/ActionButton';
 import BottomSheet, {
   type BottomSheetHandle,
 } from '../../../shared/BottomSheet';
 import LoadingSpinner from '../../../shared/LoadingSpinner';
-import type { ApiRequest } from '../../../shared/api';
+import { RequestError, type ApiRequest } from '../../../shared/api';
+import { useToastContext } from '../../../shared/ToastContext';
 import { useAnalytics } from '../../../posthog/useAnalytics';
 import type { DiaryDetailResponse } from '../../../domain/diary/diaryDetail';
 import DiaryImageDownloadButton from '../../diary-detail/DiaryImageDownloadButton';
 import { theme } from '../../../styles/theme';
 import { getGuestTrialDiary, type GuestTrialDiary } from './guestTrialApi';
 import GuestTrialMaskedComic from './GuestTrialMaskedComic';
+import {
+  markGuestTrialEndedWithoutResult,
+  removeGuestTrialDiaryId,
+} from './guestTrialStorage';
 import { GUEST_TRIAL_COPY } from './copy';
+
+const RESULT_UNAVAILABLE_TOAST_ID = 'guest-trial-result-unavailable';
 
 interface FullComicProps {
   readonly imageUrl: string;
@@ -41,11 +48,35 @@ const GuestTrialResultContent = ({
   onKeepBrowsing,
 }: GuestTrialResultContentProps) => {
   const { track } = useAnalytics();
+  const { addToast, deleteToast } = useToastContext();
   const [request, setRequest] = useState<ApiRequest<GuestTrialDiary>>({
     status: 'loading',
   });
   const [attempt, setAttempt] = useState(0);
   const [hasImageError, setHasImageError] = useState(false);
+
+  const handleUnavailable = useEffectEvent((): void => {
+    onKeepBrowsing();
+    markGuestTrialEndedWithoutResult();
+    removeGuestTrialDiaryId();
+    addToast(
+      {
+        type: 'error',
+        message: GUEST_TRIAL_COPY.resultUnavailable,
+        description: GUEST_TRIAL_COPY.generationLostDescription,
+        action: {
+          label: GUEST_TRIAL_COPY.claimReauthAction,
+          onClick: (): void => {
+            deleteToast(RESULT_UNAVAILABLE_TOAST_ID);
+            onLogin();
+          },
+        },
+        onClose: (): void => deleteToast(RESULT_UNAVAILABLE_TOAST_ID),
+      },
+      'infinite',
+      RESULT_UNAVAILABLE_TOAST_ID,
+    );
+  });
 
   useEffect((): (() => void) => {
     let isActive = true;
@@ -55,6 +86,13 @@ const GuestTrialResultContent = ({
       })
       .catch((error: unknown): void => {
         if (!isActive) return;
+        if (
+          error instanceof RequestError &&
+          (error.problem.status === 401 || error.problem.status === 404)
+        ) {
+          handleUnavailable();
+          return;
+        }
         setRequest({
           status: 'error',
           error:
