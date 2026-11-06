@@ -156,10 +156,9 @@ def build_fixture(base_url, per_month, accounts=None, run_name=None, member_coun
                     "INSERT INTO diaries (id, user_id, diary_date, source_text) VALUES "
                     f"({quote(diary_id)}, {quote(user_id)}, {quote(diary_date)}, '부하 테스트 준비 데이터');")
                 statements.append(
-                    "INSERT INTO diary_generations (id, diary_id, requested_by_user_id, prompt_id, idempotency_key, "
-                    "request_fingerprint, status, storyboard, title, image_object_key, completed_at, usage_date, "
-                    "storyboard_provider, storyboard_model) VALUES "
-                    f"({quote(generation_id)}, {quote(diary_id)}, {quote(user_id)}, :prompt_id, {quote(identifier('key-' + diary_id))}, "
+                    "INSERT INTO diary_generations (id, diary_id, prompt_id, idempotency_key, request_fingerprint, "
+                    "status, storyboard, title, image_object_key, completed_at, usage_date, storyboard_provider, storyboard_model) VALUES "
+                    f"({quote(generation_id)}, {quote(diary_id)}, :prompt_id, {quote(identifier('key-' + diary_id))}, "
                     f"'{hashlib.sha256(diary_id.encode()).hexdigest()}', 'SUCCEEDED', {quote(storyboard)}::jsonb, "
                     f"'부하 테스트 일기', {quote(key)}, CURRENT_TIMESTAMP, {quote(diary_date)}, 'stub', 'seed');")
                 if month == previous and j == 0:

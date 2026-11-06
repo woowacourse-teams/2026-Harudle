@@ -106,7 +106,7 @@ class GuestDiaryClaimControllerTest {
         when(claimService.claim(MEMBER_ID, RAW_TOKEN)).thenReturn(new GuestDiaryClaimResult(
                 DIARY_ID,
                 LocalDate.of(2026, 11, 5),
-                GenerationStatus.PROCESSING,
+                GenerationStatus.SUCCEEDED,
                 Instant.parse("2026-11-05T01:02:03Z")
         ));
 
@@ -118,7 +118,7 @@ class GuestDiaryClaimControllerTest {
                 .containsOnlyKeys("diaryId", "diaryDate", "generationStatus", "claimedAt");
         assertThat(response.jsonPath().getString("diaryId")).isEqualTo(DIARY_ID.toString());
         assertThat(response.jsonPath().getString("diaryDate")).isEqualTo("2026-11-05");
-        assertThat(response.jsonPath().getString("generationStatus")).isEqualTo("PROCESSING");
+        assertThat(response.jsonPath().getString("generationStatus")).isEqualTo("SUCCEEDED");
         assertThat(response.jsonPath().getString("claimedAt")).isEqualTo("2026-11-05T10:02:03+09:00");
         assertThat(response.headers().getValues(HttpHeaders.SET_COOKIE))
                 .anySatisfy(cookie -> assertThat(cookie)

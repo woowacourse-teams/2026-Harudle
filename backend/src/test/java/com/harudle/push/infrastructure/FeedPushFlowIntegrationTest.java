@@ -69,11 +69,10 @@ class FeedPushFlowIntegrationTest {
                 diary, author);
         jdbc.update("""
                 INSERT INTO diary_generations
-                    (id, diary_id, requested_by_user_id, prompt_id, idempotency_key, request_fingerprint, status,
-                     image_object_key)
-                VALUES (?, ?, ?, (SELECT id FROM generation_prompts WHERE image_asset_object_key = ?),
+                    (id, diary_id, prompt_id, idempotency_key, request_fingerprint, status, image_object_key)
+                VALUES (?, ?, (SELECT id FROM generation_prompts WHERE image_asset_object_key = ?),
                     ?, ?, 'SUCCEEDED', 'generated/push-flow-test.webp')
-                """, UUID.randomUUID(), diary, author, "references/push-flow-test.png",
+                """, UUID.randomUUID(), diary, "references/push-flow-test.png",
                 UUID.randomUUID(), "a".repeat(64));
         registerRecipient();
         categoryId = jdbc.queryForObject("SELECT id FROM categories WHERE name = '일상'", Long.class);

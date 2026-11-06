@@ -1,27 +1,14 @@
 package com.harudle.diary.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 import com.harudle.auth.application.WithdrawalDatabaseService;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.diary.domain.Diary;
 import com.harudle.diary.repository.DiaryRepository;
-import com.harudle.diary.service.dto.GuestDiaryClaimResult;
-import com.harudle.generation.config.GenerationWorkerProperties;
 import com.harudle.generation.diary.domain.DiaryGeneration;
-import com.harudle.generation.diary.domain.GenerationStatus;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
-import com.harudle.generation.diary.service.DiaryGenerationCompletionService;
-import com.harudle.generation.diary.service.DiaryGenerationExecutor;
-import com.harudle.generation.diary.service.DiaryGenerationWorker;
-import com.harudle.generation.diary.service.PendingDiaryGenerationClaimService;
-import com.harudle.generation.diary.service.RequestFingerprintGenerator;
-import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
 import com.harudle.guest.application.exception.GuestDiaryAlreadyClaimedException;
 import com.harudle.guest.application.exception.GuestDiaryClaimLimitExceededException;
 import com.harudle.guest.domain.GuestSession;
@@ -34,7 +21,6 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -42,14 +28,12 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers(disabledWithoutDocker = true)
@@ -77,16 +61,7 @@ class GuestDiaryClaimPersistenceTest extends ServiceIntegrationTestSupport {
     private DiaryGenerationRepository diaryGenerationRepository;
 
     @Autowired
-    private DiaryGenerationCompletionService completionService;
-
-    @Autowired
-    private RequestFingerprintGenerator fingerprintGenerator;
-
-    @Autowired
     private WithdrawalDatabaseService withdrawalDatabaseService;
-
-    @Autowired
-    private TransactionTemplate transactionTemplate;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -118,8 +93,8 @@ class GuestDiaryClaimPersistenceTest extends ServiceIntegrationTestSupport {
     @DisplayName("한 회원이 서로 다른 게스트 세션으로 동시에 가져와도 하나만 성공한다")
     void allowOnlyOneConcurrentClaimPerMember() throws Exception {
         User member = saveUser("회원");
-        GuestFixture first = saveGuestWithDiary("first-token", GenerationStatus.SUCCEEDED);
-        GuestFixture second = saveGuestWithDiary("second-token", GenerationStatus.SUCCEEDED);
+        GuestFixture first = saveGuestWithSucceededDiary("first-token");
+        GuestFixture second = saveGuestWithSucceededDiary("second-token");
 
         List<String> outcomes = runConcurrently(
                 () -> claimService.claim(member.getId(), "first-token"),
@@ -141,7 +116,7 @@ class GuestDiaryClaimPersistenceTest extends ServiceIntegrationTestSupport {
     void allowOnlyOneMemberForConcurrentClaimsOfSameSession() throws Exception {
         User member = saveUser("회원");
         User anotherMember = saveUser("다른 회원");
-        GuestFixture guest = saveGuestWithDiary("guest-token", GenerationStatus.SUCCEEDED);
+        GuestFixture guest = saveGuestWithSucceededDiary("guest-token");
 
         List<String> outcomes = runConcurrently(
                 () -> claimService.claim(member.getId(), "guest-token"),
@@ -157,43 +132,11 @@ class GuestDiaryClaimPersistenceTest extends ServiceIntegrationTestSupport {
     }
 
     @Test
-    @DisplayName("대기 중에 가져간 일기도 작업 처리기가 원래 요청과 같은 생성 요청으로 실행한다")
-    void executePendingGenerationAfterClaim() {
-        User member = saveUser("회원");
-        GuestFixture guest = saveGuestWithDiary("guest-token", GenerationStatus.PENDING);
-        GuestDiaryClaimResult claim = claimService.claim(member.getId(), "guest-token");
-        AtomicReference<Boolean> claimMatched = new AtomicReference<>();
-
-        workerFor(guest.generationId(), () -> { }, claimMatched).poll();
-
-        assertThat(claim.generationStatus()).isEqualTo(GenerationStatus.PENDING);
-        assertExecutedForMember(guest, member, claimMatched);
-    }
-
-    @Test
-    @DisplayName("처리기가 선점한 직후 가져가도 원래 요청과 같은 생성 요청으로 실행한다")
-    void executeProcessingGenerationClaimedBeforeInputLoad() {
-        User member = saveUser("회원");
-        GuestFixture guest = saveGuestWithDiary("guest-token", GenerationStatus.PENDING);
-        AtomicReference<GuestDiaryClaimResult> claim = new AtomicReference<>();
-        AtomicReference<Boolean> claimMatched = new AtomicReference<>();
-
-        workerFor(
-                guest.generationId(),
-                () -> claim.set(claimService.claim(member.getId(), "guest-token")),
-                claimMatched
-        ).poll();
-
-        assertThat(claim.get().generationStatus()).isEqualTo(GenerationStatus.PROCESSING);
-        assertExecutedForMember(guest, member, claimMatched);
-    }
-
-    @Test
     @DisplayName("체험 일기를 가져간 회원이 탈퇴해도 제약 위반 없이 가져간 기록을 남긴다")
     void withdrawMemberAfterClaim() {
         User member = saveUser("회원");
         User anotherMember = saveUser("다른 회원");
-        GuestFixture guest = saveGuestWithDiary("guest-token", GenerationStatus.SUCCEEDED);
+        GuestFixture guest = saveGuestWithSucceededDiary("guest-token");
         claimService.claim(member.getId(), "guest-token");
 
         withdrawalDatabaseService.delete(member.getId());
@@ -206,58 +149,6 @@ class GuestDiaryClaimPersistenceTest extends ServiceIntegrationTestSupport {
         assertThat(diaryRepository.findById(guest.diaryId())).isEmpty();
         assertThat(runCatching(() -> claimService.claim(anotherMember.getId(), "guest-token")))
                 .isEqualTo(GuestDiaryAlreadyClaimedException.class.getSimpleName());
-    }
-
-    private DiaryGenerationWorker workerFor(
-            UUID generationId,
-            Runnable afterProcessingStarted,
-            AtomicReference<Boolean> claimMatched
-    ) {
-        PendingDiaryGenerationClaimService pendingClaimService = mock(PendingDiaryGenerationClaimService.class);
-        when(pendingClaimService.claim(1)).thenAnswer(invocation -> {
-            transactionTemplate.executeWithoutResult(status -> diaryGenerationRepository
-                    .findByIdForUpdate(generationId)
-                    .orElseThrow()
-                    .startProcessing());
-            afterProcessingStarted.run();
-            return List.of(generationId);
-        });
-        DiaryGenerationExecutor executor = mock(DiaryGenerationExecutor.class);
-        when(executor.isConfigured()).thenReturn(true);
-        when(executor.generate(any(), eq(generationId))).thenAnswer(invocation -> {
-            GenerateDiaryImageCommand command = invocation.getArgument(0);
-            DiaryGeneration stored = diaryGenerationRepository.findById(generationId).orElseThrow();
-            claimMatched.set(stored.matchesExecutableClaim(
-                    command.diaryId(),
-                    command.idempotencyKey(),
-                    fingerprintGenerator.generate(command)
-            ));
-            return null;
-        });
-        return new DiaryGenerationWorker(
-                pendingClaimService,
-                diaryGenerationRepository,
-                diaryRepository,
-                executor,
-                Optional.empty(),
-                completionService,
-                Runnable::run,
-                new GenerationWorkerProperties(1, Duration.ofSeconds(5))
-        );
-    }
-
-    private void assertExecutedForMember(
-            GuestFixture guest,
-            User member,
-            AtomicReference<Boolean> claimMatched
-    ) {
-        assertThat(claimMatched.get()).isTrue();
-        DiaryGeneration generation = diaryGenerationRepository.findById(guest.generationId()).orElseThrow();
-        assertThat(generation.getStatus()).isEqualTo(GenerationStatus.PROCESSING);
-        assertThat(generation.getRequestedByUserId()).isEqualTo(guest.guestUserId());
-        Diary diary = diaryRepository.findById(guest.diaryId()).orElseThrow();
-        assertThat(diary.isDeleted()).isFalse();
-        assertThat(diary.getUserId()).isEqualTo(member.getId());
     }
 
     private List<String> runConcurrently(Callable<?> first, Callable<?> second) throws Exception {
@@ -295,21 +186,15 @@ class GuestDiaryClaimPersistenceTest extends ServiceIntegrationTestSupport {
         }
     }
 
-    private GuestFixture saveGuestWithDiary(String rawToken, GenerationStatus status) {
+    private GuestFixture saveGuestWithSucceededDiary(String rawToken) {
         User guestUser = saveUser("게스트");
         Diary diary = diaryRepository.saveAndFlush(Diary.create(guestUser.getId(), DIARY_DATE, "게스트 체험 일기"));
-        UUID idempotencyKey = UUID.randomUUID();
-        String fingerprint = fingerprintGenerator.generate(new GenerateDiaryImageCommand(
-                guestUser.getId(), diary.getId(), diary.getDiaryDate(), diary.getSourceText(), idempotencyKey
-        ));
         DiaryGeneration generation = DiaryGeneration.pending(
-                diary.getId(), guestUser.getId(), promptId, idempotencyKey, fingerprint, null
+                diary.getId(), promptId, UUID.randomUUID(), "b".repeat(64), null
         );
-        if (status == GenerationStatus.SUCCEEDED) {
-            generation.startProcessing();
-            String imageKey = "generated/claim-" + generation.getId() + "/image.png";
-            generation.succeed(TestStoryboardFactory.create(), imageKey, now);
-        }
+        generation.startProcessing();
+        String imageKey = "generated/claim-" + generation.getId() + "/image.png";
+        generation.succeed(TestStoryboardFactory.create(), imageKey, now);
         diaryGenerationRepository.saveAndFlush(generation);
         GuestSession session = GuestSession.create(
                 guestUser.getId(),

@@ -61,9 +61,9 @@ class WithdrawalImageRepositoryTest extends ServiceIntegrationTestSupport {
                 + "VALUES (?, ?, DATE '2026-10-20', '일기', CASE WHEN ? THEN now() ELSE NULL END)",
                 diaryId, owner, deleted);
         jdbc.update("""
-                INSERT INTO diary_generations (id, diary_id, requested_by_user_id, prompt_id, idempotency_key,
-                                               request_fingerprint, status, image_object_key)
-                VALUES (?, ?, ?, ?, ?, ?, 'SUCCEEDED', ?)
-                """, UUID.randomUUID(), diaryId, owner, promptId, UUID.randomUUID(), "a".repeat(64), imageKey);
+                INSERT INTO diary_generations (id, diary_id, prompt_id, idempotency_key, request_fingerprint,
+                                               status, image_object_key)
+                VALUES (?, ?, ?, ?, ?, 'SUCCEEDED', ?)
+                """, UUID.randomUUID(), diaryId, promptId, UUID.randomUUID(), "a".repeat(64), imageKey);
     }
 }

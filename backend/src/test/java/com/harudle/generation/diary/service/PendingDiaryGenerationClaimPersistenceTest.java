@@ -303,11 +303,11 @@ class PendingDiaryGenerationClaimPersistenceTest extends ServiceIntegrationTestS
                 """, diaryId, userId);
         jdbcTemplate.update("""
                 INSERT INTO diary_generations (
-                    id, diary_id, requested_by_user_id, prompt_id, idempotency_key, request_fingerprint, status,
+                    id, diary_id, prompt_id, idempotency_key, request_fingerprint, status,
                     image_object_key, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, generationId, diaryId, userId, promptId, UUID.randomUUID(), "a".repeat(64), status.name(),
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, generationId, diaryId, promptId, UUID.randomUUID(), "a".repeat(64), status.name(),
                 status == GenerationStatus.SUCCEEDED ? "generated/" + generationId + ".png" : null,
                 Timestamp.from(createdAt),
                 Timestamp.from(status == GenerationStatus.PROCESSING ? Instant.now() : createdAt));

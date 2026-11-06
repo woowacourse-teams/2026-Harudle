@@ -64,10 +64,10 @@ class AdminModerationInteractionPersistenceTest extends AdminModerationDatabaseT
         jdbc.update("INSERT INTO diaries(id,user_id,diary_date,source_text) VALUES (?,?,CURRENT_DATE,'개인 원문')",
                 diary, author);
         jdbc.update("""
-                INSERT INTO diary_generations(id,diary_id,requested_by_user_id,prompt_id,idempotency_key,
-                    request_fingerprint,status,title,image_object_key,completed_at)
-                VALUES (?,?,?,?,?,?,'SUCCEEDED','공개 제목',?,CURRENT_TIMESTAMP)
-                """, UUID.randomUUID(), diary, author, prompt, UUID.randomUUID(), "c".repeat(64),
+                INSERT INTO diary_generations(id,diary_id,prompt_id,idempotency_key,request_fingerprint,
+                    status,title,image_object_key,completed_at)
+                VALUES (?,?,?,?,?,'SUCCEEDED','공개 제목',?,CURRENT_TIMESTAMP)
+                """, UUID.randomUUID(), diary, prompt, UUID.randomUUID(), "c".repeat(64),
                 "generated/moderation-race-" + UUID.randomUUID() + ".webp");
         feed = UUID.randomUUID();
         jdbc.update("""

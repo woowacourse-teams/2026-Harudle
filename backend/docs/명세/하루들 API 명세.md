@@ -722,13 +722,13 @@ X-XSRF-TOKEN: {csrfToken}
 3. 같은 회원이 이미 가져간 세션이면 처음 결과를 그대로 `200 OK`로 반환합니다.
 4. 다른 회원이 가져간 세션이면 `409 GUEST_DIARY_ALREADY_CLAIMED`를 반환합니다.
 5. 회원이 다른 게스트 세션을 이미 가져갔으면 `409 GUEST_DIARY_CLAIM_LIMIT_EXCEEDED`를 반환합니다. 회원당 한 번만 가져올 수 있습니다.
-6. 일기가 없거나 삭제되었으면 `404 GUEST_DIARY_CLAIM_NOT_FOUND`를 반환합니다. 생성에 실패한 일기는 이미 숨겨져 있으므로 이에 해당합니다.
+6. 이미지 생성이 끝난(`SUCCEEDED`) 일기만 옮깁니다. 일기가 없거나 삭제되었거나, 생성이 아직 끝나지 않았으면(`PENDING`, `PROCESSING`)
+   `404 GUEST_DIARY_CLAIM_NOT_FOUND`를 반환합니다. 생성에 실패한 일기는 이미 숨겨져 있으므로 이에 해당합니다.
 7. 일기 작성자를 회원으로 바꾸고 세션에 가져간 회원과 시각을 기록합니다. 동시 요청으로 회원당 1회 제한에 걸리면 `409 GUEST_DIARY_CLAIM_LIMIT_EXCEEDED`를 반환합니다.
-8. 성공하면 게스트 세션 Cookie를 만료합니다.
+8. 성공하면 게스트 세션 Cookie를 만료합니다. 실패하면 Cookie를 유지합니다.
 
-생성이 끝나지 않은 `PENDING` 또는 `PROCESSING` 일기도 가져올 수 있습니다. 생성 작업은 처음 요청한 게스트 기준으로 계속 실행되며,
-가져온 뒤의 상태는 회원 API인 `GET /api/v1/diary-generations/{generationId}`로 조회합니다.
-게스트 세션 Cookie가 만료되므로 게스트 생성 상태 조회 API는 더 이상 사용할 수 없습니다.
+생성 도중에 가입한 경우의 체험 일기는 옮기지 않습니다. 정상 흐름에서는 게스트 결과 화면에서 생성 완료를 확인한 뒤 가입하므로
+가져오는 시점에 생성이 끝나 있습니다.
 
 ```http
 HTTP/1.1 200 OK
@@ -740,12 +740,12 @@ Set-Cookie: guest_session=; Path=/api/v1/guest; Max-Age=0; Expires=Thu, 01 Jan 1
 {
   "diaryId": "593363cb-1dc3-46bc-a858-5926f7601ca9",
   "diaryDate": "2026-08-20",
-  "generationStatus": "PROCESSING",
+  "generationStatus": "SUCCEEDED",
   "claimedAt": "2026-08-20T09:05:00+09:00"
 }
 ```
 
-`generationStatus`는 `PENDING`, `PROCESSING`, `SUCCEEDED` 중 하나입니다.
+`generationStatus`는 생성이 끝난 일기만 가져오므로 항상 `SUCCEEDED`입니다.
 
 ### 5.4 오늘 생성 사용량 조회
 
@@ -1133,7 +1133,7 @@ Retry-After: 13800
 | `404` | `API_NOT_FOUND` | 존재하지 않는 API 경로 요청 |
 | `404` | `DIARY_NOT_FOUND` | 상세 조회·피드 게시 대상 일기가 없거나 삭제됨 |
 | `404` | `GENERATION_NOT_FOUND` | 생성 작업이 없거나 본인 소유 또는 게스트 세션 연결 조건에 맞지 않음 |
-| `404` | `GUEST_DIARY_CLAIM_NOT_FOUND` | 가져올 게스트 세션이나 체험 일기가 없음. 세션 Cookie 누락·만료 포함 |
+| `404` | `GUEST_DIARY_CLAIM_NOT_FOUND` | 가져올 게스트 세션이나 생성이 끝난 체험 일기가 없음. 세션 Cookie 누락·만료, 생성 중 포함 |
 | `404` | `FEED_NOT_FOUND` | 공개 피드가 없거나 피드/원본 일기가 삭제됨 |
 | `404` | `CATEGORY_NOT_FOUND` | 게시하거나 목록을 조회할 카테고리가 없음 |
 | `405` | `METHOD_NOT_ALLOWED` | 지원하지 않는 HTTP 메서드 요청 |

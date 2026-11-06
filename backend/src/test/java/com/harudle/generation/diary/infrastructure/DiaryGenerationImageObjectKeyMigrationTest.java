@@ -29,8 +29,6 @@ class DiaryGenerationImageObjectKeyMigrationTest {
 
     private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:18-alpine");
     private static final MigrationVersion INITIAL_SCHEMA = MigrationVersion.fromVersion("1");
-    // 이 테스트는 V2 이미지 키 보정을 검증한다. V44부터 생성 요청자 컬럼이 필수라 그 전 버전까지만 적용한다.
-    private static final MigrationVersion LAST_VERSION_WITHOUT_REQUESTER = MigrationVersion.fromVersion("43");
     private static final UUID USER_ID = UUID.fromString("96c7cb9d-c451-4a98-a28b-eecf56c47482");
     private static final UUID DIARY_ID = UUID.fromString("83e48828-096d-40cc-8458-c66b82b24476");
     private static final UUID GENERATION_ID = UUID.fromString("b96446bb-c35b-4662-907c-4a3487b16837");
@@ -231,7 +229,6 @@ class DiaryGenerationImageObjectKeyMigrationTest {
                         POSTGRESQL_CONTAINER.getPassword()
                 )
                 .cleanDisabled(false)
-                .target(LAST_VERSION_WITHOUT_REQUESTER)
                 .load();
     }
 }

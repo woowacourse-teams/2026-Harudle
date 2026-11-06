@@ -78,13 +78,13 @@ class GuestDiaryClaimServiceTest extends ServiceIntegrationTestSupport {
     @DisplayName("게스트 체험 일기를 회원에게 옮기고 세션에 가져간 회원을 기록한다")
     void claimGuestDiary() {
         User member = saveUser("회원");
-        GuestFixture guest = saveGuestWithDiary("guest-token", GenerationStatus.PENDING);
+        GuestFixture guest = saveGuestWithDiary("guest-token", GenerationStatus.SUCCEEDED);
 
         GuestDiaryClaimResult result = claimService.claim(member.getId(), "guest-token");
 
         assertThat(result.diaryId()).isEqualTo(guest.diaryId());
         assertThat(result.diaryDate()).isEqualTo(DIARY_DATE);
-        assertThat(result.generationStatus()).isEqualTo(GenerationStatus.PENDING);
+        assertThat(result.generationStatus()).isEqualTo(GenerationStatus.SUCCEEDED);
         assertThat(result.claimedAt()).isBetween(now, Instant.now());
         entityManager.flush();
         entityManager.clear();
@@ -95,17 +95,16 @@ class GuestDiaryClaimServiceTest extends ServiceIntegrationTestSupport {
     }
 
     @ParameterizedTest
-    @EnumSource(value = GenerationStatus.class, names = {"PENDING", "PROCESSING", "SUCCEEDED"})
-    @DisplayName("생성 중이거나 완료된 일기를 현재 생성 상태와 함께 가져간다")
-    void claimDiaryInAnyActiveGenerationStatus(GenerationStatus status) {
+    @EnumSource(value = GenerationStatus.class, names = {"PENDING", "PROCESSING"})
+    @DisplayName("생성이 끝나지 않은 일기는 옮기지 않고 가져갈 일기가 없다고 응답한다")
+    void rejectUnfinishedGeneration(GenerationStatus status) {
         User member = saveUser("회원");
         GuestFixture guest = saveGuestWithDiary("guest-token", status);
 
-        GuestDiaryClaimResult result = claimService.claim(member.getId(), "guest-token");
-
-        assertThat(result.generationStatus()).isEqualTo(status);
-        assertThat(diaryRepository.findById(guest.diaryId()).orElseThrow().getUserId()).isEqualTo(member.getId());
-        assertThat(diaryGenerationRepository.findById(guest.generationId()).orElseThrow().getRequestedByUserId())
+        assertThatThrownBy(() -> claimService.claim(member.getId(), "guest-token"))
+                .isInstanceOf(GuestDiaryClaimNotFoundException.class);
+        assertThat(findSession("guest-token").isClaimed()).isFalse();
+        assertThat(diaryRepository.findById(guest.diaryId()).orElseThrow().getUserId())
                 .isEqualTo(guest.guestUserId());
     }
 
@@ -113,7 +112,7 @@ class GuestDiaryClaimServiceTest extends ServiceIntegrationTestSupport {
     @DisplayName("같은 회원이 다시 요청하면 처음 가져간 결과를 그대로 돌려준다")
     void returnSameResultForSameMember() {
         User member = saveUser("회원");
-        saveGuestWithDiary("guest-token", GenerationStatus.PROCESSING);
+        saveGuestWithDiary("guest-token", GenerationStatus.SUCCEEDED);
         GuestDiaryClaimResult first = claimService.claim(member.getId(), "guest-token");
 
         GuestDiaryClaimResult second = claimService.claim(member.getId(), "guest-token");
@@ -174,7 +173,7 @@ class GuestDiaryClaimServiceTest extends ServiceIntegrationTestSupport {
         User member = saveUser("회원");
         User guestUser = saveUser("게스트");
         Diary diary = diaryRepository.saveAndFlush(Diary.create(guestUser.getId(), DIARY_DATE, "만료된 체험 일기"));
-        saveGeneration(diary, guestUser.getId(), GenerationStatus.SUCCEEDED);
+        saveGeneration(diary, GenerationStatus.SUCCEEDED);
         GuestSession session = GuestSession.create(
                 guestUser.getId(),
                 tokenHasher.hash("expired-token"),
@@ -241,7 +240,7 @@ class GuestDiaryClaimServiceTest extends ServiceIntegrationTestSupport {
     private GuestFixture saveGuestWithDiary(String rawToken, GenerationStatus status) {
         User guestUser = saveUser("게스트");
         Diary diary = diaryRepository.saveAndFlush(Diary.create(guestUser.getId(), DIARY_DATE, "게스트 체험 일기"));
-        DiaryGeneration generation = saveGeneration(diary, guestUser.getId(), status);
+        DiaryGeneration generation = saveGeneration(diary, status);
         GuestSession session = GuestSession.create(
                 guestUser.getId(),
                 tokenHasher.hash(rawToken),
@@ -253,9 +252,9 @@ class GuestDiaryClaimServiceTest extends ServiceIntegrationTestSupport {
         return new GuestFixture(guestUser.getId(), diary.getId(), generation.getId());
     }
 
-    private DiaryGeneration saveGeneration(Diary diary, UUID requesterId, GenerationStatus status) {
+    private DiaryGeneration saveGeneration(Diary diary, GenerationStatus status) {
         DiaryGeneration generation = DiaryGeneration.pending(
-                diary.getId(), requesterId, promptId, UUID.randomUUID(), "a".repeat(64), null
+                diary.getId(), promptId, UUID.randomUUID(), "a".repeat(64), null
         );
         if (status != GenerationStatus.PENDING) {
             generation.startProcessing();

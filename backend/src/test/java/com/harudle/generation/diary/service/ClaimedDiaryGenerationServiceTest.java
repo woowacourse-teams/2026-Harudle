@@ -664,7 +664,6 @@ class ClaimedDiaryGenerationServiceTest {
     private DiaryGeneration createGeneration(GenerateDiaryImageCommand command) {
         return DiaryGeneration.start(
                 command.diaryId(),
-                command.userId(),
                 1L,
                 command.idempotencyKey(),
                 requestFingerprintGenerator.generate(command)

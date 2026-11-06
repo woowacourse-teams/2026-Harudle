@@ -237,10 +237,9 @@ class WithdrawalDatabaseServiceTest extends ServiceIntegrationTestSupport {
                 VALUES ('스토리보드', '스타일', 'references/apple-revocation.png') RETURNING id
                 """, Long.class);
         jdbc.update("""
-                INSERT INTO diary_generations (id, diary_id, requested_by_user_id, prompt_id, idempotency_key,
-                                               request_fingerprint, status)
-                VALUES (?, ?, ?, ?, ?, ?, 'PENDING')
-                """, UUID.randomUUID(), diaryId, userId, promptId, UUID.randomUUID(), "a".repeat(64));
+                INSERT INTO diary_generations (id, diary_id, prompt_id, idempotency_key, request_fingerprint, status)
+                VALUES (?, ?, ?, ?, ?, 'PENDING')
+                """, UUID.randomUUID(), diaryId, promptId, UUID.randomUUID(), "a".repeat(64));
 
         withdrawal.completeAppleRevocation("apple-user", Instant.now().plusSeconds(5));
         assertThat(count("users", "id")).isZero();

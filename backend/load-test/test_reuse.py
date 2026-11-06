@@ -281,9 +281,9 @@ class ReusableMembersPostgresTest(unittest.TestCase):
         key = f'{prepare.PREFIX}/{generation}/{uuid.uuid4()}/image.png'
         self.sql(f"INSERT INTO diaries (id, user_id, diary_date, source_text) VALUES "
                  f"('{diary}', '{user}', CURRENT_DATE, '이번 테스트 생성'); "
-                 "INSERT INTO diary_generations (id, diary_id, requested_by_user_id, prompt_id, idempotency_key, "
-                 "request_fingerprint, status, storyboard, title, image_object_key, completed_at, usage_date) "
-                 f"SELECT '{generation}', '{diary}', '{user}', prompt_id, '{idempotency_key}', request_fingerprint, "
+                 "INSERT INTO diary_generations (id, diary_id, prompt_id, idempotency_key, request_fingerprint, "
+                 "status, storyboard, title, image_object_key, completed_at, usage_date) "
+                 f"SELECT '{generation}', '{diary}', prompt_id, '{idempotency_key}', request_fingerprint, "
                  f"status, storyboard, title, '{key}', completed_at, usage_date FROM diary_generations LIMIT 1;")
         return {'id': generation, 'userId': user, 'imageKey': key}
 

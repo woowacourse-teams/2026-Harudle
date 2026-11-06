@@ -97,13 +97,14 @@ public class GuestDiaryClaimService {
     }
 
     // 생성 완료 처리와 같은 순서(생성 기록 → 일기)로 잠가 교착 상태를 피한다.
+    // 생성이 끝난 일기만 옮긴다. 생성 중인 일기는 가입 도중에 체험한 것으로 보고 옮기지 않는다.
     private ClaimTarget lockClaimTarget(GuestSession session, UUID ownerId) {
         UUID diaryId = session.getDiaryId();
         if (diaryId == null) {
             throw new GuestDiaryClaimNotFoundException();
         }
         DiaryGeneration generation = diaryGenerationRepository.findByDiaryIdForUpdate(diaryId)
-                .filter(found -> found.getStatus() != GenerationStatus.FAILED)
+                .filter(found -> found.getStatus() == GenerationStatus.SUCCEEDED)
                 .orElseThrow(GuestDiaryClaimNotFoundException::new);
         Diary diary = diaryRepository.findByIdIncludingDeletedForUpdate(diaryId)
                 .filter(found -> !found.isDeleted() && found.isOwnedBy(ownerId))

@@ -288,7 +288,6 @@ class JpaAdminGenerationHistoryQueryRepositoryTest extends ServiceIntegrationTes
                 INSERT INTO diary_generations (
                     id,
                     diary_id,
-                    requested_by_user_id,
                     prompt_id,
                     idempotency_key,
                     request_fingerprint,
@@ -299,8 +298,8 @@ class JpaAdminGenerationHistoryQueryRepositoryTest extends ServiceIntegrationTes
                     created_at,
                     updated_at,
                     completed_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, generationId, diaryId, userId, generationPrompt.getId(), UUID.randomUUID(), "a".repeat(64),
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, generationId, diaryId, generationPrompt.getId(), UUID.randomUUID(), "a".repeat(64),
                 status.name(), status == GenerationStatus.SUCCEEDED ? "생성 이력 테스트 결과" : null,
                 status == GenerationStatus.SUCCEEDED ? "generated/admin-history/" + generationId + ".png" : null,
                 errorCode == null ? null : errorCode.name(), Timestamp.from(requestedAt),

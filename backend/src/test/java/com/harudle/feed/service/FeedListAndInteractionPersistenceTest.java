@@ -316,11 +316,10 @@ class FeedListAndInteractionPersistenceTest {
                 diaryId, AUTHOR, LocalDate.of(2026, 10, 11));
         update("""
                 INSERT INTO diary_generations
-                    (id, diary_id, requested_by_user_id, prompt_id, idempotency_key, request_fingerprint, status,
-                     image_object_key)
-                VALUES (?, ?, ?, (SELECT id FROM generation_prompts WHERE image_asset_object_key = ?),
+                    (id, diary_id, prompt_id, idempotency_key, request_fingerprint, status, image_object_key)
+                VALUES (?, ?, (SELECT id FROM generation_prompts WHERE image_asset_object_key = ?),
                     ?, ?, 'SUCCEEDED', ?)
-                """, UUID.randomUUID(), diaryId, AUTHOR, REFERENCE, UUID.randomUUID(), "a".repeat(64),
+                """, UUID.randomUUID(), diaryId, REFERENCE, UUID.randomUUID(), "a".repeat(64),
                 "generated/feed-list/" + feedId + ".webp");
         update("INSERT INTO feeds (id, diary_id, category_id, published_at, like_count) VALUES (?, ?, ?, ?, ?)",
                 feedId, diaryId, categoryId, at, likeCount);

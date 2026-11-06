@@ -23,7 +23,7 @@ class AdminImageRecoveryServiceTest {
     private final GenerationPromptRepository prompts = mock(GenerationPromptRepository.class);
     private final ImageStorage storage = mock(ImageStorage.class);
     private final DiaryImageGenerator generator = mock(DiaryImageGenerator.class);
-    private final DiaryGeneration generation = DiaryGeneration.start(UUID.randomUUID(), UUID.randomUUID(), 1L,
+    private final DiaryGeneration generation = DiaryGeneration.start(UUID.randomUUID(), 1L,
             UUID.randomUUID(), "a".repeat(64));
     private final Storyboard storyboard = new Storyboard("하루", "같은 주인공", List.of(
             panel(1), panel(2), panel(3), panel(4)));
@@ -113,9 +113,7 @@ class AdminImageRecoveryServiceTest {
 
     @Test
     void refusesProcessingGeneration() {
-        var processing = DiaryGeneration.start(
-                UUID.randomUUID(), UUID.randomUUID(), 1L, UUID.randomUUID(), "b".repeat(64)
-        );
+        var processing = DiaryGeneration.start(UUID.randomUUID(), 1L, UUID.randomUUID(), "b".repeat(64));
         when(generations.findById(processing.getId())).thenReturn(Optional.of(processing));
         assertThatThrownBy(() -> service.restore(processing.getId())).isInstanceOf(ResponseStatusException.class);
         verifyNoInteractions(storage, generator);
@@ -256,7 +254,7 @@ class AdminImageRecoveryServiceTest {
     }
 
     private DiaryGeneration optimizedGeneration() {
-        DiaryGeneration optimized = DiaryGeneration.start(UUID.randomUUID(), UUID.randomUUID(), 1L,
+        DiaryGeneration optimized = DiaryGeneration.start(UUID.randomUUID(), 1L,
                 UUID.randomUUID(), "c".repeat(64));
         optimized.succeed(storyboard, "generated/diary-images/test/image-960.webp", Instant.EPOCH);
         when(generations.findById(optimized.getId())).thenReturn(Optional.of(optimized));

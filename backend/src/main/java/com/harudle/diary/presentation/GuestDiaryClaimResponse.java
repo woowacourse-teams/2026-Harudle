@@ -12,8 +12,8 @@ public record GuestDiaryClaimResponse(
         @Schema(description = "일기 날짜 (YYYY-MM-DD)")
         LocalDate diaryDate,
         @Schema(
-                description = "가져온 시점의 생성 상태",
-                allowableValues = {"PENDING", "PROCESSING", "SUCCEEDED"}
+                description = "생성 상태. 생성이 끝난 일기만 가져오므로 항상 SUCCEEDED입니다.",
+                allowableValues = {"SUCCEEDED"}
         )
         String generationStatus,
         @Schema(description = "회원에게 옮긴 시각 (RFC 3339)")

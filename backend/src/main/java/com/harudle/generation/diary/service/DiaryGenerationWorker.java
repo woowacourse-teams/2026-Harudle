@@ -156,7 +156,7 @@ public final class DiaryGenerationWorker {
             throw new IllegalStateException("삭제된 일기는 생성할 수 없습니다.");
         }
         return Optional.of(new GenerateDiaryImageCommand(
-                generation.getRequestedByUserId(),
+                diary.getUserId(),
                 diary.getId(),
                 diary.getDiaryDate(),
                 diary.getSourceText(),

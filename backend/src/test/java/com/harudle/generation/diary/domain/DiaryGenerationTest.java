@@ -18,7 +18,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 class DiaryGenerationTest {
 
-    private static final UUID REQUESTER_ID = UUID.fromString("6f1c2a43-8a0e-4c39-9b8c-1d2e3f4a5b6c");
     private static final Long GENERATION_PROMPT_ID = 1L;
     private static final String REQUEST_FINGERPRINT = "a".repeat(64);
 
@@ -30,7 +29,6 @@ class DiaryGenerationTest {
 
         DiaryGeneration generation = DiaryGeneration.start(
                 diaryId,
-                REQUESTER_ID,
                 GENERATION_PROMPT_ID,
                 idempotencyKey,
                 REQUEST_FINGERPRINT
@@ -38,7 +36,6 @@ class DiaryGenerationTest {
 
         assertThat(generation.getId()).isNotNull();
         assertThat(generation.getDiaryId()).isEqualTo(diaryId);
-        assertThat(generation.getRequestedByUserId()).isEqualTo(REQUESTER_ID);
         assertThat(generation.getGenerationPromptId()).isEqualTo(GENERATION_PROMPT_ID);
         assertThat(generation.matchesExecutableClaim(
                 diaryId,
@@ -61,7 +58,6 @@ class DiaryGenerationTest {
 
         DiaryGeneration generation = DiaryGeneration.start(
                 UUID.randomUUID(),
-                UUID.randomUUID(),
                 GENERATION_PROMPT_ID,
                 UUID.randomUUID(),
                 REQUEST_FINGERPRINT,
@@ -72,16 +68,6 @@ class DiaryGenerationTest {
     }
 
     @Test
-    @DisplayName("생성 요청자 ID 없이는 생성 작업을 만들 수 없다")
-    void rejectGenerationWithoutRequester() {
-        assertThatThrownBy(() -> DiaryGeneration.pending(
-                UUID.randomUUID(), null, GENERATION_PROMPT_ID, UUID.randomUUID(), REQUEST_FINGERPRINT, null
-        ))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("생성 요청자 ID는 필수입니다.");
-    }
-
-    @Test
     @DisplayName("대기 작업은 요청 정보와 사용량 날짜를 보존하고 아직 실행할 수 없다")
     void createPendingGeneration() {
         UUID diaryId = UUID.randomUUID();
@@ -89,12 +75,11 @@ class DiaryGenerationTest {
         LocalDate usageDate = LocalDate.of(2026, 10, 20);
 
         DiaryGeneration generation = DiaryGeneration.pending(
-                diaryId, REQUESTER_ID, GENERATION_PROMPT_ID, idempotencyKey, REQUEST_FINGERPRINT, usageDate
+                diaryId, GENERATION_PROMPT_ID, idempotencyKey, REQUEST_FINGERPRINT, usageDate
         );
 
         assertThat(generation.getId()).isNotNull();
         assertThat(generation.getDiaryId()).isEqualTo(diaryId);
-        assertThat(generation.getRequestedByUserId()).isEqualTo(REQUESTER_ID);
         assertThat(generation.getGenerationPromptId()).isEqualTo(GENERATION_PROMPT_ID);
         assertThat(generation.hasSameRequestFingerprint(REQUEST_FINGERPRINT)).isTrue();
         assertThat(generation.getUsageDate()).isEqualTo(usageDate);
@@ -114,7 +99,7 @@ class DiaryGenerationTest {
         UUID idempotencyKey = UUID.randomUUID();
         LocalDate usageDate = LocalDate.of(2026, 10, 20);
         DiaryGeneration generation = DiaryGeneration.pending(
-                diaryId, REQUESTER_ID, GENERATION_PROMPT_ID, idempotencyKey, REQUEST_FINGERPRINT, usageDate
+                diaryId, GENERATION_PROMPT_ID, idempotencyKey, REQUEST_FINGERPRINT, usageDate
         );
 
         generation.startProcessing();
@@ -148,7 +133,7 @@ class DiaryGenerationTest {
     @DisplayName("일반 완료 메서드로 대기 작업을 성공이나 실패로 바꿀 수 없다")
     void rejectCompletingPendingGeneration() {
         DiaryGeneration generation = DiaryGeneration.pending(
-                UUID.randomUUID(), UUID.randomUUID(), GENERATION_PROMPT_ID, UUID.randomUUID(), REQUEST_FINGERPRINT, null
+                UUID.randomUUID(), GENERATION_PROMPT_ID, UUID.randomUUID(), REQUEST_FINGERPRINT, null
         );
         Instant completedAt = Instant.parse("2026-10-20T10:00:00Z");
 
@@ -164,7 +149,7 @@ class DiaryGenerationTest {
     @DisplayName("오래 대기한 작업에 처리 중인 작업의 제한 시간을 적용하지 않는다")
     void doNotInterruptPendingGeneration() {
         DiaryGeneration generation = DiaryGeneration.pending(
-                UUID.randomUUID(), UUID.randomUUID(), GENERATION_PROMPT_ID, UUID.randomUUID(), REQUEST_FINGERPRINT, null
+                UUID.randomUUID(), GENERATION_PROMPT_ID, UUID.randomUUID(), REQUEST_FINGERPRINT, null
         );
         Instant currentTime = Instant.parse("2026-10-20T10:00:00Z");
         ReflectionTestUtils.setField(generation, "updatedAt", currentTime.minus(Duration.ofHours(1)));
@@ -415,7 +400,7 @@ class DiaryGenerationTest {
 
     private DiaryGeneration pendingGeneration(Instant createdAt) {
         DiaryGeneration generation = DiaryGeneration.pending(
-                UUID.randomUUID(), UUID.randomUUID(), GENERATION_PROMPT_ID, UUID.randomUUID(), REQUEST_FINGERPRINT, null
+                UUID.randomUUID(), GENERATION_PROMPT_ID, UUID.randomUUID(), REQUEST_FINGERPRINT, null
         );
         ReflectionTestUtils.setField(generation, "createdAt", createdAt);
         return generation;
@@ -427,7 +412,6 @@ class DiaryGenerationTest {
 
     private DiaryGeneration startGeneration(String requestFingerprint) {
         return DiaryGeneration.start(
-                UUID.randomUUID(),
                 UUID.randomUUID(),
                 GENERATION_PROMPT_ID,
                 UUID.randomUUID(),
