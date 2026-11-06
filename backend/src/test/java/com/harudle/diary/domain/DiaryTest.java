@@ -81,9 +81,9 @@ class DiaryTest {
     @Test
     @DisplayName("현재 작성자의 일기를 다른 사용자에게 옮긴다")
     void transferOwnershipChangesOwner() {
-        Diary diary = Diary.create(USER_ID, DIARY_DATE, "오늘의 일기");
+        Diary diary = Diary.create(USER_ID, DIARY_DATE, "오늘의 일기", DiarySourceTextTestSupport.cipher());
 
-        diary.transferOwnership(USER_ID, NEW_OWNER_ID);
+        diary.transferOwnership(USER_ID, NEW_OWNER_ID, DiarySourceTextTestSupport.cipher());
 
         assertThat(diary.getUserId()).isEqualTo(NEW_OWNER_ID);
         assertThat(diary.isOwnedBy(NEW_OWNER_ID)).isTrue();
@@ -93,9 +93,9 @@ class DiaryTest {
     @Test
     @DisplayName("현재 작성자가 아니면 일기를 옮길 수 없다")
     void transferOwnershipRejectsWrongCurrentOwner() {
-        Diary diary = Diary.create(USER_ID, DIARY_DATE, "오늘의 일기");
+        Diary diary = Diary.create(USER_ID, DIARY_DATE, "오늘의 일기", DiarySourceTextTestSupport.cipher());
 
-        assertThatThrownBy(() -> diary.transferOwnership(UUID.randomUUID(), NEW_OWNER_ID))
+        assertThatThrownBy(() -> diary.transferOwnership(UUID.randomUUID(), NEW_OWNER_ID, DiarySourceTextTestSupport.cipher()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("현재 작성자의 일기만 옮길 수 있습니다.");
         assertThat(diary.getUserId()).isEqualTo(USER_ID);
@@ -104,10 +104,10 @@ class DiaryTest {
     @Test
     @DisplayName("삭제된 일기는 옮길 수 없다")
     void transferOwnershipRejectsDeletedDiary() {
-        Diary diary = Diary.create(USER_ID, DIARY_DATE, "오늘의 일기");
+        Diary diary = Diary.create(USER_ID, DIARY_DATE, "오늘의 일기", DiarySourceTextTestSupport.cipher());
         diary.delete(Instant.parse("2026-08-06T12:00:00Z"));
 
-        assertThatThrownBy(() -> diary.transferOwnership(USER_ID, NEW_OWNER_ID))
+        assertThatThrownBy(() -> diary.transferOwnership(USER_ID, NEW_OWNER_ID, DiarySourceTextTestSupport.cipher()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("삭제된 일기는 옮길 수 없습니다.");
         assertThat(diary.getUserId()).isEqualTo(USER_ID);
@@ -116,9 +116,9 @@ class DiaryTest {
     @Test
     @DisplayName("같은 사용자에게는 일기를 옮길 수 없다")
     void transferOwnershipRejectsSameOwner() {
-        Diary diary = Diary.create(USER_ID, DIARY_DATE, "오늘의 일기");
+        Diary diary = Diary.create(USER_ID, DIARY_DATE, "오늘의 일기", DiarySourceTextTestSupport.cipher());
 
-        assertThatThrownBy(() -> diary.transferOwnership(USER_ID, USER_ID))
+        assertThatThrownBy(() -> diary.transferOwnership(USER_ID, USER_ID, DiarySourceTextTestSupport.cipher()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("같은 사용자에게 일기를 옮길 수 없습니다.");
     }
@@ -126,12 +126,12 @@ class DiaryTest {
     @Test
     @DisplayName("일기를 옮길 때 현재 작성자와 새 작성자 ID가 필요하다")
     void transferOwnershipRejectsMissingUserIds() {
-        Diary diary = Diary.create(USER_ID, DIARY_DATE, "오늘의 일기");
+        Diary diary = Diary.create(USER_ID, DIARY_DATE, "오늘의 일기", DiarySourceTextTestSupport.cipher());
 
-        assertThatThrownBy(() -> diary.transferOwnership(null, NEW_OWNER_ID))
+        assertThatThrownBy(() -> diary.transferOwnership(null, NEW_OWNER_ID, DiarySourceTextTestSupport.cipher()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("사용자 ID는 필수입니다.");
-        assertThatThrownBy(() -> diary.transferOwnership(USER_ID, null))
+        assertThatThrownBy(() -> diary.transferOwnership(USER_ID, null, DiarySourceTextTestSupport.cipher()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("사용자 ID는 필수입니다.");
     }

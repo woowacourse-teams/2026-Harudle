@@ -160,7 +160,7 @@ class OpenAiDiaryImageGeneratorTest {
         server.start();
         var properties = new GeminiGenerationProperties("story", "image", "high", "1:1", 8192, 3, Duration.ofSeconds(3));
         var fallbackProperties = new ImageProviderProperties("gemini", "openai", TOKEN, null, Duration.ofSeconds(2), null);
-        var configuration = new com.harudle.generation.config.GenerationAdapterConfiguration();
+        var configuration = new com.harudle.generation.config.ImageGenerationConfiguration();
         try (var client = configuration.geminiClient(properties, (httpOptions, clientOptions) ->
                 com.google.genai.Client.builder().vertexAI(false).apiKey("test-key")
                         .httpOptions(httpOptions.toBuilder()
@@ -203,7 +203,7 @@ class OpenAiDiaryImageGeneratorTest {
         server.start();
         var properties = new GeminiGenerationProperties("story", "image", "high", "1:1", 8192, 3, Duration.ofSeconds(1));
         var fallbackProperties = new ImageProviderProperties("gemini", "openai", TOKEN, null, Duration.ofSeconds(2), null);
-        var configuration = new com.harudle.generation.config.GenerationAdapterConfiguration();
+        var configuration = new com.harudle.generation.config.ImageGenerationConfiguration();
         try (var client = configuration.geminiClient(properties, (httpOptions, clientOptions) ->
                 com.google.genai.Client.builder().vertexAI(false).apiKey("test-key")
                         .httpOptions(httpOptions.toBuilder()

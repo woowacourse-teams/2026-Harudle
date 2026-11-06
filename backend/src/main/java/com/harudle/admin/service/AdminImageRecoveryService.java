@@ -71,18 +71,17 @@ public class AdminImageRecoveryService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "스토리보드와 기존 이미지 키가 있는 성공 기록만 복구할 수 있습니다.");
         }
         ImageStorage storage = storages.getIfAvailable();
-        DiaryImageGenerator generator = generators.getIfAvailable();
-        if (storage == null || generator == null) {
+        if (storage == null) {
             throw GenerationUnavailableException.adaptersNotConfigured();
         }
         if (ImageVariantKeys.isOptimizedDetailKey(key)) {
-            return restoreOptimizedImage(generationId, key, generation, storage, generator);
+            return restoreOptimizedImage(generationId, key, generation, storage);
         }
         if (storage.exists(key)) {
             return new Result(generationId, key, "ALREADY_EXISTS");
         }
         String expectedType = expectedContentType(key);
-        var image = generateImage(generation, storage, generator);
+        var image = generateImage(generation, storage);
         if (!expectedType.equals(image.mediaType().getType() + "/" + image.mediaType().getSubtype())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "생성 이미지 형식이 기존 키 확장자와 달라 업로드하지 않았습니다. 필요한 형식: " + expectedType);
@@ -92,18 +91,18 @@ public class AdminImageRecoveryService {
     }
 
     private Result restoreOptimizedImage(UUID generationId, String key,
-            DiaryGeneration generation, ImageStorage storage, DiaryImageGenerator generator) {
+            DiaryGeneration generation, ImageStorage storage) {
         if (storage.exists(key)) {
             boolean restored = storage.restoreMissingThumbnail(key);
             return new Result(generationId, key, restored ? "RESTORED" : "ALREADY_EXISTS");
         }
-        var image = loadOriginalOrGenerateImage(key, generation, storage, generator);
+        var image = loadOriginalOrGenerateImage(key, generation, storage);
         boolean restored = storage.restoreOptimizedIfMissing(key, image);
         return new Result(generationId, key, restored ? "RESTORED" : "ALREADY_EXISTS");
     }
 
     private GeneratedImage loadOriginalOrGenerateImage(String detailKey, DiaryGeneration generation,
-            ImageStorage storage, DiaryImageGenerator generator) {
+            ImageStorage storage) {
         for (String originalKey : ImageVariantKeys.originalImageKeyCandidates(detailKey)) {
             if (storage.exists(originalKey)) {
                 var original = storage.load(originalKey);
@@ -114,11 +113,14 @@ public class AdminImageRecoveryService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "썸네일만 남아 있는 이미지는 자동 재생성하지 않습니다. 남은 이미지의 검수가 필요합니다.");
         }
-        return generateImage(generation, storage, generator);
+        return generateImage(generation, storage);
     }
 
-    private GeneratedImage generateImage(DiaryGeneration generation, ImageStorage storage,
-            DiaryImageGenerator generator) {
+    private GeneratedImage generateImage(DiaryGeneration generation, ImageStorage storage) {
+        DiaryImageGenerator generator = generators.getIfAvailable();
+        if (generator == null) {
+            throw GenerationUnavailableException.adaptersNotConfigured();
+        }
         var prompt = prompts.findFirstByOrderByIdDesc()
                 .orElseThrow(GenerationUnavailableException::promptNotConfigured);
         var reference = storage.load(prompt.getImageAssetObjectKey());

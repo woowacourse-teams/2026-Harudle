@@ -7,6 +7,7 @@ import com.harudle.auth.application.InvalidCurrentUserException;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.diary.domain.Diary;
+import com.harudle.diary.domain.DiarySourceTextCipher;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.diary.service.dto.GuestDiaryClaimResult;
 import com.harudle.generation.diary.domain.DiaryGeneration;
@@ -58,6 +59,9 @@ class GuestDiaryClaimServiceTest extends ServiceIntegrationTestSupport {
 
     @Autowired
     private DiaryRepository diaryRepository;
+
+    @Autowired
+    private DiarySourceTextCipher cipher;
 
     @Autowired
     private DiaryGenerationRepository diaryGenerationRepository;
@@ -172,7 +176,7 @@ class GuestDiaryClaimServiceTest extends ServiceIntegrationTestSupport {
     void rejectExpiredSession() {
         User member = saveUser("회원");
         User guestUser = saveUser("게스트");
-        Diary diary = diaryRepository.saveAndFlush(Diary.create(guestUser.getId(), DIARY_DATE, "만료된 체험 일기"));
+        Diary diary = diaryRepository.saveAndFlush(Diary.create(guestUser.getId(), DIARY_DATE, "만료된 체험 일기", cipher));
         saveGeneration(diary, GenerationStatus.SUCCEEDED);
         GuestSession session = GuestSession.create(
                 guestUser.getId(),
@@ -239,7 +243,7 @@ class GuestDiaryClaimServiceTest extends ServiceIntegrationTestSupport {
 
     private GuestFixture saveGuestWithDiary(String rawToken, GenerationStatus status) {
         User guestUser = saveUser("게스트");
-        Diary diary = diaryRepository.saveAndFlush(Diary.create(guestUser.getId(), DIARY_DATE, "게스트 체험 일기"));
+        Diary diary = diaryRepository.saveAndFlush(Diary.create(guestUser.getId(), DIARY_DATE, "게스트 체험 일기", cipher));
         DiaryGeneration generation = saveGeneration(diary, status);
         GuestSession session = GuestSession.create(
                 guestUser.getId(),

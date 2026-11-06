@@ -3,11 +3,14 @@ package com.harudle.diary.service;
 import com.harudle.auth.application.InvalidCurrentUserException;
 import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.diary.domain.Diary;
+import com.harudle.diary.domain.DiarySourceTextCipher;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.diary.service.dto.GuestDiaryClaimResult;
 import com.harudle.generation.diary.domain.DiaryGeneration;
 import com.harudle.generation.diary.domain.GenerationStatus;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
+import com.harudle.generation.diary.service.RequestFingerprintGenerator;
+import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
 import com.harudle.guest.application.GuestSessionResolver;
 import com.harudle.guest.application.exception.GuestDiaryAlreadyClaimedException;
 import com.harudle.guest.application.exception.GuestDiaryClaimForbiddenException;
@@ -39,6 +42,8 @@ public class GuestDiaryClaimService {
     private final GuestSessionRepository guestSessionRepository;
     private final DiaryRepository diaryRepository;
     private final DiaryGenerationRepository diaryGenerationRepository;
+    private final DiarySourceTextCipher sourceTextCipher;
+    private final RequestFingerprintGenerator requestFingerprintGenerator;
     private final Clock clock;
 
     GuestDiaryClaimService(
@@ -47,6 +52,8 @@ public class GuestDiaryClaimService {
             GuestSessionRepository guestSessionRepository,
             DiaryRepository diaryRepository,
             DiaryGenerationRepository diaryGenerationRepository,
+            DiarySourceTextCipher sourceTextCipher,
+            RequestFingerprintGenerator requestFingerprintGenerator,
             @Qualifier("authClock") Clock authClock
     ) {
         this.userRepository = userRepository;
@@ -54,6 +61,8 @@ public class GuestDiaryClaimService {
         this.guestSessionRepository = guestSessionRepository;
         this.diaryRepository = diaryRepository;
         this.diaryGenerationRepository = diaryGenerationRepository;
+        this.sourceTextCipher = sourceTextCipher;
+        this.requestFingerprintGenerator = requestFingerprintGenerator;
         this.clock = authClock;
     }
 
@@ -90,7 +99,16 @@ public class GuestDiaryClaimService {
 
     private GuestDiaryClaimResult transfer(GuestSession session, UUID memberId, Instant now) {
         ClaimTarget target = lockClaimTarget(session, session.getGuestUserId());
-        target.diary().transferOwnership(session.getGuestUserId(), memberId);
+        Diary diary = target.diary();
+        DiaryGeneration generation = target.generation();
+        diary.transferOwnership(session.getGuestUserId(), memberId, sourceTextCipher);
+        GenerateDiaryImageCommand transferredRequest = new GenerateDiaryImageCommand(
+                memberId, diary.getId(), diary.getDiaryDate(), diary.decryptSourceText(sourceTextCipher),
+                generation.getIdempotencyKey()
+        );
+        generation.rebindSucceededRequestFingerprint(diary.protectRequestFingerprint(
+                sourceTextCipher, requestFingerprintGenerator.generate(transferredRequest)
+        ));
         session.claim(memberId, now);
         flushClaim();
         return toResult(target, now);
