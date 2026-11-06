@@ -1,0 +1,17 @@
+// CI diagnostics: identifiers only, never display names, arguments, stdout or environment values.
+allprojects {
+    tasks.withType(org.gradle.api.tasks.testing.Test).configureEach {
+        def testId = { descriptor ->
+            def owner = descriptor.className
+            if (!(owner ==~ /[A-Za-z0-9_.$]+/)) owner = 'unknown'
+            def name = descriptor.name ?: ''
+            def match = name =~ /^([A-Za-z_$][A-Za-z0-9_$]*)(?:\(|\[|$)/
+            def method = match.find() ? match.group(1) : 'unknown'
+            "${owner}#${method}"
+        }
+        beforeTest { descriptor -> logger.lifecycle("CI_TEST_START ${testId(descriptor)}") }
+        afterTest { descriptor, result ->
+            logger.lifecycle("CI_TEST_END ${testId(descriptor)} ${result.resultType}")
+        }
+    }
+}

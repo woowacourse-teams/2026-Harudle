@@ -150,11 +150,25 @@ jobs:
           chmod +x gradlew
           ./gradlew --no-daemon --console=plain --build-cache classes testClasses
 
-      - name: Run backend tests
+      - name: Run new PostgreSQL recovery and guest claim tests
         if: github.event_name != 'push'
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon --console=plain --build-cache test --rerun
+          python3 -m unittest discover -s tools -p 'test_run_ci_tests.py'
+          python3 tools/run_ci_tests.py targeted
+
+      - name: Run backend tests
+        if: github.event_name != 'push'
+        run: python3 tools/run_ci_tests.py full
+
+      - name: Save backend test diagnostics
+        if: always() && github.event_name != 'push'
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-test-diagnostics-${{ github.run_attempt }}
+          path: backend/build/ci-test-diagnostics/
+          retention-days: 3
+          if-no-files-found: warn
 
       - name: Verify packaged key checks and guarded initialization
         if: github.event_name != 'push'
