@@ -299,8 +299,8 @@ class DiaryQueryServiceTest {
                 diaryId,
                 userId,
                 diaryDate,
-                "오늘의 일기",
-                0,
+                DiarySourceTextTestSupport.cipher().encrypt(diaryId, userId, "오늘의 일기"),
+                DiarySourceTextCipher.CURRENT_VERSION,
                 CREATED_AT
         );
     }

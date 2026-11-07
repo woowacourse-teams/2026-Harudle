@@ -134,6 +134,13 @@ jobs:
           bash ../deploy/scripts/test_diary_key_verification.sh
           bash ../deploy/scripts/test_diary_release.sh
           bash ../deploy/scripts/test_diary_writer_approval.sh
+          bash ../deploy/scripts/test_diary_source_text_backfill.sh
+
+      - name: Test encrypted load-test fixtures and PostgreSQL recovery
+        if: github.event_name != 'push'
+        env:
+          LOAD_TEST_POSTGRES_TEST: "1"
+        run: python3 -m unittest discover -s load-test -p 'test_*.py'
 
       - name: Install WebP tools
         if: github.event_name != 'push'
@@ -153,14 +160,43 @@ jobs:
         if: github.event_name != 'push'
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon --console=plain --build-cache test --rerun
+          ./gradlew --no-daemon --console=plain --build-cache test --rerun maintenanceTest --rerun
 
-      - name: Verify packaged key checks and guarded initialization
+      - name: Verify packaged key checks, initialization and migration
         if: github.event_name != 'push'
         run: |
-          ./gradlew --no-daemon --console=plain --build-cache bootJar
+          server_tasks="$(./gradlew --no-daemon --console=plain build --dry-run)"
+          if grep -Eq '^:compileMaintenance|^:maintenance(Class|Jar|Test)' <<<"$server_tasks"; then
+            echo 'Normal server packaging must not build maintenance sources.' >&2
+            exit 1
+          fi
+          ./gradlew --no-daemon --console=plain --build-cache bootJar maintenanceJar
           bash ../deploy/scripts/test_diary_key_check_jar.sh build/libs/harudle-0.0.1-SNAPSHOT.jar
           bash ../deploy/scripts/test_diary_key_initialization_jar.sh build/libs/harudle-0.0.1-SNAPSHOT.jar
+          bash ../deploy/scripts/test_diary_source_text_backfill_jar.sh build/libs/harudle-0.0.1-SNAPSHOT.jar build/maintenance/harudle-diary-source-maintenance.jar
+
+      - name: Record maintenance artifact identity
+        if: github.event_name != 'push'
+        env:
+          MAINTENANCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          git rev-parse HEAD > build/maintenance/commit.txt
+          printf '%s\n' "$MAINTENANCE_COMMIT" > build/maintenance/head-commit.txt
+          (cd build/maintenance && sha256sum harudle-diary-source-maintenance.jar > checksums.sha256)
+
+      - name: Upload verified maintenance JAR
+        if: github.event_name != 'push'
+        uses: actions/upload-artifact@v7
+        with:
+          name: diary-source-maintenance-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.run_attempt }}
+          path: |
+            backend/build/maintenance/harudle-diary-source-maintenance.jar
+            backend/build/maintenance/commit.txt
+            backend/build/maintenance/head-commit.txt
+            backend/build/maintenance/checksums.sha256
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
 
   frontend-test:
     name: Frontend Test

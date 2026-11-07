@@ -141,10 +141,10 @@ class AesGcmDiarySourceTextCipherTest {
     }
 
     @Test
-    @DisplayName("기존 평문은 버전이 0일 때만 원문 규칙 검증 후 읽는다")
-    void readsValidatedLegacyPlaintextOnlyForLegacyVersion() {
-        assertThat(cipher.decrypt(DIARY_ID, USER_ID, "  기존 원문 🙂  ", 0)).isEqualTo("기존 원문 🙂");
-        assertThat(cipher.decrypt(DIARY_ID, USER_ID, "🙂".repeat(300), 0)).isEqualTo("🙂".repeat(300));
+    @DisplayName("전환 이후에는 유효한 원문이라도 버전 0의 복호화를 거절한다")
+    void refusesLegacyPlaintextEvenWhenItMeetsDiaryValidationRules() {
+        assertCryptoFailure(() -> cipher.decrypt(DIARY_ID, USER_ID, "  기존 원문 🙂  ", 0));
+        assertCryptoFailure(() -> cipher.decrypt(DIARY_ID, USER_ID, "🙂".repeat(300), 0));
         assertCryptoFailure(() -> cipher.decrypt(DIARY_ID, USER_ID, "기존 원문", 1));
     }
 

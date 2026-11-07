@@ -5,6 +5,7 @@ import java.nio.file.Path;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.core.env.ConfigurableEnvironment;
 
 @Configuration(proxyBeanMethods = false)
@@ -12,6 +13,7 @@ import org.springframework.core.env.ConfigurableEnvironment;
 public class DiarySourceTextEncryptionConfiguration {
 
     @Bean
+    @Lazy(false)
     public DiarySourceTextCipher diarySourceTextCipher(
             DiarySourceTextEncryptionProperties properties,
             ConfigurableEnvironment environment
