@@ -3,10 +3,8 @@ import { authFetch } from '../../shared/auth';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import {
   isDiaryGeneration,
-  isGenerationFailureCode,
   isGenerationStatus,
   type DiaryGeneration,
-  type GenerationFailureCode,
   type GenerationStatus,
 } from './diaryGeneration';
 
@@ -149,7 +147,8 @@ interface DiaryGenerationStatusFailureResponse {
   id: string;
   status: Extract<GenerationStatus, 'FAILED'>;
   diaryId: null;
-  errorCode: GenerationFailureCode;
+  errorCode: string;
+  readonly action?: unknown;
 }
 
 export type DiaryGenerationStatusResponse =
@@ -180,6 +179,10 @@ export const isDiaryGenerationStatusResponse = (
     case 'SUCCEEDED':
       return typeof value.diaryId === 'string' && value.errorCode === null;
     case 'FAILED':
-      return value.diaryId === null && isGenerationFailureCode(value.errorCode);
+      return (
+        value.diaryId === null &&
+        typeof value.errorCode === 'string' &&
+        value.errorCode.trim().length > 0
+      );
   }
 };

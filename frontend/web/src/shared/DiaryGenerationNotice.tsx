@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { getDiaryGenerationStatus } from '../domain/diary/diaryGenerate';
+import { isGenerationFailureCode } from '../domain/diary/diaryGeneration';
 import useDiaryGenerationId from './useDiaryGenerationId';
 import { useToastContext } from './ToastContext';
 import {
@@ -96,8 +97,16 @@ const DiaryGenerationNotice = () => {
           const savedToastId = localStorage.getItem(
             DIARY_GENERATION_TOAST_ID_KEY,
           );
+          const failureMessage = isGenerationFailureCode(
+            generationStatus.errorCode,
+          )
+            ? DIARY_GENERATION_FAILURE_MESSAGES[generationStatus.errorCode]
+            : DIARY_GENERATION_FAILURE_MESSAGES.AI_PROVIDER_ERROR;
           const [message, description] =
-            DIARY_GENERATION_FAILURE_MESSAGES[generationStatus.errorCode];
+            typeof generationStatus.action === 'string' &&
+            generationStatus.action.trim()
+              ? [generationStatus.action, '']
+              : failureMessage;
           if (savedToastId) {
             updateToast(savedToastId, {
               type: 'error',
@@ -160,6 +169,12 @@ const DiaryGenerationNotice = () => {
             (error.problem.code === 'GENERATION_NOT_FOUND' ||
               error.problem.code === 'INVALID_REFRESH_TOKEN'))
         ) {
+          const description =
+            error instanceof RequestError &&
+            typeof error.problem.action === 'string' &&
+            error.problem.action.trim()
+              ? ''
+              : '다시 시도해주세요';
           const savedToastId = localStorage.getItem(
             DIARY_GENERATION_TOAST_ID_KEY,
           );
@@ -167,7 +182,7 @@ const DiaryGenerationNotice = () => {
             updateToast(savedToastId, {
               type: 'error',
               message: error.message,
-              description: '다시 시도해주세요',
+              description,
               action: {
                 label: '다시 작성하기',
                 onClick: (): void => {
@@ -181,7 +196,7 @@ const DiaryGenerationNotice = () => {
               {
                 type: 'error',
                 message: error.message,
-                description: '다시 시도해주세요',
+                description,
                 action: {
                   label: '다시 작성하기',
                   onClick: (): void => {
