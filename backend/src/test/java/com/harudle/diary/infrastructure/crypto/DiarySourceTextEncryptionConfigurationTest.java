@@ -16,6 +16,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.boot.LazyInitializationBeanFactoryPostProcessor;
 import org.springframework.mock.env.MockEnvironment;
 
 class DiarySourceTextEncryptionConfigurationTest {
@@ -122,6 +123,31 @@ class DiarySourceTextEncryptionConfigurationTest {
 
         production(file, activeKey, Map.of("old", KEY, "new", NEW_KEY)).run(application -> assertThat(application)
                 .hasNotFailed().hasSingleBean(DiarySourceTextCipher.class));
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    @DisplayName("완료 검사와 별개로 전역 지연 초기화에서도 운영 키 검증을 시작 전에 실행한다")
+    void validatesProductionKeysEagerlyEvenWithGlobalLazyInitialization(boolean validEvidence) {
+        Path file = directory.resolve("lazy-keys.json");
+        if (validEvidence) {
+            new DiarySourceTextKeyVerification(
+                    new DiarySourceTextEncryptionProperties("current", Map.of("current", KEY))
+            ).createInitialEvidence(file, "dev");
+        }
+        production(file, "dev", KEY)
+                .withPropertyValues("spring.main.lazy-initialization=true")
+                .withInitializer(application -> application.addBeanFactoryPostProcessor(
+                        new LazyInitializationBeanFactoryPostProcessor()
+                ))
+                .run(application -> {
+                    if (validEvidence) {
+                        assertThat(application).hasNotFailed();
+                    } else {
+                        assertThat(application).hasFailed().getFailure()
+                                .hasRootCauseInstanceOf(DiarySourceTextCryptoException.class);
+                    }
+                });
     }
 
     private Path registerNewKey() {

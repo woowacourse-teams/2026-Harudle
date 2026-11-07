@@ -2,14 +2,14 @@ package com.harudle.diary.infrastructure.migration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.harudle.diary.domain.DiarySourceTextCipher;
-import com.harudle.generation.diary.service.RequestFingerprintGenerator;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Map;
 import javax.sql.DataSource;
@@ -26,9 +26,7 @@ class DiarySourceTextReadinessConfigurationTest {
     private final DataSource dataSource = mock(DataSource.class);
     private final ApplicationContextRunner context = new ApplicationContextRunner()
             .withUserConfiguration(DiarySourceTextReadinessConfiguration.class)
-            .withBean(DataSource.class, () -> dataSource)
-            .withBean(DiarySourceTextCipher.class, () -> mock(DiarySourceTextCipher.class))
-            .withBean(RequestFingerprintGenerator.class, RequestFingerprintGenerator::new);
+            .withBean(DataSource.class, () -> dataSource);
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
@@ -71,6 +69,20 @@ class DiarySourceTextReadinessConfigurationTest {
     void allowIndependentLocalTests() throws SQLException {
         context.run(application -> assertThat(application).hasNotFailed());
         verify(dataSource, never()).getConnection();
+    }
+
+    @Test
+    @DisplayName("시작 완료 검사는 암호화 및 지문 생성 빈 없이 메타데이터 검사기를 사용한다")
+    void checksMetadataWithoutDependingOnMigrationOrCryptographyBeans() throws SQLException {
+        Connection connection = mock(Connection.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        try (var checks = mockConstruction(DiarySourceTextReadiness.class)) {
+            withLazyInitialization(true).withPropertyValues("spring.profiles.active=prod")
+                    .run(application -> assertThat(application).hasNotFailed());
+            assertThat(checks.constructed()).hasSize(1);
+            verify(checks.constructed().getFirst()).requireReady();
+        }
+        verify(connection).close();
     }
 
     private ApplicationContextRunner withLazyInitialization(boolean enabled) {

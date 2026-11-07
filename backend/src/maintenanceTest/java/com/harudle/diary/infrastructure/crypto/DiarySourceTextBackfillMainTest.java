@@ -173,6 +173,27 @@ class DiarySourceTextBackfillMainTest {
     }
 
     @Test
+    @DisplayName("ready는 완료 검사만 실행하고 전체 집계를 조회하거나 출력하지 않는다")
+    void readyDoesNotReadStatusOrReportUnmeasuredCounts(CapturedOutput output) {
+        MockEnvironment environment = verifiedEnvironment();
+        Connection connection = mock(Connection.class);
+        try (var migrations = mockConstruction(DiarySourceTextMigration.class);
+                var driver = mockStatic(DriverManager.class)) {
+            driver.when(() -> DriverManager.getConnection(any(String.class), any(Properties.class)))
+                    .thenReturn(connection);
+            String before = output.getOut();
+
+            assertThat(DiarySourceTextBackfillMain.execute(new String[]{"ready"}, environment)).isZero();
+
+            assertThat(output.getOut()).isEqualTo(before
+                    + "{\"command\":\"ready\",\"ready\":true}" + System.lineSeparator());
+            assertThat(migrations.constructed()).hasSize(1);
+            verify(migrations.constructed().getFirst()).requireReady();
+            verify(migrations.constructed().getFirst(), never()).status();
+        }
+    }
+
+    @Test
     @DisplayName("행별 실패는 오류 JSON으로 바꾸지 않고 기존 집계와 종료 코드 1을 유지한다")
     void preservesAggregateResultForRowFailures(CapturedOutput output) {
         MockEnvironment environment = verifiedEnvironment();

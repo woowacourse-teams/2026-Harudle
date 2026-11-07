@@ -98,6 +98,9 @@ response() {
   base="$(jq -nc --arg command "${command}" --argjson legacy "${legacy}" \
     '{command:$command,legacyRows:$legacy,encryptedRows:12,unsupportedRows:0,processingLegacyRows:0,orphanRows:1,finalized:false}')"
   case "${command}" in
+    ready)
+      export DIARY_BACKFILL_TEST_RESPONSE='{"command":"ready","ready":true}'
+      ;;
     migrate)
       export DIARY_BACKFILL_TEST_RESPONSE="$(jq -c --argjson failed "${failed}" \
         '. + {attempted:2,migrated:1,skippedProcessing:0,failed:$failed,orphanMigrated:1}' <<<"${base}")"
@@ -163,6 +166,12 @@ for command in status migrate verify finalize ready; do
   grep -Fxq -- 'com.harudle.diary.infrastructure.crypto.DiarySourceTextBackfillMain' \
     "${TEST_DIR}/java.loader-main"
   grep -Fxq -- '-Dbackfill.parity=true' "${TEST_DIR}/java.args"
+  grep -Fxq -- 'DIARY_PRIVATE_CLI_JAR=/app/maintenance.jar' "${TEST_DIR}/run.args"
+  grep -Fxq -- '/app/maintenance.jar' "${TEST_DIR}/java.args"
+  if grep -Fxq -- '/app/app.jar' "${TEST_DIR}/java.args"; then
+    echo 'FAIL: The manual runner selected the serving JAR.' >&2
+    exit 1
+  fi
   if [[ "${command}" != status && "${command}" != ready ]]; then
     grep -Fxq -- '--batch-size' "${TEST_DIR}/java.args"
     grep -Fxq -- '100' "${TEST_DIR}/java.args"
@@ -174,7 +183,40 @@ for command in status migrate verify finalize ready; do
   fi
   # bash -x reaches set +x before reading configuration. The sole public result is a typed JSON object.
   grep '^{' "${TEST_DIR}/output" | jq -e --arg command "${command}" '.command == $command' >/dev/null
+  if [[ "${command}" == ready ]]; then
+    grep '^{' "${TEST_DIR}/output" | jq -e '. == {command:"ready",ready:true}' >/dev/null
+  fi
   record_pass "${command}: explicit candidate, Compose parity, private diagnostics, and typed result"
+done
+
+for malformed in false-ready string-ready numeric-ready null-ready missing-ready extra-field old-counts \
+  wrong-command duplicate-command duplicate-ready; do
+  prepare_case
+  response ready
+  case "${malformed}" in
+    false-ready) export DIARY_BACKFILL_TEST_RESPONSE='{"command":"ready","ready":false}' ;;
+    string-ready) export DIARY_BACKFILL_TEST_RESPONSE='{"command":"ready","ready":"true"}' ;;
+    numeric-ready) export DIARY_BACKFILL_TEST_RESPONSE='{"command":"ready","ready":1}' ;;
+    null-ready) export DIARY_BACKFILL_TEST_RESPONSE='{"command":"ready","ready":null}' ;;
+    missing-ready) export DIARY_BACKFILL_TEST_RESPONSE='{"command":"ready"}' ;;
+    extra-field) export DIARY_BACKFILL_TEST_RESPONSE='{"command":"ready","ready":true,"legacyRows":0}' ;;
+    old-counts) export DIARY_BACKFILL_TEST_RESPONSE='{"command":"ready","legacyRows":0,"encryptedRows":12,"unsupportedRows":0,"processingLegacyRows":0,"orphanRows":1,"finalized":true}' ;;
+    wrong-command) export DIARY_BACKFILL_TEST_RESPONSE='{"command":"status","ready":true}' ;;
+    duplicate-command) export DIARY_BACKFILL_TEST_RESPONSE='{"command":"status","command":"ready","ready":true}' ;;
+    duplicate-ready) export DIARY_BACKFILL_TEST_RESPONSE='{"command":"ready","ready":false,"ready":true}' ;;
+  esac
+  run_expected 1 ready
+  [[ "$(grep -c '^{' "${TEST_DIR}/output" || true)" == 0 ]]
+  record_pass "ready ${malformed}: incomplete, old, or untrusted evidence is suppressed"
+done
+
+for mismatched_status in 1 2 7; do
+  prepare_case
+  response ready
+  export DIARY_BACKFILL_TEST_EXIT="${mismatched_status}"
+  run_expected 1 ready
+  [[ "$(grep -c '^{' "${TEST_DIR}/output" || true)" == 0 ]]
+  record_pass "ready exit ${mismatched_status}: success JSON cannot override an unsuccessful exit"
 done
 
 prepare_case

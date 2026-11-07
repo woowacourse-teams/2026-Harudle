@@ -6,11 +6,15 @@ run_private_diary_cli() (
   set -Eeuo pipefail
   set +x
 
-  local main_class="$1" candidate_image="$2" override
+  local main_class="$1" candidate_image="$2" override launcher_jar
   shift 2
   case "${main_class}" in
     com.harudle.diary.infrastructure.crypto.DiarySourceTextKeyCheckMain|\
-    com.harudle.diary.infrastructure.crypto.DiarySourceTextBackfillMain) ;;
+    com.harudle.diary.infrastructure.crypto.DiarySourceTextReadinessMain) launcher_jar=/app/app.jar ;;
+    com.harudle.diary.infrastructure.crypto.DiarySourceTextBackfillMain)
+      [[ -n "${candidate_image}" ]] || return 1
+      launcher_jar=/app/maintenance.jar
+      ;;
     *) return 1 ;;
   esac
   if [[ -n "${candidate_image}" && ! "${candidate_image}" =~ ^sha256:[a-f0-9]{64}$ ]]; then
@@ -30,8 +34,8 @@ YAML
 
   docker compose "${COMPOSE_ARGS[@]}" --file "${override}" \
     run --rm --no-deps --pull never -T --entrypoint sh \
-    --env "LOADER_MAIN=${main_class}" backend -c \
-    'exec java ${JAVA_OPTS:-} -Xmx128m -Xlog:disable -Dloader.main="$LOADER_MAIN" -cp /app/app.jar org.springframework.boot.loader.launch.PropertiesLauncher "$@"' \
+    --env "LOADER_MAIN=${main_class}" --env "DIARY_PRIVATE_CLI_JAR=${launcher_jar}" backend -c \
+    'exec java ${JAVA_OPTS:-} -Xmx128m -Xlog:disable -Dloader.main="$LOADER_MAIN" -cp "$DIARY_PRIVATE_CLI_JAR" org.springframework.boot.loader.launch.PropertiesLauncher "$@"' \
     sh "$@"
 )
 
@@ -65,6 +69,16 @@ validate_diary_source_text_cli_result() (
       "DATABASE_CONNECTION_FAILED", "DATABASE_OPERATION_FAILED", "ISOLATION_LEVEL_UNSUPPORTED",
       "UNEXPECTED_FAILURE"] | index($code) != null)
   ' "${output}" 2>/dev/null)"; then
+    printf '%s\n' "${safe_result}"
+    return 0
+  fi
+  if [[ "${command}" == ready ]]; then
+    [[ "${result_status}" == 0 ]] || return 1
+    safe_result="$(jq -cSse --arg command "${command}" '
+      select(length == 1) | .[0] |
+      select(type == "object" and (keys | sort) == ["command", "ready"] and .command == $command
+        and (.ready | type == "boolean") and .ready == true)
+    ' "${output}" 2>/dev/null)" || return 1
     printf '%s\n' "${safe_result}"
     return 0
   fi
@@ -114,20 +128,18 @@ verify_diary_source_text_keys() (
 verify_diary_source_text_ready() (
   set -Eeuo pipefail
   set +x
-  local output safe_result status=0
+  local output status=0
   output="$(mktemp "${TMPDIR:-/tmp}/harudle-diary-ready-result.XXXXXX" 2>/dev/null)" || {
     echo "일기 원문 전환 완료 검증을 준비하지 못했습니다." >&2
     return 1
   }
   trap 'rm -f -- "${output}"' EXIT
   run_private_diary_cli \
-    com.harudle.diary.infrastructure.crypto.DiarySourceTextBackfillMain "" ready \
+    com.harudle.diary.infrastructure.crypto.DiarySourceTextReadinessMain "" ready \
     >"${output}" 2>/dev/null || status=$?
   # Deployment additionally requires proof of completion and a successful process exit.
   if (( status != 0 )) ||
-    ! safe_result="$(validate_diary_source_text_cli_result ready "${status}" "${output}")" ||
-    ! jq -e '.finalized == true and .legacyRows == 0 and .unsupportedRows == 0
-      and .processingLegacyRows == 0' <<<"${safe_result}" >/dev/null 2>&1; then
+    ! validate_diary_source_text_cli_result ready "${status}" "${output}" >/dev/null; then
     echo "일기 원문 전환 완료를 확인하지 못했습니다. 기존 컨테이너는 교체하지 않았습니다." >&2
     return 1
   fi

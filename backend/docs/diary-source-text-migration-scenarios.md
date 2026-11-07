@@ -40,13 +40,13 @@ flowchart TB
 ## M01. 서비스를 유지하며 전환을 준비할 때
 
 전환 도중에는 DB에 평문 일기와 암호문 일기가 함께 있다. 운영자는 둘 다 읽을 수 있는
-#442 기반 호환 앱으로 서비스를 유지하고, 검토한 새 앱 이미지의 전환 도구만 따로 실행한다.
+#442 기반 호환 앱으로 서비스를 유지하고, 검토한 별도 유지보수 이미지의 전환 도구를 실행한다.
 암호문 전용 앱으로 서비스 컨테이너를 교체하는 시점은 전환 완료 후다.
 
 ```mermaid
 flowchart TD
     serving["호환 앱이 평문과 암호문을 조회"] --> keys["모든 실행 앱에 필요한 키 반영 확인"]
-    keys --> image["운영자가 검토한 후보 이미지 고정"]
+    keys --> image["운영자가 별도 유지보수 이미지 고정"]
     image --> trusted["보존한 검증 자료로 후보의 키 확인"]
     trusted --> batch["전환 도구로 정해진 수만큼 수동 처리"]
     batch --> keep["완료 전까지 호환 앱 유지"]
@@ -75,7 +75,7 @@ flowchart TD
 
 </details>
 
-관련 코드: [전환 도구 진입점](../src/main/java/com/harudle/diary/infrastructure/crypto/DiarySourceTextBackfillMain.java),
+관련 코드: [전환 도구 진입점](../src/maintenance/java/com/harudle/diary/infrastructure/crypto/DiarySourceTextBackfillMain.java),
 [수동 실행 스크립트](../../deploy/scripts/run_diary_source_text_backfill.sh),
 [DB 구조 검사](../src/main/java/com/harudle/diary/infrastructure/migration/DiarySourceTextMigrationSchema.java).
 
@@ -116,7 +116,7 @@ flowchart TD
 
 </details>
 
-관련 코드: [행별 전환](../src/main/java/com/harudle/diary/infrastructure/migration/DiarySourceTextMigration.java),
+관련 코드: [행별 전환](../src/maintenance/java/com/harudle/diary/infrastructure/migration/DiarySourceTextMigration.java),
 [생성 작업 선점](../src/main/java/com/harudle/generation/diary/service/PendingDiaryGenerationClaimService.java),
 [대기 작업 조회](../src/main/java/com/harudle/generation/diary/repository/DiaryGenerationRepository.java).
 
@@ -156,7 +156,7 @@ Commit(커밋)은 변경을 확정하는 작업이고, Rollback(롤백)은 아�
 
 </details>
 
-관련 코드: [원문과 지문의 동시 전환](../src/main/java/com/harudle/diary/infrastructure/migration/DiarySourceTextMigration.java),
+관련 코드: [원문과 지문의 동시 전환](../src/maintenance/java/com/harudle/diary/infrastructure/migration/DiarySourceTextMigration.java),
 [저장 확정과 취소](../src/main/java/com/harudle/diary/infrastructure/migration/DiarySourceTextMigrationSession.java).
 
 ## M04. 커밋이나 연결 상태가 불명확할 때
@@ -244,6 +244,8 @@ flowchart LR
 
 운영자는 강한 잠금이 해제된 뒤의 집계와 `ready` 결과를 확인한다. 제약 검증이나 기본값 제거가
 남았으면 `ready`가 거절한다. 배포 전 키 검사와 완료 검사도 통과해야 암호문 전용 앱으로 교체한다.
+배포와 앱 시작의 `ready`는 서버에 남긴 전용 검사다. 사용자 테이블을 세거나 JOIN하지 않고
+검증된 DB 제약과 버전 열의 상태를 읽는다. 수동 전환 도구는 일반 서버 빌드에 포함하지 않는다.
 
 ```mermaid
 flowchart LR
@@ -258,8 +260,9 @@ flowchart LR
 <summary>finalize, ready와 잠금 이름의 뜻</summary>
 
 - **finalize**는 전체 데이터 검증 후 DB의 저장 규칙을 확정하는 수동 명령이다.
-- **ready**는 검증된 v1 제약, 버전 열의 필수값, 기본값 제거와 남은 저장 버전을 검사한다.
-  일기를 전환하거나 모든 암호문을 다시 복호화하는 명령은 아니다.
+- **ready**는 정확한 검증 완료 v1 제약, 버전 열의 필수값과 기본값 제거를 DB 구조 정보로 확인한다.
+  `CHECK (source_text_version = 1)`이 기존 행까지 검증됐고 빈 값을 허용하지 않으면 남은 버전을 다시 세지 않아도 된다.
+  일기를 전환하거나 모든 암호문을 다시 복호화하지 않는다. 성공 결과는 `{"command":"ready","ready":true}`다.
 - **Constraint(제약 조건)**는 DB가 새 데이터나 변경된 데이터를 받아들일 때 확인하는 규칙이다.
   `NOT VALID`는 기존 행의 전체 검사를 미룬다는 뜻이다. 설치 후의 저장과 변경에는 즉시 적용된다.
 - **ACCESS EXCLUSIVE**는 일반 조회와 쓰기까지 막는 테이블 잠금이다.
@@ -269,10 +272,12 @@ flowchart LR
 
 </details>
 
-관련 코드: [전체 검증과 완료 순서](../src/main/java/com/harudle/diary/infrastructure/migration/DiarySourceTextMigration.java),
+관련 코드: [전체 검증과 완료 순서](../src/maintenance/java/com/harudle/diary/infrastructure/migration/DiarySourceTextMigration.java),
 [제약 설치와 검증](../src/main/java/com/harudle/diary/infrastructure/migration/DiarySourceTextMigrationSchema.java),
 [짧은 강한 잠금 요청](../src/main/java/com/harudle/diary/infrastructure/migration/DiarySourceTextMigrationSession.java),
+[완료 조건 검사](../src/main/java/com/harudle/diary/infrastructure/migration/DiarySourceTextReadiness.java),
 [앱 시작 검사](../src/main/java/com/harudle/diary/infrastructure/migration/DiarySourceTextReadinessConfiguration.java),
+[배포용 완료 검사 진입점](../src/main/java/com/harudle/diary/infrastructure/crypto/DiarySourceTextReadinessMain.java),
 [배포 전 검사](../../deploy/scripts/diary_key_verification.sh).
 
 ## M06. 전환 뒤 장애나 과거 백업을 복구할 때

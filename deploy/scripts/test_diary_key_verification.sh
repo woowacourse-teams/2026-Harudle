@@ -106,22 +106,22 @@ if [[ "${operation}" == ready ]]; then
   case "${DIARY_KEY_TEST_READY_OPTION:-}" in
     -version|--dry-run) exit 0 ;;
   esac
-  result='{"command":"ready","legacyRows":0,"encryptedRows":12,"unsupportedRows":0,"processingLegacyRows":0,"orphanRows":1,"finalized":true}'
+  result='{"command":"ready","ready":true}'
   case "${DIARY_KEY_TEST_READY_RESULT:-valid}" in
     valid) printf '%s\n' "${result}" ;;
     empty) ;;
     diagnostic) printf '%s\n' 'diary-key-test-secret' "${result}" ;;
     extra-field) jq -c '.extra="diary-key-test-secret"' <<<"${result}" ;;
     wrong-command) jq -c '.command="status"' <<<"${result}" ;;
-    not-finalized) jq -c '.finalized=false' <<<"${result}" ;;
-    legacy) jq -c '.legacyRows=1' <<<"${result}" ;;
-    unsupported) jq -c '.unsupportedRows=1' <<<"${result}" ;;
-    processing) jq -c '.processingLegacyRows=1' <<<"${result}" ;;
-    negative) jq -c '.encryptedRows=-1' <<<"${result}" ;;
-    string-count) jq -c '.encryptedRows="12"' <<<"${result}" ;;
-    fractional-count) jq -c '.orphanRows=0.5' <<<"${result}" ;;
+    false-ready) jq -c '.ready=false' <<<"${result}" ;;
+    string-ready) jq -c '.ready="true"' <<<"${result}" ;;
+    numeric-ready) jq -c '.ready=1' <<<"${result}" ;;
+    null-ready) jq -c '.ready=null' <<<"${result}" ;;
+    missing-ready) jq -c 'del(.ready)' <<<"${result}" ;;
+    old-counts) printf '%s\n' '{"command":"ready","legacyRows":0,"encryptedRows":12,"unsupportedRows":0,"processingLegacyRows":0,"orphanRows":1,"finalized":true}' ;;
+    error-json) printf '%s\n' '{"command":"ready","errorCode":"DATABASE_OPERATION_FAILED"}' ;;
     duplicate) printf '%s\n' "${result}" "${result}" ;;
-    duplicate-field) printf '%s\n' "${result/\"legacyRows\":0/\"legacyRows\":1,\"legacyRows\":0}" ;;
+    duplicate-field) printf '%s\n' '{"command":"ready","ready":false,"ready":true}' ;;
     no-newline) printf '%s' "${result}" ;;
     extra-newline) printf '%s\n\n' "${result}" ;;
     *) exit 1 ;;
@@ -240,11 +240,19 @@ for environment in dev prod; do
   if [[ "${environment}" == dev ]]; then
     grep -Fxq -- "${HARUDLE_APP_DIR}/compose.dev.yaml" "${TEST_DIR}/verify.args"
   fi
-  grep -Fxq -- 'LOADER_MAIN=com.harudle.diary.infrastructure.crypto.DiarySourceTextBackfillMain' "${TEST_DIR}/ready.args"
-  grep -Fxq -- 'com.harudle.diary.infrastructure.crypto.DiarySourceTextBackfillMain' "${TEST_DIR}/ready.java.loader-main"
+  grep -Fxq -- 'LOADER_MAIN=com.harudle.diary.infrastructure.crypto.DiarySourceTextReadinessMain' "${TEST_DIR}/ready.args"
+  grep -Fxq -- 'com.harudle.diary.infrastructure.crypto.DiarySourceTextReadinessMain' "${TEST_DIR}/ready.java.loader-main"
   grep -Fxq -- '-Dpreflight.parity=true' "${TEST_DIR}/ready.java.args"
   grep -Fxq -- '-Xlog:disable' "${TEST_DIR}/ready.java.args"
   grep -Fxq -- 'ready' "${TEST_DIR}/ready.java.args"
+  for operation in verify ready; do
+    grep -Fxq -- 'DIARY_PRIVATE_CLI_JAR=/app/app.jar' "${TEST_DIR}/${operation}.args"
+    grep -Fxq -- '/app/app.jar' "${TEST_DIR}/${operation}.java.args"
+    if grep -Fxq -- '/app/maintenance.jar' "${TEST_DIR}/${operation}.java.args"; then
+      echo 'FAIL: Deployment checks selected the maintenance JAR.' >&2
+      exit 1
+    fi
+  done
   assert_private_output
   assert_override_removed
   record_pass "${environment}: verify before replacement without diagnostic or trace leaks"
@@ -330,15 +338,29 @@ for option in -version --dry-run; do
   export DIARY_KEY_TEST_READY_OPTION="${option}"
   assert_ready_rejected "ready ${option}: Main 미실행 종료 0 거절"
 done
-for result in empty diagnostic extra-field wrong-command not-finalized legacy unsupported processing \
-  negative string-count fractional-count duplicate duplicate-field no-newline extra-newline; do
+for result in empty diagnostic extra-field wrong-command false-ready string-ready numeric-ready null-ready \
+  missing-ready old-counts error-json duplicate duplicate-field no-newline extra-newline; do
   prepare_case dev reader
   export DIARY_KEY_TEST_READY_RESULT="${result}"
-  assert_ready_rejected "ready ${result}: 단일 완료 JSON과 올바른 집계만 허용"
+  assert_ready_rejected "ready ${result}: 정확한 ready 성공 JSON만 허용"
 done
 prepare_case dev reader
 export DIARY_KEY_TEST_READY_JAVA_FAILURE=7
 assert_ready_rejected 'ready 성공 JSON이 있어도 비정상 종료 거절'
+
+# Reject unknown mains and an unpinned backfill before starting any Compose process.
+source "${SCRIPT_DIR}/diary_key_verification.sh"
+for rejected_main in untrusted.test.Main com.harudle.diary.infrastructure.crypto.DiarySourceTextBackfillMain; do
+  prepare_case dev reader
+  COMPOSE_ARGS=()
+  if run_private_diary_cli "${rejected_main}" "" ready > "${TEST_DIR}/output" 2>&1; then
+    echo 'FAIL: An unknown or unpinned maintenance main was accepted.' >&2
+    exit 1
+  fi
+  [[ ! -s "${TEST_DIR}/calls" ]]
+  assert_private_output
+  record_pass "${rejected_main}: rejected before Docker without an allowed deployment entry point"
+done
 
 prepare_case prod writer
 bash "${SCRIPT_DIR}/application_start.sh" > "${TEST_DIR}/output" 2>&1

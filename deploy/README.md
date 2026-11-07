@@ -321,22 +321,87 @@ Flyway 전용 비풀링 연결은 잠금 대기 5초, 개별 SQL 실행 60초를
 
 ### 기존 원문·지문의 온라인 전환 (#423)
 
-배치는 자동으로 실행하지 않습니다. #442 호환 앱은 계속 제공하고 **#423 후보 이미지**의
-`DiarySourceTextBackfillMain`을 수동으로 실행합니다. 후보는 검토한 배포 아티팩트에서
-체크섬을 확인해 로드하거나, AfterInstall까지 로드된 배포에서 확보합니다. 후자의 ready 차단으로
-기존 컨테이너는 유지되지만 자동 롤백이 후보 태그·스크립트를 바꿀 수 있으므로 운영자가 해당
-배포 상태를 통제하고 후보 원본과 이미지 ID를 보존해야 합니다. 배포·이미지 정리 작업과 병행하지 않습니다.
+배치는 자동으로 실행하지 않습니다. #442 호환 앱은 계속 제공하고, **서버와 별도로 준비한 유지보수 이미지**의
+`/app/maintenance.jar`에서 `DiarySourceTextBackfillMain`을 실행합니다. 일반 서버 이미지에는 이 진입점과
+행 전환 코드가 없으며, 정상 CodeBuild도 전환 코드를 컴파일하지 않습니다.
+
+유지보수 이미지는 검토한 빌드 환경에서 만들고, 체크섬을 확인해 EC2에 전달하고 로드합니다.
+일반 CodeDeploy 산출물이나 AfterInstall로 로드한 서버 이미지에서 전환 도구를 찾지 않습니다.
+**서버 EC2에서는 Gradle이나 Docker 빌드를 하지 않습니다.**
+
+<details>
+<summary>유지보수 JAR 확인, 이미지 준비와 EC2 전달</summary>
+
+PR CI는 일반 서버 테스트와 `maintenanceTest`, 서버 JAR과 도구 JAR의 실제 실행 검증을 수행합니다.
+성공한 실행에서 `diary-source-maintenance-<PR 원본 SHA>-<실행 차수>` 다운로드 산출물을 확인합니다.
+다음 네 파일을 `backend/build/maintenance/`에 놓습니다.
+
+- `harudle-diary-source-maintenance.jar`: 수동 전환 도구입니다.
+- `checksums.sha256`: JAR의 SHA-256 값입니다.
+- `commit.txt`: CI가 실제 빌드한 소스 커밋입니다.
+- `head-commit.txt`: 리뷰한 PR 원본 커밋입니다. PR 통합 테스트에서는 실제 빌드 커밋과 다를 수 있습니다.
+
+실행한 CI와 PR 원본 커밋이 검토 대상과 같은지 확인합니다. **소스는 `head-commit.txt`가 아니라
+`commit.txt`의 실제 빌드 커밋으로 준비**합니다. 다운로드 보존 기간이 끝나거나 PR 통합 커밋이
+사라질 수 있으므로, 소스 원본과 JAR 및 체크섬, 커밋 기록도 서버 밖에 별도 보존합니다.
+도구를 직접 빌드하고 검증할 때는 [전용 Gradle 명령](../backend/README.md#테스트)을 사용합니다.
+
+다음 명령은 ARM64 이미지를 만들 수 있고 `sha256sum`을 사용할 수 있는 검토용 빌드 환경의
+저장소 루트에서 실행합니다. 실제 빌드 커밋의 깨끗한 소스를 준비한 뒤 실행하는 예입니다.
+
+```bash
+reviewed_commit="$(git rev-parse HEAD)"
+test "$(cat backend/build/maintenance/commit.txt)" = "$reviewed_commit"
+(cd backend/build/maintenance && sha256sum -c checksums.sha256)
+docker buildx build --platform linux/arm64 --target maintenance --load \
+  -t "harudle-diary-maintenance:${reviewed_commit}" backend
+git archive --format=tar "$reviewed_commit" | gzip > diary-source-maintenance-source.tar.gz
+docker save "harudle-diary-maintenance:${reviewed_commit}" | gzip > diary-source-maintenance-image.tar.gz
+sha256sum diary-source-maintenance-image.tar.gz > diary-source-maintenance-image.tar.gz.sha256
+```
+
+이미지 압축 파일과 그 체크섬 파일을 EC2의 통제된 작업 디렉터리에 전달합니다. 그 디렉터리에서
+다음과 같이 검증하고 로드합니다. 마지막 태그에는 기록한 실제 빌드 커밋을 넣습니다.
+
+```bash
+sha256sum -c diary-source-maintenance-image.tar.gz.sha256
+gzip -dc diary-source-maintenance-image.tar.gz | sudo docker load
+sudo docker image inspect --format '{{.Id}}' 'harudle-diary-maintenance:<실제-빌드-커밋>'
+```
+
+출력된 이미지 ID와 원본 소스, JAR, 압축 파일의 체크섬 및 보관 위치를 운영 기록에 남깁니다.
+**CI 다운로드 산출물만으로 장기 복구 보관을 마친 것으로 판단하지 않습니다.** 검증한 유지보수 이미지와
+해당 백업의 키링 및 검증 파일을 서버 밖에 보관하고, 과거 v0 백업의 실제 복원 가능성을 확인해야 합니다.
+
+</details>
 
 실행 중 backend는 #442 코드일 수 있으므로 `docker exec`로 배치를 실행하지 않습니다.
-후보 이미지 ID는 `docker image inspect --format '{{.Id}}'`로 확인해 운영 기록에 남깁니다.
-`:local`이나 임의 태그는 runner의 입력으로 허용하지 않습니다. 후보를 별도 보관 태그로 보존해도
-실제 실행은 항상 기록한 `sha256:<64hex>` ID로 고정합니다.
+유지보수 이미지 ID는 `docker image inspect --format '{{.Id}}'`로 확인해 운영 기록에 남깁니다.
+`:local`이나 임의 태그는 runner의 입력으로 허용하지 않습니다. 보관 태그를 사용하더라도 실행은
+항상 기록한 `sha256:<64hex>` ID로 고정합니다. 배포와 이미지 정리 작업을 병행하지 않습니다.
 
-CodeDeploy는 runner와 필요한 두 helper를 `/opt/harudle/maintenance/`에 복사합니다.
-서버 `.env`, 배포 모드 파일과 Compose 파일은 `/opt/harudle`의 검증된 설정을 사용합니다.
+**최초 전환 전에 runner도 별도로 준비합니다.** 새 서버 앱은 전환 완료 전에는 시작 검사를 통과하지 못하므로,
+먼저 새 앱의 배포를 시도해 runner를 받는 방식으로 준비하지 않습니다.
+검토한 실제 빌드 커밋의 소스를 서버의 통제된 작업 디렉터리에 전달하고, 아래 세 파일만 root 소유와
+권한 755로 미리 설치합니다. 다음은 전달한 소스 경로를 지정한 뒤 실행하는 예입니다.
+
+```bash
+: "${reviewed_source_dir:?검토한 실제 빌드 커밋의 소스 경로를 지정하세요}"
+sudo install -d -o root -g root -m 755 /opt/harudle/maintenance
+sudo install -o root -g root -m 755 \
+  "$reviewed_source_dir/deploy/scripts/run_diary_source_text_backfill.sh" \
+  "$reviewed_source_dir/deploy/scripts/compose_environment.sh" \
+  "$reviewed_source_dir/deploy/scripts/diary_key_verification.sh" \
+  /opt/harudle/maintenance/
+```
+
+서버 `.env`, 배포 모드 파일과 Compose 파일은 `/opt/harudle`의 기존 검증된 설정을 그대로 사용합니다.
+일반 CodeDeploy도 이후 배포에서 같은 세 파일을 설치합니다. **전환 중에는 배포와 자동 재시작을 통제해
+수동 설치한 파일이나 기존 설정이 덮어써지지 않게 합니다.** 실행할 파일의 커밋과 설치 기록을 함께 남깁니다.
 runner는 같은 Compose env_file/environment/JAVA_OPTS와 readonly canary를 유지하고,
-마지막 override에서 후보 image와 로그 driver `none`만 지정합니다. 포트를 열거나 기존 앱을
-재시작하지 않으며, 이미지 자동 pull·빌드는 하지 않습니다. main은 LOADER_MAIN으로 강제합니다.
+마지막 override에서 유지보수 image와 로그 driver `none`만 지정합니다. 포트를 열거나 기존 앱을
+재시작하지 않으며, 이미지 자동 pull이나 빌드는 하지 않습니다. 진입점은 LOADER_MAIN으로 강제하고
+`/app/maintenance.jar`를 사용합니다. 일반 키 검증과 배포의 `ready`는 서버의 `/app/app.jar`를 사용합니다.
 
 **배치가 사용하는 활성 키를 현재 서비스가 복호화할 수 있어야 합니다.** 현재 구성은 dev/prod 각각의
 EC2에서 Compose backend를 실행하는 방식입니다. 실행 중 #442 앱은 시작할 때 키링을 메모리에
@@ -353,7 +418,7 @@ runner와 canary 검증은 후보 프로세스의 설정을 확인할 뿐 실행
 확인해야 하며, 키 값을 inspect·로그·운영 기록에 출력하지 않습니다.
 
 ```bash
-# dev EC2 예시. candidate_image에 검토·로드한 #423 이미지의 전체 sha256 ID를 넣습니다.
+# dev EC2 예시. candidate_image에 검토하고 로드한 유지보수 이미지의 전체 sha256 ID를 넣습니다.
 candidate_image='sha256:<검증한-64자리-hex>'
 sudo bash /opt/harudle/maintenance/run_diary_source_text_backfill.sh dev \
   --candidate-image="$candidate_image" status
@@ -366,13 +431,12 @@ sudo bash /opt/harudle/maintenance/run_diary_source_text_backfill.sh dev \
 의도한 환경의 PostgreSQL인지 운영자가 확인합니다. 현재 dev/prod는 각각 별도 DB EC2를 사용합니다. 이 절차에서 DB role이나 접속 허용 설정을 변경하지 않습니다.
 키·DB 접속 정보를 셸 인자나 출력에 넣지 않습니다.
 
-| 명령 | 결과·종료 코드 |
-| --- | --- |
-| `status` | 저장 버전과 미처리 상태 조회. 0은 조회 성공이며 전환 완료를 뜻하지 않음 |
-| `migrate` | v0만 행별로 전환. 0은 현재 v0 처리 완료, 1은 실패, 2는 진행 중 상태/처리 한도 등으로 미완료 |
-| `verify` | 모든 행 인증 복호화와 연결 HMAC 확인. 성공해도 finalize 완료를 뜻하지 않음 |
-| `finalize` | 전수 검증·v0 0건 확인 후 v1 전용 제약 조건과 기본값 제거 |
-| `ready` | v1-only 앱 시작을 허용할 완료 조건 확인. 성공 시에만 배포를 진행 |
+- `status`는 저장 버전과 미처리 상태를 집계합니다. 종료 0은 조회 성공이며 전환 완료가 아닙니다.
+- `migrate`는 v0를 행별로 전환합니다. 종료 0은 현재 v0 처리 완료, 1은 실패, 2는 진행 중 상태나 처리 한도 등으로 미완료입니다.
+- `verify`는 모든 행을 인증 복호화하고 연결된 HMAC을 확인합니다. 성공해도 DB 완료 조건을 확정한 것은 아닙니다.
+- `finalize`는 전수 검증과 v0 0건 확인 후 v1 전용 제약과 기본값 제거를 확정합니다.
+- `ready`는 DB 구조 정보로 완료 조건만 확인합니다. 사용자 테이블의 COUNT나 JOIN은 실행하지 않습니다.
+  성공 결과는 `{"command":"ready","ready":true}`이며, 상세 건수는 `status`로 확인합니다.
 
 `--batch-size`는 migrate/verify/finalize에서 기본 100, 1~1,000이고 `migrate` 전용 `--max-batches`는 기본 1, 1~10,000입니다.
 미처리 상태를 확인하며 제한된 `migrate`를 반복합니다. `PROCESSING`은 잠금 후 건너뛰므로
@@ -421,8 +485,8 @@ v0를 거절하며, 중간 상태에서는 `ready`가 실패합니다. 이미 �
 전체 잠금 1초를 보장하지는 않습니다. 실제 조회 대기와 허용 예산은
 [격리 복원 DB 측정 절차](../backend/docs/diary-source-text-finalize-measurement.md)로 확인합니다.
 전체 명령 시간과 일반 조회를 막는 잠금 시간은 구분하며, 운영 규모의 실측은 아직 수행하지 않았습니다.
-기본 필드는 command, legacyRows, encryptedRows, unsupportedRows, processingLegacyRows,
-orphanRows, finalized입니다. migrate는 attempted/migrated/skippedProcessing/failed/orphanMigrated,
+`ready`를 제외한 명령의 기본 필드는 command, legacyRows, encryptedRows, unsupportedRows,
+processingLegacyRows, orphanRows, finalized입니다. migrate는 attempted/migrated/skippedProcessing/failed/orphanMigrated,
 verify/finalize는 checked/failed를 추가합니다. orphanRows는 모든 버전의 생성 기록 없는 일기 수이며
 그 자체로 오류 건수는 아닙니다. status의 encryptedRows는 버전별 집계이며 암호문 인증 성공 건수가 아닙니다.
 
@@ -441,10 +505,12 @@ canary 재생성, 수동 지문 덮어쓰기로 우회하지 않습니다. 모�
 않지만 변조되면 잘못된 키를 신뢰할 수 있으므로 root가 관리합니다. 일반 배포는 읽기 전용으로
 마운트한 파일의 키 `verify` 후 별도 DB `ready` 검사를 통과해야 합니다. `verify`와 `register`는
 DB에 연결하지 않습니다. `initialize`는 최초 준비 조건을, `verify-data`는 실제 v1 원문을 JDBC로
-검사합니다. `ready`는 JDBC로 DB 전환 완료 조건만 확인합니다. 어느 명령도 Spring context·Flyway·
-AI 클라이언트를 시작하지 않으며 외부 로그 전송과 진단 원문 출력을 막습니다.
-배포 훅은 종료 코드뿐 아니라 실제 Main의 키 검증 성공 JSON과 완료 조건을 충족한 ready JSON도
-확인합니다. JVM이 Main을 실행하지 않고 종료 0을 반환한 경우에는 교체를 허용하지 않습니다.
+검사합니다. 배포의 `ready`는 서버 JAR의 `DiarySourceTextReadinessMain`에서 JDBC로 DB 구조 정보만
+확인합니다. 정확한 검증 완료 v1 CHECK와 NOT NULL, 기본값 제거를 같은 구조 잠금 안에서 검사합니다.
+어느 명령도 Spring context나 Flyway, AI 클라이언트를 시작하지 않으며 외부 로그 전송과 진단 원문 출력을 막습니다.
+배포 훅은 종료 0과 정확한 `{"command":"ready","ready":true}` 결과를 함께 요구합니다.
+추가 필드, 중복 키, 다른 타입과 예전 집계 형식은 거절합니다. JVM이 Main을 실행하지 않고
+종료 0만 반환한 경우에도 교체를 허용하지 않습니다. 키 검증의 성공 JSON 검사도 유지합니다.
 
 | 명령 | 용도 | 허용하지 않는 사용 |
 | --- | --- | --- |

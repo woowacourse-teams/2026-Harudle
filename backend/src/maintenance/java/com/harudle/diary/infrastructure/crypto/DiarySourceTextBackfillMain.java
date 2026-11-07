@@ -93,7 +93,7 @@ public final class DiarySourceTextBackfillMain {
             case "status" -> new CommandResult(0, summary(options.command(), "", migration.status()));
             case "ready" -> {
                 migration.requireReady();
-                yield new CommandResult(0, summary(options.command(), "", migration.status()));
+                yield new CommandResult(0, "{\"command\":\"ready\",\"ready\":true}");
             }
             case "migrate" -> migrate(options, migration);
             case "verify", "finalize" -> verify(options, migration);

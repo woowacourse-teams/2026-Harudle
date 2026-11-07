@@ -24,7 +24,7 @@ import java.util.UUID;
  */
 public final class DiarySourceTextMigration {
 
-    public static final long EXECUTION_LOCK_KEY = 0x48415255444c4533L;
+    public static final long EXECUTION_LOCK_KEY = DiarySourceTextMigrationSession.EXECUTION_LOCK_KEY;
 
     private static final int MAX_BATCH_SIZE = 1_000;
     private static final int MAX_BATCHES = 10_000;
@@ -75,15 +75,9 @@ public final class DiarySourceTextMigration {
         return jdbc.safely(() -> jdbc.exclusively(() -> finalizeLocked(batchSize)));
     }
 
-    /** Requires a validated v1-only CHECK, a non-null version with no default, and no legacy or unknown rows. */
+    /** Requires the same metadata-only completion check used by the server and deployment. */
     public void requireReady() {
-        jdbc.safely(() -> {
-            inspect(() -> {
-                requireReadyInternal();
-                return null;
-            });
-            return null;
-        });
+        new DiarySourceTextReadiness(jdbc).requireReady();
     }
 
     private MigrationResult migrateLocked(int batchSize, int maxBatches) throws SQLException {
@@ -338,10 +332,7 @@ public final class DiarySourceTextMigration {
         return new VerificationResult(verified.checked(), blocked, remaining);
     }
 
-    private void requireReadyInternal() throws SQLException {
-        Status state = readStatus();
-        require(state.finalized() && state.legacyRows() == 0 && state.unsupportedRows() == 0);
-    }
+
 
     private Status readStatus() throws SQLException {
         try (PreparedStatement statement = jdbc.prepare("""

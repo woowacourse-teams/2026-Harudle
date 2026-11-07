@@ -3,9 +3,22 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 jar_file="$(cd -- "$(dirname -- "$1")" && pwd)/$(basename -- "$1")"
+maintenance_jar="$(cd -- "$(dirname -- "$2")" && pwd)/$(basename -- "$2")"
+# Assert the packaging boundary independently of whichever classes the launcher happens to load.
+server_classes="$(jar tf "${jar_file}")"
+maintenance_classes="$(jar tf "${maintenance_jar}")"
+if grep -Eq '^BOOT-INF/classes/com/harudle/diary/infrastructure/(crypto/DiarySourceTextBackfillMain|migration/DiarySourceTextMigration)(\$[^/]*)?\.class$' <<<"${server_classes}"; then
+  echo 'The server JAR must not contain manual conversion classes.' >&2
+  exit 1
+fi
+grep -Fxq 'BOOT-INF/classes/com/harudle/diary/infrastructure/crypto/DiarySourceTextReadinessMain.class' <<<"${server_classes}"
+grep -Fxq 'BOOT-INF/classes/com/harudle/diary/infrastructure/crypto/DiarySourceTextBackfillMain.class' <<<"${maintenance_classes}"
+grep -Fxq 'BOOT-INF/classes/com/harudle/diary/infrastructure/migration/DiarySourceTextMigration.class' <<<"${maintenance_classes}"
+echo 'PASS: server and maintenance JARs have separate entry points and conversion classes.'
 test_dir="$(mktemp -d)"
 compose_project="harudle-diary-image-smoke-$$"
 container_id=
+maintenance_image="harudle-diary-maintenance-smoke:$$"
 cleanup() {
   if [[ -f "${test_dir}/compose-image-id.yaml" ]]; then
     docker compose --project-name "${compose_project}" --env-file /dev/null \
@@ -14,6 +27,7 @@ cleanup() {
   if [[ -n "${container_id}" ]]; then
     docker rm --force "${container_id}" >/dev/null 2>&1 || true
   fi
+  docker image rm "${maintenance_image}" >/dev/null 2>&1 || true
   rm -rf -- "${test_dir}"
 }
 trap cleanup EXIT
@@ -22,6 +36,20 @@ docker compose version >/dev/null 2>&1 || {
   echo 'Packaged migration tests require Docker Compose; the image-ID smoke cannot be skipped.' >&2
   exit 1
 }
+
+# Build the explicit tool target and exercise its real non-root entry point. No application
+# credentials are passed into this image; configuration rejection proves the packaged Main ran.
+docker build --target maintenance --tag "${maintenance_image}" "${script_dir}/../../backend" >/dev/null
+docker run --rm --entrypoint sh "${maintenance_image}" -c \
+  'test -r /app/maintenance.jar && test ! -e /app/app.jar'
+image_status=0
+docker run --rm "${maintenance_image}" status >"${test_dir}/image-result" \
+  2>"${test_dir}/image-error" || image_status=$?
+[[ "${image_status}" == 1 ]]
+jq -se 'length == 1 and .[0] == {command:"status",errorCode:"CONFIGURATION_INVALID"}' \
+  "${test_dir}/image-result" >/dev/null
+[[ "$(cat "${test_dir}/image-error")" == 'Diary source text migration failed.' ]]
+echo 'PASS: the maintenance image contains only its tool JAR and executes the expected entry point.'
 
 # An isolated disposable database and public test keys; never use configured application credentials.
 container_id="$(docker run --detach --rm --publish 127.0.0.1::5432 \
@@ -130,25 +158,36 @@ unset SPRING_APPLICATION_JSON LOADER_PATH LOADER_HOME JAVA_TOOL_OPTIONS JDK_JAVA
 LOADER_MAIN=com.harudle.diary.infrastructure.crypto.DiarySourceTextKeyCheckMain \
   java -Xmx128m -cp "${jar_file}" org.springframework.boot.loader.launch.PropertiesLauncher initialize
 export LOADER_MAIN=com.harudle.diary.infrastructure.crypto.DiarySourceTextBackfillMain
+active_jar="${maintenance_jar}"
 
 run_check() {
   local expected="$1" actual=0
   shift
-  java -Xmx128m -cp "${jar_file}" org.springframework.boot.loader.launch.PropertiesLauncher "$@" \
+  java -Xmx128m -cp "${active_jar}" org.springframework.boot.loader.launch.PropertiesLauncher "$@" \
     >"${test_dir}/result" 2>"${test_dir}/error" || actual=$?
   if [[ "${actual}" != "${expected}" ]]; then
     echo 'Packaged migration command returned an unexpected result.' >&2
     exit 1
   fi
   jq -se --arg command "$1" 'length == 1 and (.[0] | type == "object" and .command == $command and
-    ((.legacyRows | type == "number") or
+    ((.legacyRows | type == "number") or (. == {command:"ready",ready:true}) or
      ((keys | sort) == ["command", "errorCode"] and (.errorCode | type == "string"))))' \
     "${test_dir}/result" >/dev/null
   if [[ -s "${test_dir}/error" ]]; then
-    test "$(cat "${test_dir}/error")" = 'Diary source text migration failed.'
+    if [[ "${LOADER_MAIN}" == com.harudle.diary.infrastructure.crypto.DiarySourceTextReadinessMain ]]; then
+      test "$(cat "${test_dir}/error")" = 'Diary source text readiness check failed.'
+    else
+      test "$(cat "${test_dir}/error")" = 'Diary source text migration failed.'
+    fi
   fi
 }
 
+run_ready_server() {
+  LOADER_MAIN=com.harudle.diary.infrastructure.crypto.DiarySourceTextReadinessMain \
+    active_jar="${jar_file}" run_check "$1" ready
+}
+
+run_ready_server 1
 run_check 0 status
 jq -e '.legacyRows == 3 and .finalized == false' "${test_dir}/result" >/dev/null
 run_check 1 ready
@@ -164,6 +203,9 @@ jq -e '.checked == 3 and .failed == 0 and .finalized == false' "${test_dir}/resu
 run_check 0 finalize
 jq -e '.checked == 3 and .failed == 0 and .finalized == true' "${test_dir}/result" >/dev/null
 run_check 0 ready
+jq -e '. == {command:"ready",ready:true}' "${test_dir}/result" >/dev/null
+run_ready_server 0
+jq -e '. == {command:"ready",ready:true}' "${test_dir}/result" >/dev/null
 run_check 0 migrate
 jq -e '.migrated == 0 and .finalized == true' "${test_dir}/result" >/dev/null
 run_check 0 finalize

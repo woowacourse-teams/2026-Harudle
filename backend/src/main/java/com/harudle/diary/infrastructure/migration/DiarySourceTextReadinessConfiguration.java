@@ -1,7 +1,5 @@
 package com.harudle.diary.infrastructure.migration;
 
-import com.harudle.diary.domain.DiarySourceTextCipher;
-import com.harudle.generation.diary.service.RequestFingerprintGenerator;
 import java.sql.Connection;
 import java.sql.SQLException;
 import javax.sql.DataSource;
@@ -21,22 +19,19 @@ public class DiarySourceTextReadinessConfiguration {
     @DependsOnDatabaseInitialization
     InitializingBean diarySourceTextMigrationReadiness(
             DataSource dataSource,
-            DiarySourceTextCipher cipher,
-            RequestFingerprintGenerator fingerprints,
             ConfigurableEnvironment environment
     ) {
         return () -> {
             if (environment.matchesProfiles("prod")
                     || environment.getSystemEnvironment().containsKey("DIARY_SOURCE_TEXT_RELEASE_MODE")) {
-                verifyDatabase(dataSource, cipher, fingerprints);
+                verifyDatabase(dataSource);
             }
         };
     }
 
-    private void verifyDatabase(DataSource dataSource, DiarySourceTextCipher cipher,
-            RequestFingerprintGenerator fingerprints) {
+    private void verifyDatabase(DataSource dataSource) {
         try (Connection connection = dataSource.getConnection()) {
-            new DiarySourceTextMigration(connection, cipher, fingerprints).requireReady();
+            new DiarySourceTextReadiness(connection).requireReady();
         } catch (RuntimeException | SQLException exception) {
             throw new IllegalStateException("Diary source text migration is not ready.");
         }

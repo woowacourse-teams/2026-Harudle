@@ -62,6 +62,7 @@ source "${SCRIPT_DIR}/diary_key_verification.sh"
 configure_compose "${APP_DIR}"
 cd "${APP_DIR}"
 
+# The pinned maintenance image provides /app/maintenance.jar; the serving image has no backfill entry point.
 # Raw stdout and stderr may contain environment values from early JVM or launcher failures.
 # Publish only the CLI's fixed, typed result fields after checking the complete output.
 result_file="$(mktemp "${TMPDIR:-/tmp}/harudle-diary-backfill-result.XXXXXX" 2>/dev/null)" ||

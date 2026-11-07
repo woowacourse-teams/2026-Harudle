@@ -8,12 +8,15 @@ import java.sql.SQLException;
 /** Owns JDBC execution, transaction recovery and the session-level execution lock. */
 final class DiarySourceTextMigrationSession {
 
+    static final long EXECUTION_LOCK_KEY = 0x48415255444c4533L;
+
     private static final int QUERY_TIMEOUT_SECONDS = 10;
 
     private final Connection connection;
     private boolean unusable;
 
     DiarySourceTextMigrationSession(Connection connection) {
+        require(connection != null);
         this.connection = connection;
     }
 
@@ -160,7 +163,7 @@ final class DiarySourceTextMigrationSession {
 
     private boolean advisory(String sql) throws SQLException {
         try (PreparedStatement statement = prepare(sql)) {
-            statement.setLong(1, DiarySourceTextMigration.EXECUTION_LOCK_KEY);
+            statement.setLong(1, EXECUTION_LOCK_KEY);
             return readBoolean(statement);
         }
     }
