@@ -13,10 +13,10 @@ import { GUEST_TRIAL_COPY } from './copy';
 // 장면의 윤곽만 어렴풋이 보이도록 블록을 잘게 둔다.
 const MOSAIC_BLOCKS_PER_PANEL = 18;
 
-/** 2x2 네컷에서 가릴 칸. x·y는 0부터 시작하는 열·행이다. */
+/** 2x2 네컷에서 가릴 칸(기·결). x·y는 0부터 시작하는 열·행이다. */
 const MASKED_PANELS = [
-  { x: 1, y: 0 },
-  { x: 0, y: 1 },
+  { x: 0, y: 0 },
+  { x: 1, y: 1 },
 ] as const;
 
 interface SourceRegion {
@@ -90,7 +90,7 @@ const shrinkPanel = (
 };
 
 /**
- * 원본을 그린 뒤 2·3컷만 저해상도로 줄였다가 다시 키워 모자이크를 만든다.
+ * 원본을 그린 뒤 1·4컷(기·결)만 저해상도로 줄였다가 다시 키워 모자이크를 만든다.
  * 화면과 저장 결과 모두 모자이크된 그림만 남도록 원본 이미지를 DOM에 두지 않는다.
  */
 export const drawMaskedComic = (
