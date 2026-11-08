@@ -272,7 +272,7 @@ describe('실험 대상이 아닌 방문', (): void => {
 });
 
 describe('비로그인 체험 흐름', (): void => {
-  it('가이드에서 만든 만화를 2·3컷을 가린 결과로 보여준다', async (): Promise<void> => {
+  it('가이드에서 만든 만화를 1·4컷(기·결)을 가린 결과로 보여준다', async (): Promise<void> => {
     const user = userEvent.setup();
     renderExperiment();
 
