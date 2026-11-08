@@ -3,6 +3,11 @@ export type GenerationStatus =
 
 export const GENERATION_FAILURE_CODES = [
   'AI_PROVIDER_ERROR',
+  'AI_PROVIDER_CONNECTION_ERROR',
+  'AI_PROVIDER_SERVER_ERROR',
+  'AI_PROVIDER_CONFIGURATION_ERROR',
+  'AI_PROVIDER_REQUEST_REJECTED',
+  'AI_CONTENT_BLOCKED',
   'AI_PROVIDER_RATE_LIMITED',
   'AI_PROVIDER_TIMEOUT',
   'AI_OUTPUT_TRUNCATED',
@@ -19,6 +24,9 @@ export const isGenerationFailureCode = (
   value: unknown,
 ): value is GenerationFailureCode =>
   GENERATION_FAILURE_CODES.some((code): boolean => code === value);
+
+export const toGenerationFailureCode = (code: string): GenerationFailureCode =>
+  isGenerationFailureCode(code) ? code : 'AI_PROVIDER_ERROR';
 
 export interface DiaryGenerationInProgress {
   id: string;
