@@ -1,6 +1,16 @@
 import { delay, http, HttpResponse } from 'msw';
+import { reportHandlers } from './reportHandlers';
 import { isLandingPath } from '../pages/landing/landingPaths';
 import { MOCK_SCENARIO_HEADER, MOCK_SCENARIOS } from './mockScenarios';
+import { legalHandlers } from './legalHandlers';
+import { appleNativeAuthHandlers } from './appleNativeAuthHandlers';
+import {
+  MOCK_CSRF_TOKEN,
+  isMockSessionLoggedIn,
+  isMockSessionLoggedOut,
+  markMockSessionLoggedOut,
+  resetMockSession,
+} from './mockAuthSession';
 import {
   createMockGenerationJob,
   getMockGeneration,
@@ -55,7 +65,6 @@ const getMockDate = (day: number): string =>
 const MOCK_USAGE_DATE = getMockDate(mockToday.day);
 const DAILY_GENERATION_LIMIT = 3;
 const MOCK_ACCESS_TOKEN = 'mock-access-token';
-const MOCK_CSRF_TOKEN = 'mock-csrf-token';
 const RESUMABLE_GENERATION_STORAGE_KEY = 'harudle:mock:resumable-generation:v1';
 
 let usedGenerationCount = 0;
@@ -483,7 +492,10 @@ let mockProfileImageUrl = '/profile-images/v1/5.png';
 restoreResumableGeneration();
 
 export const handlers = [
+  ...appleNativeAuthHandlers,
+  ...reportHandlers,
   http.get('/oauth2/authorization/kakao', async ({ request }) => {
+    resetMockSession();
     await delay(300);
 
     if (
@@ -513,10 +525,12 @@ export const handlers = [
 
   http.post('/api/v1/auth/refresh', async ({ request }) => {
     await delay(300);
+    if (globalThis.location.pathname === '/auth/callback') resetMockSession();
 
     if (
       request.headers.get(MOCK_SCENARIO_HEADER) ===
-      MOCK_SCENARIOS.authRefreshFailure
+        MOCK_SCENARIOS.authRefreshFailure ||
+      isMockSessionLoggedOut()
     ) {
       return createProblemDetails({
         status: 401,
@@ -528,6 +542,7 @@ export const handlers = [
 
     if (
       isLandingPath(globalThis.location.pathname) &&
+      !isMockSessionLoggedIn() &&
       request.headers.get(MOCK_SCENARIO_HEADER) !==
         MOCK_SCENARIOS.authRefreshSuccess
     ) {
@@ -573,6 +588,7 @@ export const handlers = [
       });
     }
 
+    markMockSessionLoggedOut();
     return new HttpResponse(null, {
       status: 204,
       headers: {
@@ -1193,4 +1209,5 @@ export const handlers = [
       );
     },
   ),
+  ...legalHandlers,
 ];

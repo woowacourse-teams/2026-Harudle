@@ -112,7 +112,7 @@ class ShareLinkQueryServiceTest extends ServiceIntegrationTestSupport {
     @Test
     @DisplayName("공유 ID로 공개 가능한 그림일기 정보만 조회한다")
     void getPublicShare() {
-        PublicShareResult result = shareLinkQueryService.getPublicShare(SHARE_ID);
+        PublicShareResult result = shareLinkQueryService.getPublicShare(SHARE_ID, null);
 
         assertThat(result.title()).isEqualTo("친구와 보낸 카페 시간");
         assertThat(result.diaryDate()).isEqualTo(DIARY_DATE);
@@ -125,7 +125,7 @@ class ShareLinkQueryServiceTest extends ServiceIntegrationTestSupport {
     void failWhenShareLinkDoesNotExist() {
         UUID unknownShareId = UUID.randomUUID();
 
-        assertThatThrownBy(() -> shareLinkQueryService.getPublicShare(unknownShareId))
+        assertThatThrownBy(() -> shareLinkQueryService.getPublicShare(unknownShareId, null))
                 .isInstanceOf(ShareNotFoundException.class);
     }
 
@@ -134,7 +134,7 @@ class ShareLinkQueryServiceTest extends ServiceIntegrationTestSupport {
     void failWhenDiaryIsDeleted() {
         executeUpdate("UPDATE diaries SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", DIARY_ID);
 
-        assertThatThrownBy(() -> shareLinkQueryService.getPublicShare(SHARE_ID))
+        assertThatThrownBy(() -> shareLinkQueryService.getPublicShare(SHARE_ID, null))
                 .isInstanceOf(ShareNotFoundException.class);
     }
 

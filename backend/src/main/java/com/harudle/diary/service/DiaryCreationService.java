@@ -2,6 +2,7 @@ package com.harudle.diary.service;
 
 import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.dto.CreateDiaryResult;
+import com.harudle.generation.diary.service.DiaryGenerationExecutor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
@@ -9,36 +10,36 @@ import org.springframework.stereotype.Service;
 public class DiaryCreationService {
 
     private final MemberDiaryCreationTransactionService memberTransactionService;
-    private final DiaryCreationExecutionService executionService;
+    private final DiaryGenerationExecutor generationExecutor;
 
     DiaryCreationService(
             MemberDiaryCreationTransactionService memberTransactionService,
-            DiaryCreationExecutionService executionService
+            DiaryGenerationExecutor generationExecutor
     ) {
         this.memberTransactionService = memberTransactionService;
-        this.executionService = executionService;
+        this.generationExecutor = generationExecutor;
     }
 
     public CreateDiaryResult create(CreateDiaryCommand command) {
-        MemberDiaryCreationClaim memberClaim = claim(
+        MemberDiaryCreationClaim memberClaim = enqueue(
                 command,
-                executionService.isGenerationAvailable()
+                generationExecutor.isConfigured()
         );
-        DiaryCreationExecution execution = executionService.execute(command, memberClaim.claim());
+        DiaryCreationClaim claim = memberClaim.claim();
         return new CreateDiaryResult(
-                execution.diaryId(),
-                execution.diaryDate(),
-                execution.sourceText(),
-                execution.createdAt(),
-                execution.generation(),
+                claim.diaryId(),
+                claim.diaryDate(),
+                claim.sourceText(),
+                claim.createdAt(),
+                claim.toGenerationResult(),
                 memberClaim.usage(),
-                execution.newlyCreated()
+                claim.newlyCreated()
         );
     }
 
-    private MemberDiaryCreationClaim claim(CreateDiaryCommand command, boolean generationAvailable) {
+    private MemberDiaryCreationClaim enqueue(CreateDiaryCommand command, boolean generationAvailable) {
         try {
-            return memberTransactionService.claim(command, generationAvailable);
+            return memberTransactionService.enqueue(command, generationAvailable);
         } catch (DataIntegrityViolationException exception) {
             return memberTransactionService.findExistingClaim(command)
                     .orElseThrow(() -> exception);

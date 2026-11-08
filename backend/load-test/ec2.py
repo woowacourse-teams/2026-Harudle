@@ -7,26 +7,30 @@ import shutil
 import subprocess
 import sys
 
-from assets import BUCKET, TEST_IMAGE, load_fixture, run_lock, upload
-from cleanup import cleanup, cleanup_locked
-from prepare import NAME, PREFIX, database_guard, members_sql, reset_guard, write_fixture, write_members
+from assets import BUCKET, TEST_IMAGE, delete_images, load_fixture, run_lock, seed_records, upload
+from cleanup import baseline_state_sql, cleanup, cleanup_locked, cleanup_sql, load_baseline_state, save_plan
+from prepare import MEMBERS, MEMBER_COUNTS, NAME, PREFIX, build_fixture, database_guard, login_sql, members_sql, reset_guard, write_fixture, write_members
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 APP_DIR = SCRIPT_DIR.parent
 CLIENT_IMAGE = 'postgres:18-alpine'
 
 
-def backend_settings():
-    for command in ['docker', 'aws']:
+def backend_settings(stopped=False):
+    for command in (['docker'] if stopped else ['docker', 'aws']):
         if not shutil.which(command):
             raise ValueError(f'{command} is required on EC2')
-    result = subprocess.run([
+    command = [
         'docker', 'compose', '--project-name', 'harudle', '--env-file', str(APP_DIR / '.env'),
-        '--file', str(APP_DIR / 'compose.prod.yaml'), 'ps', '--status', 'running', '--quiet', 'backend',
-    ], check=True, capture_output=True, text=True)
+        '--file', str(APP_DIR / 'compose.prod.yaml'), 'ps',
+    ]
+    command += ['--all'] if stopped else ['--status', 'running']
+    result = subprocess.run(command + ['--quiet', 'backend'], check=True, capture_output=True, text=True)
     container = result.stdout.strip()
     if not re.fullmatch(r'[0-9a-f]{12,64}', container):
-        raise ValueError('Exactly one running backend is required')
+        raise ValueError('Exactly one backend container is required; keep it with docker compose stop, not down')
+    if stopped:
+        ensure_backend_stopped(container)
     result = subprocess.run(['docker', 'inspect', '--format', '{{json .Config.Env}}', container],
                             check=True, capture_output=True, text=True)
     values = dict(item.split('=', 1) for item in json.loads(result.stdout))
@@ -43,12 +47,21 @@ def backend_settings():
     return container, settings
 
 
+def ensure_backend_stopped(container):
+    result = subprocess.run(['docker', 'inspect', '--format', '{{json .State}}', container],
+                            check=True, capture_output=True, text=True)
+    state = json.loads(result.stdout)
+    if (not isinstance(state, dict) or state.get('Status') != 'exited' or state.get('Running') is not False
+            or state.get('Restarting') is not False or state.get('Pid') != 0):
+        raise ValueError('Stop the backend container before cleaning unfinished test work')
+
+
 def database_target(settings):
     return {key: settings[key] for key in ['PGHOST', 'PGPORT', 'PGDATABASE']}
 
 
-def execute_sql(container, settings, sql):
-    command = ['docker', 'run', '--rm', '-i', '--network', f'container:{container}']
+def execute_sql(container, settings, sql, network=None):
+    command = ['docker', 'run', '--rm', '-i', '--network', network or f'container:{container}']
     for key in settings:
         command += ['--env', key]
     command += [CLIENT_IMAGE, 'psql', '-X', '-qAt', '--no-password', '-v', 'ON_ERROR_STOP=1', '-f', '-']
@@ -58,11 +71,13 @@ def execute_sql(container, settings, sql):
     return result.stdout.strip()
 
 
-def prepare_run(directory, settings, sql_runner):
+def prepare_run(directory, settings, sql_runner, member_count=MEMBERS):
     if not directory.exists():
-        write_members(directory)
+        write_members(directory, member_count)
     with run_lock(directory):
         fixture = load_fixture(directory)
+        if len(fixture['members']) != member_count:
+            raise ValueError('The existing member set has a different size; use a new folder')
         if (fixture['version'] != 3 or 'runName' in fixture or fixture['memberSetName'] != directory.name):
             raise ValueError('Use a reusable members folder')
         if (directory / 'database.json').exists():
@@ -73,7 +88,7 @@ def prepare_run(directory, settings, sql_runner):
         (directory / 'database.json').write_text(json.dumps(database_target(settings)))
         sql_runner(members_sql(fixture))
         (directory / '.ready').touch()
-    print(f'Prepared 200 reusable members in the dev DB: {directory.name}. Export members once.')
+    print(f'Prepared {member_count} reusable members in the dev DB: {directory.name}. Export members once.')
 
 
 def check_database(directory, settings):
@@ -94,6 +109,34 @@ def set_active_run(group, name):
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
+
+
+def prepare_baseline(group, accounts, settings, sql_runner):
+    directory = group / 'baseline'
+    expected, _, _ = build_fixture(accounts['baseUrl'], accounts['diariesPerMonth'], accounts, 'baseline')
+    if directory.exists():
+        fixture = load_fixture(directory)
+        check_database(directory, settings)
+        if fixture.get('memberSetId') != accounts['memberSetId'] or fixture['cleanupKey'] != accounts['cleanupKey']:
+            raise ValueError('The baseline belongs to another test member set')
+        if fixture.get('baselineId') == expected['baselineId'] and (directory / '.ready').exists():
+            return False
+        # A new month or an interrupted first preparation needs one full rebuild.
+        records = seed_records(fixture)
+        sql_runner(cleanup_sql(fixture, records))
+        delete_images(fixture, records)
+        shutil.rmtree(directory)
+    sql_runner(database_guard() + reset_guard(accounts) + '\nROLLBACK;')
+    fixture, seed, _ = write_fixture(directory, accounts=accounts)
+    (directory / 'database.json').write_text(json.dumps(database_target(settings)))
+    upload(fixture)
+    sql_runner(seed)
+    state = json.loads(sql_runner(baseline_state_sql(fixture)))
+    save_plan(directory / 'state.json', {'runId': fixture['runId'], 'baselineId': fixture['baselineId'],
+              'generations': seed_records(fixture), 'state': state}, fixture)
+    (directory / '.ready').touch()
+    print('Prepared the monthly baseline. Later runs will reuse its data and images.')
+    return True
 
 
 def reset_run(directory, group, settings, sql_runner, client_stopped):
@@ -121,15 +164,14 @@ def reset_run(directory, group, settings, sql_runner, client_stopped):
             check_database(previous, settings)
             with run_lock(previous):
                 cleanup_locked(previous, sql_runner, client_stopped)
-        # Check member ownership and leftover data before publishing a new active run.
-        sql_runner(database_guard() + reset_guard(accounts) + '\nROLLBACK;')
-        fixture, seed, _ = write_fixture(directory, accounts=accounts)
+        created = prepare_baseline(group, accounts, settings, sql_runner)
+        fixture, _, _ = write_fixture(directory, accounts=accounts)
         with run_lock(directory):
+            load_baseline_state(directory, fixture)
             (directory / 'database.json').write_text(json.dumps(database_target(settings)))
-            # Persist ownership before either S3 or DB can change.
             set_active_run(group, directory.name)
-            upload(fixture)
-            sql_runner(seed)
+            if not created:
+                sql_runner(login_sql(fixture))
             (directory / '.ready').touch()
     print(f'Ready: {directory.name}. Run local k6 with the same run name. Reuse the existing members.json.')
 
@@ -145,6 +187,8 @@ def main():
     parser.add_argument('run', help='members for prepare/export; a new name such as peak1 for reset')
     parser.add_argument('--members', default='members', help='Reusable members folder used by reset')
     parser.add_argument('--client-stopped', action='store_true', help='Confirm local k6 has stopped')
+    parser.add_argument('--member-count', type=int, choices=MEMBER_COUNTS, default=MEMBERS,
+                        help='Number of reusable members for prepare (200 or 1200)')
     args = parser.parse_args()
     if not all(re.fullmatch(NAME, name) for name in [args.run, args.members]):
         parser.error('Use only letters, digits, hyphens and underscores for the run name')
@@ -158,7 +202,7 @@ def main():
         container, settings = backend_settings()
         sql_runner = lambda sql: execute_sql(container, settings, sql)
         if args.action == 'prepare':
-            prepare_run(directory, settings, sql_runner)
+            prepare_run(directory, settings, sql_runner, args.member_count)
         elif args.action == 'reset':
             reset_run(directory, SCRIPT_DIR / 'runs' / args.members, settings, sql_runner, args.client_stopped)
         else:

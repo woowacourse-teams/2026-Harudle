@@ -145,6 +145,35 @@ class CommentPersistenceTest {
     }
 
     @Test
+    @DisplayName("회원 삭제 후 댓글을 유지하고 양방향 차단 상대에게만 숨긴다")
+    void preserveCommentsAndBlockedVisibilityAfterPhysicalDeletion() {
+        UUID blockedByAuthor = createMember();
+        UUID blockingAuthor = createMember();
+        UUID unrelated = createMember();
+        UUID comment = service.create(commenterId, feedId, "남겨진 댓글").id();
+        jdbc.update("INSERT INTO user_blocks (id, blocker_id, blocked_id) VALUES (?, ?, ?)",
+                UUID.randomUUID(), commenterId, blockedByAuthor);
+        jdbc.update("INSERT INTO user_blocks (id, blocker_id, blocked_id) VALUES (?, ?, ?)",
+                UUID.randomUUID(), blockingAuthor, commenterId);
+        transactions.executeWithoutResult(status -> {
+            comments.preserveBlockedVisibility(commenterId);
+            jdbc.update("DELETE FROM users WHERE id = ?", commenterId);
+        });
+        assertThat(service.list(feedId, blockedByAuthor, null, 10).items()).isEmpty();
+        assertThat(service.list(feedId, blockingAuthor, null, 10).items()).isEmpty();
+        var visible = service.list(feedId, unrelated, null, 10).items();
+        assertThat(visible).hasSize(1);
+        assertThat(visible.getFirst().id()).isEqualTo(comment);
+        assertThat(visible.getFirst().author()).isNull();
+        assertThat(visible.getFirst().isMine()).isFalse();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM withdrawn_comment_hidden_viewers WHERE comment_id = ?",
+                Integer.class, comment)).isEqualTo(2);
+        jdbc.update("DELETE FROM users WHERE id = ?", blockedByAuthor);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM withdrawn_comment_hidden_viewers WHERE viewer_id = ?",
+                Integer.class, blockedByAuthor)).isZero();
+    }
+
+    @Test
     @DisplayName("공개 댓글 GET은 익명에게 본인 여부를 숨기고 유효한 JWT에는 실제 본인 여부를 반환한다")
     void publicListPersonalizesOnlyAuthenticatedViewer() throws Exception {
         var own = service.create(commenterId, feedId, "내 댓글");
@@ -301,8 +330,8 @@ class CommentPersistenceTest {
         profiles.resetCallCount();
         jdbc.update("UPDATE users SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", feedAuthorId);
 
-        assertThat(comments.existsVisibleFeed(feedId)).isFalse();
-        assertThat(comments.findAfter(feedId, Optional.empty(), 20)).isEmpty();
+        assertThat(comments.existsVisibleFeed(feedId, null)).isFalse();
+        assertThat(comments.findAfter(feedId, Optional.empty(), 20, null)).isEmpty();
         mockMvc.perform(get(commentsPath())).andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("FEED_NOT_FOUND"));
         assertThat(profiles.callCount()).isZero();
@@ -350,7 +379,7 @@ class CommentPersistenceTest {
                 .andExpect(jsonPath("$.items[0].content").value("탈퇴 회원의 첫 댓글"))
                 .andExpect(jsonPath("$.items[0].author").isMap())
                 .andExpect(jsonPath("$.items[0].author.id").value((Object) null))
-                .andExpect(jsonPath("$.items[0].author.nickname").value("탈퇴한 회원"))
+                .andExpect(jsonPath("$.items[0].author.nickname").value("탈퇴한 사용자"))
                 .andExpect(jsonPath("$.items[0].author.profileImageUrl").value((Object) null))
                 .andExpect(jsonPath("$.items[0].isMine").value(false))
                 .andExpect(jsonPath("$.items[1].id").value(second.toString()))
@@ -368,7 +397,7 @@ class CommentPersistenceTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.items", hasSize(2)))
                 .andExpect(jsonPath("$.items[0].id").value(third.toString()))
                 .andExpect(jsonPath("$.items[0].author.id").value((Object) null))
-                .andExpect(jsonPath("$.items[0].author.nickname").value("탈퇴한 회원"))
+                .andExpect(jsonPath("$.items[0].author.nickname").value("탈퇴한 사용자"))
                 .andExpect(jsonPath("$.items[0].author.profileImageUrl").value((Object) null))
                 .andExpect(jsonPath("$.items[1].id").value(fourth.toString()))
                 .andExpect(jsonPath("$.items[1].author.id").value(activeCommenter.toString()))
@@ -398,13 +427,13 @@ class CommentPersistenceTest {
                 .andExpect(jsonPath("$.items[0].id").value(first.toString()))
                 .andExpect(jsonPath("$.items[0].content").value("보존되는 첫 댓글"))
                 .andExpect(jsonPath("$.items[0].author.id").value((Object) null))
-                .andExpect(jsonPath("$.items[0].author.nickname").value("탈퇴한 회원"))
+                .andExpect(jsonPath("$.items[0].author.nickname").value("탈퇴한 사용자"))
                 .andExpect(jsonPath("$.items[0].author.profileImageUrl").value((Object) null))
                 .andExpect(jsonPath("$.items[0].isMine").value(false))
                 .andExpect(jsonPath("$.items[1].id").value(second.toString()))
                 .andExpect(jsonPath("$.items[1].content").value("보존되는 두 번째 댓글"))
                 .andExpect(jsonPath("$.items[1].author.id").value((Object) null))
-                .andExpect(jsonPath("$.items[1].author.nickname").value("탈퇴한 회원"))
+                .andExpect(jsonPath("$.items[1].author.nickname").value("탈퇴한 사용자"))
                 .andExpect(jsonPath("$.items[1].author.profileImageUrl").value((Object) null))
                 .andExpect(jsonPath("$.items[1].isMine").value(false))
                 .andExpect(jsonPath("$.hasNext").value(false))
@@ -453,7 +482,7 @@ class CommentPersistenceTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.items", hasSize(2)))
                 .andExpect(jsonPath("$.items[0].id").value(first.toString()))
                 .andExpect(jsonPath("$.items[0].author.id").value((Object) null))
-                .andExpect(jsonPath("$.items[0].author.nickname").value("탈퇴한 회원"))
+                .andExpect(jsonPath("$.items[0].author.nickname").value("탈퇴한 사용자"))
                 .andExpect(jsonPath("$.items[0].author.profileImageUrl").value((Object) null))
                 .andExpect(jsonPath("$.items[0].isMine").value(false))
                 .andExpect(jsonPath("$.items[1].id").value(second.toString()))
@@ -1047,7 +1076,7 @@ class CommentProfileIntegrationPersistenceTest {
                     .andExpect(jsonPath("$.items[0].content").value("작성자가 탈퇴해도 보존되는 댓글"))
                     .andExpect(jsonPath("$.items[0].author").isMap())
                     .andExpect(jsonPath("$.items[0].author.id").value((Object) null))
-                    .andExpect(jsonPath("$.items[0].author.nickname").value("탈퇴한 회원"))
+                    .andExpect(jsonPath("$.items[0].author.nickname").value("탈퇴한 사용자"))
                     .andExpect(jsonPath("$.items[0].author.profileImageUrl").value((Object) null))
                     .andExpect(jsonPath("$.items[0].isMine").value(false))
                     .andExpect(jsonPath("$.hasNext").value(false))

@@ -51,7 +51,7 @@ public class FeedListService {
         Set<UUID> resolvedAuthors = new HashSet<>();
         Set<UUID> scannedFeeds = new HashSet<>();
         while (candidates.size() <= size) {
-            List<FeedSnapshot> batch = feeds.findAfter(sort, categoryId, boundary, size + 1);
+            List<FeedSnapshot> batch = feeds.findAfter(sort, categoryId, boundary, size + 1, viewerId);
             if (batch.isEmpty()) {
                 break;
             }

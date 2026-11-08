@@ -12,6 +12,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.harudle.auth.application.InactiveUserException;
+import com.harudle.auth.application.AccountSuspendedException;
 import com.harudle.auth.application.IssuedRefreshToken;
 import com.harudle.auth.application.OAuthLoginCommand;
 import com.harudle.auth.application.OAuthLoginResult;
@@ -38,14 +39,25 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpHeaders;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClientService;
+import org.springframework.security.oauth2.client.registration.ClientRegistration;
+import org.springframework.security.oauth2.core.OAuth2AccessToken;
+import org.springframework.security.oauth2.core.OAuth2RefreshToken;
 import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
 import org.springframework.security.oauth2.core.user.OAuth2User;
+import org.springframework.security.oauth2.core.oidc.OidcIdToken;
+import org.springframework.security.oauth2.core.oidc.user.DefaultOidcUser;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import tools.jackson.databind.ObjectMapper;
 
@@ -61,6 +73,9 @@ class OAuthLoginSuccessHandlerTest {
     private OAuthFailureRedirector failureRedirector;
     private OAuthEventLogger oAuthEventLogger;
     private OAuthLoginSuccessHandler handler;
+    private OAuth2AuthorizedClientService authorizedClients;
+    private ObjectProvider<AppleTokenStore> appleTokenStores;
+    private AppleTokenStore appleTokens;
 
     @BeforeEach
     void setUp() {
@@ -71,10 +86,17 @@ class OAuthLoginSuccessHandlerTest {
         refreshTokenCookieWriter = spy(new RefreshTokenCookieWriter(authProperties));
         failureRedirector = spy(new OAuthFailureRedirector(authProperties));
         oAuthEventLogger = mock(OAuthEventLogger.class);
+        authorizedClients = mock(OAuth2AuthorizedClientService.class);
+        appleTokenStores = mock(ObjectProvider.class);
+        appleTokens = mock(AppleTokenStore.class);
 
         handler = new OAuthLoginSuccessHandler(
                 oAuthLoginService,
-                new KakaoLoginCommandMapper(new ObjectMapper()),
+                new OAuthLoginCommandResolver(List.of(
+                        new KakaoLoginCommandMapper(new ObjectMapper()),
+                        new GoogleLoginCommandMapper(new ObjectMapper()),
+                        new AppleLoginCommandMapper(new ObjectMapper())
+                )),
                 userRepository,
                 refreshTokenService,
                 refreshTokenCookieWriter,
@@ -83,13 +105,16 @@ class OAuthLoginSuccessHandlerTest {
                 failureRedirector,
                 oAuthEventLogger,
                 authProperties,
-                FIXED_CLOCK
+                FIXED_CLOCK,
+                authorizedClients,
+                appleTokenStores
         );
     }
 
-    @Test
+    @ParameterizedTest
+    @CsvSource({"kakao,KAKAO", "google,GOOGLE"})
     @DisplayName("OAuth 로그인 성공 시 사용자를 조회하고 Refresh Token Cookie를 저장한 뒤 성공 URL로 이동한다")
-    void completesOAuthLogin() throws Exception {
+    void completesOAuthLogin(String registrationId, OAuthProvider provider) throws Exception {
         User user = new User("user@example.com", "하루들", LOGIN_AT);
         OAuthLoginResult loginResult = new OAuthLoginResult(user.getId());
         IssuedRefreshToken issuedRefreshToken = new IssuedRefreshToken(
@@ -106,7 +131,7 @@ class OAuthLoginSuccessHandlerTest {
         handler.onAuthenticationSuccess(
                 new MockHttpServletRequest(),
                 response,
-                createKakaoAuthentication()
+                createAuthentication(registrationId)
         );
 
         assertThat(response.getRedirectedUrl())
@@ -128,7 +153,7 @@ class OAuthLoginSuccessHandlerTest {
                 .satisfies(cookie -> assertThat(cookie).contains("Path=/api/v1"));
         ArgumentCaptor<OAuthLoginCommand> commandCaptor = ArgumentCaptor.forClass(OAuthLoginCommand.class);
         verify(oAuthLoginService).login(commandCaptor.capture(), eq(LOGIN_AT));
-        assertThat(commandCaptor.getValue().provider()).isEqualTo(OAuthProvider.KAKAO);
+        assertThat(commandCaptor.getValue().provider()).isEqualTo(provider);
         assertThat(commandCaptor.getValue().providerSubject()).isEqualTo("12345");
         assertThat(commandCaptor.getValue().providerEmail()).isEqualTo("user@example.com");
         assertThat(commandCaptor.getValue().displayName()).isEqualTo("하루들");
@@ -218,14 +243,14 @@ class OAuthLoginSuccessHandlerTest {
         handler.onAuthenticationSuccess(
                 new MockHttpServletRequest(),
                 response,
-                createAuthentication("google")
+                createAuthentication("unsupported")
         );
 
         assertThat(response.getRedirectedUrl())
                 .isEqualTo("http://localhost:5173/auth/callback?error=oauth_failed");
         verify(failureRedirector).redirect(response, OAuthFailureReason.UNSUPPORTED_PROVIDER);
         verify(oAuthEventLogger).errorFailure(
-                eq("google"),
+                eq("unsupported"),
                 eq(OAuthFailureReason.UNSUPPORTED_PROVIDER),
                 any(UnsupportedOAuthProviderException.class)
         );
@@ -233,14 +258,42 @@ class OAuthLoginSuccessHandlerTest {
     }
 
     @Test
-    @DisplayName("카카오 프로필이 올바르지 않으면 서비스 로그인으로 전달하지 않고 실패 URL로 이동한다")
-    void redirectsWhenProviderProfileIsInvalid() throws Exception {
+    void savesAppleWebTokensAfterLogin() throws Exception {
+        User user = new User("user@example.com", "하루들", LOGIN_AT);
+        when(oAuthLoginService.login(any(OAuthLoginCommand.class), eq(LOGIN_AT)))
+                .thenReturn(new OAuthLoginResult(user.getId()));
+        when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+        when(refreshTokenService.issue(user, LOGIN_AT))
+                .thenReturn(new IssuedRefreshToken("harudle-refresh", LOGIN_AT.plusSeconds(3600)));
+        var authorized = mock(OAuth2AuthorizedClient.class);
+        var registration = mock(ClientRegistration.class);
+        when(authorizedClients.loadAuthorizedClient("apple", "12345")).thenReturn(authorized);
+        when(appleTokenStores.getIfAvailable()).thenReturn(appleTokens);
+        when(authorized.getPrincipalName()).thenReturn("12345");
+        when(authorized.getClientRegistration()).thenReturn(registration);
+        when(registration.getClientId()).thenReturn("com.harudle.web");
+        when(authorized.getAccessToken()).thenReturn(new OAuth2AccessToken(OAuth2AccessToken.TokenType.BEARER,
+                "apple-access", LOGIN_AT, LOGIN_AT.plusSeconds(300)));
+        when(authorized.getRefreshToken()).thenReturn(new OAuth2RefreshToken("apple-refresh", LOGIN_AT));
+        var response = new MockHttpServletResponse();
+
+        handler.onAuthenticationSuccess(new MockHttpServletRequest(), response, createAuthentication("apple"));
+
+        verify(appleTokens).save(user.getId(), "com.harudle.web", "raw-id-token", "apple-access", "apple-refresh",
+                LOGIN_AT.plusSeconds(300));
+        assertThat(response.getRedirectedUrl()).isEqualTo("http://localhost:5173/auth/callback");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"kakao", "google"})
+    @DisplayName("소셜 프로필이 올바르지 않으면 서비스 로그인으로 전달하지 않고 실패 URL로 이동한다")
+    void redirectsWhenProviderProfileIsInvalid(String registrationId) throws Exception {
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         handler.onAuthenticationSuccess(
                 new MockHttpServletRequest(),
                 response,
-                createAuthenticationWithoutId()
+                createAuthenticationWithoutId(registrationId)
         );
 
         assertThat(response.getRedirectedUrl())
@@ -248,7 +301,7 @@ class OAuthLoginSuccessHandlerTest {
         assertThat(response.getHeader(HttpHeaders.SET_COOKIE)).isNull();
         verify(failureRedirector).redirect(response, OAuthFailureReason.INVALID_PROVIDER_PROFILE);
         verify(oAuthEventLogger).warnFailure(
-                eq("kakao"),
+                eq(registrationId),
                 eq(OAuthFailureReason.INVALID_PROVIDER_PROFILE),
                 any(InvalidOAuthProfileException.class)
         );
@@ -311,11 +364,40 @@ class OAuthLoginSuccessHandlerTest {
         verifyNoInteractions(refreshTokenService);
     }
 
+    @Test
+    @DisplayName("제재 회원의 OAuth 로그인은 refresh 쿠키 없이 예상된 거절로 종료한다")
+    void rejectsSuspendedAccountWithoutIssuingCookie() throws Exception {
+        when(oAuthLoginService.login(any(OAuthLoginCommand.class), eq(LOGIN_AT)))
+                .thenThrow(new AccountSuspendedException());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        handler.onAuthenticationSuccess(new MockHttpServletRequest(), response, createKakaoAuthentication());
+
+        assertThat(response.getRedirectedUrl())
+                .isEqualTo("http://localhost:5173/auth/callback?error=account_suspended");
+        assertThat(response.getHeader(HttpHeaders.SET_COOKIE)).isNull();
+        verify(failureRedirector).redirect(response, OAuthFailureReason.ACCOUNT_SUSPENDED);
+        verify(oAuthEventLogger).infoRejected("kakao", OAuthFailureReason.ACCOUNT_SUSPENDED);
+        verifyNoInteractions(userRepository, refreshTokenService);
+    }
+
     private Authentication createKakaoAuthentication() {
         return createAuthentication("kakao");
     }
 
     private Authentication createAuthentication(String registrationId) {
+        if ("google".equals(registrationId) || "apple".equals(registrationId)) {
+            OidcIdToken idToken = new OidcIdToken(
+                    "raw-id-token",
+                    LOGIN_AT,
+                    LOGIN_AT.plusSeconds(300),
+                    Map.of("sub", "12345", "email", "user@example.com", "name", "하루들")
+            );
+            OAuth2User principal = new DefaultOidcUser(List.of(), idToken);
+
+            return new OAuth2AuthenticationToken(principal, principal.getAuthorities(), registrationId);
+        }
+
         Map<String, Object> attributes = Map.of(
                 "id", 12345L,
                 "kakao_account", Map.of(
@@ -338,7 +420,7 @@ class OAuthLoginSuccessHandlerTest {
         );
     }
 
-    private Authentication createAuthenticationWithoutId() {
+    private Authentication createAuthenticationWithoutId(String registrationId) {
         Map<String, Object> attributes = Map.of(
                 "kakao_account", Map.of(
                         "profile", Map.of("nickname", "하루들")
@@ -352,7 +434,7 @@ class OAuthLoginSuccessHandlerTest {
         return new OAuth2AuthenticationToken(
                 principal,
                 principal.getAuthorities(),
-                "kakao"
+                registrationId
         );
     }
 

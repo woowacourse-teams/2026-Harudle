@@ -49,7 +49,8 @@ class LoadTestDiaryController {
     @GetMapping("/ai-stub")
     ResponseEntity<Status> status() {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
-                .body(new Status("dev", LoadTestAiStub.DELAY.toMillis(), "test-image", "real"));
+                .body(new Status("dev", LoadTestAiStub.DELAY.toMillis(), "test-image", "real",
+                        "db-queue"));
     }
 
     @PostMapping("/diaries")
@@ -61,7 +62,7 @@ class LoadTestDiaryController {
         var userId = authenticatedUserIdResolver.resolve(authentication);
         boolean testMember = users.findById(userId).filter(user -> !user.isDeleted()
                 && user.getRole() == UserRole.USER && user.getPrimaryEmail() != null
-                && user.getPrimaryEmail().matches("[0-9]{1,3}@[0-9a-f]{32}\\.loadtest\\.invalid")).isPresent();
+                && user.getPrimaryEmail().matches("(?:[0-9]{1,3}|1[01][0-9]{2})@[0-9a-f]{32}\\.loadtest\\.invalid")).isPresent();
         if (!testMember) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
@@ -73,8 +74,10 @@ class LoadTestDiaryController {
         if (!result.newlyCreated()) {
             return ResponseEntity.ok(response);
         }
-        return ResponseEntity.created(URI.create(DiaryController.BASE_PATH + "/" + result.id())).body(response);
+        return ResponseEntity.accepted()
+                .location(URI.create(DiaryController.BASE_PATH + "/" + result.id()))
+                .body(response);
     }
 
-    record Status(String environment, long delayMs, String output, String storage) {}
+    record Status(String environment, long delayMs, String output, String storage, String execution) {}
 }

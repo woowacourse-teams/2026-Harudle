@@ -2,15 +2,19 @@ package com.harudle.profile.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.harudle.TestcontainersConfiguration;
-import com.harudle.auth.domain.User;
 import com.harudle.auth.application.NicknameChangeService;
 import com.harudle.auth.domain.OAuthAccount;
 import com.harudle.auth.domain.OAuthProvider;
+import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.OAuthAccountRepository;
-import com.harudle.auth.infrastructure.nickname.NicknameCandidateRepository;
+import com.harudle.auth.infrastructure.S3ProfileImageStorage;
 import com.harudle.auth.infrastructure.UserRepository;
+import com.harudle.auth.infrastructure.nickname.NicknameCandidateRepository;
+import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
 import com.harudle.profile.configuration.ProfileConfiguration;
 import com.harudle.profile.service.port.PublicProfileReader;
 import jakarta.persistence.EntityManagerFactory;
@@ -32,6 +36,7 @@ import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabas
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers
@@ -70,6 +75,9 @@ class DefaultPublicProfileReaderTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @MockitoBean
+    private S3ProfileImageStorage storage;
+
     private Statistics statistics;
 
     @BeforeEach
@@ -91,9 +99,9 @@ class DefaultPublicProfileReaderTest {
 
         assertThat(profiles).containsOnlyKeys(first.getId(), second.getId());
         assertThat(profiles.get(first.getId()))
-                .isEqualTo(new PublicProfileReader.Profile(first.getId(), "신나는 토끼", imageUrl(1)));
+                .isEqualTo(new PublicProfileReader.Profile(first.getId(), "신나는 토끼", imageUrl(1), null));
         assertThat(profiles.get(second.getId()))
-                .isEqualTo(new PublicProfileReader.Profile(second.getId(), "배고픈 판다", imageUrl(5)));
+                .isEqualTo(new PublicProfileReader.Profile(second.getId(), "배고픈 판다", imageUrl(5), null));
         assertThat(statistics.getPrepareStatementCount()).isEqualTo(1);
         assertThat(statistics.getEntityLoadCount()).isZero();
     }
@@ -225,6 +233,42 @@ class DefaultPublicProfileReaderTest {
 
         assertThatThrownBy(() -> reader.readAll(userIds)).isInstanceOf(IllegalArgumentException.class);
         assertThat(statistics.getPrepareStatementCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("개인 사진 교체와 기본 이미지 복귀를 다음 조회에 반영하며 일괄 조회는 한 번만 실행한다")
+    void readsLatestUploadedImageAndDefault() {
+        User user = saveProfile("신나는 토끼", 3);
+        User other = saveProfile("배고픈 판다", 5);
+        String firstKey = "harudle/profile-images/dev/" + user.getId() + "/first.webp";
+        String secondKey = "harudle/profile-images/dev/" + user.getId() + "/second.webp";
+        Instant expiresAt = CREATED_AT.plusSeconds(900);
+        URI firstUrl = URI.create("https://s3.example/first.webp?signature=first");
+        URI secondUrl = URI.create("https://s3.example/second.webp?signature=second");
+        when(storage.createAccessUrl(firstKey)).thenReturn(new ImageAccessUrl(firstUrl, expiresAt));
+        when(storage.createAccessUrl(secondKey)).thenReturn(new ImageAccessUrl(secondUrl, expiresAt));
+        jdbcTemplate.update("UPDATE users SET profile_image_object_key = ? WHERE id = ?", firstKey, user.getId());
+        entityManager.clear();
+        statistics.clear();
+
+        Map<UUID, PublicProfileReader.Profile> profiles = reader.readAll(Set.of(user.getId(), other.getId()));
+
+        assertThat(profiles.get(user.getId()).profileImageUrl()).isEqualTo(firstUrl);
+        assertThat(profiles.get(user.getId()).profileImageUrlExpiresAt()).isEqualTo(expiresAt);
+        assertThat(profiles.get(other.getId()).profileImageUrl()).isEqualTo(imageUrl(5));
+        assertThat(profiles.get(other.getId()).profileImageUrlExpiresAt()).isNull();
+        assertThat(statistics.getPrepareStatementCount()).isEqualTo(1);
+        assertThat(statistics.getEntityLoadCount()).isZero();
+        verify(storage).createAccessUrl(firstKey);
+
+        jdbcTemplate.update("UPDATE users SET profile_image_object_key = ? WHERE id = ?", secondKey, user.getId());
+        assertThat(reader.readAll(Set.of(user.getId())).get(user.getId()).profileImageUrl()).isEqualTo(secondUrl);
+
+        jdbcTemplate.update("UPDATE users SET profile_image_object_key = NULL, profile_image_code = 7 WHERE id = ?",
+                user.getId());
+        PublicProfileReader.Profile defaultProfile = reader.readAll(Set.of(user.getId())).get(user.getId());
+        assertThat(defaultProfile.profileImageUrl()).isEqualTo(imageUrl(7));
+        assertThat(defaultProfile.profileImageUrlExpiresAt()).isNull();
     }
 
     private User saveProfile(String nickname, int imageCode) {

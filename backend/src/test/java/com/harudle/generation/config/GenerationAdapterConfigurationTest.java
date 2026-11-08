@@ -14,6 +14,7 @@ import com.google.genai.Client;
 import com.google.genai.Models;
 import com.google.genai.types.ClientOptions;
 import com.google.genai.types.HttpOptions;
+import com.harudle.auth.infrastructure.S3ProfileImageStorage;
 import com.harudle.common.logging.ExternalApiLogger;
 import com.harudle.generation.adapter.out.gemini.GeminiDiaryImageGenerator;
 import com.harudle.generation.adapter.out.gemini.GeminiFailureReporter;
@@ -89,6 +90,7 @@ class GenerationAdapterConfigurationTest {
             assertThat(context.getBeansOfType(Models.class)).containsOnlyKeys("geminiModels", "geminiStoryboardModels");
             assertThat(context).hasSingleBean(S3Client.class);
             assertThat(context).hasSingleBean(S3Presigner.class);
+            assertThat(context).hasSingleBean(S3ProfileImageStorage.class);
             assertThat(context).hasSingleBean(GeminiFailureReporter.class);
             assertThat(context).hasSingleBean(GeminiStageMetrics.class);
             assertThat(context).hasSingleBean(S3FailureReporter.class);
@@ -155,6 +157,71 @@ class GenerationAdapterConfigurationTest {
                     assertThat(http.callTimeoutMillis()).isEqualTo(qwenTimeout);
                     assertThat(http.retryOnConnectionFailure()).isFalse();
                 });
+    }
+
+    @Test
+    void configureOpenAiOnlyAsAnOptInImageFallbackAndDisableGeminiRetries() {
+        GeminiClientFactory factory = spy(new ExpressGeminiClientFactory("test-api-key"));
+        contextRunner.withPropertyValues(enabledAdapterProperties()).withPropertyValues(
+                        "harudle.generation.image.fallback-provider=openai",
+                        "harudle.generation.image.openai-api-key=test-api-key",
+                        "harudle.generation.gemini.image-aspect-ratio=9:16")
+                .withInitializer(context -> context.addBeanFactoryPostProcessor(beanFactory ->
+                        beanFactory.registerSingleton("geminiClientFactory", factory)))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).hasSingleBean(DiaryImageGenerator.class);
+                    assertThat(context.getBean(DiaryImageGenerator.class)).isInstanceOf(
+                            com.harudle.generation.diary.service.image.FallbackDiaryImageGenerator.class);
+                    var options = ArgumentCaptor.forClass(HttpOptions.class);
+                    var clients = ArgumentCaptor.forClass(ClientOptions.class);
+                    verify(factory, times(2)).create(options.capture(), clients.capture());
+                    var fallback = ReflectionTestUtils.getField(context.getBean(DiaryImageGenerator.class), "fallback");
+                    assertThat(ReflectionTestUtils.getField(fallback, "imageSize")).isEqualTo("864x1536");
+                    var imageOptions = options.getAllValues().stream()
+                            .filter(value -> value.timeout().orElseThrow() == 180_000).findFirst().orElseThrow();
+                    assertThat(imageOptions.retryOptions().orElseThrow().attempts()).contains(1);
+                    assertThat(imageOptions.retryOptions().orElseThrow().httpStatusCodes()).contains(List.of());
+                });
+    }
+
+    @Test
+    void selectOpenAiDirectlyAsPrimaryWithoutFallbackWrapper() {
+        contextRunner.withPropertyValues(enabledAdapterProperties()).withPropertyValues(
+                        "harudle.generation.image.provider=openai",
+                        "harudle.generation.image.fallback-provider=none",
+                        "harudle.generation.image.openai-api-key=test-api-key",
+                        "harudle.generation.gemini.image-aspect-ratio=16:9")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).hasSingleBean(DiaryImageGenerator.class);
+                    var generator = context.getBean(DiaryImageGenerator.class);
+                    assertThat(generator).isInstanceOf(
+                            com.harudle.generation.adapter.out.openai.OpenAiDiaryImageGenerator.class);
+                    assertThat(ReflectionTestUtils.getField(generator, "imageSize")).isEqualTo("1536x864");
+                });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"missing-key", "duplicate-provider", "unknown-provider"})
+    void rejectInvalidPrimaryImageConfiguration(String scenario) {
+        var runner = contextRunner.withPropertyValues(enabledAdapterProperties()).withPropertyValues(
+                "harudle.generation.image.provider=openai");
+        if ("duplicate-provider".equals(scenario)) {
+            runner = runner.withPropertyValues("harudle.generation.image.fallback-provider=openai",
+                    "harudle.generation.image.openai-api-key=test-api-key");
+        } else if ("unknown-provider".equals(scenario)) {
+            runner = runner.withPropertyValues("harudle.generation.image.provider=unknown");
+        }
+        runner.run(context -> assertThat(context).hasFailed());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"openai", "codex", "unknown"})
+    void invalidImageFallbackConfigurationFailsAtStartup(String fallback) {
+        contextRunner.withPropertyValues(enabledAdapterProperties())
+                .withPropertyValues("harudle.generation.image.fallback-provider=" + fallback)
+                .run(context -> assertThat(context).hasFailed());
     }
 
     @Test
@@ -438,6 +505,7 @@ class GenerationAdapterConfigurationTest {
             assertThat(context).doesNotHaveBean(GoogleCredentials.class);
             assertThat(context).doesNotHaveBean(S3Client.class);
             assertThat(context).doesNotHaveBean(S3Presigner.class);
+            assertThat(context).doesNotHaveBean(S3ProfileImageStorage.class);
             assertThat(context).doesNotHaveBean(StoryboardGenerator.class);
             assertThat(context).doesNotHaveBean(DiaryImageGenerator.class);
             assertThat(context).doesNotHaveBean(ImageStorage.class);

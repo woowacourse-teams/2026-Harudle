@@ -29,6 +29,17 @@ describe('댓글 입력과 외부 응답 경계', (): void => {
     ])
       expect(isFeedComment(value)).toBe(false);
   });
+  it('탈퇴한 작성자의 nullable 프로필을 허용하되 잘못된 ID 타입은 거절한다', (): void => {
+    expect(
+      isFeedComment({
+        ...comment,
+        author: { id: null, nickname: '탈퇴한 사용자', profileImageUrl: null },
+      }),
+    ).toBe(true);
+    expect(
+      isFeedComment({ ...comment, author: { ...comment.author, id: 12 } }),
+    ).toBe(false);
+  });
   it('다음 페이지 유무와 커서의 관계를 검증한다', (): void => {
     expect(
       isFeedCommentsResponse({
@@ -62,4 +73,22 @@ describe('댓글 입력과 외부 응답 경계', (): void => {
       isFeedCommentsResponse({ items: [{}], nextCursor: null, hasNext: false }),
     ).toBe(false);
   });
+});
+
+it('탈퇴 댓글의 nullable 작성자 정보도 받아들인다', (): void => {
+  expect(
+    isFeedCommentsResponse({
+      items: [
+        {
+          id: 'comment-1',
+          author: { id: null, nickname: '탈퇴한 회원', profileImageUrl: null },
+          content: '남겨진 댓글',
+          createdAt: '2026-10-22T00:00:00Z',
+          isMine: false,
+        },
+      ],
+      nextCursor: null,
+      hasNext: false,
+    }),
+  ).toBe(true);
 });

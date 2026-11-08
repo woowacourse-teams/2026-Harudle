@@ -1,7 +1,6 @@
 import { css } from '@emotion/react';
 import { useImperativeHandle, useRef, type Ref } from 'react';
 import { useNavigate } from 'react-router';
-import kakaoIcon from '../assets/icons/kakao.svg';
 import BottomSheet, { type BottomSheetHandle } from './BottomSheet';
 import { theme } from '../styles/theme';
 import { NEED_LOGIN_COPY } from './needLoginCopy';
@@ -37,7 +36,6 @@ const NeedLoginBottomSheet = ({
       <div css={contentStyle}>
         <p css={descriptionStyle}>{description}</p>
         <button type="button" css={loginButtonStyle} onClick={handleLogin}>
-          <img src={kakaoIcon} alt="" width={24} height={24} />
           {NEED_LOGIN_COPY.loginAction}
         </button>
         <button
@@ -73,14 +71,13 @@ const loginButtonStyle = css`
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
   width: 100%;
   min-height: 56px;
   padding: 12px 20px;
   border: 0;
   border-radius: 16px;
-  background: ${theme.colors.background.kakao};
-  color: ${theme.colors.foreground.neutral};
+  background: ${theme.colors.background.brandSolid};
+  color: ${theme.colors.foreground.onBrand};
   font-size: 17px;
   font-weight: 700;
   line-height: 24px;

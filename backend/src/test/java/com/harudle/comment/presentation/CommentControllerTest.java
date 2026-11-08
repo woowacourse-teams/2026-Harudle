@@ -14,8 +14,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.harudle.auth.infrastructure.UserRepository;
-import com.harudle.auth.infrastructure.oauth.OAuthLoginFailureHandler;
-import com.harudle.auth.infrastructure.oauth.OAuthLoginSuccessHandler;
 import com.harudle.auth.presentation.AuthenticatedUserIdResolver;
 import com.harudle.auth.presentation.AuthenticationRequiredException;
 import com.harudle.comment.service.CommentService;
@@ -48,7 +46,6 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -70,15 +67,14 @@ class CommentControllerTest {
     private static final String DELETE_PATH = "/api/v1/comments/" + COMMENT_ID;
     private static final String CSRF_TOKEN = "same-cookie-and-header";
     private static final Instant CREATED_AT = Instant.parse("2026-10-12T02:00:00Z");
-    private static final Profile PROFILE = new Profile(USER_ID, "연준", URI.create("https://example.com/profile.svg"));
+    private static final Profile PROFILE = new Profile(
+            USER_ID, "연준", URI.create("https://example.com/profile.webp?signature=example"), CREATED_AT.plusSeconds(900)
+    );
 
     @Autowired private MockMvc mockMvc;
     @MockitoBean private CommentService service;
     @MockitoBean private JwtDecoder jwtDecoder;
     @MockitoBean private UserRepository users;
-    @MockitoBean private OAuthLoginSuccessHandler successHandler;
-    @MockitoBean private OAuthLoginFailureHandler failureHandler;
-    @MockitoBean private ClientRegistrationRepository registrations;
 
     @BeforeEach
     void setUp() {
@@ -96,6 +92,8 @@ class CommentControllerTest {
                 .andExpect(jsonPath("$.items[0].author.id").value(USER_ID.toString()))
                 .andExpect(jsonPath("$.items[0].author.nickname").value("연준"))
                 .andExpect(jsonPath("$.items[0].author.profileImageUrl").value(PROFILE.profileImageUrl().toString()))
+                .andExpect(jsonPath("$.items[0].author.profileImageUrlExpiresAt")
+                        .value(PROFILE.profileImageUrlExpiresAt().toString()))
                 .andExpect(jsonPath("$.items[0].isMine").value(false))
                 .andExpect(jsonPath("$.nextCursor").isEmpty()).andExpect(jsonPath("$.hasNext").value(false));
         verify(service).list(FEED_ID, null, null, 20);
@@ -124,13 +122,16 @@ class CommentControllerTest {
                 .andExpect(jsonPath("$.items[0].author.id").value(USER_ID.toString()))
                 .andExpect(jsonPath("$.items[0].author.nickname").value("연준"))
                 .andExpect(jsonPath("$.items[0].author.profileImageUrl").value(PROFILE.profileImageUrl().toString()))
+                .andExpect(jsonPath("$.items[0].author.profileImageUrlExpiresAt")
+                        .value(PROFILE.profileImageUrlExpiresAt().toString()))
                 .andExpect(jsonPath("$.items[1].id").value(withdrawnCommentId.toString()))
                 .andExpect(jsonPath("$.items[1].content").value("탈퇴 전에 작성한 댓글"))
                 .andExpect(jsonPath("$.items[1].createdAt").value(CREATED_AT.plusSeconds(1).toString()))
                 .andExpect(jsonPath("$.items[1].author").isMap())
                 .andExpect(jsonPath("$.items[1].author.id").value(nullValue()))
-                .andExpect(jsonPath("$.items[1].author.nickname").value("탈퇴한 회원"))
+                .andExpect(jsonPath("$.items[1].author.nickname").value("탈퇴한 사용자"))
                 .andExpect(jsonPath("$.items[1].author.profileImageUrl").value(nullValue()))
+                .andExpect(jsonPath("$.items[1].author.profileImageUrlExpiresAt").value(nullValue()))
                 .andExpect(jsonPath("$.items[1].isMine").value(false));
     }
 
@@ -143,7 +144,7 @@ class CommentControllerTest {
                 .andExpect(jsonPath("$.items[0].id").value(COMMENT_ID.toString()))
                 .andExpect(jsonPath("$.items[0].author").isMap())
                 .andExpect(jsonPath("$.items[0].author.id").value(nullValue()))
-                .andExpect(jsonPath("$.items[0].author.nickname").value("탈퇴한 회원"))
+                .andExpect(jsonPath("$.items[0].author.nickname").value("탈퇴한 사용자"))
                 .andExpect(jsonPath("$.items[0].author.profileImageUrl").value(nullValue()))
                 .andExpect(jsonPath("$.items[0].isMine").value(false))
                 .andExpect(jsonPath("$.nextCursor").value(nullValue()))

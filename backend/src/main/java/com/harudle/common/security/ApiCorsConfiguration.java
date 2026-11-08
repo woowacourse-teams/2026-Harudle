@@ -40,6 +40,7 @@ public class ApiCorsConfiguration {
                 "Idempotency-Key",
                 "X-XSRF-TOKEN"
         ));
+        configuration.setExposedHeaders(List.of("Push-State-Version"));
         configuration.setAllowCredentials(true);
 
         return configuration;

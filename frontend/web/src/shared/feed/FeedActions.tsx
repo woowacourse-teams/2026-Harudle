@@ -32,7 +32,12 @@ const FeedActions = ({
         likedByMe={likedByMe}
         onLikeChange={onLikeChange}
       />
-      <button type="button" css={reactionButtonStyle} onClick={onCommentClick}>
+      <button
+        type="button"
+        css={reactionButtonStyle}
+        onClick={onCommentClick}
+        aria-label={`댓글 ${commentCount}개`}
+      >
         <span css={reactionIconStyle}>
           <img src={commentIcon} alt="" />
         </span>

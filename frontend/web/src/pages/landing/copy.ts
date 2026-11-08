@@ -12,9 +12,11 @@ export const LANDING_COPY = {
   hero: {
     titleLines: ['우리끼리 통하는', '네컷만화'],
     description:
-      '함께 있었던 순간을 적으면\n하루들이 네컷만화로 만들어 드려요.',
-    action: '네컷만화 만들어 보기',
-    trialNotice: '로그인 없이 한 번 만들어 볼 수 있어요.',
+      '다른 사람들의 네컷만화를 구경하고,\n내 이야기도 만화로 만들어 보세요.',
+    action: '직접 만들어 보기',
+    feedAction: '피드 보러 가기',
+    feedNotice: '로그인 없이 바로 구경할 수 있어요.',
+    returnNotice: '이 화면으로 돌아오려면 뒤로가기를 눌러주세요.',
     previewCaption: '우리끼리 두고두고 꺼내 볼 순간',
     scrollHintLabel: '아래 예시 보기',
   },
@@ -60,14 +62,15 @@ export const LANDING_COPY = {
   final: {
     title: '최근에 같이 웃었던\n순간이 있나요?',
     loginPrompt: '이미 만들어 봤나요?',
-    loginAction: '카카오로 이어서 만들기 →',
+    loginAction: '로그인하고 이어서 만들기',
   },
   footer: {
     brand: '하루들',
     tagline: '우리끼리 통하는 네컷만화',
     copyright: '© 2026 Harudle',
     links: [
-      { label: '개인정보처리방침', href: 'https://harudle.notion.site/' },
+      { label: '이용약관', href: '/legal/terms' },
+      { label: '개인정보처리방침', href: '/legal/privacy' },
       { label: '문의하기', href: 'mailto:harudle.official@gmail.com' },
       {
         label: 'Instagram',

@@ -92,7 +92,8 @@ public class DiaryGeneration {
             Long generationPromptId,
             UUID idempotencyKey,
             String requestFingerprint,
-            LocalDate usageDate
+            LocalDate usageDate,
+            GenerationStatus initialStatus
     ) {
         validateId(id);
         validateDiaryId(diaryId);
@@ -105,7 +106,7 @@ public class DiaryGeneration {
         this.idempotencyKey = idempotencyKey;
         this.requestFingerprint = normalizeRequestFingerprint(requestFingerprint);
         this.usageDate = usageDate;
-        this.status = GenerationStatus.PROCESSING;
+        this.status = initialStatus;
     }
 
     public static DiaryGeneration start(
@@ -130,7 +131,26 @@ public class DiaryGeneration {
                 generationPromptId,
                 idempotencyKey,
                 requestFingerprint,
-                usageDate
+                usageDate,
+                GenerationStatus.PROCESSING
+        );
+    }
+
+    public static DiaryGeneration pending(
+            UUID diaryId,
+            Long generationPromptId,
+            UUID idempotencyKey,
+            String requestFingerprint,
+            LocalDate usageDate
+    ) {
+        return new DiaryGeneration(
+                UUID.randomUUID(),
+                diaryId,
+                generationPromptId,
+                idempotencyKey,
+                requestFingerprint,
+                usageDate,
+                GenerationStatus.PENDING
         );
     }
 
@@ -146,8 +166,16 @@ public class DiaryGeneration {
         return generationPromptId;
     }
 
+    public UUID getIdempotencyKey() {
+        return idempotencyKey;
+    }
+
     public GenerationStatus getStatus() {
         return status;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
     }
 
     public Storyboard getStoryboard() {
@@ -207,6 +235,13 @@ public class DiaryGeneration {
                 && status == GenerationStatus.PROCESSING;
     }
 
+    public void startProcessing() {
+        if (status != GenerationStatus.PENDING) {
+            throw new IllegalStateException("대기 중인 생성 작업만 처리할 수 있습니다.");
+        }
+        this.status = GenerationStatus.PROCESSING;
+    }
+
     public void succeed(Storyboard storyboard, String imageObjectKey, Instant completedAt) {
         succeed(storyboard, imageObjectKey, null, completedAt);
     }
@@ -248,6 +283,10 @@ public class DiaryGeneration {
 
     public void fail(GenerationErrorCode errorCode, StoryboardProviderInfo providerInfo, Instant completedAt) {
         validateProcessingStatus();
+        completeFailure(errorCode, providerInfo, completedAt);
+    }
+
+    private void completeFailure(GenerationErrorCode errorCode, StoryboardProviderInfo providerInfo, Instant completedAt) {
         validateErrorCode(errorCode);
         validateCompletedAt(completedAt);
 
@@ -277,6 +316,20 @@ public class DiaryGeneration {
             return false;
         }
         interrupt(currentTime);
+        return true;
+    }
+
+    public boolean expirePendingIfStale(Instant currentTime, Duration pendingTimeout) {
+        validateCurrentTime(currentTime);
+        validatePendingTimeout(pendingTimeout);
+        if (status != GenerationStatus.PENDING || createdAt == null) {
+            return false;
+        }
+        Instant staleCutoff = currentTime.minus(pendingTimeout);
+        if (createdAt.isAfter(staleCutoff)) {
+            return false;
+        }
+        completeFailure(GenerationErrorCode.GENERATION_PENDING_TIMEOUT, null, currentTime);
         return true;
     }
 
@@ -355,6 +408,12 @@ public class DiaryGeneration {
     private static void validateProcessingTimeout(Duration processingTimeout) {
         if (processingTimeout == null || processingTimeout.isZero() || processingTimeout.isNegative()) {
             throw new IllegalArgumentException("생성 처리 제한 시간은 양수여야 합니다.");
+        }
+    }
+
+    private static void validatePendingTimeout(Duration pendingTimeout) {
+        if (pendingTimeout == null || pendingTimeout.isZero() || pendingTimeout.isNegative()) {
+            throw new IllegalArgumentException("생성 대기 제한 시간은 양수여야 합니다.");
         }
     }
 }

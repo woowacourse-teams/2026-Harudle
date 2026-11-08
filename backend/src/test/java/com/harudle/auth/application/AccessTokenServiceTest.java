@@ -52,12 +52,14 @@ class AccessTokenServiceTest {
     @DisplayName("사용자 식별자와 인증 정보를 담은 Access Token을 발급한다")
     void issuesAccessTokenWithAuthenticationClaims() {
         UUID userId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
 
-        IssuedAccessToken issuedToken = accessTokenService.issue(userId, ISSUED_AT);
+        IssuedAccessToken issuedToken = accessTokenService.issue(userId, sessionId, ISSUED_AT);
         Jwt jwt = jwtDecoder.decode(issuedToken.accessToken());
 
         assertThat(jwt.getTokenValue()).isEqualTo(issuedToken.accessToken());
         assertThat(jwt.getSubject()).isEqualTo(userId.toString());
+        assertThat(jwt.getClaimAsString("sid")).isEqualTo(sessionId.toString());
         assertThat(jwt.getClaimAsString("iss")).isEqualTo(ISSUER);
         assertThat(jwt.getAudience()).containsExactly(AUDIENCE);
         assertThat(jwt.getIssuedAt()).isEqualTo(ISSUED_AT);
@@ -73,7 +75,7 @@ class AccessTokenServiceTest {
         Instant preciseTime = ISSUED_AT.plusNanos(123_456_000);
         Instant normalizedTime = ISSUED_AT;
 
-        IssuedAccessToken issuedToken = accessTokenService.issue(userId, preciseTime);
+        IssuedAccessToken issuedToken = accessTokenService.issue(userId, UUID.randomUUID(), preciseTime);
         Jwt jwt = jwtDecoder.decode(issuedToken.accessToken());
 
         assertThat(jwt.getIssuedAt()).isEqualTo(normalizedTime);
@@ -84,14 +86,21 @@ class AccessTokenServiceTest {
     @Test
     @DisplayName("사용자 식별자가 없으면 Access Token을 발급할 수 없다")
     void rejectsNullUserId() {
-        assertThatThrownBy(() -> accessTokenService.issue(null, ISSUED_AT))
+        assertThatThrownBy(() -> accessTokenService.issue(null, UUID.randomUUID(), ISSUED_AT))
+                .isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    @DisplayName("세션 식별자가 없으면 Access Token을 발급할 수 없다")
+    void rejectsNullSessionId() {
+        assertThatThrownBy(() -> accessTokenService.issue(UUID.randomUUID(), null, ISSUED_AT))
                 .isInstanceOf(NullPointerException.class);
     }
 
     @Test
     @DisplayName("발급 시각이 없으면 Access Token을 발급할 수 없다")
     void rejectsNullIssuedAt() {
-        assertThatThrownBy(() -> accessTokenService.issue(UUID.randomUUID(), null))
+        assertThatThrownBy(() -> accessTokenService.issue(UUID.randomUUID(), UUID.randomUUID(), null))
                 .isInstanceOf(NullPointerException.class);
     }
 

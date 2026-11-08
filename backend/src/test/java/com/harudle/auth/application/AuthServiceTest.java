@@ -33,12 +33,14 @@ class AuthServiceTest {
     void refreshesTokens() {
         String rawRefreshToken = "raw-refresh-token";
         UUID userId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
         IssuedRefreshToken issuedRefreshToken = new IssuedRefreshToken(
                 "rotated-refresh-token",
                 REFRESHED_AT.plusSeconds(1_209_600)
         );
         RotatedRefreshToken rotatedRefreshToken = new RotatedRefreshToken(
                 userId,
+                sessionId,
                 issuedRefreshToken
         );
         IssuedAccessToken issuedAccessToken = new IssuedAccessToken(
@@ -47,7 +49,7 @@ class AuthServiceTest {
         );
         when(refreshTokenService.rotate(rawRefreshToken, REFRESHED_AT))
                 .thenReturn(rotatedRefreshToken);
-        when(accessTokenService.issue(userId, REFRESHED_AT))
+        when(accessTokenService.issue(userId, sessionId, REFRESHED_AT))
                 .thenReturn(issuedAccessToken);
 
         RefreshedTokens result = authService.refresh(rawRefreshToken, REFRESHED_AT);
@@ -55,7 +57,7 @@ class AuthServiceTest {
         assertThat(result.accessToken()).isSameAs(issuedAccessToken);
         assertThat(result.refreshToken()).isSameAs(issuedRefreshToken);
         verify(refreshTokenService).rotate(rawRefreshToken, REFRESHED_AT);
-        verify(accessTokenService).issue(userId, REFRESHED_AT);
+        verify(accessTokenService).issue(userId, sessionId, REFRESHED_AT);
     }
 
     @Test

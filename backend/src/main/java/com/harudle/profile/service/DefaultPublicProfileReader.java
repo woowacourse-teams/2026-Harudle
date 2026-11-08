@@ -41,10 +41,14 @@ public class DefaultPublicProfileReader implements PublicProfileReader {
     }
 
     private Profile toProfile(PublicProfileSnapshot snapshot) {
+        ProfileImageUrlResolver.ResolvedImage image = imageUrlResolver.resolve(
+                snapshot.profileImageCode(), snapshot.profileImageObjectKey()
+        );
         return new Profile(
                 snapshot.id(),
                 snapshot.nickname(),
-                imageUrlResolver.resolve(snapshot.profileImageCode())
+                image.url(),
+                image.expiresAt()
         );
     }
 }

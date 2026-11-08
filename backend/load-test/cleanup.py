@@ -9,7 +9,7 @@ import subprocess
 import uuid
 
 from assets import delete_images, load_fixture, member_directory, run_lock, seed_records, validate_active_run, validate_records
-from prepare import database_guard, member_identity, quote
+from prepare import database_guard, diary_ids, member_identity, quote
 
 
 def psql(sql):
@@ -32,7 +32,8 @@ def snapshot_sql(fixture):
         seeds = ', '.join(quote(record['id']) for record in seed_records(fixture))
         creates = ', '.join(quote(uuid.uuid5(uuid.UUID(fixture['runId']), f'create-{i}'))
                             for i in range(len(fixture['members'])))
-        scope = f' AND (g.id IN ({seeds}) OR g.idempotency_key IN ({creates}))'
+        scope = (f' AND g.idempotency_key IN ({creates})' if 'baselineId' in fixture
+                 else f' AND (g.id IN ({seeds}) OR g.idempotency_key IN ({creates}))')
     return database_guard() + f"""
 SELECT COALESCE(jsonb_agg(jsonb_build_object(
     'id', g.id, 'userId', u.id, 'imageKey', g.image_object_key)), '[]'::jsonb)
@@ -42,9 +43,65 @@ COMMIT;
 """
 
 
-def cleanup_sql(fixture, records):
+def baseline_state_sql(fixture):
+    ids, _ = member_filter(fixture)
+    return database_guard() + f"""
+-- Save only the baseline rows changed by the current load-test scenarios.
+WITH baseline_feeds AS (
+    SELECT f.* FROM feeds f JOIN diaries d ON d.id = f.diary_id WHERE d.user_id IN ({ids})
+)
+SELECT jsonb_build_object(
+    'feeds', (SELECT COALESCE(jsonb_agg(f), '[]'::jsonb) FROM baseline_feeds f),
+    'comments', (SELECT COALESCE(jsonb_agg(c), '[]'::jsonb) FROM comments c
+                 WHERE c.feed_id IN (SELECT id FROM baseline_feeds)),
+    'likes', (SELECT COALESCE(jsonb_agg(l), '[]'::jsonb) FROM feed_likes l
+              WHERE l.feed_id IN (SELECT id FROM baseline_feeds)));
+COMMIT;
+"""
+
+
+def restore_baseline_sql(fixture, state):
+    ids, _ = member_filter(fixture)
+    return f"""
+CREATE TEMP TABLE baseline_feeds ON COMMIT DROP AS
+SELECT * FROM jsonb_populate_recordset(NULL::feeds, {quote(json.dumps(state['feeds']))}::jsonb);
+CREATE TEMP TABLE baseline_comments ON COMMIT DROP AS
+SELECT * FROM jsonb_populate_recordset(NULL::comments, {quote(json.dumps(state['comments']))}::jsonb);
+CREATE TEMP TABLE baseline_likes ON COMMIT DROP AS
+SELECT * FROM jsonb_populate_recordset(NULL::feed_likes, {quote(json.dumps(state['likes']))}::jsonb);
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM baseline_feeds b WHERE NOT EXISTS (SELECT 1 FROM feeds f WHERE f.id = b.id)) THEN
+        RAISE EXCEPTION 'A baseline feed is missing';
+    END IF;
+    IF EXISTS (SELECT 1 FROM comments WHERE feed_id IN (SELECT id FROM baseline_feeds)
+               AND author_id NOT IN ({ids})) OR
+       EXISTS (SELECT 1 FROM feed_likes WHERE feed_id IN (SELECT id FROM baseline_feeds)
+               AND user_id NOT IN ({ids})) THEN
+        RAISE EXCEPTION 'A non-test member interacted with the baseline';
+    END IF;
+END $$;
+DELETE FROM notifications WHERE feed_id IN (SELECT id FROM baseline_feeds)
+    AND actor_user_id IN ({ids}) AND recipient_user_id IN ({ids});
+DELETE FROM comments WHERE feed_id IN (SELECT id FROM baseline_feeds)
+    AND author_id IN ({ids}) AND id NOT IN (SELECT id FROM baseline_comments);
+DELETE FROM feed_likes WHERE feed_id IN (SELECT id FROM baseline_feeds)
+    AND user_id IN ({ids}) AND id NOT IN (SELECT id FROM baseline_likes);
+INSERT INTO comments SELECT b.* FROM baseline_comments b
+    WHERE NOT EXISTS (SELECT 1 FROM comments c WHERE c.id = b.id);
+UPDATE comments c SET content = b.content, deleted_at = b.deleted_at FROM baseline_comments b
+    WHERE c.id = b.id AND (c.content, c.deleted_at) IS DISTINCT FROM (b.content, b.deleted_at);
+INSERT INTO feed_likes SELECT b.* FROM baseline_likes b
+    WHERE NOT EXISTS (SELECT 1 FROM feed_likes l WHERE l.id = b.id);
+UPDATE feeds f SET like_count = b.like_count, comment_count = b.comment_count, deleted_at = b.deleted_at
+    FROM baseline_feeds b WHERE f.id = b.id
+    AND (f.like_count, f.comment_count, f.deleted_at) IS DISTINCT FROM (b.like_count, b.comment_count, b.deleted_at);
+"""
+
+
+def cleanup_sql(fixture, records, state=None):
     ids, email = member_filter(fixture)
-    expected = quote(json.dumps(records))
+    expected = quote(json.dumps(seed_records(fixture) + records if state is not None else records))
     delete = f'DELETE FROM users WHERE id IN ({ids}) AND primary_email LIKE {email};'
     diary_guard = ''
     if fixture['version'] == 3:
@@ -55,11 +112,15 @@ def cleanup_sql(fixture, records):
         RAISE EXCEPTION 'Diary does not belong to this test run';
     END IF;
 """
+        keep = ', '.join(quote(value) for value in diary_ids(fixture)) if state is not None else ''
+        extra = f' AND id NOT IN ({keep})' if keep else ''
         delete = f"""
-DELETE FROM diaries WHERE user_id IN ({ids});
+DELETE FROM diaries WHERE user_id IN ({ids}){extra};
 DELETE FROM daily_generation_usage WHERE user_id IN ({ids});
 DELETE FROM refresh_tokens WHERE user_id IN ({ids});
 """
+        if state is not None:
+            delete += restore_baseline_sql(fixture, state)
     return database_guard() + f"""
 CREATE TEMP TABLE cleanup_generations ON COMMIT DROP AS
 SELECT * FROM jsonb_to_recordset({expected}::jsonb) AS x(id uuid, "userId" uuid, "imageKey" text);
@@ -74,8 +135,8 @@ BEGIN
     PERFORM 1 FROM diary_generations g JOIN diaries d ON d.id = g.diary_id
         WHERE d.user_id IN ({ids}) FOR UPDATE OF g;
     IF EXISTS (SELECT 1 FROM diary_generations g JOIN diaries d ON d.id = g.diary_id
-               WHERE d.user_id IN ({ids}) AND g.status = 'PROCESSING') THEN
-        RAISE EXCEPTION 'Generation is still processing. Wait before cleanup';
+               WHERE d.user_id IN ({ids}) AND g.status IN ('PENDING', 'PROCESSING')) THEN
+        RAISE EXCEPTION 'Generation is still processing or pending. Wait before cleanup';
     END IF;
     IF EXISTS (SELECT 1 FROM diary_generations g JOIN diaries d ON d.id = g.diary_id
                WHERE d.user_id IN ({ids}) AND NOT EXISTS (
@@ -97,7 +158,7 @@ COMMIT;
 
 
 def signature(fixture, plan):
-    payload = json.dumps({'runId': plan['runId'], 'generations': plan['generations']}, sort_keys=True).encode()
+    payload = json.dumps({key: value for key, value in plan.items() if key != 'signature'}, sort_keys=True).encode()
     return hmac.new(bytes.fromhex(fixture['cleanupKey']), payload, hashlib.sha256).hexdigest()
 
 
@@ -114,6 +175,16 @@ def save_plan(path, plan, fixture):
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
+
+
+def load_baseline_state(directory, fixture):
+    baseline = member_directory(directory, fixture) / 'baseline'
+    plan = json.loads((baseline / 'state.json').read_text())
+    if (not (baseline / '.ready').exists() or plan.get('baselineId') != fixture['baselineId']
+            or plan['generations'] != seed_records(fixture)
+            or not hmac.compare_digest(plan.get('signature', ''), signature(fixture, plan))):
+        raise ValueError('The baseline state changed or belongs to another test member set')
+    return plan['state']
 
 
 def cleanup(directory, execute_sql=None, client_stopped=False):
@@ -135,8 +206,9 @@ def cleanup_locked(directory, execute_sql, client_stopped):
     if not (directory / '.cleaned').exists():
         if (directory / '.exported').exists() and not client_stopped:
             raise ValueError('Members were exported. Stop local k6 first, then use --client-stopped')
+        state = load_baseline_state(directory, fixture) if 'baselineId' in fixture else None
         plan_path = directory / 'cleanup.json'
-        plan = {'runId': fixture['runId'], 'generations': seed_records(fixture)}
+        plan = {'runId': fixture['runId'], 'generations': [] if state is not None else seed_records(fixture)}
         if plan_path.exists():
             plan = json.loads(plan_path.read_text())
             if (plan['runId'] != fixture['runId']
@@ -152,12 +224,16 @@ def cleanup_locked(directory, execute_sql, client_stopped):
                 raise ValueError('Generation owner changed')
             records[record['id']] = record
         plan['generations'] = list(records.values())
+        if state is not None and set(records) & {record['id'] for record in seed_records(fixture)}:
+            raise ValueError('Baseline images cannot be deleted by test cleanup')
         # Persist before DELETE. Retain old entries when the DB is already empty on a retry.
         save_plan(plan_path, plan, fixture)
-        execute_sql(cleanup_sql(fixture, plan['generations']))
+        execute_sql(cleanup_sql(fixture, plan['generations'], state))
         print('DB cleanup committed: test data removed.'
-              + (' Reusable members kept.' if fixture['version'] == 3 else ' Test members removed.'), flush=True)
-        delete_images(fixture, plan['generations'])
+              + (' Baseline kept and counters restored.' if state is not None
+                 else ' Reusable members kept.' if fixture['version'] == 3 else ' Test members removed.'), flush=True)
+        if plan['generations']:
+            delete_images(fixture, plan['generations'])
         # Only mark completion after all S3 deletions have succeeded.
         with (directory / '.cleaned').open('w') as marker:
             marker.flush()

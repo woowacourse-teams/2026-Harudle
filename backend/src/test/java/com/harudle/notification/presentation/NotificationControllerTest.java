@@ -13,8 +13,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.harudle.auth.infrastructure.UserRepository;
-import com.harudle.auth.infrastructure.oauth.OAuthLoginFailureHandler;
-import com.harudle.auth.infrastructure.oauth.OAuthLoginSuccessHandler;
 import com.harudle.auth.presentation.AuthenticatedUserIdResolver;
 import com.harudle.auth.presentation.AuthenticationRequiredException;
 import com.harudle.common.error.ApiExceptionLoggerTestConfiguration;
@@ -48,7 +46,6 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -71,15 +68,14 @@ class NotificationControllerTest {
     private static final String UPDATE = LIST + "/" + NOTIFICATION;
     private static final String CSRF = "same-cookie-and-header";
     private static final Instant NOW = Instant.parse("2026-10-12T03:00:00Z");
-    private static final Profile PROFILE = new Profile(USER, "네오", URI.create("https://example.com/profile.svg"));
+    private static final Profile PROFILE = new Profile(
+            USER, "네오", URI.create("https://example.com/profile.webp?signature=example"), NOW.plusSeconds(900)
+    );
 
     @Autowired private MockMvc mockMvc;
     @MockitoBean private NotificationService service;
     @MockitoBean private JwtDecoder jwtDecoder;
     @MockitoBean private UserRepository users;
-    @MockitoBean private OAuthLoginSuccessHandler successHandler;
-    @MockitoBean private OAuthLoginFailureHandler failureHandler;
-    @MockitoBean private ClientRegistrationRepository registrations;
 
     @BeforeEach
     void setUp() {
@@ -99,6 +95,9 @@ class NotificationControllerTest {
                 .andExpect(jsonPath("$.items[0].type").value("COMMENT"))
                 .andExpect(jsonPath("$.items[0].feedId").value(FEED.toString()))
                 .andExpect(jsonPath("$.items[0].actor.nickname").value("네오"))
+                .andExpect(jsonPath("$.items[0].actor.profileImageUrl").value(PROFILE.profileImageUrl().toString()))
+                .andExpect(jsonPath("$.items[0].actor.profileImageUrlExpiresAt")
+                        .value(PROFILE.profileImageUrlExpiresAt().toString()))
                 .andExpect(jsonPath("$.items[0].message").value("네오님이 댓글을 남겼습니다."))
                 .andExpect(jsonPath("$.items[0].read").value(false))
                 .andExpect(jsonPath("$.items[0].readAt").doesNotExist())

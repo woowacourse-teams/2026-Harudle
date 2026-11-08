@@ -63,7 +63,7 @@ final class DiscardedGenerationImageCleaner {
 
     private static boolean canDeleteImage(DiaryGeneration generation, String imageObjectKey) {
         return switch (generation.getStatus()) {
-            case PROCESSING -> false;
+            case PENDING, PROCESSING -> false;
             case FAILED -> true;
             case SUCCEEDED -> generation.notUsesImageObjectKey(imageObjectKey);
         };

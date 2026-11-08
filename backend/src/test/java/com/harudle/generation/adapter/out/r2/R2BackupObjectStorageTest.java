@@ -58,6 +58,7 @@ import software.amazon.awssdk.http.AbortableInputStream;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3Configuration;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
@@ -91,6 +92,39 @@ class R2BackupObjectStorageTest {
     @AfterEach
     void tearDown() {
         presigner.close();
+    }
+
+    @Test
+    @DisplayName("현재 환경의 원본 백업만 삭제한다")
+    void deleteOriginalBackup() {
+        storage.delete(KEY);
+
+        ArgumentCaptor<DeleteObjectRequest> request = ArgumentCaptor.forClass(DeleteObjectRequest.class);
+        verify(client).deleteObject(request.capture());
+        assertThat(request.getValue().bucket()).isEqualTo("test-backup");
+        assertThat(request.getValue().key()).isEqualTo(KEY);
+        assertFailure(() -> storage.delete(KEY.replace("/dev/", "/prod/")), FailureType.REQUEST_VALIDATION_ERROR);
+        assertFailure(() -> storage.delete(KEY.replace("image.png", "image-960.webp")),
+                FailureType.REQUEST_VALIDATION_ERROR);
+        verifyNoMoreInteractions(client);
+    }
+
+    @Test
+    @DisplayName("백업 삭제 실패는 호출자에게 전달한다")
+    void propagateBackupDeletionFailure() {
+        when(client.deleteObject(any(DeleteObjectRequest.class))).thenThrow(s3Error(403, "AccessDenied"));
+        Logger logger = (Logger) LoggerFactory.getLogger(R2BackupObjectStorage.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            assertFailure(() -> storage.delete(KEY), FailureType.AUTHORIZATION_ERROR);
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+        assertThat(appender.list).isNotEmpty().allSatisfy(event ->
+                assertThat(event.getFormattedMessage() + event.getKeyValuePairs()).doesNotContain(KEY));
     }
 
     @ParameterizedTest
@@ -344,11 +378,10 @@ class R2BackupObjectStorageTest {
             "harudle/generated/diary-images/dev/%2e%2e/prod/image.png",
             "harudle/generated/diary-images/dev//image.png",
             "harudle/generated/diary-images/dev/diary-id\\image.png",
-            "harudle/generated/diary-images/dev/diary-id/image-960.webp",
-            "harudle/generated/diary-images/dev/diary-id/image-240.webp",
+
             "harudle/generated/diary-images/dev/diary-id\n/image.png"
     })
-    @DisplayName("다른 환경, 파생 이미지와 잘못된 경로는 모든 작업에서 거절한다")
+    @DisplayName("다른 환경과 잘못된 경로는 모든 작업에서 거절한다")
     void rejectInvalidKey(String key) {
         assertFailure(() -> storage.findMetadata(key), FailureType.REQUEST_VALIDATION_ERROR);
         assertFailure(() -> storage.download(key), FailureType.REQUEST_VALIDATION_ERROR);
@@ -357,10 +390,27 @@ class R2BackupObjectStorageTest {
         verifyNoInteractions(client);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"image-960.webp", "image-240.webp"})
+    @DisplayName("화면 표시용 이미지는 존재 확인 없이 서명하고 원본 백업 작업은 거절한다")
+    void signDisplayImagesWithoutEnablingBackupWrites(String filename) {
+        String key = KEY.replace("image.png", filename);
+        ImageAccessUrl accessUrl = storage.createAccessUrl(key);
+
+        assertThat(accessUrl.url().getPath()).isEqualTo("/test-backup/" + key);
+        assertFailure(() -> storage.findMetadata(key), FailureType.REQUEST_VALIDATION_ERROR);
+        assertFailure(() -> storage.download(key), FailureType.REQUEST_VALIDATION_ERROR);
+        assertFailure(() -> storage.uploadIfAbsent(key, image(BYTES, "image/webp")),
+                FailureType.REQUEST_VALIDATION_ERROR);
+        verifyNoInteractions(client);
+    }
+
     @Test
     @DisplayName("UTF-8 기준 1024바이트를 넘는 키를 거절한다")
     void rejectLongKey() {
         assertFailure(() -> storage.findMetadata(KEY.replace("diary-id", "가".repeat(350))),
+                FailureType.REQUEST_VALIDATION_ERROR);
+        assertFailure(() -> storage.createAccessUrl(KEY.replace("diary-id", "가".repeat(350))),
                 FailureType.REQUEST_VALIDATION_ERROR);
         verifyNoInteractions(client);
     }

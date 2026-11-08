@@ -87,7 +87,7 @@ class UserTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {0, 6})
+    @ValueSource(ints = {0, 11})
     @DisplayName("이미지 코드가 잘못되면 닉네임도 배정하지 않는다")
     void preservesStateWhenImageCodeIsInvalid(int imageCode) {
         User user = new User(null, "김초록", CREATED_AT);

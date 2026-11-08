@@ -2,9 +2,12 @@ package com.harudle.category.repository;
 
 import com.harudle.category.domain.Category;
 import com.harudle.category.query.CategorySnapshot;
+import com.harudle.common.testdata.DevTestDataVisibility;
 import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.repository.Repository;
@@ -33,6 +36,12 @@ public interface CategoryRepository extends Repository<Category, Long> {
             ORDER BY category.sortOrder, category.id
             """)
     List<CategorySnapshot> findAllActive();
+
+    @Query(value = """
+            SELECT id, name, sort_order, is_active FROM categories
+            WHERE is_active = TRUE AND (name !~ '^부하[0-9a-f]{12}$' OR
+            """ + DevTestDataVisibility.TEST_VIEWER_SQL + ") ORDER BY sort_order, id", nativeQuery = true)
+    List<CategorySnapshot> findVisibleActive(@Param("viewerId") @Nullable UUID viewerId);
 
     @Query("""
             SELECT new com.harudle.category.query.CategorySnapshot(

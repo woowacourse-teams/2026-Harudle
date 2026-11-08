@@ -28,6 +28,7 @@ import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
@@ -185,8 +186,23 @@ public final class R2BackupObjectStorage implements BackupObjectStorage {
     }
 
     @Override
+    public void delete(String objectKey) {
+        requireKey("delete_object", objectKey);
+        try {
+            client.deleteObject(DeleteObjectRequest.builder().bucket(properties.bucket()).key(objectKey).build());
+            logResult("delete_object", objectKey, "DELETED", null, null);
+        } catch (Exception exception) {
+            throw providerFailure("delete_object", objectKey, exception);
+        }
+    }
+
+    @Override
     public ImageAccessUrl createAccessUrl(String objectKey) {
-        requireKey("presign_get_object", objectKey);
+        try {
+            keyPolicy.requireReadable(objectKey);
+        } catch (IllegalArgumentException exception) {
+            throw failure("presign_get_object", "invalid", FailureType.REQUEST_VALIDATION_ERROR, exception);
+        }
         try {
             PresignedGetObjectRequest signed = presigner.presignGetObject(GetObjectPresignRequest.builder()
                     .signatureDuration(properties.accessUrlTtl())
@@ -308,13 +324,14 @@ public final class R2BackupObjectStorage implements BackupObjectStorage {
     private void logResult(
             String operation, String key, String result, @Nullable FailureType type, @Nullable Number size
     ) {
+        String loggedKey = "delete_object".equals(operation) ? "redacted" : key;
         LOGGER.atInfo().addKeyValue("event", "r2_object_operation")
                 .addKeyValue("provider", "r2").addKeyValue("operation", operation)
-                .addKeyValue("bucket", properties.bucket()).addKeyValue("objectKey", key)
+                .addKeyValue("bucket", properties.bucket()).addKeyValue("objectKey", loggedKey)
                 .addKeyValue("result", result).addKeyValue("size", size == null ? "none" : size)
                 .addKeyValue("failureType", type == null ? "none" : type.name())
                 .log("event=r2_object_operation operation={} bucket={} objectKey={} result={} size={} failureType={}",
-                        operation, properties.bucket(), key, result, size == null ? "none" : size,
+                        operation, properties.bucket(), loggedKey, result, size == null ? "none" : size,
                         type == null ? "none" : type.name());
     }
 }

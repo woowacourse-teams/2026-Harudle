@@ -232,6 +232,12 @@ describe('피드 페이지 MSW', () => {
     await expect(categories.json()).resolves.toEqual([
       { id: 1, name: '일상', sortOrder: 0, active: true },
       { id: 2, name: '우테코', sortOrder: 1, active: true },
+      { id: 3, name: '싸피', sortOrder: 2, active: true },
+      { id: 4, name: '소마', sortOrder: 3, active: true },
+      { id: 5, name: '현대', sortOrder: 4, active: true },
+      { id: 6, name: '개발', sortOrder: 5, active: true },
+      { id: 7, name: '여행', sortOrder: 6, active: true },
+      { id: 8, name: '취미', sortOrder: 7, active: true },
     ]);
     const first = await listFeeds();
     expect(first.items).toHaveLength(20);
@@ -254,15 +260,26 @@ describe('피드 페이지 MSW', () => {
   });
 
   it('카테고리 필터와 최신순의 동일 시각 ID 내림차순을 반영한다', async () => {
-    const filtered = await listFeeds('?categoryId=2&size=50');
-    expect(filtered.items).toHaveLength(12);
-    expect(
-      filtered.items.every(
-        (feed): boolean =>
-          JSON.stringify(feed.category) ===
-          JSON.stringify({ id: 2, name: '우테코' }),
-      ),
-    ).toBe(true);
+    for (const [index, name] of [
+      '일상',
+      '우테코',
+      '싸피',
+      '소마',
+      '현대',
+      '개발',
+      '여행',
+      '취미',
+    ].entries()) {
+      const id = index + 1;
+      const filtered = await listFeeds(`?categoryId=${id}&size=50`);
+      expect(filtered.items).toHaveLength(3);
+      expect(
+        filtered.items.every(
+          (feed): boolean =>
+            JSON.stringify(feed.category) === JSON.stringify({ id, name }),
+        ),
+      ).toBe(true);
+    }
     const latest = await listFeeds('?size=2');
     expect(latest.items.map((feed) => feed.id)).toEqual([
       otherFeedId,

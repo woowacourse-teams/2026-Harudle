@@ -10,6 +10,8 @@ import org.springframework.security.web.util.matcher.RequestMatcher;
 public final class CookieApiCsrfProtectionMatcher implements RequestMatcher {
 
     private static final Set<String> COOKIE_API_PATHS = Set.of(
+            "/api/v1/auth/apple/native/nonce",
+            "/api/v1/auth/apple/native/login",
             "/api/v1/auth/refresh",
             "/api/v1/auth/logout",
             "/api/v1/guest/session",

@@ -70,7 +70,7 @@ class FeedLikeServiceTest {
         ArgumentCaptor<UUID> savedLikeId = ArgumentCaptor.forClass(UUID.class);
         var order = inOrder(feedLikeRepository, feedInteractionPort, notificationRecorder);
         order.verify(feedLikeRepository).isActiveMember(USER_ID);
-        order.verify(feedInteractionPort).lockActive(FEED_ID);
+        order.verify(feedInteractionPort).lockActiveForInteraction(FEED_ID, USER_ID);
         order.verify(feedLikeRepository).add(savedLikeId.capture(), eq(FEED_ID), eq(USER_ID), eq(NOW));
         order.verify(feedInteractionPort).adjustCounter(FEED_ID, CounterKind.LIKE, CounterChange.ADDED);
         order.verify(notificationRecorder).record(new Interaction(savedLikeId.getValue(), Type.LIKE,
@@ -147,7 +147,7 @@ class FeedLikeServiceTest {
     @Test
     void rejectsUnavailableFeedBeforeWritingLikeOrNotification() {
         when(feedLikeRepository.isActiveMember(USER_ID)).thenReturn(true);
-        when(feedInteractionPort.lockActive(FEED_ID)).thenThrow(new FeedNotFoundException());
+        when(feedInteractionPort.lockActiveForInteraction(FEED_ID, USER_ID)).thenThrow(new FeedNotFoundException());
 
         assertThatThrownBy(() -> service.like(USER_ID, FEED_ID)).isInstanceOf(FeedNotFoundException.class);
         assertThatThrownBy(() -> service.unlike(USER_ID, FEED_ID)).isInstanceOf(FeedNotFoundException.class);
@@ -182,6 +182,6 @@ class FeedLikeServiceTest {
 
     private void activeTarget(UUID authorId, int likeCount) {
         when(feedLikeRepository.isActiveMember(USER_ID)).thenReturn(true);
-        when(feedInteractionPort.lockActive(FEED_ID)).thenReturn(new Target(FEED_ID, authorId, new Counts(likeCount, 3)));
+        when(feedInteractionPort.lockActiveForInteraction(FEED_ID, USER_ID)).thenReturn(new Target(FEED_ID, authorId, new Counts(likeCount, 3)));
     }
 }

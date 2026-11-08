@@ -7,11 +7,14 @@ env:
 
 phases:
   install:
+    runtime-versions:
+      java: corretto21
     commands:
       - set -euo pipefail
       - docker version
       - docker buildx version
       - jq --version
+      - java -version
       - >-
         if [[ "$(uname -m)" != "aarch64" && "$(uname -m)" != "arm64" ]]; then
           docker run --privileged --rm tonistiigi/binfmt --install arm64;
@@ -26,47 +29,34 @@ phases:
     commands:
       - set -euo pipefail
       - |
-        cache_root=/root/.cache/harudle-buildkit
-        cache_export_root="$(mktemp -d /tmp/harudle-buildkit.XXXXXX)"
-        mkdir -p "$cache_root" build-artifacts
+        bash deploy/scripts/codebuild_backend.sh build
+        mkdir -p build-artifacts
+        frontend_image_reused=false
+        if bash deploy/scripts/codebuild_frontend.sh restore; then
+          frontend_image_reused=true
+        fi
 
         for service in backend frontend; do
-          cache_directory="$cache_root/$service"
-          cache_export_directory="$cache_export_root/$service"
-          cache_args=()
+          if [[ "$service" == frontend && "$frontend_image_reused" == true ]]; then
+            continue
+          fi
           build_args=()
-
           if [[ "$service" == backend ]]; then
-            if [[ -f "$cache_directory/index.json" ]]; then
-              echo "Restoring backend build cache."
-              cache_args=(--cache-from "type=local,src=$cache_directory")
-            else
-              echo "No backend build cache; building without a restored cache."
-            fi
-            # Only persist layers before application sources are copied.
-            docker buildx build \
-              --platform linux/arm64 \
-              --progress plain \
-              --pull \
-              --target dependencies \
-              --output type=cacheonly \
-              "${cache_args[@]}" \
-              --cache-to "type=local,dest=$cache_export_directory,mode=min,ignore-error=true" \
-              ./backend
+            build_args=(--target codebuild)
           else
-            echo "Frontend external build cache is disabled."
             build_args=(--build-arg REACT_APP_POSTHOG_KEY --build-arg REACT_APP_POSTHOG_HOST)
           fi
 
+          image_build_started="$(date +%s)"
           docker buildx build \
             --platform linux/arm64 \
             --progress plain \
             --pull \
             --output "type=docker,dest=build-artifacts/$service-image.tar" \
-            "${cache_args[@]}" \
             "${build_args[@]}" \
             --tag "harudle-$service:local" \
             "./$service"
+          echo "[build-metrics] ${service}_docker_export_seconds=$(($(date +%s) - image_build_started))"
 
           image_archive="build-artifacts/$service-image.tar"
           image_config="$(tar -xOf "$image_archive" manifest.json | jq -er --arg tag "harudle-$service:local" '
@@ -75,29 +65,35 @@ phases:
           tar -xOf "$image_archive" -- "$image_config" | jq -e '
             .architecture == "arm64" and .os == "linux"
           '
-
-          # Export into a fresh directory so obsolete cache blobs do not accumulate.
-          if [[ "$service" == backend && -f "$cache_export_directory/index.json" ]]; then
-            rm -rf -- "$cache_directory"
-            mv -- "$cache_export_directory" "$cache_directory"
-          fi
-
-          if [[ "$service" == backend && -d "$cache_directory" ]]; then
-            echo "Backend build cache directory size: "
-            du -sh "$cache_directory"
-          fi
         done
   post_build:
     commands:
       - set -euo pipefail
+      - test "${CODEBUILD_BUILD_SUCCEEDING:-1}" = 1
       - mkdir -p build-artifacts
-      - gzip -1 build-artifacts/backend-image.tar
-      - gzip -1 build-artifacts/frontend-image.tar
+      - |
+        set -euo pipefail
+        for service in backend frontend; do
+          if [[ -s "build-artifacts/$service-image.tar.gz" ]]; then
+            continue
+          fi
+          image_gzip_started="$(date +%s)"
+          gzip -1 "build-artifacts/$service-image.tar"
+          echo "[build-metrics] ${service}_image_gzip_seconds=$(($(date +%s) - image_gzip_started))"
+        done
       - gzip -t build-artifacts/backend-image.tar.gz build-artifacts/frontend-image.tar.gz
       - (cd build-artifacts && sha256sum backend-image.tar.gz frontend-image.tar.gz > image-checksums.sha256)
       - chmod 0755 deploy/scripts/*.sh
       - test -s build-artifacts/backend-image.tar.gz
       - test -s build-artifacts/frontend-image.tar.gz
+      - >-
+        bash deploy/scripts/codebuild_backend.sh save ||
+        echo "Incremental cache save failed; continuing with the verified images."
+      - |
+        if [[ "${frontend_image_reused:-false}" != true ]]; then
+          bash deploy/scripts/codebuild_frontend.sh save ||
+            echo "Frontend image cache save failed; continuing with the verified images."
+        fi
 
 artifacts:
   files:
@@ -111,13 +107,31 @@ artifacts:
     - backend/load-test/prepare.py
     - backend/load-test/assets.py
     - backend/load-test/cleanup.py
+    - backend/load-test/cleanup_stopped.py
     - backend/load-test/ec2.py
     - backend/load-test/transfer.py
     - build-artifacts/*
+    - build-artifacts/backend-gradle-profile/**/*
   discard-paths: no
 
 # CodeBuild must also have an S3 cache location configured on the project.
 # Leave the key unset so the cache is updated after each build.
 cache:
   paths:
-    - "/root/.cache/harudle-buildkit/backend/**/*"
+    - "/root/.cache/harudle-gradle/home/wrapper/dists/**/*"
+    - "/root/.cache/harudle-gradle/home/native/**/*"
+    - "/root/.cache/harudle-gradle/home/caches/modules-2/**/*"
+    - "/root/.cache/harudle-gradle/home/caches/*/generated-gradle-jars/**/*"
+    - "/root/.cache/harudle-gradle/home/caches/*/groovy-dsl/**/*"
+    - "/root/.cache/harudle-frontend/frontend-image.tar.gz"
+    - "/root/.cache/harudle-frontend/frontend-image.sha256"
+    - "/root/.cache/harudle-frontend/fingerprint"
+    - "/root/.cache/harudle-gradle/home/caches/*/transforms/**/*"
+    - "/root/.cache/harudle-gradle/home/caches/*/javaCompile/**/*"
+    - "/root/.cache/harudle-gradle/home/caches/*/fileHashes/**/*"
+    - "/root/.cache/harudle-gradle/home/caches/jars-*/**/*"
+    - "/root/.cache/harudle-gradle/home/caches/journal-*/**/*"
+    - "/root/.cache/harudle-gradle/incremental/fingerprint"
+    - "/root/.cache/harudle-gradle/incremental/directories"
+    - "/root/.cache/harudle-gradle/incremental/project/.gradle/**/*"
+    - "/root/.cache/harudle-gradle/incremental/project/build/**/*"

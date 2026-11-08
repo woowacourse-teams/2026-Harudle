@@ -10,8 +10,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.UserRepository;
-import com.harudle.auth.infrastructure.oauth.OAuthLoginFailureHandler;
-import com.harudle.auth.infrastructure.oauth.OAuthLoginSuccessHandler;
 import com.harudle.common.config.TimeConfiguration;
 import com.harudle.common.error.ApiExceptionLoggerTestConfiguration;
 import com.harudle.common.error.ProblemDetailFactory;
@@ -30,7 +28,6 @@ import org.springframework.boot.test.context.TestComponent;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpMethod;
-import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -51,6 +48,7 @@ class ApiCsrfPolicyTest {
 
     private static final UUID ACTOR = UUID.fromString("550e8400-e29b-41d4-a716-446655440001");
     private static final List<String> COOKIE_PATHS = List.of(
+            "/api/v1/auth/apple/native/nonce", "/api/v1/auth/apple/native/login",
             "/api/v1/auth/refresh", "/api/v1/auth/logout", "/api/v1/guest/session", "/api/v1/guest/diaries"
     );
     private static final List<HttpMethod> MUTATION_METHODS = List.of(
@@ -60,9 +58,6 @@ class ApiCsrfPolicyTest {
     @Autowired private MockMvc mockMvc;
     @MockitoBean private JwtDecoder jwtDecoder;
     @MockitoBean private UserRepository userRepository;
-    @MockitoBean private OAuthLoginSuccessHandler loginSuccessHandler;
-    @MockitoBean private OAuthLoginFailureHandler loginFailureHandler;
-    @MockitoBean private ClientRegistrationRepository clientRegistrationRepository;
 
     @BeforeEach
     void setUp() {
@@ -161,7 +156,8 @@ class ApiCsrfPolicyTest {
             return "bearer";
         }
 
-        @PostMapping({"/api/v1/auth/refresh", "/api/v1/auth/logout", "/api/v1/guest/session", "/api/v1/guest/diaries"})
+        @PostMapping({"/api/v1/auth/apple/native/nonce", "/api/v1/auth/apple/native/login",
+            "/api/v1/auth/refresh", "/api/v1/auth/logout", "/api/v1/guest/session", "/api/v1/guest/diaries"})
         String cookieMutation() {
             return "cookie";
         }

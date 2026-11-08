@@ -12,6 +12,9 @@ public interface FeedInteractionPort {
      */
     Target lockActive(UUID feedId);
 
+    /** dev에서는 일반 계정과 테스트 계정 사이의 반응을 기존 작성자 조회에서 차단한다. */
+    Target lockActiveForInteraction(UUID feedId, UUID actorId);
+
     /**
      * lockActive와 같은 트랜잭션에서 잠근 피드의 좋아요 수 또는 댓글 수를 1 늘리거나 줄이고, 변경 후 개수를 반환한다.
      * 실제 추가/삭제가 있을 때만 호출한다. 같은 요청을 반복해 데이터가 그대로라면 호출하지 않는다.

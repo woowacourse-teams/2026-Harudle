@@ -71,15 +71,18 @@ const FeedItemList = ({
         setFeedScroll(event.currentTarget.scrollTop);
       }}
     >
-      {items.map((item) => (
-        <FeedItem
-          key={item.id}
-          feed={item}
-          onCategoryClick={onCategoryClick}
-          onLikeChange={updateLike}
-          onDelete={removeFeedFromList}
-        />
-      ))}
+      <ul aria-label="피드">
+        {items.map((item) => (
+          <FeedItem
+            key={item.id}
+            feed={item}
+            onCategoryClick={onCategoryClick}
+            onLikeChange={updateLike}
+            onDelete={removeFeedFromList}
+          />
+        ))}
+      </ul>
+
       {hasNext && (
         <div css={loadMoreStyle}>
           <ActionButton

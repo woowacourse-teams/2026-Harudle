@@ -3,6 +3,7 @@ package com.harudle.auth.application;
 import java.time.Instant;
 import java.util.Objects;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -19,7 +20,7 @@ public class AuthService {
         this.accessTokenService = accessTokenService;
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public RefreshedTokens refresh(String rawRefreshToken, Instant now) {
         Objects.requireNonNull(rawRefreshToken, "rawRefreshToken은 필수입니다.");
         Objects.requireNonNull(now, "now는 필수입니다.");
@@ -30,6 +31,7 @@ public class AuthService {
         );
         IssuedAccessToken issuedAccessToken = accessTokenService.issue(
                 rotatedRefreshToken.userId(),
+                rotatedRefreshToken.sessionId(),
                 now
         );
 

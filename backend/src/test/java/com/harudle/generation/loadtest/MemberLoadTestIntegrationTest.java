@@ -61,6 +61,7 @@ import org.testcontainers.utility.MountableFile;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "spring.config.import=", "spring.profiles.active=", "DEPLOY_ENV=dev",
         "harudle.load-test.verification=true",
+        "harudle.generation.worker.poll-interval=100ms",
         "harudle.generation.adapters.enabled=true", "harudle.generation.storage.r2.enabled=false",
         "spring.security.oauth2.client.registration.kakao.client-id=test",
         "spring.security.oauth2.client.registration.kakao.client-secret=test",
@@ -79,6 +80,9 @@ class MemberLoadTestIntegrationTest {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
+        // 전체 행동 검증에서는 한 번에 생성하는 인원만큼 실행한다. 운영 설정과 별개다.
+        registry.add("harudle.generation.worker.concurrency",
+                () -> "peak".equals(System.getenv("HARUDLE_K6_VERIFY")) ? 20 : 1);
     }
 
     @Value("${local.server.port}") private int port;

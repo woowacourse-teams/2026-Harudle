@@ -105,7 +105,7 @@ class FeedDeletionPersistenceTest {
         when(categories.lockActiveForPublication(categoryId)).thenReturn(category);
         when(categories.get(categoryId)).thenReturn(category);
         when(profiles.readAll(Set.of(AUTHOR))).thenReturn(Map.of(AUTHOR,
-                new PublicProfileReader.Profile(AUTHOR, "캐모", URI.create("https://example.com/profile.png"))));
+                new PublicProfileReader.Profile(AUTHOR, "캐모", URI.create("https://example.com/profile.png"), null)));
         // 푸시 담당 구현 대신 같은 트랜잭션에서 SQL을 실행해 포트 호출과 롤백 경계를 검증한다.
         when(outbox.cancelUnsentByFeed(any())).thenAnswer(invocation -> cancelJobs(invocation.getArgument(0)));
     }

@@ -6,11 +6,13 @@ import BottomNavigation from './BottomNavigation';
 
 interface BottomNavigationLayoutProps {
   readonly children: ReactNode;
+  readonly headerLeft?: ReactNode;
   readonly headerRight?: ReactNode;
 }
 
 const BottomNavigationLayout = ({
   children,
+  headerLeft,
   headerRight,
 }: BottomNavigationLayoutProps) => {
   const navigate = useNavigate();
@@ -18,6 +20,7 @@ const BottomNavigationLayout = ({
   return (
     <div css={layoutStyle}>
       <header css={pageHeaderStyle}>
+        {headerLeft && <div css={headerLeftStyle}>{headerLeft}</div>}
         <button
           type="button"
           css={logoButtonStyle}
@@ -72,6 +75,15 @@ const headerRightStyle = css`
   position: absolute;
   top: 0;
   right: 20px;
+  display: flex;
+  align-items: center;
+  height: 100%;
+`;
+
+const headerLeftStyle = css`
+  position: absolute;
+  top: 0;
+  left: 20px;
   display: flex;
   align-items: center;
   height: 100%;

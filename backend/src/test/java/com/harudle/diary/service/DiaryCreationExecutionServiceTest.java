@@ -24,6 +24,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -88,10 +90,11 @@ class DiaryCreationExecutionServiceTest {
         verify(generationExecutor, never()).generate(any(), any());
     }
 
-    @Test
-    @DisplayName("처리 중인 기존 선점은 외부 생성을 다시 실행하지 않는다")
-    void rejectExistingProcessingClaim() {
-        DiaryCreationClaim claim = createClaim(GenerationStatus.PROCESSING, false);
+    @ParameterizedTest
+    @EnumSource(value = GenerationStatus.class, names = {"PENDING", "PROCESSING"})
+    @DisplayName("대기 중이거나 처리 중인 기존 선점은 외부 생성을 다시 실행하지 않는다")
+    void rejectExistingUnfinishedClaim(GenerationStatus status) {
+        DiaryCreationClaim claim = createClaim(status, false);
 
         assertThatThrownBy(() -> executionService.execute(createCommand(), claim))
                 .isInstanceOf(GenerationInProgressException.class);

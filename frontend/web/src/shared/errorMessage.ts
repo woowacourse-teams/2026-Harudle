@@ -37,6 +37,10 @@ export const DIARY_GENERATION_FAILURE_MESSAGES = {
     '네컷만화 생성이 중단됐어요.',
     '네컷만화를 다시 만들어 주세요.',
   ],
+  GENERATION_PENDING_TIMEOUT: [
+    '네컷만화 생성 대기 시간이 초과됐어요.',
+    '잠시 후 다시 만들어 주세요.',
+  ],
   IMAGE_STORAGE_ERROR: [
     '네컷만화 저장에 실패했어요.',
     '잠시 후 다시 만들어 주세요.',
@@ -186,6 +190,9 @@ const TOAST = {
 } as const;
 
 export const ERROR_MESSAGES = {
+  NOTIFICATIONS_FETCH_FAILED: '알림을 불러오지 못했어요.',
+  INVALID_NOTIFICATIONS_RESPONSE: '알림 응답 형식이 올바르지 않아요.',
+  NOTIFICATION_READ_FAILED: '알림을 읽음으로 표시하지 못했어요.',
   ...DIARY_GENERATE,
   ...DIARY_DELETE,
   ...DIARY_DETAIL,

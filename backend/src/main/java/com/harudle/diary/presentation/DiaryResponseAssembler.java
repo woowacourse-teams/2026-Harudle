@@ -75,7 +75,7 @@ final class DiaryResponseAssembler {
     }
 
     DiaryTimelineResponse toTimelineResponse(DiaryTimelineResult result) {
-        ImageUrlProvider responseUrls = imageUrlProvider.forResponse();
+        ImageUrlProvider responseUrls = imageUrlProvider.forRead();
         List<DiaryDayResponse> days = result.days().stream()
                 .map(day -> toDayResponse(day, responseUrls))
                 .toList();
