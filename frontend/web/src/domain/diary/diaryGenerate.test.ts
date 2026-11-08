@@ -4,6 +4,7 @@ import { RequestError, type ProblemDetails } from '../../shared/api';
 import { GENERATION_FAILURE_CODES } from './diaryGeneration';
 import {
   generateDiary,
+  getDiaryGenerationStatus,
   isDiaryGenerateResponse,
   isDiaryGenerationStatusResponse,
   type DiaryGenerateRequest,
@@ -216,11 +217,37 @@ describe('일기 생성 상태 응답 타입 가드', (): void => {
     errorCode: null,
   };
 
+  it.each([...GENERATION_FAILURE_CODES, 'UNKNOWN_ERROR'])(
+    '실패 코드 %s를 내부 코드로 바꾸고 action을 유지한다',
+    async (errorCode): Promise<void> => {
+      const response = {
+        ...pendingResponse,
+        status: 'FAILED',
+        errorCode,
+        action:
+          '작성한 내용으로 생성할 수 없어요. 내용을 바꿔 다시 시도해 주세요.',
+      };
+      mockAuthFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => response,
+      } as Response);
+
+      await expect(
+        getDiaryGenerationStatus({ generationId: pendingResponse.id }),
+      ).resolves.toEqual({
+        ...response,
+        errorCode:
+          errorCode === 'UNKNOWN_ERROR' ? 'AI_PROVIDER_ERROR' : errorCode,
+      });
+    },
+  );
+
   it.each([
     pendingResponse,
     { ...pendingResponse, status: 'PROCESSING' },
     { ...pendingResponse, status: 'SUCCEEDED', diaryId: 'diary-id' },
     { ...pendingResponse, status: 'FAILED', errorCode: 'AI_PROVIDER_ERROR' },
+    { ...pendingResponse, status: 'FAILED', errorCode: 'UNKNOWN_ERROR' },
   ])('정상 상태 응답을 허용한다: $status', (response): void => {
     expect(isDiaryGenerationStatusResponse(response)).toBe(true);
   });
@@ -257,7 +284,8 @@ describe('일기 생성 상태 응답 타입 가드', (): void => {
       errorCode: 'AI_PROVIDER_ERROR',
     },
     { ...pendingResponse, status: 'FAILED', errorCode: '' },
-    { ...pendingResponse, status: 'FAILED', errorCode: 'UNKNOWN_ERROR' },
+    { ...pendingResponse, status: 'FAILED', errorCode: '   ' },
+    { ...pendingResponse, status: 'FAILED', errorCode: 123 },
   ])('필수 필드나 타입이 잘못된 응답을 거부한다: %j', (response): void => {
     expect(isDiaryGenerationStatusResponse(response)).toBe(false);
   });

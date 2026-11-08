@@ -3,8 +3,8 @@ import { authFetch } from '../../shared/auth';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import {
   isDiaryGeneration,
-  isGenerationFailureCode,
   isGenerationStatus,
+  toGenerationFailureCode,
   type DiaryGeneration,
   type GenerationFailureCode,
   type GenerationStatus,
@@ -124,6 +124,10 @@ export const getDiaryGenerationStatus = async ({
     throw new Error(ERROR_MESSAGES.INVALID_DIARY_GENERATION_STATUS_RESPONSE);
   }
 
+  if (data.status === 'FAILED') {
+    return { ...data, errorCode: toGenerationFailureCode(data.errorCode) };
+  }
+
   return data;
 };
 
@@ -150,6 +154,14 @@ interface DiaryGenerationStatusFailureResponse {
   status: Extract<GenerationStatus, 'FAILED'>;
   diaryId: null;
   errorCode: GenerationFailureCode;
+  readonly action?: unknown;
+}
+
+interface DiaryGenerationStatusFailureApiResponse extends Omit<
+  DiaryGenerationStatusFailureResponse,
+  'errorCode'
+> {
+  errorCode: string;
 }
 
 export type DiaryGenerationStatusResponse =
@@ -159,7 +171,10 @@ export type DiaryGenerationStatusResponse =
 
 export const isDiaryGenerationStatusResponse = (
   value: unknown,
-): value is DiaryGenerationStatusResponse => {
+): value is
+  | DiaryGenerationStatusInProgressResponse
+  | DiaryGenerationStatusSuccessResponse
+  | DiaryGenerationStatusFailureApiResponse => {
   if (
     typeof value !== 'object' ||
     value === null ||
@@ -180,6 +195,10 @@ export const isDiaryGenerationStatusResponse = (
     case 'SUCCEEDED':
       return typeof value.diaryId === 'string' && value.errorCode === null;
     case 'FAILED':
-      return value.diaryId === null && isGenerationFailureCode(value.errorCode);
+      return (
+        value.diaryId === null &&
+        typeof value.errorCode === 'string' &&
+        value.errorCode.trim().length > 0
+      );
   }
 };
