@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { getDiaryGenerationStatus } from '../domain/diary/diaryGenerate';
-import { isGenerationFailureCode } from '../domain/diary/diaryGeneration';
 import useDiaryGenerationId from './useDiaryGenerationId';
 import { useToastContext } from './ToastContext';
 import {
@@ -97,16 +96,11 @@ const DiaryGenerationNotice = () => {
           const savedToastId = localStorage.getItem(
             DIARY_GENERATION_TOAST_ID_KEY,
           );
-          const failureMessage = isGenerationFailureCode(
-            generationStatus.errorCode,
-          )
-            ? DIARY_GENERATION_FAILURE_MESSAGES[generationStatus.errorCode]
-            : DIARY_GENERATION_FAILURE_MESSAGES.AI_PROVIDER_ERROR;
           const [message, description] =
             typeof generationStatus.action === 'string' &&
             generationStatus.action.trim()
               ? [generationStatus.action, '']
-              : failureMessage;
+              : DIARY_GENERATION_FAILURE_MESSAGES[generationStatus.errorCode];
           if (savedToastId) {
             updateToast(savedToastId, {
               type: 'error',

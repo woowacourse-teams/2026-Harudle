@@ -217,23 +217,30 @@ describe('일기 생성 상태 응답 타입 가드', (): void => {
     errorCode: null,
   };
 
-  it('모르는 오류 코드의 실패 응답도 검증하고 action을 그대로 반환한다', async (): Promise<void> => {
-    const response = {
-      ...pendingResponse,
-      status: 'FAILED',
-      errorCode: 'UNKNOWN_ERROR',
-      action:
-        '작성한 내용으로 생성할 수 없어요. 내용을 바꿔 다시 시도해 주세요.',
-    };
-    mockAuthFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => response,
-    } as Response);
+  it.each([...GENERATION_FAILURE_CODES, 'UNKNOWN_ERROR'])(
+    '실패 코드 %s를 내부 코드로 바꾸고 action을 유지한다',
+    async (errorCode): Promise<void> => {
+      const response = {
+        ...pendingResponse,
+        status: 'FAILED',
+        errorCode,
+        action:
+          '작성한 내용으로 생성할 수 없어요. 내용을 바꿔 다시 시도해 주세요.',
+      };
+      mockAuthFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => response,
+      } as Response);
 
-    await expect(
-      getDiaryGenerationStatus({ generationId: pendingResponse.id }),
-    ).resolves.toEqual(response);
-  });
+      await expect(
+        getDiaryGenerationStatus({ generationId: pendingResponse.id }),
+      ).resolves.toEqual({
+        ...response,
+        errorCode:
+          errorCode === 'UNKNOWN_ERROR' ? 'AI_PROVIDER_ERROR' : errorCode,
+      });
+    },
+  );
 
   it.each([
     pendingResponse,

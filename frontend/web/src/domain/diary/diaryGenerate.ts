@@ -4,7 +4,9 @@ import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import {
   isDiaryGeneration,
   isGenerationStatus,
+  toGenerationFailureCode,
   type DiaryGeneration,
+  type GenerationFailureCode,
   type GenerationStatus,
 } from './diaryGeneration';
 
@@ -122,6 +124,10 @@ export const getDiaryGenerationStatus = async ({
     throw new Error(ERROR_MESSAGES.INVALID_DIARY_GENERATION_STATUS_RESPONSE);
   }
 
+  if (data.status === 'FAILED') {
+    return { ...data, errorCode: toGenerationFailureCode(data.errorCode) };
+  }
+
   return data;
 };
 
@@ -147,8 +153,15 @@ interface DiaryGenerationStatusFailureResponse {
   id: string;
   status: Extract<GenerationStatus, 'FAILED'>;
   diaryId: null;
-  errorCode: string;
+  errorCode: GenerationFailureCode;
   readonly action?: unknown;
+}
+
+interface DiaryGenerationStatusFailureApiResponse extends Omit<
+  DiaryGenerationStatusFailureResponse,
+  'errorCode'
+> {
+  errorCode: string;
 }
 
 export type DiaryGenerationStatusResponse =
@@ -158,7 +171,10 @@ export type DiaryGenerationStatusResponse =
 
 export const isDiaryGenerationStatusResponse = (
   value: unknown,
-): value is DiaryGenerationStatusResponse => {
+): value is
+  | DiaryGenerationStatusInProgressResponse
+  | DiaryGenerationStatusSuccessResponse
+  | DiaryGenerationStatusFailureApiResponse => {
   if (
     typeof value !== 'object' ||
     value === null ||

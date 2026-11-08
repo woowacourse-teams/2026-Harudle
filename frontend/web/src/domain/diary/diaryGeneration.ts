@@ -25,6 +25,9 @@ export const isGenerationFailureCode = (
 ): value is GenerationFailureCode =>
   GENERATION_FAILURE_CODES.some((code): boolean => code === value);
 
+export const toGenerationFailureCode = (code: string): GenerationFailureCode =>
+  isGenerationFailureCode(code) ? code : 'AI_PROVIDER_ERROR';
+
 export interface DiaryGenerationInProgress {
   id: string;
   status: Extract<GenerationStatus, 'PENDING' | 'PROCESSING'>;

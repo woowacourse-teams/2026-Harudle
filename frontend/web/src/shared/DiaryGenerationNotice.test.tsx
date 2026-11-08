@@ -114,13 +114,13 @@ describe('생성 실패 안내', (): void => {
     { action: '   ', message: '네컷만화 생성에 실패했어요.' },
     { action: 123, message: '네컷만화 생성에 실패했어요.' },
   ])(
-    '모르는 오류 코드에서 action=$action에 맞게 안내하고 조회를 종료한다',
+    '기본 오류 코드에서 action=$action에 맞게 안내하고 조회를 종료한다',
     async ({ action, message }): Promise<void> => {
       mockGetStatus.mockResolvedValue({
         id: generationId,
         status: 'FAILED',
         diaryId: null,
-        errorCode: 'UNKNOWN_ERROR',
+        errorCode: 'AI_PROVIDER_ERROR',
         action,
       });
       render(
