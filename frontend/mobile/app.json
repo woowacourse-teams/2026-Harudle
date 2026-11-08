@@ -3,7 +3,7 @@
     "name": "하루들",
     "slug": "harudle",
     "icon": "./assets/icon.png",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "platforms": ["ios", "android"],
     "plugins": [
       "expo-apple-authentication",
@@ -36,6 +36,7 @@
     },
     "android": {
       "package": "com.harudle.app",
+      "versionCode": 2,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
