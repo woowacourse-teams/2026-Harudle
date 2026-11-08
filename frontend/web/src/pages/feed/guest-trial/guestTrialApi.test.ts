@@ -8,7 +8,11 @@ import {
 } from '@jest/globals';
 import { RequestError } from '../../../shared/api';
 import { setAccessToken } from '../../../shared/auth';
-import { resolveGuestTrialClaim, submitGuestTrialDiary } from './guestTrialApi';
+import {
+  getGuestTrialGenerationStatus,
+  resolveGuestTrialClaim,
+  submitGuestTrialDiary,
+} from './guestTrialApi';
 
 const DIARY_ID = '0b9c1c5e-6f0a-4f0e-9a51-6c1c3b2f7d10';
 const GENERATION_ID = '3b85d827-72da-4e23-98ef-a97119e441b8';
@@ -82,6 +86,33 @@ afterEach((): void => {
   globalThis.fetch = originalFetch;
   localStorage.clear();
   setAccessToken(null);
+});
+
+describe('체험 생성 상태 조회', (): void => {
+  it.each([
+    ['AI_PROVIDER_TIMEOUT', 'AI_PROVIDER_TIMEOUT'],
+    ['UNKNOWN_ERROR', 'AI_PROVIDER_ERROR'],
+  ])(
+    '실패 코드 %s를 %s로 전달하고 action을 유지한다',
+    async (errorCode, expectedCode): Promise<void> => {
+      const response = {
+        id: GENERATION_ID,
+        status: 'FAILED',
+        diaryId: null,
+        errorCode,
+        action: '내용을 바꿔 다시 시도해 주세요.',
+      };
+      routeFetch({
+        [`GET /api/v1/guest/diary-generations/${GENERATION_ID}`]: [
+          async () => jsonResponse(response),
+        ],
+      });
+
+      await expect(
+        getGuestTrialGenerationStatus(GENERATION_ID),
+      ).resolves.toEqual({ ...response, errorCode: expectedCode });
+    },
+  );
 });
 
 describe('체험 일기 claim 결과 판단', (): void => {

@@ -6,6 +6,7 @@ import {
 import { authFetch, requestCsrfToken } from '../../../shared/auth';
 import {
   isDiaryGeneration,
+  toGenerationFailureCode,
   type DiaryGeneration,
 } from '../../../domain/diary/diaryGeneration';
 import {
@@ -129,6 +130,10 @@ export const getGuestTrialGenerationStatus = async (
   const data: unknown = await response.json();
   if (!isDiaryGenerationStatusResponse(data)) {
     throw new Error(GUEST_TRIAL_COPY.statusCheckFailed);
+  }
+
+  if (data.status === 'FAILED') {
+    return { ...data, errorCode: toGenerationFailureCode(data.errorCode) };
   }
 
   return data;
