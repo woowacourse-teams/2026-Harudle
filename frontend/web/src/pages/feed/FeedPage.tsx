@@ -15,6 +15,7 @@ import useDiaryGenerationId from '../../shared/useDiaryGenerationId';
 import type { BottomSheetHandle } from '../../shared/BottomSheet';
 import NeedLoginBottomSheet from '../../shared/NeedLoginBottomSheet';
 import FeedNotifications from './FeedNotifications';
+import useGuestTrialExperiment from './guest-trial/useGuestTrialExperiment';
 
 const FEED_QUERY_KEYS = {
   CATEGORY_ID: 'categoryId',
@@ -42,6 +43,11 @@ const FeedPage = () => {
     updateLike,
     removeFeedFromList,
   } = useFeedList({ categoryId, sort });
+  const createButtonRef = useRef<HTMLButtonElement>(null);
+  const guestTrial = useGuestTrialExperiment({
+    isFeedReady: request.status === 'success',
+    createButtonRef,
+  });
 
   const handleCategoryChange = (
     nextCategoryId: Category['id'] | undefined,
@@ -92,11 +98,12 @@ const FeedPage = () => {
     <BottomNavigationLayout
       headerLeft={
         <button
+          ref={createButtonRef}
           type="button"
           aria-label={FEED_COPY.createAction}
           disabled={generationId !== null}
           css={createButtonStyle}
-          onClick={handleCreate}
+          onClick={guestTrial.isActive ? guestTrial.onCreate : handleCreate}
         >
           <span aria-hidden="true" css={createIconBackgroundStyle}>
             <span css={createIconStyle} />
@@ -129,6 +136,7 @@ const FeedPage = () => {
         description={FEED_COPY.createLoginDescription}
         ref={loginSheetRef}
       />
+      {guestTrial.element}
     </BottomNavigationLayout>
   );
 };

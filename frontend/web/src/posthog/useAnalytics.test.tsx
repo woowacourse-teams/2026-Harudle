@@ -351,3 +351,46 @@ describe('피드 요청 이벤트와 인증 상태', (): void => {
     );
   });
 });
+
+describe('피드 게스트 체험 로그인 완료', (): void => {
+  const diaryId = '0b9c1c5e-6f0a-4f0e-9a51-6c1c3b2f7d10';
+
+  afterEach((): void => {
+    sessionStorage.clear();
+  });
+
+  it('체험 ID가 있으면 토큰 발급 후 식별 호출에서 로그인 완료를 기록한다', async (): Promise<void> => {
+    localStorage.setItem('harudle.has-completed-oauth', 'true');
+    sessionStorage.setItem('harudle.guest-trial.diary-id', diaryId);
+    const { result } = renderHook((): ReturnType<typeof useAnalytics> =>
+      useAnalytics(),
+    );
+
+    await act(async (): Promise<void> => {
+      await result.current.identifyCurrentUser('access-token');
+    });
+
+    expect(mockCapture).toHaveBeenCalledWith('guest_trial_login_completed', {
+      diary_id: diaryId,
+      auth_status: 'logged_in',
+    });
+  });
+
+  it('세션 복원과 체험 ID 없는 로그인은 로그인 완료로 세지 않는다', async (): Promise<void> => {
+    localStorage.setItem('harudle.has-completed-oauth', 'true');
+    const { result } = renderHook((): ReturnType<typeof useAnalytics> =>
+      useAnalytics(),
+    );
+
+    await act(async (): Promise<void> => {
+      await result.current.identifyCurrentUser('access-token');
+    });
+    sessionStorage.setItem('harudle.guest-trial.diary-id', diaryId);
+    act((): void => result.current.confirmAuthenticatedSession());
+
+    expect(mockCapture).not.toHaveBeenCalledWith(
+      'guest_trial_login_completed',
+      expect.anything(),
+    );
+  });
+});
