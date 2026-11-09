@@ -4,6 +4,7 @@ import com.harudle.auth.application.AccountAccessPolicy;
 import com.harudle.auth.application.AccountSuspendedException;
 import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.auth.presentation.AuthenticationRequiredException;
+import com.harudle.common.error.ApiExceptionLogger;
 import com.harudle.common.error.ErrorType;
 import com.harudle.common.error.ProblemDetailFactory;
 import com.harudle.common.error.ProblemDetailResponseWriter;
@@ -43,7 +44,7 @@ class ImageRecoverySecurityConfiguration {
     @Bean
     SecurityFilterChain recoverySecurity(HttpSecurity http, CookieCsrfTokenRepository tokens,
             ProblemDetailResponseWriter problems, UserRepository users, AccountAccessPolicy accountAccess,
-            TermsAcceptanceService terms)
+            TermsAcceptanceService terms, ApiExceptionLogger exceptionLogger)
             throws Exception {
         var entryPoint = new ApiAuthenticationEntryPoint(problems);
         var denied = new ApiAccessDeniedHandler(problems) {
@@ -51,6 +52,9 @@ class ImageRecoverySecurityConfiguration {
             public void handle(HttpServletRequest request, HttpServletResponse response,
                     AccessDeniedException exception) throws IOException {
                 if (exception instanceof RecoveryPolicyDeniedException policy) {
+                    if (policy.error == ErrorType.INTERNAL_SERVER_ERROR) {
+                        exceptionLogger.error(policy.error, policy, request);
+                    }
                     response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
                     problems.write(request, response, policy.error);
                     return;
@@ -69,9 +73,9 @@ class ImageRecoverySecurityConfiguration {
                                 "/api/v1/admin/generations/restore-image/upload",
                                 "/api/v1/admin/generations/restore-image/r2")
                         .access((authentication, context) -> {
-                            var result = admins.authorize(authentication, context);
-                            if (result == null || !result.isGranted()) return new AuthorizationDecision(false);
                             try {
+                                var result = admins.authorize(authentication, context);
+                                if (result == null || !result.isGranted()) return new AuthorizationDecision(false);
                                 UUID userId = UUID.fromString(authentication.get().getName());
                                 accountAccess.requireAllowedForRequest(userId);
                                 terms.requireAccepted(userId);
@@ -83,7 +87,7 @@ class ImageRecoverySecurityConfiguration {
                             } catch (AuthenticationRequiredException exception) {
                                 throw new RecoveryPolicyDeniedException(ErrorType.UNAUTHORIZED);
                             } catch (RuntimeException exception) {
-                                throw new RecoveryPolicyDeniedException(ErrorType.INTERNAL_SERVER_ERROR);
+                                throw new RecoveryPolicyDeniedException(ErrorType.INTERNAL_SERVER_ERROR, exception);
                             }
                         })
                         .anyRequest().denyAll())
@@ -108,7 +112,11 @@ class ImageRecoverySecurityConfiguration {
         private final ErrorType error;
 
         private RecoveryPolicyDeniedException(ErrorType error) {
-            super("Image recovery authorization rejected.");
+            this(error, null);
+        }
+
+        private RecoveryPolicyDeniedException(ErrorType error, Throwable cause) {
+            super("Image recovery authorization rejected.", cause);
             this.error = error;
         }
     }

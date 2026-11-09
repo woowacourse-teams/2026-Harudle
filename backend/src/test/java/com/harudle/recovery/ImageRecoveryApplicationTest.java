@@ -66,6 +66,8 @@ import tools.jackson.databind.ObjectMapper;
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
 class ImageRecoveryApplicationTest {
+    private static final String LEGACY_SOURCE_TEXT = "키 없이 보존해야 하는 공개 시험 평문";
+
     @Autowired ApplicationContext context;
     @Autowired MockMvc mvc;
     @Autowired JdbcTemplate jdbc;
@@ -106,6 +108,12 @@ class ImageRecoveryApplicationTest {
                 } else if (index == 2) generation.startProcessing();
                 generations.saveAndFlush(generation);
             }
+            entityManager.flush();
+            // A recovery-only fixture may contain an old plaintext row and encrypted queue rows.
+            // The normal v1-only app must reject this unfinished cutover; image recovery reads neither source.
+            jdbc.update("UPDATE diaries SET source_text=?,source_text_version=0 WHERE id=?",
+                    LEGACY_SOURCE_TEXT, success.getDiaryId());
+            entityManager.clear();
             jdbc.update("INSERT INTO daily_generation_usage(user_id,usage_date,used_count,limit_count) VALUES (?,CURRENT_DATE,2,3)", admin.getId());
             jdbc.update("UPDATE diary_generations SET created_at='2020-01-01',updated_at='2020-01-01' "
                     + "WHERE diary_id IN (SELECT id FROM diaries WHERE user_id=?) AND status IN ('PENDING','PROCESSING')", admin.getId());
@@ -130,6 +138,15 @@ class ImageRecoveryApplicationTest {
         assertThat(context.getBeansOfType(ScheduledAnnotationBeanPostProcessor.class)).isEmpty();
         assertThat(context.getBeanNamesForType(com.harudle.HarudleApplication.class)).isEmpty();
         assertThat(context.getBeanNamesForType(Flyway.class)).isEmpty();
+        assertThat(context.getBeanNamesForType(
+                com.harudle.diary.infrastructure.migration.DiarySourceTextReadinessConfiguration.class)).isEmpty();
+        assertThat(context.containsBean("diarySourceTextMigrationReadiness")).isFalse();
+        assertThat(jdbc.queryForObject("SELECT source_text FROM diaries WHERE id=?", String.class,
+                success.getDiaryId())).isEqualTo(LEGACY_SOURCE_TEXT);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM diaries WHERE user_id=? AND source_text_version=0",
+                Integer.class, admin.getId())).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM diaries WHERE user_id=? AND source_text_version=1",
+                Integer.class, admin.getId())).isEqualTo(2);
         var before = databaseState();
         var image = new GeneratedImage(new ByteArrayResource(new byte[]{1}), MediaType.IMAGE_PNG);
         when(storage.load("references/image.png")).thenReturn(new ReferenceImage(new ByteArrayResource(new byte[]{2}), MediaType.IMAGE_PNG));

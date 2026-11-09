@@ -74,6 +74,7 @@ public class ImageRecoveryApplication {
             }
             for (Class<?> forbidden : new Class<?>[]{DiarySourceTextCipher.class, DiaryGenerationWorker.class,
                     ScheduledAnnotationBeanPostProcessor.class, ApplicationRunner.class, CommandLineRunner.class,
+                    com.harudle.diary.infrastructure.migration.DiarySourceTextReadinessConfiguration.class,
                     com.harudle.HarudleApplication.class}) {
                 if (beans.getBeanNamesForType(forbidden, false, false).length != 0) {
                     throw new IllegalStateException("Image recovery cannot load normal application processing.");

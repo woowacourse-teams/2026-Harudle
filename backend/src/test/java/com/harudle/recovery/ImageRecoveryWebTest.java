@@ -15,6 +15,7 @@ import com.harudle.auth.application.AccountAccessPolicy;
 import com.harudle.auth.application.port.AccountRestrictionReader;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.UserRepository;
+import com.harudle.common.error.ApiExceptionLogger;
 import com.harudle.common.error.ImageRecoveryErrorConfiguration;
 import com.harudle.common.security.ApiCorsConfiguration;
 import com.harudle.common.security.CsrfConfiguration;
@@ -32,10 +33,19 @@ import com.harudle.generation.diary.service.port.*;
 import com.harudle.generation.diary.service.port.dto.*;
 import com.harudle.generation.prompt.domain.GenerationPrompt;
 import com.harudle.generation.prompt.repository.GenerationPromptRepository;
+import jakarta.servlet.Filter;
 import jakarta.servlet.http.Cookie;
+import java.sql.SQLException;
 import java.time.*;
 import java.util.*;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.slf4j.LoggerFactory;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.classic.spi.ThrowableProxyUtil;
+import ch.qos.logback.core.read.ListAppender;
 import org.springframework.context.annotation.*;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
@@ -63,6 +73,8 @@ class ImageRecoveryWebTest {
     private Cookie csrfCookie;
     private String csrfToken;
     private DiaryGeneration generation;
+    private final Logger errorLogger = (Logger) LoggerFactory.getLogger(ApiExceptionLogger.class);
+    private ListAppender<ILoggingEvent> authorizationLogs;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -76,7 +88,18 @@ class ImageRecoveryWebTest {
                         "app.auth.access-token.ttl", "10m", "harudle.admin.image-recovery.interval", "0s")));
         context.register(TestConfiguration.class);
         context.refresh();
-        mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
+        mvc = MockMvcBuilders.webAppContextSetup(context)
+                .addFilters(context.getBean("com.harudle.common.error.TraceIdFilter", Filter.class))
+                .apply(springSecurity()).build();
+        authorizationLogs = new ListAppender<>() {
+            @Override
+            protected void append(ILoggingEvent event) {
+                event.prepareForDeferredProcessing();
+                super.append(event);
+            }
+        };
+        authorizationLogs.start();
+        errorLogger.addAppender(authorizationLogs);
         User admin = mock(User.class);
         when(admin.isAdmin()).thenReturn(true);
         when(context.getBean(UserRepository.class).findById(ADMIN)).thenReturn(Optional.of(admin));
@@ -95,7 +118,13 @@ class ImageRecoveryWebTest {
     }
 
     @AfterEach
-    void tearDown() { context.close(); }
+    void tearDown() {
+        if (authorizationLogs != null) {
+            errorLogger.detachAppender(authorizationLogs);
+            authorizationLogs.stop();
+        }
+        context.close();
+    }
 
     @Test
     void startsWithoutDiaryCipherOrWorkerAndIssuesActualCsrfToken() {
@@ -152,6 +181,7 @@ class ImageRecoveryWebTest {
         mvc.perform(authorized(post("/api/v1/admin/generations/" + generation.getId() + "/restore-image")))
                 .andExpect(status().isForbidden());
         verifyNoInteractions(context.getBean(DiaryGenerationRepository.class), context.getBean(ImageStorage.class));
+        assertThat(authorizationLogs.list).isEmpty();
     }
 
     @Test
@@ -160,6 +190,7 @@ class ImageRecoveryWebTest {
         mvc.perform(authorized(post("/api/v1/admin/generations/" + generation.getId() + "/restore-image")))
                 .andExpect(status().isForbidden());
         verifyNoInteractions(context.getBean(DiaryGenerationRepository.class));
+        assertThat(authorizationLogs.list).isEmpty();
     }
 
     @Test
@@ -168,6 +199,46 @@ class ImageRecoveryWebTest {
         mvc.perform(authorized(post("/api/v1/admin/generations/" + generation.getId() + "/restore-image")))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("TERMS_ACCEPTANCE_REQUIRED"));
         verifyNoInteractions(context.getBean(DiaryGenerationRepository.class));
+        assertThat(authorizationLogs.list).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"admin lookup", "account policy", "terms"})
+    @DisplayName("인가 내부 오류는 응답과 같은 traceId로 안전한 원인 스택을 한 번 기록한다")
+    void logsUnexpectedAuthorizationFailureWithoutSensitiveMessages(String phase) throws Exception {
+        String secretMessage = "private-diary-source-and-token";
+        String secretCause = "jdbc:postgresql://private-host/database?password=private-password";
+        IllegalStateException failure = new IllegalStateException(secretMessage, new SQLException(secretCause));
+        switch (phase) {
+            case "admin lookup" -> when(context.getBean(UserRepository.class).findById(ADMIN)).thenThrow(failure);
+            case "account policy" -> when(context.getBean(AccountRestrictionReader.class)
+                    .isSuspendedForRequest(ADMIN)).thenThrow(failure);
+            case "terms" -> doThrow(failure).when(context.getBean(TermsAcceptanceService.class)).requireAccepted(ADMIN);
+            default -> throw new AssertionError("Unsupported test phase");
+        }
+
+        var response = mvc.perform(authorized(post("/api/v1/admin/generations/" + generation.getId() + "/restore-image"))
+                        .queryParam("diagnostic", "private-query-token"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("INTERNAL_SERVER_ERROR"))
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andReturn().getResponse();
+        String traceId = context.getBean(ObjectMapper.class).readTree(response.getContentAsString())
+                .get("traceId").asString();
+        assertThat(traceId).isNotBlank().isEqualTo(response.getHeader("X-Trace-Id"));
+        assertThat(authorizationLogs.list).hasSize(1);
+        ILoggingEvent event = authorizationLogs.list.getFirst();
+        assertThat(event.getMDCPropertyMap()).containsEntry("traceId", traceId);
+        assertThat(event.getFormattedMessage()).contains("event=api_exception", "errorCode=INTERNAL_SERVER_ERROR",
+                "httpStatus=500", "method=POST", "path=UNMATCHED");
+        String logged = event.getFormattedMessage() + event.getKeyValuePairs()
+                + ThrowableProxyUtil.asString(event.getThrowableProxy());
+        assertThat(logged).contains("java.lang.IllegalStateException: message omitted",
+                        "java.sql.SQLException: message omitted", "ImageRecoveryWebTest.java:")
+                .doesNotContain(secretMessage, secretCause, "private-password", "private-query-token", token,
+                        generation.getId().toString());
+        assertThat(response.getContentAsString()).doesNotContain(secretMessage, secretCause, token);
+        verifyNoInteractions(context.getBean(DiaryGenerationRepository.class), context.getBean(ImageStorage.class));
     }
 
     @Test

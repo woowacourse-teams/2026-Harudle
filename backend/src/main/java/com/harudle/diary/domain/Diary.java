@@ -115,11 +115,8 @@ public class Diary {
             throw new IllegalStateException("현재 작성자의 일기만 옮길 수 있습니다.");
         }
         // The owner is authenticated with the ciphertext. Prepare the new ciphertext before changing either field.
-        String transferredSourceText = sourceText;
-        if (sourceTextVersion != DiarySourceTextCipher.LEGACY_VERSION) {
-            String plaintext = decryptSourceText(cipher);
-            transferredSourceText = cipher.encrypt(id, newOwnerId, plaintext);
-        }
+        String plaintext = decryptSourceText(cipher);
+        String transferredSourceText = cipher.encrypt(id, newOwnerId, plaintext);
         this.sourceText = transferredSourceText;
         this.userId = newOwnerId;
     }

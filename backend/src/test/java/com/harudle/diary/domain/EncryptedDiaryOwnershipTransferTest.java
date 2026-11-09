@@ -40,19 +40,18 @@ class EncryptedDiaryOwnershipTransferTest {
     }
 
     @Test
-    @DisplayName("기존 평문 일기를 가져가도 평문 버전을 유지한다")
-    void preserveLegacyStorageCompatibility() {
+    @DisplayName("전환 전 평문 일기는 거절하고 작성자와 저장값을 바꾸지 않는다")
+    void rejectLegacyStorageBeforeOwnershipChanges() {
         Diary diary = diary();
         ReflectionTestUtils.setField(diary, "sourceText", TEXT);
         ReflectionTestUtils.setField(diary, "sourceTextVersion", 0);
-        DiarySourceTextCipher unused = mock(DiarySourceTextCipher.class);
 
-        diary.transferOwnership(GUEST, MEMBER, unused);
+        assertThatThrownBy(() -> diary.transferOwnership(GUEST, MEMBER, cipher))
+                .isExactlyInstanceOf(DiarySourceTextCryptoException.class);
 
+        assertThat(diary.getUserId()).isEqualTo(GUEST);
         assertThat(storedText(diary)).isEqualTo(TEXT);
         assertThat(ReflectionTestUtils.getField(diary, "sourceTextVersion")).isEqualTo(0);
-        assertThat(diary.decryptSourceText(cipher)).isEqualTo(TEXT);
-        verifyNoInteractions(unused);
     }
 
     @Test

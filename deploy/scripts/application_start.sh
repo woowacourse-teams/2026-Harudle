@@ -22,6 +22,7 @@ fi
 verify_diary_writer_approval
 verify_diary_source_text_keys
 verify_diary_writer_approval
+verify_diary_source_text_ready
 
 if ! docker compose "${COMPOSE_ARGS[@]}" \
   up --detach --no-build --force-recreate --remove-orphans >/dev/null 2>&1; then

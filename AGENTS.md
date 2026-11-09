@@ -12,6 +12,11 @@
 EIP 4개의 주소는 그대로이며 연결 대상만 새 인스턴스로 바뀌었다. 사설 IP는 모두 바뀌었다.
 ADR의 목표 구성과 실제 적용 상태를 구분한다.
 
+2026-11-04 Dev 앱은 Amazon Linux 2023 ARM64와 SSH 계정 `ec2-user`로 전환한 것을 확인했다.
+원문 암호화 키와 검증 파일은 준비했으며, DB는 V43 상태다. V44 적용과 실제 원문 전환은 미수행이다.
+아래 2026-10-23의 Ubuntu 설정은 과거 기록이며, 최신 확인은
+`backend/docs/diary-source-text-integration.md`를 따른다. 2026-11-05의 Dev와 Prod 교체 기록을 함께 확인한다.
+
 ## 런타임 구성
 
 ```mermaid
@@ -78,8 +83,20 @@ flowchart TB
 | 원문 키 검증 자료 | 호스트 `/etc/harudle/diary-key-checks.json` → 컨테이너 `/var/run/harudle/diary-key-checks.json` | 읽기 전용, 배포 간 보존, 키와 함께 서버 밖에 백업 |
 | 신규 일기 작성 정책 | 배포본 `diary-source-text-release-mode` + `compose.diary-reader.yaml` 또는 `compose.diary-writer.yaml` | 최초 reader 성공 후 writer, 복구 시 배포본의 정책도 복원 |
 | prod writer 승인 | 호스트 `/etc/harudle/diary-writer-approval.json` | 실제 dev 복원 연습·prod 백업·reader 보존 기록을 운영자가 승인, 현재 canary 해시 변경 시 재검토 |
+| 기존 원문 전환 도구 | `/opt/harudle/maintenance/run_diary_source_text_backfill.sh` | 별도 유지보수 이미지의 ID를 고정해 수동 실행, 일반 서버 빌드에서 제외 |
 | S3 인증 | EC2 IAM Role `ec2-project` | 임시 자격 증명 사용 |
 | GCP WIF 설정 파일 | 호스트 `/etc/harudle/gcp/gcp-wif.json` → 컨테이너 `/var/run/harudle/gcp-wif.json` | 읽기 전용 마운트 |
+
+전환 도구의 `migrate`는 `READ_COMMITTED` 연결만 허용하며 다른 격리 수준은 쓰기 전에 거절한다.
+호출자의 연결 설정을 자동으로 바꾸지 않는다. v1 전용 앱의 DB 완료 검사는 전역 지연 초기화를
+켜도 앱 시작 시 실행한다. 완료 검사는 정확한 검증 완료 v1 CHECK, NOT NULL과 기본값 제거를
+DB 구조 정보로 확인한다. 사용자 테이블의 전체 COUNT나 JOIN은 실행하지 않는다. 배포는 서버 JAR의
+`DiarySourceTextReadinessMain`을 사용하며 성공 결과는 `{"command":"ready","ready":true}`다.
+전환 실패는 원본 예외 대신 고정된 단계별 오류 코드만 제공한다.
+최종화는 제약 설치, 검증, 기본값 제거를 각각 커밋한다. 강한 잠금은 NOWAIT로 얻어 스키마 변경만
+수행하고, 전체 집계와 검증은 일반 조회와 쓰기를 허용하는 잠금에서 수행한다. SQL 실행과 유휴 대기의
+1초 제한이 전체 잠금 시간의 상한은 아니며, 운영 규모의 격리 복원 DB에서 조회 차단 시간을 측정한다.
+측정과 허용 예산의 판단 기준은 `backend/docs/diary-source-text-finalize-measurement.md`를 따른다.
 
 두 컨테이너의 재시작 정책은 `unless-stopped`다. 이미지 처리·동시 실행 수·
 임시 파일 사용량을 바꿀 때는 위 메모리 제한을 함께 고려한다.
@@ -244,7 +261,7 @@ GitHub main
   → CodeDeploy → EC2 CodeDeploy Agent
       BeforeInstall    : ARM64 / Docker / Compose / jq / 서버 .env 확인
       AfterInstall     : 이미지 체크섬 검증 → docker load
-      ApplicationStart : 배포 환경·writer 승인 검사 → 후보 키 검증 증거 → 승인 재확인 → Compose 컨테이너 교체 (--no-build)
+      ApplicationStart : 배포 환경·writer 승인 검사 → 후보 키 검증 증거 → 승인 재확인 → DB 완료 검사 → Compose 컨테이너 교체 (--no-build)
       ValidateService  : 컨테이너 health + Frontend /health + 관리 포트 지표 확인
 ```
 
@@ -255,6 +272,16 @@ CodeBuild가 이미지를 `docker save`로 묶어 전달하고 EC2가 로드한�
 prod writer는 실제 복원 연습과 백업 확인을 담은 운영자 승인 기록이 필요하다. CI가 이를 대신하지 않는다.
 Flyway는 비풀링 전용 연결에 잠금 대기 5초와 개별 SQL 실행 60초 제한을 두고 일반 JPA 풀과 분리한다.
 키 등록은 기존 서비스 중지·배출과 재시작 통제 아래 수행하며, 전체 키링 반영 후 신키 쓰기를 연다.
+기존 원문 전환 코드는 `backend/src/maintenance/java`에 분리한다. 일반 `bootJar`와 CodeBuild는
+이 코드를 컴파일하지 않으며, `maintenanceJar`와 `maintenanceTest`를 지정할 때만 도구를 빌드하고 검증한다.
+도구 JAR은 `backend/build/maintenance/harudle-diary-source-maintenance.jar`다. 별도 유지보수 이미지를
+검토한 빌드 환경에서 만들고 EC2에는 체크섬을 확인해 로드한다. 서버 EC2에서 Gradle이나 Docker 빌드를 하지 않는다.
+일반 CodeDeploy 배포본에는 유지보수 이미지가 포함되지 않으며, 원본 소스와 도구, 키 및 검증 자료는 별도 보존한다.
+CI의 실제 빌드 커밋은 `commit.txt`, PR 원본 커밋은 `head-commit.txt`로 구분한다. CI 다운로드 기간을
+복구용 장기 보존으로 취급하지 않는다. 배포 훅은 전환을 자동 실행하지 않는다.
+최종화는 전체 암호문·지문 검증 후 v1 전용 DB 제약과 기본값 제거를 적용한다.
+v1 전용 앱은 완료 검사에 실패하면 배포·운영 시작을 거절하며 v0를 읽거나 SHA를 그대로 허용하지 않는다.
+전환 후에는 v1 전용 reader 복구본을 성공·보존한 뒤 writer를 연다.
 EC2에서는 Gradle·Node 빌드를 수행하지 않는다. 네이티브 의존성과 베이스 이미지를
 바꿀 때는 최종 이미지의 `linux/arm64` 호환성을 확인한다.
 

@@ -43,6 +43,9 @@ rm -f \
   "${APP_DIR}/compose.diary-reader.yaml" \
   "${APP_DIR}/compose.diary-writer.yaml" \
   "${APP_DIR}/diary-source-text-release-mode" \
+  "${APP_DIR}/maintenance/run_diary_source_text_backfill.sh" \
+  "${APP_DIR}/maintenance/compose_environment.sh" \
+  "${APP_DIR}/maintenance/diary_key_verification.sh" \
   "${APP_DIR}/monitoring/prometheus.yaml" \
   "${APP_DIR}/monitoring/cloudwatch-agent.dev.json" \
   "${APP_DIR}/monitoring/cloudwatch-agent.prod.json" \

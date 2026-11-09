@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.harudle.diary.domain.DiarySourceTextCipher;
+import com.harudle.diary.infrastructure.crypto.DiarySourceTextCryptoException;
 import com.harudle.diary.service.dto.CreateDiaryCommand;
 import com.harudle.diary.service.dto.CreateGuestDiaryCommand;
 import com.harudle.generation.diary.domain.GenerationStatus;
@@ -156,8 +157,8 @@ class DiarySourceTextWritesDisabledPersistenceTest extends ServiceIntegrationTes
 
     @ParameterizedTest
     @CsvSource({"0,PENDING", "1,PENDING", "0,SUCCEEDED", "1,SUCCEEDED"})
-    @DisplayName("작성 차단 중에도 기존 평문과 암호문의 대기 및 성공 요청을 변경 없이 복원한다")
-    void preserveDetailAndReplayForBothStorageVersions(int sourceTextVersion, GenerationStatus generationStatus) {
+    @DisplayName("작성 차단 중 암호문의 대기와 성공 재요청은 유지하고 전환하지 않은 평문은 거절한다")
+    void preserveEncryptedReadsAndRejectLegacyReads(int sourceTextVersion, GenerationStatus generationStatus) {
         CreateDiaryCommand command = createCommand(USER_ID);
         UUID diaryId = insertDiary(command, sourceTextVersion, generationStatus);
         Object[] before = (Object[]) readValue(
@@ -167,15 +168,20 @@ class DiarySourceTextWritesDisabledPersistenceTest extends ServiceIntegrationTes
         Object storedFingerprint = readValue(
                 "SELECT request_fingerprint FROM diary_generations WHERE diary_id = ?", diaryId
         );
-
-        MemberDiaryCreationClaim replayed = memberTransactionService.enqueue(command, true);
-
-        assertThat(queryService.getDetail(USER_ID, diaryId).sourceText()).isEqualTo(SOURCE_TEXT);
-        assertThat(replayed.claim().diaryId()).isEqualTo(diaryId);
-        assertThat(replayed.claim().sourceText()).isEqualTo(SOURCE_TEXT);
-        assertThat(replayed.claim().generationStatus()).isEqualTo(generationStatus);
-        assertThat(replayed.claim().newlyCreated()).isFalse();
-        assertThat(replayed.usage().usedCount()).isZero();
+        if (sourceTextVersion == 0) {
+            assertThatThrownBy(() -> memberTransactionService.enqueue(command, true))
+                    .isInstanceOf(DiarySourceTextCryptoException.class);
+            assertThatThrownBy(() -> queryService.getDetail(USER_ID, diaryId))
+                    .isInstanceOf(DiarySourceTextCryptoException.class);
+        } else {
+            MemberDiaryCreationClaim replayed = memberTransactionService.enqueue(command, true);
+            assertThat(queryService.getDetail(USER_ID, diaryId).sourceText()).isEqualTo(SOURCE_TEXT);
+            assertThat(replayed.claim().diaryId()).isEqualTo(diaryId);
+            assertThat(replayed.claim().sourceText()).isEqualTo(SOURCE_TEXT);
+            assertThat(replayed.claim().generationStatus()).isEqualTo(generationStatus);
+            assertThat(replayed.claim().newlyCreated()).isFalse();
+            assertThat(replayed.usage().usedCount()).isZero();
+        }
         assertThat((Object[]) readValue(
                 "SELECT source_text, source_text_version FROM diaries WHERE id = ?", diaryId
         )).containsExactly(before);
@@ -199,9 +205,10 @@ class DiarySourceTextWritesDisabledPersistenceTest extends ServiceIntegrationTes
         String rawFingerprint = fingerprintGenerator.generate(new GenerateDiaryImageCommand(
                 command.userId(), diaryId, DIARY_DATE, SOURCE_TEXT, command.idempotencyKey()
         ));
-        String storedFingerprint = sourceTextCipher.protectRequestFingerprint(
-                diaryId, command.userId(), storedText, sourceTextVersion, rawFingerprint
-        );
+        String storedFingerprint = sourceTextVersion == 0 ? rawFingerprint
+                : sourceTextCipher.protectRequestFingerprint(
+                        diaryId, command.userId(), storedText, sourceTextVersion, rawFingerprint
+                );
         executeUpdate("""
                 INSERT INTO diary_generations (
                     id, diary_id, prompt_id, idempotency_key, request_fingerprint,
