@@ -3,6 +3,7 @@ package com.harudle.auth.infrastructure.nickname;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
+import com.harudle.support.MigrationTemplateDatabase;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -26,28 +27,31 @@ class PublicProfileBackfillTest {
     @Container
     static final PostgreSQLContainer POSTGRESQL =
             new PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"));
+    private static final MigrationTemplateDatabase DATABASES = new MigrationTemplateDatabase(POSTGRESQL);
 
     private DriverManagerDataSource dataSource;
     private JdbcTemplate jdbc;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws SQLException {
         dataSource = new DriverManagerDataSource(
                 POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword()
         );
         jdbc = new JdbcTemplate(dataSource);
-        var flyway = Flyway.configure()
-                .dataSource(dataSource)
-                .configuration(Map.of("flyway.postgresql.transactional.lock", "false"))
-                .target("21")
-                .cleanDisabled(false)
-                .load();
-        flyway.clean();
-        flyway.migrate();
-        jdbc.update("""
-                INSERT INTO nickname_candidates (nickname, allocation_order)
-                VALUES ('신나는 수달', 1), ('행복한 고양이', 2), ('졸린 토끼', 3), ('배고픈 판다', 4)
-                """);
+        DATABASES.restore("public_profile_backfill_v21", () -> {
+            var flyway = Flyway.configure()
+                    .dataSource(dataSource)
+                    .configuration(Map.of("flyway.postgresql.transactional.lock", "false"))
+                    .target("21")
+                    .cleanDisabled(false)
+                    .load();
+            flyway.clean();
+            flyway.migrate();
+            jdbc.update("""
+                    INSERT INTO nickname_candidates (nickname, allocation_order)
+                    VALUES ('신나는 수달', 1), ('행복한 고양이', 2), ('졸린 토끼', 3), ('배고픈 판다', 4)
+                    """);
+        });
     }
 
     @Test

@@ -3,6 +3,7 @@ package com.harudle.diary.infrastructure.crypto;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
+import com.harudle.support.MigrationTemplateDatabase;
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -42,15 +43,18 @@ class DiarySourceTextSchemaMigrationTest {
     @Container
     private static final PostgreSQLContainer POSTGRES =
             new PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"));
+    private static final MigrationTemplateDatabase DATABASES = new MigrationTemplateDatabase(POSTGRES);
 
     @BeforeEach
     void prepareActualPreEncryptionSchema() throws SQLException, IOException {
         Flyway previous = flyway("43");
-        previous.clean();
-        previous.migrate();
-        execute("INSERT INTO public.users (id, name) VALUES (?, ?)", USER_ID, "스키마 검증 사용자");
-        execute("INSERT INTO public.diaries (id, user_id, diary_date, source_text) VALUES (?, ?, ?, ?)",
-                DIARY_ID, USER_ID, LocalDate.of(2026, 10, 21), LEGACY_TEXT);
+        DATABASES.restore("source_text_schema_v43", () -> {
+            previous.clean();
+            previous.migrate();
+            execute("INSERT INTO public.users (id, name) VALUES (?, ?)", USER_ID, "스키마 검증 사용자");
+            execute("INSERT INTO public.diaries (id, user_id, diary_date, source_text) VALUES (?, ?, ?, ?)",
+                    DIARY_ID, USER_ID, LocalDate.of(2026, 10, 21), LEGACY_TEXT);
+        });
     }
 
     @Test

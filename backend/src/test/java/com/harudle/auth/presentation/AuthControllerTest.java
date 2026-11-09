@@ -10,17 +10,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.harudle.TestcontainersConfiguration;
 import com.harudle.auth.application.IssuedRefreshToken;
 import com.harudle.auth.application.RefreshTokenService;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.auth.infrastructure.token.RefreshTokenHasher;
+import com.harudle.support.MockMvcIntegrationTest;
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
 import io.restassured.module.mockmvc.response.MockMvcResponse;
 import jakarta.servlet.http.Cookie;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
@@ -29,27 +30,17 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers(disabledWithoutDocker = true)
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest
-@AutoConfigureMockMvc
-@TestPropertySource(properties = {
-        "app.auth.frontend-origins=http://localhost:5173",
-        "app.auth.failure-redirect=http://localhost:5173/auth/callback?error=oauth_failed"
-})
+@MockMvcIntegrationTest
 class AuthControllerTest {
 
     private static final String FRONTEND_ORIGIN = "http://localhost:5173";
@@ -72,6 +63,8 @@ class AuthControllerTest {
     @Autowired
     private JwtDecoder jwtDecoder;
 
+    private final List<UUID> createdUsers = new ArrayList<>();
+
     @BeforeEach
     void setUp() {
         RestAssuredMockMvc.mockMvc(mockMvc);
@@ -80,6 +73,9 @@ class AuthControllerTest {
     @AfterEach
     void tearDown() {
         RestAssuredMockMvc.reset();
+        // 같은 MockMvc 실행 환경과 DB를 다른 테스트와 공유하므로 이 테스트가 만든 회원만 지운다.
+        // 인증 세션과 Refresh Token은 회원 삭제 시 외래 키로 함께 삭제된다.
+        createdUsers.forEach(userRepository::deleteById);
     }
 
     @Test
@@ -372,6 +368,7 @@ class AuthControllerTest {
                         now
                 )
         );
+        createdUsers.add(user.getId());
 
         return refreshTokenService.issue(user, now);
     }
