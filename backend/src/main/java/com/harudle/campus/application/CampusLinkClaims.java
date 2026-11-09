@@ -5,11 +5,13 @@ import java.time.Instant;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 
-/** 캠퍼스에 알려 주는 회원 정보. 이메일과 실명은 포함하지 않는다. */
-public record CampusLinkProfile(
+/** 캠퍼스에 알려 주는 회원 정보와 토큰 수명. 이메일 · 실명 · 하루들 토큰은 담지 않는다. */
+public record CampusLinkClaims(
         UUID userId,
         String nickname,
         @Nullable URI profileImageUrl,
-        @Nullable Instant profileImageUrlExpiresAt
+        String state,
+        Instant issuedAt,
+        Instant expiresAt
 ) {
 }

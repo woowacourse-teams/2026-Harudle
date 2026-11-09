@@ -1059,33 +1059,6 @@ Authorization: Bearer {accessToken}
 실제 푸시 구현이 있으면 피드 상태 변경과 미발송 푸시 취소는 같은 트랜잭션이며, 취소 실패 시 삭제도 롤백합니다. 푸시 구현이 없으면 예약·취소를 생략하고 피드 게시·삭제를 정상 처리합니다. 생략한 푸시는 예약 기록이 없어 나중에 소급 발송하지 않습니다.
 개인 일기 삭제 서비스는 `FeedLifecycle`을 호출해 연결된 활성 피드를 같은 트랜잭션에서 삭제합니다. 프론트에서 피드 삭제 API를 별도로 호출하지 않습니다.
 
-### 7.5 우테코 캠퍼스 연결
-
-우테코 캠퍼스(`campus.harudle.com`)가 하루들 회원을 알아볼 수 있도록, 로그인한 회원에게 60초 동안 한 번 쓸 수 있는 연결 코드를 발급합니다.
-캠퍼스에는 하루들 토큰을 주지 않고, 캠퍼스 서버가 코드를 교환해 회원 ID · 닉네임 · 프로필 사진만 받습니다. `harudle.campus.enabled=false`이면 두 API 모두 `404 CAMPUS_LINK_DISABLED`입니다.
-
-```http
-POST /api/v1/campus/link-codes
-Authorization: Bearer {accessToken}
-Content-Type: application/json
-
-{ "state": "<캠퍼스가 만든 base64url 43~128자>" }
-```
-
-`201 Created`, `Cache-Control: no-store`로 `{ "code", "redirectUri", "expiresAt" }`를 반환합니다. `redirectUri`는 서버 설정값이며 요청으로 바꿀 수 없습니다.
-웹은 `redirectUri?code={code}&state={state}`로 이동합니다. 닉네임이 없는 회원은 `409 PUBLIC_PROFILE_NOT_ASSIGNED`, 약관 미동의와 정지는 기존 오류와 같습니다.
-
-```http
-POST /api/v1/campus/link-codes/exchange
-Authorization: Basic base64(campus:{clientSecret})
-Content-Type: application/json
-
-{ "code": "...", "state": "..." }
-```
-
-캠퍼스 서버 전용입니다. 성공하면 `200 OK`로 `{ "userId", "nickname", "profileImageUrl", "profileImageUrlExpiresAt" }`를 반환하고 코드는 사용 처리됩니다.
-비밀값이 틀리면 `401 INVALID_CAMPUS_CLIENT`, 없거나 만료되었거나 이미 쓴 코드, state 불일치, 그 사이 정지·탈퇴한 회원은 모두 `400 INVALID_CAMPUS_LINK_CODE`입니다.
-
 ## 8. Problem Details 오류 명세
 
 모든 오류는 RFC 9457 Problem Details 형식으로 반환합니다.
@@ -1152,9 +1125,6 @@ Retry-After: 13800
 | `400` | `VALIDATION_ERROR` | 요청 형식 또는 필드 검증 실패 |
 | `400` | `INVALID_IDEMPOTENCY_KEY` | 멱등성 키 누락 또는 형식 오류 |
 | `400` | `INVALID_CURSOR` | 잘못된 피드 커서 또는 정렬·카테고리 조건 불일치 |
-| `400` | `INVALID_CAMPUS_LINK_CODE` | 캠퍼스 연결 코드가 없거나 만료·사용됨, state 불일치 |
-| `401` | `INVALID_CAMPUS_CLIENT` | 캠퍼스 서버 비밀값 누락 또는 불일치 |
-| `404` | `CAMPUS_LINK_DISABLED` | 캠퍼스 연결 기능이 꺼져 있음 |
 | `401` | `UNAUTHORIZED` | 인증 정보 없음 또는 Access Token 만료 |
 | `401` | `GUEST_SESSION_REQUIRED` | 게스트 세션 Cookie가 없거나 저장된 세션과 일치하지 않음 |
 | `401` | `GUEST_SESSION_EXPIRED` | 게스트 세션이 만료됨 |

@@ -117,12 +117,6 @@ app:
         zone: "${REFRESH_TOKEN_CLEANUP_ZONE:Asia/Seoul}"
 
 harudle:
-  campus:
-    # 우테코 캠퍼스 로그인 연결. 켜려면 CAMPUS_REDIRECT_URI와 CAMPUS_CLIENT_SECRET_SHA256(비밀값의 SHA-256, 소문자 16진수)이 필요하다.
-    enabled: ${CAMPUS_LINK_ENABLED:false}
-    redirect-uri: ${CAMPUS_REDIRECT_URI:}
-    client-secret-sha256: ${CAMPUS_CLIENT_SECRET_SHA256:}
-    code-ttl: 60s
   database:
     interaction-lock-timeout: ${INTERACTION_LOCK_TIMEOUT:1s}
   legal:

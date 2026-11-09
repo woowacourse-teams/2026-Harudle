@@ -97,8 +97,6 @@ public class SecurityConfig {
                         "/error"
                         ).permitAll()
                         .requestMatchers("/api/v1/admin/**").access(adminAuthorizationManager)
-                        // 캠퍼스 서버가 서버끼리 부른다. 사용자 토큰 대신 클라이언트 비밀값을 컨트롤러에서 검사한다.
-                        .requestMatchers(HttpMethod.POST, "/api/v1/campus/link-codes/exchange").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/feeds", "/api/v1/feeds/*").permitAll()
                         .requestMatchers(
                                 "/scalar",

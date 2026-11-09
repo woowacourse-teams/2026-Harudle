@@ -90,7 +90,6 @@ class HarudleApplicationTests extends ServiceIntegrationTestSupport {
                 "admin_generation_usage_restores",
                 "apple_oauth_tokens",
                 "auth_sessions",
-                "campus_link_codes",
                 "categories",
                 "comments",
                 "daily_generation_usage",
