@@ -113,6 +113,21 @@ public enum ErrorType {
             "Account suspended",
             "관리자에 의해 이용이 제한된 계정입니다."
     ),
+    CAMPUS_LINK_DISABLED(
+            HttpStatus.NOT_FOUND,
+            "Campus link disabled",
+            "우테코 캠퍼스 연결을 사용할 수 없습니다."
+    ),
+    INVALID_CAMPUS_CLIENT(
+            HttpStatus.UNAUTHORIZED,
+            "Invalid campus client",
+            "캠퍼스 클라이언트 인증에 실패했습니다."
+    ),
+    INVALID_CAMPUS_LINK_CODE(
+            HttpStatus.BAD_REQUEST,
+            "Invalid campus link code",
+            "캠퍼스 연결 코드가 유효하지 않거나 이미 사용되었습니다."
+    ),
     ADMIN_REPORT_NOT_FOUND(
             HttpStatus.NOT_FOUND,
             "Report not found",

@@ -19,6 +19,9 @@ import com.harudle.block.domain.InvalidBlockException;
 import com.harudle.block.service.exception.BlockTargetNotFoundException;
 import com.harudle.block.service.exception.BlockUnavailableException;
 import com.harudle.block.service.exception.InvalidBlockCursorException;
+import com.harudle.campus.application.CampusLinkDisabledException;
+import com.harudle.campus.application.InvalidCampusClientException;
+import com.harudle.campus.application.InvalidCampusLinkCodeException;
 import com.harudle.category.domain.exception.InvalidCategoryException;
 import com.harudle.category.service.exception.CategoryInactiveException;
 import com.harudle.category.service.exception.CategoryNameAlreadyUsedException;
@@ -192,6 +195,21 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(AccountSuspendedException.class)
     ResponseEntity<ProblemDetail> handleAccountSuspendedException(HttpServletRequest request) {
         return createResponse(ErrorType.ACCOUNT_SUSPENDED, request);
+    }
+
+    @ExceptionHandler(CampusLinkDisabledException.class)
+    ResponseEntity<ProblemDetail> handleCampusLinkDisabled(HttpServletRequest request) {
+        return createResponse(ErrorType.CAMPUS_LINK_DISABLED, request);
+    }
+
+    @ExceptionHandler(InvalidCampusClientException.class)
+    ResponseEntity<ProblemDetail> handleInvalidCampusClient(HttpServletRequest request) {
+        return createResponse(ErrorType.INVALID_CAMPUS_CLIENT, request);
+    }
+
+    @ExceptionHandler(InvalidCampusLinkCodeException.class)
+    ResponseEntity<ProblemDetail> handleInvalidCampusLinkCode(HttpServletRequest request) {
+        return createResponse(ErrorType.INVALID_CAMPUS_LINK_CODE, request);
     }
 
     @ExceptionHandler(AdminReportNotFoundException.class)
