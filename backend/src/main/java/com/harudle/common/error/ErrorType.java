@@ -13,6 +13,16 @@ public enum ErrorType {
             "Validation failed",
             "요청 값이 올바르지 않습니다."
     ),
+    DIARY_SOURCE_TEXT_WRITE_UNAVAILABLE(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "Diary source text write unavailable",
+            "일기 내용을 안전하게 저장할 수 없습니다."
+    ),
+    DIARY_SOURCE_TEXT_READ_UNAVAILABLE(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "Diary source text read unavailable",
+            "일기 내용을 불러올 수 없습니다."
+    ),
     INVALID_CURSOR(
             HttpStatus.BAD_REQUEST,
             "Invalid cursor",
@@ -287,6 +297,21 @@ public enum ErrorType {
             HttpStatus.CONFLICT,
             "Guest trial already used",
             "로그인 전 무료 사용 기회를 이미 사용했습니다."
+    ),
+    GUEST_DIARY_CLAIM_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "Guest diary claim not found",
+            "가져올 수 있는 체험 일기를 찾을 수 없습니다."
+    ),
+    GUEST_DIARY_ALREADY_CLAIMED(
+            HttpStatus.CONFLICT,
+            "Guest diary already claimed",
+            "다른 계정에서 이미 가져간 체험 일기입니다."
+    ),
+    GUEST_DIARY_CLAIM_LIMIT_EXCEEDED(
+            HttpStatus.CONFLICT,
+            "Guest diary claim limit exceeded",
+            "체험 일기는 계정당 한 번만 가져올 수 있습니다."
     ),
     DAILY_GENERATION_LIMIT_EXCEEDED(
             HttpStatus.TOO_MANY_REQUESTS,

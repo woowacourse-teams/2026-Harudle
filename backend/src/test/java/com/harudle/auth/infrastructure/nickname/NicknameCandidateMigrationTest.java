@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.harudle.auth.domain.policy.NicknamePolicy;
+import com.harudle.support.MigrationTemplateDatabase;
+import java.sql.SQLException;
 import java.util.Map;
 import java.util.UUID;
 import org.flywaydb.core.Flyway;
@@ -28,18 +30,21 @@ class NicknameCandidateMigrationTest {
     @Container
     static final PostgreSQLContainer POSTGRESQL =
             new PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"));
+    private static final MigrationTemplateDatabase DATABASES = new MigrationTemplateDatabase(POSTGRESQL);
 
     private JdbcTemplate jdbc;
     private DriverManagerDataSource dataSource;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws SQLException {
         dataSource = new DriverManagerDataSource(
                 POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword()
         );
         jdbc = new JdbcTemplate(dataSource);
-        flyway("21").clean();
-        flyway("21").migrate();
+        DATABASES.restore("nickname_candidate_v21", () -> {
+            flyway("21").clean();
+            flyway("21").migrate();
+        });
     }
 
     @Test

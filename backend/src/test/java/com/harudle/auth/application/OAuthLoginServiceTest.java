@@ -9,15 +9,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import com.harudle.TestcontainersConfiguration;
-import com.harudle.auth.application.port.AccountRestrictionReader;
 import com.harudle.auth.domain.OAuthAccount;
 import com.harudle.auth.domain.OAuthProvider;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.domain.exception.NicknamePoolExhaustedException;
-import com.harudle.auth.infrastructure.OAuthAccountRepository;
 import com.harudle.auth.infrastructure.UserRepository;
-import com.harudle.auth.infrastructure.nickname.NicknameCandidateRepository;
+import com.harudle.support.AuthJpaTestSupport;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.UUID;
@@ -28,23 +25,14 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
-import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers
-@DataJpaTest(showSql = false)
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({TestcontainersConfiguration.class, OAuthLoginService.class, AccountAccessPolicy.class,
-        NicknameCandidateRepository.class})
-class OAuthLoginServiceTest {
+class OAuthLoginServiceTest extends AuthJpaTestSupport {
 
     private static final Instant CREATED_AT = Instant.parse("2026-08-11T10:00:00Z");
     private static final Instant LOGIN_AT = Instant.parse("2026-08-12T10:00:00Z");
@@ -52,19 +40,8 @@ class OAuthLoginServiceTest {
 
     @Autowired
     private OAuthLoginService oAuthLoginService;
-
-    @MockitoBean
-    private AccountRestrictionReader restrictions;
-
     @Autowired
     private UserRepository userRepository;
-
-    @MockitoSpyBean
-    private OAuthAccountRepository oAuthAccountRepository;
-
-    @MockitoBean
-    private ProfileImageCodeGenerator profileImageCodeGenerator;
-
     @Autowired
     private TestEntityManager entityManager;
 

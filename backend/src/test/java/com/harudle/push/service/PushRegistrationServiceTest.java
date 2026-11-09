@@ -8,6 +8,7 @@ import com.harudle.push.service.PushRegistrationService.Registration;
 import com.harudle.push.service.PushRegistrationService.RegistrationConflict;
 import com.harudle.push.service.PushRegistrationService.StaleRegistration;
 import com.harudle.push.service.PushRegistrationService.StalePushState;
+import com.harudle.support.ServiceIntegrationTestSupport;
 import jakarta.persistence.EntityManager;
 import java.util.List;
 import java.util.UUID;
@@ -19,26 +20,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest
-class PushRegistrationServiceTest {
-    @Container @ServiceConnection
-    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"));
-
+class PushRegistrationServiceTest extends ServiceIntegrationTestSupport {
     @Autowired private PushRegistrationService registrations;
     @Autowired private EntityManager entityManager;
     @Autowired private TransactionTemplate transactions;
-    @MockitoBean private JwtDecoder jwtDecoder;
 
     private final UUID alice = UUID.randomUUID();
     private final UUID bob = UUID.randomUUID();
@@ -350,7 +339,7 @@ class PushRegistrationServiceTest {
         update("UPDATE users SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", bob);
         assertThatThrownBy(() -> register(bob, bobSession, device, "F1", null))
                 .isInstanceOf(InvalidPushSession.class);
-        assertThat(number("SELECT count(*) FROM push_registrations")).isZero();
+        assertThat(number("SELECT count(*) FROM push_registrations WHERE user_id IN (?, ?)", alice, bob)).isZero();
     }
 
     @Test
@@ -361,7 +350,7 @@ class PushRegistrationServiceTest {
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> registrations.register(alice, aliceSession, device, " ", null, null, 0))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThat(number("SELECT count(*) FROM push_registrations")).isZero();
+        assertThat(number("SELECT count(*) FROM push_registrations WHERE user_id IN (?, ?)", alice, bob)).isZero();
     }
 
     @Test

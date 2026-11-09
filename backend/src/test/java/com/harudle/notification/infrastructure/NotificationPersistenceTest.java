@@ -27,7 +27,7 @@ import com.harudle.notification.service.NotificationService;
 import com.harudle.notification.service.exception.NotificationNotFoundException;
 import com.harudle.profile.service.DefaultPublicProfileReader;
 import com.harudle.profile.service.port.PublicProfileReader;
-import com.harudle.push.service.port.FeedPushOutbox;
+import com.harudle.support.FeedInteractionPersistenceTestSupport;
 import jakarta.servlet.http.Cookie;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -60,7 +60,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.IllegalTransactionStateException;
@@ -68,13 +67,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers(disabledWithoutDocker = true)
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest(properties = {
-        "harudle.generation.adapters.enabled=false",
-        "harudle.profile.image-base-url=https://test.example.com/profiles"
-})
-@AutoConfigureMockMvc
-class NotificationPersistenceTest {
+class NotificationPersistenceTest extends FeedInteractionPersistenceTestSupport {
 
     private static final Instant FIXTURE_TIME = Instant.parse("2026-10-12T03:00:00Z");
     private static final String CSRF_TOKEN = "notification-cookie-and-header-value";
@@ -100,14 +93,7 @@ class NotificationPersistenceTest {
     private TransactionTemplate transactions;
     @Autowired
     private MockMvc mockMvc;
-    @MockitoSpyBean
-    private DefaultPublicProfileReader profileReader;
-
     private final ProfileReadProbe profiles = new ProfileReadProbe();
-    @MockitoBean
-    private JwtDecoder jwtDecoder;
-    @MockitoBean
-    private FeedPushOutbox outbox;
 
     private final List<UUID> fixtureUsers = new ArrayList<>();
     private UUID recipientId;

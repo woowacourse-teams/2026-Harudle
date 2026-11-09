@@ -15,6 +15,7 @@ import com.harudle.generation.diary.service.DiaryGenerationCompletionService;
 import com.harudle.generation.diary.service.GenerationLifecycleMetrics;
 import com.harudle.generation.diary.service.event.DiaryGenerationPendingExpiredEvent;
 import com.harudle.generation.usage.service.GenerationUsageService;
+import com.harudle.support.DiarySourceTextTestSupport;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.Clock;
@@ -48,7 +49,9 @@ class LoadTestGenerationPendingExpiryTest {
     private final GenerationUsageService usage = mock(GenerationUsageService.class);
     private final LoadTestDiaryGenerationExecutor executor = mock(LoadTestDiaryGenerationExecutor.class);
     private final LoadTestGenerationRegistry registry = new LoadTestGenerationRegistry(executor);
-    private final Diary diary = Diary.create(UUID.randomUUID(), USAGE_DATE, "대기 만료 테스트");
+    private final Diary diary = Diary.create(
+            UUID.randomUUID(), USAGE_DATE, "대기 만료 테스트", DiarySourceTextTestSupport.cipher()
+    );
     private final DiaryGeneration generation = DiaryGeneration.pending(
             diary.getId(), 1L, UUID.randomUUID(), "a".repeat(64), USAGE_DATE
     );

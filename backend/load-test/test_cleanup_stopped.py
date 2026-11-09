@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 
 import cleanup_stopped
 import ec2
+from fixture_test_support import encrypted_test_rows
 
 
 class StoppedBackendSettingsTest(unittest.TestCase):
@@ -71,7 +72,7 @@ class StoppedCleanupTest(unittest.TestCase):
         self.addCleanup(self.output.__exit__, None, None, None)
         with patch.object(ec2, 'upload'):
             ec2.prepare_run(self.group, self.settings, Mock())
-            ec2.reset_run(self.directory, self.group, self.settings, self.prepare_sql, True)
+            ec2.reset_run(self.directory, self.group, self.settings, self.prepare_sql, True, encrypted_test_rows)
         self.stopped = patch.object(cleanup_stopped, 'ensure_backend_stopped').start()
         self.addCleanup(patch.stopall)
 

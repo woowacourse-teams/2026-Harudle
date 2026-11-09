@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import GuestDiaryResultPage from './GuestDiaryResultPage';
 import type { GuestDiaryResponse } from './guestTrialApi';
-import type { ApiRequest } from '../../shared/api';
+import { RequestError, type ApiRequest } from '../../shared/api';
 
 const mockResultRequest = {
   current: { status: 'loading' } as ApiRequest<GuestDiaryResponse>,
@@ -91,6 +91,28 @@ describe('게스트 일기 결과 화면', () => {
     await user.click(screen.getByRole('button', { name: '다시 시도' }));
 
     expect(mockRetryResult).toHaveBeenCalledTimes(1);
+  });
+
+  it('원문 조회 장애는 나중 이용 안내를 보여주고 즉시 재시도를 유도하지 않는다', () => {
+    const action = '일기 내용을 불러오지 못했어요. 나중에 다시 이용해 주세요.';
+    mockResultRequest.current = {
+      status: 'error',
+      error: new RequestError({
+        type: 'about:blank',
+        title: 'Diary source text read unavailable',
+        status: 503,
+        detail: '일기 내용을 불러올 수 없어요.',
+        instance: '/api/v1/guest/diaries/example',
+        code: 'DIARY_SOURCE_TEXT_READ_UNAVAILABLE',
+        action,
+      }),
+    };
+    render(<GuestDiaryResultPage />);
+    expect(screen.getByText(action)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '다시 시도' }),
+    ).not.toBeInTheDocument();
+    expect(mockRetryResult).not.toHaveBeenCalled();
   });
 
   it('결과 조회 실패를 안내하고 다시 조회한다', async () => {

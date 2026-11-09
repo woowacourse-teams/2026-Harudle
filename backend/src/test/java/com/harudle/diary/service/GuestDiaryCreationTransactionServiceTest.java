@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.harudle.diary.service.dto.CreateGuestDiaryCommand;
@@ -176,9 +177,32 @@ class GuestDiaryCreationTransactionServiceTest {
         );
     }
 
+    @Test
+    @DisplayName("회원이 가져간 세션은 같은 멱등 요청이어도 기존 일기를 반환하지 않는다")
+    void rejectReplayAfterDiaryClaimed() {
+        GuestSession session = createClaimedSession();
+        CreateGuestDiaryCommand guestCommand = createGuestCommand();
+        when(guestSessionResolver.resolveForUpdate(RAW_TOKEN, NOW)).thenReturn(session);
+
+        assertThatThrownBy(() -> transactionService.claim(RAW_TOKEN, guestCommand, true))
+                .isInstanceOf(GuestTrialAlreadyUsedException.class);
+        assertThatThrownBy(() -> transactionService.enqueue(RAW_TOKEN, guestCommand, true))
+                .isInstanceOf(GuestTrialAlreadyUsedException.class);
+        assertThatThrownBy(() -> transactionService.findExistingClaim(RAW_TOKEN, guestCommand))
+                .isInstanceOf(GuestTrialAlreadyUsedException.class);
+
+        verifyNoInteractions(claimService);
+    }
+
     private GuestSession createUsedSession() {
         GuestSession session = createSession();
         session.useForDiary(DIARY_ID, NOW.minusSeconds(1));
+        return session;
+    }
+
+    private GuestSession createClaimedSession() {
+        GuestSession session = createUsedSession();
+        session.claim(UUID.fromString("0b8d6f2e-3c4a-4e5f-9a1b-2c3d4e5f6a7b"), NOW.minusSeconds(1));
         return session;
     }
 

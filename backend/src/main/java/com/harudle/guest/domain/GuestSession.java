@@ -31,6 +31,12 @@ public class GuestSession {
     @Column(name = "used_at")
     private Instant usedAt;
 
+    @Column(name = "claimed_by_user_id")
+    private UUID claimedByUserId;
+
+    @Column(name = "claimed_at")
+    private Instant claimedAt;
+
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
 
@@ -106,6 +112,40 @@ public class GuestSession {
         this.updatedAt = usedAt;
     }
 
+    public boolean isClaimed() {
+        return claimedAt != null;
+    }
+
+    public boolean isClaimedBy(UUID memberId) {
+        Objects.requireNonNull(memberId, "회원 ID는 필수입니다.");
+        return memberId.equals(claimedByUserId);
+    }
+
+    public void claim(UUID memberId, Instant claimedAt) {
+        Objects.requireNonNull(memberId, "회원 ID는 필수입니다.");
+        Objects.requireNonNull(claimedAt, "가져간 시각은 필수입니다.");
+        if (memberId.equals(guestUserId)) {
+            throw new IllegalArgumentException("게스트 사용자 본인은 체험 일기를 가져갈 수 없습니다.");
+        }
+        validateClaimable(claimedAt);
+
+        this.claimedByUserId = memberId;
+        this.claimedAt = claimedAt;
+        this.updatedAt = claimedAt;
+    }
+
+    private void validateClaimable(Instant claimedAt) {
+        if (!isUsed() || claimedAt.isBefore(usedAt)) {
+            throw new IllegalStateException("일기에 사용한 게스트 세션만 가져갈 수 있습니다.");
+        }
+        if (isClaimed()) {
+            throw new IllegalStateException("이미 가져간 게스트 세션입니다.");
+        }
+        if (isExpiredAt(claimedAt)) {
+            throw new IllegalStateException("만료된 게스트 세션은 가져갈 수 없습니다.");
+        }
+    }
+
     private String validateTokenHash(String tokenHash) {
         if (tokenHash == null || !tokenHash.matches("[0-9a-f]{64}")) {
             throw new IllegalArgumentException("토큰 해시는 64자리 소문자 16진수여야 합니다.");
@@ -144,6 +184,14 @@ public class GuestSession {
 
     public Instant getUsedAt() {
         return usedAt;
+    }
+
+    public UUID getClaimedByUserId() {
+        return claimedByUserId;
+    }
+
+    public Instant getClaimedAt() {
+        return claimedAt;
     }
 
     public Instant getExpiresAt() {

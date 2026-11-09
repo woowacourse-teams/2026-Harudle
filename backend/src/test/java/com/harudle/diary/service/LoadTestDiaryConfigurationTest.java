@@ -12,6 +12,7 @@ import com.harudle.generation.diary.service.GenerationLifecycleMetrics;
 import com.harudle.generation.diary.service.RequestFingerprintGenerator;
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
 import com.harudle.generation.diary.service.port.ImageStorage;
+import com.harudle.generation.diary.service.port.RequestFingerprintProtector;
 import com.harudle.generation.diary.service.storyboard.StoryboardGenerationService;
 import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -52,6 +53,7 @@ class LoadTestDiaryConfigurationTest {
         context.withPropertyValues("spring.profiles.active=prod", "DEPLOY_ENV=dev", "harudle.generation.adapters.enabled=true")
                 .withBean(MemberDiaryCreationTransactionService.class, () -> mock(MemberDiaryCreationTransactionService.class))
                 .withBean(RequestFingerprintGenerator.class, () -> mock(RequestFingerprintGenerator.class))
+                .withBean(RequestFingerprintProtector.class, () -> mock(RequestFingerprintProtector.class))
                 .withBean(GenerationPromptRepository.class, () -> mock(GenerationPromptRepository.class))
                 .withBean(DiaryGenerationRepository.class, () -> mock(DiaryGenerationRepository.class))
                 .withBean(ImageStorage.class, () -> mock(ImageStorage.class))

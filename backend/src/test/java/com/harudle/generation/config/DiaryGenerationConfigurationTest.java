@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.harudle.diary.domain.DiarySourceTextCipher;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.generation.diary.repository.DiaryGenerationRepository;
 import com.harudle.generation.diary.service.DiaryGenerationCompletionService;
@@ -15,6 +16,7 @@ import com.harudle.generation.diary.service.PendingDiaryGenerationClaimService;
 import com.harudle.generation.diary.service.RequestFingerprintGenerator;
 import com.harudle.generation.diary.service.port.DiaryImageGenerator;
 import com.harudle.generation.diary.service.port.ImageStorage;
+import com.harudle.generation.diary.service.port.RequestFingerprintProtector;
 import com.harudle.generation.diary.service.storyboard.StoryboardGenerationService;
 import com.harudle.generation.prompt.repository.GenerationPromptRepository;
 import com.harudle.generation.loadtest.LoadTestDiaryGenerationExecutor;
@@ -308,6 +310,7 @@ class DiaryGenerationConfigurationTest {
                 RequestFingerprintGenerator.class,
                 () -> mock(RequestFingerprintGenerator.class)
         );
+        context.registerBean(RequestFingerprintProtector.class, () -> mock(RequestFingerprintProtector.class));
         context.registerBean(GenerationPromptRepository.class, () -> mock(GenerationPromptRepository.class));
         context.registerBean(DiaryGenerationRepository.class, () -> mock(DiaryGenerationRepository.class));
         context.registerBean(
@@ -316,6 +319,7 @@ class DiaryGenerationConfigurationTest {
         );
         context.registerBean(PendingDiaryGenerationClaimService.class, () -> mock(PendingDiaryGenerationClaimService.class));
         context.registerBean(DiaryRepository.class, () -> mock(DiaryRepository.class));
+        context.registerBean(DiarySourceTextCipher.class, () -> mock(DiarySourceTextCipher.class));
         context.registerBean(MeterRegistry.class, SimpleMeterRegistry::new);
         context.registerBean(GenerationLifecycleMetrics.class, () -> mock(GenerationLifecycleMetrics.class));
         context.register(DiaryGenerationConfiguration.class);

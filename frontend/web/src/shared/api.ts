@@ -77,12 +77,33 @@ export const isProblemDetails = (value: unknown): value is ProblemDetails => {
   );
 };
 
+/** 응답의 action이 화면에 보여줄 수 있는 안내 문구이면 반환한다. */
+export const getProblemAction = (
+  problem: ProblemDetails | undefined,
+): string | undefined => {
+  return typeof problem?.action === 'string' && problem.action.trim()
+    ? problem.action
+    : undefined;
+};
+
+/**
+ * RequestError 메시지와 다를 때만 별도로 보여줄 행동 안내를 반환한다.
+ * RequestError는 action이 있으면 그 문구를 메시지로 쓰므로 같은 안내를 두 번 보여주지 않는다.
+ */
+export const getAdditionalProblemAction = (
+  problem: ProblemDetails | undefined,
+  displayedMessage: string,
+): string | undefined => {
+  const action = getProblemAction(problem);
+  return action !== displayedMessage ? action : undefined;
+};
+
 export class RequestError extends Error {
   constructor(public readonly problem: ProblemDetails) {
     const displayErrorMessage =
-      typeof problem.action === 'string' && problem.action.trim()
-        ? problem.action
-        : (problem.errors?.[0]?.reason ?? problem.detail);
+      getProblemAction(problem) ??
+      problem.errors?.[0]?.reason ??
+      problem.detail;
     super(displayErrorMessage);
   }
 }
