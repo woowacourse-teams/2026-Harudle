@@ -115,6 +115,9 @@ const previewListStyle = css`
   grid-template-columns: minmax(0, 1fr);
   gap: 20px;
   margin: 8px 0;
+  @media (min-width: 768px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 `;
 
 const previewCardStyle = css`
