@@ -8,6 +8,7 @@ import PublicFeedRoute from './PublicFeedRoute';
 import AdminGuard from './pages/admin/AdminGuard';
 import AlbumPage from './pages/album/AlbumPage/AlbumPage';
 import BlockedUsersPage from './pages/blocked-users/BlockedUsersPage';
+import CampusConnectPage from './pages/campus-connect/CampusConnectPage';
 import ConsentPage from './pages/consent/ConsentPage';
 import DiaryDetailPage from './pages/diary-detail/DiaryDetailPage';
 import DiaryWritePage from './pages/diary-write/DiaryWritePage';
@@ -68,6 +69,7 @@ const App = () => {
               element={<BlockedUsersPage />}
             />
             <Route path="/admin/*" element={<AdminGuard />} />
+            <Route path="/campus/connect" element={<CampusConnectPage />} />
           </Route>
         </Route>
 

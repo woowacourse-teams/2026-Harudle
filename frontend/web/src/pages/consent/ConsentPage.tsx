@@ -32,6 +32,7 @@ import chevronIcon from '../../assets/icons/chevron-right.svg';
 import harudleLogo from '../../assets/images/harudle-logo.webp';
 import { CONSENT_COPY } from './copy';
 import { LOGIN_COPY } from '../login/copy';
+import { peekPostLoginPath } from '../campus-connect/postLoginPath';
 
 interface AgreementForm {
   readonly terms: LegalDocument;
@@ -96,7 +97,7 @@ const ConsentPage = () => {
         )
           throw new Error(CONSENT_COPY.changed);
         if (status.acceptedAt !== null && !status.requiresAcceptance) {
-          void navigate('/', { replace: true });
+          void navigate(peekPostLoginPath() ?? '/', { replace: true });
           return;
         }
         setRequest({ status: 'success', data: { terms, privacy } });
@@ -147,7 +148,8 @@ const ConsentPage = () => {
         },
         { signal: controller.signal },
       );
-      if (!controller.signal.aborted) void navigate('/', { replace: true });
+      if (!controller.signal.aborted)
+        void navigate(peekPostLoginPath() ?? '/', { replace: true });
     } catch (error: unknown) {
       if (controller.signal.aborted) return;
       const changed =
