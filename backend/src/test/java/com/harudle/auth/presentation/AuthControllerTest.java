@@ -21,6 +21,7 @@ import io.restassured.module.mockmvc.response.MockMvcResponse;
 import jakarta.servlet.http.Cookie;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
@@ -62,6 +63,8 @@ class AuthControllerTest {
     @Autowired
     private JwtDecoder jwtDecoder;
 
+    private final List<UUID> createdUsers = new ArrayList<>();
+
     @BeforeEach
     void setUp() {
         RestAssuredMockMvc.mockMvc(mockMvc);
@@ -70,6 +73,9 @@ class AuthControllerTest {
     @AfterEach
     void tearDown() {
         RestAssuredMockMvc.reset();
+        // 같은 MockMvc 실행 환경과 DB를 다른 테스트와 공유하므로 이 테스트가 만든 회원만 지운다.
+        // 인증 세션과 Refresh Token은 회원 삭제 시 외래 키로 함께 삭제된다.
+        createdUsers.forEach(userRepository::deleteById);
     }
 
     @Test
@@ -362,6 +368,7 @@ class AuthControllerTest {
                         now
                 )
         );
+        createdUsers.add(user.getId());
 
         return refreshTokenService.issue(user, now);
     }
