@@ -3,6 +3,7 @@ package com.harudle.generation.diary.infrastructure;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
+import com.harudle.support.MigrationTemplateDatabase;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -30,20 +31,23 @@ class DiaryGenerationPendingMigrationTest {
     @Container
     private static final PostgreSQLContainer POSTGRESQL_CONTAINER =
             new PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"));
+    private static final MigrationTemplateDatabase DATABASES = new MigrationTemplateDatabase(POSTGRESQL_CONTAINER);
 
     @BeforeEach
-    void migratePreviousSchema() {
-        flyway().clean();
-        Flyway.configure()
-                .configuration(Map.of("flyway.postgresql.transactional.lock", "false"))
-                .dataSource(
-                        POSTGRESQL_CONTAINER.getJdbcUrl(),
-                        POSTGRESQL_CONTAINER.getUsername(),
-                        POSTGRESQL_CONTAINER.getPassword()
-                )
-                .target(MigrationVersion.fromVersion("27"))
-                .load()
-                .migrate();
+    void migratePreviousSchema() throws SQLException {
+        DATABASES.restore("generation_pending_v27", () -> {
+            flyway().clean();
+            Flyway.configure()
+                    .configuration(Map.of("flyway.postgresql.transactional.lock", "false"))
+                    .dataSource(
+                            POSTGRESQL_CONTAINER.getJdbcUrl(),
+                            POSTGRESQL_CONTAINER.getUsername(),
+                            POSTGRESQL_CONTAINER.getPassword()
+                    )
+                    .target(MigrationVersion.fromVersion("27"))
+                    .load()
+                    .migrate();
+        });
     }
 
     @Test
