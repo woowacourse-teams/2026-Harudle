@@ -118,4 +118,14 @@ tasks.withType(Test).configureEach {
         }
         systemProperty 'spring.test.context.cache.maxSize', cacheSize.toInteger()
     }
+
+    // 테스트 클래스를 여러 JVM에 나눠 동시에 실행한다. JVM마다 컨텍스트 캐시와 DB 컨테이너를 따로 가진다.
+    def parallelForks = providers.gradleProperty('testMaxParallelForks')
+    if (parallelForks.present) {
+        def forks = parallelForks.get()
+        if (!forks.isInteger() || forks.toInteger() < 1) {
+            throw new GradleException('testMaxParallelForks must be a positive integer')
+        }
+        maxParallelForks = forks.toInteger()
+    }
 }

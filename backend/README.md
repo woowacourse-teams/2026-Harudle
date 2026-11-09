@@ -515,7 +515,16 @@ Spring 통합 테스트는 `TestcontainersConfiguration`을 `@Import`하여 Post
 일반 서비스 통합 테스트는 `ServiceIntegrationTestSupport`의 공통 JWT mock을 사용합니다. 실제 Bean을 사용한
 MockMvc 통합 테스트는 `@MockMvcIntegrationTest`로 프로필 이미지 URL과 MVC 설정을 공유합니다. 카테고리 JPA
 테스트는 `CategoryJpaTestConfiguration`에 실제 생성·조회·수정 서비스를 함께 등록하여 컨텍스트를 재사용합니다.
-추가 mock, spy 또는 고정 Clock이 필요한 테스트는 해당 설정을 유지합니다.
+목적이 같은 테스트는 `support` 패키지의 공통 지원 클래스를 사용합니다.
+
+| 지원 클래스 | 대상 |
+| --- | --- |
+| `FeedInteractionPersistenceTestSupport` | 댓글·알림·좋아요 영속성 테스트 (MockMvc, 프로필 조회 spy, 푸시 예약 mock) |
+| `FeedPersistenceTestSupport` | 피드 게시·조회·삭제 영속성 테스트 (카테고리·프로필·좋아요 조회와 푸시 예약 mock) |
+| `AuthJpaTestSupport` | 회원·인증·프로필 `@DataJpaTest` (외부 경계만 mock) |
+
+추가 mock, spy 또는 고정 Clock이 필요한 테스트는 해당 설정을 유지합니다. 설정을 묶은 그룹은
+`IntegrationTestContextConfigurationTest`가 같은 컨텍스트 캐시 키를 쓰는지 확인합니다.
 
 같은 MVC 컨텍스트를 공유하는 테스트는 실제 CSRF Cookie와 Header를 사용합니다. Spring Security 테스트의
 `csrf()` post-processor는 공유 필터의 토큰 저장소를 세션 방식으로 바꿀 수 있어 Cookie 기반 테스트에 영향을 줍니다.
@@ -523,6 +532,17 @@ MockMvc 통합 테스트는 `@MockMvcIntegrationTest`로 프로필 이미지 URL
 DB를 공유하는 테스트는 트랜잭션 롤백 또는 명시적인 fixture 삭제로 데이터를 정리해야 합니다. 다른 스레드에서
 커밋하는 동시성 테스트도 생성한 데이터를 정리합니다. `Flyway.clean()`이나 이전 스키마를 검증하는 테스트는
 공통 컨테이너 대신 클래스별 컨테이너를 사용하여 Spring 통합 테스트의 DB와 격리합니다.
+이런 테스트가 매번 같은 상태의 DB를 준비한다면 `MigrationTemplateDatabase`를 사용합니다. 상태별로 처음 한 번만
+준비 코드를 실행해 PostgreSQL 템플릿 DB로 저장하고, 다음 테스트부터는 템플릿을 복사해 같은 상태에서 시작합니다.
+Flyway 이력까지 복사되며, role처럼 클러스터 전체에 속한 객체는 복사되지 않으므로 테스트가 직접 정리합니다.
+
+테스트 클래스를 여러 JVM에 나눠 동시에 실행하려면 `testMaxParallelForks`를 지정합니다. JVM마다 컨텍스트 캐시와
+DB 컨테이너를 따로 가지므로 테스트 간 DB 격리는 같고, 메모리와 Docker 사용량은 JVM 수만큼 늘어납니다.
+지정하지 않으면 JVM 하나로 실행하며, PR CI는 `2`를 사용합니다.
+
+```shell
+./gradlew test -PtestMaxParallelForks=2
+```
 
 로컬 메모리가 부족하면 다음처럼 테스트 JVM의 컨텍스트 캐시 크기를 줄이고 필요한 그룹만 실행할 수 있습니다.
 캐시에서 제거된 컨텍스트는 연결된 컨테이너도 종료합니다. 작은 캐시는 재초기화 횟수를 늘릴 수 있으므로,
@@ -534,7 +554,7 @@ DB를 공유하는 테스트는 트랜잭션 롤백 또는 명시적인 fixture 
   --tests 'com.harudle.category.service.DefaultCategoryReaderTest'
 ```
 
-`testContextCacheMaxSize`는 양의 정수여야 합니다. Docker 엔진이 준비되어 있는지는 테스트 전에 `docker info`로
+`testContextCacheMaxSize`와 `testMaxParallelForks`는 양의 정수여야 합니다. Docker 엔진이 준비되어 있는지는 테스트 전에 `docker info`로
 확인합니다. Docker Desktop 자체가 시작 단계에서 종료되는 경우에는 테스트 실행과 별도로 Desktop 로그를 확인합니다.
 
 Testcontainers의 PostgreSQL로 애플리케이션을 직접 실행하려면 다음 명령을 사용합니다.
@@ -552,9 +572,10 @@ PR CI는 `gradle/actions/setup-gradle`로 Gradle 실행 파일, 의존성과 컴
 PR 검증과 수동 테스트는 다음 명령을 실행합니다.
 
 ```shell
-./gradlew --no-daemon --console=plain --build-cache test --rerun
+./gradlew --no-daemon --console=plain --build-cache test --rerun -PtestMaxParallelForks=2
 ```
 
+PR CI는 테스트 클래스를 JVM 2개에 나눠 실행합니다. 수동 실행에서 메모리가 부족하면 이 옵션을 빼고 실행합니다.
 PR CI는 위 일반 테스트 외에 `maintenanceTest`도 별도로 실행합니다. 두 JAR의 실제 실행 검증을 통과하면
 전환 도구 JAR, 체크섬과 실제 빌드 및 PR 원본 커밋 정보를 다운로드 산출물로 제공합니다. 다운로드 기간이
 끝나면 사라질 수 있으므로 복구에 필요한 원본과 이미지는 별도 보관해야 합니다.

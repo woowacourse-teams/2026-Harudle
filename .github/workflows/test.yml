@@ -160,7 +160,8 @@ jobs:
         if: github.event_name != 'push'
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon --console=plain --build-cache test --rerun maintenanceTest --rerun
+          ./gradlew --no-daemon --console=plain --build-cache test --rerun maintenanceTest --rerun \
+            -PtestMaxParallelForks=2
 
       - name: Verify packaged key checks, initialization and migration
         if: github.event_name != 'push'
