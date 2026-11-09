@@ -124,7 +124,9 @@ jobs:
 
       - name: Test deployment image environment
         if: github.event_name != 'push'
-        run: bash ../deploy/scripts/test_image_environment.sh
+        run: |
+          bash ../deploy/scripts/test_image_environment.sh
+          bash ../deploy/scripts/test_backend_entrypoint.sh
 
       - name: Install WebP tools
         if: github.event_name != 'push'
@@ -144,7 +146,90 @@ jobs:
         if: github.event_name != 'push'
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon --console=plain --build-cache test --rerun
+          ./gradlew --no-daemon --console=plain --build-cache test --rerun maintenanceTest --rerun \
+            -PtestMaxParallelForks=2
+
+  # 일기 원문 암호화 배포 검사는 일반 백엔드 테스트와 의존 관계가 없으므로 별도 러너에서 동시에 실행한다.
+  backend-crypto-checks:
+    name: Backend Crypto Checks
+    if: github.event_name != 'push' && github.base_ref != 'develop-frontend'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DB_PASSWORD: test
+      KAKAO_REST_API_KEY: test
+      KAKAO_CLIENT_SECRET: test
+      GOOGLE_CLIENT_ID: test
+      GOOGLE_CLIENT_SECRET: test
+      JWT_SECRET_BASE64: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+      HARUDLE_GENERATION_ADAPTERS_ENABLED: "false"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: corretto
+          java-version: "21"
+
+      # Backend Test Job이 캐시를 저장하므로 이 Job은 같은 캐시를 읽기만 한다.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: true
+
+      - name: Verify Docker
+        run: docker info
+
+      - name: Test diary key preflight and release selection (offline)
+        run: |
+          bash ../deploy/scripts/test_diary_key_verification.sh
+          bash ../deploy/scripts/test_diary_release.sh
+          bash ../deploy/scripts/test_diary_writer_approval.sh
+          bash ../deploy/scripts/test_diary_source_text_backfill.sh
+
+      - name: Test encrypted load-test fixtures and PostgreSQL recovery
+        env:
+          LOAD_TEST_POSTGRES_TEST: "1"
+        run: python3 -m unittest discover -s load-test -p 'test_*.py'
+
+      - name: Verify packaged key checks, initialization and migration
+        run: |
+          chmod +x gradlew
+          server_tasks="$(./gradlew --no-daemon --console=plain build --dry-run)"
+          if grep -Eq '^:compileMaintenance|^:maintenance(Class|Jar|Test)' <<<"$server_tasks"; then
+            echo 'Normal server packaging must not build maintenance sources.' >&2
+            exit 1
+          fi
+          ./gradlew --no-daemon --console=plain --build-cache bootJar maintenanceJar
+          bash ../deploy/scripts/test_diary_key_check_jar.sh build/libs/harudle-0.0.1-SNAPSHOT.jar
+          bash ../deploy/scripts/test_diary_key_initialization_jar.sh build/libs/harudle-0.0.1-SNAPSHOT.jar
+          bash ../deploy/scripts/test_diary_source_text_backfill_jar.sh build/libs/harudle-0.0.1-SNAPSHOT.jar build/maintenance/harudle-diary-source-maintenance.jar
+
+      - name: Record maintenance artifact identity
+        env:
+          MAINTENANCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          git rev-parse HEAD > build/maintenance/commit.txt
+          printf '%s\n' "$MAINTENANCE_COMMIT" > build/maintenance/head-commit.txt
+          (cd build/maintenance && sha256sum harudle-diary-source-maintenance.jar > checksums.sha256)
+
+      - name: Upload verified maintenance JAR
+        uses: actions/upload-artifact@v7
+        with:
+          name: diary-source-maintenance-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.run_attempt }}
+          path: |
+            backend/build/maintenance/harudle-diary-source-maintenance.jar
+            backend/build/maintenance/commit.txt
+            backend/build/maintenance/head-commit.txt
+            backend/build/maintenance/checksums.sha256
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
 
   frontend-test:
     name: Frontend Test

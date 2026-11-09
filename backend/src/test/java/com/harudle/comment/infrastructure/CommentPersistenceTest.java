@@ -24,7 +24,7 @@ import com.harudle.feed.service.FeedDeletionService;
 import com.harudle.feed.service.exception.FeedNotFoundException;
 import com.harudle.profile.service.DefaultPublicProfileReader;
 import com.harudle.profile.service.port.PublicProfileReader;
-import com.harudle.push.service.port.FeedPushOutbox;
+import com.harudle.support.FeedInteractionPersistenceTestSupport;
 import jakarta.servlet.http.Cookie;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -58,7 +58,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.IllegalTransactionStateException;
@@ -67,13 +66,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import tools.jackson.databind.ObjectMapper;
 
 @Testcontainers(disabledWithoutDocker = true)
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest(properties = {
-        "harudle.generation.adapters.enabled=false",
-        "harudle.profile.image-base-url=https://test.example.com/profiles"
-})
-@AutoConfigureMockMvc
-class CommentPersistenceTest {
+class CommentPersistenceTest extends FeedInteractionPersistenceTestSupport {
 
     private static final String CSRF_TOKEN = "comment-cookie-and-header-value";
     private static final Instant FIXTURE_TIME = Instant.parse("2026-10-12T03:00:00Z");
@@ -103,16 +96,7 @@ class CommentPersistenceTest {
     @Autowired
     private ObjectMapper objectMapper;
 
-    @MockitoSpyBean
-    private DefaultPublicProfileReader profileReader;
-
     private final ProfileReadProbe profiles = new ProfileReadProbe();
-
-    @MockitoBean
-    private JwtDecoder jwtDecoder;
-
-    @MockitoBean
-    private FeedPushOutbox outbox;
 
     private final List<UUID> fixtureUsers = new ArrayList<>();
     private UUID feedAuthorId;

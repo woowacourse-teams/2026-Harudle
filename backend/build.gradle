@@ -8,6 +8,10 @@ group = 'com.harudle'
 version = '0.0.1-SNAPSHOT'
 description = 'Harudle backend service'
 
+springBoot {
+    mainClass = 'com.harudle.HarudleApplication'
+}
+
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
@@ -50,6 +54,43 @@ dependencies {
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
+sourceSets {
+    maintenance {
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
+    maintenanceTest {
+        compileClasspath += sourceSets.main.output + sourceSets.test.output + sourceSets.maintenance.output
+        runtimeClasspath += sourceSets.main.output + sourceSets.test.output + sourceSets.maintenance.output
+    }
+}
+
+configurations {
+    maintenanceImplementation.extendsFrom implementation
+    maintenanceRuntimeOnly.extendsFrom runtimeOnly
+    maintenanceTestImplementation.extendsFrom testImplementation, maintenanceImplementation
+    maintenanceTestRuntimeOnly.extendsFrom testRuntimeOnly, maintenanceRuntimeOnly
+}
+
+// This task is explicit: ordinary bootJar, test, and build never compile the conversion tool.
+tasks.register('maintenanceJar', org.springframework.boot.gradle.tasks.bundling.BootJar) {
+    group = 'build'
+    description = 'Builds the manually invoked diary conversion tool, separate from the server JAR.'
+    mainClass = 'com.harudle.diary.infrastructure.crypto.DiarySourceTextBackfillMain'
+    targetJavaVersion = provider { java.targetCompatibility }
+    archiveFileName = 'harudle-diary-source-maintenance.jar'
+    destinationDirectory = layout.buildDirectory.dir('maintenance')
+    classpath = sourceSets.maintenance.runtimeClasspath
+}
+
+tasks.register('maintenanceTest', Test) {
+    group = 'verification'
+    description = 'Runs conversion-tool tests without adding them to ordinary server test or build.'
+    testClassesDirs = sourceSets.maintenanceTest.output.classesDirs
+    classpath = sourceSets.maintenanceTest.runtimeClasspath
+    shouldRunAfter tasks.named('test')
+}
+
 tasks.register('resolveProductionDependencies') {
     group = 'build setup'
     description = 'Downloads the artifacts required to compile and package the production application.'
@@ -66,7 +107,7 @@ tasks.register('resolveProductionDependencies') {
     }
 }
 
-tasks.named('test') {
+tasks.withType(Test).configureEach {
     useJUnitPlatform()
 
     def contextCacheMaxSize = providers.gradleProperty('testContextCacheMaxSize')
@@ -76,5 +117,15 @@ tasks.named('test') {
             throw new GradleException('testContextCacheMaxSize must be a positive integer')
         }
         systemProperty 'spring.test.context.cache.maxSize', cacheSize.toInteger()
+    }
+
+    // 테스트 클래스를 여러 JVM에 나눠 동시에 실행한다. JVM마다 컨텍스트 캐시와 DB 컨테이너를 따로 가진다.
+    def parallelForks = providers.gradleProperty('testMaxParallelForks')
+    if (parallelForks.present) {
+        def forks = parallelForks.get()
+        if (!forks.isInteger() || forks.toInteger() < 1) {
+            throw new GradleException('testMaxParallelForks must be a positive integer')
+        }
+        maxParallelForks = forks.toInteger()
     }
 }

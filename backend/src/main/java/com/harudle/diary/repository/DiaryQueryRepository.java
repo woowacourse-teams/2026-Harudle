@@ -20,6 +20,7 @@ public interface DiaryQueryRepository extends Repository<Diary, UUID> {
                 diary.userId,
                 diary.diaryDate,
                 diary.sourceText,
+                diary.sourceTextVersion,
                 diary.createdAt
             )
             FROM Diary diary
@@ -64,6 +65,7 @@ public interface DiaryQueryRepository extends Repository<Diary, UUID> {
                 diary.userId,
                 diary.diaryDate,
                 diary.sourceText,
+                diary.sourceTextVersion,
                 diary.createdAt
             )
             FROM Diary diary

@@ -6,20 +6,22 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.harudle.TestcontainersConfiguration;
 import com.harudle.category.service.port.CategoryReader;
+import com.harudle.diary.domain.DiarySourceTextCipher;
 import com.harudle.diary.service.DiaryDeletionService;
 import com.harudle.diary.service.DiaryQueryService;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
 import com.harudle.diary.service.exception.DiaryNotPublishableException;
 import com.harudle.feed.repository.FeedRepository;
+import com.harudle.generation.diary.service.RequestFingerprintGenerator;
+import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
 import com.harudle.feed.service.dto.FeedResult;
 import com.harudle.feed.service.exception.DiaryAlreadyPublishedException;
 import com.harudle.feed.service.exception.FeedNotFoundException;
 import com.harudle.feed.service.port.PublishedFeedReader;
 import com.harudle.profile.service.port.PublicProfileReader;
-import com.harudle.push.service.port.FeedPushOutbox;
+import com.harudle.support.FeedPersistenceTestSupport;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
@@ -38,20 +40,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
-import org.springframework.context.annotation.Import;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers(disabledWithoutDocker = true)
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest
 @ExtendWith(OutputCaptureExtension.class)
-class FeedPublicationPersistenceTest {
+class FeedPublicationPersistenceTest extends FeedPersistenceTestSupport {
 
     private static final UUID ACTOR = UUID.fromString("08d69a34-6d70-4d42-a158-671bc67733c9");
     private static final UUID DIARY = UUID.fromString("550e8400-e29b-41d4-a716-446655440002");
@@ -64,11 +60,9 @@ class FeedPublicationPersistenceTest {
     @Autowired private FeedRepository feeds;
     @Autowired private DiaryDeletionService diaryDeletion;
     @Autowired private DiaryQueryService diaryQueries;
+    @Autowired private DiarySourceTextCipher sourceTextCipher;
+    @Autowired private RequestFingerprintGenerator fingerprints;
     @Autowired private PublishedFeedReader publishedFeeds;
-    @MockitoBean private CategoryReader categories;
-    @MockitoBean private PublicProfileReader profiles;
-    @MockitoBean private FeedPushOutbox outbox;
-    @MockitoBean private JwtDecoder jwtDecoder;
     private long categoryId;
 
     @BeforeEach
@@ -78,14 +72,25 @@ class FeedPublicationPersistenceTest {
                 INSERT INTO generation_prompts (storyboard_prompt_text, image_style_prompt_text, image_asset_object_key)
                 VALUES ('스토리보드', '이미지 스타일', 'references/feed-publication-test.png')
                 """);
-        update("INSERT INTO diaries (id, user_id, diary_date, source_text) VALUES (?, ?, ?, ?)",
-                DIARY, ACTOR, LocalDate.of(2026, 10, 11), "공개하면 안 되는 개인 일기 원문");
+        LocalDate date = LocalDate.of(2026, 10, 11);
+        String encrypted = sourceTextCipher.encrypt(DIARY, ACTOR, "공개하면 안 되는 개인 일기 원문");
+        UUID idempotencyKey = UUID.randomUUID();
+        String rawFingerprint = fingerprints.generate(new GenerateDiaryImageCommand(
+                ACTOR, DIARY, date, "공개하면 안 되는 개인 일기 원문", idempotencyKey
+        ));
+        String protectedFingerprint = sourceTextCipher.protectRequestFingerprint(
+                DIARY, ACTOR, encrypted, DiarySourceTextCipher.CURRENT_VERSION, rawFingerprint
+        );
+        update("""
+                INSERT INTO diaries (id, user_id, diary_date, source_text, source_text_version)
+                VALUES (?, ?, ?, ?, 1)
+                """, DIARY, ACTOR, date, encrypted);
         update("""
                 INSERT INTO diary_generations
                     (id, diary_id, prompt_id, idempotency_key, request_fingerprint, status, image_object_key)
                 VALUES (?, ?, (SELECT id FROM generation_prompts WHERE image_asset_object_key = ?),
                     ?, ?, 'SUCCEEDED', 'generated/feed-publication-test.webp')
-                """, GENERATION, DIARY, "references/feed-publication-test.png", UUID.randomUUID(), "a".repeat(64));
+                """, GENERATION, DIARY, "references/feed-publication-test.png", idempotencyKey, protectedFingerprint);
         categoryId = transactions.execute(status ->
                 ((Number) entityManager.createNativeQuery("SELECT id FROM categories WHERE name = '일상'")
                         .getSingleResult()).longValue());

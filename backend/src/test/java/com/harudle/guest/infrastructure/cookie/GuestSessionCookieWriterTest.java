@@ -94,6 +94,39 @@ class GuestSessionCookieWriterTest {
                 .hasMessage("now는 필수입니다.");
     }
 
+    @Test
+    @DisplayName("게스트 세션 Cookie를 발급할 때와 같은 속성으로 즉시 만료한다")
+    void expiresGuestSessionCookie() {
+        GuestSessionCookieWriter cookieWriter = new GuestSessionCookieWriter(
+                createProperties(true)
+        );
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        cookieWriter.expire(response);
+
+        String setCookie = response.getHeader(HttpHeaders.SET_COOKIE);
+        assertThat(setCookie)
+                .startsWith("guest_session=;")
+                .contains("Path=/api/v1/guest")
+                .contains("Max-Age=0")
+                .contains("Expires=")
+                .contains("Secure")
+                .contains("HttpOnly")
+                .contains("SameSite=Lax");
+    }
+
+    @Test
+    @DisplayName("응답이 없으면 Cookie를 만료할 수 없다")
+    void rejectsExpiringWithoutResponse() {
+        GuestSessionCookieWriter cookieWriter = new GuestSessionCookieWriter(
+                createProperties(false)
+        );
+
+        assertThatThrownBy(() -> cookieWriter.expire(null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("response는 필수입니다.");
+    }
+
     private IssuedGuestSession createIssuedSession() {
         return new IssuedGuestSession(
                 "raw-guest-session-token",

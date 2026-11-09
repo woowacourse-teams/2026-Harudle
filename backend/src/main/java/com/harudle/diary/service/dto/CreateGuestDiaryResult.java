@@ -12,4 +12,9 @@ public record CreateGuestDiaryResult(
         DiaryGenerationResult generation,
         boolean newlyCreated
 ) {
+
+    @Override
+    public String toString() {
+        return "CreateGuestDiaryResult[sourceText=<redacted>]";
+    }
 }

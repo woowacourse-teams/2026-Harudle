@@ -48,6 +48,8 @@ public final class GenerationErrorAction {
             case AI_OUTPUT_TRUNCATED -> OUTPUT_TRUNCATED_ACTION;
             case AI_RESPONSE_PROCESSING_ERROR -> RETRY_ACTION;
             case GENERATION_UNAVAILABLE -> TRY_LATER_ACTION;
+            case DIARY_SOURCE_TEXT_WRITE_UNAVAILABLE -> "일기를 안전하게 저장하지 못했어요. 작성한 내용을 보관한 뒤 나중에 다시 이용해 주세요.";
+            case DIARY_SOURCE_TEXT_READ_UNAVAILABLE -> "일기 내용을 불러오지 못했어요. 나중에 다시 이용해 주세요.";
             case GENERATION_INTERRUPTED -> GENERATION_INTERRUPTED_ACTION;
             case GENERATION_PENDING_TIMEOUT -> PENDING_TIMEOUT_ACTION;
             case IMAGE_STORAGE_ERROR -> IMAGE_STORAGE_ERROR_ACTION;

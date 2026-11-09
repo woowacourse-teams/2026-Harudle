@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.harudle.feed.service.FeedDeletionService;
 import com.harudle.push.service.port.FeedPushOutbox;
+import com.harudle.support.ServiceIntegrationTestSupport;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.util.UUID;
@@ -14,34 +15,22 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.IllegalTransactionStateException;
 import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest
 @Import(JpaFeedPushOutboxTest.QueuedProbeConfig.class)
-class JpaFeedPushOutboxTest {
-    @Container @ServiceConnection
-    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"));
-
+class JpaFeedPushOutboxTest extends ServiceIntegrationTestSupport {
     @Autowired private EntityManager entityManager;
     @Autowired private TransactionTemplate transactions;
     @Autowired private FeedPushOutbox outbox;
     @Autowired private FeedDeletionService deletion;
     @Autowired private QueuedProbe queuedProbe;
-    @MockitoBean private JwtDecoder jwtDecoder;
 
     private final UUID author = UUID.randomUUID();
     private final UUID reader = UUID.randomUUID();

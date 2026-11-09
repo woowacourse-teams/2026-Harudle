@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.harudle.support.DiarySourceTextTestSupport;
 import com.harudle.diary.domain.Diary;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
@@ -40,7 +41,7 @@ class DefaultDiaryPublicationReaderTest {
     @BeforeEach
     void setUp() {
         reader = new DefaultDiaryPublicationReader(diaries, generations);
-        diary = Diary.create(ACTOR, LocalDate.of(2026, 10, 11), "공개하면 안 되는 원문");
+        diary = Diary.create(ACTOR, LocalDate.of(2026, 10, 11), "공개하면 안 되는 원문", DiarySourceTextTestSupport.cipher());
     }
 
     @Test

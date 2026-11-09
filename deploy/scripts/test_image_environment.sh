@@ -21,6 +21,21 @@ services:
       - .env
 YAML
   printf 'services: {}\n' > "${TEST_DIR}/compose.dev.yaml"
+  printf 'reader\n' > "${TEST_DIR}/diary-source-text-release-mode"
+  cat > "${TEST_DIR}/compose.diary-reader.yaml" <<'YAML'
+services:
+  backend:
+    environment:
+      DIARY_SOURCE_TEXT_RELEASE_MODE: "reader"
+      DIARY_SOURCE_TEXT_NEW_WRITES_ENABLED: "false"
+YAML
+  cat > "${TEST_DIR}/compose.diary-writer.yaml" <<'YAML'
+services:
+  backend:
+    environment:
+      DIARY_SOURCE_TEXT_RELEASE_MODE: "writer"
+      DIARY_SOURCE_TEXT_NEW_WRITES_ENABLED: "true"
+YAML
 }
 
 override_setting() {
@@ -189,6 +204,79 @@ if grep -Fq 'image-env-test-secret' "${TEST_DIR}/output"; then
   echo 'FAIL: Compose 파싱 오류의 원문을 노출했습니다.' >&2
   exit 1
 fi
+
+# Revision-bound overrides take precedence over a mutable server .env flag.
+for release_mode in reader writer; do
+  write_compose
+  write_settings dev
+  printf '%s\n' "${release_mode}" > "${TEST_DIR}/diary-source-text-release-mode"
+  server_write_flag=true
+  [[ "${release_mode}" == writer ]] && server_write_flag=false
+  printf 'DIARY_SOURCE_TEXT_NEW_WRITES_ENABLED=%s\n' "${server_write_flag}" >> "${TEST_DIR}/.env"
+  printf 'DIARY_SOURCE_TEXT_RELEASE_MODE=server-override\n' >> "${TEST_DIR}/.env"
+  (configure_compose "${TEST_DIR}"; [[ "${DIARY_SOURCE_TEXT_RELEASE_MODE_VALUE}" == "${release_mode}" ]])
+  record_pass "${release_mode} revision overrides the server write flag"
+done
+
+write_compose
+rm "${TEST_DIR}/diary-source-text-release-mode"
+expect_rejected 'Missing diary source text release mode' 'release mode file 누락 거절'
+write_compose
+printf 'release-mode-test-secret\n' > "${TEST_DIR}/diary-source-text-release-mode"
+expect_rejected 'Invalid diary source text release mode' '잘못된 release mode 거절'
+if grep -Fq 'release-mode-test-secret' "${TEST_DIR}/output"; then
+  echo 'FAIL: Release mode contents appeared in output.' >&2
+  exit 1
+fi
+write_compose
+rm "${TEST_DIR}/compose.diary-reader.yaml"
+expect_rejected 'Missing diary source text Compose override' 'release override 누락 거절'
+write_compose
+cat > "${TEST_DIR}/compose.diary-reader.yaml" <<'YAML'
+services:
+  backend:
+    environment:
+      DIARY_SOURCE_TEXT_NEW_WRITES_ENABLED: "true"
+YAML
+expect_rejected 'Resolved image environment mismatch: DIARY_SOURCE_TEXT_NEW_WRITES_ENABLED.' \
+  'reader revision에서 writer flag 거절'
+
+write_compose
+cat > "${TEST_DIR}/compose.diary-reader.yaml" <<'YAML'
+services:
+  backend:
+    environment:
+      DIARY_SOURCE_TEXT_RELEASE_MODE: "writer"
+      DIARY_SOURCE_TEXT_NEW_WRITES_ENABLED: "false"
+YAML
+expect_rejected 'Resolved image environment mismatch: DIARY_SOURCE_TEXT_RELEASE_MODE.' \
+  'artifact와 다른 resolved release mode 거절'
+
+# JVM bootstrap diagnostics print these values before the application's safe logger exists.
+for setting in JAVA_TOOL_OPTIONS JDK_JAVA_OPTIONS _JAVA_OPTIONS; do
+  write_compose
+  write_settings dev
+  printf '%s=-Dtest.secret=image-env-test-secret\n' "${setting}" >> "${TEST_DIR}/.env"
+  expect_rejected 'JVM 자동 옵션 환경 변수는 배포에서 사용할 수 없습니다.' "${setting} env_file 거절"
+  if grep -Fq 'image-env-test-secret' "${TEST_DIR}/output"; then
+    echo 'FAIL: JVM 자동 옵션 값을 오류에 노출했습니다.' >&2
+    exit 1
+  fi
+
+  write_settings dev
+  override_setting "${setting}" '-Dtest.secret=image-env-test-secret'
+  expect_rejected 'JVM 자동 옵션 환경 변수는 배포에서 사용할 수 없습니다.' "${setting} 최종 Compose 환경 거절"
+  if grep -Fq 'image-env-test-secret' "${TEST_DIR}/output"; then
+    echo 'FAIL: JVM 자동 옵션 값을 오류에 노출했습니다.' >&2
+    exit 1
+  fi
+
+  write_compose
+  write_settings dev
+  printf '%s=\n' "${setting}" >> "${TEST_DIR}/.env"
+  (configure_compose "${TEST_DIR}")
+  record_pass "${setting} 빈 값 허용"
+done
 
 # 10. jq가 없으면 직접 검사와 BeforeInstall 모두 파일 정리 전에 중단한다.
 write_compose

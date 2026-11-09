@@ -9,6 +9,8 @@ import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class RequestFingerprintGeneratorTest {
 
@@ -27,6 +29,26 @@ class RequestFingerprintGeneratorTest {
 
         assertThat(fingerprint).isEqualTo(EXPECTED_FINGERPRINT);
         assertThat(fingerprint).matches("[0-9a-f]{64}");
+    }
+
+    @Test
+    @DisplayName("정상 물음표 본문은 기존 정규화 요청의 SHA 지문을 그대로 유지한다")
+    void preserveCanonicalFingerprintForValidQuestionMark() {
+        String fingerprint = generator.generate(createCommand(USER_ID, DIARY_DATE, "?"));
+
+        assertThat(fingerprint).isEqualTo("1121ef32f1f163b209002e032fea1a554250ee16a3518d16dbfb0b69471edc52");
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0xD800, 0xDC00})
+    @DisplayName("고립된 상위 및 하위 서로게이트는 물음표로 치환하지 않고 지문 생성을 거절한다")
+    void rejectUnpairedSurrogatesBeforeHashing(int surrogate) {
+        String malformedText = String.valueOf((char) surrogate);
+
+        assertThatThrownBy(() -> generator.generate(createCommand(USER_ID, DIARY_DATE, malformedText)))
+                .isExactlyInstanceOf(IllegalArgumentException.class)
+                .hasMessage("요청 지문에 유효하지 않은 문자가 포함되어 있습니다.")
+                .hasNoCause();
     }
 
     @Test

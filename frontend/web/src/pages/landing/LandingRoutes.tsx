@@ -4,11 +4,11 @@ import { Route, Routes } from 'react-router';
 import loadingAnimation from '../../assets/images/loading-animation.webp';
 import { theme } from '../../styles/theme';
 import GuestDiaryResultPage from './GuestDiaryResultPage';
-import LandingPage from './LandingPage';
+import LandingContent from './LandingContent';
 import useGuestEntry from './useGuestEntry';
 import NotFoundPage from '../not-found/NotFoundPage';
 
-const LandingRoutes = (): JSX.Element => {
+const GuestResultRoute = (): JSX.Element => {
   const { guestEntryRequest, retryGuestEntry } = useGuestEntry();
 
   useEffect(() => {
@@ -38,17 +38,16 @@ const LandingRoutes = (): JSX.Element => {
       </div>
     ) : null;
 
-  return (
-    <Routes>
-      <Route index element={<LandingPage entryFeedback={entryFeedback} />} />
-      <Route
-        path="result/:diaryId"
-        element={entryFeedback ?? <GuestDiaryResultPage />}
-      />
-      <Route path="*" element={<NotFoundPage />} />
-    </Routes>
-  );
+  return <>{entryFeedback ?? <GuestDiaryResultPage />}</>;
 };
+
+const LandingRoutes = (): JSX.Element => (
+  <Routes>
+    <Route index element={<LandingContent trialSection={null} />} />
+    <Route path="result/:diaryId" element={<GuestResultRoute />} />
+    <Route path="*" element={<NotFoundPage />} />
+  </Routes>
+);
 
 export default LandingRoutes;
 

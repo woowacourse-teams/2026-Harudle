@@ -3,10 +3,13 @@ package com.harudle.feed.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.harudle.diary.domain.DiarySourceTextCipher;
 import com.harudle.diary.service.DiaryDeletionService;
 import com.harudle.diary.service.DiaryQueryService;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
 import com.harudle.feed.repository.FeedRepository;
+import com.harudle.generation.diary.service.RequestFingerprintGenerator;
+import com.harudle.generation.diary.service.dto.GenerateDiaryImageCommand;
 import com.harudle.support.ServiceIntegrationTestSupport;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -35,6 +38,8 @@ class FeedWithoutPushRegistrationPersistenceTest extends ServiceIntegrationTestS
     @Autowired private FeedRepository feeds;
     @Autowired private DiaryDeletionService diaryDeletion;
     @Autowired private DiaryQueryService diaryQueries;
+    @Autowired private DiarySourceTextCipher sourceTextCipher;
+    @Autowired private RequestFingerprintGenerator fingerprints;
     private long categoryId;
 
     @BeforeEach
@@ -44,14 +49,25 @@ class FeedWithoutPushRegistrationPersistenceTest extends ServiceIntegrationTestS
                 INSERT INTO generation_prompts (storyboard_prompt_text, image_style_prompt_text, image_asset_object_key)
                 VALUES ('스토리보드', '이미지 스타일', ?)
                 """, REFERENCE);
-        update("INSERT INTO diaries (id, user_id, diary_date, source_text) VALUES (?, ?, ?, ?)",
-                DIARY, AUTHOR, LocalDate.of(2026, 10, 11), "개인 일기 원문");
+        LocalDate date = LocalDate.of(2026, 10, 11);
+        String encrypted = sourceTextCipher.encrypt(DIARY, AUTHOR, "개인 일기 원문");
+        UUID idempotencyKey = UUID.randomUUID();
+        String rawFingerprint = fingerprints.generate(new GenerateDiaryImageCommand(
+                AUTHOR, DIARY, date, "개인 일기 원문", idempotencyKey
+        ));
+        String protectedFingerprint = sourceTextCipher.protectRequestFingerprint(
+                DIARY, AUTHOR, encrypted, DiarySourceTextCipher.CURRENT_VERSION, rawFingerprint
+        );
+        update("""
+                INSERT INTO diaries (id, user_id, diary_date, source_text, source_text_version)
+                VALUES (?, ?, ?, ?, 1)
+                """, DIARY, AUTHOR, date, encrypted);
         update("""
                 INSERT INTO diary_generations
                     (id, diary_id, prompt_id, idempotency_key, request_fingerprint, status, image_object_key)
                 VALUES (?, ?, (SELECT id FROM generation_prompts WHERE image_asset_object_key = ?),
                     ?, ?, 'SUCCEEDED', 'generated/feed-without-push-test.webp')
-                """, GENERATION, DIARY, REFERENCE, UUID.randomUUID(), "a".repeat(64));
+                """, GENERATION, DIARY, REFERENCE, idempotencyKey, protectedFingerprint);
         categoryId = number("SELECT id FROM categories WHERE name = ?", "일상");
     }
 

@@ -3,6 +3,7 @@ import { usePostHog } from '@posthog/react';
 
 import { identifyCurrentUserForPostHog, isPostHogEnabled } from './posthog';
 import type { FeedSort } from '../domain/feeds/feedList';
+import { readGuestTrialDiaryId } from '../pages/feed/guest-trial/guestTrialStorage';
 
 let hasConfirmedSession = false;
 
@@ -104,6 +105,19 @@ interface AnalyticsEventMap {
     method: 'native_prompt' | 'ios_guide';
   };
   pwa_first_launched: undefined;
+  guest_trial_guide_viewed: undefined;
+  guest_trial_submitted: undefined;
+  guest_trial_result_viewed: {
+    diary_id: string;
+  };
+  guest_trial_login_completed: {
+    diary_id: string;
+  };
+  guest_trial_claim_result: {
+    diary_id: string;
+    success: boolean;
+    error_code: string | null;
+  };
 }
 
 export type AnalyticsEventName = keyof AnalyticsEventMap;
@@ -139,9 +153,20 @@ export const useAnalytics = () => {
   const identifyCurrentUser = useCallback(
     (accessToken: string): Promise<void> => {
       confirmAuthenticatedSession();
+      // 피드 체험 실험: 체험 결과가 있는 브라우저의 실제 인증 완료만 기록한다.
+      const guestTrialDiaryId = readGuestTrialDiaryId();
+      if (guestTrialDiaryId !== null) {
+        try {
+          track('guest_trial_login_completed', {
+            diary_id: guestTrialDiaryId,
+          });
+        } catch {
+          // 분석 실패가 로그인 성공을 실패로 바꾸지 않게 한다.
+        }
+      }
       return identifyCurrentUserForPostHog(posthog, accessToken);
     },
-    [posthog, confirmAuthenticatedSession],
+    [posthog, confirmAuthenticatedSession, track],
   );
 
   const resetUser = useCallback((): void => {

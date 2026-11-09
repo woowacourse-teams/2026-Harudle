@@ -15,6 +15,8 @@ public interface GuestSessionRepository extends JpaRepository<GuestSession, UUID
 
     boolean existsByGuestUserId(UUID guestUserId);
 
+    boolean existsByClaimedByUserId(UUID claimedByUserId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT session FROM GuestSession session WHERE session.tokenHash = :tokenHash")
     Optional<GuestSession> findByTokenHashForUpdate(@Param("tokenHash") String tokenHash);
