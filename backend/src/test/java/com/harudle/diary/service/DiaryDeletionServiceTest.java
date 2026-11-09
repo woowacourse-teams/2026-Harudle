@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.harudle.support.DiarySourceTextTestSupport;
 import com.harudle.diary.domain.Diary;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
@@ -130,6 +131,6 @@ class DiaryDeletionServiceTest {
     }
 
     private Diary createDiary(UUID userId) {
-        return Diary.create(userId, LocalDate.of(2026, 8, 6), "오늘의 일기");
+        return Diary.create(userId, LocalDate.of(2026, 8, 6), "오늘의 일기", DiarySourceTextTestSupport.cipher());
     }
 }

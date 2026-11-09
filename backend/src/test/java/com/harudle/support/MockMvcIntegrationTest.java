@@ -15,7 +15,11 @@ import org.springframework.context.annotation.Import;
 @Retention(RetentionPolicy.RUNTIME)
 @Inherited
 @SpringBootTest(classes = HarudleApplication.class,
-        properties = "harudle.profile.image-base-url=https://www.harudle.com/profile-images/v1")
+        properties = {
+                "harudle.profile.image-base-url=https://www.harudle.com/profile-images/v1",
+                "app.auth.frontend-origins=http://localhost:5173",
+                "app.auth.failure-redirect=http://localhost:5173/auth/callback?error=oauth_failed"
+        })
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
 public @interface MockMvcIntegrationTest {

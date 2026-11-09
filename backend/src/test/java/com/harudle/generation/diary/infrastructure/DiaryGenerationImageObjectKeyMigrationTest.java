@@ -3,6 +3,7 @@ package com.harudle.generation.diary.infrastructure;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
+import com.harudle.support.MigrationTemplateDatabase;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -37,19 +38,22 @@ class DiaryGenerationImageObjectKeyMigrationTest {
 
     @Container
     private static final PostgreSQLContainer POSTGRESQL_CONTAINER = new PostgreSQLContainer(POSTGRES_IMAGE);
+    private static final MigrationTemplateDatabase DATABASES = new MigrationTemplateDatabase(POSTGRESQL_CONTAINER);
 
     @BeforeEach
-    void migrateInitialSchema() {
-        flyway().clean();
-        Flyway.configure()
-                .dataSource(
-                        POSTGRESQL_CONTAINER.getJdbcUrl(),
-                        POSTGRESQL_CONTAINER.getUsername(),
-                        POSTGRESQL_CONTAINER.getPassword()
-                )
-                .target(INITIAL_SCHEMA)
-                .load()
-                .migrate();
+    void migrateInitialSchema() throws SQLException {
+        DATABASES.restore("image_object_key_v1", () -> {
+            flyway().clean();
+            Flyway.configure()
+                    .dataSource(
+                            POSTGRESQL_CONTAINER.getJdbcUrl(),
+                            POSTGRESQL_CONTAINER.getUsername(),
+                            POSTGRESQL_CONTAINER.getPassword()
+                    )
+                    .target(INITIAL_SCHEMA)
+                    .load()
+                    .migrate();
+        });
     }
 
     @ParameterizedTest

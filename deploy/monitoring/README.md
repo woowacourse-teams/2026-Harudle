@@ -1,13 +1,14 @@
 # 서버 모니터링
 
 2026-10-23에 Dev 대시보드의 앱과 DB 대상, Prod 대시보드의 DB 대상을 EC2로 변경했다.
+2026-11-05에 4대를 새 인스턴스로 교체하면서 아래 InstanceId와 EBS 대상도 새 값으로 바꿨다.
 아래 RDS 지표 설명은 이전 구성의 참고 자료다. 현재 Dev와 Prod DB는 별도 EC2의 PostgreSQL을 사용한다.
 
 | 대상 | InstanceId | Agent 설정 |
 | --- | --- | --- |
-| Dev 앱 `harudle-dev` | `i-08ff5dddb7ac94f5c` | `cloudwatch-agent.host.json`과 `cloudwatch-agent.dev.json` |
-| Dev DB `harudle-dev-db` | `i-04fca55979b3240d6` | `cloudwatch-agent.db.json` |
-| Prod DB `harudle-prod-db` | `i-01baa5c11a6224cd7` | `cloudwatch-agent.db.json` |
+| Dev 앱 `harudle-dev` | `i-0bf4f4130d31eb443` | `cloudwatch-agent.host.json`과 `cloudwatch-agent.dev.json` |
+| Dev DB `harudle-dev-db` | `i-073fa344c2badcf20` | `cloudwatch-agent.db.json` |
+| Prod DB `harudle-prod-db` | `i-01412b89da45b5f42` | `cloudwatch-agent.db.json` |
 
 **Dev Java와 API 지표 수집 설정은 적용 완료다.** 새 앱 서버에 `cloudwatch-agent.dev.json`을
 적용했고 CloudWatch에서 Java RSS와 앱 연결 풀 지표 도착을 확인했다.
@@ -29,8 +30,8 @@ sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
 현재 `DASHBOARD-harudle-dev`와 `DASHBOARD-harudle-prod`는 앱과 DB의 InstanceId를 각각 사용한다.
 공통 `InstanceId` 속성 변수는 두 대상을 같은 값으로 덮어쓸 수 있어 제거했다.
 DB CPU와 크레딧, 상태 검사는 `AWS/EC2`, 메모리와 디스크는 `CWAgent`에서 조회한다.
-Dev 데이터 디스크의 `AWS/EBS` 대상은 `vol-00886d19a64c23e1f`,
-Prod 데이터 디스크는 `vol-048d203fac554e776`이다.
+Dev 데이터 디스크의 `AWS/EBS` 대상은 `vol-079e2259ecef5ae0c`,
+Prod 데이터 디스크는 `vol-054247052e6a3f58e`이다.
 EBS의 `VolumeAvgReadLatency`와 `VolumeAvgWriteLatency`는 밀리초이며
 기존 RDS 지연 지표의 초 단위와 다르다. [EBS 공식 지표 안내](https://docs.aws.amazon.com/ebs/latest/userguide/using_cloudwatch_ebs.html)
 

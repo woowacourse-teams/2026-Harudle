@@ -3,15 +3,12 @@ package com.harudle.auth.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.harudle.TestcontainersConfiguration;
-import com.harudle.auth.application.port.AccountRestrictionReader;
 import com.harudle.auth.domain.RefreshToken;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.RefreshTokenRepository;
 import com.harudle.auth.infrastructure.UserRepository;
-import com.harudle.auth.infrastructure.token.RefreshTokenGenerator;
 import com.harudle.auth.infrastructure.token.RefreshTokenHasher;
-import com.harudle.common.security.AuthProperties;
+import com.harudle.support.AuthJpaTestSupport;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
@@ -22,29 +19,14 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
-import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers(disabledWithoutDocker = true)
-@DataJpaTest(showSql = false)
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@EnableConfigurationProperties(AuthProperties.class)
-@Import({
-        TestcontainersConfiguration.class,
-        RefreshTokenService.class,
-        AccountAccessPolicy.class,
-        RefreshTokenGenerator.class,
-        RefreshTokenHasher.class
-})
-class RefreshTokenServiceTest {
+class RefreshTokenServiceTest extends AuthJpaTestSupport {
 
     private static final Instant CREATED_AT = Instant.parse("2026-08-12T10:00:00Z");
     private static final Instant ROTATED_AT = Instant.parse("2026-08-12T11:00:00Z");
@@ -58,10 +40,6 @@ class RefreshTokenServiceTest {
 
     @Autowired
     private RefreshTokenHasher refreshTokenHasher;
-
-    @MockitoBean
-    private AccountRestrictionReader restrictions;
-
     @Autowired
     private UserRepository userRepository;
 

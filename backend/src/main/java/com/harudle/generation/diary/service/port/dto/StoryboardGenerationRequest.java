@@ -27,4 +27,9 @@ public record StoryboardGenerationRequest(
     public StoryboardGenerationRequest withAttemptContext(StoryboardAttemptContext context) {
         return new StoryboardGenerationRequest(diaryText, storyboardPromptText, Optional.of(context));
     }
+
+    @Override
+    public String toString() {
+        return "StoryboardGenerationRequest[diaryText=<redacted>]";
+    }
 }

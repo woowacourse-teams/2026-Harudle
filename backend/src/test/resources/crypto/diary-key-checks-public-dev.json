@@ -1,0 +1,10 @@
+{
+  "formatVersion": 1,
+  "environment": "dev",
+  "checks": {
+    "primary": {
+      "ciphertext": "primary:AAECAwQFBgcICQoLRYTJCb10t4zMtRDMCO+ia5N6YOIcyBHzVPzQ0cEF2uHPwlB3KtRjef5LmyrrjKdfWsvtg2Hd9LBRzHx6xqx1N12iX8SmHyftGA==",
+      "protectedFingerprint": "09f514806c0341f0fc06d3457d876850fd9131ff9544405faf8da6de9763373f"
+    }
+  }
+}

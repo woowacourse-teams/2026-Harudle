@@ -10,7 +10,7 @@ RUN chmod +x gradlew \
 
 FROM dependencies AS builder
 
-COPY src ./src
+COPY src/main ./src/main
 
 RUN gradle_build_started="$(date +%s)" \
     && ./gradlew --no-daemon bootJar -x test \
@@ -27,18 +27,26 @@ RUN apk add --no-cache curl tini libwebp-tools \
 
 WORKDIR /app
 
+COPY --chmod=555 docker-entrypoint.sh /app/docker-entrypoint.sh
+
 USER harudle
 
 EXPOSE 8080
 
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError"
 
-ENTRYPOINT ["/sbin/tini", "--"]
+ENTRYPOINT ["/sbin/tini", "--", "/app/docker-entrypoint.sh"]
 CMD ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]
 
 # CodeBuild compiles on the host and only packages the resulting JAR here.
 FROM runtime-base AS codebuild
 COPY --chown=harudle:harudle build/codebuild/app.jar ./app.jar
+
+# Explicit maintenance build only. Ordinary server targets never compile or copy this tool.
+FROM runtime-base AS maintenance
+COPY --chown=harudle:harudle build/maintenance/harudle-diary-source-maintenance.jar ./maintenance.jar
+ENTRYPOINT ["/sbin/tini", "--", "/app/docker-entrypoint.sh", "sh", "-c", "exec java ${JAVA_OPTS:-} -jar /app/maintenance.jar \"$@\"", "sh"]
+CMD []
 
 # Keep the default target usable by docker compose build and local Docker builds.
 FROM runtime-base AS runtime

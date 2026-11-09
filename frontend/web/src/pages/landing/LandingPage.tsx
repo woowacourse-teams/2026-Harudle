@@ -7,6 +7,11 @@ import {
   type RefObject,
 } from 'react';
 import { css, type SerializedStyles } from '@emotion/react';
+import {
+  getAdditionalProblemAction,
+  getProblemAction,
+  RequestError,
+} from '../../shared/api';
 import generationStep1Image from '../../assets/images/generation-step-1-reading.png';
 import generationStep2Image from '../../assets/images/generation-step-2-writing.png';
 import generationStep3Image from '../../assets/images/generation-step-3-selecting-panels.png';
@@ -376,6 +381,14 @@ const LandingTrialErrorCard = ({
   onRetry: () => void;
 }): JSX.Element => {
   const trialAlreadyUsed = isGuestTrialAlreadyUsedError(error);
+  const problem = error instanceof RequestError ? error.problem : undefined;
+  const sourceTextUnavailable =
+    problem?.code === 'DIARY_SOURCE_TEXT_WRITE_UNAVAILABLE' ||
+    problem?.code === 'DIARY_SOURCE_TEXT_READ_UNAVAILABLE';
+  // 오류 메시지를 숨기는 경우에는 행동 안내를 그대로 보여주고, 아니면 메시지와 겹치지 않을 때만 보여준다.
+  const action = trialAlreadyUsed
+    ? getProblemAction(problem)
+    : getAdditionalProblemAction(problem, error.message);
 
   return (
     <div css={trialCardStyle} role="alert">
@@ -388,6 +401,7 @@ const LandingTrialErrorCard = ({
       </header>
 
       {!trialAlreadyUsed && <p css={errorMessageStyle}>{error.message}</p>}
+      {action && <p css={errorMessageStyle}>{action}</p>}
 
       {trialAlreadyUsed ? (
         <>
@@ -398,7 +412,7 @@ const LandingTrialErrorCard = ({
             location="already_used"
           />
         </>
-      ) : (
+      ) : sourceTextUnavailable ? null : (
         <button type="button" css={primaryButtonStyle} onClick={onRetry}>
           같은 내용으로 다시 시도하기
         </button>

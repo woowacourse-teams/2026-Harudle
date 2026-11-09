@@ -10,6 +10,7 @@ import {
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import LandingPage from './LandingPage';
+import { RequestError } from '../../shared/api';
 import { GuestTrialAlreadyUsedError } from './guestTrialErrors';
 import type { GuestDiaryRequest, GuestDiaryResponse } from './guestTrialApi';
 import { getKoreanToday } from './guestDiaryValidation';
@@ -305,6 +306,41 @@ describe('게스트 체험 랜딩 작성 화면', () => {
       ),
     ).toBeInTheDocument();
   });
+
+  it.each([
+    [
+      'DIARY_SOURCE_TEXT_WRITE_UNAVAILABLE',
+      '일기를 저장할 수 없어요.',
+      '작성한 내용을 보관한 뒤 나중에 다시 이용해 주세요.',
+    ],
+    [
+      'DIARY_SOURCE_TEXT_READ_UNAVAILABLE',
+      '일기 내용을 불러올 수 없어요.',
+      '일기 내용을 불러오지 못했어요. 나중에 다시 이용해 주세요.',
+    ],
+  ])(
+    '%s는 행동 안내를 보여주고 즉시 재시도 버튼을 숨긴다',
+    (code, detail, action): void => {
+      mockCreationState.current = {
+        status: 'error',
+        error: new RequestError({
+          type: 'about:blank',
+          title: 'Diary source text unavailable',
+          status: 503,
+          detail,
+          instance: '/api/v1/guest/diaries',
+          code,
+          action,
+        }),
+      };
+      render(<LandingPage />);
+      expect(screen.getByText(action)).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: '같은 내용으로 다시 시도하기' }),
+      ).not.toBeInTheDocument();
+      expect(mockRetryDiary.current).not.toHaveBeenCalled();
+    },
+  );
 
   it('이미 사용한 상태에서는 체험 입력을 숨기고 CTA를 로그인 안내로 바꾼다', () => {
     mockCreationState.current = {

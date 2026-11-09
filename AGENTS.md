@@ -8,7 +8,14 @@
 `harudle-dev-db`의 PostgreSQL로 전환했다. 같은 날 팀 확인에 따라 Prod도 RDS에서
 별도 EC2의 PostgreSQL로 전환했고, 앱 `.env`의 DB 주소를 해당 DB 사설 IP로 변경했다.
 새 Dev 앱 서버는 구축 중 `harudle-dev2`라고 불렀으며, 현재 AWS Name 태그는 `harudle-dev`다.
+2026-11-05에 Dev와 Prod의 앱 EC2와 DB EC2 4대를 Amazon Linux 2023 ARM64로 다시 만들어 교체했다.
+EIP 4개의 주소는 그대로이며 연결 대상만 새 인스턴스로 바뀌었다. 사설 IP는 모두 바뀌었다.
 ADR의 목표 구성과 실제 적용 상태를 구분한다.
+
+2026-11-04 Dev 앱은 Amazon Linux 2023 ARM64와 SSH 계정 `ec2-user`로 전환한 것을 확인했다.
+원문 암호화 키와 검증 파일은 준비했으며, DB는 V43 상태다. V44 적용과 실제 원문 전환은 미수행이다.
+아래 2026-10-23의 Ubuntu 설정은 과거 기록이며, 최신 확인은
+`backend/docs/diary-source-text-integration.md`를 따른다. 2026-11-05의 Dev와 Prod 교체 기록을 함께 확인한다.
 
 ## 런타임 구성
 
@@ -16,7 +23,7 @@ ADR의 목표 구성과 실제 적용 상태를 구분한다.
 flowchart TB
     browser["사용자 브라우저<br/>harudle.com / www.harudle.com / dev.harudle.com"]
 
-    subgraph ec2["EC2 · Ubuntu ARM64 · ap-northeast-2"]
+    subgraph ec2["EC2 · Amazon Linux 2023 ARM64 · ap-northeast-2"]
         host["Host Nginx + Certbot<br/>80 / 443 · HTTPS 종료"]
 
         subgraph docker["Docker Compose · harudle · app bridge network"]
@@ -73,8 +80,23 @@ flowchart TB
 | Backend 관리 포트 | `127.0.0.1:19091 → 8081` | `/actuator/prometheus` 수집 |
 | Backend 임시 파일 | `/tmp` tmpfs | 메모리 기반 `128m` |
 | 서버 환경 변수 | EC2 `/opt/harudle/.env` | 배포 간 유지, Backend `env_file` |
+| 원문 키 검증 자료 | 호스트 `/etc/harudle/diary-key-checks.json` → 컨테이너 `/var/run/harudle/diary-key-checks.json` | 읽기 전용, 배포 간 보존, 키와 함께 서버 밖에 백업 |
+| 신규 일기 작성 정책 | 배포본 `diary-source-text-release-mode` + `compose.diary-reader.yaml` 또는 `compose.diary-writer.yaml` | 최초 reader 성공 후 writer, 복구 시 배포본의 정책도 복원 |
+| prod writer 승인 | 호스트 `/etc/harudle/diary-writer-approval.json` | 실제 dev 복원 연습·prod 백업·reader 보존 기록을 운영자가 승인, 현재 canary 해시 변경 시 재검토 |
+| 기존 원문 전환 도구 | `/opt/harudle/maintenance/run_diary_source_text_backfill.sh` | 별도 유지보수 이미지의 ID를 고정해 수동 실행, 일반 서버 빌드에서 제외 |
 | S3 인증 | EC2 IAM Role `ec2-project` | 임시 자격 증명 사용 |
 | GCP WIF 설정 파일 | 호스트 `/etc/harudle/gcp/gcp-wif.json` → 컨테이너 `/var/run/harudle/gcp-wif.json` | 읽기 전용 마운트 |
+
+전환 도구의 `migrate`는 `READ_COMMITTED` 연결만 허용하며 다른 격리 수준은 쓰기 전에 거절한다.
+호출자의 연결 설정을 자동으로 바꾸지 않는다. v1 전용 앱의 DB 완료 검사는 전역 지연 초기화를
+켜도 앱 시작 시 실행한다. 완료 검사는 정확한 검증 완료 v1 CHECK, NOT NULL과 기본값 제거를
+DB 구조 정보로 확인한다. 사용자 테이블의 전체 COUNT나 JOIN은 실행하지 않는다. 배포는 서버 JAR의
+`DiarySourceTextReadinessMain`을 사용하며 성공 결과는 `{"command":"ready","ready":true}`다.
+전환 실패는 원본 예외 대신 고정된 단계별 오류 코드만 제공한다.
+최종화는 제약 설치, 검증, 기본값 제거를 각각 커밋한다. 강한 잠금은 NOWAIT로 얻어 스키마 변경만
+수행하고, 전체 집계와 검증은 일반 조회와 쓰기를 허용하는 잠금에서 수행한다. SQL 실행과 유휴 대기의
+1초 제한이 전체 잠금 시간의 상한은 아니며, 운영 규모의 격리 복원 DB에서 조회 차단 시간을 측정한다.
+측정과 허용 예산의 판단 기준은 `backend/docs/diary-source-text-finalize-measurement.md`를 따른다.
 
 두 컨테이너의 재시작 정책은 `unless-stopped`다. 이미지 처리·동시 실행 수·
 임시 파일 사용량을 바꿀 때는 위 메모리 제한을 함께 고려한다.
@@ -140,14 +162,15 @@ Prod도 앱 EC2와 DB EC2를 따로 사용하며, 앱 `.env`에는 DB 사설 IP�
 Prod 전환은 같은 날 팀이 알려준 내용이며, 두 환경의 DB 주소와 서버 사양은 AWS EC2 API로 확인했다.
 Prod 앱과 DB 컨테이너의 `healthy` 상태는 확인했다.
 Prod 앱에서 DB 계정으로 직접 접속하는 별도 시험은 수행하지 않았다.
+2026-11-05에 4대를 새 인스턴스로 교체하고 두 앱 `.env`의 `DB_HOST`를 새 DB 사설 IP로 바꿨다.
 
 ```mermaid
 flowchart LR
     subgraph dev["dev 환경"]
-        devBackend["harudle-dev<br/>앱 EC2"] -->|"사설 IP / 5432"| devDb[("harudle-dev-db<br/>10.0.100.99")]
+        devBackend["harudle-dev<br/>앱 EC2"] -->|"사설 IP / 5432"| devDb[("harudle-dev-db<br/>10.0.100.70")]
     end
     subgraph prod["prod 환경"]
-        prodBackend["harudle-prod<br/>앱 EC2"] -->|"DB 사설 IP"| prodDb[("harudle-prod-db<br/>10.0.100.153")]
+        prodBackend["harudle-prod<br/>앱 EC2"] -->|"DB 사설 IP"| prodDb[("harudle-prod-db<br/>10.0.100.146")]
     end
 ```
 
@@ -157,11 +180,13 @@ flowchart LR
 | `DEPLOY_ENV` | `dev` | `prod` |
 | Spring 활성 프로필 | `prod` | `prod` |
 | Compose | `compose.prod.yaml` + `compose.dev.yaml` | `compose.prod.yaml` |
-| 앱 EC2 | `harudle-dev` / `t4g.small` / 사설 IP `10.0.0.234` | `harudle-prod` / `t4g.small` / 사설 IP `10.0.0.183` |
+| 앱 EC2 | `harudle-dev` / `t4g.small` / 사설 IP `10.0.0.233` | `harudle-prod` / `t4g.small` / 사설 IP `10.0.0.39` |
 | DB EC2 | `harudle-dev-db` / `t4g.small` / PostgreSQL | `harudle-prod-db` / `t4g.small` / PostgreSQL |
 | DB 공인 IP | `54.116.226.98` | `43.202.26.248` |
-| DB 사설 IP | `10.0.100.99` | `10.0.100.153` |
-| DB 연결 대상 | `.env`의 `DB_HOST=10.0.100.99`, 포트 `5432` | `.env`의 `DB_HOST=10.0.100.153`로 변경했다는 팀 확인 |
+| DB 사설 IP | `10.0.100.70` | `10.0.100.146` |
+| DB 연결 대상 | `.env`의 `DB_HOST=10.0.100.70`, 포트 `5432` | `.env`의 `DB_HOST=10.0.100.146`, 포트 `5432` |
+| DB 데이터 디스크 | `vol-079e2259ecef5ae0c` / `/srv/harudle/db-data` | `vol-054247052e6a3f58e` / `/srv/harudle/db-data` |
+| DB 백업 stanza | `harudle-dev-al2023` | `harudle-prod-al2023` |
 | S3 버킷 | `techcourse-project-2026` | `techcourse-project-2026` |
 | 생성 이미지 prefix | `harudle/generated/diary-images/dev` | `harudle/generated/diary-images/prod` |
 | 참조 이미지 prefix | `harudle/references/generation/dev` | `harudle/references/generation/prod` |
@@ -180,17 +205,30 @@ S3 prefix 변경은 기존 DB의 이미지·참조 이미지 Object Key를 자�
 정기 실행 없이 이미지 변경 시 해당 회원의 삭제 대기 작업만 처리하며, 현재 사용 중인 파일은 삭제하지 않는다.
 실패한 작업은 해당 회원의 다음 이미지 변경에서 재시도한다.
 
-위 IP는 2026-10-23 AWS EC2 조회 기준이다. 앱의 DB 연결에는 사설 IP를 사용한다.
+위 IP는 2026-11-05 AWS EC2 조회 기준이다. 앱의 DB 연결에는 사설 IP를 사용한다.
 공인 IP 기록은 DB의 외부 직접 접속을 허용한다는 뜻이 아니다. 관리자 접속은 SSH 터널을 사용한다.
 인스턴스를 중지하거나 다시 만들면 주소가 달라질 수 있으므로 접속 전 현재 주소를 확인한다.
 
-### 새 Dev 서버에서 확인한 설정
+### DB 서버 저장소와 백업
+
+- 4대 모두 AMI `ami-0e576970884d94ada`(Amazon Linux 2023 ARM64)로 만들었다.
+  커널은 `6.1.189-236.400.amzn2023.aarch64`다.
+- DB 데이터 볼륨은 20GiB 암호화 gp3이며 인스턴스를 종료해도 남도록 설정했다.
+  각 DB 서버의 `/srv/harudle/db-data`에 마운트한다.
+- 백업은 pgBackRest를 사용한다. 저장 경로는 Dev `/harudle/db-backup/dev-al2023-20261105`,
+  Prod `/harudle/db-backup/prod-al2023-20261105`다. 두 서버 모두 매일 04:00(KST)에 백업 타이머가 실행된다.
+- DB TLS 인증서에는 아직 이전 DB 사설 IP만 들어 있다. 앱의 `sslmode`를 인증서 호스트 검증 방식으로
+  바꾸면 접속이 실패할 수 있으므로, 인증서를 새 IP로 다시 발급한 뒤 바꾼다.
+- Prod 앱 Host Nginx 설정은 `/etc/nginx/conf.d/harudle-prod.conf`이며 점검 페이지가 있다. `/usr/share/nginx/harudle-maintenance/ON` 파일이
+  있으면 켜지고, 파일을 지우면 꺼진다. 기본 상태는 꺼짐이다.
+
+### Dev 앱 서버에서 확인한 설정
 
 - `dev.harudle.com`은 새 앱 서버의 공인 IP `15.164.84.71`로 변경했다.
   공인 IP는 바뀔 수 있으므로 서버 작업 전 현재 연결 대상을 확인한다.
   기존 Dev 앱 서버 `54.117.6.110`은 AWS Name 태그가 `harudle-delete-me`로 변경돼 남아 있다.
   기존 RDS의 삭제 여부는 확인하지 않았다.
-- 앱 서버는 Ubuntu 26.04 ARM64이고, `/swapfile`에 Swap 2GiB를 적용했다.
+- 앱 서버는 Amazon Linux 2023 ARM64이고, `/swapfile`에 Swap 2GiB를 적용했다.
   파일 권한은 `600`이며 `/etc/fstab`에 등록했다. 재부팅 시험은 하지 않았다.
 - Docker와 Compose, Host Nginx와 Certbot을 설치했다. 호스트 Java는 Corretto 21,
   Node.js는 24, pnpm은 11.20.0이다. 실제 앱은 배포 이미지 안의 런타임을 사용한다.
@@ -202,17 +240,14 @@ S3 prefix 변경은 기존 DB의 이미지·참조 이미지 Object Key를 자�
   소유자는 `root:10001`, 권한은 `640`이다. 백엔드 사용자 `10001:10001`이 읽을 수 있고,
   컨테이너의 `/var/run/harudle/gcp-wif.json`에 읽기 전용으로 마운트된다.
   파일이 없으면 컨테이너 생성이 실패한다. 파일 내용과 비밀번호, 개인키는 저장소나 로그에 남기지 않는다.
-- Host Nginx의 `/etc/nginx/sites-available/harudle-dev`를 활성화했다.
+- Host Nginx 설정은 `/etc/nginx/conf.d/harudle-dev.conf`다. `nginx.conf`의 `conf.d/*.conf` 포함으로 적용된다.
   HTTP는 HTTPS로 전환하고, HTTPS 요청은 `127.0.0.1:3000`으로 전달한다.
   업로드 제한은 `25m`, 연결 제한은 10초, 송수신 제한은 기존 Dev와 같은 300초다.
   Host와 사용자 IP, 원래 HTTPS 여부를 전달한다. 저장소 예시의 240초와 실제 호스트 설정을 구분한다.
 - Certbot 인증서 발급과 갱신 시험에 성공했고 자동 갱신 타이머를 활성화했다.
   화면 HTTPS `200`, 관리 포트의 Prometheus 응답 `200`, 두 컨테이너의 `healthy`를 확인했다.
   로그인과 일기 생성은 별도로 시험하지 않았다.
-- 앱은 DB 사설 IP `10.0.100.99:5432`에 직접 연결한다. 이 주소에서 기존 DB 계정의
-  `SELECT 1`이 성공했다. 공인 IP `54.116.226.98:5432` 접속은 시간 초과됐다.
-  관리자 SSH 터널 성공과 앱의 직접 접속 성공은 별도로 확인한다.
-  이 접속 시험으로 DB TLS 검증이나 백업, 복원, EBS 암호화 적용까지 확인한 것은 아니다.
+- 앱은 DB 사설 IP `10.0.100.70:5432`에 직접 연결한다.
 
 ## 배포 구성
 
@@ -226,11 +261,27 @@ GitHub main
   → CodeDeploy → EC2 CodeDeploy Agent
       BeforeInstall    : ARM64 / Docker / Compose / jq / 서버 .env 확인
       AfterInstall     : 이미지 체크섬 검증 → docker load
-      ApplicationStart : 배포 환경 검사 → Compose 컨테이너 교체 (--no-build)
+      ApplicationStart : 배포 환경·writer 승인 검사 → 후보 키 검증 증거 → 승인 재확인 → DB 완료 검사 → Compose 컨테이너 교체 (--no-build)
       ValidateService  : 컨테이너 health + Frontend /health + 관리 포트 지표 확인
 ```
 
 CodeBuild가 이미지를 `docker save`로 묶어 전달하고 EC2가 로드한다.
+`DIARY_SOURCE_TEXT_RELEASE_MODE` 빌드 설정은 기본 `reader`이며 신규 작성을 차단한다.
+호환 reader 배포본을 성공·보존한 뒤 `writer`로 빌드해 신규 암호문 작성을 허용한다.
+복구 대상은 암호문·HMAC을 읽는 보존된 CodeDeploy 배포본이며 `:local` 이미지 태그가 아니다.
+prod writer는 실제 복원 연습과 백업 확인을 담은 운영자 승인 기록이 필요하다. CI가 이를 대신하지 않는다.
+Flyway는 비풀링 전용 연결에 잠금 대기 5초와 개별 SQL 실행 60초 제한을 두고 일반 JPA 풀과 분리한다.
+키 등록은 기존 서비스 중지·배출과 재시작 통제 아래 수행하며, 전체 키링 반영 후 신키 쓰기를 연다.
+기존 원문 전환 코드는 `backend/src/maintenance/java`에 분리한다. 일반 `bootJar`와 CodeBuild는
+이 코드를 컴파일하지 않으며, `maintenanceJar`와 `maintenanceTest`를 지정할 때만 도구를 빌드하고 검증한다.
+도구 JAR은 `backend/build/maintenance/harudle-diary-source-maintenance.jar`다. 별도 유지보수 이미지를
+검토한 빌드 환경에서 만들고 EC2에는 체크섬을 확인해 로드한다. 서버 EC2에서 Gradle이나 Docker 빌드를 하지 않는다.
+일반 CodeDeploy 배포본에는 유지보수 이미지가 포함되지 않으며, 원본 소스와 도구, 키 및 검증 자료는 별도 보존한다.
+CI의 실제 빌드 커밋은 `commit.txt`, PR 원본 커밋은 `head-commit.txt`로 구분한다. CI 다운로드 기간을
+복구용 장기 보존으로 취급하지 않는다. 배포 훅은 전환을 자동 실행하지 않는다.
+최종화는 전체 암호문·지문 검증 후 v1 전용 DB 제약과 기본값 제거를 적용한다.
+v1 전용 앱은 완료 검사에 실패하면 배포·운영 시작을 거절하며 v0를 읽거나 SHA를 그대로 허용하지 않는다.
+전환 후에는 v1 전용 reader 복구본을 성공·보존한 뒤 writer를 연다.
 EC2에서는 Gradle·Node 빌드를 수행하지 않는다. 네이티브 의존성과 베이스 이미지를
 바꿀 때는 최종 이미지의 `linux/arm64` 호환성을 확인한다.
 
@@ -238,6 +289,9 @@ EC2에서는 Gradle·Node 빌드를 수행하지 않는다. 네이티브 의존�
 실행하는 `.github/workflows/frontend-release.yml`이 정의되어 있다.
 PR 백엔드 CI는 `gradle/actions/setup-gradle`로 실행 파일, 의존성과 컴파일 결과를 저장한다.
 `--build-cache test --rerun`으로 컴파일 결과를 재사용하고 테스트는 매번 실행한다.
+`-PtestMaxParallelForks=2`로 테스트 클래스를 JVM 2개에 나눠 실행한다.
+일기 원문 암호화 배포 검사(키 사전 검사 스크립트, 부하 테스트 도구 복구 테스트, JAR 실행 검증과
+전환 도구 JAR 산출물)는 `Backend Crypto Checks` Job에서 일반 백엔드 테스트와 동시에 실행한다.
 캐시는 PR 실행에서도 저장한다. `develop-backend`의 백엔드 컴파일 입력 또는 CI 설정이
 바뀌면 같은 Job에서 `classes testClasses --build-cache`로 후속 PR용 공통 캐시를 만든다.
 이 push 실행은 컴파일과 캐시 저장만 수행하며, PR 검증과 실행 그룹을 나눠 서로 취소하지 않는다.
@@ -260,16 +314,16 @@ CodeBuild는 프론트엔드 입력이 같으면 이전 이미지를 재사용�
 - Dev DB EC2에도 Agent를 설치하고 `cloudwatch-agent.db.json`을 적용했다.
   메모리와 Swap, 루트 및 `/srv/harudle/db-data`의 사용률과 남은 용량을 1분마다 수집한다.
   새 앱 서버와 DB 서버의 메모리, Swap 및 DB 디스크 여유 공간이 CloudWatch에 도착한 것을 확인했다.
-- `DASHBOARD-harudle-dev`의 앱 대상은 `i-08ff5dddb7ac94f5c`, DB 대상은
-  `i-04fca55979b3240d6`이다. RDS 그래프는 EC2와 데이터 EBS 지표로 교체했다.
-  데이터 EBS는 `vol-00886d19a64c23e1f`다. 앱과 DB를 함께 덮어쓰던 공통 InstanceId 선택기는 제거했다.
+- `DASHBOARD-harudle-dev`의 앱 대상은 `i-0bf4f4130d31eb443`, DB 대상은
+  `i-073fa344c2badcf20`이다. RDS 그래프는 EC2와 데이터 EBS 지표로 교체했다.
+  데이터 EBS는 `vol-079e2259ecef5ae0c`다. 앱과 DB를 함께 덮어쓰던 공통 InstanceId 선택기는 제거했다.
   DB 전체 연결 수는 별도 수집이 필요하며 앱의 HikariPool 지표와 구분한다.
   대시보드 변경이 개별 경보의 대상도 바꾸는 것은 아니다.
-- Prod DB EC2 `i-01baa5c11a6224cd7`에도 `cloudwatch-agent.db.json`을 적용하고
+- Prod DB EC2 `i-01412b89da45b5f42`에도 `cloudwatch-agent.db.json`을 적용하고
   Agent 자동 시작과 `running`을 확인했다. 데이터 디스크는 Dev와 같은 `/srv/harudle/db-data`다.
   CloudWatch에서 메모리 여유 비율, Swap 사용률, 두 디스크 여유 공간의 실제 데이터 도착을 확인했다.
   `DASHBOARD-harudle-prod`의 RDS 그래프를 이 DB EC2와 데이터 EBS
-  `vol-048d203fac554e776`의 지표로 교체했다. 기존 Prod 앱 그래프는 유지했다.
+  `vol-054247052e6a3f58e`의 지표로 교체했다. 기존 Prod 앱 그래프는 유지했다.
 - Frontend `/health`는 Nginx의 응답 여부를 확인한다. DB와 S3, Gemini의 실제 기능은
   각각의 기능 검증과 로그로 확인한다.
 
@@ -293,6 +347,7 @@ CodeBuild는 프론트엔드 입력이 같으면 이전 이미지를 재사용�
 | 이미지 빌드·배포 훅 | [buildspec.yml](buildspec.yml), [appspec.yml](appspec.yml), `deploy/scripts/` |
 | 이미지 저장·조회·삭제 | [이미지 저장소 분리 절차](docs/image-storage-isolation.md) |
 | DB 연결·데이터 작업 | [DB 연결 설정](backend/src/main/resources/application.yml), [배포 환경 안내](deploy/README.md) |
+| 일기 원문 암호화·키 교체 | [원문 암호화 운영 안내](backend/docs/diary-source-text-encryption.md), `DIARY_SOURCE_TEXT_KEY_BASE64` (환경별 필수, 서버 `.env`에서 보존) |
 | 로그·지표·알람 | [모니터링 운영 안내](deploy/monitoring/README.md) |
 
 운영 기록에 과거 구성이 남아 있으면 현재 설정과 비교한다. 특히 로그 수집 방식,

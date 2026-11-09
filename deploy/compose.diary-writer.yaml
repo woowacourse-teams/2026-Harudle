@@ -1,0 +1,5 @@
+services:
+  backend:
+    environment:
+      DIARY_SOURCE_TEXT_RELEASE_MODE: "writer"
+      DIARY_SOURCE_TEXT_NEW_WRITES_ENABLED: "true"

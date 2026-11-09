@@ -71,6 +71,8 @@ class GuestDiaryController {
             ErrorType.GUEST_TRIAL_ALREADY_USED,
             ErrorType.IDEMPOTENCY_KEY_CONFLICT,
             ErrorType.GENERATION_UNAVAILABLE,
+            ErrorType.DIARY_SOURCE_TEXT_WRITE_UNAVAILABLE,
+            ErrorType.DIARY_SOURCE_TEXT_READ_UNAVAILABLE,
             ErrorType.GENERATION_CAPACITY_EXCEEDED
     }, guestGenerationFailures = {
             ErrorType.AI_PROVIDER_ERROR,
@@ -130,7 +132,8 @@ class GuestDiaryController {
             ErrorType.GUEST_SESSION_REQUIRED,
             ErrorType.GUEST_SESSION_EXPIRED,
             ErrorType.DIARY_NOT_FOUND,
-            ErrorType.IMAGE_STORAGE_ERROR
+            ErrorType.IMAGE_STORAGE_ERROR,
+            ErrorType.DIARY_SOURCE_TEXT_READ_UNAVAILABLE
     })
     @GetMapping("/{diaryId}")
     public ResponseEntity<GuestDiaryResponse> getDetail(

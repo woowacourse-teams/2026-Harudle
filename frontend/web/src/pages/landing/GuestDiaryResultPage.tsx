@@ -1,4 +1,5 @@
 import { css } from '@emotion/react';
+import { getAdditionalProblemAction, RequestError } from '../../shared/api';
 import { useState } from 'react';
 import { useParams } from 'react-router';
 import loadingAnimation from '../../assets/images/loading-animation.webp';
@@ -23,6 +24,9 @@ const GuestDiaryResultPage = () => {
   }
 
   if (resultRequest.status === 'error') {
+    const error = resultRequest.error;
+    const problem = error instanceof RequestError ? error.problem : undefined;
+    const action = getAdditionalProblemAction(problem, error.message);
     return (
       <div css={feedbackPageStyle}>
         <h1 css={feedbackTitleStyle}>
@@ -30,14 +34,15 @@ const GuestDiaryResultPage = () => {
             ? '게스트 체험을 이미 사용했어요'
             : GUEST_TRIAL_COPY.resultFailure}
         </h1>
-        <p css={feedbackMessageStyle}>{resultRequest.error.message}</p>
+        <p css={feedbackMessageStyle}>{error.message}</p>
+        {action && <p css={feedbackMessageStyle}>{action}</p>}
         {isGuestTrialAlreadyUsedError(resultRequest.error) ? (
           <LandingLoginCta
             label="로그인하기"
             analyticsEvent="landing_trial_login_clicked"
             location="already_used"
           />
-        ) : (
+        ) : problem?.code === 'DIARY_SOURCE_TEXT_READ_UNAVAILABLE' ? null : (
           <button
             type="button"
             css={feedbackRetryButtonStyle}

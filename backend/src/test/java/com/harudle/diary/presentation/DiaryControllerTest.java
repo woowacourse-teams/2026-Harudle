@@ -35,23 +35,24 @@ import com.harudle.diary.service.dto.DiarySummaryResult;
 import com.harudle.diary.service.dto.DiaryTimelineResult;
 import com.harudle.diary.service.exception.DiaryAccessDeniedException;
 import com.harudle.diary.service.exception.DiaryNotFoundException;
+import com.harudle.diary.service.exception.DiarySourceTextWriteException;
 import com.harudle.generation.adapter.out.s3.R2FallbackImageUrlProvider;
 import com.harudle.generation.config.R2StorageProperties;
 import com.harudle.generation.config.S3StorageProperties;
 import com.harudle.generation.diary.domain.GenerationStatus;
 import com.harudle.generation.diary.domain.GenerationTokenUsage;
-import com.harudle.generation.usage.domain.GenerationUsage;
-import com.harudle.generation.usage.service.exception.DailyGenerationLimitExceededException;
-import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
 import com.harudle.generation.diary.service.exception.GenerationCapacityExceededException;
-import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
-import com.harudle.generation.diary.service.port.dto.BackupObjectMetadata;
+import com.harudle.generation.diary.service.exception.GenerationUnavailableException;
 import com.harudle.generation.diary.service.port.BackupObjectStorage;
 import com.harudle.generation.diary.service.port.BackupStorageException;
-import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageLookupBudget;
+import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageStorageException;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
+import com.harudle.generation.diary.service.port.dto.BackupObjectMetadata;
+import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
+import com.harudle.generation.usage.domain.GenerationUsage;
+import com.harudle.generation.usage.service.exception.DailyGenerationLimitExceededException;
 import io.restassured.http.ContentType;
 import io.restassured.module.mockmvc.RestAssuredMockMvc;
 import io.restassured.module.mockmvc.response.MockMvcResponse;
@@ -62,12 +63,14 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -458,6 +461,45 @@ class DiaryControllerTest {
         assertThat(response.statusCode()).isEqualTo(400);
         assertThat(response.jsonPath().getString("code")).isEqualTo("VALIDATION_ERROR");
         assertThat(response.jsonPath().getString("errors[0].field")).isEqualTo("sourceText");
+    }
+
+    static Stream<String> malformedJsonSourceTexts() {
+        String slash = String.valueOf((char) 92);
+        return Stream.of(slash + "uD800", slash + "uDC00", slash + "uD800a", "a" + slash + "uDC00");
+    }
+
+    @ParameterizedTest
+    @MethodSource("malformedJsonSourceTexts")
+    @DisplayName("짝이 없는 문자 코드 입력은 생성 호출 전에 400으로 거절한다")
+    void rejectMalformedUnicodeAsValidationError(String escapedSourceText) {
+        MockMvcResponse response = authenticatedRequest()
+                .contentType(ContentType.JSON)
+                .header("Idempotency-Key", IDEMPOTENCY_KEY)
+                .body("{\"diaryDate\":\"2026-08-06\",\"sourceText\":\"" + escapedSourceText + "\"}")
+                .post("/api/v1/diaries");
+
+        assertThat(response.statusCode()).isEqualTo(400);
+        assertThat(response.jsonPath().getString("code")).isEqualTo("VALIDATION_ERROR");
+        assertThat(response.jsonPath().getString("errors[0].field")).isEqualTo("sourceText");
+        verifyNoInteractions(diaryCreationService);
+    }
+
+    @Test
+    @DisplayName("신규 원문 보호 실패는 안전한 503과 나중 이용 안내로 반환한다")
+    void returnSafeSourceTextWriteFailure() {
+        when(diaryCreationService.create(any(CreateDiaryCommand.class)))
+                .thenThrow(new DiarySourceTextWriteException());
+
+        MockMvcResponse response = authenticatedRequest()
+                .contentType(ContentType.JSON)
+                .header("Idempotency-Key", IDEMPOTENCY_KEY)
+                .body("{\"diaryDate\":\"2026-08-06\",\"sourceText\":\"사용자의 비밀 일기\"}")
+                .post("/api/v1/diaries");
+
+        assertThat(response.statusCode()).isEqualTo(503);
+        assertThat(response.jsonPath().getString("code")).isEqualTo("DIARY_SOURCE_TEXT_WRITE_UNAVAILABLE");
+        assertThat(response.jsonPath().getString("action")).contains("나중에").contains("보관");
+        assertThat(response.asString()).doesNotContain("사용자의 비밀 일기", "AES", "HMAC", "primary");
     }
 
     @Test

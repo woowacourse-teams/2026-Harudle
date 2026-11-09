@@ -55,7 +55,7 @@ class GuestDiaryCreationTransactionService {
             boolean queueForWorker
     ) {
         Instant now = currentTime();
-        GuestSession session = guestSessionResolver.resolveForUpdate(rawSessionToken, now);
+        GuestSession session = resolveUnclaimedSession(rawSessionToken, now);
         CreateDiaryCommand command = guestCommand.toDiaryCommand(session.getGuestUserId());
 
         if (session.isUsed()) {
@@ -75,11 +75,21 @@ class GuestDiaryCreationTransactionService {
             CreateGuestDiaryCommand guestCommand
     ) {
         Instant now = currentTime();
-        GuestSession session = guestSessionResolver.resolveForUpdate(rawSessionToken, now);
+        GuestSession session = resolveUnclaimedSession(rawSessionToken, now);
         CreateDiaryCommand command = guestCommand.toDiaryCommand(session.getGuestUserId());
 
         return claimService.findExistingClaim(command)
                 .map(claim -> recoverSessionAssociation(session, command, claim, now));
+    }
+
+    // 회원에게 옮긴 일기는 게스트 세션으로 다시 받을 수 없게 한다.
+    // 새 세션 발급으로 체험을 다시 하지 않도록 세션 오류(401)가 아닌 체험 사용 완료(409)로 거절한다.
+    private GuestSession resolveUnclaimedSession(String rawSessionToken, Instant now) {
+        GuestSession session = guestSessionResolver.resolveForUpdate(rawSessionToken, now);
+        if (session.isClaimed()) {
+            throw new GuestTrialAlreadyUsedException();
+        }
+        return session;
     }
 
     private GuestDiaryCreationClaim findReplayClaim(

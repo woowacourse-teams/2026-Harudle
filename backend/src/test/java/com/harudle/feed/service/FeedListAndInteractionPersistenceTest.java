@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.Mockito.when;
 
-import com.harudle.TestcontainersConfiguration;
 import com.harudle.category.service.port.CategoryReader;
 import com.harudle.diary.repository.DiaryLifecycleRepository;
 import com.harudle.feed.query.FeedSort;
@@ -13,9 +12,8 @@ import com.harudle.feed.service.exception.FeedNotFoundException;
 import com.harudle.feed.service.port.FeedInteractionPort;
 import com.harudle.feed.service.port.FeedInteractionPort.CounterChange;
 import com.harudle.feed.service.port.FeedInteractionPort.CounterKind;
-import com.harudle.feed.service.port.FeedLikeReader;
 import com.harudle.profile.service.port.PublicProfileReader;
-import com.harudle.push.service.port.FeedPushOutbox;
+import com.harudle.support.FeedPersistenceTestSupport;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
@@ -37,18 +35,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.IllegalTransactionStateException;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers(disabledWithoutDocker = true)
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest
-class FeedListAndInteractionPersistenceTest {
+class FeedListAndInteractionPersistenceTest extends FeedPersistenceTestSupport {
     private static final UUID AUTHOR = UUID.fromString("08d69a34-6d70-4d42-a158-671bc67733c9");
     private static final UUID FIRST = UUID.fromString("10000000-0000-0000-0000-000000000001");
     private static final UUID SECOND = UUID.fromString("80000000-0000-0000-0000-000000000002");
@@ -63,11 +55,6 @@ class FeedListAndInteractionPersistenceTest {
     @Autowired private FeedInteractionPort interactions;
     @Autowired private FeedDeletionService deletion;
     @Autowired private DiaryLifecycleRepository diaryLifecycle;
-    @MockitoBean private CategoryReader categories;
-    @MockitoBean private PublicProfileReader profiles;
-    @MockitoBean private FeedLikeReader likes;
-    @MockitoBean private FeedPushOutbox outbox;
-    @MockitoBean private JwtDecoder jwtDecoder;
     private final Map<UUID, UUID> diaryIds = new HashMap<>();
     private long dailyCategory;
     private long otherCategory;

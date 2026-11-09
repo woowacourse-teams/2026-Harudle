@@ -6,7 +6,7 @@
 Internet -> host Nginx/Certbot -> 127.0.0.1:3000
                                  -> frontend Nginx
                                     -> React static files
-                                    -> /api/* -> backend:8080 -> RDS/S3/Gemini
+                                    -> /api/* -> backend:8080 -> DB/S3/Gemini
 ```
 
 ## 만료된 Refresh Token 정리
@@ -22,13 +22,17 @@ CloudWatch 앱 로그에서 `event=refresh_token_cleanup_run`의 `deletedCount`�
 
 ## EC2 최초 설정
 
-Docker, Docker Compose v2, `jq`를 설치합니다. `BeforeInstall`은 이 도구들이 없으면 기존 배포 파일을 정리하기 전에 중단합니다.
+앱 서버는 Amazon Linux 2023 ARM64입니다. 패키지는 `dnf`로 설치하며 Ubuntu의 `apt`, `sites-available` 방식은 사용하지 않습니다.
+
+Docker, Docker Compose 2.24.4 이상, `jq`를 설치합니다. 검증 컨테이너의 로그 설정을 완전히
+교체하는 [`!override`는 Compose 2.24.4 이상](https://docs.docker.com/reference/compose-file/merge/#replace-value)이 필요합니다.
+`BeforeInstall`은 도구가 없으면 기존 배포 파일을 정리하기 전에 중단합니다.
 
 CodeDeploy가 사용하는 고정 경로에 운영 환경 파일을 만들고 실제 값으로 교체합니다. 이 파일은 Git에 커밋하거나 CodeBuild 아티팩트에 포함하지 않습니다.
 
 ```bash
 sudo mkdir -p /opt/harudle
-sudo nano /opt/harudle/.env
+sudo vi /opt/harudle/.env
 sudo chmod 600 /opt/harudle/.env
 ```
 
@@ -37,6 +41,29 @@ EC2에서는 `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`�
 `.env.docker.example`은 운영 환경 예시입니다. 개발 서버에서는 다음 표의 dev 값을 사용합니다. 두 환경 모두 `SPRING_PROFILES_ACTIVE=prod`를 사용하더라도 이미지 환경은 `DEPLOY_ENV`로 구분합니다.
 
 서버 `.env`의 기존 `SHARE_PUBLIC_BASE_URL`을 `FEED_PUBLIC_BASE_URL`로 교체하고, 해당 환경의 프론트 피드 페이지 주소를 설정합니다. 운영 환경 예시는 다음과 같습니다.
+
+일기 원문 암호화 배포 전에는 각 환경의 `/opt/harudle/.env`에 독립적인 32바이트 Base64
+`DIARY_SOURCE_TEXT_KEY_BASE64`와 신뢰할 수 있는 `/etc/harudle/diary-key-checks.json`을 준비해야 합니다.
+후보 이미지가 기존 검증 자료를 복호화하고 HMAC을 확인한 뒤, #423 전환 완료 `ready`까지
+성공해야 컨테이너를 교체합니다. 미완료면 #442 호환 앱을 계속 제공하며 후보 CLI로 전환합니다.
+같은 ID에 다른 32바이트 키를 넣어 검증이 실패하면 기존 컨테이너를 교체하지 않습니다. 앱 자체도
+`prod` 프로필이거나 배포 모드 환경 변수가 있으면 앱 시작 시 같은 검증을 요구합니다.
+키와 검증 자료는 배포마다 재생성하지 않습니다.
+키는 JWT 키와 재사용하지 않습니다. 암호문을 쓰기 시작한 뒤의 복구 대상은 먼저 성공시켜 둔
+암호화 호환 `reader` 배포본입니다. #423 완료 이후에는 v1-only reader를 새 복구 기준으로
+성공·보존하고 이전 평문 호환 배포본을 복구 목록에서 제외합니다. 전환 순서와 키 교체·복구 조건은
+[일기 원문 암호화 운영 안내](../backend/docs/diary-source-text-encryption.md)를 따릅니다.
+
+배포·키 변경·복원·이미지 정리는 동시에 수행하지 않으며, 검증 시작부터 교체 완료까지 `.env`,
+Compose, canary와 후보 이미지 태그를 바꾸지 않습니다. 검증과 교체는 파일을 다시 읽으므로 이
+운영 전제를 지키지 않으면 검증한 입력과 실제 컨테이너 입력이 달라질 수 있습니다. 앱 시작 검증은
+잘못된 키로 쓰기를 시작하는 것을 막지만 교체 후의 시작 실패까지 무중단으로 복구하지는 않습니다.
+
+JVM 설정은 `JAVA_OPTS`를 사용합니다. `JAVA_TOOL_OPTIONS`, `JDK_JAVA_OPTIONS`, `_JAVA_OPTIONS`는
+JVM이 값을 stderr에 자동 출력하므로 배포의 최종 환경과 런타임 entrypoint에서 비어 있지 않으면
+거절합니다. 배포 전 검증은 종료 0과 정확한 `{"verified":true}` 한 줄을 함께 확인합니다. `-version`,
+`--dry-run`처럼 Main을 실행하지 않고 정상 종료하는 Java 옵션을 검증 성공으로 처리하지 않습니다.
+one-off 검증에만 JVM 통합 로그를 끄며 실제 앱의 GC 로깅 설정은 유지합니다.
 
 ```dotenv
 FEED_PUBLIC_BASE_URL=https://www.harudle.com/feeds
@@ -182,6 +209,480 @@ CloudWatch log group: /aws/codebuild/harudle-dev-bulid
 
 `buildspec.yml`은 빌드 호스트 아키텍처와 관계없이 최종 이미지를 `linux/arm64`로 생성하고 이미지 아키텍처를 검증합니다. x86 빌드 환경에서는 QEMU/binfmt를 등록하므로 Docker 교차 빌드를 위해 Privileged mode가 반드시 필요합니다.
 
+### 원문 암호화 최초 적용과 복구 배포본
+
+CodeBuild의 `DIARY_SOURCE_TEXT_RELEASE_MODE`는 기본값이 `reader`입니다. 빌드할 때
+선택값을 `diary-source-text-release-mode` 파일로 묶고, 배포 훅은 해당 Compose override를
+마지막에 적용합니다. 서버 `.env`를 바꿔도 복구 배포본의 정책이 writer로 바뀌지 않습니다.
+
+| 배포본 | 신규 일기 작성 | 기존 상세·동일 요청 재조회 | 보관 목적 |
+| --- | --- | --- | --- |
+| #442 `reader` A | 신규 claim 503 | v0·v1·HMAC 지원 | 최초 호환 배포 및 전환 전 복구 기준 |
+| #442 `writer` B | v1 암호문·HMAC으로 저장 | v0·v1 지원 | 온라인 배치 중 서비스 유지 |
+| #423 `reader` C | 신규 claim 503 | v1만 지원 | finalize 후 성공·보존할 새 복구 기준 |
+| #423 `writer` D | v1 암호문·HMAC으로 저장 | v1만 지원 | C 성공 이후 정상 운영 |
+
+1. 키·검증 자료를 아래 절차로 준비하고 서버 밖의 암호화된 보관소에 함께 백업합니다.
+2. `reader`로 빌드한 A를 dev, prod에 각각 배포합니다. 조회·이미지 접근과 작성 차단을 확인하고
+   CodeDeploy가 `Succeeded`인지 확인합니다. 커밋, CodeDeploy revision의 S3 bucket/key/version,
+   이미지 ID, 담당자와 확인 시각을 운영 기록에 남기고 아티팩트를 보존합니다.
+3. 아래 실제 복원 조건과 prod 승인을 마친 뒤 같은 검토된 코드에서
+   `DIARY_SOURCE_TEXT_RELEASE_MODE=writer`를 명시해 B를 빌드·배포합니다.
+   최초 전환에서는 A 확인 없이 writer로 직행하지 않습니다. 이후 정상 빌드도 writer를 명시합니다.
+4. #423 전환은 아래 후보 CLI로 따로 수행합니다. v0가 남아 있으면 #423 앱을 먼저 교체하지 않습니다.
+   finalize 뒤 C를 성공·보존하고, prod는 C 원본 참조를 반영한 승인을 갱신한 뒤 D를 엽니다.
+   완료 후 장애 복구는 C 또는 이후의 v1-only reader를
+   선택하고 #442의 평문 호환 A/B를 승인 복구 목록에서 제외합니다. 암호화 미지원 구버전도 금지합니다. 과거 배포본의 훅은 이 검사를 포함하지 않으므로
+   새 코드만으로 모든 구버전 수동 배포를 차단할 수는 없습니다.
+
+자동 롤백이 필요한 배포는 그룹 설정뿐 아니라 그 배포의 override도 확인합니다.
+[CodeDeploy 롤백은 이전 revision을 새 배포로 재실행](https://docs.aws.amazon.com/codedeploy/latest/userguide/deployments-rollback-and-redeploy.html)합니다.
+성공 후 `docker image prune`을 실행하므로 복구를 기존 `:local` 태그나 dangling 이미지에 의존하지 않습니다.
+`HARUDLE_GENERATION_ADAPTERS_ENABLED=false`는 이미지 URL 조회에도 영향을 주므로 reader를 대신하지 않습니다.
+
+### prod writer 승인
+
+prod writer의 사전조건은 **dev 서버 밖 백업을 실제로 격리 복원하고 검토한 기록**과 **prod 키링/canary
+백업 및 호환 reader 원본 보존 확인**입니다. 실행자와 검토자는 서로 다른 사람이 기록을 검토합니다.
+dev 복원 성공을 prod 키 자체의 복원 성공으로 기록하지 않습니다. prod 복원 가능성도 별도로 확인합니다.
+
+<details>
+<summary>실제 복원 연습의 완료 항목과 기록</summary>
+
+1. dev의 v1 테스트 일기와 성공한 생성 요청을 포함하는 DB 백업, 같은 세대의 키링과 canary를
+   서버 밖 암호화 보관소에서 가져와 별도의 복원 DB와 앱에 복원합니다. live `.env`를 기본값으로
+   사용하지 않고 복원 대상 DB 주소와 키링/canary를 명시합니다. 원래 canary의 환경은 변경하지 않습니다.
+2. 복원 환경이 prod RDS·S3를 변경하지 않으며 생성·정리 스케줄러나 AI 호출 같은 외부 부작용이
+   발생하지 않도록 점검합니다. 키 누락/손상에 실패하는지 먼저 확인한 후 신뢰된 쌍으로 복원합니다.
+3. `verify`, `verify-data`의 checked > 0 및 failed = 0, 본인 상세, 완료된 동일 요청의 재조회와
+   타인 접근 거절을 확인합니다. 이미 성공한 요청 재조회로 AI 생성을 다시 실행하지 않았는지도 확인합니다.
+4. 실행자·검토자·시각, 키 ID 목록, 키링/canary 백업 세대, DB 백업 식별자, 후보 이미지 ID와 reader
+   원본 위치, 각 명령·조회 결과를 변경 이력이 남는 운영 기록에 남깁니다. 원문·키·암호문·지문·SQL
+   진단과 인증 토큰은 기록하지 않습니다. CI 통과나 체크리스트 복사는 실제 수행의 증거가 아닙니다.
+5. 별도 dev 전환 리허설에서 reader 503 시작부터 writer 실제 생성 확인까지의 시간과 복구 시간을
+   측정합니다. 팀이 허용한 점검 창·공지 기준을 확정한 뒤 prod 전환을 시작합니다. 현재 시간은 미측정입니다.
+
+</details>
+
+`/etc/harudle/diary-writer-approval.json`은 root 소유 600의 운영자 승인서입니다. 현재 prod canary의
+SHA-256과 승인된 복원·백업 기록 및 reader 원본 참조를 묶습니다. canary 등록/복원으로 파일이
+변경되면 승인을 다시 검토합니다. 참조는 비밀값 없는 변경 불가 기록 식별자를 사용하며, reader는
+S3 bucket/key/VersionId 또는 보존한 불변 키와 체크섬 등 실제 재배포 가능한 원본을 가리켜야 합니다.
+
+<details>
+<summary>미승인 템플릿 — 복사만으로 writer를 열 수 없음</summary>
+
+```json
+{
+  "formatVersion": 1,
+  "environment": "prod",
+  "canarySha256": null,
+  "devRestoreVerified": false,
+  "devRestoreRecord": null,
+  "prodBackupVerified": false,
+  "prodBackupRecord": null,
+  "readerRevision": null,
+  "approvedAt": null,
+  "approvedBy": null
+}
+```
+
+모든 확인을 실제 완료한 후 검토자가 승인 시각(UTC ISO 8601)과 신원, 기록 식별자 및 현재 canary
+해시를 작성합니다. 비밀 키는 넣지 않습니다. 배포 훅은 prod writer에서 승인서의 필드·타입·권한과
+canary 해시를 검증하며 미승인/누락이면 교체 전에 거절합니다. 승인서는 실제 외부 복원·보관·API
+확인의 자동 증명이 아닌 운영자의 확인서입니다. reader와 dev에는 이 prod 승인서를 요구하지 않습니다.
+
+</details>
+
+**현재 실제 사용자 v1 데이터의 dev/prod DB 백업 복원·전환 실측·prod 승인은 미수행입니다.** 이 상태를 승인 완료로
+간주하지 않습니다. CodeBuild의 writer 선택만으로 운영 전환을 완료했다고 기록하지 않습니다.
+
+### 원문 암호화 V44 잠금과 점검 배포
+
+V44의 CHECK 추가는 기존 `diaries` 전체 검사와 강한 테이블 잠금을 수반합니다. 사용자 수를 일기
+행 수로 대신하거나 작은 테스트 통과만으로 운영 잠금 시간을 추정하지 않습니다. 적용 이력이 있는
+암호화 SQL의 내용은 유지하며, 최신 큐 V28과 회원탈퇴 V38 및 후속 V39~V43과 겹치지 않도록 번호를 V44로 옮겼습니다.
+이전 암호화 V28 또는 V38의 적용 이력이 있으면 바로 배포하거나 이력을 고치지 말고
+[별도 전환 조건](../backend/docs/diary-source-text-encryption.md#형식과-인증)을 먼저 확인합니다.
+잠금 정책은 별도 Flyway 연결 설정에서 관리합니다.
+
+Flyway 전용 비풀링 연결은 잠금 대기 5초, 개별 SQL 실행 60초를 제한합니다. 일반 JPA/Hikari
+연결의 timeout을 변경하지 않습니다. 이 값은 **정책상 제한**이며 예상 실행 시간이나 전체 잠금
+보유 시간의 상한이 아닙니다. 여러 SQL의 시간과 롤백·연결 장애 시간은 별개입니다. 점검 전 장기
+트랜잭션·writer를 배출하고 dev의 대표 행 수로 측정해 허용 시간을 승인합니다. 시간 초과 시 V44
+트랜잭션 롤백과 실제 schema/history를 확인하고 blocker를 해결한 후 재실행합니다. Flyway repair,
+제약 제거, timeout 무제한 확대로 우회하지 않습니다. 실패한 writer 배포를 정상으로 기록하지 않습니다.
+
+온라인 대규모 전환이 필요하면 NOT VALID 추가와 VALIDATE를 **별도 커밋**으로 나누는 새 마이그레이션
+계획을 검토합니다. 같은 SQL 트랜잭션에 붙이면 먼저 얻은 강한 잠금이 검증 끝까지 유지됩니다.
+기존 SQL 뒤에 새 VALIDATE만 추가하는 것으로 이미 실행된 V44의 검사 시간을 줄일 수는 없습니다.
+[PostgreSQL ALTER TABLE](https://www.postgresql.org/docs/18/sql-altertable.html),
+[세션 timeout](https://www.postgresql.org/docs/18/runtime-config-client.html)을 기준으로 합니다.
+
+### 기존 원문·지문의 온라인 전환 (#423)
+
+배치는 자동으로 실행하지 않습니다. #442 호환 앱은 계속 제공하고, **서버와 별도로 준비한 유지보수 이미지**의
+`/app/maintenance.jar`에서 `DiarySourceTextBackfillMain`을 실행합니다. 일반 서버 이미지에는 이 진입점과
+행 전환 코드가 없으며, 정상 CodeBuild도 전환 코드를 컴파일하지 않습니다.
+
+유지보수 이미지는 검토한 빌드 환경에서 만들고, 체크섬을 확인해 EC2에 전달하고 로드합니다.
+일반 CodeDeploy 산출물이나 AfterInstall로 로드한 서버 이미지에서 전환 도구를 찾지 않습니다.
+**서버 EC2에서는 Gradle이나 Docker 빌드를 하지 않습니다.**
+
+<details>
+<summary>유지보수 JAR 확인, 이미지 준비와 EC2 전달</summary>
+
+PR CI는 일반 서버 테스트와 `maintenanceTest`, 서버 JAR과 도구 JAR의 실제 실행 검증을 수행합니다.
+JAR 실행 검증은 `Backend Crypto Checks` Job에서 일반 테스트와 동시에 실행합니다.
+두 Job이 모두 성공한 실행에서 `diary-source-maintenance-<PR 원본 SHA>-<실행 차수>` 다운로드 산출물을 확인합니다.
+다음 네 파일을 `backend/build/maintenance/`에 놓습니다.
+
+- `harudle-diary-source-maintenance.jar`: 수동 전환 도구입니다.
+- `checksums.sha256`: JAR의 SHA-256 값입니다.
+- `commit.txt`: CI가 실제 빌드한 소스 커밋입니다.
+- `head-commit.txt`: 리뷰한 PR 원본 커밋입니다. PR 통합 테스트에서는 실제 빌드 커밋과 다를 수 있습니다.
+
+실행한 CI와 PR 원본 커밋이 검토 대상과 같은지 확인합니다. **소스는 `head-commit.txt`가 아니라
+`commit.txt`의 실제 빌드 커밋으로 준비**합니다. 다운로드 보존 기간이 끝나거나 PR 통합 커밋이
+사라질 수 있으므로, 소스 원본과 JAR 및 체크섬, 커밋 기록도 서버 밖에 별도 보존합니다.
+도구를 직접 빌드하고 검증할 때는 [전용 Gradle 명령](../backend/README.md#테스트)을 사용합니다.
+
+다음 명령은 ARM64 이미지를 만들 수 있고 `sha256sum`을 사용할 수 있는 검토용 빌드 환경의
+저장소 루트에서 실행합니다. 실제 빌드 커밋의 깨끗한 소스를 준비한 뒤 실행하는 예입니다.
+
+```bash
+reviewed_commit="$(git rev-parse HEAD)"
+test "$(cat backend/build/maintenance/commit.txt)" = "$reviewed_commit"
+(cd backend/build/maintenance && sha256sum -c checksums.sha256)
+docker buildx build --platform linux/arm64 --target maintenance --load \
+  -t "harudle-diary-maintenance:${reviewed_commit}" backend
+git archive --format=tar "$reviewed_commit" | gzip > diary-source-maintenance-source.tar.gz
+docker save "harudle-diary-maintenance:${reviewed_commit}" | gzip > diary-source-maintenance-image.tar.gz
+sha256sum diary-source-maintenance-image.tar.gz > diary-source-maintenance-image.tar.gz.sha256
+```
+
+이미지 압축 파일과 그 체크섬 파일을 EC2의 통제된 작업 디렉터리에 전달합니다. 그 디렉터리에서
+다음과 같이 검증하고 로드합니다. 마지막 태그에는 기록한 실제 빌드 커밋을 넣습니다.
+
+```bash
+sha256sum -c diary-source-maintenance-image.tar.gz.sha256
+gzip -dc diary-source-maintenance-image.tar.gz | sudo docker load
+sudo docker image inspect --format '{{.Id}}' 'harudle-diary-maintenance:<실제-빌드-커밋>'
+```
+
+출력된 이미지 ID와 원본 소스, JAR, 압축 파일의 체크섬 및 보관 위치를 운영 기록에 남깁니다.
+**CI 다운로드 산출물만으로 장기 복구 보관을 마친 것으로 판단하지 않습니다.** 검증한 유지보수 이미지와
+해당 백업의 키링 및 검증 파일을 서버 밖에 보관하고, 과거 v0 백업의 실제 복원 가능성을 확인해야 합니다.
+
+</details>
+
+실행 중 backend는 #442 코드일 수 있으므로 `docker exec`로 배치를 실행하지 않습니다.
+유지보수 이미지 ID는 `docker image inspect --format '{{.Id}}'`로 확인해 운영 기록에 남깁니다.
+`:local`이나 임의 태그는 runner의 입력으로 허용하지 않습니다. 보관 태그를 사용하더라도 실행은
+항상 기록한 `sha256:<64hex>` ID로 고정합니다. 배포와 이미지 정리 작업을 병행하지 않습니다.
+
+**최초 전환 전에 runner도 별도로 준비합니다.** 새 서버 앱은 전환 완료 전에는 시작 검사를 통과하지 못하므로,
+먼저 새 앱의 배포를 시도해 runner를 받는 방식으로 준비하지 않습니다.
+검토한 실제 빌드 커밋의 소스를 서버의 통제된 작업 디렉터리에 전달하고, 아래 세 파일만 root 소유와
+권한 755로 미리 설치합니다. 다음은 전달한 소스 경로를 지정한 뒤 실행하는 예입니다.
+
+```bash
+: "${reviewed_source_dir:?검토한 실제 빌드 커밋의 소스 경로를 지정하세요}"
+sudo install -d -o root -g root -m 755 /opt/harudle/maintenance
+sudo install -o root -g root -m 755 \
+  "$reviewed_source_dir/deploy/scripts/run_diary_source_text_backfill.sh" \
+  "$reviewed_source_dir/deploy/scripts/compose_environment.sh" \
+  "$reviewed_source_dir/deploy/scripts/diary_key_verification.sh" \
+  /opt/harudle/maintenance/
+```
+
+서버 `.env`, 배포 모드 파일과 Compose 파일은 `/opt/harudle`의 기존 검증된 설정을 그대로 사용합니다.
+일반 CodeDeploy도 이후 배포에서 같은 세 파일을 설치합니다. **전환 중에는 배포와 자동 재시작을 통제해
+수동 설치한 파일이나 기존 설정이 덮어써지지 않게 합니다.** 실행할 파일의 커밋과 설치 기록을 함께 남깁니다.
+runner는 같은 Compose env_file/environment/JAVA_OPTS와 readonly canary를 유지하고,
+마지막 override에서 유지보수 image와 로그 driver `none`만 지정합니다. 포트를 열거나 기존 앱을
+재시작하지 않으며, 이미지 자동 pull이나 빌드는 하지 않습니다. 진입점은 LOADER_MAIN으로 강제하고
+`/app/maintenance.jar`를 사용합니다. 일반 키 검증과 배포의 `ready`는 서버의 `/app/app.jar`를 사용합니다.
+
+**배치가 사용하는 활성 키를 현재 서비스가 복호화할 수 있어야 합니다.** 현재 구성은 dev/prod 각각의
+EC2에서 Compose backend를 실행하는 방식입니다. 실행 중 #442 앱은 시작할 때 키링을 메모리에
+읽으므로, 호스트 `.env`를 바꿔 후보 CLI의 키링을 준비해도 기존 앱에는 반영되지 않습니다.
+배치 후보에 최종 적용되는 활성 키 ID가 해당 환경에서 상세·재조회를 제공하는 모든 앱의 키링에
+이미 있어야 합니다. 호스트 설정 파일만 수정한 상태를 이 사전조건의 충족으로 기록하지 않습니다.
+
+새 키를 사용할 때는 구키와 기존 활성 키를 유지한 채 새 키를 키링과 canary에 등록하고, **먼저 모든
+호환 앱을 그 키링으로 재배포**합니다. 각 앱의 키 검증·배포 성공과 기존 조회를 확인·기록한 뒤
+활성 키를 바꾸고 후보 CLI 배치를 진행합니다. v0가 남아 있는 단계의 키링 재배포는 #442 호환
+버전으로 수행하며, 키 반영을 위해 #423 엄격한 앱을 먼저 교체하지 않습니다.
+runner와 canary 검증은 후보 프로세스의 설정을 확인할 뿐 실행 중인 모든 앱의 메모리 키링을
+자동 조회하거나 증명하지 않습니다. 배포 책임자가 해당 환경의 실제 실행 앱과 위 선행 배포 기록을
+확인해야 하며, 키 값을 inspect·로그·운영 기록에 출력하지 않습니다.
+
+```bash
+# dev EC2 예시. candidate_image에 검토하고 로드한 유지보수 이미지의 전체 sha256 ID를 넣습니다.
+candidate_image='sha256:<검증한-64자리-hex>'
+sudo bash /opt/harudle/maintenance/run_diary_source_text_backfill.sh dev \
+  --candidate-image="$candidate_image" status
+sudo bash /opt/harudle/maintenance/run_diary_source_text_backfill.sh dev \
+  --candidate-image="$candidate_image" migrate --batch-size 100 --max-batches 1
+```
+
+운영 EC2에서는 첫 인자를 `prod`로 지정합니다. 서버 설정의 `DEPLOY_ENV`·이미지 prefix와
+다르면 중단합니다. DB 대상은 별도 설정이므로 작업 전 해당 서버의 DB_HOST/DB_NAME이
+의도한 환경의 PostgreSQL인지 운영자가 확인합니다. 현재 dev/prod는 각각 별도 DB EC2를 사용합니다. 이 절차에서 DB role이나 접속 허용 설정을 변경하지 않습니다.
+키·DB 접속 정보를 셸 인자나 출력에 넣지 않습니다.
+
+- `status`는 저장 버전과 미처리 상태를 집계합니다. 종료 0은 조회 성공이며 전환 완료가 아닙니다.
+- `migrate`는 v0를 행별로 전환합니다. 종료 0은 현재 v0 처리 완료, 1은 실패, 2는 진행 중 상태나 처리 한도 등으로 미완료입니다.
+- `verify`는 모든 행을 인증 복호화하고 연결된 HMAC을 확인합니다. 성공해도 DB 완료 조건을 확정한 것은 아닙니다.
+- `finalize`는 전수 검증과 v0 0건 확인 후 v1 전용 제약과 기본값 제거를 확정합니다.
+- `ready`는 DB 구조 정보로 완료 조건만 확인합니다. 사용자 테이블의 COUNT나 JOIN은 실행하지 않습니다.
+  성공 결과는 `{"command":"ready","ready":true}`이며, 상세 건수는 `status`로 확인합니다.
+
+`--batch-size`는 migrate/verify/finalize에서 기본 100, 1~1,000이고 `migrate` 전용 `--max-batches`는 기본 1, 1~10,000입니다.
+미처리 상태를 확인하며 제한된 `migrate`를 반복합니다. `PROCESSING`은 잠금 후 건너뛰므로
+종료된 뒤 재실행합니다. 실패한 행의 변경은 롤백하고, 이미 전환한 v1은 다시 암호화하지 않습니다.
+한도를 늘리기 전에 실제 처리 시간·DB 대기·실패 건수를 확인합니다.
+
+```bash
+sudo bash /opt/harudle/maintenance/run_diary_source_text_backfill.sh dev \
+  --candidate-image="$candidate_image" verify
+sudo bash /opt/harudle/maintenance/run_diary_source_text_backfill.sh dev \
+  --candidate-image="$candidate_image" finalize
+sudo bash /opt/harudle/maintenance/run_diary_source_text_backfill.sh dev \
+  --candidate-image="$candidate_image" ready
+```
+
+runner는 stdout 전체를 비공개로 받은 뒤 명령별 고정 JSON 필드·숫자·boolean 타입만 확인해
+새 JSON 한 줄로 출력합니다. JVM/launcher 진단, stderr와 Compose 렌더 내용은 출력하지 않습니다.
+작업을 시작하지 못하거나 중단한 경우 종료 코드 1과 함께 `command`, `errorCode` 두 필드만 출력할 수 있습니다.
+원본 예외를 정제해 공개하는 방식이 아니며, runner는 아래 코드만 허용합니다.
+
+<details>
+<summary>전환 도구의 실패 코드와 다음 확인</summary>
+
+| 코드 | 확인할 대상 |
+| --- | --- |
+| `CONFIGURATION_INVALID` | 명령, 옵션, 환경 설정 형식과 필수 항목 |
+| `KEY_VERIFICATION_FAILED` | 신뢰한 키링과 검증 파일, 환경 일치 |
+| `DATABASE_CONNECTION_FAILED` | 의도한 DB 접속 경로와 접근 가능 여부 |
+| `DATABASE_OPERATION_FAILED` | 스키마, 권한, DB 상태와 커밋 결과 |
+| `ISOLATION_LEVEL_UNSUPPORTED` | `migrate` 연결이 `READ_COMMITTED`인지 |
+| `UNEXPECTED_FAILURE` | 프로세스 상태를 확인하고 새 연결에서 실제 반영 상태 조사 |
+
+키 값, DB 비밀번호, 원문이나 SQL 진단을 운영 기록에 복사하지 않습니다. 알 수 없는 코드나 중복 필드,
+다른 명령의 응답은 runner가 거절합니다. 행별 실패가 집계된 정상 결과 JSON은 기존 필드를 유지하고
+종료 코드 1로 실패를 알립니다. 실패 코드는 롤백 완료를 증명하는 값이 아닙니다.
+
+</details>
+
+최종화는 전수 검증 후 `NOT VALID` 설치, 일반 조회와 쓰기를 허용하는 잠금에서의 제약 검증,
+기본값 제거를 각각 커밋합니다. 스키마와 제약 정보를 먼저 확인하고, `ACCESS EXCLUSIVE NOWAIT`는
+제약 설치와 기본값 제거에만 사용합니다. 전체 행 집계와 검증은 이 강한 잠금에서 제외합니다.
+명령 전체에는 세션 advisory lock을 유지합니다. `NOT VALID` 설치 뒤부터 새로 저장하거나 변경하는
+v0를 거절하며, 중간 상태에서는 `ready`가 실패합니다. 이미 커밋한 단계는 보존하고 `finalize`를 재실행합니다.
+
+강한 잠금을 즉시 얻을 수 없으면 실패합니다. SQL 실행과 트랜잭션 유휴 대기를 각각 1초로 제한하지만
+전체 잠금 1초를 보장하지는 않습니다. 실제 조회 대기와 허용 예산은
+[격리 복원 DB 측정 절차](../backend/docs/diary-source-text-finalize-measurement.md)로 확인합니다.
+전체 명령 시간과 일반 조회를 막는 잠금 시간은 구분하며, 운영 규모의 실측은 아직 수행하지 않았습니다.
+`ready`를 제외한 명령의 기본 필드는 command, legacyRows, encryptedRows, unsupportedRows,
+processingLegacyRows, orphanRows, finalized입니다. migrate는 attempted/migrated/skippedProcessing/failed/orphanMigrated,
+verify/finalize는 checked/failed를 추가합니다. orphanRows는 모든 버전의 생성 기록 없는 일기 수이며
+그 자체로 오류 건수는 아닙니다. status의 encryptedRows는 버전별 집계이며 암호문 인증 성공 건수가 아닙니다.
+
+원문·키·암호문·지문 값을 담은 실패 덤프를 만들지 않습니다. 잘못된 SHA, 인증 실패, 지원하지 않는
+버전이나 SQL 실패가 나오면 수치만 기록하고 통제된 절차로 원인을 조사합니다. 실패를 평문 읽기,
+canary 재생성, 수동 지문 덮어쓰기로 우회하지 않습니다. 모든 배치가 끝나면 finalize/ready를 확인하고
+새 v1-only reader C를 성공·보존한 후 writer D를 배포합니다.
+
+[온라인 전환과 재실행](../backend/docs/diary-source-text-encryption.md#기존-데이터의-온라인-전환),
+[과거 백업의 보존·폐기와 실제 운영 기록](../backend/docs/diary-source-text-backup-policy.md)을 따릅니다.
+**이 저장소 작업에서는 실제 dev/prod 배치 실행·백업 복원·폐기를 수행하지 않았습니다.**
+
+### 키 검증 자료의 명시적 관리
+
+이 파일은 환경·키 ID별 공개 검증용 암호문과 HMAC입니다. 사용자 원문·비밀 키는 포함하지
+않지만 변조되면 잘못된 키를 신뢰할 수 있으므로 root가 관리합니다. 일반 배포는 읽기 전용으로
+마운트한 파일의 키 `verify` 후 별도 DB `ready` 검사를 통과해야 합니다. `verify`와 `register`는
+DB에 연결하지 않습니다. `initialize`는 최초 준비 조건을, `verify-data`는 실제 v1 원문을 JDBC로
+검사합니다. 배포의 `ready`는 서버 JAR의 `DiarySourceTextReadinessMain`에서 JDBC로 DB 구조 정보만
+확인합니다. 정확한 검증 완료 v1 CHECK와 NOT NULL, 기본값 제거를 같은 구조 잠금 안에서 검사합니다.
+어느 명령도 Spring context나 Flyway, AI 클라이언트를 시작하지 않으며 외부 로그 전송과 진단 원문 출력을 막습니다.
+배포 훅은 종료 0과 정확한 `{"command":"ready","ready":true}` 결과를 함께 요구합니다.
+추가 필드, 중복 키, 다른 타입과 예전 집계 형식은 거절합니다. JVM이 Main을 실행하지 않고
+종료 0만 반환한 경우에도 교체를 허용하지 않습니다. 키 검증의 성공 JSON 검사도 유지합니다.
+
+| 명령 | 용도 | 허용하지 않는 사용 |
+| --- | --- | --- |
+| `initialize` | 정상 기존 스키마와 현재 v0만 있는 최초 설치에서 canary 생성 | 운영 canary 분실·손상 복구, v1·미지원 버전이 있는 DB의 재초기화 |
+| `verify` | 기존 canary의 모든 키·환경·ID와 암복호화/HMAC 확인 | 파일 생성·복구·DB 데이터 전환 |
+| `register` | 기존 모든 canary를 검증한 뒤 새 키 ID만 추가 | 구키 삭제·동일 ID의 키 변경·누락 파일 재생성 |
+| `verify-data` | 현재 DB의 v1 전체를 인증 복호화하고 checked/failed만 집계 | canary 생성·v0 변환·배치 CLI의 전체 지문 검증 대체 |
+
+#### 최초 initialize 조건
+
+먼저 운영자가 모든 실제 writer와 진행 중인 작성 요청·worker를 중지·배출합니다. 현재 EC2·Compose
+구성에서 이를 확인할 수 없으면 backend를 정지하고 배포·재시작을 통제합니다. 후보 컨테이너에
+reader 설정을 넣는 것만으로 기존 앱과 다른 writer가 멈췄다고 판단하지 않습니다.
+
+`initialize`는 `public.diaries`의 SHARE 잠금을 얻은 뒤 schema와 저장 버전을 확인합니다.
+현재 v1이 한 건이라도 있거나 버전이 null/미지원이면 최종 canary를 생성하지 않고 거절합니다.
+DB 연결·권한·schema 상태가 불명확한 경우도 빈 DB로 취급하지 않습니다.
+
+정상 V44 이전 첫 업그레이드는 지원합니다. 필수 열과 `source_text VARCHAR(300) NOT NULL`,
+성공한 Flyway V1 이력과 암호화 V44 미적용을 확인한 경우입니다. 모든 이력 버전은 실제 배포본의
+SQL 파일에 포함되어 있어야 하며, 암호화 적용 여부는 후속 SQL 번호와 분리해 판단합니다.
+테이블이나 Flyway 이력이 준비되지 않은 새 DB는 먼저 검토된 기존 schema 준비 절차를 마쳐야 합니다.
+이 명령이 schema를 만들거나 Flyway를 대신 실행하지는 않습니다.
+
+현재 v1 0건은 최초 설치의 충분한 증거가 아닙니다. 과거 v1이 삭제되었거나 보존 DB 백업에 남아
+있을 수 있습니다. 운영 canary를 잃은 환경은 현재 v1 0건이어도 아래 복구 절차를 사용합니다.
+초기화는 임시 파일을 준비하고 DB 검사 트랜잭션의 커밋 성공을 확인한 뒤 최종 canary를 기존 파일
+덮어쓰기 없이 공개합니다. 실패·커밋 불명확 상태의 임시 파일을 최종 이름으로 바꿔 신뢰하지 않습니다.
+
+검토한 후보 이미지와 배포 파일을 로드한 뒤 배포 묶음 루트에서 실행하는 예입니다. `.env`는 root 소유 600,
+검증 파일은 root:10001 소유 640이며 컨테이너 UID/GID 10001이 부모 경로를 통과할 수 있어야 합니다.
+
+```bash
+sudo bash <<'SH'
+set -euo pipefail
+set +x
+export DEPLOYMENT_GROUP_NAME=harudle-dev # 운영은 harudle-prod
+source deploy/scripts/compose_environment.sh
+configure_compose /opt/harudle
+install -d -m 0750 -o root -g 10001 /etc/harudle
+override="$(mktemp)"
+trap 'rm -f -- "$override"' EXIT
+cat > "$override" <<'YAML'
+services:
+  backend:
+    volumes: !override
+      - type: bind
+        source: /etc/harudle
+        target: /var/run/harudle
+    logging: !override
+      driver: none
+YAML
+operation=initialize # 위 최초 준비 조건을 충족할 때만 사용. 신규 키 추가는 register
+if ! docker compose "${COMPOSE_ARGS[@]}" --file "$override" run --rm --no-deps -T \
+  --user 0:0 --env LOADER_MAIN=com.harudle.diary.infrastructure.crypto.DiarySourceTextKeyCheckMain \
+  --entrypoint sh backend -c \
+  'exec java ${JAVA_OPTS:-} -Xmx128m -Xlog:disable -Dloader.main="$LOADER_MAIN" -cp /app/app.jar org.springframework.boot.loader.launch.PropertiesLauncher "$1"' \
+  sh "$operation" >/dev/null 2>&1; then
+  echo '키 검증 자료 관리 실패: 기존 키와 백업을 확인하세요.' >&2
+  exit 1
+fi
+chown root:10001 /etc/harudle/diary-key-checks.json
+chmod 640 /etc/harudle/diary-key-checks.json
+SH
+```
+
+#### 운영 canary 분실·손상 복구
+
+canary 검사는 앱 시작과 배포 전에 실행합니다. 실행 중 앱의 파일 유실을 계속 감시해 자동으로
+쓰기를 중단하는 기능은 아닙니다. 분실·손상·키 불일치를 발견하면 운영자가 신규 쓰기를 차단하고
+진행 중 요청을 배출합니다. 기존 writer가 계속 실행되거나 안전하게 배출할 수 없으면 backend를
+정지합니다. 파일 복원 전에는 reader 재배포도 canary 검사에서 실패할 수 있습니다.
+
+1. 마지막으로 신뢰한 **같은 백업 세대의 키링과 canary를 함께 복원**합니다. 암호화 설정만 복원하며
+   오래된 `.env`의 DB 주소 등 다른 설정까지 무심코 되돌리지 않습니다. 현재 DB와 보존 중인 과거
+   DB 백업이 참조하는 모든 구키를 포함해야 합니다. 백업 위치·세대·키 ID 목록·검토자를 기록합니다.
+2. 파일 소유권·권한을 확인하고 `verify`를 통과시킵니다. canary를 새로 만드는 것은 복구가 아닙니다.
+3. 복원한 키로 `verify-data`를 수행해 현재 DB의 모든 v1 인증 복호화를 확인합니다. v0는 건너뛰므로
+   checked=0 또는 failed=0만으로 최초 설치나 전체 DB 암호화 완료를 증명하지 않습니다.
+4. DB 단계에 맞는 reader로 키 검증·본인 상세·동일 요청 재조회를 확인한 뒤 writer를 엽니다.
+   전환 중 v0가 남아 있으면 #442 호환 reader로 배치를 이어가며, 완료 후에는 ready를 통과한 #423
+   v1-only reader C를 사용합니다. canary 복원이 배치 verify/finalize/ready를 대신하지 않습니다.
+   실제 DB 백업도 격리 복원해 해당 키로 검증하고, v0 백업은 전환을 마친 뒤 서비스에 연결합니다.
+5. 신뢰된 키링/canary 쌍을 확보하지 못하거나 실제 v1 검증에 실패하면 중단합니다. 파일 삭제 후
+   initialize, 임시 파일 이름 변경, 잘못된 키로 canary 재생성으로 우회하지 않고 별도 복구를 진행합니다.
+
+복원한 canary가 설치된 뒤 배포 묶음 루트에서 실행하는 예입니다. 원시 JVM/SQL 진단은 숨기고,
+허용된 두 집계 필드만 다시 출력합니다. 첫 `verify` 실패 시 데이터 검증도 진행하지 않습니다.
+
+```bash
+sudo bash <<'SH'
+set -euo pipefail
+set +x
+export DEPLOYMENT_GROUP_NAME=harudle-dev # 운영은 harudle-prod
+source deploy/scripts/compose_environment.sh
+configure_compose /opt/harudle
+override="$(mktemp)"
+trap 'rm -f -- "$override"' EXIT
+cat > "$override" <<'YAML'
+services:
+  backend:
+    logging: !override
+      driver: none
+YAML
+run_key_command() {
+  docker compose "${COMPOSE_ARGS[@]}" --file "$override" run --rm --no-deps -T \
+    --env LOADER_MAIN=com.harudle.diary.infrastructure.crypto.DiarySourceTextKeyCheckMain \
+    --entrypoint sh backend -c \
+    'exec java ${JAVA_OPTS:-} -Xmx128m -Xlog:disable -Dloader.main="$LOADER_MAIN" -cp /app/app.jar org.springframework.boot.loader.launch.PropertiesLauncher "$1"' \
+    sh "$1"
+}
+if ! run_key_command verify >/dev/null 2>&1; then
+  echo '복원한 키 검증 자료를 확인할 수 없습니다.' >&2
+  exit 1
+fi
+status=0
+result="$(run_key_command verify-data 2>/dev/null)" || status=$?
+if ! counts="$(jq -cse '
+  select(length == 1) | .[0] |
+  select(type == "object" and (keys | sort) == ["checked", "failed"]) |
+  select([.checked, .failed] | all(type == "number" and . >= 0 and floor == .)) |
+  {checked, failed}
+' <<<"$result" 2>/dev/null)"; then
+  echo '실제 v1 데이터 검증에 실패했습니다. 비공개 진단과 복구 자료를 확인하세요.' >&2
+  exit 1
+fi
+printf '%s\n' "$counts"
+if [[ "$status" != 0 ]]; then
+  echo '실제 v1 데이터 검증에 실패했습니다. 쓰기를 재개하지 마세요.' >&2
+  exit 1
+fi
+SH
+```
+
+키 추가 때마다 기존 키·활성 키를 유지하고 `register`한 뒤 모든 호환 앱에 키링을 먼저
+반영·재배포합니다. 키 검증과 조회 확인 후 활성 키를 바꿉니다. 실행 중 앱의 키링은 시작 시 메모리
+상태이므로 호스트 `.env`만 수정한 것으로 반영 완료를 판단하지 않습니다.
+
+#### 키 등록과 컨테이너 재시작
+
+앱 시작의 키 목록 검사는 배포 전과 동일하게 완전 일치를 유지합니다. 신키 등록 뒤 새 canary를
+읽는 구키 전용 앱은 시작을 거절합니다. 부분 일치를 허용하면 신키 일기가 이미 저장된 뒤 그 일기를 읽을
+수 없는 구키 전용 앱도 시작할 수 있어, 이 오류를 숨기는 방향으로 검사를 완화하지 않습니다.
+
+1. 기존 키링/canary와 복구 reader 원본을 보존하고, 모든 writer·진행 요청·worker를 중지·배출합니다.
+   CodeDeploy·수동 배포·컨테이너/호스트 재시작 자동화를 정지하고, backend를 실제로 stop합니다.
+   후보 reader의 설정만으로 기존 컨테이너가 정지했다고 판단하지 않습니다.
+2. 기존 활성 키와 구키를 유지한 후보 키링으로 register합니다. 변경 후 키링/canary를 같은 백업
+   세대로 서버 밖에 보존합니다. 운영 canary를 분실한 경우는 register가 아닌 복원 절차를 따릅니다.
+3. 전체 키링으로 컨테이너를 **재생성**하고 verify/verify-data와 상세·재조회를 확인합니다. 기존
+   컨테이너의 restart는 환경 변수를 갱신하지 않습니다. 파일 단위 bind mount도 atomic 파일 교체를
+   즉시 반영한다고 가정하지 않습니다. 모든 서비스 인스턴스의 새 키링 반영을 확인합니다.
+4. 위 단계 이후 새 활성 키를 선택하고 승인서를 갱신한 뒤 writer를 엽니다. 활성 키 변경만으로
+   과거 행이 재암호화되지는 않습니다. 신키 일기가 생긴 이후에는 그 키가 없는 복구본을 사용하지 않습니다.
+
+등록 과정은 점검 구간이며 무중단을 보장하지 않습니다. 디렉터리 동기화 실패 등으로 명령이 실패해도
+최종 파일이 이미 공개됐을 수 있습니다. 파일을 지우거나 초기화를 반복하지 말고 신뢰 자료와 실제
+행을 대조합니다. register 재실행은 기존 값을 검증하고 부모 디렉터리를 다시 동기화합니다. 초기화
+공개 후의 오류는 파일시스템 상태와 백업을 별도로 확인하며, 전원 손실 리허설을 수행했다고 기록하지 않습니다.
+
+구키는 현재 DB뿐 아니라 보존 중인 과거 DB 백업의 복원에 필요한 기간까지 보관합니다.
+실행자·확인 시각·checked/failed·키 ID·키링/canary 백업 세대·DB 백업 식별자는 기록하되
+원문·키 값·암호문·지문·SQL 진단은 기록하지 않습니다. **실제 사용자 v1 데이터를 포함한 dev/prod DB 복구와 백업 복원은 이 저장소
+작업에서 수행하지 않았습니다.** 기존 v0 전환은 위 [온라인 전환 절차](#기존-원문지문의-온라인-전환-423),
+과거 평문/SHA의 보존·폐기는 [백업 정책](../backend/docs/diary-source-text-backup-policy.md)을 따릅니다.
+
+실제 준비와 복원 확인의 범위는 [dev 키 백업 기록](../backend/docs/diary-source-text-integration.md#2026-11-04-dev-키-준비와-백업-검증-기록)을 따른다.
+개인 백업의 키 복원과 canary 검증은 팀원 두 명의 독립 접근이나 실제 v1 데이터 복원 완료를
+대신하지 않는다. 팀 공동 보관소 식별자, 갱신 담당자와 대체 담당자, 백업 세대 및 개별 접근과
+복원 결과는 비밀값 없이 팀 Notion에 관리한다. 미확인 항목을 완료로 표시하지 않는다.
+
 ### Docker 빌드 최적화
 
 CodeBuild 호스트와 EC2는 모두 ARM64입니다. 백엔드는 CodeBuild의 Corretto 21로
@@ -324,11 +825,13 @@ CodeDeploy 애플리케이션은 EC2/온프레미스 플랫폼과 현재 위치 
 ```text
 BeforeInstall    -> Docker/Compose/jq와 .env 파일 확인 후 기존 배포 파일 정리
 AfterInstall     -> 체크섬 검증 후 ARM64 Docker 이미지 로드
-ApplicationStart -> 이미지 환경 검사 후 docker compose up --no-build
+ApplicationStart -> 이미지 환경·배포 모드 검사, 후보 키 verify와 전환 ready 후 compose up --no-build
 ValidateService  -> 두 컨테이너 health 및 프론트 /health 확인
 ```
 
-이미지 환경 검사는 기존 `configure_compose` 함수에서 수행합니다. `ApplicationStart`에서 검사에 실패하면 컨테이너 재생성을 시작하지 않습니다. 검사는 S3나 DB를 수정하지 않으며 파일 존재 여부와 이전 완료 여부까지 확인하지는 않습니다.
+이미지 환경과 배포 모드는 `configure_compose`에서 검사하고, 이어서 후보 이미지로 키 검증과
+DB ready를 수행합니다. 둘 중 하나라도 실패하면 컨테이너 재생성을 시작하지 않습니다. 이 검사는
+S3나 DB를 수정하지 않으며 배치를 자동 실행하지 않습니다.
 
 배포 묶음 루트에서 서버의 `.env`를 확인하는 명령입니다. 대상 서버에 맞게 `harudle-dev` 또는 `harudle-prod`를 지정합니다. 개발 서버에는 `compose.dev.yaml`도 설치되어 있어야 합니다.
 
@@ -345,11 +848,12 @@ DEPLOYMENT_GROUP_NAME=harudle-dev bash -c '
 bash deploy/scripts/test_image_environment.sh
 ```
 
-호스트 Nginx 설정 예시를 적용합니다.
+호스트 Nginx 설정 예시를 적용합니다. 서버는 Amazon Linux 2023이며 `/etc/nginx/conf.d/*.conf`만 읽습니다.
+`sites-available`, `sites-enabled` 디렉터리는 없으므로 심볼릭 링크를 만들지 않습니다.
+파일 이름은 prod `harudle-prod.conf`, dev `harudle-dev.conf`입니다.
 
 ```bash
-sudo cp deploy/nginx/harudle.conf.example /etc/nginx/sites-available/harudle
-sudo ln -s /etc/nginx/sites-available/harudle /etc/nginx/sites-enabled/harudle
+sudo cp deploy/nginx/harudle.conf.example /etc/nginx/conf.d/harudle-prod.conf
 sudo nginx -t
 sudo systemctl reload nginx
 ```

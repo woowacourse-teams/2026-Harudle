@@ -17,6 +17,9 @@ class GuestSessionTest {
     private static final Instant CREATED_AT = Instant.parse("2026-08-19T00:00:00Z");
     private static final Instant USED_AT = Instant.parse("2026-08-20T00:00:00Z");
     private static final Instant EXPIRES_AT = Instant.parse("2026-09-19T00:00:00Z");
+    private static final Instant CLAIMED_AT = Instant.parse("2026-08-21T00:00:00Z");
+    private static final UUID MEMBER_ID = UUID.fromString("0b8d6f2e-3c4a-4e5f-9a1b-2c3d4e5f6a7b");
+    private static final UUID ANOTHER_MEMBER_ID = UUID.fromString("1c9e7a3f-4d5b-4f60-8b2c-3d4e5f6a7b8c");
 
     @Test
     @DisplayName("게스트 세션을 생성한다")
@@ -99,6 +102,110 @@ class GuestSessionTest {
         assertThat(session.getDiaryId()).isEqualTo(DIARY_ID);
         assertThat(session.getUsedAt()).isEqualTo(USED_AT);
         assertThat(session.getUpdatedAt()).isEqualTo(USED_AT);
+    }
+
+    @Test
+    @DisplayName("일기에 사용한 게스트 세션을 회원이 가져간다")
+    void claimsUsedGuestSession() {
+        GuestSession session = createSession();
+        session.useForDiary(DIARY_ID, USED_AT);
+
+        session.claim(MEMBER_ID, CLAIMED_AT);
+
+        assertThat(session.isClaimed()).isTrue();
+        assertThat(session.isClaimedBy(MEMBER_ID)).isTrue();
+        assertThat(session.isClaimedBy(ANOTHER_MEMBER_ID)).isFalse();
+        assertThat(session.getClaimedByUserId()).isEqualTo(MEMBER_ID);
+        assertThat(session.getClaimedAt()).isEqualTo(CLAIMED_AT);
+        assertThat(session.getUpdatedAt()).isEqualTo(CLAIMED_AT);
+        assertThat(session.getDiaryId()).isEqualTo(DIARY_ID);
+    }
+
+    @Test
+    @DisplayName("가져가지 않은 게스트 세션은 어느 회원도 가져간 상태가 아니다")
+    void isNotClaimedBeforeClaim() {
+        GuestSession session = createSession();
+        session.useForDiary(DIARY_ID, USED_AT);
+
+        assertThat(session.isClaimed()).isFalse();
+        assertThat(session.isClaimedBy(MEMBER_ID)).isFalse();
+        assertThat(session.getClaimedByUserId()).isNull();
+        assertThat(session.getClaimedAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("이미 가져간 게스트 세션은 다시 가져갈 수 없다")
+    void rejectsClaimingTwice() {
+        GuestSession session = createSession();
+        session.useForDiary(DIARY_ID, USED_AT);
+        session.claim(MEMBER_ID, CLAIMED_AT);
+
+        assertThatThrownBy(() -> session.claim(ANOTHER_MEMBER_ID, CLAIMED_AT.plusSeconds(1)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("이미 가져간 게스트 세션입니다.");
+
+        assertThat(session.getClaimedByUserId()).isEqualTo(MEMBER_ID);
+        assertThat(session.getClaimedAt()).isEqualTo(CLAIMED_AT);
+    }
+
+    @Test
+    @DisplayName("일기에 사용하지 않은 게스트 세션은 가져갈 수 없다")
+    void rejectsClaimingUnusedSession() {
+        GuestSession session = createSession();
+
+        assertThatThrownBy(() -> session.claim(MEMBER_ID, CLAIMED_AT))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("일기에 사용한 게스트 세션만 가져갈 수 있습니다.");
+        assertThat(session.isClaimed()).isFalse();
+    }
+
+    @Test
+    @DisplayName("일기에 사용한 시각보다 먼저 가져갈 수 없다")
+    void rejectsClaimBeforeUsage() {
+        GuestSession session = createSession();
+        session.useForDiary(DIARY_ID, USED_AT);
+
+        assertThatThrownBy(() -> session.claim(MEMBER_ID, USED_AT.minusSeconds(1)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("일기에 사용한 게스트 세션만 가져갈 수 있습니다.");
+    }
+
+    @Test
+    @DisplayName("만료된 게스트 세션은 가져갈 수 없다")
+    void rejectsClaimingExpiredSession() {
+        GuestSession session = createSession();
+        session.useForDiary(DIARY_ID, USED_AT);
+
+        assertThatThrownBy(() -> session.claim(MEMBER_ID, EXPIRES_AT))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("만료된 게스트 세션은 가져갈 수 없습니다.");
+        assertThat(session.isClaimed()).isFalse();
+    }
+
+    @Test
+    @DisplayName("게스트 사용자 본인은 게스트 세션을 가져갈 수 없다")
+    void rejectsClaimByGuestUserItself() {
+        GuestSession session = createSession();
+        session.useForDiary(DIARY_ID, USED_AT);
+
+        assertThatThrownBy(() -> session.claim(GUEST_USER_ID, CLAIMED_AT))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("게스트 사용자 본인은 체험 일기를 가져갈 수 없습니다.");
+        assertThat(session.isClaimed()).isFalse();
+    }
+
+    @Test
+    @DisplayName("가져갈 때 회원 ID와 시각이 필요하다")
+    void rejectsClaimWithoutMemberIdOrTime() {
+        GuestSession session = createSession();
+        session.useForDiary(DIARY_ID, USED_AT);
+
+        assertThatThrownBy(() -> session.claim(null, CLAIMED_AT))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("회원 ID는 필수입니다.");
+        assertThatThrownBy(() -> session.claim(MEMBER_ID, null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("가져간 시각은 필수입니다.");
     }
 
     @Test

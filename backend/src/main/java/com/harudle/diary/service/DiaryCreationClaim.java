@@ -52,4 +52,9 @@ record DiaryCreationClaim(
                 generationId, generationStatus, title, imageObjectKey, completedAt, tokenUsage
         );
     }
+
+    @Override
+    public String toString() {
+        return "DiaryCreationClaim[sourceText=<redacted>]";
+    }
 }

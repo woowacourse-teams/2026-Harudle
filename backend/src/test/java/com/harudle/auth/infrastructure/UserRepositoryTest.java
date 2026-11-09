@@ -3,9 +3,9 @@ package com.harudle.auth.infrastructure;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.harudle.TestcontainersConfiguration;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.domain.exception.InvalidNicknameException;
+import com.harudle.support.AuthJpaTestSupport;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.UUID;
@@ -16,19 +16,13 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
-import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers(disabledWithoutDocker = true)
-@Import(TestcontainersConfiguration.class)
-@DataJpaTest(showSql = false)
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-class UserRepositoryTest {
+class UserRepositoryTest extends AuthJpaTestSupport {
 
     private static final Instant CREATED_AT = Instant.parse("2026-10-10T00:00:00Z");
     private static final Instant PROFILE_ASSIGNED_AT = CREATED_AT.plusSeconds(60);
