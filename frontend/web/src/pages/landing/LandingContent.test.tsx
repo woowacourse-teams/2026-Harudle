@@ -46,7 +46,42 @@ afterEach(() => {
 });
 
 describe('브랜드 소개와 체험을 연결하는 랜딩', () => {
-  it('첫 화면에서는 공개 피드를 주 행동으로 안내하고 체험과 로그인을 제공한다', () => {
+  it('랜딩에는 게스트 체험 입력과 버튼이 표시되지 않는다', () => {
+    render(<LandingContent trialSection={null} />);
+    expect(
+      screen.queryByRole('button', { name: '직접 만들어 보기' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    const final = screen.getByRole('region', { name: /최근에 같이 웃었던/ });
+    expect(
+      within(final).getByRole('link', { name: '하루들 시작하기' }),
+    ).toHaveAttribute('href', '/');
+  });
+
+  it('상단 메뉴에서 기록 보호 영역으로 이동한다', async () => {
+    HTMLElement.prototype.scrollTo = jest.fn();
+    const user = userEvent.setup();
+    render(<LandingContent trialSection={null} />);
+    const menu = screen.getByRole('navigation', { name: '랜딩 메뉴' });
+    await user.click(within(menu).getByRole('link', { name: '기록 보호' }));
+    expect(HTMLElement.prototype.scrollTo).toHaveBeenCalled();
+  });
+
+  it('기록 보호 안내와 자주 묻는 질문을 보여준다', async () => {
+    const user = userEvent.setup();
+    render(<LandingContent trialSection={null} />);
+    expect(
+      screen.getByRole('heading', { name: /일기 원문은/ }),
+    ).toBeInTheDocument();
+    const question = screen.getByText('하루들에서는 어떻게 만화를 만드나요?');
+    await user.click(question);
+    expect(screen.getByText(/기억하고 싶은 순간을 글로 적으면/)).toBeVisible();
+    expect(
+      screen.getByRole('link', { name: /개인정보처리방침 자세히 보기/ }),
+    ).toHaveAttribute('href', '/legal/privacy');
+  });
+
+  it('첫 화면에서 피드와 체험으로 이동할 수 있다', () => {
     render(
       <LandingContent trialSection={<textarea aria-label="체험 내용" />} />,
     );
@@ -57,18 +92,11 @@ describe('브랜드 소개와 체험을 연결하는 랜딩', () => {
       within(hero).getByRole('button', { name: '직접 만들어 보기' }),
     ).toBeInTheDocument();
     expect(
-      within(hero).getByRole('link', { name: '피드 보러 가기' }),
+      within(hero).getByRole('link', { name: '하루들 시작하기' }),
     ).toHaveAttribute('href', '/');
     expect(
-      within(hero).getByText('로그인 없이 바로 구경할 수 있어요.'),
-    ).toBeInTheDocument();
-    expect(
-      within(hero).getByText(/이 화면으로 돌아오려면 뒤로가기를/),
-    ).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '로그인' })).toHaveAttribute(
-      'href',
-      '/login',
-    );
+      within(hero).queryByRole('link', { name: '로그인' }),
+    ).not.toBeInTheDocument();
   });
 
   it('체험 버튼은 페이지 이동 없이 입력 영역으로 스크롤하고 입력창에 초점을 준다', async () => {
