@@ -1,6 +1,6 @@
-import { css } from '@emotion/react';
+import { css, Global } from '@emotion/react';
 import { useState } from 'react';
-import { Route, Routes } from 'react-router';
+import { Route, Routes, useLocation } from 'react-router';
 
 import AgreementRoute from './AgreementRoute';
 import PublicFeedRoute from './PublicFeedRoute';
@@ -25,8 +25,11 @@ import WithdrawalCallbackPage from './pages/withdrawal/WithdrawalCallbackPage';
 
 const App = () => {
   const [push, setPush] = useState<NativePushControls | null>(null);
+  const { pathname } = useLocation();
+  const isLandingHome = pathname === '/landing' || pathname === '/landing/';
   return (
-    <div css={appStyle}>
+    <div css={[appStyle, isLandingHome && landingAppStyle]}>
+      {isLandingHome && <Global styles={landingRootStyle} />}
       <PwaAnalyticsTracker />
 
       <Routes>
@@ -82,4 +85,15 @@ const appStyle = css`
   max-width: 430px;
   height: 100%;
   margin: 0 auto;
+`;
+
+const landingAppStyle = css`
+  max-width: none;
+`;
+
+const landingRootStyle = css`
+  #root {
+    max-width: none;
+    box-shadow: none;
+  }
 `;

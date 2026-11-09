@@ -37,7 +37,7 @@ export default function createWebpackConfig(_env, argv) {
           },
         },
         {
-          test: /\.(png|svg|jpg|jpeg|webp)$/i,
+          test: /\.(png|svg|jpg|jpeg|webp|mp4)$/i,
           exclude: /harudle-og\.jpg$/i,
           type: 'asset/resource',
         },
