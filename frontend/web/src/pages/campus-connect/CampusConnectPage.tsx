@@ -6,68 +6,83 @@ import { RequestError } from '../../shared/api';
 import { theme } from '../../styles/theme';
 import {
   campusCallbackUrl,
-  issueCampusLinkCode,
+  issueCampusLinkToken,
   openCampus,
+  openInNewTab,
 } from './campusLinkApi';
 import { CAMPUS_CONNECT_COPY } from './copy';
-import {
-  clearPostLoginPath,
-  isAllowedPostLoginPath,
-  savePostLoginPath,
-} from './postLoginPath';
+
+const STATE_PATTERN = /^[A-Za-z0-9_-]{43,128}$/;
+const LOGIN_HISTORY_KEY = 'harudle.has-completed-oauth';
 
 const hasLoginHistory = (): boolean => {
   try {
-    return localStorage.getItem('harudle.has-completed-oauth') !== null;
+    return localStorage.getItem(LOGIN_HISTORY_KEY) !== null;
   } catch {
     return false;
   }
 };
 
-const errorMessage = (error: unknown): string => {
-  if (!(error instanceof RequestError)) return CAMPUS_CONNECT_COPY.failed;
-  if (error.problem.code === 'PUBLIC_PROFILE_NOT_ASSIGNED')
-    return CAMPUS_CONNECT_COPY.profileRequired;
-  if (error.problem.code === 'CAMPUS_LINK_DISABLED')
-    return CAMPUS_CONNECT_COPY.unavailable;
-  return CAMPUS_CONNECT_COPY.failed;
+type Problem = 'terms' | 'profile' | 'unavailable' | 'failed';
+
+const problemOf = (error: unknown): Problem => {
+  if (!(error instanceof RequestError)) return 'failed';
+  if (error.problem.code === 'TERMS_ACCEPTANCE_REQUIRED') return 'terms';
+  if (error.problem.code === 'PUBLIC_PROFILE_NOT_ASSIGNED') return 'profile';
+  if (error.problem.status === 404) return 'unavailable';
+  return 'failed';
 };
 
-// 우테코 캠퍼스 → 하루들 로그인 → [연동하기] → 캠퍼스로 돌아간다.
-// 하루들 토큰은 넘기지 않고, 60초짜리 일회용 code만 캠퍼스 주소에 붙인다.
+const PROBLEM_MESSAGE: Record<Problem, string> = {
+  terms: CAMPUS_CONNECT_COPY.termsRequired,
+  profile: CAMPUS_CONNECT_COPY.profileRequired,
+  unavailable: CAMPUS_CONNECT_COPY.unavailable,
+  failed: CAMPUS_CONNECT_COPY.failed,
+};
+
+// 로그인 여부: 다른 탭에서 로그인을 마치면(로그인 기록 저장) 이 탭도 바로 알아챈다.
+const useLoginHistory = (): boolean => {
+  const [isLoggedIn, setIsLoggedIn] = useState(hasLoginHistory);
+  useEffect((): (() => void) => {
+    const check = (): void => setIsLoggedIn(hasLoginHistory());
+    window.addEventListener('storage', check);
+    window.addEventListener('focus', check);
+    return (): void => {
+      window.removeEventListener('storage', check);
+      window.removeEventListener('focus', check);
+    };
+  }, []);
+  return isLoggedIn;
+};
+
+// 우테코 캠퍼스 → 이 화면 → [연동하기] → 캠퍼스로 돌아간다.
+// 하루들 토큰은 넘기지 않고, 60초짜리 서명 토큰만 캠퍼스 주소에 붙인다.
 const CampusConnectPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const state = searchParams.get('state') ?? '';
-  const path = `/campus/connect?state=${state}`;
-  const isValid = isAllowedPostLoginPath(path);
-  const isLoggedIn = hasLoginHistory();
+  const isLoggedIn = useLoginHistory();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [problem, setProblem] = useState<Problem | null>(null);
+  const [popupBlocked, setPopupBlocked] = useState(false);
 
-  useEffect((): void => {
-    if (!isValid) return;
-    if (!isLoggedIn) {
-      savePostLoginPath(path);
-      void navigate('/login', { replace: true });
-      return;
-    }
-    clearPostLoginPath();
-  }, [isValid, isLoggedIn, path, navigate]);
+  const openTab = (path: string): void => {
+    setPopupBlocked(!openInNewTab(path));
+  };
 
   const connect = async (): Promise<void> => {
     setIsSubmitting(true);
-    setMessage(null);
+    setProblem(null);
     try {
-      const issued = await issueCampusLinkCode(state);
+      const issued = await issueCampusLinkToken(state);
       openCampus(campusCallbackUrl(issued, state));
     } catch (error: unknown) {
-      setMessage(errorMessage(error));
+      setProblem(problemOf(error));
       setIsSubmitting(false);
     }
   };
 
-  if (!isValid)
+  if (!STATE_PATTERN.test(state))
     return (
       <main css={pageStyle}>
         <p role="alert" css={descriptionStyle}>
@@ -75,16 +90,36 @@ const CampusConnectPage = () => {
         </p>
       </main>
     );
-  if (!isLoggedIn) return null;
+
+  if (!isLoggedIn)
+    return (
+      <main css={pageStyle}>
+        <div css={messageBoxStyle}>
+          <h1 css={titleStyle}>{CAMPUS_CONNECT_COPY.loginTitle}</h1>
+          <p css={descriptionStyle}>{CAMPUS_CONNECT_COPY.loginDescription}</p>
+          {popupBlocked && (
+            <p role="alert" css={errorStyle}>
+              {CAMPUS_CONNECT_COPY.popupBlocked}
+            </p>
+          )}
+        </div>
+        <div css={buttonRowStyle}>
+          <ActionButton
+            label={CAMPUS_CONNECT_COPY.login}
+            onClick={(): void => openTab('/login')}
+          />
+        </div>
+      </main>
+    );
 
   return (
     <main css={pageStyle}>
       <div css={messageBoxStyle}>
         <h1 css={titleStyle}>{CAMPUS_CONNECT_COPY.title}</h1>
         <p css={descriptionStyle}>{CAMPUS_CONNECT_COPY.description}</p>
-        {message !== null && (
+        {problem !== null && (
           <p role="alert" css={errorStyle}>
-            {message}
+            {PROBLEM_MESSAGE[problem]}
           </p>
         )}
       </div>
@@ -94,15 +129,25 @@ const CampusConnectPage = () => {
           variant="secondary"
           onClick={(): void => void navigate('/', { replace: true })}
         />
-        <ActionButton
-          label={
-            isSubmitting
-              ? CAMPUS_CONNECT_COPY.connecting
-              : CAMPUS_CONNECT_COPY.confirm
-          }
-          disabled={isSubmitting}
-          onClick={(): void => void connect()}
-        />
+        {problem === 'terms' ? (
+          <ActionButton
+            label={CAMPUS_CONNECT_COPY.openTerms}
+            onClick={(): void => {
+              setProblem(null);
+              openTab('/consent');
+            }}
+          />
+        ) : (
+          <ActionButton
+            label={
+              isSubmitting
+                ? CAMPUS_CONNECT_COPY.connecting
+                : CAMPUS_CONNECT_COPY.confirm
+            }
+            disabled={isSubmitting}
+            onClick={(): void => void connect()}
+          />
+        )}
       </div>
     </main>
   );

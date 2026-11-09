@@ -8,7 +8,6 @@ import {
 } from '../../shared/auth';
 import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { LOGIN_COPY } from './copy';
-import { peekPostLoginPath } from '../campus-connect/postLoginPath';
 import { useAnalytics } from '../../posthog/useAnalytics';
 import {
   clearLoginAttemptProvider,
@@ -66,8 +65,7 @@ const AuthCallbackPage = () => {
         setAccessToken(data.accessToken);
         rememberSuccessfulLogin(provider);
         void identifyCurrentUser(data.accessToken);
-        // 우테코 캠퍼스 연결처럼 로그인 전에 보던 화면이 있으면 그리로 돌아간다.
-        navigate(peekPostLoginPath() ?? '/', { replace: true });
+        navigate('/', { replace: true });
       } catch (error: unknown) {
         if (!isActive) return;
         clearLoginAttemptProvider();

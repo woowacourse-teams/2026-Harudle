@@ -53,6 +53,7 @@ const App = () => {
 
         {/* 모든 서비스 화면은 세션 복원 후 약관 동의를 확인한다. */}
         <Route element={<PublicFeedRoute onPushChange={setPush} />}>
+          <Route path="/campus/connect" element={<CampusConnectPage />} />
           <Route element={<AgreementRoute />}>
             <Route path="/" element={<FeedPage />} />
             <Route path="/feeds/:feedId" element={<FeedDetailPage />} />
@@ -69,7 +70,6 @@ const App = () => {
               element={<BlockedUsersPage />}
             />
             <Route path="/admin/*" element={<AdminGuard />} />
-            <Route path="/campus/connect" element={<CampusConnectPage />} />
           </Route>
         </Route>
 
