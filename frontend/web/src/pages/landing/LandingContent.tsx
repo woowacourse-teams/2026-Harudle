@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { css } from '@emotion/react';
+import { css, Global } from '@emotion/react';
 import {
   useEffect,
   useRef,
@@ -152,6 +152,7 @@ const LandingContent = ({
 
   return (
     <main ref={pageRef} css={pageStyle}>
+      <Global styles={landingRootStyle} />
       <header css={headerStyle}>
         <div css={headerInnerStyle}>
           <a
@@ -367,6 +368,16 @@ const LandingContent = ({
 };
 
 export default LandingContent;
+
+const landingRootStyle = css`
+  #root {
+    max-width: none;
+    box-shadow: none;
+  }
+  #root > div {
+    max-width: none;
+  }
+`;
 
 const pageStyle = css`
   width: 100%;
@@ -716,8 +727,7 @@ const heroSectionStyle = css`
 const heroVideoStyle = css`
   position: absolute;
   inset: 0;
-  background: #f2ebde url('/harudle/landing-hero-poster.jpg') right center /
-    cover no-repeat;
+  background: #f2ebde url(${heroPoster}) right center / cover no-repeat;
   video {
     display: block;
     width: 100%;
