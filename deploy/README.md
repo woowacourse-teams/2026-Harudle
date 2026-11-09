@@ -333,7 +333,8 @@ Flyway 전용 비풀링 연결은 잠금 대기 5초, 개별 SQL 실행 60초를
 <summary>유지보수 JAR 확인, 이미지 준비와 EC2 전달</summary>
 
 PR CI는 일반 서버 테스트와 `maintenanceTest`, 서버 JAR과 도구 JAR의 실제 실행 검증을 수행합니다.
-성공한 실행에서 `diary-source-maintenance-<PR 원본 SHA>-<실행 차수>` 다운로드 산출물을 확인합니다.
+JAR 실행 검증은 `Backend Crypto Checks` Job에서 일반 테스트와 동시에 실행합니다.
+두 Job이 모두 성공한 실행에서 `diary-source-maintenance-<PR 원본 SHA>-<실행 차수>` 다운로드 산출물을 확인합니다.
 다음 네 파일을 `backend/build/maintenance/`에 놓습니다.
 
 - `harudle-diary-source-maintenance.jar`: 수동 전환 도구입니다.

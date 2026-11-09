@@ -290,6 +290,8 @@ EC2에서는 Gradle·Node 빌드를 수행하지 않는다. 네이티브 의존�
 PR 백엔드 CI는 `gradle/actions/setup-gradle`로 실행 파일, 의존성과 컴파일 결과를 저장한다.
 `--build-cache test --rerun`으로 컴파일 결과를 재사용하고 테스트는 매번 실행한다.
 `-PtestMaxParallelForks=2`로 테스트 클래스를 JVM 2개에 나눠 실행한다.
+일기 원문 암호화 배포 검사(키 사전 검사 스크립트, 부하 테스트 도구 복구 테스트, JAR 실행 검증과
+전환 도구 JAR 산출물)는 `Backend Crypto Checks` Job에서 일반 백엔드 테스트와 동시에 실행한다.
 캐시는 PR 실행에서도 저장한다. `develop-backend`의 백엔드 컴파일 입력 또는 CI 설정이
 바뀌면 같은 Job에서 `classes testClasses --build-cache`로 후속 PR용 공통 캐시를 만든다.
 이 push 실행은 컴파일과 캐시 저장만 수행하며, PR 검증과 실행 그룹을 나눠 서로 취소하지 않는다.
