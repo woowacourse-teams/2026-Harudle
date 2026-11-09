@@ -6,9 +6,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.diary.domain.Diary;
+import com.harudle.diary.domain.DiarySourceTextCipher;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.guest.domain.GuestSession;
-import com.harudle.support.DiarySourceTextTestSupport;
 import com.harudle.support.ServiceIntegrationTestSupport;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -38,6 +38,9 @@ class GuestSessionRepositoryTest extends ServiceIntegrationTestSupport {
 
     @Autowired
     private DiaryRepository diaryRepository;
+
+    @Autowired
+    private DiarySourceTextCipher cipher;
 
     @Autowired
     private UserRepository userRepository;
@@ -211,7 +214,7 @@ class GuestSessionRepositoryTest extends ServiceIntegrationTestSupport {
         User member = saveGuestUser("회원1");
         GuestSession session = saveUsedSession("게스트1", TOKEN_HASH);
         Diary diary = diaryRepository.findById(session.getDiaryId()).orElseThrow();
-        diary.transferOwnership(session.getGuestUserId(), member.getId());
+        diary.transferOwnership(session.getGuestUserId(), member.getId(), cipher);
         session.claim(member.getId(), CLAIMED_AT);
         entityManager.flush();
         entityManager.clear();
@@ -231,8 +234,7 @@ class GuestSessionRepositoryTest extends ServiceIntegrationTestSupport {
     private GuestSession saveUsedSession(String guestName, String tokenHash) {
         User guestUser = saveGuestUser(guestName);
         Diary diary = diaryRepository.saveAndFlush(
-                Diary.create(guestUser.getId(), LocalDate.of(2026, 8, 19), "게스트 체험 일기",
-                        DiarySourceTextTestSupport.cipher())
+                Diary.create(guestUser.getId(), LocalDate.of(2026, 8, 19), "게스트 체험 일기", cipher)
         );
         GuestSession session = GuestSession.create(guestUser.getId(), tokenHash, EXPIRES_AT, CREATED_AT);
         session.useForDiary(diary.getId(), USED_AT);

@@ -3,6 +3,9 @@ build/*
 !build/codebuild/
 build/codebuild/*
 !build/codebuild/app.jar
+!build/maintenance/
+build/maintenance/*
+!build/maintenance/harudle-diary-source-maintenance.jar
 .idea
 *.iml
 .env

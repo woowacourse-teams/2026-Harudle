@@ -80,10 +80,9 @@ class DiaryRequestFingerprintProtectionTest {
     }
 
     @Test
-    @DisplayName("기존 평문 일기는 원래 지문을 유지해 재시도와 호환된다")
-    void preservesLegacyFingerprintWithoutChangingRetryContract() {
-        assertThat(cipher.protectRequestFingerprint(DIARY_ID, USER_ID, "기존 원문", 0, RAW_FINGERPRINT))
-                .isEqualTo(RAW_FINGERPRINT);
+    @DisplayName("전환 이후에는 버전 0의 기존 SHA 지문으로 우회하지 않는다")
+    void refusesLegacyFingerprintFallback() {
+        assertCryptoFailure(() -> cipher.protectRequestFingerprint(DIARY_ID, USER_ID, "기존 원문", 0, RAW_FINGERPRINT));
     }
 
     @Test

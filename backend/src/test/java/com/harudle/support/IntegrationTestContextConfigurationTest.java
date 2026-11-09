@@ -39,6 +39,7 @@ class IntegrationTestContextConfigurationTest {
                 "com.harudle.diary.service.DiaryDeletionPersistenceTest",
                 "com.harudle.diary.service.DiaryQueryPersistenceTest",
                 "com.harudle.diary.service.DiarySourceTextEncryptionPersistenceTest",
+                "com.harudle.diary.service.EncryptedGuestDiaryClaimPersistenceTest",
                 "com.harudle.feed.service.FeedWithoutPushRegistrationPersistenceTest",
                 "com.harudle.generation.diary.service.DiaryGenerationFailurePersistenceTest",
                 "com.harudle.generation.prompt.infrastructure.GenerationPromptBootstrapPersistenceTest",

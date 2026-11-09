@@ -488,6 +488,18 @@ GROUP BY storage;
 ./gradlew test
 ```
 
+일반 `test`와 서버 `bootJar`는 기존 원문 전환 도구를 컴파일하지 않습니다. 전환 도구를 빌드하고
+검증할 때만 `backend/`에서 다음 명령을 별도로 실행합니다.
+
+```shell
+./gradlew maintenanceJar maintenanceTest
+```
+
+도구 코드는 `src/maintenance/java`, 전용 테스트는 `src/maintenanceTest/java`에 있습니다.
+산출물은 `build/maintenance/harudle-diary-source-maintenance.jar`입니다. 전용 DB 테스트도 Docker가 필요합니다.
+서버에는 완료 검사와 공통 암호화 코드를 유지하고, 수동 전환 코드는 넣지 않습니다.
+[유지보수 이미지 준비와 실행](../deploy/README.md#기존-원문지문의-온라인-전환-423)을 따릅니다.
+
 통합 테스트는 Testcontainers가 PostgreSQL 컨테이너를 실행하므로 Docker가 필요합니다. Docker를 사용할 수 없는
 환경에서는 `@Testcontainers(disabledWithoutDocker = true)`가 설정된 테스트만 자동으로 건너뛰어집니다.
 Docker 실행을 필수로 요구하는 테스트는 엔진이 준비되어 있어야 실행할 수 있습니다.
@@ -542,6 +554,10 @@ PR 검증과 수동 테스트는 다음 명령을 실행합니다.
 ```shell
 ./gradlew --no-daemon --console=plain --build-cache test --rerun
 ```
+
+PR CI는 위 일반 테스트 외에 `maintenanceTest`도 별도로 실행합니다. 두 JAR의 실제 실행 검증을 통과하면
+전환 도구 JAR, 체크섬과 실제 빌드 및 PR 원본 커밋 정보를 다운로드 산출물로 제공합니다. 다운로드 기간이
+끝나면 사라질 수 있으므로 복구에 필요한 원본과 이미지는 별도 보관해야 합니다.
 
 `--build-cache`는 입력이 같은 컴파일 결과를 재사용합니다. `test --rerun`은 테스트를 매번 실행하게 하며,
 컴파일 작업은 다시 실행하도록 강제하지 않습니다. 소스나 의존성이 바뀌면 필요한 컴파일을 다시 수행합니다.

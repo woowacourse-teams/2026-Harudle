@@ -90,11 +90,6 @@ public final class AesGcmDiarySourceTextCipher implements DiarySourceTextCipher 
         validateIdentifiers(diaryId, userId);
         byte[] plaintextBytes = null;
         try {
-            if (version == LEGACY_VERSION) {
-                String normalized = Diary.normalizeSourceText(storedText);
-                plaintextBytes = encodeStrictly(normalized);
-                return normalized;
-            }
             if (version != CURRENT_VERSION) {
                 throw new DiarySourceTextCryptoException();
             }
@@ -124,9 +119,6 @@ public final class AesGcmDiarySourceTextCipher implements DiarySourceTextCipher 
         validateIdentifiers(diaryId, userId);
         if (fingerprint == null || !FINGERPRINT_PATTERN.matcher(fingerprint).matches()) {
             throw new DiarySourceTextCryptoException();
-        }
-        if (version == LEGACY_VERSION) {
-            return fingerprint;
         }
         if (version != CURRENT_VERSION) {
             throw new DiarySourceTextCryptoException();

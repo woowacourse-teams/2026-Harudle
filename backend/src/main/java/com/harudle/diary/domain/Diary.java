@@ -102,7 +102,7 @@ public class Diary {
         this.deletedAt = deletedAt;
     }
 
-    public void transferOwnership(UUID currentOwnerId, UUID newOwnerId) {
+    public void transferOwnership(UUID currentOwnerId, UUID newOwnerId, DiarySourceTextCipher cipher) {
         validateUserId(currentOwnerId);
         validateUserId(newOwnerId);
         if (currentOwnerId.equals(newOwnerId)) {
@@ -114,6 +114,10 @@ public class Diary {
         if (!isOwnedBy(currentOwnerId)) {
             throw new IllegalStateException("현재 작성자의 일기만 옮길 수 있습니다.");
         }
+        // The owner is authenticated with the ciphertext. Prepare the new ciphertext before changing either field.
+        String plaintext = decryptSourceText(cipher);
+        String transferredSourceText = cipher.encrypt(id, newOwnerId, plaintext);
+        this.sourceText = transferredSourceText;
         this.userId = newOwnerId;
     }
 

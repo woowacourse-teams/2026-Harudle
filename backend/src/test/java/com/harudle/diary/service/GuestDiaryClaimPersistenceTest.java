@@ -6,6 +6,7 @@ import com.harudle.auth.application.WithdrawalDatabaseService;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.UserRepository;
 import com.harudle.diary.domain.Diary;
+import com.harudle.diary.domain.DiarySourceTextCipher;
 import com.harudle.diary.repository.DiaryRepository;
 import com.harudle.diary.service.dto.CreateGuestDiaryCommand;
 import com.harudle.generation.diary.domain.DiaryGeneration;
@@ -16,7 +17,6 @@ import com.harudle.guest.application.exception.GuestTrialAlreadyUsedException;
 import com.harudle.guest.domain.GuestSession;
 import com.harudle.guest.infrastructure.token.GuestSessionTokenHasher;
 import com.harudle.guest.repository.GuestSessionRepository;
-import com.harudle.support.DiarySourceTextTestSupport;
 import com.harudle.support.ServiceIntegrationTestSupport;
 import java.time.Duration;
 import java.time.Instant;
@@ -60,6 +60,9 @@ class GuestDiaryClaimPersistenceTest extends ServiceIntegrationTestSupport {
 
     @Autowired
     private DiaryRepository diaryRepository;
+
+    @Autowired
+    private DiarySourceTextCipher cipher;
 
     @Autowired
     private DiaryGenerationRepository diaryGenerationRepository;
@@ -223,7 +226,7 @@ class GuestDiaryClaimPersistenceTest extends ServiceIntegrationTestSupport {
 
     private GuestFixture saveGuestWithSucceededDiary(String rawToken) {
         User guestUser = saveUser("게스트");
-        Diary diary = diaryRepository.saveAndFlush(Diary.create(guestUser.getId(), DIARY_DATE, "게스트 체험 일기", DiarySourceTextTestSupport.cipher()));
+        Diary diary = diaryRepository.saveAndFlush(Diary.create(guestUser.getId(), DIARY_DATE, "게스트 체험 일기", cipher));
         DiaryGeneration generation = DiaryGeneration.pending(
                 diary.getId(), promptId, UUID.randomUUID(), "b".repeat(64), null
         );
