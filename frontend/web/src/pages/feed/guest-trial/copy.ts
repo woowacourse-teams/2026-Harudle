@@ -1,0 +1,71 @@
+export const GUEST_TRIAL_COPY = {
+  guideLabel: '로그인 없이 만들어보는 네컷만화 안내',
+  guideBadge: '네컷만화 생성 체험',
+  guideTitle: '로그인 없이 나만의\n네컷만화를 만들어 보세요',
+  guideDescriptionPrefix: '위의 ',
+  guideDescriptionEmphasis: '+ 버튼',
+  guideDescriptionSuffix: '을 누르면\n생성을 시작할 수 있어요!',
+  guideSpotlightAction: '네컷만화 만들기 체험 열기',
+  guideNext: '다음',
+  guideStart: '만들어볼게요',
+  guideBrowseFirst: '먼저 구경할게요',
+  startGuideTitle: '지금 바로 생성해볼까요?',
+  guideStep: (step: number, total: number): string => `${step} / ${total}`,
+  categoryGuideTitle: '좌우로 넘겨\n더 많은 카테고리를 구경해보세요',
+
+  inputSheetTitle: '나만의 네컷만화 만들어보기',
+  inputEyebrow: '로그인 없이 생성할 수 있어요',
+  inputDescription: '기억나는 순간을 짧게 적어주세요.',
+  inputLabel: '오늘의 이야기',
+  inputPlaceholder:
+    '예) 친구가 민트초코에 치즈폼을 올려 먹어보라길래 도전해봤다. 생각보다 맛있어서 깜짝 놀랐다.',
+  submitAction: '이 이야기로 만화 만들기',
+  submittingAction: '요청하는 중...',
+
+  submitFailed: '만화 만들기를 요청하지 못했어요. 다시 시도해주세요.',
+  capacityExceeded:
+    '지금은 만들고 있는 만화가 많아요. 잠시 후 다시 시도해주세요.',
+  trialAlreadyUsed:
+    '이미 체험을 사용했어요. 로그인하면 네컷만화를 만들 수 있어요.',
+
+  generatingTitle: '네컷만화를 만들고 있어요',
+  // 화면 이동·새로고침은 이어서 확인하지만, 창을 닫거나 생성 중 로그인하면 결과를 이어받지 않는다.
+  generatingDescription:
+    '생성 도중 창을 닫거나 로그인하면 만화를 받을 수 없어요',
+  generationLost: '만들던 만화를 찾지 못했어요',
+  generationLostDescription: '로그인하면 네컷만화를 만들 수 있어요.',
+  readyTitle: '네컷만화가 완성됐어요!',
+  readyDescription: '내 이야기로 만든 첫 만화예요.',
+  readyAction: '보러가기',
+  statusCheckFailed: '만화 상태를 확인하지 못했어요',
+  statusCheckFailedDescription: '만화는 계속 만들어지고 있을 수 있어요.',
+  statusCheckRetry: '다시 확인',
+
+  resultSheetTitle: '내 이야기로 만든 첫 만화',
+  maskedImageLabel: '2컷과 3컷을 가린 네컷만화',
+  unlockTitle: '로그인하면 네컷만화\n원본을 확인할 수 있어요',
+  unlockDescription: '지금 만든 만화를 내 앨범으로 가져와요.',
+  loginAction: '로그인하고 원본 보기',
+  keepBrowsingAction: '피드 더 구경하기',
+  resultLoading: '만화를 불러오는 중이에요',
+  resultLoadFailed: '만화를 불러오지 못했어요',
+  resultUnavailable: '체험 만화를 더 이상 불러올 수 없어요',
+  resultReload: '다시 불러오기',
+
+  claimedSheetTitle: '내 앨범에 저장된 만화',
+  claimedBadge: '✓ 내 앨범에 저장됐어요',
+  claimedDescription: '오늘의 순간을 오래 간직해보세요.',
+  albumAction: '내 앨범에서 보기',
+
+  claimFailed: '만화를 가져오지 못했어요',
+  claimFailedDescription: '로그인은 완료됐어요.',
+  claimRetry: '다시 시도',
+  claimReauth: '로그인이 다시 필요해요',
+  claimReauthDescription: '다시 로그인하면 만화를 가져올 수 있어요.',
+  claimReauthAction: '로그인',
+  claimAlreadyClaimed: '다른 계정에서 이미 가져간 만화예요',
+  claimAlreadyClaimedDescription: '현재 계정으로 이 만화를 가져올 수 없어요.',
+  claimLimitExceeded: '이미 체험 일기를 가져온 계정이에요',
+  claimLimitExceededDescription: '체험 일기는 계정당 한 번만 가져올 수 있어요.',
+  claimLimitAction: '내 앨범',
+} as const;

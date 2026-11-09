@@ -31,7 +31,6 @@ export const REPORT_COPY = {
   submit: '신고 접수',
   submitting: '접수 중...',
   cancel: '취소',
-  close: '확인',
   received: '신고가 접수되었어요. 운영자가 내용을 확인할게요.',
   duplicate: '이미 접수된 신고예요. 처음 제출한 사유와 내용은 유지돼요.',
 } as const;

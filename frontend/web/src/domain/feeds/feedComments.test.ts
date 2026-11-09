@@ -74,3 +74,21 @@ describe('댓글 입력과 외부 응답 경계', (): void => {
     ).toBe(false);
   });
 });
+
+it('탈퇴 댓글의 nullable 작성자 정보도 받아들인다', (): void => {
+  expect(
+    isFeedCommentsResponse({
+      items: [
+        {
+          id: 'comment-1',
+          author: { id: null, nickname: '탈퇴한 회원', profileImageUrl: null },
+          content: '남겨진 댓글',
+          createdAt: '2026-10-22T00:00:00Z',
+          isMine: false,
+        },
+      ],
+      nextCursor: null,
+      hasNext: false,
+    }),
+  ).toBe(true);
+});

@@ -89,13 +89,13 @@ test.describe('피드 스크롤과 목록 캐시 복원', (): void => {
   }): Promise<void> => {
     const requests = trackFeedListRequests(page);
     await page.goto('/?categoryId=1&sort=POPULAR');
-    await expect(page.getByRole('article')).toHaveCount(12);
-    await scrollToFeed(page, 4);
+    await expect(page.getByRole('article')).toHaveCount(3);
+    await scrollToFeed(page, 2);
     const requestCount = requests.length;
 
     await page.getByRole('combobox').locator('..').getByRole('button').click();
 
-    await expect(page.getByRole('article')).toHaveCount(12);
+    await expect(page.getByRole('article')).toHaveCount(3);
     await expectFeedScroll(page, 0);
     expect(requests).toHaveLength(requestCount + 1);
     expect(requests.at(-1)?.searchParams.get('categoryId')).toBe('1');
@@ -227,7 +227,7 @@ test.describe('피드 스크롤과 목록 캐시 복원', (): void => {
 
       expect((await response).ok()).toBe(true);
       await expect(page.getByRole('article')).toHaveCount(
-        filter === '카테고리' ? 12 : 20,
+        filter === '카테고리' ? 3 : 20,
       );
       await expectFeedScroll(page, 0);
       expect(requests).toHaveLength(initialRequestCount + 1);

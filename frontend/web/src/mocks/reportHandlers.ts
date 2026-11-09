@@ -1,10 +1,10 @@
 import { delay, http, HttpResponse } from 'msw';
 import {
-  isReportSubmission,
-  type ReportReceipt,
+  isReportRequest,
+  type ReportResponse,
 } from '../domain/reports/reportSubmission';
 
-const receipts = new Map<string, ReportReceipt>();
+const receipts = new Map<string, ReportResponse>();
 let sequence = 0;
 
 export const resetReportMockState = (): void => {
@@ -34,14 +34,14 @@ export const reportHandlers = [
       return problem(403, 'INVALID_CSRF_TOKEN', '다시 시도해 주세요.');
     }
     const data: unknown = await request.json().catch((): null => null);
-    if (!isReportSubmission(data))
+    if (!isReportRequest(data))
       return problem(400, 'INVALID_REPORT', '신고 내용을 확인해 주세요.');
     await delay(300);
     const key = `${data.targetType}:${data.targetId}`;
     const existing = receipts.get(key);
     if (existing) return HttpResponse.json({ ...existing, duplicate: true });
     sequence += 1;
-    const receipt: ReportReceipt = {
+    const receipt: ReportResponse = {
       id: `00000000-0000-4000-8000-${String(sequence).padStart(12, '0')}`,
       status: 'RECEIVED',
       duplicate: false,

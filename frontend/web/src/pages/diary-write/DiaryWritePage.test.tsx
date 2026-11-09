@@ -163,8 +163,9 @@ describe('일기 생성 접수 후 성공·실패 처리', (): void => {
     mockGenerateDiary.mockRejectedValueOnce(error);
     await renderAndSubmitDiary();
     await waitFor((): void => {
+      // RequestError는 action을 메시지로 사용하므로 같은 안내를 description에 다시 넣지 않는다.
       expect(mockAddToast).toHaveBeenCalledWith(
-        { type: 'error', message: error.message, description: action },
+        { type: 'error', message: action },
         2000,
       );
     });

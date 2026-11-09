@@ -23,7 +23,7 @@ export const getUserProfile = async (): Promise<ProfileResponse> => {
   return data;
 };
 
-type OAuthProvider = 'kakao';
+type OAuthProvider = 'kakao' | 'google' | 'apple';
 type UserRole = 'USER' | 'ADMIN';
 
 export interface ProfileResponse {
@@ -38,7 +38,7 @@ export interface ProfileResponse {
 }
 
 const isOAuthProvider = (value: unknown): value is OAuthProvider => {
-  return value === 'kakao';
+  return value === 'kakao' || value === 'google' || value === 'apple';
 };
 
 const isUserRole = (value: unknown): value is UserRole => {

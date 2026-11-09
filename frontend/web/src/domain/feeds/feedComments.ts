@@ -4,9 +4,11 @@ import { ERROR_MESSAGES } from '../../shared/errorMessage';
 import { isRecord } from '../../shared/utils';
 import type { Feed } from './feedList';
 
-export interface FeedCommentAuthor {
+export interface FeedCommentAuthor extends Omit<
+  Feed['author'],
+  'id' | 'profileImageUrl'
+> {
   readonly id: string | null;
-  readonly nickname: string;
   readonly profileImageUrl: string | null;
 }
 

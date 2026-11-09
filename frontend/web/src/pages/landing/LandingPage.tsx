@@ -7,7 +7,11 @@ import {
   type RefObject,
 } from 'react';
 import { css, type SerializedStyles } from '@emotion/react';
-import { RequestError } from '../../shared/api';
+import {
+  getAdditionalProblemAction,
+  getProblemAction,
+  RequestError,
+} from '../../shared/api';
 import generationStep1Image from '../../assets/images/generation-step-1-reading.png';
 import generationStep2Image from '../../assets/images/generation-step-2-writing.png';
 import generationStep3Image from '../../assets/images/generation-step-3-selecting-panels.png';
@@ -25,7 +29,6 @@ import useGuestDiaryCreation, {
 } from './useGuestDiaryCreation';
 import { useAnalytics } from '../../posthog/useAnalytics';
 import { GUEST_TRIAL_COPY } from './trialCopy';
-import { HAS_SEEN_LANDING_KEY } from '../../shared/constants';
 
 interface LandingPageProps {
   entryFeedback?: ReactNode;
@@ -36,13 +39,6 @@ const LandingPage = ({
 }: LandingPageProps): JSX.Element => {
   const { track } = useAnalytics();
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(HAS_SEEN_LANDING_KEY, 'true');
-    } catch {
-      // 방문 기록을 저장하지 못해도 랜딩과 체험은 계속 이용한다.
-    }
-  }, []);
   const { creationState, submitDiary, retryDiary } = useGuestDiaryCreation({
     enabled: entryFeedback === null,
   });
@@ -389,6 +385,10 @@ const LandingTrialErrorCard = ({
   const sourceTextUnavailable =
     problem?.code === 'DIARY_SOURCE_TEXT_WRITE_UNAVAILABLE' ||
     problem?.code === 'DIARY_SOURCE_TEXT_READ_UNAVAILABLE';
+  // 오류 메시지를 숨기는 경우에는 행동 안내를 그대로 보여주고, 아니면 메시지와 겹치지 않을 때만 보여준다.
+  const action = trialAlreadyUsed
+    ? getProblemAction(problem)
+    : getAdditionalProblemAction(problem, error.message);
 
   return (
     <div css={trialCardStyle} role="alert">
@@ -401,7 +401,7 @@ const LandingTrialErrorCard = ({
       </header>
 
       {!trialAlreadyUsed && <p css={errorMessageStyle}>{error.message}</p>}
-      {problem?.action && <p css={errorMessageStyle}>{problem.action}</p>}
+      {action && <p css={errorMessageStyle}>{action}</p>}
 
       {trialAlreadyUsed ? (
         <>
