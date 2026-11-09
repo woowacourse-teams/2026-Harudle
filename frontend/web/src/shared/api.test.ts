@@ -1,26 +1,49 @@
 import { describe, expect, it } from '@jest/globals';
-import { isProblemDetails } from './api';
+import { isProblemDetails, RequestError, type ProblemDetails } from './api';
 
-const problem = {
+const problem: ProblemDetails = {
   type: 'about:blank',
-  title: 'Service unavailable',
+  title: 'Service Unavailable',
   status: 503,
-  detail: '일기를 저장할 수 없어요.',
+  detail: '기존 오류 안내',
   instance: '/api/v1/diaries',
-  code: 'DIARY_SOURCE_TEXT_WRITE_UNAVAILABLE',
+  code: 'GENERATION_CAPACITY_EXCEEDED',
 };
 
-describe('Problem Details 행동 안내 검증', (): void => {
-  it('행동 안내가 없는 기존 응답과 문자열 안내가 있는 응답을 허용한다', (): void => {
-    expect(isProblemDetails(problem)).toBe(true);
-    expect(
-      isProblemDetails({ ...problem, action: '나중에 다시 이용해 주세요.' }),
-    ).toBe(true);
+describe('RequestError 사용자 안내', (): void => {
+  it('action이 있으면 필드 오류와 detail보다 먼저 표시한다', (): void => {
+    const action = '현재 요청이 많아요. 잠시 후 다시 시도해 주세요.';
+    const response = {
+      ...problem,
+      action,
+      errors: [{ field: 'sourceText', reason: '필드 오류 안내' }],
+    };
+
+    expect(isProblemDetails(response)).toBe(true);
+    expect(new RequestError(response).message).toBe(action);
   });
-  it.each([null, 1, {}, [], true])(
-    '문자열이 아닌 action %p를 거절한다',
+
+  it.each([undefined, null, '', '   ', 123, {}])(
+    'action이 안내 문구가 아니면 기존 detail을 표시한다: %j',
     (action): void => {
-      expect(isProblemDetails({ ...problem, action })).toBe(false);
+      const response = { ...problem, action };
+      expect(isProblemDetails(response)).toBe(true);
+      expect(new RequestError(response).message).toBe(problem.detail);
     },
   );
+
+  it('action이 없으면 기존 필드 오류를 먼저 표시한다', (): void => {
+    expect(
+      new RequestError({
+        ...problem,
+        errors: [{ field: 'sourceText', reason: '필드 오류 안내' }],
+      }).message,
+    ).toBe('필드 오류 안내');
+  });
+
+  it('필드 오류가 빈 배열이면 detail을 표시한다', (): void => {
+    expect(new RequestError({ ...problem, errors: [] }).message).toBe(
+      problem.detail,
+    );
+  });
 });

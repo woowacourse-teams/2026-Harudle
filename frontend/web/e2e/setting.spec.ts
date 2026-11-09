@@ -23,6 +23,32 @@ const expectProfile = async (page: Page) => {
 };
 
 test.describe('설정', () => {
+  test('프로필 사진을 선택하고 되돌려도 아래 입력 요소의 위치가 바뀌지 않는다', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await goToSetting(page);
+    await page.getByRole('button', { name: '프로필 수정' }).click();
+
+    const uploadButton = page.getByRole('button', { name: '내 사진 불러오기' });
+    const nicknameInput = page.getByLabel('닉네임');
+    const uploadPosition = await uploadButton.boundingBox();
+    const nicknamePosition = await nicknameInput.boundingBox();
+    expect(uploadPosition).not.toBeNull();
+    expect(nicknamePosition).not.toBeNull();
+
+    await page.getByRole('button', { name: '기니피그 프로필 사진' }).click();
+    const restoreButton = page.getByRole('button', { name: '되돌리기' });
+    await expect(restoreButton).toBeVisible();
+    expect(await uploadButton.boundingBox()).toEqual(uploadPosition);
+    expect(await nicknameInput.boundingBox()).toEqual(nicknamePosition);
+
+    await restoreButton.click();
+    await expect(restoreButton).toBeHidden();
+    expect(await uploadButton.boundingBox()).toEqual(uploadPosition);
+    expect(await nicknameInput.boundingBox()).toEqual(nicknamePosition);
+  });
+
   test('설정 페이지를 열면 로딩 후 내 정보를 보여준다', async ({ page }) => {
     await goToSetting(page);
     const loadingSpinner = page.getByRole('img', { name: '로딩 중' });

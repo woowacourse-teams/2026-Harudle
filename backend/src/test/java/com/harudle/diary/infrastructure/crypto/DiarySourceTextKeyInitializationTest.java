@@ -3,6 +3,7 @@ package com.harudle.diary.infrastructure.crypto;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.harudle.support.MigrationTemplateDatabase;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
 import java.net.URL;
@@ -51,6 +52,7 @@ class DiarySourceTextKeyInitializationTest {
     @Container
     private static final PostgreSQLContainer POSTGRES =
             new PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"));
+    private static final MigrationTemplateDatabase DATABASES = new MigrationTemplateDatabase(POSTGRES);
 
     @TempDir
     private Path directory;
@@ -475,16 +477,18 @@ class DiarySourceTextKeyInitializationTest {
         if (connection != null && !connection.isClosed()) {
             connection.close();
         }
-        // Recreate directly because a previous test may deliberately corrupt the Flyway history.
-        try (Connection clean = openConnection()) {
-            execute(clean, "DROP SCHEMA IF EXISTS public CASCADE");
-            execute(clean, "CREATE SCHEMA public");
-            execute(clean, "GRANT USAGE ON SCHEMA public TO PUBLIC");
-        }
-        Flyway.configure()
-                .configuration(Map.of("flyway.postgresql.transactional.lock", "false"))
-                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
-                .target(target).load().migrate();
+        // A previous test may deliberately corrupt the Flyway history, so every test starts from a fresh copy.
+        DATABASES.restore("key_initialization_v" + target, () -> {
+            try (Connection clean = openConnection()) {
+                execute(clean, "DROP SCHEMA IF EXISTS public CASCADE");
+                execute(clean, "CREATE SCHEMA public");
+                execute(clean, "GRANT USAGE ON SCHEMA public TO PUBLIC");
+            }
+            Flyway.configure()
+                    .configuration(Map.of("flyway.postgresql.transactional.lock", "false"))
+                    .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                    .target(target).load().migrate();
+        });
         connection = openConnection();
         execute(connection, "INSERT INTO users (id, name) VALUES (?, ?)", USER_ID, "키 초기화 검증 사용자");
     }

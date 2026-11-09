@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
+import com.harudle.support.MigrationTemplateDatabase;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
@@ -43,6 +44,7 @@ class FeedNotificationSchemaMigrationTest {
     @Container
     private static final PostgreSQLContainer POSTGRESQL =
             new PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"));
+    private static final MigrationTemplateDatabase DATABASES = new MigrationTemplateDatabase(POSTGRESQL);
 
     @BeforeEach
     void upgradeExistingSchema() throws SQLException {
@@ -50,21 +52,24 @@ class FeedNotificationSchemaMigrationTest {
     }
 
     private void migrateExistingSchemaTo(String target) throws SQLException {
-        flyway().clean();
-        Flyway.configure()
-                .dataSource(POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
-                .target("13")
-                .load()
-                .migrate();
-        execute("INSERT INTO users (id, name) VALUES (?, ?)", AUTHOR, "중복이름");
-        execute("INSERT INTO users (id, name) VALUES (?, ?)", READER, "중복이름");
-        execute("INSERT INTO users (id, name) VALUES (?, ?)", LONG_NAME_USER, LONG_NAME);
-        execute("INSERT INTO users (id, name) VALUES (?, ?)", GUEST, "체험사용자");
-        execute("""
-                INSERT INTO guest_sessions (id, guest_user_id, token_hash, expires_at)
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP + INTERVAL '1 day')
-                """, UUID.randomUUID(), GUEST, "a".repeat(64));
-        flyway(target).migrate();
+        // 버전별로 한 번만 실제로 준비하고, 이후에는 같은 상태의 템플릿 DB를 복사한다.
+        DATABASES.restore("feed_notification_v" + target, () -> {
+            flyway().clean();
+            Flyway.configure()
+                    .dataSource(POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                    .target("13")
+                    .load()
+                    .migrate();
+            execute("INSERT INTO users (id, name) VALUES (?, ?)", AUTHOR, "중복이름");
+            execute("INSERT INTO users (id, name) VALUES (?, ?)", READER, "중복이름");
+            execute("INSERT INTO users (id, name) VALUES (?, ?)", LONG_NAME_USER, LONG_NAME);
+            execute("INSERT INTO users (id, name) VALUES (?, ?)", GUEST, "체험사용자");
+            execute("""
+                    INSERT INTO guest_sessions (id, guest_user_id, token_hash, expires_at)
+                    VALUES (?, ?, ?, CURRENT_TIMESTAMP + INTERVAL '1 day')
+                    """, UUID.randomUUID(), GUEST, "a".repeat(64));
+            flyway(target).migrate();
+        });
     }
 
     @Test

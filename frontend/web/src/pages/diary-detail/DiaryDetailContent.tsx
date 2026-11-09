@@ -1,5 +1,5 @@
 import { useToastContext } from '../../shared/ToastContext';
-import { RequestError } from '../../shared/api';
+import { getAdditionalProblemAction, RequestError } from '../../shared/api';
 import { DIARY_DETAIL_COPY } from './copy';
 import useDiaryDetail from './useDiaryDetail';
 import LoadingSpinner from '../../shared/LoadingSpinner';
@@ -40,7 +40,7 @@ const DiaryDetailContent = ({ diaryId }: { diaryId: string }) => {
     return (
       <DiaryDetailError
         errorMessage={error.message}
-        actionMessage={problem?.action}
+        actionMessage={getAdditionalProblemAction(problem, error.message)}
         canReload={problem?.code !== 'DIARY_SOURCE_TEXT_READ_UNAVAILABLE'}
       />
     );

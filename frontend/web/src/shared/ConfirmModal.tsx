@@ -15,6 +15,7 @@ interface ConfirmModalProps {
   ref: Ref<ModalHandle>;
   onConfirm: () => void;
   errorMessage?: string;
+  readonly isSubmitting?: boolean;
 }
 
 const ConfirmModal = ({
@@ -24,6 +25,7 @@ const ConfirmModal = ({
   ref,
   onConfirm,
   errorMessage,
+  isSubmitting = false,
 }: ConfirmModalProps): ReactElement => {
   const modalRef = useRef<ModalHandle>(null);
 
@@ -38,16 +40,23 @@ const ConfirmModal = ({
     <Modal
       title={title}
       ref={modalRef}
+      dismissible={!isSubmitting}
       footer={
         <>
           <button
             type="button"
             css={cancelButtonStyle}
+            disabled={isSubmitting}
             onClick={(): void => modalRef.current?.close()}
           >
             취소
           </button>
-          <button type="button" css={confirmButtonStyle} onClick={onConfirm}>
+          <button
+            type="button"
+            css={confirmButtonStyle}
+            disabled={isSubmitting}
+            onClick={onConfirm}
+          >
             {confirmLabel}
           </button>
         </>
@@ -81,6 +90,11 @@ const buttonStyle = css`
   font-weight: 500;
   line-height: 20px;
   cursor: pointer;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
 `;
 
 const cancelButtonStyle = css`

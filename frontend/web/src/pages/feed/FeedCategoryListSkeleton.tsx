@@ -22,14 +22,14 @@ const shimmer = keyframes`
 const categoryListSkeletonStyle = css`
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 16px;
   height: 48px;
   overflow: hidden;
 `;
 
 const categoryItemSkeletonStyle = css`
-  flex: 0 0 34px;
-  height: 22px;
+  flex: 0 0 28px;
+  height: 20px;
   border-radius: 4px;
   background: linear-gradient(
     90deg,
@@ -46,5 +46,5 @@ const categoryItemSkeletonStyle = css`
 `;
 
 const wideCategoryItemSkeletonStyle = css`
-  flex-basis: 49px;
+  flex-basis: 42px;
 `;

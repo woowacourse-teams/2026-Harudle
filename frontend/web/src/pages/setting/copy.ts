@@ -6,7 +6,7 @@ export const PROFILE_COPY = {
   fileSizeError: '사진은 5MB까지 올릴 수 있어요.',
   fileReadError: '사진을 미리 볼 수 없어요. 다른 사진을 선택해 주세요.',
   fileProcessError: '사진을 처리할 수 없어요. 다른 사진을 선택해 주세요.',
-  restorePhoto: '기존 사진 사용',
+  restorePhoto: '되돌리기',
   retryImages: '사진 다시 불러오기',
   candidateError: '이 사진을 불러오지 못했어요. 다른 사진을 선택해 주세요.',
   nicknameLengthError: '닉네임은 1자 이상 10자 이하로 입력해 주세요.',

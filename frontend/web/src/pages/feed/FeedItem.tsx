@@ -8,8 +8,9 @@ import DiaryImage from '../../shared/DiaryImage';
 import { theme } from '../../styles/theme';
 import FeedActions from '../../shared/feed/FeedActions';
 import { useNavigate } from 'react-router';
-import FeedOptionsButton from '../../shared/feed/FeedOptionsButton';
-import ReportOptionsButton from '../../shared/report/ReportOptionsButton';
+import OwnFeedOptionsButton from '../../shared/feed/OwnFeedOptionsButton';
+import OtherFeedOptionsButton from '../../shared/content/OtherFeedOptionsButton';
+import VisuallyHidden from '../../shared/VisuallyHidden';
 
 interface FeedItemProps {
   readonly feed: Feed;
@@ -31,65 +32,75 @@ const FeedItem = ({
   const { author, category, publishedAt, imageUrl, isMine } = feed;
 
   return (
-    <article css={feedItemStyle}>
-      <header css={authorStyle}>
-        <div css={avatarStyle}>
-          <img
-            src={author.profileImageUrl || profileFallbackImage}
-            css={profileImageStyle}
-            onError={(event) => {
-              const image = event.currentTarget;
-              if (image.getAttribute('src') !== profileFallbackImage) {
-                image.src = profileFallbackImage;
-              }
-            }}
+    <li>
+      <article css={feedItemStyle} aria-labelledby={`feed-title-${feed.id}`}>
+        <VisuallyHidden>
+          <h2
+            id={`feed-title-${feed.id}`}
+          >{`${author.nickname}님의 피드, 카테고리-${category.name}, ${formatPublishedAt(publishedAt)} 게시`}</h2>
+        </VisuallyHidden>
+
+        <header css={authorStyle}>
+          <div css={avatarStyle}>
+            <img
+              src={author.profileImageUrl || profileFallbackImage}
+              css={profileImageStyle}
+              alt=""
+              onError={(event) => {
+                const image = event.currentTarget;
+                if (image.getAttribute('src') !== profileFallbackImage) {
+                  image.src = profileFallbackImage;
+                }
+              }}
+            />
+          </div>
+          <div css={authorInformationStyle}>
+            <span css={authorNameStyle}>{author.nickname}</span>
+            <button
+              type="button"
+              css={categoryStyle}
+              onClick={() => onCategoryClick(category.id, category.name)}
+            >
+              <img src={categoryChevronIcon} alt="" />
+              <span>{category.name}</span>
+            </button>
+            <time css={publishedAtStyle} dateTime={publishedAt}>
+              {formatPublishedAt(publishedAt)}
+            </time>
+          </div>
+          {isMine ? (
+            <OwnFeedOptionsButton feedId={feed.id} onDelete={onDelete} />
+          ) : (
+            <OtherFeedOptionsButton
+              feedId={feed.id}
+              authorId={author.id}
+              authorNickname={author.nickname}
+            />
+          )}
+        </header>
+        <div onContextMenu={(event) => event.preventDefault()}>
+          <DiaryImage
+            src={imageUrl}
+            alt={`${author.nickname}의 만화 피드`}
+            imageRole="feed"
+            css={comicImageStyle}
           />
         </div>
-        <div css={authorInformationStyle}>
-          <span css={authorNameStyle}>{author.nickname}</span>
-          <button
-            type="button"
-            css={categoryStyle}
-            onClick={() => onCategoryClick(category.id, category.name)}
-          >
-            <img src={categoryChevronIcon} alt="" />
-            <span>{category.name}</span>
-          </button>
-          <time css={publishedAtStyle} dateTime={publishedAt}>
-            {formatPublishedAt(publishedAt)}
-          </time>
-        </div>
-        {isMine ? (
-          <FeedOptionsButton feedId={feed.id} onDelete={onDelete} />
-        ) : (
-          <ReportOptionsButton
-            target={{ targetType: 'FEED', targetId: feed.id }}
-            authorId={author.id}
-          />
-        )}
-      </header>
-      <div onContextMenu={(event) => event.preventDefault()}>
-        <DiaryImage
-          src={imageUrl}
-          alt={`${author.nickname}의 만화 피드`}
-          imageRole="feed"
-          css={comicImageStyle}
+        <FeedActions
+          onCommentClick={() => {
+            void navigate(`/feeds/${feed.id}`, {
+              state: { fromFeed: true },
+            });
+          }}
+          shareUrl={feed.shareUrl}
+          feedId={feed.id}
+          commentCount={feed.commentCount}
+          likeCount={feed.likeCount}
+          likedByMe={feed.likedByMe}
+          onLikeChange={onLikeChange}
         />
-      </div>
-      <FeedActions
-        onCommentClick={() => {
-          void navigate(`/feeds/${feed.id}`, {
-            state: { fromFeed: true },
-          });
-        }}
-        shareUrl={feed.shareUrl}
-        feedId={feed.id}
-        commentCount={feed.commentCount}
-        likeCount={feed.likeCount}
-        likedByMe={feed.likedByMe}
-        onLikeChange={onLikeChange}
-      />
-    </article>
+      </article>
+    </li>
   );
 };
 

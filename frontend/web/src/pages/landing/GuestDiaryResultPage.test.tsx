@@ -41,7 +41,6 @@ jest.mock(
   '../../assets/images/loading-animation.webp',
   () => 'loading-animation.webp',
 );
-jest.mock('../../assets/icons/kakao.svg', () => 'kakao.svg');
 
 beforeEach(() => {
   mockRetryResult.mockReset();
@@ -60,7 +59,7 @@ describe('게스트 일기 결과 화면', () => {
     ).toBeInTheDocument();
     expect(screen.queryByText('내용')).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('link', { name: '카카오로 로그인하기' }),
+      screen.queryByRole('link', { name: '로그인하기' }),
     ).not.toBeInTheDocument();
 
     fireEvent.load(screen.getByTestId('guest-diary-result-preload'));
@@ -70,7 +69,7 @@ describe('게스트 일기 결과 화면', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('내용')).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: '카카오로 로그인하기' }),
+      screen.getByRole('link', { name: '로그인하기' }),
     ).toBeInTheDocument();
   });
 
@@ -86,7 +85,7 @@ describe('게스트 일기 결과 화면', () => {
       }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('link', { name: '카카오로 로그인하기' }),
+      screen.queryByRole('link', { name: '로그인하기' }),
     ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '다시 시도' }));

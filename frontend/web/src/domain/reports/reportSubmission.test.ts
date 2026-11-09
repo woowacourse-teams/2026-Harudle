@@ -6,10 +6,10 @@ import { RequestError } from '../../shared/api';
 import {
   REPORT_ERRORS,
   submitReport,
-  type ReportSubmission,
+  type ReportRequest,
 } from './reportSubmission';
 
-const request: ReportSubmission = {
+const request: ReportRequest = {
   targetType: 'FEED',
   targetId: '00000000-0000-4000-8000-000000000001',
   reason: 'SPAM',

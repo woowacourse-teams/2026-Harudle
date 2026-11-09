@@ -13,6 +13,15 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 let mockSearchParams = new URLSearchParams();
 const mockSetSearchParams = jest.fn();
 
+jest.mock('./AdminReportsPanel', () => ({
+  __esModule: true,
+  default: () => null,
+}));
+jest.mock('./AdminModerationPanel', () => ({
+  __esModule: true,
+  default: () => null,
+}));
+
 jest.mock('react-router', () => ({
   useSearchParams: () => [mockSearchParams, mockSetSearchParams],
 }));
@@ -129,6 +138,14 @@ beforeEach(() => {
 });
 
 describe('관리자 페이지 비동기 요청 순서', () => {
+  it('신고 관리 화면은 기존 사용자·생성 목록을 조회하지 않는다', async () => {
+    renderAdmin('/admin?view=reports');
+    expect(screen.getByRole('heading', { name: '신고 관리' })).toBeVisible();
+    await act(async (): Promise<void> => undefined);
+    expect(mockSearchAdminUsers).not.toHaveBeenCalled();
+    expect(mockSearchAdminGenerations).not.toHaveBeenCalled();
+  });
+
   it('사용자 상세 조회는 마지막으로 선택한 사용자의 응답만 반영한다', async () => {
     const userA = createUser('user-a', '사용자 A');
     const userB = createUser('user-b', '사용자 B');

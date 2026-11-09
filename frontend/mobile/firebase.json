@@ -1,0 +1,7 @@
+{
+  "react-native": {
+    "messaging_auto_init_enabled": false,
+    "messaging_android_notification_channel_id": "feed",
+    "messaging_ios_foreground_presentation_options": []
+  }
+}

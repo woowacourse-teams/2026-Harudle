@@ -5,18 +5,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.harudle.TestcontainersConfiguration;
 import com.harudle.auth.application.NicknameChangeService;
 import com.harudle.auth.domain.OAuthAccount;
 import com.harudle.auth.domain.OAuthProvider;
 import com.harudle.auth.domain.User;
 import com.harudle.auth.infrastructure.OAuthAccountRepository;
-import com.harudle.auth.infrastructure.S3ProfileImageStorage;
 import com.harudle.auth.infrastructure.UserRepository;
-import com.harudle.auth.infrastructure.nickname.NicknameCandidateRepository;
 import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
-import com.harudle.profile.configuration.ProfileConfiguration;
 import com.harudle.profile.service.port.PublicProfileReader;
+import com.harudle.support.AuthJpaTestSupport;
 import jakarta.persistence.EntityManagerFactory;
 import java.net.URI;
 import java.sql.Timestamp;
@@ -27,30 +24,17 @@ import java.util.Set;
 import java.util.UUID;
 import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
-import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers
-@DataJpaTest(showSql = false, properties = {
-        "harudle.profile.image-base-url=https://www.harudle.com/profile-images/v1",
-        "spring.jpa.properties.hibernate.generate_statistics=true"
-})
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({
-        TestcontainersConfiguration.class,
-        ProfileConfiguration.class, ProfileImageUrlResolver.class, DefaultPublicProfileReader.class,
-        NicknameChangeService.class, NicknameCandidateRepository.class
-})
-class DefaultPublicProfileReaderTest {
+class DefaultPublicProfileReaderTest extends AuthJpaTestSupport {
 
     private static final Instant CREATED_AT = Instant.parse("2026-10-11T00:00:00Z");
 
@@ -74,16 +58,19 @@ class DefaultPublicProfileReaderTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
-
-    @MockitoBean
-    private S3ProfileImageStorage storage;
-
     private Statistics statistics;
 
     @BeforeEach
     void setUp() {
         statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
+        // 공통 JPA 설정에서는 통계를 끄고, 쿼리 수를 확인하는 이 테스트에서만 켠다.
+        statistics.setStatisticsEnabled(true);
         statistics.clear();
+    }
+
+    @AfterEach
+    void tearDown() {
+        statistics.setStatisticsEnabled(false);
     }
 
     @Test

@@ -3,6 +3,7 @@ import { type ApiRequest } from '../../shared/api';
 import { requestCsrfToken, setAccessToken } from '../../shared/auth';
 import { logout } from '../../domain/user/logout';
 import { useAnalytics } from '../../posthog/useAnalytics';
+import { clearNativePushRegistration } from '../../domain/push/pushRegistration';
 
 const useLogout = () => {
   const { resetUser } = useAnalytics();
@@ -18,6 +19,7 @@ const useLogout = () => {
     try {
       const csrfToken = await requestCsrfToken();
       await logout({ csrfToken });
+      clearNativePushRegistration();
 
       resetUser();
 

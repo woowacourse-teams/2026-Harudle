@@ -11,7 +11,7 @@ import {
 import * as auth from '../shared/auth';
 import {
   submitReport,
-  type ReportSubmission,
+  type ReportRequest,
 } from '../domain/reports/reportSubmission';
 import { reportHandlers, resetReportMockState } from './reportHandlers';
 
@@ -45,7 +45,7 @@ const mutationHeaders = {
   Authorization: 'Bearer mock-access-token',
   'X-XSRF-TOKEN': 'mock-csrf-token',
 };
-const submission: ReportSubmission = {
+const submission: ReportRequest = {
   targetType: 'FEED',
   targetId: '00000000-0000-4000-8000-000000000002',
   reason: 'SPAM',

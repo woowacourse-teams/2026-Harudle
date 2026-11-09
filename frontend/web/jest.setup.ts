@@ -8,4 +8,9 @@ if (typeof HTMLElement !== 'undefined') {
     writable: true,
     value: jest.fn<HTMLElement['scrollTo']>(),
   });
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+    configurable: true,
+    writable: true,
+    value: jest.fn<HTMLElement['scrollIntoView']>(),
+  });
 }

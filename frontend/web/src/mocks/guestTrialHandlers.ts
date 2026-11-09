@@ -120,6 +120,25 @@ const saveState = (state: GuestTrialMockState): void => {
   fallbackState = state;
 };
 
+/** 피드 체험 claim mock이 현재 게스트 세션의 완료된 일기를 찾는다. */
+export const findLatestSucceededGuestTrialMockDiary =
+  (): GuestDiaryResponse | null => {
+    const state = loadState();
+    if (!state.sessionIssued) return null;
+
+    const records = Object.values(state.requests).reverse();
+    for (const record of records) {
+      const generation = getMockGeneration(
+        record.job,
+        record.response.generation,
+      );
+      if (generation.status === 'SUCCEEDED') {
+        return { ...record.response, generation };
+      }
+    }
+    return null;
+  };
+
 export const resetGuestTrialMockState = (): void => {
   fallbackState = createInitialState();
   getSessionStorage()?.removeItem(GUEST_TRIAL_STATE_STORAGE_KEY);

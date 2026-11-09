@@ -14,6 +14,8 @@ import { FEED_COPY } from './copy';
 import useDiaryGenerationId from '../../shared/useDiaryGenerationId';
 import type { BottomSheetHandle } from '../../shared/BottomSheet';
 import NeedLoginBottomSheet from '../../shared/NeedLoginBottomSheet';
+import FeedNotifications from './FeedNotifications';
+import useGuestTrialExperiment from './guest-trial/useGuestTrialExperiment';
 
 const FEED_QUERY_KEYS = {
   CATEGORY_ID: 'categoryId',
@@ -24,6 +26,8 @@ const FeedPage = () => {
   const navigate = useNavigate();
   const loginSheetRef = useRef<BottomSheetHandle>(null);
   const generationId = useDiaryGenerationId();
+  const hasCompletedOAuth =
+    localStorage.getItem('harudle.has-completed-oauth') !== null;
   const { track } = useAnalytics();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -39,6 +43,11 @@ const FeedPage = () => {
     updateLike,
     removeFeedFromList,
   } = useFeedList({ categoryId, sort });
+  const createButtonRef = useRef<HTMLButtonElement>(null);
+  const guestTrial = useGuestTrialExperiment({
+    isFeedReady: request.status === 'success',
+    createButtonRef,
+  });
 
   const handleCategoryChange = (
     nextCategoryId: Category['id'] | undefined,
@@ -77,7 +86,7 @@ const FeedPage = () => {
   };
 
   const handleCreate = (): void => {
-    if (localStorage.getItem('harudle.has-completed-oauth') === null) {
+    if (!hasCompletedOAuth) {
       loginSheetRef.current?.open();
       return;
     }
@@ -87,19 +96,21 @@ const FeedPage = () => {
 
   return (
     <BottomNavigationLayout
-      headerRight={
+      headerLeft={
         <button
+          ref={createButtonRef}
           type="button"
           aria-label={FEED_COPY.createAction}
           disabled={generationId !== null}
           css={createButtonStyle}
-          onClick={handleCreate}
+          onClick={guestTrial.isActive ? guestTrial.onCreate : handleCreate}
         >
           <span aria-hidden="true" css={createIconBackgroundStyle}>
             <span css={createIconStyle} />
           </span>
         </button>
       }
+      headerRight={hasCompletedOAuth && <FeedNotifications />}
     >
       <main css={feedPageContentStyle}>
         <FeedFilterBar
@@ -125,6 +136,7 @@ const FeedPage = () => {
         description={FEED_COPY.createLoginDescription}
         ref={loginSheetRef}
       />
+      {guestTrial.element}
     </BottomNavigationLayout>
   );
 };
@@ -185,7 +197,6 @@ const feedPageContentStyle = css`
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 12px;
   min-height: 0px;
   padding: 4px 20px 0 20px;
   font-size: 12px;
