@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1/admin/generations")
-class AdminImageRecoveryController {
+public class AdminImageRecoveryController {
     private final AdminImageRecoveryService recoveryService;
 
     AdminImageRecoveryController(AdminImageRecoveryService recoveryService) {
