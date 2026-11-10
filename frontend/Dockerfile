@@ -1,4 +1,4 @@
-FROM node:24-bookworm-slim AS builder
+FROM public.ecr.aws/docker/library/node:24-bookworm-slim AS builder
 
 WORKDIR /workspace
 
@@ -19,7 +19,7 @@ ARG REACT_APP_POSTHOG_HOST
 
 RUN pnpm build
 
-FROM nginx:1.29-alpine3.22 AS runtime
+FROM public.ecr.aws/docker/library/nginx:1.29-alpine3.22 AS runtime
 
 COPY nginx/default.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /workspace/web/dist /usr/share/nginx/html

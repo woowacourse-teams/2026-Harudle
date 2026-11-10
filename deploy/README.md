@@ -207,6 +207,10 @@ Buildspec: buildspec.yml
 CloudWatch log group: /aws/codebuild/harudle-dev-bulid
 ```
 
+베이스 이미지는 Docker Official Images의 Amazon ECR Public 경로(`public.ecr.aws/docker/library/`)에서 받습니다. Docker Hub의 익명 요청 제한으로 CodeBuild가 실패하는 것을 피하기 위한 다운로드 경로이며, Java·Node·Nginx 버전은 Dockerfile의 태그를 따릅니다. 프론트 이미지 캐시의 베이스 이미지 조회도 같은 경로를 사용합니다.
+
+2026-11-10 AWS 콘솔 확인 기준으로 `harudle-dev-pipeline`은 `stage`, `harudle-prod-pipeline`은 `main`을 배포합니다. `develop-backend`·`develop-frontend` → `dev`로 통합한 뒤 `dev` → `stage`를 병합하면 dev 서버 배포가 시작됩니다. dev 서버 배포 성공을 확인한 후 `stage` → `main`을 승격합니다.
+
 `buildspec.yml`은 빌드 호스트 아키텍처와 관계없이 최종 이미지를 `linux/arm64`로 생성하고 이미지 아키텍처를 검증합니다. x86 빌드 환경에서는 QEMU/binfmt를 등록하므로 Docker 교차 빌드를 위해 Privileged mode가 반드시 필요합니다.
 
 ### 원문 암호화 최초 적용과 복구 배포본

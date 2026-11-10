@@ -1,4 +1,4 @@
-FROM amazoncorretto:21-alpine3.22-jdk AS dependencies
+FROM public.ecr.aws/docker/library/amazoncorretto:21-alpine3.22-jdk AS dependencies
 
 WORKDIR /workspace
 
@@ -19,7 +19,7 @@ RUN gradle_build_started="$(date +%s)" \
     && test -n "$JAR_FILE" \
     && cp "$JAR_FILE" /workspace/app.jar
 
-FROM amazoncorretto:21-alpine3.22 AS runtime-base
+FROM public.ecr.aws/docker/library/amazoncorretto:21-alpine3.22 AS runtime-base
 
 RUN apk add --no-cache curl tini libwebp-tools \
     && addgroup -S -g 10001 harudle \
