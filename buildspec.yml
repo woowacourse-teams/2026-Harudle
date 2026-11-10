@@ -30,7 +30,8 @@ phases:
     commands:
       - set -euo pipefail
       - |
-        bash deploy/scripts/codebuild_backend.sh build
+        set -euo pipefail
+        bash deploy/scripts/codebuild_backend.sh build || exit 1
         mkdir -p build-artifacts
         frontend_image_reused=false
         if bash deploy/scripts/codebuild_frontend.sh restore; then
@@ -56,16 +57,16 @@ phases:
             --output "type=docker,dest=build-artifacts/$service-image.tar" \
             "${build_args[@]}" \
             --tag "harudle-$service:local" \
-            "./$service"
+            "./$service" || exit 1
           echo "[build-metrics] ${service}_docker_export_seconds=$(($(date +%s) - image_build_started))"
 
           image_archive="build-artifacts/$service-image.tar"
           image_config="$(tar -xOf "$image_archive" manifest.json | jq -er --arg tag "harudle-$service:local" '
             select(length == 1) | .[0] | select(.RepoTags | index($tag)) | .Config
-          ')"
+          ')" || exit 1
           tar -xOf "$image_archive" -- "$image_config" | jq -e '
             .architecture == "arm64" and .os == "linux"
-          '
+          ' || exit 1
         done
   post_build:
     commands:

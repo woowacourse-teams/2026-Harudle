@@ -46,7 +46,7 @@ class LegalDocumentControllerTest {
                         .value("402496b667db012f54f0d52d2ebd293dd74e24eaf008eaa681052174799ee919"))
                 .andExpect(jsonPath("$.documents[0].sections[0].paragraphs[0]").isString())
                 .andExpect(jsonPath("$.documents[1].type").value("PRIVACY"))
-                .andExpect(jsonPath("$.documents[1].version").value("2026-08-24"));
+                .andExpect(jsonPath("$.documents[1].version").value("2026-11-10"));
     }
 
     @Test
@@ -58,6 +58,21 @@ class LegalDocumentControllerTest {
                 .andExpect(jsonPath("$.title").value("하루들 서비스 이용약관"))
                 .andExpect(jsonPath("$.sourceUrl")
                         .value("https://sun-acai-a8d.notion.site/409676b0adce8380b97101bd50ec7dd9"));
+    }
+
+    @Test
+    @DisplayName("현재 개인정보 고지와 이전 버전 원문을 각각 공개 조회한다")
+    void keepsPreviousPrivacyReadableAfterCampusNoticeUpdate() throws Exception {
+        mockMvc.perform(get("/api/v1/legal/documents/privacy/2026-11-10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.version").value("2026-11-10"))
+                .andExpect(jsonPath("$.contentHash")
+                        .value("f5dd2d33087e563b6de91c90472039166411ab4671d2dc7f63d7afa2e5f2246c"));
+        mockMvc.perform(get("/api/v1/legal/documents/privacy/2026-08-24"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.version").value("2026-08-24"))
+                .andExpect(jsonPath("$.contentHash")
+                        .value("a294f42fa09c856c853439f74c2d71a8e2d32f0100fa4d8505291cfb9231bf4f"));
     }
 
     @ParameterizedTest
