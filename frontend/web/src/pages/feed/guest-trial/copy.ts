@@ -42,7 +42,7 @@ export const GUEST_TRIAL_COPY = {
   statusCheckRetry: '다시 확인',
 
   resultSheetTitle: '내 이야기로 만든 첫 만화',
-  maskedImageLabel: '2컷과 3컷을 가린 네컷만화',
+  maskedImageLabel: '1컷과 4컷을 가린 네컷만화',
   unlockTitle: '로그인하면 네컷만화\n원본을 확인할 수 있어요',
   unlockDescription: '지금 만든 만화를 내 앨범으로 가져와요.',
   loginAction: '로그인하고 원본 보기',

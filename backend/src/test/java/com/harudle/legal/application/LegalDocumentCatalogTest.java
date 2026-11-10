@@ -22,7 +22,8 @@ import tools.jackson.databind.ObjectMapper;
 
 class LegalDocumentCatalogTest {
     private static final String TERMS_HASH = "402496b667db012f54f0d52d2ebd293dd74e24eaf008eaa681052174799ee919";
-    private static final String PRIVACY_HASH = "a294f42fa09c856c853439f74c2d71a8e2d32f0100fa4d8505291cfb9231bf4f";
+    private static final String PREVIOUS_PRIVACY_HASH = "a294f42fa09c856c853439f74c2d71a8e2d32f0100fa4d8505291cfb9231bf4f";
+    private static final String PRIVACY_HASH = "f5dd2d33087e563b6de91c90472039166411ab4671d2dc7f63d7afa2e5f2246c";
 
     @Test
     @DisplayName("실제 공개 문서 원문과 고정 해시를 읽고 종류·버전으로 같은 스냅샷을 제공한다")
@@ -38,6 +39,26 @@ class LegalDocumentCatalogTest {
         assertThat(terms.sections()).isNotEmpty();
         assertThat(catalog.current(LegalDocumentType.PRIVACY).contentHash()).isEqualTo(PRIVACY_HASH);
         assertThat(catalog.acceptedTerms()).containsExactly(TermsDocumentReference.from(terms));
+    }
+
+    @Test
+    @DisplayName("캠퍼스 연동 목적을 현재 개인정보 문서에 알리고 과거 원문과 기존 약관 수락 정책은 보존한다")
+    void publishesCampusPurposeWithoutChangingExistingAcceptances() {
+        LegalDocumentCatalog catalog = catalog();
+        var current = catalog.current(LegalDocumentType.PRIVACY);
+        var previous = catalog.find(LegalDocumentType.PRIVACY, "2026-08-24");
+
+        assertThat(current.version()).isEqualTo("2026-11-10");
+        assertThat(current.effectiveDate()).isEqualTo(LocalDate.of(2026, 11, 10));
+        assertThat(current.sections().stream().filter(section -> section.title().equals("2. 개인정보 이용 목적"))
+                .flatMap(section -> section.paragraphs().stream()))
+                .anySatisfy(paragraph -> assertThat(paragraph).contains("우테코 캠퍼스 로그인 연동", "내부 회원 ID",
+                        "공개 닉네임", "기본 프로필 사진 주소"));
+        assertThat(previous.contentHash()).isEqualTo(PREVIOUS_PRIVACY_HASH);
+        assertThat(catalog.documents()).doesNotContain(previous);
+        assertThat(catalog.current(LegalDocumentType.TERMS).version()).isEqualTo("2026-10-22");
+        assertThat(catalog.acceptedTerms()).containsExactly(
+                TermsDocumentReference.from(catalog.find(LegalDocumentType.TERMS, "2026-10-22")));
     }
 
     @ParameterizedTest
@@ -60,7 +81,7 @@ class LegalDocumentCatalogTest {
         };
         LegalDocumentCatalog catalog = new LegalDocumentCatalog(new ObjectMapper(), resources);
         assertThatThrownBy(() -> catalog.find(type, version)).isInstanceOf(LegalDocumentNotFoundException.class);
-        assertThat(reads.get()).isEqualTo(2);
+        assertThat(reads.get()).isEqualTo(3);
     }
 
     @Test
@@ -129,7 +150,7 @@ class LegalDocumentCatalogTest {
     void rejectsCurrentVersionMissingFromManifest() {
         LegalDocumentCatalog published = catalog();
         assertThatThrownBy(() -> new LegalDocumentCatalog(published.documents(), Map.of(
-                LegalDocumentType.TERMS, "2026-10-23", LegalDocumentType.PRIVACY, "2026-08-24")))
+                LegalDocumentType.TERMS, "2026-10-23", LegalDocumentType.PRIVACY, "2026-11-10")))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("현재 공개 버전")
                 .hasCauseInstanceOf(LegalDocumentNotFoundException.class);
     }
@@ -156,7 +177,7 @@ class LegalDocumentCatalogTest {
     @DisplayName("인정할 과거 약관이 manifest에 없거나 현재 버전의 수락을 제외하면 시작을 거절한다")
     void rejectsInvalidAcceptancePoliciesAtStartup() {
         var published = catalog();
-        var versions = Map.of(LegalDocumentType.TERMS, "2026-10-22", LegalDocumentType.PRIVACY, "2026-08-24");
+        var versions = Map.of(LegalDocumentType.TERMS, "2026-10-22", LegalDocumentType.PRIVACY, "2026-11-10");
 
         assertThatThrownBy(() -> new LegalDocumentCatalog(published.documents(), versions,
                 List.of("2026-10-22", "not-published")))
