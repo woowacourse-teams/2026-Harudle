@@ -8,6 +8,7 @@ import PublicFeedRoute from './PublicFeedRoute';
 import AdminGuard from './pages/admin/AdminGuard';
 import AlbumPage from './pages/album/AlbumPage/AlbumPage';
 import BlockedUsersPage from './pages/blocked-users/BlockedUsersPage';
+import CampusConnectPage from './pages/campus-connect/CampusConnectPage';
 import ConsentPage from './pages/consent/ConsentPage';
 import DiaryDetailPage from './pages/diary-detail/DiaryDetailPage';
 import DiaryWritePage from './pages/diary-write/DiaryWritePage';
@@ -52,6 +53,7 @@ const App = () => {
 
         {/* 모든 서비스 화면은 세션 복원 후 약관 동의를 확인한다. */}
         <Route element={<PublicFeedRoute onPushChange={setPush} />}>
+          <Route path="/campus/connect" element={<CampusConnectPage />} />
           <Route element={<AgreementRoute />}>
             <Route path="/" element={<FeedPage />} />
             <Route path="/feeds/:feedId" element={<FeedDetailPage />} />
