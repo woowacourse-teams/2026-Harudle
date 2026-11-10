@@ -26,11 +26,13 @@ public class LegalDocumentCatalog {
             new DocumentSpec(LegalDocumentType.TERMS, "2026-10-22", "classpath:legal/terms-2026-10-22.json",
                     "402496b667db012f54f0d52d2ebd293dd74e24eaf008eaa681052174799ee919"),
             new DocumentSpec(LegalDocumentType.PRIVACY, "2026-08-24", "classpath:legal/privacy-2026-08-24.json",
-                    "a294f42fa09c856c853439f74c2d71a8e2d32f0100fa4d8505291cfb9231bf4f")
+                    "a294f42fa09c856c853439f74c2d71a8e2d32f0100fa4d8505291cfb9231bf4f"),
+            new DocumentSpec(LegalDocumentType.PRIVACY, "2026-11-10", "classpath:legal/privacy-2026-11-10.json",
+                    "f5dd2d33087e563b6de91c90472039166411ab4671d2dc7f63d7afa2e5f2246c")
     );
     private static final Map<LegalDocumentType, String> CURRENT_VERSIONS = Map.of(
             LegalDocumentType.TERMS, "2026-10-22",
-            LegalDocumentType.PRIVACY, "2026-08-24"
+            LegalDocumentType.PRIVACY, "2026-11-10"
     );
     // 공지성 개정은 이전 수락을 유지하고, 재동의가 필요한 개정은 이전 버전을 이 목록에서 제외한다.
     private static final List<String> ACCEPTED_TERMS_VERSIONS = List.of("2026-10-22");
