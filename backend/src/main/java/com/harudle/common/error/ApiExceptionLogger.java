@@ -11,7 +11,7 @@ import org.springframework.web.servlet.HandlerMapping;
 
 @Component
 @NullMarked
-final class ApiExceptionLogger {
+public final class ApiExceptionLogger {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ApiExceptionLogger.class);
     private static final String UNMATCHED_PATH = "UNMATCHED";
@@ -20,7 +20,7 @@ final class ApiExceptionLogger {
     private static final String API_EXCEPTION_LOG_FORMAT =
             "event=api_exception errorCode={} httpStatus={} method={} path={} exceptionType={}";
 
-    void error(
+    public void error(
             ErrorType errorType,
             Throwable exception,
             HttpServletRequest request
