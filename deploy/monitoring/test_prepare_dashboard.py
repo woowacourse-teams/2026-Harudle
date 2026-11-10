@@ -17,7 +17,7 @@ NAMESPACES_FOR_TEST = {"dev": "Harudle/Dev", "prod": "Harudle/Prod"}
 class DashboardTests(unittest.TestCase):
     def test_dev_removes_unneeded_graphs_but_keeps_p95_card_p99_graph_and_routes(self):
         source = {"widgets": service_widgets("dev", INSTANCE_ID)}
-        result = prepare_dashboard(source, "dev", INSTANCE_ID)
+        result = prepare_dashboard(source, "dev", INSTANCE_ID, rebuild=True)
         titles = {w['properties'].get('title') for w in result['widgets']}
         self.assertFalse(titles & {'API 응답 시간 (전체)', 'API 응답 시간 (일반)',
                                    'API 응답 시간 (일기 생성)', '작업별 TPS (성공한 작업/초)',
@@ -102,7 +102,7 @@ class DashboardTests(unittest.TestCase):
         source = {"widgets": [{"type": "metric", "height": 6, "properties": {
             "title": "기존 확정 수", "metrics": [row]}}, {"type": "metric", "height": 6, "properties": {
             "title": "일기 생성: DB 최종 확정 수", "metrics": [row]}}]}
-        rows = next(w["properties"]["metrics"] for w in prepare_dashboard(source, "prod", INSTANCE_ID)["widgets"]
+        rows = next(w["properties"]["metrics"] for w in prepare_dashboard(source, "prod", INSTANCE_ID, rebuild=True)["widgets"]
                     if w["properties"].get("title") == "일기 생성: DB 최종 확정 수")
         self.assertEqual(rows[0], row)
         self.assertEqual([r[1] for r in rows].count("GenerationUnexpectedFailureLogs"), 1)
@@ -111,7 +111,7 @@ class DashboardTests(unittest.TestCase):
             source = {"widgets": [{"type": "metric", "height": 6, "properties": {
                 "title": "일기 생성: DB 최종 확정 수", "metrics": [
                     row, row + [{"id": "f0", "visible": False}], [{"expression": "f0", "id": "failed"}]]}}]}
-            result = prepare_dashboard(source, environment, INSTANCE_ID)
+            result = prepare_dashboard(source, environment, INSTANCE_ID, rebuild=True)
             card = next(w for w in result["widgets"] if w["properties"].get("title") == "생성 실패 (선택 기간)")
             self.assertIn("SUM(f0)", json.dumps(card))
             self.assertEqual(prepare_dashboard(result, environment, INSTANCE_ID), result)
@@ -122,7 +122,7 @@ class DashboardTests(unittest.TestCase):
                    [{"expression": "f0", "id": "failed"}]]
         source = {"widgets": [{"type": "metric", "height": 6, "properties": {
             "title": "일기 생성: DB 최종 확정 수", "metrics": metrics}}]}
-        result = prepare_dashboard(source, "dev", INSTANCE_ID)
+        result = prepare_dashboard(source, "dev", INSTANCE_ID, rebuild=True)
         by_title = {w["properties"].get("title"): w for w in result["widgets"]}
         self.assertIn("GenerationUnexpectedFailureLogs", json.dumps(by_title["일기 생성: DB 최종 확정 수"]))
         self.assertNotIn("GenerationUnexpectedFailureLogs", json.dumps(by_title["생성 실패 (선택 기간)"]))
@@ -147,10 +147,38 @@ class DashboardTests(unittest.TestCase):
         instance_id = json.loads((root / "targets.json").read_text())["dev"]["instance_id"]
         self.assertEqual(prepare_dashboard(source, "dev", instance_id), source)
 
+    def test_renamed_console_card_keeps_layout_unless_rebuild_is_requested(self):
+        root = Path(__file__).parent
+        targets = json.loads((root / "targets.json").read_text())
+        for environment, title in (("dev", "GC 최근 최대 정지 (ms)"), ("prod", "일반 API P95 (ms)")):
+            source = json.loads((root / f"dashboards/{environment}.json").read_text())
+            renamed = next(w for w in source["widgets"] if w["properties"].get("title") == title)
+            renamed["properties"]["title"] = "콘솔에서 바꾼 제목"
+            instance_id = targets[environment]["instance_id"]
+            def layout(dashboard):
+                return [(w["properties"].get("title"), w["x"], w["y"], w["width"], w["height"])
+                        for w in dashboard["widgets"]]
+
+            with self.subTest(environment=environment):
+                # Content repairs such as units may still apply; card count and positions must not change.
+                self.assertEqual(layout(prepare_dashboard(source, environment, instance_id)), layout(source))
+                rebuilt = prepare_dashboard(source, environment, instance_id, rebuild=True)
+                self.assertGreater(len(rebuilt["widgets"]), len(source["widgets"]))
+
+    def test_default_run_never_adds_cards_to_an_incomplete_dashboard(self):
+        source = {"widgets": [{"type": "metric", "x": 0, "y": 0, "width": 12, "height": 6, "properties": {
+            "title": "API RPS (완료한 요청/초)", "metrics": []}}]}
+        for environment in ("dev", "prod"):
+            with self.subTest(environment=environment):
+                result = prepare_dashboard(source, environment, INSTANCE_ID)
+                self.assertEqual(len(result["widgets"]), 1)
+                self.assertEqual({k: result["widgets"][0][k] for k in ("x", "y", "width", "height")},
+                                 {"x": 0, "y": 0, "width": 12, "height": 6})
+
     def test_dev_p95_uses_the_prod_number_card_format_without_changing_values(self):
         source = {"widgets": [w for w in service_widgets("dev", INSTANCE_ID)
                               if w["properties"]["title"] == "API 응답 시간 (일반)"]}
-        result = prepare_dashboard(source, "dev", INSTANCE_ID)
+        result = prepare_dashboard(source, "dev", INSTANCE_ID, rebuild=True)
         card = next(w for w in result["widgets"] if w["properties"].get("title") == "일반 API P95 (ms)")
         self.assertEqual(card["properties"]["view"], "singleValue")
         self.assertTrue(card["properties"]["sparkline"])
@@ -182,7 +210,6 @@ class DashboardTests(unittest.TestCase):
         unchanged = copy.deepcopy(source)
         result = prepare_dashboard(source, "prod", INSTANCE_ID)
         self.assertEqual(result, unchanged)
-        self.assertEqual(arrange_dashboard(source, "prod"), unchanged)
         self.assertEqual(prepare_dashboard(result, "prod", INSTANCE_ID), result)
         self.assertEqual(source, unchanged)
         self.assertNotIn("생성 실패 (선택 기간)", [w["properties"].get("title") for w in result["widgets"]])
@@ -217,7 +244,7 @@ class DashboardTests(unittest.TestCase):
         original = {"widgets": [{"type": "metric", "height": 6, "properties": {
             "title": title, "period": 300, "metrics": [[{"expression": "original", "id": "e0"}]]}}
             for title in titles]}
-        result = prepare_dashboard(original, "dev", INSTANCE_ID)
+        result = prepare_dashboard(original, "dev", INSTANCE_ID, rebuild=True)
         props = {w["properties"].get("title"): w["properties"] for w in result["widgets"]}
         title = "생성 실행 평균 시간 (초)"
         self.assertEqual(props[title]["period"], 60)
@@ -240,7 +267,7 @@ class DashboardTests(unittest.TestCase):
             for title in ("Backend Internal Errors", "Gemini & S3 Failures",
                           "External Failure Trend", "OAuth Login Events")
         ]}
-        prod = prepare_dashboard(original, "prod", INSTANCE_ID)
+        prod = prepare_dashboard(original, "prod", INSTANCE_ID, rebuild=True)
         logs = [w for w in prod["widgets"] if w["type"] == "log"]
         self.assertEqual([w["properties"]["title"] for w in logs], [
             "Gemini & S3 Failures", "Backend Internal Errors", "OAuth Login Events"])
@@ -249,7 +276,7 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(table["properties"]["query"], "original query")
         self.assertTrue(all(w["y"] >= table["y"] + table["height"] for w in logs[1:]))
         self.assertEqual(prepare_dashboard(prod, "prod", INSTANCE_ID), prod)
-        dev_logs = [w for w in prepare_dashboard(original, "dev", INSTANCE_ID)["widgets"]
+        dev_logs = [w for w in prepare_dashboard(original, "dev", INSTANCE_ID, rebuild=True)["widgets"]
                     if w["type"] == "log"]
         self.assertEqual([w["properties"]["title"] for w in dev_logs],
                          [w["properties"]["title"] for w in logs])
@@ -391,8 +418,8 @@ class DashboardTests(unittest.TestCase):
 
     def test_both_environments_remove_existing_tps_widgets(self):
         tps = {"type": "metric", "properties": {"title": "작업별 TPS (성공한 작업/초)", "metrics": []}}
-        prod = prepare_dashboard({"widgets": [copy.deepcopy(tps)]}, "prod", INSTANCE_ID)
-        dev = prepare_dashboard({"widgets": [copy.deepcopy(tps)]}, "dev", INSTANCE_ID)
+        prod = prepare_dashboard({"widgets": [copy.deepcopy(tps)]}, "prod", INSTANCE_ID, rebuild=True)
+        dev = prepare_dashboard({"widgets": [copy.deepcopy(tps)]}, "dev", INSTANCE_ID, rebuild=True)
 
         self.assertNotIn("작업별 TPS (성공한 작업/초)",
                          [w["properties"].get("title") for w in prod["widgets"]])
@@ -447,7 +474,7 @@ class DashboardTests(unittest.TestCase):
             self.assertNotIn("RATE(", formula)
         self.assertIn('area=\\"nonheap\\"', json.dumps(memory))
         self.assertIn("jvm_memory_committed_bytes", json.dumps(memory))
-        prepared = prepare_dashboard({"widgets": []}, "dev", INSTANCE_ID)
+        prepared = prepare_dashboard({"widgets": []}, "dev", INSTANCE_ID, rebuild=True)
         self.assertEqual(prepare_dashboard(prepared, "dev", INSTANCE_ID), prepared)
 
     def test_queue_widgets_use_matching_dimensions_and_converted_counter_sums(self):
@@ -517,7 +544,7 @@ class DashboardTests(unittest.TestCase):
             before.write_text(json.dumps(previous))
             command = [sys.executable, str(Path(__file__).with_name("prepare_dashboard.py")),
                        "--environment", "dev", "--instance-id", INSTANCE_ID,
-                       "--dashboard", str(before), "--output", str(output)]
+                       "--dashboard", str(before), "--output", str(output), "--rebuild"]
             result = subprocess.run(command, capture_output=True, text=True)
             self.assertNotEqual(result.returncode, 0)
             self.assertFalse(output.exists())

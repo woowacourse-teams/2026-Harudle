@@ -322,34 +322,12 @@ def metric_filters(environment):
     return filters
 
 
-def has_prod_layout(dashboard):
-    """Keep a completed console layout, including cards added outside this script."""
-    titles = {w.get("properties", {}).get("title") for w in dashboard["widgets"]}
-    return ({"백엔드 5xx 비율 (선택 기간)", "일반 API P95 (ms)", "최근 DB 연결 대기 최댓값",
-             "DB 데이터 여유 공간 (GiB)", "DB 백업 상태 (1 정상, 0 주의)"}.issubset(titles)
-            and not titles.isdisjoint({"생성 실패", "생성 실패 (선택 기간)"})
-            and all(all(key in w for key in ("x", "y", "width", "height")) for w in dashboard["widgets"]))
-
-
 def row_id(row):
     return row[-1].get("id") if row and isinstance(row[-1], dict) else None
 
 
-def has_dev_layout(dashboard):
-    """Keep the completed Dev console layout, including cards added outside this script."""
-    titles = {w.get("properties", {}).get("title") for w in dashboard["widgets"]}
-    return ({"백엔드 5xx 비율 (선택 기간)", "일반 API P95 (ms)", "생성 실패 (선택 기간)", "최근 DB 연결 대기 최댓값",
-             "DB 데이터 여유 공간 (GiB)", "GC 최근 최대 정지 (ms)",
-             "API 응답 시간 P95·P99 (일반·일기 생성)"}.issubset(titles)
-            and titles.isdisjoint(DEV_REMOVED_TITLES)
-            and all(all(key in w for key in ("x", "y", "width", "height")) for w in dashboard["widgets"]))
-
-
-def has_completed_layout(dashboard, environment):
-    return has_prod_layout(dashboard) if environment == "prod" else has_dev_layout(dashboard)
-
-
-def prepare_dashboard(original, environment, instance_id):
+def prepare_dashboard(original, environment, instance_id, rebuild=False):
+    """Repair known content in place; only add cards and rearrange the layout when rebuild is requested."""
     if "AWS/RDS" in json.dumps(original):
         raise ValueError("EC2 PostgreSQL로 전환한 최신 대시보드 원본을 사용하세요.")
     dashboard = copy.deepcopy(original)
@@ -398,17 +376,18 @@ def prepare_dashboard(original, environment, instance_id):
                 properties.update(title="생성 실행 평균 시간 (초)", period=60)
             elif properties.get("markdown", "").startswith("### 지표와 알림 안내"):
                 properties["markdown"] = GENERATION_NOTICE
-    additions = [] if has_completed_layout(dashboard, environment) else [
-                 item for item in service_widgets(environment, instance_id)
-                 if item["properties"]["title"] not in titles
-                 and not (item["properties"]["title"] == "Java 힙과 힙 외 메모리" and "Java 힙 외 메모리" in titles)]
-    if not has_completed_layout(dashboard, environment) and "Nginx 502/504 응답 수" not in titles:
-        additions.append(nginx_gateway_widget(environment))
     for item in retained:
         for row in item.get("properties", {}).get("metrics", []):
             for index in range(len(row) - 1):
                 if row[index] == "InstanceId" and row[index + 1] == "i-00000000000000000":
                     row[index + 1] = instance_id
+    if not rebuild:
+        return dashboard
+    additions = [item for item in service_widgets(environment, instance_id)
+                 if item["properties"]["title"] not in titles
+                 and not (item["properties"]["title"] == "Java 힙과 힙 외 메모리" and "Java 힙 외 메모리" in titles)]
+    if "Nginx 502/504 응답 수" not in titles:
+        additions.append(nginx_gateway_widget(environment))
     dashboard["widgets"] = retained + additions
     return arrange_dashboard(dashboard, environment)
 
@@ -428,8 +407,6 @@ def backup_status_widget():
 def arrange_dashboard(original, environment):
     """Reorder existing observations; never infer DB health from EC2 health."""
     dashboard = copy.deepcopy(original)
-    if has_completed_layout(dashboard, environment):
-        return dashboard
     for item in dashboard['widgets']:
         props = item.get('properties', {})
         if props.get('title') != '백엔드 HTTP: 완료 수와 5xx 수':
@@ -634,6 +611,8 @@ def main():
     parser.add_argument("--dashboard", type=Path, required=True,
                         help="CloudWatch View/edit source JSON or AWS get-dashboard JSON output")
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--rebuild", action="store_true",
+                        help="Add missing cards and rearrange the whole layout; by default the layout is kept")
     args = parser.parse_args()
     if args.instance_id is None:
         targets = json.loads(Path(__file__).with_name("targets.json").read_text())
@@ -642,7 +621,7 @@ def main():
         parser.error("실제 EC2 InstanceId를 입력하세요.")
     try:
         original = read_dashboard(args.dashboard, args.environment)
-        dashboard = prepare_dashboard(original, args.environment, args.instance_id)
+        dashboard = prepare_dashboard(original, args.environment, args.instance_id, args.rebuild)
     except (OSError, ValueError) as error:
         parser.error(f"대시보드 JSON을 읽을 수 없습니다: {error}")
     files = {"dashboard.json": dashboard}
