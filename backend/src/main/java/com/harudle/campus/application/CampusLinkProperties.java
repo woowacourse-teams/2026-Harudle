@@ -39,12 +39,24 @@ public record CampusLinkProperties(
     }
 
     private static void validateEnabled(URI redirectUri, String signingKeyBase64) {
-        if (redirectUri == null || !redirectUri.isAbsolute()) {
-            throw new IllegalArgumentException("harudle.campus.redirect-uri는 절대 주소여야 합니다.");
+        if (!isAllowedRedirectUri(redirectUri)) {
+            throw new IllegalArgumentException(
+                    "harudle.campus.redirect-uri는 HTTPS 주소여야 합니다. HTTP는 localhost와 127.0.0.1만 허용합니다.");
         }
         if (signingKeyBase64 == null || decodedLength(signingKeyBase64) < MINIMUM_KEY_LENGTH) {
             throw new IllegalArgumentException("harudle.campus.signing-key-base64는 32바이트 이상의 Base64 값이어야 합니다.");
         }
+    }
+
+    private static boolean isAllowedRedirectUri(URI redirectUri) {
+        if (redirectUri == null || !redirectUri.isAbsolute() || redirectUri.getHost() == null
+                || redirectUri.getRawUserInfo() != null || redirectUri.getRawFragment() != null) {
+            return false;
+        }
+        boolean localHost = "localhost".equalsIgnoreCase(redirectUri.getHost())
+                || "127.0.0.1".equals(redirectUri.getHost());
+        return "https".equalsIgnoreCase(redirectUri.getScheme())
+                || ("http".equalsIgnoreCase(redirectUri.getScheme()) && localHost);
     }
 
     private static int decodedLength(String value) {
