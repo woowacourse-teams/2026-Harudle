@@ -34,7 +34,7 @@ def backup_age(info, now):
     return now - max(completed)
 
 
-def collect_metrics(now):
+def collect_metrics(clock=time.time):
     dimensions = [{"Name": "InstanceId", "Value": INSTANCE_ID}]
     result = [{"MetricName": "BackupInfoCheckSuccess", "Dimensions": dimensions,
                "Value": 0, "Unit": "Count"},
@@ -43,7 +43,8 @@ def collect_metrics(now):
     try:
         info = subprocess.run(INFO_COMMAND, check=True, capture_output=True,
                               text=True, timeout=45)
-        age = backup_age(json.loads(info.stdout), now)
+        # Read the clock after info returns so a backup finishing during the query is not treated as future.
+        age = backup_age(json.loads(info.stdout), clock())
     except (OSError, subprocess.SubprocessError, ValueError, TypeError, KeyError, AttributeError):
         return result
     result[0]["Value"] = 1
@@ -55,7 +56,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true", help="Read metadata without publishing")
     args = parser.parse_args()
-    metrics = collect_metrics(time.time())
+    metrics = collect_metrics()
     if not args.dry_run:
         import boto3
         from botocore.config import Config

@@ -44,7 +44,7 @@ class BackupMonitorTests(unittest.TestCase):
     def test_success_publishes_two_bounded_metrics_and_only_runs_info(self):
         output = subprocess.CompletedProcess([], 0, json.dumps(self.info()), "")
         with patch.object(monitor.subprocess, "run", return_value=output) as run:
-            metrics = monitor.collect_metrics(300)
+            metrics = monitor.collect_metrics(lambda: 300)
         self.assertEqual([(m["MetricName"], m["Value"]) for m in metrics],
                          [("BackupInfoCheckSuccess", 1), ("BackupWithin24Hours", 1)])
         self.assertEqual(run.call_args.args[0][-1], "info")
@@ -57,20 +57,39 @@ class BackupMonitorTests(unittest.TestCase):
         output = subprocess.CompletedProcess([], 0, json.dumps(self.info()), "")
         for age, expected in ((86399, 1), (86400, 1), (86401, 0)):
             with self.subTest(age=age), patch.object(monitor.subprocess, "run", return_value=output):
-                metrics = monitor.collect_metrics(200 + age)
+                metrics = monitor.collect_metrics(lambda: 200 + age)
             self.assertEqual(metrics[0]["Value"], 1)
             self.assertEqual(metrics[1]["Value"], expected)
+
+    def test_backup_completed_during_info_query_is_reported_as_success(self):
+        # Query starts at 300, the backup finishes at 302, and info returns at 305.
+        info = self.info()
+        info[0]["backup"].append({"error": False, "timestamp": {"stop": 302}})
+        calls = []
+
+        def run(*args, **kwargs):
+            calls.append("run")
+            return subprocess.CompletedProcess([], 0, json.dumps(info), "")
+
+        def clock():
+            calls.append("clock")
+            return 305
+
+        with patch.object(monitor.subprocess, "run", side_effect=run):
+            metrics = monitor.collect_metrics(clock)
+        self.assertEqual(calls, ["run", "clock"])
+        self.assertEqual([m["Value"] for m in metrics], [1, 1])
 
     def test_read_failures_publish_only_failed_check(self):
         for error in (subprocess.TimeoutExpired("info", 45),
                       subprocess.CalledProcessError(1, "info"), OSError("unavailable")):
             with self.subTest(error=error), patch.object(monitor.subprocess, "run", side_effect=error):
-                metrics = monitor.collect_metrics(300)
+                metrics = monitor.collect_metrics(lambda: 300)
             self.assertEqual(len(metrics), 2)
             self.assertEqual(metrics[1]["Value"], 0)
             self.assertEqual(metrics[0]["Value"], 0)
         with patch.object(monitor.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "bad", "")):
-            self.assertEqual(monitor.collect_metrics(300)[0]["Value"], 0)
+            self.assertEqual(monitor.collect_metrics(lambda: 300)[0]["Value"], 0)
 
     def test_target_matches_prod_and_timer_does_not_start_existing_backup_service(self):
         root = Path(__file__).parent
