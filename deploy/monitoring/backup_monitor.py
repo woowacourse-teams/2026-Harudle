@@ -16,25 +16,34 @@ INFO_COMMAND = [
 ]
 
 
+class BackupInfoError(ValueError):
+    """Carry a fixed reason so the journal never needs the raw error text."""
+
+    def __init__(self, reason):
+        super().__init__(reason)
+        self.reason = reason
+
+
 def backup_age(info, now):
-    if not isinstance(info, list) or len(info) != 1:
-        raise ValueError("Expected one backup stanza")
+    if not isinstance(info, list) or len(info) != 1 or not isinstance(info[0], dict):
+        raise BackupInfoError("invalid_info_format")
     stanza = info[0]
-    if not isinstance(stanza, dict) or stanza.get("name") != STANZA or stanza.get("status", {}).get("code") != 0:
-        raise ValueError("Backup repository information is not healthy")
+    if stanza.get("name") != STANZA or stanza.get("status", {}).get("code") != 0:
+        raise BackupInfoError("stanza_unhealthy")
     backups = stanza.get("backup", [])
     if not isinstance(backups, list) or any(not isinstance(b, dict) for b in backups):
-        raise ValueError("Invalid backup metadata")
+        raise BackupInfoError("invalid_info_format")
     completed = [b["timestamp"]["stop"] for b in backups
                  if b.get("error") is False
                  and type(b.get("timestamp", {}).get("stop")) is int
                  and b["timestamp"]["stop"] > 0]
     if not completed or max(completed) > now:
-        raise ValueError("No completed backup with a valid completion time")
+        raise BackupInfoError("no_valid_backup")
     return now - max(completed)
 
 
 def collect_metrics(clock=time.time):
+    """Return the two metrics and a fixed reason; raw errors are never returned."""
     dimensions = [{"Name": "InstanceId", "Value": INSTANCE_ID}]
     result = [{"MetricName": "BackupInfoCheckSuccess", "Dimensions": dimensions,
                "Value": 0, "Unit": "Count"},
@@ -45,18 +54,24 @@ def collect_metrics(clock=time.time):
                               text=True, timeout=45)
         # Read the clock after info returns so a backup finishing during the query is not treated as future.
         age = backup_age(json.loads(info.stdout), clock())
-    except (OSError, subprocess.SubprocessError, ValueError, TypeError, KeyError, AttributeError):
-        return result
+    except subprocess.TimeoutExpired:
+        return result, "info_timeout"
+    except (OSError, subprocess.SubprocessError):
+        return result, "info_command_failed"
+    except BackupInfoError as error:
+        return result, error.reason
+    except (ValueError, TypeError, KeyError, AttributeError):
+        return result, "invalid_info_format"
     result[0]["Value"] = 1
     result[1]["Value"] = int(age <= 24 * 60 * 60)
-    return result
+    return result, "ok"
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true", help="Read metadata without publishing")
     args = parser.parse_args()
-    metrics = collect_metrics()
+    metrics, reason = collect_metrics()
     if not args.dry_run:
         import boto3
         from botocore.config import Config
@@ -70,7 +85,7 @@ def main():
             # SDK diagnostics can contain request details; keep them out of the journal.
             print("backup_monitor_publish_failed", flush=True)
             return 1
-    print(json.dumps({"dry_run": args.dry_run, "metrics": metrics}), flush=True)
+    print(json.dumps({"dry_run": args.dry_run, "reason": reason, "metrics": metrics}), flush=True)
     return 0 if metrics[0]["Value"] == 1 else 1
 
 

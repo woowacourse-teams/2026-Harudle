@@ -408,6 +408,17 @@ systemctl show harudle-db-backup-monitor.service --property=Result,ExecMainStatu
 sudo journalctl -u harudle-db-backup-monitor.service -n 10 --no-pager
 ```
 
+실행 기록의 `reason`은 실패 원인을 고정된 이름으로 보여줍니다. 오류 원문은 남기지 않습니다. CloudWatch 전송에 실패하면 `reason` 없이 `backup_monitor_publish_failed`만 남습니다.
+
+| `reason` | 뜻 | 먼저 확인할 곳 |
+| --- | --- | --- |
+| `ok` | 정상 | 없음 |
+| `info_timeout` | 조회가 45초를 넘김 | DB 서버 부하, pgBackRest 응답 |
+| `info_command_failed` | `docker compose exec` 실패 또는 명령 파일 없음 | DB 컨테이너 상태 |
+| `invalid_info_format` | 응답이 JSON이 아니거나 구조가 다름 | pgBackRest 버전과 출력 |
+| `stanza_unhealthy` | stanza 이름이 다르거나 상태 코드가 0이 아님 | 백업 저장소와 stanza 설정 |
+| `no_valid_backup` | 성공한 백업이 없거나 완료 시각이 미래임 | 04시 백업 실행 기록 |
+
 수집기 수정 시 먼저 `--dry-run`으로 확인합니다. 파일과 systemd 설정을 검토해 설치한 뒤 `systemctl daemon-reload`와 `systemctl enable --now harudle-db-backup-monitor.timer`로 감시 예약만 적용합니다. 이미 실행 중인 타이머의 주기를 바꿨다면 `sudo systemctl restart harudle-db-backup-monitor.timer`로 새 예약을 적용합니다. 기존 `harudle-db-backup.service`와 `.timer`는 수정하지 않습니다. 감시만 중지하려면 `sudo systemctl disable --now harudle-db-backup-monitor.timer`를 실행합니다. 기존 백업 일정은 계속 동작합니다.
 
 서버가 꺼져 오전 5시 확인을 놓치면 `Persistent=true` 설정으로 서버가 켜진 뒤 한 번 확인합니다. 오전 5시에도 백업 중이라면 0이 나올 수 있으므로 완료 후 수동으로 다시 확인합니다. 이번 적용에서는 확인용으로 한 번 실행했으며, 다음 자동 확인 시각이 오전 5시인지 검증했습니다.
