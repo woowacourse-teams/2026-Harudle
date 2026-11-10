@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Route, Routes } from 'react-router';
 
 import AgreementRoute from './AgreementRoute';
+import CanonicalLink from './CanonicalLink';
 import PublicFeedRoute from './PublicFeedRoute';
 import AdminGuard from './pages/admin/AdminGuard';
 import AlbumPage from './pages/album/AlbumPage/AlbumPage';
@@ -27,6 +28,7 @@ const App = () => {
   const [push, setPush] = useState<NativePushControls | null>(null);
   return (
     <div css={appStyle}>
+      <CanonicalLink />
       <PwaAnalyticsTracker />
 
       <Routes>
