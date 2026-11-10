@@ -1,4 +1,4 @@
-import { css } from '@emotion/react';
+import { css, type SerializedStyles } from '@emotion/react';
 import {
   useEffect,
   useEffectEvent,
@@ -9,15 +9,17 @@ import {
 import { theme } from '../../../styles/theme';
 import { GUEST_TRIAL_COPY } from './copy';
 
-// 한 컷을 가로·세로 몇 칸의 모자이크로 줄일지 정한다. 작을수록 블록이 커진다.
-// 장면의 윤곽만 어렴풋이 보이도록 블록을 잘게 둔다.
-const MOSAIC_BLOCKS_PER_PANEL = 18;
+// 한 컷을 가로·세로 몇 점으로 줄였다가 부드럽게 키울지 정한다. 작을수록 더 흐려진다.
+// 장면의 분위기와 윤곽은 보이되 표정·글자는 알아보기 어려운 정도로 둔다.
+const BLUR_SAMPLES_PER_PANEL = 40;
 
 /** 2x2 네컷에서 가릴 칸(기·결). x·y는 0부터 시작하는 열·행이다. */
 const MASKED_PANELS = [
   { x: 0, y: 0 },
   { x: 1, y: 1 },
 ] as const;
+
+type MaskedPanel = (typeof MASKED_PANELS)[number];
 
 interface SourceRegion {
   readonly source: CanvasImageSource;
@@ -27,27 +29,40 @@ interface SourceRegion {
   readonly height: number;
 }
 
+const createCanvas = (
+  width: number,
+  height: number,
+): { canvas: HTMLCanvasElement; context: CanvasRenderingContext2D } | null => {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  if (!context) return null;
+
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = 'high';
+  return { canvas, context };
+};
+
 /**
- * 한 컷을 블록 수 크기로 줄인다. 한 번에 크게 줄이면 브라우저가 일부 점만 골라
- * 선이 많은 컷은 흑백으로 거칠어지므로, 절반씩 나눠 줄여 블록마다 색을 고르게 평균낸다.
+ * 한 컷을 samples 크기로 줄인다. 한 번에 크게 줄이면 브라우저가 일부 점만 골라
+ * 선이 많은 컷은 흑백으로 거칠어지므로, 절반씩 나눠 줄여 색을 고르게 평균낸다.
  * 픽셀을 직접 읽지 않아 CORS가 없는 이미지 주소에서도 동작한다.
  */
 const shrinkPanel = (
   region: SourceRegion,
-  blocks: number,
+  samples: number,
 ): HTMLCanvasElement | null => {
   let current = region;
 
-  while (current.width / 2 >= blocks && current.height / 2 >= blocks) {
-    const half = document.createElement('canvas');
-    half.width = Math.round(current.width / 2);
-    half.height = Math.round(current.height / 2);
-    const halfContext = half.getContext('2d');
-    if (!halfContext) return null;
+  while (current.width / 2 >= samples && current.height / 2 >= samples) {
+    const half = createCanvas(
+      Math.round(current.width / 2),
+      Math.round(current.height / 2),
+    );
+    if (!half) return null;
 
-    halfContext.imageSmoothingEnabled = true;
-    halfContext.imageSmoothingQuality = 'high';
-    halfContext.drawImage(
+    half.context.drawImage(
       current.source,
       current.x,
       current.y,
@@ -55,27 +70,22 @@ const shrinkPanel = (
       current.height,
       0,
       0,
-      half.width,
-      half.height,
+      half.canvas.width,
+      half.canvas.height,
     );
     current = {
-      source: half,
+      source: half.canvas,
       x: 0,
       y: 0,
-      width: half.width,
-      height: half.height,
+      width: half.canvas.width,
+      height: half.canvas.height,
     };
   }
 
-  const result = document.createElement('canvas');
-  result.width = blocks;
-  result.height = blocks;
-  const resultContext = result.getContext('2d');
-  if (!resultContext) return null;
+  const result = createCanvas(samples, samples);
+  if (!result) return null;
 
-  resultContext.imageSmoothingEnabled = true;
-  resultContext.imageSmoothingQuality = 'high';
-  resultContext.drawImage(
+  result.context.drawImage(
     current.source,
     current.x,
     current.y,
@@ -83,15 +93,42 @@ const shrinkPanel = (
     current.height,
     0,
     0,
-    blocks,
-    blocks,
+    samples,
+    samples,
   );
-  return result;
+  return result.canvas;
 };
 
 /**
- * 원본을 그린 뒤 1·4컷(기·결)만 저해상도로 줄였다가 다시 키워 모자이크를 만든다.
- * 화면과 저장 결과 모두 모자이크된 그림만 남도록 원본 이미지를 DOM에 두지 않는다.
+ * 작게 줄인 컷을 두 배씩 나눠 키운다. 한 번에 키우면 보간 격자가 드러나므로
+ * 단계마다 부드럽게 이어 붙여 블러처럼 보이게 한다.
+ */
+const enlargePanel = (
+  small: HTMLCanvasElement,
+  width: number,
+  height: number,
+): HTMLCanvasElement | null => {
+  let current = small;
+
+  while (current.width * 2 < width && current.height * 2 < height) {
+    const next = createCanvas(current.width * 2, current.height * 2);
+    if (!next) return null;
+
+    next.context.drawImage(
+      current,
+      0,
+      0,
+      next.canvas.width,
+      next.canvas.height,
+    );
+    current = next.canvas;
+  }
+  return current;
+};
+
+/**
+ * 원본을 그린 뒤 1·4컷(기·결)만 저해상도로 줄였다가 부드럽게 키워 흐리게 만든다.
+ * 화면과 저장 결과 모두 흐려진 그림만 남도록 원본 이미지를 DOM에 두지 않는다.
  */
 export const drawMaskedComic = (
   canvas: HTMLCanvasElement,
@@ -111,7 +148,7 @@ export const drawMaskedComic = (
   for (const panel of MASKED_PANELS) {
     const left = panel.x * panelWidth;
     const top = panel.y * panelHeight;
-    const mosaic = shrinkPanel(
+    const small = shrinkPanel(
       {
         source: image,
         x: left,
@@ -119,18 +156,19 @@ export const drawMaskedComic = (
         width: panelWidth,
         height: panelHeight,
       },
-      MOSAIC_BLOCKS_PER_PANEL,
+      BLUR_SAMPLES_PER_PANEL,
     );
-    if (!mosaic) return false;
+    const blurred = small && enlargePanel(small, panelWidth, panelHeight);
+    if (!blurred) return false;
 
-    // 블록 경계가 흐려지지 않도록 확대할 때는 보간하지 않는다.
-    context.imageSmoothingEnabled = false;
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = 'high';
     context.drawImage(
-      mosaic,
+      blurred,
       0,
       0,
-      mosaic.width,
-      mosaic.height,
+      blurred.width,
+      blurred.height,
       left,
       top,
       panelWidth,
@@ -198,6 +236,13 @@ const GuestTrialMaskedComic = ({
       onDragStart={preventSaving}
     >
       <canvas ref={canvasRef} aria-hidden="true" css={canvasStyle} />
+      {MASKED_PANELS.map((panel) => (
+        <span
+          key={`${panel.x}-${panel.y}`}
+          aria-hidden="true"
+          css={[frostStyle, frostPositionStyle(panel)]}
+        />
+      ))}
     </div>
   );
 };
@@ -211,7 +256,6 @@ const frameStyle = css`
   aspect-ratio: 1;
   margin: 16px auto 0;
   overflow: hidden;
-  border: 1px solid ${theme.colors.stroke.outline};
   border-radius: 12px;
   background: ${theme.colors.background.neutralWeak};
   user-select: none;
@@ -225,4 +269,23 @@ const canvasStyle = css`
   height: 100%;
   /* 우클릭 대상이 canvas가 아니게 해 브라우저의 이미지 저장 메뉴가 뜨지 않게 한다. */
   pointer-events: none;
+`;
+
+/*
+ * canvas에서 줄였다 키운 컷은 확대 격자가 남으므로, 같은 영역에 옅은 유리막을 덮어
+ * 격자를 지운다.
+ */
+const frostStyle = css`
+  position: absolute;
+  width: 50%;
+  height: 50%;
+  background: rgb(255 255 255 / 10%);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  pointer-events: none;
+`;
+
+const frostPositionStyle = (panel: MaskedPanel): SerializedStyles => css`
+  top: ${panel.y * 50}%;
+  left: ${panel.x * 50}%;
 `;
