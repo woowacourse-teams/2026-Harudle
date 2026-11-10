@@ -127,6 +127,7 @@ jobs:
         run: |
           bash ../deploy/scripts/test_image_environment.sh
           bash ../deploy/scripts/test_backend_entrypoint.sh
+          bash ../deploy/scripts/test_image_recovery.sh
 
       - name: Install WebP tools
         if: github.event_name != 'push'
@@ -142,12 +143,27 @@ jobs:
           chmod +x gradlew
           ./gradlew --no-daemon --console=plain --build-cache classes testClasses
 
-      - name: Run backend tests
+      - name: Run backend and maintenance tests
         if: github.event_name != 'push'
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon --console=plain --build-cache test --rerun maintenanceTest --rerun \
+          ./gradlew --no-daemon --console=plain --build-cache \
+            --init-script ../deploy/scripts/ci_test_progress.gradle \
+            test --rerun maintenanceTest --rerun \
             -PtestMaxParallelForks=2
+
+      - name: Save backend test diagnostics
+        if: always() && github.event_name != 'push'
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-test-diagnostics-${{ github.run_attempt }}
+          path: |
+            backend/build/test-results/test/
+            backend/build/test-results/maintenanceTest/
+            backend/build/reports/tests/test/
+            backend/build/reports/tests/maintenanceTest/
+          retention-days: 3
+          if-no-files-found: warn
 
   # 일기 원문 암호화 배포 검사는 일반 백엔드 테스트와 의존 관계가 없으므로 별도 러너에서 동시에 실행한다.
   backend-crypto-checks:
@@ -206,6 +222,8 @@ jobs:
             exit 1
           fi
           ./gradlew --no-daemon --console=plain --build-cache bootJar maintenanceJar
+          jar --list --file build/libs/harudle-0.0.1-SNAPSHOT.jar > "$RUNNER_TEMP/harudle-server-classes.txt"
+          grep -Fxq 'BOOT-INF/classes/com/harudle/recovery/ImageRecoveryApplication.class' "$RUNNER_TEMP/harudle-server-classes.txt"
           bash ../deploy/scripts/test_diary_key_check_jar.sh build/libs/harudle-0.0.1-SNAPSHOT.jar
           bash ../deploy/scripts/test_diary_key_initialization_jar.sh build/libs/harudle-0.0.1-SNAPSHOT.jar
           bash ../deploy/scripts/test_diary_source_text_backfill_jar.sh build/libs/harudle-0.0.1-SNAPSHOT.jar build/maintenance/harudle-diary-source-maintenance.jar
