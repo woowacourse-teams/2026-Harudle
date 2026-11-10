@@ -254,7 +254,6 @@ const diaryImageStyle = css`
   width: 100%;
   aspect-ratio: 1;
   border-radius: 16px;
-  outline: 1px solid ${theme.colors.stroke.outline};
   background-color: transparent;
   object-fit: cover;
 `;
