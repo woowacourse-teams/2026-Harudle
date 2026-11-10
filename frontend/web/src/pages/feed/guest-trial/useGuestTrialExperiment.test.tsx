@@ -194,7 +194,7 @@ beforeAll((): void => {
     writable: true,
     value: FakeImage,
   });
-  // jsdom에는 canvas 그리기가 없어 모자이크 계산에 쓰는 호출만 갖춘다.
+  // jsdom에는 canvas 그리기가 없어 블러 계산에 쓰는 호출만 갖춘다.
   Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
     configurable: true,
     value: () => ({
@@ -305,7 +305,7 @@ describe('비로그인 체험 흐름', (): void => {
     expect(sessionStorage.getItem(DIARY_ID_KEY)).toBe(DIARY_ID);
 
     const comic = await screen.findByRole('img', {
-      name: '2컷과 3컷을 가린 네컷만화',
+      name: '1컷과 4컷을 가린 네컷만화',
     });
     expect(mockGetDiary).toHaveBeenCalledWith(DIARY_ID);
     expect(mockTrack).not.toHaveBeenCalledWith(
@@ -494,7 +494,7 @@ describe('비로그인 체험 흐름', (): void => {
     await user.click(screen.getByRole('button', { name: '네컷만화 만들기' }));
 
     expect(
-      await screen.findByRole('img', { name: '2컷과 3컷을 가린 네컷만화' }),
+      await screen.findByRole('img', { name: '1컷과 4컷을 가린 네컷만화' }),
     ).toBeInTheDocument();
     expect(mockOriginalCreate).not.toHaveBeenCalled();
     expect(mockResolveClaim).not.toHaveBeenCalled();
@@ -508,13 +508,13 @@ describe('가려진 결과 이미지 오류', (): void => {
     renderExperiment();
 
     await user.click(screen.getByRole('button', { name: '네컷만화 만들기' }));
-    await screen.findByRole('img', { name: '2컷과 3컷을 가린 네컷만화' });
+    await screen.findByRole('img', { name: '1컷과 4컷을 가린 네컷만화' });
     finishComicImage('error');
 
     await user.click(
       await screen.findByRole('button', { name: '다시 불러오기' }),
     );
-    await screen.findByRole('img', { name: '2컷과 3컷을 가린 네컷만화' });
+    await screen.findByRole('img', { name: '1컷과 4컷을 가린 네컷만화' });
     finishComicImage('load');
 
     expect(mockGetDiary).toHaveBeenCalledTimes(2);
@@ -721,7 +721,7 @@ describe('피드 밖에서의 완료 알림', (): void => {
     renderExperiment();
 
     expect(
-      await screen.findByRole('img', { name: '2컷과 3컷을 가린 네컷만화' }),
+      await screen.findByRole('img', { name: '1컷과 4컷을 가린 네컷만화' }),
     ).toBeInTheDocument();
   });
 });

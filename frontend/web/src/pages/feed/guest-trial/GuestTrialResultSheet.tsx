@@ -259,7 +259,6 @@ const comicStyle = css`
   aspect-ratio: 1;
   margin: 16px auto 0;
   overflow: hidden;
-  border: 1px solid ${theme.colors.stroke.outline};
   border-radius: 12px;
   background: ${theme.colors.background.neutralWeak};
 `;
