@@ -1,5 +1,6 @@
 package com.harudle.feed.presentation;
 
+import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -53,9 +54,10 @@ import com.harudle.generation.config.R2StorageProperties;
 import com.harudle.generation.config.S3StorageProperties;
 import com.harudle.generation.diary.service.port.BackupObjectStorage;
 import com.harudle.generation.diary.service.port.BackupStorageException;
+import com.harudle.generation.diary.service.port.ImageLookupBudget;
+import com.harudle.generation.diary.service.port.ImageLookupBudgetExceededException;
 import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageStorageException;
-import com.harudle.generation.diary.service.port.ImageLookupBudget;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.generation.diary.service.port.dto.BackupObjectMetadata;
 import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
@@ -286,6 +288,40 @@ class FeedControllerTest {
                 .andExpect(jsonPath("$.hasNext").value(true));
         verify(listService).getList(null, FeedSort.LATEST, null, null, 20);
         verify(imageUrlProvider).forFeedRead();
+    }
+
+    @Test
+    void listsOtherFeedImagesWhenOneImageUrlCannotBeIssued() throws Exception {
+        FeedResult available = result(false, false);
+        String missingKey = "generated/unavailable.webp";
+        FeedResult unavailable = new FeedResult(DIARY, available.author(), available.category(), missingKey,
+                available.publishedAt(), 0, 0, false, false);
+        when(listService.getList(null, FeedSort.LATEST, null, null, 20))
+                .thenReturn(new FeedPageResult(List.of(unavailable, available), "next-page", true));
+        when(imageUrlProvider.createAccessUrl(missingKey)).thenThrow(new ImageStorageException("이미지 발급 실패"));
+
+        mockMvc.perform(get("/api/v1/feeds"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].id").value(DIARY.toString()))
+                .andExpect(jsonPath("$.items[0].imageUrl").value(nullValue()))
+                .andExpect(jsonPath("$.items[0].imageUrlExpiresAt").value(nullValue()))
+                .andExpect(jsonPath("$.items[1].imageUrl").value("https://signed.example/comic.webp"))
+                .andExpect(jsonPath("$.nextCursor").value("next-page"));
+        verify(imageUrlProvider).forFeedRead();
+    }
+
+    @Test
+    void returnsFeedDetailWhenItsImageLookupRunsOutOfTime() throws Exception {
+        FeedResult feed = result(false, false);
+        when(queryService.getDetail(null, FEED)).thenReturn(feed);
+        when(imageUrlProvider.createAccessUrl(feed.imageObjectKey()))
+                .thenThrow(new ImageLookupBudgetExceededException());
+
+        mockMvc.perform(get("/api/v1/feeds/{feedId}", FEED))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(FEED.toString()))
+                .andExpect(jsonPath("$.imageUrl").value(nullValue()))
+                .andExpect(jsonPath("$.imageUrlExpiresAt").value(nullValue()));
     }
 
     @Test
