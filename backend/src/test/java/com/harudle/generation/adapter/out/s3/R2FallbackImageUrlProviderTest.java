@@ -128,7 +128,10 @@ class R2FallbackImageUrlProviderTest {
             assertThat(cachedPrimary.forFeedRead().createAccessUrl(THUMBNAIL)).isEqualTo(S3_URL);
 
             ImageUrlProvider response = fallback.forFeedRead();
-            assertThatThrownBy(() -> response.createAccessUrl(DETAIL)).isInstanceOf(ImageStorageException.class);
+            assertThatThrownBy(() -> response.createAccessUrl(DETAIL))
+                    .isInstanceOfSatisfying(ImageStorageException.class, failure ->
+                            assertThat(failure.diagnosticType())
+                                    .isEqualTo(ImageStorageException.DiagnosticType.LOOKUP_BUDGET_EXHAUSTED));
             assertThat(response.createAccessUrl(THUMBNAIL)).isEqualTo(S3_URL);
             verify(signer, never()).sign(DETAIL);
             verify(signer).sign(THUMBNAIL);
@@ -266,7 +269,9 @@ class R2FallbackImageUrlProviderTest {
     void invalidFeedKeyDoesNotSelectOrProbeStorage() {
         ImageUrlProvider response = provider.forRead();
         assertThatThrownBy(() -> response.createAccessUrl(DETAIL.replace("/dev/", "/prod/")))
-                .isInstanceOf(ImageStorageException.class);
+                .isInstanceOfSatisfying(ImageStorageException.class, failure ->
+                        assertThat(failure.diagnosticType())
+                                .isEqualTo(ImageStorageException.DiagnosticType.REQUEST_VALIDATION_ERROR));
         verifyNoInteractions(storage, backup, primary);
 
         when(storage.exists(eq(DETAIL), any(ImageLookupBudget.class))).thenReturn(true);

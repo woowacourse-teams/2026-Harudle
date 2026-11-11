@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import com.harudle.generation.config.S3UrlCacheProperties;
 import com.harudle.generation.diary.service.port.ImageLookupBudget;
 import com.harudle.generation.diary.service.port.ImageStorageException;
+import com.harudle.generation.diary.service.port.ImageStorageException.DiagnosticType;
 import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.net.URI;
@@ -156,9 +157,12 @@ class S3ImageUrlCacheTest {
             throw new ImageStorageException("서명 실패");
         };
         assertThatThrownBy(() -> accessUrlFor(KEY, signer)).isInstanceOf(ImageStorageException.class);
-        assertThatThrownBy(() -> accessUrlFor(KEY, signer)).isInstanceOf(ImageStorageException.class);
+        now.updateAndGet(value -> value.plusSeconds(4));
+        assertThatThrownBy(() -> accessUrlFor(KEY, signer))
+                .isInstanceOfSatisfying(ImageStorageException.class, failure ->
+                        assertThat(failure.diagnosticType()).isEqualTo(DiagnosticType.CACHE_COOLDOWN));
         assertThat(signatures).hasValue(1);
-        now.updateAndGet(value -> value.plusSeconds(5));
+        now.updateAndGet(value -> value.plusSeconds(1));
 
         ImageAccessUrl recovered = accessUrlFor(KEY, () -> signedUrl("recovered", 900, true));
 
@@ -209,7 +213,9 @@ class S3ImageUrlCacheTest {
             return signedUrl("late", 900, true);
         };
         try {
-            assertThatThrownBy(() -> accessUrlFor(KEY, delayed)).isInstanceOf(ImageStorageException.class);
+            assertThatThrownBy(() -> accessUrlFor(KEY, delayed))
+                    .isInstanceOfSatisfying(ImageStorageException.class, failure ->
+                            assertThat(failure.diagnosticType()).isEqualTo(DiagnosticType.CACHE_WAIT_TIMEOUT));
             assertThatThrownBy(() -> accessUrlFor(KEY, delayed)).isInstanceOf(ImageStorageException.class);
             assertThat(signatures).hasValue(1);
             assertThat(eventCount("refresh_failure")).isZero();
@@ -260,8 +266,11 @@ class S3ImageUrlCacheTest {
         };
         try {
             assertThatThrownBy(() -> accessUrlFor(KEY, stuck)).isInstanceOf(ImageStorageException.class);
-            IntStream.range(0, 20).forEach(index -> assertThatThrownBy(
+            IntStream.range(0, 8).forEach(index -> assertThatThrownBy(
                     () -> accessUrlFor(KEY + index, stuck)).isInstanceOf(ImageStorageException.class));
+            IntStream.range(8, 20).forEach(index -> assertThatThrownBy(() -> accessUrlFor(KEY + index, stuck))
+                    .isInstanceOfSatisfying(ImageStorageException.class, failure ->
+                            assertThat(failure.diagnosticType()).isEqualTo(DiagnosticType.CACHE_REFRESH_REJECTED)));
             assertThat(signatures).hasValue(1);
             assertThat(eventCount("refresh_rejected")).isEqualTo(12);
             assertThat(eventCount("refresh_failure")).isZero();

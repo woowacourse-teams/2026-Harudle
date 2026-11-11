@@ -5,6 +5,7 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.harudle.generation.config.S3UrlCacheProperties;
 import com.harudle.generation.diary.service.port.ImageLookupBudget;
 import com.harudle.generation.diary.service.port.ImageStorageException;
+import com.harudle.generation.diary.service.port.ImageStorageException.DiagnosticType;
 import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -92,7 +93,7 @@ public final class S3ImageUrlCache implements AutoCloseable {
         record("miss");
         if (!waiters.tryAcquire()) {
             record("wait_rejected");
-            return existingUrlOrThrow(previous, unavailable());
+            return existingUrlOrThrow(previous, unavailable(DiagnosticType.CACHE_WAIT_REJECTED));
         }
         try {
             return await(refresh(imageObjectKey, signer, budget), budget);
@@ -109,7 +110,7 @@ public final class S3ImageUrlCache implements AutoCloseable {
             ImageLookupBudget budget
     ) {
         if (closed) {
-            throw unavailable();
+            throw unavailable(DiagnosticType.CACHE_CLOSED);
         }
         Instant now = clock.instant();
         Optional<SignedS3ImageUrl> reusable = entryFor(imageObjectKey).filter(url -> url.canReuseAt(now));
@@ -123,7 +124,7 @@ public final class S3ImageUrlCache implements AutoCloseable {
         }
         if (budget.remainingNanos() == 0) {
             record("wait_timeout");
-            throw unavailable();
+            throw unavailable(DiagnosticType.LOOKUP_BUDGET_EXHAUSTED);
         }
         requireRefreshAvailable(imageObjectKey, now);
         CompletableFuture<SignedS3ImageUrl> started = new CompletableFuture<>();
@@ -134,7 +135,7 @@ public final class S3ImageUrlCache implements AutoCloseable {
         } catch (RejectedExecutionException exception) {
             refreshes.remove(imageObjectKey, started);
             record("refresh_rejected");
-            started.completeExceptionally(unavailable());
+            started.completeExceptionally(unavailable(DiagnosticType.CACHE_REFRESH_REJECTED));
         }
         return started;
     }
@@ -143,7 +144,7 @@ public final class S3ImageUrlCache implements AutoCloseable {
         Instant retryAt = retryAfter.get(imageObjectKey);
         if (retryAt != null && retryAt.isAfter(now)) {
             record("cooldown");
-            throw unavailable();
+            throw unavailable(DiagnosticType.CACHE_COOLDOWN);
         }
         retryAfter.remove(imageObjectKey);
         if (retryAfter.size() + refreshes.size() < maximumRetryEntries) {
@@ -153,15 +154,17 @@ public final class S3ImageUrlCache implements AutoCloseable {
         retryAfter.values().removeIf(expiration -> !expiration.isAfter(now));
         if (retryAfter.size() + refreshes.size() >= maximumRetryEntries) {
             record("retry_capacity_rejected");
-            throw unavailable();
+            throw unavailable(DiagnosticType.CACHE_RETRY_CAPACITY_REJECTED);
         }
     }
 
     private void sign(String imageObjectKey, Supplier<SignedS3ImageUrl> signer,
             CompletableFuture<SignedS3ImageUrl> result, ImageLookupBudget queueBudget) {
+        DiagnosticType unfinished = DiagnosticType.CACHE_REFRESH_FAILED;
         try {
             if (queueBudget.remainingNanos() == 0) {
                 record("refresh_queue_expired");
+                unfinished = DiagnosticType.CACHE_REFRESH_QUEUE_EXPIRED;
                 return;
             }
             SignedS3ImageUrl signedUrl = signer.get();
@@ -170,21 +173,22 @@ public final class S3ImageUrlCache implements AutoCloseable {
         } catch (RuntimeException exception) {
             fail(imageObjectKey, result, exception);
         } finally {
-            finish(imageObjectKey, result);
+            finish(imageObjectKey, result, unfinished);
         }
     }
 
     private void requireUsableUrl(SignedS3ImageUrl signedUrl) {
         if (!signedUrl.canServeAt(clock.instant())) {
             record("invalid_expiration");
-            throw new ImageStorageException("새 S3 이미지 주소의 잔여 유효 시간이 부족합니다.");
+            throw new ImageStorageException("새 S3 이미지 주소의 잔여 유효 시간이 부족합니다.", null,
+                    DiagnosticType.CACHE_INVALID_EXPIRATION);
         }
     }
 
     private synchronized void publish(String imageObjectKey, SignedS3ImageUrl signedUrl,
             CompletableFuture<SignedS3ImageUrl> result) {
         if (closed) {
-            result.completeExceptionally(unavailable());
+            result.completeExceptionally(unavailable(DiagnosticType.CACHE_CLOSED));
             return;
         }
         if (signedUrl.credentialExpirationKnown()) {
@@ -207,9 +211,10 @@ public final class S3ImageUrlCache implements AutoCloseable {
         result.completeExceptionally(exception);
     }
 
-    private synchronized void finish(String imageObjectKey, CompletableFuture<SignedS3ImageUrl> result) {
+    private synchronized void finish(String imageObjectKey, CompletableFuture<SignedS3ImageUrl> result,
+            DiagnosticType reason) {
         if (refreshes.remove(imageObjectKey, result)) {
-            result.completeExceptionally(unavailable());
+            result.completeExceptionally(unavailable(reason));
         }
     }
 
@@ -221,16 +226,16 @@ public final class S3ImageUrlCache implements AutoCloseable {
             return signedUrl.accessUrl();
         } catch (TimeoutException exception) {
             record("wait_timeout");
-            throw unavailable();
+            throw unavailable(DiagnosticType.CACHE_WAIT_TIMEOUT);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             record("wait_interrupted");
-            throw unavailable();
+            throw unavailable(DiagnosticType.CACHE_WAIT_INTERRUPTED);
         } catch (ExecutionException exception) {
             if (exception.getCause() instanceof ImageStorageException failure) {
                 throw failure;
             }
-            throw unavailable();
+            throw unavailable(DiagnosticType.CACHE_REFRESH_FAILED);
         } finally {
             recordWaitDuration(System.nanoTime() - startedAt);
         }
@@ -282,15 +287,15 @@ public final class S3ImageUrlCache implements AutoCloseable {
         }
     }
 
-    private ImageStorageException unavailable() {
-        return new ImageStorageException("S3 이미지 주소 갱신을 완료할 수 없습니다.");
+    private ImageStorageException unavailable(DiagnosticType reason) {
+        return new ImageStorageException("S3 이미지 주소 갱신을 완료할 수 없습니다.", null, reason);
     }
 
     @Override
     public synchronized void close() {
         closed = true;
         executor.shutdownNow();
-        refreshes.values().forEach(result -> result.completeExceptionally(unavailable()));
+        refreshes.values().forEach(result -> result.completeExceptionally(unavailable(DiagnosticType.CACHE_CLOSED)));
         refreshes.clear();
         retryAfter.clear();
         entries.invalidateAll();
