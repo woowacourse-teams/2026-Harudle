@@ -8,7 +8,7 @@ import java.util.function.Supplier;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
-/** Holds bounded operation summaries on the HTTP request, never on a worker thread. */
+/** Holds bounded operation summaries for one HTTP request. */
 public final class RequestOperationTimings {
 
     private static final String ATTRIBUTE = RequestOperationTimings.class.getName();
@@ -41,6 +41,15 @@ public final class RequestOperationTimings {
     }
 
     public static <T> T measure(Operation operation, Supplier<T> action) {
+        return measure(operation, action, current());
+    }
+
+    public static <T> Supplier<T> measureOnCurrentRequest(Operation operation, Supplier<T> action) {
+        RequestOperationTimings timings = current();
+        return () -> measure(operation, action, timings);
+    }
+
+    private static <T> T measure(Operation operation, Supplier<T> action, RequestOperationTimings timings) {
         long startedAt = System.nanoTime();
         boolean failed = true;
         try {
@@ -48,7 +57,9 @@ public final class RequestOperationTimings {
             failed = false;
             return value;
         } finally {
-            record(operation, System.nanoTime() - startedAt, failed);
+            if (timings != null) {
+                timings.add(operation, System.nanoTime() - startedAt, failed, false);
+            }
         }
     }
 

@@ -39,7 +39,7 @@ public final class ImageLookupBudget {
         return Duration.ofMillis(timeoutMillis);
     }
 
-    private long remainingNanos() {
+    public long remainingNanos() {
         long elapsed = nanoTime.getAsLong() - startedAt;
         return elapsed >= timeoutNanos ? 0 : timeoutNanos - elapsed;
     }

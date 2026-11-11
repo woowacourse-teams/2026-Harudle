@@ -24,6 +24,7 @@ repositories {
 }
 
 dependencies {
+    implementation 'com.github.ben-manes.caffeine:caffeine'
     implementation 'com.google.genai:google-genai:1.65.0'
     implementation 'com.google.auth:google-auth-library-oauth2-http:1.33.0'
     implementation 'com.google.firebase:firebase-admin:9.11.0'

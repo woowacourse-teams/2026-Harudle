@@ -20,6 +20,8 @@ import java.time.Instant;
 import java.net.URI;
 import org.junit.jupiter.api.Test;
 import org.springframework.util.unit.DataSize;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
@@ -114,7 +116,8 @@ class ObservedImageUrlProviderTest {
                 .thenThrow(new IllegalStateException("presigner unavailable"));
         S3FailureReporter reporter = new S3FailureReporter(
                 new S3ExceptionTranslator(), mock(ExternalApiLogger.class));
-        S3ImageUrlProvider delegate = new S3ImageUrlProvider(presigner, properties(), reporter);
+        S3ImageUrlProvider delegate = new S3ImageUrlProvider(presigner, properties(), reporter,
+                StaticCredentialsProvider.create(AwsBasicCredentials.create("test-access", "test-secret")));
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         try {
             ObservedImageUrlProvider provider = new ObservedImageUrlProvider(delegate, registry);
@@ -136,7 +139,8 @@ class ObservedImageUrlProviderTest {
     void validationAndPreparationFailuresAreNotConfigurationFailures() {
         S3FailureReporter reporter = new S3FailureReporter(
                 new S3ExceptionTranslator(), mock(ExternalApiLogger.class));
-        S3ImageUrlProvider delegate = new S3ImageUrlProvider(mock(S3Presigner.class), properties(), reporter);
+        S3ImageUrlProvider delegate = new S3ImageUrlProvider(mock(S3Presigner.class), properties(), reporter,
+                StaticCredentialsProvider.create(AwsBasicCredentials.create("test-access", "test-secret")));
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         try {
             ObservedImageUrlProvider provider = new ObservedImageUrlProvider(delegate, registry);

@@ -4,7 +4,7 @@ import { useErrorTracking } from '../posthog/useErrorTracking';
 import { theme } from '../styles/theme';
 
 interface DiaryImageProps {
-  readonly src: string;
+  readonly src: string | null;
   readonly alt: string;
   readonly className?: string;
   readonly diaryId?: string;
@@ -21,7 +21,7 @@ const DiaryImage = ({
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const { captureError } = useErrorTracking();
 
-  if (failedSrc === src) {
+  if (src === null || failedSrc === src) {
     return (
       <span
         className={className}
