@@ -85,6 +85,8 @@ import org.testcontainers.utility.DockerImageName;
 class ReportPersistenceTest {
 
     private static final Instant CREATED_AT = Instant.parse("2026-10-22T03:00:00Z");
+    private static final List<ReportTargetType> PUBLIC_TARGET_TYPES =
+            List.of(ReportTargetType.USER, ReportTargetType.FEED, ReportTargetType.COMMENT);
 
     private static PostgreSQLContainer postgres;
 
@@ -117,6 +119,7 @@ class ReportPersistenceTest {
 
     private final List<UUID> fixtureUsers = new ArrayList<>();
     private final List<UUID> fixtureReports = new ArrayList<>();
+    private final List<Long> fixturePrompts = new ArrayList<>();
     private UUID reporter;
     private UUID author;
     private UUID commenter;
@@ -194,10 +197,11 @@ class ReportPersistenceTest {
     void tearDown() {
         fixtureReports.forEach(id -> jdbc.update("DELETE FROM reports WHERE id = ?", id));
         fixtureUsers.forEach(id -> jdbc.update("DELETE FROM users WHERE id = ?", id));
+        fixturePrompts.forEach(id -> jdbc.update("DELETE FROM generation_prompts WHERE id = ?", id));
     }
 
     @ParameterizedTest
-    @EnumSource(ReportTargetType.class)
+    @EnumSource(value = ReportTargetType.class, names = {"USER", "FEED", "COMMENT"})
     @DisplayName("세 종류 신고는 서버가 조회한 대상 작성자와 선택적 빈 상세를 실제 DB에 보존한다")
     void persistEachTargetWithItsServerResolvedAuthor(ReportTargetType type) {
         UUID targetId = targetId(type);
@@ -518,11 +522,12 @@ class ReportPersistenceTest {
         UUID testFeed = feed(diary(testAuthor), UUID.randomUUID());
         UUID testComment = comment(testFeed, testAuthor);
         var reader = new JpaReportTargetReader(entityManager, new DevTestDataVisibility(environment));
-        for (ReportTargetType type : ReportTargetType.values()) {
+        for (ReportTargetType type : PUBLIC_TARGET_TYPES) {
             UUID testTarget = switch (type) {
                 case USER -> testAuthor;
                 case FEED -> testFeed;
                 case COMMENT -> testComment;
+                case DIARY -> throw new IllegalStateException("개인 일기는 열람자 그룹을 나누지 않습니다.");
             };
             assertThat(reader.findVisibleTarget(testActor, type, testTarget)).contains(new ReportTarget(testAuthor));
             assertThat(reader.findVisibleTarget(reporter, type, targetId(type))).isPresent();
@@ -537,6 +542,76 @@ class ReportPersistenceTest {
                 .isEqualTo(!"dev".equals(environment));
         assertThat(reader.findVisibleTarget(testActor, ReportTargetType.COMMENT, mixedOnTestFeed).isPresent())
                 .isEqualTo(!"dev".equals(environment));
+    }
+
+    @Test
+    @DisplayName("개인 일기 AI 생성 결과는 소유자만 신고 대상으로 조회하고 본인 신고로 저장한다")
+    void reportOwnPrivateDiaryThroughServiceAndDatabase() {
+        generation(diary, "SUCCEEDED");
+
+        assertThat(targets.findVisibleTarget(author, ReportTargetType.DIARY, diary))
+                .contains(new ReportTarget(author));
+        assertThat(targets.findVisibleTarget(reporter, ReportTargetType.DIARY, diary)).isEmpty();
+        assertThatThrownBy(() -> reportService.submit(reporter,
+                new ReportSubmission(ReportTargetType.DIARY, diary, ReportReason.INAPPROPRIATE_CONTENT, "")))
+                .isInstanceOf(ReportTargetNotFoundException.class);
+
+        ReportReceipt receipt = reportService.submit(author,
+                new ReportSubmission(ReportTargetType.DIARY, diary, ReportReason.INAPPROPRIATE_CONTENT, "이상한 그림"));
+        fixtureReports.add(receipt.id());
+
+        assertThat(receipt.duplicate()).isFalse();
+        assertThat(jdbc.queryForMap("SELECT reporter_id, target_user_id, target_type FROM reports WHERE id = ?",
+                receipt.id()))
+                .containsEntry("reporter_id", author)
+                .containsEntry("target_user_id", author)
+                .containsEntry("target_type", "DIARY");
+        assertThat(reportService.submit(author,
+                new ReportSubmission(ReportTargetType.DIARY, diary, ReportReason.OTHER, "")))
+                .isEqualTo(new ReportReceipt(receipt.id(), true));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"missing_generation", "failed_generation", "deleted_diary"})
+    @DisplayName("생성 완료 전이거나 삭제된 개인 일기는 소유자도 신고 대상으로 조회하지 않는다")
+    void excludeUnfinishedOrDeletedDiaries(String state) {
+        switch (state) {
+            case "failed_generation" -> generation(diary, "FAILED");
+            case "deleted_diary" -> {
+                generation(diary, "SUCCEEDED");
+                jdbc.update("UPDATE diaries SET deleted_at = ? WHERE id = ?", Timestamp.from(CREATED_AT), diary);
+            }
+            default -> { }
+        }
+
+        assertThat(targets.findVisibleTarget(author, ReportTargetType.DIARY, diary)).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"dev", "prod", ""})
+    @DisplayName("개인 일기 신고 대상 조회는 환경과 관계없이 소유자 기준으로만 판단한다")
+    void ignoreDevTestDataPartitionsForOwnDiary(String environment) {
+        UUID testOwner = member("owner.loadtest.invalid");
+        UUID testDiary = diary(testOwner);
+        generation(testDiary, "SUCCEEDED");
+        var reader = new JpaReportTargetReader(entityManager, new DevTestDataVisibility(environment));
+
+        assertThat(reader.findVisibleTarget(testOwner, ReportTargetType.DIARY, testDiary))
+                .contains(new ReportTarget(testOwner));
+        assertThat(reader.findVisibleTarget(reporter, ReportTargetType.DIARY, testDiary)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("DB는 개인 일기 신고에 한해 본인 신고만 허용하고 다른 회원 소유 일기 신고는 거절한다")
+    void allowOnlyOwnerSelfReportForDiaryInDatabase() {
+        assertThat(insert(report(author, ReportTargetType.DIARY, diary, author, ReportReason.OTHER, ""))).isTrue();
+
+        assertThatThrownBy(() -> jdbc.update("""
+                INSERT INTO reports (id, reporter_id, target_type, target_id, target_user_id, reason, description)
+                VALUES (?, ?, 'DIARY', ?, ?, 'OTHER', '')
+                """, UUID.randomUUID(), reporter, diary, author))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        assertThat(reportCount()).isEqualTo(1);
     }
 
     @Test
@@ -561,7 +636,7 @@ class ReportPersistenceTest {
     @ValueSource(strings = {"target_type", "reason", "status", "description", "self"})
     @DisplayName("DB는 지원하지 않는 유형·사유·상태, null 상세와 자기 신고를 거절한다")
     void rejectInvalidDirectDatabaseWrites(String invalid) {
-        String type = "target_type".equals(invalid) ? "DIARY" : "USER";
+        String type = "target_type".equals(invalid) ? "UNKNOWN" : "USER";
         String reason = "reason".equals(invalid) ? "UNKNOWN" : "SPAM";
         String state = "status".equals(invalid) ? "UNKNOWN" : "RECEIVED";
         String description = "description".equals(invalid) ? null : "";
@@ -609,6 +684,7 @@ class ReportPersistenceTest {
             case USER -> author;
             case FEED -> feed;
             case COMMENT -> comment;
+            case DIARY -> diary;
         };
     }
 
@@ -669,6 +745,22 @@ class ReportPersistenceTest {
         jdbc.update("INSERT INTO diaries (id, user_id, diary_date, source_text) VALUES (?, ?, DATE '2026-10-22', ?)",
                 id, owner, "신고 대상 일기");
         return id;
+    }
+
+    private void generation(UUID sourceDiary, String status) {
+        Long prompt = jdbc.queryForObject("""
+                INSERT INTO generation_prompts (storyboard_prompt_text, image_style_prompt_text, image_asset_object_key)
+                VALUES ('신고 테스트', '신고 테스트', ?) RETURNING id
+                """, Long.class, "references/report-" + UUID.randomUUID());
+        fixturePrompts.add(prompt);
+        boolean succeeded = "SUCCEEDED".equals(status);
+        jdbc.update("""
+                INSERT INTO diary_generations (id, diary_id, prompt_id, idempotency_key, request_fingerprint,
+                    status, title, image_object_key, completed_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """, UUID.randomUUID(), sourceDiary, prompt, UUID.randomUUID(), "f".repeat(64), status,
+                succeeded ? "신고 대상 제목" : null,
+                succeeded ? "generated/report-" + UUID.randomUUID() + ".webp" : null);
     }
 
     private UUID feed(UUID sourceDiary, UUID id) {

@@ -188,6 +188,34 @@ class AdminReportPersistenceTest extends AdminModerationDatabaseTestSupport {
     }
 
     @Test
+    @DisplayName("소유자가 신고한 개인 일기 AI 생성 결과를 관리자가 원문 없이 확인하고 처리한다")
+    void reviewsOwnerReportOfPrivateDiary() {
+        var receipt = submissions.submit(author,
+                new ReportSubmission(ReportTargetType.DIARY, diary, ReportReason.INAPPROPRIATE_CONTENT, "이상한 그림"));
+        fixtureReports.add(receipt.id());
+
+        var detail = queries.findDetail(receipt.id());
+        assertThat(detail.report().targetType()).isEqualTo(ReportTargetType.DIARY);
+        assertThat(detail.report().targetUserId()).isEqualTo(author);
+        assertThat(detail.target().exists()).isTrue();
+        assertThat(detail.target().authorId()).isEqualTo(author);
+        assertThat(detail.target().deleted()).isFalse();
+        assertThat(detail.target().hidden()).isFalse();
+        assertThat(detail.target().publiclyVisible()).isFalse();
+        assertThat(detail.target().feedId()).isNull();
+        assertThat(detail.target().title()).isEqualTo("공개 제목");
+        assertThat(detail.target().imageObjectKey()).startsWith("generated/moderation-");
+        assertThat(detail.toString()).doesNotContain(PRIVATE_DIARY);
+
+        var reviewed = reviews.review(admin, receipt.id(),
+                new AdminReportReview(AdminReportStatus.RESOLVED, "생성 품질 이슈로 확인"));
+        assertThat(reviewed.status()).isEqualTo(AdminReportStatus.RESOLVED);
+
+        jdbc.update("UPDATE diaries SET deleted_at=CURRENT_TIMESTAMP WHERE id=?", diary);
+        assertThat(queries.findDetail(receipt.id()).target().deleted()).isTrue();
+    }
+
+    @Test
     @DisplayName("논리 삭제된 댓글 원문은 확인하고 물리 삭제 뒤에는 신고와 원본 없음 표시만 남긴다")
     void readsSoftDeletedEvidenceAndMissingPhysicalTarget() {
         UUID id = report(UUID.randomUUID(), ReportTargetType.COMMENT, comment, commenter);
