@@ -47,7 +47,8 @@ public class ReportService {
                     .orElseThrow(ReportTargetNotFoundException::new);
         }
         UUID targetUserId = target.get().authorId();
-        if (reporterId.equals(targetUserId)) {
+        // 개인 일기는 소유자만 볼 수 있어 본인 신고만 허용하고, 공개 대상은 본인 신고를 막는다.
+        if (submission.targetType().ownerOnly() != reporterId.equals(targetUserId)) {
             throw new InvalidReportException();
         }
         ReportSnapshot report = new ReportSnapshot(UUID.randomUUID(), reporterId, submission.targetType(),

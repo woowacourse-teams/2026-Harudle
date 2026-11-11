@@ -88,6 +88,18 @@ public class AdminReportRepository {
             ) feed_state
             WHERE c.id = :targetId
             """;
+    // 개인 일기는 소유자만 보는 콘텐츠라 숨김 대상이 아니며 공개 상태도 항상 false다.
+    private static final String DIARY_TARGET_QUERY = """
+            SELECT d.user_id, u.nickname, u.deleted_at IS NOT NULL,
+                   d.deleted_at IS NOT NULL, false,
+                   false, false,
+                   false,
+                   NULL, generation.title, generation.image_object_key, NULL
+            FROM diaries d
+            JOIN users u ON u.id = d.user_id
+            LEFT JOIN diary_generations generation ON generation.diary_id = d.id
+            WHERE d.id = :targetId
+            """;
 
     private final EntityManager entityManager;
 
@@ -150,6 +162,7 @@ public class AdminReportRepository {
             case USER -> USER_TARGET_QUERY;
             case FEED -> FEED_TARGET_QUERY;
             case COMMENT -> COMMENT_TARGET_QUERY;
+            case DIARY -> DIARY_TARGET_QUERY;
         };
         List<Object[]> rows = entityManager.createNativeQuery(query).setParameter("targetId", targetId).getResultList();
         return rows.stream().map(AdminReportRepository::target).findFirst().orElseGet(AdminReportTarget::missing);
