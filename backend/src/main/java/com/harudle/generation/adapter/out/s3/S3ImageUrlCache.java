@@ -2,6 +2,8 @@ package com.harudle.generation.adapter.out.s3;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.Expiry;
+import com.github.benmanes.caffeine.cache.Scheduler;
 import com.harudle.generation.config.S3UrlCacheProperties;
 import com.harudle.generation.diary.service.port.ImageLookupBudget;
 import com.harudle.generation.diary.service.port.ImageStorageException;
@@ -64,6 +66,9 @@ public final class S3ImageUrlCache implements AutoCloseable {
                 .register(meterRegistry);
         this.waiters = new Semaphore(properties.maximumWaiters());
         this.entries = Caffeine.newBuilder().maximumSize(properties.maximumSize())
+                .ticker(nanoTime::getAsLong)
+                .expireAfter(Expiry.writing((String key, SignedS3ImageUrl url) -> url.cacheLifetimeAt(clock.instant())))
+                .scheduler(Scheduler.systemScheduler())
                 .evictionListener((key, value, cause) -> recordEviction(cause.name()))
                 .build();
         this.executor = new ThreadPoolExecutor(

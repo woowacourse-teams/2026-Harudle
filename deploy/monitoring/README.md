@@ -143,8 +143,8 @@ T 계열 서버는 `CPUCreditBalance`도 확인합니다. 값이 줄면 기본 �
 - `harudle_s3_url_cache_events_total`: `hit`, `miss`, `bypass_unknown_expiration`, 갱신·대기·거절 결과를
   `result`별로 집계합니다. 한 번의 조회에서 여러 종류의 이벤트가 생길 수 있으므로 전체 합은 조회 수가
   아닙니다. 적중률은 `hit / (hit + miss)`로 비교합니다.
-- `harudle_s3_url_cache_size`, `harudle_s3_url_cache_evictions_total{cause="SIZE"}`: 항목 수와 용량 제거를
-  확인합니다. JVM 메모리와 GC를 함께 봅니다.
+- `harudle_s3_url_cache_size`, `harudle_s3_url_cache_evictions_total`: 항목 수와 제거 횟수를 확인합니다.
+  제거 원인은 용량 초과(`SIZE`)와 주소별 만료(`EXPIRED`)를 구분합니다. JVM 메모리와 GC를 함께 봅니다.
 - `harudle_s3_url_cache_refresh_active`, `harudle_s3_url_cache_refresh_queued`,
   `harudle_s3_url_cache_waiters`: 실행 중, 대기열, 응답을 기다리는 요청을 각각 확인합니다.
 - `harudle_s3_url_cache_wait_duration_seconds`: 요청의 갱신 대기 시간입니다. 관리 포트의 Prometheus

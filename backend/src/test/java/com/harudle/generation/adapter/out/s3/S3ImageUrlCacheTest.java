@@ -24,6 +24,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
@@ -137,11 +138,13 @@ class S3ImageUrlCacheTest {
     @Test
     @DisplayName("실패 대기 중에도 이전 주소가 만료되면 반환하지 않는다")
     void neverReturnExpiredPreviousUrlDuringCooldown() {
+        AtomicLong elapsed = new AtomicLong();
+        replaceCache(properties(500, 4, 64, Duration.ofSeconds(2)), elapsed::get);
         accessUrlFor(KEY, () -> signedUrl("previous", 900, true));
-        now.updateAndGet(value -> value.plusSeconds(894));
+        advanceTime(elapsed, Duration.ofSeconds(894));
         Supplier<SignedS3ImageUrl> failingSigner = () -> { throw new ImageStorageException("서명 실패"); };
         accessUrlFor(KEY, failingSigner);
-        now.updateAndGet(value -> value.plusSeconds(1));
+        advanceTime(elapsed, Duration.ofSeconds(1));
 
         assertThatThrownBy(() -> accessUrlFor(KEY, failingSigner))
                 .isInstanceOf(ImageStorageException.class);
@@ -359,6 +362,32 @@ class S3ImageUrlCacheTest {
     }
 
     @Test
+    @DisplayName("주소별 만료로 접근하지 않은 항목을 제거하고, 갱신한 항목은 새 주소의 만료를 따른다")
+    void evictsOnlyExpiredAddressesAndUpdatesExpirationWhenReplaced() throws Exception {
+        AtomicLong elapsed = new AtomicLong();
+        replaceCache(properties(500, 4, 64, Duration.ofSeconds(2)), elapsed::get);
+        String shortKey = KEY + "-short";
+        String longKey = KEY + "-long";
+        String renewedKey = KEY + "-renewed";
+        accessUrlFor(shortKey, () -> signedUrl("short", 120, true));
+        ImageAccessUrl longUrl = accessUrlFor(longKey, () -> signedUrl("long", 300, true));
+        accessUrlFor(renewedKey, () -> signedUrl("before", 120, true));
+        advanceTime(elapsed, Duration.ofSeconds(60));
+        ImageAccessUrl renewedUrl = accessUrlFor(renewedKey, () -> signedUrl("after", 300, true));
+
+        advanceTime(elapsed, Duration.ofSeconds(60));
+        // An unrelated write prompts maintenance without reading the expired key.
+        accessUrlFor(KEY + "-new", () -> signedUrl("new", 300, true));
+        awaitCount("harudle.s3.url.cache.evictions", "cause", "EXPIRED", 1);
+
+        assertThat(registry.get("harudle.s3.url.cache.size").gauge().value()).isEqualTo(3);
+        assertThat(accessUrlFor(longKey, () -> { throw new AssertionError("캐시 적중이어야 합니다."); }))
+                .isEqualTo(longUrl);
+        assertThat(accessUrlFor(renewedKey, () -> { throw new AssertionError("갱신한 주소가 남아야 합니다."); }))
+                .isEqualTo(renewedUrl);
+    }
+
+    @Test
     @DisplayName("실패 상태가 가득 차도 5초 제한을 잃지 않고 공간이 생기면 다시 서명한다")
     void protectFailureCooldownsWhenRetryCapacityIsFull() {
         replaceCache(properties(2, 2, 8, Duration.ofSeconds(2)));
@@ -416,9 +445,18 @@ class S3ImageUrlCacheTest {
     }
 
     private void replaceCache(S3UrlCacheProperties properties) {
+        replaceCache(properties, System::nanoTime);
+    }
+
+    private void replaceCache(S3UrlCacheProperties properties, LongSupplier nanoTime) {
         cache.close();
         registry.clear();
-        cache = new S3ImageUrlCache(properties, clock, registry);
+        cache = new S3ImageUrlCache(properties, clock, registry, nanoTime);
+    }
+
+    private void advanceTime(AtomicLong elapsed, Duration duration) {
+        now.updateAndGet(value -> value.plus(duration));
+        elapsed.addAndGet(duration.toNanos());
     }
 
     private double eventCount(String result) {

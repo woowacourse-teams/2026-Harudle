@@ -27,6 +27,12 @@ record SignedS3ImageUrl(ImageAccessUrl accessUrl, boolean credentialExpirationKn
         return credentialExpirationKnown && accessUrl.expiresAt().isAfter(now.plus(CLOCK_SKEW_ALLOWANCE));
     }
 
+    /** Keeps a near-expiry URL available for fallback until the clock-skew margin. */
+    Duration cacheLifetimeAt(Instant now) {
+        Duration remaining = Duration.between(now.plus(CLOCK_SKEW_ALLOWANCE), accessUrl.expiresAt());
+        return remaining.isNegative() ? Duration.ZERO : remaining;
+    }
+
     boolean canServeAt(Instant now) {
         return credentialExpirationKnown ? canReuseAt(now) : accessUrl.expiresAt().isAfter(now);
     }
