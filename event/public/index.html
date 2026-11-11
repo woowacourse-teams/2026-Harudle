@@ -4,189 +4,180 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex">
-  <title>하루들 데모데이 엽서</title>
+  <title>하루들 데모데이 네컷만화</title>
   <style>
     :root {
-      --mint: #a6f2d6;
-      --mint-deep: #5ccfa6;
-      --ink: #161616;
-      --muted: #4b5a54;
-      --paper: #ffffff;
-      --line: #161616;
+      --ink: #1c1530;
+      --ink-btn: #211831;
+      --purple: #7355da;
+      --purple-soft: #f7f4ff;
+      --lavender: #f5f1ff;
+      --beige: #f2ebde;
+      --muted: #6b6380;
+      --line: #e6e0f5;
       --danger: #c2412d;
-      --radius: 22px;
     }
     * { box-sizing: border-box; }
-    html, body { margin: 0; }
+    html, body { margin: 0; height: 100%; }
     body {
-      min-height: 100dvh;
-      background: var(--mint);
-      color: var(--ink);
-      font-family: "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
-      line-height: 1.55;
+      min-height: 100dvh; display: flex; flex-direction: column; background: #fff; color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Segoe UI", sans-serif;
       -webkit-font-smoothing: antialiased;
     }
-    main { width: min(520px, 100%); margin: 0 auto; padding: 28px 16px 48px; }
-    header h1 { font-size: 26px; line-height: 1.3; margin: 0 0 6px; letter-spacing: -0.02em; }
-    header p { margin: 0 0 20px; color: var(--muted); }
-    .card {
-      background: var(--paper);
-      border: 3px solid var(--line);
-      border-radius: var(--radius);
-      padding: 20px;
+    header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px clamp(16px, 4vw, 40px); border-bottom: 1px solid #f0edf6; }
+    header img { height: clamp(28px, 3.2vw, 38px); display: block; }
+    .chip { white-space: nowrap; font-size: clamp(12px, 1.1vw, 14px); font-weight: 700; background: var(--ink-btn); color: #fff; border-radius: 999px; padding: 8px 14px; }
+    main {
+      flex: 1; display: grid; gap: clamp(20px, 4vw, 56px); align-content: start;
+      grid-template-columns: minmax(0, 1fr); padding: 20px 16px 28px; width: min(1180px, 100%); margin: 0 auto;
     }
-    .preview { display: flex; gap: 14px; align-items: center; margin-bottom: 18px; }
-    .preview img { width: 84px; border-radius: 8px; border: 2px solid var(--line); flex: none; }
-    .preview p { margin: 0; font-size: 14px; color: var(--muted); }
-    label.field { display: block; font-weight: 700; margin-bottom: 8px; }
+    .stage { background: var(--beige); border-radius: 26px; display: flex; justify-content: center; align-items: center; padding: 24px 16px; }
+    .stage img { width: min(62%, 300px); height: auto; border-radius: 10px; box-shadow: 0 14px 34px rgba(28, 21, 48, .18); }
+    .stage img.sample { transform: rotate(-2deg); }
+    .panel h1 { margin: 0 0 8px; font-size: clamp(26px, 3.4vw, 44px); line-height: 1.22; font-weight: 800; letter-spacing: -0.03em; }
+    .panel h1 em { font-style: normal; color: var(--purple); }
+    .sub { margin: 0 0 20px; font-size: clamp(14px, 1.3vw, 17px); color: var(--muted); line-height: 1.6; }
+    .box { background: var(--lavender); border-radius: 24px; padding: clamp(16px, 2vw, 26px); }
+    label { display: block; font-size: 14px; font-weight: 700; margin-bottom: 8px; }
     textarea {
-      width: 100%; min-height: 180px; resize: vertical;
-      border: 2px solid var(--line); border-radius: 14px; padding: 12px 14px;
-      font: inherit; font-size: 16px; color: var(--ink); background: #fbfffd;
+      width: 100%; min-height: clamp(140px, 22vh, 240px); resize: none; border: 1.5px solid var(--line); border-radius: 16px;
+      padding: 14px 16px; font: inherit; font-size: clamp(15px, 1.3vw, 17px); line-height: 1.6; color: var(--ink); background: #fff;
     }
-    textarea:focus-visible, input:focus-visible, button:focus-visible, a:focus-visible {
-      outline: 3px solid var(--mint-deep); outline-offset: 2px;
+    textarea:focus { outline: none; border-color: var(--purple); box-shadow: 0 0 0 3px rgba(115, 85, 218, .15); }
+    .row { display: flex; justify-content: space-between; gap: 12px; font-size: 12.5px; color: var(--muted); margin: 6px 2px 14px; }
+    .row .over { color: var(--danger); }
+    .btn {
+      display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; height: clamp(54px, 6.4vh, 64px);
+      border: 0; border-radius: 18px; background: var(--purple); color: #fff; font: inherit; font-size: clamp(16px, 1.4vw, 18px);
+      font-weight: 800; cursor: pointer; text-decoration: none;
     }
-    .counter { text-align: right; font-size: 13px; color: var(--muted); margin-top: 4px; }
-    .counter.over { color: var(--danger); }
-    .consent {
-      display: flex; gap: 10px; align-items: flex-start;
-      margin: 16px 0; padding: 12px 14px; border-radius: 14px; background: #effcf6; font-size: 14px;
-    }
-    .consent input { width: 20px; height: 20px; margin-top: 2px; flex: none; accent-color: var(--ink); }
-    button, .button {
-      display: inline-flex; justify-content: center; align-items: center; gap: 8px;
-      width: 100%; min-height: 52px; padding: 0 20px;
-      border: 3px solid var(--line); border-radius: 999px;
-      background: var(--ink); color: #fff; font: inherit; font-size: 17px; font-weight: 700;
-      cursor: pointer; text-decoration: none;
-    }
-    button:disabled { opacity: .45; cursor: not-allowed; }
-    .button.secondary, button.secondary { background: var(--paper); color: var(--ink); }
-    .error { color: var(--danger); font-size: 14px; margin: 12px 0 0; min-height: 1em; }
-    .steps { list-style: none; padding: 0; margin: 18px 0 6px; display: grid; gap: 10px; }
-    .steps li { display: flex; gap: 10px; align-items: center; color: var(--muted); }
-    .steps li::before {
-      content: ""; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); flex: none;
-    }
+    .btn:disabled { opacity: .5; cursor: progress; }
+    .btn.secondary { background: #fff; color: var(--ink); border: 1.5px solid var(--line); }
+    .btn:focus-visible, textarea:focus-visible { outline: 3px solid rgba(115, 85, 218, .45); outline-offset: 2px; }
+    .actions { display: grid; gap: 10px; }
+    .err { margin: 8px 0 0; font-size: 13px; color: var(--danger); text-align: center; min-height: 1em; }
+    .notice { margin: 6px 0 0; font-size: 12px; color: var(--muted); text-align: center; line-height: 1.55; }
+    .steps { list-style: none; padding: 0; margin: 0; display: grid; gap: 14px; }
+    .steps li { display: flex; gap: 12px; align-items: center; font-size: clamp(15px, 1.3vw, 17px); color: var(--muted); }
+    .steps li::before { content: ""; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #c9bff0; flex: none; }
     .steps li.active { color: var(--ink); font-weight: 700; }
-    .steps li.active::before { background: var(--mint-deep); animation: pulse 1.2s ease-in-out infinite; }
+    .steps li.active::before { border-color: var(--purple); background: var(--purple); animation: pulse 1.2s ease-in-out infinite; }
     .steps li.done { color: var(--ink); }
-    .steps li.done::before { background: var(--ink); }
+    .steps li.done::before { border-color: var(--purple); background: var(--purple); }
     @keyframes pulse { 50% { transform: scale(.7); } }
     @media (prefers-reduced-motion: reduce) { .steps li.active::before { animation: none; } }
-    .hint { font-size: 14px; color: var(--muted); margin: 8px 0 0; }
-    .result img { display: block; width: 100%; border-radius: 12px; border: 2px solid var(--line); background: var(--mint); }
-    .result h2 { font-size: 20px; margin: 0 0 12px; }
-    .actions { display: grid; gap: 10px; margin-top: 16px; }
-    footer { margin-top: 20px; font-size: 13px; color: var(--muted); text-align: center; }
+    .hint { margin: 16px 0 0; font-size: 13px; color: var(--muted); }
     [hidden] { display: none !important; }
+    @media (min-width: 860px) {
+      main { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); align-content: center; align-items: center; padding: 32px clamp(24px, 4vw, 40px); }
+      .stage { height: 100%; min-height: 520px; max-height: calc(100dvh - 140px); padding: 32px; }
+      .stage img { width: auto; max-width: 82%; max-height: calc(100dvh - 220px); }
+    }
   </style>
 </head>
 <body>
-<main>
   <header>
-    <h1>오늘 하루를<br>네 컷 엽서로 만들어 드려요</h1>
-    <p>우아한테크코스 8기 데모데이 · 하루들</p>
+    <img src="/logo.webp" alt="하루들" width="108" height="38">
+    <span class="chip">우테코 8기 데모데이</span>
   </header>
 
-  <section class="card" id="form-view" aria-labelledby="diary-label">
-    <div class="preview">
-      <img src="/frame-preview.webp" alt="데모데이 엽서 프레임 미리보기" width="84" height="126">
-      <p>일기를 적으면 AI가 네 컷 만화로 그려서 데모데이 엽서에 담아 드려요. 한 장에 30초~1분 정도 걸려요.</p>
+  <main>
+    <div class="stage">
+      <img id="stage-image" class="sample" src="/sample.webp" alt="완성된 데모데이 네컷만화 엽서 예시">
     </div>
-    <form id="diary-form" novalidate>
-      <label class="field" id="diary-label" for="diary">오늘의 일기</label>
-      <textarea id="diary" name="diary" maxlength="1000" required
-        placeholder="예) 아침에 우산을 챙겨 나갔는데 바람이 너무 세서 우산이 뒤집혔다. 그래도 버스에 타고 나니 웃음이 났다."></textarea>
-      <div class="counter" id="counter" aria-live="polite">0 / 1000</div>
-      <label class="consent">
-        <input type="checkbox" id="consent" required>
-        <span>입력한 일기는 그림을 만들기 위해 Google(Gemini)에 전송돼요. 일기 원문은 생성 직후 버리고,
-          완성된 엽서 이미지는 <span id="ttl">2시간</span> 뒤 서버에서 삭제돼요. 실명이나 연락처 같은 개인정보는 적지 말아 주세요.</span>
-      </label>
-      <button type="submit" id="submit">엽서 만들기</button>
-      <p class="error" id="form-error" role="alert"></p>
-    </form>
-  </section>
 
-  <section class="card" id="progress-view" hidden aria-live="polite">
-    <h2 style="margin:0">엽서를 그리고 있어요</h2>
-    <ol class="steps">
-      <li data-step="queued">순서를 기다리는 중</li>
-      <li data-step="storyboard">일기를 네 컷 이야기로 정리하는 중</li>
-      <li data-step="image">그림 그리는 중</li>
-      <li data-step="compose">엽서에 담는 중</li>
-    </ol>
-    <p class="hint" id="queue-hint"></p>
-    <p class="hint">이 화면을 닫지 말고 기다려 주세요.</p>
-  </section>
+    <div class="panel">
+      <h1 id="heading">오늘 이야기를<br><em>네컷만화</em> 엽서로</h1>
+      <p class="sub" id="subheading">사진은 없어도, 내용만 있으면 돼요. 30초~1분이면 완성돼요.</p>
 
-  <section class="card result" id="result-view" hidden>
-    <h2 id="result-title">엽서가 완성됐어요</h2>
-    <img id="result-image" alt="완성된 네 컷 엽서" width="1024" height="1536">
-    <div class="actions">
-      <a class="button" id="download" download="harudle-demoday.png">이미지 저장하기</a>
-      <button type="button" class="secondary" id="again">다른 일기로 만들기</button>
+      <form class="box" id="form-view" novalidate>
+        <label for="story">네컷만화로 만들 이야기</label>
+        <textarea id="story" name="story" maxlength="1000" required
+          placeholder="발표 직전에 노트북이 꺼져서 식은땀이 났는데, 팀원이 충전기를 들고 뛰어왔다. 무사히 끝내고 다 같이 떡볶이를 먹었다."></textarea>
+        <div class="row"><span>누가, 무엇을 했는지 적으면 더 재밌어요</span><span id="count" aria-live="polite">0 / 1000</span></div>
+        <button class="btn" id="submit" type="submit">네컷만화 만들기 <span aria-hidden="true">→</span></button>
+        <p class="err" id="form-error" role="alert"></p>
+        <p class="notice">입력한 내용은 Google Gemini로 전송되고, 완성된 엽서는 <span class="ttl">2시간</span> 뒤 삭제돼요.</p>
+      </form>
+
+      <div class="box" id="progress-view" hidden aria-live="polite">
+        <ol class="steps">
+          <li data-step="queued">순서를 기다리는 중</li>
+          <li data-step="storyboard">이야기를 네 컷으로 나누는 중</li>
+          <li data-step="image">네컷만화 그리는 중</li>
+          <li data-step="compose">엽서에 담는 중</li>
+        </ol>
+        <p class="hint" id="queue-hint"></p>
+      </div>
+
+      <div class="box actions" id="result-view" hidden>
+        <a class="btn" id="download" download="harudle-demoday.png">엽서 저장하기</a>
+        <button class="btn secondary" type="button" id="again">새 이야기 만들기</button>
+        <p class="notice">완성된 엽서는 <span class="ttl">2시간</span> 뒤 삭제돼요.</p>
+      </div>
+
+      <div class="box actions" id="failed-view" hidden>
+        <p class="err" id="failed-message" role="alert" style="margin:0 0 6px"></p>
+        <button class="btn" type="button" id="retry">다시 적어 보기</button>
+      </div>
     </div>
-    <p class="hint">이미지는 <span class="ttl">2시간</span> 뒤 삭제되니 지금 저장해 주세요.</p>
-  </section>
-
-  <section class="card" id="failed-view" hidden>
-    <h2 style="margin:0 0 8px">엽서를 만들지 못했어요</h2>
-    <p class="error" id="failed-message" role="alert"></p>
-    <div class="actions"><button type="button" id="retry">다시 적어 보기</button></div>
-  </section>
-
-  <footer>@harudle.official</footer>
-</main>
+  </main>
 
 <script>
 (() => {
   const $ = id => document.getElementById(id);
   const views = ["form-view", "progress-view", "result-view", "failed-view"];
-  const show = id => views.forEach(v => { $(v).hidden = v !== id; });
   const code = new URLSearchParams(location.search).get("code") ?? undefined;
-  const STORAGE_KEY = "harudle-event-job";
-  const store = {
-    get() { try { return sessionStorage.getItem(STORAGE_KEY); } catch { return null; } },
-    set(v) { try { v ? sessionStorage.setItem(STORAGE_KEY, v) : sessionStorage.removeItem(STORAGE_KEY); } catch { /* 저장 불가 환경 */ } },
+  const SAMPLE = { src: "/sample.webp", alt: "완성된 데모데이 네컷만화 엽서 예시" };
+  const COPY = {
+    form: ["오늘 이야기를<br><em>네컷만화</em> 엽서로", "사진은 없어도, 내용만 있으면 돼요. 30초~1분이면 완성돼요."],
+    progress: ["<em>네컷만화</em>를<br>그리고 있어요", "화면을 그대로 두고 잠시만 기다려 주세요."],
+    failed: ["엽서를<br>만들지 못했어요", "내용을 조금 바꿔서 다시 시도해 주세요."],
   };
   let limits = { diaryMinLength: 10, diaryMaxLength: 1000 };
   let pollTimer;
 
+  function show(view, copy) {
+    views.forEach(v => { $(v).hidden = v !== view; });
+    if (copy) { $("heading").innerHTML = copy[0]; $("subheading").textContent = copy[1]; }
+  }
+  function showSample() {
+    const img = $("stage-image");
+    img.src = SAMPLE.src; img.alt = SAMPLE.alt; img.classList.add("sample");
+  }
+
   fetch("/api/config").then(r => r.json()).then(c => {
     limits = c;
-    $("diary").maxLength = c.diaryMaxLength;
+    $("story").maxLength = c.diaryMaxLength;
     const ttl = c.resultTtlMinutes % 60 === 0 ? `${c.resultTtlMinutes / 60}시간` : `${c.resultTtlMinutes}분`;
-    document.querySelectorAll("#ttl, .ttl").forEach(el => { el.textContent = ttl; });
-    updateCounter();
+    document.querySelectorAll(".ttl").forEach(el => { el.textContent = ttl; });
+    updateCount();
   }).catch(() => {});
 
-  function updateCounter() {
-    const n = [...$("diary").value.trim()].length;
-    $("counter").textContent = `${n} / ${limits.diaryMaxLength}`;
-    $("counter").classList.toggle("over", n > limits.diaryMaxLength);
-  }
-  $("diary").addEventListener("input", updateCounter);
-
-  $("diary-form").addEventListener("submit", async event => {
-    event.preventDefault();
-    const diary = $("diary").value.trim();
-    const length = [...diary].length;
-    if (length < limits.diaryMinLength) return void ($("form-error").textContent = `일기를 ${limits.diaryMinLength}자 이상 적어 주세요.`);
-    if (!$("consent").checked) return void ($("form-error").textContent = "안내 사항에 동의해 주세요.");
+  function updateCount() {
+    const n = [...$("story").value.trim()].length;
+    $("count").textContent = `${n} / ${limits.diaryMaxLength}`;
+    $("count").classList.toggle("over", n > limits.diaryMaxLength);
     $("form-error").textContent = "";
+  }
+  $("story").addEventListener("input", updateCount);
+
+  $("form-view").addEventListener("submit", async event => {
+    event.preventDefault();
+    const diary = $("story").value.trim();
+    if ([...diary].length < limits.diaryMinLength) {
+      $("form-error").textContent = `이야기를 ${limits.diaryMinLength}자 이상 적어 주세요.`;
+      return;
+    }
     $("submit").disabled = true;
     try {
       const res = await fetch("/api/jobs", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ diary, consent: true, code }),
+        body: JSON.stringify({ diary, code }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.message ?? "잠시 후 다시 시도해 주세요.");
-      store.set(body.id);
       track(body.id, body);
     } catch (error) {
       $("form-error").textContent = error.message;
@@ -197,51 +188,54 @@
 
   function renderProgress(job) {
     const order = ["queued", "storyboard", "image", "compose"];
-    const current = job.status === "queued" ? "queued" : (job.stage ?? "storyboard");
-    const idx = order.indexOf(current);
+    const idx = order.indexOf(job.status === "queued" ? "queued" : (job.stage ?? "storyboard"));
     document.querySelectorAll(".steps li").forEach((li, i) => {
       li.classList.toggle("done", i < idx);
       li.classList.toggle("active", i === idx);
     });
-    $("queue-hint").textContent = job.status === "queued" && job.position > 1
-      ? `앞에 ${job.position - 1}명이 기다리고 있어요.` : "";
+    $("queue-hint").textContent = job.status === "queued" && job.position > 1 ? `앞에 ${job.position - 1}명이 기다리고 있어요.` : "";
   }
 
   function track(id, initial) {
     clearTimeout(pollTimer);
-    show("progress-view");
+    show("progress-view", COPY.progress);
     if (initial) renderProgress(initial);
     const poll = async () => {
       try {
         const res = await fetch(`/api/jobs/${id}`, { cache: "no-store" });
-        if (res.status === 404) { store.set(null); return show("form-view"); }
+        if (res.status === 404) return reset();
         const job = await res.json();
         if (job.status === "done") return done(id, job);
         if (job.status === "failed") {
-          store.set(null);
           $("failed-message").textContent = job.error?.message ?? "잠시 후 다시 시도해 주세요.";
-          return show("failed-view");
+          return show("failed-view", COPY.failed);
         }
         renderProgress(job);
       } catch { /* 네트워크 오류는 다음 확인에서 다시 시도 */ }
       pollTimer = setTimeout(poll, 2000);
     };
-    pollTimer = setTimeout(poll, initial ? 1500 : 0);
+    pollTimer = setTimeout(poll, 1500);
   }
 
   function done(id, job) {
-    $("result-title").textContent = job.title ? `# ${job.title}` : "엽서가 완성됐어요";
-    $("result-image").src = `/api/jobs/${id}/image`;
+    const img = $("stage-image");
+    img.classList.remove("sample");
+    img.src = `/api/jobs/${id}/image`;
+    img.alt = job.title ? `완성된 네컷만화 엽서: ${job.title}` : "완성된 네컷만화 엽서";
     $("download").href = `/api/jobs/${id}/image?download=1`;
-    show("result-view");
+    show("result-view", [`<em>네컷만화</em> 엽서가<br>완성됐어요`, job.title ? `# ${job.title}` : "저장해서 간직해 보세요."]);
   }
 
-  const reset = () => { store.set(null); clearTimeout(pollTimer); show("form-view"); };
-  $("again").addEventListener("click", () => { $("diary").value = ""; updateCounter(); reset(); });
-  $("retry").addEventListener("click", reset);
-
-  const saved = store.get();
-  if (saved) track(saved);
+  function reset() {
+    clearTimeout(pollTimer);
+    $("story").value = "";
+    updateCount();
+    showSample();
+    show("form-view", COPY.form);
+    $("story").focus();
+  }
+  $("again").addEventListener("click", reset);
+  $("retry").addEventListener("click", () => { showSample(); show("form-view", COPY.form); $("story").focus(); });
 })();
 </script>
 </body>

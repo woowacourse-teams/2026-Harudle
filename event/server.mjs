@@ -14,9 +14,14 @@ const assets = await loadAssets();
 const queue = new JobQueue(assets, log);
 await queue.init();
 
+// 예시 엽서는 프레임 디자인을 담고 있어 저장소가 아닌 assets/에서 읽는다. 없으면 빈 프레임을 보여 준다.
+const sample = await readFile(path.join(config.assetsDir, "sample.webp"))
+  .then(data => ({ data, type: "image/webp" }))
+  .catch(() => ({ data: assets.frameImage.data, type: assets.frameImage.mimeType }));
 const STATIC = {
-  "/": ["index.html", "text/html; charset=utf-8"],
-  "/frame-preview.webp": [null, "image/webp"],
+  "/": { file: "index.html", type: "text/html; charset=utf-8" },
+  "/logo.webp": { file: "logo.webp", type: "image/webp", maxAge: 3600 },
+  "/sample.webp": { data: sample.data, type: sample.type, maxAge: 3600 },
 };
 const JOB_PATH = /^\/api\/jobs\/([0-9a-f-]{36})(\/image)?$/;
 const MAX_BODY = 16 * 1024;
@@ -50,9 +55,6 @@ async function createJob(req, res) {
   if (config.accessCode && body.code !== config.accessCode) {
     return send(res, 403, { error: "ACCESS_DENIED", message: "행사장 QR 코드로 접속해 주세요." });
   }
-  if (body.consent !== true) {
-    return send(res, 400, { error: "CONSENT_REQUIRED", message: "안내 사항에 동의해 주세요." });
-  }
   const diary = typeof body.diary === "string" ? body.diary.replace(/\r\n?/g, "\n").trim() : "";
   if ([...diary].length < config.diaryMinLength || [...diary].length > config.diaryMaxLength) {
     return send(res, 400, {
@@ -65,9 +67,9 @@ async function createJob(req, res) {
   send(res, 202, queue.get(result.job.id));
 }
 
-async function serveStatic(res, file, type) {
-  const body = file ? await readFile(path.join(config.publicDir, file)) : assets.frameImage.data;
-  res.writeHead(200, { "content-type": type, "cache-control": file ? "no-cache" : "public, max-age=3600" });
+async function serveStatic(res, { file, data, type, maxAge }) {
+  const body = data ?? await readFile(path.join(config.publicDir, file));
+  res.writeHead(200, { "content-type": type, "cache-control": maxAge ? `public, max-age=${maxAge}` : "no-cache" });
   res.end(body);
 }
 
@@ -99,7 +101,7 @@ const server = http.createServer(async (req, res) => {
       return createReadStream(file).pipe(res);
     }
     const page = req.method === "GET" && STATIC[url.pathname];
-    if (page) return await serveStatic(res, ...page);
+    if (page) return await serveStatic(res, page);
     send(res, 404, { error: "NOT_FOUND" });
   } catch (error) {
     if (error.status) return send(res, error.status, { error: "BAD_REQUEST" });

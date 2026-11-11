@@ -5,7 +5,7 @@
 
 ```text
 event.harudle.com → Host Nginx(443) → 127.0.0.1:3100 → harudle-event 컨테이너
-  POST /api/jobs           { diary, consent: true, code? } → 202 { id, status }
+  POST /api/jobs           { diary, code? } → 202 { id, status }
   GET  /api/jobs/:id       { status: queued|running|done|failed, stage, position, title, error }
   GET  /api/jobs/:id/image PNG (?download=1 이면 첨부 파일)
   GET  /health             { status, waiting, running, today }
@@ -36,8 +36,9 @@ event.harudle.com → Host Nginx(443) → 127.0.0.1:3100 → harudle-event 컨�
 
 - 거절된 요청은 횟수를 차감하지 않는다. 접수 후 실패는 차감한다.
 - 일기 원문은 메모리에만 두고 생성이 끝나면 버린다. 로그에는 일기와 프롬프트를 남기지 않는다.
-- 페이지에서 Google 전송과 보관 기간을 안내하고 동의를 받는다. 실제 행사 전에
-  `backend/docs/adr/약관과 동의/`의 기준과 대조한다.
+- 부스 기기에 띄워 두는 화면이라 동의 체크박스는 두지 않고, 생성 버튼 아래에 Google 전송과 보관 기간을 안내한다.
+  실제 행사 전에 `backend/docs/adr/약관과 동의/`의 기준과 대조한다.
+- 여러 사람이 같은 기기를 쓰므로 새로고침하면 이전 작업을 이어 보여 주지 않는다.
 - 대기열·IP 기록은 프로세스 메모리에만 있다. 컨테이너가 재시작되면 진행 중 작업과 결과 링크가 사라진다.
 
 ## 로컬 확인 (AI 호출 없음)
