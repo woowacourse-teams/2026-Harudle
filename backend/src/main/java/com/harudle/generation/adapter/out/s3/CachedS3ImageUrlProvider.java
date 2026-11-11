@@ -1,5 +1,6 @@
 package com.harudle.generation.adapter.out.s3;
 
+import com.harudle.generation.diary.service.port.ImageLookupBudget;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
 import com.harudle.observability.RequestOperationTimings;
@@ -26,13 +27,18 @@ public final class CachedS3ImageUrlProvider implements ImageUrlProvider {
 
     @Override
     public ImageUrlProvider forFeedRead() {
-        return this::createCachedUrl;
+        return forFeedRead(cache.newLookupBudget());
     }
 
-    private ImageAccessUrl createCachedUrl(String imageObjectKey) {
+    @Override
+    public ImageUrlProvider forFeedRead(ImageLookupBudget budget) {
+        return key -> createCachedUrl(key, budget);
+    }
+
+    private ImageAccessUrl createCachedUrl(String imageObjectKey, ImageLookupBudget budget) {
         signer.validateObjectKey(imageObjectKey);
         return cache.accessUrlFor(imageObjectKey,
                 RequestOperationTimings.measureOnCurrentRequest(RequestOperationTimings.Operation.S3_SIGN,
-                        () -> metrics.measure(() -> signer.sign(imageObjectKey))));
+                        () -> metrics.measure(() -> signer.sign(imageObjectKey))), budget);
     }
 }

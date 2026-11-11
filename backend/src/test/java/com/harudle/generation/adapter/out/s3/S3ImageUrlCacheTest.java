@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.harudle.generation.config.S3UrlCacheProperties;
+import com.harudle.generation.diary.service.port.ImageLookupBudget;
 import com.harudle.generation.diary.service.port.ImageStorageException;
 import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -20,6 +21,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
@@ -64,9 +66,9 @@ class S3ImageUrlCacheTest {
             return signedUrl("first", 900, true);
         };
 
-        ImageAccessUrl first = cache.accessUrlFor(KEY, signer);
+        ImageAccessUrl first = accessUrlFor(KEY, signer);
         now.updateAndGet(value -> value.plusSeconds(834));
-        ImageAccessUrl second = cache.accessUrlFor(KEY, signer);
+        ImageAccessUrl second = accessUrlFor(KEY, signer);
 
         assertThat(second).isEqualTo(first);
         assertThat(signatures).hasValue(1);
@@ -77,13 +79,13 @@ class S3ImageUrlCacheTest {
     @ValueSource(ints = {835, 840, 900})
     @DisplayName("잔여 1분과 시계 여유 5초 경계부터 새 주소를 발급한다")
     void refreshAtRemainingLifetimeBoundary(int elapsedSeconds) {
-        ImageAccessUrl first = cache.accessUrlFor(KEY, () -> signedUrl("first", 900, true));
+        ImageAccessUrl first = accessUrlFor(KEY, () -> signedUrl("first", 900, true));
         now.updateAndGet(value -> value.plusSeconds(elapsedSeconds));
 
-        ImageAccessUrl refreshed = cache.accessUrlFor(KEY, () -> signedUrl("second", 900, true));
+        ImageAccessUrl refreshed = accessUrlFor(KEY, () -> signedUrl("second", 900, true));
 
         assertThat(refreshed.url()).isNotEqualTo(first.url());
-        assertThat(cache.accessUrlFor(KEY, () -> { throw new AssertionError("캐시 적중이어야 합니다."); }))
+        assertThat(accessUrlFor(KEY, () -> { throw new AssertionError("캐시 적중이어야 합니다."); }))
                 .isEqualTo(refreshed);
     }
 
@@ -93,8 +95,8 @@ class S3ImageUrlCacheTest {
         AtomicInteger signatures = new AtomicInteger();
         Supplier<SignedS3ImageUrl> signer = () -> signedUrl("unknown-" + signatures.incrementAndGet(), 900, false);
 
-        ImageAccessUrl first = cache.accessUrlFor(KEY, signer);
-        ImageAccessUrl second = cache.accessUrlFor(KEY, signer);
+        ImageAccessUrl first = accessUrlFor(KEY, signer);
+        ImageAccessUrl second = accessUrlFor(KEY, signer);
 
         assertThat(first.url()).isNotEqualTo(second.url());
         assertThat(signatures).hasValue(2);
@@ -106,7 +108,7 @@ class S3ImageUrlCacheTest {
     @ValueSource(ints = {-1, 0, 5, 60, 65})
     @DisplayName("알려진 만료가 너무 가까운 새 주소를 정상 결과로 반환하지 않는다")
     void rejectNewUrlWithoutSufficientLifetime(int remainingSeconds) {
-        assertThatThrownBy(() -> cache.accessUrlFor(KEY, () -> signedUrl("short", remainingSeconds, true)))
+        assertThatThrownBy(() -> accessUrlFor(KEY, () -> signedUrl("short", remainingSeconds, true)))
                 .isInstanceOf(ImageStorageException.class);
         assertThat(eventCount("refresh_failure")).isEqualTo(1);
     }
@@ -114,7 +116,7 @@ class S3ImageUrlCacheTest {
     @Test
     @DisplayName("갱신 실패 후 5초 동안은 유효한 이전 주소만 사용하고 다시 시도한다")
     void reuseValidPreviousUrlDuringFailureCooldown() {
-        ImageAccessUrl previous = cache.accessUrlFor(KEY, () -> signedUrl("previous", 900, true));
+        ImageAccessUrl previous = accessUrlFor(KEY, () -> signedUrl("previous", 900, true));
         now.updateAndGet(value -> value.plusSeconds(840));
         AtomicInteger failures = new AtomicInteger();
         Supplier<SignedS3ImageUrl> failingSigner = () -> {
@@ -122,25 +124,25 @@ class S3ImageUrlCacheTest {
             throw new ImageStorageException("서명 실패");
         };
 
-        assertThat(cache.accessUrlFor(KEY, failingSigner)).isEqualTo(previous);
+        assertThat(accessUrlFor(KEY, failingSigner)).isEqualTo(previous);
         now.updateAndGet(value -> value.plusSeconds(4));
-        assertThat(cache.accessUrlFor(KEY, failingSigner)).isEqualTo(previous);
+        assertThat(accessUrlFor(KEY, failingSigner)).isEqualTo(previous);
         assertThat(failures).hasValue(1);
         now.updateAndGet(value -> value.plusSeconds(1));
-        assertThat(cache.accessUrlFor(KEY, failingSigner)).isEqualTo(previous);
+        assertThat(accessUrlFor(KEY, failingSigner)).isEqualTo(previous);
         assertThat(failures).hasValue(2);
     }
 
     @Test
     @DisplayName("실패 대기 중에도 이전 주소가 만료되면 반환하지 않는다")
     void neverReturnExpiredPreviousUrlDuringCooldown() {
-        cache.accessUrlFor(KEY, () -> signedUrl("previous", 900, true));
+        accessUrlFor(KEY, () -> signedUrl("previous", 900, true));
         now.updateAndGet(value -> value.plusSeconds(894));
         Supplier<SignedS3ImageUrl> failingSigner = () -> { throw new ImageStorageException("서명 실패"); };
-        cache.accessUrlFor(KEY, failingSigner);
+        accessUrlFor(KEY, failingSigner);
         now.updateAndGet(value -> value.plusSeconds(1));
 
-        assertThatThrownBy(() -> cache.accessUrlFor(KEY, failingSigner))
+        assertThatThrownBy(() -> accessUrlFor(KEY, failingSigner))
                 .isInstanceOf(ImageStorageException.class);
         assertThat(eventCount("refresh_failure")).isEqualTo(1);
     }
@@ -153,12 +155,12 @@ class S3ImageUrlCacheTest {
             signatures.incrementAndGet();
             throw new ImageStorageException("서명 실패");
         };
-        assertThatThrownBy(() -> cache.accessUrlFor(KEY, signer)).isInstanceOf(ImageStorageException.class);
-        assertThatThrownBy(() -> cache.accessUrlFor(KEY, signer)).isInstanceOf(ImageStorageException.class);
+        assertThatThrownBy(() -> accessUrlFor(KEY, signer)).isInstanceOf(ImageStorageException.class);
+        assertThatThrownBy(() -> accessUrlFor(KEY, signer)).isInstanceOf(ImageStorageException.class);
         assertThat(signatures).hasValue(1);
         now.updateAndGet(value -> value.plusSeconds(5));
 
-        ImageAccessUrl recovered = cache.accessUrlFor(KEY, () -> signedUrl("recovered", 900, true));
+        ImageAccessUrl recovered = accessUrlFor(KEY, () -> signedUrl("recovered", 900, true));
 
         assertThat(recovered.url().getPath()).isEqualTo("/recovered");
     }
@@ -176,12 +178,12 @@ class S3ImageUrlCacheTest {
             return signedUrl("shared", 900, true);
         };
         try {
-            Future<ImageAccessUrl> first = callers.submit(() -> cache.accessUrlFor(KEY, signer));
+            Future<ImageAccessUrl> first = callers.submit(() -> accessUrlFor(KEY, signer));
             assertThat(started.await(2, TimeUnit.SECONDS)).isTrue();
             List<Future<ImageAccessUrl>> waiting = IntStream.range(0, 4)
-                    .mapToObj(ignored -> callers.submit(() -> cache.accessUrlFor(KEY, signer))).toList();
+                    .mapToObj(ignored -> callers.submit(() -> accessUrlFor(KEY, signer))).toList();
             awaitEvent("coalesced", 4);
-            assertThat(cache.accessUrlFor(KEY + "-other", () -> signedUrl("other", 900, true)).url().getPath())
+            assertThat(accessUrlFor(KEY + "-other", () -> signedUrl("other", 900, true)).url().getPath())
                     .isEqualTo("/other");
             release.countDown();
 
@@ -207,15 +209,15 @@ class S3ImageUrlCacheTest {
             return signedUrl("late", 900, true);
         };
         try {
-            assertThatThrownBy(() -> cache.accessUrlFor(KEY, delayed)).isInstanceOf(ImageStorageException.class);
-            assertThatThrownBy(() -> cache.accessUrlFor(KEY, delayed)).isInstanceOf(ImageStorageException.class);
+            assertThatThrownBy(() -> accessUrlFor(KEY, delayed)).isInstanceOf(ImageStorageException.class);
+            assertThatThrownBy(() -> accessUrlFor(KEY, delayed)).isInstanceOf(ImageStorageException.class);
             assertThat(signatures).hasValue(1);
             assertThat(eventCount("refresh_failure")).isZero();
-            Future<ImageAccessUrl> waiting = callers.submit(() -> cache.accessUrlFor(KEY, delayed));
+            Future<ImageAccessUrl> waiting = callers.submit(() -> accessUrlFor(KEY, delayed));
             awaitEvent("coalesced", 2);
             release.countDown();
             ImageAccessUrl completed = waiting.get(2, TimeUnit.SECONDS);
-            assertThat(cache.accessUrlFor(KEY, delayed)).isEqualTo(completed);
+            assertThat(accessUrlFor(KEY, delayed)).isEqualTo(completed);
             assertThat(signatures).hasValue(1);
         } finally {
             release.countDown();
@@ -226,7 +228,7 @@ class S3ImageUrlCacheTest {
     @DisplayName("지연 중 유효한 이전 주소만 반환하고 만료 여유를 넘으면 오류를 반환한다")
     void reusePreviousUrlOnlyWhileItRemainsValidDuringTimeout() {
         replaceCache(properties(500, 2, 8, Duration.ofMillis(150)));
-        ImageAccessUrl previous = cache.accessUrlFor(KEY, () -> signedUrl("previous", 900, true));
+        ImageAccessUrl previous = accessUrlFor(KEY, () -> signedUrl("previous", 900, true));
         now.updateAndGet(value -> value.plusSeconds(840));
         CountDownLatch release = new CountDownLatch(1);
         Supplier<SignedS3ImageUrl> delayed = () -> {
@@ -234,10 +236,10 @@ class S3ImageUrlCacheTest {
             return signedUrl("refreshed", 900, true);
         };
         try {
-            assertThat(cache.accessUrlFor(KEY, delayed)).isEqualTo(previous);
+            assertThat(accessUrlFor(KEY, delayed)).isEqualTo(previous);
             now.updateAndGet(value -> value.plusSeconds(55));
 
-            assertThatThrownBy(() -> cache.accessUrlFor(KEY, delayed)).isInstanceOf(ImageStorageException.class);
+            assertThatThrownBy(() -> accessUrlFor(KEY, delayed)).isInstanceOf(ImageStorageException.class);
             assertThat(eventCount("wait_timeout")).isEqualTo(2);
             assertThat(eventCount("refresh_failure")).isZero();
         } finally {
@@ -257,14 +259,55 @@ class S3ImageUrlCacheTest {
             return signedUrl("stuck", 900, true);
         };
         try {
-            assertThatThrownBy(() -> cache.accessUrlFor(KEY, stuck)).isInstanceOf(ImageStorageException.class);
+            assertThatThrownBy(() -> accessUrlFor(KEY, stuck)).isInstanceOf(ImageStorageException.class);
             IntStream.range(0, 20).forEach(index -> assertThatThrownBy(
-                    () -> cache.accessUrlFor(KEY + index, stuck)).isInstanceOf(ImageStorageException.class));
+                    () -> accessUrlFor(KEY + index, stuck)).isInstanceOf(ImageStorageException.class));
             assertThat(signatures).hasValue(1);
             assertThat(eventCount("refresh_rejected")).isEqualTo(12);
             assertThat(eventCount("refresh_failure")).isZero();
             assertThat(registry.get("harudle.s3.url.cache.refresh.active").gauge().value()).isEqualTo(1);
             assertThat(registry.get("harudle.s3.url.cache.refresh.queued").gauge().value()).isEqualTo(8);
+        } finally {
+            release.countDown();
+        }
+    }
+
+    @Test
+    @DisplayName("오래 대기한 작업은 서명 없이 건너뛰고 같은 키를 다시 발급할 수 있다")
+    void skipAnExpiredQueuedRefreshWithoutStartingAFailureCooldown() throws Exception {
+        AtomicLong elapsed = new AtomicLong();
+        cache.close();
+        registry.clear();
+        cache = new S3ImageUrlCache(properties(500, 1, 8, Duration.ofSeconds(2)), clock, registry, elapsed::get);
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        String queuedKey = KEY + "-queued";
+        AtomicInteger queuedSignatures = new AtomicInteger();
+        Supplier<SignedS3ImageUrl> queuedSigner = () -> {
+            queuedSignatures.incrementAndGet();
+            return signedUrl("queued", 900, true);
+        };
+        try {
+            Future<ImageAccessUrl> active = callers.submit(() -> accessUrlFor(KEY, () -> {
+                started.countDown();
+                awaitRelease(release);
+                return signedUrl("active", 900, true);
+            }));
+            assertThat(started.await(2, TimeUnit.SECONDS)).isTrue();
+            ImageLookupBudget requestBudget = new ImageLookupBudget(Duration.ofMillis(200), System::nanoTime);
+            assertThatThrownBy(() -> cache.accessUrlFor(queuedKey, queuedSigner, requestBudget))
+                    .isInstanceOf(ImageStorageException.class);
+            assertThat(registry.get("harudle.s3.url.cache.refresh.queued").gauge().value()).isEqualTo(1);
+            elapsed.addAndGet(Duration.ofSeconds(2).toNanos());
+            release.countDown();
+
+            assertThat(active.get(2, TimeUnit.SECONDS).url().getPath()).isEqualTo("/active");
+            accessUrlFor(KEY + "-next", () -> signedUrl("next", 900, true));
+            assertThat(eventCount("refresh_queue_expired")).isEqualTo(1);
+            assertThat(eventCount("refresh_failure")).isZero();
+            assertThat(queuedSignatures).hasValue(0);
+            assertThat(accessUrlFor(queuedKey, queuedSigner).url().getPath()).isEqualTo("/queued");
+            assertThat(queuedSignatures).hasValue(1);
         } finally {
             release.countDown();
         }
@@ -277,14 +320,14 @@ class S3ImageUrlCacheTest {
         CountDownLatch started = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         try {
-            Future<ImageAccessUrl> first = callers.submit(() -> cache.accessUrlFor(KEY, () -> {
+            Future<ImageAccessUrl> first = callers.submit(() -> accessUrlFor(KEY, () -> {
                 started.countDown();
                 awaitRelease(release);
                 return signedUrl("first", 900, true);
             }));
             assertThat(started.await(2, TimeUnit.SECONDS)).isTrue();
 
-            assertThatThrownBy(() -> cache.accessUrlFor(KEY, () -> signedUrl("unexpected", 900, true)))
+            assertThatThrownBy(() -> accessUrlFor(KEY, () -> signedUrl("unexpected", 900, true)))
                     .isInstanceOf(ImageStorageException.class);
             assertThat(eventCount("wait_rejected")).isEqualTo(1);
             release.countDown();
@@ -298,7 +341,7 @@ class S3ImageUrlCacheTest {
     @DisplayName("Caffeine의 기본 제거 정책으로 최대 항목 수를 유지한다")
     void evictEntriesUsingCaffeineCapacityPolicy() throws Exception {
         IntStream.range(0, 600).forEach(index ->
-                cache.accessUrlFor(KEY + index, () -> signedUrl("image", 900, true)));
+                accessUrlFor(KEY + index, () -> signedUrl("image", 900, true)));
         awaitCount("harudle.s3.url.cache.evictions", "cause", "SIZE", 100);
 
         assertThat(registry.get("harudle.s3.url.cache.size").gauge().value()).isLessThanOrEqualTo(500);
@@ -311,19 +354,19 @@ class S3ImageUrlCacheTest {
     void protectFailureCooldownsWhenRetryCapacityIsFull() {
         replaceCache(properties(2, 2, 8, Duration.ofSeconds(2)));
         Supplier<SignedS3ImageUrl> failure = () -> { throw new ImageStorageException("서명 실패"); };
-        assertThatThrownBy(() -> cache.accessUrlFor(KEY, failure)).isInstanceOf(ImageStorageException.class);
-        assertThatThrownBy(() -> cache.accessUrlFor(KEY + "-second", failure))
+        assertThatThrownBy(() -> accessUrlFor(KEY, failure)).isInstanceOf(ImageStorageException.class);
+        assertThatThrownBy(() -> accessUrlFor(KEY + "-second", failure))
                 .isInstanceOf(ImageStorageException.class);
 
-        assertThatThrownBy(() -> cache.accessUrlFor(KEY + "-third", () -> signedUrl("new", 900, true)))
+        assertThatThrownBy(() -> accessUrlFor(KEY + "-third", () -> signedUrl("new", 900, true)))
                 .isInstanceOf(ImageStorageException.class);
         assertThat(eventCount("retry_capacity_rejected")).isEqualTo(1);
-        assertThatThrownBy(() -> cache.accessUrlFor(KEY, () -> signedUrl("too-early", 900, true)))
+        assertThatThrownBy(() -> accessUrlFor(KEY, () -> signedUrl("too-early", 900, true)))
                 .isInstanceOf(ImageStorageException.class);
         assertThat(eventCount("cooldown")).isEqualTo(1);
         now.updateAndGet(value -> value.plusSeconds(5));
 
-        assertThat(cache.accessUrlFor(KEY + "-third", () -> signedUrl("new", 900, true)).url().getPath())
+        assertThat(accessUrlFor(KEY + "-third", () -> signedUrl("new", 900, true)).url().getPath())
                 .isEqualTo("/new");
     }
 
@@ -333,7 +376,7 @@ class S3ImageUrlCacheTest {
         CountDownLatch started = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         try {
-            Future<?> waiting = callers.submit(() -> assertThatThrownBy(() -> cache.accessUrlFor(KEY, () -> {
+            Future<?> waiting = callers.submit(() -> assertThatThrownBy(() -> accessUrlFor(KEY, () -> {
                 started.countDown();
                 awaitRelease(release);
                 return signedUrl("late", 900, true);
@@ -343,11 +386,15 @@ class S3ImageUrlCacheTest {
             waiting.get(2, TimeUnit.SECONDS);
             release.countDown();
             assertThat(registry.get("harudle.s3.url.cache.size").gauge().value()).isZero();
-            assertThatThrownBy(() -> cache.accessUrlFor(KEY, () -> signedUrl("new", 900, true)))
+            assertThatThrownBy(() -> accessUrlFor(KEY, () -> signedUrl("new", 900, true)))
                     .isInstanceOf(ImageStorageException.class);
         } finally {
             release.countDown();
         }
+    }
+
+    private ImageAccessUrl accessUrlFor(String key, Supplier<SignedS3ImageUrl> signer) {
+        return cache.accessUrlFor(key, signer, cache.newLookupBudget());
     }
 
     private SignedS3ImageUrl signedUrl(String name, int lifetimeSeconds, boolean expirationKnown) {

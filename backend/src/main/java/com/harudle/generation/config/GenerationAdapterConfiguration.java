@@ -28,6 +28,8 @@ import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -54,6 +56,8 @@ import tools.jackson.databind.ObjectMapper;
 @EnableConfigurationProperties({S3StorageProperties.class, StoryboardProviderProperties.class,
         S3UrlCacheProperties.class})
 public class GenerationAdapterConfiguration {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(GenerationAdapterConfiguration.class);
 
     @Bean
     @Conditional(GeminiStoryboardSelectedCondition.class)
@@ -159,12 +163,18 @@ public class GenerationAdapterConfiguration {
             ObjectProvider<BackupObjectStorage> backupStorages,
             ObjectProvider<R2StorageProperties> backupProperties,
             ObjectProvider<S3ImageUrlCache> caches,
+            S3UrlCacheProperties cacheProperties,
             @Qualifier("s3SigningCredentials") AwsCredentialsProvider credentialsProvider
     ) {
         S3ImageUrlProvider signer = new S3ImageUrlProvider(
                 s3Presigner, properties, failureReporter, credentialsProvider
         );
         S3ImageUrlCache cache = caches.getIfAvailable();
+        if (cache != null && !S3ImageUrlCache.supportsTtl(properties.accessUrlTtl())) {
+            LOGGER.info("event=s3_url_cache_bypassed reason=short_ttl ttl={}", properties.accessUrlTtl());
+            meterRegistry.counter("harudle.s3.url.cache.events", "result", "bypass_short_ttl").increment();
+            cache = null;
+        }
         ImageUrlProvider primary = cache == null
                 ? new ObservedImageUrlProvider(signer, meterRegistry)
                 : new CachedS3ImageUrlProvider(signer, cache, meterRegistry);
@@ -173,6 +183,7 @@ public class GenerationAdapterConfiguration {
             return primary;
         }
         return new R2FallbackImageUrlProvider(primary, imageStorage, backup, properties,
-                java.util.Objects.requireNonNull(backupProperties.getIfAvailable(), "R2 저장소 설정이 필요합니다."));
+                java.util.Objects.requireNonNull(backupProperties.getIfAvailable(), "R2 저장소 설정이 필요합니다."),
+                System::nanoTime, cache == null ? null : cacheProperties.waitTimeout());
     }
 }

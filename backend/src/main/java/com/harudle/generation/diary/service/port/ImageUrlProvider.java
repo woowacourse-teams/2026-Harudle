@@ -17,6 +17,11 @@ public interface ImageUrlProvider {
         return forRead();
     }
 
+    /** 저장소 선택과 피드 이미지 발급이 같은 시간 예산을 사용한다. */
+    default ImageUrlProvider forFeedRead(ImageLookupBudget budget) {
+        return forFeedRead();
+    }
+
     /** 생성 성공이 확인된 일기를 게시할 때는 저장소의 이미지 존재 여부를 다시 조회하지 않는다. */
     default ImageUrlProvider forPublication() {
         return this;

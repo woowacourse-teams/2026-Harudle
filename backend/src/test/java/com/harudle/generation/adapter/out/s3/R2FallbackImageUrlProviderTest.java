@@ -99,6 +99,51 @@ class R2FallbackImageUrlProviderTest {
     }
 
     @Test
+    @DisplayName("S3 확인과 R2 조회가 같은 피드 예산을 쓰고 소진 후에는 준비된 주소만 사용한다")
+    void shareFeedBudgetAcrossS3ProbeR2LookupAndS3Signing() {
+        AtomicLong elapsed = new AtomicLong();
+        when(storage.exists(eq(DETAIL), any(ImageLookupBudget.class))).thenAnswer(invocation -> {
+            ImageLookupBudget budget = invocation.getArgument(1);
+            assertThat(budget.requestTimeout(Duration.ofSeconds(2))).isEqualTo(Duration.ofSeconds(1));
+            elapsed.addAndGet(Duration.ofMillis(300).toNanos());
+            return false;
+        });
+        when(backup.findMetadata(eq(ORIGINAL), any(ImageLookupBudget.class))).thenAnswer(invocation -> {
+            ImageLookupBudget budget = invocation.getArgument(1);
+            assertThat(budget.requestTimeout(Duration.ofSeconds(2))).isEqualTo(Duration.ofMillis(700));
+            elapsed.addAndGet(Duration.ofMillis(700).toNanos());
+            return Optional.empty();
+        });
+        S3ImageUrlProvider signer = mock(S3ImageUrlProvider.class);
+        when(signer.sign(THUMBNAIL)).thenReturn(new SignedS3ImageUrl(S3_URL, true));
+        Clock clock = Clock.fixed(S3_URL.expiresAt().minusSeconds(900), ZoneOffset.UTC);
+        Duration timeout = Duration.ofSeconds(1);
+        S3UrlCacheProperties properties = new S3UrlCacheProperties(true, 500, 4, 64, timeout);
+
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        try (S3ImageUrlCache cache = new S3ImageUrlCache(properties, clock, registry, elapsed::get)) {
+            var cachedPrimary = new CachedS3ImageUrlProvider(signer, cache, registry);
+            var fallback = new R2FallbackImageUrlProvider(
+                    cachedPrimary, storage, backup, s3("dev"), r2("dev"), elapsed::get, timeout);
+            assertThat(cachedPrimary.forFeedRead().createAccessUrl(THUMBNAIL)).isEqualTo(S3_URL);
+
+            ImageUrlProvider response = fallback.forFeedRead();
+            assertThatThrownBy(() -> response.createAccessUrl(DETAIL)).isInstanceOf(ImageStorageException.class);
+            assertThat(response.createAccessUrl(THUMBNAIL)).isEqualTo(S3_URL);
+            verify(signer, never()).sign(DETAIL);
+            verify(signer).sign(THUMBNAIL);
+            verify(backup).findMetadata(eq(ORIGINAL), any(ImageLookupBudget.class));
+
+            assertThatThrownBy(() -> fallback.forFeedRead().createAccessUrl(DETAIL))
+                    .isInstanceOf(ImageStorageException.class);
+            verify(storage, times(2)).exists(eq(DETAIL), any(ImageLookupBudget.class));
+            verify(backup, times(2)).findMetadata(eq(ORIGINAL), any(ImageLookupBudget.class));
+        } finally {
+            registry.close();
+        }
+    }
+
+    @Test
     @DisplayName("S3 주소가 캐시에 있어도 응답마다 S3를 확인하고 필요한 경우 R2 주소를 새로 발급한다")
     void checkStorageForEveryFeedReadBeforeReusingAnS3Url() {
         when(storage.exists(eq(DETAIL), any(ImageLookupBudget.class))).thenReturn(true, true, false, false);

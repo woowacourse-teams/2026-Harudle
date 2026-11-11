@@ -3,6 +3,7 @@ package com.harudle.generation.adapter.out.s3;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.harudle.generation.config.S3UrlCacheProperties;
+import com.harudle.generation.diary.service.port.ImageLookupBudget;
 import com.harudle.generation.diary.service.port.ImageStorageException;
 import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -22,6 +23,7 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,6 +39,7 @@ public final class S3ImageUrlCache implements AutoCloseable {
     private final ThreadPoolExecutor executor;
     private final Semaphore waiters;
     private final Clock clock;
+    private final LongSupplier nanoTime;
     private final Duration waitTimeout;
     private final int maximumRetryEntries;
     private final MeterRegistry meterRegistry;
@@ -44,7 +47,12 @@ public final class S3ImageUrlCache implements AutoCloseable {
     private boolean closed;
 
     public S3ImageUrlCache(S3UrlCacheProperties properties, Clock clock, MeterRegistry meterRegistry) {
+        this(properties, clock, meterRegistry, System::nanoTime);
+    }
+
+    S3ImageUrlCache(S3UrlCacheProperties properties, Clock clock, MeterRegistry meterRegistry, LongSupplier nanoTime) {
         this.clock = clock;
+        this.nanoTime = nanoTime;
         this.waitTimeout = properties.waitTimeout();
         this.maximumRetryEntries = properties.maximumSize();
         this.meterRegistry = meterRegistry;
@@ -66,7 +74,15 @@ public final class S3ImageUrlCache implements AutoCloseable {
         registerMetrics(properties.maximumWaiters());
     }
 
-    ImageAccessUrl accessUrlFor(String imageObjectKey, Supplier<SignedS3ImageUrl> signer) {
+    public static boolean supportsTtl(Duration ttl) {
+        return SignedS3ImageUrl.supportsCache(ttl);
+    }
+
+    ImageLookupBudget newLookupBudget() {
+        return new ImageLookupBudget(waitTimeout, nanoTime);
+    }
+
+    ImageAccessUrl accessUrlFor(String imageObjectKey, Supplier<SignedS3ImageUrl> signer, ImageLookupBudget budget) {
         Optional<SignedS3ImageUrl> previous = entryFor(imageObjectKey);
         Optional<SignedS3ImageUrl> reusable = previous.filter(url -> url.canReuseAt(clock.instant()));
         if (reusable.isPresent()) {
@@ -79,9 +95,9 @@ public final class S3ImageUrlCache implements AutoCloseable {
             return existingUrlOrThrow(previous, unavailable());
         }
         try {
-            return await(refresh(imageObjectKey, signer));
+            return await(refresh(imageObjectKey, signer, budget), budget);
         } catch (ImageStorageException exception) {
-            return existingUrlOrThrow(previous, exception);
+            return existingUrlOrThrow(entryFor(imageObjectKey).or(() -> previous), exception);
         } finally {
             waiters.release();
         }
@@ -89,7 +105,8 @@ public final class S3ImageUrlCache implements AutoCloseable {
 
     private synchronized CompletableFuture<SignedS3ImageUrl> refresh(
             String imageObjectKey,
-            Supplier<SignedS3ImageUrl> signer
+            Supplier<SignedS3ImageUrl> signer,
+            ImageLookupBudget budget
     ) {
         if (closed) {
             throw unavailable();
@@ -104,11 +121,16 @@ public final class S3ImageUrlCache implements AutoCloseable {
             record("coalesced");
             return current;
         }
+        if (budget.remainingNanos() == 0) {
+            record("wait_timeout");
+            throw unavailable();
+        }
         requireRefreshAvailable(imageObjectKey, now);
         CompletableFuture<SignedS3ImageUrl> started = new CompletableFuture<>();
+        ImageLookupBudget queueBudget = newLookupBudget();
         refreshes.put(imageObjectKey, started);
         try {
-            executor.execute(() -> sign(imageObjectKey, signer, started));
+            executor.execute(() -> sign(imageObjectKey, signer, started, queueBudget));
         } catch (RejectedExecutionException exception) {
             refreshes.remove(imageObjectKey, started);
             record("refresh_rejected");
@@ -136,8 +158,12 @@ public final class S3ImageUrlCache implements AutoCloseable {
     }
 
     private void sign(String imageObjectKey, Supplier<SignedS3ImageUrl> signer,
-            CompletableFuture<SignedS3ImageUrl> result) {
+            CompletableFuture<SignedS3ImageUrl> result, ImageLookupBudget queueBudget) {
         try {
+            if (queueBudget.remainingNanos() == 0) {
+                record("refresh_queue_expired");
+                return;
+            }
             SignedS3ImageUrl signedUrl = signer.get();
             requireUsableUrl(signedUrl);
             publish(imageObjectKey, signedUrl, result);
@@ -187,10 +213,10 @@ public final class S3ImageUrlCache implements AutoCloseable {
         }
     }
 
-    private ImageAccessUrl await(CompletableFuture<SignedS3ImageUrl> result) {
+    private ImageAccessUrl await(CompletableFuture<SignedS3ImageUrl> result, ImageLookupBudget budget) {
         long startedAt = System.nanoTime();
         try {
-            SignedS3ImageUrl signedUrl = result.get(waitTimeout.toNanos(), TimeUnit.NANOSECONDS);
+            SignedS3ImageUrl signedUrl = result.get(budget.remainingNanos(), TimeUnit.NANOSECONDS);
             requireUsableUrl(signedUrl);
             return signedUrl.accessUrl();
         } catch (TimeoutException exception) {
@@ -231,7 +257,7 @@ public final class S3ImageUrlCache implements AutoCloseable {
                 permits -> maximumWaiters - permits.availablePermits());
         List.of("hit", "miss", "coalesced", "cooldown", "stale", "refresh_success", "refresh_failure",
                         "bypass_unknown_expiration", "invalid_expiration", "wait_timeout", "wait_interrupted",
-                        "wait_rejected", "refresh_rejected", "retry_capacity_rejected")
+                        "wait_rejected", "refresh_rejected", "refresh_queue_expired", "retry_capacity_rejected")
                 .forEach(result -> meterRegistry.counter("harudle.s3.url.cache.events", "result", result));
     }
 

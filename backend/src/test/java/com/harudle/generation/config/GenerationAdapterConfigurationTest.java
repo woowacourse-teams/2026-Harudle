@@ -141,6 +141,27 @@ class GenerationAdapterConfigurationTest {
     }
 
     @ParameterizedTest
+    @ValueSource(ints = {60, 65})
+    @DisplayName("S3 주소 TTL이 65초 이하면 캐시를 켜도 기존 방식으로 주소를 발급한다")
+    void bypassCacheWhenConfiguredTtlCannotBeReused(int ttlSeconds) {
+        contextRunner.withPropertyValues(enabledAdapterProperties())
+                .withPropertyValues("harudle.generation.storage.s3.url-cache.enabled=true",
+                        "harudle.generation.storage.s3.access-url-ttl=" + ttlSeconds + "s")
+                .withSystemProperties("aws.accessKeyId=test-key", "aws.secretAccessKey=test-secret")
+                .run(context -> {
+                    ImageUrlProvider provider = context.getBean(ImageUrlProvider.class);
+                    assertThat(provider).isInstanceOf(ObservedImageUrlProvider.class);
+                    var accessUrl = provider.forFeedRead().createAccessUrl(
+                            "harudle/generated/diary-images/dev/test/image.webp");
+                    assertThat(accessUrl.url().getQuery()).contains("X-Amz-Expires=" + ttlSeconds);
+                    var registry = context.getBean(MeterRegistry.class);
+                    assertThat(registry.get("harudle.s3.url.cache.events")
+                            .tag("result", "bypass_short_ttl").counter().count()).isEqualTo(1);
+                    assertThat(registry.get("harudle.s3.url.cache.size").gauge().value()).isZero();
+                });
+    }
+
+    @ParameterizedTest
     @CsvSource({"gemini,qwen,45000,35000", "qwen,gemini,35000,45000"})
     @DisplayName("메인과 보조를 모두 등록하고 Provider의 역할에 맞는 HTTP 제한 시간을 적용한다")
     void configurePrimaryAndFallbackProviders(String primary, String fallback, int geminiTimeout, int qwenTimeout) {
