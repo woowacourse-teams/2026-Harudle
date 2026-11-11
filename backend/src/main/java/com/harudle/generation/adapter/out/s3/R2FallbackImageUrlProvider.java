@@ -13,8 +13,10 @@ import com.harudle.generation.diary.service.port.ImageStorageException.Diagnosti
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.generation.diary.service.port.dto.BackupObjectMetadata;
 import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
+import java.time.Duration;
 import java.util.Objects;
 import java.util.function.LongSupplier;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,6 +30,7 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
     private final R2StorageProperties r2;
     private final S3ImageAccessPolicy accessPolicy;
     private final LongSupplier nanoTime;
+    private final @Nullable Duration feedReadTimeout;
 
     public R2FallbackImageUrlProvider(ImageUrlProvider primary, ImageStorage storage, BackupObjectStorage backup,
             S3StorageProperties s3, R2StorageProperties r2) {
@@ -36,6 +39,11 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
 
     public R2FallbackImageUrlProvider(ImageUrlProvider primary, ImageStorage storage, BackupObjectStorage backup,
             S3StorageProperties s3, R2StorageProperties r2, LongSupplier nanoTime) {
+        this(primary, storage, backup, s3, r2, nanoTime, null);
+    }
+
+    public R2FallbackImageUrlProvider(ImageUrlProvider primary, ImageStorage storage, BackupObjectStorage backup,
+            S3StorageProperties s3, R2StorageProperties r2, LongSupplier nanoTime, @Nullable Duration feedReadTimeout) {
         this.primary = Objects.requireNonNull(primary);
         this.storage = Objects.requireNonNull(storage);
         this.backup = Objects.requireNonNull(backup);
@@ -43,6 +51,7 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
         this.r2 = Objects.requireNonNull(r2);
         this.accessPolicy = new S3ImageAccessPolicy(s3);
         this.nanoTime = Objects.requireNonNull(nanoTime);
+        this.feedReadTimeout = feedReadTimeout;
         if (!r2.isListLookupBudgetValid()) {
             throw new IllegalArgumentException("유효한 목록 이미지 조회 시간 예산이 필요합니다.");
         }
@@ -56,6 +65,19 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
 
     @Override
     public ImageUrlProvider forRead() {
+        return forRead(primary, null);
+    }
+
+    @Override
+    public ImageUrlProvider forFeedRead() {
+        if (feedReadTimeout == null) {
+            return forRead(primary.forFeedRead(), null);
+        }
+        ImageLookupBudget budget = new ImageLookupBudget(feedReadTimeout, nanoTime);
+        return forRead(primary.forFeedRead(budget), budget);
+    }
+
+    private ImageUrlProvider forRead(ImageUrlProvider s3Urls, @Nullable ImageLookupBudget feedBudget) {
         return new ImageUrlProvider() {
             private ImageUrlProvider selected;
 
@@ -68,19 +90,22 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
                             DiagnosticType.REQUEST_VALIDATION_ERROR);
                 }
                 if (selected == null) {
-                    selected = selectReadProvider(imageObjectKey);
+                    selected = selectReadProvider(imageObjectKey, s3Urls, feedBudget);
                 }
                 return selected.createAccessUrl(imageObjectKey);
             }
         };
     }
 
-    private ImageUrlProvider selectReadProvider(String imageObjectKey) {
+    private ImageUrlProvider selectReadProvider(String imageObjectKey, ImageUrlProvider s3Urls,
+            @Nullable ImageLookupBudget feedBudget) {
         long startedAt = System.nanoTime();
         boolean s3Available = false;
         String s3Result = "ERROR";
         try {
-            s3Available = storage.exists(imageObjectKey, new ImageLookupBudget(r2.singleLookupBudget(), nanoTime));
+            ImageLookupBudget budget = feedBudget == null
+                    ? new ImageLookupBudget(r2.singleLookupBudget(), nanoTime) : feedBudget;
+            s3Available = storage.exists(imageObjectKey, budget);
             s3Result = s3Available ? "AVAILABLE" : "MISSING";
         } catch (ImageLookupBudgetExceededException exception) {
             s3Result = "BUDGET_EXHAUSTED";
@@ -89,7 +114,7 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
                 throw exception;
             }
         }
-        ImageUrlProvider selected = s3Available ? primary : forR2Read();
+        ImageUrlProvider selected = s3Available ? s3Urls : forR2Read(s3Urls, feedBudget);
         String selectedStorage = s3Available ? "S3" : "R2";
         LOGGER.atInfo().addKeyValue("event", "image_read_storage_selected")
                 .addKeyValue("environment", s3.environment()).addKeyValue("storage", selectedStorage)
@@ -99,9 +124,10 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
         return selected;
     }
 
-    private ImageUrlProvider forR2Read() {
-        ImageLookupBudget budget = new ImageLookupBudget(r2.listLookupBudget(), nanoTime);
-        return key -> createAccessUrl(key, budget, false);
+    private ImageUrlProvider forR2Read(ImageUrlProvider s3Urls, @Nullable ImageLookupBudget feedBudget) {
+        ImageLookupBudget budget = feedBudget == null
+                ? new ImageLookupBudget(r2.listLookupBudget(), nanoTime) : feedBudget;
+        return key -> createAccessUrl(key, budget, false, s3Urls);
     }
 
     @Override
@@ -127,15 +153,20 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
     @Override
     public ImageUrlProvider forResponse() {
         ImageLookupBudget budget = new ImageLookupBudget(r2.listLookupBudget(), nanoTime);
-        return key -> createAccessUrl(key, budget, true);
+        return key -> createAccessUrl(key, budget, true, primary);
     }
 
     @Override
     public ImageAccessUrl createAccessUrl(String imageObjectKey) {
-        return createAccessUrl(imageObjectKey, new ImageLookupBudget(r2.singleLookupBudget(), nanoTime), true);
+        return createAccessUrl(imageObjectKey, new ImageLookupBudget(r2.singleLookupBudget(), nanoTime), true, primary);
     }
 
-    private ImageAccessUrl createAccessUrl(String imageObjectKey, ImageLookupBudget budget, boolean checkS3) {
+    private ImageAccessUrl createAccessUrl(
+            String imageObjectKey,
+            ImageLookupBudget budget,
+            boolean checkS3,
+            ImageUrlProvider s3Urls
+    ) {
         String loggedKey = "invalid";
         String originalKey = "none";
         String s3Result = "NOT_CHECKED";
@@ -159,7 +190,7 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
             if (budget.isExhausted()) {
                 s3Result = checkS3 ? "BUDGET_EXHAUSTED" : "NOT_CHECKED";
                 r2Result = "BUDGET_EXHAUSTED";
-                ImageAccessUrl url = primary.createAccessUrl(imageObjectKey);
+                ImageAccessUrl url = s3Urls.createAccessUrl(imageObjectKey);
                 result = "S3_FALLBACK";
                 return url;
             }
@@ -169,7 +200,7 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
                     if (exists) {
                         s3Result = "AVAILABLE";
                         try {
-                            ImageAccessUrl url = primary.createAccessUrl(imageObjectKey);
+                            ImageAccessUrl url = s3Urls.createAccessUrl(imageObjectKey);
                             result = "S3";
                             return url;
                         } catch (ImageStorageException exception) {
@@ -230,7 +261,7 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
             if (signingFailure != null) {
                 throw signingFailure;
             }
-            ImageAccessUrl url = primary.createAccessUrl(imageObjectKey);
+            ImageAccessUrl url = s3Urls.createAccessUrl(imageObjectKey);
             result = "S3_FALLBACK";
             return url;
         } catch (ImageStorageException exception) {

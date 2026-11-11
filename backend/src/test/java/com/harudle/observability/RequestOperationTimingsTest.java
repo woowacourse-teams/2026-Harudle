@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import jakarta.servlet.http.HttpServletRequest;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -46,6 +47,21 @@ class RequestOperationTimingsTest {
         worker.start();
         worker.join();
         assertThat(RequestOperationTimings.finish(request)).containsEntry("s3HeadCount", 0);
+    }
+
+    @Test
+    @DisplayName("비동기 서명 작업은 요청 요약을 명시적으로 넘겼을 때만 집계한다")
+    void recordCapturedSigningOnTheOriginatingRequest() throws Exception {
+        var request = new MockHttpServletRequest();
+        RequestOperationTimings.start(request);
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        var signing = RequestOperationTimings.measureOnCurrentRequest(RequestOperationTimings.Operation.S3_SIGN,
+                () -> "signed");
+
+        Thread worker = Thread.ofPlatform().start(signing::get);
+        worker.join();
+
+        assertThat(RequestOperationTimings.finish(request)).containsEntry("s3SignCount", 1);
     }
 
     @Test

@@ -4,68 +4,46 @@ import com.harudle.observability.RequestOperationTimings;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
 import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.core.instrument.Timer;
 import java.util.Objects;
-import java.util.concurrent.TimeUnit;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /** Counts URL signing outcomes; it does not imply that the S3 object exists. */
 public final class ObservedImageUrlProvider implements ImageUrlProvider {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(ObservedImageUrlProvider.class);
     private final ImageUrlProvider delegate;
-    private final MeterRegistry meterRegistry;
+    private final S3SigningMetrics metrics;
 
     public ObservedImageUrlProvider(ImageUrlProvider delegate, MeterRegistry meterRegistry) {
+        this(delegate, new S3SigningMetrics(meterRegistry));
+    }
+
+    ObservedImageUrlProvider(ImageUrlProvider delegate, S3SigningMetrics metrics) {
         this.delegate = Objects.requireNonNull(delegate);
-        this.meterRegistry = Objects.requireNonNull(meterRegistry);
+        this.metrics = metrics;
     }
 
     @Override
     public ImageUrlProvider forRead() {
-        return new ObservedImageUrlProvider(delegate.forRead(), meterRegistry);
+        return new ObservedImageUrlProvider(delegate.forRead(), metrics);
+    }
+
+    @Override
+    public ImageUrlProvider forFeedRead() {
+        return new ObservedImageUrlProvider(delegate.forFeedRead(), metrics);
     }
 
     @Override
     public ImageUrlProvider forPublication() {
-        return new ObservedImageUrlProvider(delegate.forPublication(), meterRegistry);
+        return new ObservedImageUrlProvider(delegate.forPublication(), metrics);
     }
 
     @Override
     public ImageUrlProvider forResponse() {
-        return new ObservedImageUrlProvider(delegate.forResponse(), meterRegistry);
+        return new ObservedImageUrlProvider(delegate.forResponse(), metrics);
     }
 
     @Override
     public ImageAccessUrl createAccessUrl(String imageObjectKey) {
-        long startedAt = System.nanoTime();
-        String result = "failure";
-        String failureType = "NONE";
-        try {
-            ImageAccessUrl url = delegate.createAccessUrl(imageObjectKey);
-            result = "signed";
-            return url;
-        } catch (RuntimeException exception) {
-            failureType = S3MetricFailureType.from(exception, true);
-            throw exception;
-        } finally {
-            RequestOperationTimings.record(RequestOperationTimings.Operation.S3_SIGN,
-                    System.nanoTime() - startedAt, "failure".equals(result));
-            try {
-                record(result, failureType, System.nanoTime() - startedAt);
-            } catch (RuntimeException exception) {
-                LOGGER.warn("event=metrics_recording_failed component=s3 operation=sign_url exceptionType={}",
-                        exception.getClass().getSimpleName());
-            }
-        }
-    }
-
-    private void record(String result, String failureType, long durationNanos) {
-        meterRegistry.counter("harudle.s3.url.signs", "result", result, "failureType", failureType).increment();
-        Timer.builder("harudle.s3.url.sign.duration")
-                .tags("result", result, "failureType", failureType)
-                .register(meterRegistry)
-                .record(durationNanos, TimeUnit.NANOSECONDS);
+        return RequestOperationTimings.measure(RequestOperationTimings.Operation.S3_SIGN,
+                () -> metrics.measure(() -> delegate.createAccessUrl(imageObjectKey)));
     }
 }
