@@ -289,6 +289,57 @@ describe('관리자 신고 심사', (): void => {
       ),
     ).not.toBeInTheDocument();
   });
+  it('개인 네컷 신고는 AI 생성 결과를 보여주고 숨김·계정 조치 없이 신고 처리만 제공한다', async (): Promise<void> => {
+    const diary: AdminReportDetail = {
+      report: {
+        ...first.report,
+        id: 'report-3',
+        reporterId: 'user-1',
+        targetType: 'DIARY',
+        targetId: 'diary-3',
+        reason: 'INAPPROPRIATE_CONTENT',
+      },
+      target: {
+        ...first.target,
+        parentHidden: false,
+        feedId: null,
+        imageUrl: 'diary.webp',
+      },
+    };
+    jest.mocked(getAdminReports).mockResolvedValue({
+      content: [diary.report],
+      page: 0,
+      size: 20,
+      totalElements: 1,
+      totalPages: 1,
+      hasNext: false,
+    });
+    jest.mocked(getAdminReport).mockResolvedValue(diary);
+    render(<AdminReportsPanel />, { wrapper: ToastProvider });
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: '개인 네컷 신고 report-3' }),
+    );
+
+    const region = await screen.findByRole('region', { name: '신고 대상' });
+    expect(region).toHaveTextContent('개인 네컷');
+    expect(region).toHaveTextContent('비공개 상태');
+    expect(
+      within(region).getByRole('img', { name: '신고 대상 개인 네컷 이미지' }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        '작성자 본인이 AI 생성 결과를 신고한 개인 네컷이에요. 숨김·계정 조치 없이 신고 처리만 해요.',
+      ),
+    ).toBeVisible();
+    expect(screen.queryByTestId('DIARY-diary-3')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('USER-user-1')).not.toBeInTheDocument();
+    expect(
+      within(screen.getByLabelText('신고 상세')).getByRole('button', {
+        name: '처리 완료',
+      }),
+    ).toBeEnabled();
+  });
   it('최초 심사 관리자가 삭제되어도 종결 사유를 유지하고 읽기 전용으로 보여준다', async (): Promise<void> => {
     jest.mocked(getAdminReport).mockResolvedValueOnce({
       ...first,
