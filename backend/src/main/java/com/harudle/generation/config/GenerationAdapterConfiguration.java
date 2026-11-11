@@ -33,6 +33,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
@@ -80,9 +82,18 @@ public class GenerationAdapterConfiguration {
     }
 
     @Bean(destroyMethod = "close")
-    public S3Presigner s3Presigner(S3StorageProperties properties) {
+    public DefaultCredentialsProvider s3SigningCredentials() {
+        return DefaultCredentialsProvider.builder().build();
+    }
+
+    @Bean(destroyMethod = "close")
+    public S3Presigner s3Presigner(
+            S3StorageProperties properties,
+            @Qualifier("s3SigningCredentials") AwsCredentialsProvider credentialsProvider
+    ) {
         return S3Presigner.builder()
                 .region(Region.of(properties.region()))
+                .credentialsProvider(credentialsProvider)
                 .build();
     }
 
@@ -135,10 +146,11 @@ public class GenerationAdapterConfiguration {
             MeterRegistry meterRegistry,
             @Qualifier("imageStorage") ImageStorage imageStorage,
             ObjectProvider<BackupObjectStorage> backupStorages,
-            ObjectProvider<R2StorageProperties> backupProperties
+            ObjectProvider<R2StorageProperties> backupProperties,
+            @Qualifier("s3SigningCredentials") AwsCredentialsProvider credentialsProvider
     ) {
         ImageUrlProvider primary = new ObservedImageUrlProvider(
-                new S3ImageUrlProvider(s3Presigner, properties, failureReporter),
+                new S3ImageUrlProvider(s3Presigner, properties, failureReporter, credentialsProvider),
                 meterRegistry
         );
         BackupObjectStorage backup = backupStorages.getIfAvailable();
