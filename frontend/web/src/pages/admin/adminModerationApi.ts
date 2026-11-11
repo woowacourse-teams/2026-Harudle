@@ -4,6 +4,8 @@ import { isRecord } from '../../shared/utils';
 
 export type ReportStatus = 'RECEIVED' | 'DISMISSED' | 'RESOLVED';
 export type ModerationTargetType = 'USER' | 'FEED' | 'COMMENT';
+// 개인 네컷만화(DIARY)는 신고만 받고 숨김 조치 대상은 아니므로 숨김 대상 유형과 분리한다.
+export type AdminReportTargetType = ModerationTargetType | 'DIARY';
 export type ReportReason =
   'SPAM' | 'HARASSMENT' | 'INAPPROPRIATE_CONTENT' | 'OTHER';
 export interface AdminPageResponse<T> {
@@ -17,7 +19,7 @@ export interface AdminPageResponse<T> {
 export interface AdminReportSummary {
   readonly id: string;
   readonly reporterId: string | null;
-  readonly targetType: ModerationTargetType;
+  readonly targetType: AdminReportTargetType;
   readonly targetId: string;
   readonly targetUserId: string;
   readonly reason: ReportReason;
@@ -88,6 +90,10 @@ export const isModerationTargetType = (
   value: unknown,
 ): value is ModerationTargetType =>
   value === 'USER' || value === 'FEED' || value === 'COMMENT';
+export const isAdminReportTargetType = (
+  value: unknown,
+): value is AdminReportTargetType =>
+  isModerationTargetType(value) || value === 'DIARY';
 const isReportReason = (value: unknown): value is ReportReason =>
   value === 'SPAM' ||
   value === 'HARASSMENT' ||
@@ -99,7 +105,7 @@ export const isAdminReportSummary = (
   isRecord(value) &&
   isId(value.id) &&
   isNullableString(value.reporterId) &&
-  isModerationTargetType(value.targetType) &&
+  isAdminReportTargetType(value.targetType) &&
   isId(value.targetId) &&
   isId(value.targetUserId) &&
   isReportReason(value.reason) &&

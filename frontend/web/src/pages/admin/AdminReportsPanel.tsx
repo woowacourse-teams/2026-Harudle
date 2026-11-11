@@ -251,7 +251,10 @@ const ReportDetail = ({ id, onReviewed }: DetailProps) => {
       return;
     dialogRef.current?.open({
       title: status === 'DISMISSED' ? '신고 반려' : '신고 처리 완료',
-      description: COPY.reviewHint,
+      description:
+        request.data.report.targetType === 'DIARY'
+          ? COPY.diaryReportHint
+          : COPY.reviewHint,
       execute: async (reason): Promise<void> => {
         const result = await reviewAdminReport(id, status, reason);
         if (!mountedRef.current) return;
@@ -363,7 +366,7 @@ const ReportDetail = ({ id, onReviewed }: DetailProps) => {
               <img
                 css={imageStyle}
                 src={request.data.target.imageUrl}
-                alt="신고 대상 피드 이미지"
+                alt={`신고 대상 ${REPORT_TARGET_LABELS[request.data.report.targetType]} 이미지`}
               />
             )}
           </section>
@@ -371,7 +374,11 @@ const ReportDetail = ({ id, onReviewed }: DetailProps) => {
             <h3>신고 처리</h3>
             {request.data.report.status === 'RECEIVED' ? (
               <>
-                <p>{COPY.reviewHint}</p>
+                <p>
+                  {request.data.report.targetType === 'DIARY'
+                    ? COPY.diaryReportHint
+                    : COPY.reviewHint}
+                </p>
                 <div css={compactActionsStyle}>
                   <ActionButton
                     label="처리 완료"
@@ -409,7 +416,8 @@ const ReportDetail = ({ id, onReviewed }: DetailProps) => {
               </dl>
             )}
           </section>
-          {request.data.report.targetType !== 'USER' && (
+          {(request.data.report.targetType === 'FEED' ||
+            request.data.report.targetType === 'COMMENT') && (
             <AdminModerationPanel
               key={`content-${request.data.report.targetType}-${request.data.report.targetId}`}
               targetType={request.data.report.targetType}
@@ -422,15 +430,18 @@ const ReportDetail = ({ id, onReviewed }: DetailProps) => {
               onChanged={reload}
             />
           )}
-          <AdminModerationPanel
-            key={`user-${request.data.report.targetUserId}`}
-            targetType="USER"
-            targetId={request.data.report.targetUserId}
-            available={
-              request.data.target.authorId !== null &&
-              !request.data.target.authorDeleted
-            }
-          />
+          {/* 개인 네컷은 작성자 본인이 AI 생성 결과를 신고한 것이라 숨김·계정 조치 대상이 아니다. */}
+          {request.data.report.targetType !== 'DIARY' && (
+            <AdminModerationPanel
+              key={`user-${request.data.report.targetUserId}`}
+              targetType="USER"
+              targetId={request.data.report.targetUserId}
+              available={
+                request.data.target.authorId !== null &&
+                !request.data.target.authorDeleted
+              }
+            />
+          )}
         </>
       )}
       <div
