@@ -135,6 +135,28 @@ T 계열 서버는 `CPUCreditBalance`도 확인합니다. 값이 줄면 기본 �
 
 지표의 자세한 뜻은 [EC2 공식 안내](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/viewing_metrics_with_cloudwatch.html), [Agent 공식 안내](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/metrics-collected-by-CloudWatch-agent.html), [RDS 공식 안내](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-metrics.html)를 참고합니다.
 
+## 피드 S3 주소 캐시 지표
+
+캐시를 켠 백엔드에서 다음 지표를 확인합니다. CloudWatch에서 보려면 환경에 맞는 Prometheus와 Agent
+설정을 적용합니다. 재시작 직후의 결과는 캐시가 채워진 뒤의 부하 시험과 구분합니다.
+
+- `harudle_s3_url_cache_events_total`: `hit`, `miss`, `bypass_unknown_expiration`, 갱신·대기·거절 결과를
+  `result`별로 집계합니다. 한 번의 조회에서 여러 종류의 이벤트가 생길 수 있으므로 전체 합은 조회 수가
+  아닙니다. 적중률은 `hit / (hit + miss)`로 비교합니다.
+- `harudle_s3_url_cache_size`, `harudle_s3_url_cache_evictions_total{cause="SIZE"}`: 항목 수와 용량 제거를
+  확인합니다. JVM 메모리와 GC를 함께 봅니다.
+- `harudle_s3_url_cache_refresh_active`, `harudle_s3_url_cache_refresh_queued`,
+  `harudle_s3_url_cache_waiters`: 실행 중, 대기열, 응답을 기다리는 요청을 각각 확인합니다.
+- `harudle_s3_url_cache_wait_duration_seconds`: 요청의 갱신 대기 시간입니다. 관리 포트의 Prometheus
+  히스토그램으로 분포를 확인하고 `wait_timeout` 및 `wait_rejected`와 함께 대기 상한을 검토합니다.
+- `harudle_s3_url_signs_total`, `harudle_s3_url_sign_duration_seconds`: 실제 서명 시도와 시간입니다.
+  캐시 적중과 다른 요청의 갱신을 함께 기다린 요청은 서명 시도를 늘리지 않습니다. 요청 완료 뒤 끝난 서명은
+  요청 완료 로그에 포함되지 않을 수 있으므로 실제 서명 수는 이 누적 지표에서 확인합니다.
+
+첫 페이지 반복과 여러 페이지 순환을 각각 동일한 데이터·요청률·기간으로 비교합니다. S3 확인 시간,
+DB 연결 대기, API 지연과 실패, JVM 자원도 함께 확인합니다. 만료 불명 우회가 있으면 해당 요청에서
+캐시 효과를 가정하지 않습니다. URL, 자격과 이미지 키는 캐시 지표에 태그로 넣지 않습니다.
+
 ## 1. 백엔드를 배포하고 서버 수집을 적용합니다
 
 먼저 dev에 배포하고 확인한 뒤 prod에도 적용합니다. 배포는 설정 파일을 EC2의 `/opt/harudle/monitoring`에 복사합니다. **현재 배포 스크립트는 Agent에 새 설정을 적용하지 않으므로 아래 명령을 별도로 실행해야 합니다.**
