@@ -12,6 +12,11 @@ public interface ImageUrlProvider {
         return this;
     }
 
+    /** 피드 목록 또는 상세 응답에 쓰는 발급기. 피드 조회의 S3 주소만 재사용할 수 있다. */
+    default ImageUrlProvider forFeedRead() {
+        return forRead();
+    }
+
     /** 생성 성공이 확인된 일기를 게시할 때는 저장소의 이미지 존재 여부를 다시 조회하지 않는다. */
     default ImageUrlProvider forPublication() {
         return this;

@@ -26,11 +26,13 @@ import com.harudle.generation.adapter.out.gemini.client.VertexGeminiClientFactor
 import com.harudle.generation.adapter.out.qwen.QwenChatClient;
 import com.harudle.generation.adapter.out.qwen.QwenStageMetrics;
 import com.harudle.generation.adapter.out.qwen.QwenStoryboardGenerator;
+import com.harudle.generation.adapter.out.s3.CachedS3ImageUrlProvider;
 import com.harudle.generation.adapter.out.s3.ImageUploadPreparer;
 import com.harudle.generation.adapter.out.s3.ImageVariantEncoder;
 import com.harudle.generation.adapter.out.s3.ObservedImageStorage;
 import com.harudle.generation.adapter.out.s3.ObservedImageUrlProvider;
 import com.harudle.generation.adapter.out.s3.R2FallbackImageUrlProvider;
+import com.harudle.generation.adapter.out.s3.S3ImageUrlCache;
 import com.harudle.generation.adapter.out.s3.S3FailureReporter;
 import com.harudle.generation.diary.service.ImageBackupService;
 import com.harudle.generation.diary.service.port.BackupObjectStorage;
@@ -101,6 +103,8 @@ class GenerationAdapterConfigurationTest {
             assertThat(context).hasSingleBean(DiaryImageGenerator.class);
             assertThat(context).hasSingleBean(ImageStorage.class);
             assertThat(context).hasSingleBean(ImageUrlProvider.class);
+            assertThat(context).doesNotHaveBean(S3ImageUrlCache.class);
+            assertThat(context.getBean(ImageUrlProvider.class)).isInstanceOf(ObservedImageUrlProvider.class);
             assertThat(context).doesNotHaveBean(ImageBackupService.class);
             assertThat(context).doesNotHaveBean("generateDiaryImageService");
 
@@ -121,6 +125,19 @@ class GenerationAdapterConfigurationTest {
             assertThat(context.getBean(ImageUrlProvider.class))
                     .isInstanceOf(ObservedImageUrlProvider.class);
         });
+    }
+
+    @Test
+    @DisplayName("시작 설정으로 켠 S3 주소 캐시는 빈 상태에서 시작한다")
+    void startWithAnEmptyCacheOnlyWhenEnabled() {
+        contextRunner.withPropertyValues(enabledAdapterProperties())
+                .withPropertyValues("harudle.generation.storage.s3.url-cache.enabled=true")
+                .run(context -> {
+                    assertThat(context).hasSingleBean(S3ImageUrlCache.class);
+                    assertThat(context.getBean(ImageUrlProvider.class)).isInstanceOf(CachedS3ImageUrlProvider.class);
+                    var registry = context.getBean(MeterRegistry.class);
+                    assertThat(registry.get("harudle.s3.url.cache.size").gauge().value()).isZero();
+                });
     }
 
     @ParameterizedTest

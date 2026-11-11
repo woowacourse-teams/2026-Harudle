@@ -114,7 +114,7 @@ class FeedControllerTest {
 
     @BeforeEach
     void setUp() {
-        when(imageUrlProvider.forRead()).thenReturn(imageUrlProvider);
+        when(imageUrlProvider.forFeedRead()).thenReturn(imageUrlProvider);
         when(imageUrlProvider.forPublication()).thenReturn(imageUrlProvider);
         when(imageUrlProvider.createAccessUrl("generated/comic.webp")).thenReturn(new ImageAccessUrl(
                 URI.create("https://signed.example/comic.webp"), Instant.parse("2026-10-11T01:15:00Z")));
@@ -207,7 +207,7 @@ class FeedControllerTest {
                         .value("https://example.com/profile.webp?signature=example"))
                 .andExpect(jsonPath("$.author.profileImageUrlExpiresAt").value("2026-10-11T01:15:00Z"));
         verify(queryService).getDetail(null, FEED);
-        verify(imageUrlProvider).forRead();
+        verify(imageUrlProvider).forFeedRead();
     }
 
     @ParameterizedTest
@@ -239,7 +239,7 @@ class FeedControllerTest {
                 "backup", "key", "secret", Duration.ofMinutes(15), DataSize.ofMegabytes(20),
                 Duration.ofSeconds(2), Duration.ofSeconds(2));
         ImageUrlProvider fallback = new R2FallbackImageUrlProvider(primary, source, backup, s3, r2, () -> 0);
-        when(imageUrlProvider.forRead()).thenAnswer(invocation -> fallback.forRead());
+        when(imageUrlProvider.forFeedRead()).thenAnswer(invocation -> fallback.forFeedRead());
         String itemPath = list ? "$.items[0]" : "$";
 
         mockMvc.perform(list ? get("/api/v1/feeds") : get("/api/v1/feeds/{feedId}", FEED))
@@ -285,7 +285,7 @@ class FeedControllerTest {
                 .andExpect(jsonPath("$.nextCursor").value("next-page"))
                 .andExpect(jsonPath("$.hasNext").value(true));
         verify(listService).getList(null, FeedSort.LATEST, null, null, 20);
-        verify(imageUrlProvider).forRead();
+        verify(imageUrlProvider).forFeedRead();
     }
 
     @Test

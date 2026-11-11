@@ -12,9 +12,11 @@ import com.harudle.generation.adapter.out.gemini.GeminiStoryboardGenerator;
 import com.harudle.generation.adapter.out.gemini.client.GeminiClientFactory;
 import com.harudle.generation.adapter.out.gemini.client.GeminiStoryboardCallScope;
 import com.harudle.generation.adapter.out.http.SingleAttemptHttpTransport;
+import com.harudle.generation.adapter.out.s3.CachedS3ImageUrlProvider;
 import com.harudle.generation.adapter.out.s3.ObservedImageUrlProvider;
 import com.harudle.generation.adapter.out.s3.R2FallbackImageUrlProvider;
 import com.harudle.generation.adapter.out.s3.S3FailureReporter;
+import com.harudle.generation.adapter.out.s3.S3ImageUrlCache;
 import com.harudle.generation.adapter.out.s3.S3ImageUrlProvider;
 import com.harudle.generation.adapter.out.storyboard.StoryboardJsonCodec;
 import com.harudle.generation.adapter.out.storyboard.StoryboardResponseMapper;
@@ -23,6 +25,7 @@ import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.generation.diary.service.port.StoryboardGenerator;
 import io.micrometer.core.instrument.MeterRegistry;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import org.springframework.beans.factory.ObjectProvider;
@@ -48,7 +51,8 @@ import tools.jackson.databind.ObjectMapper;
 )
 @Import({QwenStoryboardConfiguration.class, StoryboardGenerationConfiguration.class,
         ImageStorageConfiguration.class, ImageGenerationConfiguration.class})
-@EnableConfigurationProperties({S3StorageProperties.class, StoryboardProviderProperties.class})
+@EnableConfigurationProperties({S3StorageProperties.class, StoryboardProviderProperties.class,
+        S3UrlCacheProperties.class})
 public class GenerationAdapterConfiguration {
 
     @Bean
@@ -138,6 +142,13 @@ public class GenerationAdapterConfiguration {
         );
     }
 
+    @Bean(destroyMethod = "close")
+    @ConditionalOnProperty(prefix = "harudle.generation.storage.s3.url-cache", name = "enabled", havingValue = "true")
+    public S3ImageUrlCache s3ImageUrlCache(S3UrlCacheProperties properties,
+            @Qualifier("serviceClock") Clock clock, MeterRegistry meterRegistry) {
+        return new S3ImageUrlCache(properties, clock, meterRegistry);
+    }
+
     @Bean
     public ImageUrlProvider imageUrlProvider(
             @Qualifier("s3Presigner") S3Presigner s3Presigner,
@@ -147,12 +158,16 @@ public class GenerationAdapterConfiguration {
             @Qualifier("imageStorage") ImageStorage imageStorage,
             ObjectProvider<BackupObjectStorage> backupStorages,
             ObjectProvider<R2StorageProperties> backupProperties,
+            ObjectProvider<S3ImageUrlCache> caches,
             @Qualifier("s3SigningCredentials") AwsCredentialsProvider credentialsProvider
     ) {
-        ImageUrlProvider primary = new ObservedImageUrlProvider(
-                new S3ImageUrlProvider(s3Presigner, properties, failureReporter, credentialsProvider),
-                meterRegistry
+        S3ImageUrlProvider signer = new S3ImageUrlProvider(
+                s3Presigner, properties, failureReporter, credentialsProvider
         );
+        S3ImageUrlCache cache = caches.getIfAvailable();
+        ImageUrlProvider primary = cache == null
+                ? new ObservedImageUrlProvider(signer, meterRegistry)
+                : new CachedS3ImageUrlProvider(signer, cache, meterRegistry);
         BackupObjectStorage backup = backupStorages.getIfAvailable();
         if (backup == null) {
             return primary;

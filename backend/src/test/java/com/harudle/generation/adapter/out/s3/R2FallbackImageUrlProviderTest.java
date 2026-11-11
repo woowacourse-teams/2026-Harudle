@@ -15,6 +15,7 @@ import static org.mockito.Mockito.when;
 
 import com.harudle.generation.config.R2StorageProperties;
 import com.harudle.generation.config.S3StorageProperties;
+import com.harudle.generation.config.S3UrlCacheProperties;
 import com.harudle.generation.diary.service.port.BackupObjectStorage;
 import com.harudle.generation.diary.service.port.BackupStorageException;
 import com.harudle.generation.diary.service.port.ImageStorage;
@@ -25,9 +26,12 @@ import com.harudle.generation.diary.service.port.ImageStorageException.Diagnosti
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.generation.diary.service.port.dto.BackupObjectMetadata;
 import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.net.URI;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -36,6 +40,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -91,6 +96,59 @@ class R2FallbackImageUrlProviderTest {
         provider.forRead();
 
         verifyNoInteractions(storage, primary, backup);
+    }
+
+    @Test
+    @DisplayName("S3 주소가 캐시에 있어도 응답마다 S3를 확인하고 필요한 경우 R2 주소를 새로 발급한다")
+    void checkStorageForEveryFeedReadBeforeReusingAnS3Url() {
+        when(storage.exists(eq(DETAIL), any(ImageLookupBudget.class))).thenReturn(true, true, false, false);
+        found(ORIGINAL, MediaType.IMAGE_PNG);
+        S3ImageUrlProvider signer = mock(S3ImageUrlProvider.class);
+        when(signer.sign(DETAIL)).thenReturn(new SignedS3ImageUrl(S3_URL, true));
+        Clock clock = Clock.fixed(S3_URL.expiresAt().minusSeconds(900), ZoneOffset.UTC);
+        S3UrlCacheProperties properties = new S3UrlCacheProperties(true, 500, 4, 64, Duration.ofSeconds(2));
+
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        try (S3ImageUrlCache cache = new S3ImageUrlCache(properties, clock, registry)) {
+            var cachedPrimary = new CachedS3ImageUrlProvider(signer, cache, registry);
+            var fallback = new R2FallbackImageUrlProvider(cachedPrimary, storage, backup, s3("dev"), r2("dev"));
+
+            assertThat(fallback.forFeedRead().createAccessUrl(DETAIL)).isEqualTo(S3_URL);
+            assertThat(fallback.forFeedRead().createAccessUrl(DETAIL)).isEqualTo(S3_URL);
+            assertThat(fallback.forFeedRead().createAccessUrl(DETAIL)).isEqualTo(R2_URL);
+            assertThat(fallback.forFeedRead().createAccessUrl(DETAIL)).isEqualTo(R2_URL);
+            assertThat(registry.get("harudle.s3.url.signs").tag("result", "signed").counter().count()).isEqualTo(1);
+            verify(storage, times(4)).exists(eq(DETAIL), any(ImageLookupBudget.class));
+            verify(signer).sign(DETAIL);
+            verify(backup, times(2)).createAccessUrl(ORIGINAL);
+        } finally {
+            registry.close();
+        }
+    }
+
+    @Test
+    @DisplayName("R2 원본이 없으면 S3 주소로 돌아가며 피드 조회 밖에서는 캐시를 쓰지 않는다")
+    void reuseFeedS3FallbackButKeepOtherSigningUncached() {
+        S3ImageUrlProvider signer = mock(S3ImageUrlProvider.class);
+        when(signer.sign(DETAIL)).thenReturn(new SignedS3ImageUrl(S3_URL, true));
+        when(signer.createAccessUrl(DETAIL)).thenReturn(S3_URL);
+        Clock clock = Clock.fixed(S3_URL.expiresAt().minusSeconds(900), ZoneOffset.UTC);
+        S3UrlCacheProperties properties = new S3UrlCacheProperties(true, 500, 4, 64, Duration.ofSeconds(2));
+
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        try (S3ImageUrlCache cache = new S3ImageUrlCache(properties, clock, registry)) {
+            var cachedPrimary = new CachedS3ImageUrlProvider(signer, cache, registry);
+            var fallback = new R2FallbackImageUrlProvider(cachedPrimary, storage, backup, s3("dev"), r2("dev"));
+
+            assertThat(fallback.forFeedRead().createAccessUrl(DETAIL)).isEqualTo(S3_URL);
+            assertThat(fallback.forFeedRead().createAccessUrl(DETAIL)).isEqualTo(S3_URL);
+            assertThat(fallback.forRead().createAccessUrl(DETAIL)).isEqualTo(S3_URL);
+            assertThat(fallback.forPublication().createAccessUrl(DETAIL)).isEqualTo(S3_URL);
+            verify(signer).sign(DETAIL);
+            verify(signer, times(2)).createAccessUrl(DETAIL);
+        } finally {
+            registry.close();
+        }
     }
 
     @Test

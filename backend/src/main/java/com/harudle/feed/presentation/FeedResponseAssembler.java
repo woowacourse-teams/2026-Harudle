@@ -29,7 +29,7 @@ class FeedResponseAssembler {
     }
 
     FeedResponse toResponse(FeedResult result) {
-        FeedResponse response = toResponse(result, imageUrlProvider.forRead());
+        FeedResponse response = toResponse(result, imageUrlProvider.forFeedRead());
         RequestOperationTimings.returnedImages(1);
         return response;
     }
@@ -53,7 +53,7 @@ class FeedResponseAssembler {
     }
 
     FeedPageResponse toResponse(FeedPageResult page) {
-        ImageUrlProvider responseUrls = imageUrlProvider.forRead();
+        ImageUrlProvider responseUrls = imageUrlProvider.forFeedRead();
         FeedPageResponse response = new FeedPageResponse(
                 page.items().stream().map(item -> toResponse(item, responseUrls)).toList(),
                 page.nextCursor(), page.hasNext());

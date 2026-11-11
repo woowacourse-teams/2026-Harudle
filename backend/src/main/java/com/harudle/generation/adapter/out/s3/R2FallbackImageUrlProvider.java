@@ -56,6 +56,15 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
 
     @Override
     public ImageUrlProvider forRead() {
+        return forRead(primary);
+    }
+
+    @Override
+    public ImageUrlProvider forFeedRead() {
+        return forRead(primary.forFeedRead());
+    }
+
+    private ImageUrlProvider forRead(ImageUrlProvider s3Urls) {
         return new ImageUrlProvider() {
             private ImageUrlProvider selected;
 
@@ -68,14 +77,14 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
                             DiagnosticType.REQUEST_VALIDATION_ERROR);
                 }
                 if (selected == null) {
-                    selected = selectReadProvider(imageObjectKey);
+                    selected = selectReadProvider(imageObjectKey, s3Urls);
                 }
                 return selected.createAccessUrl(imageObjectKey);
             }
         };
     }
 
-    private ImageUrlProvider selectReadProvider(String imageObjectKey) {
+    private ImageUrlProvider selectReadProvider(String imageObjectKey, ImageUrlProvider s3Urls) {
         long startedAt = System.nanoTime();
         boolean s3Available = false;
         String s3Result = "ERROR";
@@ -89,7 +98,7 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
                 throw exception;
             }
         }
-        ImageUrlProvider selected = s3Available ? primary : forR2Read();
+        ImageUrlProvider selected = s3Available ? s3Urls : forR2Read(s3Urls);
         String selectedStorage = s3Available ? "S3" : "R2";
         LOGGER.atInfo().addKeyValue("event", "image_read_storage_selected")
                 .addKeyValue("environment", s3.environment()).addKeyValue("storage", selectedStorage)
@@ -99,9 +108,9 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
         return selected;
     }
 
-    private ImageUrlProvider forR2Read() {
+    private ImageUrlProvider forR2Read(ImageUrlProvider s3Urls) {
         ImageLookupBudget budget = new ImageLookupBudget(r2.listLookupBudget(), nanoTime);
-        return key -> createAccessUrl(key, budget, false);
+        return key -> createAccessUrl(key, budget, false, s3Urls);
     }
 
     @Override
@@ -127,15 +136,20 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
     @Override
     public ImageUrlProvider forResponse() {
         ImageLookupBudget budget = new ImageLookupBudget(r2.listLookupBudget(), nanoTime);
-        return key -> createAccessUrl(key, budget, true);
+        return key -> createAccessUrl(key, budget, true, primary);
     }
 
     @Override
     public ImageAccessUrl createAccessUrl(String imageObjectKey) {
-        return createAccessUrl(imageObjectKey, new ImageLookupBudget(r2.singleLookupBudget(), nanoTime), true);
+        return createAccessUrl(imageObjectKey, new ImageLookupBudget(r2.singleLookupBudget(), nanoTime), true, primary);
     }
 
-    private ImageAccessUrl createAccessUrl(String imageObjectKey, ImageLookupBudget budget, boolean checkS3) {
+    private ImageAccessUrl createAccessUrl(
+            String imageObjectKey,
+            ImageLookupBudget budget,
+            boolean checkS3,
+            ImageUrlProvider s3Urls
+    ) {
         String loggedKey = "invalid";
         String originalKey = "none";
         String s3Result = "NOT_CHECKED";
@@ -159,7 +173,7 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
             if (budget.isExhausted()) {
                 s3Result = checkS3 ? "BUDGET_EXHAUSTED" : "NOT_CHECKED";
                 r2Result = "BUDGET_EXHAUSTED";
-                ImageAccessUrl url = primary.createAccessUrl(imageObjectKey);
+                ImageAccessUrl url = s3Urls.createAccessUrl(imageObjectKey);
                 result = "S3_FALLBACK";
                 return url;
             }
@@ -169,7 +183,7 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
                     if (exists) {
                         s3Result = "AVAILABLE";
                         try {
-                            ImageAccessUrl url = primary.createAccessUrl(imageObjectKey);
+                            ImageAccessUrl url = s3Urls.createAccessUrl(imageObjectKey);
                             result = "S3";
                             return url;
                         } catch (ImageStorageException exception) {
@@ -230,7 +244,7 @@ public final class R2FallbackImageUrlProvider implements ImageUrlProvider {
             if (signingFailure != null) {
                 throw signingFailure;
             }
-            ImageAccessUrl url = primary.createAccessUrl(imageObjectKey);
+            ImageAccessUrl url = s3Urls.createAccessUrl(imageObjectKey);
             result = "S3_FALLBACK";
             return url;
         } catch (ImageStorageException exception) {
