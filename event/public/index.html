@@ -6,74 +6,90 @@
   <meta name="robots" content="noindex">
   <title>하루들 데모데이 네컷만화</title>
   <style>
+    /* 엽서 프레임과 같은 색: 민트 배경, 흰 칸, 두꺼운 검은 테두리, 연보라 포인트 */
     :root {
-      --ink: #1c1530;
-      --ink-btn: #211831;
-      --purple: #7355da;
-      --purple-soft: #f7f4ff;
-      --lavender: #f5f1ff;
-      --beige: #f2ebde;
-      --muted: #6b6380;
-      --line: #e6e0f5;
+      --mint: #a5fcd8;
+      --ink: #111111;
+      --paper: #ffffff;
+      --lilac: #d2b3f4;
+      --muted: #2c4a3f;
       --danger: #c2412d;
+      --outline: 3px solid var(--ink);
     }
     * { box-sizing: border-box; }
     html, body { margin: 0; height: 100%; }
     body {
-      min-height: 100dvh; display: flex; flex-direction: column; background: #fff; color: var(--ink);
+      min-height: 100dvh; display: flex; flex-direction: column; background: var(--mint); color: var(--ink);
       font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Segoe UI", sans-serif;
       -webkit-font-smoothing: antialiased;
     }
-    header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px clamp(16px, 4vw, 40px); border-bottom: 1px solid #f0edf6; }
-    header img { height: clamp(28px, 3.2vw, 38px); display: block; }
-    .chip { white-space: nowrap; font-size: clamp(12px, 1.1vw, 14px); font-weight: 700; background: var(--ink-btn); color: #fff; border-radius: 999px; padding: 8px 14px; }
+    header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 16px clamp(16px, 4vw, 40px) 4px; }
+    header img { height: clamp(30px, 3.2vw, 40px); display: block; }
+    .chip { white-space: nowrap; font-size: clamp(12px, 1.1vw, 14px); font-weight: 700; background: var(--ink); color: var(--mint); border-radius: 999px; padding: 8px 14px; }
     main {
-      flex: 1; display: grid; gap: clamp(20px, 4vw, 56px); align-content: start;
-      grid-template-columns: minmax(0, 1fr); padding: 20px 16px 28px; width: min(1180px, 100%); margin: 0 auto;
+      flex: 1; display: grid; gap: clamp(18px, 3.4vw, 44px); align-content: start;
+      grid-template-columns: minmax(0, 1fr); padding: 16px 16px 28px; width: min(1180px, 100%); margin: 0 auto;
     }
-    .stage { background: var(--beige); border-radius: 26px; display: flex; justify-content: center; align-items: center; padding: 24px 16px; }
-    .stage img { width: min(62%, 300px); height: auto; border-radius: 10px; box-shadow: 0 14px 34px rgba(28, 21, 48, .18); }
-    .stage img.sample { transform: rotate(-2deg); }
-    .panel h1 { margin: 0 0 8px; font-size: clamp(26px, 3.4vw, 44px); line-height: 1.22; font-weight: 800; letter-spacing: -0.03em; }
-    .panel h1 em { font-style: normal; color: var(--purple); }
+    /* 흰 여백까지 포함한 카드 전체를 엽서처럼 살짝 기울인다. */
+    .stage { background: var(--paper); border: var(--outline); border-radius: 28px; display: flex; justify-content: center; align-items: center; padding: 16px; transform: rotate(-2deg); }
+    @media (prefers-reduced-motion: no-preference) { .stage { transition: transform .3s ease; } }
+    .stage img { display: block; width: min(100%, 420px); height: auto; border-radius: 6px; border: 2px solid var(--ink); }
+    .panel h1 { margin: 0 0 8px; font-size: clamp(26px, 3.4vw, 44px); line-height: 1.25; font-weight: 800; letter-spacing: -0.03em; }
+    .panel h1 em { font-style: normal; background: linear-gradient(transparent 58%, var(--lilac) 58%, var(--lilac) 92%, transparent 92%); padding: 0 2px; }
     .sub { margin: 0 0 20px; font-size: clamp(14px, 1.3vw, 17px); color: var(--muted); line-height: 1.6; }
-    .box { background: var(--lavender); border-radius: 24px; padding: clamp(16px, 2vw, 26px); }
+    .box { background: var(--paper); border: var(--outline); border-radius: 28px; padding: clamp(16px, 2vw, 26px); }
     label { display: block; font-size: 14px; font-weight: 700; margin-bottom: 8px; }
     textarea {
-      width: 100%; min-height: clamp(140px, 22vh, 240px); resize: none; border: 1.5px solid var(--line); border-radius: 16px;
-      padding: 14px 16px; font: inherit; font-size: clamp(15px, 1.3vw, 17px); line-height: 1.6; color: var(--ink); background: #fff;
+      width: 100%; min-height: clamp(140px, 22vh, 240px); resize: none; border: 2px solid var(--ink); border-radius: 16px;
+      padding: 14px 16px; font: inherit; font-size: clamp(15px, 1.3vw, 17px); line-height: 1.6; color: var(--ink); background: #fbfffd;
     }
-    textarea:focus { outline: none; border-color: var(--purple); box-shadow: 0 0 0 3px rgba(115, 85, 218, .15); }
-    .row { display: flex; justify-content: space-between; gap: 12px; font-size: 12.5px; color: var(--muted); margin: 6px 2px 14px; }
-    .row .over { color: var(--danger); }
+    textarea::placeholder { color: #7a8f86; }
+    textarea:focus { outline: none; box-shadow: 0 0 0 4px var(--lilac); }
+    /* 엽서 뒷면 입력 카드 */
+    .card-back { position: relative; background: var(--paper); border: var(--outline); border-radius: 22px; padding: clamp(18px, 2vw, 26px) clamp(18px, 2.2vw, 28px) 18px; margin-bottom: 16px; }
+    .card-back .stamp {
+      position: absolute; top: 16px; right: 18px; width: clamp(70px, 6vw, 78px); aspect-ratio: 78 / 92; border: 2.5px dashed var(--ink); border-radius: 8px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; background: #f6fffb; transform: rotate(4deg);
+    }
+    .card-back .stamp img { width: 76%; }
+    .card-back .stamp span { font-size: 9px; font-weight: 800; white-space: nowrap; }
+    .card-back .to { font-size: 15px; font-weight: 800; margin: 0 0 14px; padding-right: 90px; }
+    .card-back textarea {
+      display: block; width: calc(100% - clamp(70px, 7vw, 96px)); min-height: clamp(180px, 24vh, 252px); border: 0; border-radius: 0; resize: none; padding: 0;
+      font-size: clamp(16px, 1.4vw, 18px); line-height: 36px; background: repeating-linear-gradient(transparent 0 35px, #b9e9d4 35px 36px);
+    }
+    .card-back textarea:focus, .card-back textarea:focus-visible { box-shadow: none; outline: none; }
+    .card-back:focus-within { box-shadow: 0 0 0 4px var(--lilac); }
+    .card-back .from { display: flex; justify-content: space-between; gap: 12px; margin-top: 14px; padding-top: 12px; border-top: 2px dashed #b9e9d4; font-size: 12.5px; color: var(--muted); }
+    .card-back .from .over { color: var(--danger); }
     .btn {
       display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; height: clamp(54px, 6.4vh, 64px);
-      border: 0; border-radius: 18px; background: var(--purple); color: #fff; font: inherit; font-size: clamp(16px, 1.4vw, 18px);
+      border: var(--outline); border-radius: 999px; background: var(--ink); color: #fff; font: inherit; font-size: clamp(16px, 1.4vw, 18px);
       font-weight: 800; cursor: pointer; text-decoration: none;
     }
     .btn:disabled { opacity: .5; cursor: progress; }
-    .btn.secondary { background: #fff; color: var(--ink); border: 1.5px solid var(--line); }
-    .btn:focus-visible, textarea:focus-visible { outline: 3px solid rgba(115, 85, 218, .45); outline-offset: 2px; }
+    .btn.secondary { background: var(--paper); color: var(--ink); }
+    .btn:focus-visible, textarea:focus-visible { outline: 4px solid var(--lilac); outline-offset: 2px; }
     .actions { display: grid; gap: 10px; }
     .err { margin: 8px 0 0; font-size: 13px; color: var(--danger); text-align: center; min-height: 1em; }
     .notice { margin: 6px 0 0; font-size: 12px; color: var(--muted); text-align: center; line-height: 1.55; }
     .steps { list-style: none; padding: 0; margin: 0; display: grid; gap: 14px; }
     .steps li { display: flex; gap: 12px; align-items: center; font-size: clamp(15px, 1.3vw, 17px); color: var(--muted); }
-    .steps li::before { content: ""; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #c9bff0; flex: none; }
+    .steps li::before { content: ""; width: 16px; height: 16px; border-radius: 50%; border: 2.5px solid var(--ink); flex: none; background: var(--paper); }
     .steps li.active { color: var(--ink); font-weight: 700; }
-    .steps li.active::before { border-color: var(--purple); background: var(--purple); animation: pulse 1.2s ease-in-out infinite; }
+    .steps li.active::before { background: var(--lilac); animation: pulse 1.2s ease-in-out infinite; }
     .steps li.done { color: var(--ink); }
-    .steps li.done::before { border-color: var(--purple); background: var(--purple); }
+    .steps li.done::before { background: var(--ink); }
     @keyframes pulse { 50% { transform: scale(.7); } }
     @media (prefers-reduced-motion: reduce) { .steps li.active::before { animation: none; } }
     .hint { margin: 16px 0 0; font-size: 13px; color: var(--muted); }
     [hidden] { display: none !important; }
     @media (min-width: 860px) {
-      main { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); align-content: center; align-items: center; padding: 32px clamp(24px, 4vw, 40px); }
-      .stage { height: 100%; min-height: 520px; max-height: calc(100dvh - 140px); padding: 32px; }
-      .stage img { width: auto; max-width: 82%; max-height: calc(100dvh - 220px); }
+      main { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); align-content: center; align-items: center; padding: 24px clamp(24px, 4vw, 40px) 32px; }
+      .stage { padding: 18px; }
+      .stage img { width: auto; max-width: 100%; max-height: min(calc(100dvh - 170px), 780px); }
     }
-  </style>
+</style>
 </head>
 <body>
   <header>
@@ -87,15 +103,18 @@
     </div>
 
     <div class="panel">
-      <h1 id="heading">오늘 이야기를<br><em>네컷만화</em> 엽서로</h1>
-      <p class="sub" id="subheading">사진은 없어도, 내용만 있으면 돼요. 30초~1분이면 완성돼요.</p>
+      <h1 id="heading">네컷만화 <em>엽서</em>를<br>써 볼까요?</h1>
+      <p class="sub" id="subheading">오늘 있었던 일을 적으면, 그림은 하루들이 그려요.</p>
 
-      <form class="box" id="form-view" novalidate>
-        <label for="story">네컷만화로 만들 이야기</label>
-        <textarea id="story" name="story" maxlength="1000" required
-          placeholder="발표 직전에 노트북이 꺼져서 식은땀이 났는데, 팀원이 충전기를 들고 뛰어왔다. 무사히 끝내고 다 같이 떡볶이를 먹었다."></textarea>
-        <div class="row"><span>누가, 무엇을 했는지 적으면 더 재밌어요</span><span id="count" aria-live="polite">0 / 1000</span></div>
-        <button class="btn" id="submit" type="submit">네컷만화 만들기 <span aria-hidden="true">→</span></button>
+      <form id="form-view" novalidate>
+        <div class="card-back">
+          <div class="stamp" aria-hidden="true"><img src="/logo.webp" alt=""><span>DEMO DAY</span></div>
+          <label class="to" for="story">To. 데모데이에서의 나에게</label>
+          <textarea id="story" name="story" maxlength="1000" required
+            placeholder="발표 직전에 노트북이 꺼져서 식은땀이 났는데, 팀원이 충전기를 들고 뛰어왔다. 다 같이 떡볶이를 먹었다."></textarea>
+          <div class="from"><span>누가, 무엇을 했는지 적으면 더 재밌어요</span><span id="count" aria-live="polite">0 / 1000</span></div>
+        </div>
+        <button class="btn" id="submit" type="submit">네컷만화로 그리기 <span aria-hidden="true">→</span></button>
         <p class="err" id="form-error" role="alert"></p>
         <p class="notice">입력한 내용은 Google Gemini로 전송되고, 완성된 엽서는 <span class="ttl">2시간</span> 뒤 삭제돼요.</p>
       </form>
@@ -130,7 +149,7 @@
   const code = new URLSearchParams(location.search).get("code") ?? undefined;
   const SAMPLE = { src: "/sample.webp", alt: "완성된 데모데이 네컷만화 엽서 예시" };
   const COPY = {
-    form: ["오늘 이야기를<br><em>네컷만화</em> 엽서로", "사진은 없어도, 내용만 있으면 돼요. 30초~1분이면 완성돼요."],
+    form: ["네컷만화 <em>엽서</em>를<br>써 볼까요?", "오늘 있었던 일을 적으면, 그림은 하루들이 그려요."],
     progress: ["<em>네컷만화</em>를<br>그리고 있어요", "화면을 그대로 두고 잠시만 기다려 주세요."],
     failed: ["엽서를<br>만들지 못했어요", "내용을 조금 바꿔서 다시 시도해 주세요."],
   };
