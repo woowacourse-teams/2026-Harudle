@@ -15,10 +15,28 @@ export const REPORT_REASONS: readonly ReportReasonOption[] = [
   { value: 'OTHER', label: '기타' },
 ];
 
+// 개인 네컷만화는 본인이 AI 생성 결과를 신고하므로 타인 대상 사유는 보여주지 않는다.
+const DIARY_REPORT_REASONS: readonly ReportReasonOption[] = [
+  { value: 'INAPPROPRIATE_CONTENT', label: '부적절한 그림이나 글' },
+  { value: 'OTHER', label: '기타' },
+];
+
+export const getReportReasons = (
+  targetType: ReportTargetType,
+): readonly ReportReasonOption[] =>
+  targetType === 'DIARY' ? DIARY_REPORT_REASONS : REPORT_REASONS;
+
 export const REPORT_TITLES: Readonly<Record<ReportTargetType, string>> = {
   USER: '작성자 신고',
   FEED: '피드 신고',
   COMMENT: '댓글 신고',
+  DIARY: '네컷만화 신고',
+};
+
+export const REPORT_GUIDES: Readonly<
+  Partial<Record<ReportTargetType, string>>
+> = {
+  DIARY: 'AI가 만든 그림이나 글이 부적절하다면 알려 주세요.',
 };
 
 export const REPORT_COPY = {
