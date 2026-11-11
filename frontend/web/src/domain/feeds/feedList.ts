@@ -26,8 +26,8 @@ interface FeedData {
     id: number;
     name: string;
   };
-  imageUrl: string;
-  imageUrlExpiresAt: string;
+  imageUrl: string | null;
+  imageUrlExpiresAt: string | null;
   publishedAt: string;
   likeCount: number;
   commentCount: number;
@@ -91,8 +91,9 @@ export const isFeed = (value: unknown): value is Feed => {
     Number.isSafeInteger(value.category.id) &&
     value.category.id > 0 &&
     typeof value.category.name === 'string' &&
-    typeof value.imageUrl === 'string' &&
-    typeof value.imageUrlExpiresAt === 'string' &&
+    ((typeof value.imageUrl === 'string' &&
+      typeof value.imageUrlExpiresAt === 'string') ||
+      (value.imageUrl === null && value.imageUrlExpiresAt === null)) &&
     typeof value.publishedAt === 'string' &&
     typeof value.likeCount === 'number' &&
     isNonNegativeInteger(value.likeCount) &&

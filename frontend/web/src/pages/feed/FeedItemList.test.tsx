@@ -898,6 +898,34 @@ describe('피드 목록 조회 상태', () => {
     expect(image).toHaveAttribute('src', 'profile-fallback.svg');
   });
 
+  it('주소가 없는 사진만 안내하고 나머지 사진을 표시한다', async (): Promise<void> => {
+    mockGetFeedList.mockResolvedValue({
+      ...response,
+      items: [
+        {
+          ...feed,
+          id: '00000000-0000-4000-8000-000000000002',
+          imageUrl: null,
+          imageUrlExpiresAt: null,
+        },
+        feed,
+      ],
+    });
+    render(
+      <FeedItemList onCategoryClick={mockOnCategoryClick} sort="LATEST" />,
+    );
+
+    expect(
+      await screen.findByRole('img', {
+        name: '하루들의 만화 피드: 현재 이미지를 불러올 수 없습니다',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('img', { name: '하루들의 만화 피드' }),
+    ).toHaveAttribute('src', '/diary.webp');
+    expect(screen.getAllByRole('article')).toHaveLength(2);
+  });
+
   it('빈 응답은 FeedEmpty를 표시한다', async (): Promise<void> => {
     mockGetFeedList.mockResolvedValue(emptyResponse);
     render(

@@ -26,7 +26,7 @@ export const publishFeed = async (
   }
 
   const data: unknown = await response.json();
-  if (!isFeed(data))
+  if (!isFeed(data) || data.imageUrl === null)
     throw new Error(ERROR_MESSAGES.INVALID_FEED_PUBLISH_RESPONSE);
   return data;
 };
