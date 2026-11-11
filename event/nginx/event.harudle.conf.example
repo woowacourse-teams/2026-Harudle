@@ -1,0 +1,42 @@
+# /etc/nginx/conf.d/harudle-event.conf
+# Certbot으로 인증서를 받은 뒤 경로를 확인한다: sudo certbot --nginx -d event.harudle.com
+
+limit_req_zone $binary_remote_addr zone=harudle_event_api:10m rate=30r/m;
+
+server {
+    listen 80;
+    server_name event.harudle.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name event.harudle.com;
+
+    ssl_certificate     /etc/letsencrypt/live/event.harudle.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/event.harudle.com/privkey.pem;
+
+    client_max_body_size 16k;
+    proxy_connect_timeout 10s;
+    proxy_read_timeout 30s;
+    proxy_send_timeout 30s;
+
+    location /api/ {
+        limit_req zone=harudle_event_api burst=20 nodelay;
+        limit_req_status 429;
+        proxy_pass http://127.0.0.1:3100;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:3100;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

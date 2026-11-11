@@ -1,0 +1,6 @@
+node_modules/
+.env.event
+# 프롬프트 원문, 참조 이미지, 프레임은 서버에서 받아 둔다. 저장소에는 올리지 않는다.
+assets/*
+!assets/README.md
+data/

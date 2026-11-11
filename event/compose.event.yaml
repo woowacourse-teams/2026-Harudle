@@ -1,0 +1,27 @@
+# Dev 앱 EC2에서 harudle 본 서비스와 분리된 Compose 프로젝트로 띄운다.
+# CodeDeploy의 `--remove-orphans`는 프로젝트 `harudle`에만 적용되므로 이 컨테이너는 건드리지 않는다.
+# 실행: sudo docker compose -f compose.event.yaml up -d --build
+name: harudle-event
+
+services:
+  event:
+    build: .
+    image: harudle-event:local
+    restart: unless-stopped
+    env_file: .env.event
+    ports:
+      - "127.0.0.1:${EVENT_PUBLISHED_PORT:-3100}:3100"
+    volumes:
+      - ./assets:/app/assets:ro
+      - /etc/harudle/gcp/gcp-wif.json:/var/run/harudle/gcp-wif.json:ro
+      # 결과 PNG(장당 약 2~3MB)는 디스크에 둔다. tmpfs는 컨테이너 메모리 한도에 함께 잡힌다.
+      - event-results:/data/results
+    mem_limit: 320m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+volumes:
+  event-results:

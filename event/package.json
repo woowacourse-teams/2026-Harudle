@@ -1,0 +1,18 @@
+{
+  "name": "harudle-event",
+  "private": true,
+  "type": "module",
+  "description": "데모데이 엽서 이벤트용 경량 생성 서버 (프로토타입)",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "dev:fake": "EVENT_FAKE_AI=true node server.mjs",
+    "test": "node --test \"test/**/*.test.mjs\""
+  },
+  "dependencies": {
+    "google-auth-library": "9.15.1",
+    "sharp": "0.34.4"
+  }
+}
