@@ -117,6 +117,7 @@ class ProfileImageUploadControllerTest {
         Instant expiresAt = Instant.now().plusSeconds(900);
         when(storage.createAccessUrl(key(user.getId()))).thenReturn(new ImageAccessUrl(url, expiresAt));
         when(imageUrlProvider.forRead()).thenReturn(imageUrlProvider);
+        when(imageUrlProvider.forFeedRead()).thenReturn(imageUrlProvider);
         when(imageUrlProvider.createAccessUrl("generated/profile-read-test.webp"))
                 .thenReturn(new ImageAccessUrl(URI.create("https://s3.example/comic.webp"), expiresAt));
         MockMvcResponse before = RestAssuredMockMvc.get("/api/v1/feeds/" + feedId);

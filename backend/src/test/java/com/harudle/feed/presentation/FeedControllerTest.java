@@ -1,5 +1,7 @@
 package com.harudle.feed.presentation;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -53,9 +55,11 @@ import com.harudle.generation.config.R2StorageProperties;
 import com.harudle.generation.config.S3StorageProperties;
 import com.harudle.generation.diary.service.port.BackupObjectStorage;
 import com.harudle.generation.diary.service.port.BackupStorageException;
+import com.harudle.generation.diary.service.port.ImageLookupBudget;
+import com.harudle.generation.diary.service.port.ImageLookupBudgetExceededException;
 import com.harudle.generation.diary.service.port.ImageStorage;
 import com.harudle.generation.diary.service.port.ImageStorageException;
-import com.harudle.generation.diary.service.port.ImageLookupBudget;
+import com.harudle.generation.diary.service.port.ImageStorageException.DiagnosticType;
 import com.harudle.generation.diary.service.port.ImageUrlProvider;
 import com.harudle.generation.diary.service.port.dto.BackupObjectMetadata;
 import com.harudle.generation.diary.service.port.dto.ImageAccessUrl;
@@ -70,12 +74,15 @@ import java.util.UUID;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
@@ -114,7 +121,7 @@ class FeedControllerTest {
 
     @BeforeEach
     void setUp() {
-        when(imageUrlProvider.forRead()).thenReturn(imageUrlProvider);
+        when(imageUrlProvider.forFeedRead()).thenReturn(imageUrlProvider);
         when(imageUrlProvider.forPublication()).thenReturn(imageUrlProvider);
         when(imageUrlProvider.createAccessUrl("generated/comic.webp")).thenReturn(new ImageAccessUrl(
                 URI.create("https://signed.example/comic.webp"), Instant.parse("2026-10-11T01:15:00Z")));
@@ -207,7 +214,7 @@ class FeedControllerTest {
                         .value("https://example.com/profile.webp?signature=example"))
                 .andExpect(jsonPath("$.author.profileImageUrlExpiresAt").value("2026-10-11T01:15:00Z"));
         verify(queryService).getDetail(null, FEED);
-        verify(imageUrlProvider).forRead();
+        verify(imageUrlProvider).forFeedRead();
     }
 
     @ParameterizedTest
@@ -239,7 +246,7 @@ class FeedControllerTest {
                 "backup", "key", "secret", Duration.ofMinutes(15), DataSize.ofMegabytes(20),
                 Duration.ofSeconds(2), Duration.ofSeconds(2));
         ImageUrlProvider fallback = new R2FallbackImageUrlProvider(primary, source, backup, s3, r2, () -> 0);
-        when(imageUrlProvider.forRead()).thenAnswer(invocation -> fallback.forRead());
+        when(imageUrlProvider.forFeedRead()).thenAnswer(invocation -> fallback.forFeedRead());
         String itemPath = list ? "$.items[0]" : "$";
 
         mockMvc.perform(list ? get("/api/v1/feeds") : get("/api/v1/feeds/{feedId}", FEED))
@@ -285,7 +292,65 @@ class FeedControllerTest {
                 .andExpect(jsonPath("$.nextCursor").value("next-page"))
                 .andExpect(jsonPath("$.hasNext").value(true));
         verify(listService).getList(null, FeedSort.LATEST, null, null, 20);
-        verify(imageUrlProvider).forRead();
+        verify(imageUrlProvider).forFeedRead();
+    }
+
+    @Test
+    @ExtendWith(OutputCaptureExtension.class)
+    void listsOtherFeedImagesAndLogsOmissionsByReason(CapturedOutput output) throws Exception {
+        FeedResult available = result(false, false);
+        String invalidKey = "generated/prod/invalid.webp";
+        String slowKey = "generated/dev/slow.webp";
+        UUID firstSlowId = UUID.randomUUID();
+        UUID secondSlowId = UUID.randomUUID();
+        FeedResult invalid = new FeedResult(DIARY, available.author(), available.category(), invalidKey,
+                available.publishedAt(), 0, 0, false, false);
+        FeedResult firstSlow = new FeedResult(firstSlowId, available.author(), available.category(), slowKey,
+                available.publishedAt(), 0, 0, false, false);
+        FeedResult secondSlow = new FeedResult(secondSlowId, available.author(), available.category(), slowKey,
+                available.publishedAt(), 0, 0, false, false);
+        when(listService.getList(null, FeedSort.LATEST, null, null, 20))
+                .thenReturn(new FeedPageResult(List.of(invalid, firstSlow, secondSlow, available), "next-page", true));
+        String privateMessage = "provider-response-with-private-data";
+        when(imageUrlProvider.createAccessUrl(invalidKey))
+                .thenThrow(new ImageStorageException(privateMessage, null, DiagnosticType.REQUEST_VALIDATION_ERROR));
+        when(imageUrlProvider.createAccessUrl(slowKey))
+                .thenThrow(new ImageStorageException(privateMessage, null, DiagnosticType.CACHE_WAIT_TIMEOUT));
+
+        String traceId = mockMvc.perform(get("/api/v1/feeds"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].id").value(DIARY.toString()))
+                .andExpect(jsonPath("$.items[0].imageUrl").value(nullValue()))
+                .andExpect(jsonPath("$.items[0].imageUrlExpiresAt").value(nullValue()))
+                .andExpect(jsonPath("$.items[1].imageUrl").value(nullValue()))
+                .andExpect(jsonPath("$.items[2].imageUrl").value(nullValue()))
+                .andExpect(jsonPath("$.items[3].imageUrl").value("https://signed.example/comic.webp"))
+                .andExpect(jsonPath("$.nextCursor").value("next-page"))
+                .andReturn().getResponse().getHeader("X-Trace-Id");
+        assertThat(traceId).isNotBlank();
+        assertThat(output.getOut().lines().filter(line -> line.contains("event=feed_image_url_unavailable")))
+                .satisfiesExactly(
+                        line -> assertThat(line).contains(" ERROR ", "traceId=" + traceId,
+                                "failureType=REQUEST_VALIDATION_ERROR feedIds=[" + DIARY + "]"),
+                        line -> assertThat(line).contains(" WARN ", "traceId=" + traceId,
+                                "failureType=CACHE_WAIT_TIMEOUT feedIds=[" + firstSlowId + ", " + secondSlowId + "]")
+                );
+        assertThat(output.getAll()).doesNotContain(invalidKey, slowKey, privateMessage);
+        verify(imageUrlProvider).forFeedRead();
+    }
+
+    @Test
+    void returnsFeedDetailWhenItsImageLookupRunsOutOfTime() throws Exception {
+        FeedResult feed = result(false, false);
+        when(queryService.getDetail(null, FEED)).thenReturn(feed);
+        when(imageUrlProvider.createAccessUrl(feed.imageObjectKey()))
+                .thenThrow(new ImageLookupBudgetExceededException());
+
+        mockMvc.perform(get("/api/v1/feeds/{feedId}", FEED))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(FEED.toString()))
+                .andExpect(jsonPath("$.imageUrl").value(nullValue()))
+                .andExpect(jsonPath("$.imageUrlExpiresAt").value(nullValue()));
     }
 
     @Test

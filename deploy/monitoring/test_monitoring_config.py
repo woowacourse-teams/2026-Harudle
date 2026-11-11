@@ -43,6 +43,18 @@ NEW_DIMENSIONS = {
     "harudle_image_response_failures_total": [["job", "provider", "reason"]],
     "harudle_gemini_stage_duration_seconds_sum": [["job", "stage", "outcome"]],
     "harudle_gemini_stage_duration_seconds_count": [["job", "stage", "outcome"]],
+    "harudle_s3_url_sign_duration_seconds_sum": [["job", "result", "failureType"]],
+    "harudle_s3_url_sign_duration_seconds_count": [["job", "result", "failureType"]],
+    "harudle_s3_url_sign_duration_seconds_max": [["job", "result", "failureType"]],
+    "harudle_s3_url_cache_events_total": [["job", "result"]],
+    "harudle_s3_url_cache_evictions_total": [["job", "cause"]],
+    "harudle_s3_url_cache_size": [["job"]],
+    "harudle_s3_url_cache_refresh_active": [["job"]],
+    "harudle_s3_url_cache_refresh_queued": [["job"]],
+    "harudle_s3_url_cache_waiters": [["job"]],
+    "harudle_s3_url_cache_wait_duration_seconds_sum": [["job"]],
+    "harudle_s3_url_cache_wait_duration_seconds_count": [["job"]],
+    "harudle_s3_url_cache_wait_duration_seconds_max": [["job"]],
 }
 RESOURCE_METRICS = {
     "hikaricp_connections_acquire_seconds_sum": "Seconds",
@@ -98,7 +110,7 @@ class MonitoringConfigTests(unittest.TestCase):
                     self.assertEqual(declarations[0]["label_matcher"], "^harudle-backend$")
                     self.assertEqual(
                         processor["metric_unit"][name],
-                        "Seconds" if name.endswith("_sum") else "Count",
+                        "Seconds" if name.endswith(("_sum", "_max")) else "Count",
                     )
             expected = EXISTING_DIMENSIONS.keys() | NEW_DIMENSIONS.keys()
             expected |= RESOURCE_METRICS.keys()
@@ -160,6 +172,7 @@ class MonitoringConfigTests(unittest.TestCase):
             "harudle_image_provider_duration_seconds_max",
             "harudle_image_response_failures_total_extra",
             "harudle_gemini_stage_duration_seconds_bucket",
+            "harudle_s3_url_cache_wait_duration_seconds_bucket",
             "http_server_requests_seconds_bucket",
             "jvm_gc_pause_seconds_count",
             "jvm_memory_committed_bytes",

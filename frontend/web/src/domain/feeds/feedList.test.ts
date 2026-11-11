@@ -47,6 +47,16 @@ describe('피드 목록 응답 검증', () => {
     expect(isFeedListResponse(value)).toBe(false);
   });
 
+  it('주소를 발급받지 못한 사진이 있어도 목록을 허용한다', (): void => {
+    expect(
+      isFeedListResponse({
+        items: [{ ...feed, imageUrl: null, imageUrlExpiresAt: null }, feed],
+        nextCursor: null,
+        hasNext: false,
+      }),
+    ).toBe(true);
+  });
+
   it.each([
     { author: null },
     { author: { ...feed.author, nickname: 1 } },

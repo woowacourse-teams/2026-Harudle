@@ -11,8 +11,11 @@ public record FeedResponse(
         UUID id,
         Author author,
         Category category,
-        URI imageUrl,
-        OffsetDateTime imageUrlExpiresAt,
+        @Schema(description = "피드 이미지 주소. 조회 중 발급하지 못하면 null", nullable = true)
+        @Nullable URI imageUrl,
+        @Schema(description = "피드 이미지 주소 만료 시각. 주소가 없으면 null",
+                type = "string", format = "date-time", nullable = true)
+        @Nullable OffsetDateTime imageUrlExpiresAt,
         OffsetDateTime publishedAt,
         int likeCount,
         int commentCount,
