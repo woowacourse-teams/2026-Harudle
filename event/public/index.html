@@ -30,10 +30,35 @@
       flex: 1; display: grid; gap: clamp(18px, 3.4vw, 44px); align-content: start;
       grid-template-columns: minmax(0, 1fr); padding: 16px 16px 28px; width: min(1180px, 100%); margin: 0 auto;
     }
-    /* 흰 여백까지 포함한 카드 전체를 엽서처럼 살짝 기울인다. */
-    .stage { background: var(--paper); border: var(--outline); border-radius: 28px; display: flex; justify-content: center; align-items: center; padding: 16px; transform: rotate(-2deg); }
-    @media (prefers-reduced-motion: no-preference) { .stage { transition: transform .3s ease; } }
-    .stage img { display: block; width: min(100%, 420px); height: auto; border-radius: 6px; border: 2px solid var(--ink); }
+    /* 흰 여백까지 포함한 카드 전체를 엽서처럼 살짝 기울인다.
+       생성 중에는 카드를 뒤집어 방금 쓴 이야기가 적힌 엽서 뒷면을 보여 주고, 완성되면 다시 앞면으로 돌린다. */
+    .stage { perspective: 1800px; transform: rotate(-2deg); }
+    .flip { display: grid; transform-style: preserve-3d; transition: transform .7s cubic-bezier(.3, .7, .3, 1); }
+    .flip.flipped { transform: rotateY(180deg); }
+    @media (prefers-reduced-motion: reduce) { .flip { transition: none; } }
+    .face {
+      grid-area: 1 / 1; -webkit-backface-visibility: hidden; backface-visibility: hidden;
+      background: var(--paper); border: var(--outline); border-radius: 28px; padding: 16px;
+    }
+    .face.front { display: flex; justify-content: center; align-items: center; }
+    .face.front img { display: block; width: min(100%, 420px); height: auto; border-radius: 6px; border: 2px solid var(--ink); }
+    .face.back { position: relative; transform: rotateY(180deg); display: flex; flex-direction: column; min-height: 0; overflow: hidden; padding: clamp(20px, 2.4vw, 32px); }
+    .face.back .to { margin: 0 0 16px; padding-right: 96px; font-size: clamp(15px, 1.4vw, 18px); font-weight: 800; }
+    .face.back .story {
+      flex: 1; min-height: 0; margin: 0 clamp(84px, 8vw, 104px) 0 0; overflow: hidden; white-space: pre-wrap; word-break: keep-all; overflow-wrap: anywhere;
+      font-size: clamp(16px, 1.5vw, 20px); line-height: 40px; background: repeating-linear-gradient(transparent 0 39px, #b9e9d4 39px 40px);
+      -webkit-mask-image: linear-gradient(#000 85%, transparent); mask-image: linear-gradient(#000 85%, transparent);
+    }
+    .face.back .from { display: flex; justify-content: space-between; gap: 12px; margin-top: 14px; padding-top: 12px; border-top: 2px dashed #b9e9d4; font-size: 13px; color: var(--muted); }
+    .drawing-stamp {
+      position: absolute; bottom: clamp(72px, 7vw, 92px); right: clamp(22px, 2.4vw, 34px); width: clamp(104px, 9vw, 128px); aspect-ratio: 1; border-radius: 50%;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+      border: 3px solid #7d4fc4; color: #7d4fc4; background: rgba(210, 179, 244, .28); transform: rotate(-14deg);
+      font-weight: 900; font-size: 17px; letter-spacing: -.02em;
+    }
+    .drawing-stamp small { font-size: 10px; font-weight: 800; letter-spacing: .04em; }
+    @media (prefers-reduced-motion: no-preference) { .flipped .drawing-stamp { animation: stamp-pulse 1.6s ease-in-out infinite; } }
+    @keyframes stamp-pulse { 50% { transform: rotate(-14deg) scale(.93); } }
     .panel h1 { margin: 0 0 8px; font-size: clamp(26px, 3.4vw, 44px); line-height: 1.25; font-weight: 800; letter-spacing: -0.03em; }
     .panel h1 em { font-style: normal; background: linear-gradient(transparent 58%, var(--lilac) 58%, var(--lilac) 92%, transparent 92%); padding: 0 2px; }
     .sub { margin: 0 0 20px; font-size: clamp(14px, 1.3vw, 17px); color: var(--muted); line-height: 1.6; }
@@ -47,12 +72,12 @@
     textarea:focus { outline: none; box-shadow: 0 0 0 4px var(--lilac); }
     /* 엽서 뒷면 입력 카드 */
     .card-back { position: relative; background: var(--paper); border: var(--outline); border-radius: 22px; padding: clamp(18px, 2vw, 26px) clamp(18px, 2.2vw, 28px) 18px; margin-bottom: 16px; }
-    .card-back .stamp {
+    .card-back .stamp, .face.back .stamp {
       position: absolute; top: 16px; right: 18px; width: clamp(70px, 6vw, 78px); aspect-ratio: 78 / 92; border: 2.5px dashed var(--ink); border-radius: 8px;
       display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; background: #f6fffb; transform: rotate(4deg);
     }
-    .card-back .stamp img { width: 76%; }
-    .card-back .stamp span { font-size: 9px; font-weight: 800; white-space: nowrap; }
+    .card-back .stamp img, .face.back .stamp img { width: 76%; }
+    .card-back .stamp span, .face.back .stamp span { font-size: 9px; font-weight: 800; white-space: nowrap; }
     .card-back .to { font-size: 15px; font-weight: 800; margin: 0 0 14px; padding-right: 90px; }
     .card-back textarea {
       display: block; width: calc(100% - clamp(70px, 7vw, 96px)); min-height: clamp(180px, 24vh, 252px); border: 0; border-radius: 0; resize: none; padding: 0;
@@ -86,8 +111,8 @@
     [hidden] { display: none !important; }
     @media (min-width: 860px) {
       main { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); align-content: center; align-items: center; padding: 24px clamp(24px, 4vw, 40px) 32px; }
-      .stage { padding: 18px; }
-      .stage img { width: auto; max-width: 100%; max-height: min(calc(100dvh - 170px), 780px); }
+      .face { padding: 18px; }
+      .face.front img { width: auto; max-width: 100%; max-height: min(calc(100dvh - 170px), 780px); }
     }
 </style>
 </head>
@@ -99,7 +124,18 @@
 
   <main>
     <div class="stage">
-      <img id="stage-image" class="sample" src="/sample.webp" alt="완성된 데모데이 네컷만화 엽서 예시">
+      <div class="flip" id="flip">
+        <div class="face front">
+          <img id="stage-image" class="sample" src="/sample.webp" alt="완성된 데모데이 네컷만화 엽서 예시">
+        </div>
+        <div class="face back" aria-hidden="true">
+          <div class="stamp"><img src="/logo.webp" alt=""><span>DEMO DAY</span></div>
+          <div class="drawing-stamp">그리는 중<small>HARUDLE</small></div>
+          <p class="to">To. 데모데이에서의 나에게</p>
+          <p class="story" id="back-story"></p>
+          <div class="from"><span>From. 오늘의 나</span><span>하루들이 네 컷으로 그리고 있어요</span></div>
+        </div>
+      </div>
     </div>
 
     <div class="panel">
@@ -164,6 +200,11 @@
     const img = $("stage-image");
     img.src = SAMPLE.src; img.alt = SAMPLE.alt; img.classList.add("sample");
   }
+  function flipToBack(story) {
+    $("back-story").textContent = story;
+    $("flip").classList.add("flipped");
+  }
+  function flipToFront() { $("flip").classList.remove("flipped"); }
 
   fetch("/api/config").then(r => r.json()).then(c => {
     limits = c;
@@ -197,6 +238,7 @@
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.message ?? "잠시 후 다시 시도해 주세요.");
+      flipToBack(diary);
       track(body.id, body);
     } catch (error) {
       $("form-error").textContent = error.message;
@@ -227,6 +269,8 @@
         if (job.status === "done") return done(id, job);
         if (job.status === "failed") {
           $("failed-message").textContent = job.error?.message ?? "잠시 후 다시 시도해 주세요.";
+          showSample();
+          flipToFront();
           return show("failed-view", COPY.failed);
         }
         renderProgress(job);
@@ -236,25 +280,32 @@
     pollTimer = setTimeout(poll, 1500);
   }
 
-  function done(id, job) {
+  async function done(id, job) {
+    // 뒷면이 보이는 동안 앞면 이미지를 완성본으로 바꾸고, 다 불러온 뒤 뒤집는다
     const img = $("stage-image");
     img.classList.remove("sample");
-    img.src = `/api/jobs/${id}/image`;
     img.alt = job.title ? `완성된 네컷만화 엽서: ${job.title}` : "완성된 네컷만화 엽서";
+    img.src = `/api/jobs/${id}/image`;
+    try { await img.decode(); } catch { /* 디코딩 실패해도 결과 화면은 보여 준다 */ }
     $("download").href = `/api/jobs/${id}/image?download=1`;
+    flipToFront();
     show("result-view", [`<em>네컷만화</em> 엽서가<br>완성됐어요`, job.title ? `# ${job.title}` : "저장해서 간직해 보세요."]);
   }
 
-  function reset() {
+  function backToForm() {
     clearTimeout(pollTimer);
-    $("story").value = "";
-    updateCount();
     showSample();
+    flipToFront();
     show("form-view", COPY.form);
     $("story").focus();
   }
+  function reset() {
+    $("story").value = "";
+    updateCount();
+    backToForm();
+  }
   $("again").addEventListener("click", reset);
-  $("retry").addEventListener("click", () => { showSample(); show("form-view", COPY.form); $("story").focus(); });
+  $("retry").addEventListener("click", backToForm);
 })();
 </script>
 </body>
