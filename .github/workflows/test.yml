@@ -129,13 +129,34 @@ jobs:
           bash ../deploy/scripts/test_backend_entrypoint.sh
           bash ../deploy/scripts/test_image_recovery.sh
 
+      # Ubuntu 패키지 저장소 장애와 무관하게 고정 버전의 공식 정적 빌드를 캐시해 사용한다.
+      - name: Restore WebP tools
+        if: github.event_name != 'push'
+        id: webp-cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/webp
+          key: webp-1.5.0-linux-x86-64
+
       - name: Install WebP tools
+        if: github.event_name != 'push' && steps.webp-cache.outputs.cache-hit != 'true'
+        env:
+          WEBP_URL: https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.5.0-linux-x86-64.tar.gz
+          WEBP_SHA256: f4bf49f85991f50e86a5404d16f15b72a053bb66768ed5cc0f6d042277cc2bb8
+        run: |
+          curl -fsSL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/webp.tar.gz" "$WEBP_URL"
+          echo "$WEBP_SHA256  $RUNNER_TEMP/webp.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/webp/bin"
+          tar -xzf "$RUNNER_TEMP/webp.tar.gz" -C "$RUNNER_TEMP/webp/bin" --strip-components=2 \
+            libwebp-1.5.0-linux-x86-64/bin/cwebp libwebp-1.5.0-linux-x86-64/bin/dwebp
+          rm "$RUNNER_TEMP/webp.tar.gz"
+
+      - name: Add WebP tools to PATH
         if: github.event_name != 'push'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y webp
-          cwebp -version
-          dwebp -version
+          echo "$RUNNER_TEMP/webp/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/webp/bin/cwebp" -version
+          "$RUNNER_TEMP/webp/bin/dwebp" -version
 
       - name: Compile backend for shared cache
         if: github.event_name == 'push'

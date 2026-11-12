@@ -115,7 +115,7 @@ describe('신고 MSW 계약', (): void => {
 
   it.each([
     { ...submission, targetId: 'invalid' },
-    { ...submission, targetType: 'DIARY' },
+    { ...submission, targetType: 'POST' },
     { ...submission, reason: 'INVALID' },
     { ...submission, description: '😀'.repeat(501) },
   ])('잘못된 본문을 접수하지 않는다', async (body): Promise<void> => {

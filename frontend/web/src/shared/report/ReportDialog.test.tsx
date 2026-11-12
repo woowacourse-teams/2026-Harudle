@@ -37,11 +37,13 @@ interface ReportRenderResult extends RenderResult {
   readonly handle: ModalHandle;
 }
 
-const renderReport = (): ReportRenderResult => {
+const renderReport = (
+  reportTarget: reports.ReportTarget = target,
+): ReportRenderResult => {
   const ref = createRef<ModalHandle>();
   const result = render(
     <ToastProvider>
-      <ReportDialog ref={ref} target={target} />
+      <ReportDialog ref={ref} target={reportTarget} />
     </ToastProvider>,
   );
   document.querySelectorAll('dialog').forEach((dialog): void => {
@@ -170,6 +172,52 @@ describe('신고 입력과 접수 결과', (): void => {
     act((): void => handle.open());
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.getByRole('textbox')).toHaveValue('');
+  });
+
+  it('개인 네컷만화 신고는 안내와 AI 생성 결과에 맞는 사유만 보여주고 일기 대상으로 접수한다', async (): Promise<void> => {
+    const user = userEvent.setup();
+    const diaryTarget: reports.ReportTarget = {
+      targetType: 'DIARY',
+      targetId: '30000000-0000-4000-8000-000000000001',
+    };
+    const submit = jest
+      .spyOn(reports, 'submitReport')
+      .mockResolvedValue(response);
+    const { handle } = renderReport(diaryTarget);
+    act((): void => handle.open());
+
+    expect(
+      screen.getByText('AI가 만든 그림이나 글이 부적절하다면 알려 주세요.'),
+    ).toBeInTheDocument();
+    expect(
+      screen
+        .getAllByRole('radio')
+        .map(
+          (radio): string | null => radio.closest('label')?.textContent ?? null,
+        ),
+    ).toEqual(['부적절한 그림이나 글', '기타']);
+
+    await user.click(
+      screen.getByRole('radio', { name: '부적절한 그림이나 글' }),
+    );
+    await user.click(screen.getByRole('button', { name: REPORT_COPY.submit }));
+
+    expect(await screen.findByText(REPORT_COPY.received)).toBeInTheDocument();
+    expect(submit).toHaveBeenCalledWith({
+      ...diaryTarget,
+      reason: 'INAPPROPRIATE_CONTENT',
+      description: '',
+    });
+  });
+
+  it('타인 콘텐츠 신고에는 개인 네컷만화 안내를 보여주지 않는다', (): void => {
+    const { handle } = renderReport();
+    act((): void => handle.open());
+
+    expect(
+      screen.queryByText('AI가 만든 그림이나 글이 부적절하다면 알려 주세요.'),
+    ).not.toBeInTheDocument();
+    expect(screen.getAllByRole('radio')).toHaveLength(4);
   });
 
   it('상세 내용은 emoji도 한 글자로 세고 500자를 넘으면 제출을 막는다', async (): Promise<void> => {

@@ -7,7 +7,10 @@ import org.jspecify.annotations.Nullable;
 
 public interface ReportTargetReader {
 
-    /** 신고 가능한 대상과 작성자를 조회한다. 탈퇴한 회원의 댓글은 작성자가 없을 수 있다. */
+    /**
+     * 신고 가능한 대상과 작성자를 조회한다. 탈퇴한 회원의 댓글은 작성자가 없을 수 있다.
+     * 개인 일기(DIARY)는 actor 본인이 소유한 생성 완료 일기만 반환한다.
+     */
     Optional<ReportTarget> findVisibleTarget(UUID actorId, ReportTargetType targetType, UUID targetId);
 
     record ReportTarget(@Nullable UUID authorId) {}

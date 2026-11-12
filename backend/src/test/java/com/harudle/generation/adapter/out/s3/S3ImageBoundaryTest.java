@@ -23,6 +23,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
 import org.springframework.util.unit.DataSize;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
@@ -131,7 +133,8 @@ class S3ImageBoundaryTest {
     }
 
     private S3ImageUrlProvider urls(String environment) {
-        return new S3ImageUrlProvider(presigner, properties(environment), reporter);
+        return new S3ImageUrlProvider(presigner, properties(environment), reporter,
+                StaticCredentialsProvider.create(AwsBasicCredentials.create("test-access", "test-secret")));
     }
 
     private S3StorageProperties properties(String environment) {

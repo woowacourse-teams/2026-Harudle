@@ -46,6 +46,12 @@ class JpaReportTargetReader implements ReportTargetReader {
               AND NOT EXISTS (SELECT 1 FROM moderation_states moderation
                   WHERE moderation.target_type = 'COMMENT' AND moderation.target_id = c.id AND moderation.restricted)
             """;
+    private static final String DIARY_QUERY = """
+            SELECT d.id, d.user_id FROM diaries d
+            JOIN diary_generations generation ON generation.diary_id = d.id
+            WHERE d.id = :targetId AND d.user_id = :actorId AND d.deleted_at IS NULL
+              AND generation.status = 'SUCCEEDED'
+            """;
 
     private final EntityManager entityManager;
     private final DevTestDataVisibility visibility;
@@ -63,7 +69,9 @@ class JpaReportTargetReader implements ReportTargetReader {
         Objects.requireNonNull(targetType, "targetType은 필수입니다.");
         Objects.requireNonNull(targetId, "targetId는 필수입니다.");
         Query query = entityManager.createNativeQuery(queryFor(targetType)).setParameter("targetId", targetId);
-        if (visibility.enabled()) {
+        if (targetType == ReportTargetType.DIARY) {
+            query.setParameter("actorId", actorId);
+        } else if (visibility.enabled()) {
             query.setParameter("viewerId", actorId);
         }
         List<Object[]> rows = query.getResultList();
@@ -75,8 +83,10 @@ class JpaReportTargetReader implements ReportTargetReader {
             case USER -> USER_QUERY;
             case FEED -> FEED_QUERY;
             case COMMENT -> COMMENT_QUERY;
+            case DIARY -> DIARY_QUERY;
         };
-        if (!visibility.enabled()) {
+        // 개인 일기는 소유자 본인만 조회하므로 열람자 그룹 분리가 필요 없다.
+        if (!visibility.enabled() || targetType == ReportTargetType.DIARY) {
             return query;
         }
         return query + switch (targetType) {
@@ -85,6 +95,7 @@ class JpaReportTargetReader implements ReportTargetReader {
             case COMMENT -> sameVisibilityPartition("feed_author")
                     + " AND (comment_author.id IS NULL OR "
                     + sameVisibilityPartitionCondition("comment_author") + ")";
+            case DIARY -> throw new IllegalStateException("개인 일기 신고에는 열람자 그룹 조건을 붙이지 않습니다.");
         };
     }
 

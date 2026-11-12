@@ -38,6 +38,10 @@ public class ReportService {
         if (existing.isPresent()) {
             return new ReportReceipt(existing.get(), true);
         }
+        // 중복 접수는 기존 응답을 그대로 돌려주고, 대상별 사유 제한은 신규 접수에만 적용한다.
+        if (!submission.targetType().allows(submission.reason())) {
+            throw new InvalidReportException();
+        }
         var target = targets
                 .findVisibleTarget(reporterId, submission.targetType(), submission.targetId());
         if (target.isEmpty()) {
@@ -47,7 +51,8 @@ public class ReportService {
                     .orElseThrow(ReportTargetNotFoundException::new);
         }
         UUID targetUserId = target.get().authorId();
-        if (reporterId.equals(targetUserId)) {
+        // 개인 일기는 소유자만 볼 수 있어 본인 신고만 허용하고, 공개 대상은 본인 신고를 막는다.
+        if (submission.targetType().ownerOnly() != reporterId.equals(targetUserId)) {
             throw new InvalidReportException();
         }
         ReportSnapshot report = new ReportSnapshot(UUID.randomUUID(), reporterId, submission.targetType(),
