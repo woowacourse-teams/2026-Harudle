@@ -115,6 +115,51 @@ function sampler(data, W, H) {
   };
 }
 
+/**
+ * 제목 줄 영역의 검은 픽셀을 8방향으로 이어진 덩어리로 나눈다. 다음 덩어리는 위쪽 그림(새 다리·발 등)이
+ * 잘려 들어온 것으로 보고 버린다. 글씨는 영역 윗변 위로 이어지지 않는다.
+ *  - 제목 줄보다 완전히 위에 있는 덩어리
+ *  - 영역 윗변에 닿고, 그 바로 위 줄에도 검은 픽셀이 이어지는 덩어리
+ *  - 영역 윗변에 닿은 채 줄 높이의 40%도 안 되는 작은 덩어리
+ * 버린 픽셀은 주변 2px까지 removed에 담는다.
+ */
+function splitTitleComponents(isDark, region, band, imageWidth) {
+  const RW = region.x1 - region.x0 + 1, RH = region.y1 - region.y0 + 1;
+  const labels = new Int32Array(RW * RH);
+  const comps = [];
+  for (let ry = 0; ry < RH; ry++) for (let rx = 0; rx < RW; rx++) {
+    if (labels[ry * RW + rx] || !isDark(region.x0 + rx, region.y0 + ry)) continue;
+    const comp = { id: comps.length + 1, minX: Infinity, maxX: -1, minY: Infinity, maxY: -1, pixels: [] };
+    const stack = [ry * RW + rx];
+    labels[stack[0]] = comp.id;
+    while (stack.length) {
+      const i = stack.pop(), x = i % RW, y = (i / RW) | 0;
+      const gx = region.x0 + x, gy = region.y0 + y;
+      comp.pixels.push([gx, gy]);
+      if (gx < comp.minX) comp.minX = gx; if (gx > comp.maxX) comp.maxX = gx;
+      if (gy < comp.minY) comp.minY = gy; if (gy > comp.maxY) comp.maxY = gy;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= RW || ny >= RH) continue;
+        const j = ny * RW + nx;
+        if (!labels[j] && isDark(region.x0 + nx, region.y0 + ny)) { labels[j] = comp.id; stack.push(j); }
+      }
+    }
+    comps.push(comp);
+  }
+  const bandHeight = band[1] - band[0] + 1;
+  const continuesAbove = c => c.pixels.some(([x, y]) => y === region.y0
+    && [-1, 0, 1].some(dx => isDark(x + dx, region.y0 - 1)));
+  const isStray = c => c.maxY < band[0]
+    || (c.minY <= region.y0 && (continuesAbove(c) || c.maxY - c.minY + 1 < bandHeight * 0.4));
+  const kept = [], removed = new Set();
+  for (const c of comps) {
+    if (!isStray(c)) { kept.push(c); continue; }
+    for (const [x, y] of c.pixels) for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) removed.add((y + dy) * imageWidth + x + dx);
+  }
+  return { kept, removed };
+}
+
 /** 생성 이미지를 원본 프레임에 합성해 PNG 버퍼를 돌려준다. 레이아웃이 무너졌으면 CompositeError. */
 export async function compositeOnFrame(frame, generatedBuffer) {
   const { W, H } = frame;
@@ -153,16 +198,20 @@ export async function compositeOnFrame(frame, generatedBuffer) {
   }
   const band = bands.find(([a, b]) => b - a >= px.minBandHeight);
   if (!band) throw new CompositeError("생성본에서 만화 제목 줄을 찾지 못했습니다.");
-  let tx0 = W, tx1 = 0;
-  for (let y = band[0]; y <= band[1]; y++) for (let x = y > frame.birdBottom + px.textPad ? 0 : frame.birdRight; x < frame.titleRight; x++)
-    if (isDark(x, y)) { tx0 = Math.min(tx0, x); tx1 = Math.max(tx1, x); }
-  const ty0 = band[0] - px.textPad, ty1 = band[1] + px.textPad;
+  // 제목 줄 주변의 검은 덩어리를 나눠, 글씨가 아닌 조각(위쪽 새 발 끝 등)을 버린다
+  const region = { x0: 0, y0: band[0] - px.textPad, x1: frame.titleRight - 1, y1: band[1] + px.textPad };
+  const { kept, removed } = splitTitleComponents(isDark, region, band, W);
+  if (!kept.length) throw new CompositeError("생성본에서 만화 제목 글씨를 찾지 못했습니다.");
+  const tx0 = Math.min(...kept.map(c => c.minX)), tx1 = Math.max(...kept.map(c => c.maxX));
+  const ty0 = Math.min(...kept.map(c => c.minY)) - px.textPad, ty1 = Math.max(...kept.map(c => c.maxY)) + px.textPad;
   const srcW = tx1 - tx0 + px.textPad * 2, srcH = ty1 - ty0;
   const scale = Math.min(px.titleHeight / srcH, (frame.titleRight - px.textPad * 3 - frame.handleX) / srcW);
   const dw = Math.round(srcW * scale), dh = Math.round(srcH * scale);
   const dx0 = frame.handleX, dy0 = frame.handleTop - px.titleGapAboveHandle - dh;
   for (let y = 0; y < dh; y++) for (let x = 0; x < dw; x++) {
-    const c = sample(tx0 - px.textPad + x / scale, ty0 + y / scale);
+    const sx = tx0 - px.textPad + x / scale, sy = ty0 + y / scale;
+    if (removed.has(Math.round(sy) * W + Math.round(sx))) continue;
+    const c = sample(sx, sy);
     if (isMintRgb(c[0], c[1], c[2])) continue;
     const a = Math.max(0, Math.min(1, (190 - lum(c[0], c[1], c[2])) / 140));
     if (!a) continue;
