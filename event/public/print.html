@@ -57,8 +57,10 @@
       @page { size: 100mm 148mm; margin: 0; }
       html, body { width: 100mm; height: 148mm; min-height: 0; background: #fff; }
       body > :not(#print-sheet) { display: none !important; }
-      #print-sheet { display: block !important; width: 100mm; height: 148mm; overflow: hidden; }
-      #print-sheet img { display: block; width: 100%; height: 100%; object-fit: cover; }
+      /* 프린터가 여백 없음이어도 가장자리를 잘라 낼 수 있어서, 엽서 전체가 안전 여백 안에 들어가게 줄인다.
+         여백은 ?inset=(mm)로 바꾼다. 기본 4mm. */
+      #print-sheet { display: flex !important; align-items: center; justify-content: center; width: 100mm; height: 148mm; overflow: hidden; padding: var(--print-inset, 4mm); box-sizing: border-box; }
+      #print-sheet img { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; }
     }
   </style>
 </head>
@@ -108,6 +110,8 @@
 
 <script>
 (() => {
+  // 인쇄 안전 여백(mm): ?inset=6 처럼 바꿀 수 있다
+  { const inset = Number(new URLSearchParams(location.search).get("inset")); if (Number.isFinite(inset) && inset >= 0 && inset <= 20 && new URLSearchParams(location.search).has("inset")) document.documentElement.style.setProperty("--print-inset", inset + "mm"); }
   const $ = id => document.getElementById(id);
   const params = new URLSearchParams(location.search);
   // 키는 처음 한 번 주소로 받고, 화면에 남지 않게 주소에서 지운다
