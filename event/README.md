@@ -113,7 +113,7 @@ sudo certbot --nginx -d event.harudle.com && sudo nginx -t && sudo systemctl rel
 
 ## 부스 운영: 입력 기기와 인쇄 대기열
 
-입력 기기 2대와 프린터 기기 1대를 쓰는 구성이다. `EVENT_PRINT_QUEUE=true`와 `EVENT_PRINT_KEY`를 설정한다.
+입력 기기 2대와 프린터 기기 1대를 쓰는 구성이다. `EVENT_PRINT_QUEUE=true`를 설정한다.
 
 ```text
 입력 기기 A·B  /           이야기 입력 → 생성 → "N번, 프린터에서 받아 가세요" → 10초 뒤 처음 화면
@@ -124,7 +124,7 @@ sudo certbot --nginx -d event.harudle.com && sudo nginx -t && sudo systemctl rel
 - **입력 화면**: 대기열 모드에서는 인쇄·저장 버튼을 숨기고 번호표만 보여 준다. `EVENT_RESULT_RESET_SECONDS`(기본 10초)
   뒤 입력이 비워진 처음 화면으로 돌아간다. 실패 화면은 그 3배 뒤에 돌아간다.
 - **인쇄 화면**: 프린터 기기에서 Chrome이나 Edge를 `--kiosk --kiosk-printing`으로 실행하고
-  `https://<도메인>/print?key=<EVENT_PRINT_KEY>`를 연다. 키는 첫 접속 때 탭 저장소에 넣고 주소에서 지운다.
+  `https://<도메인>/print`를 연다. `EVENT_PRINT_KEY`를 설정했다면 `/print?key=<값>`으로 한 번 열고, 키는 탭 저장소에 넣은 뒤 주소에서 지운다.
   - **기본은 확인 후 인쇄**다. 완성 엽서가 오른쪽 "확인 대기"에 미리보기로 쌓이고, 가장 먼저 온 엽서가 왼쪽에 크게 보인다.
     다른 엽서를 누르면 그 엽서를 고른다. 이상한 글자, 깨진 칸, 부적절한 내용이 없는지 보고 **인쇄하기**를 누른다.
   - **인쇄 안 함**: 뽑지 않을 엽서를 목록에서 뺀다. "최근 처리"에 건너뜀으로 남고 **되살리기**로 다시 넣을 수 있다.
@@ -133,7 +133,9 @@ sudo certbot --nginx -d event.harudle.com && sudo nginx -t && sudo systemctl rel
   - `?auto=1`이면 확인 없이 완성 순서대로 자동 인쇄한다. 이때만 **일시정지** 버튼이 나온다.
   - 가져간 엽서에 `EVENT_PRINT_LEASE_SECONDS`(기본 120초) 안에 완료 보고가 없으면 다시 대기열로 돌린다.
     인쇄 화면을 새로고침하거나 기기가 꺼져도 엽서가 사라지지 않는다.
-- 인쇄 API(`/api/print/*`)는 `x-print-key` 헤더가 맞을 때만 응답한다. 대기열은 메모리에만 있어 서버를 재시작하면 사라진다.
+- 인쇄 화면과 인쇄 API(`/api/print/*`)는 기본으로 키 없이 열려 있다. **행사 전에 반드시 Host Nginx IP 화이트리스트를 걸어야 한다.**
+  화이트리스트 전에는 누구나 `/print`에서 엽서를 보거나 인쇄를 건너뛸 수 있다. `EVENT_PRINT_KEY`를 설정하면 `x-print-key` 헤더도 확인한다.
+- 대기열은 메모리에만 있어 서버를 재시작하면 사라진다.
 
 ## 알려진 한계
 

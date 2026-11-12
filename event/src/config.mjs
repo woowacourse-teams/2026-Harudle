@@ -59,7 +59,7 @@ export function validateConfig() {
   if (config.imageSize && !["1K", "2K", "4K"].includes(config.imageSize)) {
     throw new Error(`EVENT_IMAGE_SIZE는 1K, 2K, 4K 중 하나이거나 비어 있어야 합니다: ${config.imageSize}`);
   }
-  if (config.printQueue && config.printKey.length < 12) {
-    throw new Error("EVENT_PRINT_QUEUE=true이면 12자 이상의 EVENT_PRINT_KEY가 필요합니다.");
+  if (config.printKey && config.printKey.length < 12) {
+    throw new Error("EVENT_PRINT_KEY를 쓰려면 12자 이상이어야 합니다. 쓰지 않으려면 비워 두세요.");
   }
 }

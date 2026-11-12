@@ -34,9 +34,11 @@ const JOB_PATH = /^\/api\/jobs\/([0-9a-f-]{36})(\/image)?$/;
 const PRINT_ACTION_PATH = /^\/api\/print\/([0-9a-f-]{36})\/(claim|done|reprint|skip)$/;
 const digest = value => createHash("sha256").update(String(value)).digest();
 
-// 인쇄 API는 프린터 기기만 부른다. 키는 길이를 숨기려고 해시끼리 비교한다.
+// 인쇄 API는 프린터 기기만 부른다. 기본은 키 없이 Host Nginx IP 화이트리스트로 막는다.
+// EVENT_PRINT_KEY를 설정하면 키도 확인한다. 키는 길이를 숨기려고 해시끼리 비교한다.
 function hasPrintKey(req) {
   if (!config.printQueue) return false;
+  if (!config.printKey) return true;
   const given = req.headers["x-print-key"];
   return typeof given === "string" && timingSafeEqual(digest(given), digest(config.printKey));
 }
