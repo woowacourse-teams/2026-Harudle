@@ -11,14 +11,18 @@ const CAPTION_POSITION_RULE = "Place this caption inside the upper-left area of 
 // 2K 모델은 참조 캐릭터 구성을 느슨하게 따라 주인공 머리를 빼먹는 경우가 있어 명시한다
 const PROTAGONIST_RULE = "The protagonist (the diary writer, \"I\") is the attached reference's canonical character: "
   + "a plain round white head with dot eyes and a simple mouth, and the reference's signature hair, a row of 4 to 6 "
-  + "loose curly black marker loops along the top of the head. Draw this exact curly hair in every panel where the "
-  + "protagonist appears, including when the head is turned, tilted, covered by hands, or under an umbrella. "
-  + "Never draw the protagonist bald or with smooth, spiky, or different hair. "
-  + "The curly loop hair belongs to the protagonist only. Every other person (teammates, friends, strangers) must have "
-  + "clearly different non-curly hair and must never get curly loops: give each one a simple distinct style such as "
-  + "short straight black hair with a flat fringe, a short spiky crop, a neat bob, or a solid black filled cap of hair, "
-  + "and keep each person's style the same in every panel. A viewer must be able to find the protagonist instantly "
-  + "by the curly loops alone.";
+  + "loose curly loops along the top of the head. Draw each loop only as a thin black marker outline that stays white "
+  + "inside, sitting on top of the round head outline, which stays fully visible underneath. Never fill the hair "
+  + "with solid black, never draw a black hair cap, bowl cut, or helmet shape, and never place the loops inside a "
+  + "black hair mass. Draw this exact curly hair in every panel where the protagonist appears, including when the "
+  + "head is turned, tilted, covered by hands, or under an umbrella. Never draw the protagonist bald or with smooth, "
+  + "spiky, filled, or different hair. "
+  + "The curly loop hair belongs to the protagonist only. When other people appear (teammates, friends, strangers), "
+  + "each must have clearly different non-curly hair and must never get curly loops: give each one a simple distinct "
+  + "outlined style such as short straight hair with a flat fringe, a short spiky crop, or a neat bob, and keep each "
+  + "person's style the same in every panel. If the protagonist is the only person in the story, ignore the rule for "
+  + "other people and simply draw the protagonist's outlined curly loops. A viewer must be able to find the protagonist "
+  + "instantly by the outlined curly loops alone.";
 // 프레임 글씨("우아한테크코스 8기 데모데이", "@harudle.official")와 같은 모양으로 쓰게 한다
 const FRAME_LETTERING = "the same lettering style as the frame's printed text \"우아한테크코스 8기 데모데이\" and "
   + `"${"@harudle.official"}": rounded, evenly weighted, medium-weight Korean handwriting with soft round stroke ends, `
@@ -110,7 +114,7 @@ Draw each panel's scene only inside the white interior of its rounded panel, on 
 Leave the panel corners where the frame creatures overlap (upper-right of the top-right panel under the planet's legs, lower-left of the top-left panel, lower-left of the bottom-left panel, lower-right of the bottom-right panel) free of scene details and text. The planet covers the upper-right corner of the top-right panel, so the top-right panel's caption must end well before that corner.
 
 PROTAGONIST CHECK:
-Before rendering, confirm the protagonist has the reference's curly loop hair in every panel where they appear, and that no other person has curly loop hair. A bald protagonist, or a second person with curly loops, is wrong.
+Before rendering, confirm the protagonist has the reference's outlined curly loop hair (white inside, not filled black, round head outline visible) in every panel where they appear, and that no other person has curly loop hair. A bald protagonist, a protagonist with solid black filled hair, or a second person with curly loops is wrong.
 
 LETTERING:
 Write all four captions and the comic title in ${FRAME_LETTERING}. Use the same letter size, stroke weight, and color for all four captions.
