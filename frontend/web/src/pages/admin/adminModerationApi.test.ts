@@ -115,6 +115,29 @@ describe('관리자 신고·조치 API 계약', (): void => {
       reviewAdminReport(reportId, 'DISMISSED', '다른 처리'),
     ).rejects.toThrow();
   });
+  it('개인 네컷 신고가 섞인 목록과 상세도 읽고 숨김 대상 유형으로는 인정하지 않는다', async (): Promise<void> => {
+    const diaryReportId = '40000000-0000-4000-8000-000000000004';
+    const list = await getAdminReports('RECEIVED');
+    expect(
+      list.content.find((item): boolean => item.id === diaryReportId)
+        ?.targetType,
+    ).toBe('DIARY');
+    const detail = await getAdminReport(diaryReportId);
+    expect(detail.report.targetType).toBe('DIARY');
+    expect(detail.target.publiclyVisible).toBe(false);
+    expect(detail.target.feedId).toBeNull();
+    expect(
+      isModerationState({
+        targetType: 'DIARY',
+        targetId: target,
+        restricted: false,
+        version: 0,
+        reason: null,
+        actorId: null,
+        changedAt: null,
+      }),
+    ).toBe(false);
+  });
   it('버전 기반 숨김과 해제를 수행하고 이력을 남기며 오래된 버전은 자동 재전송하지 않는다', async (): Promise<void> => {
     const initial = await getAdminModeration('FEED', target);
     const hidden = await setAdminModeration(

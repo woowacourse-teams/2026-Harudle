@@ -4,9 +4,12 @@ import { useRef } from 'react';
 import { useNavigate } from 'react-router';
 import moreIcon from '../../assets/icons/feed-more.svg';
 import deleteIcon from '../../assets/icons/delete.svg';
+import reportIcon from '../../assets/icons/report.svg';
 import BottomSheet, { type BottomSheetHandle } from '../../shared/BottomSheet';
 import ConfirmModal from '../../shared/ConfirmModal';
 import type { ModalHandle } from '../../shared/Modal';
+import ReportDialog from '../../shared/report/ReportDialog';
+import { REPORT_TITLES } from '../../shared/report/copy';
 import { theme } from '../../styles/theme';
 import { DIARY_DETAIL_COPY } from './copy';
 import useDiaryDelete from './useDiaryDelete';
@@ -22,7 +25,13 @@ const DiaryDetailOptionsButton = ({
   const navigate = useNavigate();
   const menuRef = useRef<BottomSheetHandle>(null);
   const confirmRef = useRef<ModalHandle>(null);
+  const reportRef = useRef<ModalHandle>(null);
   const { request, reset, execute: deleteDiary } = useDiaryDelete({ diaryId });
+
+  const handleReportClick = (): void => {
+    menuRef.current?.close();
+    reportRef.current?.open();
+  };
 
   const handleDeleteClick = (): void => {
     menuRef.current?.close();
@@ -61,7 +70,22 @@ const DiaryDetailOptionsButton = ({
       <BottomSheet ref={menuRef} title={DIARY_DETAIL_COPY.menuTitle}>
         <button
           type="button"
-          css={deleteButtonStyle}
+          css={actionButtonStyle}
+          onClick={handleReportClick}
+          disabled={request.status === 'loading'}
+        >
+          <img
+            src={reportIcon}
+            alt=""
+            aria-hidden="true"
+            width={24}
+            height={24}
+          />
+          {REPORT_TITLES.DIARY}
+        </button>
+        <button
+          type="button"
+          css={actionButtonStyle}
           onClick={handleDeleteClick}
           disabled={request.status === 'loading'}
         >
@@ -69,6 +93,10 @@ const DiaryDetailOptionsButton = ({
           {DIARY_DETAIL_COPY.deleteAction}
         </button>
       </BottomSheet>
+      <ReportDialog
+        ref={reportRef}
+        target={{ targetType: 'DIARY', targetId: diaryId }}
+      />
       <ConfirmModal
         errorMessage={
           request.status === 'error' ? request.error.message : undefined
@@ -102,7 +130,7 @@ const menuButtonStyle = css`
   }
 `;
 
-const deleteButtonStyle = css`
+const actionButtonStyle = css`
   display: flex;
   align-items: center;
   gap: 10px;
