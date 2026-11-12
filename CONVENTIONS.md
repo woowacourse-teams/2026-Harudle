@@ -171,15 +171,43 @@ domain
 
 ### 테스트 범위
 
-- 도메인의 핵심 규칙은 단위 테스트로 검증한다.
-- Service 계층은 슬라이스 테스트를 작성한다.
-- 인수 테스트(E2E)는 Controller 계층을 진입점으로 사용자 시나리오를 검증한다.
-- Controller 테스트는 RestAssured를 사용한다.
+- 실제 외부 서비스(Gemini, OpenAI, Kakao, Google, S3)는 테스트에서 호출하지 않는다.
+  응답과 오류를 우리 코드가 어떻게 해석하는지만 대역으로 검증한다.
+- AI 생성 이미지의 품질, 화면 스타일, 성능은 자동 테스트 대상에서 제외한다.
+  성능은 `backend/load-test`의 부하 시험으로 따로 측정한다.
+
+### 백엔드 테스트 범위
+
+- 도메인의 핵심 규칙은 Spring과 DB 없이 단위 테스트로 검증한다.
+- 트랜잭션, 행 잠금, 동시 요청에 기대는 Service는 `ServiceIntegrationTestSupport`를
+  상속해 실제 PostgreSQL(Testcontainers)에서 통합 테스트로 검증한다.
+  DB가 필요 없는 Service 로직은 Mockito 단위 테스트로 검증한다.
+- Controller 테스트는 `@WebMvcTest`와 RestAssuredMockMvc로 상태 코드와 응답 형식,
+  보안 설정 적용을 검증한다. 실제 서버 포트를 띄우는 테스트는 필터 순서처럼
+  전체 설정이 합쳐져야 드러나는 동작에만 사용한다.
+- 별도의 인수 테스트는 두지 않는다. 사용자 시나리오는 Controller 테스트의 API 계약과
+  Service 통합 테스트의 상태 변경으로 나눠 검증한다.
+- 외부 API 연동 클라이언트는 `MockRestServiceServer`, 로컬 HTTP 서버 또는 SDK 클라이언트
+  mock으로 단위 테스트한다.
 - Spring Validation과 도메인 검증은 각각 테스트한다.
 - Repository 테스트는 다음 상황에 작성한다.
   - Repository에 비즈니스 로직이 포함된 경우
   - 회귀를 방지하기 위해 반드시 보호해야 하는 동작이 있는 경우
 - Repository 테스트를 추가한 PR에는 테스트가 필요한 근거를 설명한다.
+- 통합 테스트의 공통 설정, 컨테이너 재사용, 데이터 정리 규칙은
+  [backend/AGENTS.md](backend/AGENTS.md)를 따른다.
+
+### 프론트엔드 테스트 범위
+
+- 화면 테스트는 Jest와 React Testing Library로 렌더링, 입력, 제출, 오류, 재시도, 성공 순서의
+  사용자 흐름을 검증한다. 요소는 역할과 화면 문구로 찾는다.
+- Jest 테스트의 API 호출은 `jest.mock`으로 API 모듈을 대체한다.
+- MSW Handler는 개발 서버와 Playwright E2E에서 사용한다. E2E는 `x-msw-scenario` 헤더로
+  성공과 실패 상황을 선택하며, Handler 자체의 동작도 Jest로 테스트한다.
+- 여러 화면을 건너는 핵심 흐름은 `web/e2e/`의 Playwright 테스트로 검증한다.
+  E2E는 PR CI에 포함하지 않으며 변경한 흐름에 맞춰 `pnpm test:e2e`로 로컬에서 실행한다.
+- 외부 값을 검증하는 타입 가드는 잘못된 입력을 거부하는지 테스트한다.
+- 테스트는 대상 코드 옆에 `*.test.ts` 또는 `*.test.tsx`로 둔다.
 
 ### 검증문
 

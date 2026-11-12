@@ -103,7 +103,9 @@ src/
 ### 테스트
 
 - 테스트 파일은 대상 코드 옆에 `*.test.ts` 또는 `*.test.tsx`로 작성합니다.
-- API 동작이 필요하면 실제 서버 대신 `mocks/`의 MSW Handler를 사용합니다.
+- Jest 테스트에서 API 동작이 필요하면 `jest.mock`으로 API 모듈을 대체합니다.
+- 개발 서버와 Playwright E2E는 실제 서버 대신 `mocks/`의 MSW Handler를 사용합니다.
+- Playwright E2E는 PR CI에 포함되지 않으므로 핵심 흐름을 바꾸면 `pnpm test:e2e`로 직접 실행합니다.
 
 ## 브랜치와 배포 흐름
 
