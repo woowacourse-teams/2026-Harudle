@@ -6,11 +6,16 @@ import path from "node:path";
 import { config, validateConfig } from "./src/config.mjs";
 import { JobQueue } from "./src/jobs.mjs";
 import { loadAssets } from "./src/pipeline.mjs";
+import { MIN_PRINT_WIDTH } from "./src/composite.mjs";
 
 const log = entry => console.log(JSON.stringify({ time: new Date().toISOString(), ...entry }));
 
 validateConfig();
 const assets = await loadAssets();
+if (assets.frame.W < MIN_PRINT_WIDTH) {
+  log({ event: "frame_low_resolution", width: assets.frame.W, height: assets.frame.H, minPrintWidth: MIN_PRINT_WIDTH,
+    message: "4x6 300dpi 출력에는 가로 1200px 이상 프레임이 필요합니다." });
+}
 const queue = new JobQueue(assets, log);
 await queue.init();
 

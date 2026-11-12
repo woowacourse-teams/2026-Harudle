@@ -75,7 +75,10 @@ export async function callFrameImage({ stylePrompt, referencePng, frameImage, fi
       { inlineData: { mimeType: frameImage.mimeType, data: frameImage.data.toString("base64") } },
       { text: finalTask },
     ] }],
-    generationConfig: { responseModalities: ["TEXT", "IMAGE"], imageConfig: { aspectRatio: "2:3" } },
+    generationConfig: {
+      responseModalities: ["TEXT", "IMAGE"],
+      imageConfig: { aspectRatio: "2:3", ...(config.imageSize ? { imageSize: config.imageSize } : {}) },
+    },
   }, config.imageTimeoutMs);
   const part = candidate?.content?.parts?.find(p => p.inlineData?.data);
   if (!part) throw new GenerationError("INVALID_RESPONSE", "이미지 응답이 없습니다.", { retryable: true });

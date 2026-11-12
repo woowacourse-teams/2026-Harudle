@@ -17,6 +17,11 @@ server {
     ssl_certificate     /etc/letsencrypt/live/event.harudle.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/event.harudle.com/privkey.pem;
 
+    # 부스 네트워크의 공인 IP만 허용한다. 행사장 Wi-Fi나 테더링의 외부 IP를 확인해 바꾼다.
+    # 80 포트 블록에는 걸지 않는다. Certbot 갱신이 HTTP로 들어오기 때문이다.
+    allow 203.0.113.10;
+    deny all;
+
     client_max_body_size 16k;
     proxy_connect_timeout 10s;
     proxy_read_timeout 30s;

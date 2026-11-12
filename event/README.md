@@ -16,7 +16,8 @@ event.harudle.com → Host Nginx(443) → 127.0.0.1:3100 → harudle-event 컨�
 1. **스토리보드**: `storyboard-prompt.txt`를 시스템 프롬프트로 Gemini(`gemini-3.5-flash`)에 일기를 보내 JSON을 받는다.
    요청 문구·스키마·검증은 백엔드 `StoryboardRequestRenderer`, `StoryboardResponseSchema`, `StoryboardResponseMapper`와 같다.
    실패 시 한 번 재시도한다.
-2. **이미지**: `image-style.txt`, 그림체 참조 `reference.png`, 프레임 이미지, 최종 지시문을 `gemini-nano-banana-2.1`에 보낸다.
+2. **이미지**: `image-style.txt`, 그림체 참조 `reference.png`, 프레임 이미지, 최종 지시문을 `gemini-3.1-flash-image`에
+   `imageSize: 2K`로 보낸다. 결과는 1696×2528이며 Dev 시험에서 한 장에 약 15초 걸렸다.
    최종 지시문의 스토리 본문은 백엔드 `DiaryImagePromptRenderer`와 같은 문구이고, 캔버스·푸터 규칙만 프레임용으로 바뀐다.
 3. **합성**: 원본 프레임에서 네 칸의 흰 안쪽과 제목 글씨만 생성본으로 바꾼다. 배경·상단 문구·캐릭터·핸들·QR은
    원본 픽셀을 그대로 쓴다. 생성본의 칸 위치가 40px 넘게 어긋나거나 제목을 못 찾으면 이미지 단계만 한 번 다시 만든다.
@@ -29,7 +30,8 @@ event.harudle.com → Host Nginx(443) → 127.0.0.1:3100 → harudle-event 컨�
 | --- | --- | --- |
 | 동시 생성 | 1 | `EVENT_CONCURRENCY` |
 | 대기열 상한(초과 시 503) | 20 | `EVENT_MAX_QUEUE` |
-| IP당 시간당 접수 | 3 | `EVENT_RATE_LIMIT_PER_HOUR` |
+| IP당 시간당 접수(0이면 끔) | 0 | `EVENT_RATE_LIMIT_PER_HOUR` |
+| 접속 허용 IP | 부스 네트워크만 | Host Nginx `allow`/`deny` |
 | 하루 전체 접수(한국 시간 자정 초기화) | 300 | `EVENT_DAILY_LIMIT` |
 | 접속 코드(QR 주소 `?code=`) | 없음 | `EVENT_ACCESS_CODE` |
 | 결과 보관 | 120분 | `EVENT_RESULT_TTL_MINUTES` |
@@ -85,9 +87,31 @@ sudo certbot --nginx -d event.harudle.com && sudo nginx -t && sudo systemctl rel
 
 이벤트 서버는 Dev DB와 백엔드를 호출하지 않는다. 프롬프트는 행사 전에 받은 파일로 고정된다.
 
+## 접속 제한
+
+부스 기기는 모든 참여자가 같은 IP를 쓰므로 서버의 IP당 횟수 제한은 기본으로 끈다.
+대신 Host Nginx의 443 블록에서 부스 네트워크의 공인 IP만 `allow`하고 나머지는 `deny`한다.
+행사장 Wi-Fi나 테더링의 외부 IP는 당일 바뀔 수 있으므로 현장에서 확인해 반영하고 `nginx -t` 후 reload한다.
+80 블록에는 걸지 않는다. Certbot 갱신이 HTTP로 들어온다. 하루 전체 상한(`EVENT_DAILY_LIMIT`)은 유지한다.
+
+## 엽서 인쇄 (Canon SELPHY CP1500)
+
+결과 화면의 "엽서 인쇄하기"는 완성 엽서만 엽서 용지(100×148mm, 여백 없음)에 꽉 채워 인쇄한다.
+엽서는 2:3, 용지는 1:1.48이라 위아래가 약 1mm씩 잘린다. 프레임 가장자리 여백 안에 들어가는 범위다.
+
+- **프레임 해상도**: 300dpi 출력에는 가로 1200px 이상(1200×1800 권장) 프레임이 필요하다.
+  더 작으면 서버 시작 로그에 `frame_low_resolution`이 남는다. 합성의 픽셀 값은 프레임 너비에 비례해 자동으로 늘어난다.
+  결과 PNG에는 300dpi 정보를 넣는다.
+- **생성 그림 해상도**: AI 이미지를 2K(1696×2528)로 바로 받아 프레임 크기로 줄여 칸 안쪽에 쓴다. 따로 업스케일하지 않는다.
+  `gemini-nano-banana-2.1`은 `imageSize`를 무시하고 848×1264만 돌려주면서 출력 토큰은 늘어나므로 이벤트에는 쓰지 않는다.
+  서버 CPU 업스케일(waifu2x)은 Dev EC2에서 메모리 부족으로 서버가 멈춰 도입하지 않았다.
+  그림체가 Dev 서비스 모델과 조금 다를 수 있으니 리허설에서 여러 장 확인한다.
+- **프린터 설정**: 부스 기기에서 CP1500을 기본 프린터로 두고 용지 크기 "엽서(100×148mm)", 여백 없음,
+  배율 100%로 맞춘다. 브라우저 인쇄 창에서도 같은 설정을 한 번 저장해 둔다.
+- **인쇄 창 없이 바로 출력**: Chrome이나 Edge를 `--kiosk --kiosk-printing` 옵션으로 실행하면
+  인쇄 창 없이 기본 프린터로 바로 보낸다. 리허설에서 실제 용지로 한 장 뽑아 잘림과 색을 확인한다.
+
 ## 알려진 한계
 
-- 프레임 원본 1024×1536은 4×6 인쇄 기준 약 256dpi다. 300dpi가 필요하면 1200×1800 이상 프레임을 받는다.
-  이 경우 `src/composite.mjs`의 `LAYOUT`(제목 높이 등 픽셀 값)도 비율에 맞춰 확인한다.
 - AI가 지시하지 않은 짧은 효과음 글자를 칸 안에 넣는 경우가 있다(실험 3장 중 1장). 자동 검출은 하지 않는다.
 - 사용자 입력 금칙어 필터는 없다. 행사장 출력 전에 사람이 확인한다.

@@ -109,6 +109,16 @@
     @media (prefers-reduced-motion: reduce) { .steps li.active::before { animation: none; } }
     .hint { margin: 16px 0 0; font-size: 13px; color: var(--muted); }
     [hidden] { display: none !important; }
+    /* 인쇄: Canon SELPHY CP1500 엽서 용지(100x148mm)에 완성 엽서만 꽉 채운다.
+       엽서 비율(2:3)과 용지 비율(1:1.48)이 조금 달라 위아래가 약 1mm씩 잘린다. */
+    #print-sheet { display: none; }
+    @media print {
+      @page { size: 100mm 148mm; margin: 0; }
+      html, body { width: 100mm; height: 148mm; min-height: 0; background: #fff; }
+      body > :not(#print-sheet) { display: none !important; }
+      #print-sheet { display: block !important; width: 100mm; height: 148mm; overflow: hidden; }
+      #print-sheet img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    }
     @media (min-width: 860px) {
       main { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); align-content: center; align-items: center; padding: 24px clamp(24px, 4vw, 40px) 32px; }
       .face { padding: 18px; }
@@ -166,7 +176,8 @@
       </div>
 
       <div class="box actions" id="result-view" hidden>
-        <a class="btn" id="download" download="harudle-demoday.png">엽서 저장하기</a>
+        <button class="btn" type="button" id="print">엽서 인쇄하기</button>
+        <a class="btn secondary" id="download" download="harudle-demoday.png">이미지 저장하기</a>
         <button class="btn secondary" type="button" id="again">새 이야기 만들기</button>
         <p class="notice">완성된 엽서는 <span class="ttl">2시간</span> 뒤 삭제돼요.</p>
       </div>
@@ -177,6 +188,8 @@
       </div>
     </div>
   </main>
+
+  <div id="print-sheet" aria-hidden="true"><img id="print-image" alt=""></div>
 
 <script>
 (() => {
@@ -288,6 +301,7 @@
     img.src = `/api/jobs/${id}/image`;
     try { await img.decode(); } catch { /* 디코딩 실패해도 결과 화면은 보여 준다 */ }
     $("download").href = `/api/jobs/${id}/image?download=1`;
+    $("print-image").src = img.src;
     flipToFront();
     show("result-view", [`<em>네컷만화</em> 엽서가<br>완성됐어요`, job.title ? `# ${job.title}` : "저장해서 간직해 보세요."]);
   }
@@ -304,6 +318,10 @@
     updateCount();
     backToForm();
   }
+  $("print").addEventListener("click", async () => {
+    try { await $("print-image").decode(); } catch { /* 이미 불러온 이미지면 바로 인쇄 */ }
+    window.print();
+  });
   $("again").addEventListener("click", reset);
   $("retry").addEventListener("click", backToForm);
 })();
