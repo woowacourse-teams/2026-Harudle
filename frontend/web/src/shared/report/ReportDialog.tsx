@@ -20,7 +20,12 @@ import type { ApiRequest } from '../api';
 import Modal, { type ModalHandle } from '../Modal';
 import { useToastContext } from '../ToastContext';
 import { theme } from '../../styles/theme';
-import { REPORT_COPY, REPORT_REASONS, REPORT_TITLES } from './copy';
+import {
+  getReportReasons,
+  REPORT_COPY,
+  REPORT_GUIDES,
+  REPORT_TITLES,
+} from './copy';
 
 interface ReportDialogProps {
   readonly ref: Ref<ModalHandle>;
@@ -48,6 +53,8 @@ const ReportDialog = ({ ref, target }: ReportDialogProps) => {
   });
   const isSubmitting = request.status === 'loading';
   const isDescriptionValid = isValidReportDescription(form.description);
+  const reasons = getReportReasons(target.targetType);
+  const guide = REPORT_GUIDES[target.targetType];
 
   useEffect((): (() => void) => {
     mountedRef.current = true;
@@ -152,9 +159,10 @@ const ReportDialog = ({ ref, target }: ReportDialogProps) => {
           void handleSubmit(event);
         }}
       >
+        {guide && <p css={guideStyle}>{guide}</p>}
         <fieldset disabled={isSubmitting} css={reasonStyle}>
           <legend css={labelStyle}>{REPORT_COPY.reason}</legend>
-          {REPORT_REASONS.map((option): ReactElement => (
+          {reasons.map((option): ReactElement => (
             <label css={optionStyle} key={option.value}>
               <input
                 type="radio"
@@ -214,6 +222,12 @@ const ReportDialog = ({ ref, target }: ReportDialogProps) => {
 };
 export default ReportDialog;
 
+const guideStyle = css`
+  margin-top: 4px;
+  font-size: 14px;
+  line-height: 20px;
+  color: ${theme.colors.foreground.neutral};
+`;
 const reasonStyle = css`
   margin-top: 12px;
 `;
