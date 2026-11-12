@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import {
   getNotifications,
   markNotificationsRead,
+  markAllNotificationsRead,
   type NotificationsResponse,
 } from '../../domain/notifications/notifications';
 import useNotifications from './useNotifications';
@@ -10,6 +11,7 @@ import useNotifications from './useNotifications';
 jest.mock('../../domain/notifications/notifications', () => ({
   getNotifications: jest.fn(),
   markNotificationsRead: jest.fn(),
+  markAllNotificationsRead: jest.fn(),
 }));
 
 const item = {
@@ -31,9 +33,110 @@ const page: NotificationsResponse = {
 beforeEach((): void => {
   jest.mocked(getNotifications).mockReset().mockResolvedValue(page);
   jest.mocked(markNotificationsRead).mockReset().mockResolvedValue([item.id]);
+  jest
+    .mocked(markAllNotificationsRead)
+    .mockReset()
+    .mockResolvedValue(undefined);
 });
 
 describe('알림 목록과 읽음 처리', (): void => {
+  it('전체 읽기는 한 번만 요청하고 새로 도착한 미읽음 알림과 배지를 다시 조회한다', async (): Promise<void> => {
+    jest.mocked(getNotifications).mockResolvedValueOnce({
+      ...page,
+      unreadCount: 24,
+      hasNext: true,
+      nextCursor: 'next',
+    });
+    const { result } = renderHook(useNotifications);
+    await waitFor((): void =>
+      expect(result.current.request.status).toBe('success'),
+    );
+    let finish: () => void = (): void => undefined;
+    jest.mocked(markAllNotificationsRead).mockImplementationOnce(
+      (): Promise<void> =>
+        new Promise((resolve): void => {
+          finish = resolve;
+        }),
+    );
+    const updated: NotificationsResponse = {
+      ...page,
+      items: [
+        { ...item, id: 'arrived-while-reading' },
+        { ...item, read: true },
+      ],
+    };
+    jest.mocked(getNotifications).mockResolvedValueOnce(updated);
+    let reading = Promise.resolve();
+    act((): void => {
+      reading = result.current.markAllRead();
+    });
+    expect(result.current.isReadingAll).toBe(true);
+    await act(async (): Promise<void> => {
+      await result.current.markAllRead();
+      await result.current.execute();
+      await result.current.loadMore();
+    });
+    expect(markAllNotificationsRead).toHaveBeenCalledTimes(1);
+    expect(getNotifications).toHaveBeenCalledTimes(1);
+    await act(async (): Promise<void> => {
+      finish();
+      await reading;
+    });
+    expect(result.current.request).toEqual({
+      status: 'success',
+      data: updated,
+    });
+    expect(markNotificationsRead).not.toHaveBeenCalled();
+    expect(result.current.isBusy).toBe(false);
+  });
+
+  it('전체 읽기 실패 시 목록과 미읽음 수를 보존하고 같은 동작을 재시도할 수 있다', async (): Promise<void> => {
+    const { result } = renderHook(useNotifications);
+    await waitFor((): void =>
+      expect(result.current.request.status).toBe('success'),
+    );
+    jest
+      .mocked(markAllNotificationsRead)
+      .mockRejectedValueOnce(new Error('읽음 실패'));
+    await act(async (): Promise<void> => {
+      await expect(result.current.markAllRead()).rejects.toThrow();
+    });
+    expect(result.current.request).toEqual({ status: 'success', data: page });
+    expect(result.current.isBusy).toBe(false);
+    jest.mocked(getNotifications).mockResolvedValueOnce({
+      ...page,
+      unreadCount: 0,
+      items: [{ ...item, read: true }],
+    });
+    await act(async (): Promise<void> => {
+      await result.current.markAllRead();
+    });
+    expect(result.current.request).toMatchObject({
+      data: { unreadCount: 0, items: [{ read: true }] },
+    });
+  });
+
+  it('전체 읽기는 성공했으나 후속 조회가 실패하면 읽음 결과를 보존하고 조회만 재시도한다', async (): Promise<void> => {
+    const { result } = renderHook(useNotifications);
+    await waitFor((): void =>
+      expect(result.current.request.status).toBe('success'),
+    );
+    jest.mocked(getNotifications).mockRejectedValueOnce(new Error('조회 실패'));
+    await act(async (): Promise<void> => {
+      await expect(result.current.markAllRead()).rejects.toThrow(
+        '전체 읽기는 완료했어요.',
+      );
+    });
+    expect(result.current.request).toMatchObject({
+      data: { unreadCount: 0, items: [{ read: true }] },
+    });
+    await act(async (): Promise<void> => {
+      await result.current.execute();
+    });
+    expect(markAllNotificationsRead).toHaveBeenCalledTimes(1);
+    expect(getNotifications).toHaveBeenCalledTimes(3);
+  });
+
   it('재조회 중에도 기존 목록을 유지하고 성공하면 교체하며 실패하면 그대로 둔다', async (): Promise<void> => {
     const { result } = renderHook(useNotifications);
     await waitFor((): void =>
@@ -89,7 +192,7 @@ describe('알림 목록과 읽음 처리', (): void => {
     expect(getNotifications).toHaveBeenCalledTimes(1);
   });
 
-  it('읽음 처리가 끝나기 전에도 다음 페이지를 불러온다', async (): Promise<void> => {
+  it('읽음 처리 중에는 조회를 겹치지 않고 완료 후 다음 페이지를 불러온다', async (): Promise<void> => {
     jest.mocked(getNotifications).mockResolvedValueOnce({
       ...page,
       hasNext: true,
@@ -117,13 +220,16 @@ describe('알림 목록과 읽음 처리', (): void => {
     await act(async (): Promise<void> => {
       await result.current.loadMore();
     });
-    expect(result.current.loadMoreRequest.status).toBe('success');
-    expect(result.current.request).toMatchObject({
-      data: { items: [{ id: item.id }, { id: 'second' }], hasNext: false },
-    });
+    expect(getNotifications).toHaveBeenCalledTimes(1);
+    expect(result.current.isBusy).toBe(true);
     await act(async (): Promise<void> => {
       finish([item.id]);
       await reading;
+      await result.current.loadMore();
+    });
+    expect(result.current.loadMoreRequest.status).toBe('success');
+    expect(result.current.request).toMatchObject({
+      data: { items: [{ id: item.id }, { id: 'second' }], hasNext: false },
     });
     expect(result.current.request).toMatchObject({ data: { unreadCount: 1 } });
   });

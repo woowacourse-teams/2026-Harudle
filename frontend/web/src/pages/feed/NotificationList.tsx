@@ -1,4 +1,5 @@
 import { css } from '@emotion/react';
+import type { Notification } from '../../domain/notifications/notifications';
 import ActionButton from '../../shared/ActionButton';
 import { theme } from '../../styles/theme';
 import type { NotificationsState } from './useNotifications';
@@ -7,11 +8,11 @@ import { FEED_COPY } from './copy';
 
 interface NotificationListProps extends Pick<
   NotificationsState,
-  'request' | 'loadMoreRequest'
+  'request' | 'loadMoreRequest' | 'isBusy'
 > {
   readonly onRetry: () => void;
   readonly onLoadMore: () => void;
-  readonly onSelect: (feedId: string) => void;
+  readonly onSelect: (notification: Notification) => void;
 }
 
 const NotificationList = ({
@@ -20,6 +21,7 @@ const NotificationList = ({
   onRetry,
   onLoadMore,
   onSelect,
+  isBusy,
 }: NotificationListProps) => {
   if (request.status === 'idle' || request.status === 'loading')
     return <div css={feedbackStyle} aria-busy="true" />;
@@ -49,6 +51,7 @@ const NotificationList = ({
             key={notification.id}
             notification={notification}
             onSelect={onSelect}
+            disabled={isBusy}
           />
         ))}
       </ul>
@@ -68,7 +71,7 @@ const NotificationList = ({
                   : FEED_COPY.loadMoreAction
             }
             variant="secondary"
-            disabled={isLoadingMore}
+            disabled={isBusy}
             onClick={onLoadMore}
           />
         </div>

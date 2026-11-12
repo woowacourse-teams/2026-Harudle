@@ -19,9 +19,14 @@ export const FEED_COPY = {
   notificationsTitle: '알림',
   notificationsAction: '알림 열기',
   unreadNotificationsAction: '새 알림 있음, 알림 열기',
+  unreadNotification: '안 읽은 알림',
+  readAllNotificationsAction: '전체 읽기',
+  readingAllNotificationsAction: '읽음 처리 중...',
   notificationsEmpty: '아직 도착한 알림이 없어요.',
   notificationsLoadError: '알림을 불러오지 못했어요. 다시 시도해 주세요.',
   notificationsReadError:
-    '일부 알림을 읽음으로 표시하지 못했어요. 알림을 다시 열면 재시도해요.',
+    '알림을 읽음으로 표시하지 못했어요. 다시 시도해 주세요.',
+  notificationsRefreshAfterReadError:
+    '전체 읽기는 완료했어요. 최신 알림은 알림창을 다시 열어 확인해 주세요.',
   loadMoreError: '피드를 더 불러오지 못했어요. 다시 시도해 주세요.',
 } as const;
