@@ -166,5 +166,8 @@
 ## Tests
 
 - 테스트는 대상 코드 옆에 `*.test.ts` 또는 `*.test.tsx`로 둔다.
-- API 동작이 필요한 테스트에는 실제 서버 대신 `web/src/mocks/`의 MSW
-  Handler를 사용한다.
+- Jest 테스트에서 API 동작이 필요하면 `jest.mock`으로 API 모듈을 대체한다.
+  개발 서버와 Playwright E2E에서는 실제 서버 대신 `web/src/mocks/`의 MSW
+  Handler와 `x-msw-scenario` 시나리오를 사용한다.
+- Playwright E2E는 PR CI에 포함되지 않는다. 핵심 흐름을 바꾸면 `pnpm test:e2e`로
+  로컬에서 실행한다.
