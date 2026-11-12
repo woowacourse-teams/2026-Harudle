@@ -52,8 +52,8 @@ class ReportServiceTest {
     }
 
     @ParameterizedTest
-    @EnumSource(ReportTargetType.class)
-    @DisplayName("서버가 조회한 작성자와 인증된 신고자로 세 종류의 대상을 접수한다")
+    @EnumSource(value = ReportTargetType.class, names = {"USER", "FEED", "COMMENT"})
+    @DisplayName("서버가 조회한 작성자와 인증된 신고자로 세 종류의 공개 대상을 접수한다")
     void acceptsEachTargetAndUsesResolvedAuthor(ReportTargetType type) {
         when(reports.isActiveMember(REPORTER)).thenReturn(true);
         when(targets.findVisibleTarget(REPORTER, type, TARGET)).thenReturn(Optional.of(new ReportTarget(AUTHOR)));
@@ -97,14 +97,74 @@ class ReportServiceTest {
         verify(reports, never()).insert(any());
     }
 
-    @Test
-    @DisplayName("본인과 본인 콘텐츠는 신고할 수 없다")
-    void rejectsSelfReport() {
+    @ParameterizedTest
+    @EnumSource(value = ReportTargetType.class, names = {"USER", "FEED", "COMMENT"})
+    @DisplayName("본인과 본인의 공개 콘텐츠는 신고할 수 없다")
+    void rejectsSelfReport(ReportTargetType type) {
         when(reports.isActiveMember(REPORTER)).thenReturn(true);
-        when(targets.findVisibleTarget(REPORTER, ReportTargetType.COMMENT, TARGET))
+        when(targets.findVisibleTarget(REPORTER, type, TARGET))
                 .thenReturn(Optional.of(new ReportTarget(REPORTER)));
-        assertThatThrownBy(() -> service.submit(REPORTER, submission(ReportTargetType.COMMENT)))
+        assertThatThrownBy(() -> service.submit(REPORTER, submission(type)))
                 .isInstanceOf(InvalidReportException.class);
+        verify(reports, never()).insert(any());
+    }
+
+    @Test
+    @DisplayName("개인 일기의 AI 생성 결과는 소유자 본인이 신고하고 작성자도 본인으로 저장한다")
+    void acceptsOwnerReportOfPrivateDiary() {
+        when(reports.isActiveMember(REPORTER)).thenReturn(true);
+        when(targets.findVisibleTarget(REPORTER, ReportTargetType.DIARY, TARGET))
+                .thenReturn(Optional.of(new ReportTarget(REPORTER)));
+        when(reports.insert(any())).thenReturn(true);
+
+        ReportReceipt receipt = service.submit(REPORTER, submission(ReportTargetType.DIARY));
+
+        var captor = ArgumentCaptor.forClass(ReportSnapshot.class);
+        verify(reports).insert(captor.capture());
+        assertThat(captor.getValue().targetType()).isEqualTo(ReportTargetType.DIARY);
+        assertThat(captor.getValue().reporterId()).isEqualTo(REPORTER);
+        assertThat(captor.getValue().targetUserId()).isEqualTo(REPORTER);
+        assertThat(receipt).isEqualTo(new ReportReceipt(captor.getValue().id(), false));
+    }
+
+    @Test
+    @DisplayName("다른 회원 소유로 조회된 개인 일기는 신고할 수 없다")
+    void rejectsDiaryReportByNonOwner() {
+        when(reports.isActiveMember(REPORTER)).thenReturn(true);
+        when(targets.findVisibleTarget(REPORTER, ReportTargetType.DIARY, TARGET))
+                .thenReturn(Optional.of(new ReportTarget(AUTHOR)));
+
+        assertThatThrownBy(() -> service.submit(REPORTER, submission(ReportTargetType.DIARY)))
+                .isInstanceOf(InvalidReportException.class);
+        verify(reports, never()).insert(any());
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = ReportReason.class, names = {"SPAM", "HARASSMENT"})
+    @DisplayName("개인 일기는 부적절한 내용과 기타 사유만 새로 접수하고 다른 사유는 대상 조회 전에 거절한다")
+    void rejectsUnsupportedReasonForNewDiaryReport(ReportReason reason) {
+        when(reports.isActiveMember(REPORTER)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.submit(REPORTER,
+                new ReportSubmission(ReportTargetType.DIARY, TARGET, reason, "")))
+                .isInstanceOf(InvalidReportException.class);
+        verifyNoInteractions(targets);
+        verify(reports, never()).insert(any());
+    }
+
+    @Test
+    @DisplayName("개인 일기의 기존 접수는 이후 요청의 사유와 관계없이 기존 접수로 응답한다")
+    void acknowledgesPreviousDiaryReceiptRegardlessOfReason() {
+        UUID previousId = UUID.randomUUID();
+        when(reports.isActiveMember(REPORTER)).thenReturn(true);
+        when(reports.findReceiptIdByReporterAndTarget(REPORTER, ReportTargetType.DIARY, TARGET))
+                .thenReturn(Optional.of(previousId));
+
+        ReportReceipt receipt = service.submit(REPORTER,
+                new ReportSubmission(ReportTargetType.DIARY, TARGET, ReportReason.SPAM, ""));
+
+        assertThat(receipt).isEqualTo(new ReportReceipt(previousId, true));
+        verifyNoInteractions(targets);
         verify(reports, never()).insert(any());
     }
 
