@@ -38,6 +38,10 @@ public class ReportService {
         if (existing.isPresent()) {
             return new ReportReceipt(existing.get(), true);
         }
+        // 중복 접수는 기존 응답을 그대로 돌려주고, 대상별 사유 제한은 신규 접수에만 적용한다.
+        if (!submission.targetType().allows(submission.reason())) {
+            throw new InvalidReportException();
+        }
         var target = targets
                 .findVisibleTarget(reporterId, submission.targetType(), submission.targetId());
         if (target.isEmpty()) {

@@ -88,16 +88,26 @@ public class AdminReportRepository {
             ) feed_state
             WHERE c.id = :targetId
             """;
-    // 개인 일기는 소유자만 보는 콘텐츠라 숨김 대상이 아니며 공개 상태도 항상 false다.
+    // 일기 신고는 게시 여부와 관계없이 받으므로 현재 게시 중인 피드와 그 공개 상태를 함께 보여준다.
+    // 일기 자체는 숨김 대상이 아니며, 숨김은 재게시에도 유지되는 일기 단위 피드 제한을 뜻한다.
     private static final String DIARY_TARGET_QUERY = """
             SELECT d.user_id, u.nickname, u.deleted_at IS NOT NULL,
                    d.deleted_at IS NOT NULL, false,
-                   false, false,
-                   false,
-                   NULL, generation.title, generation.image_object_key, NULL
+                   feed_state.restricted, false,
+                   active_feed.id IS NOT NULL AND d.deleted_at IS NULL AND u.deleted_at IS NULL
+                       AND generation.status = 'SUCCEEDED' AND NOT feed_state.restricted,
+                   active_feed.id, generation.title, generation.image_object_key, NULL
             FROM diaries d
             JOIN users u ON u.id = d.user_id
             LEFT JOIN diary_generations generation ON generation.diary_id = d.id
+            LEFT JOIN feeds active_feed ON active_feed.diary_id = d.id AND active_feed.deleted_at IS NULL
+            CROSS JOIN LATERAL (
+                SELECT EXISTS (
+                    SELECT 1 FROM feeds related
+                    JOIN moderation_states hidden ON hidden.target_type = 'FEED' AND hidden.target_id = related.id
+                    WHERE related.diary_id = d.id AND hidden.restricted
+                ) AS restricted
+            ) feed_state
             WHERE d.id = :targetId
             """;
 

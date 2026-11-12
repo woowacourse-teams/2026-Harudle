@@ -140,6 +140,35 @@ class ReportServiceTest {
     }
 
     @ParameterizedTest
+    @EnumSource(value = ReportReason.class, names = {"SPAM", "HARASSMENT"})
+    @DisplayName("개인 일기는 부적절한 내용과 기타 사유만 새로 접수하고 다른 사유는 대상 조회 전에 거절한다")
+    void rejectsUnsupportedReasonForNewDiaryReport(ReportReason reason) {
+        when(reports.isActiveMember(REPORTER)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.submit(REPORTER,
+                new ReportSubmission(ReportTargetType.DIARY, TARGET, reason, "")))
+                .isInstanceOf(InvalidReportException.class);
+        verifyNoInteractions(targets);
+        verify(reports, never()).insert(any());
+    }
+
+    @Test
+    @DisplayName("개인 일기의 기존 접수는 이후 요청의 사유와 관계없이 기존 접수로 응답한다")
+    void acknowledgesPreviousDiaryReceiptRegardlessOfReason() {
+        UUID previousId = UUID.randomUUID();
+        when(reports.isActiveMember(REPORTER)).thenReturn(true);
+        when(reports.findReceiptIdByReporterAndTarget(REPORTER, ReportTargetType.DIARY, TARGET))
+                .thenReturn(Optional.of(previousId));
+
+        ReportReceipt receipt = service.submit(REPORTER,
+                new ReportSubmission(ReportTargetType.DIARY, TARGET, ReportReason.SPAM, ""));
+
+        assertThat(receipt).isEqualTo(new ReportReceipt(previousId, true));
+        verifyNoInteractions(targets);
+        verify(reports, never()).insert(any());
+    }
+
+    @ParameterizedTest
     @EnumSource(ReportTargetType.class)
     @DisplayName("대상 조회에 실패해도 첫 조회 뒤 완료된 본인의 접수가 있으면 그 접수 번호를 반환한다")
     void acknowledgesReceiptCommittedBeforeTargetDisappeared(ReportTargetType type) {

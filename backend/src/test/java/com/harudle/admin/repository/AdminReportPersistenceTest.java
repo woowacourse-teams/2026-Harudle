@@ -201,8 +201,6 @@ class AdminReportPersistenceTest extends AdminModerationDatabaseTestSupport {
         assertThat(detail.target().authorId()).isEqualTo(author);
         assertThat(detail.target().deleted()).isFalse();
         assertThat(detail.target().hidden()).isFalse();
-        assertThat(detail.target().publiclyVisible()).isFalse();
-        assertThat(detail.target().feedId()).isNull();
         assertThat(detail.target().title()).isEqualTo("공개 제목");
         assertThat(detail.target().imageObjectKey()).startsWith("generated/moderation-");
         assertThat(detail.toString()).doesNotContain(PRIVATE_DIARY);
@@ -213,6 +211,31 @@ class AdminReportPersistenceTest extends AdminModerationDatabaseTestSupport {
 
         jdbc.update("UPDATE diaries SET deleted_at=CURRENT_TIMESTAMP WHERE id=?", diary);
         assertThat(queries.findDetail(receipt.id()).target().deleted()).isTrue();
+    }
+
+    @Test
+    @DisplayName("피드에 게시한 일기를 신고하면 관리자 화면에 현재 피드와 공개 상태를 함께 보여준다")
+    void showsFeedExposureOfReportedDiary() {
+        var receipt = submissions.submit(author,
+                new ReportSubmission(ReportTargetType.DIARY, diary, ReportReason.INAPPROPRIATE_CONTENT, ""));
+        fixtureReports.add(receipt.id());
+
+        var published = queries.findDetail(receipt.id()).target();
+        assertThat(published.feedId()).isEqualTo(feed);
+        assertThat(published.publiclyVisible()).isTrue();
+        assertThat(published.hidden()).isFalse();
+
+        restrict("FEED", feed);
+        var restricted = queries.findDetail(receipt.id()).target();
+        assertThat(restricted.hidden()).isTrue();
+        assertThat(restricted.publiclyVisible()).isFalse();
+
+        jdbc.update("DELETE FROM moderation_states WHERE target_type='FEED' AND target_id=?", feed);
+        jdbc.update("UPDATE feeds SET deleted_at=CURRENT_TIMESTAMP WHERE id=?", feed);
+        var unpublished = queries.findDetail(receipt.id()).target();
+        assertThat(unpublished.feedId()).isNull();
+        assertThat(unpublished.publiclyVisible()).isFalse();
+        assertThat(unpublished.hidden()).isFalse();
     }
 
     @Test
