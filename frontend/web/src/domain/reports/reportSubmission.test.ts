@@ -57,6 +57,22 @@ describe('신고 접수 API 경계', (): void => {
     );
   });
 
+  it('개인 네컷만화(DIARY) 신고를 일기 ID 대상으로 보낸다', async (): Promise<void> => {
+    const diaryRequest: ReportRequest = {
+      targetType: 'DIARY',
+      targetId: '30000000-0000-4000-8000-000000000001',
+      reason: 'INAPPROPRIATE_CONTENT',
+    };
+    const fetch = jest
+      .spyOn(auth, 'authFetch')
+      .mockResolvedValue(Response.json(receipt, { status: 201 }));
+    await expect(submitReport(diaryRequest)).resolves.toEqual(receipt);
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/reports',
+      expect.objectContaining({ body: JSON.stringify(diaryRequest) }),
+    );
+  });
+
   it('500 code point를 허용하고 초과 입력은 요청 전에 거절한다', async (): Promise<void> => {
     const fetch = jest
       .spyOn(auth, 'authFetch')

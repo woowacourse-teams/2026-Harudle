@@ -22,6 +22,8 @@ export const ADMIN_MODERATION_COPY = {
   suspendHint: '로그인과 회원 기능 이용을 제한해요.',
   hideHint: '공개 화면에서 숨기고 원본은 유지해요.',
   restoreHint: '선택한 관리자 제한만 해제해요.',
+  diaryReportHint:
+    '작성자 본인이 AI 생성 결과를 신고한 개인 네컷이에요. 숨김·계정 조치 없이 신고 처리만 해요.',
 } as const;
 
 export const REPORT_STATUS_LABELS = {
@@ -33,6 +35,7 @@ export const REPORT_TARGET_LABELS = {
   USER: '사용자',
   FEED: '피드',
   COMMENT: '댓글',
+  DIARY: '개인 네컷',
 } as const;
 export const REPORT_REASON_LABELS = {
   SPAM: '스팸·광고',

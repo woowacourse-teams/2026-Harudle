@@ -57,6 +57,20 @@ const reports: AdminReport[] = [
     reviewedBy: actor,
     reviewReason: '정책 위반에 해당하지 않음',
   },
+  {
+    id: '40000000-0000-4000-8000-000000000004',
+    reporterId: targetUser,
+    targetType: 'DIARY',
+    targetId: '30000000-0000-4000-8000-000000000004',
+    targetUserId: targetUser,
+    reason: 'INAPPROPRIATE_CONTENT',
+    description: '그림에 이상한 글자가 들어갔어요.',
+    status: 'RECEIVED',
+    createdAt: now,
+    reviewedAt: null,
+    reviewedBy: null,
+    reviewReason: null,
+  },
 ];
 const states = new Map<string, ModerationState>();
 const histories = new Map<string, ModerationHistory[]>();
@@ -169,8 +183,10 @@ export const adminModerationHandlers = [
       );
       if (!report) return problem(request, 404, 'REPORT_NOT_FOUND');
       const hidden =
-        stateOf(report.targetType, report.targetId).restricted &&
-        report.targetType !== 'USER';
+        (report.targetType === 'FEED' || report.targetType === 'COMMENT') &&
+        stateOf(report.targetType, report.targetId).restricted;
+      const hasImage =
+        report.targetType === 'FEED' || report.targetType === 'DIARY';
       const target: AdminReportDetail['target'] = {
         exists: true,
         authorId: targetUser,
@@ -180,17 +196,16 @@ export const adminModerationHandlers = [
         parentDeleted: false,
         hidden,
         parentHidden: false,
-        publiclyVisible: !hidden,
+        publiclyVisible: report.targetType !== 'DIARY' && !hidden,
         feedId:
-          report.targetType === 'USER'
-            ? null
-            : '00000000-0000-4000-8000-000000000002',
-        title: report.targetType === 'FEED' ? '오늘의 기록' : null,
-        imageUrl: report.targetType === 'FEED' ? diaryImage : null,
-        imageUrlExpiresAt:
-          report.targetType === 'FEED'
-            ? new Date(Date.now() + 900_000).toISOString()
+          report.targetType === 'FEED' || report.targetType === 'COMMENT'
+            ? '00000000-0000-4000-8000-000000000002'
             : null,
+        title: hasImage ? '오늘의 기록' : null,
+        imageUrl: hasImage ? diaryImage : null,
+        imageUrlExpiresAt: hasImage
+          ? new Date(Date.now() + 900_000).toISOString()
+          : null,
         commentContent:
           report.targetType === 'COMMENT' ? '신고된 댓글 내용입니다.' : null,
       };

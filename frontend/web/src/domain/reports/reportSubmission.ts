@@ -2,7 +2,8 @@ import { API_BASE_URL, isProblemDetails, RequestError } from '../../shared/api';
 import { authFetch, requestCsrfToken } from '../../shared/auth';
 import { isRecord } from '../../shared/utils';
 
-export type ReportTargetType = 'USER' | 'FEED' | 'COMMENT';
+// DIARY는 작성자 본인만 볼 수 있는 개인 네컷만화의 AI 생성 결과 신고다.
+export type ReportTargetType = 'USER' | 'FEED' | 'COMMENT' | 'DIARY';
 export type ReportReason =
   'SPAM' | 'HARASSMENT' | 'INAPPROPRIATE_CONTENT' | 'OTHER';
 
@@ -34,7 +35,10 @@ const isUuid = (value: unknown): value is string =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
 export const isReportTargetType = (value: unknown): value is ReportTargetType =>
-  value === 'USER' || value === 'FEED' || value === 'COMMENT';
+  value === 'USER' ||
+  value === 'FEED' ||
+  value === 'COMMENT' ||
+  value === 'DIARY';
 
 export const isReportReason = (value: unknown): value is ReportReason =>
   value === 'SPAM' ||
