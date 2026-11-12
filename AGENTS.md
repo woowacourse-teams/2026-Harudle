@@ -189,6 +189,8 @@ flowchart LR
 | DB 공인 IP | `54.116.226.98` | `43.202.26.248` |
 | DB 사설 IP | `10.0.100.70` | `10.0.100.146` |
 | DB 연결 대상 | `.env`의 `DB_HOST=10.0.100.70`, 포트 `5432` | `.env`의 `DB_HOST=10.0.100.146`, 포트 `5432` |
+| 앱 루트 볼륨 `/` | `vol-04168830fc9e54269` / 20GiB | `vol-0d822e69c6847b8db` / 20GiB |
+| DB 루트 볼륨 `/` | `vol-09c6bfa4624f33903` / 20GiB | `vol-0429a6ceab7faadac` / 20GiB |
 | DB 데이터 디스크 | `vol-079e2259ecef5ae0c` / `/srv/harudle/db-data` | `vol-054247052e6a3f58e` / `/srv/harudle/db-data` |
 | DB 백업 stanza | `harudle-dev-al2023` | `harudle-prod-al2023` |
 | S3 버킷 | `techcourse-project-2026` | `techcourse-project-2026` |
