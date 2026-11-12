@@ -32,4 +32,10 @@ public interface NotificationRepository {
      * 반복 요청도 보이는 본인 알림이면 true이며, 취소된 LIKE를 포함한 비노출 알림은 false다.
      */
     boolean markRead(UUID notificationId, UUID recipientId, Instant readAt);
+
+    /**
+     * markRead와 같은 가시성 조건의 본인 미읽음 알림을 한 번에 읽음 처리한다.
+     * readAt까지 생성된 알림만 변경하고 기존 읽음 시각과 이후 알림은 보존한다.
+     */
+    int markAllRead(UUID recipientId, Instant readAt);
 }
