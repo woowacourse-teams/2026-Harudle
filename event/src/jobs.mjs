@@ -18,10 +18,15 @@ export class JobQueue {
   #running = 0;
   #ipHits = new Map();
   #daily = { day: "", count: 0 };
+  // 인쇄 대기열: 완성 순서대로 job id. 인쇄 화면이 하나씩 가져가 일정 시간 잠근다(lease).
+  #printQueue = [];
 
-  constructor(assets, log) {
+  constructor(assets, log, { now = () => Date.now(), runner = runPipeline, writeResult } = {}) {
     this.assets = assets;
     this.log = log;
+    this.now = now;
+    this.runner = runner;
+    this.writeResult = writeResult ?? ((id, png) => writeFile(path.join(config.resultDir, `${id}.png`), png));
   }
 
   async init() {
@@ -41,7 +46,7 @@ export class JobQueue {
     if (config.dailyLimit && this.#daily.count >= config.dailyLimit) {
       return { error: "DAILY_LIMIT", status: 429, message: "오늘 준비한 엽서가 모두 소진됐어요." };
     }
-    const now = Date.now();
+    const now = this.now();
     const hits = (this.#ipHits.get(ip) ?? []).filter(t => now - t < 3_600_000);
     if (config.perIpPerHour && hits.length >= config.perIpPerHour) {
       return { error: "RATE_LIMITED", status: 429, message: "한 시간에 만들 수 있는 횟수를 모두 썼어요. 잠시 후 다시 시도해 주세요." };
@@ -50,10 +55,11 @@ export class JobQueue {
     this.#ipHits.set(ip, hits);
     this.#daily.count++;
 
-    const job = { id: randomUUID(), status: "queued", stage: null, createdAt: now, diary, title: null, error: null };
+    // 그날의 접수 순번을 번호표로 쓴다. 프린터 앞에서 자기 엽서를 찾는 데 쓴다.
+    const job = { id: randomUUID(), ticket: this.#daily.count, status: "queued", stage: null, createdAt: now, diary, title: null, error: null, print: null };
     this.#jobs.set(job.id, job);
     this.#waiting.push(job);
-    this.log({ event: "job_accepted", jobId: job.id, queue: this.#waiting.length, dailyCount: this.#daily.count });
+    this.log({ event: "job_accepted", jobId: job.id, ticket: job.ticket, queue: this.#waiting.length, dailyCount: this.#daily.count });
     this.#pump();
     return { job };
   }
@@ -62,7 +68,82 @@ export class JobQueue {
     const job = this.#jobs.get(id);
     if (!job) return null;
     const position = job.status === "queued" ? this.#waiting.indexOf(job) + 1 : 0;
-    return { id: job.id, status: job.status, stage: job.stage, position, title: job.title, error: job.error };
+    return { id: job.id, ticket: job.ticket, status: job.status, stage: job.stage, position, title: job.title, error: job.error, print: job.print?.state ?? null };
+  }
+
+  #releaseExpiredLeases(now) {
+    for (const job of this.#jobs.values()) {
+      if (job.print?.state === "printing" && job.print.leaseUntil < now) {
+        job.print = { state: "queued" };
+        this.#printQueue.unshift(job.id);
+        this.log({ event: "print_lease_expired", jobId: job.id, ticket: job.ticket });
+      }
+    }
+  }
+
+  /**
+   * 인쇄할 엽서를 하나 잠가서 돌려준다. id를 주면 그 엽서를(수동 확인 후 인쇄), 없으면 대기열 맨 앞을 가져간다.
+   * 가져갈 엽서가 없으면 null. 잠금이 만료된 엽서는 대기열 앞으로 돌려놓는다.
+   */
+  claimPrint(id) {
+    const now = this.now();
+    this.#releaseExpiredLeases(now);
+    const index = id ? this.#printQueue.indexOf(id) : 0;
+    if (index < 0) return null;
+    while (index < this.#printQueue.length) {
+      const [jobId] = this.#printQueue.splice(index, 1);
+      const job = this.#jobs.get(jobId);
+      if (!job || job.status !== "done" || job.print?.state !== "queued") { if (id) return null; continue; }
+      job.print = { state: "printing", leaseUntil: now + config.printLeaseMs, claimedAt: now };
+      this.log({ event: "print_claimed", jobId: job.id, ticket: job.ticket });
+      return { id: job.id, ticket: job.ticket, title: job.title };
+    }
+    return null;
+  }
+
+  /** 인쇄 안 함: 확인해 보고 뽑지 않기로 한 엽서를 대기열에서 뺀다. 다시 뽑기로 되살릴 수 있다. */
+  skipPrint(id) {
+    const job = this.#jobs.get(id);
+    if (!job || job.print?.state !== "queued") return false;
+    this.#printQueue = this.#printQueue.filter(x => x !== id);
+    job.print = { state: "skipped", printedAt: this.now() };
+    this.log({ event: "print_skipped", jobId: job.id, ticket: job.ticket });
+    return true;
+  }
+
+  /** 인쇄 완료. 잠금을 가진 엽서만 완료로 바꾼다. */
+  markPrinted(id) {
+    const job = this.#jobs.get(id);
+    if (!job || job.print?.state !== "printing") return false;
+    job.print = { state: "printed", printedAt: this.now() };
+    this.log({ event: "print_done", jobId: job.id, ticket: job.ticket });
+    return true;
+  }
+
+  /** 다시 뽑기: 완성된 엽서를 대기열 맨 앞에 넣는다. */
+  reprint(id) {
+    const job = this.#jobs.get(id);
+    if (!job || job.status !== "done") return false;
+    this.#printQueue = this.#printQueue.filter(x => x !== id);
+    job.print = { state: "queued" };
+    this.#printQueue.unshift(id);
+    this.log({ event: "print_requeued", jobId: job.id, ticket: job.ticket });
+    return true;
+  }
+
+  /** 인쇄 화면용 현황: 대기 중 번호, 인쇄 중, 최근 인쇄·건너뜀 10개 */
+  printStatus() {
+    this.#releaseExpiredLeases(this.now());
+    const all = [...this.#jobs.values()];
+    const brief = j => ({ id: j.id, ticket: j.ticket, title: j.title });
+    return {
+      queued: this.#printQueue.map(id => this.#jobs.get(id)).filter(j => j?.print?.state === "queued").map(brief),
+      printing: all.filter(j => j.print?.state === "printing").map(brief),
+      recent: all.filter(j => j.print?.state === "printed" || j.print?.state === "skipped")
+        .sort((a, b) => b.print.printedAt - a.print.printedAt).slice(0, 10)
+        .map(j => ({ ...brief(j), skipped: j.print.state === "skipped" })),
+      generating: all.filter(j => j.status === "queued" || j.status === "running").map(j => ({ ticket: j.ticket })),
+    };
   }
 
   resultPath(id) {
@@ -83,30 +164,35 @@ export class JobQueue {
   }
 
   async #run(job) {
-    const started = Date.now();
+    const started = this.now();
     job.status = "running";
     const waitedMs = started - job.createdAt;
     try {
-      const result = await runPipeline(this.assets, job.diary, stage => { job.stage = stage; });
-      await writeFile(path.join(config.resultDir, `${job.id}.png`), result.png);
+      const result = await this.runner(this.assets, job.diary, stage => { job.stage = stage; });
+      await this.writeResult(job.id, result.png);
       job.title = result.title;
       job.status = "done";
-      this.log({ event: "job_done", jobId: job.id, waitedMs, tookMs: Date.now() - started, imageAttempts: result.attempts });
+      if (config.printQueue) {
+        job.print = { state: "queued" };
+        this.#printQueue.push(job.id);
+      }
+      this.log({ event: "job_done", jobId: job.id, ticket: job.ticket, waitedMs, tookMs: this.now() - started, imageAttempts: result.attempts });
     } catch (error) {
       job.status = "failed";
       job.error = { code: error.code ?? "GENERATION_FAILED", message: USER_MESSAGES[error.code] ?? USER_MESSAGES.DEFAULT };
-      this.log({ event: "job_failed", jobId: job.id, stage: job.stage, code: error.code, reason: error.message, tookMs: Date.now() - started });
+      this.log({ event: "job_failed", jobId: job.id, ticket: job.ticket, stage: job.stage, code: error.code, reason: error.message, tookMs: this.now() - started });
     } finally {
       job.diary = null; // 일기 원문은 생성 후 바로 버린다
-      job.finishedAt = Date.now();
+      job.finishedAt = this.now();
     }
   }
 
   async #sweep() {
-    const now = Date.now();
+    const now = this.now();
     for (const [id, job] of this.#jobs) {
       if (job.finishedAt && now - job.finishedAt > config.resultTtlMs) {
         this.#jobs.delete(id);
+        this.#printQueue = this.#printQueue.filter(x => x !== id);
         await rm(path.join(config.resultDir, `${id}.png`), { force: true });
       }
     }

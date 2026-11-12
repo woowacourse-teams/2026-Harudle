@@ -108,6 +108,14 @@
     @keyframes pulse { 50% { transform: scale(.7); } }
     @media (prefers-reduced-motion: reduce) { .steps li.active::before { animation: none; } }
     .hint { margin: 16px 0 0; font-size: 13px; color: var(--muted); }
+    /* 인쇄 대기열 모드: 결과 화면의 번호표 */
+    .pickup { display: flex; align-items: center; gap: 18px; padding: 6px 4px 10px; }
+    .pickup-num {
+      flex: none; min-width: 120px; text-align: center; font-size: clamp(44px, 5vw, 64px); font-weight: 900; letter-spacing: -0.04em;
+      background: var(--lilac); border: var(--outline); border-radius: 22px; padding: 6px 14px;
+    }
+    .pickup-text { font-size: clamp(16px, 1.5vw, 19px); font-weight: 700; line-height: 1.45; }
+    .ticket-hint { margin: 0 0 14px; font-size: 15px; font-weight: 700; }
     [hidden] { display: none !important; }
     /* 인쇄: Canon SELPHY CP1500 엽서 용지(100x148mm)에 완성 엽서만 꽉 채운다.
        엽서 비율(2:3)과 용지 비율(1:1.48)이 조금 달라 위아래가 약 1mm씩 잘린다. */
@@ -166,6 +174,7 @@
       </form>
 
       <div class="box" id="progress-view" hidden aria-live="polite">
+        <p class="ticket-hint" id="progress-ticket" hidden></p>
         <ol class="steps">
           <li data-step="queued">순서를 기다리는 중</li>
           <li data-step="storyboard">이야기를 네 컷으로 나누는 중</li>
@@ -176,10 +185,14 @@
       </div>
 
       <div class="box actions" id="result-view" hidden>
+        <div class="pickup" id="pickup" hidden>
+          <span class="pickup-num" id="pickup-ticket"></span>
+          <span class="pickup-text">프린터에서 이 번호의<br>엽서를 받아 가세요</span>
+        </div>
         <button class="btn" type="button" id="print">엽서 인쇄하기</button>
         <a class="btn secondary" id="download" download="harudle-demoday.png">이미지 저장하기</a>
         <button class="btn secondary" type="button" id="again">새 이야기 만들기</button>
-        <p class="notice">완성된 엽서는 <span class="ttl">2시간</span> 뒤 삭제돼요.</p>
+        <p class="notice" id="result-notice">완성된 엽서는 <span class="ttl">2시간</span> 뒤 삭제돼요.</p>
       </div>
 
       <div class="box actions" id="failed-view" hidden>
@@ -202,8 +215,22 @@
     progress: ["<em>네컷만화</em>를<br>그리고 있어요", "화면을 그대로 두고 잠시만 기다려 주세요."],
     failed: ["엽서를<br>만들지 못했어요", "내용을 조금 바꿔서 다시 시도해 주세요."],
   };
-  let limits = { diaryMinLength: 10, diaryMaxLength: 1000 };
+  let limits = { diaryMinLength: 10, diaryMaxLength: 1000, printQueue: false, resultResetSeconds: 10 };
   let pollTimer;
+  let resetTimer;
+
+  // 부스 기기: 결과·실패 화면을 잠시 보여 준 뒤 다음 사람을 위해 입력 화면으로 돌아간다
+  function startAutoReset(seconds, button, label) {
+    clearInterval(resetTimer);
+    if (!seconds) { button.textContent = label; return; }
+    let left = seconds;
+    const tick = () => {
+      button.textContent = `${label} (${left})`;
+      if (left-- <= 0) { clearInterval(resetTimer); reset(); }
+    };
+    tick();
+    resetTimer = setInterval(tick, 1000);
+  }
 
   function show(view, copy) {
     views.forEach(v => { $(v).hidden = v !== view; });
@@ -268,6 +295,8 @@
       li.classList.toggle("active", i === idx);
     });
     $("queue-hint").textContent = job.status === "queued" && job.position > 1 ? `앞에 ${job.position - 1}명이 기다리고 있어요.` : "";
+    $("progress-ticket").hidden = !(limits.printQueue && job.ticket);
+    $("progress-ticket").textContent = `내 엽서 번호: ${job.ticket}번`;
   }
 
   function track(id, initial) {
@@ -284,7 +313,10 @@
           $("failed-message").textContent = job.error?.message ?? "잠시 후 다시 시도해 주세요.";
           showSample();
           flipToFront();
-          return show("failed-view", COPY.failed);
+          show("failed-view", COPY.failed);
+          // 실패한 사람이 다시 쓸 시간을 주려고 결과 화면보다 길게 기다린다
+          if (limits.printQueue) startAutoReset(limits.resultResetSeconds * 3, $("retry"), "다시 적어 보기");
+          return;
         }
         renderProgress(job);
       } catch { /* 네트워크 오류는 다음 확인에서 다시 시도 */ }
@@ -302,12 +334,23 @@
     try { await img.decode(); } catch { /* 디코딩 실패해도 결과 화면은 보여 준다 */ }
     $("download").href = `/api/jobs/${id}/image?download=1`;
     $("print-image").src = img.src;
+    // 인쇄 대기열 모드에서는 프린터 기기가 자동 인쇄하므로 번호표만 보여 준다
+    const queued = limits.printQueue;
+    $("pickup").hidden = !queued;
+    $("pickup-ticket").textContent = `${job.ticket}번`;
+    $("print").hidden = queued;
+    $("download").hidden = queued;
+    $("result-notice").hidden = queued;
     flipToFront();
     show("result-view", [`<em>네컷만화</em> 엽서가<br>완성됐어요`, job.title ? `# ${job.title}` : "저장해서 간직해 보세요."]);
+    if (queued) startAutoReset(limits.resultResetSeconds, $("again"), "바로 새로 만들기");
+    else $("again").textContent = "새 이야기 만들기";
   }
 
   function backToForm() {
     clearTimeout(pollTimer);
+    clearInterval(resetTimer);
+    $("retry").textContent = "다시 적어 보기";
     showSample();
     flipToFront();
     show("form-view", COPY.form);

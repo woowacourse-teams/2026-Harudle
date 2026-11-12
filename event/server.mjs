@@ -1,4 +1,5 @@
 // 데모데이 엽서 이벤트 서버. Host Nginx 뒤에서 127.0.0.1로만 받는다.
+import { createHash, timingSafeEqual } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import http from "node:http";
@@ -25,10 +26,41 @@ const sample = await readFile(path.join(config.assetsDir, "sample.webp"))
   .catch(() => ({ data: assets.frameImage.data, type: assets.frameImage.mimeType }));
 const STATIC = {
   "/": { file: "index.html", type: "text/html; charset=utf-8" },
+  "/print": { file: "print.html", type: "text/html; charset=utf-8" },
   "/logo.webp": { file: "logo.webp", type: "image/webp", maxAge: 3600 },
   "/sample.webp": { data: sample.data, type: sample.type, maxAge: 3600 },
 };
 const JOB_PATH = /^\/api\/jobs\/([0-9a-f-]{36})(\/image)?$/;
+const PRINT_ACTION_PATH = /^\/api\/print\/([0-9a-f-]{36})\/(claim|done|reprint|skip)$/;
+const digest = value => createHash("sha256").update(String(value)).digest();
+
+// 인쇄 API는 프린터 기기만 부른다. 키는 길이를 숨기려고 해시끼리 비교한다.
+function hasPrintKey(req) {
+  if (!config.printQueue) return false;
+  const given = req.headers["x-print-key"];
+  return typeof given === "string" && timingSafeEqual(digest(given), digest(config.printKey));
+}
+
+function handlePrint(req, res, url) {
+  if (!config.printQueue) return send(res, 404, { error: "PRINT_QUEUE_DISABLED" });
+  if (!hasPrintKey(req)) return send(res, 403, { error: "PRINT_KEY_REQUIRED" });
+  if (req.method === "GET" && url.pathname === "/api/print/status") return send(res, 200, queue.printStatus());
+  if (req.method === "POST" && url.pathname === "/api/print/claim") {
+    const next = queue.claimPrint();
+    return next ? send(res, 200, next) : send(res, 204, "");
+  }
+  const action = url.pathname.match(PRINT_ACTION_PATH);
+  if (req.method === "POST" && action) {
+    const [, id, verb] = action;
+    if (verb === "claim") {
+      const claimed = queue.claimPrint(id);
+      return claimed ? send(res, 200, claimed) : send(res, 409, { error: "INVALID_PRINT_STATE" });
+    }
+    const ok = { done: () => queue.markPrinted(id), reprint: () => queue.reprint(id), skip: () => queue.skipPrint(id) }[verb]();
+    return ok ? send(res, 200, { ok: true }) : send(res, 409, { error: "INVALID_PRINT_STATE" });
+  }
+  send(res, 404, { error: "NOT_FOUND" });
+}
 const MAX_BODY = 16 * 1024;
 
 function send(res, status, body, headers = {}) {
@@ -88,8 +120,11 @@ const server = http.createServer(async (req, res) => {
         diaryMinLength: config.diaryMinLength,
         diaryMaxLength: config.diaryMaxLength,
         resultTtlMinutes: config.resultTtlMs / 60_000,
+        printQueue: config.printQueue,
+        resultResetSeconds: config.resultResetSeconds,
       });
     }
+    if (url.pathname.startsWith("/api/print/")) return handlePrint(req, res, url);
     if (req.method === "POST" && url.pathname === "/api/jobs") return await createJob(req, res);
     const match = url.pathname.match(JOB_PATH);
     if (req.method === "GET" && match) {
@@ -117,7 +152,7 @@ const server = http.createServer(async (req, res) => {
 
 server.requestTimeout = 15_000;
 server.listen(config.port, config.host, () => {
-  log({ event: "started", host: config.host, port: config.port, fakeAi: config.fakeAi, concurrency: config.concurrency });
+  log({ event: "started", host: config.host, port: config.port, fakeAi: config.fakeAi, concurrency: config.concurrency, printQueue: config.printQueue });
 });
 
 for (const signal of ["SIGTERM", "SIGINT"]) {

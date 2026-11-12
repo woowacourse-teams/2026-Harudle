@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>하루들 엽서 인쇄</title>
+  <style>
+    /* 프린터에 연결된 기기 전용 화면. 기본은 운영자가 엽서를 확인하고 직접 인쇄한다(?auto=1이면 자동 인쇄). */
+    :root { --mint: #a5fcd8; --ink: #111111; --paper: #ffffff; --lilac: #d2b3f4; --muted: #2c4a3f; --danger: #c2412d; --outline: 3px solid var(--ink); }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      min-height: 100dvh; background: var(--mint); color: var(--ink); display: flex; flex-direction: column;
+      font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Segoe UI", sans-serif;
+    }
+    header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 16px 32px 4px; }
+    header img { height: 36px; display: block; }
+    .controls { display: flex; gap: 10px; align-items: center; }
+    .state { font-weight: 800; font-size: 15px; background: var(--ink); color: var(--mint); border-radius: 999px; padding: 8px 16px; }
+    .state.paused { background: var(--danger); color: #fff; }
+    main { flex: 1; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: 28px; padding: 20px 32px 28px; min-height: 0; }
+    .card { background: var(--paper); border: var(--outline); border-radius: 28px; padding: 22px; }
+    .stage { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 24px; align-items: center; }
+    .stage img { width: 100%; max-height: calc(100dvh - 170px); object-fit: contain; border: 2px solid var(--ink); border-radius: 6px; background: var(--mint); }
+    .placeholder { aspect-ratio: 2 / 3; max-height: calc(100dvh - 170px); display: grid; place-items: center; border: 2px dashed #9cc9b5; border-radius: 6px; color: var(--muted); font-size: 18px; text-align: center; padding: 16px; }
+    .ticket { text-align: center; display: grid; gap: 12px; }
+    .ticket .label { font-size: 15px; color: var(--muted); }
+    .ticket .num { font-size: 84px; font-weight: 900; line-height: 1; letter-spacing: -0.04em; }
+    .ticket .title { font-size: 16px; font-weight: 700; word-break: keep-all; min-height: 1.2em; }
+    .ticket .phase { font-size: 14px; color: var(--muted); min-height: 1.2em; }
+    .btn { border: var(--outline); border-radius: 999px; background: var(--ink); color: #fff; font: inherit; font-weight: 800; cursor: pointer; padding: 12px 18px; font-size: 16px; }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+    .btn.secondary { background: var(--paper); color: var(--ink); }
+    .btn.big { padding: 16px 18px; font-size: 19px; }
+    .btn.small { padding: 4px 12px; font-size: 13px; border-width: 2px; }
+    .side { display: grid; gap: 18px; align-content: start; min-height: 0; }
+    h2 { margin: 0 0 12px; font-size: 18px; display: flex; justify-content: space-between; align-items: baseline; }
+    h2 small { font-size: 14px; color: var(--muted); font-weight: 600; }
+    .thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 10px; max-height: 42dvh; overflow: auto; }
+    .thumb { border: 2.5px solid var(--ink); border-radius: 12px; background: #f6fffb; padding: 4px; cursor: pointer; font: inherit; text-align: center; }
+    .thumb img { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 6px; display: block; }
+    .thumb b { display: block; font-size: 15px; margin-top: 4px; }
+    .thumb.selected { background: var(--lilac); box-shadow: 0 0 0 3px var(--lilac); }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip { font-weight: 800; font-size: 16px; border: 2.5px dashed var(--ink); border-radius: 999px; padding: 4px 12px; color: var(--muted); }
+    .empty { color: var(--muted); font-size: 14px; }
+    .recent { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+    .recent li { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 15px; }
+    .recent b { font-size: 17px; margin-right: 6px; }
+    .tag { font-size: 12px; font-weight: 800; border-radius: 6px; padding: 2px 6px; margin-right: 6px; background: #e8efe9; }
+    .tag.skip { background: #f6dcd7; color: var(--danger); }
+    .err { color: var(--danger); font-weight: 700; margin: 0; }
+    [hidden] { display: none !important; }
+    #print-sheet { display: none; }
+    @media print {
+      @page { size: 100mm 148mm; margin: 0; }
+      html, body { width: 100mm; height: 148mm; min-height: 0; background: #fff; }
+      body > :not(#print-sheet) { display: none !important; }
+      #print-sheet { display: block !important; width: 100mm; height: 148mm; overflow: hidden; }
+      #print-sheet img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="/logo.webp" alt="하루들" width="104" height="36">
+    <div class="controls">
+      <span class="state" id="state" aria-live="polite"></span>
+      <button class="btn secondary" type="button" id="pause" hidden>일시정지</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="card stage" aria-label="선택한 엽서">
+      <div>
+        <img id="stage-image" alt="" hidden>
+        <div class="placeholder" id="stage-placeholder">완성된 엽서가 오면<br>오른쪽 목록에 나타나요</div>
+      </div>
+      <div class="ticket">
+        <div class="label" id="stage-label">확인할 엽서</div>
+        <div class="num" id="stage-ticket">-</div>
+        <div class="title" id="stage-title"></div>
+        <button class="btn big" type="button" id="print-btn" disabled>인쇄하기</button>
+        <button class="btn secondary" type="button" id="skip-btn" disabled>인쇄 안 함</button>
+        <div class="phase" id="phase" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <div class="side">
+      <p class="err" id="error" role="alert" hidden></p>
+      <section class="card">
+        <h2>확인 대기 <small id="queued-count"></small></h2>
+        <div class="thumbs" id="queued"></div>
+      </section>
+      <section class="card">
+        <h2>그리는 중</h2>
+        <div class="chips" id="generating"></div>
+      </section>
+      <section class="card">
+        <h2>최근 처리</h2>
+        <ul class="recent" id="recent"></ul>
+      </section>
+    </div>
+  </main>
+
+  <div id="print-sheet" aria-hidden="true"><img id="print-image" alt=""></div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const params = new URLSearchParams(location.search);
+  // 키는 처음 한 번 주소로 받고, 화면에 남지 않게 주소에서 지운다
+  const KEY_STORE = "harudle-print-key";
+  let key = params.get("key");
+  try { if (key) sessionStorage.setItem(KEY_STORE, key); else key = sessionStorage.getItem(KEY_STORE); } catch { /* 저장 불가 환경 */ }
+  if (params.has("key")) { params.delete("key"); history.replaceState(null, "", location.pathname + (params.size ? `?${params}` : "")); }
+  const AUTO = params.get("auto") === "1";
+  // CP1500 엽서 한 장 약 41초. 프린터에 한꺼번에 쌓이지 않게 인쇄 뒤 잠시 인쇄 버튼을 잠근다(초)
+  const GAP_SECONDS = Number(params.get("gap") ?? (AUTO ? 50 : 45));
+
+  let queued = [];
+  let selectedId = null;
+  let cooldownUntil = 0;
+  let busy = false;
+  let paused = false;
+
+  async function api(method, path) {
+    const res = await fetch(path, { method, headers: { "x-print-key": key ?? "" }, cache: "no-store" });
+    if (res.status === 403) throw new Error("인쇄 키가 맞지 않아요. 주소의 ?key= 값을 확인해 주세요.");
+    if (res.status === 404) throw new Error("서버에서 인쇄 대기열이 꺼져 있어요(EVENT_PRINT_QUEUE).");
+    if (res.status === 409) return { conflict: true };
+    if (res.status === 204) return null;
+    if (!res.ok) throw new Error(`서버 오류 (${res.status})`);
+    return res.json();
+  }
+  const showError = message => { $("error").textContent = message ?? ""; $("error").hidden = !message; };
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const imageUrl = id => `/api/jobs/${id}/image`;
+
+  function renderState() {
+    $("state").textContent = AUTO ? (paused ? "자동 인쇄 일시정지" : "자동 인쇄 중") : "확인 후 인쇄";
+    $("state").classList.toggle("paused", AUTO && paused);
+    $("pause").hidden = !AUTO;
+    $("pause").textContent = paused ? "다시 시작" : "일시정지";
+  }
+
+  function renderStage() {
+    const job = queued.find(j => j.id === selectedId);
+    $("stage-image").hidden = !job;
+    $("stage-placeholder").hidden = Boolean(job);
+    if (job && $("stage-image").dataset.id !== job.id) { $("stage-image").src = imageUrl(job.id); $("stage-image").dataset.id = job.id; }
+    $("stage-ticket").textContent = job ? `${job.ticket}번` : "-";
+    $("stage-title").textContent = job?.title ? `# ${job.title}` : "";
+    const cooling = Date.now() < cooldownUntil;
+    $("print-btn").disabled = !job || busy || cooling || AUTO;
+    $("skip-btn").disabled = !job || busy;
+    $("print-btn").hidden = AUTO;
+  }
+
+  function renderQueued() {
+    $("queued-count").textContent = queued.length ? `${queued.length}장` : "";
+    if (!queued.length) return $("queued").replaceChildren(Object.assign(document.createElement("span"), { className: "empty", textContent: "없음" }));
+    $("queued").replaceChildren(...queued.map(j => {
+      const b = Object.assign(document.createElement("button"), { type: "button", className: `thumb${j.id === selectedId ? " selected" : ""}` });
+      const img = Object.assign(document.createElement("img"), { src: imageUrl(j.id), alt: `${j.ticket}번 엽서`, loading: "lazy" });
+      b.append(img, Object.assign(document.createElement("b"), { textContent: `${j.ticket}번` }));
+      b.addEventListener("click", () => { selectedId = j.id; renderQueued(); renderStage(); });
+      return b;
+    }));
+  }
+
+  async function refresh() {
+    try {
+      const s = await api("GET", "/api/print/status");
+      showError(null);
+      queued = s.queued;
+      // 선택한 엽서가 목록에서 빠졌으면 가장 먼저 온 엽서를 고른다
+      if (!queued.some(j => j.id === selectedId)) selectedId = queued[0]?.id ?? null;
+      renderQueued();
+      renderStage();
+      $("generating").replaceChildren(...(s.generating.length
+        ? s.generating.map(g => Object.assign(document.createElement("span"), { className: "chip", textContent: `${g.ticket}번` }))
+        : [Object.assign(document.createElement("span"), { className: "empty", textContent: "없음" })]));
+      $("recent").replaceChildren(...(s.recent.length ? s.recent.map(r => {
+        const li = document.createElement("li");
+        const label = document.createElement("span");
+        label.append(Object.assign(document.createElement("span"), { className: `tag${r.skipped ? " skip" : ""}`, textContent: r.skipped ? "건너뜀" : "인쇄" }),
+          Object.assign(document.createElement("b"), { textContent: `${r.ticket}번` }), document.createTextNode(r.title ?? ""));
+        const again = Object.assign(document.createElement("button"), { className: "btn small secondary", type: "button", textContent: r.skipped ? "되살리기" : "다시 뽑기" });
+        again.addEventListener("click", async () => {
+          again.disabled = true;
+          try { await api("POST", `/api/print/${r.id}/reprint`); await refresh(); } catch (e) { showError(e.message); }
+        });
+        li.append(label, again);
+        return li;
+      }) : [Object.assign(document.createElement("li"), { className: "empty", textContent: "아직 없어요" })]));
+    } catch (e) { showError(e.message); }
+  }
+
+  async function printJob(job) {
+    busy = true;
+    renderStage();
+    try {
+      $("phase").textContent = "엽서 불러오는 중";
+      $("print-image").src = imageUrl(job.id);
+      await $("print-image").decode();
+      $("phase").textContent = "프린터로 보내는 중";
+      // --kiosk-printing으로 실행하면 인쇄 창 없이 기본 프린터(CP1500)로 바로 보낸다
+      window.print();
+      await api("POST", `/api/print/${job.id}/done`);
+      cooldownUntil = Date.now() + GAP_SECONDS * 1000;
+    } finally {
+      busy = false;
+      await refresh();
+    }
+  }
+
+  $("print-btn").addEventListener("click", async () => {
+    const job = queued.find(j => j.id === selectedId);
+    if (!job) return;
+    try {
+      const claimed = await api("POST", `/api/print/${job.id}/claim`);
+      if (!claimed || claimed.conflict) { showError(`${job.ticket}번은 이미 처리됐어요.`); return refresh(); }
+      await printJob(claimed);
+    } catch (e) { showError(e.message); busy = false; renderStage(); }
+  });
+
+  $("skip-btn").addEventListener("click", async () => {
+    const job = queued.find(j => j.id === selectedId);
+    if (!job || !confirm(`${job.ticket}번 엽서를 인쇄하지 않을까요? 최근 처리 목록에서 되살릴 수 있어요.`)) return;
+    try { await api("POST", `/api/print/${job.id}/skip`); await refresh(); } catch (e) { showError(e.message); }
+  });
+
+  $("pause").addEventListener("click", () => { paused = !paused; renderState(); });
+
+  // 인쇄 뒤 버튼 잠금 남은 시간 표시
+  setInterval(() => {
+    const left = Math.ceil((cooldownUntil - Date.now()) / 1000);
+    if (!busy) $("phase").textContent = left > 0 ? `프린터 출력 중 · ${left}초 뒤 다음 인쇄` : "";
+    renderStage();
+  }, 1000);
+
+  // ?auto=1: 확인 없이 완성 순서대로 자동 인쇄
+  async function autoLoop() {
+    while (true) {
+      if (paused || busy || Date.now() < cooldownUntil) { await sleep(1000); continue; }
+      try {
+        const job = await api("POST", "/api/print/claim");
+        if (!job || job.conflict) { await sleep(2000); continue; }
+        await printJob(job);
+      } catch (e) { showError(e.message); await sleep(3000); }
+    }
+  }
+
+  renderState();
+  refresh();
+  setInterval(refresh, 3000);
+  if (AUTO) autoLoop();
+})();
+</script>
+</body>
+</html>

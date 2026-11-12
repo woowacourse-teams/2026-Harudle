@@ -41,6 +41,13 @@ export const config = Object.freeze({
   accessCode: env.EVENT_ACCESS_CODE ?? "",
   resultTtlMs: int("EVENT_RESULT_TTL_MINUTES", 120) * 60_000,
 
+  // 부스 운영: 입력 기기 여러 대 + 프린터 기기 1대. 완성 엽서는 인쇄 대기열로 보내 /print 화면이 자동 인쇄한다.
+  printQueue: env.EVENT_PRINT_QUEUE === "true",
+  printKey: env.EVENT_PRINT_KEY ?? "",
+  printLeaseMs: int("EVENT_PRINT_LEASE_SECONDS", 120) * 1000,
+  // 결과 화면을 보여 준 뒤 입력 화면으로 자동으로 돌아가는 시간. 0이면 돌아가지 않는다.
+  resultResetSeconds: int("EVENT_RESULT_RESET_SECONDS", 10),
+
   diaryMinLength: 10,
   diaryMaxLength: 1000,
 });
@@ -51,5 +58,8 @@ export function validateConfig() {
   }
   if (config.imageSize && !["1K", "2K", "4K"].includes(config.imageSize)) {
     throw new Error(`EVENT_IMAGE_SIZE는 1K, 2K, 4K 중 하나이거나 비어 있어야 합니다: ${config.imageSize}`);
+  }
+  if (config.printQueue && config.printKey.length < 12) {
+    throw new Error("EVENT_PRINT_QUEUE=true이면 12자 이상의 EVENT_PRINT_KEY가 필요합니다.");
   }
 }
