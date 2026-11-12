@@ -116,8 +116,9 @@
   try { if (key) sessionStorage.setItem(KEY_STORE, key); else key = sessionStorage.getItem(KEY_STORE); } catch { /* 저장 불가 환경 */ }
   if (params.has("key")) { params.delete("key"); history.replaceState(null, "", location.pathname + (params.size ? `?${params}` : "")); }
   const AUTO = params.get("auto") === "1";
-  // CP1500 엽서 한 장 약 41초. 프린터에 한꺼번에 쌓이지 않게 인쇄 뒤 잠시 인쇄 버튼을 잠근다(초)
-  const GAP_SECONDS = Number(params.get("gap") ?? (AUTO ? 50 : 45));
+  // 수동 인쇄는 기다리지 않는다. 연달아 누르면 프린터(CP1500) 자체 인쇄 대기열에 쌓인다.
+  // 자동 인쇄(?auto=1)만 한꺼번에 몰리지 않게 기본 50초 간격을 둔다. ?gap=(초)로 바꿀 수 있다.
+  const GAP_SECONDS = Number(params.get("gap") ?? (AUTO ? 50 : 0));
 
   let queued = [];
   let selectedId = null;
