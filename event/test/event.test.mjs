@@ -49,6 +49,8 @@ test("최종 지시문에 프레임 규칙, 자막 4개, 제목이 들어간다"
   assert.match(task, /upper-right of the top-right panel under the planet's legs/);
   assert.match(task, /LETTERING:\nWrite all four captions and the comic title in the same lettering style as the frame/);
   assert.match(task, /left 70% of the panel width/);
+  assert.match(task, /CAST AND CONTINUITY:\n.*\n.*\nThe protagonist \(the diary writer/);
+  assert.match(task, /PROTAGONIST CHECK:/);
 });
 
 test("일기 원문을 diary 태그 안에 넣는다", () => {
