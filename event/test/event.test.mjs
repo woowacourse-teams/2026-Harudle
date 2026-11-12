@@ -46,6 +46,9 @@ test("최종 지시문에 프레임 규칙, 자막 4개, 제목이 들어간다"
   assert.match(task, /Handwrite exactly "# 바람 부는 날의 출근길" once/);
   for (let i = 1; i <= 4; i++) assert.match(task, new RegExp(`Caption reads exactly: "자막 ${i}"`));
   assert.doesNotMatch(task, /square 1:1 canvas|FINAL FOOTER LOCK/);
+  assert.match(task, /upper-right of the top-right panel under the planet's legs/);
+  assert.match(task, /LETTERING:\nWrite all four captions and the comic title in the same lettering style as the frame/);
+  assert.match(task, /left 70% of the panel width/);
 });
 
 test("일기 원문을 diary 태그 안에 넣는다", () => {

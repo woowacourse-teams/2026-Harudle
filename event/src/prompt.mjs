@@ -6,7 +6,12 @@ const PANEL_POSITIONS = ["TOP LEFT", "TOP RIGHT", "BOTTOM LEFT", "BOTTOM RIGHT"]
 const STORY_ROLES = ["SETUP", "ACTION", "ESCALATION", "RESOLUTION"];
 const CAPTION_POSITION_RULE = "Place this caption inside the upper-left area of this panel with consistent inner "
   + "padding. Use clean scene negative space behind it; never place it below the scene, outside the panel, in a "
-  + "separate caption band or strip, or across a panel divider.";
+  + "separate caption band or strip, or across a panel divider. Keep the whole caption on one line within the left "
+  + "70% of the panel width; if it does not fit, write it slightly smaller rather than extending it to the right edge.";
+// 프레임 글씨("우아한테크코스 8기 데모데이", "@harudle.official")와 같은 모양으로 쓰게 한다
+const FRAME_LETTERING = "the same lettering style as the frame's printed text \"우아한테크코스 8기 데모데이\" and "
+  + `"${"@harudle.official"}": rounded, evenly weighted, medium-weight Korean handwriting with soft round stroke ends, `
+  + "slightly irregular but neat, not bold, not blocky, not condensed";
 const SCENE_OBJECT_TEXT_RULE = "Inside scene objects—including phones, screens, chats, documents, signs, clocks, "
   + "and packaging—render no letters, numbers, pseudo-text, fake Korean glyphs, or readable UI. Keep them text-free: "
   + "use blank surfaces or clear non-text visuals such as simple icons, pictograms, or images. The assigned panel "
@@ -90,12 +95,15 @@ The second attached image is the fixed 2:3 postcard frame. Your output is that s
 Keep the frame layout identical: the same mint background, the same four white rounded panels at the same positions and sizes with the same thick black outlines, the same top text, the same planet and sparkles, the spiky green creature, the white bird with a cane, the white puppy, the QR code, and "${CREATOR_HANDLE}" at the bottom left.
 Never move, redraw, restyle, recolor, resize, crop, or cover any of those frame elements.
 Draw each panel's scene only inside the white interior of its rounded panel, on a white panel background. Keep every character, object, motion mark, and caption fully inside that white interior and clear of the black outline.
-Leave the panel corners where the frame creatures overlap (lower-left of the top-left panel, lower-left of the bottom-left panel, lower-right of the bottom-right panel) free of scene details.
+Leave the panel corners where the frame creatures overlap (upper-right of the top-right panel under the planet's legs, lower-left of the top-left panel, lower-left of the bottom-left panel, lower-right of the bottom-right panel) free of scene details and text. The planet covers the upper-right corner of the top-right panel, so the top-right panel's caption must end well before that corner.
+
+LETTERING:
+Write all four captions and the comic title in ${FRAME_LETTERING}. Use the same letter size, stroke weight, and color for all four captions.
 Do not add any grid border, separator, stick, footer band, extra puppy, or other decoration.
 
 COMIC TITLE:
 Handwrite exactly "# ${storyboard.title}" once, in pure black, on the mint background below the bottom-left panel: left-aligned with the left edge of the bottom-left panel, on its own line directly above "${CREATOR_HANDLE}", to the right of the white bird's feet and left of the QR code.
-Make it slightly larger than "${CREATOR_HANDLE}", in the same rounded marker handwriting. Never place the title inside a panel or above the panels.`;
+Make it about the same height as the frame's top text "우아한테크코스 8기 데모데이", in the same rounded lettering with the same stroke weight, never bolder or blockier than that top text. Never place the title inside a panel or above the panels.`;
 }
 
 export function renderFrameFinalTask(storyboard) {
