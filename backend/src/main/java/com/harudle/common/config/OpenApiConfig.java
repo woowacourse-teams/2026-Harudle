@@ -80,7 +80,8 @@ public class OpenApiConfig {
             case "/api/v1/reports" -> method == PathItem.HttpMethod.POST;
             case "/api/v1/blocks/{userId}" ->
                     method == PathItem.HttpMethod.PUT || method == PathItem.HttpMethod.DELETE;
-            case "/api/v1/notifications/{notificationId}" -> method == PathItem.HttpMethod.PATCH;
+            case "/api/v1/notifications/{notificationId}", "/api/v1/notifications/read-all" ->
+                    method == PathItem.HttpMethod.PATCH;
             default -> false;
         };
     }
