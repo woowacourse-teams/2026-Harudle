@@ -3,6 +3,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import http from "node:http";
+import QRCode from "qrcode";
 import path from "node:path";
 import { config, validateConfig } from "./src/config.mjs";
 import { JobQueue } from "./src/jobs.mjs";
@@ -30,7 +31,19 @@ const STATIC = {
   "/logo.webp": { file: "logo.webp", type: "image/webp", maxAge: 3600 },
   "/sample.webp": { data: sample.data, type: sample.type, maxAge: 3600 },
 };
-const JOB_PATH = /^\/api\/jobs\/([0-9a-f-]{36})(\/image)?$/;
+const JOB_PATH = /^\/api\/jobs\/([0-9a-f-]{36})(\/image|\/qr\.svg)?$/;
+const NICKNAME_MAX = 20;
+const SAVE_PAGE_PATH = /^\/p\/[0-9a-f-]{36}$/;
+
+// 결과 화면의 QR: 참여자 휴대폰에서 저장 페이지(/p/:id)를 열게 한다. 주소는 Host Nginx가 넘긴 Host와 프로토콜로 만든다.
+async function sendImageQr(req, res, id) {
+  if (!queue.resultPath(id)) return send(res, 404, { error: "NOT_FOUND" });
+  const proto = req.headers["x-forwarded-proto"] === "https" ? "https" : "http";
+  const host = String(req.headers.host ?? "localhost").replace(/[^a-zA-Z0-9.:\-]/g, "");
+  const svg = await QRCode.toString(`${proto}://${host}/p/${id}`, { type: "svg", margin: 1, errorCorrectionLevel: "M" });
+  res.writeHead(200, { "content-type": "image/svg+xml", "cache-control": "private, max-age=600" });
+  res.end(svg);
+}
 const PRINT_ACTION_PATH = /^\/api\/print\/([0-9a-f-]{36})\/(claim|done|reprint|skip)$/;
 const digest = value => createHash("sha256").update(String(value)).digest();
 
@@ -101,7 +114,12 @@ async function createJob(req, res) {
       message: `일기는 ${config.diaryMinLength}자 이상 ${config.diaryMaxLength}자 이하로 적어 주세요.`,
     });
   }
-  const result = queue.submit(diary, clientIp(req));
+  // 크루 닉네임: 인쇄 화면에서 엽서 주인을 찾는 용도. 줄바꿈·제어 문자는 지운다.
+  const nickname = typeof body.nickname === "string" ? body.nickname.replace(/[\u0000-\u001f\u007f]/g, "").trim() : "";
+  if ([...nickname].length < 1 || [...nickname].length > NICKNAME_MAX) {
+    return send(res, 400, { error: "INVALID_NICKNAME", message: `크루 닉네임을 1~${NICKNAME_MAX}자로 적어 주세요.` });
+  }
+  const result = queue.submit(diary, clientIp(req), nickname);
   if (result.error) return send(res, result.status, { error: result.error, message: result.message });
   send(res, 202, queue.get(result.job.id));
 }
@@ -124,6 +142,7 @@ const server = http.createServer(async (req, res) => {
         resultTtlMinutes: config.resultTtlMs / 60_000,
         printQueue: config.printQueue,
         resultResetSeconds: config.resultResetSeconds,
+        nicknameMaxLength: NICKNAME_MAX,
       });
     }
     if (url.pathname.startsWith("/api/print/")) return handlePrint(req, res, url);
@@ -134,6 +153,7 @@ const server = http.createServer(async (req, res) => {
         const job = queue.get(match[1]);
         return job ? send(res, 200, job) : send(res, 404, { error: "NOT_FOUND", message: "만료되었거나 없는 작업이에요." });
       }
+      if (match[2] === "/qr.svg") return await sendImageQr(req, res, match[1]);
       const file = queue.resultPath(match[1]);
       if (!file) return send(res, 404, { error: "NOT_FOUND", message: "이미지가 없어요." });
       const { size } = await stat(file);
@@ -142,6 +162,7 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, headers);
       return createReadStream(file).pipe(res);
     }
+    if (req.method === "GET" && SAVE_PAGE_PATH.test(url.pathname)) return await serveStatic(res, { file: "save.html", type: "text/html; charset=utf-8" });
     const page = req.method === "GET" && STATIC[url.pathname];
     if (page) return await serveStatic(res, page);
     send(res, 404, { error: "NOT_FOUND" });

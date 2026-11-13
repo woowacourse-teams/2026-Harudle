@@ -30,6 +30,15 @@ test("접수 순서대로 번호표가 붙고, 완성되면 인쇄 대기열에 
   assert.equal(queue.get(a.id).print, "queued");
 });
 
+test("크루 닉네임이 번호표와 함께 조회·인쇄 현황에 나온다", async () => {
+  const { queue } = setup();
+  const job = queue.submit("닉네임 시험용 이야기입니다", "ip", "제신").job;
+  assert.equal(queue.get(job.id).nickname, "제신");
+  await settle();
+  assert.deepEqual(queue.printStatus().queued.map(j => [j.ticket, j.nickname]), [[1, "제신"]]);
+  assert.equal(queue.claimPrint(job.id).nickname, "제신");
+});
+
 test("같은 엽서를 두 번 가져가지 않고, 완료 후 최근 목록에 남는다", async () => {
   const { queue } = setup();
   queue.submit("첫 번째 이야기입니다", "ip");

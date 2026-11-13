@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <title>하루들 네컷만화 엽서</title>
+  <style>
+    /* 결과 화면 QR로 여는 참여자 휴대폰용 저장 페이지 */
+    :root { --mint: #a5fcd8; --ink: #111111; --paper: #ffffff; --lilac: #d2b3f4; --muted: #2c4a3f; --outline: 3px solid var(--ink); }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      min-height: 100dvh; background: var(--mint); color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    main { width: min(480px, 100%); margin: 0 auto; padding: 16px 16px calc(28px + env(safe-area-inset-bottom)); display: grid; gap: 16px; }
+    header { display: flex; justify-content: space-between; align-items: center; }
+    header img { height: 30px; display: block; }
+    .chip { white-space: nowrap; font-size: 12px; font-weight: 700; background: var(--ink); color: var(--mint); border-radius: 999px; padding: 6px 12px; }
+    h1 { margin: 4px 0 0; font-size: 24px; line-height: 1.3; letter-spacing: -0.02em; }
+    h1 em { font-style: normal; background: linear-gradient(transparent 58%, var(--lilac) 58%, var(--lilac) 92%, transparent 92%); padding: 0 2px; }
+    .sub { margin: 4px 0 0; font-size: 14px; color: var(--muted); }
+    .card { background: var(--paper); border: var(--outline); border-radius: 22px; padding: 12px; }
+    .card img { display: block; width: 100%; height: auto; border-radius: 6px; border: 2px solid var(--ink); background: var(--mint); }
+    .btn {
+      display: flex; align-items: center; justify-content: center; width: 100%; min-height: 56px; border: var(--outline); border-radius: 999px;
+      background: var(--ink); color: #fff; font: inherit; font-size: 17px; font-weight: 800; text-decoration: none; cursor: pointer;
+    }
+    .btn.secondary { background: var(--paper); color: var(--ink); min-height: 50px; font-size: 15px; }
+    .hint { margin: 0; font-size: 13px; color: var(--muted); text-align: center; line-height: 1.6; }
+    .msg { text-align: center; padding: 40px 16px; font-size: 16px; line-height: 1.6; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <a href="https://www.harudle.com/landing"><img src="/logo.webp" alt="하루들" width="86" height="30"></a>
+      <span class="chip">우테코 8기 데모데이</span>
+    </header>
+
+    <section id="ok" hidden>
+      <h1 id="heading"><em>네컷만화</em> 엽서가<br>완성됐어요</h1>
+      <p class="sub" id="title"></p>
+    </section>
+
+    <div class="card" id="card" hidden>
+      <img id="postcard" alt="완성된 네컷만화 엽서">
+    </div>
+
+    <div id="actions" hidden>
+      <button class="btn" type="button" id="save">사진에 저장하기</button>
+      <p class="hint" style="margin-top:10px">버튼이 안 되면 이미지를 길게 눌러 저장해 주세요.<br>엽서 이미지는 <span id="ttl">2시간</span> 뒤 삭제돼요.</p>
+    </div>
+
+    <a class="btn secondary" href="https://www.harudle.com/landing" id="more" hidden>하루들에서 더 만들어 보기</a>
+
+    <p class="msg" id="gone" hidden>엽서를 찾을 수 없어요.<br>시간이 지나 삭제됐거나 주소가 잘못됐어요.</p>
+  </main>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const id = (location.pathname.match(/^\/p\/([0-9a-f-]{36})$/) ?? [])[1];
+  const imageUrl = `/api/jobs/${id}/image`;
+  const fileName = "harudle-demoday.png";
+
+  async function load() {
+    if (!id) return showGone();
+    try {
+      const [res, cfg] = await Promise.all([fetch(`/api/jobs/${id}`, { cache: "no-store" }), fetch("/api/config").then(r => r.json()).catch(() => null)]);
+      if (!res.ok) return showGone();
+      const job = await res.json();
+      if (job.status !== "done") return showGone();
+      if (job.nickname) $("heading").innerHTML = `<span></span>님의 <em>네컷만화</em><br>엽서예요`, $("heading").querySelector("span").textContent = job.nickname;
+      $("title").textContent = job.title ? `# ${job.title}` : "";
+      if (cfg?.resultTtlMinutes) $("ttl").textContent = cfg.resultTtlMinutes % 60 === 0 ? `${cfg.resultTtlMinutes / 60}시간` : `${cfg.resultTtlMinutes}분`;
+      $("postcard").src = imageUrl;
+      ["ok", "card", "actions", "more"].forEach(x => { $(x).hidden = false; });
+    } catch { showGone(); }
+  }
+  function showGone() { $("gone").hidden = false; $("more").hidden = false; }
+
+  // 휴대폰 공유 창으로 보내면 아이폰은 "이미지 저장"으로 사진 앱에 바로 들어간다. 안 되면 파일로 내려받는다.
+  $("save").addEventListener("click", async () => {
+    try {
+      const blob = await fetch(imageUrl).then(r => { if (!r.ok) throw new Error(); return r.blob(); });
+      const file = new File([blob], fileName, { type: "image/png" });
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: "하루들 네컷만화 엽서" });
+        return;
+      }
+      const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: fileName });
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+    } catch (e) {
+      if (e?.name === "AbortError") return; // 공유 창을 닫은 경우
+      location.href = `${imageUrl}?download=1`;
+    }
+  });
+
+  load();
+})();
+</script>
+</body>
+</html>

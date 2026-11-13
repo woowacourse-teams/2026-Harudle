@@ -116,6 +116,12 @@
     }
     .pickup-text { font-size: clamp(16px, 1.5vw, 19px); font-weight: 700; line-height: 1.45; }
     .ticket-hint { margin: 0 0 14px; font-size: 15px; font-weight: 700; }
+    .from-name { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 800; color: var(--ink); flex: 1; min-width: 0; }
+    .from-name input { flex: 1; min-width: 0; max-width: 220px; border: 0; border-bottom: 2px solid #b9e9d4; background: transparent; font: inherit; font-size: 16px; font-weight: 700; padding: 4px 2px; color: var(--ink); }
+    .from-name input:focus { outline: none; border-bottom-color: var(--ink); }
+    .from-name input::placeholder { color: #7a8f86; font-weight: 600; }
+    .save-phone { display: flex; align-items: center; gap: 14px; padding: 4px 4px 6px; font-size: 14px; line-height: 1.5; }
+    .save-phone img { flex: none; width: 112px; height: 112px; border: 2px solid var(--ink); border-radius: 10px; background: #fff; padding: 4px; }
     [hidden] { display: none !important; }
     /* 인쇄: Canon SELPHY CP1500 엽서 용지(100x148mm)에 완성 엽서만 꽉 채운다.
        엽서 비율(2:3)과 용지 비율(1:1.48)이 조금 달라 위아래가 약 1mm씩 잘린다. */
@@ -153,7 +159,7 @@
           <div class="drawing-stamp">그리는 중<small>HARUDLE</small></div>
           <p class="to">To. 데모데이에서의 나에게</p>
           <p class="story" id="back-story"></p>
-          <div class="from"><span>From. 오늘의 나</span><span>하루들이 네 컷으로 그리고 있어요</span></div>
+          <div class="from"><span id="back-from">From. 오늘의 나</span><span>하루들이 네 컷으로 그리고 있어요</span></div>
         </div>
       </div>
     </div>
@@ -168,7 +174,12 @@
           <label class="to" for="story">To. 데모데이에서의 나에게</label>
           <textarea id="story" name="story" maxlength="1000" required
             placeholder="발표 직전에 노트북이 꺼져서 식은땀이 났는데, 팀원이 충전기를 들고 뛰어왔다. 다 같이 떡볶이를 먹었다."></textarea>
-          <div class="from"><span>누가, 무엇을 했는지 적으면 더 재밌어요</span><span id="count" aria-live="polite">0 / 1000</span></div>
+          <div class="from">
+            <label class="from-name" for="nickname">From.
+              <input id="nickname" name="nickname" maxlength="20" autocomplete="off" required placeholder="크루 닉네임">
+            </label>
+            <span id="count" aria-live="polite">0 / 1000</span>
+          </div>
         </div>
         <button class="btn" id="submit" type="submit">네컷만화로 그리기 <span aria-hidden="true">→</span></button>
         <p class="err" id="form-error" role="alert"></p>
@@ -189,7 +200,11 @@
       <div class="box actions" id="result-view" hidden>
         <div class="pickup" id="pickup" hidden>
           <span class="pickup-num" id="pickup-ticket"></span>
-          <span class="pickup-text">프린터에서 이 번호의<br>엽서를 받아 가세요</span>
+          <span class="pickup-text"><b id="pickup-name"></b>님,<br>프린터에서 이 번호의<br>엽서를 받아 가세요</span>
+        </div>
+        <div class="save-phone" id="save-phone">
+          <img id="save-qr" alt="휴대폰으로 엽서 이미지 받기 QR 코드" width="112" height="112">
+          <span>휴대폰 카메라로 찍으면<br><b>내 휴대폰에 엽서를 저장</b>할 수 있어요</span>
         </div>
         <button class="btn" type="button" id="print">엽서 인쇄하기</button>
         <a class="btn secondary" id="download" download="harudle-demoday.png">이미지 저장하기</a>
@@ -244,8 +259,9 @@
     const img = $("stage-image");
     img.src = SAMPLE.src; img.alt = SAMPLE.alt; img.classList.add("sample");
   }
-  function flipToBack(story) {
+  function flipToBack(story, nickname) {
     $("back-story").textContent = story;
+    $("back-from").textContent = nickname ? `From. ${nickname}` : "From. 오늘의 나";
     $("flip").classList.add("flipped");
   }
   function flipToFront() { $("flip").classList.remove("flipped"); }
@@ -265,10 +281,17 @@
     $("form-error").textContent = "";
   }
   $("story").addEventListener("input", updateCount);
+  $("nickname").addEventListener("input", () => { $("form-error").textContent = ""; });
 
   $("form-view").addEventListener("submit", async event => {
     event.preventDefault();
     const diary = $("story").value.trim();
+    const nickname = $("nickname").value.trim();
+    if (!nickname) {
+      $("form-error").textContent = "크루 닉네임을 적어 주세요. 프린터에서 엽서를 찾을 때 써요.";
+      $("nickname").focus();
+      return;
+    }
     if ([...diary].length < limits.diaryMinLength) {
       $("form-error").textContent = `이야기를 ${limits.diaryMinLength}자 이상 적어 주세요.`;
       return;
@@ -278,11 +301,11 @@
       const res = await fetch("/api/jobs", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ diary, code }),
+        body: JSON.stringify({ diary, nickname, code }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.message ?? "잠시 후 다시 시도해 주세요.");
-      flipToBack(diary);
+      flipToBack(diary, nickname);
       track(body.id, body);
     } catch (error) {
       $("form-error").textContent = error.message;
@@ -300,7 +323,7 @@
     });
     $("queue-hint").textContent = job.status === "queued" && job.position > 1 ? `앞에 ${job.position - 1}명이 기다리고 있어요.` : "";
     $("progress-ticket").hidden = !(limits.printQueue && job.ticket);
-    $("progress-ticket").textContent = `내 엽서 번호: ${job.ticket}번`;
+    $("progress-ticket").textContent = `내 엽서 번호: ${job.ticket}번 · ${job.nickname ?? ""}`;
   }
 
   function track(id, initial) {
@@ -342,8 +365,11 @@
     const queued = limits.printQueue;
     $("pickup").hidden = !queued;
     $("pickup-ticket").textContent = `${job.ticket}번`;
+    $("pickup-name").textContent = job.nickname ?? "";
+    // 참여자 휴대폰으로 받는 QR (대기열 모드가 아니어도 보여 준다)
+    $("save-qr").src = `/api/jobs/${id}/qr.svg`;
     $("print").hidden = queued;
-    $("download").hidden = queued;
+    $("download").hidden = false;
     $("result-notice").hidden = queued;
     flipToFront();
     show("result-view", [`<em>네컷만화</em> 엽서가<br>완성됐어요`, job.title ? `# ${job.title}` : "저장해서 간직해 보세요."]);
@@ -362,6 +388,7 @@
   }
   function reset() {
     $("story").value = "";
+    $("nickname").value = "";
     updateCount();
     backToForm();
   }

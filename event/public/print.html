@@ -27,6 +27,7 @@
     .ticket { text-align: center; display: grid; gap: 12px; }
     .ticket .label { font-size: 15px; color: var(--muted); }
     .ticket .num { font-size: 84px; font-weight: 900; line-height: 1; letter-spacing: -0.04em; }
+    .ticket .name { font-size: 26px; font-weight: 900; word-break: break-all; min-height: 1.2em; }
     .ticket .title { font-size: 16px; font-weight: 700; word-break: keep-all; min-height: 1.2em; }
     .ticket .phase { font-size: 14px; color: var(--muted); min-height: 1.2em; }
     .btn { border: var(--outline); border-radius: 999px; background: var(--ink); color: #fff; font: inherit; font-weight: 800; cursor: pointer; padding: 12px 18px; font-size: 16px; }
@@ -41,6 +42,7 @@
     .thumb { border: 2.5px solid var(--ink); border-radius: 12px; background: #f6fffb; padding: 4px; cursor: pointer; font: inherit; text-align: center; }
     .thumb img { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 6px; display: block; }
     .thumb b { display: block; font-size: 15px; margin-top: 4px; }
+    .thumb small { display: block; font-size: 12px; font-weight: 700; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .thumb.selected { background: var(--lilac); box-shadow: 0 0 0 3px var(--lilac); }
     .chips { display: flex; flex-wrap: wrap; gap: 8px; }
     .chip { font-weight: 800; font-size: 16px; border: 2.5px dashed var(--ink); border-radius: 999px; padding: 4px 12px; color: var(--muted); }
@@ -82,6 +84,7 @@
       <div class="ticket">
         <div class="label" id="stage-label">확인할 엽서</div>
         <div class="num" id="stage-ticket">-</div>
+        <div class="name" id="stage-name"></div>
         <div class="title" id="stage-title"></div>
         <button class="btn big" type="button" id="print-btn" disabled>인쇄하기</button>
         <button class="btn secondary" type="button" id="skip-btn" disabled>인쇄 안 함</button>
@@ -156,6 +159,7 @@
     $("stage-placeholder").hidden = Boolean(job);
     if (job && $("stage-image").dataset.id !== job.id) { $("stage-image").src = imageUrl(job.id); $("stage-image").dataset.id = job.id; }
     $("stage-ticket").textContent = job ? `${job.ticket}번` : "-";
+    $("stage-name").textContent = job?.nickname ?? "";
     $("stage-title").textContent = job?.title ? `# ${job.title}` : "";
     const cooling = Date.now() < cooldownUntil;
     $("print-btn").disabled = !job || busy || cooling || AUTO;
@@ -169,7 +173,8 @@
     $("queued").replaceChildren(...queued.map(j => {
       const b = Object.assign(document.createElement("button"), { type: "button", className: `thumb${j.id === selectedId ? " selected" : ""}` });
       const img = Object.assign(document.createElement("img"), { src: imageUrl(j.id), alt: `${j.ticket}번 엽서`, loading: "lazy" });
-      b.append(img, Object.assign(document.createElement("b"), { textContent: `${j.ticket}번` }));
+      b.append(img, Object.assign(document.createElement("b"), { textContent: `${j.ticket}번` }),
+        Object.assign(document.createElement("small"), { textContent: j.nickname ?? "" }));
       b.addEventListener("click", () => { selectedId = j.id; renderQueued(); renderStage(); });
       return b;
     }));
@@ -185,13 +190,13 @@
       renderQueued();
       renderStage();
       $("generating").replaceChildren(...(s.generating.length
-        ? s.generating.map(g => Object.assign(document.createElement("span"), { className: "chip", textContent: `${g.ticket}번` }))
+        ? s.generating.map(g => Object.assign(document.createElement("span"), { className: "chip", textContent: `${g.ticket}번 ${g.nickname ?? ""}` }))
         : [Object.assign(document.createElement("span"), { className: "empty", textContent: "없음" })]));
       $("recent").replaceChildren(...(s.recent.length ? s.recent.map(r => {
         const li = document.createElement("li");
         const label = document.createElement("span");
         label.append(Object.assign(document.createElement("span"), { className: `tag${r.skipped ? " skip" : ""}`, textContent: r.skipped ? "건너뜀" : "인쇄" }),
-          Object.assign(document.createElement("b"), { textContent: `${r.ticket}번` }), document.createTextNode(r.title ?? ""));
+          Object.assign(document.createElement("b"), { textContent: `${r.ticket}번 ${r.nickname ?? ""}` }), document.createTextNode(r.title ? ` · ${r.title}` : ""));
         const again = Object.assign(document.createElement("button"), { className: "btn small secondary", type: "button", textContent: r.skipped ? "되살리기" : "다시 뽑기" });
         again.addEventListener("click", async () => {
           again.disabled = true;
@@ -233,7 +238,7 @@
 
   $("skip-btn").addEventListener("click", async () => {
     const job = queued.find(j => j.id === selectedId);
-    if (!job || !confirm(`${job.ticket}번 엽서를 인쇄하지 않을까요? 최근 처리 목록에서 되살릴 수 있어요.`)) return;
+    if (!job || !confirm(`${job.ticket}번(${job.nickname ?? ""}) 엽서를 인쇄하지 않을까요? 최근 처리 목록에서 되살릴 수 있어요.`)) return;
     try { await api("POST", `/api/print/${job.id}/skip`); await refresh(); } catch (e) { showError(e.message); }
   });
 

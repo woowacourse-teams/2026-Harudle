@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "google-auth-library": "9.15.1",
+    "qrcode": "1.5.4",
     "sharp": "0.34.4"
   }
 }

@@ -37,7 +37,7 @@ export class JobQueue {
   }
 
   /** 접수 가능하면 job을, 아니면 { error, status }를 돌려준다. 거절된 요청은 횟수를 차감하지 않는다. */
-  submit(diary, ip) {
+  submit(diary, ip, nickname = "") {
     if (this.#waiting.length >= config.maxQueue) {
       return { error: "CAPACITY_EXCEEDED", status: 503, message: "지금 만드는 사람이 많아요. 잠시 후 다시 시도해 주세요." };
     }
@@ -56,7 +56,8 @@ export class JobQueue {
     this.#daily.count++;
 
     // 그날의 접수 순번을 번호표로 쓴다. 프린터 앞에서 자기 엽서를 찾는 데 쓴다.
-    const job = { id: randomUUID(), ticket: this.#daily.count, status: "queued", stage: null, createdAt: now, diary, title: null, error: null, print: null };
+    // 닉네임은 부스 운영자가 엽서 주인을 찾는 데만 쓴다. AI로 보내지 않고 메모리에만 둔다.
+    const job = { id: randomUUID(), ticket: this.#daily.count, nickname, status: "queued", stage: null, createdAt: now, diary, title: null, error: null, print: null };
     this.#jobs.set(job.id, job);
     this.#waiting.push(job);
     this.log({ event: "job_accepted", jobId: job.id, ticket: job.ticket, queue: this.#waiting.length, dailyCount: this.#daily.count });
@@ -68,7 +69,7 @@ export class JobQueue {
     const job = this.#jobs.get(id);
     if (!job) return null;
     const position = job.status === "queued" ? this.#waiting.indexOf(job) + 1 : 0;
-    return { id: job.id, ticket: job.ticket, status: job.status, stage: job.stage, position, title: job.title, error: job.error, print: job.print?.state ?? null };
+    return { id: job.id, ticket: job.ticket, nickname: job.nickname, status: job.status, stage: job.stage, position, title: job.title, error: job.error, print: job.print?.state ?? null };
   }
 
   #releaseExpiredLeases(now) {
@@ -96,7 +97,7 @@ export class JobQueue {
       if (!job || job.status !== "done" || job.print?.state !== "queued") { if (id) return null; continue; }
       job.print = { state: "printing", leaseUntil: now + config.printLeaseMs, claimedAt: now };
       this.log({ event: "print_claimed", jobId: job.id, ticket: job.ticket });
-      return { id: job.id, ticket: job.ticket, title: job.title };
+      return { id: job.id, ticket: job.ticket, nickname: job.nickname, title: job.title };
     }
     return null;
   }
@@ -135,14 +136,14 @@ export class JobQueue {
   printStatus() {
     this.#releaseExpiredLeases(this.now());
     const all = [...this.#jobs.values()];
-    const brief = j => ({ id: j.id, ticket: j.ticket, title: j.title });
+    const brief = j => ({ id: j.id, ticket: j.ticket, nickname: j.nickname, title: j.title });
     return {
       queued: this.#printQueue.map(id => this.#jobs.get(id)).filter(j => j?.print?.state === "queued").map(brief),
       printing: all.filter(j => j.print?.state === "printing").map(brief),
       recent: all.filter(j => j.print?.state === "printed" || j.print?.state === "skipped")
         .sort((a, b) => b.print.printedAt - a.print.printedAt).slice(0, 10)
         .map(j => ({ ...brief(j), skipped: j.print.state === "skipped" })),
-      generating: all.filter(j => j.status === "queued" || j.status === "running").map(j => ({ ticket: j.ticket })),
+      generating: all.filter(j => j.status === "queued" || j.status === "running").map(j => ({ ticket: j.ticket, nickname: j.nickname })),
     };
   }
 
