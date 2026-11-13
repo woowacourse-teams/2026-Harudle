@@ -22,6 +22,22 @@ const PROTAGONIST_RULE = "The protagonist (the diary writer, \"I\") is the refer
   + "person gets a different outlined non-curly style (short straight hair with a fringe, a short spiky crop, or a "
   + "neat bob) kept the same in every panel.";
 
+// 운영에서 옷·머리·소품을 청록·파랑·회색으로 칠하고, 주변 인물을 사실적으로 그리는 결과가 나와
+// "하지 마" 대신 허용되는 모습을 직접 적는다. 색 지정이 있는 이야기에도 항상 들어간다.
+// 그림체 지시문은 CAST AND CONTINUITY가 정한 의상 색(팀 티셔츠 등)을 허용하므로, 지정되지 않은 것만 흰색으로 묶는다.
+const LINE_ART_RULE = "LINE ART: Draw every scene as black marker line art on a white background, exactly like "
+  + "the reference. Only colors explicitly assigned in CAST AND CONTINUITY or FOCAL COLOR SUGGESTIONS may appear. "
+  + "Everything without an assigned color stays white inside its outline: unassigned clothing, all hair, skin, "
+  + "furniture, walls, floors, screens, and other props, with no gray fills, shading, gradients, or tints. "
+  + "Keep backgrounds to a few simple lines.";
+const OTHER_PEOPLE_RULE = "OTHER PEOPLE: Draw every non-protagonist person in the same simple style as the "
+  + "protagonist: round white head, dot eyes, simple mouth, outlined unfilled hair, plain outlined white clothes. "
+  + "Never draw realistic faces, filled or colored hair, gray silhouettes, or shaded crowds. Show at most two extra "
+  + "background people, only when the story needs a crowd.";
+// "777회"처럼 대사에 숫자·단어가 있으면 휴대폰 화면에도 쓰는 일이 있어 칸마다 짧게 다시 적는다
+const PANEL_TEXT_REMINDER = "In this panel, screens, papers, and signs stay blank; words or numbers from the caption "
+  + "appear only in the caption.";
+
 // 프레임 글씨("우아한테크코스 8기 데모데이", "@harudle.official")와 같은 모양으로 쓰게 한다
 const FRAME_LETTERING = "the same lettering style as the frame's printed text \"우아한테크코스 8기 데모데이\" and "
   + `"${CREATOR_HANDLE}": rounded, evenly weighted, medium-weight Korean handwriting with soft round stroke ends, `
@@ -56,17 +72,24 @@ function story(storyboard) {
       + "logos, or brands only on their assigned character.",
     PROTAGONIST_RULE,
     "",
-    "ENVIRONMENT:",
+    // 그림체 지시문(image-style.txt)이 이 구간 이름을 그대로 참조하므로 백엔드와 같은 제목을 쓴다
+    "ENVIRONMENT FOR THIS STORY:",
     storyboard.scenePlan.environmentRule,
     "",
-    "FOCAL COLORS (not visible text):",
+    LINE_ART_RULE,
+    OTHER_PEOPLE_RULE,
+    "",
+    "FOCAL COLOR SUGGESTIONS — NOT VISIBLE TEXT:",
   ];
   const { focalColors } = storyboard.scenePlan;
-  if (focalColors.length === 0) lines.push("No colored prop; keep the scene mostly black and white.");
+  if (focalColors.length === 0) lines.push("Do not introduce a colored prop; keep every prop white.");
   for (const c of focalColors) {
     const label = c.panelNumbers.length === 1 ? "Panel " : "Panels ";
-    lines.push(`- ${label}${c.panelNumbers.join(", ")}: fill the entire visible ${c.component} of the ${c.prop} `
+    lines.push(`- ${label}${c.panelNumbers.join(", ")}: fill only the visible ${c.component} of the ${c.prop} `
       + `with uniform opaque ${c.colorHex}, the same in every appearance.`);
+  }
+  if (focalColors.length) {
+    lines.push("Do not reuse a focal color on clothing, hair, furniture, screens, or any other object.");
   }
   return lines;
 }
@@ -79,6 +102,7 @@ function panel(p, index) {
     "Emotion: " + p.emotion,
     "Props: " + (p.props.length ? p.props.join(", ") : "none"),
     `Caption reads exactly: "${p.caption}"`,
+    PANEL_TEXT_REMINDER,
   ];
 }
 
@@ -98,7 +122,9 @@ Handwrite exactly "# ${storyboard.title}" once, in pure black, on the mint strip
 const FINAL_CHECK = `FINAL CHECK BEFORE RENDERING:
 1. Overlay test: laid over Image 2, your output's panel outlines, top text, creatures, QR code, and handle line up exactly. If you drew your own grid or moved any panel, redo it on Image 2's panels.
 2. The protagonist has outlined white curly loop hair in every panel, and nobody else has curly loops.
-3. Exactly four captions and one title, with no other new text.`;
+3. Exactly four captions and one title, with no other new text. Every screen, paper, and sign is blank.
+4. Everything is black line art on white. Only colors assigned in CAST AND CONTINUITY or FOCAL COLOR SUGGESTIONS appear; everything else is white with no gray fill or shading.
+5. Every other person is a simple outlined character like the protagonist, not a realistic or shaded figure.`;
 
 export function renderFrameFinalTask(storyboard) {
   const panels = storyboard.panels.flatMap((p, i) => [...panel(p, i), ""]);

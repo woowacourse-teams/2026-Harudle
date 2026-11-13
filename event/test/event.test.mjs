@@ -51,7 +51,19 @@ test("최종 지시문은 프레임 고정 지시로 시작하고 끝나며, 자
   assert.match(task, /upper-right of the top-right panel under the planet's legs/);
   assert.match(task, /LETTERING:\nWrite all four captions and the comic title in the same lettering style as the frame/);
   assert.match(task, /CAST AND CONTINUITY:\n.*\n.*\nThe protagonist \(the diary writer/);
-  assert.ok(task.length < 8000, `지시문이 너무 길다: ${task.length}`);
+  assert.ok(task.length < 9000, `지시문이 너무 길다: ${task.length}`);
+});
+
+test("색·주변 인물·화면 글자 규칙이 들어가고, 그림체 지시문이 참조하는 구간 이름을 그대로 쓴다", () => {
+  const task = renderFrameFinalTask(parseStoryboard(raw));
+  assert.match(task, /\nENVIRONMENT FOR THIS STORY:\n/);
+  assert.match(task, /\nFOCAL COLOR SUGGESTIONS — NOT VISIBLE TEXT:\n/);
+  assert.match(task, /LINE ART: .*Everything without an assigned color stays white/);
+  assert.match(task, /OTHER PEOPLE: .*Never draw realistic faces, filled or colored hair, gray silhouettes/);
+  assert.equal(task.split("screens, papers, and signs stay blank").length - 1, 4, "칸마다 화면 글자 금지를 다시 적는다");
+  assert.match(task, /Do not reuse a focal color on clothing/);
+  const plain = renderFrameFinalTask(parseStoryboard({ ...raw, visual_plan: { ...raw.visual_plan, focal_colors: [] } }));
+  assert.match(plain, /Do not introduce a colored prop; keep every prop white\./);
 });
 
 test("일기 원문을 diary 태그 안에 넣는다", () => {
