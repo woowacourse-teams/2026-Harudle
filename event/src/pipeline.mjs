@@ -5,6 +5,7 @@ import { config } from "./config.mjs";
 import { compositeOnFrame, CompositeError, loadFrame } from "./composite.mjs";
 import { FRAME_INSTRUCTION, REFERENCE_INSTRUCTION, renderFrameFinalTask } from "./prompt.mjs";
 import { parseStoryboard, renderStoryboardRequest } from "./storyboard.mjs";
+import { callOpenAiFrameImage, callOpenAiStoryboard } from "./openai.mjs";
 import { callFrameImage, callStoryboard, GenerationError } from "./vertex.mjs";
 
 const read = name => readFile(path.join(config.assetsDir, name));
@@ -40,44 +41,87 @@ async function pickFrame() {
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-async function makeStoryboard(assets, diary) {
-  if (config.fakeAi) { await sleep(1500); return parseStoryboard(assets.fake.storyboard); }
+const STORYBOARD_PROVIDERS = {
+  gemini: (assets, diary) => callStoryboard(assets.storyboardPrompt, renderStoryboardRequest(diary)),
+  openai: (assets, diary) => callOpenAiStoryboard(assets.storyboardPrompt, renderStoryboardRequest(diary)),
+};
+
+/** 스토리보드 시도 계획. 기본은 Gemini 2번, 대체 생성을 켜면 Gemini 1번 + OpenAI 1번이다. */
+export function storyboardProviderPlan(fallback = config.storyboardFallback) {
+  return fallback === "openai" ? ["gemini", "openai"] : ["gemini", "gemini"];
+}
+
+async function makeStoryboard(assets, diary, { log, providers, plan }) {
+  if (config.fakeAi && !providers) { await sleep(1500); return { storyboard: parseStoryboard(assets.fake.storyboard), provider: "fake" }; }
+  const calls = providers ?? STORYBOARD_PROVIDERS;
   for (let attempt = 1; ; attempt++) {
+    const provider = plan[attempt - 1];
     try {
-      return parseStoryboard(await callStoryboard(assets.storyboardPrompt, renderStoryboardRequest(diary)));
+      return { storyboard: parseStoryboard(await calls[provider](assets, diary)), provider };
     } catch (error) {
       const retryable = error instanceof GenerationError ? error.retryable : true; // JSON·검증 실패도 한 번 재시도
-      if (attempt >= 2 || !retryable) throw error;
+      log({ event: "storyboard_attempt_failed", attempt, provider, code: error.code ?? "INVALID_STORYBOARD", reason: error.message,
+        next: retryable && attempt < plan.length ? plan[attempt] : null });
+      if (attempt >= plan.length || !retryable) throw error;
     }
   }
 }
 
-async function makeImage(assets, storyboard) {
-  if (config.fakeAi) { await sleep(2500); return assets.fake.generated; }
-  return callFrameImage({
+function imageRequest(assets, storyboard) {
+  return {
     stylePrompt: assets.stylePrompt,
     referencePng: assets.referencePng,
     frameImage: assets.frameImage,
     finalTask: renderFrameFinalTask(storyboard),
     referenceInstruction: REFERENCE_INSTRUCTION,
     frameInstruction: FRAME_INSTRUCTION,
-  });
+  };
 }
 
-/** onStage(stage)로 진행 단계를 알린다. 성공 시 { title, png } */
-export async function runPipeline(assets, diary, onStage) {
+const PROVIDERS = {
+  gemini: async (assets, request) => {
+    if (config.fakeAi) { await sleep(2500); return assets.fake.generated; }
+    return callFrameImage(request);
+  },
+  openai: async (assets, request) => {
+    if (config.fakeAi) { await sleep(2500); return assets.fake.generated; }
+    return callOpenAiFrameImage(request);
+  },
+};
+
+/** 시도마다 쓸 이미지 제공자. 대체 생성을 켜면 마지막 시도만 OpenAI로 바꾼다. */
+export function imageProviderPlan(attempts = config.imageAttempts, fallback = config.imageFallback) {
+  const total = Math.max(1, attempts);
+  const plan = Array(total).fill("gemini");
+  if (fallback === "openai") plan[total - 1] = "openai";
+  return plan;
+}
+
+/**
+ * onStage(stage)로 진행 단계를 알린다. 성공 시 { title, png, attempts, provider, storyboardProvider }
+ * Gemini 칸 위치 거절·429·시간 초과 같은 재시도 가능 실패는 다음 시도(대체 생성이면 OpenAI)로 넘긴다.
+ */
+export async function runPipeline(assets, diary, onStage, {
+  log = () => {}, providers = PROVIDERS, plan = imageProviderPlan(),
+  storyboardProviders, storyboardPlan = storyboardProviderPlan(),
+} = {}) {
   onStage("storyboard");
-  const storyboard = await makeStoryboard(assets, diary);
+  const { storyboard, provider: storyboardProvider } = await makeStoryboard(assets, diary,
+    { log, providers: storyboardProviders, plan: storyboardPlan });
+  const request = imageRequest(assets, storyboard);
   for (let attempt = 1; ; attempt++) {
+    const provider = plan[attempt - 1];
     onStage("image");
     try {
-      const generated = await makeImage(assets, storyboard);
+      const generated = await providers[provider](assets, request);
       onStage("compose");
       const png = await compositeOnFrame(assets.frame, generated);
-      return { title: storyboard.title, png, attempts: attempt };
+      return { title: storyboard.title, png, attempts: attempt, provider, storyboardProvider };
     } catch (error) {
       const retryable = error instanceof CompositeError || (error instanceof GenerationError && error.retryable);
-      if (attempt >= config.imageAttempts || !retryable) throw error;
+      log({ event: "image_attempt_failed", attempt, provider, code: error.code ?? "COMPOSITE_REJECTED", reason: error.message,
+        next: retryable && attempt < plan.length ? plan[attempt] : null });
+      if (attempt >= plan.length || !retryable) throw error;
     }
   }
 }

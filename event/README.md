@@ -15,12 +15,23 @@ event.harudle.com → Host Nginx(443) → 127.0.0.1:3100 → harudle-event 컨�
 
 1. **스토리보드**: `storyboard-prompt.txt`를 시스템 프롬프트로 Gemini(`gemini-3.5-flash`)에 일기를 보내 JSON을 받는다.
    요청 문구·스키마·검증은 백엔드 `StoryboardRequestRenderer`, `StoryboardResponseSchema`, `StoryboardResponseMapper`와 같다.
-   실패 시 한 번 재시도한다.
+   실패 시 한 번 재시도한다. `EVENT_STORYBOARD_FALLBACK=openai`이면 두 번째 시도를 OpenAI(`gpt-6-luna`, 추론 `low`)로 한다.
+   Responses API에 같은 시스템 프롬프트·요청문을 보내고, 같은 스키마를 Structured Outputs strict 모드로 받는다
+   (Gemini 전용 `propertyOrdering`은 빼고 `additionalProperties: false`를 붙인다). 429·시간 초과·JSON 검증 실패는
+   넘기고 응답 거절은 넘기지 않는다. 실제 프롬프트로 시험한 한 번은 약 13초 걸렸다.
+   시도별 실패는 `storyboard_attempt_failed`, 성공한 제공자는 `job_done`의 `storyboardProvider`로 남는다.
 2. **이미지**: `image-style.txt`, 그림체 참조 `reference.png`, 프레임 이미지, 최종 지시문을 `gemini-3.1-flash-image`에
    `imageSize: 2K`로 보낸다. 결과는 1696×2528이며 Dev 시험에서 한 장에 약 15초 걸렸다.
-   최종 지시문의 스토리 본문은 백엔드 `DiaryImagePromptRenderer`와 같은 문구이고, 캔버스·푸터 규칙만 프레임용으로 바뀐다.
+   최종 지시문은 백엔드 `DiaryImagePromptRenderer`의 항목을 따르되 프레임용으로 줄였다. AI가 프레임을 무시하고 칸을
+   새로 그리는 실패가 잦아 프레임 고정 지시와 칸 위치 비율을 맨 앞에, 겹쳐 보기 점검을 맨 끝에 둔다.
 3. **합성**: 원본 프레임에서 네 칸의 흰 안쪽과 제목 글씨만 생성본으로 바꾼다. 배경·상단 문구·캐릭터·핸들·QR은
-   원본 픽셀을 그대로 쓴다. 생성본의 칸 위치가 40px 넘게 어긋나거나 제목을 못 찾으면 이미지 단계만 한 번 다시 만든다.
+   원본 픽셀을 그대로 쓴다. 생성본의 칸 위치가 60px(가로 1024px 기준) 넘게 어긋나거나 제목을 못 찾으면 이미지 단계만 한 번 다시 만든다.
+4. **대체 생성(선택)**: `EVENT_IMAGE_FALLBACK=openai`이면 Gemini가 칸 위치 거절·429·시간 초과 같은 재시도 가능한 실패를
+   냈을 때 다시 만드는 시도를 OpenAI(`gpt-image-2.5-flare`, `/v1/images/edits`, 1024×1536, medium)로 한다.
+   전체 시도 수는 `EVENT_IMAGE_ATTEMPTS`(기본 2) 그대로라 Gemini 1번 + OpenAI 1번이다. 안전 정책 차단은 넘기지 않는다.
+   그림체 지시·참조 이미지·프레임·최종 지시문을 함께 보내며 결과는 프레임 크기로 늘려 합성한다.
+   시도별 실패는 `image_attempt_failed`, 성공한 제공자는 `job_done`의 `imageProvider`로 남는다.
+   `OPENAI_API_KEY`는 서버 `.env.event`에만 둔다.
 
 백엔드 렌더러·스키마가 바뀌면 `src/storyboard.mjs`, `src/prompt.mjs`를 함께 맞춘다.
 
@@ -38,7 +49,9 @@ event.harudle.com → Host Nginx(443) → 127.0.0.1:3100 → harudle-event 컨�
 
 - 거절된 요청은 횟수를 차감하지 않는다. 접수 후 실패는 차감한다.
 - 일기 원문은 메모리에만 두고 생성이 끝나면 버린다. 로그에는 일기와 프롬프트를 남기지 않는다.
-- 부스 기기에 띄워 두는 화면이라 동의 체크박스는 두지 않고, 생성 버튼 아래에 Google 전송과 보관 기간을 안내한다.
+- 부스 기기에 띄워 두는 화면이라 동의 체크박스는 두지 않고, 생성 버튼 아래에 외부 전송과 보관 기간을 안내한다.
+  대체 생성을 켜면 안내 문구에 OpenAI가 함께 나온다. 스토리보드 대체에는 일기 원문이, 이미지 대체에는 스토리보드 기반
+  지시문이 간다. 실제 행사 전에 외부 전송 고지 기준과 대조한다.
   실제 행사 전에 `backend/docs/adr/약관과 동의/`의 기준과 대조한다.
 - 여러 사람이 같은 기기를 쓰므로 새로고침하면 이전 작업을 이어 보여 주지 않는다.
 - 대기열·IP 기록은 프로세스 메모리에만 있다. 컨테이너가 재시작되면 진행 중 작업과 결과 링크가 사라진다.

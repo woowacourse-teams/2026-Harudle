@@ -183,7 +183,7 @@
         </div>
         <button class="btn" id="submit" type="submit">네컷만화로 그리기 <span aria-hidden="true">→</span></button>
         <p class="err" id="form-error" role="alert"></p>
-        <p class="notice">입력한 내용은 Google Gemini로 전송되고, 완성된 엽서는 <span class="ttl">2시간</span> 뒤 삭제돼요.</p>
+        <p class="notice">입력한 내용은 <span id="ai-providers">Google Gemini</span>로 전송되고, 완성된 엽서는 <span class="ttl">2시간</span> 뒤 삭제돼요.</p>
       </form>
 
       <div class="box" id="progress-view" hidden aria-live="polite">
@@ -271,6 +271,8 @@
     $("story").maxLength = c.diaryMaxLength;
     const ttl = c.resultTtlMinutes % 60 === 0 ? `${c.resultTtlMinutes / 60}시간` : `${c.resultTtlMinutes}분`;
     document.querySelectorAll(".ttl").forEach(el => { el.textContent = ttl; });
+    // 대체 생성을 켜면 OpenAI도 함께 안내한다 (스토리보드 대체는 일기 원문, 이미지 대체는 스토리보드 기반 지시문을 받는다)
+    if (c.storyboardFallback === "openai" || c.imageFallback === "openai") $("ai-providers").textContent = "Google Gemini와 OpenAI";
     updateCount();
   }).catch(() => {});
 

@@ -15,7 +15,9 @@ const LAYOUT = {
   titleRight: 0.80, // 오른쪽 아래 강아지·QR 시작점. 제목은 이 왼쪽에만 둔다
   px: {
     interiorErode: 10, // 칸 외곽선에서 이만큼 떨어진 안쪽만 교체
-    maxPanelShift: 40, // 생성본 칸 위치가 원본과 이보다 많이 다르면 레이아웃이 무너진 것으로 본다
+    // 생성본 칸 위치가 원본과 이보다 많이 다르면 레이아웃이 무너진 것으로 본다.
+    // 운영에서 45px 어긋난 Gemini 결과가 거절돼 60으로 늘렸다. 크게 무너진 경우는 160px 이상이다.
+    maxPanelShift: 60,
     titleHeight: 44,
     titleGapAboveHandle: 22,
     belowPanels: 14, // 아래 칸 외곽선에서 제목 검색을 시작하는 거리

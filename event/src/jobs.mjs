@@ -169,7 +169,8 @@ export class JobQueue {
     job.status = "running";
     const waitedMs = started - job.createdAt;
     try {
-      const result = await this.runner(this.assets, job.diary, stage => { job.stage = stage; });
+      const result = await this.runner(this.assets, job.diary, stage => { job.stage = stage; },
+        { log: entry => this.log({ ...entry, jobId: job.id, ticket: job.ticket }) });
       await this.writeResult(job.id, result.png);
       job.title = result.title;
       job.status = "done";
@@ -177,7 +178,7 @@ export class JobQueue {
         job.print = { state: "queued" };
         this.#printQueue.push(job.id);
       }
-      this.log({ event: "job_done", jobId: job.id, ticket: job.ticket, waitedMs, tookMs: this.now() - started, imageAttempts: result.attempts });
+      this.log({ event: "job_done", jobId: job.id, ticket: job.ticket, waitedMs, tookMs: this.now() - started, imageAttempts: result.attempts, imageProvider: result.provider, storyboardProvider: result.storyboardProvider });
     } catch (error) {
       job.status = "failed";
       job.error = { code: error.code ?? "GENERATION_FAILED", message: USER_MESSAGES[error.code] ?? USER_MESSAGES.DEFAULT };

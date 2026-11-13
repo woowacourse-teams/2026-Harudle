@@ -141,6 +141,8 @@ const server = http.createServer(async (req, res) => {
         diaryMaxLength: config.diaryMaxLength,
         resultTtlMinutes: config.resultTtlMs / 60_000,
         printQueue: config.printQueue,
+        imageFallback: config.imageFallback,
+        storyboardFallback: config.storyboardFallback,
         resultResetSeconds: config.resultResetSeconds,
         nicknameMaxLength: NICKNAME_MAX,
       });

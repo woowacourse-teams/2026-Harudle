@@ -30,6 +30,17 @@ export const config = Object.freeze({
   storyboardTimeoutMs: int("EVENT_STORYBOARD_TIMEOUT_MS", 60_000),
   imageTimeoutMs: int("EVENT_IMAGE_TIMEOUT_MS", 180_000),
   imageAttempts: int("EVENT_IMAGE_ATTEMPTS", 2),
+  // 스토리보드 대체 생성: openai면 Gemini 스토리보드가 실패했을 때 두 번째 시도를 OpenAI(GPT Luna)로 한다.
+  storyboardFallback: (env.EVENT_STORYBOARD_FALLBACK ?? "none").toLowerCase(),
+  openaiStoryboardModel: env.OPENAI_STORYBOARD_MODEL ?? "gpt-6-luna",
+  openaiStoryboardReasoning: (env.OPENAI_STORYBOARD_REASONING ?? "low").toLowerCase(),
+  openaiStoryboardTimeoutMs: int("OPENAI_STORYBOARD_TIMEOUT_MS", 60_000),
+  // 이미지 대체 생성: openai면 Gemini가 실패했을 때 마지막 시도를 OpenAI로 한다. 전체 시도 수(EVENT_IMAGE_ATTEMPTS)는 그대로다.
+  imageFallback: (env.EVENT_IMAGE_FALLBACK ?? "none").toLowerCase(),
+  openaiApiKey: env.OPENAI_API_KEY ?? "",
+  openaiImageModel: env.OPENAI_IMAGE_MODEL ?? "gpt-image-2.5-flare",
+  openaiImageQuality: env.OPENAI_IMAGE_QUALITY ?? "medium",
+  openaiImageTimeoutMs: int("OPENAI_IMAGE_TIMEOUT_MS", 180_000),
 
   // 남용·비용 제한
   concurrency: Math.max(1, int("EVENT_CONCURRENCY", 1)),
@@ -58,6 +69,21 @@ export function validateConfig() {
   }
   if (config.imageSize && !["1K", "2K", "4K"].includes(config.imageSize)) {
     throw new Error(`EVENT_IMAGE_SIZE는 1K, 2K, 4K 중 하나이거나 비어 있어야 합니다: ${config.imageSize}`);
+  }
+  if (!["none", "openai"].includes(config.imageFallback)) {
+    throw new Error(`EVENT_IMAGE_FALLBACK는 none 또는 openai여야 합니다: ${config.imageFallback}`);
+  }
+  if (config.imageFallback === "openai" && !config.fakeAi && !config.openaiApiKey) {
+    throw new Error("EVENT_IMAGE_FALLBACK=openai에는 OPENAI_API_KEY가 필요합니다.");
+  }
+  if (!["none", "openai"].includes(config.storyboardFallback)) {
+    throw new Error(`EVENT_STORYBOARD_FALLBACK는 none 또는 openai여야 합니다: ${config.storyboardFallback}`);
+  }
+  if (config.storyboardFallback === "openai" && !config.fakeAi && !config.openaiApiKey) {
+    throw new Error("EVENT_STORYBOARD_FALLBACK=openai에는 OPENAI_API_KEY가 필요합니다.");
+  }
+  if (!["none", "low", "medium", "high", "xhigh", "max"].includes(config.openaiStoryboardReasoning)) {
+    throw new Error(`OPENAI_STORYBOARD_REASONING 값이 올바르지 않습니다: ${config.openaiStoryboardReasoning}`);
   }
   if (config.printKey && config.printKey.length < 12) {
     throw new Error("EVENT_PRINT_KEY를 쓰려면 12자 이상이어야 합니다. 쓰지 않으려면 비워 두세요.");
