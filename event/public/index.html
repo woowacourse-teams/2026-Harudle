@@ -238,7 +238,7 @@
   let pollTimer;
   let resetTimer;
 
-  // 부스 기기: 결과·실패 화면을 잠시 보여 준 뒤 다음 사람을 위해 입력 화면으로 돌아간다
+  // 부스 기기: 실패 화면을 잠시 보여 준 뒤 다음 사람을 위해 입력 화면으로 돌아간다
   function startAutoReset(seconds, button, label) {
     clearInterval(resetTimer);
     if (!seconds) { button.textContent = label; return; }
@@ -373,8 +373,9 @@
     $("result-notice").hidden = queued;
     flipToFront();
     show("result-view", [`<em>네컷만화</em> 엽서가<br>완성됐어요`, job.title ? `# ${job.title}` : "저장해서 간직해 보세요."]);
-    if (queued) startAutoReset(limits.resultResetSeconds, $("again"), "바로 새로 만들기");
-    else $("again").textContent = "새 이야기 만들기";
+    // QR을 찍을 시간이 필요하므로 결과 화면은 자동으로 넘기지 않고, 버튼을 눌러야 입력 화면으로 돌아간다
+    clearInterval(resetTimer);
+    $("again").textContent = queued ? "다 받았어요, 처음으로" : "새 이야기 만들기";
   }
 
   function backToForm() {

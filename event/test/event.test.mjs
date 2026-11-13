@@ -39,18 +39,19 @@ test("색상 대상 소품이 어느 패널에도 없으면 거절한다", () =>
   assert.throws(() => parseStoryboard(broken), /props/);
 });
 
-test("최종 지시문에 프레임 규칙, 자막 4개, 제목이 들어간다", () => {
+test("최종 지시문은 프레임 고정 지시로 시작하고 끝나며, 자막 4개와 제목이 들어간다", () => {
   const task = renderFrameFinalTask(parseStoryboard(raw));
-  assert.match(task, /^\[Final Task\]\nSELECTED STORY: 바람 부는 날의 출근길/);
-  assert.match(task, /FIXED POSTCARD FRAME LOCK/);
+  assert.match(task, /^\[Final Task\]\nFIXED POSTCARD FRAME LOCK — READ FIRST/);
+  assert.match(task, /Never draw your own panel grid/);
+  assert.match(task, /FINAL CHECK BEFORE RENDERING:\n1\. Overlay test/);
+  assert.match(task, /SELECTED STORY: 바람 부는 날의 출근길/);
   assert.match(task, /Handwrite exactly "# 바람 부는 날의 출근길" once/);
   for (let i = 1; i <= 4; i++) assert.match(task, new RegExp(`Caption reads exactly: "자막 ${i}"`));
-  assert.doesNotMatch(task, /square 1:1 canvas|FINAL FOOTER LOCK/);
+  assert.equal(task.match(/left 70% of the panel width/g).length, 1, "공통 자막 규칙은 한 번만 쓴다");
   assert.match(task, /upper-right of the top-right panel under the planet's legs/);
   assert.match(task, /LETTERING:\nWrite all four captions and the comic title in the same lettering style as the frame/);
-  assert.match(task, /left 70% of the panel width/);
   assert.match(task, /CAST AND CONTINUITY:\n.*\n.*\nThe protagonist \(the diary writer/);
-  assert.match(task, /PROTAGONIST CHECK:/);
+  assert.ok(task.length < 8000, `지시문이 너무 길다: ${task.length}`);
 });
 
 test("일기 원문을 diary 태그 안에 넣는다", () => {
