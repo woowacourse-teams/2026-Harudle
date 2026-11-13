@@ -18,6 +18,8 @@ const LAYOUT = {
     // 생성본 칸 위치가 원본과 이보다 많이 다르면 레이아웃이 무너진 것으로 본다.
     // 운영에서 45px 어긋난 Gemini 결과가 거절돼 60으로 늘렸다. 크게 무너진 경우는 160px 이상이다.
     maxPanelShift: 60,
+    edgeWindow: 24, // 외곽선 비교에 쓰는 변 양쪽 폭. 두 칸 사이 틈과 양쪽 외곽선을 함께 담는다
+    edgeSearch: 120, // 생성본에서 외곽선을 찾는 범위. maxPanelShift보다 넓게 잡아 실제 어긋난 거리를 기록한다
     titleHeight: 44,
     titleGapAboveHandle: 22,
     belowPanels: 14, // 아래 칸 외곽선에서 제목 검색을 시작하는 거리
@@ -32,6 +34,9 @@ const scaled = scale => Object.fromEntries(Object.entries(LAYOUT.px).map(([k, v]
 export const MIN_PRINT_WIDTH = 1200;
 
 export class CompositeError extends Error {}
+
+// 외곽선 비교 점수(어두운 비율 차이의 평균) 상한. 넘으면 그 자리에 칸 외곽선이 없다고 본다.
+const MAX_EDGE_MISMATCH = 0.3;
 
 const lum = (r, g, b) => 0.299 * r + 0.587 * g + 0.114 * b;
 const isMintRgb = (r, g, b) => g > r + 25 && g > 170 && b > 140;
@@ -162,6 +167,55 @@ function splitTitleComponents(isDark, region, band, imageWidth) {
   return { kept, removed };
 }
 
+/**
+ * 칸의 한 변에서 검은 외곽선 모양을 비교해 생성본의 같은 변 위치를 찾는다.
+ * 변의 가운데 60%를 따라 줄마다 "어두운 픽셀 비율"을 구하고(모서리의 프레임 캐릭터는 피한다), 원본과 가장 닮은
+ * 이동 거리를 고른다. 칸 안 그림의 색(하늘색·연두색 등)에 영향받지 않는다.
+ * 돌려주는 값은 { delta, score }. 닮은 위치가 없으면 delta가 null이다.
+ */
+function matchEdge(ov, gv, W, H, box, side, { window, search }) {
+  const vertical = side === "x0" || side === "x1";
+  const pos = box[side];
+  const [a0, a1] = vertical ? [box.y0, box.y1] : [box.x0, box.x1];
+  const span = a1 - a0, from = Math.round(a0 + span * 0.2), to = Math.round(a1 - span * 0.2);
+  const dark = (v, p, q) => {
+    const x = vertical ? p : q, y = vertical ? q : p;
+    return x >= 0 && y >= 0 && x < W && y < H && v.lum(x, y) < 110;
+  };
+  const profile = (v, p) => { let n = 0, d = 0; for (let q = from; q <= to; q += 2) { n++; if (dark(v, p, q)) d++; } return d / n; };
+  const reach = window + search;
+  const orig = new Map(), gen = new Map();
+  for (let p = pos - window; p <= pos + window; p++) orig.set(p, profile(ov, p));
+  for (let p = pos - reach; p <= pos + reach; p++) gen.set(p, profile(gv, p));
+  let best = { delta: null, score: Infinity };
+  for (let d = -search; d <= search; d++) {
+    let sum = 0;
+    for (let p = pos - window; p <= pos + window; p++) sum += Math.abs(orig.get(p) - gen.get(p + d));
+    const score = sum / (window * 2 + 1);
+    if (score < best.score - 1e-9 || (Math.abs(score - best.score) < 1e-9 && Math.abs(d) < Math.abs(best.delta))) best = { delta: d, score };
+  }
+  return best;
+}
+
+/** 원본 칸 상자를 기준으로 생성본의 칸 상자를 찾는다. 외곽선이 안 보이거나 너무 많이 어긋나면 CompositeError. */
+function locatePanels(frame, gv) {
+  const { W, H, px } = frame;
+  const ov = view(frame.data, W);
+  const opts = { window: px.edgeWindow, search: px.edgeSearch };
+  return frame.boxes.map((o, k) => {
+    const g = {};
+    let shift = 0;
+    for (const side of ["x0", "x1", "y0", "y1"]) {
+      const { delta, score } = matchEdge(ov, gv, W, H, o, side, opts);
+      if (delta === null || score > MAX_EDGE_MISMATCH) throw new CompositeError(`생성본 ${k + 1}번 칸 외곽선을 찾지 못했습니다.`);
+      shift = Math.max(shift, Math.abs(delta));
+      g[side] = o[side] + delta;
+    }
+    if (shift > px.maxPanelShift) throw new CompositeError(`생성본 ${k + 1}번 칸 위치가 원본과 ${shift}px 다릅니다.`);
+    return g;
+  });
+}
+
 /** 생성 이미지를 원본 프레임에 합성해 PNG 버퍼를 돌려준다. 레이아웃이 무너졌으면 CompositeError. */
 export async function compositeOnFrame(frame, generatedBuffer) {
   const { W, H } = frame;
@@ -170,12 +224,7 @@ export async function compositeOnFrame(frame, generatedBuffer) {
   const sample = sampler(gen, W, H);
   const out = Buffer.from(frame.data);
 
-  const genBoxes = frame.centers.map(c => outerBox(gv, W, H, c));
-  genBoxes.forEach((g, k) => {
-    const o = frame.boxes[k];
-    const shift = Math.max(Math.abs(g.x0 - o.x0), Math.abs(g.x1 - o.x1), Math.abs(g.y0 - o.y0), Math.abs(g.y1 - o.y1));
-    if (shift > frame.px.maxPanelShift) throw new CompositeError(`생성본 ${k + 1}번 칸 위치가 원본과 ${shift}px 다릅니다.`);
-  });
+  const genBoxes = locatePanels(frame, gv);
 
   frame.masks.forEach((mask, k) => {
     const o = frame.boxes[k], g = genBoxes[k];
