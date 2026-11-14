@@ -89,6 +89,24 @@ export const notificationHandlers = [
     });
   }),
   http.patch(
+    '/api/v1/notifications/read-all',
+    async ({ request }): Promise<Response> => {
+      await delay(100);
+      const error = validate(request, true);
+      if (error) return error;
+      if (
+        request.headers.get(MOCK_SCENARIO_HEADER) ===
+        MOCK_SCENARIOS.notificationsReadFailure
+      )
+        return failure(request, 503, 'NOTIFICATION_UNAVAILABLE');
+      notifications = notifications.map((notification): Notification => ({
+        ...notification,
+        read: true,
+      }));
+      return new HttpResponse(null, { status: 204 });
+    },
+  ),
+  http.patch(
     '/api/v1/notifications/:notificationId',
     async ({ request, params }): Promise<Response> => {
       await delay(100);

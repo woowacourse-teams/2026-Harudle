@@ -125,3 +125,16 @@ export const markNotificationsRead = async (
     result.status === 'fulfilled' ? [result.value] : [],
   );
 };
+
+export const markAllNotificationsRead = async (): Promise<void> => {
+  const csrfToken = await requestCsrfToken();
+  const response = await authFetch(`${API_BASE_URL}/notifications/read-all`, {
+    method: 'PATCH',
+    headers: { 'X-XSRF-TOKEN': csrfToken },
+  });
+  if (!response.ok)
+    return throwResponseError(
+      response,
+      ERROR_MESSAGES.NOTIFICATION_READ_FAILED,
+    );
+};
