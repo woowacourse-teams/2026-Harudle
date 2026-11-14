@@ -1,5 +1,5 @@
 import * as SplashScreen from 'expo-splash-screen';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, BackHandler, Platform } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { handleWebViewMessage } from './bridge/handleWebViewMessage';
@@ -15,9 +15,15 @@ export default function WebViewScreen() {
   // WebView 14.0.1의 기본 제네릭(undefined)이 props를 never로 만드는 타입 오류를 피한다.
   const webViewRef = useRef<WebView<object>>(null);
   const canGoBackRef = useRef(false);
+  const [webViewKey, setWebViewKey] = useState(0);
 
   const handleLoad = (): void => {
     SplashScreen.hide();
+  };
+
+  const handleRenderProcessGone = (): void => {
+    canGoBackRef.current = false;
+    setWebViewKey((key) => key + 1);
   };
 
   const sendMessage = useCallback(
@@ -79,6 +85,7 @@ export default function WebViewScreen() {
 
   return (
     <WebView<object>
+      key={webViewKey}
       ref={webViewRef}
       style={{ flex: 1 }}
       source={{ uri: WEB_URL }}
@@ -94,6 +101,7 @@ export default function WebViewScreen() {
         );
       }}
       onLoad={handleLoad}
+      onRenderProcessGone={handleRenderProcessGone}
       onNavigationStateChange={(state) => {
         canGoBackRef.current = state.canGoBack;
       }}
