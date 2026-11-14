@@ -30,6 +30,7 @@
     ],
     "ios": {
       "bundleIdentifier": "com.harudle.app",
+      "buildNumber": "1",
       "appleTeamId": "BUTSZDAYNT",
       "googleServicesFile": "./GoogleService-Info.plist",
       "usesAppleSignIn": true
