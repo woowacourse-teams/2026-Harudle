@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router';
 import OwnFeedOptionsButton from '../../shared/feed/OwnFeedOptionsButton';
 import OtherFeedOptionsButton from '../../shared/content/OtherFeedOptionsButton';
 import VisuallyHidden from '../../shared/VisuallyHidden';
+import React from 'react';
 
 interface FeedItemProps {
   readonly feed: Feed;
@@ -104,7 +105,7 @@ const FeedItem = ({
   );
 };
 
-export default FeedItem;
+export default React.memo(FeedItem);
 
 const feedItemStyle = css`
   display: flex;
