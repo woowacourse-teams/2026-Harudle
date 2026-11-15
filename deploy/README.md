@@ -6,7 +6,7 @@
 Internet -> host Nginx/Certbot -> 127.0.0.1:3000
                                  -> frontend Nginx
                                     -> React static files
-                                    -> /api/* -> backend:8080 -> DB/S3/Gemini
+                                    -> /api/* -> backend:8080 -> DB EC2 PostgreSQL/S3/Gemini
 ```
 
 ## 만료된 Refresh Token 정리
