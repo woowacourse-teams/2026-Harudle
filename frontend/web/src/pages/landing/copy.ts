@@ -7,6 +7,13 @@ import slackSongQuizImage from './assets/slack-song-quiz.png';
 import slackChorokImage from './assets/slack-chorok.png';
 import slackIqImage from './assets/slack-iq.png';
 import slackIhyunImage from './assets/slack-ihyun.png';
+import teamChorokImage from './assets/team-chorok.webp';
+import teamIqImage from './assets/team-iq.webp';
+import teamKaemoImage from './assets/team-kaemo.webp';
+import teamIhyunImage from './assets/team-ihyun.webp';
+import teamIsanImage from './assets/team-isan.webp';
+
+export const LANDING_CONTACT_EMAIL = 'official@harudle.com';
 
 export const LANDING_COPY = {
   hero: {
@@ -71,7 +78,7 @@ export const LANDING_COPY = {
     links: [
       { label: '이용약관', href: '/legal/terms' },
       { label: '개인정보처리방침', href: '/legal/privacy' },
-      { label: '문의하기', href: 'mailto:harudle.official@gmail.com' },
+      { label: '문의하기', href: `mailto:${LANDING_CONTACT_EMAIL}` },
       {
         label: 'Instagram',
         href: 'https://www.instagram.com/harudle.official/',
@@ -124,6 +131,114 @@ export const LANDING_SLACK_STORY = {
       replyCount: 3,
     },
   ],
+} as const;
+
+export interface LandingJourneyStep {
+  readonly period: string;
+  readonly title: string;
+  readonly description: string;
+  readonly metric: { readonly value: string; readonly label: string };
+}
+
+// D2SF 소개 자료의 검증 기록에서 공개해도 되는 결과만 골라 요약한다.
+export const LANDING_JOURNEY = {
+  title: '작은 실험부터\n하나씩 확인했어요',
+  description:
+    '가설을 세우고, 사용자 반응을 기록하고,\n그 결과로 하루들을 바꿔 왔어요.',
+  steps: [
+    {
+      period: '첫 실험',
+      title: '손으로 먼저 만들어 봤어요',
+      description:
+        '서비스를 만들기 전, 구글폼으로 16명의 이야기를 받아 네컷만화를 직접 만들어 24시간 안에 전달했어요.',
+      metric: { value: '14/16명', label: '다른 이야기도 만들고 싶다고 답함' },
+    },
+    {
+      period: '프로토타입',
+      title: '직접 써 보게 했어요',
+      description:
+        'Gemini Canvas로 만든 프로토타입을 제공했어요. 설문에 응답한 12명 모두 이야기를 입력해 결과를 확인했어요.',
+      metric: { value: '11/12명', label: '다시 쓰고 싶다고 답함' },
+    },
+    {
+      period: '9월',
+      title: '기록보다 공유였어요',
+      description:
+        '사용자 인터뷰에서 "공유할 생각이 없으면 만들러 오지 않는다"는 답을 들었어요. 그래서 핵심 가치를 공유와 소통으로 다시 정했어요.',
+      metric: { value: '36.3%', label: '만든 만화를 슬랙에 공유한 비율' },
+    },
+    {
+      period: '9월',
+      title: '함께 만들 주제를 열었어요',
+      description:
+        '네 가지 주제로 공유 이벤트를 열어, 구체적이고 누구나 공감할 주제가 만화 제작을 돕는다는 것을 확인했어요.',
+      metric: { value: '2.8배', label: '이벤트 기간 하루 평균 생성량' },
+    },
+    {
+      period: '10월',
+      title: '공유를 서비스 안으로 옮겼어요',
+      description:
+        '슬랙에서 나누던 만화를 하루들 피드에서 보고 반응하도록 바꿨어요. 이벤트가 끝난 뒤에도 더 오래 머물렀어요.',
+      metric: { value: '4.4분 → 6.5분', label: '방문당 평균 체류시간' },
+    },
+    {
+      period: '10월 이후',
+      title: '다른 부트캠프로 넓혔어요',
+      description:
+        '소프트웨어 마에스트로, SSAFY, 크래프톤 정글 등 다른 부트캠프에도 알렸어요. 이제 구경하던 관심이 첫 만화로 이어지는지 실험하고 있어요.',
+      metric: {
+        value: '59.9%',
+        label: '피드에서 카테고리를 바꿔 구경한 방문자',
+      },
+    },
+  ] satisfies readonly LandingJourneyStep[],
+} as const;
+
+export interface LandingTeamMember {
+  readonly nickname: string;
+  readonly name: string;
+  readonly githubId: string;
+  readonly imageUrl: string;
+}
+
+export const LANDING_TEAM = {
+  title: '하루들을\n만드는 사람들',
+  description:
+    '우아한테크코스 8기에서 만난 다섯 명이\n하루들을 함께 만들고 운영하고 있어요.',
+  repositoryLabel: '하루들 GitHub 저장소',
+  repositoryUrl: 'https://github.com/woowacourse-teams/2026-Harudle',
+  members: [
+    {
+      nickname: '초록',
+      name: '이재헌',
+      githubId: '2Jaeheon',
+      imageUrl: teamChorokImage,
+    },
+    {
+      nickname: '아이큐',
+      name: '한동희',
+      githubId: 'e9ua1',
+      imageUrl: teamIqImage,
+    },
+    {
+      nickname: '캐모',
+      name: '김제신',
+      githubId: 'jason0904',
+      imageUrl: teamKaemoImage,
+    },
+    {
+      nickname: '이현',
+      name: '정연준',
+      githubId: 'jebiyeon02',
+      imageUrl: teamIhyunImage,
+    },
+    {
+      nickname: '이산',
+      name: '이채린',
+      githubId: 'Rix01',
+      imageUrl: teamIsanImage,
+    },
+  ] satisfies readonly LandingTeamMember[],
 } as const;
 
 export interface LandingExample {

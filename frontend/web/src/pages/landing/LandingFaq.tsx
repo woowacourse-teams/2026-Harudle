@@ -1,6 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { css } from '@emotion/react';
 import type { JSX } from 'react';
+import { LANDING_CONTACT_EMAIL } from './copy';
 
 interface FaqItem {
   readonly question: string;
@@ -53,7 +54,7 @@ const LandingFaq = (): JSX.Element => (
           <br />
           질문
         </h2>
-        <a css={contactStyle} href="mailto:harudle.official@gmail.com">
+        <a css={contactStyle} href={`mailto:${LANDING_CONTACT_EMAIL}`}>
           하루들에 문의하기{' '}
           <svg
             width="15"

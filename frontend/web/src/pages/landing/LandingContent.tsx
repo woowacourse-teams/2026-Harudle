@@ -22,6 +22,8 @@ import LandingShareSection from './LandingShareSection';
 import LandingFeedPreview from './LandingFeedPreview';
 import LandingPrivacy from './LandingPrivacy';
 import LandingFaq from './LandingFaq';
+import LandingJourney from './LandingJourney';
+import LandingTeam from './LandingTeam';
 import useLandingReveal from './useLandingReveal';
 import useLandingStickyCta from './useLandingStickyCta';
 
@@ -29,6 +31,8 @@ const NAV_ITEMS = [
   { label: '하루들 소개', target: 'examples' },
   { label: '기록 보호', target: 'landing-privacy-title' },
   { label: '자주 묻는 질문', target: 'landing-faq-title' },
+  { label: '걸어온 길', target: 'landing-journey-title' },
+  { label: '팀 소개', target: 'landing-team-title' },
 ] as const;
 interface LandingContentProps {
   trialSection: ReactNode;
@@ -288,6 +292,8 @@ const LandingContent = ({
 
       <LandingPrivacy />
       <LandingFaq />
+      <LandingJourney />
+      <LandingTeam />
 
       <section
         ref={finalRef}

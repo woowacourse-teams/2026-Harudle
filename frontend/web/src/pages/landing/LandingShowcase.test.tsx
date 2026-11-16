@@ -15,6 +15,11 @@ jest.mock('./assets/slack-toothpaste.png', () => 'toothpaste.png');
 jest.mock('./assets/slack-favorite.png', () => 'favorite.png');
 jest.mock('./assets/slack-song-quiz.png', () => 'song.png');
 jest.mock('./assets/slack-chorok.png', () => 'chorok.png');
+jest.mock('./assets/team-chorok.webp', () => 'team-chorok.webp');
+jest.mock('./assets/team-iq.webp', () => 'team-iq.webp');
+jest.mock('./assets/team-kaemo.webp', () => 'team-kaemo.webp');
+jest.mock('./assets/team-ihyun.webp', () => 'team-ihyun.webp');
+jest.mock('./assets/team-isan.webp', () => 'team-isan.webp');
 jest.mock('./assets/slack-iq.png', () => 'iq.png');
 jest.mock('./assets/slack-ihyun.png', () => 'ihyun.png');
 
