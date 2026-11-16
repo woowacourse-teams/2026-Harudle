@@ -232,7 +232,7 @@ export default LandingPrivacy;
 const sectionStyle = css`
   position: relative;
   overflow: hidden;
-  padding: clamp(88px, 10vw, 144px) clamp(24px, 5vw, 72px) 0;
+  padding: clamp(88px, 10vw, 144px) clamp(24px, 5vw, 72px);
   background: #1c1530;
   color: #fff;
   &::before {
