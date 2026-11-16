@@ -30,9 +30,9 @@ import useLandingStickyCta from './useLandingStickyCta';
 const NAV_ITEMS = [
   { label: '하루들 소개', target: 'examples' },
   { label: '기록 보호', target: 'landing-privacy-title' },
-  { label: '자주 묻는 질문', target: 'landing-faq-title' },
   { label: '걸어온 길', target: 'landing-journey-title' },
   { label: '팀 소개', target: 'landing-team-title' },
+  { label: '자주 묻는 질문', target: 'landing-faq-title' },
 ] as const;
 interface LandingContentProps {
   trialSection: ReactNode;
@@ -291,9 +291,9 @@ const LandingContent = ({
       </section>
 
       <LandingPrivacy />
-      <LandingFaq />
       <LandingJourney />
       <LandingTeam />
+      <LandingFaq />
 
       <section
         ref={finalRef}
