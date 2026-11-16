@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { GUEST_TRIAL_COPY } from '../src/pages/feed/guest-trial/copy';
 import { FEED_COPY } from '../src/pages/feed/copy';
 import { NEED_LOGIN_COPY } from '../src/shared/needLoginCopy';
 import {
@@ -7,56 +8,82 @@ import {
 } from '../src/mocks/mockScenarios';
 
 test.describe('하루들 접속', () => {
-  for (const hasLoginHistory of [false, true]) {
-    test(`${hasLoginHistory ? '로그아웃 이력이 있는' : '비로그인'} 사용자가 홈의 만들기를 누르면 로그인 안내를 표시한다`, async ({
-      page,
-    }): Promise<void> => {
-      await page.addInitScript((hasHistory): void => {
-        if (hasHistory) {
-          localStorage.setItem('harudle.has-ever-logged-in', 'true');
-        }
-      }, hasLoginHistory);
-      await page.setExtraHTTPHeaders({
-        [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.authRefreshFailure,
-      });
-      const feedUrl = '/?categoryId=1&sort=POPULAR';
-      await page.goto(feedUrl);
-      await expect(page.getByRole('combobox')).toBeVisible();
-      expect(
-        await page.evaluate((): string | null =>
-          localStorage.getItem('harudle.has-completed-oauth'),
-        ),
-      ).toBeNull();
-
-      const createButton = page.getByRole('button', {
-        name: FEED_COPY.createAction,
-        exact: true,
-      });
-      await createButton.click();
-      const sheet = page.getByRole('dialog').filter({
-        has: page.getByRole('heading', { name: NEED_LOGIN_COPY.title }),
-      });
-      await expect(sheet).toBeVisible();
-      await expect(sheet).toContainText('네컷만화를 만들려면 로그인해 주세요.');
-      await expect(page).toHaveURL(feedUrl);
-
-      await sheet
-        .getByRole('button', { name: NEED_LOGIN_COPY.continueBrowsingAction })
-        .click();
-      await expect(sheet).not.toBeVisible();
-      await expect(page).toHaveURL(feedUrl);
-
-      await createButton.click();
-      await expect(sheet).toBeVisible();
-      await sheet
-        .getByRole('button', { name: NEED_LOGIN_COPY.loginAction })
-        .click();
-      await expect(page).toHaveURL('/login');
-      await expect(
-        page.getByRole('button', { name: '카카오로 계속하기' }),
-      ).toBeVisible();
+  test('첫 방문 사용자가 체험 안내에서 만들기를 시작하고 피드로 돌아온다', async ({
+    page,
+  }): Promise<void> => {
+    const feedUrl = '/?categoryId=1&sort=POPULAR';
+    await page.goto(feedUrl);
+    const guide = page.getByRole('dialog', {
+      name: GUEST_TRIAL_COPY.guideLabel,
     });
-  }
+    await guide
+      .getByRole('button', { name: GUEST_TRIAL_COPY.guideSpotlightAction })
+      .click();
+    const sheet = page.getByRole('dialog').filter({
+      has: page.getByRole('heading', {
+        name: GUEST_TRIAL_COPY.inputSheetTitle,
+      }),
+    });
+    await expect(
+      sheet.getByRole('textbox', { name: GUEST_TRIAL_COPY.inputLabel }),
+    ).toBeVisible();
+    await expect(page).toHaveURL(feedUrl);
+
+    await sheet.getByRole('button', { name: '닫기' }).click();
+    await expect(sheet).toBeHidden();
+    await expect(page).toHaveURL(feedUrl);
+    await page
+      .getByRole('button', { name: FEED_COPY.createAction, exact: true })
+      .click();
+    await expect(sheet).toBeVisible();
+  });
+
+  test('로그아웃 이력이 있는 사용자가 홈의 만들기를 누르면 로그인 안내를 표시한다', async ({
+    page,
+  }): Promise<void> => {
+    await page.addInitScript((): void => {
+      localStorage.setItem('harudle.has-ever-logged-in', 'true');
+    });
+    await page.setExtraHTTPHeaders({
+      [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.authRefreshFailure,
+    });
+    const feedUrl = '/?categoryId=1&sort=POPULAR';
+    await page.goto(feedUrl);
+    await expect(page.getByRole('combobox')).toBeVisible();
+    expect(
+      await page.evaluate((): string | null =>
+        localStorage.getItem('harudle.has-completed-oauth'),
+      ),
+    ).toBeNull();
+
+    const createButton = page.getByRole('button', {
+      name: FEED_COPY.createAction,
+      exact: true,
+    });
+    await createButton.click();
+    const sheet = page.getByRole('dialog').filter({
+      has: page.getByRole('heading', { name: NEED_LOGIN_COPY.title }),
+    });
+    await expect(sheet).toBeVisible();
+    await expect(sheet).toContainText('네컷만화를 만들려면 로그인해 주세요.');
+    await expect(page).toHaveURL(feedUrl);
+
+    await sheet
+      .getByRole('button', { name: NEED_LOGIN_COPY.continueBrowsingAction })
+      .click();
+    await expect(sheet).not.toBeVisible();
+    await expect(page).toHaveURL(feedUrl);
+
+    await createButton.click();
+    await expect(sheet).toBeVisible();
+    await sheet
+      .getByRole('button', { name: NEED_LOGIN_COPY.loginAction })
+      .click();
+    await expect(page).toHaveURL('/login');
+    await expect(
+      page.getByRole('button', { name: '카카오로 계속하기' }),
+    ).toBeVisible();
+  });
 
   test('제거된 일기 공유 링크는 페이지 없음 안내를 표시한다', async ({
     page,
@@ -66,51 +93,77 @@ test.describe('하루들 접속', () => {
       page.getByRole('heading', { name: '페이지를 찾을 수 없어요' }),
     ).toBeVisible();
   });
-  for (const entryPath of ['/', '/landing']) {
-    test(`로그인 이력이 없는 ${entryPath} 진입과 저장소를 비운 뒤 새로고침에서 공개 피드를 유지한다`, async ({
-      page,
-    }) => {
-      await page.setExtraHTTPHeaders({
-        [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.authRefreshSuccess,
-      });
-      let refreshCount = 0;
-      let guestSessionCount = 0;
-      page.on('request', (request): void => {
-        if (request.url().endsWith('/api/v1/auth/refresh')) refreshCount += 1;
-        if (request.url().endsWith('/api/v1/guest/session'))
-          guestSessionCount += 1;
-      });
-
-      await page.goto(entryPath);
-
-      await expect(page.getByRole('combobox')).toBeVisible();
-      await expect(page).toHaveURL('/');
-      expect(
-        await page.evaluate(() => [
-          localStorage.getItem('harudle.has-ever-logged-in'),
-          localStorage.getItem('harudle.has-completed-oauth'),
-        ]),
-      ).toEqual(entryPath === '/landing' ? ['true', 'true'] : [null, null]);
-      // 이전 문제는 화면 도착 직후 재이동했으므로 안정된 뒤 요청 횟수를 확인한다.
-      await page.waitForTimeout(1000);
-      expect(refreshCount).toBe(entryPath === '/landing' ? 1 : 0);
-      expect(guestSessionCount).toBe(0);
-
-      await page.evaluate((): void => localStorage.clear());
-      await page.reload();
-
-      await expect(page.getByRole('combobox')).toBeVisible();
-      await expect(page).toHaveURL('/');
-      await page.waitForTimeout(1000);
-      expect(refreshCount).toBe(entryPath === '/landing' ? 1 : 0);
-      expect(guestSessionCount).toBe(0);
-      expect(
-        await page.evaluate((): string | null =>
-          localStorage.getItem('harudle.has-completed-oauth'),
-        ),
-      ).toBeNull();
+  test('로그인 이력이 없는 사용자가 홈에 진입하고 저장소를 비운 뒤에도 공개 피드를 유지한다', async ({
+    page,
+  }) => {
+    await page.setExtraHTTPHeaders({
+      [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.authRefreshSuccess,
     });
-  }
+    let refreshCount = 0;
+    let guestSessionCount = 0;
+    page.on('request', (request): void => {
+      if (request.url().endsWith('/api/v1/auth/refresh')) refreshCount += 1;
+      if (request.url().endsWith('/api/v1/guest/session'))
+        guestSessionCount += 1;
+    });
+
+    await page.goto('/');
+
+    await expect(page.getByRole('combobox')).toBeVisible();
+    await expect(page).toHaveURL('/');
+    expect(
+      await page.evaluate(() => [
+        localStorage.getItem('harudle.has-ever-logged-in'),
+        localStorage.getItem('harudle.has-completed-oauth'),
+      ]),
+    ).toEqual([null, null]);
+    // 이전 문제는 화면 도착 직후 재이동했으므로 안정된 뒤 요청 횟수를 확인한다.
+    await page.waitForTimeout(1000);
+    expect(refreshCount).toBe(0);
+    expect(guestSessionCount).toBe(0);
+
+    await page.evaluate((): void => localStorage.clear());
+    await page.reload();
+
+    await expect(page.getByRole('combobox')).toBeVisible();
+    await expect(page).toHaveURL('/');
+    await page.waitForTimeout(1000);
+    expect(refreshCount).toBe(0);
+    expect(guestSessionCount).toBe(0);
+    expect(
+      await page.evaluate((): string | null =>
+        localStorage.getItem('harudle.has-completed-oauth'),
+      ),
+    ).toBeNull();
+  });
+
+  test('로그인 이력 없이 랜딩을 열거나 새로고침하면 소개 화면을 유지한다', async ({
+    page,
+  }): Promise<void> => {
+    await page.setExtraHTTPHeaders({
+      [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.authRefreshSuccess,
+    });
+    const sessionRequests: string[] = [];
+    page.on('request', (request): void => {
+      const { pathname } = new URL(request.url());
+      if (
+        pathname === '/api/v1/auth/refresh' ||
+        pathname === '/api/v1/guest/session'
+      ) {
+        sessionRequests.push(pathname);
+      }
+    });
+    await page.goto('/landing');
+    const hero = page.getByRole('region', {
+      name: /우리끼리 통하는\s*네컷만화/,
+    });
+    await expect(hero).toBeVisible();
+    await page.evaluate((): void => localStorage.clear());
+    await page.reload();
+    await expect(hero).toBeVisible();
+    await expect(page).toHaveURL('/landing');
+    expect(sessionRequests).toHaveLength(0);
+  });
 
   test('로그인 이력만 남아 있어도 유효한 세션으로 인증 표시를 복구한다', async ({
     page,

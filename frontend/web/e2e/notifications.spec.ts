@@ -316,12 +316,10 @@ test('비회원은 생성 버튼을 사용할 수 있지만 알림 버튼과 알
       notifications.push(request.url());
   });
   await page.goto('/');
-  await page
-    .getByRole('button', { name: '네컷만화 만들기', exact: true })
-    .click();
-  await expect(page.getByRole('dialog')).toContainText(
-    '네컷만화를 만들려면 로그인해 주세요.',
-  );
+  await page.getByRole('button', { name: '네컷만화 만들기 체험 열기' }).click();
+  await expect(
+    page.getByRole('dialog').getByRole('textbox', { name: '오늘의 이야기' }),
+  ).toBeVisible();
   await expect(page.getByRole('button', { name: /알림 열기/ })).toHaveCount(0);
   expect(notifications).toHaveLength(0);
 });

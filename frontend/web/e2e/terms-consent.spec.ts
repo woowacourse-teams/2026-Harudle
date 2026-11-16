@@ -201,21 +201,28 @@ test('거절 시 로그아웃 실패는 유지하고 성공한 뒤 유효했던 
   await decline.click();
   await expect(page.getByRole('alert')).toContainText('로그아웃하지 못했어요.');
   await expect(page).toHaveURL('/consent');
-  // 회원 세션이 살아 있다면 랜딩에서도 복원되는 시나리오로 전환한다.
+  // 로그아웃이 세션을 무효화하지 않으면 피드에서 복원되는 시나리오다.
   await page.setExtraHTTPHeaders({
     [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.authRefreshSuccess,
   });
+  await decline.click();
+  await expect(page).toHaveURL('/landing');
+  await expect(
+    page.getByRole('navigation', { name: '서비스 안내', exact: true }),
+  ).toBeVisible();
+
   const invalidRefresh = page.waitForResponse(
     (response): boolean =>
       new URL(response.url()).pathname === '/api/v1/auth/refresh' &&
       response.status() === 401,
   );
-  await decline.click();
+  await page
+    .getByRole('region', { name: /우리끼리 통하는\s*네컷만화/ })
+    .getByRole('link', { name: '하루들 시작하기' })
+    .click();
   await invalidRefresh;
-  await expect(page).toHaveURL('/landing');
-  await expect(
-    page.getByRole('navigation', { name: '서비스 안내', exact: true }),
-  ).toBeVisible();
+  await expect(page).toHaveURL('/');
+  await expect(page.getByRole('combobox')).toBeVisible();
   expect(
     await page.evaluate((): string | null =>
       localStorage.getItem('harudle.has-completed-oauth'),

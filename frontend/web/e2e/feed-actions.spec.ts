@@ -105,7 +105,7 @@ test('더 보기 완료 후 늦게 도착한 좋아요 응답이 목록을 이�
   await page.goto('/');
   const articles = page.getByRole('article');
   await expect(articles).toHaveCount(20);
-  const like = articles.first().getByRole('button', { name: /^\d+$/ }).first();
+  const like = articles.first().getByRole('button', { name: /^좋아요 \d+개$/ });
   const initialLikeCount = Number(await like.textContent());
   const initialIcon = await like.locator('img').getAttribute('src');
 
