@@ -144,8 +144,7 @@ test('목록을 본 뒤 새 글을 게시하고 돌아오면 목록을 다시 �
   await page
     .getByRole('article')
     .first()
-    .getByRole('button', { name: /^\d+$/ })
-    .nth(1)
+    .getByRole('button', { name: /^댓글 \d+개$/ })
     .click();
   await expect(page).toHaveURL(`/feeds/${body.id}`);
 });

@@ -17,7 +17,7 @@ test('마우스 휠로 숨겨진 카테고리까지 스크롤하고 선택한다
   page,
 }): Promise<void> => {
   const firstCategory = page.getByRole('button', { name: '전체', exact: true });
-  const categoryList = firstCategory.locator('..');
+  const categoryList = page.getByRole('list', { name: '카테고리' });
   const lastCategory = categoryList.getByRole('button', {
     name: '취미',
     exact: true,
@@ -36,7 +36,7 @@ test('기본 가로 스크롤과 키보드 선택을 지원한다', async ({
   page,
 }): Promise<void> => {
   const firstCategory = page.getByRole('button', { name: '전체', exact: true });
-  const categoryList = firstCategory.locator('..');
+  const categoryList = page.getByRole('list', { name: '카테고리' });
 
   const expectedScrollLeft = await categoryList.evaluate((element): number =>
     Math.min(150, element.scrollWidth - element.clientWidth),
@@ -66,7 +66,7 @@ test('URL로 진입하거나 뒤로·앞으로 이동하면 선택된 카테고�
 }): Promise<void> => {
   await page.goto('/?categoryId=8');
   const firstCategory = page.getByRole('button', { name: '전체', exact: true });
-  const categoryList = firstCategory.locator('..');
+  const categoryList = page.getByRole('list', { name: '카테고리' });
   const lastCategory = categoryList.getByRole('button', {
     name: '취미',
     exact: true,
