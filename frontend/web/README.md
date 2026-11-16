@@ -184,9 +184,14 @@ OAuth 로그인 진입점과 실패 시 오류 메시지를 추가한다.
 | `pnpm test:e2e:ui`     | e2e 테스트를 브라우저에서 실행           |
 | `pnpm test:e2e:report` | e2e 테스트 보고서 열기                   |
 | `pnpm build`           | 프로덕션 빌드                            |
-| `pnpm check`           | 타입, 린트, 포맷, 테스트, 빌드 전체 검사 |
+| `pnpm check`           | 타입, 린트, 포맷, 테스트, E2E, 빌드 검사 |
 
-PR을 올리기 전 `pnpm check`를 실행합니다.
+PR을 올리기 전 `frontend/web`에서 Chromium을 설치하고 MSW를 켠 상태로 `pnpm check`를 실행합니다.
+
+```bash
+pnpm exec playwright install chromium
+USE_MSW=true pnpm check
+```
 
 결정의 배경과 세부 기준은 [ADR](./docs/adr/README.md)에서 확인할 수 있습니다.
 
