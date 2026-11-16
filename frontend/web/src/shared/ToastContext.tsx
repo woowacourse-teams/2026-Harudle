@@ -3,6 +3,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useMemo,
   useReducer,
   type ReactNode,
 } from 'react';
@@ -103,19 +104,24 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
     [],
   );
 
-  const deleteToast = (id: ToastItem['id']): void => {
+  const deleteToast = useCallback((id: ToastItem['id']): void => {
     dispatch({ type: 'remove', id });
-  };
+  }, []);
 
-  const updateToast = (
-    id: ToastItem['id'],
-    toast: Partial<ToastProps>,
-  ): void => {
-    dispatch({ type: 'update', id, toast });
-  };
+  const updateToast = useCallback(
+    (id: ToastItem['id'], toast: Partial<ToastProps>): void => {
+      dispatch({ type: 'update', id, toast });
+    },
+    [],
+  );
+
+  const value = useMemo<ToastContextValue>(
+    () => ({ addToast, deleteToast, updateToast }),
+    [addToast, deleteToast, updateToast],
+  );
 
   return (
-    <ToastContext.Provider value={{ addToast, deleteToast, updateToast }}>
+    <ToastContext.Provider value={value}>
       {children}
       {createPortal(
         <div css={toastListStyle}>
