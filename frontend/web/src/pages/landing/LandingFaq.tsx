@@ -1,6 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { css } from '@emotion/react';
 import type { JSX } from 'react';
+import { LANDING_CONTACT_EMAIL } from './copy';
 
 interface FaqItem {
   readonly question: string;
@@ -49,11 +50,10 @@ const LandingFaq = (): JSX.Element => (
     <div css={innerStyle}>
       <div css={headingStyle} data-reveal="faq-intro">
         <h2 id="landing-faq-title">
-          자주 묻는
-          <br />
+          자주 묻는 <br />
           질문
         </h2>
-        <a css={contactStyle} href="mailto:harudle.official@gmail.com">
+        <a css={contactStyle} href={`mailto:${LANDING_CONTACT_EMAIL}`}>
           하루들에 문의하기{' '}
           <svg
             width="15"
@@ -106,12 +106,9 @@ const innerStyle = css`
   gap: clamp(48px, 8vw, 112px);
   width: min(100%, 1200px);
   margin: 0 auto;
-  padding-top: clamp(60px, 7vw, 96px);
-  border-top: 1px solid rgb(227 217 255 / 15%);
   @media (max-width: 760px) {
     grid-template-columns: minmax(0, 1fr);
     gap: 28px;
-    padding-top: 48px;
   }
 `;
 const headingStyle = css`
