@@ -30,7 +30,8 @@ class FeedUrlPropertiesTest {
     @ParameterizedTest
     @ValueSource(strings = {
             "/feeds", "ftp://harudle.example/feeds", "https:feeds", "https:/feeds",
-            "https://harudle.example/feeds?category=1", "https://harudle.example/feeds#detail"
+            "https://harudle.example/feeds?category=1", "https://harudle.example/feeds#detail",
+            "https://user:password@harudle.example/feeds"
     })
     void rejectsBaseUrlsThatCannotRepresentPublicFeedPaths(String baseUrl) {
         contextRunner.withPropertyValues("harudle.feed.public-base-url=" + baseUrl)

@@ -15,6 +15,7 @@ public record FeedUrlProperties(@NotNull URI publicBaseUrl) {
     public boolean isValidPublicBaseUrl() {
         return publicBaseUrl != null && publicBaseUrl.isAbsolute() && !publicBaseUrl.isOpaque()
                 && publicBaseUrl.getHost() != null
+                && publicBaseUrl.getRawUserInfo() == null
                 && publicBaseUrl.getRawQuery() == null && publicBaseUrl.getRawFragment() == null
                 && ("https".equalsIgnoreCase(publicBaseUrl.getScheme())
                 || "http".equalsIgnoreCase(publicBaseUrl.getScheme()));
