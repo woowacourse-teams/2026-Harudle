@@ -4,7 +4,9 @@ import com.harudle.generation.adapter.out.openai.OpenAiChatClient.Completion;
 import com.harudle.generation.adapter.out.openai.OpenAiChatClient.Timing;
 import com.harudle.generation.diary.domain.GenerationTokenUsage;
 import com.harudle.generation.diary.service.exception.AiGenerationErrorType;
+import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
@@ -24,6 +26,35 @@ public final class OpenAiStageMetrics {
     public OpenAiStageMetrics(MeterRegistry meterRegistry, String model) {
         this.meterRegistry = Objects.requireNonNull(meterRegistry);
         this.model = model != null && model.matches("[A-Za-z0-9_.-]{1,128}") ? model : "other";
+        registerInitialSeries();
+    }
+
+    /**
+     * CloudWatch Agent는 처음 본 누적값을 기준으로 증가분을 계산한다.
+     * 첫 대체 호출이 집계에서 빠지지 않도록 수집 대상 결과 계열을 시작 시 0으로 등록한다.
+     */
+    private void registerInitialSeries() {
+        try {
+            callCounter("success", "none");
+            for (AiGenerationErrorType type : AiGenerationErrorType.values()) {
+                callCounter("failure", type.name());
+            }
+            durationTimer("success");
+            durationTimer("failure");
+        } catch (RuntimeException exception) {
+            LOGGER.warn("event=metrics_registration_failed component=openai stage=storyboard exceptionType={}",
+                    exception.getClass().getSimpleName());
+        }
+    }
+
+    private Counter callCounter(String outcome, String failureType) {
+        return meterRegistry.counter("harudle.openai.stage.calls", "stage", "storyboard", "model", model,
+                "outcome", outcome, "failureType", failureType);
+    }
+
+    private Timer durationTimer(String outcome) {
+        return meterRegistry.timer("harudle.openai.stage.duration", "stage", "storyboard", "model", model,
+                "outcome", outcome);
     }
 
     void record(@Nullable AiGenerationErrorType failureType, long durationNanos,
@@ -40,10 +71,8 @@ public final class OpenAiStageMetrics {
             @Nullable Completion response, @Nullable GenerationTokenUsage usage) {
         String outcome = failureType == null ? "success" : "failure";
         String category = failureType == null ? "none" : failureType.name();
-        meterRegistry.counter("harudle.openai.stage.calls", "stage", "storyboard", "model", model,
-                "outcome", outcome, "failureType", category).increment();
-        meterRegistry.timer("harudle.openai.stage.duration", "stage", "storyboard", "model", model,
-                "outcome", outcome).record(durationNanos, TimeUnit.NANOSECONDS);
+        callCounter(outcome, category).increment();
+        durationTimer(outcome).record(durationNanos, TimeUnit.NANOSECONDS);
         recordUsage(usage);
         Timing timing = response == null ? null : response.timing();
         recordTiming(timing);

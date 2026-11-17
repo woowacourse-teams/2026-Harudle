@@ -36,8 +36,8 @@ class OpenAiStageMetricsTest {
         assertThat(registry.get("harudle.openai.stage.calls")
                 .tags("stage", "storyboard", "model", "gpt-6-luna", "outcome", "success").counter().count())
                 .isEqualTo(1);
-        assertThat(registry.get("harudle.openai.stage.duration").timer().totalTime(TimeUnit.SECONDS))
-                .isEqualTo(36);
+        assertThat(registry.get("harudle.openai.stage.duration").tag("outcome", "success")
+                .timer().totalTime(TimeUnit.SECONDS)).isEqualTo(36);
         assertThat(registry.get("harudle.openai.response.duration").tag("phase", "first_answer")
                 .timer().totalTime(TimeUnit.SECONDS)).isEqualTo(22);
         assertThat(registry.get("harudle.openai.response.duration").tag("phase", "completed")
@@ -59,8 +59,8 @@ class OpenAiStageMetricsTest {
 
         assertThat(registry.get("harudle.openai.stage.calls")
                 .tags("outcome", "failure", "failureType", "TIMEOUT").counter().count()).isEqualTo(1);
-        assertThat(registry.get("harudle.openai.stage.duration").timer().totalTime(TimeUnit.SECONDS))
-                .isEqualTo(90);
+        assertThat(registry.get("harudle.openai.stage.duration").tag("outcome", "failure")
+                .timer().totalTime(TimeUnit.SECONDS)).isEqualTo(90);
         assertThat(registry.find("harudle.openai.response.duration").timer()).isNull();
         assertThat(registry.find("harudle.openai.tokens").tag("kind", "candidate").counter()).isNull();
         assertThat(registry.find("harudle.openai.tokens").tag("kind", "thought").counter()).isNull();
@@ -74,7 +74,29 @@ class OpenAiStageMetricsTest {
 
         new OpenAiStageMetrics(registry, "model with spaces").record(null, 1, null, null);
 
-        assertThat(registry.get("harudle.openai.stage.calls").tag("model", "other").counter().count()).isEqualTo(1);
+        assertThat(registry.get("harudle.openai.stage.calls").tags("model", "other", "outcome", "success")
+                .counter().count()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("첫 대체 호출이 증가분 집계에서 빠지지 않도록 수집 대상 결과 계열을 시작 시 0으로 등록한다")
+    void registerCollectedSeriesAtZeroOnStartup() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+
+        new OpenAiStageMetrics(registry, "gpt-6-luna");
+
+        assertThat(registry.get("harudle.openai.stage.calls")
+                .tags("outcome", "success", "failureType", "none").counter().count()).isZero();
+        for (AiGenerationErrorType type : AiGenerationErrorType.values()) {
+            assertThat(registry.get("harudle.openai.stage.calls")
+                    .tags("outcome", "failure", "failureType", type.name()).counter().count()).isZero();
+        }
+        for (String outcome : new String[]{"success", "failure"}) {
+            assertThat(registry.get("harudle.openai.stage.duration").tag("outcome", outcome).timer().count())
+                    .isZero();
+        }
+        assertThat(registry.find("harudle.openai.tokens").counter()).isNull();
+        assertThat(registry.find("harudle.openai.response.duration").timer()).isNull();
     }
 
     @Test
