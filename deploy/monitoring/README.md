@@ -538,3 +538,25 @@ Agent는 누적 카운터와 시간 지표의 합, 횟수를 이전 수집과의
 6. 같은 구간에서 시간 합을 횟수로 나눈 값이 평균 처리 시간 그래프와 같은지 확인합니다. 이후 수집 때 같은 요청을 다시 더하지 않는지도 봅니다. 응답 검증 실패를 시험했다면 `reason` 로그 한 건과 해당 원인 지표 증가분도 함께 비교합니다.
 
 서버 적용과 실제 지표 유입 확인이 끝나기 전에는 운영 적용 완료로 기록하지 않습니다.
+
+## OpenAI 스토리보드 대체 생성 지표
+
+`STORYBOARD_FALLBACK_PROVIDER=openai` 또는 `STORYBOARD_PROVIDER=openai`일 때 OpenAI 스토리보드 호출 지표가 생깁니다.
+이미지 대체 생성 지표(`harudle_image_*`)와 이름이 다르며, dev와 prod의 수집 허용 목록과 Agent 선언에 아래 계열만
+추가했습니다. 토큰(`harudle_openai_tokens_total`)과 수신 단계별 시간(`harudle_openai_response_duration_*`)은
+CloudWatch 지표로 보내지 않고 `generation_stage_completed provider=openai stage=storyboard` 로그에서 확인합니다.
+이 변경에서 서버의 Agent나 AWS 대시보드는 수정하지 않았고, 대시보드 그래프도 추가하지 않았습니다.
+
+| 지표 | 수집 구분 | 의미 |
+| --- | --- | --- |
+| `harudle_openai_stage_calls_total` | `job`, `stage`, `outcome`, `failureType` | 끝난 OpenAI 스토리보드 호출 수입니다. 응답 검증 실패와 취소도 실패에 포함합니다. |
+| `harudle_openai_stage_duration_seconds_sum`, `harudle_openai_stage_duration_seconds_count` | `job`, `stage`, `outcome` | 호출 시간의 합과 호출 수입니다. 평균은 합을 수로 나눕니다. |
+
+백엔드는 시작 시 성공 계열, 모든 실패 종류의 계열, 성공과 실패 시간 계열을 0으로 등록합니다.
+Agent가 처음 본 누적값을 증가분의 기준으로 쓰므로, 첫 대체 호출이 집계에서 빠지지 않게 하기 위해서입니다.
+`model` 태그는 Agent 선언의 수집 구분에 넣지 않았으므로 CloudWatch에서는 모델 구분 없이 합산됩니다.
+
+적용과 확인은 위 이미지 지표와 같은 순서를 따릅니다. 해당 환경의 Prometheus 파일과 Agent 설정을 적용하고
+Agent 수집을 두 번 이상 기다린 뒤, dev에서 대체 호출 한 건을 실행합니다. 관리 포트의 값, EMF 로그 증가분과
+CloudWatch의 같은 구간 `Sum`에서 `stage=storyboard`, `outcome=success` 1건이 같은 시도로 집계되는지 확인합니다.
+대체 호출 횟수 자체는 `storyboard_fallback_triggered` 로그로 셉니다.
