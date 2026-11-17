@@ -1,5 +1,6 @@
 package com.harudle.generation.config;
 
+import com.harudle.generation.adapter.out.openai.OpenAiStoryboardSettings;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -31,6 +32,10 @@ public record OpenAiStoryboardProperties(
     public boolean isRequestTimeoutValid() {
         return requestTimeout != null && requestTimeout.compareTo(Duration.ofMillis(1)) >= 0
                 && requestTimeout.compareTo(Duration.ofMillis(Integer.MAX_VALUE)) <= 0;
+    }
+
+    public OpenAiStoryboardSettings settings() {
+        return new OpenAiStoryboardSettings(storyboardModel, maxOutputTokens, reasoningEffort, false, requestTimeout);
     }
 
     @Override
