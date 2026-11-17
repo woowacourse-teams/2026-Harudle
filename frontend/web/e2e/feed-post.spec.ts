@@ -174,3 +174,21 @@ test('게시 실패 후 카테고리를 유지하며 사용자가 재시도할 �
     .click();
   await expect(page).toHaveURL('/');
 });
+
+test('휴대폰 화면에서 카테고리를 고르면 스크롤 없이 게시 버튼이 활성화된 것을 본다', async ({
+  page,
+}): Promise<void> => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/diary/${DIARY_ID}`);
+  await page
+    .getByRole('button', { name: FEED_POST_COPY.publishAction, exact: true })
+    .click();
+  await expect(page).toHaveURL(POST_URL);
+  await page.getByRole('radio', { name: '우테코' }).check();
+  const publishButton = page.getByRole('button', {
+    name: FEED_POST_COPY.publishAction,
+    exact: true,
+  });
+  await expect(publishButton).toBeInViewport({ ratio: 1 });
+  await expect(publishButton).toBeEnabled();
+});
