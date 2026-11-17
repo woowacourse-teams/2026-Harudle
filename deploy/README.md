@@ -1010,3 +1010,38 @@ OpenAI 메인 모드에서는 Gemini 이미지 호출 없이 생성되는지 확
 수집 설정과 대시보드는 [OpenAI 지표 안내](monitoring/README.md#openai-이미지-대체-생성-지표)에 따라 별도로 적용합니다.
 키와 요청 본문을 출력하지 않습니다. Gemini만 사용하도록 되돌리려면 `IMAGE_PROVIDER=gemini`와
 `IMAGE_FALLBACK_PROVIDER=none`으로 바꾸고 백엔드를 재생성합니다. 자세한 입력 제한과 설정은 [백엔드 안내](../backend/README.md#이미지-생성의-openai-대체-호출)를 따릅니다.
+
+## OpenAI 스토리보드 대체 생성 전환
+
+스토리보드 메인이 실패했을 때 OpenAI `gpt-6-luna`를 한 번 호출하도록 켤 수 있습니다. 이미지 대체 생성과는
+별도 설정이며 키만 같은 `OPENAI_API_KEY`를 사용합니다. 이 변경 자체는 서버 환경 파일이나 컨테이너를 바꾸지 않습니다.
+
+활성화 전에 [원문 정책 대조](<../backend/docs/adr/약관과 동의/2026-10-25-약관과 개인정보처리방침 대조 기록-작성자 미기재.md>)의
+외부 처리 업체 항목을 확인합니다. 스토리보드 대체 생성은 이미지 대체 생성과 달리 **사용자가 쓴 일기 원문**을
+OpenAI에 보냅니다. 요청에는 `store: false`를 넣지만, 처리 국가와 보유기간, 위탁과 국외 이전 고지, 동의 등
+처리 근거를 실제 정책과 맞추고 확인 결과를 운영 기록에 남긴 뒤 적용합니다.
+
+서버 `/opt/harudle/.env`를 백업한 뒤 다음 값을 설정하고 기존 배포 절차로 백엔드 컨테이너를 재생성합니다.
+
+```dotenv
+STORYBOARD_PROVIDER=gemini
+STORYBOARD_FALLBACK_PROVIDER=openai
+STORYBOARD_FALLBACK_TIMEOUT=60s
+OPENAI_API_KEY=<서버에만 저장하는 API 키>
+OPENAI_STORYBOARD_MODEL=gpt-6-luna
+OPENAI_STORYBOARD_REASONING_EFFORT=medium
+OPENAI_STORYBOARD_MAX_OUTPUT_TOKENS=8192
+```
+
+`STORYBOARD_FALLBACK_PROVIDER=openai`인데 키가 비어 있으면 백엔드가 시작하지 않습니다. 키와 활성화 값을 함께 넣습니다.
+메인과 보조 제한 시간의 합이 스토리보드 전체 예산입니다. 로컬 실제 호출 1회는 약 29초였으므로 기본 보조 60초에서
+시작하고, 대체 호출 시간과 시간 초과 비율을 보고 조정합니다. 이미지 대체 생성까지 켜면 스토리보드와 이미지 제한
+시간이 모두 한 작업에 더해지므로 생성 처리 제한 시간과 종료 대기 6분 안에 들어오는지 함께 확인합니다.
+
+재생성 후 컨테이너 `healthy`와 관리 포트 지표 응답을 확인합니다. 대체 호출 확인은 메인 실패가 있어야 하므로
+dev에서 짧은 `STORYBOARD_PRIMARY_TIMEOUT`으로 시험한 뒤 원래 값으로 되돌립니다. 로그에서
+`storyboard_fallback_triggered`와 `generation_stage_completed provider=openai stage=storyboard`를,
+DB에서 `diary_generations.storyboard_provider='openai'`를 확인합니다. 지표 수집은
+[OpenAI 스토리보드 지표](monitoring/README.md#openai-스토리보드-대체-생성-지표)에 따라 별도로 적용합니다.
+되돌리려면 `STORYBOARD_FALLBACK_PROVIDER=none`으로 바꾸고 백엔드를 재생성합니다.
+설정과 오류 분류는 [백엔드 안내](../backend/README.md#openai-스토리보드-어댑터)를 따릅니다.
