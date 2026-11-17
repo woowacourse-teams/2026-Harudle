@@ -55,7 +55,8 @@ export default FeedPostCategorySelect;
 
 const categoriesStyle = css`
   display: grid;
-  gap: 12px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
   min-width: 0;
 `;
 
