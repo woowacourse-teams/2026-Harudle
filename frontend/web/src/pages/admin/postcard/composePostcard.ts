@@ -299,7 +299,13 @@ const pickNearest = (
       (a, b) => Math.abs(center(a) - target) - Math.abs(center(b) - target),
     )[0];
 
-/** 만화 네 칸을 프레임 칸에 꽉 차게(넘치는 쪽은 가운데 기준으로 잘라) 옮긴다. */
+// 프레임 칸 안쪽 여백(칸 너비 대비). 원래 만화 칸처럼 대사·인물이 둥근 테두리에 붙거나 모서리에서 잘리지 않게 한다.
+const FRAME_PANEL_PADDING_RATIO = 0.04;
+
+/**
+ * 만화 네 칸을 비율을 유지한 채 프레임 칸 안에 통째로 넣는다(잘라 내지 않는다).
+ * 칸 둘레에는 여백을 두고, 남는 곳은 프레임의 흰 칸 바탕을 그대로 쓴다.
+ */
 export const composePostcard = (
   frame: RasterImage,
   comic: RasterImage,
@@ -312,20 +318,32 @@ export const composePostcard = (
     const source = comicPanels[panelIndex];
     const targetWidth = target.x1 - target.x0 + 1;
     const targetHeight = target.y1 - target.y0 + 1;
+    const padding = Math.round(
+      Math.min(targetWidth, targetHeight) * FRAME_PANEL_PADDING_RATIO,
+    );
     const sourceWidth = source.x1 - source.x0 + 1;
     const sourceHeight = source.y1 - source.y0 + 1;
-    const scale = Math.max(
-      targetWidth / sourceWidth,
-      targetHeight / sourceHeight,
+    const scale = Math.min(
+      (targetWidth - padding * 2) / sourceWidth,
+      (targetHeight - padding * 2) / sourceHeight,
     );
-    const offsetX = source.x0 + (sourceWidth - targetWidth / scale) / 2;
-    const offsetY = source.y0 + (sourceHeight - targetHeight / scale) / 2;
+    const drawnWidth = sourceWidth * scale;
+    const drawnHeight = sourceHeight * scale;
+    const left = target.x0 + (targetWidth - drawnWidth) / 2;
+    const top = target.y0 + (targetHeight - drawnHeight) / 2;
 
     for (const index of pixels) {
       const x = index % frame.width;
       const y = (index - x) / frame.width;
-      const sourceX = offsetX + (x - target.x0 + 0.5) / scale - 0.5;
-      const sourceY = offsetY + (y - target.y0 + 0.5) / scale - 0.5;
+      if (
+        x < left ||
+        x >= left + drawnWidth ||
+        y < top ||
+        y >= top + drawnHeight
+      )
+        continue;
+      const sourceX = source.x0 + (x - left + 0.5) / scale - 0.5;
+      const sourceY = source.y0 + (y - top + 0.5) / scale - 0.5;
       sampleInto(comic, sourceX, sourceY, output, index * 4);
     }
   });
