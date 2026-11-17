@@ -1,224 +1,82 @@
-<div align="center">
+<h1 align="center">
+  <img src="./.github/assets/readme/harudle-readme-banner.png" width="960" alt="하루들 Harudle — 우리끼리 통하는 네컷만화. 함께 있었던 순간을 적으면 하루들이 네컷만화로 만들어 드려요.">
+</h1>
 
-<h1>하루들 Harudle</h1>
-
-<h3>일상의 놓친 순간을 그림으로</h3>
-
-<p>
-오늘의 일을 글로 남기면 그림일기를 만들어 드려요.<br>
-일상에서 놓쳤던 순간들을 그림으로 남겨 사람들과 즐겨보세요!
+<p align="center">
+  <a href="https://www.harudle.com/"><img src="./.github/assets/readme/links/web.png" width="48%" alt="하루들 웹에서 사용하기"></a>
+  <a href="https://apps.apple.com/kr/app/%ED%95%98%EB%A3%A8%EB%93%A4/id6827633489"><img src="./.github/assets/readme/links/ios.png" width="48%" alt="App Store에서 하루들 iOS 앱 다운로드"></a>
 </p>
 
-<br>
-<br>
+<p align="center">
+  <img src="./.github/assets/readme/harudle-intro.gif" width="100%" alt="하루들 소개 영상. 함께 있었던 순간을 글로 남기면 네컷만화가 되는 과정을 보여줍니다.">
+</p>
 
-## 하루들은 어떤 서비스인가요?
+## 하루들을 만든 이유
 
-기록하고 싶은 순간이 있어도 사진을 남기지 않았거나, 직접 그리기 어렵거나, 꾸준히 기록하는 과정이 번거로워 포기하곤 합니다. 하루들은 **짧은 텍스트 하나로 그날의 장면을 다시 만날 수 있게** 만드는 서비스예요.
+<p align="center">
+  <img src="./.github/assets/readme/comics/reason.png" width="100%" alt="네컷만화 '하루들을 만든 이유'. 1컷: 재밌는 일이 있었는데 사진이 없네.. (휴대폰 사진첩에 찍어 둔 점심 사진을 보는 사람). 2컷: 글로 들려줘요. 우리가 재밌는 네컷만화로 만들어 볼게요! (하루들 팀원 다섯 명이 글 한 장과 네 칸짜리 종이를 앞에 두고 둘러앉아 있다). 3컷: 오, 내 우산 딱 저렇게 뒤집혔는데! (뒤집힌 우산이 네컷만화에 담긴 걸 보고 웃는 사람). 4컷: 오늘 일도 한 줄 남겨볼까? (네컷만화를 곁에 두고 하루들에 오늘의 이야기를 입력하는 사람).">
+</p>
 
-이름은 `하루 + doodle` 하루하루를 낙서처럼 쌓아 간다는 뜻을 담았습니다.
+하루들은 짧은 글을 네컷만화로 만들어주는 서비스예요. 이름에는 하루하루를 낙서(doodle)처럼 쌓아 간다는 뜻을 담았어요.
 
-초기 사용자 검증에서 수동 제작 참여자 16명 중 14명이 결과에 만족했고, 프로토타입은 평균 만족도 4.5/5와 응답자 12명 중 11명의 재사용 의향을 확인했습니다.
+## 하루들 변천사
 
-<br>
-<br>
+<p align="center">
+  <img src="./.github/assets/readme/comics/history.png" width="100%" alt="네컷만화 '하루들 변천사'. 1컷: 처음에는 손으로 직접 만화를 그렸어요 (팀원이 네 칸으로 나눈 종이에 라벤더 펜으로 네컷만화를 직접 그리고, 옆에 완성한 종이가 쌓여 있다). 2컷: 네컷만화로 일상을 저장하는 하루들을 만들었어요 (네컷만화가 뜬 휴대폰을 든 사용자가 신나서 손을 들고, 맞은편 팀원이 웃고 있다). 3컷: 그런데 사람들은 만화를 나누고 싶어 했어요 (사용자가 두 손을 펼치며 이야기하고, 팀원이 수첩에 받아 적으며 무언가 깨닫는다). 4컷: 그래서 함께 보는 피드를 열었어요 (팀원이 하루들 피드 화면 모양의 커다란 휴대폰 보드에 새 네컷만화 게시물을 붙이고, 사람들이 모여 구경한다).">
+</p>
 
-## Team Harudle
+손으로 그려 준 16명 중 14명은 또 만들고 싶대요.<br>
+프로토타입을 써 본 12명 중 11명은 다시 쓰고 싶대요.<br>
+이 반응을 믿고 팀원 5명이 모여 하루들을 만들었어요.<br>
+그런데 인터뷰에서 들은 한마디, “공유할 생각이 없으면 만들러 오지 않는다.”<br>
+그래서 하루들은 공유와 소통에 집중해 피드를 만들었어요.
 
+## 사용 방법
+
+<p align="center">
+  <img src="./.github/assets/readme/comics/howto.png" width="100%" alt="네컷만화 '사용 방법'. 1컷: 오늘 있었던 일을 짧게 적어요 (하루들의 네컷만화 만들기 화면. '어떤 순간을 네컷만화로 만들까요?' 입력창과 만들기 버튼). 2컷: 하루들이 귀여운 네컷만화로 만들어줘요 (완성된 네컷만화 '서촌의 따뜻한 나무들'과 줄거리를 보여주는 상세 화면). 3컷: 피드에 올려 사람들과 공유해요 (일상·직장·취준 등 주제별로 네컷만화가 모이는 피드 화면). 4컷: 피드에 반응을 남겨 공감해요 (네컷만화 아래에 댓글이 달린 화면).">
+</p>
+
+## 하루들 팀원들
+
+<div align="center">
 <table>
   <tr>
-    <td align="center">
+    <td align="center" width="168"><br>
       <a href="https://github.com/rix01">
-        <img src="https://github.com/rix01.png?size=120" width="96" alt="이산 프로필 이미지"><br>
+        <img src="./.github/assets/readme/team/team-isan.webp" width="112" alt="이산 캐릭터"><br>
         <strong>이산</strong><br>
         <sub>@rix01</sub>
-      </a>
+      </a><br><br>
     </td>
-    <td align="center">
+    <td align="center" width="168"><br>
       <a href="https://github.com/e9ua1">
-        <img src="https://github.com/e9ua1.png?size=120" width="96" alt="아이큐 프로필 이미지"><br>
+        <img src="./.github/assets/readme/team/team-iq.webp" width="112" alt="아이큐 캐릭터"><br>
         <strong>아이큐</strong><br>
         <sub>@e9ua1</sub>
-      </a>
+      </a><br><br>
     </td>
-    <td align="center">
+    <td align="center" width="168"><br>
       <a href="https://github.com/jason0904">
-        <img src="https://github.com/jason0904.png?size=120" width="96" alt="캐모 프로필 이미지"><br>
+        <img src="./.github/assets/readme/team/team-kaemo.png" width="112" alt="캐모 캐릭터"><br>
         <strong>캐모</strong><br>
         <sub>@jason0904</sub>
-      </a>
+      </a><br><br>
     </td>
-    <td align="center">
+    <td align="center" width="168"><br>
       <a href="https://github.com/2jaeheon">
-        <img src="https://github.com/2jaeheon.png?size=120" width="96" alt="초록 프로필 이미지"><br>
+        <img src="./.github/assets/readme/team/team-chorok.webp" width="112" alt="초록 캐릭터"><br>
         <strong>초록</strong><br>
         <sub>@2jaeheon</sub>
-      </a>
+      </a><br><br>
     </td>
-    <td align="center">
+    <td align="center" width="168"><br>
       <a href="https://github.com/jebiyeon02">
-        <img src="https://github.com/jebiyeon02.png?size=120" width="96" alt="이현 프로필 이미지"><br>
+        <img src="./.github/assets/readme/team/team-ihyun.webp" width="112" alt="이현 캐릭터"><br>
         <strong>이현</strong><br>
         <sub>@jebiyeon02</sub>
-      </a>
+      </a><br><br>
     </td>
   </tr>
 </table>
-
 </div>
-
-<br>
-<br>
-
----
-
-<br>
-<br>
-
-## 핵심 흐름
-
-| 1. 기록                     | 2. 생성                                             | 3. 보관                                  | 4. 공유                              |
-| --------------------------- | --------------------------------------------------- | ---------------------------------------- | ------------------------------------ |
-| 하루를 텍스트로 입력합니다. | 이야기를 4개 장면으로 구성하고 이미지를 생성합니다. | 월별 기록과 연속 기록 일수를 확인합니다. | 링크로 완성된 그림일기를 공유합니다. |
-
-로그인 전에는 게스트로 한 번 체험할 수 있고, 
-카카오 로그인 후에는 기록을 계속 쌓을 수 있습니다.
-
-<br>
-<br>
-
-## 현재 구현
-
-| 영역        | 제공 기능                                                             |
-| ----------- | --------------------------------------------------------------------- |
-| 인증        | 카카오 OAuth 2.0, JWT Access Token, Refresh Token 쿠키, CSRF 보호     |
-| 게스트 체험 | 로그인 없는 게스트 세션과 1회 그림일기 생성                           |
-| 일기 생성   | Gemini 기반 4컷 스토리보드·이미지 동기 생성, 멱등성 키, 일일 3회 제한 |
-| 기록 관리   | 월별 목록, 상세 조회, 소프트 삭제, 현재 연속 기록 일수                |
-| 이미지      | S3 저장과 제한 시간 접근 URL 발급                                     |
-| 공유        | 동일한 공유 링크 생성·조회와 인증 없는 공개 결과 조회                 |
-| 안정성      | 생성 실패 정리, 장시간 처리 중인 작업 복구, 프롬프트 버전 보존        |
-
-Gemini와 S3 연동은 환경 변수로 활성화합니다. 기본 로컬 설정에서는 외부 생성 어댑터가 비활성화되어 있습니다.
-
-<br>
-<br>
-
-## 기술 구성
-
-```mermaid
-flowchart LR
-    User[사용자] --> Web[React Web]
-    Web -->|REST · OAuth 2.0| API[Spring Boot API]
-    API --> DB[(PostgreSQL)]
-    API --> Gemini[Google Gemini]
-    API --> S3[AWS S3]
-```
-
-| 영역      | 기술                                                                      |
-| --------- | ------------------------------------------------------------------------- |
-| Web       | React 19, TypeScript 6, Webpack 5, Emotion                                |
-| API       | Java 21, Spring Boot 4.1, Spring Security, Spring Data JPA, Flyway        |
-| Data & AI | PostgreSQL 18, Google Gemini, AWS S3                                      |
-| Test      | Jest, Testing Library, MSW, JUnit 6, AssertJ, RestAssured, Testcontainers |
-| Delivery  | GitHub Actions, Gradle, pnpm                                              |
-
-<br>
-
----
-
-<br>
-
-## 로컬에서 시작하기
-
-### 준비물
-
-- Amazon Corretto 21
-- Docker와 Docker Compose
-- Node.js 24, pnpm 11.20.0
-
-
-
-저장소를 내려받습니다.
-
-```shell
-git clone https://github.com/woowacourse-teams/2026-Harudle.git
-cd 2026-Harudle
-```
-
-<br>
-
-### Backend
-
-저장소 루트에서 다음 명령을 실행합니다.
-
-```shell
-cd backend
-cp .env.example .env
-docker compose up -d
-./gradlew bootRun
-```
-
-실행 전 `backend/.env`의 `DB_PASSWORD`, `KAKAO_REST_API_KEY`, `KAKAO_CLIENT_SECRET`, `JWT_SECRET_BASE64`를 채워야 합니다. Gemini와 S3를 함께 사용하려면 `HARUDLE_GENERATION_ADAPTERS_ENABLED=true`로 변경하고 관련 설정도 입력합니다.
-
-<br>
-
-### Frontend
-
-별도 터미널의 저장소 루트에서 실행합니다.
-
-```shell
-cd frontend
-pnpm install --frozen-lockfile
-pnpm --dir web dev
-```
-
-| 주소                                | 용도                 |
-| ----------------------------------- | -------------------- |
-| `http://localhost:5173`             | 웹 클라이언트        |
-| `http://localhost:8080`             | API 서버             |
-| `http://localhost:8080/scalar`      | Scalar API 테스트 UI |
-| `http://localhost:8080/v3/api-docs` | OpenAPI JSON         |
-
-Scalar와 OpenAPI 문서는 `HARUDLE_API_DOCUMENTATION_ENABLED=true`일 때만 열립니다. 예시 환경 변수 파일은 로컬 문서를 활성화한 상태입니다. JWT & CSRF 흐름과 요청 예시는 [API 명세](<./backend/docs/명세/하루들 API 명세.md>)를 참고해 주세요.
-
-<br>
-
----
-
-<br>
-
-## 테스트
-
-Backend 테스트는 Testcontainers를 사용하므로 Docker가 필요합니다.
-
-```shell
-cd backend
-./gradlew test
-```
-
-```shell
-cd frontend
-pnpm --dir web check
-```
-
-Pull Request의 대상 브랜치가 `develop-frontend`이면 Frontend 검증만, `develop-backend`이면 Backend 검증만 실행합니다. `dev` 또는 `main` 대상 Pull Request에서는 Backend와 Frontend 검증을 모두 실행합니다.
-
-<br>
-
----
-
-<br>
-
-## 생성 프롬프트 운영 원칙
-
-운영에서 승인한 참조 이미지를 비공개 이미지 저장소에 업로드한 뒤 다음 환경 변수를 주입합니다.
-
-- `HARUDLE_GENERATION_PROMPT_BOOTSTRAP_ENABLED=true`
-- `HARUDLE_GENERATION_PROMPT_BOOTSTRAP_STORYBOARD_PROMPT_TEXT`
-- `HARUDLE_GENERATION_PROMPT_BOOTSTRAP_IMAGE_STYLE_PROMPT_TEXT`
-- `HARUDLE_GENERATION_PROMPT_BOOTSTRAP_IMAGE_ASSET_OBJECT_KEY`
-
-초기화는 `generation_prompts` 테이블이 비어 있을 때만 실행됩니다. 참조 이미지를 읽을 수 없거나 설정이 불완전하면 애플리케이션 시작을 중단하며, 여러 인스턴스가 동시에 시작되어도 한 행만 등록합니다. 실제 프롬프트 본문과 이미지 키는 저장소에 커밋하지 않습니다.
-
-프롬프트를 변경하거나 롤백할 때는 기존 행을 수정하지 않고 새 행을 추가합니다. 가장 큰 ID의 프롬프트가 새 생성 요청에 사용되고, 이전 생성 기록은 당시 프롬프트를 계속 참조합니다.
