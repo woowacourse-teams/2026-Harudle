@@ -72,6 +72,7 @@ jest.mock('./assets/admin-nav-failures.png', () => 'failures.png');
 jest.mock('./assets/admin-nav-generations.png', () => 'generations.png');
 jest.mock('./assets/admin-nav-users.png', () => 'users.png');
 jest.mock('./assets/admin-search-icon.png', () => 'search-icon.png');
+jest.mock('./postcard/postcard-frame.webp', () => 'postcard-frame.webp');
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -135,6 +136,41 @@ beforeEach(() => {
   mockRestoreAdminUsage.mockReset();
   mockSetAdminGenerationLimit.mockReset();
   mockSetSearchParams.mockReset();
+});
+
+describe('관리자 엽서 인쇄', () => {
+  it('생성 이력에서 성공한 생성에만 엽서 인쇄 버튼을 보여 준다', async () => {
+    const user = { id: 'user-a', name: '사용자 A' };
+    mockSearchAdminGenerations.mockResolvedValue(
+      createPage<GenerationHistory>([
+        {
+          id: 'succeeded-generation',
+          user,
+          requestedAt: '2026-11-17T11:52:10Z',
+          status: 'SUCCEEDED',
+          completedAt: '2026-11-17T11:52:41Z',
+          errorCode: null,
+        },
+        {
+          id: 'failed-generation',
+          user,
+          requestedAt: '2026-11-17T11:49:33Z',
+          status: 'FAILED',
+          completedAt: '2026-11-17T11:50:20Z',
+          errorCode: 'IMAGE_GENERATION_FAILED',
+        },
+      ]),
+    );
+
+    renderAdmin('/admin?view=generations');
+
+    expect(
+      await screen.findAllByRole('button', { name: '엽서 인쇄' }),
+    ).toHaveLength(1);
+    expect(
+      screen.getByText('succeeded-generation').closest('tr'),
+    ).toContainElement(screen.getByRole('button', { name: '엽서 인쇄' }));
+  });
 });
 
 describe('관리자 페이지 비동기 요청 순서', () => {

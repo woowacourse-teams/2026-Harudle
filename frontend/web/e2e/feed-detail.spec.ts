@@ -21,8 +21,7 @@ test.describe('피드 상세 뒤로가기', (): void => {
     await page
       .getByRole('article')
       .first()
-      .getByRole('button', { name: /^\d+$/ })
-      .nth(1)
+      .getByRole('button', { name: /^댓글 \d+개$/ })
       .click();
     await expect(page).toHaveURL(/\/feeds\/[^/]+$/);
     await expect(
@@ -402,17 +401,17 @@ test.describe('피드 상세 좋아요', (): void => {
     const articles = page.getByRole('article');
     await expect(articles).toHaveCount(20);
     const firstFeed = articles.first();
-    const listLike = firstFeed.getByRole('button', { name: /^\d+$/ }).first();
+    const listLike = firstFeed.getByRole('button', { name: /^좋아요 \d+개$/ });
     const initialCount = Number(await listLike.textContent());
     const requestCount = listRequests.length;
 
     for (const liked of [true, false]) {
-      await firstFeed.getByRole('button', { name: /^\d+$/ }).nth(1).click();
+      await firstFeed.getByRole('button', { name: /^댓글 \d+개$/ }).click();
       await expect(page).toHaveURL(/\/feeds\/[^/]+$/);
-      const detailLike = page
-        .getByRole('article')
-        .getByRole('button', { name: /^\d+$/ })
-        .first();
+      await expect(articles).toHaveCount(1);
+      const detailLike = articles.getByRole('button', {
+        name: /^좋아요 \d+개$/,
+      });
       await detailLike.click();
       const expectedCount = String(initialCount + (liked ? 1 : 0));
       await expect(detailLike).toHaveText(expectedCount);
@@ -512,7 +511,7 @@ test.describe('피드 상세 삭제', (): void => {
     const ownFeedCount = await options.count();
     const ownFeed = articles.filter({ has: options }).first();
     const requestCount = listRequests.length;
-    await ownFeed.getByRole('button', { name: /^\d+$/ }).nth(1).click();
+    await ownFeed.getByRole('button', { name: /^댓글 \d+개$/ }).click();
     await expect(page).toHaveURL(/\/feeds\/[^/]+$/);
     await expect(articles).toHaveCount(1);
 

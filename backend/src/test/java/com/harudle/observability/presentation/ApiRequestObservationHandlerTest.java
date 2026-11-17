@@ -83,10 +83,11 @@ class ApiRequestObservationHandlerTest {
 
         assertThat(appender.list).hasSize(2);
         assertThat(fields(0)).containsEntry("operation", "feed_list").containsEntry("httpStatus", 200)
-                .containsEntry("apiGroup", "general");
-        assertThat(fields(1)).containsEntry("operation", "feed_detail");
+                .containsEntry("apiGroup", "general").containsEntry("apiRoute", "GET:/api/v1/feeds");
+        assertThat(fields(1)).containsEntry("operation", "feed_detail")
+                .containsEntry("apiRoute", "GET:/api/v1/feeds/{feedId}");
         assertThat(fields(0).keySet()).contains(
-                "event", "apiGroup", "operation", "httpStatus", "durationMs");
+                "event", "apiGroup", "apiRoute", "operation", "httpStatus", "durationMs");
         assertThat(fields(0)).containsEntry("r2Enabled", false)
                 .containsEntry("s3HeadCount", 0).containsEntry("r2HeadCount", 0)
                 .containsEntry("s3SignCount", 0).containsEntry("feedImageCount", 0);
@@ -102,9 +103,12 @@ class ApiRequestObservationHandlerTest {
         mockMvc.perform(post("/api/v1/load-test/diaries")).andExpect(status().isCreated());
         mockMvc.perform(post("/api/v1/feeds")).andExpect(status().isCreated());
 
-        assertThat(fields(0)).containsEntry("apiGroup", "generation");
-        assertThat(fields(1)).containsEntry("apiGroup", "generation");
-        assertThat(fields(2)).containsEntry("apiGroup", "general").containsEntry("operation", "other");
+        assertThat(fields(0)).containsEntry("apiGroup", "generation")
+                .containsEntry("apiRoute", "POST:/api/v1/diaries");
+        assertThat(fields(1)).containsEntry("apiGroup", "generation")
+                .containsEntry("apiRoute", "POST:/api/v1/load-test/diaries");
+        assertThat(fields(2)).containsEntry("apiGroup", "general").containsEntry("operation", "other")
+                .containsEntry("apiRoute", "POST:/api/v1/feeds");
     }
 
     @Test
@@ -114,8 +118,10 @@ class ApiRequestObservationHandlerTest {
         mockMvc.perform(get("/api/v1/guest/diaries/private-diary-id")).andExpect(status().isOk());
 
         assertThat(appender.list).hasSize(2);
-        assertThat(fields(0)).containsEntry("apiGroup", "generation").containsEntry("operation", "other");
-        assertThat(fields(1)).containsEntry("apiGroup", "general").containsEntry("operation", "other");
+        assertThat(fields(0)).containsEntry("apiGroup", "generation").containsEntry("operation", "other")
+                .containsEntry("apiRoute", "POST:/api/v1/guest/diaries");
+        assertThat(fields(1)).containsEntry("apiGroup", "general").containsEntry("operation", "other")
+                .containsEntry("apiRoute", "GET:/api/v1/guest/diaries/{diaryId}");
     }
 
     @Test
@@ -166,6 +172,7 @@ class ApiRequestObservationHandlerTest {
             assertThat(event.path("r2Enabled").isBoolean()).isTrue();
             assertThat(event.path("httpStatus").intValue()).isEqualTo(200);
             assertThat(event.path("operation").asString()).isEqualTo("feed_list");
+            assertThat(event.path("apiRoute").asString()).isEqualTo("GET:/api/v1/feeds");
         } finally {
             logger.detachAppender(jsonAppender);
             jsonAppender.stop();
@@ -183,6 +190,22 @@ class ApiRequestObservationHandlerTest {
         handler.onStop(context);
 
         assertThat(appender.list).hasSize(1);
+        assertThat(fields(0)).containsEntry("apiRoute", "GET:<unmatched>");
+    }
+
+    @Test
+    @DisplayName("표준이 아닌 HTTP 메서드는 지표 값이 늘어나지 않게 하나로 묶어 기록한다")
+    void groupsNonStandardHttpMethods() {
+        for (String method : new String[] {"PROPFIND", "AAA"}) {
+            ServerRequestObservationContext context = new ServerRequestObservationContext(
+                    new MockHttpServletRequest(method, "/api/v1/feeds"), new MockHttpServletResponse());
+            handler.onStart(context);
+            handler.onStop(context);
+        }
+
+        assertThat(appender.list).hasSize(2);
+        assertThat(fields(0)).containsEntry("apiRoute", "OTHER:<unmatched>");
+        assertThat(fields(1)).containsEntry("apiRoute", "OTHER:<unmatched>");
     }
 
     @Test

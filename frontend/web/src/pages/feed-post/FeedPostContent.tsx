@@ -59,7 +59,7 @@ const FeedPostContent = ({ diaryId, imageUrl }: FeedPostContentProps) => {
   return (
     <main css={contentStyle}>
       <form css={formStyle} onSubmit={handleSubmit}>
-        <div css={previewStyle}>
+        <div css={scrollStyle}>
           <div css={comicFrameStyle}>
             <DiaryImage
               diaryId={diaryId}
@@ -75,7 +75,7 @@ const FeedPostContent = ({ diaryId, imageUrl }: FeedPostContentProps) => {
             disabled={isPublishing}
           />
         </div>
-        <div css={publishStyle}>
+        <div css={footerStyle}>
           <ActionButton
             type="submit"
             icon={<span css={sendIconStyle} />}
@@ -95,26 +95,31 @@ const FeedPostContent = ({ diaryId, imageUrl }: FeedPostContentProps) => {
 export default FeedPostContent;
 
 const contentStyle = css`
+  display: flex;
   flex: 1;
+  flex-direction: column;
   min-height: 0;
-  overflow-y: auto;
 `;
 
 const formStyle = css`
   display: flex;
+  flex: 1;
   flex-direction: column;
-  gap: 28px;
-  min-height: 100%;
-  padding: 0 20px 32px;
+  min-height: 0;
 `;
 
-const previewStyle = css`
+const scrollStyle = css`
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 28px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 20px 24px;
 `;
 
 const comicFrameStyle = css`
+  flex-shrink: 0;
   width: 100%;
   aspect-ratio: 1;
   padding: 6px;
@@ -130,10 +135,11 @@ const comicStyle = css`
   object-fit: contain;
 `;
 
-const publishStyle = css`
-  display: grid;
-  gap: 12px;
-  margin-top: auto;
+const footerStyle = css`
+  flex-shrink: 0;
+  padding: 12px 20px max(12px, env(safe-area-inset-bottom));
+  border-top: 1px solid ${theme.colors.stroke.divider};
+  background: ${theme.colors.background.surface};
 `;
 
 const sendIconStyle = css`

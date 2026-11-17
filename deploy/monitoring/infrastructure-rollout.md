@@ -1,5 +1,7 @@
 # dev/prod 관측 인프라 적용 계획
 
+> 아래는 과거 적용 기록입니다. 현재 구성과 실행 절차는 [모니터링 운영 안내](README.md)와 [10월 29일 결정](adr/2026-10-29_ec2-postgresql-monitoring.md)을 따릅니다.
+
 2026-10-01 정리 기록이다. 9월 30일 dev 로그 지표 필터 13개·경보 14개를 준비했고, **SNS → Lambda → Discord의 ALARM·OK 수신을 확인했다.** 이는 당시 ZIP의 성공 경로 시험이며, Discord 저장 확인·실패 재시도나 실제 앱 로그 → 경보 전환을 검증한 것은 아니다. 계측 코드는 [PR #280](https://github.com/woowacourse-teams/2026-Harudle/pull/280), 제공 역할을 사용하는 전달 함수 변경은 [PR #291](https://github.com/woowacourse-teams/2026-Harudle/pull/291)에 있다. S3 이미지 경로 분리는 다른 팀원의 작업이다. 환경별 설정·알람 상세는 [운영 안내](README.md)를 따른다.
 
 ## 현재 적용 상태

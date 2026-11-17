@@ -43,6 +43,9 @@ NEW_DIMENSIONS = {
     "harudle_image_response_failures_total": [["job", "provider", "reason"]],
     "harudle_gemini_stage_duration_seconds_sum": [["job", "stage", "outcome"]],
     "harudle_gemini_stage_duration_seconds_count": [["job", "stage", "outcome"]],
+    "harudle_openai_stage_calls_total": [["job", "stage", "outcome", "failureType"]],
+    "harudle_openai_stage_duration_seconds_sum": [["job", "stage", "outcome"]],
+    "harudle_openai_stage_duration_seconds_count": [["job", "stage", "outcome"]],
     "harudle_s3_url_sign_duration_seconds_sum": [["job", "result", "failureType"]],
     "harudle_s3_url_sign_duration_seconds_count": [["job", "result", "failureType"]],
     "harudle_s3_url_sign_duration_seconds_max": [["job", "result", "failureType"]],
@@ -172,6 +175,10 @@ class MonitoringConfigTests(unittest.TestCase):
             "harudle_image_provider_duration_seconds_max",
             "harudle_image_response_failures_total_extra",
             "harudle_gemini_stage_duration_seconds_bucket",
+            "harudle_openai_stage_duration_seconds_bucket",
+            "harudle_openai_stage_duration_seconds_max",
+            "harudle_openai_tokens_total",  # Storyboard tokens stay in completion logs.
+            "harudle_openai_response_duration_seconds_sum",
             "harudle_s3_url_cache_wait_duration_seconds_bucket",
             "http_server_requests_seconds_bucket",
             "jvm_gc_pause_seconds_count",
@@ -189,6 +196,22 @@ class MonitoringConfigTests(unittest.TestCase):
                 environments = ("prod",) if name in DEV_DIAGNOSTICS else ("dev", "prod")
                 for environment in environments:
                     self.assertEqual(matching_declarations(read_processor(environment)[2], name), [])
+
+    def test_db_agent_and_alarm_targets_match_current_environment(self):
+        targets = json.loads((CONFIG_DIR / 'targets.json').read_text())
+        db = json.loads((CONFIG_DIR / 'cloudwatch-agent.db.json').read_text())['metrics']
+        self.assertEqual(db['namespace'], 'CWAgent')
+        collected = db['metrics_collected']
+        self.assertEqual(collected['disk']['resources'], ['/', '/srv/harudle/db-data'])
+        self.assertEqual({m['name'] for m in collected['disk']['measurement']}, {'used_percent', 'free'})
+        self.assertTrue(all(c['metrics_collection_interval'] == 60 for c in collected.values()))
+        alarms = json.loads((CONFIG_DIR / 'ec2-alarms.dev.json').read_text())
+        self.assertEqual({a['AlarmName'] for a in alarms}, {'harudle-dev-ec2-cpu-high', 'harudle-dev-ec2-status-check'})
+        for alarm in alarms:
+            self.assertEqual(alarm['Dimensions'], [{'Name':'InstanceId','Value':targets['dev']['instance_id']}])
+            self.assertTrue(alarm['ActionsEnabled'])
+        self.assertNotEqual(targets['dev']['instance_id'], targets['dev']['db_instance_id'])
+        self.assertNotEqual(targets['prod']['instance_id'], targets['prod']['db_instance_id'])
 
     def test_dev_diagnostics_preserve_the_existing_collection_contract(self):
         normalized = []

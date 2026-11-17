@@ -1,5 +1,5 @@
 import { css } from '@emotion/react';
-import { useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import type { Category } from '../../domain/category/categoryList';
 import { isFeedSort, type FeedSort } from '../../domain/feeds/feedList';
 import BottomNavigationLayout from '../../shared/BottomNavigationLayout';
@@ -49,29 +49,32 @@ const FeedPage = () => {
     createButtonRef,
   });
 
-  const handleCategoryChange = (
-    nextCategoryId: Category['id'] | undefined,
-    categoryName: string,
-  ): void => {
-    if (nextCategoryId === categoryId) return;
+  const handleCategoryChange = useCallback(
+    (
+      nextCategoryId: Category['id'] | undefined,
+      categoryName: string,
+    ): void => {
+      if (nextCategoryId === categoryId) return;
 
-    track('feed_category_changed', {
-      feature: 'feed',
-      operation: 'feed_category_change',
-      previous_category_id: categoryId ?? null,
-      category_id: nextCategoryId ?? null,
-      category_name: categoryName,
-    });
-    setSearchParams((previous): URLSearchParams => {
-      const next = new URLSearchParams(previous);
-      if (nextCategoryId === undefined) {
-        next.delete(FEED_QUERY_KEYS.CATEGORY_ID);
-      } else {
-        next.set(FEED_QUERY_KEYS.CATEGORY_ID, String(nextCategoryId));
-      }
-      return next;
-    });
-  };
+      track('feed_category_changed', {
+        feature: 'feed',
+        operation: 'feed_category_change',
+        previous_category_id: categoryId ?? null,
+        category_id: nextCategoryId ?? null,
+        category_name: categoryName,
+      });
+      setSearchParams((previous): URLSearchParams => {
+        const next = new URLSearchParams(previous);
+        if (nextCategoryId === undefined) {
+          next.delete(FEED_QUERY_KEYS.CATEGORY_ID);
+        } else {
+          next.set(FEED_QUERY_KEYS.CATEGORY_ID, String(nextCategoryId));
+        }
+        return next;
+      });
+    },
+    [categoryId, setSearchParams, track],
+  );
 
   const handleSortChange = (nextSort: FeedSort): void => {
     setSearchParams((previous): URLSearchParams => {

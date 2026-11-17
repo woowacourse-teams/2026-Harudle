@@ -51,7 +51,8 @@ import tools.jackson.databind.ObjectMapper;
         name = "enabled",
         havingValue = "true"
 )
-@Import({QwenStoryboardConfiguration.class, StoryboardGenerationConfiguration.class,
+@Import({QwenStoryboardConfiguration.class, OpenAiStoryboardConfiguration.class,
+        StoryboardGenerationConfiguration.class,
         ImageStorageConfiguration.class, ImageGenerationConfiguration.class})
 @EnableConfigurationProperties({S3StorageProperties.class, StoryboardProviderProperties.class,
         S3UrlCacheProperties.class})

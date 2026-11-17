@@ -26,6 +26,11 @@ jest.mock('./assets/slack-toothpaste.png', () => 'slack-toothpaste.png');
 jest.mock('./assets/slack-favorite.png', () => 'slack-favorite.png');
 jest.mock('./assets/slack-song-quiz.png', () => 'slack-song-quiz.png');
 jest.mock('./assets/slack-chorok.png', () => 'slack-chorok.png');
+jest.mock('./assets/team-chorok.webp', () => 'team-chorok.webp');
+jest.mock('./assets/team-iq.webp', () => 'team-iq.webp');
+jest.mock('./assets/team-kaemo.webp', () => 'team-kaemo.webp');
+jest.mock('./assets/team-ihyun.webp', () => 'team-ihyun.webp');
+jest.mock('./assets/team-isan.webp', () => 'team-isan.webp');
 jest.mock('./assets/slack-iq.png', () => 'slack-iq.png');
 jest.mock('./assets/slack-ihyun.png', () => 'slack-ihyun.png');
 jest.mock('./assets/friends-birthday.png', () => 'friends-birthday.png');
@@ -186,6 +191,54 @@ describe('브랜드 소개와 체험을 연결하는 랜딩', () => {
     expect(
       within(feed).getByRole('link', { name: '피드 둘러보기' }),
     ).toHaveAttribute('href', '/');
+  });
+
+  it('걸어온 길에서 가설 검증 단계와 확인한 결과를 순서대로 보여준다', async () => {
+    HTMLElement.prototype.scrollTo = jest.fn();
+    const user = userEvent.setup();
+    render(<LandingContent trialSection={null} />);
+    const menu = screen.getByRole('navigation', { name: '랜딩 메뉴' });
+    await user.click(within(menu).getByRole('link', { name: '걸어온 길' }));
+    expect(HTMLElement.prototype.scrollTo).toHaveBeenCalled();
+
+    const journey = screen.getByRole('region', { name: /작은 실험부터/ });
+    const steps = within(
+      within(journey).getByRole('list', { name: '하루들의 가설 검증 과정' }),
+    ).getAllByRole('listitem');
+    expect(steps).toHaveLength(6);
+    expect(
+      within(steps[0]).getByRole('heading', {
+        name: '손으로 먼저 만들어 봤어요',
+      }),
+    ).toBeInTheDocument();
+    expect(within(steps[2]).getByText('36.3%')).toBeInTheDocument();
+  });
+
+  it('팀 소개에서 팀원 다섯 명과 GitHub, 공식 문의 메일을 보여준다', async () => {
+    HTMLElement.prototype.scrollTo = jest.fn();
+    const user = userEvent.setup();
+    render(<LandingContent trialSection={null} />);
+    const menu = screen.getByRole('navigation', { name: '랜딩 메뉴' });
+    await user.click(within(menu).getByRole('link', { name: '팀 소개' }));
+    expect(HTMLElement.prototype.scrollTo).toHaveBeenCalled();
+
+    const team = screen.getByRole('region', {
+      name: /하루들을\s*만드는 사람들/,
+    });
+    const members = within(
+      within(team).getByRole('list', { name: '하루들 팀원' }),
+    ).getAllByRole('listitem');
+    expect(members).toHaveLength(5);
+    expect(within(team).getByText('김제신')).toBeInTheDocument();
+    expect(
+      within(team).getByRole('link', { name: '캐모(김제신)의 GitHub' }),
+    ).toHaveAttribute('href', 'https://github.com/jason0904');
+    expect(
+      within(team).getByRole('link', { name: 'official@harudle.com' }),
+    ).toHaveAttribute('href', 'mailto:official@harudle.com');
+    expect(
+      screen.getByRole('link', { name: /하루들에 문의하기/ }),
+    ).toHaveAttribute('href', 'mailto:official@harudle.com');
   });
 
   it('사용한 체험의 CTA는 로그인 안내로 바꾸고 해당 링크로 초점을 준다', async () => {
