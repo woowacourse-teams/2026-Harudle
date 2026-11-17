@@ -12,8 +12,8 @@ import org.springframework.validation.annotation.Validated;
 @Validated
 @ConfigurationProperties("harudle.generation.storyboard")
 public record StoryboardProviderProperties(
-        @DefaultValue("gemini") @NotBlank @Pattern(regexp = "gemini|qwen") String provider,
-        @DefaultValue("none") @NotBlank @Pattern(regexp = "none|gemini|qwen") String fallbackProvider,
+        @DefaultValue("gemini") @NotBlank @Pattern(regexp = "gemini|qwen|openai") String provider,
+        @DefaultValue("none") @NotBlank @Pattern(regexp = "none|gemini|qwen|openai") String fallbackProvider,
         @DefaultValue("60s") @NotNull Duration primaryTimeout,
         @DefaultValue("60s") @NotNull Duration fallbackTimeout
 ) {

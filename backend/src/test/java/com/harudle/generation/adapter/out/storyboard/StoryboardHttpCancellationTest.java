@@ -17,6 +17,10 @@ import com.harudle.generation.adapter.out.gemini.GeminiStageMetrics;
 import com.harudle.generation.adapter.out.gemini.GeminiStoryboardGenerator;
 import com.harudle.generation.adapter.out.gemini.client.ExpressGeminiClientFactory;
 import com.harudle.generation.adapter.out.gemini.client.GeminiStoryboardCallScope;
+import com.harudle.generation.adapter.out.openai.OpenAiChatClient;
+import com.harudle.generation.adapter.out.openai.OpenAiStageMetrics;
+import com.harudle.generation.adapter.out.openai.OpenAiStoryboardGenerator;
+import com.harudle.generation.adapter.out.openai.OpenAiStoryboardSettings;
 import com.harudle.generation.adapter.out.qwen.QwenChatClient;
 import com.harudle.generation.adapter.out.qwen.QwenStageMetrics;
 import com.harudle.generation.adapter.out.qwen.QwenStoryboardGenerator;
@@ -118,7 +122,7 @@ class StoryboardHttpCancellationTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"gemini,false", "gemini,true", "qwen,false", "qwen,true"})
+    @CsvSource({"gemini,false", "gemini,true", "qwen,false", "qwen,true", "openai,false", "openai,true"})
     @DisplayName("HTTP 헤더 또는 본문 수신이 지연되면 실행기 TIMEOUT이 실제 Call을 취소한다")
     void cancelRealHttpCallAtDeadline(String selectedProvider, boolean bodyStarted) throws Exception {
         StoryboardGenerator generator = generator(selectedProvider);
@@ -150,7 +154,7 @@ class StoryboardHttpCancellationTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"gemini,false", "gemini,true", "qwen,false", "qwen,true"})
+    @CsvSource({"gemini,false", "gemini,true", "qwen,false", "qwen,true", "openai,false", "openai,true"})
     @DisplayName("작업 스레드를 인터럽트하지 않아도 요청별 취소 콜백이 실제 HTTP 읽기를 중단한다")
     void cancelTransportWithoutInterruptingWorker(String selectedProvider, boolean bodyStarted) throws Exception {
         StoryboardGenerator generator = generator(selectedProvider);
@@ -173,7 +177,7 @@ class StoryboardHttpCancellationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"gemini", "qwen"})
+    @ValueSource(strings = {"gemini", "qwen", "openai"})
     @DisplayName("동시 요청 중 하나를 취소해도 다른 HTTP 요청을 취소하지 않는다")
     void isolateRealConcurrentHttpCalls(String selectedProvider) throws Exception {
         StoryboardGenerator generator = generator(selectedProvider);
@@ -213,7 +217,8 @@ class StoryboardHttpCancellationTest {
 
     @ParameterizedTest
     @CsvSource({"gemini,408", "gemini,429", "gemini,500", "gemini,502", "gemini,503", "gemini,504",
-            "qwen,408", "qwen,429", "qwen,500", "qwen,502", "qwen,503", "qwen,504"})
+            "qwen,408", "qwen,429", "qwen,500", "qwen,502", "qwen,503", "qwen,504",
+            "openai,408", "openai,429", "openai,500", "openai,502", "openai,503", "openai,504"})
     @DisplayName("HTTP 오류와 즉시 재시도 헤더가 있어도 서버에 한 번만 전송한다")
     void sendOnlyOnceOnHttpFailure(String selectedProvider, int status) throws Exception {
         StoryboardGenerator generator = generator(selectedProvider);
@@ -233,7 +238,7 @@ class StoryboardHttpCancellationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"gemini", "qwen"})
+    @ValueSource(strings = {"gemini", "qwen", "openai"})
     @DisplayName("서버가 응답 없이 연결을 끊어도 HTTP를 다시 전송하지 않는다")
     void sendOnlyOnceOnNetworkFailure(String selectedProvider) throws Exception {
         StoryboardGenerator generator = generator(selectedProvider);
@@ -249,7 +254,7 @@ class StoryboardHttpCancellationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"gemini", "qwen"})
+    @ValueSource(strings = {"gemini", "qwen", "openai"})
     @DisplayName("완료한 HTTP 요청의 취소 함수를 해제하고 다음 요청에 이전 컨텍스트를 남기지 않는다")
     void clearHooksAndContextAfterCompletion(String selectedProvider) {
         StoryboardGenerator generator = generator(selectedProvider);
@@ -318,6 +323,20 @@ class StoryboardHttpCancellationTest {
             return new GeminiStoryboardGenerator(client.models, properties, mapper, new StoryboardResponseMapper(),
                     new GeminiFailureReporter(new GeminiExceptionTranslator(), logger),
                     new GeminiStageMetrics(registry), scope);
+        }
+        if ("openai".equals(provider)) {
+            OkHttpClient http = OpenAiChatClient.httpClient(HTTP_TIMEOUT).newBuilder().eventListenerFactory(call -> {
+                calls.add(call);
+                return EventListener.NONE;
+            }).build();
+            httpClients.add(http);
+            // Route only this test's HTTPS API request to the local HTTP server; production validation stays unchanged.
+            Call.Factory localCalls = apiRequest -> http.newCall(apiRequest.newBuilder().url(url()).build());
+            OpenAiChatClient client = new OpenAiChatClient(localCalls, mapper, "sk-proj-fixture-key");
+            var settings = OpenAiStoryboardSettings.defaults();
+            return new OpenAiStoryboardGenerator(client, settings,
+                    new StoryboardJsonCodec(mapper, new StoryboardResponseMapper()), logger,
+                    new OpenAiStageMetrics(registry, settings.model()));
         }
         OkHttpClient http = QwenChatClient.httpClient(HTTP_TIMEOUT).newBuilder().eventListenerFactory(call -> {
             calls.add(call);

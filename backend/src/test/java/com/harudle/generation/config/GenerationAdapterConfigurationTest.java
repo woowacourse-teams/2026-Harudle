@@ -23,6 +23,9 @@ import com.harudle.generation.adapter.out.gemini.GeminiStoryboardGenerator;
 import com.harudle.generation.adapter.out.gemini.client.ExpressGeminiClientFactory;
 import com.harudle.generation.adapter.out.gemini.client.GeminiClientFactory;
 import com.harudle.generation.adapter.out.gemini.client.VertexGeminiClientFactory;
+import com.harudle.generation.adapter.out.openai.OpenAiChatClient;
+import com.harudle.generation.adapter.out.openai.OpenAiStageMetrics;
+import com.harudle.generation.adapter.out.openai.OpenAiStoryboardGenerator;
 import com.harudle.generation.adapter.out.qwen.QwenChatClient;
 import com.harudle.generation.adapter.out.qwen.QwenStageMetrics;
 import com.harudle.generation.adapter.out.qwen.QwenStoryboardGenerator;
@@ -356,6 +359,107 @@ class GenerationAdapterConfigurationTest {
             assertThat(settings.requestTimeout()).isEqualTo(java.time.Duration.ofSeconds(90));
             var http = (OkHttpClient) ReflectionTestUtils.getField(context.getBean(QwenChatClient.class), "calls");
             assertThat(http.callTimeoutMillis()).isEqualTo(60_000);
+        });
+    }
+
+    @Test
+    @DisplayName("OpenAI를 보조로 선택하면 메인 Gemini와 함께 등록하고 보조 제한 시간을 HTTP에 적용한다")
+    void configureOpenAiStoryboardFallback() {
+        contextRunner.withPropertyValues(enabledAdapterProperties()).withPropertyValues(
+                "harudle.generation.storyboard.fallback-provider=openai",
+                "harudle.generation.storyboard.fallback-timeout=35s",
+                "harudle.generation.openai-storyboard.api-key=sk-proj-test-key"
+        ).run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context.getBeansOfType(StoryboardGenerator.class))
+                    .containsOnlyKeys("geminiStoryboardGenerator", "openaiStoryboardGenerator");
+            assertThat(context.getBean("openaiStoryboardGenerator")).isInstanceOf(OpenAiStoryboardGenerator.class);
+            assertThat(context).hasSingleBean(StoryboardGenerationService.class);
+            assertThat(context).hasSingleBean(OpenAiChatClient.class);
+            assertThat(context).hasSingleBean(OpenAiStageMetrics.class);
+            assertThat(context).doesNotHaveBean(QwenChatClient.class);
+            var http = (OkHttpClient) ReflectionTestUtils.getField(context.getBean(OpenAiChatClient.class), "calls");
+            assertThat(http.callTimeoutMillis()).isEqualTo(35_000);
+            assertThat(http.retryOnConnectionFailure()).isFalse();
+            assertThat(context.getBean(DiaryImageGenerator.class)).isInstanceOf(GeminiDiaryImageGenerator.class);
+        });
+    }
+
+    @Test
+    @DisplayName("OpenAI를 메인으로 선택하면 스토리보드 구현만 교체하고 Gemini 이미지 생성기를 유지한다")
+    void selectOpenAiStoryboardAsPrimary() {
+        contextRunner.withPropertyValues(enabledAdapterProperties()).withPropertyValues(
+                "harudle.generation.storyboard.provider=openai",
+                "harudle.generation.openai-storyboard.api-key=sk-proj-test-key"
+        ).run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context).hasSingleBean(StoryboardGenerator.class);
+            assertThat(context.getBean(StoryboardGenerator.class)).isInstanceOf(OpenAiStoryboardGenerator.class);
+            assertThat(context).doesNotHaveBean("geminiStoryboardClient");
+            assertThat(context.getBean(DiaryImageGenerator.class)).isInstanceOf(GeminiDiaryImageGenerator.class);
+        });
+    }
+
+    @Test
+    @DisplayName("application.yml에 매핑한 환경 변수로 OpenAI 스토리보드 키와 모델 및 추론 설정을 연결한다")
+    void bindOpenAiStoryboardEnvironmentVariablesThroughApplicationYaml() {
+        contextRunner.withPropertyValues(enabledAdapterProperties()).withPropertyValues(
+                "STORYBOARD_FALLBACK_PROVIDER=openai", "OPENAI_API_KEY=sk-proj-env-test-key",
+                "OPENAI_STORYBOARD_MODEL=gpt-6-luna-2026-11-01", "OPENAI_STORYBOARD_REASONING_EFFORT=low",
+                "OPENAI_STORYBOARD_MAX_OUTPUT_TOKENS=4096", "OPENAI_STORYBOARD_REQUEST_TIMEOUT=90s"
+        ).withInitializer(context -> {
+            try {
+                new YamlPropertySourceLoader().load("application", new ClassPathResource("application.yml"))
+                        .forEach(source -> context.getEnvironment().getPropertySources().addLast(source));
+            } catch (java.io.IOException exception) {
+                throw new IllegalStateException(exception);
+            }
+        }).run(context -> {
+            assertThat(context).hasNotFailed();
+            var settings = context.getBean(OpenAiStoryboardProperties.class).settings();
+            assertThat(settings.model()).isEqualTo("gpt-6-luna-2026-11-01");
+            assertThat(settings.reasoningEffort()).isEqualTo("low");
+            assertThat(settings.maxOutputTokens()).isEqualTo(4096);
+            assertThat(settings.strictSchema()).isFalse();
+            assertThat(settings.requestTimeout()).isEqualTo(Duration.ofSeconds(90));
+            assertThat(context.getBean(OpenAiStoryboardGenerator.class).providerInfo().model())
+                    .isEqualTo("gpt-6-luna-2026-11-01");
+            var http = (OkHttpClient) ReflectionTestUtils.getField(context.getBean(OpenAiChatClient.class), "calls");
+            assertThat(http.callTimeoutMillis()).isEqualTo(60_000);
+        });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"provider", "fallback-provider"})
+    @DisplayName("OpenAI를 메인이나 보조로 선택했을 때 API 키가 없으면 시작에 실패한다")
+    void requireOpenAiKeyWhenSelected(String role) {
+        contextRunner.withPropertyValues(enabledAdapterProperties())
+                .withPropertyValues("harudle.generation.storyboard." + role + "=openai")
+                .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    @DisplayName("OpenAI를 선택하지 않으면 OpenAI 스토리보드 키와 잘못된 설정을 검증하지 않는다")
+    void ignoreUnselectedOpenAiStoryboardSettings() {
+        contextRunner.withPropertyValues(enabledAdapterProperties()).withPropertyValues(
+                "harudle.generation.openai-storyboard.api-key=",
+                "harudle.generation.openai-storyboard.max-output-tokens=not-a-number"
+        ).run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context.getBean(StoryboardGenerator.class)).isInstanceOf(GeminiStoryboardGenerator.class);
+            assertThat(context).doesNotHaveBean(OpenAiStoryboardProperties.class);
+            assertThat(context).doesNotHaveBean(OpenAiChatClient.class);
+        });
+    }
+
+    @Test
+    @DisplayName("외부 어댑터가 꺼져 있으면 OpenAI 스토리보드 선택과 비밀값 없이 시작한다")
+    void keepOpenAiStoryboardDisabledWithGenerationAdapters() {
+        contextRunner.withPropertyValues("harudle.generation.storyboard.fallback-provider=openai").run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context).doesNotHaveBean(OpenAiChatClient.class);
+            assertThat(context).doesNotHaveBean(OpenAiStoryboardProperties.class);
+            assertThat(context).doesNotHaveBean(StoryboardGenerator.class);
         });
     }
 

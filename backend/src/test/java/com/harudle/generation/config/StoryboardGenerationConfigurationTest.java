@@ -31,7 +31,7 @@ class StoryboardGenerationConfigurationTest {
     private final StoryboardGenerationRequest request = new StoryboardGenerationRequest("일기", "공통 프롬프트");
 
     @ParameterizedTest
-    @CsvSource({"gemini,qwen", "qwen,gemini"})
+    @CsvSource({"gemini,qwen", "qwen,gemini", "gemini,openai", "openai,qwen"})
     @DisplayName("Bean 이름으로 선택한 메인 실패 후 보조를 호출하고 애플리케이션 종료 시 실행기를 정리한다")
     void selectProvidersAndManageExecutorLifecycle(String primaryName, String fallbackName) {
         var primary = mock(StoryboardGenerator.class);
@@ -72,7 +72,7 @@ class StoryboardGenerationConfigurationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"gemini", "qwen"})
+    @ValueSource(strings = {"gemini", "qwen", "openai"})
     @DisplayName("보조가 비활성화되면 등록된 다른 Provider를 호출하지 않고 메인만 호출한다")
     void preserveSingleProviderPath(String primaryName) {
         var primary = mock(StoryboardGenerator.class);

@@ -61,7 +61,10 @@
             "harudle_image_provider_duration_seconds_count": "Count",
             "harudle_image_response_failures_total": "Count",
             "harudle_gemini_stage_duration_seconds_sum": "Seconds",
-            "harudle_gemini_stage_duration_seconds_count": "Count"
+            "harudle_gemini_stage_duration_seconds_count": "Count",
+            "harudle_openai_stage_calls_total": "Count",
+            "harudle_openai_stage_duration_seconds_sum": "Seconds",
+            "harudle_openai_stage_duration_seconds_count": "Count"
           },
           "metric_declaration": [
             {
@@ -210,6 +213,18 @@
               "label_matcher": "^harudle-backend$",
               "dimensions": [["job", "stage", "outcome"]],
               "metric_selectors": ["^harudle_gemini_stage_duration_seconds_(sum|count)$"]
+            },
+            {
+              "source_labels": ["job"],
+              "label_matcher": "^harudle-backend$",
+              "dimensions": [["job", "stage", "outcome", "failureType"]],
+              "metric_selectors": ["^harudle_openai_stage_calls_total$"]
+            },
+            {
+              "source_labels": ["job"],
+              "label_matcher": "^harudle-backend$",
+              "dimensions": [["job", "stage", "outcome"]],
+              "metric_selectors": ["^harudle_openai_stage_duration_seconds_(sum|count)$"]
             }
           ]
         }

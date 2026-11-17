@@ -313,7 +313,7 @@ JSON 해석에 실패하면 기존 HTTP 오류 분류를 유지합니다. 오류
 메인·보조 역할별 요청 제한 시간은 기본 60초입니다. `QwenStoryboardSettings`로 모델명, 추론 예산과 출력
 한도를 변경합니다. `json_object`에서는 기존 시스템 프롬프트 뒤에 공통 출력 스키마를 붙입니다.
 
-스토리보드 Provider는 `STORYBOARD_PROVIDER`로 선택합니다. 값은 소문자 `gemini` 또는 `qwen`이며
+스토리보드 Provider는 `STORYBOARD_PROVIDER`로 선택합니다. 값은 소문자 `gemini`, `qwen`, `openai` 중 하나이며
 기본값은 `gemini`입니다. dev에서 Qwen 스토리보드와 기존 Gemini 이미지 생성을 연결하려면 서버의
 `.env`에 다음 값을 설정하고 변경된 백엔드로 컨테이너를 재생성합니다.
 
@@ -348,9 +348,51 @@ Qwen 스토리보드 생성 시간을 각각 비교할 수 있습니다. 종료 
 
 보조 없이 Qwen만 선택할 수도 있고, 아래 설정으로 메인 실패 시 다른 Provider를 한 번 호출할 수도 있습니다.
 
+### OpenAI 스토리보드 어댑터
+
+`OpenAiStoryboardGenerator`도 같은 `StoryboardGenerator`를 구현합니다. Qwen과 같은 공통 프롬프트, 응답 스키마와
+검증을 사용하며 Qwen 전용 캡션 지침은 붙이지 않습니다. `OpenAiChatClient`가
+`POST https://api.openai.com/v1/chat/completions`를 SSE 스트리밍으로 한 번 호출합니다. API 키로 직접 호출하며
+이미지 대체 생성과 같은 `OPENAI_API_KEY`를 사용합니다. 요청에는 `store: false`를 넣어 OpenAI에 응답 저장을
+요청하지 않습니다.
+
+기본 설정은 `gpt-6-luna`, `reasoning_effort=medium`, `max_completion_tokens=8192`, `json_object`입니다.
+공통 `StoryboardResponseSchema`는 OpenAI 엄격 모드의 조건(모든 객체의 `additionalProperties: false`)을
+만족하지 않으므로 `json_schema` 대신 `json_object`를 사용하고 시스템 프롬프트 뒤에 출력 스키마를 붙입니다.
+엄격 모드를 쓰려면 공통 스키마를 먼저 바꿔야 합니다.
+
+```dotenv
+STORYBOARD_PROVIDER=gemini
+STORYBOARD_FALLBACK_PROVIDER=openai
+STORYBOARD_PRIMARY_TIMEOUT=60s
+STORYBOARD_FALLBACK_TIMEOUT=60s
+OPENAI_API_KEY=<서버에만 저장하는 API 키>
+OPENAI_STORYBOARD_MODEL=gpt-6-luna
+OPENAI_STORYBOARD_REASONING_EFFORT=medium
+OPENAI_STORYBOARD_MAX_OUTPUT_TOKENS=8192
+```
+
+OpenAI를 메인 또는 보조로 선택했을 때만 OpenAI 스토리보드 설정을 검증합니다. 키가 비어 있거나 공백·제어 문자를
+포함하면 시작 시 거절합니다. 선택하지 않으면 키가 비어 있어도 시작에 영향이 없습니다. `OPENAI_STORYBOARD_REQUEST_TIMEOUT`은
+Qwen의 같은 속성처럼 바인딩만 유지하며, 서버의 호출에는 역할별 `STORYBOARD_PRIMARY_TIMEOUT`·`STORYBOARD_FALLBACK_TIMEOUT`이
+적용됩니다. 2026-11-17 로컬에서 `gpt-6-luna`로 실제 호출 1회를 시험했으며 4컷 스토리보드가 공통 검증을 통과했고
+약 29초가 걸렸습니다. 긴 일기나 응답 지연을 고려해 보조 제한 시간을 정합니다.
+
+HTTP 400 응답과 스트림 오류의 `error.code`가 `content_policy_violation` 또는 `content_filter`이면
+`AI_CONTENT_BLOCKED`로 분류합니다. 모델의 거절 응답(`refusal`)과 `finish_reason=content_filter`도 같습니다.
+`finish_reason=length`는 `OUTPUT_TRUNCATED`이며, 그 밖의 HTTP 상태와 통신 오류는 Qwen과 같은 기준으로
+`AiGenerationErrorType`과 상세 실패 유형으로 변환합니다. 오류 응답과 거절 문구 원문은 예외와 로그에 남기지 않습니다.
+OpenAI의 `completion_tokens`에는 추론 토큰이 포함되므로 최종 답변 토큰은 그 차이로 계산합니다.
+
+호출은 `generation_stage_completed` 로그에 `provider=openai`, `stage=storyboard`, 모델, 결과와 토큰,
+HTTP 헤더·첫 최종 답변·완료 수신 시간을 기록합니다. OpenAI는 추론 과정을 스트리밍하지 않으므로 첫 추론 시간은 없습니다.
+지표는 `harudle.openai.stage.calls`, `harudle.openai.stage.duration`, `harudle.openai.tokens`,
+`harudle.openai.response.duration`입니다. 이미지 대체 생성 지표(`harudle.image.*`)와 이름이 겹치지 않습니다.
+CloudWatch 수집 대상인 호출 결과와 소요 시간 계열은 첫 호출이 증가분 집계에서 빠지지 않도록 시작 시 0으로 등록합니다.
+
 ### 스토리보드 대체 설정과 오류 분류
 
-메인 Provider는 기존 `STORYBOARD_PROVIDER`로 선택합니다. 보조 선택값은 `none`, `gemini`, `qwen`이며
+메인 Provider는 기존 `STORYBOARD_PROVIDER`로 선택합니다. 보조 선택값은 `none`, `gemini`, `qwen`, `openai`이며
 기본값 `none`은 보조를 사용하지 않는 설정입니다. 메인과 보조를 같은 Provider로 지정하면 시작 시 거절합니다.
 
 ```dotenv
@@ -365,7 +407,7 @@ QWEN_TOKEN_PLAN_API_KEY=<sk-sp- 전용 키>
 합이고, 단독 선택에서는 메인 제한 시간만 사용합니다.
 
 `ClaimedDiaryGenerationService`가 `StoryboardGenerationService`를 통해 메인과 선택적인 보조를 호출합니다.
-Gemini·Qwen 스토리보드 Client는 메인일 때 `STORYBOARD_PRIMARY_TIMEOUT`, 보조일 때
+Gemini·Qwen·OpenAI 스토리보드 Client는 메인일 때 `STORYBOARD_PRIMARY_TIMEOUT`, 보조일 때
 `STORYBOARD_FALLBACK_TIMEOUT`과 내부 재시도 없는 설정을 사용합니다. Gemini 이미지 Client는 기존
 `GEMINI_REQUEST_TIMEOUT`·`GEMINI_RETRY_ATTEMPTS`를 유지합니다. 기존 `QWEN_REQUEST_TIMEOUT` 속성은
 호환성을 위해 바인딩을 유지하지만 서버의 스토리보드 호출에는 역할별 제한 시간이 우선합니다.
@@ -394,7 +436,7 @@ Gemini·Qwen 스토리보드 Client는 메인일 때 `STORYBOARD_PRIMARY_TIMEOUT
 전체 제한 시간 이후 도착한 결과도 거절합니다. 메인과 보조 설정에 맞는 구현체가 필요하며 같은 구현체를 중복
 주입하면 조합을 거절합니다.
 
-`StoryboardGenerationConfiguration`은 `geminiStoryboardGenerator`·`qwenStoryboardGenerator` Bean 이름으로
+`StoryboardGenerationConfiguration`은 `geminiStoryboardGenerator`·`qwenStoryboardGenerator`·`openaiStoryboardGenerator` Bean 이름으로
 메인과 보조 포트를 선택합니다. 선택한 Provider만 스토리보드 어댑터를 초기화하며, 보조가 `none`이면 메인만
 사용합니다. 조합 서비스의 성공 결과를 기존 이미지 생성·저장·완료 처리에 전달하고, 대체 호출까지 실패했을 때
 최종 오류를 DB에 저장합니다. 이미지 생성 실패는 스토리보드 대체 호출을 유발하지 않습니다.
@@ -454,9 +496,10 @@ Express와 Vertex 모두 같은 인증 팩토리에 전용 HTTP 옵션을 전달
 컨텍스트의 남은 시간을 밀리초로 올림해 넣으며, 0ms가 무제한으로 처리되지 않도록 최소 1ms를 사용합니다.
 
 Qwen은 `QwenChatClient`가 만든 Call에 취소 함수를 등록하고 남은 시간을 해당 Call의 timeout에 적용합니다.
+OpenAI의 `OpenAiChatClient`도 같은 방식으로 취소 함수와 남은 시간을 연결합니다.
 본문·SSE 읽기가 끝나거나 실패하면 등록을 해제합니다. 직접 생성하는 클라이언트의 컨텍스트 없는 호출은
 생성자에 전달한 HTTP Client의 제한 시간을 사용합니다. 서버에서는 역할별 제한 시간으로 Client를 구성합니다.
-두 Provider 모두 취소 컨텍스트의 `TIMEOUT`·`CANCELLED`를 유지하며, 늦은 응답의 검증 오류가
+세 Provider 모두 취소 컨텍스트의 `TIMEOUT`·`CANCELLED`를 유지하며, 늦은 응답의 검증 오류가
 응답 처리 오류로 덮어쓰지 않도록 검사합니다.
 
 `SingleAttemptHttpTransport`는 연결 재시도와 리디렉션을 비활성화하고 요청 본문을 재전송하지 않도록 표시합니다.
@@ -506,6 +549,17 @@ GROUP BY storage;
 재시작하면 빈 캐시에서 요청을 받습니다. 배포 전 실제 자격 만료 제공 여부와 빈 캐시의 초기 응답을 확인하고,
 첫 페이지 반복과 여러 페이지 순환을 각각 같은 조건에서 캐시 전후로 측정해 대기 상한을 정합니다.
 [지표 확인 방법](../deploy/monitoring/README.md#피드-s3-주소-캐시-지표)을 참고합니다.
+
+### 관리자 엽서 인쇄 이미지
+
+관리자 생성 이력에서 고른 만화를 행사용 엽서 프레임과 합성해 인쇄할 수 있도록
+`GET /api/v1/admin/generations/{generationId}/postcard-image`가 이미지 접근 주소와 만화 제목을 반환합니다.
+합성과 인쇄는 관리자 브라우저에서 하며 백엔드는 이미지를 처리하지 않습니다.
+
+- 생성에 성공했고 일기가 삭제되지 않은 경우에만 응답합니다. 그 밖에는 `404 GENERATION_NOT_FOUND`입니다.
+- 인쇄 화질을 위해 같은 폴더의 원본(`image.png`, `image.jpg`, `image.webp` 순)을 저장소에서 확인해
+  있으면 원본 주소를, 없으면 상세 이미지 주소를 발급합니다. 응답에 저장소 키는 담지 않습니다.
+- 관리자는 이 경로로 신고되지 않은 사용자의 만화도 볼 수 있습니다. 행사 운영 목적 밖에서는 사용하지 않습니다.
 
 ## 테스트
 

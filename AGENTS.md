@@ -141,6 +141,11 @@ dev와 prod의 수집 설정과 대시보드 생성 도구에 OpenAI 지표를 �
 모델은 `gpt-image-2.5-flare`, 제한 시간은 `180s`, 품질은 `medium`이다.
 `OPENAI_API_KEY`는 비어 있고 `IMAGE_FALLBACK_PROVIDER=none`으로 비활성화 상태다.
 두 환경 모두 원본을 권한 `600`으로 백업했으며 컨테이너는 재시작하거나 재생성하지 않았다.
+스토리보드 Provider는 `STORYBOARD_PROVIDER`와 `STORYBOARD_FALLBACK_PROVIDER`로 고르며 `gemini`, `qwen`, `openai`를 지원한다.
+OpenAI 스토리보드는 Chat Completions를 같은 `OPENAI_API_KEY`로 직접 호출하고 모델 기본값은 `gpt-6-luna`다.
+선택했을 때만 등록·검증하며, 이미지 대체 생성과 달리 일기 원문을 OpenAI에 보낸다. 서버 적용 전 외부 전송 고지를 확인한다.
+수집 설정에는 호출 결과와 시간 지표만 추가했으며 서버 `.env`, Agent와 대시보드에는 적용하지 않았다.
+설정은 `backend/README.md`의 OpenAI 스토리보드 어댑터, 전환은 `deploy/README.md`를 따른다.
 앱 종료가 시작되면 새 선점을 멈추고, 생성 처리기의 종료 단계에서 진행 중인 작업을 최대 6분 기다린다.
 이 단계는 HTTP 종료 단계 뒤에 두고 다른 실행기와 DB 연결을 닫기 전에 진행한다. 작업이 먼저 끝나면 다음 종료 절차로 넘어간다.
 로컬과 배포 Compose의 백엔드 종료 유예는 7분, CodeDeploy의 `ApplicationStart` 훅 제한은 600초다.
@@ -189,6 +194,8 @@ flowchart LR
 | DB 공인 IP | `54.116.226.98` | `43.202.26.248` |
 | DB 사설 IP | `10.0.100.70` | `10.0.100.146` |
 | DB 연결 대상 | `.env`의 `DB_HOST=10.0.100.70`, 포트 `5432` | `.env`의 `DB_HOST=10.0.100.146`, 포트 `5432` |
+| 앱 루트 볼륨 `/` | `vol-04168830fc9e54269` / 20GiB | `vol-0d822e69c6847b8db` / 20GiB |
+| DB 루트 볼륨 `/` | `vol-09c6bfa4624f33903` / 20GiB | `vol-0429a6ceab7faadac` / 20GiB |
 | DB 데이터 디스크 | `vol-079e2259ecef5ae0c` / `/srv/harudle/db-data` | `vol-054247052e6a3f58e` / `/srv/harudle/db-data` |
 | DB 백업 stanza | `harudle-dev-al2023` | `harudle-prod-al2023` |
 | S3 버킷 | `techcourse-project-2026` | `techcourse-project-2026` |
