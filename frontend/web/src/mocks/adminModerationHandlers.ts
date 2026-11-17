@@ -11,6 +11,7 @@ import {
   type ModerationTargetType,
 } from '../pages/admin/adminModerationApi';
 import { MOCK_SCENARIO_HEADER } from './mockScenarios';
+import { ADMIN_GENERATION_SAMPLES } from './adminPostcardHandlers';
 const actor = '08d69a34-6d70-4d42-a158-671bc67733c9';
 const targetUser = '00000000-0000-4000-8000-000000000100';
 const now = '2026-10-23T03:00:00Z';
@@ -362,7 +363,15 @@ export const adminModerationHandlers = [
     async ({ request }): Promise<Response> => {
       const error = validate(request);
       if (error) return error;
-      return HttpResponse.json(paged([], request));
+      const status = new URL(request.url).searchParams.get('status');
+      return HttpResponse.json(
+        paged(
+          ADMIN_GENERATION_SAMPLES.filter(
+            (generation) => !status || generation.status === status,
+          ),
+          request,
+        ),
+      );
     },
   ),
   http.put(

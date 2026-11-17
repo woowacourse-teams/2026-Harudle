@@ -1,4 +1,5 @@
 import { adminModerationHandlers } from './adminModerationHandlers';
+import { adminPostcardHandlers } from './adminPostcardHandlers';
 import { setupWorker } from 'msw/browser';
 import { guestTrialHandlers } from './guestTrialHandlers';
 import { guestFeedTrialHandlers } from './guestFeedTrialHandlers';
@@ -9,6 +10,7 @@ import { notificationHandlers } from './notificationHandlers';
 
 export const worker = setupWorker(
   ...adminModerationHandlers,
+  ...adminPostcardHandlers,
   ...guestFeedTrialHandlers,
   ...handlers,
   ...guestTrialHandlers,

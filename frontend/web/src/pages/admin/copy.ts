@@ -43,3 +43,17 @@ export const REPORT_REASON_LABELS = {
   INAPPROPRIATE_CONTENT: '부적절한 콘텐츠',
   OTHER: '기타',
 } as const;
+
+export const ADMIN_POSTCARD_COPY = {
+  open: '엽서 인쇄',
+  title: '엽서 인쇄',
+  loading: '엽서를 만드는 중이에요…',
+  imageError: '만화 이미지를 불러오지 못했어요. 생성이 끝났는지 확인해 주세요.',
+  composeError:
+    '이 만화는 네 칸을 나누지 못해 엽서로 만들 수 없어요. 다른 생성 결과를 골라 주세요.',
+  print: '인쇄하기',
+  download: 'PNG 저장',
+  close: '닫기',
+  previewAlt: '엽서 프레임에 넣은 네컷만화 미리보기',
+  printHint: '4x6 엽서 용지, 테두리 없음, 배율 100%로 인쇄해 주세요.',
+} as const;

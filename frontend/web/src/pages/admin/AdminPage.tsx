@@ -29,6 +29,10 @@ import {
 } from './adminApi';
 import AdminReportsPanel from './AdminReportsPanel';
 import AdminModerationPanel from './AdminModerationPanel';
+import AdminPostcardModal, {
+  type AdminPostcardModalHandle,
+} from './postcard/AdminPostcardModal';
+import { ADMIN_POSTCARD_COPY } from './copy';
 import type { GenerationStatus } from '../../domain/diary/diaryGeneration';
 
 type View = 'dashboard' | 'users' | 'generations' | 'failed' | 'reports';
@@ -77,6 +81,7 @@ const AdminPage = () => {
   const generationsRequestIdRef = useRef(0);
   const failedGenerationRequestIdRef = useRef(0);
   const detailRequestIdRef = useRef(0);
+  const postcardModalRef = useRef<AdminPostcardModalHandle>(null);
 
   const loadUsers = useCallback(async (nextQuery = '') => {
     const requestId = ++requestSequenceRef.current;
@@ -488,9 +493,13 @@ const AdminPage = () => {
             }}
             onFailedOnly={() => navigate('failed')}
             onAll={() => navigate('generations')}
+            onPostcard={(generationId) =>
+              postcardModalRef.current?.open(generationId)
+            }
           />
         )}
       </main>
+      <AdminPostcardModal ref={postcardModalRef} />
 
       {!isHistoryView && view !== 'reports' && (
         <DetailPanel
@@ -722,6 +731,7 @@ const HistoryCard = ({
   onDateChange,
   onFailedOnly,
   onAll,
+  onPostcard,
 }: {
   generations: GenerationHistory[];
   loading: boolean;
@@ -731,6 +741,7 @@ const HistoryCard = ({
   onDateChange: (value: string) => void;
   onFailedOnly: () => void;
   onAll: () => void;
+  onPostcard: (generationId: string) => void;
 }) => (
   <section css={sectionCardStyle}>
     <div css={sectionHeadingStyle}>
@@ -766,15 +777,17 @@ const HistoryCard = ({
     ) : loading && generations.length === 0 ? (
       <LoadingMessage />
     ) : (
-      <GenerationTable generations={generations} />
+      <GenerationTable generations={generations} onPostcard={onPostcard} />
     )}
   </section>
 );
 
 const GenerationTable = ({
   generations,
+  onPostcard,
 }: {
   generations: GenerationHistory[];
+  onPostcard: (generationId: string) => void;
 }) => (
   <div css={tableScrollStyle}>
     <table css={tableStyle}>
@@ -785,6 +798,7 @@ const GenerationTable = ({
           <th>요청 시간</th>
           <th>상태</th>
           <th>실패 코드</th>
+          <th>엽서</th>
         </tr>
       </thead>
       <tbody>
@@ -797,11 +811,24 @@ const GenerationTable = ({
               <GenerationStatusPill status={generation.status} />
             </td>
             <td>{generation.errorCode ?? '-'}</td>
+            <td>
+              {generation.status === 'SUCCEEDED' ? (
+                <button
+                  css={filterButtonStyle(false)}
+                  type="button"
+                  onClick={() => onPostcard(generation.id)}
+                >
+                  {ADMIN_POSTCARD_COPY.open}
+                </button>
+              ) : (
+                '-'
+              )}
+            </td>
           </tr>
         ))}
         {generations.length === 0 && (
           <tr>
-            <td colSpan={5} css={emptyCellStyle}>
+            <td colSpan={6} css={emptyCellStyle}>
               생성 이력이 없습니다.
             </td>
           </tr>

@@ -176,6 +176,31 @@ export const searchAdminGenerations = async (
   return readPage(await readJson(response), isGenerationHistory);
 };
 
+export interface AdminPostcardImage {
+  readonly imageUrl: string;
+  readonly title: string | null;
+}
+
+const isPostcardImage = (value: unknown): value is AdminPostcardImage =>
+  isRecord(value) &&
+  typeof value.imageUrl === 'string' &&
+  value.imageUrl.length > 0 &&
+  (value.title === null || typeof value.title === 'string');
+
+/** 엽서 인쇄용 원본 이미지 주소. 생성에 성공했고 일기가 남아 있는 경우에만 받는다. */
+export const getAdminPostcardImage = async (
+  generationId: string,
+): Promise<AdminPostcardImage> => {
+  const response = await authFetch(
+    `${API_BASE_URL}/admin/generations/${generationId}/postcard-image`,
+  );
+  const value = await readJson(response);
+  if (!isPostcardImage(value)) {
+    throw new Error(ERROR_MESSAGES.INVALID_ADMIN_API_RESPONSE);
+  }
+  return value;
+};
+
 const adminMutationFetch = async (
   url: string,
   init: RequestInit,
