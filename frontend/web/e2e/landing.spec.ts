@@ -1,32 +1,52 @@
 import { expect, test, type Page } from '@playwright/test';
+import { GUEST_TRIAL_COPY } from '../src/pages/feed/guest-trial/copy';
 import {
   MOCK_SCENARIO_HEADER,
   MOCK_SCENARIOS,
 } from '../src/mocks/mockScenarios';
 
-const generateGuestDiary = async (page: Page): Promise<void> => {
+const generateGuestDiary = async (page: Page): Promise<string> => {
+  await page.clock.install();
+  await page.goto('/');
+  await page
+    .getByRole('button', { name: GUEST_TRIAL_COPY.guideSpotlightAction })
+    .click();
+  const input = page.getByRole('dialog').filter({
+    has: page.getByRole('heading', { name: GUEST_TRIAL_COPY.inputSheetTitle }),
+  });
+  await input
+    .getByRole('textbox', { name: GUEST_TRIAL_COPY.inputLabel })
+    .fill(
+      '친구와 회의하다 서로 다른 페이지를 보고 있었다는 걸 알고 한참 웃었다.',
+    );
   const acceptedResponse = page.waitForResponse(
     (response): boolean =>
       response.request().method() === 'POST' &&
       new URL(response.url()).pathname === '/api/v1/guest/diaries',
   );
-  await page
-    .getByRole('button', { name: '네컷만화 만들기', exact: true })
+  await input
+    .getByRole('button', { name: GUEST_TRIAL_COPY.submitAction })
     .click();
-  await expect(
-    page.getByRole('status', { name: '네컷만화를 만들고 있어요' }),
-  ).toBeVisible();
   expect((await acceptedResponse).status()).toBe(202);
+  await expect(input).toBeHidden();
+  await expect(page.getByText(GUEST_TRIAL_COPY.generatingTitle)).toBeVisible();
+  await page.clock.fastForward(10_000);
   const resultResponse = page.waitForResponse(
     (response): boolean =>
       response.request().method() === 'GET' &&
       new URL(response.url()).pathname.startsWith('/api/v1/guest/diaries/'),
   );
-  await page.clock.fastForward(10_000);
-  expect((await resultResponse).ok()).toBe(true);
+  await page
+    .getByRole('button', { name: GUEST_TRIAL_COPY.readyAction })
+    .click();
+  const response = await resultResponse;
+  expect(response.ok()).toBe(true);
+  const diaryId = new URL(response.url()).pathname.split('/').at(-1);
+  if (!diaryId) throw new Error('체험 만화 조회 주소에 일기 ID가 없습니다.');
+  return diaryId;
 };
 
-test.describe('통합 랜딩의 1회 체험', () => {
+test.describe('랜딩 진입과 게스트 체험', () => {
   test('랜딩에 직접 접속한 뒤 로그인 없이 공개 피드로 이동한다', async ({
     page,
   }): Promise<void> => {
@@ -39,7 +59,7 @@ test.describe('통합 랜딩의 1회 체험', () => {
     const hero = page.getByRole('region', {
       name: /우리끼리 통하는\s*네컷만화/,
     });
-    const feedLink = hero.getByRole('link', { name: '피드 보러 가기' });
+    const feedLink = hero.getByRole('link', { name: '하루들 시작하기' });
     await expect(feedLink).toBeInViewport({ ratio: 1 });
     await feedLink.click();
     await expect(page).toHaveURL('/');
@@ -51,75 +71,56 @@ test.describe('통합 랜딩의 1회 체험', () => {
     ).toBeNull();
     await page.goBack();
     await expect(page).toHaveURL('/landing');
-    await expect(
-      page.getByRole('link', { name: '피드 보러 가기' }),
-    ).toBeInViewport();
+    await expect(feedLink).toBeInViewport();
   });
 
-  test('소개에서 바로 생성하고 재방문 시 추가 생성을 막는다', async ({
+  test('피드에서 한 번 생성하고 새로고침 후 같은 결과를 다시 연다', async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.clock.install();
-    await page.goto('/landing');
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText(
-      '우리끼리 통하는네컷만화',
-    );
-    const textbox = page.getByRole('textbox', { name: '네컷만화로 만들 내용' });
-    await expect(textbox).toBeAttached();
-    await expect
-      .poll(() =>
-        page.evaluate(
-          () =>
-            document.documentElement.scrollHeight -
-            document.documentElement.clientHeight,
-        ),
-      )
-      .toBe(0);
-    await page.getByRole('button', { name: '직접 만들어 보기' }).click();
-    await expect(textbox).toBeFocused();
-    await expect
-      .poll(() => page.locator('main').evaluate((element) => element.scrollTop))
-      .toBeGreaterThan(0);
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
-    await expect(page.locator('#root')).toHaveJSProperty('scrollTop', 0);
-    await expect(textbox).toBeInViewport();
-    await textbox.fill(
-      '친구와 회의하다 서로 다른 페이지를 보고 있었다는 걸 알고 한참 웃었다.',
-    );
-    await generateGuestDiary(page);
-    await expect(
-      page
-        .locator('article[aria-labelledby="landing-trial-result-title"]')
-        .getByRole('img'),
-    ).toBeVisible();
-    await expect(page).toHaveURL('/landing');
-    await expect(
-      page.getByRole('link', { name: '로그인하고 계속 만들기' }),
-    ).toHaveAttribute('href', '/login');
+    const submissions: string[] = [];
+    page.on('request', (request): void => {
+      if (
+        request.method() === 'POST' &&
+        new URL(request.url()).pathname === '/api/v1/guest/diaries'
+      ) {
+        submissions.push(request.url());
+      }
+    });
+    const diaryId = await generateGuestDiary(page);
+    const result = page.getByRole('dialog').filter({
+      has: page.getByRole('heading', {
+        name: GUEST_TRIAL_COPY.resultSheetTitle,
+      }),
+    });
+    const comic = result.getByRole('img', {
+      name: GUEST_TRIAL_COPY.maskedImageLabel,
+    });
+    await expect(comic).toHaveAttribute('aria-busy', 'false');
+    await expect(page).toHaveURL('/');
     await page.reload();
-    await expect(
-      page.getByRole('heading', { name: '게스트 체험을 이미 사용했어요' }),
-    ).toBeAttached();
-    await expect(textbox).toHaveCount(0);
-    await expect(
-      page.getByRole('button', { name: '로그인하고 계속 만들기' }),
-    ).toBeVisible();
+    const reopenedResult = page.waitForResponse(
+      (response): boolean =>
+        response.request().method() === 'GET' &&
+        new URL(response.url()).pathname === `/api/v1/guest/diaries/${diaryId}`,
+    );
+    await page
+      .getByRole('button', { name: '네컷만화 만들기', exact: true })
+      .click();
+    expect((await reopenedResult).ok()).toBe(true);
+    await expect(comic).toHaveAttribute('aria-busy', 'false');
+    expect(submissions).toHaveLength(1);
+
+    await result
+      .getByRole('button', { name: GUEST_TRIAL_COPY.loginAction })
+      .click();
+    await expect(page).toHaveURL('/login');
   });
 
-  test('게스트 결과 조회는 landing 하위에서 유지한다', async ({ page }) => {
-    await page.clock.install();
-    await page.goto('/landing');
-    await page
-      .getByRole('textbox', { name: '네컷만화로 만들 내용' })
-      .fill('친구와 함께 공원에서 산책하며 오래 웃었던 순간이었다.');
-    await generateGuestDiary(page);
-    await expect(
-      page
-        .locator('article[aria-labelledby="landing-trial-result-title"]')
-        .getByRole('img'),
-    ).toBeAttached();
-    await page.goto('/landing/result/00000000-0000-4000-8000-000000000001');
+  test('기존 랜딩 결과 링크에서 생성된 만화를 조회할 수 있다', async ({
+    page,
+  }) => {
+    const diaryId = await generateGuestDiary(page);
+    await page.goto(`/landing/result/${diaryId}`);
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     await expect(page.getByRole('img', { name: /네컷만화$/ })).toBeVisible();
     await expect(page.getByRole('heading', { name: '내용' })).toBeVisible();
@@ -355,37 +356,35 @@ test.describe('랜딩 스크롤과 채팅 연출', () => {
     ).toBeVisible();
   });
 
-  test('하단 버튼은 첫 화면 이후 보이고 체험 섹션에서 숨는다', async ({
+  test('하단 버튼은 첫 화면을 지나면 나타나고 마지막 시작하기 영역에서 숨는다', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/landing');
-    const sticky = page.getByRole('complementary', { name: '빠른 피드 이동' });
+    const sticky = page.getByRole('complementary', {
+      name: '빠른 서비스 이동',
+    });
     await expect(sticky).toHaveCount(0);
-    await page.getByRole('button', { name: '아래 예시 보기' }).click();
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
-    await expect(sticky).toBeVisible();
-    await expect(
-      sticky.getByRole('link', { name: '피드 보러 가기' }),
-    ).toHaveAttribute('href', '/');
-    await page.getByRole('button', { name: '직접 만들어 보기' }).click();
-    const input = page.getByRole('textbox', { name: '네컷만화로 만들 내용' });
-    await expect(input).toBeFocused();
-    await expect(input).toBeVisible();
-    await expect(sticky).toHaveCount(0);
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
-    await expect(input).toHaveAttribute('rows', '4');
-    await expect(
-      page.getByRole('heading', { name: '어떤 순간을 네컷만화로 만들까요?' }),
-    ).toHaveCount(0);
+
     await page
-      .getByRole('heading', { name: /사진은 없어도/ })
+      .getByRole('heading', { name: '생성한 만화를 공유해보세요' })
       .scrollIntoViewIfNeeded();
     await expect(sticky).toBeVisible();
+    await expect(
+      sticky.getByRole('link', { name: '하루들 시작하기' }),
+    ).toHaveAttribute('href', '/');
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+
+    const final = page.getByRole('region', { name: /최근에 같이 웃었던/ });
+    await final
+      .getByRole('link', { name: '하루들 시작하기' })
+      .scrollIntoViewIfNeeded();
+    await expect(final).toBeInViewport();
+    await expect(sticky).toHaveCount(0);
   });
 });
 
-test.describe('기존 랜딩 아래의 공개 피드', () => {
+test.describe('랜딩의 공개 피드 미리보기', () => {
   test('작은 화면에서 인기 피드 두 개를 미리 보고 상세로 이동한다', async ({
     page,
   }, testInfo) => {
@@ -444,11 +443,14 @@ test.describe('기존 랜딩 아래의 공개 피드', () => {
     await first.click();
     await expect(page).toHaveURL(href);
     await expect(
+      page.getByRole('button', { name: '뒤로가기 아이콘' }),
+    ).toBeVisible();
+    await expect(
       page.getByRole('article').getByRole('img', { name: /네컷만화$/ }),
     ).toBeVisible();
   });
 
-  test('미리보기 조회 실패 후 다시 불러오며 체험과 피드 링크를 유지한다', async ({
+  test('미리보기 조회 실패 후 다시 불러오며 피드 링크를 유지한다', async ({
     page,
   }) => {
     await page.setExtraHTTPHeaders({
@@ -462,17 +464,12 @@ test.describe('기존 랜딩 아래의 공개 피드', () => {
     await expect(
       feed.getByRole('link', { name: '피드 둘러보기' }),
     ).toHaveAttribute('href', '/');
-    await expect(
-      page.getByRole('textbox', { name: '네컷만화로 만들 내용' }),
-    ).toBeAttached();
     await page.setExtraHTTPHeaders({});
     await feed.getByRole('button', { name: '다시 불러오기' }).click();
     await expect(feed.getByRole('listitem')).toHaveCount(2);
   });
 
-  test('공개 피드가 비어 있어도 직접 체험하고 피드로 이동할 수 있다', async ({
-    page,
-  }) => {
+  test('공개 피드가 비어 있어도 피드로 이동할 수 있다', async ({ page }) => {
     await page.setExtraHTTPHeaders({
       [MOCK_SCENARIO_HEADER]: MOCK_SCENARIOS.feedListEmpty,
     });
@@ -481,9 +478,6 @@ test.describe('기존 랜딩 아래의 공개 피드', () => {
     await expect(feed.getByRole('status')).toHaveText(
       '아직 공개 피드에 올라온 네컷만화가 없어요.',
     );
-    await expect(
-      page.getByRole('textbox', { name: '네컷만화로 만들 내용' }),
-    ).toBeAttached();
     await feed.getByRole('link', { name: '피드 둘러보기' }).click();
     await expect(page).toHaveURL('/');
   });

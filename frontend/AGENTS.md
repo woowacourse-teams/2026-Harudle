@@ -85,9 +85,10 @@
 - Web 전용 의존성은 `web/package.json`에 선언한다. 향후 workspace 내부
   패키지를 참조할 때는 `workspace:` 프로토콜을 사용한다.
 - Web 변경을 완료하기 전에 `frontend/web`에서 `pnpm check`를 실행한다. 이
-  스크립트는 typecheck, lint, format check, test, production build를 모두
-  실행한다. `frontend/package.json`에는 통합 검사 스크립트가 없으므로 루트에서
-  검사 명령을 추측하지 않는다.
+  스크립트는 typecheck, lint, format check, test, Playwright E2E, production
+  build를 실행한다. E2E에 필요한 Chromium 설치와 MSW 설정은
+  [`web/README.md`](web/README.md)를 따른다. `frontend/package.json`에는 통합 검사
+  스크립트가 없으므로 루트에서 검사 명령을 추측하지 않는다.
 
 ## Code placement and components
 
@@ -146,7 +147,7 @@
 - 타입 가드 통과 후 내부 전달에서는 동일한 구조 검증을 반복하지 않는다.
   구조 검사와 날짜·개수·길이 등 도메인 검증의 차이를 구분한다.
 - LLM 지침과 리뷰는 보조 수단이다. 병합 전에는 CI에서 `pnpm check`로
-  타입 검사, 린트, 형식 검사, 테스트, 배포용 빌드를 실행한다. `pnpm build`만으로
+  타입 검사, 린트, 형식 검사, 테스트, E2E, 배포용 빌드를 실행한다. `pnpm build`만으로
   타입 검사가 실행된다고 간주하지 않는다.
 
 ## API and authentication boundaries

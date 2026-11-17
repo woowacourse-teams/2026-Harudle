@@ -9,15 +9,14 @@ test.use({
 const destinations = ['피드 상세', '네컷 모아보기', '설정'] as const;
 type Destination = (typeof destinations)[number];
 
-const getFeedList = (page: Page): Locator =>
-  page.getByRole('article').first().locator('..');
+const getFeedScrollContainer = (page: Page): Locator =>
+  page.getByRole('list', { name: '피드', exact: true }).locator('..');
 
 const getCommentButton = (page: Page, feedIndex: number): Locator =>
   page
     .getByRole('article')
     .nth(feedIndex)
-    .getByRole('button', { name: /^\d+$/ })
-    .nth(1);
+    .getByRole('button', { name: /^댓글 \d+개$/ });
 
 const trackFeedListRequests = (page: Page): URL[] => {
   const requests: URL[] = [];
@@ -31,7 +30,7 @@ const trackFeedListRequests = (page: Page): URL[] => {
 };
 
 const readFeedScroll = (page: Page): Promise<number> =>
-  getFeedList(page).evaluate((element): number => element.scrollTop);
+  getFeedScrollContainer(page).evaluate((element): number => element.scrollTop);
 
 const scrollToFeed = async (page: Page, feedIndex: number): Promise<number> => {
   const commentButton = getCommentButton(page, feedIndex);
@@ -158,7 +157,7 @@ test.describe('피드 스크롤과 목록 캐시 복원', (): void => {
       await expect(page.getByRole('article')).toHaveCount(20);
       const initialRequestCount = requests.length;
       expect(initialRequestCount).toBeGreaterThan(0);
-      const firstPageMaxScroll = await getFeedList(page).evaluate(
+      const firstPageMaxScroll = await getFeedScrollContainer(page).evaluate(
         (element): number => element.scrollHeight - element.clientHeight,
       );
 
