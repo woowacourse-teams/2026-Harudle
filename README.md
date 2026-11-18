@@ -37,6 +37,18 @@
   <img src="./.github/assets/readme/comics/howto.png" width="100%" alt="네컷만화 '사용 방법'. 1컷: 오늘 있었던 일을 짧게 적어요 (하루들의 네컷만화 만들기 화면. '어떤 순간을 네컷만화로 만들까요?' 입력창과 만들기 버튼). 2컷: 하루들이 귀여운 네컷만화로 만들어줘요 (완성된 네컷만화 '서촌의 따뜻한 나무들'과 줄거리를 보여주는 상세 화면). 3컷: 피드에 올려 사람들과 공유해요 (일상·직장·취준 등 주제별로 네컷만화가 모이는 피드 화면). 4컷: 피드에 반응을 남겨 공감해요 (네컷만화 아래에 댓글이 달린 화면).">
 </p>
 
+## 시스템 아키텍처
+
+<p align="center">
+  <img src="./.github/assets/readme/system-architecture.png" width="100%" alt="하루들 시스템 아키텍처. 웹과 모바일 앱, AWS 서버와 데이터베이스, 외부 서비스 및 배포 흐름">
+</p>
+
+## 기술 스택
+
+<p align="center">
+  <img src="./.github/assets/readme/tech-stack.png" width="100%" alt="하루들 기술 스택. 프론트엔드, 모바일, 백엔드, 데이터베이스 및 외부 서비스에 사용한 기술">
+</p>
+
 ## 하루들 팀원들
 
 <div align="center">
