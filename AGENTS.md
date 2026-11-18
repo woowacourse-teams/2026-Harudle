@@ -69,6 +69,8 @@ flowchart TB
   R2 대체가 설정된 환경에서 기존 S3 존재 확인과 R2 선택을 유지한다. 캐시를 켜거나 끄려면 백엔드를
   다시 시작한다. 배포 컨테이너의 환경 변수를 바꿨다면 재생성한다. 대기 제한과 관측은
   [피드 S3 이미지 주소 캐시](backend/README.md#피드-s3-이미지-주소-캐시)를 따른다.
+- 피드 `shareUrl`의 `/feeds/{feedId}` 형식은 유지한다. Nginx가 알려진 공유 수집기만 공개 OG HTML로 연결한다.
+  고정 JPEG는 매 요청 익명 공개 여부를 검사한다. CDN과 배포 조건은 [피드 공유 미리보기](backend/docs/feed-open-graph.md)를 따른다.
 
 ## 실행 자원과 설정 위치
 
@@ -141,6 +143,11 @@ dev와 prod의 수집 설정과 대시보드 생성 도구에 OpenAI 지표를 �
 모델은 `gpt-image-2.5-flare`, 제한 시간은 `180s`, 품질은 `medium`이다.
 `OPENAI_API_KEY`는 비어 있고 `IMAGE_FALLBACK_PROVIDER=none`으로 비활성화 상태다.
 두 환경 모두 원본을 권한 `600`으로 백업했으며 컨테이너는 재시작하거나 재생성하지 않았다.
+스토리보드 Provider는 `STORYBOARD_PROVIDER`와 `STORYBOARD_FALLBACK_PROVIDER`로 고르며 `gemini`, `qwen`, `openai`를 지원한다.
+OpenAI 스토리보드는 Chat Completions를 같은 `OPENAI_API_KEY`로 직접 호출하고 모델 기본값은 `gpt-6-luna`다.
+선택했을 때만 등록·검증하며, 이미지 대체 생성과 달리 일기 원문을 OpenAI에 보낸다. 서버 적용 전 외부 전송 고지를 확인한다.
+수집 설정에는 호출 결과와 시간 지표만 추가했으며 서버 `.env`, Agent와 대시보드에는 적용하지 않았다.
+설정은 `backend/README.md`의 OpenAI 스토리보드 어댑터, 전환은 `deploy/README.md`를 따른다.
 앱 종료가 시작되면 새 선점을 멈추고, 생성 처리기의 종료 단계에서 진행 중인 작업을 최대 6분 기다린다.
 이 단계는 HTTP 종료 단계 뒤에 두고 다른 실행기와 DB 연결을 닫기 전에 진행한다. 작업이 먼저 끝나면 다음 종료 절차로 넘어간다.
 로컬과 배포 Compose의 백엔드 종료 유예는 7분, CodeDeploy의 `ApplicationStart` 훅 제한은 600초다.
@@ -189,6 +196,8 @@ flowchart LR
 | DB 공인 IP | `54.116.226.98` | `43.202.26.248` |
 | DB 사설 IP | `10.0.100.70` | `10.0.100.146` |
 | DB 연결 대상 | `.env`의 `DB_HOST=10.0.100.70`, 포트 `5432` | `.env`의 `DB_HOST=10.0.100.146`, 포트 `5432` |
+| 앱 루트 볼륨 `/` | `vol-04168830fc9e54269` / 20GiB | `vol-0d822e69c6847b8db` / 20GiB |
+| DB 루트 볼륨 `/` | `vol-09c6bfa4624f33903` / 20GiB | `vol-0429a6ceab7faadac` / 20GiB |
 | DB 데이터 디스크 | `vol-079e2259ecef5ae0c` / `/srv/harudle/db-data` | `vol-054247052e6a3f58e` / `/srv/harudle/db-data` |
 | DB 백업 stanza | `harudle-dev-al2023` | `harudle-prod-al2023` |
 | S3 버킷 | `techcourse-project-2026` | `techcourse-project-2026` |
@@ -300,7 +309,8 @@ PR 백엔드 CI는 `gradle/actions/setup-gradle`로 실행 파일, 의존성과 
 바뀌면 같은 Job에서 `classes testClasses --build-cache`로 후속 PR용 공통 캐시를 만든다.
 이 push 실행은 컴파일과 캐시 저장만 수행하며, PR 검증과 실행 그룹을 나눠 서로 취소하지 않는다.
 AWS 배포 파이프라인과 GitHub 워크플로의 역할을 구분해 확인한다.
-프론트엔드 PR CI는 타입 검사, 린트, 형식 검사, 테스트와 배포용 빌드를 실행한다.
+프론트엔드 PR CI는 타입 검사, 린트, 형식 검사, 테스트, Playwright E2E와 배포용 빌드를 실행한다.
+E2E 전에 Chromium과 시스템 의존성을 설치하고 `USE_MSW=true`로 모의 API를 활성화한다.
 CodeBuild는 프론트엔드 입력이 같으면 이전 이미지를 재사용하고, 다르면 새 이미지를
 빌드한다. 배포 브랜치에 PR 없이 직접 변경을 넣으면 PR 검사를 거치지 않는다.
 

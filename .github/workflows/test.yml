@@ -39,6 +39,9 @@ jobs:
       - name: Test Discord forwarder (offline)
         run: python3 -m unittest discover -s deploy/monitoring -p 'test_*.py'
 
+      - name: Test feed preview proxy with Nginx
+        run: python3 deploy/scripts/test_feed_preview_proxy.py
+
       - name: Validate environment separation
         run: |
           trap 'rm -f deploy/.env' EXIT
@@ -298,5 +301,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Install Playwright Chromium
+        run: pnpm --dir web exec playwright install --with-deps chromium
+
       - name: Run frontend checks
+        env:
+          USE_MSW: "true"
         run: pnpm --dir web check

@@ -383,6 +383,11 @@ public enum ErrorType {
             "Generation pending timeout",
             "생성 대기 시간이 초과되었습니다."
     ),
+    FEED_PREVIEW_CAPACITY_EXCEEDED(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "Feed preview capacity exceeded",
+            "공유 미리보기 이미지를 처리 중입니다. 잠시 후 다시 시도해 주세요."
+    ),
     IMAGE_STORAGE_ERROR(
             HttpStatus.SERVICE_UNAVAILABLE,
             "Image storage error",

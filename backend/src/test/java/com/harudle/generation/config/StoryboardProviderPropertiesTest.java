@@ -36,8 +36,8 @@ class StoryboardProviderPropertiesTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"gemini", "qwen"})
-    @DisplayName("기존 두 Provider의 단독 선택을 유지한다")
+    @ValueSource(strings = {"gemini", "qwen", "openai"})
+    @DisplayName("세 Provider 모두 단독으로 선택할 수 있다")
     void preserveSingleProviderSelection(String provider) {
         contextRunner.withPropertyValues("harudle.generation.storyboard.provider=" + provider).run(context -> {
             assertThat(context).hasNotFailed();
@@ -48,7 +48,7 @@ class StoryboardProviderPropertiesTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"gemini,qwen", "qwen,gemini"})
+    @CsvSource({"gemini,qwen", "qwen,gemini", "gemini,openai", "qwen,openai", "openai,gemini"})
     @DisplayName("서로 다른 메인과 보조를 선택하면 기본 전체 예산은 120초다")
     void bindDistinctProviders(String primary, String fallback) {
         contextRunner.withPropertyValues("harudle.generation.storyboard.provider=" + primary,
@@ -63,7 +63,7 @@ class StoryboardProviderPropertiesTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"gemini", "qwen"})
+    @ValueSource(strings = {"gemini", "qwen", "openai"})
     @DisplayName("메인과 보조에 같은 Provider를 지정하면 시작 시 거절한다")
     void rejectSameProviderPair(String provider) {
         contextRunner.withPropertyValues("harudle.generation.storyboard.provider=" + provider,
@@ -73,8 +73,8 @@ class StoryboardProviderPropertiesTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"provider=", "provider=Gemini", "provider=unknown", "fallback-provider=",
-            "fallback-provider=Qwen", "fallback-provider=unknown", "primary-timeout=0s", "primary-timeout=-1s",
-            "primary-timeout=1ns", "primary-timeout=2147483648ms", "primary-timeout=invalid",
+            "fallback-provider=Qwen", "fallback-provider=OpenAI", "fallback-provider=unknown",
+            "primary-timeout=0s", "primary-timeout=-1s", "primary-timeout=1ns", "primary-timeout=2147483648ms", "primary-timeout=invalid",
             "fallback-timeout=0s", "fallback-timeout=-1s", "fallback-timeout=1ns",
             "fallback-timeout=2147483648ms", "fallback-timeout=invalid"})
     @DisplayName("지원하지 않는 Provider와 유효 범위 밖 제한 시간은 시작 시 거절한다")
