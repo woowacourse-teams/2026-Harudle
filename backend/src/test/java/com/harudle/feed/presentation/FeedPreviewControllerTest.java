@@ -18,9 +18,11 @@ import com.harudle.common.error.TraceIdConfiguration;
 import com.harudle.common.security.CsrfConfiguration;
 import com.harudle.common.security.SecurityConfig;
 import com.harudle.feed.configuration.FeedConfiguration;
+import com.harudle.feed.configuration.FeedPreviewConfiguration;
 import com.harudle.feed.service.FeedPreviewService;
 import com.harudle.feed.service.dto.FeedPreviewMetadata;
 import com.harudle.feed.service.exception.FeedNotFoundException;
+import com.harudle.feed.service.exception.FeedPreviewCapacityExceededException;
 import com.harudle.generation.diary.service.port.ImageStorageException;
 import com.harudle.generation.diary.service.port.dto.ReferenceImage;
 import java.nio.charset.StandardCharsets;
@@ -37,7 +39,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(FeedPreviewController.class)
-@Import({FeedConfiguration.class, FeedPreviewResponseHeadersFilter.class, SecurityConfig.class,
+@Import({FeedConfiguration.class, FeedPreviewConfiguration.class, FeedPreviewResponseHeadersFilter.class,
+        FeedPreviewExceptionHandler.class, SecurityConfig.class,
         CsrfConfiguration.class, ApiExceptionLoggerTestConfiguration.class, ProblemDetailFactory.class,
         TraceIdConfiguration.class, TimeConfiguration.class})
 @TestPropertySource(properties = "harudle.feed.public-base-url=https://harudle.example/feeds")
@@ -106,6 +109,18 @@ class FeedPreviewControllerTest {
         mvc.perform(get(PAGE + "/image")).andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value("IMAGE_STORAGE_ERROR"))
                 .andExpect(header().string("Cache-Control", "no-store"));
+    }
+
+    @Test
+    void capacityRejectionHasItsOwnCodeAndRetryAfterForGetAndHead() throws Exception {
+        when(previews.image(FEED)).thenThrow(new FeedPreviewCapacityExceededException());
+        for (var request : java.util.List.of(get(PAGE + "/image"), head(PAGE + "/image"))) {
+            mvc.perform(request).andExpect(status().isServiceUnavailable())
+                    .andExpect(header().string("Retry-After", "5"))
+                    .andExpect(header().string("Cache-Control", "no-store"));
+        }
+        mvc.perform(get(PAGE + "/image")).andExpect(jsonPath("$.code").value("FEED_PREVIEW_CAPACITY_EXCEEDED"))
+                .andExpect(jsonPath("$.traceId").isNotEmpty());
     }
 
     @Test

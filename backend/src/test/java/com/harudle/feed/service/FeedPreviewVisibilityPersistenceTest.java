@@ -4,24 +4,29 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.harudle.auth.application.ProfileImageStorageException;
 import com.harudle.category.service.port.CategoryReader;
+import com.harudle.common.testdata.DevTestDataVisibility;
+import com.harudle.feed.infrastructure.CachedFeedPreviewImageProvider;
+import com.harudle.feed.infrastructure.JpaFeedPreviewReader;
+import com.harudle.feed.infrastructure.StoredFeedPreviewImageProvider;
+import com.harudle.feed.repository.FeedQueryRepository;
 import com.harudle.feed.service.dto.FeedPreviewMetadata;
 import com.harudle.feed.service.exception.FeedNotFoundException;
-import com.harudle.feed.service.port.FeedPreviewImageReader;
-import com.harudle.feed.service.port.FeedPreviewImageRenderer;
+import com.harudle.feed.service.port.FeedPreviewReader;
 import com.harudle.generation.diary.service.port.dto.ReferenceImage;
-import com.harudle.profile.service.port.PublicProfileReader;
+import com.harudle.profile.repository.PublicProfileQueryRepository;
 import com.harudle.support.FeedPersistenceTestSupport;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
-import java.net.URI;
 import java.time.LocalDate;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.IntStream;
@@ -44,19 +49,22 @@ class FeedPreviewVisibilityPersistenceTest extends FeedPersistenceTestSupport {
 
     @PersistenceContext private EntityManager entityManager;
     @Autowired private TransactionTemplate transactions;
-    @Autowired private FeedQueryService queries;
+    @Autowired private FeedPreviewReader queries;
+    @Autowired private FeedQueryRepository feedRepository;
+    @Autowired private PublicProfileQueryRepository publicProfiles;
     private final UUID authorId = UUID.randomUUID();
+    private final String nickname = "미리보기" + authorId.toString().substring(0, 6);
     private final UUID diaryId = UUID.randomUUID();
     private final UUID feedId = UUID.randomUUID();
     private final String referenceKey = "references/feed-preview-" + UUID.randomUUID() + ".png";
     private final String imageKey = "generated/feed-preview-" + UUID.randomUUID() + ".webp";
-    private FeedPreviewImageReader imageReader;
-    private FeedPreviewImageRenderer renderer;
+    private StoredFeedPreviewImageProvider imageProvider;
     private FeedPreviewService previews;
 
     @BeforeEach
     void setUp() {
-        update("INSERT INTO users (id, name) VALUES (?, '미리보기 작성자')", authorId);
+        update("INSERT INTO users (id, name, nickname, profile_image_code) VALUES (?, '미리보기 작성자', ?, 1)",
+                authorId, nickname);
         update("""
                 INSERT INTO generation_prompts (storyboard_prompt_text, image_style_prompt_text, image_asset_object_key)
                 VALUES ('스토리보드', '이미지 스타일', ?)
@@ -76,14 +84,10 @@ class FeedPreviewVisibilityPersistenceTest extends FeedPersistenceTestSupport {
                 "SELECT id FROM categories WHERE name = '일상'").getSingleResult()).longValue());
         update("INSERT INTO feeds (id, diary_id, category_id) VALUES (?, ?, ?)", feedId, diaryId, categoryId);
         when(categories.get(categoryId)).thenReturn(new CategoryReader.Category(categoryId, "일상", 0, true));
-        when(profiles.readAll(Set.of(authorId))).thenReturn(Map.of(authorId,
-                new PublicProfileReader.Profile(authorId, "미리보기 작성자",
-                        URI.create("https://example.com/profile.png"), null)));
-
         // Spring mock을 추가하지 않아 다른 피드 영속성 테스트의 실행 환경을 그대로 재사용한다.
-        imageReader = mock(FeedPreviewImageReader.class);
-        renderer = mock(FeedPreviewImageRenderer.class);
-        previews = new FeedPreviewService(queries, imageReader, renderer);
+        imageProvider = mock(StoredFeedPreviewImageProvider.class);
+        previews = new FeedPreviewService(queries,
+                new CachedFeedPreviewImageProvider(imageProvider, new SimpleMeterRegistry()));
     }
 
     @AfterEach
@@ -98,28 +102,55 @@ class FeedPreviewVisibilityPersistenceTest extends FeedPersistenceTestSupport {
     void publicMetadataDoesNotReadPrivateSourceOrImage() {
         FeedPreviewMetadata metadata = previews.metadata(feedId);
 
-        assertThat(metadata.title()).contains("미리보기 작성자").doesNotContain(PRIVATE_SOURCE);
+        assertThat(metadata.title()).contains(nickname).doesNotContain(PRIVATE_SOURCE);
         assertThat(metadata.description()).contains("일상").doesNotContain(PRIVATE_SOURCE);
-        verifyNoInteractions(imageReader, renderer);
+        verifyNoInteractions(imageProvider, profiles);
     }
 
     @Test
     @DisplayName("공개 이미지 요청은 확인된 저장 키만 전달하고 숨김 뒤 같은 주소의 재요청은 차단한다")
     void imageRechecksPublicVisibilityForEveryRequest() {
-        ReferenceImage source = new ReferenceImage(new ByteArrayResource(new byte[] {1}), MediaType.IMAGE_PNG);
         ReferenceImage jpeg = new ReferenceImage(new ByteArrayResource(new byte[] {2}), MediaType.IMAGE_JPEG);
-        when(imageReader.read(imageKey)).thenReturn(source);
-        when(renderer.render(source)).thenReturn(jpeg);
+        when(imageProvider.provide(imageKey)).thenReturn(jpeg);
 
-        assertThat(previews.image(feedId)).isSameAs(jpeg);
-        verify(imageReader).read(imageKey);
-        verify(renderer).render(source);
-        clearInvocations(imageReader, renderer);
+        assertThat(previews.image(feedId).resource()).isEqualTo(jpeg.resource());
+        assertThat(previews.image(feedId).resource()).isEqualTo(jpeg.resource());
+        verify(imageProvider, times(1)).provide(imageKey);
+        clearInvocations(imageProvider);
         hideFeed();
 
         assertThatThrownBy(() -> previews.metadata(feedId)).isInstanceOf(FeedNotFoundException.class);
         assertThatThrownBy(() -> previews.image(feedId)).isInstanceOf(FeedNotFoundException.class);
-        verifyNoInteractions(imageReader, renderer);
+        verifyNoInteractions(imageProvider);
+    }
+
+    @Test
+    @DisplayName("업로드 프로필 사진의 주소 발급이 실패해도 공개 메타와 이미지를 제공한다")
+    void uploadedProfileDoesNotRequireSignedProfileImageUrl() {
+        String profileKey = "harudle/profile-images/prod/" + authorId + "/" + UUID.randomUUID() + ".webp";
+        update("UPDATE users SET profile_image_object_key = ? WHERE id = ?", profileKey, authorId);
+        when(profiles.readAll(Set.of(authorId))).thenThrow(
+                new ProfileImageStorageException("프로필 사진 서명 실패", profileKey, null));
+        ReferenceImage jpeg = new ReferenceImage(new ByteArrayResource(new byte[] {2}), MediaType.IMAGE_JPEG);
+        when(imageProvider.provide(imageKey)).thenReturn(jpeg);
+
+        assertThat(previews.metadata(feedId).title()).contains(nickname);
+        assertThat(previews.image(feedId).resource()).isEqualTo(jpeg.resource());
+
+        verifyNoInteractions(profiles);
+    }
+
+    @Test
+    @DisplayName("dev의 테스트 작성자 제외 조건을 실제 익명 조회에 적용한다")
+    void devPreviewHidesLoadTestAuthorsFromAnonymousViewer() {
+        update("UPDATE users SET primary_email = ? WHERE id = ?", "og-" + authorId + "@test.loadtest.invalid", authorId);
+        var devQueries = new JpaFeedPreviewReader(feedRepository, publicProfiles, categories,
+                new DevTestDataVisibility("dev"));
+
+        assertThatThrownBy(() -> transactions.execute(status -> devQueries.read(feedId)))
+                .isInstanceOf(FeedNotFoundException.class);
+
+        verifyNoInteractions(imageProvider, profiles);
     }
 
     @ParameterizedTest
@@ -135,6 +166,9 @@ class FeedPreviewVisibilityPersistenceTest extends FeedPersistenceTestSupport {
             case DELETED_FEED -> update("UPDATE feeds SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", feedId);
             case DELETED_DIARY -> update("UPDATE diaries SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", diaryId);
             case WITHDRAWN_AUTHOR -> update("DELETE FROM users WHERE id = ?", authorId);
+            case SOFT_WITHDRAWN_AUTHOR -> update("UPDATE users SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", authorId);
+            case MISSING_NICKNAME -> update("UPDATE users SET nickname = NULL WHERE id = ?", authorId);
+            case MISSING_PROFILE_IMAGE -> update("UPDATE users SET profile_image_code = NULL WHERE id = ?", authorId);
             case MODERATED_FEED -> hideFeed();
             case PENDING_IMAGE, PROCESSING_IMAGE, FAILED_IMAGE -> update(
                     "UPDATE diary_generations SET status = ?, image_object_key = NULL WHERE diary_id = ?",
@@ -144,7 +178,7 @@ class FeedPreviewVisibilityPersistenceTest extends FeedPersistenceTestSupport {
 
         assertThatThrownBy(() -> previews.metadata(targetId)).isInstanceOf(FeedNotFoundException.class);
         assertThatThrownBy(() -> previews.image(targetId)).isInstanceOf(FeedNotFoundException.class);
-        verifyNoInteractions(imageReader, renderer);
+        verifyNoInteractions(imageProvider, profiles);
     }
 
     private void hideFeed() {
@@ -163,7 +197,8 @@ class FeedPreviewVisibilityPersistenceTest extends FeedPersistenceTestSupport {
     }
 
     private enum HiddenReason {
-        UNPUBLISHED_DIARY, DELETED_FEED, DELETED_DIARY, WITHDRAWN_AUTHOR, MODERATED_FEED,
+        UNPUBLISHED_DIARY, DELETED_FEED, DELETED_DIARY, WITHDRAWN_AUTHOR, SOFT_WITHDRAWN_AUTHOR,
+        MISSING_NICKNAME, MISSING_PROFILE_IMAGE, MODERATED_FEED,
         PENDING_IMAGE, PROCESSING_IMAGE, FAILED_IMAGE
     }
 }

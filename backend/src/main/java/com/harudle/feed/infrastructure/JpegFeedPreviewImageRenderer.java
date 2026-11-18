@@ -21,6 +21,8 @@ import javax.imageio.ImageReader;
 import javax.imageio.stream.ImageInputStream;
 import javax.imageio.stream.MemoryCacheImageInputStream;
 import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -28,6 +30,7 @@ import org.springframework.stereotype.Component;
 @Component
 public final class JpegFeedPreviewImageRenderer implements FeedPreviewImageRenderer {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(JpegFeedPreviewImageRenderer.class);
     private static final int WIDTH = 1200;
     private static final int HEIGHT = 630;
     private static final int MAX_INPUT_BYTES = 20 * 1024 * 1024;
@@ -37,34 +40,39 @@ public final class JpegFeedPreviewImageRenderer implements FeedPreviewImageRende
 
     @Override
     public ReferenceImage render(ReferenceImage source) {
+        Reason failureReason = Reason.DECODE_FAILED;
         try {
             if (Thread.currentThread().isInterrupted()) {
-                throw failed();
+                throw failed(Reason.INTERRUPTED);
             }
             String format = source.mediaType().getSubtype();
             if (!format.equals("png") && !format.equals("jpeg") && !format.equals("webp")) {
-                throw failed();
+                throw failed(Reason.UNSUPPORTED_TYPE);
             }
             byte[] bytes = readBounded(source);
             BufferedImage image = format.equals("webp")
                     ? decodeWebp(bytes) : decode(bytes, format);
+            failureReason = Reason.ENCODE_FAILED;
             return encodeJpeg(image);
         } catch (ImageStorageException exception) {
             throw exception;
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw failed();
+            throw failed(Reason.INTERRUPTED);
         } catch (IOException | RuntimeException exception) {
             // Resource/codec errors can contain paths or storage addresses. Do not retain those causes.
-            throw failed();
+            throw failed(failureReason);
         }
     }
 
     private static byte[] readBounded(ReferenceImage source) throws IOException {
         try (InputStream input = source.resource().getInputStream()) {
             byte[] bytes = input.readNBytes(MAX_INPUT_BYTES + 1);
-            if (bytes.length == 0 || bytes.length > MAX_INPUT_BYTES) {
-                throw new ImageStorageException("공유 미리보기 원본은 20MiB 이하여야 합니다.");
+            if (bytes.length == 0) {
+                throw failed();
+            }
+            if (bytes.length > MAX_INPUT_BYTES) {
+                throw failed(Reason.INPUT_TOO_LARGE, "공유 미리보기 원본은 20MiB 이하여야 합니다.");
             }
             return bytes;
         }
@@ -110,14 +118,21 @@ public final class JpegFeedPreviewImageRenderer implements FeedPreviewImageRende
             Path input = directory.resolve("source.webp");
             Path output = directory.resolve("decoded.png");
             Files.write(input, bytes);
-            process = new ProcessBuilder("dwebp", input.toString(), "-quiet", "-resize",
-                    Integer.toString(target.width()), Integer.toString(target.height()), "-o", output.toString())
-                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                    .redirectError(ProcessBuilder.Redirect.DISCARD)
-                    .start();
-            process.getOutputStream().close();
-            if (!process.waitFor(5, TimeUnit.SECONDS) || process.exitValue() != 0) {
-                throw failed();
+            try {
+                process = new ProcessBuilder("dwebp", input.toString(), "-quiet", "-resize",
+                        Integer.toString(target.width()), Integer.toString(target.height()), "-o", output.toString())
+                        .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                        .redirectError(ProcessBuilder.Redirect.DISCARD)
+                        .start();
+                process.getOutputStream().close();
+            } catch (IOException exception) {
+                throw failed(Reason.DWEBP_FAILED);
+            }
+            if (!process.waitFor(5, TimeUnit.SECONDS)) {
+                throw failed(Reason.DWEBP_TIMEOUT);
+            }
+            if (process.exitValue() != 0) {
+                throw failed(Reason.DWEBP_FAILED);
             }
             // Native output is already fitted, so it must also satisfy the bounded input contract.
             try (InputStream decoded = Files.newInputStream(output)) {
@@ -206,7 +221,7 @@ public final class JpegFeedPreviewImageRenderer implements FeedPreviewImageRende
 
     private static Dimensions dimensions(int width, int height) {
         if (width <= 0 || height <= 0 || (long) width * height > MAX_IMAGE_PIXELS) {
-            throw new ImageStorageException(DIMENSIONS_EXCEEDED);
+            throw failed(Reason.DIMENSIONS_EXCEEDED, DIMENSIONS_EXCEEDED);
         }
         return new Dimensions(width, height);
     }
@@ -234,7 +249,7 @@ public final class JpegFeedPreviewImageRenderer implements FeedPreviewImageRende
         }
         try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             if (!ImageIO.write(preview, "jpeg", output)) {
-                throw failed();
+                throw failed(Reason.ENCODE_FAILED);
             }
             return new ReferenceImage(new ByteArrayResource(output.toByteArray()), MediaType.IMAGE_JPEG);
         } finally {
@@ -268,9 +283,33 @@ public final class JpegFeedPreviewImageRenderer implements FeedPreviewImageRende
     }
 
     private static ImageStorageException failed() {
-        return new ImageStorageException(CONVERSION_FAILED);
+        return failed(Reason.DECODE_FAILED);
+    }
+
+    private static ImageStorageException failed(Reason reason) {
+        return failed(reason, CONVERSION_FAILED);
+    }
+
+    private static ImageStorageException failed(Reason reason, String message) {
+        LOGGER.atWarn().addKeyValue("event", "feed_preview_image_failed")
+                .addKeyValue("reason", reason.code)
+                .log("event=feed_preview_image_failed reason={}", reason.code);
+        return new ImageStorageException(message);
     }
 
     private record Dimensions(int width, int height) {
+    }
+
+    private enum Reason {
+        UNSUPPORTED_TYPE("unsupported_type"), INPUT_TOO_LARGE("input_too_large"),
+        DIMENSIONS_EXCEEDED("dimensions_exceeded"), DWEBP_TIMEOUT("dwebp_timeout"),
+        DWEBP_FAILED("dwebp_failed"), DECODE_FAILED("decode_failed"), ENCODE_FAILED("encode_failed"),
+        INTERRUPTED("interrupted");
+
+        private final String code;
+
+        Reason(String code) {
+            this.code = code;
+        }
     }
 }

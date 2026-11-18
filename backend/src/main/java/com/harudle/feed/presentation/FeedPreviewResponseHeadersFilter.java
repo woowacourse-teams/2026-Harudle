@@ -12,7 +12,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-/** 성공뿐 아니라 404·저장소 장애 응답도 CDN에 남겨 공개 상태 검사를 우회하지 않게 한다. */
+/** 성공과 실패 응답이 CDN에 남지 않도록 해 다음 요청에서도 공개 상태를 검사하게 한다. */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 20)
 class FeedPreviewResponseHeadersFilter extends OncePerRequestFilter {

@@ -1,8 +1,9 @@
 """Exercise the actual frontend Nginx with a local stub, never dev or prod.
 
 Docker is required: a missing/unresponsive engine fails this required CI check.
-The runtime image is taken from frontend/Dockerfile. Only the upstream authority
-is replaced in the test copy, so a random-port Python server can replace backend.
+The runtime image is taken from frontend/Dockerfile. The test copy replaces the
+upstream authority and shortens its read timeout to one second for bounded 504
+checks. The production timeout and routing/header directives remain unchanged.
 """
 
 import http.client
@@ -17,6 +18,7 @@ import tempfile
 import threading
 import time
 import unittest
+from urllib.parse import parse_qs, urlsplit
 import uuid
 
 
@@ -34,6 +36,16 @@ class BackendStub(BaseHTTPRequestHandler):
         self.reply(head=True)
 
     def reply(self, head=False):
+        fixture = parse_qs(urlsplit(self.path).query).get("fixture", [None])[0]
+        if fixture == "disconnect":
+            # No HTTP response: Nginx must generate the 502 itself.
+            self.close_connection = True
+            return
+        if fixture == "timeout":
+            # Do not send headers before the shortened proxy_read_timeout.
+            self.server.release_delays.wait(timeout=3)
+            self.close_connection = True
+            return
         image = self.path.split("?", 1)[0].endswith("/image")
         body = JPEG if image else json.dumps({
             "path": self.path,
@@ -47,7 +59,8 @@ class BackendStub(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "image/jpeg" if image else "application/json")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
+        cache_control = "public, max-age=3600" if fixture == "cacheable" else "no-store"
+        self.send_header("Cache-Control", cache_control)
         self.send_header("X-Stub-Method", self.command)
         self.send_header("X-Stub-Path", self.path)
         self.end_headers()
@@ -87,7 +100,9 @@ class FeedPreviewProxyTest(unittest.TestCase):
             cls.docker("pull", image, timeout=90)
 
         cls.server = ThreadingHTTPServer(("0.0.0.0", 0), BackendStub)
-        cls.server.daemon_threads = True
+        # Cleanup releases delayed responses and joins all request threads.
+        cls.server.daemon_threads = False
+        cls.server.release_delays = threading.Event()
         cls.thread = threading.Thread(
             target=cls.server.serve_forever, kwargs={"poll_interval": 0.1}, daemon=True
         )
@@ -98,10 +113,13 @@ class FeedPreviewProxyTest(unittest.TestCase):
         html.mkdir()
         (html / "index.html").write_bytes(SPA)
         configuration = directory / "default.conf"
+        production = (ROOT / "frontend/nginx/default.conf").read_text()
+        if "proxy_read_timeout 240s;" not in production:
+            raise RuntimeError("Revisit the bounded timeout fixture when the production timeout changes.")
         configuration.write_text(
-            (ROOT / "frontend/nginx/default.conf").read_text().replace(
+            production.replace(
                 "backend:8080", f"host.docker.internal:{cls.server.server_port}"
-            )
+            ).replace("proxy_read_timeout 240s;", "proxy_read_timeout 1s;")
         )
         cls.container = f"harudle-feed-preview-{uuid.uuid4().hex}"
         host = ["--add-host", "host.docker.internal:host-gateway"] if sys.platform == "linux" else []
@@ -136,6 +154,7 @@ class FeedPreviewProxyTest(unittest.TestCase):
         finally:
             try:
                 if cls.server is not None:
+                    cls.server.release_delays.set()
                     if cls.thread is not None and cls.thread.is_alive():
                         cls.server.shutdown()
                     cls.server.server_close()
@@ -149,7 +168,7 @@ class FeedPreviewProxyTest(unittest.TestCase):
 
     @classmethod
     def fetch(cls, path, user_agent="Mozilla/5.0", method="GET", extra_headers=None):
-        connection = http.client.HTTPConnection("127.0.0.1", cls.port, timeout=2)
+        connection = http.client.HTTPConnection("127.0.0.1", cls.port, timeout=4)
         try:
             headers = {"Host": "www.harudle.com", "User-Agent": user_agent}
             headers.update(extra_headers or {})
@@ -188,6 +207,7 @@ class FeedPreviewProxyTest(unittest.TestCase):
                 self.assertEqual(status, 200)
                 self.assertEqual(body, SPA)
                 self.assertIn("User-Agent", headers.get("vary", ""))
+                self.assertEqual(headers.get("cache-control"), "no-cache")
 
     def test_trailing_slash_original_query_and_forwarded_headers_survive_proxy(self):
         query = "?utm_source=feed_share&campaign=a%2Fb&empty="
@@ -232,6 +252,42 @@ class FeedPreviewProxyTest(unittest.TestCase):
         self.assertEqual(headers.get("x-stub-path"), f"/api/v1/public/feeds/{FEED_ID}")
         self.assertIn("User-Agent", headers.get("vary", ""))
         self.assertEqual(body, b"")
+
+    def test_nginx_generated_gateway_errors_are_not_cacheable(self):
+        requests = (
+            (f"/feeds/{FEED_ID}", "kakaotalk-scrap/1.0"),
+            (f"/api/v1/public/feeds/{FEED_ID}", "Mozilla/5.0"),
+            (f"/api/v1/public/feeds/{FEED_ID}/image", "Mozilla/5.0"),
+        )
+        for fixture, expected in (("disconnect", 502), ("timeout", 504)):
+            for path, agent in requests:
+                with self.subTest(fixture=fixture, path=path):
+                    status, headers, _body = self.fetch(f"{path}?fixture={fixture}", agent)
+                    self.assertEqual(status, expected)
+                    self.assertNotIn("x-stub-path", headers)
+                    self.assertEqual(headers.get("cache-control"), "no-store")
+                    if path.startswith("/feeds/"):
+                        self.assertIn("User-Agent", headers.get("vary", ""))
+
+    def test_preview_cache_control_is_set_once_even_if_upstream_disagrees(self):
+        for path, agent in (
+            (f"/feeds/{FEED_ID}", "kakaotalk-scrap/1.0"),
+            (f"/api/v1/public/feeds/{FEED_ID}", "Mozilla/5.0"),
+            (f"/api/v1/public/feeds/{FEED_ID}/image", "Mozilla/5.0"),
+        ):
+            with self.subTest(path=path):
+                status, headers, _body = self.fetch(f"{path}?fixture=cacheable", agent)
+                self.assertEqual(status, 200)
+                # fetch() combines duplicate headers, so equality also rejects duplicates.
+                self.assertEqual(headers.get("cache-control"), "no-store")
+
+    def test_other_api_cache_policy_is_preserved(self):
+        status, headers, _body = self.fetch("/api/v1/categories?fixture=cacheable")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get("cache-control"), "public, max-age=3600")
+        status, headers, _body = self.fetch("/api/v1/categories?fixture=disconnect")
+        self.assertEqual(status, 502)
+        self.assertNotIn("cache-control", headers)
 
 
 if __name__ == "__main__":

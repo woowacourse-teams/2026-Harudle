@@ -1032,6 +1032,8 @@ FE는 이 주소를 그대로 복사하거나 Web Share API로 공유합니다. 
 일반 브라우저는 기존 React 피드 화면을 받습니다. HTML API에 직접 접속하면 원래 피드로 이동합니다.
 미리보기 이미지는 `/api/v1/public/feeds/{feedId}/image`에서 만료 시각 없는 고정 주소의 JPEG로 제공합니다.
 두 경로 모두 매 요청마다 현재 익명 공개 범위를 검사하며 삭제·숨김 상태에서는 `404 FEED_NOT_FOUND`입니다.
+미리보기 이미지의 처리 한도를 넘으면 `503 FEED_PREVIEW_CAPACITY_EXCEEDED`와 `Retry-After: 5`를 반환합니다.
+저장소 또는 변환 실패는 `503 IMAGE_STORAGE_ERROR`이며, HTML과 이미지의 실패 응답도 `no-store`입니다.
 개인 일기와 일반 피드 `imageUrl`의 서명·만료 정책은 유지합니다.
 선택 CDN 설정과 자세한 동작은 [피드 공유 미리보기](../feed-open-graph.md)를 따릅니다.
 피드나 원본 일기가 삭제됐거나 공개 작성자를 조회할 수 없으면 `404 FEED_NOT_FOUND`를 반환합니다.

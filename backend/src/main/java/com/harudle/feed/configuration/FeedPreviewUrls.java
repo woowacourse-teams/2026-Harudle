@@ -16,6 +16,9 @@ public final class FeedPreviewUrls {
     public FeedPreviewUrls(FeedUrlProperties feeds, FeedPreviewProperties previews) {
         this.feeds = Objects.requireNonNull(feeds);
         URI base = feeds.publicBaseUrl();
+        if (base.getRawUserInfo() != null) {
+            throw new IllegalArgumentException("공개 미리보기 주소에는 사용자 정보를 포함할 수 없습니다.");
+        }
         this.publicOrigin = URI.create(base.getScheme() + "://" + base.getRawAuthority());
         String configured = previews.imageBaseUrl();
         this.imageBaseUrl = configured == null || configured.isBlank()
@@ -31,5 +34,4 @@ public final class FeedPreviewUrls {
         Objects.requireNonNull(feedId, "피드 ID는 필수입니다.");
         return URI.create(imageBaseUrl + "/" + feedId + "/image");
     }
-
 }

@@ -35,8 +35,7 @@ class FeedPreviewController {
     @Operation(summary = "공개 피드 공유 미리보기", description = "로그인 없이 현재 공개된 피드의 OG 태그를 HTML로 반환합니다. "
             + "브라우저에서는 기존 피드 화면으로 이동하며, URL 쿼리의 유입 정보는 유지합니다. 일기 원문은 제공하지 않습니다.")
     @ApiResponse(responseCode = "200", description = "피드별 공유 HTML")
-    @ApiErrorResponses({ErrorType.VALIDATION_ERROR, ErrorType.FEED_NOT_FOUND, ErrorType.FEED_UNAVAILABLE,
-            ErrorType.PROFILE_IMAGE_STORAGE_ERROR})
+    @ApiErrorResponses({ErrorType.VALIDATION_ERROR, ErrorType.FEED_NOT_FOUND, ErrorType.FEED_UNAVAILABLE})
     @GetMapping(value = "/{feedId}", produces = MediaType.TEXT_HTML_VALUE)
     ResponseEntity<String> page(@PathVariable UUID feedId) {
         String html = FeedPreviewHtml.render(previews.metadata(feedId), urls.shareUrl(feedId), urls.imageUrl(feedId));
@@ -50,7 +49,7 @@ class FeedPreviewController {
             + "S3/R2 주소와 개인 일기 원문을 노출하지 않으며, 기존 화면의 서명 URL 정책을 바꾸지 않습니다.")
     @ApiResponse(responseCode = "200", description = "1200×630 JPEG 이미지")
     @ApiErrorResponses({ErrorType.VALIDATION_ERROR, ErrorType.FEED_NOT_FOUND, ErrorType.FEED_UNAVAILABLE,
-            ErrorType.IMAGE_STORAGE_ERROR, ErrorType.PROFILE_IMAGE_STORAGE_ERROR})
+            ErrorType.IMAGE_STORAGE_ERROR, ErrorType.FEED_PREVIEW_CAPACITY_EXCEEDED})
     @GetMapping(value = "/{feedId}/image", produces = MediaType.IMAGE_JPEG_VALUE)
     ResponseEntity<Resource> image(@PathVariable UUID feedId) {
         ReferenceImage image = previews.image(feedId);
@@ -61,7 +60,7 @@ class FeedPreviewController {
     @Operation(hidden = true)
     @RequestMapping(value = "/{feedId}/image", method = RequestMethod.HEAD, produces = MediaType.IMAGE_JPEG_VALUE)
     ResponseEntity<Void> imageHead(@PathVariable UUID feedId) {
-        // GET과 같은 공개 여부·저장소 검사를 하되 수집기의 HEAD 요청에는 본문을 쓰지 않는다.
+        // GET과 같은 공개 여부·이미지 제공 경로를 사용한다. 완성된 JPEG는 내부 캐시에서 재사용할 수 있다.
         ResponseEntity<Resource> image = image(feedId);
         return ResponseEntity.ok().headers(image.getHeaders()).build();
     }

@@ -24,14 +24,18 @@ import java.util.concurrent.TimeUnit;
 import java.util.zip.CRC32;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.core.io.AbstractResource;
 import org.springframework.core.io.ByteArrayResource;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.MediaType;
 
+@ExtendWith(OutputCaptureExtension.class)
 class JpegFeedPreviewImageRendererTest {
 
     private final JpegFeedPreviewImageRenderer renderer = new JpegFeedPreviewImageRenderer();
@@ -111,7 +115,7 @@ class JpegFeedPreviewImageRendererTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"image/png", "image/jpeg", "image/webp"})
-    void rejectsBrokenPayloadWithoutLeakingItsContents(String mediaType) {
+    void rejectsBrokenPayloadWithoutLeakingItsContents(String mediaType, CapturedOutput output) {
         ReferenceImage source = new ReferenceImage(new ByteArrayResource(
                 "not an image; private-storage-address".getBytes(StandardCharsets.UTF_8)),
                 MediaType.parseMediaType(mediaType));
@@ -120,17 +124,20 @@ class JpegFeedPreviewImageRendererTest {
                 .isInstanceOf(ImageStorageException.class)
                 .hasMessage("공유 미리보기 이미지를 변환하지 못했습니다.")
                 .hasNoCause();
+        assertThat(output.getAll()).contains("event=feed_preview_image_failed", "reason=decode_failed")
+                .doesNotContain("private-storage-address");
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"image/svg+xml", "image/gif"})
-    void rejectsUnsupportedImageTypesEvenWhenPayloadIsPng(String mediaType) throws IOException {
+    void rejectsUnsupportedImageTypesEvenWhenPayloadIsPng(String mediaType, CapturedOutput output) throws IOException {
         byte[] png = source(cornerMarkers(20, 20, false), "png").resource().getContentAsByteArray();
 
         assertThatThrownBy(() -> renderer.render(new ReferenceImage(new ByteArrayResource(png),
                 MediaType.parseMediaType(mediaType))))
                 .isInstanceOf(ImageStorageException.class)
                 .hasNoCause();
+        assertThat(output.getAll()).contains("reason=unsupported_type");
     }
 
     @Test
@@ -153,17 +160,18 @@ class JpegFeedPreviewImageRendererTest {
     }
 
     @Test
-    void rejectsInputLargerThanTwentyMebibytes() {
+    void rejectsInputLargerThanTwentyMebibytes(CapturedOutput output) {
         byte[] oversized = new byte[20 * 1024 * 1024 + 1];
 
         assertThatThrownBy(() -> renderer.render(new ReferenceImage(
                 new ByteArrayResource(oversized), MediaType.IMAGE_PNG)))
                 .isInstanceOf(ImageStorageException.class)
                 .hasMessage("공유 미리보기 원본은 20MiB 이하여야 합니다.");
+        assertThat(output.getAll()).contains("reason=input_too_large");
     }
 
     @Test
-    void rejectsOversizedPngDimensionsBeforeReadingPixelData() throws IOException {
+    void rejectsOversizedPngDimensionsBeforeReadingPixelData(CapturedOutput output) throws IOException {
         byte[] png = source(cornerMarkers(20, 20, false), "png").resource().getContentAsByteArray();
         ByteBuffer.wrap(png, 16, 8).putInt(6000).putInt(6000);
         CRC32 crc = new CRC32();
@@ -174,6 +182,7 @@ class JpegFeedPreviewImageRendererTest {
                 new ByteArrayResource(png), MediaType.IMAGE_PNG)))
                 .isInstanceOf(ImageStorageException.class)
                 .hasMessage("공유 미리보기 이미지 크기가 제한을 초과했습니다.");
+        assertThat(output.getAll()).contains("reason=dimensions_exceeded");
     }
 
     @Test
@@ -190,7 +199,7 @@ class JpegFeedPreviewImageRendererTest {
     }
 
     @Test
-    void hidesResourceFailureDetails() {
+    void hidesResourceFailureDetails(CapturedOutput output) {
         AbstractResource unreadable = new AbstractResource() {
             @Override
             public String getDescription() {
@@ -212,6 +221,35 @@ class JpegFeedPreviewImageRendererTest {
                 .isInstanceOf(ImageStorageException.class)
                 .hasMessage("공유 미리보기 이미지를 변환하지 못했습니다.")
                 .hasNoCause();
+        assertThat(output.getAll()).contains("reason=decode_failed")
+                .doesNotContain("private-storage-address", "must-not-leak");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"truncated", "oversized_chunk", "duplicate_bitmap", "canvas_mismatch"})
+    void rejectsMalformedWebpBeforeNativeDecoding(String variant, CapturedOutput output) {
+        byte[] frame = {0, 0, 0, (byte) 0x9d, 1, 0x2a, 20, 0, 20, 0};
+        byte[] bitmap = chunk("VP8 ", frame);
+        byte[] payload = switch (variant) {
+            case "truncated" -> ByteBuffer.allocate(11).order(ByteOrder.LITTLE_ENDIAN)
+                    .put("VP8X".getBytes(StandardCharsets.US_ASCII)).putInt(10).put(new byte[3]).array();
+            case "oversized_chunk" -> ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN)
+                    .put("VP8 ".getBytes(StandardCharsets.US_ASCII)).putInt(Integer.MAX_VALUE - 1).array();
+            case "duplicate_bitmap" -> ByteBuffer.allocate(bitmap.length * 2).put(bitmap).put(bitmap).array();
+            case "canvas_mismatch" -> {
+                byte[] canvas = chunk("VP8X", new byte[]{0, 0, 0, 0, 29, 0, 0, 19, 0, 0});
+                yield ByteBuffer.allocate(canvas.length + bitmap.length).put(canvas).put(bitmap).array();
+            }
+            default -> throw new IllegalArgumentException("Unknown test fixture");
+        };
+        byte[] webp = ByteBuffer.allocate(12 + payload.length).order(ByteOrder.LITTLE_ENDIAN)
+                .put("RIFF".getBytes(StandardCharsets.US_ASCII)).putInt(4 + payload.length)
+                .put("WEBP".getBytes(StandardCharsets.US_ASCII)).put(payload).array();
+
+        assertThatThrownBy(() -> renderer.render(new ReferenceImage(new ByteArrayResource(webp),
+                MediaType.parseMediaType("image/webp"))))
+                .isInstanceOf(ImageStorageException.class).hasNoCause();
+        assertThat(output.getAll()).contains("reason=decode_failed").doesNotContain("reason=dwebp_failed");
     }
 
     @Test
@@ -235,6 +273,11 @@ class JpegFeedPreviewImageRendererTest {
         assertThat(ImageIO.write(image, format, output)).isTrue();
         return new ReferenceImage(new ByteArrayResource(output.toByteArray()),
                 format.equals("png") ? MediaType.IMAGE_PNG : MediaType.IMAGE_JPEG);
+    }
+
+    private static byte[] chunk(String tag, byte[] data) {
+        return ByteBuffer.allocate(8 + data.length + (data.length & 1)).order(ByteOrder.LITTLE_ENDIAN)
+                .put(tag.getBytes(StandardCharsets.US_ASCII)).putInt(data.length).put(data).array();
     }
 
     private static BufferedImage cornerMarkers(int width, int height, boolean alpha) {
