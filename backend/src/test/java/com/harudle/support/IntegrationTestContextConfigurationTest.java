@@ -80,7 +80,8 @@ class IntegrationTestContextConfigurationTest {
         assertSameContext(
                 "com.harudle.feed.service.FeedDeletionPersistenceTest",
                 "com.harudle.feed.service.FeedListAndInteractionPersistenceTest",
-                "com.harudle.feed.service.FeedPublicationPersistenceTest"
+                "com.harudle.feed.service.FeedPublicationPersistenceTest",
+                "com.harudle.feed.service.FeedPreviewVisibilityPersistenceTest"
         );
     }
 

@@ -138,6 +138,8 @@ harudle:
     image-base-url: ${PROFILE_IMAGE_BASE_URL:http://localhost:5173/profile-images/v1}
   feed:
     public-base-url: ${FEED_PUBLIC_BASE_URL:http://localhost:5173/feeds}
+    preview:
+      image-base-url: ${FEED_PREVIEW_IMAGE_BASE_URL:}
   diary:
     source-text-encryption:
       verification-file: ${DIARY_SOURCE_TEXT_KEY_VERIFICATION_FILE:}

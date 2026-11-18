@@ -27,6 +27,7 @@ Gradle은 별도로 설치할 필요가 없습니다. 저장소에 포함된 Gra
 - [백엔드 문서와 ADR 목록](docs/README.md)
 - [API 명세](<docs/명세/하루들 API 명세.md>)
 - [일기 원문 암호화와 키 관리](docs/diary-source-text-encryption.md)
+- [피드별 OG 공유 미리보기와 선택 CDN 연결](docs/feed-open-graph.md)
 
 ## 도메인 패키지
 
