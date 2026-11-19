@@ -187,6 +187,74 @@ Idempotency-Key: 7e5cc251-fdde-4cc0-a54e-2c8142750609
 - 비활성화 후에도 기존 피드의 카테고리 조회는 유지되며 새 게시만 거부한다. `active=true`로 다시 활성화할 수 있다.
 - 수정은 카테고리 행을 잠그고 같은 행의 게시 검증과 순서대로 처리한다. 삭제 API는 제공하지 않는다.
 
+### 3.5 관리자 회원 목록과 통계
+
+| Method | Endpoint | 인증 | 설명 |
+| --- | --- | ---: | --- |
+| `GET` | `/api/v1/admin/users` | ADMIN | 회원 검색, 정렬과 페이지 조회 |
+| `GET` | `/api/v1/admin/users/{userId}` | ADMIN | 회원 상세와 최근 생성 이력 조회 |
+| `GET` | `/api/v1/admin/stats` | ADMIN | 현재 회원 수와 오늘 가입 수 |
+
+두 API는 비로그인 요청에 `401`, 일반 회원 요청에 `403`을 반환한다. 게스트 사용자는 목록과 통계에 포함하지 않는다.
+
+회원 목록의 Query Parameter는 다음과 같다.
+
+| 이름 | 기본값 | 설명 |
+| --- | --- | --- |
+| `query` | 빈 값 | 이름이나 닉네임의 일부(대소문자 무시) 또는 정확한 사용자 ID. 빈 값이면 전체 조회 |
+| `sort` | `CREATED_AT` | `NAME`, `CREATED_AT`, `REMAINING_COUNT` 중 하나 |
+| `direction` | `DESC` | `ASC` 또는 `DESC` |
+| `page` | `0` | 0부터 시작하는 페이지 번호 |
+| `size` | `20` | 1~100 |
+
+- `sort`와 `direction`은 대문자 값만 허용한다. 알 수 없는 값은 `400 VALIDATION_ERROR`다.
+- `NAME`은 실명을 DB 기본 정렬 규칙으로 정렬한다. `REMAINING_COUNT`는 한국 시간 오늘의 남은 생성 횟수로 정렬한다.
+  오늘 사용량 기록이 없는 회원은 사용자별 일일 한도 전체를 남은 횟수로 계산한다.
+- 정렬 값이 같으면 사용자 ID를 같은 방향으로 정렬한다.
+
+```json
+{
+  "content": [
+    {
+      "id": "08d69a34-6d70-4d42-a158-671bc67733c9",
+      "name": "김하루",
+      "nickname": "SunnyHaru",
+      "status": "ACTIVE",
+      "createdAt": "2026-08-25T01:00:00Z",
+      "lastLoginAt": "2026-08-25T01:00:10Z",
+      "generationUsage": {
+        "usageDate": "2026-08-25",
+        "usedCount": 2,
+        "limitCount": 3,
+        "remainingCount": 1
+      },
+      "generatedDiaryCount": 12
+    }
+  ],
+  "page": 0,
+  "size": 20,
+  "totalElements": 1,
+  "totalPages": 1,
+  "hasNext": false
+}
+```
+
+- `nickname`은 공개 프로필을 배정하기 전이면 `null`이다.
+- `generatedDiaryCount`는 생성에 성공한 일기 수다. 회원이 삭제한 일기도 포함하며 실패하거나 진행 중인 생성은 세지 않는다.
+
+회원 상세 응답은 목록 항목의 `id`, `name`, `nickname`, `status`, `createdAt`, `lastLoginAt`, `generationUsage`와
+최근 생성 이력 5건인 `recentGenerations`를 반환한다. `nickname`은 목록과 같이 공개 프로필을 배정하기 전이면 `null`이다.
+
+통계 응답은 다음과 같다.
+
+```json
+{ "memberCount": 1520, "todaySignupCount": 7 }
+```
+
+- `memberCount`는 탈퇴하지 않은 회원 수다. 이용 정지 회원과 관리자도 포함한다.
+- `todaySignupCount`는 `memberCount`에 포함되는 회원 중 한국 시간 오늘 0시 이후에 가입한 회원 수다.
+  회원 탈퇴는 회원 행을 삭제하므로 오늘 가입한 뒤 탈퇴한 회원은 세지 않는다.
+
 ## 4. 인증 및 사용자 API
 
 ### 4.1 Kakao OAuth 로그인 시작
