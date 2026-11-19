@@ -195,6 +195,25 @@ test.describe('좁은 화면', (): void => {
       detail.getByText('남은 횟수').locator('xpath=..'),
     ).toContainText('3');
   });
+
+  test('상세 모달을 연 채 뒤로 가기로 다른 화면에 가면 모달을 닫는다', async ({
+    page,
+  }): Promise<void> => {
+    await page.goto('/admin');
+    await page.getByRole('button', { name: '사용자 관리' }).click();
+    await expect(page).toHaveURL(/view=users/);
+    await page.getByRole('button', { name: '네오 상세 보기' }).click();
+    const detail = page.locator('dialog[open]');
+    await expect(detail.getByText('SunnyHaru01')).toBeVisible();
+
+    await page.goBack();
+
+    await expect(page).not.toHaveURL(/view=users/);
+    await expect(
+      page.getByRole('heading', { name: '오늘의 하루를 살펴볼까요?' }),
+    ).toBeVisible();
+    await expect(page.locator('dialog[open]')).toHaveCount(0);
+  });
 });
 
 test('대시보드에서 탈퇴 회원을 뺀 전체 회원 수를 보여 준다', async ({
@@ -372,6 +391,34 @@ test('주소의 정렬 값이 잘못되면 기본 정렬로 보여 준다', asyn
   await expect.poll(() => firstUserNames(page, 1)).toEqual(['네오']);
 });
 
+test('남은 횟수 정렬에서 생성 한도를 바꾸면 같은 정렬로 목록을 다시 불러와 순서를 바꾼다', async ({
+  page,
+}): Promise<void> => {
+  const userRequests: string[] = [];
+  page.on('request', (request): void => {
+    const url = new URL(request.url());
+    if (url.pathname === '/api/v1/admin/users')
+      userRequests.push(
+        `${url.searchParams.get('sort')} ${url.searchParams.get('direction')} ${url.searchParams.get('page')}`,
+      );
+  });
+  await page.goto('/admin?view=users&sort=REMAINING_COUNT');
+  await expect.poll(() => firstUserNames(page, 1)).toEqual(['사용자 36']);
+  const lastOnPage = (await firstUserNames(page, 20)).at(-1);
+  if (!lastOnPage) throw new Error('첫 쪽에 사용자가 없습니다.');
+  const requestsBefore = userRequests.length;
+
+  await page.getByRole('button', { name: `${lastOnPage} 상세 보기` }).click();
+  await page.getByRole('button', { name: '생성 한도 변경' }).click();
+  await page.getByRole('spinbutton', { name: '생성 한도' }).fill('10');
+  await page.getByRole('button', { name: '변경하기' }).click();
+
+  await expect.poll(() => firstUserNames(page, 1)).toEqual([lastOnPage]);
+  expect(userRequests.slice(requestsBefore)).toEqual([
+    'REMAINING_COUNT DESC 0',
+  ]);
+});
+
 test('정렬을 바꾸자마자 다음 페이지로 이동해도 정렬 조건을 잃지 않는다', async ({
   page,
 }): Promise<void> => {
@@ -416,4 +463,24 @@ test('이전 날짜를 연달아 누르면 누른 횟수만큼 날짜를 옮긴�
 
   await expect(page.getByLabel('조회 날짜')).toHaveValue(localDate(-2));
   await expect(page).toHaveURL(new RegExp(`historyDate=${localDate(-2)}`));
+});
+
+test('생성 이력 뒤쪽의 성공한 생성도 엽서로 열 수 있다', async ({
+  page,
+}): Promise<void> => {
+  await page.goto('/admin?view=generations&historyPage=1');
+  const row = page.getByRole('row').filter({
+    hasText: '50000000-0000-4000-8000-000000000020',
+  });
+  await row.getByRole('button', { name: '엽서 인쇄' }).click();
+
+  const postcard = page.locator('dialog[open]', {
+    has: page.getByRole('heading', { name: '엽서 인쇄' }),
+  });
+  await expect(
+    postcard.getByRole('img', {
+      name: '엽서 프레임에 넣은 네컷만화 미리보기',
+    }),
+  ).toBeVisible();
+  await expect(postcard.getByRole('alert')).toHaveCount(0);
 });

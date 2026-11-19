@@ -11,7 +11,6 @@ import {
   type ModerationTargetType,
 } from '../pages/admin/adminModerationApi';
 import { MOCK_SCENARIO_HEADER } from './mockScenarios';
-import { ADMIN_GENERATION_SAMPLES } from './adminPostcardHandlers';
 const actor = '08d69a34-6d70-4d42-a158-671bc67733c9';
 const targetUser = '00000000-0000-4000-8000-000000000100';
 const now = '2026-10-23T03:00:00Z';
@@ -209,8 +208,36 @@ const sortUsers = (
       sign * (compare(keyOfUser(a), keyOfUser(b)) || compare(a.id, b.id)),
   );
 };
+// 관리자 전체 생성 목록의 앞쪽 예시. 실제 서버 없이 엽서 미리보기 흐름을 확인한다.
+const ADMIN_GENERATION_SAMPLES = [
+  {
+    id: '6a2fbcda-943d-4014-a8e3-246377482e00',
+    user: { id: '00000000-0000-4000-8000-000000000201', name: '레오' },
+    requestedAt: '2026-11-17T11:52:10Z',
+    status: 'SUCCEEDED',
+    completedAt: '2026-11-17T11:52:41Z',
+    errorCode: null,
+  },
+  {
+    id: '71dc2282-72c5-4c45-8f81-018afbc67ad8',
+    user: { id: '00000000-0000-4000-8000-000000000202', name: '쿠다' },
+    requestedAt: '2026-11-17T11:49:33Z',
+    status: 'FAILED',
+    completedAt: '2026-11-17T11:50:20Z',
+    errorCode: 'IMAGE_GENERATION_FAILED',
+  },
+  {
+    id: '339fa1fd-8ea7-4830-93b7-e16672e35086',
+    user: { id: '00000000-0000-4000-8000-000000000203', name: '이산' },
+    requestedAt: '2026-11-17T11:45:02Z',
+    status: 'SUCCEEDED',
+    completedAt: '2026-11-17T11:45:35Z',
+    errorCode: null,
+  },
+] as const;
 // 실패 이력도 여러 쪽이 되도록 엽서 예시 뒤에 생성 결과를 덧붙인다.
-const generations = [
+// 엽서 이미지 조회도 이 목록에서 성공한 생성을 찾는다.
+export const adminGenerations = [
   ...ADMIN_GENERATION_SAMPLES,
   ...Array.from({ length: 30 }, (_, index) => ({
     id: `50000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
@@ -477,7 +504,7 @@ export const adminModerationHandlers = [
       const status = new URL(request.url).searchParams.get('status');
       return HttpResponse.json(
         paged(
-          generations.filter(
+          adminGenerations.filter(
             (generation) => !status || generation.status === status,
           ),
           request,

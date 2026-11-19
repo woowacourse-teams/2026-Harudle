@@ -2,6 +2,7 @@ import { css } from '@emotion/react';
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -149,7 +150,7 @@ const AdminPage = () => {
         : null,
     [view, userQuery, userSort, userDirection, usersPage],
   );
-  const [usersRequest, setUsersRequest] = usePageRequest(
+  const [usersRequest, reloadUsers] = usePageRequest(
     fetchUsers,
     '사용자를 불러오지 못했습니다.',
   );
@@ -168,7 +169,7 @@ const AdminPage = () => {
         : null,
     [view, historyPage, historyDate],
   );
-  const [generationsRequest] = usePageRequest(
+  const [generationsRequest, reloadGenerations] = usePageRequest(
     fetchGenerations,
     '생성 이력을 불러오지 못했습니다.',
   );
@@ -215,6 +216,17 @@ const AdminPage = () => {
     };
   }, [view]);
 
+  // 메뉴와 뒤로 가기 중 어느 쪽으로 화면을 옮겨도 이전 화면의 상세와 진행 중인 상세 조회를 버린다.
+  useLayoutEffect((): void => {
+    detailRequestIdRef.current = ++requestSequenceRef.current;
+    detailModalRef.current?.close();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 주소의 화면이 바뀐 시점에 진행 중인 상세 조회·모달과 함께 상세 상태를 비운다.
+    setDetail(null);
+    setUsageModal(null);
+    setLoading(false);
+    setError(null);
+  }, [view]);
+
   // 넓은 화면으로 바뀌면 상세가 오른쪽 열로 옮겨 가므로 비어 버린 모달을 닫는다.
   useEffect((): (() => void) | void => {
     if (!compactLayout) return;
@@ -222,29 +234,34 @@ const AdminPage = () => {
     return (): void => modal?.close();
   }, [compactLayout]);
 
+  /** 주소가 바뀌었으면 `true`를 돌려준다. */
   const updateUrl = (
     patch:
       | Partial<AdminUrlState>
       | ((current: AdminUrlState) => Partial<AdminUrlState>),
-  ): void => {
+  ): boolean => {
     const current = latestSearchParamsRef.current;
     const currentState = readAdminUrlState(current);
     const next = writeAdminUrlState({
       ...currentState,
       ...(typeof patch === 'function' ? patch(currentState) : patch),
     });
-    if (next.toString() === current.toString()) return;
+    if (next.toString() === current.toString()) return false;
     latestSearchParamsRef.current = next;
     setSearchParams(next);
+    return true;
+  };
+
+  // 조건이 그대로인 검색·쪽 이동은 주소가 바뀌지 않으므로 같은 조건으로 다시 불러온다.
+  const showUsers = (patch: Partial<AdminUrlState>): void => {
+    if (!updateUrl(patch)) reloadUsers();
+  };
+  const showGenerations = (patch: Partial<AdminUrlState>): void => {
+    if (!updateUrl(patch)) reloadGenerations();
   };
 
   // 검색어·정렬·조회 날짜는 메뉴를 옮겨도 유지하고 쪽 번호만 처음으로 돌린다.
   const navigate = (nextView: AdminView) => {
-    detailRequestIdRef.current = ++requestSequenceRef.current;
-    setDetail(null);
-    setUsageModal(null);
-    setLoading(false);
-    setError(null);
     updateUrl({ view: nextView, usersPage: 0, historyPage: 0 });
   };
 
@@ -279,22 +296,6 @@ const AdminPage = () => {
       : users.filter((user) => user.status === statusFilter);
   }, [statusFilter, loadedUsers]);
 
-  const syncUserRow = (updated: AdminUserDetail): void => {
-    setUsersRequest((current) =>
-      current.status === 'success'
-        ? {
-            ...current,
-            data: {
-              ...current.data,
-              content: current.data.content.map((user) =>
-                user.id === updated.id ? { ...user, ...updated } : user,
-              ),
-            },
-          }
-        : current,
-    );
-  };
-
   const updateDetail = async (
     action: () => Promise<AdminGenerationUsage>,
   ): Promise<boolean> => {
@@ -305,10 +306,11 @@ const AdminPage = () => {
     setError(null);
     try {
       await action();
+      // 바뀐 사용량이 정렬과 쪽 구성에 반영되도록 목록은 서버에서 다시 받는다.
+      reloadUsers();
       const updated = await getAdminUser(detail.id);
       if (detailRequestIdRef.current !== requestId) return false;
       setDetail(updated);
-      syncUserRow(updated);
       return true;
     } catch (cause) {
       if (requestSequenceRef.current !== requestId) return false;
@@ -334,10 +336,11 @@ const AdminPage = () => {
     setError(null);
     try {
       await action();
+      // 바뀐 사용량이 정렬과 쪽 구성에 반영되도록 목록은 서버에서 다시 받는다.
+      reloadUsers();
       const updated = await getAdminUser(detail.id);
       if (detailRequestIdRef.current !== requestId) return false;
       setDetail(updated);
-      syncUserRow(updated);
       return true;
     } catch (cause) {
       if (requestSequenceRef.current !== requestId) return false;
@@ -550,7 +553,7 @@ const AdminPage = () => {
             direction={userDirection}
             statusFilter={statusFilter}
             onStatusChange={setStatusFilter}
-            onSearch={(query) => updateUrl({ userQuery: query, usersPage: 0 })}
+            onSearch={(query) => showUsers({ userQuery: query, usersPage: 0 })}
             onSortChange={(sort) =>
               updateUrl({
                 userSort: sort,
@@ -562,7 +565,8 @@ const AdminPage = () => {
               updateUrl({ userDirection: direction, usersPage: 0 })
             }
             onSelect={selectUser}
-            onPage={(page) => updateUrl({ usersPage: page })}
+            onPage={(page) => showUsers({ usersPage: page })}
+            onRetry={reloadUsers}
           />
         )}
         {(view === 'dashboard' ||
@@ -585,7 +589,8 @@ const AdminPage = () => {
                 };
               })
             }
-            onPage={(page) => updateUrl({ historyPage: page })}
+            onPage={(page) => showGenerations({ historyPage: page })}
+            onRetry={reloadGenerations}
             onFailedOnly={() => navigate('failed')}
             onAll={() => navigate('generations')}
             onPostcard={(generationId) =>
@@ -724,6 +729,7 @@ const UserSearchCard = ({
   onDirectionChange,
   onSelect,
   onPage,
+  onRetry,
 }: {
   request: PageRequest<AdminUserSummary>;
   users: AdminUserSummary[];
@@ -737,6 +743,7 @@ const UserSearchCard = ({
   onDirectionChange: (direction: SortDirection) => void;
   onSelect: (userId: string) => void;
   onPage: (page: number) => void;
+  onRetry: () => void;
 }) => {
   const page = shownPage(request);
   const handleSearch = (event: FormEvent<HTMLFormElement>): void => {
@@ -810,10 +817,11 @@ const UserSearchCard = ({
           ))}
         </select>
       </div>
-      {request.status === 'error' ? (
-        <ErrorMessage message={request.message} />
-      ) : page === null ? (
-        <LoadingMessage />
+      {request.status === 'error' && (
+        <ListError message={request.message} onRetry={onRetry} />
+      )}
+      {page === null ? (
+        request.status === 'loading' && <LoadingMessage />
       ) : (
         <>
           <UserTable users={users} onSelect={onSelect} />
@@ -924,6 +932,7 @@ const HistoryCard = ({
   onDateChange,
   onDateShift,
   onPage,
+  onRetry,
   onFailedOnly,
   onAll,
   onPostcard,
@@ -934,6 +943,7 @@ const HistoryCard = ({
   onDateChange: (value: string) => void;
   onDateShift: (days: number) => void;
   onPage: (page: number) => void;
+  onRetry: () => void;
   onFailedOnly: () => void;
   onAll: () => void;
   onPostcard: (generationId: string) => void;
@@ -999,10 +1009,11 @@ const HistoryCard = ({
           </button>
         </div>
       </div>
-      {request.status === 'error' ? (
-        <ErrorMessage message={request.message} />
-      ) : page === null ? (
-        <LoadingMessage />
+      {request.status === 'error' && (
+        <ListError message={request.message} onRetry={onRetry} />
+      )}
+      {page === null ? (
+        request.status === 'loading' && <LoadingMessage />
       ) : (
         <>
           <GenerationTable generations={page.content} onPostcard={onPostcard} />
@@ -1359,6 +1370,20 @@ const GenerationStatusPill = ({ status }: { status: GenerationStatus }) => (
 
 const ErrorMessage = ({ message }: { message: string }) => (
   <p css={errorStyle}>{message}</p>
+);
+const ListError = ({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry: () => void;
+}) => (
+  <div css={[errorStyle, listErrorStyle]} role="alert">
+    <p>{message}</p>
+    <button css={filterButtonStyle(false)} type="button" onClick={onRetry}>
+      {ADMIN_LIST_COPY.retry}
+    </button>
+  </div>
 );
 const LoadingMessage = () => <p css={messageStyle}>불러오는 중...</p>;
 
@@ -2335,6 +2360,16 @@ const errorStyle = css`
   background: #fff0f0;
   color: ${theme.colors.foreground.critical};
   font-size: 13px;
+`;
+const listErrorStyle = css`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  button {
+    flex-shrink: 0;
+  }
 `;
 const messageStyle = css`
   padding: 32px 0;

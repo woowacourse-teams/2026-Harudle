@@ -33,18 +33,20 @@ jest.mock('./AdminModerationPanel', () => ({
 }));
 
 // 주소를 바꾸면 다시 그리도록 실제 라우터처럼 상태로 보관한다.
+// 뒤로 가기처럼 화면 밖에서 주소가 바뀌는 경우는 `mockRouter.setParams`로 흉내 낸다.
 const mockRouter = {
+  setParams: (next: URLSearchParams): void => {
+    mockLocationSearch = next.toString();
+  },
   useSearchParams: (): [URLSearchParams, (next: URLSearchParams) => void] => {
     const [params, setParams] = useState(
       () => new URLSearchParams(mockLocationSearch),
     );
-    return [
-      params,
-      (next): void => {
-        mockLocationSearch = next.toString();
-        setParams(next);
-      },
-    ];
+    mockRouter.setParams = (next): void => {
+      mockLocationSearch = next.toString();
+      setParams(next);
+    };
+    return [params, mockRouter.setParams];
   },
 };
 
@@ -188,6 +190,20 @@ const userRowNames = (): string[] =>
     );
 
 beforeEach(() => {
+  Object.defineProperties(HTMLDialogElement.prototype, {
+    showModal: {
+      configurable: true,
+      value(this: HTMLDialogElement): void {
+        this.setAttribute('open', '');
+      },
+    },
+    close: {
+      configurable: true,
+      value(this: HTMLDialogElement): void {
+        this.removeAttribute('open');
+      },
+    },
+  });
   mockGetAdminStats.mockReset();
   mockGetAdminStats.mockResolvedValue({
     memberCount: 0,
@@ -356,6 +372,33 @@ describe('관리자 페이지 비동기 요청 순서', () => {
         screen.queryByText('사용자 A', { selector: 'dd' }),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it('상세를 불러오는 중에 뒤로 가기로 다른 화면에 가면 늦게 온 상세를 보여 주지 않는다', async () => {
+    const userA = createUser('user-a', '사용자 A');
+    const detailA = createDeferred<AdminUserDetail>();
+    mockSearchAdminUsers.mockResolvedValue(createPage([userA]));
+    mockSearchAdminGenerations.mockResolvedValue(
+      createPage<GenerationHistory>([]),
+    );
+    mockGetAdminUser.mockReturnValue(detailA.promise);
+    const user = userEvent.setup();
+    renderAdmin('/admin?view=users');
+    await user.click(
+      await screen.findByRole('button', { name: '사용자 A 상세 보기' }),
+    );
+
+    act(() => mockRouter.setParams(new URLSearchParams('view=dashboard')));
+    await act(async () => {
+      detailA.resolve(createDetail(userA));
+    });
+
+    expect(
+      screen.getByRole('heading', { name: '오늘의 하루를 살펴볼까요?' }),
+    ).toBeVisible();
+    expect(
+      screen.queryByText('사용자 A', { selector: 'dd' }),
+    ).not.toBeInTheDocument();
   });
 
   it('대시보드 조회와 사용자 검색이 겹치면 검색 결과를 유지한다', async () => {
@@ -645,5 +688,195 @@ describe('관리자 사용자 목록', () => {
     expect(mockSearchAdminGenerations).toHaveBeenCalledWith(
       expect.objectContaining({ from: todayDate, to: todayDate }),
     );
+  });
+});
+
+describe('관리자 목록 다시 불러오기', () => {
+  const withRemaining = (
+    summary: AdminUserSummary,
+    remainingCount: number,
+  ): AdminUserSummary => ({
+    ...summary,
+    generationUsage: {
+      ...summary.generationUsage,
+      usedCount: summary.generationUsage.limitCount - remainingCount,
+      remainingCount,
+    },
+  });
+  const pageAt = <T,>(
+    content: T[],
+    page: number,
+    hasNext = false,
+  ): Page<T> => ({ ...createPage(content, 45), page, hasNext });
+
+  const restoreOnce = async (
+    user: ReturnType<typeof userEvent.setup>,
+    name: string,
+  ): Promise<void> => {
+    await user.click(screen.getByRole('button', { name: `${name} 상세 보기` }));
+    await screen.findByText(name, { selector: 'dd' });
+    await user.click(screen.getByRole('button', { name: '사용 횟수 복구' }));
+    await user.click(screen.getByRole('button', { name: '변경하기' }));
+  };
+
+  beforeEach(() => {
+    mockSearchAdminGenerations.mockResolvedValue(
+      createPage<GenerationHistory>([]),
+    );
+  });
+
+  it('남은 횟수 정렬에서 사용량을 바꾸면 같은 조건으로 목록을 다시 불러와 서버 순서를 보여 준다', async () => {
+    const userA = withRemaining(createUser('user-a', '사용자 A'), 1);
+    const userB = withRemaining(createUser('user-b', '사용자 B'), 0);
+    const restoredB = withRemaining(userB, 3);
+    let restored = false;
+    mockSearchAdminUsers.mockImplementation(() =>
+      Promise.resolve(
+        pageAt(restored ? [restoredB, userA] : [userA, userB], 1),
+      ),
+    );
+    mockGetAdminUser.mockImplementation(() =>
+      Promise.resolve(createDetail(restored ? restoredB : userB)),
+    );
+    mockRestoreAdminUsage.mockImplementation(() => {
+      restored = true;
+      return Promise.resolve(restoredB.generationUsage);
+    });
+    const user = userEvent.setup();
+    renderAdmin('/admin?view=users&sort=REMAINING_COUNT&usersPage=1');
+    await screen.findByRole('button', { name: '사용자 B 상세 보기' });
+    expect(userRowNames()).toEqual(['사용자 A', '사용자 B']);
+    const requestsBefore = mockSearchAdminUsers.mock.calls.length;
+
+    await restoreOnce(user, '사용자 B');
+
+    await waitFor(() =>
+      expect(userRowNames()).toEqual(['사용자 B', '사용자 A']),
+    );
+    expect(mockSearchAdminUsers).toHaveBeenCalledTimes(requestsBefore + 1);
+    expect(lastUserSearch()).toEqual({
+      query: '',
+      sort: 'REMAINING_COUNT',
+      direction: 'DESC',
+      page: 1,
+      size: 20,
+    });
+  });
+
+  it('사용량을 바꾸기 전에 보낸 목록 조회가 늦게 도착해도 바뀐 사용량을 유지한다', async () => {
+    const userA = withRemaining(createUser('user-a', '사용자 A'), 0);
+    const restoredA = withRemaining(userA, 3);
+    const staleNextPage = createDeferred<Page<AdminUserSummary>>();
+    const freshNextPage = createDeferred<Page<AdminUserSummary>>();
+    const nextPageRequests = [staleNextPage, freshNextPage];
+    mockSearchAdminUsers.mockImplementation(({ page }) => {
+      if (page === 0) return Promise.resolve(pageAt([userA], 0, true));
+      const request = nextPageRequests.shift();
+      if (!request) throw new Error('예상하지 못한 목록 조회');
+      return request.promise;
+    });
+    mockGetAdminUser.mockResolvedValue(createDetail(restoredA));
+    mockRestoreAdminUsage.mockImplementation(() =>
+      Promise.resolve(restoredA.generationUsage),
+    );
+    const user = userEvent.setup();
+    renderAdmin('/admin?view=users');
+    await screen.findByRole('button', { name: '사용자 A 상세 보기' });
+
+    await user.click(screen.getByRole('button', { name: '다음 페이지' }));
+    mockGetAdminUser.mockResolvedValueOnce(createDetail(userA));
+    await restoreOnce(user, '사용자 A');
+    await waitFor(() => expect(nextPageRequests).toHaveLength(0));
+
+    await act(async () => {
+      freshNextPage.resolve(pageAt([restoredA], 1));
+    });
+    await act(async () => {
+      staleNextPage.resolve(pageAt([userA], 1));
+    });
+
+    const row = screen
+      .getByRole('button', { name: '사용자 A 상세 보기' })
+      .closest('tr');
+    expect(row).toHaveTextContent('3 / 3');
+  });
+
+  it('사용자 목록을 불러오지 못하면 다시 불러오기로 같은 조건을 다시 조회한다', async () => {
+    mockSearchAdminUsers
+      .mockRejectedValueOnce(new Error('사용자 목록 서버 오류'))
+      .mockResolvedValue(pageAt([createUser('user-a', '사용자 A')], 1));
+    const user = userEvent.setup();
+    renderAdmin('/admin?view=users&query=neo&sort=NAME&usersPage=1');
+
+    expect(await screen.findByText('사용자 목록 서버 오류')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '다시 불러오기' }));
+
+    expect(
+      await screen.findByRole('button', { name: '사용자 A 상세 보기' }),
+    ).toBeVisible();
+    expect(mockSearchAdminUsers.mock.calls.map(([params]) => params)).toEqual([
+      { query: 'neo', sort: 'NAME', direction: 'DESC', page: 1, size: 20 },
+      { query: 'neo', sort: 'NAME', direction: 'DESC', page: 1, size: 20 },
+    ]);
+    expect(screen.queryByText('사용자 목록 서버 오류')).not.toBeInTheDocument();
+  });
+
+  it('다음 쪽을 불러오지 못해도 이전 쪽 이동 버튼으로 돌아갈 수 있다', async () => {
+    mockSearchAdminUsers.mockImplementation(({ page }) =>
+      page === 2
+        ? Promise.reject(new Error('3쪽 조회 실패'))
+        : Promise.resolve(
+            pageAt(
+              [createUser(`user-${page}`, `${page + 1}쪽 사용자`)],
+              page,
+              true,
+            ),
+          ),
+    );
+    const user = userEvent.setup();
+    renderAdmin('/admin?view=users&usersPage=1');
+    await screen.findByRole('button', { name: '2쪽 사용자 상세 보기' });
+
+    await user.click(screen.getByRole('button', { name: '다음 페이지' }));
+    expect(await screen.findByText('3쪽 조회 실패')).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: '이전 페이지' }));
+
+    expect(
+      await screen.findByRole('button', { name: '1쪽 사용자 상세 보기' }),
+    ).toBeVisible();
+    expect(lastUserSearch()).toMatchObject({ page: 0 });
+  });
+
+  it('생성 이력을 불러오지 못하면 다시 불러오기로 같은 날짜를 다시 조회한다', async () => {
+    mockSearchAdminGenerations
+      .mockRejectedValueOnce(new Error('생성 이력 서버 오류'))
+      .mockResolvedValue(
+        createPage<GenerationHistory>([
+          {
+            id: 'generation-a',
+            user: { id: 'user-a', name: '사용자 A' },
+            requestedAt: '2026-08-01T09:00:00Z',
+            status: 'FAILED',
+            completedAt: null,
+            errorCode: 'IMAGE_GENERATION_FAILED',
+          },
+        ]),
+      );
+    const user = userEvent.setup();
+    renderAdmin('/admin?view=generations&historyDate=2026-08-01');
+
+    expect(await screen.findByText('생성 이력 서버 오류')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '다시 불러오기' }));
+
+    expect(await screen.findByText('generation-a')).toBeVisible();
+    expect(mockSearchAdminGenerations).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        page: 0,
+        from: '2026-08-01',
+        to: '2026-08-01',
+      }),
+    );
+    expect(mockSearchAdminGenerations).toHaveBeenCalledTimes(2);
   });
 });

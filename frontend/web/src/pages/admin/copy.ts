@@ -65,6 +65,7 @@ export const ADMIN_LIST_COPY = {
   nextDate: '다음 날짜',
   today: '오늘',
   userDetail: '사용자 상세',
+  retry: '다시 불러오기',
 } as const;
 
 export const ADMIN_USER_SORT_LABELS = {
