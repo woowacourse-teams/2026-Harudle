@@ -1,8 +1,16 @@
 import { css } from '@emotion/react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { FormEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
+import type { FormEvent, ReactNode } from 'react';
 import { useSearchParams } from 'react-router';
 import logo from '../../assets/images/harudle-logo.webp';
+import Modal, { type ModalHandle } from '../../shared/Modal';
 import { theme } from '../../styles/theme';
 import adminCharacterGenerationHistory from './assets/admin-character-generation-history.png';
 import adminCharacterUserDetail from './assets/admin-character-user-detail.png';
@@ -16,6 +24,9 @@ import navGenerationsIcon from './assets/admin-nav-generations.png';
 import navUsersIcon from './assets/admin-nav-users.png';
 import searchIcon from './assets/admin-search-icon.png';
 import {
+  ADMIN_USER_SORTS,
+  SORT_DIRECTIONS,
+  getAdminStats,
   getAdminUser,
   resetAdminUsage,
   restoreAdminUsage,
@@ -23,199 +34,212 @@ import {
   searchAdminUsers,
   setAdminGenerationLimit,
   type AdminGenerationUsage,
+  type AdminStats,
   type AdminUserDetail,
+  type AdminUserSort,
   type AdminUserSummary,
   type GenerationHistory,
+  type Page,
+  type SortDirection,
 } from './adminApi';
 import AdminReportsPanel from './AdminReportsPanel';
 import AdminModerationPanel from './AdminModerationPanel';
+import AdminPager from './AdminPager';
 import AdminPostcardModal, {
   type AdminPostcardModalHandle,
 } from './postcard/AdminPostcardModal';
-import { ADMIN_POSTCARD_COPY } from './copy';
+import {
+  ADMIN_LIST_COPY,
+  ADMIN_POSTCARD_COPY,
+  ADMIN_STAT_COPY,
+  ADMIN_USER_SORT_LABELS,
+  SORT_DIRECTION_LABELS,
+  memberCountValue,
+} from './copy';
+import {
+  readAdminUrlState,
+  today,
+  writeAdminUrlState,
+  type AdminUrlState,
+  type AdminView,
+} from './adminUrlState';
+import { shownPage, usePageRequest, type PageRequest } from './usePageRequest';
 import type { GenerationStatus } from '../../domain/diary/diaryGeneration';
 
-type View = 'dashboard' | 'users' | 'generations' | 'failed' | 'reports';
+type StatsRequest =
+  | { readonly status: 'loading' }
+  | { readonly status: 'success'; readonly stats: AdminStats }
+  | { readonly status: 'error' };
 type UserStatusFilter = 'ALL' | 'ACTIVE' | 'DELETED';
 type UsageModalMode = 'restore' | 'reset' | 'limit';
 
-const today = () => {
-  const date = new Date();
-  const offset = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 10);
+const LIST_PAGE_SIZE = 20;
+
+// 정렬 기준을 바꾸면 사전순은 가→하, 가입일은 최신순, 남은 횟수는 많이 남은 순부터 보여 준다.
+const SORT_DEFAULT_DIRECTIONS = {
+  NAME: 'ASC',
+  CREATED_AT: 'DESC',
+  REMAINING_COUNT: 'DESC',
+} as const satisfies Record<AdminUserSort, SortDirection>;
+// 이 너비 이하에서는 상세 열을 숨기므로 사용자 상세를 모달로 연다.
+const COMPACT_LAYOUT_QUERY = '(max-width: 1320px)';
+
+const shiftDate = (date: string, days: number): string => {
+  const [year, month, day] = date.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day + days))
+    .toISOString()
+    .slice(0, 10);
 };
 
-const viewFromParam = (value: string | null): View => {
-  if (
-    value === 'users' ||
-    value === 'generations' ||
-    value === 'failed' ||
-    value === 'reports'
-  ) {
-    return value;
-  }
-  return 'dashboard';
+const subscribeCompactLayout = (onChange: () => void): (() => void) => {
+  const media = window.matchMedia?.(COMPACT_LAYOUT_QUERY);
+  media?.addEventListener('change', onChange);
+  return (): void => media?.removeEventListener('change', onChange);
 };
+
+const isCompactLayout = (): boolean =>
+  window.matchMedia?.(COMPACT_LAYOUT_QUERY).matches ?? false;
 
 const AdminPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const view = viewFromParam(searchParams.get('view'));
+  const urlState = readAdminUrlState(searchParams);
+  const {
+    view,
+    userQuery,
+    userSort,
+    userDirection,
+    usersPage,
+    historyDate,
+    historyPage,
+  } = urlState;
   const isHistoryView = view === 'generations' || view === 'failed';
-  const [users, setUsers] = useState<AdminUserSummary[]>([]);
-  const [generations, setGenerations] = useState<GenerationHistory[]>([]);
-  const [failedGenerationCount, setFailedGenerationCount] = useState<
-    number | null
-  >(null);
+  const compactLayout = useSyncExternalStore(
+    subscribeCompactLayout,
+    isCompactLayout,
+  );
   const [detail, setDetail] = useState<AdminUserDetail | null>(null);
-  const [query, setQuery] = useState('');
-  const [submittedQuery, setSubmittedQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<UserStatusFilter>('ALL');
-  const [historyDate, setHistoryDate] = useState(today);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [usageModal, setUsageModal] = useState<UsageModalMode | null>(null);
   const [usageModalValue, setUsageModalValue] = useState('');
   const [usageModalError, setUsageModalError] = useState<string | null>(null);
   const requestSequenceRef = useRef(0);
-  const usersRequestIdRef = useRef(0);
-  const generationsRequestIdRef = useRef(0);
-  const failedGenerationRequestIdRef = useRef(0);
   const detailRequestIdRef = useRef(0);
   const postcardModalRef = useRef<AdminPostcardModalHandle>(null);
+  const detailModalRef = useRef<ModalHandle>(null);
 
-  const loadUsers = useCallback(async (nextQuery = '') => {
-    const requestId = ++requestSequenceRef.current;
-    usersRequestIdRef.current = requestId;
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await searchAdminUsers(nextQuery);
-      if (usersRequestIdRef.current === requestId) {
-        setUsers(result.content);
-      }
-    } catch (cause) {
-      if (requestSequenceRef.current !== requestId) return;
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : '사용자를 불러오지 못했습니다.',
-      );
-    } finally {
-      if (requestSequenceRef.current === requestId) setLoading(false);
-    }
-  }, []);
-
-  const loadGenerations = useCallback(
-    async (status?: GenerationStatus) => {
-      const requestId = ++requestSequenceRef.current;
-      generationsRequestIdRef.current = requestId;
-      setLoading(true);
-      setError(null);
-      try {
-        const result = await searchAdminGenerations({
-          page: 0,
-          size: 20,
-          status,
-          from: historyDate,
-          to: historyDate,
-        });
-        if (generationsRequestIdRef.current === requestId) {
-          setGenerations(result.content);
-        }
-      } catch (cause) {
-        if (requestSequenceRef.current !== requestId) return;
-        setError(
-          cause instanceof Error
-            ? cause.message
-            : '생성 이력을 불러오지 못했습니다.',
-        );
-      } finally {
-        if (requestSequenceRef.current === requestId) setLoading(false);
-      }
-    },
-    [historyDate],
+  // 메뉴로 화면을 옮길 때마다 다시 조회하도록 view를 조회 조건에 포함한다.
+  const fetchUsers = useMemo(
+    () =>
+      view === 'dashboard' || view === 'users'
+        ? () =>
+            searchAdminUsers({
+              query: userQuery,
+              sort: userSort,
+              direction: userDirection,
+              page: usersPage,
+              size: LIST_PAGE_SIZE,
+            })
+        : null,
+    [view, userQuery, userSort, userDirection, usersPage],
+  );
+  const [usersRequest, setUsersRequest] = usePageRequest(
+    fetchUsers,
+    '사용자를 불러오지 못했습니다.',
   );
 
-  const loadDashboard = useCallback(async () => {
-    const requestId = ++requestSequenceRef.current;
-    usersRequestIdRef.current = requestId;
-    generationsRequestIdRef.current = requestId;
-    failedGenerationRequestIdRef.current = requestId;
-    setLoading(true);
-    setError(null);
-    setFailedGenerationCount(null);
-    try {
-      const [userPage, generationPage, failedGenerationPage] =
-        await Promise.all([
-          searchAdminUsers('', 0, 20),
-          searchAdminGenerations({
-            page: 0,
-            size: 20,
-            from: historyDate,
-            to: historyDate,
-          }),
-          searchAdminGenerations({
-            page: 0,
-            size: 1,
-            status: 'FAILED',
-            from: historyDate,
-            to: historyDate,
-          }),
-        ]);
-      if (usersRequestIdRef.current === requestId) {
-        setUsers(userPage.content);
-      }
-      if (generationsRequestIdRef.current === requestId) {
-        setGenerations(generationPage.content);
-      }
-      if (failedGenerationRequestIdRef.current === requestId) {
-        setFailedGenerationCount(failedGenerationPage.totalElements);
-      }
-    } catch (cause) {
-      if (requestSequenceRef.current !== requestId) return;
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : '관리자 데이터를 불러오지 못했습니다.',
-      );
-    } finally {
-      if (requestSequenceRef.current === requestId) setLoading(false);
-    }
-  }, [historyDate]);
+  const fetchGenerations = useMemo(
+    () =>
+      view === 'dashboard' || view === 'generations' || view === 'failed'
+        ? () =>
+            searchAdminGenerations({
+              page: historyPage,
+              size: LIST_PAGE_SIZE,
+              status: view === 'failed' ? 'FAILED' : undefined,
+              from: historyDate,
+              to: historyDate,
+            })
+        : null,
+    [view, historyPage, historyDate],
+  );
+  const [generationsRequest] = usePageRequest(
+    fetchGenerations,
+    '생성 이력을 불러오지 못했습니다.',
+  );
 
-  useEffect(() => {
-    // URL 상태 변화에 맞춰 관리자 API를 조회한다.
-    if (view === 'reports') return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (view === 'dashboard') void loadDashboard();
-    else if (view !== 'users') {
-      void loadGenerations(view === 'failed' ? 'FAILED' : undefined);
-    }
-  }, [loadDashboard, loadGenerations, view]);
+  const fetchFailedGenerations = useMemo(
+    () =>
+      view === 'dashboard'
+        ? () =>
+            searchAdminGenerations({
+              page: 0,
+              size: 1,
+              status: 'FAILED',
+              from: historyDate,
+              to: historyDate,
+            })
+        : null,
+    [view, historyDate],
+  );
+  const [failedGenerationsRequest] = usePageRequest(
+    fetchFailedGenerations,
+    '관리자 데이터를 불러오지 못했습니다.',
+  );
+  const failedGenerationCount =
+    failedGenerationsRequest.status === 'success'
+      ? failedGenerationsRequest.data.totalElements
+      : null;
 
-  useEffect(() => {
-    if (view !== 'users') return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadUsers(submittedQuery);
-  }, [loadUsers, submittedQuery, view]);
+  const [statsRequest, setStatsRequest] = useState<StatsRequest>({
+    status: 'loading',
+  });
+  useEffect((): (() => void) | void => {
+    if (view !== 'dashboard') return;
+    let ignore = false;
+    getAdminStats().then(
+      (stats): void => {
+        if (!ignore) setStatsRequest({ status: 'success', stats });
+      },
+      (): void => {
+        if (!ignore) setStatsRequest({ status: 'error' });
+      },
+    );
+    return (): void => {
+      ignore = true;
+    };
+  }, [view]);
 
-  const navigate = (nextView: View) => {
-    const invalidationId = ++requestSequenceRef.current;
-    usersRequestIdRef.current = invalidationId;
-    generationsRequestIdRef.current = invalidationId;
-    failedGenerationRequestIdRef.current = invalidationId;
-    detailRequestIdRef.current = invalidationId;
+  // 넓은 화면으로 바뀌면 상세가 오른쪽 열로 옮겨 가므로 비어 버린 모달을 닫는다.
+  useEffect((): (() => void) | void => {
+    if (!compactLayout) return;
+    const modal = detailModalRef.current;
+    return (): void => modal?.close();
+  }, [compactLayout]);
+
+  const updateUrl = (patch: Partial<AdminUrlState>): void => {
+    const next = writeAdminUrlState({ ...urlState, ...patch });
+    if (next.toString() !== searchParams.toString()) setSearchParams(next);
+  };
+
+  // 검색어·정렬·조회 날짜는 메뉴를 옮겨도 유지하고 쪽 번호만 처음으로 돌린다.
+  const navigate = (nextView: AdminView) => {
+    detailRequestIdRef.current = ++requestSequenceRef.current;
     setDetail(null);
     setUsageModal(null);
-    setSearchParams(nextView === 'dashboard' ? {} : { view: nextView });
+    setLoading(false);
+    setError(null);
+    updateUrl({ view: nextView, usersPage: 0, historyPage: 0 });
   };
 
   const selectUser = async (userId: string) => {
     const requestId = ++requestSequenceRef.current;
     detailRequestIdRef.current = requestId;
+    setDetail(null);
     setUsageModal(null);
     setLoading(true);
     setError(null);
+    if (compactLayout) detailModalRef.current?.open();
     try {
       const result = await getAdminUser(userId);
       if (detailRequestIdRef.current === requestId) setDetail(result);
@@ -231,13 +255,29 @@ const AdminPage = () => {
     }
   };
 
-  const visibleUsers = useMemo(
-    () =>
-      statusFilter === 'ALL'
-        ? users
-        : users.filter((user) => user.status === statusFilter),
-    [statusFilter, users],
-  );
+  const loadedUsers = shownPage(usersRequest);
+  const visibleUsers = useMemo(() => {
+    const users = loadedUsers?.content ?? [];
+    return statusFilter === 'ALL'
+      ? users
+      : users.filter((user) => user.status === statusFilter);
+  }, [statusFilter, loadedUsers]);
+
+  const syncUserRow = (updated: AdminUserDetail): void => {
+    setUsersRequest((current) =>
+      current.status === 'success'
+        ? {
+            ...current,
+            data: {
+              ...current.data,
+              content: current.data.content.map((user) =>
+                user.id === updated.id ? { ...user, ...updated } : user,
+              ),
+            },
+          }
+        : current,
+    );
+  };
 
   const updateDetail = async (
     action: () => Promise<AdminGenerationUsage>,
@@ -245,7 +285,6 @@ const AdminPage = () => {
     if (!detail) return false;
     const requestId = ++requestSequenceRef.current;
     detailRequestIdRef.current = requestId;
-    const usersRequestId = usersRequestIdRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -253,13 +292,7 @@ const AdminPage = () => {
       const updated = await getAdminUser(detail.id);
       if (detailRequestIdRef.current !== requestId) return false;
       setDetail(updated);
-      if (usersRequestIdRef.current === usersRequestId) {
-        setUsers((current) =>
-          current.map((user) =>
-            user.id === updated.id ? { ...user, ...updated } : user,
-          ),
-        );
-      }
+      syncUserRow(updated);
       return true;
     } catch (cause) {
       if (requestSequenceRef.current !== requestId) return false;
@@ -281,7 +314,6 @@ const AdminPage = () => {
     if (!detail) return false;
     const requestId = ++requestSequenceRef.current;
     detailRequestIdRef.current = requestId;
-    const usersRequestId = usersRequestIdRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -289,13 +321,7 @@ const AdminPage = () => {
       const updated = await getAdminUser(detail.id);
       if (detailRequestIdRef.current !== requestId) return false;
       setDetail(updated);
-      if (usersRequestIdRef.current === usersRequestId) {
-        setUsers((current) =>
-          current.map((user) =>
-            user.id === updated.id ? { ...user, ...updated } : user,
-          ),
-        );
-      }
+      syncUserRow(updated);
       return true;
     } catch (cause) {
       if (requestSequenceRef.current !== requestId) return false;
@@ -386,6 +412,39 @@ const AdminPage = () => {
     openUsageModal('limit');
   };
 
+  // 사용량 변경 모달은 상세와 함께 두어야 좁은 화면의 상세 모달 위에서도 조작할 수 있다.
+  const detailContent: ReactNode = detail ? (
+    <>
+      <UserDetailBody
+        detail={detail}
+        loading={loading}
+        error={error}
+        onRestore={handleRestore}
+        onReset={handleReset}
+        onSetGenerationLimit={handleSetGenerationLimit}
+      />
+      {usageModal && (
+        <UsageManagementModal
+          mode={usageModal}
+          usage={detail.generationUsage}
+          value={usageModalValue}
+          error={usageModalError}
+          loading={loading}
+          onValueChange={(value) => {
+            setUsageModalValue(value);
+            setUsageModalError(null);
+          }}
+          onClose={closeUsageModal}
+          onSubmit={handleUsageModalSubmit}
+        />
+      )}
+    </>
+  ) : error ? (
+    <ErrorMessage message={error} />
+  ) : loading ? (
+    <LoadingMessage />
+  ) : null;
+
   return (
     <div css={pageStyle(isHistoryView || view === 'reports')}>
       <aside className="sidebar" css={sidebarStyle}>
@@ -457,40 +516,50 @@ const AdminPage = () => {
         )}
         {view === 'reports' && <AdminReportsPanel />}
         {view === 'dashboard' && (
-          <OperationCard
-            failedGenerationCount={failedGenerationCount}
-            onClick={() => navigate('failed')}
-          />
+          <div css={dashboardStatsStyle}>
+            <OperationCard
+              failedGenerationCount={failedGenerationCount}
+              onClick={() => navigate('failed')}
+            />
+            <MemberStatCard stat="memberCount" request={statsRequest} />
+            <MemberStatCard stat="todaySignupCount" request={statsRequest} />
+          </div>
         )}
         {(view === 'dashboard' || view === 'users') && (
           <UserSearchCard
+            request={usersRequest}
             users={visibleUsers}
-            query={query}
-            loading={loading}
-            error={error}
+            query={userQuery}
+            sort={userSort}
+            direction={userDirection}
             statusFilter={statusFilter}
-            onQueryChange={setQuery}
             onStatusChange={setStatusFilter}
-            onSearch={(event) => {
-              event.preventDefault();
-              setSubmittedQuery(query);
-              if (view === 'dashboard') void loadUsers(query);
-            }}
+            onSearch={(query) => updateUrl({ userQuery: query, usersPage: 0 })}
+            onSortChange={(sort) =>
+              updateUrl({
+                userSort: sort,
+                userDirection: SORT_DEFAULT_DIRECTIONS[sort],
+                usersPage: 0,
+              })
+            }
+            onDirectionChange={(direction) =>
+              updateUrl({ userDirection: direction, usersPage: 0 })
+            }
             onSelect={selectUser}
+            onPage={(page) => updateUrl({ usersPage: page })}
           />
         )}
         {(view === 'dashboard' ||
           view === 'generations' ||
           view === 'failed') && (
           <HistoryCard
-            generations={generations}
-            loading={loading}
-            error={error}
+            request={generationsRequest}
             failedOnly={view === 'failed'}
             date={historyDate}
-            onDateChange={(date) => {
-              setHistoryDate(date);
-            }}
+            onDateChange={(date) =>
+              updateUrl({ historyDate: date, historyPage: 0 })
+            }
+            onPage={(page) => updateUrl({ historyPage: page })}
             onFailedOnly={() => navigate('failed')}
             onAll={() => navigate('generations')}
             onPostcard={(generationId) =>
@@ -502,31 +571,16 @@ const AdminPage = () => {
       <AdminPostcardModal ref={postcardModalRef} />
 
       {!isHistoryView && view !== 'reports' && (
-        <DetailPanel
-          detail={detail}
-          loading={loading}
-          error={error}
-          showEmptyDetail={view === 'dashboard' || view === 'users'}
-          onRestore={handleRestore}
-          onReset={handleReset}
-          onSetGenerationLimit={handleSetGenerationLimit}
-        />
+        <DetailPanel>{compactLayout ? null : detailContent}</DetailPanel>
       )}
-      {usageModal && detail && (
-        <UsageManagementModal
-          mode={usageModal}
-          usage={detail.generationUsage}
-          value={usageModalValue}
-          error={usageModalError}
-          loading={loading}
-          onValueChange={(value) => {
-            setUsageModalValue(value);
-            setUsageModalError(null);
-          }}
-          onClose={closeUsageModal}
-          onSubmit={handleUsageModalSubmit}
-        />
-      )}
+      <Modal
+        ref={detailModalRef}
+        css={detailModalStyle}
+        title={ADMIN_LIST_COPY.userDetail}
+        dismissible={usageModal === null}
+      >
+        {compactLayout ? detailContent : null}
+      </Modal>
     </div>
   );
 };
@@ -604,64 +658,150 @@ const OperationCard = ({
   </section>
 );
 
+const MemberStatCard = ({
+  stat,
+  request,
+}: {
+  stat: keyof AdminStats;
+  request: StatsRequest;
+}) => {
+  const copy = ADMIN_STAT_COPY[stat];
+  const headingId = `admin-stat-${stat}`;
+  return (
+    <section css={operationCardStyle} aria-labelledby={headingId}>
+      <img src={navUsersIcon} alt="" />
+      <div>
+        <h2 id={headingId}>{copy.title}</h2>
+        <p css={statValueStyle}>
+          <span>{request.status === 'error' ? copy.error : copy.scope}</span>
+          <strong>
+            {request.status === 'success'
+              ? memberCountValue(request.stats[stat])
+              : '-'}
+          </strong>
+        </p>
+      </div>
+    </section>
+  );
+};
+
 const UserSearchCard = ({
+  request,
   users,
   query,
-  loading,
-  error,
+  sort,
+  direction,
   statusFilter,
-  onQueryChange,
   onStatusChange,
   onSearch,
+  onSortChange,
+  onDirectionChange,
   onSelect,
+  onPage,
 }: {
+  request: PageRequest<AdminUserSummary>;
   users: AdminUserSummary[];
   query: string;
-  loading: boolean;
-  error: string | null;
+  sort: AdminUserSort;
+  direction: SortDirection;
   statusFilter: UserStatusFilter;
-  onQueryChange: (value: string) => void;
   onStatusChange: (value: UserStatusFilter) => void;
-  onSearch: (event: FormEvent<HTMLFormElement>) => void;
+  onSearch: (query: string) => void;
+  onSortChange: (sort: AdminUserSort) => void;
+  onDirectionChange: (direction: SortDirection) => void;
   onSelect: (userId: string) => void;
-}) => (
-  <section css={sectionCardStyle}>
-    <div css={userSearchHeadingStyle}>
-      <img src={adminCharacterUserSearch} alt="" />
-      <div css={searchHeadingContentStyle}>
-        <h2>사용자 검색</h2>
-        <form css={searchFormStyle} onSubmit={onSearch}>
-          <img src={searchIcon} alt="" />
-          <input
-            value={query}
-            onChange={(event) => onQueryChange(event.target.value)}
-            placeholder="이름 또는 사용자 ID 검색"
-          />
-          <button type="submit">검색</button>
-        </form>
+  onPage: (page: number) => void;
+}) => {
+  const page = shownPage(request);
+  const handleSearch = (event: FormEvent<HTMLFormElement>): void => {
+    event.preventDefault();
+    const value = new FormData(event.currentTarget).get('query');
+    onSearch(typeof value === 'string' ? value.trim() : '');
+  };
+  return (
+    <section css={sectionCardStyle}>
+      <div css={userSearchHeadingStyle}>
+        <img src={adminCharacterUserSearch} alt="" />
+        <div css={searchHeadingContentStyle}>
+          <h2>사용자 검색</h2>
+          {/* 주소의 검색어가 바뀌면(뒤로 가기 등) 입력창을 그 값으로 다시 채운다. */}
+          <form key={query} css={searchFormStyle} onSubmit={handleSearch}>
+            <img src={searchIcon} alt="" />
+            <input
+              name="query"
+              defaultValue={query}
+              placeholder={ADMIN_LIST_COPY.searchPlaceholder}
+            />
+            <button type="submit">검색</button>
+          </form>
+        </div>
       </div>
-    </div>
-    <select
-      css={statusSelectStyle}
-      aria-label="사용자 상태 필터"
-      value={statusFilter}
-      onChange={(event) =>
-        onStatusChange(event.target.value as UserStatusFilter)
-      }
-    >
-      <option value="ALL">전체 상태</option>
-      <option value="ACTIVE">활성</option>
-      <option value="DELETED">비활성</option>
-    </select>
-    {error ? (
-      <ErrorMessage message={error} />
-    ) : loading && users.length === 0 ? (
-      <LoadingMessage />
-    ) : (
-      <UserTable users={users} onSelect={onSelect} />
-    )}
-  </section>
-);
+      <div css={userListToolbarStyle}>
+        <select
+          css={listSelectStyle}
+          aria-label="사용자 상태 필터"
+          value={statusFilter}
+          onChange={(event) =>
+            onStatusChange(event.target.value as UserStatusFilter)
+          }
+        >
+          <option value="ALL">전체 상태</option>
+          <option value="ACTIVE">활성</option>
+          <option value="DELETED">비활성</option>
+        </select>
+        <select
+          css={listSelectStyle}
+          aria-label={ADMIN_LIST_COPY.sortKey}
+          value={sort}
+          onChange={(event) => {
+            const next = ADMIN_USER_SORTS.find(
+              (value) => value === event.target.value,
+            );
+            if (next) onSortChange(next);
+          }}
+        >
+          {ADMIN_USER_SORTS.map((value) => (
+            <option key={value} value={value}>
+              {ADMIN_USER_SORT_LABELS[value]}
+            </option>
+          ))}
+        </select>
+        <select
+          css={listSelectStyle}
+          aria-label={ADMIN_LIST_COPY.sortDirection}
+          value={direction}
+          onChange={(event) => {
+            const next = SORT_DIRECTIONS.find(
+              (value) => value === event.target.value,
+            );
+            if (next) onDirectionChange(next);
+          }}
+        >
+          {SORT_DIRECTIONS.map((value) => (
+            <option key={value} value={value}>
+              {SORT_DIRECTION_LABELS[value]}
+            </option>
+          ))}
+        </select>
+      </div>
+      {request.status === 'error' ? (
+        <ErrorMessage message={request.message} />
+      ) : page === null ? (
+        <LoadingMessage />
+      ) : (
+        <>
+          <UserTable users={users} onSelect={onSelect} />
+          <ListFooter
+            total={ADMIN_LIST_COPY.userTotal(page.totalElements)}
+            page={page}
+            loading={request.status === 'loading'}
+            onPage={onPage}
+          />
+        </>
+      )}
+    </section>
+  );
+};
 
 const UserTable = ({
   users,
@@ -675,8 +815,11 @@ const UserTable = ({
       <thead>
         <tr>
           <th>사용자</th>
+          <th>{ADMIN_LIST_COPY.nickname}</th>
           <th>계정 상태</th>
+          <th>{ADMIN_LIST_COPY.joinedAt}</th>
           <th>오늘 남은 생성 횟수</th>
+          <th>{ADMIN_LIST_COPY.generatedDiaryCount}</th>
           <th>상세 보기</th>
         </tr>
       </thead>
@@ -689,15 +832,18 @@ const UserTable = ({
                 {user.name}
               </span>
             </td>
+            <td>{user.nickname ?? ADMIN_LIST_COPY.noNickname}</td>
             <td>
               <StatusPill
                 status={user.status === 'ACTIVE' ? '활성' : '비활성'}
               />
             </td>
+            <td>{formatDateTime(user.createdAt)}</td>
             <td>
               {user.generationUsage.remainingCount} /{' '}
               {user.generationUsage.limitCount}
             </td>
+            <td>{user.generatedDiaryCount.toLocaleString('ko-KR')}</td>
             <td>
               <button
                 css={detailButtonStyle}
@@ -712,7 +858,7 @@ const UserTable = ({
         ))}
         {users.length === 0 && (
           <tr>
-            <td colSpan={4} css={emptyCellStyle}>
+            <td colSpan={7} css={emptyCellStyle}>
               검색 결과가 없습니다.
             </td>
           </tr>
@@ -722,65 +868,127 @@ const UserTable = ({
   </div>
 );
 
-const HistoryCard = ({
-  generations,
+const ListFooter = ({
+  total,
+  page,
   loading,
-  error,
+  onPage,
+}: {
+  total: string;
+  page: Page<unknown>;
+  loading: boolean;
+  onPage: (page: number) => void;
+}) => (
+  <div css={listFooterStyle}>
+    <span>{total}</span>
+    <AdminPager
+      css={listPagerStyle}
+      page={page.page}
+      hasNext={page.hasNext}
+      disabled={loading}
+      onPage={onPage}
+    />
+  </div>
+);
+
+const HistoryCard = ({
+  request,
   failedOnly,
   date,
   onDateChange,
+  onPage,
   onFailedOnly,
   onAll,
   onPostcard,
 }: {
-  generations: GenerationHistory[];
-  loading: boolean;
-  error: string | null;
+  request: PageRequest<GenerationHistory>;
   failedOnly: boolean;
   date: string;
   onDateChange: (value: string) => void;
+  onPage: (page: number) => void;
   onFailedOnly: () => void;
   onAll: () => void;
   onPostcard: (generationId: string) => void;
-}) => (
-  <section css={sectionCardStyle}>
-    <div css={sectionHeadingStyle}>
-      <img src={adminCharacterGenerationHistory} alt="" />
-      <h2>최근 생성 이력</h2>
-    </div>
-    <div css={historyToolbarStyle}>
-      <button
-        css={filterButtonStyle(!failedOnly)}
-        type="button"
-        onClick={onAll}
-      >
-        전체
-      </button>
-      <button
-        css={filterButtonStyle(failedOnly)}
-        type="button"
-        onClick={onFailedOnly}
-      >
-        실패 이력
-      </button>
-      <label css={dateLabelStyle}>
-        조회 날짜
-        <input
-          type="date"
-          value={date}
-          onChange={(event) => onDateChange(event.target.value)}
-        />
-      </label>
-    </div>
-    {error ? (
-      <ErrorMessage message={error} />
-    ) : loading && generations.length === 0 ? (
-      <LoadingMessage />
-    ) : (
-      <GenerationTable generations={generations} onPostcard={onPostcard} />
-    )}
-  </section>
-);
+}) => {
+  const page = shownPage(request);
+  const todayDate = today();
+  return (
+    <section css={sectionCardStyle}>
+      <div css={sectionHeadingStyle}>
+        <img src={adminCharacterGenerationHistory} alt="" />
+        <h2>최근 생성 이력</h2>
+      </div>
+      <div css={historyToolbarStyle}>
+        <button
+          css={filterButtonStyle(!failedOnly)}
+          type="button"
+          onClick={onAll}
+        >
+          전체
+        </button>
+        <button
+          css={filterButtonStyle(failedOnly)}
+          type="button"
+          onClick={onFailedOnly}
+        >
+          실패 이력
+        </button>
+        <div css={dateNavStyle}>
+          <button
+            css={filterButtonStyle(false)}
+            type="button"
+            aria-label={ADMIN_LIST_COPY.previousDate}
+            disabled={date === ''}
+            onClick={() => onDateChange(shiftDate(date, -1))}
+          >
+            ◀
+          </button>
+          <label css={dateLabelStyle}>
+            {ADMIN_LIST_COPY.historyDate}
+            <input
+              type="date"
+              value={date}
+              max={todayDate}
+              onChange={(event) => onDateChange(event.target.value)}
+            />
+          </label>
+          <button
+            css={filterButtonStyle(false)}
+            type="button"
+            aria-label={ADMIN_LIST_COPY.nextDate}
+            disabled={date === '' || date >= todayDate}
+            onClick={() => onDateChange(shiftDate(date, 1))}
+          >
+            ▶
+          </button>
+          <button
+            css={filterButtonStyle(false)}
+            type="button"
+            disabled={date === todayDate}
+            onClick={() => onDateChange(todayDate)}
+          >
+            {ADMIN_LIST_COPY.today}
+          </button>
+        </div>
+      </div>
+      {request.status === 'error' ? (
+        <ErrorMessage message={request.message} />
+      ) : page === null ? (
+        <LoadingMessage />
+      ) : (
+        <>
+          <GenerationTable generations={page.content} onPostcard={onPostcard} />
+          <ListFooter
+            total={ADMIN_LIST_COPY.historyTotal(page.totalElements)}
+            page={page}
+            loading={request.status === 'loading'}
+            onPage={onPage}
+          />
+        </>
+      )}
+    </section>
+  );
+};
 
 const GenerationTable = ({
   generations,
@@ -838,99 +1046,103 @@ const GenerationTable = ({
   </div>
 );
 
-const DetailPanel = ({
-  detail,
-  loading,
-  error,
-  showEmptyDetail,
-  onRestore,
-  onReset,
-  onSetGenerationLimit,
-}: {
-  detail: AdminUserDetail | null;
-  loading: boolean;
-  error: string | null;
-  showEmptyDetail: boolean;
-  onRestore: () => void;
-  onReset: () => void;
-  onSetGenerationLimit: () => void;
-}) => (
+const DetailPanel = ({ children }: { children: ReactNode }) => (
   <aside className="detail-aside" css={detailAsideStyle}>
     <div css={posthogStyle}>
       <PostHogLink />
     </div>
-    {detail ? (
+    {children ? (
       <section css={detailCardStyle}>
         <div css={detailHeadingStyle}>
           <img src={adminCharacterUserDetail} alt="" />
-          <h2>사용자 상세</h2>
+          <h2>{ADMIN_LIST_COPY.userDetail}</h2>
         </div>
-        <dl css={detailInfoStyle}>
-          <dt>이름</dt>
-          <dd>{detail.name}</dd>
-          <dt>사용자 ID</dt>
-          <dd css={idCellStyle}>{detail.id}</dd>
-          <dt>계정 상태</dt>
-          <dd>
-            <StatusPill
-              status={detail.status === 'ACTIVE' ? '활성' : '비활성'}
-            />
-          </dd>
-        </dl>
-        <hr css={dividerStyle} />
-        <h3>오늘 생성 사용량</h3>
-        <div css={usageStyle}>
-          <Metric label="사용 횟수" value={detail.generationUsage.usedCount} />
-          <Metric label="생성 한도" value={detail.generationUsage.limitCount} />
-          <Metric
-            label="남은 횟수"
-            value={detail.generationUsage.remainingCount}
-            accent
-          />
-        </div>
-        <h3>생성 사용량 관리 ⓘ</h3>
-        <button
-          css={actionButtonStyle}
-          type="button"
-          disabled={loading || detail.status !== 'ACTIVE'}
-          onClick={onRestore}
-        >
-          사용 횟수 복구
-        </button>
-        <button
-          css={resetActionButtonStyle}
-          type="button"
-          disabled={loading || detail.status !== 'ACTIVE'}
-          onClick={onReset}
-        >
-          오늘 사용량 전체 초기화
-        </button>
-        <div css={secondaryActionGridStyle}>
-          <button
-            css={secondaryActionButtonStyle}
-            type="button"
-            disabled={loading || detail.status !== 'ACTIVE'}
-            onClick={onSetGenerationLimit}
-          >
-            생성 한도 변경
-          </button>
-        </div>
-        <AdminModerationPanel
-          key={`USER-${detail.id}`}
-          targetType="USER"
-          targetId={detail.id}
-          available={detail.status === 'ACTIVE'}
-        />
-        {error && <ErrorMessage message={error} />}
+        {children}
       </section>
-    ) : showEmptyDetail ? (
+    ) : (
       <div css={emptyDetailStyle}>
         사용자를 선택하면
         <br />
         상세 정보를 확인할 수 있어요.
       </div>
-    ) : null}
+    )}
   </aside>
+);
+
+const UserDetailBody = ({
+  detail,
+  loading,
+  error,
+  onRestore,
+  onReset,
+  onSetGenerationLimit,
+}: {
+  detail: AdminUserDetail;
+  loading: boolean;
+  error: string | null;
+  onRestore: () => void;
+  onReset: () => void;
+  onSetGenerationLimit: () => void;
+}) => (
+  <div css={detailBodyStyle}>
+    <dl css={detailInfoStyle}>
+      <dt>이름</dt>
+      <dd>{detail.name}</dd>
+      <dt>{ADMIN_LIST_COPY.nickname}</dt>
+      <dd>{detail.nickname ?? ADMIN_LIST_COPY.noNickname}</dd>
+      <dt>사용자 ID</dt>
+      <dd css={idCellStyle}>{detail.id}</dd>
+      <dt>계정 상태</dt>
+      <dd>
+        <StatusPill status={detail.status === 'ACTIVE' ? '활성' : '비활성'} />
+      </dd>
+    </dl>
+    <hr css={dividerStyle} />
+    <h3>오늘 생성 사용량</h3>
+    <div css={usageStyle}>
+      <Metric label="사용 횟수" value={detail.generationUsage.usedCount} />
+      <Metric label="생성 한도" value={detail.generationUsage.limitCount} />
+      <Metric
+        label="남은 횟수"
+        value={detail.generationUsage.remainingCount}
+        accent
+      />
+    </div>
+    <h3>생성 사용량 관리 ⓘ</h3>
+    <button
+      css={actionButtonStyle}
+      type="button"
+      disabled={loading || detail.status !== 'ACTIVE'}
+      onClick={onRestore}
+    >
+      사용 횟수 복구
+    </button>
+    <button
+      css={resetActionButtonStyle}
+      type="button"
+      disabled={loading || detail.status !== 'ACTIVE'}
+      onClick={onReset}
+    >
+      오늘 사용량 전체 초기화
+    </button>
+    <div css={secondaryActionGridStyle}>
+      <button
+        css={secondaryActionButtonStyle}
+        type="button"
+        disabled={loading || detail.status !== 'ACTIVE'}
+        onClick={onSetGenerationLimit}
+      >
+        생성 한도 변경
+      </button>
+    </div>
+    <AdminModerationPanel
+      key={`USER-${detail.id}`}
+      targetType="USER"
+      targetId={detail.id}
+      available={detail.status === 'ACTIVE'}
+    />
+    {error && <ErrorMessage message={error} />}
+  </div>
 );
 
 const UsageManagementModal = ({
@@ -1141,9 +1353,9 @@ const pageStyle = (wideContent: boolean) => css`
   grid-template-columns: ${
     wideContent ? '250px minmax(620px, 1fr)' : '250px minmax(620px, 1fr) 430px'
   };
+  grid-template-rows: minmax(0, 1fr);
   max-width: none;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: hidden;
   border: 1px solid #ddd8d1;
   border-radius: 8px;
   background: #fffefa;
@@ -1158,7 +1370,11 @@ const pageStyle = (wideContent: boolean) => css`
   button {
     font-family: inherit;
   }
-  @media (max-width: 1320px) {
+  > aside,
+  > main {
+    overflow-y: auto;
+  }
+  @media ${COMPACT_LAYOUT_QUERY} {
     grid-template-columns: 210px minmax(0, 1fr);
     .detail-aside {
       display: none;
@@ -1169,6 +1385,11 @@ const pageStyle = (wideContent: boolean) => css`
     width: 100%;
     min-height: 100vh;
     margin-left: 0;
+    overflow-y: auto;
+    > aside,
+    > main {
+      overflow: visible;
+    }
     .sidebar {
       display: block;
     }
@@ -1399,6 +1620,36 @@ const operationCardStyle = css`
     }
   }
 `;
+const dashboardStatsStyle = css`
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 14px;
+  /* 상세 열이 보이는 너비에서 세 장을 한 줄에 두면 값이 줄바꿈되므로 운영 알림만 한 줄을 쓴다. */
+  > section:first-of-type {
+    grid-column: 1 / -1;
+  }
+  @media (max-width: 760px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+`;
+const statValueStyle = css`
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin: 0;
+  padding: 12px 18px;
+  border: 1px solid #e8e4de;
+  border-radius: 10px;
+  background: ${theme.colors.background.surface};
+  color: ${theme.colors.foreground.neutral};
+  font-size: 13px;
+  strong {
+    font-size: 16px;
+  }
+  @media (max-width: 760px) {
+    padding: 10px 12px;
+  }
+`;
 const sectionCardStyle = css`
   margin-bottom: 14px;
   padding: 14px 10px 12px;
@@ -1508,15 +1759,22 @@ const searchFormStyle = css`
     }
   }
 `;
-const statusSelectStyle = css`
+const userListToolbarStyle = css`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   margin: 0 10px 12px;
+  @media (max-width: 760px) {
+    margin: 0 6px 10px;
+  }
+`;
+const listSelectStyle = css`
   padding: 9px 12px;
   border: 1px solid #d5d0c9;
   border-radius: 8px;
   background: ${theme.colors.background.surface};
   @media (max-width: 760px) {
-    width: calc(100% - 12px);
-    margin: 0 6px 10px;
+    flex: 1 1 140px;
   }
 `;
 const tableScrollStyle = css`
@@ -1619,12 +1877,22 @@ const filterButtonStyle = (active: boolean) => css`
   color: ${active ? theme.colors.foreground.brand : theme.colors.foreground.neutral};
   font-weight: ${active ? 700 : 400};
   cursor: pointer;
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+`;
+const dateNavStyle = css`
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
 `;
 const dateLabelStyle = css`
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-left: auto;
   color: ${theme.colors.foreground.neutralMuted};
   font-size: 13px;
   input {
@@ -1633,6 +1901,32 @@ const dateLabelStyle = css`
     border-radius: 8px;
     background: ${theme.colors.background.surface};
     color: ${theme.colors.foreground.neutral};
+  }
+`;
+const listFooterStyle = css`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 10px 0;
+  color: ${theme.colors.foreground.neutralMuted};
+  font-size: 13px;
+`;
+const listPagerStyle = css`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  button {
+    width: auto;
+    height: 36px;
+    padding: 6px 12px;
+    border-radius: 10px;
+    font-size: 13px;
+  }
+  span {
+    flex-shrink: 0;
+    color: ${theme.colors.foreground.neutral};
+    white-space: nowrap;
   }
 `;
 const idCellStyle = css`
@@ -1692,13 +1986,18 @@ const detailCardStyle = css`
   border: 1px solid #ddd8d1;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.76);
+  @media (max-width: 760px) {
+    padding: 16px;
+  }
+`;
+const detailBodyStyle = css`
   h3 {
     margin: 20px 0 12px;
     font-size: 16px;
   }
-  @media (max-width: 760px) {
-    padding: 16px;
-  }
+`;
+const detailModalStyle = css`
+  width: min(440px, calc(100% - 32px));
 `;
 const detailHeadingStyle = css`
   display: flex;

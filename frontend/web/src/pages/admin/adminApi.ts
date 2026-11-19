@@ -15,13 +15,20 @@ export interface AdminGenerationUsage {
   remainingCount: number;
 }
 
-export interface AdminUserSummary {
+interface AdminUser {
   id: string;
   name: string;
+  /** 공개 프로필을 배정하기 전이면 `null`이다. */
+  nickname: string | null;
   status: UserStatus;
   createdAt: string;
   lastLoginAt?: string | null;
   generationUsage: AdminGenerationUsage;
+}
+
+export interface AdminUserSummary extends AdminUser {
+  /** 생성에 성공한 일기 수. 목록에만 있으며 회원이 나중에 삭제한 일기도 센다. */
+  generatedDiaryCount: number;
 }
 
 export interface Generation {
@@ -32,7 +39,7 @@ export interface Generation {
   errorCode?: string | null;
 }
 
-export interface AdminUserDetail extends AdminUserSummary {
+export interface AdminUserDetail extends AdminUser {
   recentGenerations: Generation[];
 }
 
@@ -68,14 +75,20 @@ const isGenerationUsage = (value: unknown): value is AdminGenerationUsage =>
   typeof value.limitCount === 'number' &&
   typeof value.remainingCount === 'number';
 
-const isUserSummary = (value: unknown): value is AdminUserSummary =>
+const isUser = (value: unknown): value is AdminUser =>
   isRecord(value) &&
   typeof value.id === 'string' &&
   typeof value.name === 'string' &&
+  (value.nickname === null || typeof value.nickname === 'string') &&
   isUserStatus(value.status) &&
   typeof value.createdAt === 'string' &&
   isOptionalString(value.lastLoginAt) &&
   isGenerationUsage(value.generationUsage);
+
+const isUserSummary = (value: unknown): value is AdminUserSummary =>
+  isUser(value) &&
+  isRecord(value) &&
+  typeof value.generatedDiaryCount === 'number';
 
 const isGeneration = (value: unknown): value is Generation =>
   isRecord(value) &&
@@ -86,7 +99,7 @@ const isGeneration = (value: unknown): value is Generation =>
   isOptionalString(value.errorCode);
 
 const isUserDetail = (value: unknown): value is AdminUserDetail =>
-  isUserSummary(value) &&
+  isUser(value) &&
   isRecord(value) &&
   Array.isArray(value.recentGenerations) &&
   value.recentGenerations.every(isGeneration);
@@ -124,13 +137,35 @@ const readJson = async (response: Response): Promise<unknown> => {
   throw new Error(ERROR_MESSAGES.ADMIN_API_REQUEST_FAILED);
 };
 
-export const searchAdminUsers = async (
-  query = '',
-  page = 0,
-  size = 20,
-): Promise<Page<AdminUserSummary>> => {
+export const ADMIN_USER_SORTS = [
+  'NAME',
+  'CREATED_AT',
+  'REMAINING_COUNT',
+] as const;
+export type AdminUserSort = (typeof ADMIN_USER_SORTS)[number];
+export const SORT_DIRECTIONS = ['ASC', 'DESC'] as const;
+export type SortDirection = (typeof SORT_DIRECTIONS)[number];
+
+export interface AdminUserSearchParams {
+  /** 이름이나 닉네임 일부, 또는 정확한 사용자 ID */
+  readonly query: string;
+  readonly sort: AdminUserSort;
+  readonly direction: SortDirection;
+  readonly page: number;
+  readonly size: number;
+}
+
+export const searchAdminUsers = async ({
+  query,
+  sort,
+  direction,
+  page,
+  size,
+}: AdminUserSearchParams): Promise<Page<AdminUserSummary>> => {
   const params = new URLSearchParams({
     query,
+    sort,
+    direction,
     page: String(page),
     size: String(size),
   });
@@ -174,6 +209,25 @@ export const searchAdminGenerations = async (
     `${API_BASE_URL}/admin/generations?${params}`,
   );
   return readPage(await readJson(response), isGenerationHistory);
+};
+
+export interface AdminStats {
+  readonly memberCount: number;
+  readonly todaySignupCount: number;
+}
+
+const isAdminStats = (value: unknown): value is AdminStats =>
+  isRecord(value) &&
+  typeof value.memberCount === 'number' &&
+  typeof value.todaySignupCount === 'number';
+
+export const getAdminStats = async (): Promise<AdminStats> => {
+  const response = await authFetch(`${API_BASE_URL}/admin/stats`);
+  const value = await readJson(response);
+  if (!isAdminStats(value)) {
+    throw new Error(ERROR_MESSAGES.INVALID_ADMIN_API_RESPONSE);
+  }
+  return value;
 };
 
 export interface AdminPostcardImage {

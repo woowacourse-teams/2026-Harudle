@@ -138,20 +138,93 @@ const paged = <T>(
     hasNext: (page + 1) * size < items.length,
   };
 };
-const usage = {
-  usageDate: '2026-10-23',
-  usedCount: 1,
-  limitCount: 3,
-  remainingCount: 2,
+const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
+// 백엔드는 오늘 가입 수와 오늘 사용량을 한국 시간 날짜로 센다.
+const kstTodayStart = (): number =>
+  Math.floor((Date.now() + 9 * HOUR) / DAY) * DAY - 9 * HOUR;
+const NICKNAME_WORDS = [
+  'SunnyHaru',
+  'BlueWhale',
+  'MintCloud',
+  'NightOwl',
+  'PeachTea',
+  'RainyDay',
+  'StarFish',
+  'MoonWalk',
+];
+// 여러 쪽으로 나뉘는 사용자 목록. 첫 사용자는 신고 대상과 같아 신고 화면 흐름에서도 쓴다.
+// 앞의 세 명은 오늘 가입했고, 배열 순서가 가입일 내림차순과 같다.
+const users = Array.from({ length: 45 }, (_, index) => {
+  const todayStart = kstTodayStart();
+  const limitCount = index % 6 === 5 ? 5 : 3;
+  const usedCount = Math.min((index + 1) % 4, limitCount);
+  return {
+    id:
+      index === 0
+        ? targetUser
+        : `00000000-0000-4000-8000-${String(1000 + index).padStart(12, '0')}`,
+    name: index === 0 ? '네오' : `사용자 ${String(index + 1).padStart(2, '0')}`,
+    nickname:
+      index % 5 === 3
+        ? null
+        : `${NICKNAME_WORDS[index % NICKNAME_WORDS.length]}${String(index + 1).padStart(2, '0')}`,
+    status: index % 7 === 6 ? 'DELETED' : 'ACTIVE',
+    createdAt: new Date(
+      index < 3
+        ? todayStart + (3 - index) * 60_000
+        : todayStart - (index - 2) * DAY + 10 * HOUR,
+    ).toISOString(),
+    lastLoginAt: now,
+    generationUsage: {
+      usageDate: new Date(todayStart + 9 * HOUR).toISOString().slice(0, 10),
+      usedCount,
+      limitCount,
+      remainingCount: limitCount - usedCount,
+    },
+    generatedDiaryCount: (index * 7) % 23,
+  };
+});
+type MockUser = (typeof users)[number];
+const USER_SORT_KEYS = {
+  NAME: (user: MockUser): string => user.name,
+  CREATED_AT: (user: MockUser): string => user.createdAt,
+  REMAINING_COUNT: (user: MockUser): number =>
+    user.generationUsage.remainingCount,
+} as const;
+const isUserSortKey = (value: string): value is keyof typeof USER_SORT_KEYS =>
+  Object.hasOwn(USER_SORT_KEYS, value);
+// 백엔드처럼 정렬 값이 같으면 사용자 ID를 같은 방향으로 정렬한다.
+const sortUsers = (
+  list: readonly MockUser[],
+  sortKey: keyof typeof USER_SORT_KEYS,
+  direction: 'ASC' | 'DESC',
+): MockUser[] => {
+  const keyOfUser = USER_SORT_KEYS[sortKey];
+  const sign = direction === 'ASC' ? 1 : -1;
+  const compare = (a: string | number, b: string | number): number =>
+    a < b ? -1 : a > b ? 1 : 0;
+  return [...list].sort(
+    (a, b) =>
+      sign * (compare(keyOfUser(a), keyOfUser(b)) || compare(a.id, b.id)),
+  );
 };
-const userSummary = {
-  id: targetUser,
-  name: '네오',
-  status: 'ACTIVE',
-  createdAt: now,
-  lastLoginAt: now,
-  generationUsage: usage,
-};
+// 실패 이력도 여러 쪽이 되도록 엽서 예시 뒤에 생성 결과를 덧붙인다.
+const generations = [
+  ...ADMIN_GENERATION_SAMPLES,
+  ...Array.from({ length: 30 }, (_, index) => ({
+    id: `50000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+    user: { id: users[index + 1].id, name: users[index + 1].name },
+    requestedAt: new Date(
+      Date.parse('2026-11-17T11:40:00Z') - index * 600_000,
+    ).toISOString(),
+    status: index % 3 === 0 ? 'FAILED' : 'SUCCEEDED',
+    completedAt: null,
+    errorCode: index % 3 === 0 ? 'IMAGE_GENERATION_FAILED' : null,
+  })),
+];
+const usageOf = (userId: unknown) =>
+  users.find((user) => user.id === userId)?.generationUsage;
 export const adminModerationHandlers = [
   http.get('/api/v1/admin/reports', async ({ request }): Promise<Response> => {
     await delay(150);
@@ -335,17 +408,36 @@ export const adminModerationHandlers = [
       return HttpResponse.json(state);
     },
   ),
+  http.get('/api/v1/admin/stats', async ({ request }): Promise<Response> => {
+    const error = validate(request);
+    if (error) return error;
+    const members = users.filter((user) => user.status !== 'DELETED');
+    const todayStart = kstTodayStart();
+    return HttpResponse.json({
+      memberCount: members.length,
+      todaySignupCount: members.filter(
+        (user) => Date.parse(user.createdAt) >= todayStart,
+      ).length,
+    });
+  }),
   http.get('/api/v1/admin/users', async ({ request }): Promise<Response> => {
     const error = validate(request);
     if (error) return error;
-    const query = new URL(request.url).searchParams.get('query') ?? '';
+    const params = new URL(request.url).searchParams;
+    const query = (params.get('query') ?? '').trim().toLowerCase();
+    const sort = params.get('sort') ?? 'CREATED_AT';
+    const direction = params.get('direction') ?? 'DESC';
+    if (!isUserSortKey(sort) || (direction !== 'ASC' && direction !== 'DESC'))
+      return problem(request, 400, 'VALIDATION_ERROR');
+    const matched = users.filter(
+      (user) =>
+        query === '' ||
+        user.name.toLowerCase().includes(query) ||
+        user.nickname?.toLowerCase().includes(query) ||
+        user.id === query,
+    );
     return HttpResponse.json(
-      paged(
-        !query || '네오'.includes(query) || targetUser.includes(query)
-          ? [userSummary]
-          : [],
-        request,
-      ),
+      paged(sortUsers(matched, sort, direction), request),
     );
   }),
   http.get(
@@ -353,9 +445,28 @@ export const adminModerationHandlers = [
     async ({ request, params }): Promise<Response> => {
       const error = validate(request);
       if (error) return error;
-      return params.userId === targetUser
-        ? HttpResponse.json({ ...userSummary, recentGenerations: [] })
-        : problem(request, 404, 'USER_NOT_FOUND');
+      const user = users.find(({ id }) => id === params.userId);
+      if (!user) return problem(request, 404, 'USER_NOT_FOUND');
+      // 상세 응답에는 생성한 일기 수가 없다.
+      const {
+        id,
+        name,
+        nickname,
+        status,
+        createdAt,
+        lastLoginAt,
+        generationUsage,
+      } = user;
+      return HttpResponse.json({
+        id,
+        name,
+        nickname,
+        status,
+        createdAt,
+        lastLoginAt,
+        generationUsage,
+        recentGenerations: [],
+      });
     },
   ),
   http.get(
@@ -366,7 +477,7 @@ export const adminModerationHandlers = [
       const status = new URL(request.url).searchParams.get('status');
       return HttpResponse.json(
         paged(
-          ADMIN_GENERATION_SAMPLES.filter(
+          generations.filter(
             (generation) => !status || generation.status === status,
           ),
           request,
@@ -376,9 +487,11 @@ export const adminModerationHandlers = [
   ),
   http.put(
     '/api/v1/admin/users/:userId/generation-usage/reset',
-    async ({ request }): Promise<Response> => {
+    async ({ request, params }): Promise<Response> => {
       const error = validate(request, true);
       if (error) return error;
+      const usage = usageOf(params.userId);
+      if (!usage) return problem(request, 404, 'USER_NOT_FOUND');
       usage.usedCount = 0;
       usage.remainingCount = usage.limitCount;
       return HttpResponse.json(usage);
@@ -386,9 +499,11 @@ export const adminModerationHandlers = [
   ),
   http.patch(
     '/api/v1/admin/users/:userId/generation-usage/restore',
-    async ({ request }): Promise<Response> => {
+    async ({ request, params }): Promise<Response> => {
       const error = validate(request, true);
       if (error) return error;
+      const usage = usageOf(params.userId);
+      if (!usage) return problem(request, 404, 'USER_NOT_FOUND');
       const body: unknown = await request.json();
       if (
         !isRecord(body) ||
@@ -404,9 +519,11 @@ export const adminModerationHandlers = [
   ),
   http.put(
     '/api/v1/admin/users/:userId/generation-limit',
-    async ({ request }): Promise<Response> => {
+    async ({ request, params }): Promise<Response> => {
       const error = validate(request, true);
       if (error) return error;
+      const usage = usageOf(params.userId);
+      if (!usage) return problem(request, 404, 'USER_NOT_FOUND');
       const body: unknown = await request.json();
       if (
         !isRecord(body) ||
