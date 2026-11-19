@@ -1,8 +1,10 @@
 package com.harudle.admin.service;
 
+import com.harudle.admin.query.AdminMemberStats;
 import com.harudle.admin.query.AdminUserDetail;
 import com.harudle.admin.query.AdminUserDetailSnapshot;
 import com.harudle.admin.query.AdminUserPage;
+import com.harudle.admin.query.AdminUserSort;
 import com.harudle.admin.repository.AdminUserQueryRepository;
 import com.harudle.admin.service.exception.AdminUserNotFoundException;
 import com.harudle.common.validation.CanonicalUuidParser;
@@ -13,6 +15,7 @@ import java.util.Objects;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -29,7 +32,13 @@ public class AdminUserQueryService {
         this.clock = clock;
     }
 
-    public AdminUserPage search(String query, int page, int size) {
+    public AdminUserPage search(
+            String query,
+            AdminUserSort sort,
+            Sort.Direction direction,
+            int page,
+            int size
+    ) {
         String normalizedQuery = Objects.requireNonNullElse(query, "")
                 .strip()
                 .toLowerCase(Locale.ROOT);
@@ -37,9 +46,20 @@ public class AdminUserQueryService {
                 normalizedQuery,
                 CanonicalUuidParser.parse(normalizedQuery).orElse(null),
                 LocalDate.now(clock),
-                PageRequest.of(page, size)
+                sort,
+                direction,
+                page,
+                size
         );
         return new AdminUserPage(result.getContent(), result.getTotalElements());
+    }
+
+    public AdminMemberStats findMemberStats() {
+        LocalDate today = LocalDate.now(clock);
+        return adminUserQueryRepository.countMembers(
+                today.atStartOfDay(clock.getZone()).toInstant(),
+                today.plusDays(1).atStartOfDay(clock.getZone()).toInstant()
+        );
     }
 
     public AdminUserDetail findDetail(UUID userId) {
@@ -60,6 +80,7 @@ public class AdminUserQueryService {
         return new AdminUserDetail(
                 user.id(),
                 user.name(),
+                user.nickname(),
                 user.createdAt(),
                 user.deletedAt(),
                 user.lastLoginAt(),

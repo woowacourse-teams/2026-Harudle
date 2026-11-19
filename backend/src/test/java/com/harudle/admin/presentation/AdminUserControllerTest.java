@@ -18,7 +18,9 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -150,11 +152,122 @@ class AdminUserControllerTest {
     }
 
     @Test
+    @DisplayName("닉네임을 반환하고 닉네임 일부로 대소문자 구분 없이 검색한다")
+    void searchesUsersByNickname() throws Exception {
+        User admin = saveUser("관리자");
+        grantAdminRole(admin);
+        User nicknamed = saveUser("실명 사용자");
+        changeNickname(nicknamed, "SunnyHaru");
+        saveUser("닉네임 없는 사용자");
+
+        MockMvcResponse response = adminRequest(admin)
+                .queryParam("query", "sunny")
+                .get("/api/v1/admin/users");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.jsonPath().getList("content.id"))
+                .containsExactly(nicknamed.getId().toString());
+        assertThat(response.jsonPath().getString("content[0].name")).isEqualTo("실명 사용자");
+        assertThat(response.jsonPath().getString("content[0].nickname")).isEqualTo("SunnyHaru");
+        assertThat(response.jsonPath().getInt("totalElements")).isEqualTo(1);
+
+        response = adminRequest(admin)
+                .queryParam("query", "닉네임 없는")
+                .get("/api/v1/admin/users");
+
+        assertThat(response.jsonPath().getList("content")).hasSize(1);
+        assertThat(response.jsonPath().getString("content[0].nickname")).isNull();
+    }
+
+    @Test
+    @DisplayName("생성한 일기 수는 삭제한 일기를 포함한 생성 성공 일기만 센다")
+    void countsSucceededDiariesIncludingDeleted() throws Exception {
+        User admin = saveUser("관리자");
+        grantAdminRole(admin);
+        User writer = saveUser("일기 작성자");
+        User newcomer = saveUser("일기 없는 사용자", CREATED_AT.minusSeconds(1));
+        GenerationPrompt prompt = generationPromptRepository.save(new GenerationPrompt(
+                "생성 수 테스트 스토리보드",
+                "생성 수 테스트 이미지 스타일",
+                "references/admin-count.png"
+        ));
+        saveGeneration(writer, prompt, CREATED_AT, "SUCCEEDED", null, false);
+        saveGeneration(writer, prompt, CREATED_AT.plusSeconds(1), "SUCCEEDED", null, true);
+        saveGeneration(writer, prompt, CREATED_AT.plusSeconds(2), "FAILED", "AI_PROVIDER_ERROR", false);
+        saveGeneration(writer, prompt, CREATED_AT.plusSeconds(3), "FAILED", "AI_PROVIDER_ERROR", true);
+        saveGeneration(writer, prompt, CREATED_AT.plusSeconds(4), "PROCESSING", null, false);
+
+        MockMvcResponse response = adminRequest(admin)
+                .queryParam("query", "일기")
+                .get("/api/v1/admin/users");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.jsonPath().getList("content.id")).containsExactly(
+                writer.getId().toString(),
+                newcomer.getId().toString()
+        );
+        assertThat(response.jsonPath().getLong("content[0].generatedDiaryCount")).isEqualTo(2);
+        assertThat(response.jsonPath().getLong("content[1].generatedDiaryCount")).isZero();
+    }
+
+    @Test
+    @DisplayName("이름, 가입일, 오늘 남은 생성 횟수로 정렬하고 같은 값은 사용자 ID로 정렬한다")
+    void sortsUsersByRequestedKeyWithIdTiebreaker() throws Exception {
+        User admin = saveUser("관리자");
+        grantAdminRole(admin);
+        User third = saveUser("정렬다", CREATED_AT);
+        User first = saveUser("정렬가", CREATED_AT.plusSeconds(2));
+        saveTodayUsage(first, 2, 3);
+        User tiedWithoutUsage = saveUser("정렬나", CREATED_AT.plusSeconds(1));
+        changeDailyGenerationLimit(tiedWithoutUsage, 5);
+        User tiedWithUsage = saveUser("정렬나", CREATED_AT.plusSeconds(1));
+        saveTodayUsage(tiedWithUsage, 0, 5);
+        List<String> tiedAsc = Stream.of(tiedWithoutUsage, tiedWithUsage)
+                .map(user -> user.getId().toString())
+                .sorted()
+                .toList();
+        List<String> tiedDesc = tiedAsc.reversed();
+        String a = third.getId().toString();
+        String b = first.getId().toString();
+
+        assertSortedIds(admin, "NAME", "ASC", concat(List.of(b), tiedAsc, List.of(a)));
+        assertSortedIds(admin, "NAME", "DESC", concat(List.of(a), tiedDesc, List.of(b)));
+        assertSortedIds(admin, "CREATED_AT", "ASC", concat(List.of(a), tiedAsc, List.of(b)));
+        assertSortedIds(admin, "CREATED_AT", "DESC", concat(List.of(b), tiedDesc, List.of(a)));
+        assertSortedIds(admin, "REMAINING_COUNT", "ASC", concat(List.of(b, a), tiedAsc));
+        assertSortedIds(admin, "REMAINING_COUNT", "DESC", concat(tiedDesc, List.of(a, b)));
+
+        MockMvcResponse response = adminRequest(admin)
+                .queryParam("query", "정렬")
+                .queryParam("sort", "REMAINING_COUNT")
+                .queryParam("direction", "ASC")
+                .get("/api/v1/admin/users");
+        assertThat(response.jsonPath().getList("content.generationUsage.remainingCount", Integer.class))
+                .containsExactly(1, 3, 5, 5);
+    }
+
+    @Test
+    @DisplayName("알 수 없는 정렬 기준이나 방향은 검증 오류를 반환한다")
+    void rejectsUnknownSort() throws Exception {
+        User admin = saveUser("관리자");
+        grantAdminRole(admin);
+
+        assertValidationError(adminRequest(admin)
+                .queryParam("sort", "EMAIL")
+                .get("/api/v1/admin/users"));
+        assertValidationError(adminRequest(admin)
+                .queryParam("sort", "NAME")
+                .queryParam("direction", "SIDEWAYS")
+                .get("/api/v1/admin/users"));
+    }
+
+    @Test
     @DisplayName("사용자 상세 조회는 사용자별 한도와 삭제된 일기의 최근 생성 이력을 반환한다")
     void findsUserDetailWithUsageAndRecentGenerations() throws Exception {
         User admin = saveUser("관리자");
         grantAdminRole(admin);
         User target = saveUser("상세 사용자");
+        changeNickname(target, "DetailHaru");
         changeDailyGenerationLimit(target, 5);
         saveOAuthAccount(target);
         GenerationPrompt prompt = generationPromptRepository.save(new GenerationPrompt(
@@ -197,6 +310,7 @@ class AdminUserControllerTest {
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.jsonPath().getString("id")).isEqualTo(target.getId().toString());
         assertThat(response.jsonPath().getString("name")).isEqualTo("상세 사용자");
+        assertThat(response.jsonPath().getString("nickname")).isEqualTo("DetailHaru");
         assertThat(response.jsonPath().getString("status")).isEqualTo("ACTIVE");
         assertThat(response.jsonPath().getString("lastLoginAt"))
                 .isEqualTo(CREATED_AT.plusSeconds(10).toString());
@@ -241,6 +355,7 @@ class AdminUserControllerTest {
 
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.jsonPath().getString("id")).isEqualTo(deletedUser.getId().toString());
+        assertThat(response.jsonPath().getMap("")).containsEntry("nickname", null);
         assertThat(response.jsonPath().getString("status")).isEqualTo("DELETED");
     }
 
@@ -715,6 +830,28 @@ class AdminUserControllerTest {
                 .body("{\"limitCount\":0}")
                 .put("/api/v1/admin/users/{userId}/generation-limit", admin.getId());
         assertValidationError(response);
+    }
+
+    private void assertSortedIds(User admin, String sort, String direction, List<String> expectedIds) {
+        MockMvcResponse response = adminRequest(admin)
+                .queryParam("query", "정렬")
+                .queryParam("sort", sort)
+                .queryParam("direction", direction)
+                .get("/api/v1/admin/users");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.jsonPath().getList("content.id", String.class))
+                .as("%s %s", sort, direction)
+                .containsExactlyElementsOf(expectedIds);
+    }
+
+    @SafeVarargs
+    private static List<String> concat(List<String>... parts) {
+        return Stream.of(parts).flatMap(List::stream).toList();
+    }
+
+    private void changeNickname(User user, String nickname) {
+        jdbcTemplate.update("UPDATE users SET nickname = ? WHERE id = ?", nickname, user.getId());
     }
 
     private void assertValidationError(MockMvcResponse response) {
