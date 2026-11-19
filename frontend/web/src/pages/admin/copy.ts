@@ -1,3 +1,5 @@
+import type { AdminStats, AdminUserSort, SortDirection } from './adminApi';
+
 export const ADMIN_MODERATION_COPY = {
   reports: '신고 관리',
   listError: '신고 목록을 불러오지 못했어요.',
@@ -43,6 +45,58 @@ export const REPORT_REASON_LABELS = {
   INAPPROPRIATE_CONTENT: '부적절한 콘텐츠',
   OTHER: '기타',
 } as const;
+
+export const ADMIN_LIST_COPY = {
+  previousPage: '이전 페이지',
+  nextPage: '다음 페이지',
+  pageNumber: (page: number): string => `${page + 1}쪽`,
+  userTotal: (count: number): string => `총 ${count.toLocaleString('ko-KR')}명`,
+  historyTotal: (count: number): string =>
+    `총 ${count.toLocaleString('ko-KR')}건`,
+  joinedAt: '가입일',
+  nickname: '닉네임',
+  noNickname: '-',
+  generatedDiaryCount: '생성한 일기 수',
+  searchPlaceholder: '이름, 닉네임 또는 사용자 ID 검색',
+  sortKey: '정렬 기준',
+  sortDirection: '정렬 방향',
+  historyDate: '조회 날짜',
+  previousDate: '이전 날짜',
+  nextDate: '다음 날짜',
+  today: '오늘',
+  userDetail: '사용자 상세',
+  retry: '다시 불러오기',
+} as const;
+
+export const ADMIN_USER_SORT_LABELS = {
+  NAME: '사전순',
+  CREATED_AT: '가입일',
+  REMAINING_COUNT: '오늘 남은 횟수',
+} as const satisfies Record<AdminUserSort, string>;
+
+export const SORT_DIRECTION_LABELS = {
+  ASC: '오름차순',
+  DESC: '내림차순',
+} as const satisfies Record<SortDirection, string>;
+
+export const ADMIN_STAT_COPY = {
+  memberCount: {
+    title: '전체 회원 수',
+    scope: '탈퇴 회원 제외',
+    error: '회원 수를 불러오지 못했어요.',
+  },
+  todaySignupCount: {
+    title: '오늘 가입자 수',
+    scope: '한국 시간 0시 이후',
+    error: '가입자 수를 불러오지 못했어요.',
+  },
+} as const satisfies Record<
+  keyof AdminStats,
+  { title: string; scope: string; error: string }
+>;
+
+export const memberCountValue = (count: number): string =>
+  `${count.toLocaleString('ko-KR')}명`;
 
 export const ADMIN_POSTCARD_COPY = {
   open: '엽서 인쇄',

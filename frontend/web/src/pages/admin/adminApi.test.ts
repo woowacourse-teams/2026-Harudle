@@ -7,6 +7,7 @@ import {
   jest,
 } from '@jest/globals';
 import {
+  getAdminStats,
   getAdminUser,
   resetAdminUsage,
   restoreAdminUsage,
@@ -48,10 +49,16 @@ const generation = {
 const userSummary = {
   id: '3b85d827-72da-4e23-98ef-a97119e441b8',
   name: '하루들',
+  nickname: null,
   status: 'ACTIVE',
   createdAt: '2026-08-01T09:00:00Z',
   lastLoginAt: null,
   generationUsage: usage,
+} as const;
+
+const userListItem = {
+  ...userSummary,
+  generatedDiaryCount: 12,
 } as const;
 
 afterEach(() => {
@@ -65,9 +72,25 @@ beforeEach(() => {
 });
 
 describe('관리자 API', () => {
-  it('백엔드 사용자 목록 응답의 중첩 사용량을 읽는다', async () => {
+  it('운영 통계 응답의 회원 수를 읽고 숫자가 아닌 값은 거부한다', async () => {
+    const stats = { memberCount: 39, todaySignupCount: 1 };
+    mockAuthFetch.mockResolvedValueOnce(createJsonResponse(stats));
+    await expect(getAdminStats()).resolves.toEqual(stats);
+    expect(mockAuthFetch).toHaveBeenCalledWith(
+      expect.stringMatching(/\/admin\/stats$/),
+    );
+
+    mockAuthFetch.mockResolvedValueOnce(
+      createJsonResponse({ memberCount: '39', todaySignupCount: 1 }),
+    );
+    await expect(getAdminStats()).rejects.toThrow(
+      '관리자 API 응답 형식이 올바르지 않습니다.',
+    );
+  });
+
+  it('백엔드 사용자 목록 응답의 닉네임, 생성한 일기 수와 중첩 사용량을 읽는다', async () => {
     const page = {
-      content: [userSummary],
+      content: [userListItem, { ...userListItem, nickname: 'SunnyHaru' }],
       page: 1,
       size: 10,
       totalElements: 11,
@@ -76,10 +99,48 @@ describe('관리자 API', () => {
     };
     mockAuthFetch.mockResolvedValueOnce(createJsonResponse(page));
 
-    await expect(searchAdminUsers('하루', 1, 10)).resolves.toEqual(page);
+    await expect(
+      searchAdminUsers({
+        query: '하루',
+        sort: 'REMAINING_COUNT',
+        direction: 'ASC',
+        page: 1,
+        size: 10,
+      }),
+    ).resolves.toEqual(page);
     expect(mockAuthFetch).toHaveBeenCalledWith(
-      '/api/v1/admin/users?query=%ED%95%98%EB%A3%A8&page=1&size=10',
+      '/api/v1/admin/users?query=%ED%95%98%EB%A3%A8&sort=REMAINING_COUNT&direction=ASC&page=1&size=10',
     );
+  });
+
+  it.each([
+    ['닉네임이 없는 항목', { nickname: undefined, generatedDiaryCount: 12 }],
+    ['닉네임이 문자열이 아닌 항목', { nickname: 7, generatedDiaryCount: 12 }],
+    ['생성한 일기 수가 없는 항목', { nickname: null }],
+    [
+      '생성한 일기 수가 숫자가 아닌 항목',
+      { nickname: null, generatedDiaryCount: '12' },
+    ],
+  ])('사용자 목록에 %s이 있으면 거부한다', async (_, extra) => {
+    mockAuthFetch.mockResolvedValueOnce(
+      createJsonResponse({
+        content: [{ ...userSummary, ...extra }],
+        page: 0,
+        size: 20,
+        totalElements: 1,
+        totalPages: 1,
+        hasNext: false,
+      }),
+    );
+    await expect(
+      searchAdminUsers({
+        query: '',
+        sort: 'CREATED_AT',
+        direction: 'DESC',
+        page: 0,
+        size: 20,
+      }),
+    ).rejects.toThrow('관리자 API 응답 형식이 올바르지 않습니다.');
   });
 
   it('사용자 상세 조회에서 최근 생성 이력의 errorCode를 읽는다', async () => {
@@ -99,6 +160,20 @@ describe('관리자 API', () => {
     await expect(getAdminUser(userSummary.id)).resolves.toEqual(detail);
     expect(mockAuthFetch).toHaveBeenCalledWith(
       `/api/v1/admin/users/${userSummary.id}`,
+    );
+  });
+
+  it('사용자 상세에 닉네임이 없으면 거부한다', async () => {
+    mockAuthFetch.mockResolvedValueOnce(
+      createJsonResponse({
+        ...userSummary,
+        nickname: undefined,
+        recentGenerations: [],
+      }),
+    );
+
+    await expect(getAdminUser(userSummary.id)).rejects.toThrow(
+      '관리자 사용자 상세 응답 형식이 올바르지 않습니다.',
     );
   });
 

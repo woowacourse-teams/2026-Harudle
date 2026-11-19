@@ -7,11 +7,13 @@ import java.util.UUID;
 public record AdminUserSnapshot(
         UUID id,
         String name,
+        String nickname,
         Instant createdAt,
         Instant deletedAt,
         Instant lastLoginAt,
         LocalDate usageDate,
         int usedCount,
-        int limitCount
+        int limitCount,
+        long generatedDiaryCount
 ) {
 }
