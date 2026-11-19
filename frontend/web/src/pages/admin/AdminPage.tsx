@@ -103,6 +103,11 @@ const isCompactLayout = (): boolean =>
 const AdminPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const urlState = readAdminUrlState(searchParams);
+  // 다시 그려지기 전에 이어진 변경이 앞선 변경을 덮어쓰지 않도록 마지막으로 쓴 주소를 기준으로 합친다.
+  const latestSearchParamsRef = useRef(searchParams);
+  useEffect((): void => {
+    latestSearchParamsRef.current = searchParams;
+  }, [searchParams]);
   const {
     view,
     userQuery,
@@ -218,8 +223,14 @@ const AdminPage = () => {
   }, [compactLayout]);
 
   const updateUrl = (patch: Partial<AdminUrlState>): void => {
-    const next = writeAdminUrlState({ ...urlState, ...patch });
-    if (next.toString() !== searchParams.toString()) setSearchParams(next);
+    const current = latestSearchParamsRef.current;
+    const next = writeAdminUrlState({
+      ...readAdminUrlState(current),
+      ...patch,
+    });
+    if (next.toString() === current.toString()) return;
+    latestSearchParamsRef.current = next;
+    setSearchParams(next);
   };
 
   // 검색어·정렬·조회 날짜는 메뉴를 옮겨도 유지하고 쪽 번호만 처음으로 돌린다.

@@ -371,3 +371,30 @@ test('주소의 정렬 값이 잘못되면 기본 정렬로 보여 준다', asyn
   );
   await expect.poll(() => firstUserNames(page, 1)).toEqual(['네오']);
 });
+
+test('정렬을 바꾸자마자 다음 페이지로 이동해도 정렬 조건을 잃지 않는다', async ({
+  page,
+}): Promise<void> => {
+  await page.goto('/admin?view=users');
+  await expect(page.getByText('1쪽')).toBeVisible();
+
+  await page.evaluate((): void => {
+    const sort = document.querySelector<HTMLSelectElement>(
+      'select[aria-label="정렬 기준"]',
+    );
+    const next = Array.from(document.querySelectorAll('button')).find(
+      (button) => button.textContent === '다음 페이지',
+    );
+    if (!sort || !next)
+      throw new Error('정렬 선택이나 다음 페이지 버튼이 없습니다.');
+    sort.value = 'NAME';
+    sort.dispatchEvent(new Event('change', { bubbles: true }));
+    next.click();
+  });
+
+  await expect(page).toHaveURL(/usersPage=1/);
+  await expect(page).toHaveURL(/sort=NAME/);
+  await expect(page.getByRole('combobox', { name: '정렬 기준' })).toHaveValue(
+    'NAME',
+  );
+});
