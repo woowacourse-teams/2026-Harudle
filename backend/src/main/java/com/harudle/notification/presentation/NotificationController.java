@@ -68,4 +68,15 @@ class NotificationController {
         service.markRead(userIdResolver.resolve(authentication), notificationId);
         return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build();
     }
+
+    @Operation(summary = "인앱 알림 전체 읽음 처리", description = "전체 읽기 처리를 시작한 시각까지 생성된 본인 미읽음 알림을 한 번에 읽음 처리합니다. "
+            + "목록과 같은 삭제·차단·관리자 숨김·원인 좋아요 조건을 적용하며 기존 읽음 시각은 보존합니다. "
+            + "이후 생성된 알림은 미읽음으로 남으며, 읽을 알림이 없어도 성공합니다.")
+    @ApiResponse(responseCode = "204", description = "알림 전체 읽음 처리 완료")
+    @ApiErrorResponses({ErrorType.UNAUTHORIZED, ErrorType.INVALID_CSRF_TOKEN})
+    @PatchMapping("/read-all")
+    ResponseEntity<Void> markAllRead(Authentication authentication) {
+        service.markAllRead(userIdResolver.resolve(authentication));
+        return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build();
+    }
 }

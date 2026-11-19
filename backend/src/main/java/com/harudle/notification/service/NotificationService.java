@@ -13,6 +13,7 @@ import com.harudle.notification.service.exception.NotificationNotFoundException;
 import com.harudle.profile.service.port.PublicProfileReader;
 import com.harudle.profile.service.port.PublicProfileReader.Profile;
 import java.time.Clock;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -78,6 +79,13 @@ public class NotificationService {
         if (!repository.markRead(notificationId, recipientId, clock.instant())) {
             throw new NotificationNotFoundException();
         }
+    }
+
+    @Transactional
+    public void markAllRead(UUID recipientId) {
+        Instant readAt = clock.instant();
+        validateMember(recipientId);
+        repository.markAllRead(recipientId, readAt);
     }
 
     private void validateMember(UUID recipientId) {

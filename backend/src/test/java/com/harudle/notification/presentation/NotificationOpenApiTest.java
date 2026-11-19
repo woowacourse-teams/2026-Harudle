@@ -65,4 +65,17 @@ class NotificationOpenApiTest {
                 .andExpect(jsonPath(operation + ".responses['404'].content['application/problem+json']"
                         + ".examples.NOTIFICATION_NOT_FOUND.value.code").value("NOTIFICATION_NOT_FOUND"));
     }
+
+    @Test
+    void documentsBulkReadWithoutBodyAndWithBearerAndCsrf() throws Exception {
+        String operation = "$.paths['/api/v1/notifications/read-all'].patch";
+        mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk())
+                .andExpect(jsonPath(operation + ".security[0].bearerAuth").isArray())
+                .andExpect(jsonPath(operation + ".security[0].csrfToken").isArray())
+                .andExpect(jsonPath(operation + ".requestBody").doesNotExist())
+                .andExpect(jsonPath(operation + ".responses['204']").exists())
+                .andExpect(jsonPath(operation + ".responses['204'].content").doesNotExist())
+                .andExpect(jsonPath(operation + ".responses['403'].content['application/problem+json']"
+                        + ".examples.INVALID_CSRF_TOKEN.value.code").value("INVALID_CSRF_TOKEN"));
+    }
 }

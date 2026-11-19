@@ -86,10 +86,7 @@ class JpaNotificationRepository implements NotificationRepository {
             """ + VISIBLE_PARENT_JOIN + """
             WHERE n.id = :notificationId AND
             """ + VISIBLE_PARENT_CONDITION + VISIBLE_BLOCK_CONDITION + VISIBLE_ACTION_CONDITION;
-    private static final String MARK_READ_QUERY = """
-            UPDATE notifications n
-            SET read_at = COALESCE(n.read_at, :readAt)
-            WHERE n.id = :notificationId AND n.recipient_user_id = :recipientId
+    private static final String READABLE_CONDITION = """
               AND EXISTS (
                   SELECT 1 FROM feeds f
                   JOIN diaries d ON d.id = f.diary_id
@@ -98,6 +95,16 @@ class JpaNotificationRepository implements NotificationRepository {
             """ + VISIBLE_PARENT_CONDITION + VISIBLE_BLOCK_CONDITION + """
               )
             """ + VISIBLE_ACTION_CONDITION;
+    private static final String MARK_READ_QUERY = """
+            UPDATE notifications n
+            SET read_at = COALESCE(n.read_at, :readAt)
+            WHERE n.id = :notificationId AND n.recipient_user_id = :recipientId
+            """ + READABLE_CONDITION;
+    private static final String MARK_ALL_READ_QUERY = """
+            UPDATE notifications n
+            SET read_at = :readAt
+            WHERE n.recipient_user_id = :recipientId AND n.read_at IS NULL AND n.created_at <= :readAt
+            """ + READABLE_CONDITION;
 
     private final EntityManager entityManager;
 
@@ -158,6 +165,15 @@ class JpaNotificationRepository implements NotificationRepository {
         return entityManager.createNativeQuery(MARK_READ_QUERY)
                 .setParameter("notificationId", notificationId).setParameter("recipientId", recipientId)
                 .setParameter("readAt", readAt).executeUpdate() == 1;
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public int markAllRead(UUID recipientId, Instant readAt) {
+        Objects.requireNonNull(recipientId, "recipientId는 필수입니다.");
+        Objects.requireNonNull(readAt, "readAt은 필수입니다.");
+        return entityManager.createNativeQuery(MARK_ALL_READ_QUERY)
+                .setParameter("recipientId", recipientId).setParameter("readAt", readAt).executeUpdate();
     }
 
     private static NotificationSnapshot snapshot(Object[] row) {

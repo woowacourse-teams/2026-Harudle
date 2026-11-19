@@ -177,6 +177,98 @@ class NotificationPersistenceTest extends FeedInteractionPersistenceTestSupport 
     }
 
     @Test
+    @DisplayName("전체 읽기는 페이지 밖 본인 알림도 처리하고 기존 읽음 시각과 다른 수신자는 보존한다")
+    void markAllOwnUnreadNotificationsAcrossPages() throws Exception {
+        List<UUID> notices = IntStream.range(0, 23).mapToObj(index ->
+                insertNotification(recipientId, actorId, feedId, "COMMENT", FIXTURE_TIME.plusSeconds(index))).toList();
+        UUID alreadyRead = notices.getFirst();
+        jdbc.update("UPDATE notifications SET read_at = ? WHERE id = ?", Timestamp.from(FIXTURE_TIME), alreadyRead);
+        UUID foreign = insertNotification(otherRecipientId, actorId, feedId, "COMMENT", FIXTURE_TIME);
+
+        mockMvc.perform(recipient(get(listPath()).param("size", "1")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.unreadCount").value(22));
+        profiles.resetCallCount();
+        mockMvc.perform(withCsrf(recipient(patch(listPath() + "/read-all"))))
+                .andExpect(status().isNoContent()).andExpect(content().string(""));
+        Instant firstReadAt = readAt(notices.getLast());
+        assertThat(firstReadAt).isNotNull();
+        assertThat(notices.subList(1, notices.size())).allSatisfy(id -> assertThat(readAt(id)).isEqualTo(firstReadAt));
+        assertThat(readAt(alreadyRead)).isEqualTo(FIXTURE_TIME);
+        assertThat(readAt(foreign)).isNull();
+        assertThat(repository.countUnread(recipientId)).isZero();
+        assertThat(repository.countUnread(otherRecipientId)).isEqualTo(1);
+        assertThat(profiles.callCount()).isZero();
+
+        mockMvc.perform(withCsrf(recipient(patch(listPath() + "/read-all")))).andExpect(status().isNoContent());
+        assertThat(readAt(notices.getLast())).isEqualTo(firstReadAt);
+        assertThat(readAt(alreadyRead)).isEqualTo(FIXTURE_TIME);
+    }
+
+    @Test
+    @DisplayName("전체 읽기는 시작 시각 경계까지 변경하고 이후 알림은 미읽음으로 남긴다")
+    void bulkReadPreservesNotificationsCreatedAfterCutoff() {
+        UUID earlier = insertNotification(recipientId, actorId, feedId, "COMMENT", FIXTURE_TIME.minusSeconds(1));
+        UUID boundary = insertNotification(recipientId, actorId, feedId, "COMMENT", FIXTURE_TIME);
+        UUID later = insertNotification(recipientId, actorId, feedId, "COMMENT", FIXTURE_TIME.plusSeconds(1));
+
+        transactions.executeWithoutResult(status ->
+                assertThat(repository.markAllRead(recipientId, FIXTURE_TIME)).isEqualTo(2));
+
+        assertThat(readAt(earlier)).isEqualTo(FIXTURE_TIME);
+        assertThat(readAt(boundary)).isEqualTo(FIXTURE_TIME);
+        assertThat(readAt(later)).isNull();
+        transactions.executeWithoutResult(status ->
+                assertThat(repository.markAllRead(recipientId, FIXTURE_TIME)).isZero());
+        assertThat(repository.countUnread(recipientId)).isEqualTo(1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"DELETED_FEED", "DELETED_DIARY", "WITHDRAWN_AUTHOR", "BLOCKED_ACTOR",
+            "BLOCKING_ACTOR", "BLOCKED_AUTHOR", "BLOCKING_AUTHOR", "RESTRICTED_FEED", "RESTRICTED_COMMENT",
+            "CANCELED_LIKE", "MISMATCHED_LIKE"})
+    @DisplayName("전체 읽기도 삭제·양방향 차단·관리자 숨김·원인 좋아요 가시성 조건을 따른다")
+    void bulkReadLeavesHiddenNotificationsUnchanged(String hiddenReason) {
+        UUID visible = insertNotification(recipientId, createMember(), feedId, "COMMENT", FIXTURE_TIME);
+        UUID hiddenDiary = createDiary(otherRecipientId);
+        UUID hiddenFeed = createFeed(hiddenDiary);
+        String type = hiddenReason.endsWith("LIKE") ? "LIKE" : "COMMENT";
+        UUID hidden = insertNotification(recipientId, actorId, hiddenFeed, type, FIXTURE_TIME);
+        UUID sourceAction = uuidValue("SELECT source_action_id FROM notifications WHERE id = ?", hidden);
+        try {
+            switch (hiddenReason) {
+                case "DELETED_FEED" -> jdbc.update("UPDATE feeds SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", hiddenFeed);
+                case "DELETED_DIARY" -> jdbc.update("UPDATE diaries SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", hiddenDiary);
+                case "WITHDRAWN_AUTHOR" -> jdbc.update("UPDATE users SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", otherRecipientId);
+                case "BLOCKED_ACTOR", "BLOCKED_AUTHOR" -> jdbc.update(
+                        "INSERT INTO user_blocks (id, blocker_id, blocked_id) VALUES (?, ?, ?)", UUID.randomUUID(),
+                        recipientId, hiddenReason.endsWith("ACTOR") ? actorId : otherRecipientId);
+                case "BLOCKING_ACTOR", "BLOCKING_AUTHOR" -> jdbc.update(
+                        "INSERT INTO user_blocks (id, blocker_id, blocked_id) VALUES (?, ?, ?)", UUID.randomUUID(),
+                        hiddenReason.endsWith("ACTOR") ? actorId : otherRecipientId, recipientId);
+                case "RESTRICTED_FEED", "RESTRICTED_COMMENT" -> jdbc.update(
+                        "INSERT INTO moderation_states (target_type, target_id, restricted, version, reason, changed_at) "
+                                + "VALUES (?, ?, true, 1, '알림 숨김 검증', CURRENT_TIMESTAMP)",
+                        hiddenReason.endsWith("FEED") ? "FEED" : "COMMENT",
+                        hiddenReason.endsWith("FEED") ? hiddenFeed : sourceAction);
+                case "CANCELED_LIKE" -> jdbc.update("DELETE FROM feed_likes WHERE id = ?", sourceAction);
+                case "MISMATCHED_LIKE" -> jdbc.update("UPDATE notifications SET source_action_id = ? WHERE id = ?",
+                        UUID.randomUUID(), hidden);
+                default -> throw new AssertionError("알림 숨김 조건을 확인하세요.");
+            }
+            assertThat(repository.findVisibleById(hidden)).isEmpty();
+
+            service.markAllRead(recipientId);
+
+            assertThat(readAt(hidden)).isNull();
+            assertThat(readAt(visible)).isNotNull();
+            assertThat(repository.countUnread(recipientId)).isZero();
+        } finally {
+            jdbc.update("DELETE FROM moderation_states WHERE target_id IN (?, ?)", hiddenFeed, sourceAction);
+        }
+    }
+
+    @Test
     @DisplayName("목록은 생성시각과 UUID 내림차순이며 같은 시각 경계에서도 빠짐없이 이어진다")
     void sortNewestFirstWithUuidTieBreaker() {
         UUID older = UUID.fromString("00000000-0000-0000-0000-000000000021");
@@ -730,6 +822,8 @@ class NotificationPersistenceTest extends FeedInteractionPersistenceTestSupport 
     void requireTransactionAndRecipientForRepositoryUpdate() {
         UUID notice = insertNotification(recipientId, actorId, feedId, "LIKE", FIXTURE_TIME);
         assertThatThrownBy(() -> repository.markRead(notice, recipientId, FIXTURE_TIME))
+                .isInstanceOf(IllegalTransactionStateException.class);
+        assertThatThrownBy(() -> repository.markAllRead(recipientId, FIXTURE_TIME))
                 .isInstanceOf(IllegalTransactionStateException.class);
         transactions.executeWithoutResult(status ->
                 assertThat(repository.markRead(notice, otherRecipientId, FIXTURE_TIME)).isFalse());

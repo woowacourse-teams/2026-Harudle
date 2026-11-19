@@ -3,6 +3,7 @@ package com.harudle.notification.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -29,6 +30,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -194,6 +196,33 @@ class NotificationServiceTest {
         service.markRead(RECIPIENT, FIRST);
         service.markRead(RECIPIENT, FIRST);
         verify(repository, times(2)).markRead(FIRST, RECIPIENT, NOW);
+        verifyNoInteractions(profileProvider, profiles, codec);
+    }
+
+    @Test
+    void marksAllReadUsingStartTimeEvenWhenMemberValidationTakesTime() {
+        Clock time = mock(Clock.class);
+        AtomicReference<Instant> now = new AtomicReference<>(NOW);
+        when(time.instant()).thenAnswer(invocation -> now.get());
+        when(repository.isActiveMember(RECIPIENT)).thenAnswer(invocation -> {
+            now.set(NOW.plusSeconds(60));
+            return true;
+        });
+        var timedService = new NotificationService(repository, profileProvider, codec, time);
+
+        timedService.markAllRead(RECIPIENT);
+
+        verify(repository).markAllRead(RECIPIENT, NOW);
+        verifyNoInteractions(profileProvider, profiles, codec);
+    }
+
+    @Test
+    void rejectsInactiveAndMissingMemberBeforeBulkRead() {
+        assertThatThrownBy(() -> service.markAllRead(RECIPIENT))
+                .isInstanceOf(AuthenticationRequiredException.class);
+        assertThatThrownBy(() -> service.markAllRead(null))
+                .isInstanceOf(AuthenticationRequiredException.class);
+        verify(repository, never()).markAllRead(any(), any());
         verifyNoInteractions(profileProvider, profiles, codec);
     }
 

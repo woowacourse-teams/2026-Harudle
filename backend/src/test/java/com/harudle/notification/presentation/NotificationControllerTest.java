@@ -66,6 +66,7 @@ class NotificationControllerTest {
     private static final UUID NOTIFICATION = UUID.fromString("4a08c9a2-7531-4927-a898-6fe49cc303ea");
     private static final String LIST = "/api/v1/notifications";
     private static final String UPDATE = LIST + "/" + NOTIFICATION;
+    private static final String READ_ALL = LIST + "/read-all";
     private static final String CSRF = "same-cookie-and-header";
     private static final Instant NOW = Instant.parse("2026-10-12T03:00:00Z");
     private static final Profile PROFILE = new Profile(
@@ -151,6 +152,36 @@ class NotificationControllerTest {
                 .andExpect(status().isNoContent()).andExpect(content().string(""))
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"));
         verify(service).markRead(USER, NOTIFICATION);
+    }
+
+    @Test
+    void marksAllOwnNotificationsReadWithoutARequestOrResponseBody() throws Exception {
+        mockMvc.perform(withCsrf(bearer(patch(READ_ALL))))
+                .andExpect(status().isNoContent()).andExpect(content().string(""))
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"));
+        verify(service).markAllRead(USER);
+    }
+
+    @Test
+    void bulkReadRequiresAuthenticationBeforeMatchingCsrf() throws Exception {
+        mockMvc.perform(patch(READ_ALL)).andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+        when(jwtDecoder.decode("invalid-token")).thenThrow(new BadJwtException("invalid"));
+        mockMvc.perform(withCsrf(patch(READ_ALL)).header(HttpHeaders.AUTHORIZATION, "Bearer invalid-token"))
+                .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+        mockMvc.perform(bearer(patch(READ_ALL))).andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("INVALID_CSRF_TOKEN"));
+        mockMvc.perform(bearer(patch(READ_ALL)).cookie(new Cookie("XSRF-TOKEN", CSRF))
+                        .header("X-XSRF-TOKEN", "different"))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("INVALID_CSRF_TOKEN"));
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void bulkReadRejectsInactiveMember() throws Exception {
+        doThrow(new AuthenticationRequiredException()).when(service).markAllRead(USER);
+        mockMvc.perform(withCsrf(bearer(patch(READ_ALL)))).andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
     }
 
     @ParameterizedTest
