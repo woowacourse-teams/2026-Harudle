@@ -6,6 +6,7 @@ import com.harudle.admin.presentation.dto.AdminGenerationUsageRestoreRequest;
 import com.harudle.admin.presentation.dto.AdminGenerationUsageResponse;
 import com.harudle.admin.presentation.dto.AdminUserSearchResponse;
 import com.harudle.admin.query.AdminUserPage;
+import com.harudle.admin.query.AdminUserSort;
 import com.harudle.admin.service.AdminGenerationUsageService;
 import com.harudle.admin.service.AdminUserQueryService;
 import com.harudle.common.error.ApiErrorResponses;
@@ -16,6 +17,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import java.util.UUID;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -54,14 +56,18 @@ class AdminUserController {
             ErrorType.FORBIDDEN
     })
     AdminUserSearchResponse search(
-            @Parameter(description = "사용자 이름 일부 또는 정확한 사용자 ID (UUID). 빈 값이면 전체 조회")
+            @Parameter(description = "사용자 이름이나 닉네임 일부 또는 정확한 사용자 ID (UUID). 빈 값이면 전체 조회")
             @RequestParam(defaultValue = "") String query,
+            @Parameter(description = "정렬 기준. 같은 값은 사용자 ID로 같은 방향 정렬")
+            @RequestParam(defaultValue = "CREATED_AT") AdminUserSort sort,
+            @Parameter(description = "정렬 방향")
+            @RequestParam(defaultValue = "DESC") Sort.Direction direction,
             @Parameter(description = "페이지 번호 (0부터 시작)")
             @RequestParam(defaultValue = "0") @Min(0) @Max(MAX_PAGE) int page,
             @Parameter(description = "페이지당 항목 수 (1~100)")
             @RequestParam(defaultValue = "20") @Min(1) @Max(MAX_PAGE_SIZE) int size
     ) {
-        AdminUserPage result = adminUserQueryService.search(query, page, size);
+        AdminUserPage result = adminUserQueryService.search(query, sort, direction, page, size);
         return AdminUserSearchResponse.from(result, page, size);
     }
 

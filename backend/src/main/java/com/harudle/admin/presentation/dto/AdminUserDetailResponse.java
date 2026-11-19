@@ -10,6 +10,7 @@ import java.util.UUID;
 public record AdminUserDetailResponse(
         UUID id,
         String name,
+        String nickname,
         AdminUserStatus status,
         Instant createdAt,
         Instant lastLoginAt,
@@ -24,6 +25,7 @@ public record AdminUserDetailResponse(
         return new AdminUserDetailResponse(
                 user.id(),
                 user.name(),
+                user.nickname(),
                 status,
                 user.createdAt(),
                 user.lastLoginAt(),
