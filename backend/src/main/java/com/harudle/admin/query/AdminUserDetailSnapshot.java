@@ -7,6 +7,7 @@ import java.util.UUID;
 public record AdminUserDetailSnapshot(
         UUID id,
         String name,
+        String nickname,
         Instant createdAt,
         Instant deletedAt,
         Instant lastLoginAt,

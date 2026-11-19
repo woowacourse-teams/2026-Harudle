@@ -7,10 +7,12 @@ import java.util.UUID;
 public record AdminUserSummaryResponse(
         UUID id,
         String name,
+        String nickname,
         AdminUserStatus status,
         Instant createdAt,
         Instant lastLoginAt,
-        AdminGenerationUsageResponse generationUsage
+        AdminGenerationUsageResponse generationUsage,
+        long generatedDiaryCount
 ) {
 
     public static AdminUserSummaryResponse from(AdminUserSnapshot user) {
@@ -20,10 +22,12 @@ public record AdminUserSummaryResponse(
         return new AdminUserSummaryResponse(
                 user.id(),
                 user.name(),
+                user.nickname(),
                 status,
                 user.createdAt(),
                 user.lastLoginAt(),
-                AdminGenerationUsageResponse.from(user)
+                AdminGenerationUsageResponse.from(user),
+                user.generatedDiaryCount()
         );
     }
 }
