@@ -1,15 +1,21 @@
 package com.harudle.admin.repository;
 
 import com.harudle.admin.query.AdminGenerationSnapshot;
+import com.harudle.admin.query.AdminMemberStats;
 import com.harudle.admin.query.AdminUserDetailSnapshot;
 import com.harudle.admin.query.AdminUserSnapshot;
+import com.harudle.admin.query.AdminUserSort;
 import com.harudle.auth.domain.User;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.JpaSort;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.Repository;
 import org.springframework.data.repository.query.Param;
@@ -22,6 +28,7 @@ public interface AdminUserQueryRepository extends Repository<User, UUID> {
             SELECT new com.harudle.admin.query.AdminUserDetailSnapshot(
                 u.id,
                 u.name,
+                u.nickname,
                 u.createdAt,
                 u.deletedAt,
                 MAX(oa.lastLoginAt),
@@ -39,7 +46,7 @@ public interface AdminUserQueryRepository extends Repository<User, UUID> {
                   FROM GuestSession guestSession
                   WHERE guestSession.guestUserId = u.id
               )
-            GROUP BY u.id, u.name, u.createdAt, u.deletedAt, u.dailyGenerationLimit,
+            GROUP BY u.id, u.name, u.nickname, u.createdAt, u.deletedAt, u.dailyGenerationLimit,
                 usage.usedCount, usage.limitCount
             """)
     Optional<AdminUserDetailSnapshot> findDetailSnapshot(
@@ -72,12 +79,20 @@ public interface AdminUserQueryRepository extends Repository<User, UUID> {
                     SELECT new com.harudle.admin.query.AdminUserSnapshot(
                         u.id,
                         u.name,
+                        u.nickname,
                         u.createdAt,
                         u.deletedAt,
                         MAX(oa.lastLoginAt),
                         :usageDate,
                         COALESCE(usage.usedCount, 0),
-                        COALESCE(usage.limitCount, u.dailyGenerationLimit)
+                        COALESCE(usage.limitCount, u.dailyGenerationLimit),
+                        (
+                            SELECT COUNT(generation)
+                            FROM DiaryGeneration generation
+                            JOIN Diary diary ON diary.id = generation.diaryId
+                            WHERE diary.userId = u.id
+                              AND generation.status = com.harudle.generation.diary.domain.GenerationStatus.SUCCEEDED
+                        )
                     )
                     FROM User u
                     LEFT JOIN OAuthAccount oa ON oa.user = u
@@ -86,6 +101,7 @@ public interface AdminUserQueryRepository extends Repository<User, UUID> {
                     WHERE (
                         :query = ''
                         OR LOCATE(:query, LOWER(u.name)) > 0
+                        OR LOCATE(:query, LOWER(u.nickname)) > 0
                         OR (:exactUserId IS NOT NULL AND u.id = :exactUserId)
                     )
                       AND NOT EXISTS (
@@ -93,9 +109,8 @@ public interface AdminUserQueryRepository extends Repository<User, UUID> {
                           FROM GuestSession guestSession
                           WHERE guestSession.guestUserId = u.id
                       )
-                    GROUP BY u.id, u.name, u.createdAt, u.deletedAt, u.dailyGenerationLimit,
+                    GROUP BY u.id, u.name, u.nickname, u.createdAt, u.deletedAt, u.dailyGenerationLimit,
                         usage.usedCount, usage.limitCount
-                    ORDER BY u.createdAt DESC, u.id DESC
                     """,
             countQuery = """
                     SELECT COUNT(u)
@@ -103,6 +118,7 @@ public interface AdminUserQueryRepository extends Repository<User, UUID> {
                     WHERE (
                         :query = ''
                         OR LOCATE(:query, LOWER(u.name)) > 0
+                        OR LOCATE(:query, LOWER(u.nickname)) > 0
                         OR (:exactUserId IS NOT NULL AND u.id = :exactUserId)
                     )
                       AND NOT EXISTS (
@@ -117,5 +133,56 @@ public interface AdminUserQueryRepository extends Repository<User, UUID> {
             @Param("exactUserId") UUID exactUserId,
             @Param("usageDate") LocalDate usageDate,
             Pageable pageable
+    );
+
+    default Page<AdminUserSnapshot> search(
+            String normalizedQuery,
+            UUID exactUserId,
+            LocalDate usageDate,
+            AdminUserSort sort,
+            Sort.Direction direction,
+            int page,
+            int size
+    ) {
+        return search(
+                normalizedQuery,
+                exactUserId,
+                usageDate,
+                PageRequest.of(page, size, orderBy(sort, direction))
+        );
+    }
+
+    private static Sort orderBy(AdminUserSort sort, Sort.Direction direction) {
+        Sort primary = switch (sort) {
+            case NAME -> Sort.by(direction, "name");
+            case CREATED_AT -> Sort.by(direction, "createdAt");
+            case REMAINING_COUNT -> JpaSort.unsafe(
+                    direction,
+                    "(COALESCE(usage.limitCount, u.dailyGenerationLimit) - COALESCE(usage.usedCount, 0))"
+            );
+        };
+        return primary.and(Sort.by(direction, "id"));
+    }
+
+    @Transactional(readOnly = true)
+    @Query("""
+            SELECT new com.harudle.admin.query.AdminMemberStats(
+                COUNT(u),
+                COALESCE(SUM(CASE
+                    WHEN u.createdAt >= :todayStart AND u.createdAt < :tomorrowStart THEN 1
+                    ELSE 0
+                END), 0)
+            )
+            FROM User u
+            WHERE u.deletedAt IS NULL
+              AND NOT EXISTS (
+                  SELECT guestSession.id
+                  FROM GuestSession guestSession
+                  WHERE guestSession.guestUserId = u.id
+              )
+            """)
+    AdminMemberStats countMembers(
+            @Param("todayStart") Instant todayStart,
+            @Param("tomorrowStart") Instant tomorrowStart
     );
 }
