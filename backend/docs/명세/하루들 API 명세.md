@@ -195,7 +195,7 @@ Idempotency-Key: 7e5cc251-fdde-4cc0-a54e-2c8142750609
 | `GET` | `/api/v1/admin/users/{userId}` | ADMIN | 회원 상세와 최근 생성 이력 조회 |
 | `GET` | `/api/v1/admin/stats` | ADMIN | 현재 회원 수와 오늘 가입 수 |
 
-두 API는 비로그인 요청에 `401`, 일반 회원 요청에 `403`을 반환한다. 게스트 사용자는 목록과 통계에 포함하지 않는다.
+세 API는 비로그인 요청에 `401`, 일반 회원 요청에 `403`을 반환한다. 게스트 사용자는 목록과 통계에 포함하지 않는다.
 
 회원 목록의 Query Parameter는 다음과 같다.
 

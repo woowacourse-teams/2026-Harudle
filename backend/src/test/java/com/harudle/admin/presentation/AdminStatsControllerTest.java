@@ -45,7 +45,7 @@ class AdminStatsControllerTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    private final List<UUID> restrictedUserIds = new ArrayList<>();
+    private final List<UUID> createdUserIds = new ArrayList<>();
 
     @BeforeEach
     void setUp() {
@@ -54,9 +54,11 @@ class AdminStatsControllerTest {
 
     @AfterEach
     void tearDown() {
-        restrictedUserIds.forEach(id -> jdbcTemplate.update(
-                "DELETE FROM moderation_states WHERE target_type = 'USER' AND target_id = ?", id));
-        userRepository.deleteAll();
+        createdUserIds.forEach(id -> {
+            jdbcTemplate.update("DELETE FROM guest_sessions WHERE guest_user_id = ?", id);
+            jdbcTemplate.update("DELETE FROM moderation_states WHERE target_type = 'USER' AND target_id = ?", id);
+            jdbcTemplate.update("DELETE FROM users WHERE id = ?", id);
+        });
         RestAssuredMockMvc.reset();
     }
 
@@ -105,7 +107,9 @@ class AdminStatsControllerTest {
     }
 
     private User saveUser(String name, Instant createdAt) {
-        return userRepository.save(new User(null, name, createdAt));
+        User user = userRepository.save(new User(null, name, createdAt));
+        createdUserIds.add(user.getId());
+        return user;
     }
 
     private void grantAdminRole(User user) {
@@ -118,7 +122,6 @@ class AdminStatsControllerTest {
     }
 
     private void restrict(User user) {
-        restrictedUserIds.add(user.getId());
         jdbcTemplate.update("""
                 INSERT INTO moderation_states(target_type, target_id, restricted, version, reason, changed_at)
                 VALUES ('USER', ?, TRUE, 1, '테스트 정지', ?)

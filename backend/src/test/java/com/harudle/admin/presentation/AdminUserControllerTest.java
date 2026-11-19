@@ -18,6 +18,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Stream;
@@ -247,6 +248,33 @@ class AdminUserControllerTest {
     }
 
     @Test
+    @DisplayName("남은 생성 횟수 정렬 순서는 응답의 남은 횟수와 같은 방향으로 단조롭다")
+    void sortsByRemainingCountConsistentlyWithResponse() throws Exception {
+        User admin = saveUser("관리자");
+        grantAdminRole(admin);
+        User withoutUsageLow = saveUser("잔여정렬");
+        changeDailyGenerationLimit(withoutUsageLow, 2);
+        User withoutUsageHigh = saveUser("잔여정렬");
+        changeDailyGenerationLimit(withoutUsageHigh, 3);
+        User snapshotAboveLimit = saveUser("잔여정렬");
+        changeDailyGenerationLimit(snapshotAboveLimit, 3);
+        saveTodayUsage(snapshotAboveLimit, 1, 6);
+        User exhausted = saveUser("잔여정렬");
+        changeDailyGenerationLimit(exhausted, 10);
+        saveTodayUsage(exhausted, 4, 4);
+        User snapshotBelowLimit = saveUser("잔여정렬");
+        changeDailyGenerationLimit(snapshotBelowLimit, 7);
+        saveTodayUsage(snapshotBelowLimit, 0, 1);
+
+        List<Integer> ascending = remainingCounts(admin, "ASC");
+        List<Integer> descending = remainingCounts(admin, "DESC");
+
+        assertThat(ascending).containsExactlyInAnyOrder(0, 1, 2, 3, 5).isSorted();
+        assertThat(descending).containsExactlyInAnyOrder(0, 1, 2, 3, 5)
+                .isSortedAccordingTo(Comparator.reverseOrder());
+    }
+
+    @Test
     @DisplayName("알 수 없는 정렬 기준이나 방향은 검증 오류를 반환한다")
     void rejectsUnknownSort() throws Exception {
         User admin = saveUser("관리자");
@@ -258,6 +286,13 @@ class AdminUserControllerTest {
         assertValidationError(adminRequest(admin)
                 .queryParam("sort", "NAME")
                 .queryParam("direction", "SIDEWAYS")
+                .get("/api/v1/admin/users"));
+        assertValidationError(adminRequest(admin)
+                .queryParam("sort", "name")
+                .get("/api/v1/admin/users"));
+        assertValidationError(adminRequest(admin)
+                .queryParam("sort", "NAME")
+                .queryParam("direction", "desc")
                 .get("/api/v1/admin/users"));
     }
 
@@ -843,6 +878,17 @@ class AdminUserControllerTest {
         assertThat(response.jsonPath().getList("content.id", String.class))
                 .as("%s %s", sort, direction)
                 .containsExactlyElementsOf(expectedIds);
+    }
+
+    private List<Integer> remainingCounts(User admin, String direction) {
+        MockMvcResponse response = adminRequest(admin)
+                .queryParam("query", "잔여정렬")
+                .queryParam("sort", "REMAINING_COUNT")
+                .queryParam("direction", direction)
+                .get("/api/v1/admin/users");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        return response.jsonPath().getList("content.generationUsage.remainingCount", Integer.class);
     }
 
     @SafeVarargs
