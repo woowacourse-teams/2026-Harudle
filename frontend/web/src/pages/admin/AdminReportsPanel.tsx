@@ -8,6 +8,7 @@ import LoadingSpinner from '../../shared/LoadingSpinner';
 import { useToastContext } from '../../shared/ToastContext';
 import { theme } from '../../styles/theme';
 import AdminModerationPanel from './AdminModerationPanel';
+import AdminPager from './AdminPager';
 import AdminReasonModal, {
   type AdminReasonModalHandle,
 } from './AdminReasonModal';
@@ -168,21 +169,12 @@ const ReportList = ({
             ))}
           </ul>
           {request.data.content.length === 0 && <p>{COPY.empty}</p>}
-          <div css={pageStyle}>
-            <ActionButton
-              label="이전 페이지"
-              variant="secondary"
-              disabled={page === 0}
-              onClick={(): void => onPage(page - 1)}
-            />
-            <span>{page + 1}쪽</span>
-            <ActionButton
-              label="다음 페이지"
-              variant="secondary"
-              disabled={!request.data.hasNext}
-              onClick={(): void => onPage(page + 1)}
-            />
-          </div>
+          <AdminPager
+            css={pageStyle}
+            page={page}
+            hasNext={request.data.hasNext}
+            onPage={onPage}
+          />
         </>
       ) : null}
     </div>
