@@ -222,11 +222,16 @@ const AdminPage = () => {
     return (): void => modal?.close();
   }, [compactLayout]);
 
-  const updateUrl = (patch: Partial<AdminUrlState>): void => {
+  const updateUrl = (
+    patch:
+      | Partial<AdminUrlState>
+      | ((current: AdminUrlState) => Partial<AdminUrlState>),
+  ): void => {
     const current = latestSearchParamsRef.current;
+    const currentState = readAdminUrlState(current);
     const next = writeAdminUrlState({
-      ...readAdminUrlState(current),
-      ...patch,
+      ...currentState,
+      ...(typeof patch === 'function' ? patch(currentState) : patch),
     });
     if (next.toString() === current.toString()) return;
     latestSearchParamsRef.current = next;
@@ -570,6 +575,16 @@ const AdminPage = () => {
             onDateChange={(date) =>
               updateUrl({ historyDate: date, historyPage: 0 })
             }
+            onDateShift={(days) =>
+              updateUrl((current) => {
+                if (current.historyDate === '') return {};
+                const shifted = shiftDate(current.historyDate, days);
+                return {
+                  historyDate: shifted > today() ? today() : shifted,
+                  historyPage: 0,
+                };
+              })
+            }
             onPage={(page) => updateUrl({ historyPage: page })}
             onFailedOnly={() => navigate('failed')}
             onAll={() => navigate('generations')}
@@ -907,6 +922,7 @@ const HistoryCard = ({
   failedOnly,
   date,
   onDateChange,
+  onDateShift,
   onPage,
   onFailedOnly,
   onAll,
@@ -916,6 +932,7 @@ const HistoryCard = ({
   failedOnly: boolean;
   date: string;
   onDateChange: (value: string) => void;
+  onDateShift: (days: number) => void;
   onPage: (page: number) => void;
   onFailedOnly: () => void;
   onAll: () => void;
@@ -950,7 +967,7 @@ const HistoryCard = ({
             type="button"
             aria-label={ADMIN_LIST_COPY.previousDate}
             disabled={date === ''}
-            onClick={() => onDateChange(shiftDate(date, -1))}
+            onClick={() => onDateShift(-1)}
           >
             ◀
           </button>
@@ -968,7 +985,7 @@ const HistoryCard = ({
             type="button"
             aria-label={ADMIN_LIST_COPY.nextDate}
             disabled={date === '' || date >= todayDate}
-            onClick={() => onDateChange(shiftDate(date, 1))}
+            onClick={() => onDateShift(1)}
           >
             ▶
           </button>

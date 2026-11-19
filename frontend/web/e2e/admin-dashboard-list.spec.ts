@@ -398,3 +398,22 @@ test('정렬을 바꾸자마자 다음 페이지로 이동해도 정렬 조건�
     'NAME',
   );
 });
+
+test('이전 날짜를 연달아 누르면 누른 횟수만큼 날짜를 옮긴다', async ({
+  page,
+}): Promise<void> => {
+  await page.goto('/admin?view=generations');
+  await expect(page.getByLabel('조회 날짜')).toHaveValue(localDate());
+
+  await page.evaluate((): void => {
+    const previous = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="이전 날짜"]',
+    );
+    if (!previous) throw new Error('이전 날짜 버튼이 없습니다.');
+    previous.click();
+    previous.click();
+  });
+
+  await expect(page.getByLabel('조회 날짜')).toHaveValue(localDate(-2));
+  await expect(page).toHaveURL(new RegExp(`historyDate=${localDate(-2)}`));
+});
