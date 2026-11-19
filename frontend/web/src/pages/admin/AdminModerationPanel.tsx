@@ -19,6 +19,7 @@ import {
   type ModerationState,
   type ModerationTargetType,
 } from './adminModerationApi';
+import AdminPager from './AdminPager';
 import { ADMIN_MODERATION_COPY as COPY } from './copy';
 interface Props {
   readonly targetType: ModerationTargetType;
@@ -238,29 +239,19 @@ const AdminModerationPanel = ({
               </ul>
             )}
             {(request.data.history.totalPages > 1 || historyPage > 0) && (
-              <div css={pageStyle}>
-                <ActionButton
-                  label="이전 이력"
-                  variant="secondary"
-                  disabled={reading || historyPage === 0}
-                  onClick={(): void => {
-                    setStale(true);
-                    setReading(true);
-                    setHistoryPage((page): number => page - 1);
-                  }}
-                />
-                <span>{historyPage + 1}쪽</span>
-                <ActionButton
-                  label="다음 이력"
-                  variant="secondary"
-                  disabled={reading || !request.data.history.hasNext}
-                  onClick={(): void => {
-                    setStale(true);
-                    setReading(true);
-                    setHistoryPage((page): number => page + 1);
-                  }}
-                />
-              </div>
+              <AdminPager
+                css={pageStyle}
+                page={historyPage}
+                hasNext={request.data.history.hasNext}
+                disabled={reading}
+                previousLabel="이전 이력"
+                nextLabel="다음 이력"
+                onPage={(next): void => {
+                  setStale(true);
+                  setReading(true);
+                  setHistoryPage(next);
+                }}
+              />
             )}
           </div>
         </>
