@@ -108,6 +108,7 @@ const FeedItem = ({
 export default React.memo(FeedItem);
 
 const feedItemStyle = css`
+  position: relative;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
