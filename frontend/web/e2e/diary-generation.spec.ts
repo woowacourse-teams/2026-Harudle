@@ -495,8 +495,10 @@ test.describe('일기 생성', (): void => {
       expect(nextState.draft).toBe(NEXT_DIARY_CONTENT);
       await expect(getToasts(page)).toHaveCount(2);
 
-      // 네트워크 지연을 기다리는 동안 새 작업의 생성 시간이 흐르지 않게 한다.
-      await page.clock.pauseAt(await page.evaluate((): number => Date.now()));
+      // 시각을 읽은 뒤 정지 명령이 브라우저에 도착할 때까지 여유를 둔다.
+      await page.clock.pauseAt(
+        await page.evaluate((): number => Date.now() + 1_000),
+      );
       const nextResponse = page.waitForResponse((response): boolean => {
         return (
           new URL(response.url()).pathname ===

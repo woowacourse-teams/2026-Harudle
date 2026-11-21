@@ -181,3 +181,11 @@ jobs:
         env:
           USE_MSW: "true"
         run: pnpm --dir web check
+
+      - name: Upload Playwright failure report
+        if: failure() && hashFiles('frontend/web/playwright-report/index.html') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: frontend/web/playwright-report/
+          retention-days: 7
