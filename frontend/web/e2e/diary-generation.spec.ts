@@ -689,6 +689,46 @@ test.describe('일기 생성', (): void => {
     await expectPollingStopped(page, requests);
   });
 
+  test('상태 조회가 네트워크 오류로 끊겨도 연결 복구 후 기존 만화의 완료 알림을 표시한다', async ({
+    page,
+  }): Promise<void> => {
+    const statusRequests = collectStatusRequests(page);
+    const submissions: Request[] = [];
+    page.on('request', (request): void => {
+      if (
+        request.method() === 'POST' &&
+        new URL(request.url()).pathname === '/api/v1/diaries'
+      ) {
+        submissions.push(request);
+      }
+    });
+
+    const toast = await startGeneration(page, {
+      scenario: MOCK_SCENARIOS.diaryGenerationStatusNetworkError,
+    });
+    const savedState = await readGenerationState(page);
+    const statusPath = `/api/v1/diary-generations/${savedState.generationId}`;
+    const failedPoll = page.waitForEvent(
+      'requestfailed',
+      (request): boolean => {
+        return new URL(request.url()).pathname === statusPath;
+      },
+    );
+    await page.clock.fastForward(5_000);
+    await failedPoll;
+    await expect(toast).toContainText(LOADING_MESSAGE);
+    expect(await readGenerationState(page)).toEqual(savedState);
+
+    await page.setExtraHTTPHeaders({});
+    await advanceToPoll(page, 5_000);
+    await expect(toast).toContainText(SUCCESS_MESSAGE);
+    expect(
+      statusRequests.map((request) => new URL(request.url()).pathname),
+    ).toEqual([statusPath, statusPath]);
+    expect(submissions).toHaveLength(1);
+    await expectGenerationCleared(page);
+  });
+
   test('10자 미만의 일기는 제출할 수 없다', async ({ page }): Promise<void> => {
     await goToDiaryWritePage(page);
     await submitDiary(page, '123456789');
