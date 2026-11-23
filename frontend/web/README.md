@@ -195,6 +195,10 @@ pnpm exec playwright install chromium
 USE_MSW=true pnpm check
 ```
 
+Playwright 테스트가 실패하면 `pnpm test:e2e:report`로 HTML 보고서를 엽니다.
+실패한 테스트에서 브라우저가 열린 경우 스크린샷과 실행 기록(트레이스)을 확인할 수 있습니다.
+GitHub Actions에서는 실패 위치가 실행 로그에 표시되고, 같은 보고서를 실행 상세의 **Artifacts**에서 `playwright-report`로 내려받을 수 있습니다. 보고서는 7일간 보관합니다.
+
 결정의 배경과 세부 기준은 [ADR](./docs/adr/README.md)에서 확인할 수 있습니다.
 
 화면 문구는 각 페이지의 `copy.ts`에서 수정합니다. 문구를 바꾸면 [UX 라이팅 가이드](./docs/ux-writing.md)도 함께 갱신합니다.

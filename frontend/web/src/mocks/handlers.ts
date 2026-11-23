@@ -1147,6 +1147,10 @@ export const handlers = [
         });
       }
 
+      if (scenario === MOCK_SCENARIOS.diaryGenerationStatusNetworkError) {
+        return HttpResponse.error();
+      }
+
       if (
         scenario === MOCK_SCENARIOS.diaryGenerationStatusFailureOnce &&
         !failedStatusRequestIds.has(generationId)
