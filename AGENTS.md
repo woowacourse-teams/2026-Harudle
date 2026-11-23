@@ -311,6 +311,7 @@ PR 백엔드 CI는 `gradle/actions/setup-gradle`로 실행 파일, 의존성과 
 AWS 배포 파이프라인과 GitHub 워크플로의 역할을 구분해 확인한다.
 프론트엔드 PR CI는 타입 검사, 린트, 형식 검사, 테스트, Playwright E2E와 배포용 빌드를 실행한다.
 E2E 전에 Chromium과 시스템 의존성을 설치하고 `USE_MSW=true`로 모의 API를 활성화한다.
+E2E가 실패하면 스크린샷과 트레이스를 HTML 보고서에 남긴다. CI 실행 상세에서 `playwright-report`를 7일간 내려받을 수 있다.
 CodeBuild는 프론트엔드 입력이 같으면 이전 이미지를 재사용하고, 다르면 새 이미지를
 빌드한다. 배포 브랜치에 PR 없이 직접 변경을 넣으면 PR 검사를 거치지 않는다.
 

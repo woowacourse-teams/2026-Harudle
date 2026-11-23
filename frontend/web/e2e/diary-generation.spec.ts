@@ -495,8 +495,10 @@ test.describe('일기 생성', (): void => {
       expect(nextState.draft).toBe(NEXT_DIARY_CONTENT);
       await expect(getToasts(page)).toHaveCount(2);
 
-      // 네트워크 지연을 기다리는 동안 새 작업의 생성 시간이 흐르지 않게 한다.
-      await page.clock.pauseAt(await page.evaluate((): number => Date.now()));
+      // 시각을 읽은 뒤 정지 명령이 브라우저에 도착할 때까지 여유를 둔다.
+      await page.clock.pauseAt(
+        await page.evaluate((): number => Date.now() + 1_000),
+      );
       const nextResponse = page.waitForResponse((response): boolean => {
         return (
           new URL(response.url()).pathname ===
@@ -687,6 +689,46 @@ test.describe('일기 생성', (): void => {
     expect(requests).toHaveLength(2);
     await expectGenerationCleared(page);
     await expectPollingStopped(page, requests);
+  });
+
+  test('상태 조회가 네트워크 오류로 끊겨도 연결 복구 후 기존 만화의 완료 알림을 표시한다', async ({
+    page,
+  }): Promise<void> => {
+    const statusRequests = collectStatusRequests(page);
+    const submissions: Request[] = [];
+    page.on('request', (request): void => {
+      if (
+        request.method() === 'POST' &&
+        new URL(request.url()).pathname === '/api/v1/diaries'
+      ) {
+        submissions.push(request);
+      }
+    });
+
+    const toast = await startGeneration(page, {
+      scenario: MOCK_SCENARIOS.diaryGenerationStatusNetworkError,
+    });
+    const savedState = await readGenerationState(page);
+    const statusPath = `/api/v1/diary-generations/${savedState.generationId}`;
+    const failedPoll = page.waitForEvent(
+      'requestfailed',
+      (request): boolean => {
+        return new URL(request.url()).pathname === statusPath;
+      },
+    );
+    await page.clock.fastForward(5_000);
+    await failedPoll;
+    await expect(toast).toContainText(LOADING_MESSAGE);
+    expect(await readGenerationState(page)).toEqual(savedState);
+
+    await page.setExtraHTTPHeaders({});
+    await advanceToPoll(page, 5_000);
+    await expect(toast).toContainText(SUCCESS_MESSAGE);
+    expect(
+      statusRequests.map((request) => new URL(request.url()).pathname),
+    ).toEqual([statusPath, statusPath]);
+    expect(submissions).toHaveLength(1);
+    await expectGenerationCleared(page);
   });
 
   test('10자 미만의 일기는 제출할 수 없다', async ({ page }): Promise<void> => {

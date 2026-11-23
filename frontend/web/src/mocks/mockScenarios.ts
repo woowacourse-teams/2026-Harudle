@@ -21,6 +21,7 @@ export const MOCK_SCENARIOS = {
   diaryGenerationRequestFailure: 'diary-generation-request-failure',
   diaryGenerationNotFound: 'diary-generation-not-found',
   diaryGenerationStatusFailureOnce: 'diary-generation-status-failure-once',
+  diaryGenerationStatusNetworkError: 'diary-generation-status-network-error',
   diaryGenerationOutOfOrder: 'diary-generation-out-of-order',
   diaryGenerationDelayedSuccess: 'diary-generation-delayed-success',
   diaryGenerationDelayedFailure: 'diary-generation-delayed-failure',
